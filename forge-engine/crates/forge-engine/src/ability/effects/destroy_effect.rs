@@ -1,15 +1,24 @@
 use forge_foundation::ZoneType;
 
 use super::{emit_zone_trigger_with_lki_counters, EffectContext};
+use crate::card::card_util;
 use crate::event::{RunParams, TriggerType};
 use crate::spellability::SpellAbility;
 
 pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
+    let mut targets = Vec::new();
     if let Some(target_card) = sa.target_chosen.target_card {
+        targets.push(target_card);
+    }
+    targets.extend(card_util::get_radiance(ctx.game, sa).iter().copied());
+    targets.sort_unstable_by_key(|cid| cid.0);
+    targets.dedup();
+
+    for target_card in targets {
         if ctx.game.card(target_card).zone == ZoneType::Battlefield {
             // Indestructible prevents destruction (CR 702.12)
             if ctx.game.card(target_card).has_indestructible() {
-                return;
+                continue;
             }
             let owner = ctx.game.card(target_card).owner;
 

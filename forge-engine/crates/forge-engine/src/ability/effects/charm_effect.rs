@@ -1,13 +1,13 @@
 use super::{resolve_numeric_svar, EffectContext};
 use crate::agent::PlayerAgent;
 use crate::agent::TargetChoice;
+use crate::card::card_util;
 use crate::game::GameState;
 use crate::ids::PlayerId;
 use crate::parsing::keys;
 use crate::parsing::Params;
 use crate::spellability::target_restrictions::{
-    get_all_battlefield_permanents_filtered, get_all_candidates_creature_filtered,
-    get_all_candidates_spells, get_valid_cards_in_zone, TargetKind,
+    get_all_candidates_spells, TargetKind,
 };
 use crate::spellability::{build_spell_ability, SpellAbility};
 
@@ -531,11 +531,8 @@ fn setup_mode_targets(ctx: &mut EffectContext, mode_sa: &mut SpellAbility, playe
         }
 
         TargetKind::Creature(ref filter) => {
-            let valid = crate::spellability::target_restrictions::apply_other_source_filter(
-                get_all_candidates_creature_filtered(ctx.game, filter.as_deref(), player),
-                filter.as_deref(),
-                mode_sa.source,
-            );
+            let _ = filter;
+            let valid = card_util::get_valid_cards_to_target(ctx.game, mode_sa);
             if let Some(card) = ctx.agents[player.index()].choose_target_card(player, &valid, None)
             {
                 mode_sa.target_chosen.target_card = Some(card);
@@ -543,11 +540,8 @@ fn setup_mode_targets(ctx: &mut EffectContext, mode_sa: &mut SpellAbility, playe
         }
 
         TargetKind::Permanent(ref filter) => {
-            let valid = crate::spellability::target_restrictions::apply_other_source_filter(
-                get_all_battlefield_permanents_filtered(ctx.game, filter.as_deref(), player),
-                filter.as_deref(),
-                mode_sa.source,
-            );
+            let _ = filter;
+            let valid = card_util::get_valid_cards_to_target(ctx.game, mode_sa);
             if let Some(card) = ctx.agents[player.index()].choose_target_card(player, &valid, None)
             {
                 mode_sa.target_chosen.target_card = Some(card);
@@ -556,13 +550,8 @@ fn setup_mode_targets(ctx: &mut EffectContext, mode_sa: &mut SpellAbility, playe
 
         TargetKind::CardInZone { zone, filter } => {
             let zone = *zone;
-            let filter = filter.clone();
-            let mut valid = Vec::new();
-            for &pid in &ctx.game.player_order.clone() {
-                let zone_cards =
-                    get_valid_cards_in_zone(ctx.game, zone, pid, filter.as_deref(), mode_sa.source);
-                valid.extend(zone_cards);
-            }
+            let _ = filter;
+            let valid = card_util::get_valid_cards_to_target(ctx.game, mode_sa);
             if let Some(card) =
                 ctx.agents[player.index()].choose_target_card_from_zone(player, zone, &valid, None)
             {
@@ -580,19 +569,7 @@ fn setup_mode_targets(ctx: &mut EffectContext, mode_sa: &mut SpellAbility, playe
                 } else {
                     Vec::new()
                 };
-            let valid_cards =
-                crate::spellability::target_restrictions::get_all_candidates_any_filtered(
-                    ctx.game,
-                    &tr.valid_tgts,
-                    player,
-                )
-                .into_iter()
-                .filter(|&cid| {
-                    crate::spellability::target_restrictions::can_be_targeted_by_sa(
-                        ctx.game, cid, player, mode_sa,
-                    )
-                })
-                .collect::<Vec<_>>();
+            let valid_cards = card_util::get_valid_cards_to_target(ctx.game, mode_sa);
             let choice = ctx.agents[player.index()].choose_target_any(
                 player,
                 &valid_players,

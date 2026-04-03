@@ -246,9 +246,26 @@ const SKIP_METHODS = new Set([
   'readObject', 'writeObject', 'readResolve',
 ]);
 
-// Getter/setter pattern: getFoo, setFoo, isFoo
-function isGetterSetter(name) {
-  return /^(get|set|is)[A-Z]/.test(name);
+// Bean accessor pattern: getFoo(), isFoo(), setFoo(x)
+// Do not treat utility methods like getValidCardsToTarget(...) as accessors.
+function isGetterSetter(name, returnType, paramsRaw) {
+  if (!/^(get|set|is)[A-Z]/.test(name)) return false;
+
+  const params = paramsRaw.trim();
+  const paramCount = params === ''
+    ? 0
+    : params.split(',').map(p => p.trim()).filter(Boolean).length;
+
+  if (name.startsWith('get')) {
+    return paramCount === 0 && returnType !== 'void';
+  }
+  if (name.startsWith('is')) {
+    return paramCount === 0 && returnType === 'boolean';
+  }
+  if (name.startsWith('set')) {
+    return paramCount === 1 && returnType === 'void';
+  }
+  return false;
 }
 
 // Extract public method names from a Java file (skip constructors, boilerplate)
@@ -256,13 +273,15 @@ function extractJavaMethods(filePath) {
   const content = fs.readFileSync(filePath, 'utf-8');
   const className = path.basename(filePath, '.java');
   const methods = [];
-  const re = /^\s*public\s+(?:static\s+)?(?:final\s+)?(?:synchronized\s+)?(?:<[^>]+>\s+)?(\S+)\s+([a-zA-Z_]\w*)\s*\(/gm;
+  const re = /^\s*public\s+(?:static\s+)?(?:final\s+)?(?:synchronized\s+)?(?:<[^>]+>\s+)?(\S+)\s+([a-zA-Z_]\w*)\s*\(([^)]*)\)/gm;
   let m;
   while ((m = re.exec(content)) !== null) {
+    const returnType = m[1];
     const methodName = m[2];
+    const paramsRaw = m[3];
     if (methodName === className) continue;
     if (SKIP_METHODS.has(methodName)) continue;
-    if (isGetterSetter(methodName)) continue;
+    if (isGetterSetter(methodName, returnType, paramsRaw)) continue;
     methods.push(methodName);
   }
   // Deduplicate (overloaded methods)
@@ -626,4 +645,3 @@ if (showSymbols && totalSymbols > 0) {
 }
 console.log('');
 console.log(`${BOLD}═══════════════════════════════════════════════════════════════${RESET}`);
-

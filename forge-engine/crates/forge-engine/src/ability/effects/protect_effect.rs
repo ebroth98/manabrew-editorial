@@ -1,6 +1,7 @@
 use forge_foundation::ZoneType;
 
 use super::EffectContext;
+use crate::card::card_util;
 use crate::spellability::SpellAbility;
 
 /// End-of-turn revert for Protection. Mirrors the `GameCommand.run()` in Java
@@ -39,11 +40,6 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         }
     });
 
-    let card_id = match target {
-        Some(id) if ctx.game.card(id).zone == ZoneType::Battlefield => id,
-        _ => return,
-    };
-
     let gains = sa
         .params
         .get(crate::parsing::keys::GAINS)
@@ -53,6 +49,15 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     // Mirrors Java ProtectEffect: `isChoice = sa.getParam("Gains").contains("Choice")`
     // Handles both `Gains$ Choice` (Gods Willing) and `Gains$ Protection from chosen color`.
     let is_choice = gains.contains("Choice") || gains.contains("chosen color");
+
+    let mut targets = target.into_iter().collect::<Vec<_>>();
+    targets.extend(card_util::get_radiance(ctx.game, sa).iter().copied());
+    targets.retain(|&id| ctx.game.card(id).zone == ZoneType::Battlefield);
+    targets.sort_unstable_by_key(|cid| cid.0);
+    targets.dedup();
+    if targets.is_empty() {
+        return;
+    }
 
     if is_choice {
         // Build the protection choices from `Choices$` parameter.
@@ -88,10 +93,14 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         let chosen = ctx.agents[controller.index()].choose_color(controller, &choices);
         if let Some(color) = chosen {
             let prot_kw = format!("Protection from {}", color.to_lowercase());
-            ctx.game.card_mut(card_id).add_pump_keyword(&prot_kw);
+            for card_id in targets {
+                ctx.game.card_mut(card_id).add_pump_keyword(&prot_kw);
+            }
         }
     } else {
         // Static protection grant
-        ctx.game.card_mut(card_id).add_pump_keyword(&gains);
+        for card_id in targets {
+            ctx.game.card_mut(card_id).add_pump_keyword(&gains);
+        }
     }
 }

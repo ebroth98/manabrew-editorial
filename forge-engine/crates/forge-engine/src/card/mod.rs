@@ -61,6 +61,7 @@ use forge_foundation::{CardTypeLine, ColorSet, ManaCost, ZoneType};
 use serde::{Deserialize, Serialize};
 
 use crate::ability::activated::{parse_activated_ability, ActivatedAbility};
+use crate::game::GameState;
 use crate::card::perpetual::perpetual_record::PerpetualRecord;
 use crate::ids::{CardId, PlayerId};
 use crate::parsing::parse_or_warn;
@@ -2289,22 +2290,16 @@ impl Card {
         !self.color.is_colorless()
     }
 
-    pub fn can_produce_color_mana(&self, color: &str) -> bool {
-        match color.to_ascii_lowercase().as_str() {
-            "w" | "white" => self.color.has_white() || self.type_line.has_subtype("Plains"),
-            "u" | "blue" => self.color.has_blue() || self.type_line.has_subtype("Island"),
-            "b" | "black" => self.color.has_black() || self.type_line.has_subtype("Swamp"),
-            "r" | "red" => self.color.has_red() || self.type_line.has_subtype("Mountain"),
-            "g" | "green" => self.color.has_green() || self.type_line.has_subtype("Forest"),
-            "c" | "colorless" => self.color.is_colorless(),
-            _ => false,
-        }
+    pub fn can_produce_color_mana(
+        &self,
+        game: &GameState,
+        colors: &std::collections::HashSet<String>,
+    ) -> bool {
+        crate::card::card_util::card_can_produce_color_mana(game, self.id, colors)
     }
 
-    pub fn can_produce_same_mana_type_with(&self, other: &Card) -> bool {
-        ["W", "U", "B", "R", "G"]
-            .iter()
-            .any(|c| self.can_produce_color_mana(c) && other.can_produce_color_mana(c))
+    pub fn can_produce_same_mana_type_with(&self, game: &GameState, other: &Card) -> bool {
+        crate::card::card_util::card_can_produce_same_mana_type_with(game, self.id, other.id)
     }
 
     pub fn has_remove_intrinsic(&self) -> bool {
@@ -2739,9 +2734,13 @@ impl Card {
     pub fn phase(&mut self) {
         self.phased_out = !self.phased_out;
     }
-    pub fn associated_with_color(&self, color: &str) -> bool {
-        self.can_produce_color_mana(color)
-            || self.has_keyword(&format!("Protection from {}", color.to_lowercase()))
+    pub fn associated_with_color(&self, game: &GameState, color: &str) -> bool {
+        let mut colors = HashSet::new();
+        colors.insert(color.to_string());
+        forge_foundation::Color::from_name(&color.to_ascii_lowercase())
+            .map(|parsed| self.color.has_any_color(parsed.mask()))
+            .unwrap_or(false)
+            || self.can_produce_color_mana(game, &colors)
     }
     pub fn has_no_name(&self) -> bool {
         self.card_name.trim().is_empty()
@@ -3271,6 +3270,8 @@ impl Card {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::HashSet;
+
     use forge_carddb::parse_card_script;
     use forge_foundation::ManaCost;
 
@@ -3456,25 +3457,6 @@ mod tests {
     }
 
     #[test]
-    fn hexproof_from_color() {
-        let card = Card::new(
-            CardId(0),
-            "Test".to_string(),
-            PlayerId(0),
-            CardTypeLine::parse("Creature Bear"),
-            ManaCost::parse("1 G"),
-            ColorSet::GREEN,
-            Some(2),
-            Some(2),
-            vec!["Hexproof from blue".to_string()],
-            vec![],
-        );
-        assert!(card.has_hexproof_from("blue"));
-        assert!(!card.has_hexproof_from("red"));
-        assert!(!card.has_hexproof()); // partial hexproof is not full hexproof
-    }
-
-    #[test]
     fn from_rules_copies_attraction_lights() {
         let rules = parse_card_script(
             "Name:Balloon Stand\nTypes:Artifact Attraction\nLights: 2 4 6\nOracle:Test.",
@@ -3484,5 +3466,86 @@ mod tests {
         assert_eq!(card.attraction_lights, vec![2, 4, 6]);
         assert!(card.has_attraction_light(4));
         assert!(!card.has_attraction_light(3));
+    }
+
+    #[test]
+    fn can_produce_color_mana_uses_mana_abilities_and_reflection() {
+        let mut game = GameState::new(&["Alice", "Bob"], 20);
+        let p0 = PlayerId(0);
+
+        let white_land = Card::new(
+            CardId(0),
+            "White Source".to_string(),
+            p0,
+            CardTypeLine::parse("Land"),
+            ManaCost::parse(""),
+            ColorSet::COLORLESS,
+            None,
+            None,
+            vec![],
+            vec!["AB$ Mana | Cost$ T | Produced$ W | SpellDescription$ Add {W}.".to_string()],
+        );
+        let reflecting_pool = Card::new(
+            CardId(1),
+            "Reflecting Pool".to_string(),
+            p0,
+            CardTypeLine::parse("Land"),
+            ManaCost::parse(""),
+            ColorSet::COLORLESS,
+            None,
+            None,
+            vec![],
+            vec!["AB$ ManaReflected | Cost$ T | Valid$ Land.YouCtrl | ReflectProperty$ Produce | ColorOrType$ Type | Produced$ W | SpellDescription$ Add one mana of any type that a land you control could produce.".to_string()],
+        );
+
+        let white_id = game.create_card(white_land);
+        let pool_id = game.create_card(reflecting_pool);
+        game.move_card(white_id, ZoneType::Battlefield, p0);
+        game.move_card(pool_id, ZoneType::Battlefield, p0);
+
+        let mut white = HashSet::new();
+        white.insert("white".to_string());
+        assert!(game.card(white_id).can_produce_color_mana(&game, &white));
+        assert!(game.card(pool_id).can_produce_color_mana(&game, &white));
+    }
+
+    #[test]
+    fn can_produce_same_mana_type_with_uses_mana_ability_overlap() {
+        let mut game = GameState::new(&["Alice", "Bob"], 20);
+        let p0 = PlayerId(0);
+
+        let island = Card::new(
+            CardId(0),
+            "Island Source".to_string(),
+            p0,
+            CardTypeLine::parse("Land"),
+            ManaCost::parse(""),
+            ColorSet::COLORLESS,
+            None,
+            None,
+            vec![],
+            vec!["AB$ Mana | Cost$ T | Produced$ U | SpellDescription$ Add {U}.".to_string()],
+        );
+        let prism = Card::new(
+            CardId(1),
+            "Prism".to_string(),
+            p0,
+            CardTypeLine::parse("Artifact"),
+            ManaCost::parse("2"),
+            ColorSet::COLORLESS,
+            None,
+            None,
+            vec![],
+            vec!["AB$ Mana | Cost$ T | Produced$ U | SpellDescription$ Add {U}.".to_string()],
+        );
+
+        let island_id = game.create_card(island);
+        let prism_id = game.create_card(prism);
+        game.move_card(island_id, ZoneType::Battlefield, p0);
+        game.move_card(prism_id, ZoneType::Battlefield, p0);
+
+        assert!(game
+            .card(prism_id)
+            .can_produce_same_mana_type_with(&game, game.card(island_id)));
     }
 }

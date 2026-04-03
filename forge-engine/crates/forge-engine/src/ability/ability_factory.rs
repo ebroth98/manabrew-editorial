@@ -15,7 +15,7 @@ use crate::ids::{CardId, PlayerId};
 use crate::parsing::keys::ST;
 use crate::parsing::{keys, Params};
 use crate::spellability::target_restrictions::TargetRestrictions;
-use crate::spellability::{SpellAbility, TargetChoices};
+use crate::spellability::{AbilityManaPart, SpellAbility, TargetChoices};
 use forge_foundation::ZoneType;
 
 /// The record type prefix for an ability definition.
@@ -321,6 +321,8 @@ fn build_spell_ability_of_type(
         None
     };
 
+    let mana_part = build_mana_part(&params);
+
     SpellAbility {
         api,
         source: Some(host.id),
@@ -354,7 +356,7 @@ fn build_spell_ability_of_type(
         discarded_cost_cards: Vec::new(),
         optional_costs: Vec::new(),
         paid_hash: std::collections::HashMap::new(),
-        mana_part: None,
+        mana_part,
         express_mana_choice: None,
         convoke_tapped: Vec::new(),
         spliced_cards: Vec::new(),
@@ -378,6 +380,16 @@ fn build_spell_ability_of_type(
         damage_map: None,
         prevent_map: None,
     }
+}
+
+fn build_mana_part(params: &Params) -> Option<AbilityManaPart> {
+    let produced = params.get(keys::PRODUCED)?;
+    let mut mana_part = AbilityManaPart::new(produced, params.get(keys::RESTRICTION).unwrap_or(""));
+    mana_part.set_adds_keywords(params.get(keys::ADDS_KEYWORDS).map(str::to_string));
+    mana_part.set_triggers_when_spent(params.get(keys::TRIGGERS_WHEN_SPENT).map(str::to_string));
+    mana_part.set_persistent_mana(params.has("PersistentMana"));
+    mana_part.set_combat_mana(params.has("CombatMana"));
+    Some(mana_part)
 }
 
 /// Parse the cost of an ability from its parameters.

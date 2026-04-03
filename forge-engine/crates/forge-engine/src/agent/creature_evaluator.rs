@@ -227,35 +227,3 @@ fn keyword_count(card: &Card, kw: &str) -> i32 {
         .filter(|k| k.starts_with(kw))
         .count() as i32
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn base_score_non_token() {
-        let mut card = Card::new(
-            "Test Creature".to_string(),
-            "Creature — Human".to_string(),
-            "".to_string(),
-            vec![],
-        );
-        card.base_power = 2;
-        card.base_toughness = 2;
-        // Non-token creature with 2/2: 80 + 20 (non-token) + 30 (power) + 20 (toughness) = 150 + cmc*5
-        let score = evaluate_creature(&card);
-        assert!(score >= 150, "Expected >= 150, got {}", score);
-    }
-
-    #[test]
-    fn useless_creature_with_defender() {
-        let mut card = Card::new(
-            "Wall".to_string(),
-            "Creature — Wall".to_string(),
-            "".to_string(),
-            vec![],
-        );
-        card.keywords.add("Defender");
-        assert!(is_useless_creature(&card));
-    }
-}

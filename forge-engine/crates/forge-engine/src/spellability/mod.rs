@@ -25,6 +25,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::ability::api_type::ApiType;
 use crate::agent::{PlayerAgent, TargetChoice};
+use crate::card::card_util;
 use crate::card::card_damage_map::CardDamageMap;
 use crate::card::card_zone_table::CardZoneTable;
 use crate::event::AbilityValue;
@@ -1229,13 +1230,7 @@ fn choose_targets_for(
                 } else {
                     Vec::new()
                 };
-            let valid_cards: Vec<CardId> =
-                target_restrictions::get_all_candidates_any_filtered(game, &tr.valid_tgts, player)
-                    .into_iter()
-                    .filter(|&cid| {
-                        target_restrictions::can_be_targeted_by_sa(game, cid, player, sa)
-                    })
-                    .collect();
+            let valid_cards: Vec<CardId> = card_util::get_valid_cards_to_target(game, sa);
             agents[player.index()].snapshot_state(game, mana_pools);
             let agent = &mut agents[player.index()];
             match agent.choose_target_any(player, &valid_players, &valid_cards, Some(sa)) {
@@ -1247,20 +1242,11 @@ fn choose_targets_for(
                 TargetChoice::None => {}
             }
         }
-        TargetKind::Creature(ref filter) => {
-            let base = target_restrictions::get_all_candidates_creature_filtered(
-                game,
-                filter.as_deref(),
-                player,
-            );
-            let valid: Vec<CardId> =
-                target_restrictions::apply_other_source_filter(base, filter.as_deref(), sa.source)
-                    .into_iter()
-                    .filter(|&cid| target_allowed_by_defined_controller(game, sa, cid))
-                    .filter(|&cid| {
-                        target_restrictions::can_be_targeted_by_sa(game, cid, player, sa)
-                    })
-                    .collect();
+        TargetKind::Creature(_) => {
+            let valid: Vec<CardId> = card_util::get_valid_cards_to_target(game, sa)
+                .into_iter()
+                .filter(|&cid| target_allowed_by_defined_controller(game, sa, cid))
+                .collect();
             agents[player.index()].snapshot_state(game, mana_pools);
             let agent = &mut agents[player.index()];
             sa.target_chosen.target_card = agent.choose_target_card(player, &valid, Some(sa));
@@ -1268,20 +1254,11 @@ fn choose_targets_for(
                 sa.target_chosen.target_card_zone_timestamp = Some(game.card(cid).zone_timestamp);
             }
         }
-        TargetKind::Permanent(ref filter) => {
-            let base = target_restrictions::get_all_battlefield_permanents_filtered(
-                game,
-                filter.as_deref(),
-                player,
-            );
-            let valid: Vec<CardId> =
-                target_restrictions::apply_other_source_filter(base, filter.as_deref(), sa.source)
-                    .into_iter()
-                    .filter(|&cid| target_allowed_by_defined_controller(game, sa, cid))
-                    .filter(|&cid| {
-                        target_restrictions::can_be_targeted_by_sa(game, cid, player, sa)
-                    })
-                    .collect();
+        TargetKind::Permanent(_) => {
+            let valid: Vec<CardId> = card_util::get_valid_cards_to_target(game, sa)
+                .into_iter()
+                .filter(|&cid| target_allowed_by_defined_controller(game, sa, cid))
+                .collect();
             agents[player.index()].snapshot_state(game, mana_pools);
             let agent = &mut agents[player.index()];
             sa.target_chosen.target_card = agent.choose_target_card(player, &valid, Some(sa));
@@ -1289,17 +1266,11 @@ fn choose_targets_for(
                 sa.target_chosen.target_card_zone_timestamp = Some(game.card(cid).zone_timestamp);
             }
         }
-        TargetKind::CardInZone { zone, filter } => {
-            let valid: Vec<CardId> = target_restrictions::get_valid_cards_in_zone(
-                game,
-                *zone,
-                player,
-                filter.as_deref(),
-                sa.source,
-            )
-            .into_iter()
-            .filter(|&cid| target_allowed_by_defined_controller(game, sa, cid))
-            .collect();
+        TargetKind::CardInZone { zone, .. } => {
+            let valid: Vec<CardId> = card_util::get_valid_cards_to_target(game, sa)
+                .into_iter()
+                .filter(|&cid| target_allowed_by_defined_controller(game, sa, cid))
+                .collect();
             agents[player.index()].snapshot_state(game, mana_pools);
             let agent = &mut agents[player.index()];
             sa.target_chosen.target_card =

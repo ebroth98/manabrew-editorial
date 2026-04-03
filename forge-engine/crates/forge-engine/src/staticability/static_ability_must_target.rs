@@ -1,10 +1,10 @@
 use forge_foundation::ZoneType;
 
+use crate::card::card_util;
 use crate::game::GameState;
 use crate::ids::CardId;
 use crate::parsing::keys;
 use crate::parsing::Params;
-use crate::spellability::target_restrictions;
 use crate::spellability::target_restrictions::TargetKind;
 use crate::spellability::SpellAbility;
 use crate::staticability::StaticMode;
@@ -176,44 +176,12 @@ fn get_targetable_card_choices(game: &GameState, sa: &SpellAbility) -> Vec<CardI
     let Some(tr) = sa.target_restrictions.as_ref() else {
         return Vec::new();
     };
-    let player = sa.targeting_player.unwrap_or(sa.activating_player);
 
     match &tr.target_kind {
-        TargetKind::Any => {
-            target_restrictions::get_all_candidates_any_filtered(game, &tr.valid_tgts, player)
-                .into_iter()
-                .filter(|&cid| target_restrictions::can_be_targeted_by_sa(game, cid, player, sa))
-                .collect()
-        }
-        TargetKind::Creature(filter) => {
-            let base = target_restrictions::get_all_candidates_creature_filtered(
-                game,
-                filter.as_deref(),
-                player,
-            );
-            target_restrictions::apply_other_source_filter(base, filter.as_deref(), sa.source)
-                .into_iter()
-                .filter(|&cid| target_restrictions::can_be_targeted_by_sa(game, cid, player, sa))
-                .collect()
-        }
-        TargetKind::Permanent(filter) => {
-            let base = target_restrictions::get_all_battlefield_permanents_filtered(
-                game,
-                filter.as_deref(),
-                player,
-            );
-            target_restrictions::apply_other_source_filter(base, filter.as_deref(), sa.source)
-                .into_iter()
-                .filter(|&cid| target_restrictions::can_be_targeted_by_sa(game, cid, player, sa))
-                .collect()
-        }
-        TargetKind::CardInZone { zone, filter } => target_restrictions::get_valid_cards_in_zone(
-            game,
-            *zone,
-            player,
-            filter.as_deref(),
-            sa.source,
-        ),
+        TargetKind::Any
+        | TargetKind::Creature(_)
+        | TargetKind::Permanent(_)
+        | TargetKind::CardInZone { .. } => card_util::get_valid_cards_to_target(game, sa),
         TargetKind::Player | TargetKind::Spell | TargetKind::None => Vec::new(),
     }
 }

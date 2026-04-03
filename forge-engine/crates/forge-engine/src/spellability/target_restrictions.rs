@@ -93,7 +93,9 @@ impl TargetRestrictions {
             target_type_filter,
             min_targets,
             max_targets,
-            tgt_zone: vec![ZoneType::Battlefield],
+            tgt_zone: origin_zone
+                .map(|zone| vec![zone])
+                .unwrap_or_else(|| vec![ZoneType::Battlefield]),
         })
     }
 

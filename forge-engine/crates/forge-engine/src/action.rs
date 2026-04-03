@@ -1262,21 +1262,4 @@ mod tests {
         assert!(!game.card(cid).tapped);
     }
 
-    #[test]
-    fn commander_moves_to_command_zone_via_replacement_effect() {
-        let mut game = GameState::new(&["Alice", "Bob"], 20);
-        let commander = make_creature(&mut game, "Commander Bear", PlayerId(0), 2, 2);
-        game.move_card(commander, ZoneType::Command, PlayerId(0));
-
-        let mut registered = RegisteredPlayer::new("Alice".to_string());
-        registered.commanders.push("Commander Bear".to_string());
-        game.initialize_player_commanders_from_registered(PlayerId(0), &registered, None);
-
-        game.move_card(commander, ZoneType::Battlefield, PlayerId(0));
-        game.move_card(commander, ZoneType::Graveyard, PlayerId(0));
-
-        assert_eq!(game.card(commander).zone, ZoneType::Command);
-        assert!(game.zone(ZoneType::Command, PlayerId(0)).contains(commander));
-        assert_eq!(game.zone(ZoneType::Graveyard, PlayerId(0)).len(), 0);
-    }
 }

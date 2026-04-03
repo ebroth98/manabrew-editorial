@@ -1,6 +1,7 @@
 use forge_foundation::ZoneType;
 
 use super::{parse_param, resolve_defined_player_with_sa, EffectContext};
+use crate::card::card_util;
 use crate::card::card_damage_map::DamageTarget;
 use crate::parsing::keys;
 use crate::spellability::SpellAbility;
@@ -178,7 +179,11 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             );
         }
     }
-    if let Some(target_card) = sa.target_chosen.target_card {
+    let mut target_cards = sa.target_chosen.target_card.into_iter().collect::<Vec<_>>();
+    target_cards.extend(card_util::get_radiance(ctx.game, sa).iter().copied());
+    target_cards.sort_unstable_by_key(|cid| cid.0);
+    target_cards.dedup();
+    for target_card in target_cards {
         if ctx.game.card(target_card).zone == ZoneType::Battlefield {
             // Protection: prevents all damage from matching sources
             if let Some(src_id) = sa.source {

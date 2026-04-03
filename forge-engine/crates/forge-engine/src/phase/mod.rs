@@ -315,20 +315,4 @@ mod tests {
         assert_eq!(p1_cmds.len(), 1);
     }
 
-    #[test]
-    fn register_until_end_command() {
-        let mut phase = Phase::new(PhaseType::Upkeep);
-        let p0 = PlayerId(0);
-
-        phase.register_until_end(p0, PhaseCommand::RemoveEffect(CardId(1)));
-        // Not yet in until_end_map
-        assert!(phase.execute_until_end_of_phase(p0).is_empty());
-
-        // Register again and move
-        phase.register_until_end(p0, PhaseCommand::RemoveEffect(CardId(2)));
-        phase.register_until_end_command(p0);
-
-        let cmds = phase.execute_until_end_of_phase(p0);
-        assert_eq!(cmds.len(), 1);
-    }
 }

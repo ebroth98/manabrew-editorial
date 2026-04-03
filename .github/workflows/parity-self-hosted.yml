@@ -19,6 +19,18 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  forge-engine-unit:
+    runs-on: self-hosted
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          clean: true
+
+      - name: Run forge-engine unit tests
+        run: yarn test:forge-engine
+
   parity-regression:
     runs-on: self-hosted
     timeout-minutes: 90

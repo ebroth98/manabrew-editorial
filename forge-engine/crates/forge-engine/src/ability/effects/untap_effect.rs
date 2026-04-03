@@ -1,6 +1,7 @@
 use forge_foundation::ZoneType;
 
 use super::EffectContext;
+use crate::card::card_util;
 use crate::event::{RunParams, TriggerType};
 use crate::ids::CardId;
 use crate::spellability::SpellAbility;
@@ -20,9 +21,12 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     let controller = sa.activating_player;
     let etb = sa.params.has(crate::parsing::keys::ETB);
 
-    let target_card = resolve_untap_target(ctx, sa);
+    let mut targets = resolve_untap_target(ctx, sa).into_iter().collect::<Vec<_>>();
+    targets.extend(card_util::get_radiance(ctx.game, sa).iter().copied());
+    targets.sort_unstable_by_key(|cid| cid.0);
+    targets.dedup();
 
-    if let Some(card_id) = target_card {
+    for card_id in targets {
         if ctx.game.card(card_id).zone == ZoneType::Battlefield {
             untap_card(ctx, card_id, controller, etb);
         }

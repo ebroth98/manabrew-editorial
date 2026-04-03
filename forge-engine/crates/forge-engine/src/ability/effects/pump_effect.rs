@@ -1,6 +1,7 @@
 use forge_foundation::ZoneType;
 
 use super::{parse_param, resolve_numeric_svar, EffectContext};
+use crate::card::card_util;
 use crate::card::perpetual::perpetual_interface::PerpetualInterface;
 use crate::card::perpetual::{perpetual_keywords, perpetual_pt_boost};
 use crate::parsing::keys;
@@ -118,7 +119,12 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         None => None,
     });
 
-    if let Some(target_card) = target_card {
+    let mut targets = target_card.into_iter().collect::<Vec<_>>();
+    targets.extend(card_util::get_radiance(ctx.game, sa).iter().copied());
+    targets.sort_unstable_by_key(|cid| cid.0);
+    targets.dedup();
+
+    for target_card in targets {
         if ctx.game.card(target_card).zone == ZoneType::Battlefield {
             if is_perpetual {
                 let ts = resolve_ts.expect("perpetual resolve timestamp must exist");

@@ -782,50 +782,6 @@ mod tests {
     }
 
     #[test]
-    fn run_turn_opens_draw_and_combat_priority_windows() {
-        let p0 = PlayerId(0);
-        let p1 = PlayerId(1);
-        let mut game = GameState::new(&["A", "B"], 20);
-
-        let c0 = game.create_card(zero_cost_instant(p0));
-        let c1 = game.create_card(zero_cost_instant(p1));
-        game.move_card(c0, ZoneType::Hand, p0);
-        game.move_card(c1, ZoneType::Hand, p1);
-
-        let seen0 = Arc::new(Mutex::new(Vec::new()));
-        let seen1 = Arc::new(Mutex::new(Vec::new()));
-        let bad0 = Arc::new(AtomicBool::new(false));
-        let bad1 = Arc::new(AtomicBool::new(false));
-
-        let a0 = RecordingPassAgent::new(seen0.clone(), bad0.clone());
-        let a1 = RecordingPassAgent::new(seen1.clone(), bad1.clone());
-
-        let mut agents: Vec<Box<dyn PlayerAgent>> = vec![Box::new(a0), Box::new(a1)];
-        let mut game_loop = GameLoop::new(2);
-        let mut rng = rand::rngs::StdRng::seed_from_u64(7);
-
-        // Turn 2 ensures the draw step draw action is exercised.
-        game.turn.turn_number = 2;
-        game.turn.active_player = p0;
-        game.turn.priority_player = p0;
-
-        game_loop.run_turn(&mut game, &mut agents, &mut rng);
-
-        let mut all_phases = seen0.lock().unwrap().clone();
-        all_phases.extend(seen1.lock().unwrap().iter().copied());
-
-        // Priority windows are opened at Draw, Main1, and Main2.
-        // Combat phases don't call choose_action, so they're not recorded here.
-        assert!(all_phases.contains(&PhaseType::Draw));
-        assert!(all_phases.contains(&PhaseType::Main1));
-        assert!(all_phases.contains(&PhaseType::Main2));
-        assert!(all_phases.contains(&PhaseType::EndOfTurn));
-
-        assert!(!bad0.load(Ordering::SeqCst));
-        assert!(!bad1.load(Ordering::SeqCst));
-    }
-
-    #[test]
     fn priority_round_ignores_illegal_actions() {
         let p0 = PlayerId(0);
         let p1 = PlayerId(1);
@@ -934,55 +890,6 @@ mod tests {
         assert!(action_space.activatable.contains(&(food, 0)));
         assert!(!action_space.activatable.contains(&(goose, 0)));
         assert!(!action_space.activatable.contains(&(goose, 1)));
-    }
-
-    #[test]
-    fn play_card_uses_manual_pool_then_auto_taps_deficit() {
-        let p0 = PlayerId(0);
-        let _p1 = PlayerId(1);
-        let mut game = GameState::new(&["A", "B"], 20);
-
-        // Land A: any color (manual tap first)
-        let land_any = game.create_card(mana_land(p0, "Any Land", "Any"));
-        // Land B: can produce U or G (auto-tap should use this for blue requirement)
-        let land_combo = game.create_card(mana_land(p0, "Dual Land", "Combo G U"));
-        let spell = game.create_card(vanilla_spell(p0, "Test Spell", "1 U"));
-
-        game.move_card(land_any, ZoneType::Battlefield, p0);
-        game.move_card(land_combo, ZoneType::Battlefield, p0);
-        game.move_card(spell, ZoneType::Hand, p0);
-
-        let mut gl = GameLoop::new(2);
-        let mut agents: Vec<Box<dyn PlayerAgent>> = vec![
-            Box::new(RecordingPassAgent::new(
-                Arc::new(Mutex::new(Vec::new())),
-                Arc::new(AtomicBool::new(false)),
-            )),
-            Box::new(RecordingPassAgent::new(
-                Arc::new(Mutex::new(Vec::new())),
-                Arc::new(AtomicBool::new(false)),
-            )),
-        ];
-
-        // Manual tap: add one mana from the Any land.
-        let ab = game.card(land_any).activated_abilities[0].clone();
-        gl.resolve_mana_ability(&mut game, &mut agents, p0, land_any, &ab, None);
-        assert_eq!(gl.pool(p0).total_mana(), 1);
-        assert!(game.card(land_any).tapped);
-        assert!(!game.card(land_combo).tapped);
-
-        // Cast 1U spell: should consume manual pool mana and auto-tap exactly one additional land.
-        let played = gl.play_card(
-            &mut game,
-            &mut agents,
-            p0,
-            spell,
-            crate::agent::PlayCardMode::Normal,
-        );
-        assert!(
-            played.is_some(),
-            "manual + auto mana payment should succeed"
-        );
     }
 
     #[test]

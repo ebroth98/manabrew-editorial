@@ -1424,7 +1424,7 @@ mod tests {
         put_on_battlefield(&mut game, cid, alice);
 
         let mut event = ReplacementEvent::Draw { player: alice, extra_draws: 0, is_first_in_draw_step: false };
-        let result = apply_replacements(&game, &mut event);
+        let result = apply_replacements(&mut game, &mut event);
         assert_eq!(result, ReplacementResult::Skipped);
     }
 
@@ -1443,7 +1443,7 @@ mod tests {
 
         // Bob's draw is not affected by Alice's effect.
         let mut event = ReplacementEvent::Draw { player: bob, extra_draws: 0, is_first_in_draw_step: false };
-        let result = apply_replacements(&game, &mut event);
+        let result = apply_replacements(&mut game, &mut event);
         assert_eq!(result, ReplacementResult::NotReplaced);
     }
 
@@ -1464,7 +1464,7 @@ mod tests {
         game.move_card(cid, ZoneType::Hand, alice);
 
         let mut event = ReplacementEvent::Draw { player: alice, extra_draws: 0, is_first_in_draw_step: false };
-        let result = apply_replacements(&game, &mut event);
+        let result = apply_replacements(&mut game, &mut event);
         assert_eq!(result, ReplacementResult::NotReplaced);
     }
 

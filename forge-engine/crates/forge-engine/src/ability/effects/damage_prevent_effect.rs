@@ -6,6 +6,7 @@
 use forge_foundation::ZoneType;
 
 use super::EffectContext;
+use crate::card::card_util;
 use crate::spellability::SpellAbility;
 
 /// End-of-turn revert for damage prevention. Mirrors the `GameCommand.run()` in Java
@@ -28,9 +29,15 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     }
 
     // Target a creature
-    if let Some(cid) = sa.target_chosen.target_card {
-        if ctx.game.card(cid).zone == ZoneType::Battlefield {
-            ctx.game.card_mut(cid).damage_prevention += amount;
+    let mut targets = sa.target_chosen.target_card.into_iter().collect::<Vec<_>>();
+    targets.extend(card_util::get_radiance(ctx.game, sa).iter().copied());
+    targets.sort_unstable_by_key(|cid| cid.0);
+    targets.dedup();
+    if !targets.is_empty() {
+        for cid in targets {
+            if ctx.game.card(cid).zone == ZoneType::Battlefield {
+                ctx.game.card_mut(cid).damage_prevention += amount;
+            }
         }
         return;
     }
