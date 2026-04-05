@@ -13,7 +13,10 @@
       "Bash(grep -v \"^--$\\\\|Trace\\\\|Diff\\\\|Forge\\\\|Rust:\")",
       "Bash(grep -v \"^--$\\\\|Trace\\\\|Diff\\\\|Forge Parity\\\\|Rust:\")",
       "WebFetch(domain:raw.githubusercontent.com)",
-      "Bash(yarn parity:*)"
+      "Bash(yarn parity:*)",
+      "Bash(find /Users/fede/Documents/Projects/bardidina2/bardidinaXmageUI -maxdepth 3 -name docker-compose* -o -name deploy.sh -o -name Dockerfile*)",
+      "Bash(find /Users/fede/Documents/Projects/bardidina2/bardidinaXmageUI -name docker-compose* -o -name Dockerfile*)",
+      "Bash(git -C /Users/fede/Documents/Projects/bardidina2/bardidinaXmageUI show --stat e10a0d5b)"
     ]
   }
 }

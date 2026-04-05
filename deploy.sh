@@ -70,6 +70,7 @@ CHANGED=$(git diff --name-only "${PREV}..${CURR}")
 
 JAVA_CHANGED=false
 RUST_CHANGED=false
+WEB_CHANGED=false
 INFRA_CHANGED=false
 
 while IFS= read -r file; do
@@ -78,7 +79,15 @@ while IFS= read -r file; do
             JAVA_CHANGED=true ;;
         forge-engine/*|Cargo.toml|Cargo.lock)
             RUST_CHANGED=true ;;
-        *Dockerfile*|*compose*|.dockerignore|deploy.sh)
+    esac
+    case "$file" in
+        src/*|public/*|scripts/build-wasm.sh|scripts/bundle-cards.mjs|package.json|package-lock.json|vite.config.ts|tsconfig*.json|index.html|nginx.web.conf)
+            WEB_CHANGED=true ;;
+        forge-engine/crates/forge-wasm/*)
+            WEB_CHANGED=true ;;
+    esac
+    case "$file" in
+        *Dockerfile*|*compose*|.dockerignore|deploy.sh|nginx.web.conf)
             INFRA_CHANGED=true ;;
     esac
 done <<< "$CHANGED"
@@ -118,6 +127,17 @@ elif $RUST_CHANGED; then
     SERVICES_TO_RESTART="$SERVICES_TO_RESTART forge-server"
 fi
 
+# -- openmagic (WASM + React static site served via nginx) --
+if $INFRA_CHANGED; then
+    echo "Building openmagic (full)..." >> "$RAW_LOG"
+    docker compose -f "$COMPOSE_FILE" build --progress=plain --no-cache $BUILD_ARGS openmagic >> "$RAW_LOG" 2>&1
+    SERVICES_TO_RESTART="$SERVICES_TO_RESTART openmagic"
+elif $WEB_CHANGED || $RUST_CHANGED; then
+    echo "Building openmagic (cached)..." >> "$RAW_LOG"
+    docker compose -f "$COMPOSE_FILE" build --progress=plain $BUILD_ARGS openmagic >> "$RAW_LOG" 2>&1
+    SERVICES_TO_RESTART="$SERVICES_TO_RESTART openmagic"
+fi
+
 if [ -z "$SERVICES_TO_RESTART" ]; then
     echo "No Java/Rust/infra changes — skipping build."
     exit 0
@@ -140,6 +160,7 @@ SERVICES_FMT=$(echo "$SERVICES_TO_RESTART" | xargs -n1 | sed 's/^/  - /' | tr '\
 CHANGES=""
 $JAVA_CHANGED && CHANGES="${CHANGES} Java"
 $RUST_CHANGED && CHANGES="${CHANGES} Rust"
+$WEB_CHANGED && CHANGES="${CHANGES} Web"
 $INFRA_CHANGED && CHANGES="${CHANGES} Infra"
 CHANGES=$(echo "$CHANGES" | xargs)
 
