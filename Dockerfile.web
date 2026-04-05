@@ -28,6 +28,8 @@ RUN npm ci --no-audit --no-fund
 
 # Copy the rest of the sources needed for the web build
 COPY Cargo.toml Cargo.lock ./
+# src-tauri is a workspace member; cargo metadata needs its manifest to resolve
+COPY src-tauri/ ./src-tauri/
 COPY forge-engine/ ./forge-engine/
 COPY scripts/ ./scripts/
 COPY src/ ./src/
