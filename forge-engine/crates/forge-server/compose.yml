@@ -26,6 +26,14 @@ services:
             RUST_LOG: "forge_server=info"
         restart: on-failure:5
 
+    openmagic:
+        build:
+            context: ../../.. # repo root (needs forge-engine/ + src/ + scripts/ + forge/ + preset_decks/)
+            dockerfile: Dockerfile.web
+        ports:
+            - "8081:80"
+        restart: on-failure:5
+
     parity-dashboard:
         profiles:
             - parity
