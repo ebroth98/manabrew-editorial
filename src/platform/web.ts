@@ -484,7 +484,7 @@ class WebEventBus implements IEventBus {
 class WebServerApi implements IServerApi {
   private ws: WebSocket | null = null;
   private eventBus: WebEventBus;
-  private username: string | null = null;
+  private _username: string | null = null;
 
   constructor(eventBus: WebEventBus) {
     this.eventBus = eventBus;
@@ -503,7 +503,7 @@ class WebServerApi implements IServerApi {
     this.disconnect();
     const scheme = params.port === 443 ? "wss" : "ws";
     const url = `${scheme}://${params.host}:${params.port}`;
-    this.username = params.username;
+    this._username = params.username;
 
     return new Promise((resolve, reject) => {
       this.ws = new WebSocket(url);
@@ -544,7 +544,7 @@ class WebServerApi implements IServerApi {
       this.ws.close();
       this.ws = null;
     }
-    this.username = null;
+    this._username = null;
   }
 
   async listRooms(): Promise<void> {

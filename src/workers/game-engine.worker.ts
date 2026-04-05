@@ -12,10 +12,7 @@ import init, {
   test_rng,
   test_foundation,
   load_card_bundle,
-  is_card_db_loaded,
-  get_card_count,
   parse_preset_decks,
-  has_card,
   run_interactive_game,
   run_multiplayer_game,
 } from "../wasm/forge_wasm";
