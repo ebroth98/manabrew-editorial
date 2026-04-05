@@ -5,21 +5,21 @@ use crate::game_view_dto::{card_to_dto, CardDto};
 use crate::ids_codec::parse_card_id;
 use crate::prompt::{AgentPromptInner, PlayerAction};
 
-use super::TauriAgent;
+use super::{PromptAgent, AgentTransport};
 
-pub(super) fn on_library_peek(agent: &mut TauriAgent, game: &GameState, cards: &[CardId]) {
+pub(super) fn on_library_peek<T: AgentTransport>(agent: &mut PromptAgent<T>, game: &GameState, cards: &[CardId]) {
     agent.peeked_library_cards = cards
         .iter()
         .map(|&id| card_to_dto(game, id, &[], &[], "library"))
         .collect();
 }
 
-pub(super) fn choose_scry(
-    agent: &mut TauriAgent,
+pub(super) fn choose_scry<T: AgentTransport>(
+    agent: &mut PromptAgent<T>,
     _player: PlayerId,
     cards: &[CardId],
 ) -> Vec<CardId> {
-    let card_ids = TauriAgent::card_ids(cards);
+    let card_ids = PromptAgent::<T>::card_ids(cards);
     let peeked = std::mem::take(&mut agent.peeked_library_cards);
     agent.send_prompt(AgentPromptInner::Scry {
         game_view: agent.view(),
@@ -35,12 +35,12 @@ pub(super) fn choose_scry(
     }
 }
 
-pub(super) fn choose_surveil(
-    agent: &mut TauriAgent,
+pub(super) fn choose_surveil<T: AgentTransport>(
+    agent: &mut PromptAgent<T>,
     _player: PlayerId,
     cards: &[CardId],
 ) -> Vec<CardId> {
-    let card_ids = TauriAgent::card_ids(cards);
+    let card_ids = PromptAgent::<T>::card_ids(cards);
     let peeked = std::mem::take(&mut agent.peeked_library_cards);
     agent.send_prompt(AgentPromptInner::Surveil {
         game_view: agent.view(),
@@ -56,14 +56,14 @@ pub(super) fn choose_surveil(
     }
 }
 
-pub(super) fn choose_dig(
-    agent: &mut TauriAgent,
+pub(super) fn choose_dig<T: AgentTransport>(
+    agent: &mut PromptAgent<T>,
     _player: PlayerId,
     valid: &[CardId],
     max: usize,
     optional: bool,
 ) -> Vec<CardId> {
-    let card_ids = TauriAgent::card_ids(valid);
+    let card_ids = PromptAgent::<T>::card_ids(valid);
     let peeked = std::mem::take(&mut agent.peeked_library_cards);
     // Filter peeked to only valid cards (ChangeValid$ may have narrowed the list).
     let valid_peeked: Vec<CardDto> = peeked
@@ -86,12 +86,12 @@ pub(super) fn choose_dig(
     }
 }
 
-pub(super) fn choose_reorder_library(
-    agent: &mut TauriAgent,
+pub(super) fn choose_reorder_library<T: AgentTransport>(
+    agent: &mut PromptAgent<T>,
     _player: PlayerId,
     cards: &[CardId],
 ) -> Vec<CardId> {
-    let card_ids = TauriAgent::card_ids(cards);
+    let card_ids = PromptAgent::<T>::card_ids(cards);
     let peeked = std::mem::take(&mut agent.peeked_library_cards);
     agent.send_prompt(AgentPromptInner::ReorderLibrary {
         game_view: agent.view(),

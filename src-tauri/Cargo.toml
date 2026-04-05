@@ -23,3 +23,4 @@ tokio = { version = "1", features = ["rt", "sync", "macros"] }
 tokio-tungstenite = { version = "0.24", features = ["native-tls"] }
 futures-util = "0.3"
 forge-server = { path = "../forge-engine/crates/forge-server" }
+forge-agent-interface = { path = "../forge-engine/crates/forge-agent-interface" }

@@ -6,7 +6,7 @@ use crate::game_view_dto::CardDto;
 use crate::ids_codec::{card_id_str, parse_card_id};
 use crate::prompt::{AgentPromptInner, BlockAssignment, PlayerAction};
 
-use super::TauriAgent;
+use super::{PromptAgent, AgentTransport};
 
 fn fallback_combat_assignment(
     blockers_in_order: &[CardId],
@@ -25,16 +25,16 @@ fn fallback_combat_assignment(
     Vec::new()
 }
 
-pub(super) fn choose_attackers(
-    agent: &mut TauriAgent,
+pub(super) fn choose_attackers<T: AgentTransport>(
+    agent: &mut PromptAgent<T>,
     _player: PlayerId,
     available: &[CardId],
     possible_defenders: &[DefenderId],
 ) -> Vec<(CardId, DefenderId)> {
-    let available_attacker_ids = TauriAgent::card_ids(available);
-    let possible_defender_dtos = TauriAgent::defender_ids_to_dtos(possible_defenders);
+    let available_attacker_ids = PromptAgent::<T>::card_ids(available);
+    let possible_defender_dtos = PromptAgent::<T>::defender_ids_to_dtos(possible_defenders);
     let mut view = agent.view();
-    TauriAgent::mark_battlefield_choosable(&mut view, &available_attacker_ids);
+    PromptAgent::<T>::mark_battlefield_choosable(&mut view, &available_attacker_ids);
     agent.send_prompt(AgentPromptInner::ChooseAttackers {
         game_view: view,
         available_attacker_ids,
@@ -53,7 +53,7 @@ pub(super) fn choose_attackers(
             .iter()
             .filter_map(|a| {
                 let attacker = parse_card_id(&a.attacker_id)?;
-                let defender = TauriAgent::parse_defender_id(&a.defender_id, possible_defenders)
+                let defender = PromptAgent::<T>::parse_defender_id(&a.defender_id, possible_defenders)
                     .unwrap_or(default_defender);
                 Some((attacker, defender))
             })
@@ -62,17 +62,17 @@ pub(super) fn choose_attackers(
     }
 }
 
-pub(super) fn choose_blockers(
-    agent: &mut TauriAgent,
+pub(super) fn choose_blockers<T: AgentTransport>(
+    agent: &mut PromptAgent<T>,
     _player: PlayerId,
     attackers: &[CardId],
     available_blockers: &[CardId],
     _max_blockers: Option<usize>,
 ) -> Vec<(CardId, CardId)> {
-    let attacker_ids = TauriAgent::card_ids(attackers);
-    let available_blocker_ids = TauriAgent::card_ids(available_blockers);
+    let attacker_ids = PromptAgent::<T>::card_ids(attackers);
+    let available_blocker_ids = PromptAgent::<T>::card_ids(available_blockers);
     let mut view = agent.view();
-    TauriAgent::mark_battlefield_choosable(&mut view, &available_blocker_ids);
+    PromptAgent::<T>::mark_battlefield_choosable(&mut view, &available_blocker_ids);
     agent.send_prompt(AgentPromptInner::ChooseBlockers {
         game_view: view,
         attacker_ids,
@@ -100,8 +100,8 @@ pub(super) fn choose_blockers(
     }
 }
 
-pub(super) fn choose_damage_assignment_order(
-    agent: &mut TauriAgent,
+pub(super) fn choose_damage_assignment_order<T: AgentTransport>(
+    agent: &mut PromptAgent<T>,
     _player: PlayerId,
     attacker: CardId,
     blockers: &[CardId],
@@ -134,8 +134,8 @@ pub(super) fn choose_damage_assignment_order(
     }
 }
 
-pub(super) fn choose_combat_damage_assignment(
-    agent: &mut TauriAgent,
+pub(super) fn choose_combat_damage_assignment<T: AgentTransport>(
+    agent: &mut PromptAgent<T>,
     _player: PlayerId,
     attacker: CardId,
     blockers_in_order: &[CardId],
@@ -187,8 +187,8 @@ pub(super) fn choose_combat_damage_assignment(
     }
 }
 
-pub(super) fn pay_combat_cost(
-    agent: &mut TauriAgent,
+pub(super) fn pay_combat_cost<T: AgentTransport>(
+    agent: &mut PromptAgent<T>,
     _player: PlayerId,
     attacker: CardId,
     cost: i32,
@@ -204,8 +204,8 @@ pub(super) fn pay_combat_cost(
         .and_then(|v| v.battlefield.iter().find(|c| c.id == attacker_id))
         .map(|c| c.name.clone())
         .unwrap_or_default();
-    let tappable_land_ids = TauriAgent::card_ids(tappable_lands);
-    let untappable_land_ids = TauriAgent::card_ids(untappable_lands);
+    let tappable_land_ids = PromptAgent::<T>::card_ids(tappable_lands);
+    let untappable_land_ids = PromptAgent::<T>::card_ids(untappable_lands);
 
     agent.send_prompt(AgentPromptInner::PayCombatCost {
         game_view: agent.view(),
@@ -229,12 +229,12 @@ pub(super) fn pay_combat_cost(
     }
 }
 
-pub(super) fn exert_attackers(
-    agent: &mut TauriAgent,
+pub(super) fn exert_attackers<T: AgentTransport>(
+    agent: &mut PromptAgent<T>,
     _player: PlayerId,
     attackers: &[CardId],
 ) -> Vec<CardId> {
-    let attacker_ids = TauriAgent::card_ids(attackers);
+    let attacker_ids = PromptAgent::<T>::card_ids(attackers);
     let view = agent.view();
     let attacker_cards: Vec<CardDto> = attacker_ids
         .iter()
@@ -257,12 +257,12 @@ pub(super) fn exert_attackers(
     }
 }
 
-pub(super) fn enlist_attackers(
-    agent: &mut TauriAgent,
+pub(super) fn enlist_attackers<T: AgentTransport>(
+    agent: &mut PromptAgent<T>,
     _player: PlayerId,
     attackers: &[CardId],
 ) -> Vec<CardId> {
-    let attacker_ids = TauriAgent::card_ids(attackers);
+    let attacker_ids = PromptAgent::<T>::card_ids(attackers);
     let view = agent.view();
     let attacker_cards: Vec<CardDto> = attacker_ids
         .iter()

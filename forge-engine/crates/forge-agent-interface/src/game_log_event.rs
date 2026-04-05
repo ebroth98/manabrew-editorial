@@ -62,10 +62,17 @@ impl GameLogEntryDto {
 }
 
 fn now_timestamp_ms() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_millis() as u64
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as u64
+    }
+    #[cfg(target_arch = "wasm32")]
+    {
+        0 // Timestamps are display-only; WASM doesn't need real time here
+    }
 }
 
 fn map_kind(kind: GameLogKind) -> GameLogEntryTypeDto {

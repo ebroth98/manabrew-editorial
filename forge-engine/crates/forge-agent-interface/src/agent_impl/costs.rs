@@ -5,10 +5,10 @@ use forge_engine_core::mana::ManaPool;
 use crate::ids_codec::{card_id_str, parse_card_id};
 use crate::prompt::{AgentPromptInner, PlayerAction};
 
-use super::TauriAgent;
+use super::{PromptAgent, AgentTransport};
 
-pub(super) fn choose_phyrexian_pay_life(
-    agent: &mut TauriAgent,
+pub(super) fn choose_phyrexian_pay_life<T: AgentTransport>(
+    agent: &mut PromptAgent<T>,
     _player: PlayerId,
     color: &str,
     card_name: Option<&str>,
@@ -24,8 +24,8 @@ pub(super) fn choose_phyrexian_pay_life(
     }
 }
 
-pub(super) fn choose_kicker(
-    agent: &mut TauriAgent,
+pub(super) fn choose_kicker<T: AgentTransport>(
+    agent: &mut PromptAgent<T>,
     _player: PlayerId,
     kicker_cost: &str,
     card_name: Option<&str>,
@@ -41,8 +41,8 @@ pub(super) fn choose_kicker(
     }
 }
 
-pub(super) fn choose_buyback(
-    agent: &mut TauriAgent,
+pub(super) fn choose_buyback<T: AgentTransport>(
+    agent: &mut PromptAgent<T>,
     _player: PlayerId,
     buyback_cost: &str,
     card_name: Option<&str>,
@@ -58,8 +58,8 @@ pub(super) fn choose_buyback(
     }
 }
 
-pub(super) fn choose_multikicker(
-    agent: &mut TauriAgent,
+pub(super) fn choose_multikicker<T: AgentTransport>(
+    agent: &mut PromptAgent<T>,
     _player: PlayerId,
     cost: &str,
     max_kicks: u32,
@@ -77,8 +77,8 @@ pub(super) fn choose_multikicker(
     }
 }
 
-pub(super) fn choose_replicate(
-    agent: &mut TauriAgent,
+pub(super) fn choose_replicate<T: AgentTransport>(
+    agent: &mut PromptAgent<T>,
     _player: PlayerId,
     cost: &str,
     max_replicates: u32,
@@ -96,8 +96,8 @@ pub(super) fn choose_replicate(
     }
 }
 
-pub(super) fn choose_alternative_cost(
-    agent: &mut TauriAgent,
+pub(super) fn choose_alternative_cost<T: AgentTransport>(
+    agent: &mut PromptAgent<T>,
     _player: PlayerId,
     options: &[String],
     card_name: Option<&str>,
@@ -115,8 +115,8 @@ pub(super) fn choose_alternative_cost(
     }
 }
 
-pub(super) fn pay_mana_cost(
-    agent: &mut TauriAgent,
+pub(super) fn pay_mana_cost<T: AgentTransport>(
+    agent: &mut PromptAgent<T>,
     _player: PlayerId,
     card_id: CardId,
     card_name: &str,
@@ -129,8 +129,8 @@ pub(super) fn pay_mana_cost(
 ) -> ManaCostAction {
     let _ = mana_cost;
     let card_id_s = card_id_str(card_id);
-    let tappable_land_ids = TauriAgent::card_ids(tappable_lands);
-    let untappable_land_ids = TauriAgent::card_ids(untappable_lands);
+    let tappable_land_ids = PromptAgent::<T>::card_ids(tappable_lands);
+    let untappable_land_ids = PromptAgent::<T>::card_ids(untappable_lands);
 
     agent.send_prompt(AgentPromptInner::PayManaCost {
         game_view: agent.view(),
@@ -169,8 +169,8 @@ pub(super) fn pay_mana_cost(
     }
 }
 
-pub(super) fn specify_mana_combo(
-    agent: &mut TauriAgent,
+pub(super) fn specify_mana_combo<T: AgentTransport>(
+    agent: &mut PromptAgent<T>,
     _player: PlayerId,
     available_colors: &[String],
     amount: usize,
@@ -204,14 +204,14 @@ pub(super) fn specify_mana_combo(
     }
 }
 
-pub(super) fn choose_delve(
-    agent: &mut TauriAgent,
+pub(super) fn choose_delve<T: AgentTransport>(
+    agent: &mut PromptAgent<T>,
     _player: PlayerId,
     valid: &[CardId],
     max: usize,
     card_name: Option<&str>,
 ) -> Vec<CardId> {
-    let valid_ids = TauriAgent::card_ids(valid);
+    let valid_ids = PromptAgent::<T>::card_ids(valid);
     // Build CardDtos for the graveyard cards
     let zone_cards: Vec<_> = valid
         .iter()
@@ -244,14 +244,14 @@ pub(super) fn choose_delve(
     }
 }
 
-pub(super) fn choose_improvise(
-    agent: &mut TauriAgent,
+pub(super) fn choose_improvise<T: AgentTransport>(
+    agent: &mut PromptAgent<T>,
     _player: PlayerId,
     untapped_artifacts: &[CardId],
     remaining_cost: &forge_foundation::ManaCost,
     card_name: Option<&str>,
 ) -> Vec<CardId> {
-    let valid_ids = TauriAgent::card_ids(untapped_artifacts);
+    let valid_ids = PromptAgent::<T>::card_ids(untapped_artifacts);
 
     agent.send_prompt(AgentPromptInner::ChooseImprovise {
         game_view: agent.view(),
@@ -269,14 +269,14 @@ pub(super) fn choose_improvise(
     }
 }
 
-pub(super) fn choose_convoke(
-    agent: &mut TauriAgent,
+pub(super) fn choose_convoke<T: AgentTransport>(
+    agent: &mut PromptAgent<T>,
     _player: PlayerId,
     untapped_creatures: &[CardId],
     remaining_cost: &forge_foundation::ManaCost,
     card_name: Option<&str>,
 ) -> Vec<CardId> {
-    let valid_ids = TauriAgent::card_ids(untapped_creatures);
+    let valid_ids = PromptAgent::<T>::card_ids(untapped_creatures);
 
     agent.send_prompt(AgentPromptInner::ChooseConvoke {
         game_view: agent.view(),

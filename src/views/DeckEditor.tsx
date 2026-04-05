@@ -38,7 +38,7 @@ export default function DeckEditor() {
     addToMain, addToSide, removeFromMain, removeFromSide,
     currentDeck, tagCard, untagCard,
     savedDecks, loadSavedDeck, clearDeck, setDeckName, deleteSavedDeck,
-    currentDeckId,
+    currentDeckId: _currentDeckId,
   } = useDeckStore();
   const [draggedCard, setDraggedCard] = useState<XMageCard | null>(null);
   const [showSearch, setShowSearch] = useState(false);

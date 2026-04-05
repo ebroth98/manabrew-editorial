@@ -1,0 +1,11 @@
+[package]
+name = "forge-agent-interface"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+forge-engine-core = { path = "../forge-engine" }
+forge-foundation = { path = "../forge-foundation" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+rand = "0.8"

@@ -9,16 +9,16 @@ use crate::ids_codec::parse_player_id;
 use crate::ids_codec::stack_id_str;
 use crate::prompt::{AgentPromptInner, PlayerAction, TargetAnyChoice};
 
-use super::TauriAgent;
+use super::{PromptAgent, AgentTransport};
 
-pub(super) fn choose_target_player(
-    agent: &mut TauriAgent,
+pub(super) fn choose_target_player<T: AgentTransport>(
+    agent: &mut PromptAgent<T>,
     _player: PlayerId,
     valid: &[PlayerId],
     source: Option<CardId>,
     hostile: bool,
 ) -> Option<PlayerId> {
-    let valid_player_ids = TauriAgent::player_ids(valid);
+    let valid_player_ids = PromptAgent::<T>::player_ids(valid);
     let source_card_id = source.map(card_id_str);
     agent.send_prompt(AgentPromptInner::ChooseTargetPlayer {
         game_view: agent.view(),
@@ -29,16 +29,16 @@ pub(super) fn choose_target_player(
     agent.recv_player_choice_or_first(valid)
 }
 
-pub(super) fn choose_target_card(
-    agent: &mut TauriAgent,
+pub(super) fn choose_target_card<T: AgentTransport>(
+    agent: &mut PromptAgent<T>,
     _player: PlayerId,
     valid: &[CardId],
     source: Option<CardId>,
     hostile: bool,
 ) -> Option<CardId> {
-    let valid_card_ids = TauriAgent::card_ids(valid);
+    let valid_card_ids = PromptAgent::<T>::card_ids(valid);
     let mut view = agent.view();
-    TauriAgent::mark_battlefield_choosable(&mut view, &valid_card_ids);
+    PromptAgent::<T>::mark_battlefield_choosable(&mut view, &valid_card_ids);
     let source_card_id = source.map(card_id_str);
     agent.send_prompt(AgentPromptInner::ChooseTargetCard {
         game_view: view,
@@ -49,15 +49,15 @@ pub(super) fn choose_target_card(
     agent.recv_card_choice_or_first(valid)
 }
 
-pub(super) fn choose_target_card_from_zone(
-    agent: &mut TauriAgent,
+pub(super) fn choose_target_card_from_zone<T: AgentTransport>(
+    agent: &mut PromptAgent<T>,
     _player: PlayerId,
     zone: ZoneType,
     valid: &[CardId],
     source: Option<CardId>,
     _hostile: bool,
 ) -> Option<CardId> {
-    let valid_card_ids = TauriAgent::card_ids(valid);
+    let valid_card_ids = PromptAgent::<T>::card_ids(valid);
     let view = agent.view();
 
     // Build the list of cards in the specified zone
@@ -94,18 +94,18 @@ pub(super) fn choose_target_card_from_zone(
     agent.recv_card_choice_or_first(valid)
 }
 
-pub(super) fn choose_target_any(
-    agent: &mut TauriAgent,
+pub(super) fn choose_target_any<T: AgentTransport>(
+    agent: &mut PromptAgent<T>,
     _player: PlayerId,
     valid_players: &[PlayerId],
     valid_cards: &[CardId],
     source: Option<CardId>,
     hostile: bool,
 ) -> TargetChoice {
-    let valid_player_ids = TauriAgent::player_ids(valid_players);
-    let valid_card_ids = TauriAgent::card_ids(valid_cards);
+    let valid_player_ids = PromptAgent::<T>::player_ids(valid_players);
+    let valid_card_ids = PromptAgent::<T>::card_ids(valid_cards);
     let mut view = agent.view();
-    TauriAgent::mark_battlefield_choosable(&mut view, &valid_card_ids);
+    PromptAgent::<T>::mark_battlefield_choosable(&mut view, &valid_card_ids);
     let source_card_id = source.map(card_id_str);
     agent.send_prompt(AgentPromptInner::ChooseTargetAny {
         game_view: view,
@@ -136,8 +136,8 @@ pub(super) fn choose_target_any(
     }
 }
 
-pub(super) fn choose_target_spell(
-    agent: &mut TauriAgent,
+pub(super) fn choose_target_spell<T: AgentTransport>(
+    agent: &mut PromptAgent<T>,
     _player: PlayerId,
     valid: &[u32],
     source: Option<CardId>,
@@ -152,15 +152,15 @@ pub(super) fn choose_target_spell(
     agent.recv_spell_choice_or_first(valid)
 }
 
-pub(super) fn choose_sacrifice(
-    agent: &mut TauriAgent,
+pub(super) fn choose_sacrifice<T: AgentTransport>(
+    agent: &mut PromptAgent<T>,
     _player: PlayerId,
     valid: &[CardId],
     source: Option<CardId>,
 ) -> Option<CardId> {
-    let valid_card_ids = TauriAgent::card_ids(valid);
+    let valid_card_ids = PromptAgent::<T>::card_ids(valid);
     let mut view = agent.view();
-    TauriAgent::mark_battlefield_choosable(&mut view, &valid_card_ids);
+    PromptAgent::<T>::mark_battlefield_choosable(&mut view, &valid_card_ids);
     let source_card_id = source.map(card_id_str);
     agent.send_prompt(AgentPromptInner::ChooseTargetCard {
         game_view: view,

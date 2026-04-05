@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { tauriApi, type PresetDeckInfo } from "@/api/tauri";
+import { getPlatform, type PresetDeckInfo } from "@/platform";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
@@ -41,7 +41,8 @@ export function DeckVsSelector({ onStart }: DeckVsSelectorProps) {
   const { savedDecks, currentDeck } = useDeckStore();
 
   useEffect(() => {
-    tauriApi.deck.getPresetDecks()
+    const platform = getPlatform();
+    platform.game.getPresetDecks()
       .then(setPresetDecks)
       .catch((e) =>
         console.error("[DeckVsSelector] Failed to load preset decks:", e)

@@ -1,19 +1,13 @@
 mod ai_agent;
-mod auto_pay_feature;
 mod card_db;
 mod commands;
-mod game_log_event;
 mod game_manager;
-mod game_snapshot_event;
-mod game_view_dto;
-mod ids_codec;
 mod multiplayer_controller;
 mod network;
 mod preset_decks;
-mod prompt;
 mod server_client;
 mod server_commands;
-mod tauri_agent;
+mod tauri_transport;
 
 use std::path::PathBuf;
 

@@ -444,8 +444,8 @@ export default function Game() {
   }, [passPriority]);
 
   // Targeting / combat arrows — must be called unconditionally (Rules of Hooks)
-  const me = gameView?.players.find((p) => p.isHuman) ?? gameView?.players[0];
-  const opponents = gameView?.players.filter((p) => !p.isHuman) ?? [];
+  const me = gameView?.players?.find((p) => p.isHuman) ?? gameView?.players?.[0];
+  const opponents = gameView?.players?.filter((p) => !p.isHuman) ?? [];
   const opponent = opponents[0]; // alias for arrows hook + game-over screen
   // DEV: pad with simulated opponents to test multi-player layout
   const displayOpponents = [

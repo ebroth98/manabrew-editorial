@@ -3,6 +3,15 @@
 //! By default, effects use the system's thread-local RNG. For parity testing,
 //! a deterministic RNG (e.g. JavaRandom) can be injected to match Java Forge's
 //! `MyRandom` consumption order exactly.
+//!
+//! # WASM Compatibility
+//!
+//! The `rand` crate 0.8+ supports WASM via `getrandom`. For browser WASM,
+//! ensure the WASM entry point crate (forge-wasm) includes:
+//! ```toml
+//! getrandom = { version = "0.2", features = ["js"] }
+//! ```
+//! This enables `thread_rng()` to work in browser environments.
 
 use crate::ids::CardId;
 

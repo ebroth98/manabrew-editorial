@@ -4,13 +4,13 @@ use std::thread;
 
 use tauri::{AppHandle, Emitter, Manager};
 
-use crate::game_log_event::GameLogEntryDto;
-use crate::game_snapshot_event::GameSnapshotEventDto;
-use crate::ids_codec::player_slot;
+use forge_agent_interface::game_log_event::GameLogEntryDto;
+use forge_agent_interface::game_snapshot_event::GameSnapshotEventDto;
+use forge_agent_interface::ids_codec::player_slot;
 use crate::network::{
     decode_relay_response, encode_relay_envelope, wrap_broadcast_state, RelayEnvelope,
 };
-use crate::prompt::{AgentPrompt, PlayerAction};
+use forge_agent_interface::prompt::{AgentPrompt, PlayerAction};
 use crate::server_client::ServerClient;
 
 pub fn spawn_engine_prompt_forwarder(

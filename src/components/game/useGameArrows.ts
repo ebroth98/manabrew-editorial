@@ -298,7 +298,7 @@ export function useGameArrows(opts: UseGameArrowsOptions): ArrowDef[] {
   useEffect(() => {
     const container = containerRef.current;
     if (!container) {
-      setArrows([]);
+      setArrows((prev) => prev.length === 0 ? prev : []);
       return;
     }
 

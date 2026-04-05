@@ -1126,27 +1126,6 @@ impl SpellAbility {
         self.params.put("Operator2".to_string(), value.to_string());
     }
 
-    // ── Static ID counter ─────────────────────────────────────────────────
-
-    /// Get the next unique ID for a spell ability.
-    /// Mirrors Java's `SpellAbility.nextId()`.
-    /// Thread-local counter prevents cross-game leaks in parallel parity batches.
-    pub fn next_id() -> u64 {
-        SA_ID_COUNTER.with(|c| { let id = c.get(); c.set(id + 1); id })
-    }
-
-    /// Reset all thread-local ID counters for cross-game isolation.
-    pub fn reset_id_counter() {
-        SA_ID_COUNTER.with(|c| c.set(1));
-        STACK_ID_COUNTER.with(|c| c.set(1));
-        COST_ID_COUNTER.with(|c| c.set(1));
-    }
-}
-
-thread_local! {
-    static SA_ID_COUNTER: std::cell::Cell<u64> = const { std::cell::Cell::new(1) };
-    pub static STACK_ID_COUNTER: std::cell::Cell<u64> = const { std::cell::Cell::new(1) };
-    pub static COST_ID_COUNTER: std::cell::Cell<u64> = const { std::cell::Cell::new(1) };
 }
 
 // build_spell_ability now lives in ability::ability_factory.

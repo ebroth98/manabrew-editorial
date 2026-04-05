@@ -8,6 +8,8 @@ members = [
     "forge-engine/crates/forge-cli",
     "forge-engine/crates/forge-server",
     "forge-engine/crates/forge-parity",
+    "forge-engine/crates/forge-wasm",
+    "forge-engine/crates/forge-agent-interface",
 ]
 
 [workspace.dependencies]

@@ -3,7 +3,7 @@ use std::thread;
 
 use forge_engine_core::player::actions::PlayerAction as EnginePlayerAction;
 
-use crate::prompt::{AgentPrompt, AgentPromptInner, BlockAssignment, PlayerAction, TargetAnyChoice};
+use forge_agent_interface::prompt::{AgentPrompt, AgentPromptInner, BlockAssignment, PlayerAction, TargetAnyChoice};
 
 pub fn spawn_ai_prompt_responder(
     prompt_rx: mpsc::Receiver<AgentPrompt>,
@@ -53,7 +53,7 @@ pub fn spawn_ai_prompt_responder(
                     Some(PlayerAction::DeclareAttackers {
                         assignments: available_attacker_ids
                             .into_iter()
-                            .map(|id| crate::prompt::AttackAssignment {
+                            .map(|id| forge_agent_interface::prompt::AttackAssignment {
                                 attacker_id: id,
                                 defender_id: default_defender.clone(),
                             })
@@ -195,7 +195,7 @@ pub fn spawn_ai_prompt_responder(
                 } => {
                     let mut assignments = Vec::new();
                     if let Some(first) = blocker_ids.first() {
-                        assignments.push(crate::prompt::CombatDamageAssignmentEntry {
+                        assignments.push(forge_agent_interface::prompt::CombatDamageAssignmentEntry {
                             assignee_id: first.clone(),
                             damage: total_damage.max(0),
                         });
@@ -225,7 +225,7 @@ pub fn spawn_ai_prompt_responder(
                     tappable_land_ids,
                     mana_ability_options,
                     ..
-                } => crate::auto_pay_feature::choose_pay_mana_cost_action(
+                } => forge_agent_interface::auto_pay::choose_pay_mana_cost_action(
                     &game_view,
                     &mana_cost,
                     &tappable_land_ids,

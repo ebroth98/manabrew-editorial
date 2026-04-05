@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { listen, type UnlistenFn } from '@tauri-apps/api/event';
+import { getPlatform } from '@/platform';
 import { useGameStore } from '@/stores/useGameStore';
 import { normalizeGameLogPayload } from '@/types/gameLog';
 import { normalizeSnapshotPayload } from '@/types/gameSnapshot';
@@ -7,45 +7,67 @@ import { applyPrompt } from '@/stores/gameStore.constants';
 import type { AgentPrompt } from '@/stores/gameStore.types';
 
 /**
- * Hook that sets up Tauri event listeners for game state updates.
+ * Hook that sets up platform event listeners for game state updates.
+ * Works with both Tauri and Web platforms.
  * Automatically cleans up on unmount.
  */
 export function useGameEventListeners() {
   useEffect(() => {
-    const unlisteners: UnlistenFn[] = [];
+    const platform = getPlatform();
+    const unsubscribers: (() => void)[] = [];
 
-    (async () => {
+    // Fetch initial game state on mount to handle race condition where
+    // the game:prompt event was emitted before this component mounted
+    const fetchInitialState = async () => {
       try {
-        const unlisten1 = await listen<AgentPrompt>('game:prompt', (event) => {
-          const prompt = event.payload;
+        const prompt = await platform.game.getPrompt?.();
+        if (prompt && (prompt as AgentPrompt).gameView) {
+          const currentView = useGameStore.getState().gameView;
+          if (!currentView) {
+            applyPrompt(prompt as AgentPrompt, 'Initial', useGameStore.setState, useGameStore.getState);
+          }
+        }
+      } catch (e) {
+        // getPrompt may not be available on all platforms or if no game is active
+        console.debug('[useGameEventListeners] Could not fetch initial state:', e);
+      }
+    };
+    fetchInitialState();
+
+    try {
+      unsubscribers.push(
+        platform.events.on<AgentPrompt>('game:prompt', (prompt) => {
           const gameView = useGameStore.getState().gameView;
           if (gameView?.gameOver) return;
           if (prompt && prompt.gameView) {
             applyPrompt(prompt, 'Event', useGameStore.setState, useGameStore.getState);
           }
-        });
-        unlisteners.push(unlisten1);
+        }),
+      );
 
-        const unlisten2 = await listen<unknown>('game:log', (event) => {
-          const entry = normalizeGameLogPayload(event.payload);
+      unsubscribers.push(
+        platform.events.on<unknown>('game:log', (payload) => {
+          const entry = normalizeGameLogPayload(payload);
           useGameStore.setState((state) => ({
             gameLog: [...state.gameLog.slice(-199), entry],
           }));
-        });
-        unlisteners.push(unlisten2);
+        }),
+      );
 
-        const unlistenSnapshot = await listen<unknown>('game:snapshot', (event) => {
-          const snapshot = normalizeSnapshotPayload(event.payload);
+      unsubscribers.push(
+        platform.events.on<unknown>('game:snapshot', (payload) => {
+          const snapshot = normalizeSnapshotPayload(payload);
           if (!snapshot.gameView) return;
           useGameStore.setState((state) => ({
             snapshots: [...state.snapshots.filter((s) => s.checkpointId !== snapshot.checkpointId).slice(-199), snapshot],
           }));
-        });
-        unlisteners.push(unlistenSnapshot);
+        }),
+      );
 
-        // Remote prompt listener: receives prompts relayed via the server for non-host players
-        const unlisten3 = await listen<{ kind: string; forPlayer: string; prompt: AgentPrompt }>('game:remote_prompt', (event) => {
-          const { forPlayer, prompt } = event.payload;
+      // Remote prompt listener: receives prompts relayed via the server for non-host players
+      unsubscribers.push(
+        platform.events.on<{ kind: string; forPlayer: string; prompt: AgentPrompt }>('game:remote_prompt', (payload) => {
+          const { forPlayer, prompt } = payload;
           const { myPlayerSlot } = useGameStore.getState();
           if (forPlayer === myPlayerSlot) {
             // This prompt is for us — render it fully.
@@ -73,11 +95,12 @@ export function useGameEventListeners() {
               });
             }
           }
-        });
-        unlisteners.push(unlisten3);
+        }),
+      );
 
-        const unlisten4 = await listen<{ reason: string; message: string }>('game:forced_end', (event) => {
-          const message = event.payload?.message ?? 'Forced game exit';
+      unsubscribers.push(
+        platform.events.on<{ reason: string; message: string }>('game:forced_end', (payload) => {
+          const message = payload?.message ?? 'Forced game exit';
           useGameStore.setState({
             isGameActive: false,
             gameView: null,
@@ -91,15 +114,14 @@ export function useGameEventListeners() {
             snapshots: [],
             debugInfo: `Game ended: ${message}`,
           });
-        });
-        unlisteners.push(unlisten4);
-      } catch (e) {
-        console.error('[hook] Failed to setup listeners:', e);
-      }
-    })();
+        }),
+      );
+    } catch (e) {
+      console.error('[hook] Failed to setup listeners:', e);
+    }
 
     return () => {
-      unlisteners.forEach((fn) => fn());
+      unsubscribers.forEach((fn) => fn());
     };
   }, []);
 }

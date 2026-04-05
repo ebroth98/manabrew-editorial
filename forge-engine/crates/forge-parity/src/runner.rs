@@ -1552,9 +1552,6 @@ pub fn run_with_data(config: &RunConfig, data: &LoadedData) -> Result<GameTrace,
         _ => 20, // Constructed and other variants
     };
 
-    // Reset global state for cross-game isolation (matches Java's resetIdCounter)
-    forge_engine_core::spellability::SpellAbility::reset_id_counter();
-
     // Set up game
     let p0 = PlayerId(0);
     let p1 = PlayerId(1);

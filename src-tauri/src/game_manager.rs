@@ -15,10 +15,10 @@ use tauri::{AppHandle, Emitter};
 
 use crate::ai_agent::spawn_ai_prompt_responder;
 use crate::card_db::{card_rules_to_instance, get_token_db, get_token_image_map};
-use crate::game_log_event::GameLogEntryDto;
-use crate::game_snapshot_event::GameSnapshotEventDto;
-use crate::game_view_dto::GameViewDto;
-use crate::ids_codec::player_slot;
+use forge_agent_interface::game_log_event::GameLogEntryDto;
+use forge_agent_interface::game_snapshot_event::GameSnapshotEventDto;
+use forge_agent_interface::game_view_dto::GameViewDto;
+use forge_agent_interface::ids_codec::player_slot;
 use crate::multiplayer_controller::{
     parse_remote_response, spawn_engine_prompt_forwarder, spawn_notify_forwarder,
     spawn_remote_prompt_forwarder, spawn_snapshot_forwarder,
@@ -28,8 +28,9 @@ use crate::preset_decks::{
     prepare_preset_opponent_registered_player, prepare_preset_registered_player,
     CardIdentity, PreparedRegisteredPlayer,
 };
-use crate::prompt::{AgentPrompt, AgentPromptInner, PlayerAction};
-use crate::tauri_agent::TauriAgent;
+use forge_agent_interface::agent_impl::PromptAgent;
+use forge_agent_interface::prompt::{AgentPrompt, AgentPromptInner, PlayerAction};
+use crate::tauri_transport::TauriTransport;
 
 pub struct GameManager {
     pub session: Mutex<Option<GameSession>>,
@@ -473,19 +474,20 @@ fn run_game(
     let p0 = PlayerId(0);
     let p1 = PlayerId(1);
 
-    let human = TauriAgent::new_local(
+    let human = PromptAgent::new(
         p0,
         game_id.clone(),
-        prompt_tx.clone(),
-        response_rx,
-        notify_tx,
-        snapshot_tx,
+        TauriTransport::new_local(prompt_tx.clone(), response_rx, notify_tx, snapshot_tx),
     );
 
     let (ai_prompt_tx, ai_prompt_rx) = mpsc::channel::<AgentPrompt>();
     let (ai_response_tx, ai_response_rx) = mpsc::channel::<PlayerAction>();
     spawn_ai_prompt_responder(ai_prompt_rx, ai_response_tx);
-    let ai = TauriAgent::new_ai(p1, game_id.clone(), ai_prompt_tx, ai_response_rx);
+    let ai = PromptAgent::new(
+        p1,
+        game_id.clone(),
+        TauriTransport::new_ai(ai_prompt_tx, ai_response_rx),
+    );
 
     let mut agents: Vec<Box<dyn PlayerAgent>> = vec![Box::new(human), Box::new(ai)];
     let mut game_loop = GameLoop::new(2);
@@ -562,13 +564,15 @@ fn run_multiplayer_game(
 
     // Build agents inside the thread (avoids Send issues with trait objects).
     let engine_pid = PlayerId(engine_player_index as u32);
-    let mut engine_agent: Option<Box<dyn PlayerAgent>> = Some(Box::new(TauriAgent::new_local(
+    let mut engine_agent: Option<Box<dyn PlayerAgent>> = Some(Box::new(PromptAgent::new(
         engine_pid,
         game_id.clone(),
-        engine_prompt_tx.clone(),
-        engine_response_rx,
-        engine_notify_tx,
-        engine_snapshot_tx,
+        TauriTransport::new_local(
+            engine_prompt_tx.clone(),
+            engine_response_rx,
+            engine_notify_tx,
+            engine_snapshot_tx,
+        ),
     )));
 
     let mut remote_rx_map: HashMap<usize, mpsc::Receiver<PlayerAction>> =
@@ -583,8 +587,11 @@ fn run_multiplayer_game(
             let resp_rx = remote_rx_map
                 .remove(&i)
                 .expect("Missing response rx for remote player");
-            let agent =
-                TauriAgent::new_relay(pid, i, game_id.clone(), remote_prompt_tx.clone(), resp_rx);
+            let agent = PromptAgent::new(
+                pid,
+                game_id.clone(),
+                TauriTransport::new_relay(i, remote_prompt_tx.clone(), resp_rx),
+            );
             agents.push(Box::new(agent));
         }
     }

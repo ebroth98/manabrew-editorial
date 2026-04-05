@@ -87,7 +87,7 @@ pub struct PlayerDto {
     pub graveyard_count: usize,
     pub exile_count: usize,
     pub mana_pool: HashMap<String, i32>,
-    /// Commander damage received: source card id string → total damage.
+    /// Commander damage received: source card id string -> total damage.
     pub commander_damage: HashMap<String, i32>,
     /// Energy counters (Kaladesh block).
     pub energy_counters: i32,
@@ -123,7 +123,7 @@ pub struct CardDto {
     pub zone_id: String,
     pub tapped: bool,
     pub keywords: Vec<String>,
-    /// Active counters: counter type name → count. Only non-zero entries included.
+    /// Active counters: counter type name -> count. Only non-zero entries included.
     pub counters: HashMap<String, i32>,
     pub damage: i32,
     pub summoning_sick: bool,
@@ -547,14 +547,14 @@ impl GameViewDto {
             });
         }
 
-        // Hand cards — only for the human player
+        // Hand cards -- only for the human player
         let my_hand: Vec<CardDto> = game
             .cards_in_zone(ZoneType::Hand, human_player)
             .iter()
             .map(|&cid| card_to_dto(game, cid, playable_ids, choosable_ids, "hand"))
             .collect();
 
-        // Battlefield — all players
+        // Battlefield -- all players
         let mut battlefield = Vec::new();
         for &pid in &game.player_order {
             for &cid in game.cards_in_zone(ZoneType::Battlefield, pid) {
@@ -594,14 +594,14 @@ impl GameViewDto {
             })
             .collect();
 
-        // Graveyard — human player
+        // Graveyard -- human player
         let graveyard: Vec<CardDto> = game
             .cards_in_zone(ZoneType::Graveyard, human_player)
             .iter()
             .map(|&cid| card_to_dto(game, cid, playable_ids, choosable_ids, "graveyard"))
             .collect();
 
-        // Exile — human player
+        // Exile -- human player
         let exile: Vec<CardDto> = game
             .cards_in_zone(ZoneType::Exile, human_player)
             .iter()

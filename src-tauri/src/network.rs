@@ -1,9 +1,9 @@
 use serde_json::Value;
 
-use crate::game_log_event::GameLogEntryDto;
-use crate::game_snapshot_event::GameSnapshotEventDto;
-use crate::ids_codec::parse_player_slot;
-use crate::prompt::{AgentPrompt, PlayerAction};
+use forge_agent_interface::game_log_event::GameLogEntryDto;
+use forge_agent_interface::game_snapshot_event::GameSnapshotEventDto;
+use forge_agent_interface::ids_codec::parse_player_slot;
+use forge_agent_interface::prompt::{AgentPrompt, PlayerAction};
 
 pub enum RelayEnvelope {
     Prompt {

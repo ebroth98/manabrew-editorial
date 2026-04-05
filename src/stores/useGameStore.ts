@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { devtools } from 'zustand/middleware';
-import { tauriApi } from '@/api/tauri';
+import { getPlatform } from '@/platform';
 import { getFormat } from '@/lib/formats';
 import type { GameState, GameConfig } from './gameStore.types';
 
@@ -32,7 +32,8 @@ export const useGameStore = create<GameState>()(devtools((set, get) => ({
       const startingLife = format?.deckRules.startingLife ?? 20;
       const gameConfig: GameConfig = { formatId: formatId ?? 'constructed', startingLife };
       set({ gameConfig });
-      const result = await tauriApi.game.startGame({
+      const platform = getPlatform();
+      const result = await platform.game.startGame({
         deckList: deckList,
         startingLife,
         commanderName: commanderName ?? null,
@@ -49,7 +50,8 @@ export const useGameStore = create<GameState>()(devtools((set, get) => ({
   startMultiplayerGame: async (playerNames, deckLists, commanderNames, enginePlayerIndex, localIsHost, startingLife) => {
     try {
       set({ debugInfo: 'Starting multiplayer game...' });
-      await tauriApi.game.startMultiplayerGame({
+      const platform = getPlatform();
+      await platform.game.startMultiplayerGame({
         playerNames,
         deckLists,
         commanderNames,
@@ -81,7 +83,8 @@ export const useGameStore = create<GameState>()(devtools((set, get) => ({
     try {
       set({ isWaitingForResponse: true, debugInfo: `Responding: ${action.type}` });
       const { myPlayerSlot } = get();
-      await tauriApi.game.respond({ action, playerSlot: myPlayerSlot });
+      const platform = getPlatform();
+      await platform.game.respond({ action, playerSlot: myPlayerSlot });
     } catch (e) {
       set({ isWaitingForResponse: false, debugInfo: `Respond error: ${e}` });
       console.error('Failed to respond:', e);
@@ -264,7 +267,8 @@ export const useGameStore = create<GameState>()(devtools((set, get) => ({
 
   endGame: async () => {
     try {
-      await tauriApi.game.endGame();
+      const platform = getPlatform();
+      await platform.game.endGame();
       set({ isGameActive: false, gameView: null, currentPrompt: null, gameLog: [], snapshots: [], deferredQueue: [], isFlashing: false, isWaitingForResponse: false, isMultiplayer: false, isHost: false, myPlayerSlot: null });
     } catch (e) {
       console.error('Failed to end game:', e);
@@ -287,7 +291,8 @@ export const useGameStore = create<GameState>()(devtools((set, get) => ({
       set({ debugInfo: 'Snapshot restore is only available during priority/combat declaration prompts.' });
       return;
     }
-    await tauriApi.game.restoreSnapshot({ checkpointId });
+    const platform = getPlatform();
+    await platform.game.restoreSnapshot({ checkpointId });
     set({ debugInfo: `Requested snapshot restore: #${checkpointId}` });
   },
 }), { name: "game", enabled: import.meta.env.DEV }));

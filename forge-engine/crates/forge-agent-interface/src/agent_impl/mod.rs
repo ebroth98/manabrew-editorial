@@ -1,6 +1,3 @@
-use std::sync::mpsc;
-use std::time::Duration;
-
 use forge_engine_core::agent::{
     BinaryChoiceKind, CombatCostAction, GameLogEvent, ManaCostAction, PlayOption,
     PlayerAgent, TargetChoice,
@@ -28,15 +25,21 @@ mod costs;
 mod library;
 mod targeting;
 
-/// A PlayerAgent that sends prompts to the frontend and blocks waiting for a response.
-pub struct TauriAgent {
+/// Platform-agnostic transport for sending prompts and receiving responses.
+/// Tauri implements this with mpsc channels, WASM with Atomics.wait().
+pub trait AgentTransport {
+    fn send_prompt(&self, prompt: AgentPrompt);
+    fn recv_action(&self) -> PlayerAction;
+    fn send_log(&self, entry: GameLogEntryDto);
+    fn send_snapshot(&self, snapshot: GameSnapshotEventDto);
+    fn is_human(&self) -> bool;
+}
+
+/// A PlayerAgent that sends prompts via a transport and blocks waiting for a response.
+pub struct PromptAgent<T: AgentTransport> {
     pub player_id: PlayerId,
     pub game_id: String,
-    prompt_sink: PromptSink,
-    pub response_rx: mpsc::Receiver<PlayerAction>,
-    pub notify_tx: Option<mpsc::Sender<GameLogEntryDto>>,
-    pub snapshot_tx: Option<mpsc::Sender<GameSnapshotEventDto>>,
-    response_timeout: Option<Duration>,
+    pub transport: T,
     pub(crate) latest_view: Option<GameViewDto>,
     /// Display events accumulated between prompts — drained and attached to each outgoing prompt.
     pub(crate) pending_display_events: Vec<DisplayEvent>,
@@ -48,80 +51,12 @@ pub struct TauriAgent {
     pub(crate) pending_restore_checkpoint: Option<u64>,
 }
 
-enum PromptSink {
-    Local(mpsc::Sender<AgentPrompt>),
-    Relay {
-        player_index: usize,
-        tx: mpsc::Sender<(usize, AgentPrompt)>,
-    },
-    Ai(mpsc::Sender<AgentPrompt>),
-}
-
-impl TauriAgent {
-    pub fn new_local(
-        player_id: PlayerId,
-        game_id: String,
-        prompt_tx: mpsc::Sender<AgentPrompt>,
-        response_rx: mpsc::Receiver<PlayerAction>,
-        notify_tx: mpsc::Sender<GameLogEntryDto>,
-        snapshot_tx: mpsc::Sender<GameSnapshotEventDto>,
-    ) -> Self {
+impl<T: AgentTransport> PromptAgent<T> {
+    pub fn new(player_id: PlayerId, game_id: String, transport: T) -> Self {
         Self {
             player_id,
             game_id,
-            prompt_sink: PromptSink::Local(prompt_tx),
-            response_rx,
-            notify_tx: Some(notify_tx),
-            snapshot_tx: Some(snapshot_tx),
-            response_timeout: None,
-            latest_view: None,
-            pending_display_events: Vec::new(),
-            peeked_library_cards: Vec::new(),
-            ability_descriptions: std::collections::HashMap::new(),
-            pending_restore_checkpoint: None,
-        }
-    }
-
-    pub fn new_relay(
-        player_id: PlayerId,
-        player_index: usize,
-        game_id: String,
-        prompt_tx: mpsc::Sender<(usize, AgentPrompt)>,
-        response_rx: mpsc::Receiver<PlayerAction>,
-    ) -> Self {
-        Self {
-            player_id,
-            game_id,
-            prompt_sink: PromptSink::Relay {
-                player_index,
-                tx: prompt_tx,
-            },
-            response_rx,
-            notify_tx: None,
-            snapshot_tx: None,
-            response_timeout: Some(Duration::from_secs(120)),
-            latest_view: None,
-            pending_display_events: Vec::new(),
-            peeked_library_cards: Vec::new(),
-            ability_descriptions: std::collections::HashMap::new(),
-            pending_restore_checkpoint: None,
-        }
-    }
-
-    pub fn new_ai(
-        player_id: PlayerId,
-        game_id: String,
-        prompt_tx: mpsc::Sender<AgentPrompt>,
-        response_rx: mpsc::Receiver<PlayerAction>,
-    ) -> Self {
-        Self {
-            player_id,
-            game_id,
-            prompt_sink: PromptSink::Ai(prompt_tx),
-            response_rx,
-            notify_tx: None,
-            snapshot_tx: None,
-            response_timeout: Some(Duration::from_secs(5)),
+            transport,
             latest_view: None,
             pending_display_events: Vec::new(),
             peeked_library_cards: Vec::new(),
@@ -137,33 +72,11 @@ impl TauriAgent {
             display_events,
             inner,
         };
-        match &self.prompt_sink {
-            PromptSink::Local(tx) => {
-                let _ = tx.send(prompt);
-            }
-            PromptSink::Relay { player_index, tx } => {
-                let _ = tx.send((*player_index, prompt));
-            }
-            PromptSink::Ai(tx) => {
-                let _ = tx.send(prompt);
-            }
-        }
+        self.transport.send_prompt(prompt);
     }
 
     pub(crate) fn recv_action(&self) -> PlayerAction {
-        if let Some(timeout) = self.response_timeout {
-            self.response_rx
-                .recv_timeout(timeout)
-                .unwrap_or(PlayerAction::PlayCard {
-                    card_id: None,
-                    mode: None,
-                })
-        } else {
-            self.response_rx.recv().unwrap_or(PlayerAction::PlayCard {
-                card_id: None,
-                mode: None,
-            })
-        }
+        self.transport.recv_action()
     }
 
     pub(crate) fn view(&self) -> GameViewDto {
@@ -307,7 +220,7 @@ impl TauriAgent {
     }
 }
 
-impl PlayerAgent for TauriAgent {
+impl<T: AgentTransport> PlayerAgent for PromptAgent<T> {
     fn snapshot_state(&mut self, game: &GameState, mana_pools: &[ManaPool]) {
         self.latest_view = Some(GameViewDto::from_engine(
             game,
@@ -931,7 +844,7 @@ impl PlayerAgent for TauriAgent {
     }
 
     fn is_human(&self) -> bool {
-        !matches!(self.prompt_sink, PromptSink::Ai(_))
+        self.transport.is_human()
     }
 
     fn specify_mana_combo(
@@ -994,20 +907,16 @@ impl PlayerAgent for TauriAgent {
     }
 
     fn notify(&mut self, message: &str) {
-        if let Some(tx) = &self.notify_tx {
-            let _ = tx.send(GameLogEntryDto::from_message(message));
-        }
+        self.transport.send_log(GameLogEntryDto::from_message(message));
     }
 
     fn notify_event(&mut self, event: GameLogEvent) {
-        if let Some(tx) = &self.notify_tx {
-            let _ = tx.send(GameLogEntryDto::from_event(event));
-        }
+        self.transport.send_log(GameLogEntryDto::from_event(event));
     }
 
     fn notify_snapshot_created(&mut self, checkpoint_id: u64, label: &str) {
-        if let (Some(tx), Some(view)) = (&self.snapshot_tx, self.latest_view.clone()) {
-            let _ = tx.send(GameSnapshotEventDto::new(
+        if let Some(view) = self.latest_view.clone() {
+            self.transport.send_snapshot(GameSnapshotEventDto::new(
                 checkpoint_id,
                 label.to_string(),
                 view,
@@ -1046,15 +955,13 @@ impl PlayerAgent for TauriAgent {
             .and_then(|v| v.players.iter().find(|p| p.id == player_id))
             .map(|p| p.name.clone())
             .unwrap_or_else(|| format!("Player {}", active_player.0));
-        if let Some(tx) = &self.notify_tx {
-            let _ = tx.send(GameLogEntryDto::from_event(
-                forge_engine_core::agent::GameLogEvent::rule(format!(
-                    "TURN {} — {}",
-                    turn_number, active_player_name
-                ))
-                .with_player(active_player),
-            ));
-        }
+        self.transport.send_log(GameLogEntryDto::from_event(
+            forge_engine_core::agent::GameLogEvent::rule(format!(
+                "TURN {} — {}",
+                turn_number, active_player_name
+            ))
+            .with_player(active_player),
+        ));
         self.pending_display_events.push(DisplayEvent::TurnChanged {
             active_player_id: player_id,
             active_player_name,

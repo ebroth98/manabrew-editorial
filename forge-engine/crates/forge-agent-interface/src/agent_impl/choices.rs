@@ -5,15 +5,15 @@ use crate::game_view_dto::CardDto;
 use crate::ids_codec::parse_card_id;
 use crate::prompt::{AgentPromptInner, PlayerAction};
 
-use super::TauriAgent;
+use super::{PromptAgent, AgentTransport};
 
-pub(super) fn mulligan_decision(
-    agent: &mut TauriAgent,
+pub(super) fn mulligan_decision<T: AgentTransport>(
+    agent: &mut PromptAgent<T>,
     _player: PlayerId,
     hand: &[CardId],
     mulligan_count: u32,
 ) -> bool {
-    let hand_card_ids = TauriAgent::card_ids(hand);
+    let hand_card_ids = PromptAgent::<T>::card_ids(hand);
     agent.send_prompt(AgentPromptInner::Mulligan {
         game_view: agent.view(),
         hand_card_ids,
@@ -25,14 +25,14 @@ pub(super) fn mulligan_decision(
     }
 }
 
-pub(super) fn choose_cards_to_bottom(
-    agent: &mut TauriAgent,
+pub(super) fn choose_cards_to_bottom<T: AgentTransport>(
+    agent: &mut PromptAgent<T>,
     _player: PlayerId,
     hand: &[CardId],
     count: usize,
 ) -> Vec<CardId> {
     let view = agent.view();
-    let hand_card_ids = TauriAgent::card_ids(hand);
+    let hand_card_ids = PromptAgent::<T>::card_ids(hand);
     let cards: Vec<CardDto> = hand
         .iter()
         .filter_map(|&cid| {
@@ -54,8 +54,8 @@ pub(super) fn choose_cards_to_bottom(
     }
 }
 
-pub(super) fn choose_mode(
-    agent: &mut TauriAgent,
+pub(super) fn choose_mode<T: AgentTransport>(
+    agent: &mut PromptAgent<T>,
     _player: PlayerId,
     descriptions: &[String],
     min: usize,
@@ -75,8 +75,8 @@ pub(super) fn choose_mode(
     }
 }
 
-pub(super) fn choose_optional_trigger(
-    agent: &mut TauriAgent,
+pub(super) fn choose_optional_trigger<T: AgentTransport>(
+    agent: &mut PromptAgent<T>,
     _player: PlayerId,
     description: &str,
     card_name: Option<&str>,
@@ -97,8 +97,8 @@ pub(super) fn choose_optional_trigger(
     }
 }
 
-pub(super) fn confirm_action(
-    agent: &mut TauriAgent,
+pub(super) fn confirm_action<T: AgentTransport>(
+    agent: &mut PromptAgent<T>,
     _player: PlayerId,
     mode: Option<&str>,
     message: &str,
@@ -127,8 +127,8 @@ pub(super) fn confirm_action(
     }
 }
 
-pub(super) fn confirm_payment(
-    agent: &mut TauriAgent,
+pub(super) fn confirm_payment<T: AgentTransport>(
+    agent: &mut PromptAgent<T>,
     _player: PlayerId,
     cost_kind: &str,
     message: &str,
@@ -150,8 +150,8 @@ pub(super) fn confirm_payment(
     }
 }
 
-pub(super) fn choose_binary(
-    agent: &mut TauriAgent,
+pub(super) fn choose_binary<T: AgentTransport>(
+    agent: &mut PromptAgent<T>,
     _player: PlayerId,
     question: &str,
     kind: BinaryChoiceKind,
@@ -177,8 +177,8 @@ pub(super) fn choose_binary(
     }
 }
 
-pub(super) fn choose_color(
-    agent: &mut TauriAgent,
+pub(super) fn choose_color<T: AgentTransport>(
+    agent: &mut PromptAgent<T>,
     _player: PlayerId,
     valid_colors: &[String],
 ) -> Option<String> {
@@ -193,8 +193,8 @@ pub(super) fn choose_color(
     }
 }
 
-pub(super) fn choose_type(
-    agent: &mut TauriAgent,
+pub(super) fn choose_type<T: AgentTransport>(
+    agent: &mut PromptAgent<T>,
     _player: PlayerId,
     type_category: &str,
     valid_types: &[String],
@@ -211,8 +211,8 @@ pub(super) fn choose_type(
     }
 }
 
-pub(super) fn choose_card_name(
-    agent: &mut TauriAgent,
+pub(super) fn choose_card_name<T: AgentTransport>(
+    agent: &mut PromptAgent<T>,
     _player: PlayerId,
     valid_names: &[String],
 ) -> Option<String> {
@@ -227,8 +227,8 @@ pub(super) fn choose_card_name(
     }
 }
 
-pub(super) fn choose_x_value(
-    agent: &mut TauriAgent,
+pub(super) fn choose_x_value<T: AgentTransport>(
+    agent: &mut PromptAgent<T>,
     _player: PlayerId,
     max_x: u32,
     card_name: Option<&str>,
@@ -247,8 +247,8 @@ pub(super) fn choose_x_value(
     }
 }
 
-pub(super) fn choose_number(
-    agent: &mut TauriAgent,
+pub(super) fn choose_number<T: AgentTransport>(
+    agent: &mut PromptAgent<T>,
     _player: PlayerId,
     min: i32,
     max: i32,
@@ -265,13 +265,13 @@ pub(super) fn choose_number(
     }
 }
 
-pub(super) fn choose_discard(
-    agent: &mut TauriAgent,
+pub(super) fn choose_discard<T: AgentTransport>(
+    agent: &mut PromptAgent<T>,
     _player: PlayerId,
     hand: &[CardId],
     num: usize,
 ) -> Vec<CardId> {
-    let hand_card_ids = TauriAgent::card_ids(hand);
+    let hand_card_ids = PromptAgent::<T>::card_ids(hand);
     agent.send_prompt(AgentPromptInner::ChooseDiscard {
         game_view: agent.view(),
         hand_card_ids,
@@ -286,14 +286,14 @@ pub(super) fn choose_discard(
     }
 }
 
-pub(super) fn choose_cards_for_effect(
-    agent: &mut TauriAgent,
+pub(super) fn choose_cards_for_effect<T: AgentTransport>(
+    agent: &mut PromptAgent<T>,
     _player: PlayerId,
     valid: &[CardId],
     min: usize,
     max: usize,
 ) -> Vec<CardId> {
-    let valid_card_ids = TauriAgent::card_ids(valid);
+    let valid_card_ids = PromptAgent::<T>::card_ids(valid);
     let view = agent.view();
 
     // Build zone_cards from the snapshot view's zones (find matching DTOs)
@@ -328,14 +328,14 @@ pub(super) fn choose_cards_for_effect(
     }
 }
 
-pub(super) fn choose_single_card_for_zone_change(
-    agent: &mut TauriAgent,
+pub(super) fn choose_single_card_for_zone_change<T: AgentTransport>(
+    agent: &mut PromptAgent<T>,
     _player: PlayerId,
     valid: &[CardId],
     select_prompt: &str,
     is_optional: bool,
 ) -> Option<CardId> {
-    let valid_card_ids = TauriAgent::card_ids(valid);
+    let valid_card_ids = PromptAgent::<T>::card_ids(valid);
     let view = agent.view();
 
     // Build zone_cards from all known zones + peeked library cards
@@ -387,15 +387,15 @@ pub(super) fn choose_single_card_for_zone_change(
     }
 }
 
-pub(super) fn choose_cards_for_zone_change(
-    agent: &mut TauriAgent,
+pub(super) fn choose_cards_for_zone_change<T: AgentTransport>(
+    agent: &mut PromptAgent<T>,
     _player: PlayerId,
     valid: &[CardId],
     min: usize,
     max: usize,
     select_prompt: &str,
 ) -> Vec<CardId> {
-    let valid_card_ids = TauriAgent::card_ids(valid);
+    let valid_card_ids = PromptAgent::<T>::card_ids(valid);
     let view = agent.view();
 
     // Build zone_cards from all known zones + peeked library cards
@@ -440,8 +440,8 @@ pub(super) fn choose_cards_for_zone_change(
     }
 }
 
-pub(super) fn choose_explore_put_in_graveyard(
-    agent: &mut TauriAgent,
+pub(super) fn choose_explore_put_in_graveyard<T: AgentTransport>(
+    agent: &mut PromptAgent<T>,
     _player: PlayerId,
     revealed_card_name: &str,
     _revealed_cmc: i32,
@@ -463,8 +463,8 @@ pub(super) fn choose_explore_put_in_graveyard(
     }
 }
 
-pub(super) fn help_pay_assist(
-    agent: &mut TauriAgent,
+pub(super) fn help_pay_assist<T: AgentTransport>(
+    agent: &mut PromptAgent<T>,
     _player: PlayerId,
     card_name: &str,
     max_generic: u32,
@@ -480,8 +480,8 @@ pub(super) fn help_pay_assist(
     }
 }
 
-pub(super) fn choose_random_discard(
-    _agent: &mut TauriAgent,
+pub(super) fn choose_random_discard<T: AgentTransport>(
+    _agent: &mut PromptAgent<T>,
     _player: PlayerId,
     hand: &[CardId],
     num: usize,
@@ -493,14 +493,14 @@ pub(super) fn choose_random_discard(
     v
 }
 
-pub(super) fn choose_land_or_spell(_agent: &mut TauriAgent, _player: PlayerId) -> Option<bool> {
+pub(super) fn choose_land_or_spell<T: AgentTransport>(_agent: &mut PromptAgent<T>, _player: PlayerId) -> Option<bool> {
     None
 }
 
 /// Choose which replacement effect to apply when multiple effects match.
 /// Reuses the ChooseMode prompt — structurally identical (pick one from a list).
-pub(super) fn choose_single_replacement_effect(
-    agent: &mut TauriAgent,
+pub(super) fn choose_single_replacement_effect<T: AgentTransport>(
+    agent: &mut PromptAgent<T>,
     _player: PlayerId,
     descriptions: &[String],
 ) -> usize {

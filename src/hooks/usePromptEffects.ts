@@ -130,7 +130,8 @@ export function usePromptEffects({
     ) {
       setLibraryPeekModal(null);
     }
-  }, [promptType, currentPrompt, myHand]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [promptType, currentPrompt]);
 
   // Handle zone-based targeting prompts
   useEffect(() => {
