@@ -31,7 +31,7 @@ services:
             context: ../../.. # repo root (needs forge-engine/ + src/ + scripts/ + forge/ + preset_decks/)
             dockerfile: Dockerfile.web
         ports:
-            - "8081:80"
+            - "1420:80"
         restart: on-failure:5
 
     parity-dashboard:

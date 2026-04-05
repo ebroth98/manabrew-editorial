@@ -81,13 +81,13 @@ while IFS= read -r file; do
             RUST_CHANGED=true ;;
     esac
     case "$file" in
-        src/*|public/*|scripts/build-wasm.sh|scripts/bundle-cards.mjs|package.json|package-lock.json|vite.config.ts|tsconfig*.json|index.html|nginx.web.conf)
+        src/*|public/*|scripts/build-wasm.sh|scripts/bundle-cards.mjs|package.json|package-lock.json|vite.config.ts|tsconfig*.json|index.html)
             WEB_CHANGED=true ;;
         forge-engine/crates/forge-wasm/*)
             WEB_CHANGED=true ;;
     esac
     case "$file" in
-        *Dockerfile*|*compose*|.dockerignore|deploy.sh|nginx.web.conf)
+        *Dockerfile*|*compose*|.dockerignore|deploy.sh)
             INFRA_CHANGED=true ;;
     esac
 done <<< "$CHANGED"
