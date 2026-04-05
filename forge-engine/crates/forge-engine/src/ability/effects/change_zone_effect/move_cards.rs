@@ -144,10 +144,7 @@ pub(super) fn move_cards(
     let shuffle_param = sa.params.get(keys::SHUFFLE);
     let no_shuffle = shuffle_param == Some("False") || sa.param_is_true(keys::NO_SHUFFLE);
     let force_shuffle = sa.is_shuffle();
-    if !no_shuffle
-        && (origin_zone == ZoneType::Library || force_shuffle)
-        && dest_zone != ZoneType::Library
-    {
+    if !no_shuffle && (origin_zone == ZoneType::Library || force_shuffle) {
         let players = if !searched_owners.is_empty() {
             searched_owners
         } else {

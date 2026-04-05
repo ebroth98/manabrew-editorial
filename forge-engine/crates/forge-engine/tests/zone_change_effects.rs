@@ -295,6 +295,56 @@ fn test_raise_dead() {
     );
 }
 
+/// ChangeZone Graveyard->Library with Shuffle$ True must actually shuffle the
+/// destination library, matching Java's ChangeZoneEffect behavior.
+#[test]
+fn test_graveyard_to_library_with_shuffle() {
+    let mut game = GameState::new(&["Alice", "Bob"], 20);
+    let p0 = PlayerId(0);
+
+    let forest = game.create_card(make_forest(p0));
+    let mountain_one = game.create_card(make_mountain(p0));
+    let mountain_two = game.create_card(make_mountain(p0));
+    let bears = game.create_card(make_grizzly_bears(p0));
+
+    game.move_card(forest, ZoneType::Library, p0);
+    game.move_card(mountain_one, ZoneType::Library, p0);
+    game.move_card(mountain_two, ZoneType::Library, p0);
+    game.move_card(bears, ZoneType::Graveyard, p0);
+
+    let expected_without_shuffle = vec![forest, mountain_one, mountain_two, bears];
+
+    let ability = "SP$ ChangeZone | Origin$ Graveyard | Destination$ Library | Defined$ Self | Shuffle$ True";
+    let mut sa = SpellAbility::new_simple(Some(bears), p0, ability);
+    sa.is_activated = true;
+    let entry = StackEntry {
+        id: 0,
+        spell_ability: sa,
+        is_creature_spell: false,
+        is_permanent_spell: false,
+        cast_from_zone: None,
+        optional_trigger_decider: None,
+        optional_trigger_description: None,
+        optional_trigger_source_name: None,
+    };
+    game.stack.push(entry);
+
+    let mut agents = pass_agents();
+    let mut game_loop = GameLoop::new(2);
+    game_loop.resolve_stack(&mut game, &mut agents);
+
+    assert_eq!(
+        game.card(bears).zone,
+        ZoneType::Library,
+        "The moved card should end up in the library"
+    );
+    assert_ne!(
+        game.zone(ZoneType::Library, p0).cards,
+        expected_without_shuffle,
+        "Shuffle$ True should not leave the library in simple append order"
+    );
+}
+
 // ── Test 5: ChangeZoneAll Board Wipe (Battlefield → Exile) ───────────
 
 /// ChangeZoneAll Battlefield→Exile moves all creatures off the battlefield.
