@@ -28,6 +28,20 @@ pub struct TargetChoices {
 }
 
 impl TargetChoices {
+    /// Collect all targeted cards for this node.
+    pub fn all_target_cards(&self) -> Vec<CardId> {
+        let mut cards = Vec::new();
+        if let Some(card) = self.target_card {
+            cards.push(card);
+        }
+        for &card in self.divided_map.keys() {
+            if !cards.contains(&card) {
+                cards.push(card);
+            }
+        }
+        cards
+    }
+
     /// Add a target (card and/or player).
     /// Mirrors Java's `TargetChoices.add(GameObject)`.
     pub fn add(&mut self, target_card: Option<CardId>, target_player: Option<PlayerId>) {
@@ -64,7 +78,7 @@ impl TargetChoices {
     /// Check if a card is targeted.
     /// Mirrors Java's `TargetChoices.contains(Card)`.
     pub fn contains(&self, card: CardId) -> bool {
-        self.target_card == Some(card)
+        self.target_card == Some(card) || self.divided_map.contains_key(&card)
     }
 
     /// Replace one card target with another.
@@ -77,6 +91,8 @@ impl TargetChoices {
             if let Some(amount) = self.divided_map.remove(&old) {
                 self.divided_map.insert(new, amount);
             }
+        } else if let Some(amount) = self.divided_map.remove(&old) {
+            self.divided_map.insert(new, amount);
         }
     }
 

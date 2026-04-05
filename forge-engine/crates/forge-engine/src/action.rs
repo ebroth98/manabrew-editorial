@@ -192,6 +192,7 @@ impl GameState {
                 // Apply ETB-tapped effects (intrinsic + extrinsic).
                 apply_etb_tapped(self, card_id);
                 // Keyword ETB counters: K:etbCounter:TYPE:N
+                // N can be a literal integer or an SVar name (e.g. "X" for X-cost spells).
                 let etb_keywords = self.cards[card_id.index()].keywords.as_string_list();
                 for kw in etb_keywords {
                     let mut parts = kw.split(':');
@@ -200,10 +201,24 @@ impl GameState {
                         continue;
                     }
                     let counter_type = parts.next().unwrap_or_default();
-                    let amount = parts
-                        .next()
-                        .and_then(|s| s.parse::<i32>().ok())
-                        .unwrap_or(0);
+                    let amount_str = parts.next().unwrap_or_default();
+                    let amount = amount_str.parse::<i32>().unwrap_or_else(|_| {
+                        // Resolve SVar reference (e.g. "X" → card.svars["X"] = "Count$xPaid"
+                        // → card.svars["XPaid"] = "3").
+                        let card = &self.cards[card_id.index()];
+                        if let Some(svar_expr) = card.svars.get(amount_str) {
+                            if svar_expr == "Count$xPaid" || svar_expr == "Count$XPaid" {
+                                card.svars
+                                    .get("XPaid")
+                                    .and_then(|v| v.parse::<i32>().ok())
+                                    .unwrap_or(0)
+                            } else {
+                                svar_expr.parse::<i32>().unwrap_or(0)
+                            }
+                        } else {
+                            0
+                        }
+                    });
                     if amount <= 0 {
                         continue;
                     }
@@ -1112,6 +1127,13 @@ impl GameState {
         if !card.tapped {
             return false;
         }
+        let stun = CounterType::Named("STUN".to_string());
+        if card.counter_count(&stun) > 0 && card.can_remove_counters(&stun) {
+            // Stun counters replace the untap event: remove one counter and keep the
+            // permanent tapped. This mirrors Java's built-in stun untap replacement.
+            self.cards[card_id.index()].remove_counter(&stun, 1);
+            return false;
+        }
         // Run Untap replacement effects.
         let mut event = ReplacementEvent::Untap { card: card_id };
         let result = apply_replacements(self, &mut event);
@@ -1267,6 +1289,24 @@ mod tests {
         assert!(!game.tap(cid)); // already tapped
         assert!(game.untap(cid));
         assert!(!game.card(cid).tapped);
+    }
+
+    #[test]
+    fn stun_counter_replaces_untap() {
+        let mut game = GameState::new(&["Alice", "Bob"], 20);
+        let cid = make_creature(&mut game, "Bear", PlayerId(0), 2, 2);
+        game.move_card(cid, ZoneType::Battlefield, PlayerId(0));
+        game.tap(cid);
+        game.card_mut(cid)
+            .add_counter(&CounterType::Named("STUN".to_string()), 1);
+
+        assert!(!game.untap(cid));
+        assert!(game.card(cid).tapped);
+        assert_eq!(
+            game.card(cid)
+                .counter_count(&CounterType::Named("STUN".to_string())),
+            0
+        );
     }
 
 }

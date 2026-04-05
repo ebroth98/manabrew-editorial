@@ -33,16 +33,23 @@ fn parse_trigger_int_object(sa: &SpellAbility, key: &str) -> Option<i32> {
         .and_then(|value| value.trim().parse::<i32>().ok())
 }
 
-fn do_x_math(num: i32, operators: &str) -> i32 {
+fn do_x_math(
+    num: i32,
+    operators: &str,
+    game: &GameState,
+    source_id: CardId,
+    controller: PlayerId,
+    sa: &SpellAbility,
+) -> i32 {
     if operators.is_empty() {
         return num;
     }
     let parts: Vec<&str> = operators.split('.').collect();
     let op = parts.first().copied().unwrap_or("");
-    let secondary = parts
-        .get(1)
-        .and_then(|s| s.parse::<i32>().ok())
-        .unwrap_or(0);
+    let secondary = parts.get(1).copied().map_or(0, |rhs| {
+        rhs.parse::<i32>()
+            .unwrap_or_else(|_| resolve_svar_expression(rhs, game, source_id, controller, sa))
+    });
 
     if op.contains("Plus") {
         num + secondary
@@ -121,7 +128,14 @@ fn spell_ability_x_property(spell_ability: &SpellAbility, expr: &str, game: &Gam
         _ => 0,
     };
 
-    do_x_math(base, operators)
+    do_x_math(
+        base,
+        operators,
+        game,
+        source_id,
+        spell_ability.activating_player,
+        spell_ability,
+    )
 }
 
 fn resolve_spell_ability_expr(expr: &str, game: &GameState, sa: &SpellAbility) -> Option<i32> {
@@ -151,6 +165,24 @@ fn resolve_svar_expression(
     }
     if expr.trim().starts_with("TriggerCount$") || expr.trim().starts_with("TriggerCountMax$") {
         return evaluate_svar(expr.trim(), sa);
+    }
+    if let Some(property) = expr.trim().strip_prefix("Remembered$") {
+        return crate::ability::ability_utils::handle_paid(
+            game,
+            &game.card(source_id).remembered_cards,
+            property,
+            source_id,
+        );
+    }
+    if let Some(rest) = expr.trim().strip_prefix("RememberedSize") {
+        return do_x_math(
+            game.card(source_id).remembered_cards.len() as i32,
+            rest.strip_prefix('/').unwrap_or(""),
+            game,
+            source_id,
+            controller,
+            sa,
+        );
     }
     if let Some(value) = resolve_spell_ability_expr(expr.trim(), game, sa) {
         return value;
@@ -317,7 +349,7 @@ fn player_x_property(
         _ => 0,
     };
 
-    do_x_math(base, operators)
+    do_x_math(base, operators, game, source_id, controller, sa)
 }
 
 pub fn player_condition_matches(
@@ -377,10 +409,13 @@ fn resolve_player_count_svar(
     controller: PlayerId,
     sa: &SpellAbility,
 ) -> i32 {
-    let Some((group, property)) = expr.split_once('$') else {
+    let Some((group, property_expr)) = expr.split_once('$') else {
         return 0;
     };
     let kind = group.strip_prefix("PlayerCount").unwrap_or(group);
+    let mut property_parts = property_expr.splitn(2, '/');
+    let property = property_parts.next().unwrap_or("");
+    let operators = property_parts.next().unwrap_or("");
     let players: Vec<PlayerId> = if kind.is_empty() || kind == "Players" {
         game.alive_players()
     } else if kind == "Opponents" {
@@ -405,21 +440,42 @@ fn resolve_player_count_svar(
     }
 
     if property.eq_ignore_ascii_case("Amount") {
-        return players.len() as i32;
+        return do_x_math(
+            players.len() as i32,
+            operators,
+            game,
+            source_id,
+            controller,
+            sa,
+        );
     }
     if let Some(rest) = property.strip_prefix("Highest") {
-        return players
-            .iter()
-            .map(|&pid| player_x_property(pid, rest, game, source_id, controller, sa))
-            .max()
-            .unwrap_or(0);
+        return do_x_math(
+            players
+                .iter()
+                .map(|&pid| player_x_property(pid, rest, game, source_id, controller, sa))
+                .max()
+                .unwrap_or(0),
+            operators,
+            game,
+            source_id,
+            controller,
+            sa,
+        );
     }
     if let Some(rest) = property.strip_prefix("Lowest") {
-        return players
-            .iter()
-            .map(|&pid| player_x_property(pid, rest, game, source_id, controller, sa))
-            .min()
-            .unwrap_or(0);
+        return do_x_math(
+            players
+                .iter()
+                .map(|&pid| player_x_property(pid, rest, game, source_id, controller, sa))
+                .min()
+                .unwrap_or(0),
+            operators,
+            game,
+            source_id,
+            controller,
+            sa,
+        );
     }
     if property.eq_ignore_ascii_case("TiedForHighestLife") {
         let max_life = players
@@ -427,10 +483,17 @@ fn resolve_player_count_svar(
             .map(|&pid| game.player(pid).life)
             .max()
             .unwrap_or(i32::MIN);
-        return players
-            .iter()
-            .filter(|&&pid| game.player(pid).life == max_life)
-            .count() as i32;
+        return do_x_math(
+            players
+                .iter()
+                .filter(|&&pid| game.player(pid).life == max_life)
+                .count() as i32,
+            operators,
+            game,
+            source_id,
+            controller,
+            sa,
+        );
     }
     if property.eq_ignore_ascii_case("TiedForLowestLife") {
         let min_life = players
@@ -438,16 +501,39 @@ fn resolve_player_count_svar(
             .map(|&pid| game.player(pid).life)
             .min()
             .unwrap_or(i32::MAX);
-        return players
-            .iter()
-            .filter(|&&pid| game.player(pid).life == min_life)
-            .count() as i32;
+        return do_x_math(
+            players
+                .iter()
+                .filter(|&&pid| game.player(pid).life == min_life)
+                .count() as i32,
+            operators,
+            game,
+            source_id,
+            controller,
+            sa,
+        );
     }
     if let Some(raw_property) = property.strip_prefix("HasProperty") {
-        return players
-            .into_iter()
-            .filter(|&pid| crate::player::player_has_property(pid, raw_property, game, source_id, controller, sa))
-            .count() as i32;
+        return do_x_math(
+            players
+                .into_iter()
+                .filter(|&pid| {
+                    crate::player::player_has_property(
+                        pid,
+                        raw_property,
+                        game,
+                        source_id,
+                        controller,
+                        sa,
+                    )
+                })
+                .count() as i32,
+            operators,
+            game,
+            source_id,
+            controller,
+            sa,
+        );
     }
     if let Some(rest) = property.strip_prefix("Condition") {
         if let Some((lhs, prop_expr)) = rest.split_once(' ') {
@@ -459,22 +545,36 @@ fn resolve_player_count_svar(
                 ("GE", "1")
             };
             let rhs = resolve_svar_expression(rhs_expr, game, source_id, controller, sa);
-            return players
-                .into_iter()
-                .filter(|&pid| {
-                    compare_expr(
-                        player_x_property(pid, prop_expr, game, source_id, controller, sa),
-                        &format!("{cmp}{rhs}"),
-                    )
-                })
-                .count() as i32;
+            return do_x_math(
+                players
+                    .into_iter()
+                    .filter(|&pid| {
+                        compare_expr(
+                            player_x_property(pid, prop_expr, game, source_id, controller, sa),
+                            &format!("{cmp}{rhs}"),
+                        )
+                    })
+                    .count() as i32,
+                operators,
+                game,
+                source_id,
+                controller,
+                sa,
+            );
         }
     }
 
-    players
-        .into_iter()
-        .map(|pid| player_x_property(pid, property, game, source_id, controller, sa))
-        .sum()
+    do_x_math(
+        players
+            .into_iter()
+            .map(|pid| player_x_property(pid, property, game, source_id, controller, sa))
+            .sum(),
+        operators,
+        game,
+        source_id,
+        controller,
+        sa,
+    )
 }
 
 /// Resolve a numeric parameter from a SpellAbility, expanding SVar references.
@@ -826,6 +926,20 @@ pub fn resolve_count_svar_for_sa(
 
     if expr == "Count$YourSpeed" {
         return game.player(controller).speed;
+    }
+
+    // Count$Metalcraft.A.B — return A if controller has 3+ artifacts, else B.
+    if let Some(rest) = expr.strip_prefix("Count$Metalcraft.") {
+        let parts: Vec<&str> = rest.splitn(2, '.').collect();
+        if parts.len() == 2 {
+            let yes = parts[0].parse::<i32>().unwrap_or(1);
+            let no = parts[1].parse::<i32>().unwrap_or(0);
+            return if game.player_has_metalcraft(controller) {
+                yes
+            } else {
+                no
+            };
+        }
     }
 
     if let Some(rest) = expr.strip_prefix("Count$MaxSpeed.") {
@@ -1260,6 +1374,76 @@ mod tests {
         sa.add_triggering_object("TargetPlayer", &p1.0.to_string());
 
         assert_eq!(resolve_numeric_svar(&game, &sa, "LifeAmount", 0), 5);
+    }
+
+    #[test]
+    fn resolves_player_count_minus_remembered_amount() {
+        let mut game = GameState::new(&["A", "B"], 20);
+        let p0 = PlayerId(0);
+        let p1 = PlayerId(1);
+
+        let remembered = Card::new(
+            CardId(1),
+            "Remembered".to_string(),
+            p1,
+            CardTypeLine::parse("Creature"),
+            ManaCost::parse(""),
+            ColorSet::COLORLESS,
+            Some(1),
+            Some(1),
+            vec![],
+            vec![],
+        );
+        let remembered_id = game.create_card(remembered);
+
+        let mut host = Card::new(
+            CardId(0),
+            "Host".to_string(),
+            p0,
+            CardTypeLine::parse("Creature"),
+            ManaCost::parse(""),
+            ColorSet::COLORLESS,
+            Some(1),
+            Some(1),
+            vec![],
+            vec![],
+        );
+        host.svars.insert(
+            "X".to_string(),
+            "PlayerCountOpponents$Amount/Minus.Remembered$Amount".to_string(),
+        );
+        let host_id = game.create_card(host);
+        game.card_mut(host_id).add_remembered_card(remembered_id);
+
+        let sa = SpellAbility::new_simple(Some(host_id), p0, "DB$ Draw | NumCards$ X");
+        assert_eq!(resolve_numeric_svar(&game, &sa, "NumCards", -1), 0);
+    }
+
+    #[test]
+    fn resolves_player_count_minus_empty_remembered_amount() {
+        let mut game = GameState::new(&["A", "B"], 20);
+        let p0 = PlayerId(0);
+
+        let mut host = Card::new(
+            CardId(0),
+            "Host".to_string(),
+            p0,
+            CardTypeLine::parse("Creature"),
+            ManaCost::parse(""),
+            ColorSet::COLORLESS,
+            Some(1),
+            Some(1),
+            vec![],
+            vec![],
+        );
+        host.svars.insert(
+            "X".to_string(),
+            "PlayerCountOpponents$Amount/Minus.Remembered$Amount".to_string(),
+        );
+        let host_id = game.create_card(host);
+
+        let sa = SpellAbility::new_simple(Some(host_id), p0, "DB$ Draw | NumCards$ X");
+        assert_eq!(resolve_numeric_svar(&game, &sa, "NumCards", -1), 1);
     }
 
     #[test]

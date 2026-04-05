@@ -78,12 +78,10 @@ impl GameLoop {
                 // NonStackingEffect is an AI hint in Java (AiController), not a game rule.
                 // Do NOT filter here — let the agent decide whether to cast duplicates.
 
-                // Aura targeting check: don't show auras as playable if no valid target exists.
-                if card.type_line.has_subtype("Aura") {
-                    if let Some(ref tr) = cast_sa.target_restrictions {
-                        if !tr.has_candidates(game, player, Some(card_id)) {
-                            continue;
-                        }
+                // Java filters any targeted spell with no legal targets out of the action space.
+                if let Some(ref tr) = cast_sa.target_restrictions {
+                    if !tr.has_candidates(game, player, Some(card_id)) {
+                        continue;
                     }
                 }
 
@@ -340,11 +338,20 @@ impl GameLoop {
                         crate::spellability::MORPH_GENERIC_COST,
                     ));
 
-                // Bestow: cast as an Aura for bestow cost
+                // Bestow: cast as an Aura for bestow cost.
+                // Requires a valid creature target on the battlefield (Aura targeting).
                 let bestow_ok = if let Some(bestow_cost_str) = card.get_bestow_cost() {
                     let adjusted =
                         cost_adj.apply(&forge_foundation::ManaCost::parse(&bestow_cost_str));
-                    available_mana.can_pay(&adjusted)
+                    let can_afford = available_mana.can_pay(&adjusted);
+                    // Bestow turns the creature into an Aura targeting a creature.
+                    // Only offer bestow if at least one creature exists to enchant.
+                    let has_creature_target = can_afford
+                        && game
+                            .cards
+                            .iter()
+                            .any(|c| c.zone == ZoneType::Battlefield && c.is_creature());
+                    has_creature_target
                 } else {
                     false
                 };

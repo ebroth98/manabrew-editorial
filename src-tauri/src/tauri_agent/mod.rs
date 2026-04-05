@@ -241,6 +241,7 @@ impl TauriAgent {
                     "evoke" => AlternativeCost::Evoke,
                     "dash" => AlternativeCost::Dash,
                     "escape" => AlternativeCost::Escape,
+                    "bestow" => AlternativeCost::Bestow,
                     "madness" => AlternativeCost::Madness,
                     "overload" => AlternativeCost::Overload,
                     "spectacle" => AlternativeCost::Spectacle,

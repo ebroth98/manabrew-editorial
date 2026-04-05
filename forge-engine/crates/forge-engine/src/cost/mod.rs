@@ -653,6 +653,23 @@ pub fn get_sacrifice_targets(game: &GameState, player: PlayerId, type_filter: &s
         .collect()
 }
 
+/// Find valid sacrifice targets for a cost, filtered both by type and
+/// CantSacrifice-style legality before RNG selection.
+pub fn get_sacrifice_targets_for_cost(
+    game: &GameState,
+    player: PlayerId,
+    type_filter: &str,
+    ability: Option<&SpellAbility>,
+) -> Vec<CardId> {
+    let static_sources = static_ability_source_cards(game);
+    get_sacrifice_targets(game, player, type_filter)
+        .into_iter()
+        .filter(|&cid| {
+            !cant_sacrifice(&static_sources, game.card(cid), ability, true)
+        })
+        .collect()
+}
+
 /// Find valid exile/return targets in a given zone for a player, filtered by type.
 pub fn get_zone_targets(
     game: &GameState,

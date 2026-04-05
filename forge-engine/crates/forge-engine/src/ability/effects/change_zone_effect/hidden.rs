@@ -125,6 +125,31 @@ pub(super) fn resolve_hidden_origin(
         && !defined.eq_ignore_ascii_case("You")
         && !defined.eq_ignore_ascii_case("Opponent")
     {
+        // Optional$ True: ask the affected player before searching.
+        // Mirrors Java's confirm_action prompt for optional searches.
+        if is_optional {
+            let def = sa.defined_player().unwrap_or("");
+            let affected_player = crate::ability::ability_utils::resolve_defined_player_with_sa(
+                def, sa, controller, ctx.game,
+            )
+            .unwrap_or(controller);
+            let source_name = sa.source.map(|cid| ctx.game.card(cid).card_name.as_str());
+            ctx.agents[affected_player.index()].snapshot_state(ctx.game, ctx.mana_pools);
+            let accepted = ctx.agents[affected_player.index()].confirm_action(
+                affected_player,
+                None,
+                "Do you want to search your library?",
+                &[],
+                source_name,
+                Some(crate::ability::api_type::ApiType::ChangeZone),
+            );
+            if !accepted {
+                // Java: declining an optional search with DefinedPlayer$ does NOT
+                // shuffle — the `continue` in changeHiddenOriginResolve skips
+                // the post-search shuffle logic entirely.
+                return;
+            }
+        }
         let cards = resolve_defined_player_choice(ctx, sa, origin_zone, &change_type);
         move_cards(
             ctx,

@@ -4105,7 +4105,7 @@ pub fn parse_trigger(raw: &str, next_id: &mut u32) -> Option<Trigger> {
     };
 
     // Parse active zones (default: Battlefield)
-    let active_zones = params
+    let mut active_zones = params
         .get(keys::TRIGGER_ZONES)
         .map(|s| {
             s.split(',')
@@ -4113,6 +4113,22 @@ pub fn parse_trigger(raw: &str, next_id: &mut u32) -> Option<Trigger> {
                 .collect::<Vec<_>>()
         })
         .unwrap_or_else(|| vec![ZoneType::Battlefield]);
+    // SpellCast triggers with ValidCard$ Card.Self fire while the card is on
+    // the stack (cast triggers). Java handles these via addTrigAbility() on
+    // the stack entry. In Rust, add Stack to active zones so the trigger is
+    // registered when the card is being cast.
+    if matches!(
+        mode,
+        TriggerMode::SpellCast { .. } | TriggerMode::SpellCastOrCopy { .. }
+    ) {
+        let valid_card_is_self = params
+            .get(keys::VALID_CARD)
+            .map(|v| v.eq_ignore_ascii_case("Card.Self"))
+            .unwrap_or(false);
+        if valid_card_is_self && !active_zones.contains(&ZoneType::Stack) {
+            active_zones.push(ZoneType::Stack);
+        }
+    }
 
     let execute = params.get_cloned(keys::EXECUTE).unwrap_or_default();
     let optional = params.has(keys::OPTIONAL_DECIDER);

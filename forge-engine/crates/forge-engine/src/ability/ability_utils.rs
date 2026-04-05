@@ -201,12 +201,13 @@ pub fn resolve_defined_player_with_sa(
     }
 
     fn triggered_controller(sa: &SpellAbility, game: &GameState, key: &str) -> Option<PlayerId> {
-        parse_player_object(sa, key).or_else(|| {
-            parse_card_objects(sa, key)
-                .into_iter()
-                .next()
-                .map(|cid| game.card(cid).controller)
-        })
+        // Try card parsing first — trigger object values are typically CardIds,
+        // and parse_player_object would misinterpret a CardId as a PlayerId.
+        parse_card_objects(sa, key)
+            .into_iter()
+            .next()
+            .map(|cid| game.card(cid).controller)
+            .or_else(|| parse_player_object(sa, key))
     }
 
     fn triggered_owner(sa: &SpellAbility, game: &GameState, key: &str) -> Option<PlayerId> {
@@ -238,12 +239,13 @@ pub fn resolve_defined_player_with_sa(
             } else if let Some(card) = parse_card_objects(sa, "TargetCard").into_iter().next() {
                 Some(game.card(card).controller)
             } else {
-                parse_player_object(sa, "Target").or_else(|| {
-                    parse_card_objects(sa, "Target")
-                        .into_iter()
-                        .next()
-                        .map(|cid| game.card(cid).controller)
-                })
+                // "Target" is ambiguous — it holds either a CardId or a PlayerId.
+                // Try cards first to avoid misinterpreting a CardId as a PlayerId.
+                parse_card_objects(sa, "Target")
+                    .into_iter()
+                    .next()
+                    .map(|cid| game.card(cid).controller)
+                    .or_else(|| parse_player_object(sa, "Target"))
             }
         }
         "TriggeredTargetController" | "TriggeredTargetsController" => {
@@ -358,11 +360,17 @@ pub fn resolve_defined_players_with_sa(
                     push_unique_player(&mut players, game.card(cid).controller);
                 }
             } else {
-                for player in parse_player_objects(sa, "Target") {
-                    push_unique_player(&mut players, player);
-                }
-                for cid in parse_card_objects(sa, "Target") {
-                    push_unique_player(&mut players, game.card(cid).controller);
+                // "Target" is ambiguous — it holds either a CardId or a PlayerId.
+                // Try cards first; only fall back to players if no cards matched.
+                let target_cards_fallback = parse_card_objects(sa, "Target");
+                if !target_cards_fallback.is_empty() {
+                    for cid in target_cards_fallback {
+                        push_unique_player(&mut players, game.card(cid).controller);
+                    }
+                } else {
+                    for player in parse_player_objects(sa, "Target") {
+                        push_unique_player(&mut players, player);
+                    }
                 }
             }
             players
@@ -380,11 +388,16 @@ pub fn resolve_defined_players_with_sa(
                     push_unique_player(&mut players, player);
                 }
             } else {
-                for player in parse_player_objects(sa, "Target") {
-                    push_unique_player(&mut players, player);
-                }
-                for cid in parse_card_objects(sa, "Target") {
-                    push_unique_player(&mut players, game.card(cid).controller);
+                // "Target" is ambiguous — try cards first, then players.
+                let target_cards_fallback = parse_card_objects(sa, "Target");
+                if !target_cards_fallback.is_empty() {
+                    for cid in target_cards_fallback {
+                        push_unique_player(&mut players, game.card(cid).controller);
+                    }
+                } else {
+                    for player in parse_player_objects(sa, "Target") {
+                        push_unique_player(&mut players, player);
+                    }
                 }
             }
             players
@@ -890,6 +903,7 @@ pub fn discard_with_madness_replacement(
     trigger_handler: &mut crate::trigger::handler::TriggerHandler,
     card_id: CardId,
     discard_player: PlayerId,
+    sa: Option<&SpellAbility>,
 ) {
     let owner = game.card(card_id).owner;
     let has_madness = game.card(card_id).get_madness_cost().is_some();
@@ -917,6 +931,14 @@ pub fn discard_with_madness_replacement(
             ZoneType::Hand,
             ZoneType::Graveyard,
         );
+    }
+
+    if let Some(sa) = sa {
+        if sa.params.has("RememberDiscarded") {
+            if let Some(source_id) = sa.source {
+                game.card_mut(source_id).add_remembered_card(card_id);
+            }
+        }
     }
 
     trigger_handler.run_trigger(

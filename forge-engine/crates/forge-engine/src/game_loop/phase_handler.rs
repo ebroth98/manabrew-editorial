@@ -465,6 +465,7 @@ impl GameLoop {
                         &mut self.trigger_handler,
                         *card_id,
                         active,
+                        None,
                     );
                 }
             }

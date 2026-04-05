@@ -3,7 +3,7 @@ use forge_foundation::{ManaCost, ManaCostShard, ZoneType};
 use indexmap::IndexMap;
 use std::collections::HashMap;
 
-use crate::cost::{can_pay_ignoring_mana, get_sacrifice_targets, CostPart};
+use crate::cost::{can_pay_ignoring_mana, CostPart};
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
 
@@ -63,6 +63,10 @@ pub enum ManaPayCallback<'a> {
     /// Confirm whether to remove counters from the source for a mana ability.
     /// Mirrors Java CostPayment confirm for CostRemoveCounter (SubCounter).
     ConfirmSubCounter(CardId),
+    /// Notify that a permanent was sacrificed for mana, so the caller can
+    /// fire sacrifice triggers (TriggerType::Sacrificed). The mana module
+    /// cannot access the trigger handler directly.
+    NotifySacrificeForMana(CardId),
 }
 
 /// Unified callback for mana payment decisions during auto-tap.
@@ -108,6 +112,7 @@ pub fn auto_tap_lands_with_chooser(
             ManaPayCallback::ChooseSacrifice(valid) => sacrifice_chooser(valid),
             ManaPayCallback::ConfirmSelfSacrifice(cid) => Some(cid),
             ManaPayCallback::ConfirmSubCounter(cid) => Some(cid),
+            ManaPayCallback::NotifySacrificeForMana(cid) => Some(cid),
         }
     };
     auto_tap_lands_internal(
@@ -134,6 +139,7 @@ pub fn auto_tap_lands_allow_reserved_source_reuse_with_chooser(
             ManaPayCallback::ChooseSacrifice(valid) => sacrifice_chooser(valid),
             ManaPayCallback::ConfirmSelfSacrifice(cid) => Some(cid),
             ManaPayCallback::ConfirmSubCounter(cid) => Some(cid),
+            ManaPayCallback::NotifySacrificeForMana(cid) => Some(cid),
         }
     };
     auto_tap_lands_internal(
@@ -205,6 +211,8 @@ pub fn next_auto_tap_choice(
         to_pay,
         ma_list,
         allow_reserved_source_reuse,
+        &sources_for_shards,
+        &unpaid,
     )?;
     let chosen_atom = choose_atom_for_shard(&sa_payment, to_pay)?;
     Some(AutoTapChoice {
@@ -233,6 +241,13 @@ pub fn auto_tap_lands_allow_reserved_source_reuse_with_callbacks(
     )
 }
 
+/// Mirrors Java AutoPay.payManaCost() — the main auto-tap loop.
+///
+/// Key parity points:
+/// - Re-collects candidates EVERY iteration (fresh source list after each tap/sacrifice)
+/// - Tries ALL shards in priority order per iteration via `choose_candidate`
+/// - Uses `is_sole_source_for_other_shard` to preserve flexible sources
+/// - Delegates sacrifice/counter costs through the callback
 fn auto_tap_lands_internal(
     game: &mut GameState,
     pool: &mut ManaPool,
@@ -250,42 +265,30 @@ fn auto_tap_lands_internal(
         return tapped_lands;
     }
 
-    let mana_ability_map = group_sources_by_mana_color(game, player);
-    if mana_ability_map.is_empty() {
-        return tapped_lands;
-    }
-
-    let mut sources_for_shards = group_and_order_to_pay_shards(&mana_ability_map, &unpaid);
-    if sources_for_shards.is_empty() {
-        return tapped_lands;
-    }
-
-    // Sort per-shard source lists so lands are tapped before creatures.
-    // Mirrors Java AutoPay's ManaAbilityCandidate.score() sort which assigns
-    // lower scores to lands and higher scores (+26) to creatures.
-    sort_sources_for_autopay(game, player, &mut sources_for_shards);
-
     // Guard counter mirrors Java's AutoPay.payManaCost() `guard++ < 128`.
-    // Java re-collects candidates each iteration, so a declined sacrifice
-    // (e.g. Treasure Token) reappears and is retried with a fresh RNG call.
     let mut guard = 0u32;
     while !unpaid.is_paid() && guard < 128 {
         guard += 1;
-        let Some(to_pay) = get_next_shard_to_pay(&unpaid, &sources_for_shards) else {
-            break;
-        };
 
-        let ma_list = sources_for_shards.get(&to_pay).cloned().unwrap_or_default();
-        if ma_list.is_empty() {
+        // Java re-collects candidates every iteration. This ensures tapped/sacrificed
+        // sources are excluded and state changes from the previous iteration are visible.
+        let mana_ability_map = group_sources_by_mana_color(game, player);
+        if mana_ability_map.is_empty() {
+            break;
+        }
+        let mut candidates = collect_sorted_candidates(game, player, &mana_ability_map);
+        if candidates.is_empty() {
             break;
         }
 
-        let Some(sa_payment) = choose_mana_ability(
+        // Java's chooseCandidate: iterate shards in priority order, pick the
+        // least-versatile candidate that can pay.
+        let Some((sa_payment, to_pay)) = choose_candidate(
             game,
             player,
             current_spell,
-            to_pay,
-            &ma_list,
+            &candidates,
+            &unpaid,
             allow_reserved_source_reuse,
         ) else {
             break;
@@ -295,11 +298,8 @@ fn auto_tap_lands_internal(
             break;
         };
 
-        // Pay non-tap ability costs first so a failed payment cannot generate mana.
-        // If payment fails (e.g. Treasure sacrifice declined), retry the same
-        // source on the next loop iteration — matching Java's AutoPay which
-        // re-collects candidates (finding the same undestroyed source) and
-        // retries with a new RNG-driven confirm_payment call.
+        // Pay non-tap ability costs (sacrifice, counter removal) through callback.
+        // If payment fails (e.g. sacrifice declined), remove the candidate and retry.
         if !pay_non_tap_mana_ability_costs(
             game,
             player,
@@ -308,8 +308,8 @@ fn auto_tap_lands_internal(
             allow_reserved_source_reuse,
             callback,
         ) {
-            // Don't remove the source — Java's AutoPay keeps it available
-            // for the next iteration since the card wasn't actually sacrificed.
+            // Java: candidate became unpayable; remove and continue.
+            candidates.retain(|c| c.card_id != sa_payment.card_id);
             continue;
         }
 
@@ -327,11 +327,6 @@ fn auto_tap_lands_internal(
         for _ in 1..sa_payment.amount.max(1) {
             pool.add(chosen_atom, 1);
             let _ = unpaid.try_pay_mana(chosen_atom, chosen_atom as u8);
-        }
-
-        // Sources can only be used once; remove all entries from same host card.
-        for abilities in sources_for_shards.values_mut() {
-            abilities.retain(|a| a.card_id != sa_payment.card_id);
         }
     }
 
@@ -367,6 +362,157 @@ fn get_next_shard_to_pay(
     unpaid.get_shard_to_pay_by_priority(&shards_to_pay, ManaAtom::COLORS_SUPERPOSITION as u8)
 }
 
+/// Build a flat, sorted candidate list from the mana ability map.
+/// Mirrors Java AutoPay.collectPlayableManaAbilities() — called fresh each iteration.
+fn collect_sorted_candidates(
+    game: &GameState,
+    player: PlayerId,
+    mana_ability_map: &IndexMap<i32, Vec<ManaAbilityRef>>,
+) -> Vec<ManaAbilityRef> {
+    let mut out: Vec<ManaAbilityRef> = mana_ability_map
+        .values()
+        .flat_map(|v| v.iter().cloned())
+        .collect();
+    // Deduplicate by (card_id, ability_index) — same ability may appear under multiple color keys.
+    let mut seen = std::collections::HashSet::new();
+    out.retain(|ma| {
+        seen.insert((ma.card_id, ma.ability_index, ma.source_order))
+    });
+    // Sort by score (lands before creatures), matching Java's Comparator.comparingInt(score).
+    out.sort_by_key(|ma| {
+        autopay_source_score(game, player, ma) * 1000 + ma.source_order as i32
+    });
+    out
+}
+
+/// Mirrors Java AutoPay.chooseCandidate() — iterate shards in priority order,
+/// pick the least-versatile candidate that can pay.
+///
+/// Returns the chosen source and the shard it will pay.
+fn choose_candidate(
+    game: &GameState,
+    player: PlayerId,
+    current_spell: Option<CardId>,
+    candidates: &[ManaAbilityRef],
+    unpaid: &ManaCostBeingPaid,
+    allow_reserved_source_reuse: bool,
+) -> Option<(ManaAbilityRef, ManaCostShard)> {
+    for shard in shard_priority(unpaid, candidates) {
+        if let Some(ma) = choose_least_versatile_candidate(
+            game,
+            player,
+            current_spell,
+            candidates,
+            shard,
+            unpaid,
+            allow_reserved_source_reuse,
+        ) {
+            return Some((ma, shard));
+        }
+    }
+    None
+}
+
+/// Mirrors Java AutoPay.shardPriority() — colored shards sorted by fewest
+/// available candidates (most constrained first), then generic. X is skipped.
+fn shard_priority(unpaid: &ManaCostBeingPaid, candidates: &[ManaAbilityRef]) -> Vec<ManaCostShard> {
+    let mut colored = Vec::new();
+    let mut generic = None;
+    let mut seen = std::collections::HashSet::new();
+    for shard in unpaid.get_distinct_shards() {
+        if matches!(shard, ManaCostShard::X | ManaCostShard::ColoredX) {
+            continue;
+        }
+        if !seen.insert(shard) {
+            continue;
+        }
+        if matches!(shard, ManaCostShard::Generic) {
+            generic = Some(shard);
+        } else {
+            colored.push(shard);
+        }
+    }
+    colored.sort_by_key(|&shard| count_candidates_for_shard(candidates, shard));
+    if let Some(g) = generic {
+        colored.push(g);
+    }
+    colored
+}
+
+/// Count how many candidates can pay a given shard.
+fn count_candidates_for_shard(candidates: &[ManaAbilityRef], shard: ManaCostShard) -> usize {
+    candidates.iter().filter(|c| c.can_pay_shard(shard)).count()
+}
+
+/// Mirrors Java AutoPay.chooseLeastVersatileCandidate() — pick the first
+/// candidate that can pay the shard, but defer candidates that are the sole
+/// source for another unpaid colored shard. Falls back if all are sole sources.
+fn choose_least_versatile_candidate(
+    game: &GameState,
+    player: PlayerId,
+    current_spell: Option<CardId>,
+    candidates: &[ManaAbilityRef],
+    shard: ManaCostShard,
+    unpaid: &ManaCostBeingPaid,
+    allow_reserved_source_reuse: bool,
+) -> Option<ManaAbilityRef> {
+    let mut fallback: Option<ManaAbilityRef> = None;
+    for ma in candidates {
+        if Some(ma.card_id) == current_spell {
+            continue;
+        }
+        if !ma.can_pay_shard(shard) {
+            continue;
+        }
+        if !can_pay_non_tap_mana_ability_costs(game, player, ma, current_spell, allow_reserved_source_reuse) {
+            continue;
+        }
+        if fallback.is_none() {
+            fallback = Some(ma.clone());
+        }
+        if !is_sole_source_for_other_shard_candidates(ma, shard, candidates, unpaid) {
+            return Some(ma.clone());
+        }
+    }
+    fallback
+}
+
+/// Mirrors Java AutoPay.isSoleSourceForOtherShard() using the flat candidate list.
+fn is_sole_source_for_other_shard_candidates(
+    candidate: &ManaAbilityRef,
+    current_shard: ManaCostShard,
+    candidates: &[ManaAbilityRef],
+    unpaid: &ManaCostBeingPaid,
+) -> bool {
+    let mut seen = std::collections::HashSet::new();
+    for other_shard in unpaid.get_distinct_shards() {
+        if other_shard == current_shard {
+            continue;
+        }
+        if matches!(other_shard, ManaCostShard::Generic | ManaCostShard::X | ManaCostShard::ColoredX) {
+            continue;
+        }
+        if !seen.insert(other_shard) {
+            continue;
+        }
+        if !candidate.can_pay_shard(other_shard) {
+            continue;
+        }
+        let sources_for_other = candidates.iter().filter(|alt| alt.can_pay_shard(other_shard)).count();
+        if sources_for_other <= 1 {
+            return true;
+        }
+    }
+    false
+}
+
+/// Choose the best mana ability to pay a shard, mirroring Java AutoPay's
+/// `chooseLeastVersatileCandidate()`.
+///
+/// Defers choosing a source if it is the sole provider for another unpaid
+/// colored shard — this preserves flexible dual lands for the shards that
+/// truly need them. Falls back to the first valid candidate if every
+/// candidate is a sole source for something.
 fn choose_mana_ability(
     game: &GameState,
     player: PlayerId,
@@ -374,15 +520,17 @@ fn choose_mana_ability(
     to_pay: ManaCostShard,
     ma_list: &[ManaAbilityRef],
     allow_reserved_source_reuse: bool,
+    sources_for_shards: &IndexMap<ManaCostShard, Vec<ManaAbilityRef>>,
+    unpaid: &ManaCostBeingPaid,
 ) -> Option<ManaAbilityRef> {
+    let mut fallback: Option<ManaAbilityRef> = None;
+
     for ma in ma_list {
-        // Java ComputerUtilMana.chooseManaAbility() skips mana abilities on the
-        // same host card as the spell/ability currently being paid for.
         if Some(ma.card_id) == current_spell {
             continue;
         }
-        if ma.can_pay_shard(to_pay)
-            && can_pay_non_tap_mana_ability_costs(
+        if !ma.can_pay_shard(to_pay)
+            || !can_pay_non_tap_mana_ability_costs(
                 game,
                 player,
                 ma,
@@ -390,10 +538,56 @@ fn choose_mana_ability(
                 allow_reserved_source_reuse,
             )
         {
+            continue;
+        }
+
+        if fallback.is_none() {
+            fallback = Some(ma.clone());
+        }
+
+        // Check if this candidate is the sole source for another unpaid shard.
+        // If so, defer it — another shard needs it more.
+        if !is_sole_source_for_other_shard(ma, to_pay, sources_for_shards, unpaid) {
             return Some(ma.clone());
         }
     }
-    None
+
+    // All valid candidates are sole sources for other shards.
+    // Fall back to the first valid one (forced pick).
+    fallback
+}
+
+/// Mirrors Java AutoPay's `isSoleSourceForOtherShard()`.
+///
+/// Returns true if `candidate` is the ONLY source that can pay for some
+/// other unpaid colored shard (not the current one, not generic/X).
+fn is_sole_source_for_other_shard(
+    candidate: &ManaAbilityRef,
+    current_shard: ManaCostShard,
+    sources_for_shards: &IndexMap<ManaCostShard, Vec<ManaAbilityRef>>,
+    unpaid: &ManaCostBeingPaid,
+) -> bool {
+    for other_shard in unpaid.get_distinct_shards() {
+        if other_shard == current_shard {
+            continue;
+        }
+        // Skip generic/X shards — they can be paid by anything.
+        if matches!(other_shard, ManaCostShard::Generic | ManaCostShard::X | ManaCostShard::ColoredX) {
+            continue;
+        }
+        if !candidate.can_pay_shard(other_shard) {
+            continue;
+        }
+        // Count how many sources in the pool can pay for this other shard.
+        let sources_for_other = sources_for_shards
+            .get(&other_shard)
+            .map(|list| list.iter().filter(|alt| alt.can_pay_shard(other_shard)).count())
+            .unwrap_or(0);
+        if sources_for_other <= 1 {
+            return true; // This candidate is the only source — defer it.
+        }
+    }
+    false
 }
 
 fn can_pay_non_tap_mana_ability_costs(
@@ -435,7 +629,8 @@ fn can_pay_non_tap_mana_ability_costs(
                         return false;
                     }
                 } else {
-                    let mut targets = get_sacrifice_targets(game, player, type_filter);
+                    let mut targets =
+                        crate::cost::get_sacrifice_targets_for_cost(game, player, type_filter, None);
                     if !allow_reserved_source_reuse {
                         if let Some(reserved) = reserved_source {
                             targets.retain(|&cid| cid != reserved);
@@ -503,10 +698,10 @@ fn pay_non_tap_mana_ability_costs(
                     if *amount > 1 || game.card(ma.card_id).zone != ZoneType::Battlefield {
                         return false;
                     }
-                    // Mirror Java's DeterministicCostDecision.visit(CostSacrifice) →
-                    // confirm(cost, shouldAsk=true) → confirmPayment() path.
-                    // When a mana ability sacrifices itself (e.g. Treasure Token),
-                    // the player is asked to confirm before the sacrifice happens.
+                    // Java parity: AutoPay.payAbilityActivationCosts() delegates to
+                    // costPlumbing.payWithDeterministicDecision() which calls
+                    // DeterministicCostDecision.visit(CostSacrifice) → confirm()
+                    // → confirmPayment(). This consumes RNG for non-spell contexts.
                     if let Some(ref mut cb) = callback {
                         if let Some(confirmed_id) =
                             cb(ManaPayCallback::ConfirmSelfSacrifice(ma.card_id))
@@ -520,8 +715,13 @@ fn pay_non_tap_mana_ability_costs(
                     }
                     let owner = game.card(ma.card_id).owner;
                     game.move_card(ma.card_id, ZoneType::Graveyard, owner);
+                    // Notify caller so sacrifice triggers can fire.
+                    if let Some(ref mut cb) = callback {
+                        cb(ManaPayCallback::NotifySacrificeForMana(ma.card_id));
+                    }
                 } else {
-                    let mut targets = get_sacrifice_targets(game, player, type_filter);
+                    let mut targets =
+                        crate::cost::get_sacrifice_targets_for_cost(game, player, type_filter, None);
                     if !allow_reserved_source_reuse {
                         if let Some(reserved) = reserved_source {
                             targets.retain(|&cid| cid != reserved);
@@ -1126,14 +1326,11 @@ fn autopay_source_score(game: &GameState, _player: PlayerId, ma: &ManaAbilityRef
         s += 1;
     }
 
-    // Creatures with combat potential are more valuable.
+    // Creatures are more valuable and should be preserved.
+    // Java always adds +26 for any creature, regardless of tap state.
     if card.is_creature() {
-        if card.can_attack() {
-            s += 13;
-        }
-        if card.can_block() {
-            s += 13;
-        }
+        s += 13; // attack role
+        s += 13; // block role
     }
 
     s
@@ -1465,6 +1662,7 @@ mod tests {
                             Some(cid) // confirm
                         }
                         ManaPayCallback::ConfirmSubCounter(cid) => Some(cid),
+                        ManaPayCallback::NotifySacrificeForMana(cid) => Some(cid),
                     }
                 };
 
@@ -1518,6 +1716,7 @@ mod tests {
                             None // decline
                         }
                         ManaPayCallback::ConfirmSubCounter(cid) => Some(cid),
+                        ManaPayCallback::NotifySacrificeForMana(cid) => Some(cid),
                     }
                 };
 

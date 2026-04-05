@@ -68,7 +68,16 @@ impl TargetRestrictions {
             .map(|s| s.trim().to_string())
             .collect();
         let origin_zone = params.get(keys::ORIGIN).and_then(|v| parse_zone_type(v));
-        let mut target_kind = parse_target_kind_enhanced(&valid_tgts[0], origin_zone);
+        // For CardInZone targeting (non-battlefield origin), pass the full
+        // ValidTgts string so comma-separated types (e.g. "Creature,Land")
+        // are all included in the filter. For battlefield targeting, use
+        // only the first token (legacy parser handles single types).
+        let enhanced_input = if origin_zone.is_some_and(|z| z != ZoneType::Battlefield) {
+            valid_tgts_str
+        } else {
+            &valid_tgts[0]
+        };
+        let mut target_kind = parse_target_kind_enhanced(enhanced_input, origin_zone);
         let min_targets = params
             .get_cloned(keys::TARGET_MIN)
             .unwrap_or_else(|| "1".to_string());
@@ -583,7 +592,14 @@ fn parse_zone_type(s: &str) -> Option<ZoneType> {
 fn parse_target_kind_enhanced(val: &str, origin_zone: Option<ZoneType>) -> TargetKind {
     let val = val.trim();
 
-    // Handle the special case of CardInZone targeting first
+    // Player/Opponent targeting is never card-in-zone, even when Origin$ is
+    // a non-battlefield zone (e.g. Nihil Spellbomb targets a Player while
+    // Origin$ Graveyard specifies where to exile cards from).
+    if val.eq_ignore_ascii_case("Player") || val.eq_ignore_ascii_case("Opponent") {
+        return TargetKind::Player;
+    }
+
+    // Handle the special case of CardInZone targeting
     if let Some(zone) = origin_zone {
         if zone != ZoneType::Battlefield {
             // If we have a non-battlefield origin, this is zone targeting.
@@ -654,15 +670,43 @@ pub fn get_valid_cards_in_zone(
     filter: Option<&str>,
     source_card: Option<CardId>,
 ) -> Vec<CardId> {
-    let zone_cards = game.cards_in_zone(zone, player).to_vec();
+    // Determine whether the filter restricts to a specific controller/owner.
+    // If not restricted, search ALL players' zones (e.g. "target card from a graveyard"
+    // can target any player's graveyard). Mirrors Java's TargetRestrictions.getAllCandidates().
+    let restrict_to_player = filter
+        .map(|f| {
+            f.contains("YouCtrl")
+                || f.contains("YouOwn")
+                || f.contains("YouControl")
+                || f.contains("EnchantedBy")
+        })
+        .unwrap_or(false);
+
+    let zone_cards: Vec<CardId> = if restrict_to_player {
+        game.cards_in_zone(zone, player).to_vec()
+    } else {
+        game.player_order
+            .iter()
+            .flat_map(|&pid| game.cards_in_zone(zone, pid).to_vec())
+            .collect()
+    };
 
     match filter {
         None => zone_cards,
-        Some(f) => zone_cards
-            .into_iter()
-            .filter(|&cid| !is_other_filter_self_hit(Some(f), source_card, cid))
-            .filter(|&cid| card_property::card_has_property(game.card(cid), f, player))
-            .collect(),
+        Some(f) => {
+            // ValidTgts$ uses commas for OR logic (e.g. "Creature,Land" means
+            // creature OR land). Split and match any clause.
+            let clauses: Vec<&str> = f.split(',').map(str::trim).collect();
+            zone_cards
+                .into_iter()
+                .filter(|&cid| !is_other_filter_self_hit(Some(f), source_card, cid))
+                .filter(|&cid| {
+                    clauses
+                        .iter()
+                        .any(|clause| card_property::card_has_property(game.card(cid), clause, player))
+                })
+                .collect()
+        }
     }
 }
 

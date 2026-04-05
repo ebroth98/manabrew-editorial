@@ -906,6 +906,9 @@ fn pay_roll_cost(
                                 None
                             }
                         }
+                        mana::ManaPayCallback::NotifySacrificeForMana(sacrificed_id) => {
+                            Some(sacrificed_id) // No trigger handler access here
+                        }
                     }
                 };
                 let tapped = mana::auto_tap_lands_with_callbacks(

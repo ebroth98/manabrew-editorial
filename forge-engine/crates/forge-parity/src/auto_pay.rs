@@ -297,6 +297,16 @@ fn autopay_source_score(game: &GameState, candidate: &ManaAbilityCandidate) -> i
     if let Some(ability_index) = candidate.ability_index {
         if let Some(ab) = card.activated_abilities.get(ability_index) {
             score += ab.cost.parts.len() as i32;
+            if ab
+                .cost
+                .parts
+                .iter()
+                .any(|part| matches!(part, CostPart::Sacrifice { .. }))
+            {
+                // Preserve sacrifice fodder like Spawn/Treasure whenever a
+                // non-sacrificial source can pay the same shard.
+                score += 50;
+            }
         }
     } else {
         score += 1;

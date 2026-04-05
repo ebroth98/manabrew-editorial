@@ -62,41 +62,23 @@ pub fn can_pay(
         return false;
     };
     let card = game.card(source);
-    let static_source_cards = super::static_ability_source_cards(game);
     if type_filter == "CARDNAME" {
         if card.zone != ZoneType::Battlefield {
             return false;
         }
         return !crate::staticability::static_ability_cant_sacrifice::cant_sacrifice(
-            &static_source_cards,
+            &super::static_ability_source_cards(game),
             card,
             ability,
             true,
         );
     }
     if type_filter.eq_ignore_ascii_case("All") {
-        let targets = super::get_sacrifice_targets(game, player, type_filter);
-        return targets.iter().all(|&cid| {
-            !crate::staticability::static_ability_cant_sacrifice::cant_sacrifice(
-                &static_source_cards,
-                game.card(cid),
-                ability,
-                true,
-            )
-        });
+        let targets = super::get_sacrifice_targets_for_cost(game, player, type_filter, ability);
+        return !targets.is_empty();
     }
-    let targets = super::get_sacrifice_targets(game, player, type_filter);
-    let valid = targets
-        .iter()
-        .filter(|&&cid| {
-            !crate::staticability::static_ability_cant_sacrifice::cant_sacrifice(
-                &static_source_cards,
-                game.card(cid),
-                ability,
-                true,
-            )
-        })
-        .count() as i32;
+    let valid =
+        super::get_sacrifice_targets_for_cost(game, player, type_filter, ability).len() as i32;
     valid >= *amount
 }
 

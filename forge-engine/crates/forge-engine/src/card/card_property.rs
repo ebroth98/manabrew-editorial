@@ -42,6 +42,9 @@ fn matches_single_property(card: &Card, property: &str, source_controller: Playe
         fc::OPP_CTRL => card.controller != source_controller,
         fc::YOU_CTRL => card.controller == source_controller,
         fc::YOU_DONT_CTRL => card.controller != source_controller,
+        "YouOwn" => card.owner == source_controller,
+        "OppOwn" => card.owner != source_controller,
+        "YouDontOwn" => card.owner != source_controller,
         // Combat qualifier used by scripts such as Stalking Leonin
         // (`ValidTgts$ Creature.attackingYou`): card must currently be
         // attacking the source controller.
@@ -192,6 +195,29 @@ mod tests {
         let caster = PlayerId(0);
         // OppCtrl.nonBlack → opponent controls + not black → true for green creature
         assert!(card_has_property(&card, "OppCtrl.nonBlack", caster));
+    }
+
+    #[test]
+    fn ownership_filters() {
+        use crate::ids::CardId;
+
+        let mut card = Card::new(
+            CardId(8),
+            "Borrowed Bear".to_string(),
+            PlayerId(0),
+            forge_foundation::CardTypeLine::parse("Creature - Bear"),
+            ManaCost::parse("1 G"),
+            ColorSet::GREEN,
+            Some(2),
+            Some(2),
+            vec![],
+            vec![],
+        );
+        card.controller = PlayerId(1);
+
+        assert!(card_has_property(&card, "YouOwn", PlayerId(0)));
+        assert!(!card_has_property(&card, "YouOwn", PlayerId(1)));
+        assert!(card_has_property(&card, "OppOwn", PlayerId(1)));
     }
 
     #[test]

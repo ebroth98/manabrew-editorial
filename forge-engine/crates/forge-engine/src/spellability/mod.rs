@@ -717,11 +717,8 @@ impl SpellAbility {
     pub fn can_add_more_target(&self, game: &GameState) -> bool {
         if let Some(ref tr) = self.target_restrictions {
             let max = tr.get_max_targets(game, self);
-            let current = if self.target_chosen.target_card.is_some() {
-                1
-            } else {
-                0
-            } + if self.target_chosen.target_player.is_some() {
+            let current = self.target_chosen.all_target_cards().len() as i32
+                + if self.target_chosen.target_player.is_some() {
                 1
             } else {
                 0
@@ -736,14 +733,10 @@ impl SpellAbility {
     /// Mirrors Java's `SpellAbility.findTargetedCards()`.
     pub fn find_targeted_cards(&self) -> Vec<CardId> {
         let mut cards = Vec::new();
-        if let Some(cid) = self.target_chosen.target_card {
-            cards.push(cid);
-        }
+        cards.extend(self.target_chosen.all_target_cards());
         let mut current = self.sub_ability.as_deref();
         while let Some(sub) = current {
-            if let Some(cid) = sub.target_chosen.target_card {
-                cards.push(cid);
-            }
+            cards.extend(sub.target_chosen.all_target_cards());
             current = sub.sub_ability.as_deref();
         }
         cards
@@ -1197,18 +1190,19 @@ fn choose_targets_for(
 
     let player = sa.targeting_player.unwrap_or(sa.activating_player);
 
-    // Spells with TargetMin$ 0 (e.g. Fireball) can be cast with zero targets.
-    // Java's DeterministicController skips setupDeterministicTargets when
-    // isTargetNumberValid() is already true (min=0, 0 targets), consuming no RNG.
-    // We must match by returning early without calling any agent choose method.
     let min_targets = tr.get_min_targets(game, sa);
-    if min_targets <= 0 {
+    let max_targets = tr.get_max_targets(game, sa);
+    if max_targets <= 0 {
         return true;
     }
 
     if !tr.has_candidates(game, player, sa.source) {
-        return false;
+        return min_targets <= 0;
     }
+
+    sa.target_chosen.target_card = None;
+    sa.target_chosen.target_card_zone_timestamp = None;
+    sa.target_chosen.divided_map.clear();
 
     match &tr.target_kind {
         TargetKind::None => {}
@@ -1255,9 +1249,27 @@ fn choose_targets_for(
                 .collect();
             agents[player.index()].snapshot_state(game, mana_pools);
             let agent = &mut agents[player.index()];
-            sa.target_chosen.target_card = agent.choose_target_card(player, &valid, Some(sa));
-            if let Some(cid) = sa.target_chosen.target_card {
-                sa.target_chosen.target_card_zone_timestamp = Some(game.card(cid).zone_timestamp);
+            if max_targets > 1 {
+                let chosen = agent.choose_cards_for_effect(
+                    player,
+                    &valid,
+                    min_targets.max(0) as usize,
+                    max_targets as usize,
+                );
+                if let Some(&first) = chosen.first() {
+                    sa.target_chosen.target_card = Some(first);
+                    sa.target_chosen.target_card_zone_timestamp =
+                        Some(game.card(first).zone_timestamp);
+                    for &extra in chosen.iter().skip(1) {
+                        sa.target_chosen.divided_map.insert(extra, 0);
+                    }
+                }
+            } else {
+                sa.target_chosen.target_card = agent.choose_target_card(player, &valid, Some(sa));
+                if let Some(cid) = sa.target_chosen.target_card {
+                    sa.target_chosen.target_card_zone_timestamp =
+                        Some(game.card(cid).zone_timestamp);
+                }
             }
         }
         TargetKind::Permanent(_) => {
@@ -1267,9 +1279,27 @@ fn choose_targets_for(
                 .collect();
             agents[player.index()].snapshot_state(game, mana_pools);
             let agent = &mut agents[player.index()];
-            sa.target_chosen.target_card = agent.choose_target_card(player, &valid, Some(sa));
-            if let Some(cid) = sa.target_chosen.target_card {
-                sa.target_chosen.target_card_zone_timestamp = Some(game.card(cid).zone_timestamp);
+            if max_targets > 1 {
+                let chosen = agent.choose_cards_for_effect(
+                    player,
+                    &valid,
+                    min_targets.max(0) as usize,
+                    max_targets as usize,
+                );
+                if let Some(&first) = chosen.first() {
+                    sa.target_chosen.target_card = Some(first);
+                    sa.target_chosen.target_card_zone_timestamp =
+                        Some(game.card(first).zone_timestamp);
+                    for &extra in chosen.iter().skip(1) {
+                        sa.target_chosen.divided_map.insert(extra, 0);
+                    }
+                }
+            } else {
+                sa.target_chosen.target_card = agent.choose_target_card(player, &valid, Some(sa));
+                if let Some(cid) = sa.target_chosen.target_card {
+                    sa.target_chosen.target_card_zone_timestamp =
+                        Some(game.card(cid).zone_timestamp);
+                }
             }
         }
         TargetKind::CardInZone { zone, .. } => {
@@ -1279,10 +1309,28 @@ fn choose_targets_for(
                 .collect();
             agents[player.index()].snapshot_state(game, mana_pools);
             let agent = &mut agents[player.index()];
-            sa.target_chosen.target_card =
-                agent.choose_target_card_from_zone(player, *zone, &valid, Some(sa));
-            if let Some(cid) = sa.target_chosen.target_card {
-                sa.target_chosen.target_card_zone_timestamp = Some(game.card(cid).zone_timestamp);
+            if max_targets > 1 {
+                let chosen = agent.choose_cards_for_effect(
+                    player,
+                    &valid,
+                    min_targets.max(0) as usize,
+                    max_targets as usize,
+                );
+                if let Some(&first) = chosen.first() {
+                    sa.target_chosen.target_card = Some(first);
+                    sa.target_chosen.target_card_zone_timestamp =
+                        Some(game.card(first).zone_timestamp);
+                    for &extra in chosen.iter().skip(1) {
+                        sa.target_chosen.divided_map.insert(extra, 0);
+                    }
+                }
+            } else {
+                sa.target_chosen.target_card =
+                    agent.choose_target_card_from_zone(player, *zone, &valid, Some(sa));
+                if let Some(cid) = sa.target_chosen.target_card {
+                    sa.target_chosen.target_card_zone_timestamp =
+                        Some(game.card(cid).zone_timestamp);
+                }
             }
         }
         TargetKind::Spell => {

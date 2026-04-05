@@ -390,25 +390,9 @@ impl GameLoop {
 
                 // Bestow: attach to a creature as an Aura
                 if alt_cost == Some(crate::spellability::AlternativeCost::Bestow) {
-                    // Find a creature to attach to (agent chooses)
-                    let creatures: Vec<crate::ids::CardId> = game
-                        .cards_in_zone(ZoneType::Battlefield, player)
-                        .iter()
-                        .chain(
-                            game.cards_in_zone(ZoneType::Battlefield, game.opponent_of(player))
-                                .iter(),
-                        )
-                        .copied()
-                        .filter(|&cid| cid != card_id && game.card(cid).is_creature())
-                        .collect();
-                    if !creatures.is_empty() {
-                        agents[player.index()].snapshot_state(game, &self.mana_pools);
-                        if let Some(target) =
-                            agents[player.index()].choose_sacrifice(player, &creatures, None)
-                        {
-                            game.card_mut(card_id).unanimate_bestow();
-                            game.attach_to(card_id, target);
-                        }
+                    if let Some(target) = entry.spell_ability.target_chosen.target_card {
+                        game.card_mut(card_id).unanimate_bestow();
+                        game.attach_to(card_id, target);
                     }
                 }
 
@@ -599,12 +583,16 @@ impl GameLoop {
             // Propagate kicked flag from root SA to sub-abilities for condition checks
             let mut sa_with_ctx;
             let needs_ctx_clone = (root_kicked && !sa.kicked)
+                || (parent_target_card.is_some() && sa.target_chosen.target_card.is_none())
                 || (parent_target_player.is_some() && sa.target_chosen.target_player.is_none())
                 || (inherited_trigger_index.is_some() && sa.trigger_index.is_none());
             let sa_ref = if needs_ctx_clone {
                 sa_with_ctx = sa.clone();
                 if root_kicked && !sa_with_ctx.kicked {
                     sa_with_ctx.kicked = true;
+                }
+                if sa_with_ctx.target_chosen.target_card.is_none() {
+                    sa_with_ctx.target_chosen.target_card = parent_target_card;
                 }
                 if sa_with_ctx.target_chosen.target_player.is_none() {
                     sa_with_ctx.target_chosen.target_player = parent_target_player;
@@ -655,7 +643,7 @@ impl GameLoop {
             // Check if we actually have any chosen targets (mirrors Java's
             // `!sa.isZeroTargets()` — Rust stores at most one target per slot
             // so having any slot filled means non-zero targets)
-            let has_any_chosen = sa.target_chosen.target_card.is_some()
+            let has_any_chosen = !sa.target_chosen.all_target_cards().is_empty()
                 || sa.target_chosen.target_player.is_some()
                 || sa.target_chosen.target_stack_entry.is_some();
 
@@ -669,17 +657,23 @@ impl GameLoop {
                 // Check each chosen target. If ANY is still valid, fizzle = false.
                 // Mirrors Java's for loop over `sa.getTargets()`.
 
-                if let Some(target_card_id) = sa.target_chosen.target_card {
+                for target_card_id in sa.target_chosen.all_target_cards() {
                     if Self::is_card_target_valid(
                         sa,
                         target_card_id,
-                        sa.target_chosen.target_card_zone_timestamp,
+                        if sa.target_chosen.target_card == Some(target_card_id) {
+                            sa.target_chosen.target_card_zone_timestamp
+                        } else {
+                            None
+                        },
                         game,
                     ) {
                         fizzle = Some(false);
                     } else {
-                        sa.target_chosen.target_card = None;
-                        sa.target_chosen.target_card_zone_timestamp = None;
+                        if sa.target_chosen.target_card == Some(target_card_id) {
+                            sa.target_chosen.target_card = None;
+                            sa.target_chosen.target_card_zone_timestamp = None;
+                        }
                         sa.target_chosen.divided_map.remove(&target_card_id);
                     }
                 }

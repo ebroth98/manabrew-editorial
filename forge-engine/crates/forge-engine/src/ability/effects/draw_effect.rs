@@ -1,11 +1,11 @@
-use super::{parse_param, resolve_defined_player_with_sa, EffectContext};
+use super::{resolve_defined_player_with_sa, resolve_numeric_svar, EffectContext};
 use crate::event::{RunParams, TriggerType};
 use crate::replacement::replacement_handler::{apply_replacements, ReplacementEvent};
 use crate::replacement::ReplacementResult;
 use crate::spellability::SpellAbility;
 
 pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
-    let num = parse_param(&sa.ability_text, "NumCards$ ").unwrap_or(1);
+    let num = resolve_numeric_svar(ctx.game, sa, "NumCards", 1);
     let target = sa
         .params
         .get("Defined")

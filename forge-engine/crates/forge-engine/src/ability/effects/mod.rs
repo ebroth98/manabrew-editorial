@@ -1145,6 +1145,7 @@ fn try_pay_unless_cost(
                             ctx.trigger_handler,
                             cid,
                             payer,
+                            Some(sa),
                         );
                     }
                 }
@@ -1154,7 +1155,12 @@ fn try_pay_unless_cost(
                 type_filter,
             } => {
                 for _ in 0..*amount {
-                    let valid = crate::cost::get_sacrifice_targets(ctx.game, payer, type_filter);
+                    let valid = crate::cost::get_sacrifice_targets_for_cost(
+                        ctx.game,
+                        payer,
+                        type_filter,
+                        Some(sa),
+                    );
                     if valid.is_empty() {
                         return false;
                     }

@@ -1163,10 +1163,6 @@ impl PlayerAgent for CapturingAgent {
         self.inner.choose_x_value(player, max_x, card_name)
     }
 
-    fn pay_x_cost_in_mana(&self) -> bool {
-        self.inner.pay_x_cost_in_mana()
-    }
-
     fn choose_optional_trigger(
         &mut self,
         player: PlayerId,

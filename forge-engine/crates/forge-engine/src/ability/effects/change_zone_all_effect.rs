@@ -164,7 +164,13 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         parse_zone_type(destination_str),
         parse_zone_type(origin_str),
     ) {
-        let player_ids = ctx.game.player_order.clone();
+        // When the ability targets a player (e.g. Nihil Spellbomb: "target player's graveyard"),
+        // only search that player's zone instead of all players.
+        let player_ids: Vec<PlayerId> = if sa.target_chosen.target_player.is_some() {
+            sa.target_chosen.target_player.into_iter().collect()
+        } else {
+            ctx.game.player_order.clone()
+        };
         let mut to_move: Vec<(CardId, PlayerId)> = Vec::new();
 
         for &pid in &player_ids {
@@ -208,6 +214,14 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                     .register_active_trigger(ctx.game, card_id);
             }
             emit_zone_trigger(ctx.trigger_handler, card_id, old_zone, dest_zone);
+        }
+
+        // Handle Shuffle$ True (e.g. Nihil Spellbomb shuffles the target player's library).
+        if sa.params.is_true(keys::SHUFFLE) {
+            for &pid in &player_ids {
+                let lib = ctx.game.zone_mut(ZoneType::Library, pid);
+                ctx.rng.shuffle_cards(&mut lib.cards);
+            }
         }
     }
 }

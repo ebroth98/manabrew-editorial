@@ -876,17 +876,9 @@ impl GameLoop {
                 agents[player.index()].snapshot_state(game, &self.mana_pools);
                 let chosen_x = agents[player.index()].choose_x_value(player, max_x, Some(&name));
                 x_value = chosen_x.min(max_x);
-                // Build effective cost: non-X shards + (X * x_count) generic
-                let extra_generic = if agents[player.index()].pay_x_cost_in_mana() {
-                    (x_value as i32) * (x_count as i32)
-                } else {
-                    0
-                };
-                let mut effective = non_x_cost;
-                if extra_generic > 0 {
-                    effective = effective.add(&forge_foundation::ManaCost::generic(extra_generic));
-                }
-                effective
+                non_x_cost.add(&forge_foundation::ManaCost::generic(
+                    (x_value * x_count as u32) as i32,
+                ))
             } else {
                 x_value = 0;
                 mana_cost
@@ -1122,6 +1114,12 @@ impl GameLoop {
                 sa.alt_cost = Some(crate::spellability::AlternativeCost::Emerge);
             } else if is_bestow {
                 sa.alt_cost = Some(crate::spellability::AlternativeCost::Bestow);
+                if sa.target_restrictions.is_none() {
+                    sa.target_restrictions =
+                        crate::spellability::target_restrictions::TargetRestrictions::new(
+                            &Params::from_raw("ValidTgts$ Creature"),
+                        );
+                }
             } else if is_warp {
                 sa.alt_cost = Some(crate::spellability::AlternativeCost::Warp);
             } else if is_morph_facedown {
@@ -1271,6 +1269,11 @@ impl GameLoop {
             } else {
             let cost_str = total_cost.to_string();
             let cost_display_str = display_total_cost.to_string();
+            let cost_checkpoint_str = if x_count > 0 && x_value == 0 {
+                cost_display_str.clone()
+            } else {
+                cost_str.clone()
+            };
             // Save state for refund on cancel (recursive mana refund)
             // Mirrors Java's ManaRefundService: save pool + permanent states
             let saved_pool = self.pool(player).clone();
@@ -1287,22 +1290,13 @@ impl GameLoop {
                 })
                 .collect();
 
+            let mut mana_loop_invalid_count = 0u32;
             loop {
                 let tappable_lands: Vec<CardId> = game
                     .cards_in_zone(ZoneType::Battlefield, player)
                     .to_vec()
                     .into_iter()
-                    .filter(|&cid| {
-                        let c = game.card(cid);
-                        !c.tapped
-                            && (c.is_land()
-                                || c.activated_abilities.iter().any(|ab| {
-                                    ab.is_mana_ability
-                                        && crate::cost::can_pay_ignoring_mana(
-                                            &ab.cost, game, cid, player,
-                                        )
-                                }))
-                    })
+                    .filter(|&cid| Self::mana_source_available_for_payment(game, player, cid))
                     .collect();
                 let mut mana_ability_options: Vec<crate::agent::ManaAbilityOption> = Vec::new();
                 for &cid in &tappable_lands {
@@ -1347,8 +1341,8 @@ impl GameLoop {
                     card_id,
                     &card_name,
                     &cost_str,
-                    &cost_str,
                     &cost_display_str,
+                    &cost_checkpoint_str,
                     false,
                     &mana_ability_options,
                     &tappable_lands,
@@ -1363,8 +1357,25 @@ impl GameLoop {
                         express_choice,
                     } => {
                         if !tappable_lands.contains(&land_id) {
+                            // Agent requested a card that is not tappable.
+                            // After repeated invalid attempts, treat as payment
+                            // failure to avoid an infinite loop.
+                            mana_loop_invalid_count += 1;
+                            if mana_loop_invalid_count > 3 {
+                                *self.pool_mut(player) = saved_pool;
+                                for &(cid, was_tapped, ref saved_counters) in
+                                    &saved_permanent_states
+                                {
+                                    if !was_tapped && game.card(cid).tapped {
+                                        game.untap(cid);
+                                    }
+                                    game.card_mut(cid).set_counters_map(saved_counters.clone());
+                                }
+                                return None;
+                            }
                             continue;
                         }
+                        mana_loop_invalid_count = 0;
                         let mana_ab = {
                             let c = game.card(land_id);
                             mana_ability_index
@@ -1446,6 +1457,19 @@ impl GameLoop {
                             )
                         {
                             if commander_tax > 0 && !test_pool.try_pay_extra_generic(commander_tax) {
+                                mana_loop_invalid_count += 1;
+                                if mana_loop_invalid_count > 3 {
+                                    *self.pool_mut(player) = saved_pool;
+                                    for &(cid, was_tapped, ref saved_counters) in
+                                        &saved_permanent_states
+                                    {
+                                        if !was_tapped && game.card(cid).tapped {
+                                            game.untap(cid);
+                                        }
+                                        game.card_mut(cid).set_counters_map(saved_counters.clone());
+                                    }
+                                    return None;
+                                }
                                 continue;
                             }
                             let life_to_pay = self
@@ -1491,6 +1515,23 @@ impl GameLoop {
                                 }
                             }
                             break;
+                        } else {
+                            // Pool cannot pay the cost — agent thinks it can
+                            // but restrictions/colors prevent it. Treat as
+                            // invalid to avoid infinite loop.
+                            mana_loop_invalid_count += 1;
+                            if mana_loop_invalid_count > 3 {
+                                *self.pool_mut(player) = saved_pool;
+                                for &(cid, was_tapped, ref saved_counters) in
+                                    &saved_permanent_states
+                                {
+                                    if !was_tapped && game.card(cid).tapped {
+                                        game.untap(cid);
+                                    }
+                                    game.card_mut(cid).set_counters_map(saved_counters.clone());
+                                }
+                                return None;
+                            }
                         }
                     }
                     ManaCostAction::Cancel => {
@@ -2040,6 +2081,11 @@ impl GameLoop {
 
             // Move spell to stack zone
             self.move_card_with_runtime(game, card_id, ZoneType::Stack, player, agents);
+
+            // Register the cast card's triggers so that SpellCast self-triggers
+            // (e.g. Writhing Chrysalis "When you cast this spell, create tokens")
+            // are active while the card is on the stack.
+            self.trigger_handler.register_active_trigger(game, card_id);
 
             // Storm: create N copies where N = spells_cast_this_turn - 1.
             if game.card(card_id).has_storm() {

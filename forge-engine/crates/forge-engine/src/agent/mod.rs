@@ -732,12 +732,6 @@ pub trait PlayerAgent {
         max_x
     }
 
-    /// Whether chosen X should be charged as generic mana in the mana-payment
-    /// step. Default engine behavior is true.
-    fn pay_x_cost_in_mana(&self) -> bool {
-        true
-    }
-
     /// Choose whether to pay life instead of mana for a Phyrexian mana shard.
     /// Returns true to pay 2 life, false to pay the color.
     /// Default: always pay color (never pay life).

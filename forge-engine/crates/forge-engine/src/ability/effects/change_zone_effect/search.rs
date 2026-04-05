@@ -265,6 +265,7 @@ pub(super) fn resolve_defined_player_choice(
             continue;
         }
         ctx.agents[pid.index()].snapshot_state(ctx.game, ctx.mana_pools);
+        ctx.agents[pid.index()].on_library_peek(ctx.game, &candidates);
         if let Some(chosen) = ctx.agents[pid.index()].choose_single_card_for_zone_change(
             pid,
             &candidates,

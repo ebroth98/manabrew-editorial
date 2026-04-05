@@ -190,7 +190,12 @@ public class DeterministicController extends PlayerController {
             return true;
         }
 
-        while (!currentAbility.isTargetNumberValid()) {
+        boolean forceOptionalSingleTarget = currentAbility.isTargetNumberValid()
+                && currentAbility.getMinTargets() == 0
+                && currentAbility.getMaxTargets() == 1;
+
+        while (forceOptionalSingleTarget || !currentAbility.isTargetNumberValid()) {
+            forceOptionalSingleTarget = false;
             final List<GameEntity> candidates = tr.getAllCandidates(currentAbility, true);
             final List<GameEntity> valid = new ArrayList<>();
             for (final GameEntity candidate : candidates) {
@@ -1239,9 +1244,15 @@ public class DeterministicController extends PlayerController {
             ManaConversionMatrix matrix,
             boolean effect
     ) {
+        ManaCost payableCost = toPay;
+        if (sa != null && sa.getXManaCostPaid() != null && toPay != null && toPay.countX() > 0) {
+            final ManaCostBeingPaid expanded = new ManaCostBeingPaid(toPay);
+            expanded.setXManaCostPaid(sa.getXManaCostPaid(), sa.getXColor());
+            payableCost = expanded.toManaCost();
+        }
         if (sa != null
                 && !sa.isManaAbility()
-                && !isCheckpointSkippableManaCost(toPay)) {
+                && !isCheckpointSkippableManaCost(payableCost)) {
             final Card source = sa != null ? sa.getHostCard() : null;
             final String sourceLabel = source == null
                     ? "UNKNOWN"
@@ -1249,10 +1260,10 @@ public class DeterministicController extends PlayerController {
             DecisionLog.logChoice(
                     player,
                     "pay_mana_cost_callback",
-                    Arrays.asList(sourceLabel, toPay.toString()),
+                    Arrays.asList(sourceLabel, payableCost.toString()),
                     "CALLBACK");
         }
-        return autoPay.payManaCost(toPay, sa, effect);
+        return autoPay.payManaCost(payableCost, sa, effect);
     }
 
     private static boolean isCheckpointSkippableManaCost(final ManaCost toPay) {

@@ -89,6 +89,7 @@ impl GameLoop {
                 &mut self.trigger_handler,
                 cid,
                 player,
+                None,
             );
         }
         chosen
@@ -229,6 +230,7 @@ impl GameLoop {
         part: &CostPart,
         api: Option<crate::ability::api_type::ApiType>,
         mandatory: bool,
+        context: &CostPaymentContext,
     ) -> bool {
         let source_is_planeswalker = game.card(source).type_line.is_planeswalker();
         if !Self::should_confirm_payment(part, source_is_planeswalker, mandatory) {
@@ -314,7 +316,7 @@ impl GameLoop {
                 _ => {
                     // Confirm decisions for parts that need them
                     if !self.confirm_cost_part_payment(
-                        game, agents, player, card_id, &part, api, mandatory,
+                        game, agents, player, card_id, &part, api, mandatory, &context,
                     ) {
                         payment_ok = false;
                         break;
@@ -370,22 +372,13 @@ impl GameLoop {
                             (cid, c.tapped, c.counters.clone())
                         })
                         .collect();
+                    let mut mana_loop_invalid_count = 0u32;
                     let mana_paid = loop {
                         let tappable_lands: Vec<CardId> = game
                             .cards_in_zone(ZoneType::Battlefield, player)
                             .to_vec()
                             .into_iter()
-                            .filter(|&cid| {
-                                let c = game.card(cid);
-                                !c.tapped
-                                    && (c.is_land()
-                                        || c.activated_abilities.iter().any(|ab| {
-                                            ab.is_mana_ability
-                                                && crate::cost::can_pay_ignoring_mana(
-                                                    &ab.cost, game, cid, player,
-                                                )
-                                        }))
-                            })
+                            .filter(|&cid| Self::mana_source_available_for_payment(game, player, cid))
                             .collect();
                         let mut mana_ability_options: Vec<crate::agent::ManaAbilityOption> =
                             Vec::new();
@@ -449,8 +442,20 @@ impl GameLoop {
                                 express_choice,
                             } => {
                                 if !tappable_lands.contains(&land_id) {
+                                    mana_loop_invalid_count += 1;
+                                    if mana_loop_invalid_count > 3 {
+                                        self.mana_pools[player.index()] = saved_pool.clone();
+                                        for &(cid, was_tapped, ref saved_counters) in &saved_permanent_states {
+                                            if !was_tapped && game.card(cid).tapped {
+                                                game.untap(cid);
+                                            }
+                                            game.card_mut(cid).set_counters_map(saved_counters.clone());
+                                        }
+                                        break false;
+                                    }
                                     continue;
                                 }
+                                mana_loop_invalid_count = 0;
                                 let mana_ab = {
                                     let c = game.card(land_id);
                                     mana_ability_index
@@ -526,6 +531,18 @@ impl GameLoop {
                                 if test_pool.try_pay(&mana_cost) {
                                     self.mana_pools[player.index()].try_pay(&mana_cost);
                                     break true;
+                                } else {
+                                    mana_loop_invalid_count += 1;
+                                    if mana_loop_invalid_count > 3 {
+                                        self.mana_pools[player.index()] = saved_pool.clone();
+                                        for &(cid, was_tapped, ref saved_counters) in &saved_permanent_states {
+                                            if !was_tapped && game.card(cid).tapped {
+                                                game.untap(cid);
+                                            }
+                                            game.card_mut(cid).set_counters_map(saved_counters.clone());
+                                        }
+                                        break false;
+                                    }
                                 }
                             }
                             ManaCostAction::Cancel => {
@@ -623,6 +640,7 @@ impl GameLoop {
                                 &mut self.trigger_handler,
                                 cid,
                                 player,
+                                None,
                             );
                             // Store discarded card for SVar evaluation
                             game.card_mut(card_id).add_remembered_card(cid);
@@ -1664,9 +1682,38 @@ impl GameLoop {
                 if type_filter == "CARDNAME" {
                     continue;
                 }
-                let mut valid = cost::get_sacrifice_targets(game, player, &type_filter);
+                let mut valid =
+                    cost::get_sacrifice_targets_for_cost(game, player, &type_filter, sa);
                 if valid.len() < amount.max(0) as usize {
                     return None;
+                }
+                // Java parity: DeterministicCostDecision.visit(CostSacrifice) calls
+                // confirm(cost, shouldAsk=true) → confirmPayment() before choosing.
+                // Spells auto-accept (isSpellPaymentContext), but activated abilities
+                // ask the agent, consuming RNG.
+                let is_spell_context = sa
+                    .map(|s| {
+                        s.is_spell
+                            || s.source
+                                .map(|cid| {
+                                    let card = game.card(cid);
+                                    card.type_line.is_instant() || card.type_line.is_sorcery()
+                                })
+                                .unwrap_or(false)
+                    })
+                    .unwrap_or(false);
+                if !is_spell_context {
+                    let card_name = sa.and_then(|s| s.source.map(|cid| game.card(cid).card_name.as_str()));
+                    let confirmed = agents[player.index()].confirm_payment(
+                        player,
+                        "Sacrifice",
+                        "Confirm sacrifice cost",
+                        card_name,
+                        sa.and_then(|s| s.api),
+                    );
+                    if !confirmed {
+                        return None;
+                    }
                 }
                 for _ in 0..amount.max(0) {
                     let chosen = agents[player.index()].choose_sacrifice(player, &valid, sa)?;
@@ -2641,7 +2688,7 @@ impl GameLoop {
         sa: Option<&SpellAbility>,
     ) {
         for _ in 0..amount {
-            let valid = cost::get_sacrifice_targets(game, player, type_filter);
+            let valid = cost::get_sacrifice_targets_for_cost(game, player, type_filter, sa);
             if valid.is_empty() {
                 break;
             }
@@ -2943,14 +2990,6 @@ impl GameLoop {
                 agents[player.index()].choose_sacrifice(player, &valid, sa)
             };
             if let Some(chosen) = chosen {
-                if crate::staticability::static_ability_cant_sacrifice::cant_sacrifice(
-                    &game.cards,
-                    game.card(chosen),
-                    None,
-                    true,
-                ) {
-                    continue;
-                }
                 let owner = game.card(chosen).owner;
                 // Capture sacrificed creature's power/toughness for Sacrificed$CardPower
                 // SVar (used by Rite of Consumption, Altar's Reap, etc.).

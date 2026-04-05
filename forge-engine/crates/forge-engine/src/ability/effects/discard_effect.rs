@@ -56,6 +56,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                     ctx.trigger_handler,
                     card_id,
                     target_player,
+                    Some(sa),
                 );
             }
         }

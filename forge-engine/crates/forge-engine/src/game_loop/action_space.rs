@@ -1,4 +1,5 @@
 use super::*;
+use crate::cost::CostPart;
 
 pub(crate) struct ActionSpace {
     pub playable: Vec<crate::agent::PlayOption>,
@@ -8,6 +9,25 @@ pub(crate) struct ActionSpace {
 }
 
 impl GameLoop {
+    pub(crate) fn mana_source_available_for_payment(
+        game: &GameState,
+        player: PlayerId,
+        card_id: CardId,
+    ) -> bool {
+        let card = game.card(card_id);
+        let summoning_sick = card.is_creature() && card.summoning_sick && !card.has_haste();
+
+        let has_usable_mana_ability = card.activated_abilities.iter().any(|ab| {
+            let needs_tap = ab.cost.parts.iter().any(|part| matches!(part, CostPart::Tap));
+            ab.is_mana_ability
+                && (!card.tapped || !needs_tap)
+                && (!summoning_sick || !needs_tap)
+                && crate::cost::can_pay_ignoring_mana(&ab.cost, game, card_id, player)
+        });
+
+        (card.is_land() && !card.tapped) || has_usable_mana_ability
+    }
+
     pub(crate) fn action_space(
         &self,
         game: &GameState,
@@ -19,6 +39,9 @@ impl GameLoop {
         let must_be_instant = !can_play_sorcery;
 
         let playable = self.get_playable_cards(game, player, must_be_instant);
+        // Debug: check if Makeshift Munitions is on battlefield but not in activatable
+        let has_munitions = game.cards_in_zone(ZoneType::Battlefield, player).iter()
+            .any(|&cid| game.card(cid).card_name.contains("Makeshift Munitions"));
         let activatable: Vec<(CardId, usize)> = self
             .get_activatable_abilities(game, player, can_play_sorcery)
             .into_iter()
@@ -36,19 +59,7 @@ impl GameLoop {
             .cards_in_zone(ZoneType::Battlefield, player)
             .iter()
             .copied()
-            .filter(|&cid| {
-                let c = game.card(cid);
-                if c.tapped {
-                    return false;
-                }
-                // Lands are always tappable for mana.
-                if c.is_land() {
-                    return true;
-                }
-                // Non-land permanents with a mana ability (e.g. Llanowar Elves,
-                // Incubation Druid) are also tappable for mana.
-                c.activated_abilities.iter().any(|ab| ab.is_mana_ability)
-            })
+            .filter(|&cid| Self::mana_source_available_for_payment(game, player, cid))
             .collect();
 
         let pool_snapshot = self.pool(player).clone();
@@ -84,5 +95,54 @@ impl GameLoop {
             untappable_lands,
             activatable,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ability::activated::parse_activated_ability;
+    use crate::card::Card;
+    use forge_foundation::{CardTypeLine, ColorSet, ManaCost};
+
+    fn make_card(id: u32, owner: PlayerId, name: &str, type_line: &str, abilities: Vec<&str>) -> Card {
+        let mut card = Card::new(
+            CardId(id),
+            name.to_string(),
+            owner,
+            CardTypeLine::parse(type_line),
+            ManaCost::zero(),
+            ColorSet::COLORLESS,
+            None,
+            None,
+            vec![],
+            vec![],
+        );
+        card.abilities = abilities.iter().map(|s| s.to_string()).collect();
+        card.activated_abilities = abilities
+            .iter()
+            .enumerate()
+            .filter_map(|(i, raw)| parse_activated_ability(raw, i))
+            .collect();
+        card
+    }
+
+    #[test]
+    fn tapped_non_tap_mana_source_is_available_for_payment() {
+        let player = PlayerId(0);
+        let mut game = GameState::new(&["P1", "P2"], 20);
+        let spawn = game.create_card(make_card(
+            1,
+            player,
+            "Eldrazi Spawn Token",
+            "Creature Eldrazi Spawn",
+            vec!["AB$ Mana | Cost$ Sac<1/CARDNAME> | Produced$ C | Amount$ 1"],
+        ));
+
+        game.zone_mut(ZoneType::Battlefield, player).add(spawn);
+        game.card_mut(spawn).zone = ZoneType::Battlefield;
+        game.card_mut(spawn).tapped = true;
+
+        assert!(GameLoop::mana_source_available_for_payment(&game, player, spawn));
     }
 }

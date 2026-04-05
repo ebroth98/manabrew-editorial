@@ -205,7 +205,9 @@ impl DeterministicAgent {
         let source_card = game.card(source);
         let mut kill_damage = (target_card.toughness() - target_card.damage).max(0);
 
-        if target_card.has_keyword("Indestructible") && !source_card.has_wither() && !source_card.has_infect()
+        if target_card.has_keyword("Indestructible")
+            && !source_card.has_wither()
+            && !source_card.has_infect()
         {
             return max_damage + 1;
         }
@@ -214,7 +216,8 @@ impl DeterministicAgent {
         }
 
         for damage in 1..=max_damage {
-            if self.predicted_damage_to_card(game, target, damage, source, is_combat) >= kill_damage {
+            if self.predicted_damage_to_card(game, target, damage, source, is_combat) >= kill_damage
+            {
                 return damage;
             }
         }
@@ -509,7 +512,7 @@ impl PlayerAgent for DeterministicAgent {
         card_id: CardId,
         _card_name: &str,
         mana_cost: &str,
-        _mana_cost_display: &str,
+        mana_cost_display: &str,
         _mana_cost_checkpoint: &str,
         allow_reserved_source_reuse: bool,
         _mana_ability_options: &[forge_engine_core::agent::ManaAbilityOption],
@@ -755,8 +758,7 @@ impl PlayerAgent for DeterministicAgent {
             last_target = Some(blocker);
             let blocker_card = game.card(blocker);
             let lethal = if blocker_card.type_line.is_planeswalker() {
-                blocker_card
-                    .counter_count(&forge_engine_core::card::CounterType::Loyalty)
+                blocker_card.counter_count(&forge_engine_core::card::CounterType::Loyalty)
             } else {
                 self.damage_needed_to_kill(game, blocker, damage_left, attacker, true)
             };
@@ -850,19 +852,30 @@ impl PlayerAgent for DeterministicAgent {
         valid_cards: &[CardId],
         _sa: Option<&forge_engine_core::spellability::SpellAbility>,
     ) -> TargetChoice {
+        let mut sorted: Vec<TargetChoice> = valid_players
+            .iter()
+            .copied()
+            .map(TargetChoice::Player)
+            .chain(valid_cards.iter().copied().map(TargetChoice::Card))
+            .collect();
         // Keep target ordering aligned with Java parity harness:
-        // sort by card name, then owner/controller, then parity id.
-        let sorted_cards = choice_space::sort_native(valid_cards, |a, b| {
-            self.card_name(*a)
-                .cmp(&self.card_name(*b))
+        // players first by id/name, then cards by name, owner/controller, parity id.
+        sorted.sort_by(|a, b| match (a, b) {
+            (TargetChoice::Player(pa), TargetChoice::Player(pb)) => pa.0.cmp(&pb.0),
+            (TargetChoice::Player(_), TargetChoice::Card(_)) => std::cmp::Ordering::Less,
+            (TargetChoice::Card(_), TargetChoice::Player(_)) => std::cmp::Ordering::Greater,
+            (TargetChoice::Card(ca), TargetChoice::Card(cb)) => self
+                .card_name(*ca)
+                .cmp(&self.card_name(*cb))
                 .then_with(|| {
-                    self.target_owner_controller_key(*a)
-                        .cmp(&self.target_owner_controller_key(*b))
+                    self.target_owner_controller_key(*ca)
+                        .cmp(&self.target_owner_controller_key(*cb))
                 })
-                .then_with(|| self.parity_map.id(*a).cmp(&self.parity_map.id(*b)))
+                .then_with(|| self.parity_map.id(*ca).cmp(&self.parity_map.id(*cb))),
+            _ => std::cmp::Ordering::Equal,
         });
 
-        let total = valid_players.len() + sorted_cards.len();
+        let total = sorted.len();
 
         if total == 0 {
             self.log_decision("Target any: NONE");
@@ -870,15 +883,19 @@ impl PlayerAgent for DeterministicAgent {
         }
 
         let idx = self.pick(total);
-        if idx < valid_players.len() {
-            let pid = valid_players[idx];
-            self.log_decision(&format!("Target any: Player P{}", pid.0));
-            TargetChoice::Player(pid)
-        } else {
-            let card_idx = idx - valid_players.len();
-            let cid = sorted_cards[card_idx];
-            self.log_decision(&format!("Target any: Card {}", self.card_name(cid)));
-            TargetChoice::Card(cid)
+        match sorted[idx] {
+            TargetChoice::Player(pid) => {
+                self.log_decision(&format!("Target any: Player P{}", pid.0));
+                TargetChoice::Player(pid)
+            }
+            TargetChoice::Card(cid) => {
+                self.log_decision(&format!("Target any: Card {}", self.card_name(cid)));
+                TargetChoice::Card(cid)
+            }
+            TargetChoice::None => {
+                self.log_decision("Target any: NONE");
+                TargetChoice::None
+            }
         }
     }
 
@@ -1004,7 +1021,6 @@ impl PlayerAgent for DeterministicAgent {
         if valid.is_empty() {
             return None;
         }
-        // Sort by (card_name, parity_id) for deterministic cross-engine parity.
         let sorted = choice_space::sort_native(valid, |a, b| {
             self.card_name(*a)
                 .cmp(&self.card_name(*b))
@@ -1109,10 +1125,6 @@ impl PlayerAgent for DeterministicAgent {
 
     fn choose_x_value(&mut self, _player: PlayerId, max_x: u32, _card_name: Option<&str>) -> u32 {
         max_x
-    }
-
-    fn pay_x_cost_in_mana(&self) -> bool {
-        false
     }
 
     /// Always pay life for phyrexian mana — matches Java's
