@@ -6,7 +6,7 @@
 # forge/forge-gui/res/cardsfolder/, preset_decks/, package.json, vite.config.ts)
 
 # --- Builder: Rust + Node to build WASM and bundle the Vite app ---
-FROM rust:1.85-slim AS builder
+FROM rust:1.88-slim AS builder
 
 # Install Node.js 20 and build tools
 RUN apt-get update && \
@@ -16,9 +16,9 @@ RUN apt-get update && \
     apt-get install -y --no-install-recommends nodejs && \
     rm -rf /var/lib/apt/lists/*
 
-# Install wasm32 target and wasm-pack
+# Install wasm32 target and wasm-pack (pinned; newer versions track latest rustc)
 RUN rustup target add wasm32-unknown-unknown && \
-    cargo install wasm-pack --locked
+    cargo install wasm-pack --version 0.13.1 --locked
 
 WORKDIR /build
 
