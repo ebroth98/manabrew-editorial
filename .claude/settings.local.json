@@ -16,7 +16,9 @@
       "Bash(yarn parity:*)",
       "Bash(find /Users/fede/Documents/Projects/bardidina2/bardidinaXmageUI -maxdepth 3 -name docker-compose* -o -name deploy.sh -o -name Dockerfile*)",
       "Bash(find /Users/fede/Documents/Projects/bardidina2/bardidinaXmageUI -name docker-compose* -o -name Dockerfile*)",
-      "Bash(git -C /Users/fede/Documents/Projects/bardidina2/bardidinaXmageUI show --stat e10a0d5b)"
+      "Bash(git -C /Users/fede/Documents/Projects/bardidina2/bardidinaXmageUI show --stat e10a0d5b)",
+      "Bash(curl -s http://192.168.1.103:1420/assets/game-engine.worker-Be0b_ToG.js)",
+      "Bash(curl -sI http://192.168.1.103:1420/assets/forge_wasm_bg-Cfws2N4j.wasm)"
     ]
   }
 }
