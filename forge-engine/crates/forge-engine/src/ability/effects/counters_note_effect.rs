@@ -46,7 +46,8 @@ pub fn load_counters(
         .unwrap_or(0);
 
     if noted_count > 0 {
-        game.card_mut(target_id).add_counter(counter_type, noted_count);
+        game.card_mut(target_id)
+            .add_counter(counter_type, noted_count);
     }
 }
 

@@ -9,7 +9,7 @@ use crate::ids_codec::parse_player_id;
 use crate::ids_codec::stack_id_str;
 use crate::prompt::{AgentPromptInner, PlayerAction, TargetAnyChoice};
 
-use super::{PromptAgent, AgentTransport};
+use super::{AgentTransport, PromptAgent};
 
 pub(super) fn choose_target_player<T: AgentTransport>(
     agent: &mut PromptAgent<T>,

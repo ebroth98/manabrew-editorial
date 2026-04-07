@@ -15,22 +15,22 @@ use tauri::{AppHandle, Emitter};
 
 use crate::ai_agent::spawn_ai_prompt_responder;
 use crate::card_db::{card_rules_to_instance, get_token_db, get_token_image_map};
-use forge_agent_interface::game_log_event::GameLogEntryDto;
-use forge_agent_interface::game_snapshot_event::GameSnapshotEventDto;
-use forge_agent_interface::game_view_dto::GameViewDto;
-use forge_agent_interface::ids_codec::player_slot;
 use crate::multiplayer_controller::{
     parse_remote_response, spawn_engine_prompt_forwarder, spawn_notify_forwarder,
     spawn_remote_prompt_forwarder, spawn_snapshot_forwarder,
 };
 use crate::preset_decks::{
     is_preset_id, prepare_ai_registered_player, prepare_custom_registered_player,
-    prepare_preset_opponent_registered_player, prepare_preset_registered_player,
-    CardIdentity, PreparedRegisteredPlayer,
+    prepare_preset_opponent_registered_player, prepare_preset_registered_player, CardIdentity,
+    PreparedRegisteredPlayer,
 };
-use forge_agent_interface::agent_impl::PromptAgent;
-use forge_agent_interface::prompt::{AgentPrompt, AgentPromptInner, PlayerAction};
 use crate::tauri_transport::TauriTransport;
+use forge_agent_interface::agent_impl::PromptAgent;
+use forge_agent_interface::game_log_event::GameLogEntryDto;
+use forge_agent_interface::game_snapshot_event::GameSnapshotEventDto;
+use forge_agent_interface::game_view_dto::GameViewDto;
+use forge_agent_interface::ids_codec::player_slot;
+use forge_agent_interface::prompt::{AgentPrompt, AgentPromptInner, PlayerAction};
 
 pub struct GameManager {
     pub session: Mutex<Option<GameSession>>,
@@ -410,11 +410,16 @@ fn force_commander_by_name(player: &mut PreparedRegisteredPlayer, commander_name
         .find(|(card, _)| card.card_name == commander_name)
     {
         *zone = ZoneType::Command;
-        player.registered.commanders.push(commander_name.to_string());
-        player.registered
+        player
+            .registered
+            .commanders
+            .push(commander_name.to_string());
+        player
+            .registered
             .current_deck
             .retain(|name| name != commander_name);
-        player.registered
+        player
+            .registered
             .original_deck
             .retain(|name| name != commander_name);
     }

@@ -7,13 +7,13 @@ use crate::agent::types::{
 };
 use crate::agent::PlayerAgent;
 use crate::combat::DefenderId;
-use crate::cost::{CostPart, payment_decision::PaymentDecision};
+use crate::cost::{payment_decision::PaymentDecision, CostPart};
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
 use crate::mana::ManaPool;
 use crate::player::actions::PlayerAction;
-use crate::player::DelayedReveal;
 use crate::player::player_factory_util::build_priority_actions;
+use crate::player::DelayedReveal;
 use crate::spellability::SpellAbility;
 use forge_foundation::{ManaCost, PhaseType, ZoneType};
 
@@ -128,7 +128,12 @@ impl<'a, A: PlayerAgent + ?Sized> PlayerController<'a, A> {
     pub fn reveal_delayed(&mut self, delayed: &DelayedReveal) {
         let owner = delayed.owner.unwrap_or(self.player);
         for &zone in &delayed.zone {
-            self.reveal_cards(&delayed.cards, zone, owner, delayed.message_prefix.as_deref());
+            self.reveal_cards(
+                &delayed.cards,
+                zone,
+                owner,
+                delayed.message_prefix.as_deref(),
+            );
         }
     }
 
@@ -147,20 +152,13 @@ impl<'a, A: PlayerAgent + ?Sized> PlayerController<'a, A> {
         available_blockers: &[CardId],
         max_blockers: Option<usize>,
     ) -> Vec<(CardId, CardId)> {
-        self.agent.choose_blockers(
-            self.player,
-            attackers,
-            available_blockers,
-            max_blockers,
-        )
+        self.agent
+            .choose_blockers(self.player, attackers, available_blockers, max_blockers)
     }
 
-    pub fn choose_blocker_for(
-        &mut self,
-        attackers: &[CardId],
-        blocker: CardId,
-    ) -> Option<CardId> {
-        self.agent.choose_blocker_for(self.player, attackers, blocker)
+    pub fn choose_blocker_for(&mut self, attackers: &[CardId], blocker: CardId) -> Option<CardId> {
+        self.agent
+            .choose_blocker_for(self.player, attackers, blocker)
     }
 
     pub fn exert_attackers(&mut self, attackers: &[CardId]) -> Vec<CardId> {
@@ -248,7 +246,8 @@ impl<'a, A: PlayerAgent + ?Sized> PlayerController<'a, A> {
         min: usize,
         max: usize,
     ) -> Vec<CardId> {
-        self.agent.choose_cards_for_effect(self.player, valid, min, max)
+        self.agent
+            .choose_cards_for_effect(self.player, valid, min, max)
     }
 
     pub fn choose_cards_for_zone_change(
@@ -276,11 +275,7 @@ impl<'a, A: PlayerAgent + ?Sized> PlayerController<'a, A> {
         )
     }
 
-    pub fn choose_type(
-        &mut self,
-        type_category: &str,
-        valid_types: &[String],
-    ) -> Option<String> {
+    pub fn choose_type(&mut self, type_category: &str, valid_types: &[String]) -> Option<String> {
         self.agent
             .choose_type(self.player, type_category, valid_types)
     }
@@ -315,14 +310,8 @@ impl<'a, A: PlayerAgent + ?Sized> PlayerController<'a, A> {
         card_name: Option<&str>,
         api: Option<crate::ability::api_type::ApiType>,
     ) -> bool {
-        self.agent.choose_binary(
-            self.player,
-            question,
-            kind,
-            default_choice,
-            card_name,
-            api,
-        )
+        self.agent
+            .choose_binary(self.player, question, kind, default_choice, card_name, api)
     }
 
     pub fn confirm_action(
@@ -367,13 +356,7 @@ impl<'a, A: PlayerAgent + ?Sized> PlayerController<'a, A> {
         description: &str,
         card_name: Option<&str>,
     ) -> bool {
-        self.confirm_action(
-            Some("ReplacementEffect"),
-            description,
-            &[],
-            card_name,
-            None,
-        )
+        self.confirm_action(Some("ReplacementEffect"), description, &[], card_name, None)
     }
 
     pub fn confirm_static_application(
@@ -546,13 +529,8 @@ impl<'a, A: PlayerAgent + ?Sized> PlayerController<'a, A> {
         toughness: i32,
         card_name: Option<&str>,
     ) -> Option<RollSwapChoice> {
-        self.agent.choose_roll_swap_value(
-            self.player,
-            current_result,
-            power,
-            toughness,
-            card_name,
-        )
+        self.agent
+            .choose_roll_swap_value(self.player, current_result, power, toughness, card_name)
     }
 
     pub fn reveal(
@@ -588,7 +566,13 @@ impl<'a, A: PlayerAgent + ?Sized> PlayerController<'a, A> {
     }
 
     pub fn add_keyword_cost(&mut self, prompt: &str) -> bool {
-        self.choose_binary(prompt, BinaryChoiceKind::AddOrRemove, Some(true), None, None)
+        self.choose_binary(
+            prompt,
+            BinaryChoiceKind::AddOrRemove,
+            Some(true),
+            None,
+            None,
+        )
     }
 
     pub fn cheat_shuffle(&mut self) {

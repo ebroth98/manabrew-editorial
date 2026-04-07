@@ -37,7 +37,11 @@ pub fn set_triggering_objects(sa: &mut SpellAbility, params: &RunParams) {
         sa.add_triggering_object("Card", &card.0.to_string());
     }
     if let Some(crew) = params.crew_cards.as_ref() {
-        let csv = crew.iter().map(|c| c.0.to_string()).collect::<Vec<_>>().join(",");
+        let csv = crew
+            .iter()
+            .map(|c| c.0.to_string())
+            .collect::<Vec<_>>()
+            .join(",");
         sa.add_triggering_object("Crew", &csv);
     }
 }

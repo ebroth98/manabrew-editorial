@@ -1,8 +1,8 @@
 use forge_foundation::ZoneType;
 
 use super::{parse_param, resolve_defined_player_with_sa, EffectContext};
-use crate::card::card_util;
 use crate::card::card_damage_map::DamageTarget;
+use crate::card::card_util;
 use crate::parsing::keys;
 use crate::spellability::SpellAbility;
 
@@ -92,7 +92,8 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                     }
                 }
             } else {
-                ctx.game.deal_damage_to_card_from(cid, damage, sa.source, false);
+                ctx.game
+                    .deal_damage_to_card_from(cid, damage, sa.source, false);
             }
             if !use_damage_map {
                 ctx.trigger_handler.run_trigger(
@@ -146,7 +147,9 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                 }
             }
         } else {
-            let dealt = ctx.game.deal_damage_to_player_from(target_player, damage, sa.source, false);
+            let dealt =
+                ctx.game
+                    .deal_damage_to_player_from(target_player, damage, sa.source, false);
             ctx.game
                 .record_player_damage_assignment(sa.source, Some(target_player), dealt, false);
         }
@@ -234,7 +237,8 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                     }
                 }
             } else {
-                ctx.game.deal_damage_to_card_from(target_card, damage, sa.source, false);
+                ctx.game
+                    .deal_damage_to_card_from(target_card, damage, sa.source, false);
             }
 
             // Record damage dealt by source for TotalDamageDoneByThisTurn SVar

@@ -1,9 +1,7 @@
 /// Integration test to verify counterspell and priority system works end-to-end
 /// This validates that the UI components (chooseTargetSpell, stack rendering, priority passing)
 /// have proper backend support
-use forge_engine_core::agent::{
-    PlayCardMode, PlayOption, PlayerAgent, TargetChoice,
-};
+use forge_engine_core::agent::{PlayCardMode, PlayOption, PlayerAgent, TargetChoice};
 use forge_engine_core::card::CardInstance;
 use forge_engine_core::combat::DefenderId;
 use forge_engine_core::game::GameState;

@@ -701,9 +701,9 @@ pub fn get_valid_cards_in_zone(
                 .into_iter()
                 .filter(|&cid| !is_other_filter_self_hit(Some(f), source_card, cid))
                 .filter(|&cid| {
-                    clauses
-                        .iter()
-                        .any(|clause| card_property::card_has_property(game.card(cid), clause, player))
+                    clauses.iter().any(|clause| {
+                        card_property::card_has_property(game.card(cid), clause, player)
+                    })
                 })
                 .collect()
         }

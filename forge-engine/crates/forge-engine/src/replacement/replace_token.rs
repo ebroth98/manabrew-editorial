@@ -38,11 +38,19 @@ pub fn can_replace(
         return false;
     }
     let (player, is_effect) = match event {
-        ReplacementEvent::CreateToken { player, is_effect, .. } => (*player, *is_effect),
+        ReplacementEvent::CreateToken {
+            player, is_effect, ..
+        } => (*player, *is_effect),
         _ => return false,
     };
     // EffectOnly$ True: only apply to tokens created by effects, not game rules
-    if effect.params.get("EffectOnly").map(|v| v == "True").unwrap_or(false) && !is_effect {
+    if effect
+        .params
+        .get("EffectOnly")
+        .map(|v| v == "True")
+        .unwrap_or(false)
+        && !is_effect
+    {
         return false;
     }
     if let Some(valid) = effect.params.get(keys::VALID_PLAYER) {

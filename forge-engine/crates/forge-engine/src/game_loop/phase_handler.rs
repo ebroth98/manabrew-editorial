@@ -92,12 +92,19 @@ impl GameLoop {
                         game.player_clear_skip_draw(active);
                         TurnMachineState::Main1
                     } else {
-                        // Java parity: Java's isSkippingPhase(DRAW) returns true on turn 1
-                        // in a 2-player game, skipping the entire Draw phase (no draw, no
-                        // priority window). Rust skips the draw card itself but was still
-                        // giving a priority window, consuming 2 extra RNG calls on Turn 1.
+                        // Java parity: Java still advances into the Draw phase and fires the
+                        // phase-change event on turn 1 in a 2-player game, but then skips the
+                        // draw-step actions, phase triggers, and priority window.
                         let skip_draw_phase = game.turn.turn_number == 1 && game.players.len() == 2;
                         if skip_draw_phase {
+                            self.apply_turn_event(
+                                game,
+                                agents,
+                                TurnEvent::EnterPhase {
+                                    phase: PhaseType::Draw,
+                                    emit_phase_trigger: false,
+                                },
+                            );
                             TurnMachineState::Main1
                         } else {
                             self.apply_turn_event(
@@ -627,8 +634,8 @@ impl GameLoop {
     /// DamageDone fires per source-target pair; DamageDoneOnce fires once per
     /// target with aggregated damage (mirrors Java CardDamageMap.triggerDamageOnce).
     pub(crate) fn fire_combat_damage_triggers(&mut self, events: &[combat::CombatDamageEvent]) {
-        use std::collections::HashMap;
         use crate::ids::{CardId, PlayerId};
+        use std::collections::HashMap;
 
         // Per-event: fire DamageDone and LifeGained
         for event in events {

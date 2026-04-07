@@ -282,5 +282,4 @@ mod tests {
 
         assert!(!game.card(clay_golem).monstrous);
     }
-
 }

@@ -201,6 +201,10 @@ struct CapturingAgent {
     pending_snapshot: Option<StateSnapshot>,
     /// If true, capture snapshots at turn start.
     capture_snapshots: bool,
+    /// If true, capture snapshots at phase and priority boundaries.
+    deep: bool,
+    /// If true, emit callback-entry snapshots before every decision callback.
+    callback_snapshots: bool,
     /// Current turn for decision records.
     current_turn: u32,
     /// Current phase for decision records.
@@ -234,6 +238,8 @@ impl CapturingAgent {
         game_rng: Rc<RefCell<JavaRandom>>,
         parity_map: Arc<ParityCardMap>,
         capture_snapshots: bool,
+        deep: bool,
+        callback_snapshots: bool,
     ) -> Self {
         Self {
             player_id,
@@ -251,6 +257,8 @@ impl CapturingAgent {
             shared_decisions: decisions,
             pending_snapshot: None,
             capture_snapshots,
+            deep,
+            callback_snapshots,
             current_turn: 0,
             current_phase: "Unknown".to_string(),
             card_names: HashMap::new(),
@@ -298,6 +306,38 @@ impl CapturingAgent {
         }
     }
 
+    fn capture_deep_checkpoint(&self, kind: &str) {
+        if !self.callback_snapshots {
+            return;
+        }
+        let Some(ref game) = self.last_game_state else {
+            return;
+        };
+        let snapshot = snapshot_game(game);
+        self.shared_snapshots.lock().unwrap().push(snapshot.clone());
+        self.shared_decisions.lock().unwrap().push(DecisionRecord {
+            turn: snapshot.turn,
+            phase: snapshot.phase.clone(),
+            deciding_player: self.player_id.0,
+            kind: kind.to_string(),
+            options: vec![],
+            choice: "CALLBACK_ENTRY".to_string(),
+        });
+    }
+
+    fn push_boundary_snapshot(&self) {
+        if !self.deep || self.player_id.0 != 0 {
+            return;
+        }
+        let Some(ref game) = self.last_game_state else {
+            return;
+        };
+        self.shared_snapshots
+            .lock()
+            .unwrap()
+            .push(snapshot_game(game));
+    }
+
     fn legal_attackers_for_blocker(&self, blocker: CardId, attackers: &[CardId]) -> Vec<CardId> {
         let Some(ref game) = self.last_game_state else {
             return attackers.to_vec();
@@ -310,6 +350,17 @@ impl CapturingAgent {
             })
             .collect()
     }
+}
+
+macro_rules! checkpoint_forward {
+    ($(fn $name:ident (&mut self $(, $arg:ident : $ty:ty )* ) -> $ret:ty => $kind:expr;)+) => {
+        $(
+            fn $name(&mut self $(, $arg: $ty)*) -> $ret {
+                self.capture_deep_checkpoint($kind);
+                self.inner.$name($($arg),*)
+            }
+        )+
+    };
 }
 
 impl PlayerAgent for CapturingAgent {
@@ -397,6 +448,26 @@ impl PlayerAgent for CapturingAgent {
             );
         }
         self.inner.notify_phase_changed(phase);
+        self.push_boundary_snapshot();
+    }
+
+    fn notify_priority_player(&mut self, player: PlayerId) {
+        self.inner.notify_priority_player(player);
+        self.push_boundary_snapshot();
+    }
+
+    fn notify_state_changed(&mut self) {
+        self.inner.notify_state_changed();
+        if !self.deep || self.player_id.0 != 0 {
+            return;
+        }
+        let Some(ref game) = self.last_game_state else {
+            return;
+        };
+        self.shared_snapshots
+            .lock()
+            .unwrap()
+            .push(snapshot_game(game));
     }
 
     fn on_library_peek(&mut self, game: &GameState, cards: &[CardId]) {
@@ -409,7 +480,12 @@ impl PlayerAgent for CapturingAgent {
         hand: &[CardId],
         mulligan_count: u32,
     ) -> bool {
+        self.capture_deep_checkpoint("mulligan_decision");
         self.inner.mulligan_decision(player, hand, mulligan_count)
+    }
+
+    checkpoint_forward! {
+        fn choose_cards_to_bottom(&mut self, player: PlayerId, hand: &[CardId], count: usize) -> Vec<CardId> => "choose_cards_to_bottom";
     }
 
     fn choose_action(
@@ -420,6 +496,7 @@ impl PlayerAgent for CapturingAgent {
         untappable_lands: &[CardId],
         activatable: &[(CardId, usize)],
     ) -> forge_engine_core::player::actions::PlayerAction {
+        self.capture_deep_checkpoint("main_action");
         #[derive(Clone, Copy)]
         enum EntryKind {
             Card(PlayOption),
@@ -671,6 +748,7 @@ impl PlayerAgent for CapturingAgent {
         available: &[CardId],
         possible_defenders: &[DefenderId],
     ) -> Vec<(CardId, DefenderId)> {
+        self.capture_deep_checkpoint("combat_attacker_choice");
         let mut sorted_defenders: Vec<DefenderId> = possible_defenders.to_vec();
         sorted_defenders.sort_by_key(|d| format!("{:?}", d));
         let sorted_available = parity_order::sort_cards_by_name_then_id(
@@ -732,6 +810,7 @@ impl PlayerAgent for CapturingAgent {
         available_blockers: &[CardId],
         max_blockers: Option<usize>,
     ) -> Vec<(CardId, CardId)> {
+        self.capture_deep_checkpoint("combat_blocker_choice");
         let sorted_attackers = parity_order::sort_cards_by_name_then_id(
             attackers,
             |id| self.card_name(id),
@@ -814,6 +893,7 @@ impl PlayerAgent for CapturingAgent {
         attackers: &[CardId],
         blocker: CardId,
     ) -> Option<CardId> {
+        self.capture_deep_checkpoint("combat_blocker_choice");
         let sorted_attackers = parity_order::sort_cards_by_name_then_id(
             attackers,
             |id| self.card_name(id),
@@ -865,6 +945,7 @@ impl PlayerAgent for CapturingAgent {
         attacker: CardId,
         blockers: &[CardId],
     ) -> Vec<CardId> {
+        self.capture_deep_checkpoint("choose_damage_assignment_order");
         self.inner
             .choose_damage_assignment_order(player, attacker, blockers)
     }
@@ -878,6 +959,7 @@ impl PlayerAgent for CapturingAgent {
         defender: Option<forge_engine_core::combat::DefenderId>,
         damage_to_assign: i32,
     ) -> Vec<(Option<CardId>, i32)> {
+        self.capture_deep_checkpoint("assign_combat_damage");
         self.inner.assign_combat_damage(
             game,
             player,
@@ -894,6 +976,7 @@ impl PlayerAgent for CapturingAgent {
         valid: &[PlayerId],
         sa: Option<&forge_engine_core::spellability::SpellAbility>,
     ) -> Option<PlayerId> {
+        self.capture_deep_checkpoint("choose_target_player");
         self.inner.choose_target_player(player, valid, sa)
     }
 
@@ -903,6 +986,7 @@ impl PlayerAgent for CapturingAgent {
         valid: &[CardId],
         sa: Option<&forge_engine_core::spellability::SpellAbility>,
     ) -> Option<CardId> {
+        self.capture_deep_checkpoint("choose_target_card");
         self.inner.choose_target_card(player, valid, sa)
     }
 
@@ -913,6 +997,7 @@ impl PlayerAgent for CapturingAgent {
         valid: &[CardId],
         sa: Option<&forge_engine_core::spellability::SpellAbility>,
     ) -> Option<CardId> {
+        self.capture_deep_checkpoint("choose_target_card_from_zone");
         self.inner
             .choose_target_card_from_zone(player, zone, valid, sa)
     }
@@ -924,11 +1009,13 @@ impl PlayerAgent for CapturingAgent {
         valid_cards: &[CardId],
         sa: Option<&forge_engine_core::spellability::SpellAbility>,
     ) -> forge_engine_core::agent::TargetChoice {
+        self.capture_deep_checkpoint("choose_target_any");
         self.inner
             .choose_target_any(player, valid_players, valid_cards, sa)
     }
 
     fn choose_legend_keep(&mut self, player: PlayerId, duplicates: &[CardId]) -> CardId {
+        self.capture_deep_checkpoint("choose_legend_keep");
         self.inner.choose_legend_keep(player, duplicates)
     }
 
@@ -938,6 +1025,7 @@ impl PlayerAgent for CapturingAgent {
         valid: &[CardId],
         sa: Option<&forge_engine_core::spellability::SpellAbility>,
     ) -> Option<CardId> {
+        self.capture_deep_checkpoint("choose_sacrifice");
         self.inner.choose_sacrifice(player, valid, sa)
     }
 
@@ -947,14 +1035,17 @@ impl PlayerAgent for CapturingAgent {
         type_category: &str,
         valid_types: &[String],
     ) -> Option<String> {
+        self.capture_deep_checkpoint("choose_type");
         self.inner.choose_type(player, type_category, valid_types)
     }
 
     fn choose_scry(&mut self, player: PlayerId, cards: &[CardId]) -> Vec<CardId> {
+        self.capture_deep_checkpoint("choose_scry");
         self.inner.choose_scry(player, cards)
     }
 
     fn choose_surveil(&mut self, player: PlayerId, cards: &[CardId]) -> Vec<CardId> {
+        self.capture_deep_checkpoint("choose_surveil");
         self.inner.choose_surveil(player, cards)
     }
 
@@ -965,6 +1056,7 @@ impl PlayerAgent for CapturingAgent {
         max: usize,
         optional: bool,
     ) -> Vec<CardId> {
+        self.capture_deep_checkpoint("choose_dig");
         let chosen = self.inner.choose_dig(player, valid, max, optional);
         let options: Vec<String> = valid
             .iter()
@@ -993,10 +1085,12 @@ impl PlayerAgent for CapturingAgent {
     }
 
     fn choose_reorder_library(&mut self, player: PlayerId, cards: &[CardId]) -> Vec<CardId> {
+        self.capture_deep_checkpoint("choose_reorder_library");
         self.inner.choose_reorder_library(player, cards)
     }
 
     fn choose_discard(&mut self, player: PlayerId, hand: &[CardId], num: usize) -> Vec<CardId> {
+        self.capture_deep_checkpoint("choose_discard");
         self.inner.choose_discard(player, hand, num)
     }
 
@@ -1006,6 +1100,7 @@ impl PlayerAgent for CapturingAgent {
         hand: &[CardId],
         num: usize,
     ) -> Vec<CardId> {
+        self.capture_deep_checkpoint("choose_random_discard");
         self.inner.choose_random_discard(player, hand, num)
     }
 
@@ -1016,6 +1111,7 @@ impl PlayerAgent for CapturingAgent {
         min: usize,
         max: usize,
     ) -> Vec<CardId> {
+        self.capture_deep_checkpoint("choose_cards_for_effect");
         let chosen = self.inner.choose_cards_for_effect(player, valid, min, max);
         let options: Vec<String> = valid
             .iter()
@@ -1050,6 +1146,7 @@ impl PlayerAgent for CapturingAgent {
         min: usize,
         max: usize,
     ) -> Vec<GameEntity> {
+        self.capture_deep_checkpoint("choose_entities_for_effect");
         let chosen = self
             .inner
             .choose_entities_for_effect(player, candidates, min, max);
@@ -1083,6 +1180,7 @@ impl PlayerAgent for CapturingAgent {
         select_prompt: &str,
         is_optional: bool,
     ) -> Option<CardId> {
+        self.capture_deep_checkpoint("choose_zone_change");
         let chosen = self.inner.choose_single_card_for_zone_change(
             player,
             valid,
@@ -1114,6 +1212,7 @@ impl PlayerAgent for CapturingAgent {
         max: usize,
         _select_prompt: &str,
     ) -> Vec<CardId> {
+        self.capture_deep_checkpoint("choose_zone_change");
         let chosen =
             self.inner
                 .choose_cards_for_zone_change(player, valid, min, max, _select_prompt);
@@ -1144,6 +1243,7 @@ impl PlayerAgent for CapturingAgent {
     }
 
     fn choose_target_spell(&mut self, player: PlayerId, valid: &[u32]) -> Option<u32> {
+        self.capture_deep_checkpoint("choose_target_spell");
         self.inner.choose_target_spell(player, valid)
     }
 
@@ -1155,11 +1255,13 @@ impl PlayerAgent for CapturingAgent {
         max: usize,
         card_name: Option<&str>,
     ) -> Vec<usize> {
+        self.capture_deep_checkpoint("choose_mode");
         self.inner
             .choose_mode(player, descriptions, min, max, card_name)
     }
 
     fn choose_x_value(&mut self, player: PlayerId, max_x: u32, card_name: Option<&str>) -> u32 {
+        self.capture_deep_checkpoint("choose_x_value");
         self.inner.choose_x_value(player, max_x, card_name)
     }
 
@@ -1170,6 +1272,7 @@ impl PlayerAgent for CapturingAgent {
         card_name: Option<&str>,
         api: Option<forge_engine_core::ability::api_type::ApiType>,
     ) -> bool {
+        self.capture_deep_checkpoint("optional_trigger");
         let accept = self
             .inner
             .choose_optional_trigger(player, description, card_name, api);
@@ -1189,6 +1292,7 @@ impl PlayerAgent for CapturingAgent {
     }
 
     fn choose_land_or_spell(&mut self, player: PlayerId) -> Option<bool> {
+        self.capture_deep_checkpoint("choose_land_or_spell");
         self.inner.choose_land_or_spell(player)
     }
 
@@ -1201,6 +1305,7 @@ impl PlayerAgent for CapturingAgent {
         card_name: Option<&str>,
         api: Option<forge_engine_core::ability::api_type::ApiType>,
     ) -> bool {
+        self.capture_deep_checkpoint("confirm_action");
         let accept = self
             .inner
             .confirm_action(player, mode, message, options, card_name, api);
@@ -1232,6 +1337,7 @@ impl PlayerAgent for CapturingAgent {
         card_name: Option<&str>,
         api: Option<forge_engine_core::ability::api_type::ApiType>,
     ) -> bool {
+        self.capture_deep_checkpoint("confirm_payment");
         let accept = self
             .inner
             .confirm_payment(player, cost_kind, message, card_name, api);
@@ -1254,6 +1360,7 @@ impl PlayerAgent for CapturingAgent {
         effect_description: &str,
         card_name: Option<&str>,
     ) -> bool {
+        self.capture_deep_checkpoint("confirm_replacement_effect");
         let accept =
             self.inner
                 .confirm_replacement_effect(player, question, effect_description, card_name);
@@ -1278,6 +1385,7 @@ impl PlayerAgent for CapturingAgent {
         card_name: Option<&str>,
         api: Option<forge_engine_core::ability::api_type::ApiType>,
     ) -> bool {
+        self.capture_deep_checkpoint("choose_binary");
         let left = format!("{}:LEFT", kind.as_str());
         let right = format!("{}:RIGHT", kind.as_str());
         let chosen_left =
@@ -1292,6 +1400,7 @@ impl PlayerAgent for CapturingAgent {
     }
 
     fn choose_color(&mut self, player: PlayerId, valid_colors: &[String]) -> Option<String> {
+        self.capture_deep_checkpoint("choose_color");
         let chosen = self.inner.choose_color(player, valid_colors);
         self.record_verbose_decision(
             "choose_color",
@@ -1302,6 +1411,7 @@ impl PlayerAgent for CapturingAgent {
     }
 
     fn choose_card_name(&mut self, player: PlayerId, valid_names: &[String]) -> Option<String> {
+        self.capture_deep_checkpoint("choose_card_name");
         let chosen = self.inner.choose_card_name(player, valid_names);
         self.record_verbose_decision(
             "choose_card_name",
@@ -1312,6 +1422,7 @@ impl PlayerAgent for CapturingAgent {
     }
 
     fn choose_number(&mut self, player: PlayerId, min: i32, max: i32) -> Option<i32> {
+        self.capture_deep_checkpoint("choose_number");
         let chosen = self.inner.choose_number(player, min, max);
         self.record_verbose_decision(
             "choose_number",
@@ -1319,6 +1430,29 @@ impl PlayerAgent for CapturingAgent {
             chosen.map_or("NONE".to_string(), |v| v.to_string()),
         );
         chosen
+    }
+
+    checkpoint_forward! {
+        fn choose_number_from_list(&mut self, player: PlayerId, choices: &[i32], message: &str, card_name: Option<&str>) -> Option<i32> => "choose_number_from_list";
+        fn choose_roll_to_ignore(&mut self, player: PlayerId, rolls: &[i32], card_name: Option<&str>) -> Option<i32> => "choose_roll_to_ignore";
+        fn choose_roll_to_swap(&mut self, player: PlayerId, rolls: &[i32], card_name: Option<&str>) -> Option<i32> => "choose_roll_to_swap";
+        fn choose_dice_to_reroll(&mut self, player: PlayerId, rolls: &[i32], card_name: Option<&str>) -> Vec<i32> => "choose_dice_to_reroll";
+        fn choose_roll_to_modify(&mut self, player: PlayerId, rolls: &[i32], card_name: Option<&str>) -> Option<i32> => "choose_roll_to_modify";
+        fn choose_roll_swap_value(&mut self, player: PlayerId, current_result: i32, power: i32, toughness: i32, card_name: Option<&str>) -> Option<forge_engine_core::agent::RollSwapChoice> => "choose_roll_swap_value";
+        fn flip_coin_call(&mut self, player: PlayerId) -> bool => "flip_coin_call";
+        fn choose_phyrexian_pay_life(&mut self, player: PlayerId, color: &str, card_name: Option<&str>) -> bool => "choose_phyrexian_pay_life";
+        fn pay_combat_cost(&mut self, player: PlayerId, attacker: CardId, cost: i32, description: &str, tappable_lands: &[CardId], untappable_lands: &[CardId], mana_pool_total: i32) -> forge_engine_core::agent::CombatCostAction => "pay_combat_cost";
+        fn choose_delve(&mut self, player: PlayerId, valid: &[CardId], max: usize, card_name: Option<&str>) -> Vec<CardId> => "choose_delve";
+        fn choose_improvise(&mut self, player: PlayerId, untapped_artifacts: &[CardId], remaining_cost: &forge_foundation::ManaCost, card_name: Option<&str>) -> Vec<CardId> => "choose_improvise";
+        fn choose_convoke(&mut self, player: PlayerId, untapped_creatures: &[CardId], remaining_cost: &forge_foundation::ManaCost, card_name: Option<&str>) -> Vec<CardId> => "choose_convoke";
+        fn specify_mana_combo(&mut self, player: PlayerId, available_colors: &[String], amount: usize, card_name: Option<&str>) -> Vec<String> => "specify_mana_combo";
+        fn choose_explore_put_in_graveyard(&mut self, player: PlayerId, revealed_card_name: &str, revealed_cmc: i32, mana_producing_lands: usize, predicted_mana: usize, lands_in_hand: usize) -> bool => "choose_explore_put_in_graveyard";
+        fn choose_kicker(&mut self, player: PlayerId, kicker_cost: &str, card_name: Option<&str>) -> bool => "choose_kicker";
+        fn help_pay_assist(&mut self, player: PlayerId, card_name: &str, max_generic: u32) -> u32 => "help_pay_assist";
+        fn choose_buyback(&mut self, player: PlayerId, buyback_cost: &str, card_name: Option<&str>) -> bool => "choose_buyback";
+        fn choose_multikicker(&mut self, player: PlayerId, cost: &str, max_kicks: u32, card_name: Option<&str>) -> u32 => "choose_multikicker";
+        fn choose_replicate(&mut self, player: PlayerId, cost: &str, max_replicates: u32, card_name: Option<&str>) -> u32 => "choose_replicate";
+        fn choose_alternative_cost(&mut self, player: PlayerId, options: &[String], card_name: Option<&str>) -> usize => "choose_alternative_cost";
     }
 
     fn notify(&mut self, message: &str) {
@@ -1343,10 +1477,6 @@ impl PlayerAgent for CapturingAgent {
     ) {
         self.inner
             .notify_card_played(player, card_id, card_name, set_code);
-    }
-
-    fn notify_state_changed(&mut self) {
-        self.inner.notify_state_changed();
     }
 
     fn pay_mana_cost(
@@ -1400,6 +1530,7 @@ impl PlayerAgent for CapturingAgent {
         player: PlayerId,
         descriptions: &[String],
     ) -> usize {
+        self.capture_deep_checkpoint("choose_single_replacement_effect");
         let chosen = self
             .inner
             .choose_single_replacement_effect(player, descriptions);
@@ -1427,6 +1558,7 @@ pub struct RunConfig {
     pub decks_dir: Option<String>,
     pub verbose: bool,
     pub prefer_actions: bool,
+    pub deep: bool,
     /// Maximum JVM heap size (e.g. "512m", "1g").
     pub java_heap: String,
     /// Game variant: "Constructed", "Commander", "Oathbreaker", "TinyLeaders", "Brawl".
@@ -1701,9 +1833,15 @@ pub fn run_with_data(config: &RunConfig, data: &LoadedData) -> Result<GameTrace,
     // calls ChoiceSpace.pickBool(rng) for each eligible card, consuming RNG.
     // We must match that consumption pattern for parity.
     for &pid in &game.player_order.clone() {
-        let hand: Vec<forge_engine_core::ids::CardId> = game.cards_in_zone(forge_foundation::ZoneType::Hand, pid).to_vec();
+        let hand: Vec<forge_engine_core::ids::CardId> = game
+            .cards_in_zone(forge_foundation::ZoneType::Hand, pid)
+            .to_vec();
         for card_id in hand {
-            if game.card(card_id).get_keyword_cost("MayEffectFromOpeningHand").is_some() {
+            if game
+                .card(card_id)
+                .get_keyword_cost("MayEffectFromOpeningHand")
+                .is_some()
+            {
                 // Java: ChoiceSpace.pickBool(rng) → rng.nextInt(2) == 1
                 let place = agent_rng.borrow_mut().next_int(2) == 1;
                 if place {
@@ -1731,7 +1869,9 @@ pub fn run_with_data(config: &RunConfig, data: &LoadedData) -> Result<GameTrace,
             Rc::clone(&agent_rng),
             Rc::clone(&game_rng),
             Arc::clone(&parity_map),
-            true,
+            !config.deep,
+            config.deep,
+            false,
         )),
         Box::new(CapturingAgent::new(
             p1,
@@ -1744,6 +1884,8 @@ pub fn run_with_data(config: &RunConfig, data: &LoadedData) -> Result<GameTrace,
             Rc::clone(&agent_rng),
             Rc::clone(&game_rng),
             Arc::clone(&parity_map),
+            false,
+            config.deep,
             false,
         )),
     ];

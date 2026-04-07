@@ -1,9 +1,9 @@
 use serde::{Deserialize, Serialize};
 
 use crate::agent::types::{MainPhaseAction, PlayOption, TargetChoice};
+use crate::agent::PlayerAgent;
 use crate::ids::{CardId, PlayerId};
 use crate::player::PlayerController;
-use crate::agent::PlayerAgent;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum PlayerAction {
@@ -54,7 +54,9 @@ impl PlayerAction {
     ) -> Option<MainPhaseAction> {
         match self {
             PlayerAction::PassPriority => Some(MainPhaseAction::Pass),
-            PlayerAction::CastSpell(play) => playable.contains(&play).then_some(MainPhaseAction::Play(play)),
+            PlayerAction::CastSpell(play) => playable
+                .contains(&play)
+                .then_some(MainPhaseAction::Play(play)),
             PlayerAction::ActivateMana(card_id) => tappable_lands
                 .contains(&card_id)
                 .then_some(MainPhaseAction::ActivateMana(card_id)),
@@ -76,7 +78,9 @@ impl PlayerAction {
         match self {
             PlayerAction::SelectCard(card_id) => Some(TargetChoice::Card(card_id)),
             PlayerAction::SelectPlayer(player_id) => Some(TargetChoice::Player(player_id)),
-            PlayerAction::TargetEntity(TargetEntity::Card(card_id)) => Some(TargetChoice::Card(card_id)),
+            PlayerAction::TargetEntity(TargetEntity::Card(card_id)) => {
+                Some(TargetChoice::Card(card_id))
+            }
             PlayerAction::TargetEntity(TargetEntity::Player(player_id)) => {
                 Some(TargetChoice::Player(player_id))
             }

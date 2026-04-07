@@ -425,7 +425,9 @@ fn resolve_player_count_svar(
     } else if let Some(property) = kind.strip_prefix("Property") {
         game.alive_players()
             .into_iter()
-            .filter(|&pid| crate::player::player_has_property(pid, property, game, source_id, controller, sa))
+            .filter(|&pid| {
+                crate::player::player_has_property(pid, property, game, source_id, controller, sa)
+            })
             .collect()
     } else if let Some(defined) = kind.strip_prefix("Defined") {
         crate::ability::ability_utils::resolve_defined_players_with_sa(

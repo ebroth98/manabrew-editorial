@@ -33,8 +33,17 @@ pub fn can_replace(
     }
     // NotFirstCardInDrawStep$ True: only replace draws that are NOT the first in the draw step.
     // Used by Alhammarret's Archive to skip its first draw in the draw step.
-    if effect.params.get("NotFirstCardInDrawStep").map(|v| v == "True").unwrap_or(false) {
-        if let ReplacementEvent::Draw { is_first_in_draw_step, .. } = event {
+    if effect
+        .params
+        .get("NotFirstCardInDrawStep")
+        .map(|v| v == "True")
+        .unwrap_or(false)
+    {
+        if let ReplacementEvent::Draw {
+            is_first_in_draw_step,
+            ..
+        } = event
+        {
             if *is_first_in_draw_step {
                 return false;
             }

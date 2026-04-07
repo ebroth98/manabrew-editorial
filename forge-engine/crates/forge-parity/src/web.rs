@@ -160,6 +160,7 @@ pub struct QueuedJob {
     pub deck2: String,
     pub seed: u64,
     pub max_turns: u32,
+    pub deep: bool,
     pub prefer_actions: bool,
     pub variant: String,
     pub commanders: Vec<String>,
@@ -283,6 +284,7 @@ struct ExpandedMatchup {
     deck2: String,
     seed: u64,
     max_turns: u32,
+    deep: bool,
     prefer_actions: bool,
     variant: String,
     commanders: Vec<String>,
@@ -334,6 +336,7 @@ fn expand_regression_entry(args: &str, default_max_turns: u32) -> Vec<ExpandedMa
     let mut max_turns = default_max_turns;
     let mut games: usize = 1;
     let mut seed_start: u64 = 42;
+    let mut deep = false;
     let mut prefer_actions = false;
     let mut variant = "Constructed".to_string();
     let mut commanders: Vec<String> = Vec::new();
@@ -342,6 +345,7 @@ fn expand_regression_entry(args: &str, default_max_turns: u32) -> Vec<ExpandedMa
     while i < tokens.len() {
         match tokens[i].as_str() {
             "--matrix" => matrix = true,
+            "--deep" => deep = true,
             "--prefer-actions" => prefer_actions = true,
             "--seeds" => {
                 if i + 1 < tokens.len() {
@@ -428,6 +432,7 @@ fn expand_regression_entry(args: &str, default_max_turns: u32) -> Vec<ExpandedMa
                             deck2: d2.clone(),
                             seed: s,
                             max_turns,
+                            deep,
                             prefer_actions,
                             variant: variant.clone(),
                             commanders: commanders.clone(),
@@ -446,6 +451,7 @@ fn expand_regression_entry(args: &str, default_max_turns: u32) -> Vec<ExpandedMa
                     deck2: d2.clone(),
                     seed: seed_start + g as u64,
                     max_turns,
+                    deep,
                     prefer_actions,
                     variant: variant.clone(),
                     commanders: commanders.clone(),
@@ -458,6 +464,7 @@ fn expand_regression_entry(args: &str, default_max_turns: u32) -> Vec<ExpandedMa
                     deck2: d2.clone(),
                     seed: s,
                     max_turns,
+                    deep,
                     prefer_actions,
                     variant: variant.clone(),
                     commanders: commanders.clone(),
@@ -475,6 +482,7 @@ fn expand_regression_entry(args: &str, default_max_turns: u32) -> Vec<ExpandedMa
                 deck2: decks[1].clone(),
                 seed: s,
                 max_turns,
+                deep,
                 prefer_actions,
                 variant: variant.clone(),
                 commanders: commanders.clone(),
@@ -504,6 +512,7 @@ mod tests {
                 deck2: "keyword_advanced2".into(),
                 seed: 42,
                 max_turns: 40,
+                deep: false,
                 prefer_actions: false,
                 variant: "Constructed".into(),
                 commanders: vec![],
@@ -516,6 +525,7 @@ mod tests {
                 deck2: "keyword_advanced2".into(),
                 seed: 51,
                 max_turns: 40,
+                deep: false,
                 prefer_actions: false,
                 variant: "Constructed".into(),
                 commanders: vec![],
@@ -538,6 +548,7 @@ mod tests {
                     deck2: "green_stompy".into(),
                     seed: 42,
                     max_turns: 30,
+                    deep: false,
                     prefer_actions: false,
                     variant: "Constructed".into(),
                     commanders: vec![],
@@ -547,6 +558,7 @@ mod tests {
                     deck2: "green_stompy".into(),
                     seed: 100,
                     max_turns: 30,
+                    deep: false,
                     prefer_actions: false,
                     variant: "Constructed".into(),
                     commanders: vec![],
@@ -556,6 +568,7 @@ mod tests {
                     deck2: "green_stompy".into(),
                     seed: 999,
                     max_turns: 30,
+                    deep: false,
                     prefer_actions: false,
                     variant: "Constructed".into(),
                     commanders: vec![],
@@ -933,6 +946,7 @@ async fn submit_jobs_handler(
                 deck2: matchup.deck2,
                 seed: matchup.seed,
                 max_turns: matchup.max_turns,
+                deep: matchup.deep,
                 prefer_actions: matchup.prefer_actions,
                 variant: matchup.variant,
                 commanders: matchup.commanders,
@@ -997,6 +1011,8 @@ struct RunMatchupRequest {
     seed: u64,
     #[serde(default = "default_matchup_max_turns")]
     max_turns: u32,
+    #[serde(default)]
+    deep: bool,
 }
 
 fn default_matchup_seed() -> u64 {
@@ -1035,6 +1051,7 @@ async fn run_matchup_handler(
         deck2: req.deck2,
         seed: req.seed,
         max_turns: req.max_turns,
+        deep: req.deep,
         prefer_actions: false,
         variant: "Constructed".to_string(),
         commanders: Vec::new(),

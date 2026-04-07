@@ -25,7 +25,8 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         player: controller,
         count: 1,
     };
-    let prolif_result = apply_replacements_with_agents(&mut *ctx.game, ctx.agents, &mut prolif_event);
+    let prolif_result =
+        apply_replacements_with_agents(&mut *ctx.game, ctx.agents, &mut prolif_event);
     if prolif_result == crate::replacement::ReplacementResult::Skipped
         || prolif_result == crate::replacement::ReplacementResult::Replaced
     {

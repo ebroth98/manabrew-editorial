@@ -520,11 +520,7 @@ fn prepare_cards_from_identities(
     cards
 }
 
-fn register_card_name(
-    registered: &mut RegisteredPlayer,
-    card_name: &str,
-    destination: ZoneType,
-) {
+fn register_card_name(registered: &mut RegisteredPlayer, card_name: &str, destination: ZoneType) {
     let name = card_name.to_string();
     match destination {
         ZoneType::Library => {

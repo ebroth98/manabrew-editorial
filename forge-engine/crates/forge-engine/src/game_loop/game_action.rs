@@ -228,18 +228,29 @@ impl GameLoop {
         if ab.is_mana_ability {
             self.resolve_mana_ability(game, agents, player, card_id, &ab, None);
             true
+        } else if ab
+            .params
+            .get(keys::AB)
+            .and_then(crate::ability::api_type::ApiType::smart_value_of)
+            == Some(crate::ability::api_type::ApiType::Plot)
+        {
+            // Java models Plot as AbilityStatic, which resolves immediately
+            // instead of using the stack.
+            self.resolve_immediate_ability(game, agents, player, card_id, &ab)
         } else if ab.ability_text.contains("Mode$ TurnFaceUp") {
             // Morph face-up is a special action (CR 702.36e): doesn't use the stack,
             // can't be responded to. Pay the cost and resolve immediately.
-            self.resolve_morph_face_up(game, agents, player, card_id, &ab)
+            self.resolve_immediate_ability(game, agents, player, card_id, &ab)
         } else {
             self.activate_ability_on_stack(game, agents, player, card_id, &ab)
         }
     }
 
-    /// Morph turn face up: pay the morph cost and resolve immediately
-    /// (special action per CR 702.36e — doesn't use the stack).
-    fn resolve_morph_face_up(
+    /// Resolve an ability immediately without using the stack.
+    ///
+    /// Used for abilities that Java models as `AbilityStatic` (e.g. Plot) and
+    /// for special actions like turning a Morph face up.
+    fn resolve_immediate_ability(
         &mut self,
         game: &mut GameState,
         agents: &mut [Box<dyn PlayerAgent>],
@@ -266,7 +277,19 @@ impl GameLoop {
             return false;
         }
 
-        // Build the spell ability and resolve effect immediately (no stack)
+        let card_name = game.card(card_id).card_name.clone();
+        let ability_kind = ab.params.get(keys::AB).unwrap_or("Unknown").to_string();
+        crate::agent::notify_all_agents(
+            agents,
+            crate::agent::GameLogEvent::action(format!(
+                "Activated ability: {} | source={}",
+                ability_kind, card_name
+            ))
+            .with_player(player)
+            .with_source_card(card_id),
+        );
+
+        // Build the spell ability and resolve effect immediately (no stack).
         let sa = crate::spellability::build_spell_ability(game, card_id, &ab.ability_text, player);
         let entry = StackEntry {
             id: 0,
@@ -280,15 +303,7 @@ impl GameLoop {
         };
         self.resolve_spell_effect(game, agents, &entry);
 
-        let card_name = game.card(card_id).card_name.clone();
-        crate::agent::notify_all_agents(
-            agents,
-            crate::agent::GameLogEvent::action(format!("Morph face-up: {}", card_name))
-                .with_player(player)
-                .with_source_card(card_id),
-        );
-
-        // Apply continuous effects and SBA after the face-up
+        // Apply continuous effects and SBA after the immediate resolution.
         crate::staticability::layer::apply_continuous_effects(game);
         super::check_sba(game, &mut self.trigger_handler, agents);
         self.process_triggers(game, agents);

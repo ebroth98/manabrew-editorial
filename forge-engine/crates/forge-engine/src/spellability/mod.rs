@@ -25,11 +25,11 @@ use serde::{Deserialize, Serialize};
 
 use crate::ability::api_type::ApiType;
 use crate::agent::{PlayerAgent, TargetChoice};
-use crate::card::card_util;
 use crate::card::card_damage_map::CardDamageMap;
+use crate::card::card_util;
 use crate::card::card_zone_table::CardZoneTable;
-use crate::event::AbilityValue;
 use crate::cost::{parse_cost, Cost};
+use crate::event::AbilityValue;
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
 use crate::mana::ManaPool;
@@ -719,10 +719,10 @@ impl SpellAbility {
             let max = tr.get_max_targets(game, self);
             let current = self.target_chosen.all_target_cards().len() as i32
                 + if self.target_chosen.target_player.is_some() {
-                1
-            } else {
-                0
-            };
+                    1
+                } else {
+                    0
+                };
             current < max
         } else {
             false
@@ -1125,7 +1125,6 @@ impl SpellAbility {
     pub fn sets_var_operator2(&mut self, value: &str) {
         self.params.put("Operator2".to_string(), value.to_string());
     }
-
 }
 
 // build_spell_ability now lives in ability::ability_factory.
@@ -1216,7 +1215,8 @@ fn choose_targets_for(
                 TargetChoice::Player(pid) => sa.target_chosen.target_player = Some(pid),
                 TargetChoice::Card(cid) => {
                     sa.target_chosen.target_card = Some(cid);
-                    sa.target_chosen.target_card_zone_timestamp = Some(game.card(cid).zone_timestamp);
+                    sa.target_chosen.target_card_zone_timestamp =
+                        Some(game.card(cid).zone_timestamp);
                 }
                 TargetChoice::None => {}
             }

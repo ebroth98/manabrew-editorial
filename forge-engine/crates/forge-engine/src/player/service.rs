@@ -3,13 +3,11 @@ use std::collections::HashSet;
 use forge_foundation::ZoneType;
 use rand::seq::SliceRandom;
 
+use crate::card::CardInstance;
 use crate::event::{RunParams, TriggerType};
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
-use crate::card::CardInstance;
-use crate::player::player_factory_util::{
-    add_trigger_ability, new_player_effect_card,
-};
+use crate::player::player_factory_util::{add_trigger_ability, new_player_effect_card};
 use crate::player::{GameLossReason, PlayerOutcome, RegisteredPlayer};
 use crate::replacement::replacement_handler::{apply_replacements, ReplacementEvent};
 use crate::replacement::replacement_result::ReplacementResult;
@@ -208,8 +206,10 @@ impl GameState {
     }
 
     pub fn player_mark_lost(&mut self, player: PlayerId, reason: GameLossReason) {
-        self.player_mut(player)
-            .mark_lost(PlayerOutcome::Loss { reason, spell_name: None });
+        self.player_mut(player).mark_lost(PlayerOutcome::Loss {
+            reason,
+            spell_name: None,
+        });
     }
 
     pub fn player_mark_won(&mut self, player: PlayerId) {
@@ -408,9 +408,7 @@ impl GameState {
     }
 
     pub fn player_can_gain_life(&self, player: PlayerId) -> bool {
-        !crate::staticability::static_ability_cant_gain_lose_pay_life::cant_gain_life(
-            self, player,
-        )
+        !crate::staticability::static_ability_cant_gain_lose_pay_life::cant_gain_life(self, player)
     }
 
     pub fn player_lose_life(&mut self, player: PlayerId, amount: i32) -> i32 {
@@ -477,7 +475,8 @@ impl GameState {
     }
 
     pub fn player_record_permanent_left_battlefield(&mut self, player: PlayerId) {
-        self.player_mut(player).permanents_left_battlefield_this_turn += 1;
+        self.player_mut(player)
+            .permanents_left_battlefield_this_turn += 1;
     }
 
     pub fn player_record_landfall(&mut self, player: PlayerId) {
@@ -485,7 +484,8 @@ impl GameState {
     }
 
     pub fn player_record_permanent_put_into_graveyard(&mut self, player: PlayerId) {
-        self.player_mut(player).permanents_put_into_graveyard_this_turn += 1;
+        self.player_mut(player)
+            .permanents_put_into_graveyard_this_turn += 1;
     }
 
     pub fn player_add_mana_expended(&mut self, player: PlayerId, amount: i32) {
@@ -662,7 +662,11 @@ impl GameState {
     /// Internal draw implementation shared by normal draws and draw-step draws.
     /// After the replacement handler runs, extra_draws are consumed by drawing
     /// additional cards (mirrors Java Draw replacement which increments NumCards).
-    fn player_draw_one_internal(&mut self, player: PlayerId, is_first_in_draw_step: bool) -> Option<CardId> {
+    fn player_draw_one_internal(
+        &mut self,
+        player: PlayerId,
+        is_first_in_draw_step: bool,
+    ) -> Option<CardId> {
         if !self.player_can_draw(player) {
             return None;
         }
@@ -700,8 +704,7 @@ impl GameState {
     }
 
     pub fn player_can_draw_amount(&self, player: PlayerId, amount: i32) -> bool {
-        crate::staticability::static_ability_cant_draw::can_draw_amount(self, player, amount)
-            > 0
+        crate::staticability::static_ability_cant_draw::can_draw_amount(self, player, amount) > 0
     }
 
     pub fn player_draw_cards(&mut self, player: PlayerId, amount: usize) -> Vec<CardId> {
@@ -885,10 +888,10 @@ impl GameState {
         }
         if self.player(player).commander_damage_enabled
             && self
-            .player(player)
-            .commander_damage_received
-            .values()
-            .any(|&amount| amount >= 21)
+                .player(player)
+                .commander_damage_received
+                .values()
+                .any(|&amount| amount >= 21)
         {
             let mut event = ReplacementEvent::GameLoss {
                 player,

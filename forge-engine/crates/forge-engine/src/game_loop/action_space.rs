@@ -18,7 +18,11 @@ impl GameLoop {
         let summoning_sick = card.is_creature() && card.summoning_sick && !card.has_haste();
 
         let has_usable_mana_ability = card.activated_abilities.iter().any(|ab| {
-            let needs_tap = ab.cost.parts.iter().any(|part| matches!(part, CostPart::Tap));
+            let needs_tap = ab
+                .cost
+                .parts
+                .iter()
+                .any(|part| matches!(part, CostPart::Tap));
             ab.is_mana_ability
                 && (!card.tapped || !needs_tap)
                 && (!summoning_sick || !needs_tap)
@@ -40,7 +44,9 @@ impl GameLoop {
 
         let playable = self.get_playable_cards(game, player, must_be_instant);
         // Debug: check if Makeshift Munitions is on battlefield but not in activatable
-        let has_munitions = game.cards_in_zone(ZoneType::Battlefield, player).iter()
+        let has_munitions = game
+            .cards_in_zone(ZoneType::Battlefield, player)
+            .iter()
             .any(|&cid| game.card(cid).card_name.contains("Makeshift Munitions"));
         let activatable: Vec<(CardId, usize)> = self
             .get_activatable_abilities(game, player, can_play_sorcery)
@@ -105,7 +111,13 @@ mod tests {
     use crate::card::Card;
     use forge_foundation::{CardTypeLine, ColorSet, ManaCost};
 
-    fn make_card(id: u32, owner: PlayerId, name: &str, type_line: &str, abilities: Vec<&str>) -> Card {
+    fn make_card(
+        id: u32,
+        owner: PlayerId,
+        name: &str,
+        type_line: &str,
+        abilities: Vec<&str>,
+    ) -> Card {
         let mut card = Card::new(
             CardId(id),
             name.to_string(),
@@ -143,6 +155,8 @@ mod tests {
         game.card_mut(spawn).zone = ZoneType::Battlefield;
         game.card_mut(spawn).tapped = true;
 
-        assert!(GameLoop::mana_source_available_for_payment(&game, player, spawn));
+        assert!(GameLoop::mana_source_available_for_payment(
+            &game, player, spawn
+        ));
     }
 }

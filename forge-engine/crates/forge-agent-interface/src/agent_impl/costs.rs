@@ -5,7 +5,7 @@ use forge_engine_core::mana::ManaPool;
 use crate::ids_codec::{card_id_str, parse_card_id};
 use crate::prompt::{AgentPromptInner, PlayerAction};
 
-use super::{PromptAgent, AgentTransport};
+use super::{AgentTransport, PromptAgent};
 
 pub(super) fn choose_phyrexian_pay_life<T: AgentTransport>(
     agent: &mut PromptAgent<T>,

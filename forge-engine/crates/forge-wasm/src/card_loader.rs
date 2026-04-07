@@ -72,11 +72,7 @@ pub fn load_card_bundle(json_str: &str) -> Result<u32, JsError> {
 
     if result.failed > 0 {
         web_sys::console::warn_1(
-            &format!(
-                "[card_loader] {} cards failed to parse",
-                result.failed
-            )
-            .into(),
+            &format!("[card_loader] {} cards failed to parse", result.failed).into(),
         );
         for (file, err) in result.errors.iter().take(5) {
             web_sys::console::warn_1(&format!("  - {}: {}", file, err).into());
@@ -90,9 +86,7 @@ pub fn load_card_bundle(json_str: &str) -> Result<u32, JsError> {
         return Err(JsError::new("Card database already initialized"));
     }
 
-    web_sys::console::log_1(
-        &format!("[card_loader] Successfully loaded {} cards", loaded).into(),
-    );
+    web_sys::console::log_1(&format!("[card_loader] Successfully loaded {} cards", loaded).into());
 
     Ok(loaded)
 }

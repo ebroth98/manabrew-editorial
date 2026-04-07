@@ -187,8 +187,10 @@ impl CardDatabase {
             self.normalized_names
                 .insert(normalized_alias.clone(), alias.to_string());
         }
-        self.flavor_name_aliases_normalized
-            .insert(normalized_alias.to_ascii_lowercase(), canonical_name.to_string());
+        self.flavor_name_aliases_normalized.insert(
+            normalized_alias.to_ascii_lowercase(),
+            canonical_name.to_string(),
+        );
     }
 
     fn register_flavor_aliases_for_card(&mut self, card: &CardRules) {

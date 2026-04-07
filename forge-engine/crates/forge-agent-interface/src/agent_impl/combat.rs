@@ -6,7 +6,7 @@ use crate::game_view_dto::CardDto;
 use crate::ids_codec::{card_id_str, parse_card_id};
 use crate::prompt::{AgentPromptInner, BlockAssignment, PlayerAction};
 
-use super::{PromptAgent, AgentTransport};
+use super::{AgentTransport, PromptAgent};
 
 fn fallback_combat_assignment(
     blockers_in_order: &[CardId],
@@ -53,8 +53,9 @@ pub(super) fn choose_attackers<T: AgentTransport>(
             .iter()
             .filter_map(|a| {
                 let attacker = parse_card_id(&a.attacker_id)?;
-                let defender = PromptAgent::<T>::parse_defender_id(&a.defender_id, possible_defenders)
-                    .unwrap_or(default_defender);
+                let defender =
+                    PromptAgent::<T>::parse_defender_id(&a.defender_id, possible_defenders)
+                        .unwrap_or(default_defender);
                 Some((attacker, defender))
             })
             .collect(),

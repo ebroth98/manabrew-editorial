@@ -59,8 +59,8 @@ use crate::card::{Card, CounterType};
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
 use crate::mana::ManaPool;
-use crate::spellability::SpellAbility;
 use crate::spellability::spell::Spell;
+use crate::spellability::SpellAbility;
 use crate::staticability::static_ability_cant_exile::cant_exile;
 use crate::staticability::static_ability_cant_gain_lose_pay_life::cant_pay_life;
 use crate::staticability::static_ability_cant_put_counter::any_cant_put_counter_on_card;
@@ -664,9 +664,7 @@ pub fn get_sacrifice_targets_for_cost(
     let static_sources = static_ability_source_cards(game);
     get_sacrifice_targets(game, player, type_filter)
         .into_iter()
-        .filter(|&cid| {
-            !cant_sacrifice(&static_sources, game.card(cid), ability, true)
-        })
+        .filter(|&cid| !cant_sacrifice(&static_sources, game.card(cid), ability, true))
         .collect()
 }
 
@@ -949,7 +947,7 @@ pub fn can_pay(
     available_mana: Option<&ManaPool>,
     source: CardId,
     player: PlayerId,
-    ability: Option<&SpellAbility>
+    ability: Option<&SpellAbility>,
 ) -> bool {
     for part in &cost.parts {
         if !can_pay_part_distributed(part, game, available_mana, source, player, ability) {
@@ -1018,21 +1016,31 @@ fn can_pay_part_distributed(
         CostPart::Sacrifice { .. } => {
             cost_sacrifice::can_pay(game, pool, source, player, ability, part)
         }
-        CostPart::Discard { .. } => cost_discard::can_pay(game, pool, source, player, ability, part),
+        CostPart::Discard { .. } => {
+            cost_discard::can_pay(game, pool, source, player, ability, part)
+        }
         CostPart::SubCounter { .. } => cost_sub_counter::can_pay(game, source, part),
         CostPart::AddCounter { .. } => {
             cost_put_counter::can_pay(game, pool, source, player, ability, part)
         }
-        CostPart::Exile { .. } | CostPart::ExileFromAnyGrave { .. } | CostPart::ExileFromSameGrave { .. } => {
+        CostPart::Exile { .. }
+        | CostPart::ExileFromAnyGrave { .. }
+        | CostPart::ExileFromSameGrave { .. } => {
             cost_exile::can_pay(game, pool, source, player, ability, part)
         }
         CostPart::Return { .. } => cost_return::can_pay(game, pool, source, player, ability, part),
-        CostPart::TapType { .. } => cost_tap_type::can_pay(game, pool, source, player, ability, part),
+        CostPart::TapType { .. } => {
+            cost_tap_type::can_pay(game, pool, source, player, ability, part)
+        }
         CostPart::UntapType { .. } => {
             cost_untap_type::can_pay(game, pool, source, player, ability, part)
         }
-        CostPart::PayEnergy(_) => cost_pay_energy::can_pay(game, pool, source, player, ability, part),
-        CostPart::PayShards(_) => cost_pay_shards::can_pay(game, pool, source, player, ability, part),
+        CostPart::PayEnergy(_) => {
+            cost_pay_energy::can_pay(game, pool, source, player, ability, part)
+        }
+        CostPart::PayShards(_) => {
+            cost_pay_shards::can_pay(game, pool, source, player, ability, part)
+        }
         CostPart::DamageYou(_) => cost_damage::can_pay(game, pool, source, player, ability, part),
         CostPart::Draw(_) => cost_draw::can_pay(game, pool, source, player, ability, part),
         CostPart::Mill(_) => cost_mill::can_pay(game, pool, source, player, ability, part),
@@ -1045,12 +1053,18 @@ fn can_pay_part_distributed(
         CostPart::RemoveAnyCounter { .. } => {
             cost_remove_any_counter::can_pay(game, pool, source, player, ability, part)
         }
-        CostPart::Unattach { .. } => cost_unattach::can_pay(game, pool, source, player, ability, part),
+        CostPart::Unattach { .. } => {
+            cost_unattach::can_pay(game, pool, source, player, ability, part)
+        }
         CostPart::ExiledMoveToGrave { .. } => {
             cost_exiled_move_to_grave::can_pay(game, pool, source, player, ability, part)
         }
-        CostPart::AddMana { .. } => cost_add_mana::can_pay(game, pool, source, player, ability, part),
-        CostPart::Waterbend { .. } => cost_waterbend::can_pay(game, available_mana, source, player, part),
+        CostPart::AddMana { .. } => {
+            cost_add_mana::can_pay(game, pool, source, player, ability, part)
+        }
+        CostPart::Waterbend { .. } => {
+            cost_waterbend::can_pay(game, available_mana, source, player, part)
+        }
         CostPart::ChooseColor(_) => {
             cost_choose_color::can_pay(game, pool, source, player, ability, part)
         }
@@ -1058,7 +1072,9 @@ fn can_pay_part_distributed(
             cost_choose_creature_type::can_pay(game, pool, source, player, ability, part)
         }
         CostPart::FlipCoin(_) => cost_flip_coin::can_pay(game, pool, source, player, ability, part),
-        CostPart::RollDice { .. } => cost_roll_dice::can_pay(game, pool, source, player, ability, part),
+        CostPart::RollDice { .. } => {
+            cost_roll_dice::can_pay(game, pool, source, player, ability, part)
+        }
         CostPart::ExileFromStack { .. } => {
             cost_exile_from_stack::can_pay(game, pool, source, player, ability, part)
         }
@@ -1070,7 +1086,9 @@ fn can_pay_part_distributed(
             cost_put_card_to_lib::can_pay(game, pool, source, player, ability, part)
         }
         CostPart::Enlist { .. } => cost_enlist::can_pay(game, pool, source, player, ability, part),
-        CostPart::PromiseGift => cost_promise_gift::can_pay(game, pool, source, player, ability, part),
+        CostPart::PromiseGift => {
+            cost_promise_gift::can_pay(game, pool, source, player, ability, part)
+        }
         CostPart::RevealChosen { .. } => {
             cost_reveal_chosen::can_pay(game, pool, source, player, ability, part)
         }

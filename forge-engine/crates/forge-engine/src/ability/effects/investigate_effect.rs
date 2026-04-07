@@ -45,7 +45,11 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
 }
 
 /// Create a single Clue artifact token. Returns the created token ID.
-fn create_clue_token(ctx: &mut EffectContext, sa: &SpellAbility, player: crate::ids::PlayerId) -> Option<CardId> {
+fn create_clue_token(
+    ctx: &mut EffectContext,
+    sa: &SpellAbility,
+    player: crate::ids::PlayerId,
+) -> Option<CardId> {
     let token_id;
     // Try to use the registered token template first
     if let Some(template) = ctx.token_templates.get("c_a_clue_draw").cloned() {

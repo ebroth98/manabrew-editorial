@@ -419,7 +419,8 @@ impl TriggerHandler {
                 );
                 sa.is_trigger = true;
                 sa.trigger_source = Some(delayed.source_card);
-                sa.trigger_source_zone_timestamp = Some(game.card(delayed.source_card).zone_timestamp);
+                sa.trigger_source_zone_timestamp =
+                    Some(game.card(delayed.source_card).zone_timestamp);
                 sa.trigger_remembered_amount = delayed.remembered_amount;
 
                 let entry = StackEntry {
@@ -983,7 +984,14 @@ impl TriggerHandler {
                 continue;
             }
             let host_controller = card.controller;
-            if self.can_run_trigger(game, at.card_id, at.trigger_index, host_controller, &mode, params) {
+            if self.can_run_trigger(
+                game,
+                at.card_id,
+                at.trigger_index,
+                host_controller,
+                &mode,
+                params,
+            ) {
                 result.push(card.triggers[at.trigger_index].clone());
             }
         }

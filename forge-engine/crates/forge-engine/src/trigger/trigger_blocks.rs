@@ -46,7 +46,11 @@ pub fn set_triggering_objects(sa: &mut SpellAbility, params: &RunParams) {
         sa.add_triggering_object("Blocker", &blocker.0.to_string());
     }
     if let Some(attackers) = params.attacker_ids.as_ref() {
-        let csv = attackers.iter().map(|c| c.0.to_string()).collect::<Vec<_>>().join(",");
+        let csv = attackers
+            .iter()
+            .map(|c| c.0.to_string())
+            .collect::<Vec<_>>()
+            .join(",");
         sa.add_triggering_object("Attackers", &csv);
     }
 }

@@ -61,8 +61,8 @@ use forge_foundation::{CardTypeLine, ColorSet, ManaCost, ZoneType};
 use serde::{Deserialize, Serialize};
 
 use crate::ability::activated::{parse_activated_ability, ActivatedAbility};
-use crate::game::GameState;
 use crate::card::perpetual::perpetual_record::PerpetualRecord;
+use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
 use crate::parsing::parse_or_warn;
 use crate::replacement::{parse_replacement_effect, ReplacementEffect};

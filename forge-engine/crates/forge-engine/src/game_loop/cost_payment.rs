@@ -378,7 +378,9 @@ impl GameLoop {
                             .cards_in_zone(ZoneType::Battlefield, player)
                             .to_vec()
                             .into_iter()
-                            .filter(|&cid| Self::mana_source_available_for_payment(game, player, cid))
+                            .filter(|&cid| {
+                                Self::mana_source_available_for_payment(game, player, cid)
+                            })
                             .collect();
                         let mut mana_ability_options: Vec<crate::agent::ManaAbilityOption> =
                             Vec::new();
@@ -445,11 +447,14 @@ impl GameLoop {
                                     mana_loop_invalid_count += 1;
                                     if mana_loop_invalid_count > 3 {
                                         self.mana_pools[player.index()] = saved_pool.clone();
-                                        for &(cid, was_tapped, ref saved_counters) in &saved_permanent_states {
+                                        for &(cid, was_tapped, ref saved_counters) in
+                                            &saved_permanent_states
+                                        {
                                             if !was_tapped && game.card(cid).tapped {
                                                 game.untap(cid);
                                             }
-                                            game.card_mut(cid).set_counters_map(saved_counters.clone());
+                                            game.card_mut(cid)
+                                                .set_counters_map(saved_counters.clone());
                                         }
                                         break false;
                                     }
@@ -488,7 +493,8 @@ impl GameLoop {
                                         &ab,
                                         express_choice,
                                     );
-                                } else if let Some(atom) = basic_land_mana_atom(game.card(land_id)) {
+                                } else if let Some(atom) = basic_land_mana_atom(game.card(land_id))
+                                {
                                     game.tap(land_id);
                                     self.mana_pools[player.index()].add(atom, 1);
                                     self.trigger_handler.run_trigger(
@@ -535,11 +541,14 @@ impl GameLoop {
                                     mana_loop_invalid_count += 1;
                                     if mana_loop_invalid_count > 3 {
                                         self.mana_pools[player.index()] = saved_pool.clone();
-                                        for &(cid, was_tapped, ref saved_counters) in &saved_permanent_states {
+                                        for &(cid, was_tapped, ref saved_counters) in
+                                            &saved_permanent_states
+                                        {
                                             if !was_tapped && game.card(cid).tapped {
                                                 game.untap(cid);
                                             }
-                                            game.card_mut(cid).set_counters_map(saved_counters.clone());
+                                            game.card_mut(cid)
+                                                .set_counters_map(saved_counters.clone());
                                         }
                                         break false;
                                     }
@@ -547,7 +556,9 @@ impl GameLoop {
                             }
                             ManaCostAction::Cancel => {
                                 self.mana_pools[player.index()] = saved_pool.clone();
-                                for &(cid, was_tapped, ref saved_counters) in &saved_permanent_states {
+                                for &(cid, was_tapped, ref saved_counters) in
+                                    &saved_permanent_states
+                                {
                                     if !was_tapped && game.card(cid).tapped {
                                         game.untap(cid);
                                     }
@@ -608,7 +619,13 @@ impl GameLoop {
                             lki_toughness,
                         );
                         self.trigger_handler.flush_waiting_triggers(game);
-                        self.move_card_with_runtime(game, card_id, ZoneType::Graveyard, owner, agents);
+                        self.move_card_with_runtime(
+                            game,
+                            card_id,
+                            ZoneType::Graveyard,
+                            owner,
+                            agents,
+                        );
                     } else {
                         self.pay_sacrifice_cost(game, agents, player, type_filter, *amount, sa);
                     }
@@ -628,7 +645,13 @@ impl GameLoop {
                             },
                             false,
                         );
-                        self.move_card_with_runtime(game, card_id, ZoneType::Graveyard, owner, agents);
+                        self.move_card_with_runtime(
+                            game,
+                            card_id,
+                            ZoneType::Graveyard,
+                            owner,
+                            agents,
+                        );
                     } else if !pre_picked_discards.is_empty() {
                         // Use pre-picked cards from visit phase
                         let to_discard: Vec<CardId> = pre_picked_discards
@@ -693,7 +716,13 @@ impl GameLoop {
                     from,
                 } => {
                     if type_filter == "CARDNAME" || type_filter == "OriginalHost" {
-                        self.move_card_with_runtime(game, card_id, ZoneType::Exile, game.card(card_id).owner, agents);
+                        self.move_card_with_runtime(
+                            game,
+                            card_id,
+                            ZoneType::Exile,
+                            game.card(card_id).owner,
+                            agents,
+                        );
                         self.record_paid_cost_exile(game, card_id, card_id);
                     } else {
                         self.pay_exile_cost(
@@ -782,7 +811,13 @@ impl GameLoop {
                 CostPart::Mill(amount) => {
                     for _ in 0..*amount {
                         if let Some(top) = game.zone_mut(ZoneType::Library, player).take_top() {
-                            self.move_card_with_runtime(game, top, ZoneType::Graveyard, player, agents);
+                            self.move_card_with_runtime(
+                                game,
+                                top,
+                                ZoneType::Graveyard,
+                                player,
+                                agents,
+                            );
                             self.trigger_handler.run_trigger(
                                 TriggerType::Milled,
                                 RunParams {
@@ -1238,7 +1273,13 @@ impl GameLoop {
                     if type_filter == "CARDNAME" || type_filter == "OriginalHost" {
                         if game.card(card_id).zone == *from {
                             let owner = game.card(card_id).owner;
-                            self.move_card_with_runtime(game, card_id, ZoneType::Exile, owner, agents);
+                            self.move_card_with_runtime(
+                                game,
+                                card_id,
+                                ZoneType::Exile,
+                                owner,
+                                agents,
+                            );
                             self.record_paid_cost_exile(game, card_id, card_id);
                         }
                     } else {
@@ -1325,7 +1366,13 @@ impl GameLoop {
                 CostPart::Mill(amount) => {
                     for _ in 0..*amount {
                         if let Some(top) = game.zone_mut(ZoneType::Library, player).take_top() {
-                            self.move_card_with_runtime(game, top, ZoneType::Graveyard, player, agents);
+                            self.move_card_with_runtime(
+                                game,
+                                top,
+                                ZoneType::Graveyard,
+                                player,
+                                agents,
+                            );
                             self.trigger_handler.run_trigger(
                                 TriggerType::Milled,
                                 RunParams {
@@ -1703,7 +1750,8 @@ impl GameLoop {
                     })
                     .unwrap_or(false);
                 if !is_spell_context {
-                    let card_name = sa.and_then(|s| s.source.map(|cid| game.card(cid).card_name.as_str()));
+                    let card_name =
+                        sa.and_then(|s| s.source.map(|cid| game.card(cid).card_name.as_str()));
                     let confirmed = agents[player.index()].confirm_payment(
                         player,
                         "Sacrifice",

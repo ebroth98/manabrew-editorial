@@ -1019,7 +1019,10 @@ pub fn do_x_math(num: i32, operators: &str) -> i32 {
     // The svar module's do_x_math is private, but we replicate its logic here.
     let parts: Vec<&str> = operators.split('.').collect();
     let op = parts.first().copied().unwrap_or("");
-    let secondary = parts.get(1).and_then(|s| s.parse::<i32>().ok()).unwrap_or(0);
+    let secondary = parts
+        .get(1)
+        .and_then(|s| s.parse::<i32>().ok())
+        .unwrap_or(0);
 
     if op.contains("Plus") {
         num + secondary
@@ -1044,9 +1047,17 @@ pub fn do_x_math(num: i32, operators: &str) -> i32 {
     } else if op.contains("Times") {
         num * secondary
     } else if op.contains("DivideEvenlyUp") {
-        if secondary == 0 { 0 } else { num / secondary + i32::from(num % secondary != 0) }
+        if secondary == 0 {
+            0
+        } else {
+            num / secondary + i32::from(num % secondary != 0)
+        }
     } else if op.contains("DivideEvenlyDown") {
-        if secondary == 0 { 0 } else { num / secondary }
+        if secondary == 0 {
+            0
+        } else {
+            num / secondary
+        }
     } else if op.contains("Abs") {
         num.abs()
     } else if op.contains("LimitMax") {
@@ -1063,7 +1074,13 @@ pub fn do_x_math(num: i32, operators: &str) -> i32 {
 ///
 /// Sums a property across a list of players. Common properties:
 /// - `LifeTotal`, `Poison`, `CardsInHand`, `DomainCount`, etc.
-pub fn player_x_count(game: &GameState, players: &[PlayerId], expr: &str, source_id: CardId, sa: &SpellAbility) -> i32 {
+pub fn player_x_count(
+    game: &GameState,
+    players: &[PlayerId],
+    expr: &str,
+    source_id: CardId,
+    sa: &SpellAbility,
+) -> i32 {
     let parts: Vec<&str> = expr.split('/').collect();
     let property = parts[0].trim();
     let operators = parts.get(1).copied().unwrap_or("");
@@ -1078,14 +1095,22 @@ pub fn player_x_count(game: &GameState, players: &[PlayerId], expr: &str, source
 
 /// Get a numeric property for a single player.
 /// Mirrors Java's `AbilityUtils.playerXProperty(Player, String, Card, CardTraitBase)`.
-pub fn player_x_property(game: &GameState, player: PlayerId, property: &str, _source_id: CardId, _sa: &SpellAbility) -> i32 {
+pub fn player_x_property(
+    game: &GameState,
+    player: PlayerId,
+    property: &str,
+    _source_id: CardId,
+    _sa: &SpellAbility,
+) -> i32 {
     let p = game.player(player);
     match property {
         "LifeTotal" => p.life,
         "Poison" | "PoisonCounters" => p.poison_counters,
         "CardsInHand" => game.cards_in_zone(ZoneType::Hand, player).len() as i32,
         "CardsInLibrary" => game.cards_in_zone(ZoneType::Library, player).len() as i32,
-        "CardsInGraveyard" | "GraveyardSize" => game.cards_in_zone(ZoneType::Graveyard, player).len() as i32,
+        "CardsInGraveyard" | "GraveyardSize" => {
+            game.cards_in_zone(ZoneType::Graveyard, player).len() as i32
+        }
         "StartingLife" => p.starting_life,
         "LandsPlayedThisTurn" => p.lands_played_this_turn,
         "DiscardedThisTurn" | "NumDiscardedThisTurn" => p.discarded_this_turn,
@@ -1102,19 +1127,21 @@ pub fn player_x_property(game: &GameState, player: PlayerId, property: &str, _so
                 }
                 for subtype in &card.type_line.subtypes {
                     let lower = subtype.to_ascii_lowercase();
-                    if matches!(lower.as_str(), "plains" | "island" | "swamp" | "mountain" | "forest") {
+                    if matches!(
+                        lower.as_str(),
+                        "plains" | "island" | "swamp" | "mountain" | "forest"
+                    ) {
                         types.insert(lower);
                     }
                 }
             }
             types.len() as i32
         }
-        "NumCreaturesYouCtrl" | "CreatureCount" => {
-            game.cards_in_zone(ZoneType::Battlefield, player)
-                .iter()
-                .filter(|&&cid| game.card(cid).is_creature())
-                .count() as i32
-        }
+        "NumCreaturesYouCtrl" | "CreatureCount" => game
+            .cards_in_zone(ZoneType::Battlefield, player)
+            .iter()
+            .filter(|&&cid| game.card(cid).is_creature())
+            .count() as i32,
         _ => 0,
     }
 }
@@ -1132,7 +1159,9 @@ pub fn object_x_count(game: &GameState, objects: &[CardId], expr: &str) -> i32 {
         "Amount" | "Count" => objects.len() as i32,
         "TotalPower" => objects.iter().map(|&cid| game.card(cid).power()).sum(),
         "TotalToughness" => objects.iter().map(|&cid| game.card(cid).toughness()).sum(),
-        "TotalCMC" | "TotalManaValue" => objects.iter().map(|&cid| game.card(cid).mana_value()).sum(),
+        "TotalCMC" | "TotalManaValue" => {
+            objects.iter().map(|&cid| game.card(cid).mana_value()).sum()
+        }
         "SumPower" => objects.iter().map(|&cid| game.card(cid).power()).sum(),
         _ => objects.len() as i32,
     };
@@ -1177,27 +1206,43 @@ pub fn handle_remembering(game: &mut GameState, sa: &SpellAbility) {
 /// Mirrors Java's `AbilityUtils.handlePaid(Iterable<Card>, String, Card, CardTraitBase)`.
 ///
 /// Evaluates properties of cards that were paid as costs (e.g. sacrificed, discarded).
-pub fn handle_paid(game: &GameState, paid_cards: &[CardId], property: &str, _source_id: CardId) -> i32 {
+pub fn handle_paid(
+    game: &GameState,
+    paid_cards: &[CardId],
+    property: &str,
+    _source_id: CardId,
+) -> i32 {
     if paid_cards.is_empty() {
         return 0;
     }
 
     match property {
         "Amount" | "Count" => paid_cards.len() as i32,
-        "TotalPower" | "SumPower" => paid_cards.iter().map(|&cid| {
-            let card = game.card(cid);
-            card.lki_power.unwrap_or(card.base_power.unwrap_or(0))
-        }).sum(),
-        "TotalToughness" | "SumToughness" => paid_cards.iter().map(|&cid| {
-            let card = game.card(cid);
-            card.lki_toughness.unwrap_or(card.base_toughness.unwrap_or(0))
-        }).sum(),
-        "TotalCMC" | "SumCMC" => paid_cards.iter().map(|&cid| game.card(cid).mana_value()).sum(),
+        "TotalPower" | "SumPower" => paid_cards
+            .iter()
+            .map(|&cid| {
+                let card = game.card(cid);
+                card.lki_power.unwrap_or(card.base_power.unwrap_or(0))
+            })
+            .sum(),
+        "TotalToughness" | "SumToughness" => paid_cards
+            .iter()
+            .map(|&cid| {
+                let card = game.card(cid);
+                card.lki_toughness
+                    .unwrap_or(card.base_toughness.unwrap_or(0))
+            })
+            .sum(),
+        "TotalCMC" | "SumCMC" => paid_cards
+            .iter()
+            .map(|&cid| game.card(cid).mana_value())
+            .sum(),
         _ if property.starts_with("Valid ") => {
             let filter = property.strip_prefix("Valid ").unwrap_or("");
-            paid_cards.iter().filter(|&&cid| {
-                matches_change_type(game.card(cid), filter, &[])
-            }).count() as i32
+            paid_cards
+                .iter()
+                .filter(|&&cid| matches_change_type(game.card(cid), filter, &[]))
+                .count() as i32
         }
         _ => paid_cards.len() as i32,
     }
@@ -1210,7 +1255,11 @@ pub fn handle_paid(game: &GameState, paid_cards: &[CardId], property: &str, _sou
 ///
 /// If `permanent_types` is true, only counts types that are permanent types
 /// (Artifact, Creature, Enchantment, Land, Planeswalker).
-pub fn count_card_types_from_list(game: &GameState, cards: &[CardId], permanent_types: bool) -> i32 {
+pub fn count_card_types_from_list(
+    game: &GameState,
+    cards: &[CardId],
+    permanent_types: bool,
+) -> i32 {
     let mut types = std::collections::HashSet::new();
     for &cid in cards {
         let card = game.card(cid);
@@ -1219,9 +1268,21 @@ pub fn count_card_types_from_list(game: &GameState, cards: &[CardId], permanent_
         }
     }
     if permanent_types {
-        types.iter().filter(|t| {
-            matches!(t.as_str(), "Artifact" | "Creature" | "Enchantment" | "Land" | "Planeswalker" | "Battle" | "Kindred")
-        }).count() as i32
+        types
+            .iter()
+            .filter(|t| {
+                matches!(
+                    t.as_str(),
+                    "Artifact"
+                        | "Creature"
+                        | "Enchantment"
+                        | "Land"
+                        | "Planeswalker"
+                        | "Battle"
+                        | "Kindred"
+                )
+            })
+            .count() as i32
     } else {
         types.len() as i32
     }
@@ -1260,7 +1321,11 @@ pub fn count_sub_types_from_list(game: &GameState, cards: &[CardId]) -> i32 {
 ///
 /// Parses the UnlessCost$ string and returns a Cost object that the opponent
 /// may choose to pay to prevent the effect.
-pub fn calculate_unless_cost(game: &GameState, sa: &SpellAbility, unless_cost: &str) -> Option<crate::cost::Cost> {
+pub fn calculate_unless_cost(
+    game: &GameState,
+    sa: &SpellAbility,
+    unless_cost: &str,
+) -> Option<crate::cost::Cost> {
     if unless_cost.is_empty() {
         return None;
     }
@@ -1303,7 +1368,12 @@ pub fn calculate_unless_cost(game: &GameState, sa: &SpellAbility, unless_cost: &
 ///
 /// Handles Triggered*, Targeted*, Remembered* prefixes that redirect
 /// the source card for validation, then applies standard valid-cards matching.
-pub fn filter_list_by_type(game: &GameState, cards: &[CardId], filter_type: &str, sa: &SpellAbility) -> Vec<CardId> {
+pub fn filter_list_by_type(
+    game: &GameState,
+    cards: &[CardId],
+    filter_type: &str,
+    sa: &SpellAbility,
+) -> Vec<CardId> {
     if filter_type.is_empty() {
         return cards.to_vec();
     }
@@ -1313,7 +1383,8 @@ pub fn filter_list_by_type(game: &GameState, cards: &[CardId], filter_type: &str
     // Handle Triggered prefix — resolve to a trigger card, then adjust filter
     let (effective_source, effective_filter) = if filter_type.starts_with("Triggered") {
         // Look up the triggered card object
-        let trigger_card = sa.trigger_objects
+        let trigger_card = sa
+            .trigger_objects
             .get("Card")
             .or_else(|| sa.trigger_objects.get("Object"))
             .or_else(|| sa.trigger_objects.get("Attacker"))
@@ -1360,16 +1431,20 @@ pub fn filter_list_by_type(game: &GameState, cards: &[CardId], filter_type: &str
         (sa.source, filter_type.to_string())
     };
 
-    cards.iter().copied().filter(|&cid| {
-        let card = game.card(cid);
-        // If the filter mentions "Self", it means the card being tested is the source
-        if effective_filter.contains(".Self") {
-            if let Some(src) = effective_source {
-                return cid == src;
+    cards
+        .iter()
+        .copied()
+        .filter(|&cid| {
+            let card = game.card(cid);
+            // If the filter mentions "Self", it means the card being tested is the source
+            if effective_filter.contains(".Self") {
+                if let Some(src) = effective_source {
+                    return cid == src;
+                }
             }
-        }
-        matches_valid_cards(card, &effective_filter, activating_player)
-    }).collect()
+            matches_valid_cards(card, &effective_filter, activating_player)
+        })
+        .collect()
 }
 
 // ── Mana Color Conversion ────────────────────────────────────────────
@@ -1405,9 +1480,15 @@ pub fn apply_mana_color_conversion(
         let target = sides[1].to_string();
 
         let source_colors: Vec<String> = if source_spec == "AnyColor" {
-            vec!["W", "U", "B", "R", "G"].into_iter().map(String::from).collect()
+            vec!["W", "U", "B", "R", "G"]
+                .into_iter()
+                .map(String::from)
+                .collect()
         } else if source_spec == "AnyType" {
-            vec!["W", "U", "B", "R", "G", "C"].into_iter().map(String::from).collect()
+            vec!["W", "U", "B", "R", "G", "C"]
+                .into_iter()
+                .map(String::from)
+                .collect()
         } else if source_spec.starts_with("non") {
             let excluded = &source_spec[3..];
             vec!["W", "U", "B", "R", "G"]
@@ -1482,7 +1563,12 @@ pub fn apply_text_change_effects(
 
 /// Extract color and type change maps from a Card's SVars.
 /// Text changes are stored as SVars with `TextColor:` and `TextType:` prefixes.
-fn extract_text_change_maps(card: &Card) -> (std::collections::BTreeMap<String, String>, std::collections::BTreeMap<String, String>) {
+fn extract_text_change_maps(
+    card: &Card,
+) -> (
+    std::collections::BTreeMap<String, String>,
+    std::collections::BTreeMap<String, String>,
+) {
     let mut color_map = std::collections::BTreeMap::new();
     let mut type_map = std::collections::BTreeMap::new();
     for (key, value) in &card.svars {
@@ -1584,11 +1670,18 @@ pub fn add_splice_effects(
                     .split(' ')
                     .next()
                     .unwrap_or("");
-                source.type_line.core_types.iter().any(|ct| ct.name().eq_ignore_ascii_case(splice_type))
-                    || splice_type.eq_ignore_ascii_case("instant")
-                        && source.type_line.is_instant()
+                source
+                    .type_line
+                    .core_types
+                    .iter()
+                    .any(|ct| ct.name().eq_ignore_ascii_case(splice_type))
+                    || splice_type.eq_ignore_ascii_case("instant") && source.type_line.is_instant()
                     || splice_type.eq_ignore_ascii_case("arcane")
-                        && source.type_line.subtypes.iter().any(|s| s.eq_ignore_ascii_case("Arcane"))
+                        && source
+                            .type_line
+                            .subtypes
+                            .iter()
+                            .any(|s| s.eq_ignore_ascii_case("Arcane"))
             } else {
                 false
             }
@@ -1647,7 +1740,8 @@ pub fn add_splice_effect(sa: &mut SpellAbility, game: &GameState, splice_card_id
     // Update description
     let name = splice_card.card_name.clone();
     if !sa.description.is_empty() {
-        sa.description.push_str(&format!(" (Splicing {} onto it)", name));
+        sa.description
+            .push_str(&format!(" (Splicing {} onto it)", name));
     }
 }
 

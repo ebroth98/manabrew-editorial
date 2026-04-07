@@ -1,13 +1,12 @@
 use forge_foundation::ZoneType;
 
+use crate::agent::PlayerAgent;
 use crate::card::CounterType;
 use crate::event::{RunParams, TriggerType};
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
-use crate::agent::PlayerAgent;
 use crate::replacement::replacement_handler::{
-    apply_replacements, apply_replacements_with_agents,
-    ReplacementEvent, ReplacementRuntime,
+    apply_replacements, apply_replacements_with_agents, ReplacementEvent, ReplacementRuntime,
 };
 use crate::replacement::GameLossReason;
 use crate::replacement::ReplacementResult;
@@ -99,10 +98,9 @@ impl GameState {
             ReplacementEvent::Moved { destination, .. } => destination,
             _ => dest_zone,
         };
-        let replacement_marked_etb_tapped =
-            dest_zone == ZoneType::Battlefield
-                && self.card(card_id).tapped
-                && !tapped_before_replacement;
+        let replacement_marked_etb_tapped = dest_zone == ZoneType::Battlefield
+            && self.card(card_id).tapped
+            && !tapped_before_replacement;
         let dest_owner = if dest_zone == ZoneType::Command {
             self.card(card_id).owner
         } else {
@@ -844,7 +842,8 @@ impl GameState {
                             // Capture LKI counters on the card for SVar resolution
                             let lki_counters = self.card(cid).counters.clone();
                             self.card_mut(cid).lki_counters = Some(lki_counters);
-                            self.card_mut(cid).set_lki_power_toughness(Some(lki_power), Some(lki_toughness));
+                            self.card_mut(cid)
+                                .set_lki_power_toughness(Some(lki_power), Some(lki_toughness));
                             crate::ability::effects::emit_zone_trigger_with_lki_counters(
                                 handler,
                                 cid,
@@ -1308,5 +1307,4 @@ mod tests {
             0
         );
     }
-
 }

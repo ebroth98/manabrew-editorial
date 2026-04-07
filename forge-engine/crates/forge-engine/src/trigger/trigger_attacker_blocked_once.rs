@@ -22,7 +22,11 @@ pub fn perform_test(
 
 pub fn set_triggering_objects(sa: &mut SpellAbility, params: &RunParams) {
     if let Some(attackers) = params.attacker_ids.as_ref() {
-        let csv = attackers.iter().map(|c| c.0.to_string()).collect::<Vec<_>>().join(",");
+        let csv = attackers
+            .iter()
+            .map(|c| c.0.to_string())
+            .collect::<Vec<_>>()
+            .join(",");
         sa.add_triggering_object("Attackers", &csv);
     }
 }

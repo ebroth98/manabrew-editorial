@@ -54,11 +54,19 @@ pub fn can_replace(
         return false;
     }
     let (target, is_effect) = match event {
-        ReplacementEvent::AddCounter { target, is_effect, .. } => (*target, *is_effect),
+        ReplacementEvent::AddCounter {
+            target, is_effect, ..
+        } => (*target, *is_effect),
         _ => return false,
     };
     // EffectOnly$ True: only apply to counters placed by effects, not ETB keywords/game rules
-    if effect.params.get("EffectOnly").map(|v| v == "True").unwrap_or(false) && !is_effect {
+    if effect
+        .params
+        .get("EffectOnly")
+        .map(|v| v == "True")
+        .unwrap_or(false)
+        && !is_effect
+    {
         return false;
     }
     let target_card = &game.cards[target.index()];
@@ -104,9 +112,15 @@ pub fn execute(
             }
             _ => {
                 // Try SVar chain (DB$ ReplaceCounter)
-                if let Some(result) = super::replacement_handler::execute_replace_with_numeric_update(
-                    effect, event, _game, _source_card_id, "CounterNum",
-                ) {
+                if let Some(result) =
+                    super::replacement_handler::execute_replace_with_numeric_update(
+                        effect,
+                        event,
+                        _game,
+                        _source_card_id,
+                        "CounterNum",
+                    )
+                {
                     return result;
                 }
                 eprintln!(

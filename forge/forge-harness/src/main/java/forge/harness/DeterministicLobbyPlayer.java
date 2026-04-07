@@ -17,23 +17,25 @@ public class DeterministicLobbyPlayer extends LobbyPlayer implements IGameEntiti
     /** Shared RNG for agent decisions — same instance across both players. */
     private final CountingRandom rng;
     private final boolean preferActions;
+    private final boolean deep;
 
-    public DeterministicLobbyPlayer(String name, CountingRandom rng, boolean preferActions) {
+    public DeterministicLobbyPlayer(String name, CountingRandom rng, boolean preferActions, boolean deep) {
         super(name);
         this.rng = rng;
         this.preferActions = preferActions;
+        this.deep = deep;
     }
 
     @Override
     public Player createIngamePlayer(Game game, int id) {
         Player p = new Player(getName(), game, id);
-        p.setFirstController(new DeterministicController(game, p, this, rng, preferActions));
+        p.setFirstController(new DeterministicController(game, p, this, rng, preferActions, deep));
         return p;
     }
 
     @Override
     public PlayerController createMindSlaveController(Player master, Player slave) {
-        return new DeterministicController(slave.getGame(), slave, this, rng, preferActions);
+        return new DeterministicController(slave.getGame(), slave, this, rng, preferActions, deep);
     }
 
     @Override

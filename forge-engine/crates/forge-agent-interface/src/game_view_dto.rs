@@ -488,7 +488,8 @@ pub fn card_to_dto(
                 if is_command_zone_commander {
                     let commander_tax = game.player_commander_tax(card.controller, cid);
                     if commander_tax > 0 {
-                        adjusted = adjusted.add(&forge_foundation::ManaCost::generic(commander_tax));
+                        adjusted =
+                            adjusted.add(&forge_foundation::ManaCost::generic(commander_tax));
                     }
                 }
 

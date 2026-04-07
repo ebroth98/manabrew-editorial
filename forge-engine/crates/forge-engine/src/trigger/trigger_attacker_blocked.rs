@@ -31,7 +31,11 @@ pub fn set_triggering_objects(sa: &mut SpellAbility, params: &RunParams) {
         sa.add_triggering_object("Attacker", &attacker.0.to_string());
     }
     if let Some(blockers) = params.blocker_ids.as_ref() {
-        let csv = blockers.iter().map(|c| c.0.to_string()).collect::<Vec<_>>().join(",");
+        let csv = blockers
+            .iter()
+            .map(|c| c.0.to_string())
+            .collect::<Vec<_>>()
+            .join(",");
         sa.add_triggering_object("Blockers", &csv);
     }
     if let Some(p) = params.defending_player {
@@ -46,8 +50,15 @@ pub fn set_triggering_objects(sa: &mut SpellAbility, params: &RunParams) {
 
 pub fn get_important_stack_objects(sa: &SpellAbility) -> String {
     let attacker = sa.get_triggering_object("Attacker").unwrap_or("");
-    let num_blockers = sa.get_triggering_object("Blockers")
-        .map(|s| if s.is_empty() { 0 } else { s.split(',').count() })
+    let num_blockers = sa
+        .get_triggering_object("Blockers")
+        .map(|s| {
+            if s.is_empty() {
+                0
+            } else {
+                s.split(',').count()
+            }
+        })
         .unwrap_or(0);
     format!("Attacker: {}, Number Blockers: {}", attacker, num_blockers)
 }

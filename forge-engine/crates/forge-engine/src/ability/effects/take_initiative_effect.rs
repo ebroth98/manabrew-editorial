@@ -22,7 +22,8 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         return;
     }
 
-    ctx.game.player_take_initiative(target, Some(ctx.trigger_handler));
+    ctx.game
+        .player_take_initiative(target, Some(ctx.trigger_handler));
 }
 
 #[cfg(test)]

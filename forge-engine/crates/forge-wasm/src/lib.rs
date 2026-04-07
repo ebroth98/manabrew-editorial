@@ -22,8 +22,8 @@ mod game_runner;
 mod wasm_api;
 pub mod wasm_transport;
 
-pub use wasm_api::*;
 pub use card_loader::*;
+pub use wasm_api::*;
 
 use wasm_bindgen::prelude::*;
 

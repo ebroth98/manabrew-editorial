@@ -68,12 +68,7 @@ pub trait SpellAbilityEffect {
 
     /// Track which card exiled another card, for "exile until" effects.
     /// Mirrors Java's `SpellAbilityEffect.handleExiledWith(SpellAbility, Card)`.
-    fn handle_exiled_with(
-        &self,
-        game: &mut GameState,
-        sa: &SpellAbility,
-        exiled_card_id: CardId,
-    ) {
+    fn handle_exiled_with(&self, game: &mut GameState, sa: &SpellAbility, exiled_card_id: CardId) {
         handle_exiled_with(game, sa, exiled_card_id)
     }
 
@@ -278,7 +273,11 @@ pub fn tokenize_string(game: &GameState, sa: &SpellAbility, desc: &str) -> Strin
     }
 
     // Replace AMOUNT with relevant numeric parameter
-    if let Some(amount) = sa.params.get("Amount").or_else(|| sa.params.get("NumCards")) {
+    if let Some(amount) = sa
+        .params
+        .get("Amount")
+        .or_else(|| sa.params.get("NumCards"))
+    {
         result = result.replace("AMOUNT", amount);
     }
 
@@ -307,12 +306,7 @@ pub fn add_forget_on_moved_trigger(
 /// Effect cards are invisible game objects that hold continuous effects,
 /// delayed triggers, and other state that persists beyond a single resolution.
 /// They are placed in the Command zone and cleaned up when their effect ends.
-pub fn create_effect(
-    game: &mut GameState,
-    sa: &SpellAbility,
-    name: &str,
-    image: &str,
-) -> CardId {
+pub fn create_effect(game: &mut GameState, sa: &SpellAbility, name: &str, image: &str) -> CardId {
     use forge_foundation::{CardTypeLine, ColorSet, ManaCost};
 
     let owner = sa.activating_player;

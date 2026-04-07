@@ -483,10 +483,13 @@ pub fn build_fused_ability(
     }
 
     // Combine the costs
-    if let (Some(left_cost), Some(right_cost)) = (&left_sa.pay_costs, &card.abilities.get(1).and_then(|text| {
-        let params = Params::from_raw(text);
-        params.get(keys::COST).map(parse_cost)
-    })) {
+    if let (Some(left_cost), Some(right_cost)) = (
+        &left_sa.pay_costs,
+        &card.abilities.get(1).and_then(|text| {
+            let params = Params::from_raw(text);
+            params.get(keys::COST).map(parse_cost)
+        }),
+    ) {
         let mut combined_parts = left_cost.parts.clone();
         combined_parts.extend(right_cost.parts.clone());
         left_sa.pay_costs = Some(Cost {

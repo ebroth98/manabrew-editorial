@@ -1,6 +1,6 @@
 pub mod actions;
-pub mod delayed_reveal;
 pub mod commander;
+pub mod delayed_reveal;
 pub mod game_loss_reason;
 pub mod player_action_confirm_mode;
 pub mod player_collection;
@@ -16,13 +16,15 @@ pub mod state;
 
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
-use crate::player::player_factory_util::{add_static_ability, add_trigger_ability, new_player_effect_card};
+use crate::player::player_factory_util::{
+    add_static_ability, add_trigger_ability, new_player_effect_card,
+};
 use crate::spellability::SpellAbility;
 use crate::trigger::handler::TriggerHandler;
 use forge_foundation::ZoneType;
 
-pub use game_loss_reason::GameLossReason;
 pub use delayed_reveal::DelayedReveal;
+pub use game_loss_reason::GameLossReason;
 pub use player_collection::PlayerCollection;
 pub use player_controller::PlayerController;
 pub use player_outcome::PlayerOutcome;
@@ -592,7 +594,11 @@ pub fn visit_attractions(game: &mut GameState, player: PlayerId, amount: i32) {
     game.player_record_attraction_visit(player, amount);
 }
 
-pub fn add_creatures_attacked_this_turn(game: &mut GameState, player: PlayerId, defender: PlayerId) {
+pub fn add_creatures_attacked_this_turn(
+    game: &mut GameState,
+    player: PlayerId,
+    defender: PlayerId,
+) {
     game.player_record_attacked_player(player, defender);
 }
 
@@ -798,7 +804,11 @@ pub fn clear_controller(game: &mut GameState, player: PlayerId) {
     game.player_set_controlled_by(player, None);
 }
 
-pub fn add_controlled_while_searching(game: &mut GameState, player: PlayerId, controller: PlayerId) {
+pub fn add_controlled_while_searching(
+    game: &mut GameState,
+    player: PlayerId,
+    controller: PlayerId,
+) {
     game.player_mut(player)
         .controlled_while_searching
         .insert(controller);
@@ -814,7 +824,11 @@ pub fn remove_controlled_while_searching(
         .remove(&controller);
 }
 
-pub fn dangerously_set_controller(game: &mut GameState, player: PlayerId, controller: Option<PlayerId>) {
+pub fn dangerously_set_controller(
+    game: &mut GameState,
+    player: PlayerId,
+    controller: Option<PlayerId>,
+) {
     game.player_set_controlled_by(player, controller);
 }
 
@@ -846,11 +860,14 @@ pub fn add_inbound_token(game: &mut GameState, player: PlayerId, card: CardId) {
 }
 
 pub fn remove_inbound_token(game: &mut GameState, player: PlayerId, card: CardId) {
-    game.player_mut(player).inbound_tokens.retain(|&c| c != card);
+    game.player_mut(player)
+        .inbound_tokens
+        .retain(|&c| c != card);
 }
 
 pub fn on_mulliganned(game: &mut GameState, player: PlayerId) {
-    game.player_mut(player).num_cards_in_hand_started_this_turn_with =
+    game.player_mut(player)
+        .num_cards_in_hand_started_this_turn_with =
         game.cards_in_zone(ZoneType::Hand, player).len() as i32;
 }
 
@@ -886,7 +903,9 @@ pub fn init_commander_color(game: &mut GameState, player: PlayerId) {
                 .params
                 .get("Description")
                 .map(|desc| {
-                    desc.contains("If CARDNAME is your commander, choose a color before the game begins.")
+                    desc.contains(
+                        "If CARDNAME is your commander, choose a color before the game begins.",
+                    )
                 })
                 .unwrap_or(false)
         });
@@ -926,7 +945,11 @@ pub fn assign_companion(game: &mut GameState, player: PlayerId, card: CardId) {
     game.move_card(card, ZoneType::Command, player);
 }
 
-pub fn deck_matches_deck_restriction(game: &GameState, player: PlayerId, restriction: &str) -> bool {
+pub fn deck_matches_deck_restriction(
+    game: &GameState,
+    player: PlayerId,
+    restriction: &str,
+) -> bool {
     let restrictions: Vec<&str> = restriction
         .split(',')
         .map(str::trim)
@@ -935,11 +958,14 @@ pub fn deck_matches_deck_restriction(game: &GameState, player: PlayerId, restric
     if restrictions.is_empty() {
         return true;
     }
-    game.cards_in_zone(ZoneType::Library, player).iter().copied().all(|card_id| {
-        restrictions
-            .iter()
-            .all(|restriction| game.card(card_id).has_property(restriction))
-    })
+    game.cards_in_zone(ZoneType::Library, player)
+        .iter()
+        .copied()
+        .all(|card_id| {
+            restrictions
+                .iter()
+                .all(|restriction| game.card(card_id).has_property(restriction))
+        })
 }
 
 pub fn create_companion_effect(game: &mut GameState, player: PlayerId) {
@@ -997,7 +1023,11 @@ pub fn change_ownership(game: &mut GameState, card_id: CardId, new_owner: Player
     game.card_mut(card_id).owner = new_owner;
     if !game.card(card_id).is_token {
         let old_player = game.player_mut(old_owner);
-        if let Some(pos) = old_player.gained_ownership.iter().position(|&c| c == card_id) {
+        if let Some(pos) = old_player
+            .gained_ownership
+            .iter()
+            .position(|&c| c == card_id)
+        {
             old_player.gained_ownership.remove(pos);
         } else if !old_player.lost_ownership.contains(&card_id) {
             old_player.lost_ownership.push(card_id);
@@ -1099,7 +1129,9 @@ pub fn add_additional_optional_vote(game: &mut GameState, player: PlayerId, key:
 }
 
 pub fn remove_additional_optional_vote(game: &mut GameState, player: PlayerId, key: i64) {
-    game.player_mut(player).additional_optional_votes.remove(&key);
+    game.player_mut(player)
+        .additional_optional_votes
+        .remove(&key);
 }
 
 pub fn add_control_vote(game: &mut GameState, player: PlayerId, key: i64) {
@@ -1155,7 +1187,11 @@ pub fn advance_crank_counter(game: &mut GameState, player: PlayerId) -> i32 {
 }
 
 pub fn create_contraption_sprockets(game: &mut GameState, player: PlayerId) {
-    if game.player(player).contraption_sprocket_effect_card.is_some() {
+    if game
+        .player(player)
+        .contraption_sprocket_effect_card
+        .is_some()
+    {
         return;
     }
     let effect = new_player_effect_card(player, "Contraption Sprockets", None);
@@ -1208,12 +1244,18 @@ pub fn planeswalk(game: &mut GameState, player: PlayerId) -> Option<CardId> {
 }
 
 pub fn planeswalk_to(game: &mut GameState, player: PlayerId, plane: CardId) {
-    if game.player(player).planeswalked_to_this_turn.contains(&plane) {
+    if game
+        .player(player)
+        .planeswalked_to_this_turn
+        .contains(&plane)
+    {
         return;
     }
     leave_current_plane(game, player);
     game.move_card(plane, ZoneType::Command, player);
-    game.player_mut(player).planeswalked_to_this_turn.push(plane);
+    game.player_mut(player)
+        .planeswalked_to_this_turn
+        .push(plane);
 }
 
 pub fn leave_current_plane(game: &mut GameState, player: PlayerId) {

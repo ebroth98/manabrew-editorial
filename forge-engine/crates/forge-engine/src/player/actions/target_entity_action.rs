@@ -11,7 +11,9 @@ pub enum TargetEntityAction {
 impl From<TargetEntityAction> for PlayerAction {
     fn from(value: TargetEntityAction) -> Self {
         match value {
-            TargetEntityAction::Card(card_id) => PlayerAction::TargetEntity(TargetEntity::Card(card_id)),
+            TargetEntityAction::Card(card_id) => {
+                PlayerAction::TargetEntity(TargetEntity::Card(card_id))
+            }
             TargetEntityAction::Player(player_id) => {
                 PlayerAction::TargetEntity(TargetEntity::Player(player_id))
             }

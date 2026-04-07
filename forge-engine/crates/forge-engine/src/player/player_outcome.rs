@@ -6,7 +6,9 @@ use crate::player::GameLossReason;
 pub enum PlayerOutcome {
     Win,
     Draw,
-    AltWin { source_name: Option<String> },
+    AltWin {
+        source_name: Option<String>,
+    },
     Loss {
         reason: GameLossReason,
         spell_name: Option<String>,

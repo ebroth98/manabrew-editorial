@@ -139,12 +139,12 @@ fn mulligan_order(player_order: &[PlayerId], first_player: PlayerId) -> Vec<Play
 mod tests {
     use super::*;
     use crate::agent::{PlayerAgent, TargetChoice};
-    use crate::player::actions::PlayerAction;
     use crate::card::Card;
     use crate::combat::DefenderId;
     use crate::game::GameState;
     use crate::ids::{CardId, PlayerId};
     use crate::mana::ManaPool;
+    use crate::player::actions::PlayerAction;
     use forge_foundation::{CardTypeLine, ColorSet, ManaCost, ZoneType};
     use rand::SeedableRng;
 

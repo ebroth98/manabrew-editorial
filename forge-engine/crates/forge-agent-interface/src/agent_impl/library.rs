@@ -5,9 +5,13 @@ use crate::game_view_dto::{card_to_dto, CardDto};
 use crate::ids_codec::parse_card_id;
 use crate::prompt::{AgentPromptInner, PlayerAction};
 
-use super::{PromptAgent, AgentTransport};
+use super::{AgentTransport, PromptAgent};
 
-pub(super) fn on_library_peek<T: AgentTransport>(agent: &mut PromptAgent<T>, game: &GameState, cards: &[CardId]) {
+pub(super) fn on_library_peek<T: AgentTransport>(
+    agent: &mut PromptAgent<T>,
+    game: &GameState,
+    cards: &[CardId],
+) {
     agent.peeked_library_cards = cards
         .iter()
         .map(|&id| card_to_dto(game, id, &[], &[], "library"))

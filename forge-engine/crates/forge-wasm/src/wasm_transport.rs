@@ -191,7 +191,7 @@ fn ai_respond(inner: &forge_agent_interface::prompt::AgentPromptInner) -> Player
                     card_id: None,
                     mode: None,
                 })
-        },
+        }
         AgentPromptInner::ChooseAttackers {
             available_attacker_ids,
             possible_defender_ids,
@@ -216,15 +216,14 @@ fn ai_respond(inner: &forge_agent_interface::prompt::AgentPromptInner) -> Player
             available_blocker_ids,
             ..
         } => {
-            let assignments =
-                if !attacker_ids.is_empty() && !available_blocker_ids.is_empty() {
-                    vec![BlockAssignment {
-                        blocker_id: available_blocker_ids[0].clone(),
-                        attacker_id: attacker_ids[0].clone(),
-                    }]
-                } else {
-                    Vec::new()
-                };
+            let assignments = if !attacker_ids.is_empty() && !available_blocker_ids.is_empty() {
+                vec![BlockAssignment {
+                    blocker_id: available_blocker_ids[0].clone(),
+                    attacker_id: attacker_ids[0].clone(),
+                }]
+            } else {
+                Vec::new()
+            };
             PlayerAction::DeclareBlockers { assignments }
         }
         AgentPromptInner::ChooseTargetPlayer {
@@ -274,7 +273,11 @@ fn ai_respond(inner: &forge_agent_interface::prompt::AgentPromptInner) -> Player
             num_to_discard,
             ..
         } => PlayerAction::DiscardDecision {
-            discarded_card_ids: hand_card_ids.iter().take(*num_to_discard).cloned().collect(),
+            discarded_card_ids: hand_card_ids
+                .iter()
+                .take(*num_to_discard)
+                .cloned()
+                .collect(),
         },
         AgentPromptInner::ChooseTargetSpell {
             valid_spell_ids, ..
@@ -294,9 +297,7 @@ fn ai_respond(inner: &forge_agent_interface::prompt::AgentPromptInner) -> Player
         AgentPromptInner::ChoosePhyrexian { .. } => {
             PlayerAction::PhyrexianDecision { pay_life: false }
         }
-        AgentPromptInner::ChooseKicker { .. } => {
-            PlayerAction::KickerDecision { kicked: false }
-        }
+        AgentPromptInner::ChooseKicker { .. } => PlayerAction::KickerDecision { kicked: false },
         AgentPromptInner::ChooseBuyback { .. } => PlayerAction::BuybackDecision {
             buyback_paid: false,
         },
@@ -304,9 +305,7 @@ fn ai_respond(inner: &forge_agent_interface::prompt::AgentPromptInner) -> Player
             PlayerAction::MultikickerDecision { kick_count: 0 }
         }
         AgentPromptInner::ChooseReplicate { .. } => {
-            PlayerAction::ReplicateDecision {
-                replicate_count: 0,
-            }
+            PlayerAction::ReplicateDecision { replicate_count: 0 }
         }
         AgentPromptInner::ChooseAlternativeCost { .. } => {
             PlayerAction::AlternativeCostDecision { chosen_index: 0 }
@@ -411,17 +410,13 @@ fn ai_respond(inner: &forge_agent_interface::prompt::AgentPromptInner) -> Player
         AgentPromptInner::ChooseEnlistAttackers { .. } => PlayerAction::EnlistDecision {
             chosen_attacker_ids: vec![],
         },
-        AgentPromptInner::ReorderLibrary { card_ids, .. } => {
-            PlayerAction::ReorderLibraryDecision {
-                ordered_card_ids: card_ids.clone(),
-            }
-        }
+        AgentPromptInner::ReorderLibrary { card_ids, .. } => PlayerAction::ReorderLibraryDecision {
+            ordered_card_ids: card_ids.clone(),
+        },
         AgentPromptInner::ExploreDecision { .. } => PlayerAction::ExploreResponse {
             put_in_graveyard: false,
         },
-        AgentPromptInner::HelpPayAssist { .. } => {
-            PlayerAction::AssistDecision { amount_to_pay: 0 }
-        }
+        AgentPromptInner::HelpPayAssist { .. } => PlayerAction::AssistDecision { amount_to_pay: 0 },
         AgentPromptInner::StateUpdate { .. } | AgentPromptInner::GameOver { .. } => {
             // No action needed for display-only prompts
             PlayerAction::PlayCard {

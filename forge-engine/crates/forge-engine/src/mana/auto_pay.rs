@@ -4,8 +4,8 @@ use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
 
 use super::{
-    auto_tap_lands, auto_tap_lands_with_callbacks, auto_tap_lands_with_chooser,
-    ManaPayCallbackFn, ManaPaymentContext, ManaPool, SacrificeChooser,
+    auto_tap_lands, auto_tap_lands_with_callbacks, auto_tap_lands_with_chooser, ManaPayCallbackFn,
+    ManaPaymentContext, ManaPool, SacrificeChooser,
 };
 
 /// Deterministic auto-pay entrypoint used by parity AI paths.

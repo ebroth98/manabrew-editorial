@@ -77,14 +77,29 @@ pub fn restriction(game: &GameState, player: PlayerId, restriction: &str) -> boo
         })
 }
 
-pub fn compare_by_zone_size(game: &GameState, zone: forge_foundation::ZoneType) -> impl Fn(&PlayerId, &PlayerId) -> std::cmp::Ordering + '_ {
-    move |a, b| game.cards_in_zone(zone, *a).len().cmp(&game.cards_in_zone(zone, *b).len())
+pub fn compare_by_zone_size(
+    game: &GameState,
+    zone: forge_foundation::ZoneType,
+) -> impl Fn(&PlayerId, &PlayerId) -> std::cmp::Ordering + '_ {
+    move |a, b| {
+        game.cards_in_zone(zone, *a)
+            .len()
+            .cmp(&game.cards_in_zone(zone, *b).len())
+    }
 }
 
-pub fn compare_by_life(game: &GameState) -> impl Fn(&PlayerId, &PlayerId) -> std::cmp::Ordering + '_ {
+pub fn compare_by_life(
+    game: &GameState,
+) -> impl Fn(&PlayerId, &PlayerId) -> std::cmp::Ordering + '_ {
     move |a, b| game.player(*a).life.cmp(&game.player(*b).life)
 }
 
-pub fn compare_by_poison(game: &GameState) -> impl Fn(&PlayerId, &PlayerId) -> std::cmp::Ordering + '_ {
-    move |a, b| game.player(*a).poison_counters.cmp(&game.player(*b).poison_counters)
+pub fn compare_by_poison(
+    game: &GameState,
+) -> impl Fn(&PlayerId, &PlayerId) -> std::cmp::Ordering + '_ {
+    move |a, b| {
+        game.player(*a)
+            .poison_counters
+            .cmp(&game.player(*b).poison_counters)
+    }
 }

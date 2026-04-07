@@ -1375,10 +1375,10 @@ fn unless_cost_part_kind(part: &CostPart) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use forge_foundation::{CardTypeLine, ColorSet, ManaCost};
     use crate::card::Card;
     use crate::ids::{CardId, PlayerId};
     use crate::spellability::SpellAbility;
+    use forge_foundation::{CardTypeLine, ColorSet, ManaCost};
 
     #[test]
     fn parse_num_dmg_test() {
@@ -1438,8 +1438,10 @@ mod tests {
         let mut sa = SpellAbility::new_simple(Some(spell_source), player, "DB$ DealDamage");
         sa.params
             .put(keys::CONDITION_DEFINED.to_string(), "Targeted".to_string());
-        sa.params
-            .put(keys::CONDITION_PRESENT.to_string(), "Land.Basic".to_string());
+        sa.params.put(
+            keys::CONDITION_PRESENT.to_string(),
+            "Land.Basic".to_string(),
+        );
         sa.params
             .put(keys::CONDITION_COMPARE.to_string(), "EQ0".to_string());
         sa.target_chosen.target_card = Some(target);

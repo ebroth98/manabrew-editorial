@@ -18,10 +18,7 @@ use crate::trigger::handler::TriggerHandler;
 ///
 /// Generates a human-readable description of the die roll including the
 /// number of sides and result sub-abilities.
-pub fn make_formated_description(
-    game: &GameState,
-    sa: &SpellAbility,
-) -> String {
+pub fn make_formated_description(game: &GameState, sa: &SpellAbility) -> String {
     let source_id = match sa.source {
         Some(id) => id,
         None => return "Roll a die.".to_string(),

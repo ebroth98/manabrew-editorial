@@ -5,7 +5,7 @@ use crate::game_view_dto::CardDto;
 use crate::ids_codec::parse_card_id;
 use crate::prompt::{AgentPromptInner, PlayerAction};
 
-use super::{PromptAgent, AgentTransport};
+use super::{AgentTransport, PromptAgent};
 
 pub(super) fn mulligan_decision<T: AgentTransport>(
     agent: &mut PromptAgent<T>,
@@ -493,7 +493,10 @@ pub(super) fn choose_random_discard<T: AgentTransport>(
     v
 }
 
-pub(super) fn choose_land_or_spell<T: AgentTransport>(_agent: &mut PromptAgent<T>, _player: PlayerId) -> Option<bool> {
+pub(super) fn choose_land_or_spell<T: AgentTransport>(
+    _agent: &mut PromptAgent<T>,
+    _player: PlayerId,
+) -> Option<bool> {
     None
 }
 

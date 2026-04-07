@@ -129,11 +129,7 @@ impl WrappedAbility {
     /// The `_intrinsic` flag is unused in Rust (Java uses it to pick column
     /// from a `TreeBasedTable`; Rust flattens into a single `Vec`).
     pub fn get_paid_list(&self, key: &str, _intrinsic: bool) -> Vec<String> {
-        self.wrapped
-            .paid_hash
-            .get(key)
-            .cloned()
-            .unwrap_or_default()
+        self.wrapped.paid_hash.get(key).cloned().unwrap_or_default()
     }
 
     /// Mirrors Java's `WrappedAbility.setTriggeringObjects(Map)`.
@@ -163,12 +159,7 @@ impl WrappedAbility {
         if let Some(ref trigger) = self.trigger {
             let source = self.wrapped.source.unwrap_or(crate::ids::CardId(0));
             let player = self.wrapped.activating_player;
-            let base = trigger.replace_ability_text(
-                &trigger.description,
-                game,
-                source,
-                player,
-            );
+            let base = trigger.replace_ability_text(&trigger.description, game, source, player);
             let important = trigger.mode.get_important_stack_objects(&self.wrapped);
             let mut sb = base;
             if !important.is_empty() {

@@ -1,10 +1,10 @@
 use std::sync::mpsc;
 use std::time::Duration;
 
+use forge_agent_interface::agent_impl::AgentTransport;
 use forge_agent_interface::game_log_event::GameLogEntryDto;
 use forge_agent_interface::game_snapshot_event::GameSnapshotEventDto;
 use forge_agent_interface::prompt::{AgentPrompt, PlayerAction};
-use forge_agent_interface::agent_impl::AgentTransport;
 
 /// Prompt delivery variants for Tauri.
 enum PromptSink {

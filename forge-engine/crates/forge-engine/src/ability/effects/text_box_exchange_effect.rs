@@ -21,13 +21,11 @@ pub fn run(
     // Restore original abilities
     if ctx.game.card(card1).zone == ZoneType::Battlefield {
         ctx.game.card_mut(card1).set_abilities(abilities1);
-        ctx.trigger_handler
-            .register_active_trigger(ctx.game, card1);
+        ctx.trigger_handler.register_active_trigger(ctx.game, card1);
     }
     if ctx.game.card(card2).zone == ZoneType::Battlefield {
         ctx.game.card_mut(card2).set_abilities(abilities2);
-        ctx.trigger_handler
-            .register_active_trigger(ctx.game, card2);
+        ctx.trigger_handler.register_active_trigger(ctx.game, card2);
     }
 }
 

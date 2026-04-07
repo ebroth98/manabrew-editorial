@@ -1,9 +1,9 @@
 use forge_foundation::ZoneType;
 
 use super::EffectContext;
+use crate::ability::spell_ability_effect::get_target_cards;
 use crate::event::{RunParams, TriggerType};
 use crate::ids::CardId;
-use crate::ability::spell_ability_effect::get_target_cards;
 use crate::spellability::SpellAbility;
 
 /// Resolve `SP$ Tap` — tap target permanent(s).

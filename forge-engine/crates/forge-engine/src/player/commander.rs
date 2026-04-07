@@ -24,7 +24,9 @@ impl GameState {
     }
 
     pub fn player_remove_commander(&mut self, player: PlayerId, commander: CardId) {
-        self.player_mut(player).commanders.retain(|&id| id != commander);
+        self.player_mut(player)
+            .commanders
+            .retain(|&id| id != commander);
         self.player_mut(player).commander_casts.remove(&commander.0);
         self.player_mut(player)
             .commander_damage_received
@@ -184,7 +186,9 @@ mod tests {
         let mut game = GameState::new(&["Player"], 40);
         let player = PlayerId(0);
 
-        game.player_mut(player).commanders.push(crate::ids::CardId(99));
+        game.player_mut(player)
+            .commanders
+            .push(crate::ids::CardId(99));
         let effect_id = game
             .player_create_commander_effect(player, None)
             .expect("commander effect");

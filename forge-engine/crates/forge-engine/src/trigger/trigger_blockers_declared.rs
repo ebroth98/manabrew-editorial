@@ -28,11 +28,19 @@ pub fn parse_mode(_params: &Params) -> TriggerMode {
 
 pub fn set_triggering_objects(sa: &mut SpellAbility, params: &RunParams) {
     if let Some(blockers) = params.blocker_ids.as_ref() {
-        let csv = blockers.iter().map(|c| c.0.to_string()).collect::<Vec<_>>().join(",");
+        let csv = blockers
+            .iter()
+            .map(|c| c.0.to_string())
+            .collect::<Vec<_>>()
+            .join(",");
         sa.add_triggering_object("Blockers", &csv);
     }
     if let Some(attackers) = params.attacker_ids.as_ref() {
-        let csv = attackers.iter().map(|c| c.0.to_string()).collect::<Vec<_>>().join(",");
+        let csv = attackers
+            .iter()
+            .map(|c| c.0.to_string())
+            .collect::<Vec<_>>()
+            .join(",");
         sa.add_triggering_object("Attackers", &csv);
     }
 }

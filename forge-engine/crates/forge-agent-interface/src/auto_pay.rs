@@ -193,8 +193,10 @@ pub fn choose_pay_mana_cost_action(
         });
     }
 
-    tappable_land_ids.first().map(|card_id| PlayerAction::TapLand {
-        card_id: card_id.clone(),
-        ability_index: None,
-    })
+    tappable_land_ids
+        .first()
+        .map(|card_id| PlayerAction::TapLand {
+            card_id: card_id.clone(),
+            ability_index: None,
+        })
 }

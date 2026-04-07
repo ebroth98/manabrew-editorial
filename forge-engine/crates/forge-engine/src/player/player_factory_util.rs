@@ -2,13 +2,13 @@ use std::collections::BTreeMap;
 
 use crate::agent::types::PlayOption;
 use crate::card::Card;
-use crate::ids::PlayerId;
 use crate::ids::CardId;
-use crate::replacement::parse_replacement_effect;
+use crate::ids::PlayerId;
 use crate::player::actions::{
     ActivateAbilityAction, ActivateManaAction, CastSpellAction, PassPriorityAction, PlayerAction,
     UndoManaAction,
 };
+use crate::replacement::parse_replacement_effect;
 use crate::staticability::parse_static_ability;
 use crate::trigger::{parse_trigger, Trigger};
 use forge_foundation::{CardTypeLine, ColorSet, ManaCost};
@@ -19,19 +19,24 @@ pub fn build_priority_actions(
     untappable_lands: &[CardId],
     activatable: &[(CardId, usize)],
 ) -> Vec<PlayerAction> {
-    let mut actions =
-        Vec::with_capacity(playable.len() + tappable_lands.len() + untappable_lands.len() + activatable.len() + 1);
-    actions.extend(playable.iter().map(|option| {
-        PlayerAction::from(CastSpellAction {
-            play: *option,
-        })
-    }));
-    actions.extend(tappable_lands.iter().map(|card_id| {
-        PlayerAction::from(ActivateManaAction { card_id: *card_id })
-    }));
-    actions.extend(untappable_lands.iter().map(|card_id| {
-        PlayerAction::from(UndoManaAction { card_id: *card_id })
-    }));
+    let mut actions = Vec::with_capacity(
+        playable.len() + tappable_lands.len() + untappable_lands.len() + activatable.len() + 1,
+    );
+    actions.extend(
+        playable
+            .iter()
+            .map(|option| PlayerAction::from(CastSpellAction { play: *option })),
+    );
+    actions.extend(
+        tappable_lands
+            .iter()
+            .map(|card_id| PlayerAction::from(ActivateManaAction { card_id: *card_id })),
+    );
+    actions.extend(
+        untappable_lands
+            .iter()
+            .map(|card_id| PlayerAction::from(UndoManaAction { card_id: *card_id })),
+    );
     actions.extend(activatable.iter().map(|(card_id, ability_index)| {
         PlayerAction::from(ActivateAbilityAction {
             card_id: *card_id,

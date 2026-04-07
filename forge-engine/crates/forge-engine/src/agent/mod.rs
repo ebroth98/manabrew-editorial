@@ -187,8 +187,8 @@ pub trait PlayerAgent {
             // indestructible creatures require maxDamage+1 (can't die from damage),
             // so all remaining damage gets assigned to them.
             let is_indestructible = blocker_card.has_keyword("Indestructible");
-            let attacker_has_wither = game.card(attacker).has_wither()
-                || game.card(attacker).has_infect();
+            let attacker_has_wither =
+                game.card(attacker).has_wither() || game.card(attacker).has_infect();
             let lethal = if is_indestructible && !attacker_has_wither {
                 // Can't kill by damage — assign all remaining (mirrors maxDamage + 1)
                 dmg_left + 1
@@ -921,6 +921,10 @@ pub trait PlayerAgent {
     /// Display-only notification: phase/step changed.
     /// Called on all agents so each client can update step UI even when no prompt is needed.
     fn notify_phase_changed(&mut self, _phase: PhaseType) {}
+
+    /// Display-only notification: priority was assigned to a player.
+    /// Called on all agents at stable priority boundaries after SBA/trigger processing.
+    fn notify_priority_player(&mut self, _player: PlayerId) {}
 
     /// Display-only notification: authoritative game state changed without
     /// necessarily changing turn/phase (e.g. stack item resolved).

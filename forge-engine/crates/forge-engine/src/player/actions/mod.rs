@@ -1,5 +1,5 @@
-pub mod activate_mana_action;
 pub mod activate_ability_action;
+pub mod activate_mana_action;
 pub mod cast_spell_action;
 pub mod finish_targeting_action;
 pub mod pass_priority_action;
@@ -11,8 +11,8 @@ pub mod select_player_action;
 pub mod target_entity_action;
 pub mod undo_mana_action;
 
-pub use activate_mana_action::ActivateManaAction;
 pub use activate_ability_action::ActivateAbilityAction;
+pub use activate_mana_action::ActivateManaAction;
 pub use cast_spell_action::CastSpellAction;
 pub use finish_targeting_action::FinishTargetingAction;
 pub use pass_priority_action::PassPriorityAction;

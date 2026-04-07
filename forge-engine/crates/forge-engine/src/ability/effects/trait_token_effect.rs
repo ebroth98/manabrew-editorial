@@ -132,7 +132,8 @@ pub fn run(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
             add_pump_until(ctx.game, token_id, sa);
 
             // Register triggers for the new token
-            ctx.trigger_handler.register_active_trigger(ctx.game, token_id);
+            ctx.trigger_handler
+                .register_active_trigger(ctx.game, token_id);
 
             // Fire ETB trigger
             super::zone_triggers::emit_zone_trigger(

@@ -46,9 +46,21 @@ pub fn snapshot_game(game: &GameState) -> StateSnapshot {
         active_player: game.turn.active_player.0,
         game_over: game.game_over,
         winner: game.winner.map(|p| p.0),
-        players,
+        players: normalize_turn_start_players(players, game.turn.active_player),
         stack,
     }
+}
+
+fn normalize_turn_start_players(
+    mut players: Vec<PlayerSnapshot>,
+    active_player: PlayerId,
+) -> Vec<PlayerSnapshot> {
+    for player in &mut players {
+        if player.index != active_player.0 {
+            player.lands_played = 0;
+        }
+    }
+    players
 }
 
 fn snapshot_player(game: &GameState, pid: PlayerId) -> PlayerSnapshot {

@@ -233,7 +233,11 @@ pub fn get_radiance(game: &GameState, sa: &SpellAbility) -> CardCollection {
                 }
                 if valid_tokens.is_empty()
                     || valid_tokens.iter().any(|token| {
-                        ability_utils::matches_valid_cards(card, token, game.card(source).controller)
+                        ability_utils::matches_valid_cards(
+                            card,
+                            token,
+                            game.card(source).controller,
+                        )
                     })
                 {
                     out.push(cid);
@@ -327,7 +331,8 @@ fn get_reflectable_mana_colors_inner(
             }
         }
         "Produced" => {
-            if let Some(produced_colors) = ab_mana.trigger_objects.get("Produced").map(String::as_str)
+            if let Some(produced_colors) =
+                ab_mana.trigger_objects.get("Produced").map(String::as_str)
             {
                 for color in Color::ALL {
                     if produced_colors.contains(color.short_name()) {
@@ -370,7 +375,8 @@ fn get_reflectable_mana_colors_inner(
                     }
                 }
                 for trig in &card.triggers {
-                    let Some(mut trig_sa) = trig.ensure_ability(game, card.id, card.controller) else {
+                    let Some(mut trig_sa) = trig.ensure_ability(game, card.id, card.controller)
+                    else {
                         continue;
                     };
                     if trig_sa.is_spell || trig_sa.is_land_ability {
@@ -397,8 +403,13 @@ fn get_reflectable_mana_colors_inner(
                 if colors.len() == max_choices {
                     break;
                 }
-                colors =
-                    get_reflectable_mana_colors_inner(game, root_sa, &reflect_sa, colors, parents.clone());
+                colors = get_reflectable_mana_colors_inner(
+                    game,
+                    root_sa,
+                    &reflect_sa,
+                    colors,
+                    parents.clone(),
+                );
             }
         }
         _ => {}
@@ -426,7 +437,11 @@ fn collect_reflectable_cards(
         let activator = ab_mana.activating_player;
         game.player_order
             .iter()
-            .flat_map(|&pid| game.cards_in_zone(ZoneType::Battlefield, pid).iter().copied())
+            .flat_map(|&pid| {
+                game.cards_in_zone(ZoneType::Battlefield, pid)
+                    .iter()
+                    .copied()
+            })
             .filter(|&cid| {
                 let card = game.card(cid);
                 ability_utils::matches_valid_cards(card, valid_card, activator)
@@ -448,7 +463,13 @@ pub fn can_produce(
         return colors;
     };
 
-    for (short, long) in [("W", "white"), ("U", "blue"), ("B", "black"), ("R", "red"), ("G", "green")] {
+    for (short, long) in [
+        ("W", "white"),
+        ("U", "blue"),
+        ("B", "black"),
+        ("R", "red"),
+        ("G", "green"),
+    ] {
         if sa.can_produce(short) {
             colors.insert(long.to_string());
         }
@@ -525,7 +546,9 @@ pub fn get_valid_cards_to_target(game: &GameState, ability: &SpellAbility) -> Ve
     let Some(tgt) = ability.target_restrictions.as_ref() else {
         return Vec::new();
     };
-    let player = ability.targeting_player.unwrap_or(ability.activating_player);
+    let player = ability
+        .targeting_player
+        .unwrap_or(ability.activating_player);
 
     let zones = if tgt.tgt_zone.is_empty() {
         vec![ZoneType::Battlefield]
@@ -563,8 +586,10 @@ pub fn get_valid_cards_to_target(game: &GameState, ability: &SpellAbility) -> Ve
                 });
             }
             _ => {
-                if let target_restrictions::TargetKind::CardInZone { filter, zone: target_zone } =
-                    &tgt.target_kind
+                if let target_restrictions::TargetKind::CardInZone {
+                    filter,
+                    zone: target_zone,
+                } = &tgt.target_kind
                 {
                     if *target_zone == zone {
                         candidates.extend(target_restrictions::get_valid_cards_in_zone(
@@ -593,7 +618,9 @@ pub fn get_valid_cards_to_target(game: &GameState, ability: &SpellAbility) -> Ve
             && target_restrictions::can_be_targeted_by_sa(
                 game,
                 cid,
-                ability.targeting_player.unwrap_or(ability.activating_player),
+                ability
+                    .targeting_player
+                    .unwrap_or(ability.activating_player),
                 ability,
             )
     });

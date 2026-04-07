@@ -314,7 +314,8 @@ fn test_graveyard_to_library_with_shuffle() {
 
     let expected_without_shuffle = vec![forest, mountain_one, mountain_two, bears];
 
-    let ability = "SP$ ChangeZone | Origin$ Graveyard | Destination$ Library | Defined$ Self | Shuffle$ True";
+    let ability =
+        "SP$ ChangeZone | Origin$ Graveyard | Destination$ Library | Defined$ Self | Shuffle$ True";
     let mut sa = SpellAbility::new_simple(Some(bears), p0, ability);
     sa.is_activated = true;
     let entry = StackEntry {

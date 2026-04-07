@@ -7,6 +7,7 @@ import forge.deck.CardPool;
 import forge.deck.Deck;
 import forge.deck.DeckSection;
 import forge.game.*;
+import forge.game.event.GameEventPlayerPriority;
 import forge.game.event.GameEventTurnPhase;
 import forge.game.phase.PhaseType;
 import forge.game.player.RegisteredPlayer;
@@ -49,6 +50,7 @@ public final class Main {
         long seed = 42;
         int maxTurns = 10;
         boolean preferActions = false;
+        boolean deep = false;
         String forgeHome = null;
         boolean serverMode = false;
         String variant = "Constructed";
@@ -70,6 +72,9 @@ public final class Main {
                     break;
                 case "--prefer-actions":
                     preferActions = true;
+                    break;
+                case "--deep":
+                    deep = true;
                     break;
                 case "--forge-home":
                     if (i + 1 < args.length) forgeHome = args[++i];
@@ -129,7 +134,7 @@ public final class Main {
         if (serverMode) {
             runServerMode();
         } else {
-            runOneShot(deck1Name, deck2Name, seed, maxTurns, preferActions, variant, commanders);
+            runOneShot(deck1Name, deck2Name, seed, maxTurns, preferActions, deep, variant, commanders);
         }
     }
 
@@ -142,6 +147,7 @@ public final class Main {
         long seed,
         int maxTurns,
         boolean preferActions,
+        boolean deep,
         String variant,
         List<String> commanders
     ) {
@@ -151,7 +157,7 @@ public final class Main {
         System.err.printf("[harness] Running: %s vs %s | seed=%d | max_turns=%d | variant=%s%n",
             deck1Name, deck2Name, seed, maxTurns, variant);
 
-        runGame(deck1Name, deck2Name, seed, maxTurns, preferActions, variant, commanders);
+        runGame(deck1Name, deck2Name, seed, maxTurns, preferActions, deep, variant, commanders);
 
         System.err.println("[harness] Done.");
         protocolOut.flush();
@@ -205,6 +211,7 @@ public final class Main {
                 long gameSeed = request.has("seed") ? request.get("seed").getAsLong() : 42;
                 int gameMaxTurns = request.has("max_turns") ? request.get("max_turns").getAsInt() : 10;
                 boolean gamePreferActions = request.has("prefer_actions") && request.get("prefer_actions").getAsBoolean();
+                boolean gameDeep = request.has("deep") && request.get("deep").getAsBoolean();
                 String gameVariant = request.has("variant") ? request.get("variant").getAsString() : "Constructed";
                 List<String> gameCommanders = new ArrayList<>();
                 if (request.has("commanders") && request.get("commanders").isJsonArray()) {
@@ -217,7 +224,7 @@ public final class Main {
                     deck1, deck2, gameSeed, gameMaxTurns, gameVariant);
 
                 try {
-                    runGame(deck1, deck2, gameSeed, gameMaxTurns, gamePreferActions, gameVariant, gameCommanders);
+                    runGame(deck1, deck2, gameSeed, gameMaxTurns, gamePreferActions, gameDeep, gameVariant, gameCommanders);
                     protocolOut.println("{\"done\":true,\"error\":null}");
                 } catch (Exception e) {
                     System.err.println("[harness] Game error: " + e.getMessage());
@@ -247,6 +254,7 @@ public final class Main {
         long seed,
         int maxTurns,
         boolean preferActions,
+        boolean deep,
         String variant,
         List<String> commanders
     ) {
@@ -326,32 +334,36 @@ public final class Main {
         // Create registered players with variant support
         RegisteredPlayer rp1 = RegisteredPlayer.forVariants(
             2, appliedVariants, deck1, null, false, null, null);
-        rp1.setPlayer(new DeterministicLobbyPlayer("Player1", agentRng, preferActions));
+        rp1.setPlayer(new DeterministicLobbyPlayer("Player1", agentRng, preferActions, false));
         players.add(rp1);
 
         RegisteredPlayer rp2 = RegisteredPlayer.forVariants(
             2, appliedVariants, deck2, null, false, null, null);
-        rp2.setPlayer(new DeterministicLobbyPlayer("Player2", agentRng, preferActions));
+        rp2.setPlayer(new DeterministicLobbyPlayer("Player2", agentRng, preferActions, false));
         players.add(rp2);
 
         Match match = new Match(rules, players, "ParityTest");
         Game game = match.createGame();
         ParityCardMap.reset();
 
-        // Register turn snapshot subscriber — emits JSONL snapshots at each turn boundary.
-        // Uses GameEventTurnPhase(UNTAP) instead of GameEventTurnBegan because:
-        //   - GameEventTurnBegan fires BEFORE setSickness(false) and incrementTurn()
-        //   - GameEventTurnPhase(UNTAP) fires AFTER both, but BEFORE actual untapping
-        // This matches Rust's snapshot timing (after new_turn_for_player resets).
-        // Enforce max-turns limit: Rust's loop is `while turn_number <= max_turns`,
-        // so it runs turns 1..=max_turns. When turn max_turns+1 begins, Rust exits
-        // WITHOUT calling run_turn (no snapshot). We match by stopping the game
-        // BEFORE emitting a snapshot for the turn beyond the limit.
+        // Register snapshot subscriber(s).
+        // Normal mode emits turn-boundary snapshots at UNTAP.
+        // Deep mode emits snapshots at every phase change and every priority assignment.
         final int turnLimit = maxTurns;
         game.subscribeToEvents(new Object() {
+            private void emitSnapshot() {
+                final int currentTurn = game.getPhaseHandler().getTurn();
+                if (currentTurn == 1) {
+                    ParityCardMap.initializeFromOpeningState(game);
+                }
+                ParityCardMap.syncWithGame(game);
+                String snap = SnapshotExtractor.snapshotJson(game);
+                protocolOut.println(snap);
+                protocolOut.flush();
+            }
+
             @Subscribe
             public void onTurnPhase(GameEventTurnPhase event) {
-                if (event.phase() != PhaseType.UNTAP) return;
                 int currentTurn = game.getPhaseHandler().getTurn();
 
                 // Stop before emitting if we've exceeded the turn limit
@@ -361,14 +373,21 @@ public final class Main {
                     game.setGameOver(GameEndReason.Draw);
                     return;
                 }
-                if (currentTurn == 1) {
-                    ParityCardMap.initializeFromOpeningState(game);
+                if (deep) {
+                    emitSnapshot();
+                    return;
                 }
-                ParityCardMap.syncWithGame(game);
-                String snap = SnapshotExtractor.snapshotJson(game);
-                protocolOut.println(snap);
-                protocolOut.flush();
+                if (event.phase() != PhaseType.UNTAP) return;
+                emitSnapshot();
                 System.err.printf("[harness] Snapshot: turn=%d%n", currentTurn);
+            }
+
+            @Subscribe
+            public void onPriority(GameEventPlayerPriority event) {
+                if (!deep) return;
+                if (game.isGameOver()) return;
+                if (game.getPhaseHandler().getTurn() > turnLimit) return;
+                emitSnapshot();
             }
         });
 
@@ -376,7 +395,7 @@ public final class Main {
         DecisionLog.setSink(line -> {
             protocolOut.println(line);
             protocolOut.flush();
-        });
+        }, false);
 
         // Run the game synchronously
         try {
@@ -397,7 +416,7 @@ public final class Main {
         } else {
             System.err.println("[harness] Game ended in a draw.");
         }
-        DecisionLog.setSink(null);
+        DecisionLog.setSink(null, false);
     }
 
     /** Escape a string for embedding in a JSON string value. */

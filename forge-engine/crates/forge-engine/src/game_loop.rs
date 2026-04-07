@@ -301,7 +301,10 @@ impl GameLoop {
         for &pid in &game.player_order.clone() {
             let hand: Vec<CardId> = game.cards_in_zone(ZoneType::Hand, pid).to_vec();
             for card_id in hand {
-                let has_leyline = game.card(card_id).get_keyword_cost("MayEffectFromOpeningHand").is_some();
+                let has_leyline = game
+                    .card(card_id)
+                    .get_keyword_cost("MayEffectFromOpeningHand")
+                    .is_some();
                 if has_leyline {
                     // Java always puts leylines into play without consuming RNG.
                     // Mirrors Java's Game.handleLeylines() which auto-places.
@@ -481,8 +484,8 @@ mod tests {
     use rand::SeedableRng;
 
     use crate::agent::{PlayCardMode, PlayerAgent, TargetChoice};
-    use crate::player::actions::PlayerAction;
     use crate::card::Card;
+    use crate::player::actions::PlayerAction;
 
     use super::*;
 
@@ -928,6 +931,7 @@ mod tests {
         ];
 
         gl.resolve_stack(&mut game, &mut agents);
+        gl.process_triggers(&mut game, &mut agents);
 
         assert_eq!(game.card(evoked).zone, ZoneType::Battlefield);
         assert!(

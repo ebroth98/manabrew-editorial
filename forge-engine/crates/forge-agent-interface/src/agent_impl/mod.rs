@@ -1,6 +1,6 @@
 use forge_engine_core::agent::{
-    BinaryChoiceKind, CombatCostAction, GameLogEvent, ManaCostAction, PlayOption,
-    PlayerAgent, TargetChoice,
+    BinaryChoiceKind, CombatCostAction, GameLogEvent, ManaCostAction, PlayOption, PlayerAgent,
+    TargetChoice,
 };
 use forge_engine_core::combat::DefenderId;
 use forge_engine_core::game::GameState;
@@ -414,7 +414,9 @@ impl<T: AgentTransport> PlayerAgent for PromptAgent<T> {
                                 card_id: cid,
                                 ability_index: idx,
                             })
-                        } else if let Some(&(id, idx)) = activatable.iter().find(|(id, _)| *id == cid) {
+                        } else if let Some(&(id, idx)) =
+                            activatable.iter().find(|(id, _)| *id == cid)
+                        {
                             EnginePlayerAction::ActivateAbility(AbilityRef {
                                 card_id: id,
                                 ability_index: idx,
@@ -907,7 +909,8 @@ impl<T: AgentTransport> PlayerAgent for PromptAgent<T> {
     }
 
     fn notify(&mut self, message: &str) {
-        self.transport.send_log(GameLogEntryDto::from_message(message));
+        self.transport
+            .send_log(GameLogEntryDto::from_message(message));
     }
 
     fn notify_event(&mut self, event: GameLogEvent) {

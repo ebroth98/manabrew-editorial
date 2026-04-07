@@ -314,5 +314,4 @@ mod tests {
         let p1_cmds = phase.execute_until(Some(p1));
         assert_eq!(p1_cmds.len(), 1);
     }
-
 }

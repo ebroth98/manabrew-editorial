@@ -125,7 +125,12 @@ pub fn format_matrix_text(report: &MatrixReport) -> String {
     let failures: Vec<_> = report
         .results
         .iter()
-        .filter(|r| matches!(r.status, MatchupStatus::Skipped | MatchupStatus::Fail | MatchupStatus::Error))
+        .filter(|r| {
+            matches!(
+                r.status,
+                MatchupStatus::Skipped | MatchupStatus::Fail | MatchupStatus::Error
+            )
+        })
         .collect();
     if !failures.is_empty() {
         out.push_str(&format!("\nNon-passing runs:\n"));

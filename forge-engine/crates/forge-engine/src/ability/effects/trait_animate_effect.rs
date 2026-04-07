@@ -76,7 +76,12 @@ pub fn do_animate(
             card.type_line.core_types.insert(core_type);
         } else {
             // Treat as subtype
-            if !card.type_line.subtypes.iter().any(|s| s.eq_ignore_ascii_case(type_name)) {
+            if !card
+                .type_line
+                .subtypes
+                .iter()
+                .any(|s| s.eq_ignore_ascii_case(type_name))
+            {
                 card.type_line.subtypes.push(type_name.clone());
             }
         }
@@ -101,11 +106,7 @@ pub fn do_animate(
 
 /// Run the animate effect (entry point that parses params then applies).
 /// Mirrors Java's `AnimateEffectBase.run()`.
-pub fn run(
-    ctx: &mut super::EffectContext,
-    sa: &SpellAbility,
-    target_cards: &[crate::ids::CardId],
-) {
+pub fn run(ctx: &mut super::EffectContext, sa: &SpellAbility, target_cards: &[crate::ids::CardId]) {
     let params = parse_animate_params(sa);
     for &card_id in target_cards {
         do_animate(ctx.game, card_id, &params, sa);

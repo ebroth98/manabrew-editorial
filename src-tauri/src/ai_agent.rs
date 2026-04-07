@@ -3,7 +3,9 @@ use std::thread;
 
 use forge_engine_core::player::actions::PlayerAction as EnginePlayerAction;
 
-use forge_agent_interface::prompt::{AgentPrompt, AgentPromptInner, BlockAssignment, PlayerAction, TargetAnyChoice};
+use forge_agent_interface::prompt::{
+    AgentPrompt, AgentPromptInner, BlockAssignment, PlayerAction, TargetAnyChoice,
+};
 
 pub fn spawn_ai_prompt_responder(
     prompt_rx: mpsc::Receiver<AgentPrompt>,
@@ -37,10 +39,12 @@ pub fn spawn_ai_prompt_responder(
                             .find(|action| matches!(action, EnginePlayerAction::PassPriority))
                             .map(|action| PlayerAction::EngineAction { action })
                     })
-                    .or_else(|| available_player_actions
-                        .first()
-                    .copied()
-                    .map(|action| PlayerAction::EngineAction { action })),
+                    .or_else(|| {
+                        available_player_actions
+                            .first()
+                            .copied()
+                            .map(|action| PlayerAction::EngineAction { action })
+                    }),
                 AgentPromptInner::ChooseAttackers {
                     available_attacker_ids,
                     possible_defender_ids,
@@ -195,10 +199,12 @@ pub fn spawn_ai_prompt_responder(
                 } => {
                     let mut assignments = Vec::new();
                     if let Some(first) = blocker_ids.first() {
-                        assignments.push(forge_agent_interface::prompt::CombatDamageAssignmentEntry {
-                            assignee_id: first.clone(),
-                            damage: total_damage.max(0),
-                        });
+                        assignments.push(
+                            forge_agent_interface::prompt::CombatDamageAssignmentEntry {
+                                assignee_id: first.clone(),
+                                damage: total_damage.max(0),
+                            },
+                        );
                     }
                     Some(PlayerAction::CombatDamageAssignmentDecision { assignments })
                 }

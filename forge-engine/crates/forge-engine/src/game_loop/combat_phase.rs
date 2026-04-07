@@ -367,12 +367,7 @@ impl GameLoop {
                                         agents,
                                         |this, game, agents| {
                                             this.resolve_mana_ability(
-                                                game,
-                                                agents,
-                                                controller,
-                                                land_id,
-                                                &ab,
-                                                None,
+                                                game, agents, controller, land_id, &ab, None,
                                             );
                                         },
                                     );
@@ -530,8 +525,11 @@ impl GameLoop {
             // Set attacking_player to the controlling player of the defender
             let def_player = defender.controlling_player(game);
             game.card_mut(attacker_id).set_attacking_player(def_player);
-            self.combat
-                .declare_attacker(attacker_id, defender, game.card(attacker_id).zone_timestamp);
+            self.combat.declare_attacker(
+                attacker_id,
+                defender,
+                game.card(attacker_id).zone_timestamp,
+            );
 
             // Record attack in damage history
             game.card_mut(attacker_id)
@@ -653,8 +651,12 @@ impl GameLoop {
             return;
         }
 
-        // Java parity: COMBAT_DECLARE_BLOCKERS is skipped when no attackers remain.
+        // Java parity: PhaseHandler still advances into COMBAT_DECLARE_BLOCKERS
+        // even when it will be skipped due to no attackers.
         self.combat.remove_absent_combatants(&game.cards);
+        if !self.combat.has_attackers() {
+            self.set_phase(game, agents, PhaseType::CombatDeclareBlockers);
+        }
         if self.combat.has_attackers() {
             // Run DeclareBlocker replacement effects before declaring blockers.
             {
@@ -731,8 +733,11 @@ impl GameLoop {
                     if !combat::can_creature_block(game, blocker, attacker) {
                         continue; // illegal block
                     }
-                    self.combat
-                        .declare_blocker(blocker, attacker, game.card(blocker).zone_timestamp);
+                    self.combat.declare_blocker(
+                        blocker,
+                        attacker,
+                        game.card(blocker).zone_timestamp,
+                    );
 
                     // Fire Blocks trigger for each (blocker, attacker) pair
                     self.trigger_handler.run_trigger(
@@ -959,13 +964,13 @@ impl GameLoop {
             self.combat.save_lki(blocker_id);
         }
 
-        // Determine if we need first strike damage step
+        // Java parity: always advance into COMBAT_FIRST_STRIKE_DAMAGE; the
+        // step may simply do nothing / grant no priority.
+        let has_attackers = self.combat.has_attackers();
         let has_first_strikers = self.combat.has_first_strikers(game);
+        self.set_phase(game, agents, PhaseType::CombatFirstStrikeDamage);
 
-        if has_first_strikers && self.combat.has_attackers() {
-            // First Strike Damage step
-            self.set_phase(game, agents, PhaseType::CombatFirstStrikeDamage);
-
+        if has_first_strikers && has_attackers {
             // LKI: Snapshot battlefield state before first strike damage.
             // Mirrors Java's Game.copyLastState() called before damage resolution.
             game.copy_last_state();
@@ -1016,7 +1021,8 @@ impl GameLoop {
             }
         }
 
-        // Java parity: skip regular combat damage step when no attackers remain.
+        // Java parity: always advance into COMBAT_DAMAGE; the step may be skipped.
+        self.set_phase(game, agents, PhaseType::CombatDamage);
         if self.combat.has_attackers() {
             // Run AssignDealDamage replacement effects for each attacker.
             {
@@ -1030,8 +1036,6 @@ impl GameLoop {
                     apply_replacements(game, &mut event);
                 }
             }
-
-            self.set_phase(game, agents, PhaseType::CombatDamage);
 
             // LKI: Snapshot battlefield state before combat damage.
             // Mirrors Java's Game.copyLastState() called before damage resolution.
@@ -1057,6 +1061,9 @@ impl GameLoop {
             // (e.g. 0-power attackers). Mirrors PhaseHandler.java lines 335-343
             // where assignCombatDamage returns false → givePriorityToPlayer = false.
             let damage_assigned = !dmg_events.is_empty();
+            if damage_assigned {
+                self.notify_state_changed(game, agents);
+            }
             self.fire_combat_damage_triggers(&dmg_events);
             // Flush triggers before SBA so that triggers from creatures about
             // to die (e.g. enrage) are matched while still on the battlefield.

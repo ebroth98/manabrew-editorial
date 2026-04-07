@@ -36,7 +36,9 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                 let lki_power = ctx.game.card(target_card).power();
                 let lki_toughness = ctx.game.card(target_card).toughness();
                 ctx.game.card_mut(target_card).lki_counters = Some(lki_counters);
-                ctx.game.card_mut(target_card).set_lki_power_toughness(Some(lki_power), Some(lki_toughness));
+                ctx.game
+                    .card_mut(target_card)
+                    .set_lki_power_toughness(Some(lki_power), Some(lki_toughness));
             }
             // Fire Destroyed trigger before moving to graveyard
             ctx.trigger_handler.run_trigger(

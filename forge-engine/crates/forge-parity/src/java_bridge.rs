@@ -37,6 +37,8 @@ pub struct JavaBridgeConfig {
     pub verbose: bool,
     /// If true, bias main-phase random decisions toward actions over pass.
     pub prefer_actions: bool,
+    /// If true, emit callback-entry snapshots before every decision callback.
+    pub deep: bool,
     /// Maximum JVM heap size (e.g. "512m", "1g"). Passed as -Xmx to the JVM.
     pub java_heap: String,
 }
@@ -115,6 +117,9 @@ impl JavaBridge {
             .arg(self.config.max_turns.to_string());
         if self.config.prefer_actions {
             cmd.arg("--prefer-actions");
+        }
+        if self.config.deep {
+            cmd.arg("--deep");
         }
 
         // Add --forge-home if specified, otherwise auto-detect from JAR path
@@ -268,6 +273,7 @@ pub struct MatchupRequest {
     pub seed: u64,
     pub max_turns: u32,
     pub prefer_actions: bool,
+    pub deep: bool,
     #[serde(skip_serializing_if = "String::is_empty")]
     pub variant: String,
     #[serde(skip_serializing_if = "Vec::is_empty")]
@@ -414,6 +420,7 @@ impl JavaServer {
         seed: u64,
         max_turns: u32,
         prefer_actions: bool,
+        deep: bool,
         variant: &str,
         commanders: &[String],
     ) -> Result<JavaMatchupData, JavaBridgeError> {
@@ -425,6 +432,7 @@ impl JavaServer {
             seed,
             max_turns,
             prefer_actions,
+            deep,
             variant: variant.to_string(),
             commanders: commanders.to_vec(),
         };
@@ -539,6 +547,7 @@ impl JavaServer {
         seed: u64,
         max_turns: u32,
         prefer_actions: bool,
+        deep: bool,
         variant: &str,
         commanders: &[String],
         mut on_snapshot: F,
@@ -554,6 +563,7 @@ impl JavaServer {
             seed,
             max_turns,
             prefer_actions,
+            deep,
             variant: variant.to_string(),
             commanders: commanders.to_vec(),
         };

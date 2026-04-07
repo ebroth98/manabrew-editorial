@@ -13,11 +13,21 @@ import java.util.function.Consumer;
 public final class DecisionLog {
     private static final Gson GSON = new Gson();
     private static Consumer<String> sink = s -> {};
+    private static boolean deep = false;
 
     private DecisionLog() {}
 
-    public static void setSink(Consumer<String> out) {
+    public static void setSink(Consumer<String> out, boolean deepEnabled) {
         sink = (out == null) ? (s -> {}) : out;
+        deep = deepEnabled;
+    }
+
+    public static void logCheckpoint(final Player decidingPlayer, final String kind) {
+        if (!deep || decidingPlayer == null) {
+            return;
+        }
+        logChoice(decidingPlayer, kind, List.of(), "CALLBACK_ENTRY");
+        sink.accept(SnapshotExtractor.snapshotJson(decidingPlayer.getGame()));
     }
 
     public static void logMainAction(

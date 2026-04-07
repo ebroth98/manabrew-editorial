@@ -371,7 +371,7 @@ fn test_counterspell_should_stop_damage() {
         );
     }
 
-    assert_eq!(alice_final_life, alice_initial_life, 
+    assert_eq!(alice_final_life, alice_initial_life,
         "BUG: Alice took damage from a countered Shock! Counterspell should have prevented all damage.");
 
     // Shock should be in Bob's graveyard

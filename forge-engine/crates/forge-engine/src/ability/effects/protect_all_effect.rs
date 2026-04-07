@@ -9,11 +9,7 @@ use crate::spellability::SpellAbility;
 /// effect duration expires.
 ///
 /// Removes the specified protection keyword from the card's pump_keywords.
-pub fn run(
-    game: &mut crate::game::GameState,
-    card_id: crate::ids::CardId,
-    keyword: &str,
-) {
+pub fn run(game: &mut crate::game::GameState, card_id: crate::ids::CardId, keyword: &str) {
     if game.card(card_id).zone == ZoneType::Battlefield {
         game.card_mut(card_id).pump_keywords.remove(keyword);
     }

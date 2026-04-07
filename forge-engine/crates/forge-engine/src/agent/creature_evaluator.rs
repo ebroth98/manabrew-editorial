@@ -26,7 +26,8 @@ pub fn evaluate_creature_full(card: &Card, consider_pt: bool, consider_cmc: bool
 
     let power = if card.has_keyword("Prevent all combat damage that would be dealt by CARDNAME.")
         || card.has_keyword("Prevent all damage that would be dealt by CARDNAME.")
-        || card.has_keyword("Prevent all combat damage that would be dealt to and dealt by CARDNAME.")
+        || card
+            .has_keyword("Prevent all combat damage that would be dealt to and dealt by CARDNAME.")
         || card.has_keyword("Prevent all damage that would be dealt to and dealt by CARDNAME.")
     {
         0
@@ -170,11 +171,7 @@ pub fn evaluate_creature_full(card: &Card, consider_pt: bool, consider_cmc: bool
     }
 
     // Mana abilities add value
-    if card
-        .activated_abilities
-        .iter()
-        .any(|ab| ab.is_mana_ability)
-    {
+    if card.activated_abilities.iter().any(|ab| ab.is_mana_ability) {
         value += 10;
     }
 
@@ -184,7 +181,12 @@ pub fn evaluate_creature_full(card: &Card, consider_pt: bool, consider_cmc: bool
     }
 
     // End of turn leaves play
-    if card.svars.get("EndOfTurnLeavePlay").map(|v| v == "True").unwrap_or(false) {
+    if card
+        .svars
+        .get("EndOfTurnLeavePlay")
+        .map(|v| v == "True")
+        .unwrap_or(false)
+    {
         value -= 50;
     }
 

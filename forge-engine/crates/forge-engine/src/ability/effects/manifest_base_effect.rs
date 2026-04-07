@@ -52,16 +52,14 @@ pub fn default_cloak_message() -> &'static str {
 /// This is the shared resolution logic for Manifest, Manifest Dread, and Cloak.
 /// Each variant may override behavior (Manifest Dread looks at more cards,
 /// Cloak grants the face-down card special turn-face-up abilities).
-pub fn resolve(
-    ctx: &mut EffectContext,
-    sa: &SpellAbility,
-    is_cloak: bool,
-) {
+pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility, is_cloak: bool) {
     let player = sa.activating_player;
     let params = parse_manifest_params(ctx, sa);
 
     for _ in 0..params.amount {
-        let library = ctx.game.cards_in_zone(forge_foundation::ZoneType::Library, player);
+        let library = ctx
+            .game
+            .cards_in_zone(forge_foundation::ZoneType::Library, player);
         if library.is_empty() {
             break;
         }
@@ -70,11 +68,8 @@ pub fn resolve(
         let card_id = library[0];
 
         // Move to battlefield face-down
-        ctx.game.move_card(
-            card_id,
-            forge_foundation::ZoneType::Battlefield,
-            player,
-        );
+        ctx.game
+            .move_card(card_id, forge_foundation::ZoneType::Battlefield, player);
 
         // Set face-down properties — 2/2 creature with no abilities
         let card = ctx.game.card_mut(card_id);
@@ -88,7 +83,8 @@ pub fn resolve(
         card.add_new_pt(2, 2);
 
         // Register triggers for the new permanent
-        ctx.trigger_handler.register_active_trigger(ctx.game, card_id);
+        ctx.trigger_handler
+            .register_active_trigger(ctx.game, card_id);
 
         // Fire zone change triggers
         super::zone_triggers::emit_zone_trigger(

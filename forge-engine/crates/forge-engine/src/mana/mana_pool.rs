@@ -915,7 +915,10 @@ impl ManaPool {
             }
             let mana = &self.mana[idx];
             let paid = if any_color && mana.color != ManaAtom::COLORLESS {
-                unpaid.try_pay_mana(ManaAtom::COLORS_SUPERPOSITION, ManaAtom::COLORS_SUPERPOSITION as u8)
+                unpaid.try_pay_mana(
+                    ManaAtom::COLORS_SUPERPOSITION,
+                    ManaAtom::COLORS_SUPERPOSITION as u8,
+                )
             } else {
                 unpaid.pay_mana(mana, mana.color as u8)
             };

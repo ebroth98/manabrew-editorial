@@ -40,7 +40,11 @@ pub enum ReplacementEvent {
     /// A card is being drawn by a player.
     /// `extra_draws` is incremented by replacements (e.g. Alhammarret's Archive DrawTwo).
     /// `is_first_in_draw_step` is true for the first draw in the draw step (not extra draws).
-    Draw { player: PlayerId, extra_draws: i32, is_first_in_draw_step: bool },
+    Draw {
+        player: PlayerId,
+        extra_draws: i32,
+        is_first_in_draw_step: bool,
+    },
 
     /// Damage is being dealt to a permanent.
     DamageToCard {
@@ -77,7 +81,11 @@ pub enum ReplacementEvent {
 
     /// Token(s) are being created.
     /// `is_effect` is `true` when created by a spell/ability effect, `false` for game rules.
-    CreateToken { player: PlayerId, count: i32, is_effect: bool },
+    CreateToken {
+        player: PlayerId,
+        count: i32,
+        is_effect: bool,
+    },
 
     /// Counter(s) are being added to a permanent.
     /// `is_effect` is `true` when placed by a spell/ability, `false` for ETB keywords/game rules.
@@ -1174,14 +1182,7 @@ fn execute_effect(
         ReplacementType::Draw => replace_draw::execute(effect, event, game, card_id),
         ReplacementType::Destroy => replace_destroy::execute(effect, event, game, card_id),
         ReplacementType::Moved => {
-            replace_moved::execute(
-                effect,
-                event,
-                game,
-                card_id,
-                agents.as_deref_mut(),
-                runtime,
-            )
+            replace_moved::execute(effect, event, game, card_id, agents.as_deref_mut(), runtime)
         }
         ReplacementType::GainLife => replace_gain_life::execute(effect, event, game, card_id),
         ReplacementType::CreateToken => replace_token::execute(effect, event, game, card_id),
@@ -1423,7 +1424,11 @@ mod tests {
         );
         put_on_battlefield(&mut game, cid, alice);
 
-        let mut event = ReplacementEvent::Draw { player: alice, extra_draws: 0, is_first_in_draw_step: false };
+        let mut event = ReplacementEvent::Draw {
+            player: alice,
+            extra_draws: 0,
+            is_first_in_draw_step: false,
+        };
         let result = apply_replacements(&mut game, &mut event);
         assert_eq!(result, ReplacementResult::Skipped);
     }
@@ -1442,7 +1447,11 @@ mod tests {
         put_on_battlefield(&mut game, cid, alice);
 
         // Bob's draw is not affected by Alice's effect.
-        let mut event = ReplacementEvent::Draw { player: bob, extra_draws: 0, is_first_in_draw_step: false };
+        let mut event = ReplacementEvent::Draw {
+            player: bob,
+            extra_draws: 0,
+            is_first_in_draw_step: false,
+        };
         let result = apply_replacements(&mut game, &mut event);
         assert_eq!(result, ReplacementResult::NotReplaced);
     }
@@ -1463,7 +1472,11 @@ mod tests {
         // Card stays in hand, not battlefield.
         game.move_card(cid, ZoneType::Hand, alice);
 
-        let mut event = ReplacementEvent::Draw { player: alice, extra_draws: 0, is_first_in_draw_step: false };
+        let mut event = ReplacementEvent::Draw {
+            player: alice,
+            extra_draws: 0,
+            is_first_in_draw_step: false,
+        };
         let result = apply_replacements(&mut game, &mut event);
         assert_eq!(result, ReplacementResult::NotReplaced);
     }

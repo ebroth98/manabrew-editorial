@@ -125,7 +125,10 @@ fn parse_ignore_command(command: &str) -> Option<IgnoredMatchup> {
     })
 }
 
-fn ignored_matchup<'a>(config: &RunConfig, ignores: &'a [IgnoredMatchup]) -> Option<&'a IgnoredMatchup> {
+fn ignored_matchup<'a>(
+    config: &RunConfig,
+    ignores: &'a [IgnoredMatchup],
+) -> Option<&'a IgnoredMatchup> {
     ignores.iter().find(|entry| {
         entry.deck1 == config.deck1
             && entry.deck2 == config.deck2
@@ -234,6 +237,10 @@ struct Cli {
     /// Bias random main-phase decisions toward taking an action instead of passing.
     #[arg(long)]
     prefer_actions: bool,
+
+    /// Capture and compare callback-entry snapshots before every decision callback.
+    #[arg(long)]
+    deep: bool,
 
     /// Run all deck pair combinations across multiple seeds
     #[arg(long)]
@@ -472,6 +479,7 @@ fn run_multi_game_mode(cli: &Cli) {
                             decks_dir: cli.decks_dir.clone(),
                             verbose: cli.verbose,
                             prefer_actions: cli.prefer_actions,
+                            deep: cli.deep,
                             java_heap: cli.java_heap.clone(),
                             variant: cli.variant.clone(),
                             commanders: cli.commander.clone(),
@@ -550,6 +558,7 @@ fn run_multi_game_mode(cli: &Cli) {
                         decks_dir: cli.decks_dir.clone(),
                         verbose: cli.verbose,
                         prefer_actions: cli.prefer_actions,
+                        deep: cli.deep,
                         java_heap: cli.java_heap.clone(),
                         variant: cli.variant.clone(),
                         commanders: cli.commander.clone(),
@@ -621,6 +630,7 @@ fn run_multi_game_mode(cli: &Cli) {
                 decks_dir: cli.decks_dir.clone(),
                 verbose: cli.verbose,
                 prefer_actions: cli.prefer_actions,
+                deep: cli.deep,
                 java_heap: cli.java_heap.clone(),
                 variant: cli.variant.clone(),
                 commanders: cli.commander.clone(),
@@ -754,6 +764,7 @@ fn run_rust_only_mode(cli: &Cli) {
         decks_dir: cli.decks_dir.clone(),
         verbose: cli.verbose,
         prefer_actions: cli.prefer_actions,
+        deep: cli.deep,
         java_heap: cli.java_heap.clone(),
         variant: cli.variant.clone(),
         commanders: cli.commander.clone(),
@@ -817,6 +828,7 @@ fn run_parity_mode(cli: &Cli, jar_path: &PathBuf) {
         decks_dir: cli.decks_dir.clone(),
         verbose: cli.verbose,
         prefer_actions: cli.prefer_actions,
+        deep: cli.deep,
         java_heap: cli.java_heap.clone(),
         variant: cli.variant.clone(),
         commanders: cli.commander.clone(),
@@ -965,6 +977,7 @@ fn run_single_matchup_server(
             config.seed,
             config.max_turns,
             config.prefer_actions,
+            config.deep,
             &config.variant,
             &config.commanders,
         );
@@ -1047,6 +1060,7 @@ fn run_single_matchup_pool(
             config.seed,
             config.max_turns,
             config.prefer_actions,
+            config.deep,
             &config.variant,
             &config.commanders,
         );
@@ -1135,6 +1149,7 @@ fn run_single_matchup_oneshot(
                 decks_dir: config.decks_dir.clone(),
                 verbose: config.verbose,
                 prefer_actions: config.prefer_actions,
+                deep: config.deep,
                 java_heap: config.java_heap.clone(),
             };
             let bridge = JavaBridge::new(bridge_config);
@@ -1257,49 +1272,73 @@ fn compare_snapshots(
     java_data: &JavaMatchupData,
 ) -> MatchupResult {
     let java_snapshots = &java_data.snapshots;
-    let max_snapshots = rust_snapshots.len().max(java_snapshots.len());
     let mut first_divergence: Option<Divergence> = None;
-    let mut compared_until = max_snapshots;
+    let mut compared_until = rust_snapshots.len().max(java_snapshots.len());
+    let mut rust_idx = 0usize;
+    let mut java_idx = 0usize;
+    let mut compared_index = 0usize;
 
-    for i in 0..max_snapshots {
-        match (rust_snapshots.get(i), java_snapshots.get(i)) {
+    while rust_idx < rust_snapshots.len() || java_idx < java_snapshots.len() {
+        match (rust_snapshots.get(rust_idx), java_snapshots.get(java_idx)) {
             (Some(rs), Some(js)) => {
-                let divs = comparator::compare(i, rs, js);
-                if let Some(div) = divs.into_iter().next() {
-                    first_divergence = Some(div);
-                    compared_until = i + 1;
-                    break;
+                let divs = comparator::compare(compared_index, rs, js);
+                if divs.is_empty() {
+                    rust_idx += 1;
+                    java_idx += 1;
+                    compared_index += 1;
+                    continue;
                 }
+
+                if config.deep {
+                    if let Some((next_rust_idx, next_java_idx)) = find_deep_resync(
+                        rust_snapshots,
+                        java_snapshots,
+                        rust_idx,
+                        java_idx,
+                        compared_index,
+                    ) {
+                        rust_idx = next_rust_idx;
+                        java_idx = next_java_idx;
+                        continue;
+                    }
+                }
+
+                first_divergence = divs.into_iter().next();
+                compared_until = compared_index + 1;
+                break;
             }
-            (Some(_rs), None) => {
+            (Some(rs), None) => {
                 first_divergence = Some(Divergence {
-                    snapshot_index: i,
-                    turn: _rs.turn,
-                    phase: _rs.phase.clone(),
+                    snapshot_index: compared_index,
+                    turn: rs.turn,
+                    phase: rs.phase.clone(),
                     field: "snapshot.exists".into(),
                     rust_value: "present".into(),
                     java_value: "missing".into(),
                 });
-                compared_until = i + 1;
+                compared_until = compared_index + 1;
                 break;
             }
-            (None, Some(_js)) => {
+            (None, Some(js)) => {
                 first_divergence = Some(Divergence {
-                    snapshot_index: i,
-                    turn: _js.turn,
-                    phase: _js.phase.clone(),
+                    snapshot_index: compared_index,
+                    turn: js.turn,
+                    phase: js.phase.clone(),
                     field: "snapshot.exists".into(),
                     rust_value: "missing".into(),
                     java_value: "present".into(),
                 });
-                compared_until = i + 1;
+                compared_until = compared_index + 1;
                 break;
             }
-            (None, None) => {}
+            (None, None) => {
+                compared_until = compared_index;
+                break;
+            }
         }
     }
 
-    if first_divergence.is_none() {
+    if first_divergence.is_none() && !config.deep {
         let rust_payment_checkpoints: Vec<&DecisionRecord> = rust_decisions
             .iter()
             .filter(|d| d.kind == "pay_mana_cost_callback")
@@ -1437,6 +1476,54 @@ fn compare_snapshots(
     }
 }
 
+fn find_deep_resync(
+    rust_snapshots: &[forge_parity::protocol::StateSnapshot],
+    java_snapshots: &[forge_parity::protocol::StateSnapshot],
+    rust_idx: usize,
+    java_idx: usize,
+    compared_index: usize,
+) -> Option<(usize, usize)> {
+    const RESYNC_WINDOW: usize = 8;
+
+    let mut best: Option<(usize, usize)> = None;
+    for rust_skip in 0..=RESYNC_WINDOW {
+        for java_skip in 0..=RESYNC_WINDOW {
+            if rust_skip == 0 && java_skip == 0 {
+                continue;
+            }
+            let Some(rs) = rust_snapshots.get(rust_idx + rust_skip) else {
+                continue;
+            };
+            let Some(js) = java_snapshots.get(java_idx + java_skip) else {
+                continue;
+            };
+            if comparator::compare(compared_index, rs, js).is_empty() {
+                let candidate = (rust_idx + rust_skip, java_idx + java_skip);
+                match best {
+                    None => best = Some(candidate),
+                    Some(current) => {
+                        let current_skips = (current.0 - rust_idx, current.1 - java_idx);
+                        let candidate_skips = (rust_skip, java_skip);
+                        let current_score = (
+                            current_skips.0 + current_skips.1,
+                            current_skips.0.max(current_skips.1),
+                        );
+                        let candidate_score = (
+                            candidate_skips.0 + candidate_skips.1,
+                            candidate_skips.0.max(candidate_skips.1),
+                        );
+                        if candidate_score < current_score {
+                            best = Some(candidate);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    best
+}
+
 fn format_rust_trace(
     config: &RunConfig,
     rust_snapshots: &[forge_parity::protocol::StateSnapshot],
@@ -1506,6 +1593,7 @@ impl ServerPool {
         seed: u64,
         max_turns: u32,
         prefer_actions: bool,
+        deep: bool,
         variant: &str,
         commanders: &[String],
         on_snapshot: F,
@@ -1524,6 +1612,7 @@ impl ServerPool {
                     seed,
                     max_turns,
                     prefer_actions,
+                    deep,
                     variant,
                     commanders,
                     on_snapshot,
@@ -1539,6 +1628,7 @@ impl ServerPool {
             seed,
             max_turns,
             prefer_actions,
+            deep,
             variant,
             commanders,
             on_snapshot,
@@ -1553,6 +1643,7 @@ impl ServerPool {
         seed: u64,
         max_turns: u32,
         prefer_actions: bool,
+        deep: bool,
         variant: &str,
         commanders: &[String],
     ) -> Result<JavaMatchupData, JavaBridgeError> {
@@ -1562,6 +1653,7 @@ impl ServerPool {
             seed,
             max_turns,
             prefer_actions,
+            deep,
             variant,
             commanders,
             |_, _| true,
@@ -1653,6 +1745,7 @@ fn run_matrix_mode(cli: &Cli) {
             decks_dir: cli.decks_dir.clone(),
             verbose: cli.verbose,
             prefer_actions: cli.prefer_actions,
+            deep: cli.deep,
             java_heap: cli.java_heap.clone(),
             variant: cli.variant.clone(),
             commanders: cli.commander.clone(),
@@ -1747,6 +1840,7 @@ fn run_matrix_mode(cli: &Cli) {
                 decks_dir: cli.decks_dir.clone(),
                 verbose: cli.verbose,
                 prefer_actions: cli.prefer_actions,
+                deep: cli.deep,
                 java_heap: cli.java_heap.clone(),
                 variant: cli.variant.clone(),
                 commanders: cli.commander.clone(),
@@ -1970,6 +2064,7 @@ fn run_java_compare_and_cache(
         config.seed,
         config.max_turns,
         config.prefer_actions,
+        config.deep,
         &config.variant,
         &config.commanders,
         |_, _| true, // collect all snapshots
@@ -2040,6 +2135,7 @@ fn run_java_streaming_compare_pool(
         config.seed,
         config.max_turns,
         config.prefer_actions,
+        config.deep,
         &config.variant,
         &config.commanders,
         |idx, java_snap| {
@@ -2170,6 +2266,7 @@ fn run_java_streaming_compare_oneshot(
         decks_dir: config.decks_dir.clone(),
         verbose: config.verbose,
         prefer_actions: config.prefer_actions,
+        deep: config.deep,
         java_heap: config.java_heap.clone(),
     };
     let bridge = JavaBridge::new(bridge_config);
@@ -2315,6 +2412,7 @@ fn run_fuzz_mode(cli: &Cli) {
             decks_dir: cli.decks_dir.clone(),
             verbose: cli.verbose,
             prefer_actions: cli.prefer_actions,
+            deep: cli.deep,
             java_heap: cli.java_heap.clone(),
             variant: "Constructed".to_string(),
             commanders: vec![],
@@ -2936,6 +3034,7 @@ fn run_continuous_mode(cli: &Cli) {
             decks_dir: cli.decks_dir.clone(),
             verbose: cli.verbose,
             prefer_actions: cli.prefer_actions,
+            deep: cli.deep,
             java_heap: cli.java_heap.clone(),
             variant: cli.variant.clone(),
             commanders: cli.commander.clone(),
@@ -3345,6 +3444,7 @@ fn run_serve_mode(cli: &Cli) {
                 deck2: queued_job.deck2.clone(),
                 seed: queued_job.seed,
                 max_turns: queued_job.max_turns,
+                deep: queued_job.deep,
                 cards_dir: cli_cards_dir.clone(),
                 decks_dir: cli_decks_dir.clone(),
                 verbose: cli_verbose,
@@ -3571,6 +3671,7 @@ fn run_serve_mode(cli: &Cli) {
             decks_dir: cli_decks_dir.clone(),
             verbose: cli_verbose,
             prefer_actions: cli_prefer_actions,
+            deep: cli.deep,
             java_heap: cli_java_heap.clone(),
             variant: "Constructed".to_string(),
             commanders: vec![],

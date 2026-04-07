@@ -116,7 +116,11 @@ pub fn set_triggering_objects(sa: &mut SpellAbility, params: &RunParams) {
     // Java: sa.setTriggeringObjectsFrom(runParams, AbilityKey.SpellAbility, AbilityKey.Cause);
     // SpellAbility and Cause are complex objects; store what we can
     if let Some(ref cause_cards) = params.cards {
-        let csv = cause_cards.iter().map(|c| c.0.to_string()).collect::<Vec<_>>().join(",");
+        let csv = cause_cards
+            .iter()
+            .map(|c| c.0.to_string())
+            .collect::<Vec<_>>()
+            .join(",");
         sa.add_triggering_object("Cause", &csv);
     } else if let Some(cause_card) = params.cause_card {
         sa.add_triggering_object("Cause", &cause_card.0.to_string());

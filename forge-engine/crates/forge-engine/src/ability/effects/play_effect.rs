@@ -182,14 +182,12 @@ pub fn add_replace_graveyard_effect(
             "Event$ Moved | ValidCard$ Card.IsRemembered | Origin$ Stack | Destination$ Graveyard | Description$ If that card would be put into your graveyard this turn, exile it instead."
         ),
     );
-    ctx.game.card_mut(effect_id).set_s_var(
-        "ReplacementDestination",
-        dest_zone.to_string(),
-    );
+    ctx.game
+        .card_mut(effect_id)
+        .set_s_var("ReplacementDestination", dest_zone.to_string());
 
     // Move to command zone
-    ctx.game
-        .move_card(effect_id, ZoneType::Command, controller);
+    ctx.game.move_card(effect_id, ZoneType::Command, controller);
 
     // Mark for end-of-turn cleanup
     ctx.game

@@ -46,6 +46,7 @@ import org.apache.commons.lang3.tuple.Pair;
 
 import java.util.*;
 import java.util.function.Predicate;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 /**
@@ -65,17 +66,30 @@ public class DeterministicController extends PlayerController {
     private static final int PREFER_ACTION_WEIGHT = 3;
     private final CountingRandom rng;
     private final boolean preferActions;
+    private final boolean deep;
     private final DeterministicCostPlumbing costPlumbing;
     private final AutoPay autoPay;
     private final DeterministicPlayPlumbing playPlumbing;
 
-    public DeterministicController(Game game, Player p, LobbyPlayer lp, CountingRandom rng, boolean preferActions) {
+    public DeterministicController(Game game, Player p, LobbyPlayer lp, CountingRandom rng, boolean preferActions, boolean deep) {
         super(game, p, lp);
         this.rng = rng;
         this.preferActions = preferActions;
+        this.deep = deep;
         this.costPlumbing = new DeterministicCostPlumbing(this, this.player);
         this.autoPay = new AutoPay(this.player, this.costPlumbing);
         this.playPlumbing = new DeterministicPlayPlumbing(this, this.player, this.costPlumbing);
+    }
+
+    private void captureDeepCheckpoint(final String kind) {
+        if (deep) {
+            DecisionLog.logCheckpoint(player, kind);
+        }
+    }
+
+    private <T> T withDeepCheckpoint(final String kind, final Supplier<T> action) {
+        captureDeepCheckpoint(kind);
+        return action.get();
     }
 
     private boolean chooseDeterministicBooleanDecision(final String decisionType, final String falseLabel, final String trueLabel) {
@@ -92,7 +106,7 @@ public class DeterministicController extends PlayerController {
 
     @Override
     public boolean mulliganKeepHand(Player firstPlayer, int cardsToReturn) {
-        return true; // always keep — no RNG consumed
+        return true; // parity runner starts from prebuilt opening hands; don't emit deep mulligan checkpoints
     }
 
     @Override
@@ -104,6 +118,7 @@ public class DeterministicController extends PlayerController {
 
     @Override
     public List<SpellAbility> chooseSpellAbilityToPlay() {
+        captureDeepCheckpoint("main_action");
         // Canonical legality source is the engine action space (Card#getAllPossibleAbilities).
         // Preserve engine-provided order; agent only samples from this list.
         final List<SpellAbility> all = ChoiceSpace.sortNative(
@@ -174,6 +189,7 @@ public class DeterministicController extends PlayerController {
 
     @Override
     public boolean chooseTargetsFor(final SpellAbility currentAbility) {
+        captureDeepCheckpoint("choose_targets_for");
         if (Boolean.getBoolean("forge.parity.rng.trace")) {
             String name = currentAbility != null && currentAbility.getHostCard() != null
                 ? currentAbility.getHostCard().getName() : "null";
@@ -248,6 +264,7 @@ public class DeterministicController extends PlayerController {
 
     @Override
     public void declareAttackers(Player attacker, Combat combat) {
+        captureDeepCheckpoint("combat_attacker_choice");
         // PhaseHandler may re-prompt attack declaration after invalid selections
         // or unpaid attack costs; always rebuild from an empty declaration.
         combat.clearAttackers();
@@ -303,6 +320,7 @@ public class DeterministicController extends PlayerController {
 
     @Override
     public void declareBlockers(Player defender, Combat combat) {
+        captureDeepCheckpoint("combat_blocker_choice");
         List<Card> attackers = new ArrayList<>(combat.getAttackers());
         if (attackers.isEmpty()) return;
 
@@ -499,6 +517,7 @@ public class DeterministicController extends PlayerController {
     @Override
     public CardCollectionView choosePermanentsToSacrifice(SpellAbility sa, int min, int max,
             CardCollectionView validTargets, String message) {
+        captureDeepCheckpoint("choose_sacrifice");
         final List<Card> sorted = ParityOrder.sortCardsByNameThenId(new ArrayList<Card>(validTargets));
         return ChoiceSpace.pickManyCards(new CardCollection(sorted), min, max, rng);
     }
@@ -506,6 +525,7 @@ public class DeterministicController extends PlayerController {
     @Override
     public CardCollectionView choosePermanentsToDestroy(SpellAbility sa, int min, int max,
             CardCollectionView validTargets, String message) {
+        captureDeepCheckpoint("choose_destroy");
         final List<Card> sorted = ParityOrder.sortCardsByNameThenId(new ArrayList<Card>(validTargets));
         return ChoiceSpace.pickManyCards(new CardCollection(sorted), min, max, rng);
     }
@@ -516,18 +536,20 @@ public class DeterministicController extends PlayerController {
     public Card chooseSingleCardForZoneChange(ZoneType destination, List<ZoneType> origin,
             SpellAbility sa, CardCollection fetchList, DelayedReveal delayedReveal,
             String selectPrompt, boolean isOptional, Player decider) {
-        if (delayedReveal != null) reveal(delayedReveal);
-        final List<Card> sorted = ParityOrder.sortCardsByNameThenId((List<Card>) fetchList);
-        final Card chosen = ChoiceSpace.pickOne(sorted, rng);
-        final List<String> options = new ArrayList<>(sorted.size());
-        for (final Card card : sorted) {
-            options.add(card.getName() + "@" + ParityCardMap.parityId(card));
-        }
-        final String choice = chosen == null
-                ? "PASS"
-                : chosen.getName() + "@" + ParityCardMap.parityId(chosen);
-        DecisionLog.logChoice(player, "choose_zone_change", options, choice);
-        return chosen;
+        return withDeepCheckpoint("choose_zone_change", () -> {
+            if (delayedReveal != null) reveal(delayedReveal);
+            final List<Card> sorted = ParityOrder.sortCardsByNameThenId((List<Card>) fetchList);
+            final Card chosen = ChoiceSpace.pickOne(sorted, rng);
+            final List<String> options = new ArrayList<>(sorted.size());
+            for (final Card card : sorted) {
+                options.add(card.getName() + "@" + ParityCardMap.parityId(card));
+            }
+            final String choice = chosen == null
+                    ? "PASS"
+                    : chosen.getName() + "@" + ParityCardMap.parityId(chosen);
+            DecisionLog.logChoice(player, "choose_zone_change", options, choice);
+            return chosen;
+        });
     }
 
     @Override
@@ -581,29 +603,35 @@ public class DeterministicController extends PlayerController {
 
     @Override
     public List<AbilitySub> chooseModeForAbility(SpellAbility sa, List<AbilitySub> possible, int min, int num, boolean allowRepeat) {
-        if (possible == null || possible.isEmpty()) return new ArrayList<>();
-        int count = ChoiceSpace.pickCount(min, num, possible.size(), rng);
-        List<AbilitySub> pool = new ArrayList<>(possible);
-        List<AbilitySub> out = new ArrayList<>();
-        for (int i = 0; i < count && !pool.isEmpty(); i++) {
-            out.add(pool.remove(ChoiceSpace.pickIndex(pool.size(), rng)));
-        }
-        return out;
+        return withDeepCheckpoint("choose_mode", () -> {
+            if (possible == null || possible.isEmpty()) return new ArrayList<>();
+            int count = ChoiceSpace.pickCount(min, num, possible.size(), rng);
+            List<AbilitySub> pool = new ArrayList<>(possible);
+            List<AbilitySub> out = new ArrayList<>();
+            for (int i = 0; i < count && !pool.isEmpty(); i++) {
+                out.add(pool.remove(ChoiceSpace.pickIndex(pool.size(), rng)));
+            }
+            return out;
+        });
     }
 
     @Override
     public boolean confirmTrigger(WrappedAbility sa) {
-        return chooseDeterministicBooleanDecision("optional_trigger", "DECLINE", "ACCEPT");
+        return withDeepCheckpoint(
+                "optional_trigger",
+                () -> chooseDeterministicBooleanDecision("optional_trigger", "DECLINE", "ACCEPT"));
     }
 
     @Override
     public boolean confirmAction(SpellAbility sa, PlayerActionConfirmMode mode, String message,
             List<String> options, Card cardToShow, Map<String, Object> params) {
+        captureDeepCheckpoint("confirm_action");
         return chooseDeterministicBooleanDecision("confirm_action", "DECLINE", "ACCEPT");
     }
 
     @Override
     public boolean confirmPayment(final forge.game.cost.CostPart costPart, final String prompt, final SpellAbility sa) {
+        captureDeepCheckpoint("confirm_payment");
         if (costPart == null || costPart instanceof CostPartMana) {
             return true;
         }
@@ -615,6 +643,7 @@ public class DeterministicController extends PlayerController {
 
     @Override
     public boolean chooseBinary(final SpellAbility sa, final String question, final BinaryChoiceType kindOfChoice, final Boolean defaultVal) {
+        captureDeepCheckpoint("choose_binary");
         final String left = kindOfChoice.name() + ":LEFT";
         final String right = kindOfChoice.name() + ":RIGHT";
         return chooseDeterministicBooleanDecision("choose_binary", right, left);
@@ -658,6 +687,7 @@ public class DeterministicController extends PlayerController {
 
     @Override
     public byte chooseColor(String message, SpellAbility sa, ColorSet colors) {
+        captureDeepCheckpoint("choose_color");
         List<Byte> colorList = new ArrayList<>();
         for (Color color : colors) colorList.add(color.getColorMask());
         if (colorList.isEmpty()) return Color.WHITE.getColorMask();
@@ -685,6 +715,7 @@ public class DeterministicController extends PlayerController {
 
     @Override
     public String chooseCardName(SpellAbility sa, Predicate<ICardFace> cpp, String valid, String message) {
+        captureDeepCheckpoint("choose_card_name");
         final Card source = sa.getHostCard();
         final Predicate<ICardFace> faceFilter = cpp == null ? x -> true : cpp;
         final List<ICardFace> faces = StaticData.instance().getCommonCards().streamAllFaces()
@@ -714,13 +745,16 @@ public class DeterministicController extends PlayerController {
 
     @Override
     public int chooseNumber(SpellAbility sa, String title, int min, int max) {
+        captureDeepCheckpoint("choose_number");
         return ChoiceSpace.pickIntInRange(min, max, rng);
     }
 
     @Override
     public int chooseNumber(SpellAbility sa, String title, List<Integer> values, Player relatedPlayer) {
-        if (values == null || values.isEmpty()) return 0;
-        return values.get(ChoiceSpace.pickIndex(values.size(), rng));
+        return withDeepCheckpoint("choose_number_from_list", () -> {
+            if (values == null || values.isEmpty()) return 0;
+            return values.get(ChoiceSpace.pickIndex(values.size(), rng));
+        });
     }
 
     @Override
@@ -972,8 +1006,10 @@ public class DeterministicController extends PlayerController {
 
     @Override
     public CardCollectionView chooseCardsToDelve(int genericAmount, CardCollection grave) {
-        final List<Card> sorted = ParityOrder.sortCardsByNameThenId(new ArrayList<Card>(grave));
-        return ChoiceSpace.pickManyCards(new CardCollection(sorted), 0, Math.min(genericAmount, grave.size()), rng);
+        return withDeepCheckpoint("choose_delve", () -> {
+            final List<Card> sorted = ParityOrder.sortCardsByNameThenId(new ArrayList<Card>(grave));
+            return ChoiceSpace.pickManyCards(new CardCollection(sorted), 0, Math.min(genericAmount, grave.size()), rng);
+        });
     }
 
     @Override
@@ -985,19 +1021,22 @@ public class DeterministicController extends PlayerController {
             boolean creatures,
             Integer maxReduction
     ) {
-        final Map<Card, ManaCostShard> out = new LinkedHashMap<>();
-        if (untappedCards == null || untappedCards.isEmpty()) {
+        final String kind = artifacts && !creatures ? "choose_improvise" : "choose_convoke";
+        return withDeepCheckpoint(kind, () -> {
+            final Map<Card, ManaCostShard> out = new LinkedHashMap<>();
+            if (untappedCards == null || untappedCards.isEmpty()) {
+                return out;
+            }
+            final int cap = maxReduction == null ? untappedCards.size() : Math.max(0, Math.min(maxReduction, untappedCards.size()));
+            final int count = ChoiceSpace.pickCount(0, cap, untappedCards.size(), rng);
+            final List<Card> sortedUntapped = ParityOrder.sortCardsByNameThenId(new ArrayList<Card>(untappedCards));
+            final CardCollection pool = new CardCollection(sortedUntapped);
+            for (int i = 0; i < count && !pool.isEmpty(); i++) {
+                final Card chosen = pool.remove(ChoiceSpace.pickIndex(pool.size(), rng));
+                out.put(chosen, ManaCostShard.GENERIC);
+            }
             return out;
-        }
-        final int cap = maxReduction == null ? untappedCards.size() : Math.max(0, Math.min(maxReduction, untappedCards.size()));
-        final int count = ChoiceSpace.pickCount(0, cap, untappedCards.size(), rng);
-        final List<Card> sortedUntapped = ParityOrder.sortCardsByNameThenId(new ArrayList<Card>(untappedCards));
-        final CardCollection pool = new CardCollection(sortedUntapped);
-        for (int i = 0; i < count && !pool.isEmpty(); i++) {
-            final Card chosen = pool.remove(ChoiceSpace.pickIndex(pool.size(), rng));
-            out.put(chosen, ManaCostShard.GENERIC);
-        }
-        return out;
+        });
     }
 
     @Override
@@ -1177,6 +1216,7 @@ public class DeterministicController extends PlayerController {
 
     @Override
     public ReplacementEffect chooseSingleReplacementEffect(List<ReplacementEffect> possibleReplacers) {
+        captureDeepCheckpoint("choose_single_replacement_effect");
         return ChoiceSpace.pickOne(ParityOrder.sortReplacementEffects(possibleReplacers), rng);
     }
 
@@ -1282,27 +1322,29 @@ public class DeterministicController extends PlayerController {
             String selectPrompt,
             Player decider
     ) {
-        if (delayedReveal != null) {
-            reveal(delayedReveal);
-        }
-        final List<Card> sorted = ParityOrder.sortCardsByNameThenId(new ArrayList<Card>(fetchList));
-        final CardCollection chosen = ChoiceSpace.pickManyCards(new CardCollection(sorted), min, max, rng);
-        final List<String> options = new ArrayList<>(sorted.size());
-        for (final Card card : sorted) {
-            options.add(card.getName() + "@" + ParityCardMap.parityId(card));
-        }
-        final String choice;
-        if (chosen.isEmpty()) {
-            choice = "PASS";
-        } else {
-            final List<String> picked = new ArrayList<>(chosen.size());
-            for (final Card card : chosen) {
-                picked.add(card.getName() + "@" + ParityCardMap.parityId(card));
+        return withDeepCheckpoint("choose_zone_change", () -> {
+            if (delayedReveal != null) {
+                reveal(delayedReveal);
             }
-            choice = String.join(",", picked);
-        }
-        DecisionLog.logChoice(player, "choose_zone_change", options, choice);
-        return new ArrayList<>(chosen);
+            final List<Card> sorted = ParityOrder.sortCardsByNameThenId(new ArrayList<Card>(fetchList));
+            final CardCollection chosen = ChoiceSpace.pickManyCards(new CardCollection(sorted), min, max, rng);
+            final List<String> options = new ArrayList<>(sorted.size());
+            for (final Card card : sorted) {
+                options.add(card.getName() + "@" + ParityCardMap.parityId(card));
+            }
+            final String choice;
+            if (chosen.isEmpty()) {
+                choice = "PASS";
+            } else {
+                final List<String> picked = new ArrayList<>(chosen.size());
+                for (final Card card : chosen) {
+                    picked.add(card.getName() + "@" + ParityCardMap.parityId(card));
+                }
+                choice = String.join(",", picked);
+            }
+            DecisionLog.logChoice(player, "choose_zone_change", options, choice);
+            return new ArrayList<>(chosen);
+        });
     }
 
     @Override

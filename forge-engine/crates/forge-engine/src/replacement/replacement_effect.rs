@@ -118,9 +118,7 @@ impl ReplacementEffect {
     /// Mirrors Java `ReplacementEffect.ensureAbility()` which lazily resolves
     /// the SVar into a SpellAbility.
     pub fn ensure_ability(&self) -> Option<String> {
-        self.params
-            .get(keys::REPLACE_WITH)
-            .map(|s| s.to_string())
+        self.params.get(keys::REPLACE_WITH).map(|s| s.to_string())
     }
 
     /// Check if this effect's event type matches the given event.
@@ -167,16 +165,15 @@ pub fn matches_valid_player(expr: &str, player: PlayerId, source: &Card) -> bool
 
 /// Check if a zone name string matches `zone`.
 pub fn zone_matches(expr: &str, zone: ZoneType) -> bool {
-    expr.split(',')
-        .any(|part| match part.trim() {
-            "Battlefield" => zone == ZoneType::Battlefield,
-            "Graveyard" => zone == ZoneType::Graveyard,
-            "Hand" => zone == ZoneType::Hand,
-            "Library" => zone == ZoneType::Library,
-            "Exile" => zone == ZoneType::Exile,
-            "Command" => zone == ZoneType::Command,
-            _ => false,
-        })
+    expr.split(',').any(|part| match part.trim() {
+        "Battlefield" => zone == ZoneType::Battlefield,
+        "Graveyard" => zone == ZoneType::Graveyard,
+        "Hand" => zone == ZoneType::Hand,
+        "Library" => zone == ZoneType::Library,
+        "Exile" => zone == ZoneType::Exile,
+        "Command" => zone == ZoneType::Command,
+        _ => false,
+    })
 }
 
 // ── Parser ────────────────────────────────────────────────────────────────────

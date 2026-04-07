@@ -2,9 +2,7 @@
 
 use std::collections::BTreeMap;
 
-use forge_engine_core::agent::{
-    PlayCardMode, PlayOption, PlayerAgent, TargetChoice,
-};
+use forge_engine_core::agent::{PlayCardMode, PlayOption, PlayerAgent, TargetChoice};
 use forge_engine_core::card::CardInstance;
 use forge_engine_core::combat::DefenderId;
 use forge_engine_core::game::GameState;

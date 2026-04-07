@@ -86,7 +86,11 @@ pub fn perform_test(
 pub fn set_triggering_objects(sa: &mut SpellAbility, params: &RunParams) {
     // Java: sa.setTriggeringObject(AbilityKey.Attackers, attackers);
     if let Some(attacker_ids) = params.attacker_ids.as_ref() {
-        let csv = attacker_ids.iter().map(|c| c.0.to_string()).collect::<Vec<_>>().join(",");
+        let csv = attacker_ids
+            .iter()
+            .map(|c| c.0.to_string())
+            .collect::<Vec<_>>()
+            .join(",");
         sa.add_triggering_object("Attackers", &csv);
     }
     // Java: sa.setTriggeringObject(AbilityKey.AttackedTarget, attackedTarget);

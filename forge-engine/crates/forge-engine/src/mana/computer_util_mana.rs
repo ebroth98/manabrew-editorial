@@ -375,13 +375,9 @@ fn collect_sorted_candidates(
         .collect();
     // Deduplicate by (card_id, ability_index) — same ability may appear under multiple color keys.
     let mut seen = std::collections::HashSet::new();
-    out.retain(|ma| {
-        seen.insert((ma.card_id, ma.ability_index, ma.source_order))
-    });
+    out.retain(|ma| seen.insert((ma.card_id, ma.ability_index, ma.source_order)));
     // Sort by score (lands before creatures), matching Java's Comparator.comparingInt(score).
-    out.sort_by_key(|ma| {
-        autopay_source_score(game, player, ma) * 1000 + ma.source_order as i32
-    });
+    out.sort_by_key(|ma| autopay_source_score(game, player, ma) * 1000 + ma.source_order as i32);
     out
 }
 
@@ -464,7 +460,13 @@ fn choose_least_versatile_candidate(
         if !ma.can_pay_shard(shard) {
             continue;
         }
-        if !can_pay_non_tap_mana_ability_costs(game, player, ma, current_spell, allow_reserved_source_reuse) {
+        if !can_pay_non_tap_mana_ability_costs(
+            game,
+            player,
+            ma,
+            current_spell,
+            allow_reserved_source_reuse,
+        ) {
             continue;
         }
         if fallback.is_none() {
@@ -489,7 +491,10 @@ fn is_sole_source_for_other_shard_candidates(
         if other_shard == current_shard {
             continue;
         }
-        if matches!(other_shard, ManaCostShard::Generic | ManaCostShard::X | ManaCostShard::ColoredX) {
+        if matches!(
+            other_shard,
+            ManaCostShard::Generic | ManaCostShard::X | ManaCostShard::ColoredX
+        ) {
             continue;
         }
         if !seen.insert(other_shard) {
@@ -498,7 +503,10 @@ fn is_sole_source_for_other_shard_candidates(
         if !candidate.can_pay_shard(other_shard) {
             continue;
         }
-        let sources_for_other = candidates.iter().filter(|alt| alt.can_pay_shard(other_shard)).count();
+        let sources_for_other = candidates
+            .iter()
+            .filter(|alt| alt.can_pay_shard(other_shard))
+            .count();
         if sources_for_other <= 1 {
             return true;
         }
@@ -572,7 +580,10 @@ fn is_sole_source_for_other_shard(
             continue;
         }
         // Skip generic/X shards — they can be paid by anything.
-        if matches!(other_shard, ManaCostShard::Generic | ManaCostShard::X | ManaCostShard::ColoredX) {
+        if matches!(
+            other_shard,
+            ManaCostShard::Generic | ManaCostShard::X | ManaCostShard::ColoredX
+        ) {
             continue;
         }
         if !candidate.can_pay_shard(other_shard) {
@@ -581,7 +592,11 @@ fn is_sole_source_for_other_shard(
         // Count how many sources in the pool can pay for this other shard.
         let sources_for_other = sources_for_shards
             .get(&other_shard)
-            .map(|list| list.iter().filter(|alt| alt.can_pay_shard(other_shard)).count())
+            .map(|list| {
+                list.iter()
+                    .filter(|alt| alt.can_pay_shard(other_shard))
+                    .count()
+            })
             .unwrap_or(0);
         if sources_for_other <= 1 {
             return true; // This candidate is the only source — defer it.
@@ -629,8 +644,12 @@ fn can_pay_non_tap_mana_ability_costs(
                         return false;
                     }
                 } else {
-                    let mut targets =
-                        crate::cost::get_sacrifice_targets_for_cost(game, player, type_filter, None);
+                    let mut targets = crate::cost::get_sacrifice_targets_for_cost(
+                        game,
+                        player,
+                        type_filter,
+                        None,
+                    );
                     if !allow_reserved_source_reuse {
                         if let Some(reserved) = reserved_source {
                             targets.retain(|&cid| cid != reserved);
@@ -720,8 +739,12 @@ fn pay_non_tap_mana_ability_costs(
                         cb(ManaPayCallback::NotifySacrificeForMana(ma.card_id));
                     }
                 } else {
-                    let mut targets =
-                        crate::cost::get_sacrifice_targets_for_cost(game, player, type_filter, None);
+                    let mut targets = crate::cost::get_sacrifice_targets_for_cost(
+                        game,
+                        player,
+                        type_filter,
+                        None,
+                    );
                     if !allow_reserved_source_reuse {
                         if let Some(reserved) = reserved_source {
                             targets.retain(|&cid| cid != reserved);

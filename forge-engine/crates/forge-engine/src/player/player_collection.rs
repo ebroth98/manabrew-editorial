@@ -68,7 +68,13 @@ impl PlayerCollection {
     where
         F: Fn(PlayerId) -> bool,
     {
-        Self(self.0.iter().copied().filter(|&pid| predicate(pid)).collect())
+        Self(
+            self.0
+                .iter()
+                .copied()
+                .filter(|&pid| predicate(pid))
+                .collect(),
+        )
     }
 
     pub fn min<F>(&self, score: F) -> Option<PlayerId>

@@ -169,12 +169,7 @@ fn execute_replace_with(
             cur
         };
 
-        let (
-            trigger_handler_ref,
-            token_templates_ref,
-            mana_pools_ref,
-            rng_ref,
-        ): (
+        let (trigger_handler_ref, token_templates_ref, mana_pools_ref, rng_ref): (
             &mut TriggerHandler,
             &HashMap<String, Card>,
             &mut Vec<ManaPool>,
@@ -213,7 +208,10 @@ fn execute_replace_with(
     true
 }
 
-fn set_replacing_objects_for_moved(event: &ReplacementEvent, sa: &mut crate::spellability::SpellAbility) {
+fn set_replacing_objects_for_moved(
+    event: &ReplacementEvent,
+    sa: &mut crate::spellability::SpellAbility,
+) {
     let ReplacementEvent::Moved { card, .. } = event else {
         return;
     };

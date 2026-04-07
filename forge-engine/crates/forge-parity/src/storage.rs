@@ -800,6 +800,7 @@ mod tests {
     fn make_result(status: MatchupStatus) -> MatchupResult {
         let is_fail = matches!(status, MatchupStatus::Fail);
         let is_error = matches!(status, MatchupStatus::Error);
+        let is_skipped = matches!(status, MatchupStatus::Skipped);
         MatchupResult {
             deck1: "red_burn".into(),
             deck2: "green_stompy".into(),
@@ -824,7 +825,7 @@ mod tests {
             } else {
                 None
             },
-            skip_reason: if matches!(status, MatchupStatus::Skipped) {
+            skip_reason: if is_skipped {
                 Some("ignored".into())
             } else {
                 None

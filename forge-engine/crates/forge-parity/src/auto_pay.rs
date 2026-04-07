@@ -111,7 +111,10 @@ fn choose_candidate(
     None
 }
 
-fn shard_priority(unpaid: &ManaCostBeingPaid, candidates: &[ManaAbilityCandidate]) -> Vec<ManaCostShard> {
+fn shard_priority(
+    unpaid: &ManaCostBeingPaid,
+    candidates: &[ManaAbilityCandidate],
+) -> Vec<ManaCostShard> {
     let mut colored = Vec::new();
     let mut generic = None;
 
@@ -277,7 +280,9 @@ fn collect_playable_mana_abilities(
         }
     }
 
-    candidates.sort_by_key(|candidate| autopay_source_score(game, candidate) * 1000 + candidate.source_order as i32);
+    candidates.sort_by_key(|candidate| {
+        autopay_source_score(game, candidate) * 1000 + candidate.source_order as i32
+    });
     candidates
 }
 

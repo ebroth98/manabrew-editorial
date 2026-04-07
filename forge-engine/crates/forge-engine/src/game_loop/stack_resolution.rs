@@ -66,8 +66,6 @@ impl GameLoop {
                 false,
             );
             apply_continuous_effects(game);
-            super::check_sba(game, &mut self.trigger_handler, agents);
-            self.process_triggers(game, agents);
             return;
         }
 
@@ -115,8 +113,6 @@ impl GameLoop {
                 }
             }
             apply_continuous_effects(game);
-            super::check_sba(game, &mut self.trigger_handler, agents);
-            self.process_triggers(game, agents);
             return;
         }
 
@@ -160,8 +156,6 @@ impl GameLoop {
                         }
                     }
                     apply_continuous_effects(game);
-                    super::check_sba(game, &mut self.trigger_handler, agents);
-                    self.process_triggers(game, agents);
                     return;
                 }
             }
@@ -193,8 +187,6 @@ impl GameLoop {
                     ) {
                         // Can't pay the cost — ability fizzles
                         apply_continuous_effects(game);
-                        super::check_sba(game, &mut self.trigger_handler, agents);
-                        self.process_triggers(game, agents);
                         return;
                     }
                     if !self.pay_ability_cost(
@@ -209,8 +201,6 @@ impl GameLoop {
                         None,
                     ) {
                         apply_continuous_effects(game);
-                        super::check_sba(game, &mut self.trigger_handler, agents);
-                        self.process_triggers(game, agents);
                         return;
                     }
                 }
@@ -301,19 +291,6 @@ impl GameLoop {
                     }
                 }
 
-                // Register triggers for the new permanent
-                self.trigger_handler.register_active_trigger(game, card_id);
-
-                // Emit ChangesZone trigger (ETB)
-                crate::ability::effects::emit_zone_trigger(
-                    &mut self.trigger_handler,
-                    card_id,
-                    origin,
-                    ZoneType::Battlefield,
-                );
-
-                // -- Post-ETB effects for alternative costs --
-
                 // Evoke: register a one-shot ETB trigger that sacrifices this creature.
                 // This mirrors Forge Java semantics where Evoke uses a ChangesZone trigger
                 // and allows normal ETB abilities to trigger before the sacrifice resolves.
@@ -341,6 +318,19 @@ impl GameLoop {
                         },
                     );
                 }
+
+                // Register triggers for the new permanent
+                self.trigger_handler.register_active_trigger(game, card_id);
+
+                // Emit ChangesZone trigger (ETB)
+                crate::ability::effects::emit_zone_trigger(
+                    &mut self.trigger_handler,
+                    card_id,
+                    origin,
+                    ZoneType::Battlefield,
+                );
+
+                // -- Post-ETB effects for alternative costs --
 
                 // Dash: grant haste, register delayed trigger to return to hand at EOT
                 if alt_cost == Some(crate::spellability::AlternativeCost::Dash) {
@@ -537,17 +527,16 @@ impl GameLoop {
 
         // Continuous effects might change after resolution
         apply_continuous_effects(game);
-        super::check_sba(game, &mut self.trigger_handler, agents);
 
         // LKI: Second snapshot after resolution and SBAs, before processing triggers.
         // Mirrors Java MagicStack line 676: game.copyLastState() in finishResolving().
-        // This captures cards that entered the battlefield during this resolution
-        // (e.g., creatures reanimated by Exhume) so their LKI is available
-        // when they later leave the battlefield.
+        // Java does not run SBA here; it defers that to the next priority loop.
+        // Keep the snapshot pre-SBA so deep parity aligns with Java's
+        // GameEventPlayerPriority boundary.
         game.copy_last_state();
 
-        // Process triggers that may have fired during resolution
-        self.process_triggers(game, agents);
+        // Java parity: triggers fired during resolution are queued now and only
+        // moved onto the stack when the next priority cycle checks SBAs.
     }
 
     pub(crate) fn resolve_spell_effect(

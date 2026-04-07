@@ -6,9 +6,7 @@ use crate::game::GameState;
 use crate::ids::PlayerId;
 use crate::parsing::keys;
 use crate::parsing::Params;
-use crate::spellability::target_restrictions::{
-    get_all_candidates_spells, TargetKind,
-};
+use crate::spellability::target_restrictions::{get_all_candidates_spells, TargetKind};
 use crate::spellability::{build_spell_ability, SpellAbility};
 
 /// `SP$ Charm` — modal spell: player chooses N effects from a list.

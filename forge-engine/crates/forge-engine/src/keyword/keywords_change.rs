@@ -94,8 +94,7 @@ impl KeywordsChange {
             let kw_str = &inst.original;
             if kw_str.contains("Trigger") {
                 let mut next_id = card.triggers.len() as u32;
-                if let Some(trigger) =
-                    crate::trigger::trigger::parse_trigger(kw_str, &mut next_id)
+                if let Some(trigger) = crate::trigger::trigger::parse_trigger(kw_str, &mut next_id)
                 {
                     card.triggers.push(trigger);
                 }
@@ -108,7 +107,10 @@ impl KeywordsChange {
     pub fn apply_replacement_effect(&self, card: &mut crate::card::Card) {
         for inst in self.keywords.get_values() {
             let kw_str = &inst.original;
-            if kw_str.contains("Replacement") || kw_str.starts_with("R$ ") || kw_str.starts_with("R:") {
+            if kw_str.contains("Replacement")
+                || kw_str.starts_with("R$ ")
+                || kw_str.starts_with("R:")
+            {
                 if let Some(repl) =
                     crate::replacement::replacement_effect::parse_replacement_effect(kw_str)
                 {
@@ -124,8 +126,7 @@ impl KeywordsChange {
         for inst in self.keywords.get_values() {
             let kw_str = &inst.original;
             if kw_str.starts_with("S$ ") || kw_str.starts_with("S:") {
-                if let Some(sa) =
-                    crate::staticability::static_ability::parse_static_ability(kw_str)
+                if let Some(sa) = crate::staticability::static_ability::parse_static_ability(kw_str)
                 {
                     card.static_abilities.push(sa);
                 }

@@ -12,6 +12,18 @@ impl GameLoop {
         }
     }
 
+    pub(crate) fn notify_priority_changed(
+        &mut self,
+        game: &GameState,
+        agents: &mut [Box<dyn PlayerAgent>],
+        priority_player: crate::ids::PlayerId,
+    ) {
+        for agent in agents.iter_mut() {
+            agent.snapshot_state(game, &self.mana_pools);
+            agent.notify_priority_player(priority_player);
+        }
+    }
+
     pub(crate) fn notify_state_changed(
         &mut self,
         game: &GameState,

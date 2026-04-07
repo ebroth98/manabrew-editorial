@@ -2,9 +2,9 @@
 //!
 //! This module provides the JavaScript-facing API for the forge-engine.
 
-use wasm_bindgen::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
+use wasm_bindgen::prelude::*;
 
 use crate::card_loader::{get_card_db, DeckCard};
 use crate::game_runner::{GameConfig as RustGameConfig, WasmGame};
@@ -185,7 +185,7 @@ impl From<&JsDeckCard> for DeckCard {
 // Interactive Game API (uses shared PromptAgent + Atomics.wait)
 // ============================================================================
 
-use crate::wasm_transport::{WasmTransport, WasmAiTransport};
+use crate::wasm_transport::{WasmAiTransport, WasmTransport};
 use forge_agent_interface::agent_impl::PromptAgent;
 
 /// Run an interactive game with a human player (blocking on Atomics.wait).
@@ -256,10 +256,7 @@ pub fn run_interactive_game(
     let human_agent = PromptAgent::new(PlayerId(0), game_id.clone(), human_transport);
     let ai_agent = PromptAgent::new(PlayerId(1), game_id.clone(), ai_transport);
 
-    let mut agents: Vec<Box<dyn PlayerAgent>> = vec![
-        Box::new(human_agent),
-        Box::new(ai_agent),
-    ];
+    let mut agents: Vec<Box<dyn PlayerAgent>> = vec![Box::new(human_agent), Box::new(ai_agent)];
 
     web_sys::console::log_1(&"[InteractiveGame] Agents created, starting game loop".into());
 
@@ -341,25 +338,46 @@ pub fn run_multiplayer_game(
     let game_id = format!("wasm-mp-{}", js_sys::Date::now() as u64);
 
     // Create agents — both use WasmTransport with separate SABs
-    let (agent0, agent1): (Box<dyn PlayerAgent>, Box<dyn PlayerAgent>) =
-        if local_player_index == 0 {
-            (
-                Box::new(PromptAgent::new(PlayerId(0), game_id.clone(), WasmTransport::new(&local_sab, true))),
-                Box::new(PromptAgent::new(PlayerId(1), game_id.clone(), WasmTransport::new(&remote_sab, false))),
-            )
-        } else {
-            (
-                Box::new(PromptAgent::new(PlayerId(0), game_id.clone(), WasmTransport::new(&remote_sab, false))),
-                Box::new(PromptAgent::new(PlayerId(1), game_id.clone(), WasmTransport::new(&local_sab, true))),
-            )
-        };
+    let (agent0, agent1): (Box<dyn PlayerAgent>, Box<dyn PlayerAgent>) = if local_player_index == 0
+    {
+        (
+            Box::new(PromptAgent::new(
+                PlayerId(0),
+                game_id.clone(),
+                WasmTransport::new(&local_sab, true),
+            )),
+            Box::new(PromptAgent::new(
+                PlayerId(1),
+                game_id.clone(),
+                WasmTransport::new(&remote_sab, false),
+            )),
+        )
+    } else {
+        (
+            Box::new(PromptAgent::new(
+                PlayerId(0),
+                game_id.clone(),
+                WasmTransport::new(&remote_sab, false),
+            )),
+            Box::new(PromptAgent::new(
+                PlayerId(1),
+                game_id.clone(),
+                WasmTransport::new(&local_sab, true),
+            )),
+        )
+    };
 
     let mut agents: Vec<Box<dyn PlayerAgent>> = vec![agent0, agent1];
 
-    web_sys::console::log_1(&format!(
-        "[MultiplayerGame] Starting: local=player-{}, {} vs {} cards",
-        local_player_index, cards0.len(), cards1.len()
-    ).into());
+    web_sys::console::log_1(
+        &format!(
+            "[MultiplayerGame] Starting: local=player-{}, {} vs {} cards",
+            local_player_index,
+            cards0.len(),
+            cards1.len()
+        )
+        .into(),
+    );
 
     let winner = wasm_game.game_loop.run(
         &mut wasm_game.game_state,
@@ -368,9 +386,7 @@ pub fn run_multiplayer_game(
         5000,
     );
 
-    web_sys::console::log_1(
-        &format!("[MultiplayerGame] Complete. Winner: {:?}", winner).into(),
-    );
+    web_sys::console::log_1(&format!("[MultiplayerGame] Complete. Winner: {:?}", winner).into());
 
     #[derive(Serialize)]
     struct InteractiveGameResult {

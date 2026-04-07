@@ -240,10 +240,7 @@ pub fn set_triggering_objects(sa: &mut SpellAbility, params: &RunParams) {
 pub fn get_important_stack_objects(sa: &SpellAbility) -> String {
     format!(
         "Zone Changer: {}",
-        sa.trigger_objects
-            .get("Card")
-            .cloned()
-            .unwrap_or_default()
+        sa.trigger_objects.get("Card").cloned().unwrap_or_default()
     )
 }
 

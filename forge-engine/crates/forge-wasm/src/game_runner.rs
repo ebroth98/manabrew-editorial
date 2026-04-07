@@ -115,10 +115,8 @@ impl WasmGame {
         let human = prepare_player("You", human_deck, starting_life)?;
         let ai = prepare_ai_player("AI Opponent", ai_deck, starting_life)?;
 
-        let registered: Vec<RegisteredPlayer> = vec![
-            human.registered.clone(),
-            ai.registered.clone(),
-        ];
+        let registered: Vec<RegisteredPlayer> =
+            vec![human.registered.clone(), ai.registered.clone()];
 
         // Create game state
         let mut game_state = GameState::new_from_registered_players(&registered);
@@ -147,7 +145,12 @@ impl WasmGame {
             })
             .collect();
 
-        game_state.initialize_registered_player_cards(human_pid, &human.registered, human_cards, None);
+        game_state.initialize_registered_player_cards(
+            human_pid,
+            &human.registered,
+            human_cards,
+            None,
+        );
         game_state.initialize_registered_player_cards(ai_pid, &ai.registered, ai_cards, None);
 
         // Create game loop

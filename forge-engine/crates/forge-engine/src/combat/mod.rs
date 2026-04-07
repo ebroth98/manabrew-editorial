@@ -119,9 +119,15 @@ impl CombatState {
         self.lki_cache = lki;
     }
 
-    pub fn declare_attacker(&mut self, attacker: CardId, defending: DefenderId, zone_timestamp: u64) {
+    pub fn declare_attacker(
+        &mut self,
+        attacker: CardId,
+        defending: DefenderId,
+        zone_timestamp: u64,
+    ) {
         self.attackers.push((attacker, defending));
-        self.attacker_zone_timestamps.insert(attacker, zone_timestamp);
+        self.attacker_zone_timestamps
+            .insert(attacker, zone_timestamp);
     }
 
     pub fn declare_blocker(&mut self, blocker: CardId, attacker: CardId, zone_timestamp: u64) {
@@ -520,7 +526,7 @@ impl CombatState {
                             attacker_has_lifelink,
                             attacker_controller,
                             attacker_has_wither || attacker_has_infect_for_creature,
-                        Some(agents),
+                            Some(agents),
                         );
                         events.push(CombatDamageEvent {
                             source: attacker_id,
@@ -592,7 +598,7 @@ impl CombatState {
                             attacker_has_lifelink,
                             attacker_controller,
                             attacker_has_wither || attacker_has_infect_for_creature,
-                        Some(agents),
+                            Some(agents),
                         );
                         events.push(CombatDamageEvent {
                             source: attacker_id,
@@ -802,7 +808,7 @@ impl CombatState {
                         attacker_has_lifelink,
                         attacker_controller,
                         attacker_has_wither || attacker_has_infect_for_creature,
-                    Some(agents),
+                        Some(agents),
                     );
                     events.push(CombatDamageEvent {
                         source: attacker_id,
@@ -872,7 +878,7 @@ impl CombatState {
                                 attacker_has_lifelink,
                                 attacker_controller,
                                 attacker_has_wither || attacker_has_infect_for_creature,
-                            Some(agents),
+                                Some(agents),
                             );
                             events.push(CombatDamageEvent {
                                 source: attacker_id,
@@ -909,7 +915,7 @@ impl CombatState {
                         info.has_lifelink,
                         info.controller,
                         info.has_wither_or_infect,
-                    Some(agents),
+                        Some(agents),
                     );
                     events.push(CombatDamageEvent {
                         source: info.blocker_id,
@@ -1397,7 +1403,10 @@ fn damage_needed_to_kill_for_assignment(
     let source_card = game.card(source);
     let mut kill_damage = (target_card.toughness() - target_card.damage).max(0);
 
-    if target_card.has_keyword("Indestructible") && !source_card.has_wither() && !source_card.has_infect() {
+    if target_card.has_keyword("Indestructible")
+        && !source_card.has_wither()
+        && !source_card.has_infect()
+    {
         return max_damage + 1;
     }
     if source_card.has_deathtouch() && target_card.is_creature() {
@@ -1406,13 +1415,12 @@ fn damage_needed_to_kill_for_assignment(
 
     for damage in 1..=max_damage {
         let mut sim = game.clone();
-        let mut event =
-            crate::replacement::replacement_handler::ReplacementEvent::DamageToCard {
-                target,
-                amount: damage,
-                source: Some(source),
-                is_combat: true,
-            };
+        let mut event = crate::replacement::replacement_handler::ReplacementEvent::DamageToCard {
+            target,
+            amount: damage,
+            source: Some(source),
+            is_combat: true,
+        };
         let _ = crate::replacement::replacement_handler::apply_replacements(&mut sim, &mut event);
         let final_damage = match event {
             crate::replacement::replacement_handler::ReplacementEvent::DamageToCard {
@@ -1550,7 +1558,13 @@ fn deal_combat_damage_to_player(
                 game.player_add_poison(target, amount);
             }
         } else {
-            let dealt = game.deal_damage_to_player_from_with_agents(target, amount, Some(source), true, agents);
+            let dealt = game.deal_damage_to_player_from_with_agents(
+                target,
+                amount,
+                Some(source),
+                true,
+                agents,
+            );
             game.record_player_damage_assignment(Some(source), Some(target), dealt, true);
         }
         // Toxic: add poison counters in addition to normal damage

@@ -1,5 +1,5 @@
-use forge_engine_core::agent::{PassAgent, PlayOption, PlayerAgent, TargetChoice};
 use forge_engine_core::ability::ability_factory::build_spell_ability;
+use forge_engine_core::agent::{PassAgent, PlayOption, PlayerAgent, TargetChoice};
 use forge_engine_core::card::CardInstance;
 use forge_engine_core::combat::DefenderId;
 use forge_engine_core::game::GameState;

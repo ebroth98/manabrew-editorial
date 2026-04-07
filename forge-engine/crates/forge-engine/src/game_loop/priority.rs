@@ -1,6 +1,6 @@
 use super::*;
-use crate::player::PlayerController;
 use crate::player::actions::PlayerActionOutcome;
+use crate::player::PlayerController;
 
 impl GameLoop {
     fn describe_priority_action(
@@ -40,6 +40,7 @@ impl GameLoop {
         is_main_phase: bool,
     ) {
         let mut priority_player = game.active_player();
+        let mut last_notified_priority: Option<PlayerId> = None;
         let mut passed_count = 0;
         let num_players = game.players.len();
 
@@ -50,6 +51,16 @@ impl GameLoop {
             self.with_shared_state_mutation(game, agents, |_this, game, _agents| {
                 game.turn.priority_player = priority_player;
             });
+
+            // Java parity: GameEventPlayerPriority is fired before
+            // checkStateBasedEffects() / addAllTriggeredAbilitiesToStack().
+            if last_notified_priority != Some(priority_player) {
+                self.notify_priority_changed(game, agents, priority_player);
+                last_notified_priority = Some(priority_player);
+            }
+            if game.game_over {
+                return;
+            }
 
             // Mirrors Java's checkStateBasedEffects():
             //   do { checkStateEffects(); } while (addAllTriggeredAbilitiesToStack());

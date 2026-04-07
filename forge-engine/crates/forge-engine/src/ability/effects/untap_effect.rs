@@ -21,7 +21,9 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     let controller = sa.activating_player;
     let etb = sa.params.has(crate::parsing::keys::ETB);
 
-    let mut targets = resolve_untap_target(ctx, sa).into_iter().collect::<Vec<_>>();
+    let mut targets = resolve_untap_target(ctx, sa)
+        .into_iter()
+        .collect::<Vec<_>>();
     targets.extend(card_util::get_radiance(ctx.game, sa).iter().copied());
     targets.sort_unstable_by_key(|cid| cid.0);
     targets.dedup();

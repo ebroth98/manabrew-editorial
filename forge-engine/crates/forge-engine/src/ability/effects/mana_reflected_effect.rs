@@ -12,11 +12,7 @@ use crate::spellability::SpellAbility;
 /// has no parent ability.
 pub fn build_spell_ability(sa: &mut crate::spellability::SpellAbility) {
     // Set up the mana part from Produced$ parameter
-    let produced = sa
-        .params
-        .get(keys::PRODUCED)
-        .unwrap_or("Any")
-        .to_string();
+    let produced = sa.params.get(keys::PRODUCED).unwrap_or("Any").to_string();
     let restriction = sa
         .params
         .get(keys::RESTRICT_VALID)
@@ -49,7 +45,8 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         return;
     }
 
-    let mut available_colors = colors_from_names(card_util::get_reflectable_mana_colors(ctx.game, sa));
+    let mut available_colors =
+        colors_from_names(card_util::get_reflectable_mana_colors(ctx.game, sa));
     let color_or_type = sa.params.get(keys::COLOR_OR_TYPE).unwrap_or("Color");
     if color_or_type == "Type" && !available_colors.contains(&ManaAtom::COLORLESS) {
         available_colors.push(ManaAtom::COLORLESS);

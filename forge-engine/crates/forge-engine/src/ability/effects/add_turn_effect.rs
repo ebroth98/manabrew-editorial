@@ -77,8 +77,7 @@ pub fn create_cant_set_schemes_in_motion_effect(ctx: &mut EffectContext, sa: &Sp
     );
 
     // Move to command zone so it stays active
-    ctx.game
-        .move_card(effect_id, ZoneType::Command, controller);
+    ctx.game.move_card(effect_id, ZoneType::Command, controller);
 
     // Mark for end-of-turn exile (the cleanup step will remove cards
     // with this marker from the command zone)
