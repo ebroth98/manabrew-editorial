@@ -59,6 +59,7 @@ const SAB_SIZE = 256 * 1024;
 let wasmInitialized = false;
 let cardsLoaded = false;
 let presetDecks: PresetDeck[] = [];
+let bundledCardNames = new Set<string>();
 let gameSharedBuffer: SharedArrayBuffer | null = null;
 let remoteSharedBuffer: SharedArrayBuffer | null = null;
 let gameRunning = false;
@@ -93,6 +94,10 @@ async function loadCardData(): Promise<void> {
       throw new Error(`Failed to fetch card bundle: ${cardBundleResponse.status}`);
     }
     const cardBundleText = await cardBundleResponse.text();
+    const parsedBundle = JSON.parse(cardBundleText) as {
+      cards?: Record<string, string>;
+    };
+    bundledCardNames = buildBundledCardNameIndex(parsedBundle.cards ?? {});
 
     const cardCount = load_card_bundle(cardBundleText);
     console.log(`[GameWorker] Loaded ${cardCount} cards into database`);
@@ -110,6 +115,35 @@ async function loadCardData(): Promise<void> {
     console.error("[GameWorker] Failed to load card data:", error);
     throw error;
   }
+}
+
+function normalizeCardName(name: string): string {
+  return name
+    .trim()
+    .toLowerCase()
+    .replace(/['"]/g, "")
+    .replace(/[^a-z0-9]/g, "_")
+    .replace(/_+/g, "_")
+    .replace(/^_|_$/g, "");
+}
+
+function buildBundledCardNameIndex(cards: Record<string, string>): Set<string> {
+  const names = new Set<string>();
+
+  for (const [filename, script] of Object.entries(cards)) {
+    names.add(filename);
+
+    const nameMatch = script.match(/^Name:(.+)$/m);
+    if (nameMatch) {
+      names.add(normalizeCardName(nameMatch[1]));
+    }
+  }
+
+  return names;
+}
+
+function hasBundledCard(cardName: string): boolean {
+  return bundledCardNames.has(normalizeCardName(cardName));
 }
 
 // ============================================================================
@@ -334,7 +368,7 @@ async function handleCommand(
           expandedDeck
             .map((card) => card.name?.trim())
             .filter((name): name is string => !!name)
-            .filter((name) => !has_card(name)),
+            .filter((name) => !hasBundledCard(name)),
         ),
       ).sort((a, b) => a.localeCompare(b));
 
