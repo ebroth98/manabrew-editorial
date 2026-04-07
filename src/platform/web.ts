@@ -17,6 +17,7 @@ import type {
   RespondParams,
   RestoreSnapshotParams,
   PresetDeckInfo,
+  DeckAvailabilityResult,
   ServerConnectParams,
   CreateRoomParams,
   JoinRoomParams,
@@ -406,6 +407,12 @@ class WebGameApi implements IGameApi {
     return this.bridge.invoke<PresetDeckInfo[]>("get_preset_decks");
   }
 
+  async validateDeckAvailability(deckList: Array<{ name: string }>): Promise<DeckAvailabilityResult> {
+    return this.bridge.invoke<DeckAvailabilityResult>("validate_deck_availability", {
+      deckList,
+    });
+  }
+
   async getPrompt(): Promise<unknown> {
     return this.bridge.invoke("get_prompt");
   }
@@ -762,7 +769,7 @@ export class WebPlatform implements IPlatformApi {
       case "auto-update":
         return false; // Web is always "updated" via cache
       case "offline-play":
-        return true; // WASM + Service Worker can work offline
+        return false; // Browser path still depends on remote assets and no service worker exists
       default:
         return false;
     }

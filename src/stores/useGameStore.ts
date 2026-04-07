@@ -1,10 +1,17 @@
 import { create } from 'zustand';
 import { devtools } from 'zustand/middleware';
+import { toast } from 'sonner';
 import { getPlatform } from '@/platform';
 import { getFormat } from '@/lib/formats';
 import type { GameState, GameConfig } from './gameStore.types';
 
 export type { AgentPrompt, GameConfig, GameState, DisplayEvent, DeferredSnapshot } from './gameStore.types';
+
+function formatMissingCardsMessage(deckLabel: string, missingCards: string[]): string {
+  const preview = missingCards.slice(0, 8).join(', ');
+  const extra = missingCards.length > 8 ? ` (+${missingCards.length - 8} more)` : '';
+  return `${deckLabel} contains cards not available in the web engine bundle: ${preview}${extra}`;
+}
 
 export const useGameStore = create<GameState>()(devtools((set, get) => ({
   gameView: null,
@@ -33,6 +40,16 @@ export const useGameStore = create<GameState>()(devtools((set, get) => ({
       const gameConfig: GameConfig = { formatId: formatId ?? 'constructed', startingLife };
       set({ gameConfig });
       const platform = getPlatform();
+      const playerAvailability = await platform.game.validateDeckAvailability(deckList);
+      if (!playerAvailability.supported) {
+        throw new Error(formatMissingCardsMessage('Selected deck', playerAvailability.missingCards));
+      }
+      if (opponentDeckList) {
+        const opponentAvailability = await platform.game.validateDeckAvailability(opponentDeckList);
+        if (!opponentAvailability.supported) {
+          throw new Error(formatMissingCardsMessage('Opponent deck', opponentAvailability.missingCards));
+        }
+      }
       const result = await platform.game.startGame({
         deckList: deckList,
         startingLife,
@@ -44,6 +61,7 @@ export const useGameStore = create<GameState>()(devtools((set, get) => ({
     } catch (e) {
       set({ debugInfo: `Start failed: ${e}` });
       console.error('[store] Failed to start game:', e);
+      toast.error(e instanceof Error ? e.message : 'Failed to start game');
     }
   },
 
@@ -51,6 +69,12 @@ export const useGameStore = create<GameState>()(devtools((set, get) => ({
     try {
       set({ debugInfo: 'Starting multiplayer game...' });
       const platform = getPlatform();
+      for (const [index, deckList] of deckLists.entries()) {
+        const availability = await platform.game.validateDeckAvailability(deckList);
+        if (!availability.supported) {
+          throw new Error(formatMissingCardsMessage(`Player ${index + 1} deck`, availability.missingCards));
+        }
+      }
       await platform.game.startMultiplayerGame({
         playerNames,
         deckLists,
@@ -76,6 +100,7 @@ export const useGameStore = create<GameState>()(devtools((set, get) => ({
     } catch (e) {
       set({ debugInfo: `Multiplayer start failed: ${e}` });
       console.error('[store] Failed to start multiplayer game:', e);
+      toast.error(e instanceof Error ? e.message : 'Failed to start multiplayer game');
     }
   },
 

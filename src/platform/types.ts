@@ -44,6 +44,11 @@ export interface PresetDeckInfo {
   color: string;
 }
 
+export interface DeckAvailabilityResult {
+  supported: boolean;
+  missingCards: string[];
+}
+
 // ============================================================================
 // Server API Types
 // ============================================================================
@@ -101,6 +106,9 @@ export interface IGameApi {
 
   /** Get preset deck list */
   getPresetDecks(): Promise<PresetDeckInfo[]>;
+
+  /** Check whether a deck is playable on the current platform backend */
+  validateDeckAvailability(deckList: CardIdentity[]): Promise<DeckAvailabilityResult>;
 
   /** Get current prompt (for debugging/polling) */
   getPrompt(): Promise<unknown>;

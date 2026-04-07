@@ -14,7 +14,67 @@ const PROJECT_ROOT = path.resolve(__dirname, '..');
 
 const PRESET_DECKS_DIR = path.join(PROJECT_ROOT, 'preset_decks');
 const CARDSFOLDER_DIR = path.join(PROJECT_ROOT, 'forge/forge-gui/res/cardsfolder');
+const UPCOMING_DIR = path.join(CARDSFOLDER_DIR, 'upcoming');
+const EDITIONS_DIR = path.join(PROJECT_ROOT, 'forge/forge-gui/res/editions');
 const OUTPUT_FILE = path.join(PROJECT_ROOT, 'public/wasm/cards-bundle.json');
+
+function extractFlavorName(line) {
+  const match = line.match(/"flavorName"\s*:\s*"([^"]+)"/);
+  return match ? match[1].trim() : null;
+}
+
+function parseEditionFlavorAliasLine(line) {
+  const flavorName = extractFlavorName(line);
+  if (!flavorName) return null;
+
+  const parts = line.trim().split(/\s+/);
+  if (parts.length < 3) return null;
+
+  const rest = line.trim().replace(/^\S+\s+\S+\s+/, '');
+  const cardName = rest.split(/ @|\s\$\{/)[0]?.trim();
+  if (!cardName) return null;
+
+  return {
+    flavorName,
+    cardName,
+  };
+}
+
+function buildFlavorAliasMap() {
+  const aliases = new Map();
+  if (!fs.existsSync(EDITIONS_DIR)) {
+    return aliases;
+  }
+
+  const editionFiles = fs.readdirSync(EDITIONS_DIR).filter((file) => file.endsWith('.txt'));
+  for (const file of editionFiles) {
+    const contents = fs.readFileSync(path.join(EDITIONS_DIR, file), 'utf-8');
+    let inEntries = false;
+
+    for (const rawLine of contents.split('\n')) {
+      const line = rawLine.trim();
+      if (!line || line.startsWith('#')) continue;
+      if (line.startsWith('[') && line.endsWith(']')) {
+        const section = line.slice(1, -1);
+        inEntries = section.toLowerCase() !== 'metadata';
+        continue;
+      }
+      if (!inEntries) continue;
+
+      const parsed = parseEditionFlavorAliasLine(line);
+      if (!parsed) continue;
+      aliases.set(parsed.flavorName.toLowerCase(), parsed.cardName);
+    }
+  }
+
+  return aliases;
+}
+
+const FLAVOR_ALIAS_MAP = buildFlavorAliasMap();
+
+function resolveCardName(name) {
+  return FLAVOR_ALIAS_MAP.get(name.toLowerCase()) ?? name;
+}
 
 // Ensure output directory exists
 const outputDir = path.dirname(OUTPUT_FILE);
@@ -43,25 +103,32 @@ function findCardScript(cardName) {
   const firstLetter = normalized[0] || 'a';
   const letterDir = path.join(CARDSFOLDER_DIR, firstLetter);
 
-  if (!fs.existsSync(letterDir)) {
-    return null;
+  const searchDirs = [];
+  if (fs.existsSync(letterDir)) {
+    searchDirs.push(letterDir);
+  }
+  if (fs.existsSync(UPCOMING_DIR)) {
+    searchDirs.push(UPCOMING_DIR);
   }
 
-  // Try exact match first
-  const exactPath = path.join(letterDir, `${normalized}.txt`);
-  if (fs.existsSync(exactPath)) {
-    return exactPath;
+  for (const dir of searchDirs) {
+    const exactPath = path.join(dir, `${normalized}.txt`);
+    if (fs.existsSync(exactPath)) {
+      return exactPath;
+    }
   }
 
-  // Try files in the directory
-  const files = fs.readdirSync(letterDir);
-  for (const file of files) {
-    if (file.endsWith('.txt')) {
-      const content = fs.readFileSync(path.join(letterDir, file), 'utf-8');
-      // Check if the Name: field matches
-      const nameMatch = content.match(/^Name:(.+)$/m);
-      if (nameMatch && nameMatch[1].trim().toLowerCase() === cardName.toLowerCase()) {
-        return path.join(letterDir, file);
+  for (const dir of searchDirs) {
+    const files = fs.readdirSync(dir);
+    for (const file of files) {
+      if (file.endsWith('.txt')) {
+        const fullPath = path.join(dir, file);
+        const content = fs.readFileSync(fullPath, 'utf-8');
+        // Check if the Name: field matches
+        const nameMatch = content.match(/^Name:(.+)$/m);
+        if (nameMatch && nameMatch[1].trim().toLowerCase() === cardName.toLowerCase()) {
+          return fullPath;
+        }
       }
     }
   }
@@ -82,7 +149,7 @@ function getRequiredCards() {
     const deck = JSON.parse(content);
 
     for (const card of deck.cards || []) {
-      cardNames.add(card.name);
+      cardNames.add(resolveCardName(card.name));
     }
   }
 
@@ -156,7 +223,10 @@ function bundlePresetDecks() {
       label: deck.label,
       desc: deck.desc,
       color: deck.color,
-      cards: deck.cards
+      cards: (deck.cards || []).map((card) => ({
+        ...card,
+        name: resolveCardName(card.name),
+      }))
     });
   }
 

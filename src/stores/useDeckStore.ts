@@ -4,10 +4,14 @@ import type { Deck, Card, DeckFormatId } from '@/types/openmagic';
 import { STORAGE_KEYS, DEFAULT_DECK_NAME } from '@/lib/constants';
 import { getFormat, BASIC_LAND_NAMES, canBePartners, allowsAnyNumberOfCopies } from '@/lib/formats';
 
+function getCardUpdateKey(name: string, setCode?: string): string {
+  return setCode ? `${name.toLowerCase()}::${setCode.toLowerCase()}` : name.toLowerCase();
+}
+
 /** Apply a map of name→patch to an array of cards. */
 function patchCardsByName(cards: Card[], updates: Map<string, Partial<Card>>): Card[] {
   return cards.map((c) => {
-    const patch = updates.get(c.name.toLowerCase());
+    const patch = updates.get(getCardUpdateKey(c.name, c.setCode)) ?? updates.get(getCardUpdateKey(c.name));
     return patch ? { ...c, ...patch } : c;
   });
 }
@@ -90,7 +94,12 @@ function patchDeckCards(deck: Deck, updates: Map<string, Partial<Card>>): Deck {
     planes: patchCardsByName(normalized.planes ?? [], updates),
     commanders: normalized.commanders ? patchCardsByName(normalized.commanders, updates) : undefined,
     companion: normalized.companion
-      ? { ...normalized.companion, ...(updates.get(normalized.companion.name.toLowerCase()) ?? {}) }
+      ? {
+          ...normalized.companion,
+          ...(updates.get(getCardUpdateKey(normalized.companion.name, normalized.companion.setCode))
+            ?? updates.get(getCardUpdateKey(normalized.companion.name))
+            ?? {}),
+        }
       : undefined,
     maybeboard: normalized.maybeboard ? patchCardsByName(normalized.maybeboard, updates) : undefined,
   };

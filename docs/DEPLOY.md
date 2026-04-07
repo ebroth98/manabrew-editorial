@@ -1,5 +1,82 @@
 # Deployment Guide
 
+## Internal Web Deployment (Twingate + SSO)
+
+For the browser/WASM client, the critical requirement is not public internet exposure, it is preserving cross-origin isolation through every proxy layer. The web game worker uses `SharedArrayBuffer`, so the final browser response must include:
+
+```http
+Cross-Origin-Opener-Policy: same-origin
+Cross-Origin-Embedder-Policy: credentialless
+```
+
+If your Twingate or SSO layer strips or overrides those headers, browser gameplay will fail even if the app shell loads.
+
+### Internal alpha checklist
+
+- Build and publish with `npm run build:web`
+- Serve `dist/` as a static site
+- Ensure the final HTML, JS worker, and WASM responses preserve `COOP` and `COEP`
+- Verify the app is loaded from a single origin
+- Confirm `/wasm/cards-bundle.json` and `/wasm/preset-decks.json` are reachable through the same internal path
+
+### Verify in browser
+
+Open DevTools on the deployed site and check:
+
+```js
+window.crossOriginIsolated
+typeof SharedArrayBuffer !== "undefined"
+```
+
+Expected result:
+
+- `window.crossOriginIsolated === true`
+- `SharedArrayBuffer` is available
+
+The app now also emits a toast and console error when this is misconfigured.
+
+### Verify at the edge
+
+Check the final response headers after Twingate/SSO, not just the origin server:
+
+```bash
+curl -I https://<internal-host>/
+curl -I https://<internal-host>/assets/game-engine.worker-<hash>.js
+curl -I https://<internal-host>/assets/forge_wasm_bg-<hash>.wasm
+```
+
+You should see:
+
+```http
+Cross-Origin-Opener-Policy: same-origin
+Cross-Origin-Embedder-Policy: credentialless
+```
+
+### Nginx example
+
+```nginx
+location / {
+  add_header Cross-Origin-Opener-Policy same-origin always;
+  add_header Cross-Origin-Embedder-Policy credentialless always;
+  try_files $uri /index.html;
+}
+```
+
+### Caddy example
+
+```caddy
+header {
+  Cross-Origin-Opener-Policy same-origin
+  Cross-Origin-Embedder-Policy credentialless
+}
+```
+
+### Current internal-scope caveats
+
+- The browser card bundle currently covers preset-deck cards, not the full Forge card pool
+- The generated bundle still reports two missing preset scripts: `Thrum of the Vestige` and `Leonardo, Big Brother`
+- The web path is not offline-capable today
+- Scryfall metadata/images are still fetched remotely from the browser
 ## Prerequisites
 
 - Docker + Docker Compose (with BuildKit support)

@@ -3,6 +3,10 @@ import type { ScryfallCard, ScryfallListResponse, ScryfallRulingsResponse, Scryf
 const SCRYFALL_API = "https://api.scryfall.com";
 const COLLECTION_BATCH_SIZE = 75;
 
+export function scryfallCardKey(name: string, setCode?: string): string {
+  return setCode ? `${name.toLowerCase()}::${setCode.toLowerCase()}` : name.toLowerCase();
+}
+
 async function scryfallFetch<T>(url: string, errorMsg: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, init);
   if (!response.ok) throw new Error(errorMsg);
@@ -59,7 +63,7 @@ export async function getTokenBySetAndNumber(setCode: string, collectorNumber: s
  */
 export async function fetchCardCollection(cards: { name: string; setCode?: string }[]): Promise<Map<string, ScryfallCard>> {
   const result = new Map<string, ScryfallCard>();
-  const unique = Array.from(new Map(cards.map((c) => [`${c.name}-${c.setCode || ""}`, c])).values());
+  const unique = Array.from(new Map(cards.map((c) => [scryfallCardKey(c.name, c.setCode), c])).values());
   for (let i = 0; i < unique.length; i += COLLECTION_BATCH_SIZE) {
     const batch = unique.slice(i, i + COLLECTION_BATCH_SIZE);
     const identifiers = batch.map((c) => (c.setCode ? { name: c.name, set: c.setCode.toLowerCase() } : { name: c.name }));
@@ -72,7 +76,12 @@ export async function fetchCardCollection(cards: { name: string; setCode?: strin
       if (!response.ok) continue;
       const data: { data: ScryfallCard[]; not_found: { name: string }[] } = await response.json();
       for (const card of data.data) {
-        result.set(card.name.toLowerCase(), card);
+        const setAwareKey = scryfallCardKey(card.name, card.set);
+        const legacyKey = scryfallCardKey(card.name);
+        result.set(setAwareKey, card);
+        if (!result.has(legacyKey)) {
+          result.set(legacyKey, card);
+        }
       }
     } catch {
       // best-effort per batch

@@ -323,6 +323,27 @@ async function handleCommand(
       return presetDecks;
     }
 
+    case "validate_deck_availability": {
+      const rawDeck = (args?.deckList as Array<{ name?: string; count?: number }> | undefined) ?? [];
+      const normalizedDeck = rawDeck
+        .filter((card): card is { name: string; count?: number } => typeof card.name === "string" && card.name.trim().length > 0)
+        .map((card) => ({ name: card.name.trim(), count: card.count }));
+      const expandedDeck = expandDeckList(normalizedDeck);
+      const missingCards = Array.from(
+        new Set(
+          expandedDeck
+            .map((card) => card.name?.trim())
+            .filter((name): name is string => !!name)
+            .filter((name) => !has_card(name)),
+        ),
+      ).sort((a, b) => a.localeCompare(b));
+
+      return {
+        supported: missingCards.length === 0,
+        missingCards,
+      };
+    }
+
     default:
       throw new Error(`Unknown command: ${command}`);
   }
