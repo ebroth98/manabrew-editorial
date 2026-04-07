@@ -112,8 +112,13 @@ pub struct AnimateState {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Card {
     pub id: CardId,
-    /// Index into the CardDatabase (or name) identifying the card definition.
+    /// The card's active face name (front face for single/split cards, active face for DFC).
+    /// On the battlefield, this is the name that's displayed.
     pub card_name: String,
+    /// The full combined name for split/room cards (e.g. "Walk-In Closet // Forgotten Cellar").
+    /// For non-split cards, this equals `card_name`. Used for hand/graveyard display and
+    /// database lookups.
+    pub full_name: String,
 
     // Ownership and control
     pub owner: PlayerId,
@@ -538,9 +543,11 @@ impl Card {
             .filter_map(|raw| parse_or_warn(parse_static_ability(raw), "StaticAbility", raw))
             .collect();
 
+        let full_name = card_name.clone();
         let mut card = Card {
             id,
             card_name,
+            full_name,
             owner,
             controller: owner,
             zone: ZoneType::None,

@@ -1068,6 +1068,15 @@ impl GameState {
         self.player_draw_one(player)
     }
 
+    /// Draw a card with agent access for Optional replacement effects (Dredge).
+    pub fn draw_card_with_agents(
+        &mut self,
+        player: PlayerId,
+        agents: &mut [Box<dyn crate::agent::PlayerAgent>],
+    ) -> Option<CardId> {
+        self.player_draw_one_internal(player, false, Some(agents))
+    }
+
     /// Draw N cards for a player. Returns drawn card IDs.
     pub fn draw_cards(&mut self, player: PlayerId, n: usize) -> Vec<CardId> {
         self.player_draw_cards(player, n)

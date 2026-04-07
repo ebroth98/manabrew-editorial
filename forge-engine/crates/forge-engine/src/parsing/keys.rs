@@ -463,6 +463,7 @@ pub const REMEMBER_INVESTIGATING_PLAYERS: &str = "RememberInvestigatingPlayers";
 pub const REMEMBER_LKI: &str = "RememberLKI";
 pub const REMEMBER_MADE: &str = "RememberMade";
 pub const REMEMBER_MANIFESTED: &str = "RememberManifested";
+pub const REMEMBER_SACRIFICED: &str = "RememberSacrificed";
 pub const REMEMBER_SEARCHED: &str = "RememberSearched";
 pub const REMOVE_FROM_COMBAT: &str = "RemoveFromCombat";
 pub const SEARCHED: &str = "Searched";

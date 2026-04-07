@@ -51,3 +51,5 @@ forge/**/target/
 *.jar
 *.war
 .mvn/
+
+.claude/settings.local.json

@@ -128,16 +128,28 @@ pub(super) fn resolve_multi_search(
         );
     }
 
-    // Standard multi-select
-    ctx.agents[chooser.index()].snapshot_state(ctx.game, ctx.mana_pools);
-    ctx.agents[chooser.index()].on_library_peek(ctx.game, candidates);
-    ctx.agents[chooser.index()].choose_cards_for_zone_change(
-        chooser,
-        candidates,
-        0,
-        max,
-        sa.select_prompt().unwrap_or("Select cards for zone change"),
-    )
+    // Standard multi-select — iterative single-card selection to match Java's
+    // DeterministicCostDecision flow which asks one card at a time.
+    let mut selected = Vec::new();
+    let mut remaining: Vec<CardId> = candidates.to_vec();
+    for _ in 0..max {
+        if remaining.is_empty() {
+            break;
+        }
+        ctx.agents[chooser.index()].snapshot_state(ctx.game, ctx.mana_pools);
+        ctx.agents[chooser.index()].on_library_peek(ctx.game, &remaining);
+        let Some(chosen) = ctx.agents[chooser.index()].choose_single_card_for_zone_change(
+            chooser,
+            &remaining,
+            sa.select_prompt().unwrap_or("Select card for zone change"),
+            _is_optional,
+        ) else {
+            break;
+        };
+        selected.push(chosen);
+        remaining.retain(|&cid| cid != chosen);
+    }
+    selected
 }
 
 /// Iterative constrained multi-card selection.

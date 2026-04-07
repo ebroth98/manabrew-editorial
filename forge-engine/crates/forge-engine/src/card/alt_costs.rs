@@ -118,6 +118,12 @@ impl Card {
         )
     }
 
+    /// Get a keyword's numeric amount (e.g. "Dredge:2" → Some(2)).
+    pub fn get_keyword_amount(&self, keyword: &str) -> Option<usize> {
+        self.get_keyword_cost(keyword)
+            .and_then(|s| s.trim().parse::<usize>().ok())
+    }
+
     /// Get Ward cost (e.g. "Ward:2" → Some("2"), "Ward:{U}" → Some("{U}")).
     pub fn get_ward_cost(&self) -> Option<String> {
         self.get_keyword_cost("Ward")

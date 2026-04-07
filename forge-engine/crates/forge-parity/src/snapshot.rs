@@ -116,25 +116,26 @@ fn snapshot_player(game: &GameState, pid: PlayerId) -> PlayerSnapshot {
             .then_with(|| a.controller.cmp(&b.controller))
     });
 
-    // Other zones: sorted card names
+    // Other zones: use full_name (combined "A // B" for split/room cards)
+    // to match Java's getName() which returns the combined name in non-battlefield zones.
     let mut graveyard: Vec<String> = game
         .cards_in_zone(ZoneType::Graveyard, pid)
         .iter()
-        .map(|&cid| game.card(cid).card_name.clone())
+        .map(|&cid| game.card(cid).full_name.clone())
         .collect();
     graveyard.sort();
 
     let mut hand: Vec<String> = game
         .cards_in_zone(ZoneType::Hand, pid)
         .iter()
-        .map(|&cid| game.card(cid).card_name.clone())
+        .map(|&cid| game.card(cid).full_name.clone())
         .collect();
     hand.sort();
 
     let mut exile: Vec<String> = game
         .cards_in_zone(ZoneType::Exile, pid)
         .iter()
-        .map(|&cid| game.card(cid).card_name.clone())
+        .map(|&cid| game.card(cid).full_name.clone())
         .collect();
     exile.sort();
 

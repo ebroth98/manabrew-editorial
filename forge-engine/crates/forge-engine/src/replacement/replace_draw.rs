@@ -6,6 +6,7 @@ use crate::card::Card;
 use crate::game::GameState;
 use crate::ids::CardId;
 use crate::parsing::keys;
+use forge_foundation::ZoneType;
 
 use super::replacement_effect::{matches_valid_player, ReplacementEffect};
 use super::replacement_handler::ReplacementEvent;
@@ -16,7 +17,7 @@ use super::replacement_type::ReplacementType;
 pub fn can_replace(
     effect: &ReplacementEffect,
     event: &ReplacementEvent,
-    _game: &GameState,
+    game: &GameState,
     source_card: &Card,
 ) -> bool {
     if effect.event != ReplacementType::Draw {
@@ -49,6 +50,15 @@ pub fn can_replace(
             }
         }
     }
+    // Dredge: check that the player's library has enough cards to mill.
+    // Mirrors Java's CheckSVar$ DredgeCheckLib | SVarCompare$ GE{N}.
+    if let Some(amount_str) = effect.params.get("DredgeAmount") {
+        let amount = amount_str.parse::<usize>().unwrap_or(0);
+        let lib_size = game.cards_in_zone(ZoneType::Library, player).len();
+        if lib_size < amount {
+            return false;
+        }
+    }
     true
 }
 
@@ -56,8 +66,8 @@ pub fn can_replace(
 pub fn execute(
     effect: &ReplacementEffect,
     _event: &mut ReplacementEvent,
-    _game: &GameState,
-    _source_card_id: CardId,
+    game: &mut GameState,
+    source_card_id: CardId,
 ) -> ReplacementResult {
     if effect
         .params
@@ -76,6 +86,30 @@ pub fn execute(
                 return ReplacementResult::Updated;
             }
         }
+    }
+    // Dredge: mill N cards from library, return this card from graveyard to hand.
+    // Mirrors Java's overriding ability: DB$ Mill + DB$ ChangeZone.
+    if let Some(amount_str) = effect.params.get("DredgeAmount") {
+        let amount = amount_str.parse::<usize>().unwrap_or(0);
+        let player = match _event {
+            ReplacementEvent::Draw { player, .. } => *player,
+            _ => return ReplacementResult::Replaced,
+        };
+        // Mill N cards from library top (Rust stores top at end of vec)
+        let lib = game.cards_in_zone(ZoneType::Library, player);
+        let lib_len = lib.len();
+        let start = lib_len.saturating_sub(amount);
+        let mill_cards: Vec<crate::ids::CardId> =
+            lib[start..].iter().rev().copied().collect();
+        for cid in mill_cards {
+            let owner = game.card(cid).owner;
+            game.move_card(cid, ZoneType::Graveyard, owner);
+        }
+        // Return the Dredge card from graveyard to hand
+        if game.card(source_card_id).zone == ZoneType::Graveyard {
+            game.move_card(source_card_id, ZoneType::Hand, player);
+        }
+        return ReplacementResult::Replaced;
     }
     ReplacementResult::Replaced
 }

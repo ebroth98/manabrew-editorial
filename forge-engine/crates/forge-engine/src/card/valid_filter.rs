@@ -302,6 +302,16 @@ fn matches_type_and_qualifiers(filter: &str, card: &Card, source: &Card) -> bool
                         if !check_cmc_condition(rest, card) {
                             return false;
                         }
+                    } else if let Some(rest) = sub_lower.strip_prefix("power") {
+                        // Power comparisons: powerLE2, powerGE3, etc.
+                        if !check_power_condition(rest, card) {
+                            return false;
+                        }
+                    } else if let Some(rest) = sub_lower.strip_prefix("toughness") {
+                        // Toughness comparisons: toughnessLE2, toughnessGE3, etc.
+                        if !check_toughness_condition(rest, card) {
+                            return false;
+                        }
                     } else if let Some(color) = Color::from_name(&sub_lower) {
                         // Color names: white, blue, black, red, green
                         if !card.color.has_color(color) {
@@ -476,6 +486,68 @@ fn check_cmc_condition(rest: &str, card: &Card) -> bool {
     } else if let Some(num_str) = rest.strip_prefix("ne") {
         if let Ok(n) = num_str.parse::<i32>() {
             return cmc != n;
+        }
+    }
+    true // fallback: unknown format passes
+}
+
+/// Check a power condition like "LE2", "GE3", "EQ0".
+fn check_power_condition(rest: &str, card: &Card) -> bool {
+    let power = card.power();
+    if let Some(num_str) = rest.strip_prefix("eq") {
+        if let Ok(n) = num_str.parse::<i32>() {
+            return power == n;
+        }
+    } else if let Some(num_str) = rest.strip_prefix("le") {
+        if let Ok(n) = num_str.parse::<i32>() {
+            return power <= n;
+        }
+    } else if let Some(num_str) = rest.strip_prefix("ge") {
+        if let Ok(n) = num_str.parse::<i32>() {
+            return power >= n;
+        }
+    } else if let Some(num_str) = rest.strip_prefix("lt") {
+        if let Ok(n) = num_str.parse::<i32>() {
+            return power < n;
+        }
+    } else if let Some(num_str) = rest.strip_prefix("gt") {
+        if let Ok(n) = num_str.parse::<i32>() {
+            return power > n;
+        }
+    } else if let Some(num_str) = rest.strip_prefix("ne") {
+        if let Ok(n) = num_str.parse::<i32>() {
+            return power != n;
+        }
+    }
+    true // fallback: unknown format passes
+}
+
+/// Check a toughness condition like "LE2", "GE3", "EQ0".
+fn check_toughness_condition(rest: &str, card: &Card) -> bool {
+    let toughness = card.toughness();
+    if let Some(num_str) = rest.strip_prefix("eq") {
+        if let Ok(n) = num_str.parse::<i32>() {
+            return toughness == n;
+        }
+    } else if let Some(num_str) = rest.strip_prefix("le") {
+        if let Ok(n) = num_str.parse::<i32>() {
+            return toughness <= n;
+        }
+    } else if let Some(num_str) = rest.strip_prefix("ge") {
+        if let Ok(n) = num_str.parse::<i32>() {
+            return toughness >= n;
+        }
+    } else if let Some(num_str) = rest.strip_prefix("lt") {
+        if let Ok(n) = num_str.parse::<i32>() {
+            return toughness < n;
+        }
+    } else if let Some(num_str) = rest.strip_prefix("gt") {
+        if let Ok(n) = num_str.parse::<i32>() {
+            return toughness > n;
+        }
+    } else if let Some(num_str) = rest.strip_prefix("ne") {
+        if let Ok(n) = num_str.parse::<i32>() {
+            return toughness != n;
         }
     }
     true // fallback: unknown format passes

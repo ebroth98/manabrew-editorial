@@ -127,6 +127,42 @@ pub fn setup_keyworded_abilities(card: &mut Card) {
     card.base_ability_count = card.activated_abilities.len();
 }
 
+/// Generate Dredge replacement effects from the `Dredge:N` keyword.
+///
+/// Mirrors Java `CardFactoryUtil` Dredge keyword handling which creates a
+/// Draw replacement effect:
+/// ```text
+/// R$ Event$ Draw | ActiveZones$ Graveyard | ValidPlayer$ You
+///   | Secondary$ True | Optional$ True
+///   | DredgeAmount$ N
+///   | Description$ CARDNAME - Dredge N
+/// ```
+///
+/// We use `DredgeAmount$` as a Rust-specific tag (instead of Java's
+/// `CheckSVar$` / overriding ability) to keep the implementation simple.
+/// The actual mill + return logic is in `replace_draw::execute`.
+pub fn add_dredge_replacement(card: &mut Card) {
+    let keywords = card.keywords.as_string_list();
+    for keyword in keywords {
+        let Some(rest) = keyword.strip_prefix("Dredge:") else {
+            continue;
+        };
+        let Ok(amount) = rest.trim().parse::<usize>() else {
+            continue;
+        };
+        let repl_str = format!(
+            "R$ Event$ Draw | ActiveZones$ Graveyard | ValidPlayer$ You \
+             | Secondary$ True | Optional$ True \
+             | DredgeAmount$ {} \
+             | Description$ {} - Dredge {}",
+            amount, card.card_name, amount
+        );
+        if let Some(repl) = parse_replacement_effect(&repl_str) {
+            card.replacement_effects.push(repl);
+        }
+    }
+}
+
 /// Java parity: convert `ETBReplacement:*` keywords into intrinsic
 /// `Event$ Moved` replacement effects during card construction.
 ///

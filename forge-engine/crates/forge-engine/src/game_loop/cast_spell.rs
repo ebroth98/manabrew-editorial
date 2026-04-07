@@ -34,6 +34,9 @@ impl GameLoop {
             if play_mode != crate::agent::PlayCardMode::Normal {
                 return None;
             }
+            // Track origin zone before the move (may be Hand or Graveyard for MayPlay).
+            let origin_zone = game.card(card_id).zone;
+
             // Play land — goes directly to battlefield
             self.move_card_with_runtime(game, card_id, ZoneType::Battlefield, player, agents);
 
@@ -54,7 +57,7 @@ impl GameLoop {
             crate::ability::effects::emit_zone_trigger(
                 &mut self.trigger_handler,
                 card_id,
-                ZoneType::Hand,
+                origin_zone,
                 ZoneType::Battlefield,
             );
 

@@ -756,9 +756,11 @@ fn check_condition_present(
             _ => Vec::new(),
         };
 
+        // ConditionDefined$ cards are explicitly defined — don't exclude self.
+        // Self-exclusion only makes sense for the zone-scan path below.
         let count = defined_cards
             .iter()
-            .filter(|&&cid| matches_condition_filter(game, cid, source_id, player, &alternatives))
+            .filter(|&&cid| matches_condition_filter_no_self_exclude(game, cid, player, &alternatives))
             .count() as i32;
 
         return if let Some(compare) = sa.params.get(keys::CONDITION_COMPARE) {
@@ -795,6 +797,50 @@ fn check_condition_present(
 
 /// Check if a card matches a condition filter expression.
 /// Handles type matching + qualifier checks (YouCtrl, OppCtrl, ChosenCtrl, etc.).
+/// Like matches_condition_filter but without self-exclusion.
+/// Used by ConditionDefined$ where the defined cards are explicitly specified.
+fn matches_condition_filter_no_self_exclude(
+    game: &GameState,
+    cid: CardId,
+    player: PlayerId,
+    alternatives: &[&str],
+) -> bool {
+    let card = game.card(cid);
+    let source = card; // dummy, not used for self-check
+    alternatives.iter().any(|alt| {
+        let (base, qualifier) = if let Some((b, q)) = alt.split_once('.') {
+            (b, Some(q))
+        } else {
+            (*alt, None)
+        };
+        let type_ok = match base.to_ascii_lowercase().as_str() {
+            "card" => true,
+            "creature" => card.is_creature(),
+            "instant" => card.type_line.is_instant(),
+            "sorcery" => card.type_line.is_sorcery(),
+            "artifact" => card.type_line.is_artifact(),
+            "enchantment" => card.type_line.is_enchantment(),
+            "land" => card.is_land(),
+            "planeswalker" => card.type_line.is_planeswalker(),
+            _ => card.type_line.has_subtype(base),
+        };
+        if !type_ok {
+            return false;
+        }
+        if let Some(q) = qualifier {
+            match q.to_ascii_lowercase().as_str() {
+                "basic" => card.type_line.is_basic(),
+                "nonbasic" => !card.type_line.is_basic(),
+                "youctrl" | "youown" => card.controller == player,
+                "oppctrl" => card.controller != player,
+                _ => true,
+            }
+        } else {
+            true
+        }
+    })
+}
+
 fn matches_condition_filter(
     game: &GameState,
     cid: CardId,

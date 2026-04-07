@@ -271,7 +271,17 @@ fn compare_battlefield(
                         &jc.damage,
                     ));
                 }
-                if rc.summoning_sick != jc.summoning_sick {
+                // Only compare summoning_sick for creatures (power is Some).
+                // Non-creature permanents (lands, artifacts, enchantments) have
+                // summoning sickness tracked differently between the Java and
+                // Rust engines — Java may retain sickness=true for a land that
+                // entered the battlefield on a previous turn via MayPlay/
+                // graveyard play, while Rust clears it at the next new_turn().
+                // Since summoning sickness has no gameplay effect for non-
+                // creatures (CR 302.6), we skip the comparison to avoid false
+                // divergences.
+                let is_creature = rc.power.is_some() || jc.power.is_some();
+                if is_creature && rc.summoning_sick != jc.summoning_sick {
                     divs.push(divergence(
                         index,
                         turn,

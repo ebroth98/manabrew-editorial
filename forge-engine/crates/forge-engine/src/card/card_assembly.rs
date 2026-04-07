@@ -132,6 +132,7 @@ pub(crate) fn assemble_card(
 ) -> Card {
     let face = &rules.main_part;
 
+    let full_name = rules.name();
     let mut card = Card::new(
         CardId(0),
         face.name.clone(),
@@ -144,6 +145,9 @@ pub(crate) fn assemble_card(
         face.keywords.clone(),
         face.abilities.clone(),
     );
+    // Set the full combined name for split/room cards (e.g. "A // B").
+    // card_name stays as the front face; full_name is used for hand/graveyard/lookup.
+    card.full_name = full_name;
     card.attraction_lights = face.attraction_lights.clone();
 
     // Append parsed triggers to keyword-generated ones.
@@ -160,6 +164,9 @@ pub(crate) fn assemble_card(
     // Event$ Moved replacement effects after SVars are available.
     super::card_factory_util::add_etb_keyword_replacements(&mut card);
 
+    // Java parity: convert Dredge:N keywords into Draw replacement effects.
+    super::card_factory_util::add_dredge_replacement(&mut card);
+
     // Add parsed static abilities and replacement effects.
     for sa in components.static_abilities {
         card.add_static_ability(sa);
@@ -167,6 +174,39 @@ pub(crate) fn assemble_card(
     for re in components.replacement_effects {
         card.add_replacement_effect(re);
     }
+    // Room enchantments with Split type: generate unlock-door activated ability.
+    // Mirrors Java CardFactoryUtil: "ST$ UnlockDoor | Cost$ {mana_cost} | ..."
+    // When a Room enters the battlefield, the first door is unlocked.
+    // Paying the second door's mana cost unlocks it and fires the UnlockDoor trigger.
+    if rules.split_type == forge_foundation::CardSplitType::Split
+        && card.type_line.has_subtype("Room")
+    {
+        if let Some(ref other_face) = rules.other_part {
+            let unlock_cost = other_face.mana_cost.to_string().replace('{', "").replace('}', " ").trim().to_string();
+            let unlock_name = &other_face.name;
+            // Build an activated ability for unlocking the second door.
+            let ab_text = format!(
+                "AB$ UnlockDoor | Cost$ {} | SorcerySpeed$ True | SpellDescription$ Unlock {}",
+                unlock_cost, unlock_name
+            );
+            let next_idx = card.activated_abilities.len();
+            if let Some(ab) = crate::ability::activated::parse_activated_ability(&ab_text, next_idx) {
+                card.activated_abilities.push(ab);
+            }
+            // Copy other face's SVars so the Execute$ SVar can be found
+            for (k, v) in &other_face.svars {
+                card.svars.entry(k.clone()).or_insert_with(|| v.clone());
+            }
+            // Copy other face's triggers (the UnlockDoor trigger)
+            let mut next_trig_id = card.triggers.len() as u32;
+            for raw in &other_face.triggers {
+                if let Some(trig) = crate::trigger::parse_trigger(raw, &mut next_trig_id) {
+                    card.add_trigger(trig);
+                }
+            }
+        }
+    }
+
     // Double-faced cards
     if rules.split_type.is_dual_faced() {
         if let Some(ref back_face) = rules.other_part {

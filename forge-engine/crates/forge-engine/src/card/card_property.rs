@@ -57,6 +57,69 @@ fn matches_single_property(card: &Card, property: &str, source_controller: Playe
         fc::NON_ARTIFACT => !card.type_line.is_artifact(),
         _ => {
             let lower = property.to_ascii_lowercase();
+            // Power comparisons (powerLE2, powerGE3, etc.)
+            if let Some(rest) = lower.strip_prefix("powerle") {
+                if let Ok(n) = rest.parse::<i32>() {
+                    return card.power() <= n;
+                }
+                return false;
+            }
+            if let Some(rest) = lower.strip_prefix("powerge") {
+                if let Ok(n) = rest.parse::<i32>() {
+                    return card.power() >= n;
+                }
+                return false;
+            }
+            if let Some(rest) = lower.strip_prefix("powergt") {
+                if let Ok(n) = rest.parse::<i32>() {
+                    return card.power() > n;
+                }
+                return false;
+            }
+            if let Some(rest) = lower.strip_prefix("powerlt") {
+                if let Ok(n) = rest.parse::<i32>() {
+                    return card.power() < n;
+                }
+                return false;
+            }
+            if let Some(rest) = lower.strip_prefix("powereq") {
+                if let Ok(n) = rest.parse::<i32>() {
+                    return card.power() == n;
+                }
+                return false;
+            }
+            // Toughness comparisons (toughnessLE2, toughnessGE3, etc.)
+            if let Some(rest) = lower.strip_prefix("toughnessle") {
+                if let Ok(n) = rest.parse::<i32>() {
+                    return card.toughness() <= n;
+                }
+                return false;
+            }
+            if let Some(rest) = lower.strip_prefix("toughnessge") {
+                if let Ok(n) = rest.parse::<i32>() {
+                    return card.toughness() >= n;
+                }
+                return false;
+            }
+            if let Some(rest) = lower.strip_prefix("toughnessgt") {
+                if let Ok(n) = rest.parse::<i32>() {
+                    return card.toughness() > n;
+                }
+                return false;
+            }
+            if let Some(rest) = lower.strip_prefix("toughnesslt") {
+                if let Ok(n) = rest.parse::<i32>() {
+                    return card.toughness() < n;
+                }
+                return false;
+            }
+            if let Some(rest) = lower.strip_prefix("toughnesseq") {
+                if let Ok(n) = rest.parse::<i32>() {
+                    return card.toughness() == n;
+                }
+                return false;
+            }
+            // CMC comparisons
             if let Some(rest) = lower.strip_prefix("cmcge") {
                 if let Ok(n) = rest.parse::<i32>() {
                     return card.mana_cost.cmc() >= n;

@@ -158,9 +158,19 @@ pub fn apply_continuous_effects(game: &mut GameState) {
         } else if affected_str.eq_ignore_ascii_case("Card.Self")
             || affected_str.starts_with("Card.Self+")
         {
-            // Self-referencing static: only affects the source card itself.
-            // e.g. Sightless Ghoul: "S:Mode$ CantBlock | ValidCard$ Card.Self"
-            if source_card.zone == ZoneType::Battlefield {
+            // Self-referencing static: only affects the source card itself,
+            // but qualifiers after "+" must still be checked (e.g.
+            // "Card.Self+counters_GE2_CHARGE" only matches when the card
+            // has ≥2 charge counters).  Mirrors Java's
+            // StaticAbilityContinuous.getAffectedCards() which validates
+            // all qualifiers even for self-referencing statics.
+            if source_card.zone == ZoneType::Battlefield
+                && crate::card::valid_filter::matches_valid_card(
+                    affected_str,
+                    source_card,
+                    source_card,
+                )
+            {
                 vec![*source_id]
             } else {
                 vec![]

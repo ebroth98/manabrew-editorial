@@ -254,6 +254,11 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
 
             for card_id in chosen {
                 do_sacrifice(ctx, sa, card_id, sacrificing_player, exploit_source);
+                if sa.params.is_true(keys::REMEMBER_SACRIFICED) {
+                    if let Some(source_id) = sa.source {
+                        ctx.game.card_mut(source_id).add_remembered_card(card_id);
+                    }
+                }
             }
             continue;
         }
@@ -294,6 +299,13 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
 
             if let Some(card_id) = card_to_sacrifice {
                 do_sacrifice(ctx, sa, card_id, sacrificing_player, exploit_source);
+                // RememberSacrificed$ True — remember the sacrificed card on the source
+                // so downstream ConditionDefined$ Remembered checks can find it.
+                if sa.params.is_true(keys::REMEMBER_SACRIFICED) {
+                    if let Some(source_id) = sa.source {
+                        ctx.game.card_mut(source_id).add_remembered_card(card_id);
+                    }
+                }
             }
         }
     }

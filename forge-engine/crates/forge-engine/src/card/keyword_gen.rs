@@ -165,6 +165,27 @@ impl Card {
             }
         }
 
+        // Station: K:Station:N → AB$ PutCounter (tap another creature to add charge counters).
+        // Mirrors Java CardFactoryUtil lines 3587-3595.
+        // The ability is sorcery-speed and puts charge counters equal to the tapped
+        // creature's power onto this Spacecraft/Planet.
+        for kw in self
+            .keywords
+            .iter_strings()
+            .chain(self.granted_keywords.iter_strings())
+        {
+            if let Some(_n_str) = crate::keyword::extract_keyword_cost_str(&kw, "Station") {
+                let ab_text = "AB$ PutCounter | Cost$ tapXType<1/Creature.Other> | Defined$ Self | CounterType$ CHARGE | CounterNum$ StationX | SorcerySpeed$ True | CostDesc$ | SpellDescription$ Station";
+                let next_idx = self.activated_abilities.len();
+                if let Some(ab) = parse_activated_ability(ab_text, next_idx) {
+                    self.activated_abilities.push(ab);
+                }
+                self.svars
+                    .entry("StationX".to_string())
+                    .or_insert_with(|| "TappedCards$TapPowerValue".to_string());
+            }
+        }
+
         // Embalm: K:Embalm:cost → AB$ CopyPermanent from graveyard.
         // Mirrors Java CardFactoryUtil lines 2879-2891.
         for kw in self

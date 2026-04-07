@@ -290,8 +290,8 @@ impl GameLoop {
                 });
             }
             TurnEvent::DrawStep => {
-                self.with_shared_state_mutation(game, agents, |this, game, _agents| {
-                    this.step_draw(game);
+                self.with_shared_state_mutation(game, agents, |this, game, agents| {
+                    this.step_draw(game, agents);
                 });
             }
             TurnEvent::CombatStep => {
@@ -358,11 +358,23 @@ impl GameLoop {
         self.pool_mut(active).reset_pool();
     }
 
-    pub fn step_draw(&mut self, game: &mut GameState) {
+    pub fn step_draw(
+        &mut self,
+        game: &mut GameState,
+        agents: &mut [Box<dyn PlayerAgent>],
+    ) {
         let active = game.active_player();
         // Skip draw on turn 1
         if game.turn.turn_number > 1 {
-            if let Some(card_id) = game.player_draw_one_for_turn(active) {
+            // Dredge is now handled through the replacement effect system:
+            // Dredge:N keywords generate a Draw replacement effect during card
+            // assembly (card_factory_util::add_dredge_replacement). When the
+            // draw fires ReplacementEvent::Draw inside player_draw_one_for_turn,
+            // the replacement handler detects the Dredge replacement on the
+            // graveyard card, calls confirm_replacement_effect (Optional$ True),
+            // and executes the mill + return in replace_draw::execute.
+
+            if let Some(card_id) = game.player_draw_one_for_turn_with_agents(active, agents) {
                 let drawn_snapshot = game.player(active).drawn_this_turn;
                 // Fire Drawn trigger for turn draw
                 self.trigger_handler.run_trigger(
@@ -383,6 +395,7 @@ impl GameLoop {
             }
         }
     }
+
     pub fn step_with_priority(
         &mut self,
         game: &mut GameState,

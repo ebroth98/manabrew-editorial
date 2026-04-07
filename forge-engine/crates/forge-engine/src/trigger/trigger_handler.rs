@@ -247,6 +247,11 @@ impl TriggerHandler {
         // Match any remaining waiting triggers (those fired after the flush).
         entries.extend(self.match_waiting_triggers(game));
 
+        // Fire Immediate delayed triggers — these fire "as soon as possible"
+        // without waiting for a matching event (mirrors Java registerDelayedTrigger
+        // with TriggerType.Immediate).
+        entries.extend(self.fire_immediate_delayed_triggers(game));
+
         // APNAP ordering: active player's triggers first.
         // Within the same player, order by zone_timestamp (older cards first),
         // matching Java's forEachCardInGame() which iterates by Zone.cardList
@@ -450,6 +455,64 @@ impl TriggerHandler {
             }
         }
 
+        entries
+    }
+
+    /// Fire Immediate delayed triggers — these fire on the next trigger
+    /// processing cycle without needing a matching event. Mirrors Java's
+    /// `TriggerImmediate` which has `performTest()` returning true always.
+    fn fire_immediate_delayed_triggers(
+        &mut self,
+        game: &GameState,
+    ) -> Vec<(PendingTrigger, PlayerId, u64)> {
+        let mut entries = Vec::new();
+        let mut fired_indices = Vec::new();
+        for (idx, delayed) in self.delayed_triggers.iter().enumerate() {
+            if delayed.mode != TriggerType::Immediate {
+                continue;
+            }
+            // Look up the Execute SVar on the source card
+            let svar_text = game
+                .card(delayed.source_card)
+                .svars
+                .get(&delayed.execute_svar)
+                .cloned();
+            if let Some(text) = svar_text {
+                let mut sa = build_spell_ability(
+                    game,
+                    delayed.source_card,
+                    &text,
+                    delayed.controller,
+                );
+                sa.is_trigger = true;
+                sa.trigger_source = Some(delayed.source_card);
+                sa.trigger_source_zone_timestamp =
+                    Some(game.card(delayed.source_card).zone_timestamp);
+
+                let entry = StackEntry {
+                    id: 0,
+                    spell_ability: sa,
+                    is_creature_spell: false,
+                    is_permanent_spell: false,
+                    cast_from_zone: None,
+                    optional_trigger_decider: None,
+                    optional_trigger_description: None,
+                    optional_trigger_source_name: None,
+                };
+                let pending = PendingTrigger {
+                    entry,
+                    optional: false,
+                    decider: delayed.controller,
+                    description: String::new(),
+                };
+                let ts = game.card(delayed.source_card).zone_timestamp;
+                entries.push((pending, delayed.controller, ts));
+                fired_indices.push(idx);
+            }
+        }
+        for idx in fired_indices.into_iter().rev() {
+            self.delayed_triggers.remove(idx);
+        }
         entries
     }
 

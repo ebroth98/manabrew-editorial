@@ -42,7 +42,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     // This ensures `drawn_this_turn` is correct for triggers with `Number$ N`
     // (e.g. Sneaky Snacker: "When you draw your third card in a turn...").
     for _ in 0..num {
-        if let Some(card_id) = ctx.game.draw_card(target) {
+        if let Some(card_id) = ctx.game.draw_card_with_agents(target, ctx.agents) {
             // Snapshot drawn_this_turn AFTER draw_card increments it.
             // This captures the exact count at draw time for Number$ N matching.
             let drawn_snapshot = ctx.game.player(target).drawn_this_turn;

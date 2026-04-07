@@ -382,8 +382,12 @@ impl PlayerAgent for CapturingAgent {
         for c in &game.cards {
             let name = if c.face_down {
                 String::new()
-            } else {
+            } else if c.zone == forge_foundation::ZoneType::Battlefield {
+                // On the battlefield, use front face name (matches Java's getName())
                 c.card_name.clone()
+            } else {
+                // In hand/graveyard/exile, use combined name
+                c.full_name.clone()
             };
             self.card_names.insert(c.id, name);
             self.card_is_land.insert(c.id, c.is_land());
@@ -458,16 +462,13 @@ impl PlayerAgent for CapturingAgent {
 
     fn notify_state_changed(&mut self) {
         self.inner.notify_state_changed();
-        if !self.deep || self.player_id.0 != 0 {
-            return;
-        }
-        let Some(ref game) = self.last_game_state else {
-            return;
-        };
-        self.shared_snapshots
-            .lock()
-            .unwrap()
-            .push(snapshot_game(game));
+        // Java parity: Java does not emit snapshots for intermediate state
+        // mutations (draw step, cleanup, advance turn, card play, etc.).
+        // It only snapshots at boundary points — phase changes, priority
+        // changes, and turn changes — which are handled by
+        // notify_phase_changed, notify_priority_player, and
+        // notify_turn_changed.  Pushing snapshots here would create extra
+        // entries that have no Java counterpart, causing snapshot-index drift.
     }
 
     fn on_library_peek(&mut self, game: &GameState, cards: &[CardId]) {
@@ -1127,9 +1128,11 @@ impl PlayerAgent for CapturingAgent {
                 format!("{name}@{}", self.parity_map.id(cid))
             })
             .collect();
-        self.record_verbose_decision(
+        let mut sorted_options = options.clone();
+        sorted_options.sort();
+        self.record_decision(
             "choose_cards_for_effect",
-            options,
+            sorted_options,
             if picked.is_empty() {
                 "PASS".to_string()
             } else {
@@ -1159,9 +1162,10 @@ impl PlayerAgent for CapturingAgent {
                 }
             }
         };
-        let options: Vec<String> = candidates.iter().map(format_entity).collect();
+        let mut options: Vec<String> = candidates.iter().map(format_entity).collect();
+        options.sort();
         let picked: Vec<String> = chosen.iter().map(format_entity).collect();
-        self.record_verbose_decision(
+        self.record_decision(
             "choose_entities_for_effect",
             options,
             if picked.is_empty() {
@@ -1187,20 +1191,21 @@ impl PlayerAgent for CapturingAgent {
             select_prompt,
             is_optional,
         );
-        let options: Vec<String> = valid
+        let mut options: Vec<String> = valid
             .iter()
             .map(|&cid| {
                 let name = self.card_name(cid);
                 format!("{name}@{}", self.parity_map.id(cid))
             })
             .collect();
+        options.sort();
         let picked = chosen
             .map(|cid| {
                 let name = self.card_name(cid);
                 format!("{name}@{}", self.parity_map.id(cid))
             })
             .unwrap_or_else(|| "PASS".to_string());
-        self.record_verbose_decision("choose_zone_change", options, picked);
+        self.record_decision("choose_zone_change", options, picked);
         chosen
     }
 
@@ -1216,13 +1221,14 @@ impl PlayerAgent for CapturingAgent {
         let chosen =
             self.inner
                 .choose_cards_for_zone_change(player, valid, min, max, _select_prompt);
-        let options: Vec<String> = valid
+        let mut options: Vec<String> = valid
             .iter()
             .map(|&cid| {
                 let name = self.card_name(cid);
                 format!("{name}@{}", self.parity_map.id(cid))
             })
             .collect();
+        options.sort();
         let picked: Vec<String> = chosen
             .iter()
             .map(|&cid| {
@@ -1230,7 +1236,7 @@ impl PlayerAgent for CapturingAgent {
                 format!("{name}@{}", self.parity_map.id(cid))
             })
             .collect();
-        self.record_verbose_decision(
+        self.record_decision(
             "choose_zone_change",
             options,
             if picked.is_empty() {
@@ -1364,15 +1370,20 @@ impl PlayerAgent for CapturingAgent {
         let accept =
             self.inner
                 .confirm_replacement_effect(player, question, effect_description, card_name);
-        self.record_decision(
-            "confirm_replacement_effect",
-            vec!["DECLINE".to_string(), "ACCEPT".to_string()],
-            if accept {
-                "ACCEPT".to_string()
-            } else {
-                "DECLINE".to_string()
-            },
-        );
+        // Java's harness does NOT record confirmReplacementEffect as a
+        // decision — it just calls ChoiceSpace.pickBool(rng) and returns.
+        // Recording it in Rust would create a decision alignment mismatch.
+        if self.verbose {
+            self.record_decision(
+                "confirm_replacement_effect",
+                vec!["DECLINE".to_string(), "ACCEPT".to_string()],
+                if accept {
+                    "ACCEPT".to_string()
+                } else {
+                    "DECLINE".to_string()
+                },
+            );
+        }
         accept
     }
 
@@ -1402,7 +1413,7 @@ impl PlayerAgent for CapturingAgent {
     fn choose_color(&mut self, player: PlayerId, valid_colors: &[String]) -> Option<String> {
         self.capture_deep_checkpoint("choose_color");
         let chosen = self.inner.choose_color(player, valid_colors);
-        self.record_verbose_decision(
+        self.record_decision(
             "choose_color",
             valid_colors.to_vec(),
             chosen.clone().unwrap_or_else(|| "NONE".to_string()),
@@ -1413,7 +1424,7 @@ impl PlayerAgent for CapturingAgent {
     fn choose_card_name(&mut self, player: PlayerId, valid_names: &[String]) -> Option<String> {
         self.capture_deep_checkpoint("choose_card_name");
         let chosen = self.inner.choose_card_name(player, valid_names);
-        self.record_verbose_decision(
+        self.record_decision(
             "choose_card_name",
             valid_names.to_vec(),
             chosen.clone().unwrap_or_else(|| "NONE".to_string()),
@@ -1424,7 +1435,7 @@ impl PlayerAgent for CapturingAgent {
     fn choose_number(&mut self, player: PlayerId, min: i32, max: i32) -> Option<i32> {
         self.capture_deep_checkpoint("choose_number");
         let chosen = self.inner.choose_number(player, min, max);
-        self.record_verbose_decision(
+        self.record_decision(
             "choose_number",
             vec![format!("{}..{}", min, max)],
             chosen.map_or("NONE".to_string(), |v| v.to_string()),
@@ -1499,9 +1510,13 @@ impl PlayerAgent for CapturingAgent {
             format!("{}|{}", self.card_label(card_id), mana_cost_checkpoint),
         );
         if self.active_mana_payment.as_ref() != Some(&session_key) {
+            // Use the front-face card_name parameter (not card_label which may
+            // use the full split name from the card_names cache) so Room/split
+            // cards match Java's getName() which returns the front face on the stack.
+            let parity_id = self.parity_map.id(card_id);
             self.record_decision(
                 "pay_mana_cost_callback",
-                vec![self.card_label(card_id), mana_cost_checkpoint.to_string()],
+                vec![format!("{}@{}", card_name, parity_id), mana_cost_checkpoint.to_string()],
                 "CALLBACK".to_string(),
             );
             self.active_mana_payment = Some(session_key.clone());
@@ -1534,7 +1549,7 @@ impl PlayerAgent for CapturingAgent {
         let chosen = self
             .inner
             .choose_single_replacement_effect(player, descriptions);
-        self.record_verbose_decision(
+        self.record_decision(
             "choose_single_replacement_effect",
             descriptions.to_vec(),
             descriptions

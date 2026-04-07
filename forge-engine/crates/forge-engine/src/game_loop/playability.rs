@@ -523,6 +523,42 @@ impl GameLoop {
             }
         }
 
+        // Check graveyard for MayPlay$ static abilities (e.g. Walk-In Closet
+        // "You may play lands from your graveyard"). Mirrors Java
+        // GameActionUtil.canPlayCardMayPlay() for graveyard zone.
+        if !must_be_instant {
+            let gy_cards: Vec<CardId> = game.cards_in_zone(ZoneType::Graveyard, player).to_vec();
+            for &card_id in &gy_cards {
+                let card = game.card(card_id);
+                if !card.is_land() {
+                    continue; // For now, only handle land MayPlay from graveyard
+                }
+                // Check if any static ability grants MayPlay$ for this card
+                let can_may_play = game
+                    .cards_in_zone(ZoneType::Battlefield, player)
+                    .iter()
+                    .any(|&source_id| {
+                        let source = game.card(source_id);
+                        source.static_abilities.iter().any(|sa| {
+                            crate::staticability::static_ability_continuous::can_play(
+                                sa, card, game,
+                            )
+                        })
+                    });
+                if can_may_play
+                    && crate::spellability::land_ability::can_play(
+                        &SpellAbility::new_land(Some(card_id), player),
+                        game,
+                    )
+                {
+                    playable.push(crate::agent::PlayOption {
+                        card_id,
+                        mode: crate::agent::PlayCardMode::Normal,
+                    });
+                }
+            }
+        }
+
         // Check graveyard for cast permissions such as Flashback and Escape.
         let graveyard: Vec<CardId> = game.cards_in_zone(ZoneType::Graveyard, player).to_vec();
         for card_id in graveyard {

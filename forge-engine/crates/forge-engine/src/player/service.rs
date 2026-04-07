@@ -9,7 +9,9 @@ use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
 use crate::player::player_factory_util::{add_trigger_ability, new_player_effect_card};
 use crate::player::{GameLossReason, PlayerOutcome, RegisteredPlayer};
-use crate::replacement::replacement_handler::{apply_replacements, ReplacementEvent};
+use crate::replacement::replacement_handler::{
+    apply_replacements, apply_replacements_with_agents, ReplacementEvent,
+};
 use crate::replacement::replacement_result::ReplacementResult;
 use crate::trigger::handler::TriggerHandler;
 
@@ -651,21 +653,33 @@ impl GameState {
     }
 
     pub fn player_draw_one(&mut self, player: PlayerId) -> Option<CardId> {
-        self.player_draw_one_internal(player, false)
+        self.player_draw_one_internal(player, false, None)
     }
 
     /// Draw a card for the draw step (sets `is_first_in_draw_step: true`).
     pub fn player_draw_one_for_turn(&mut self, player: PlayerId) -> Option<CardId> {
-        self.player_draw_one_internal(player, true)
+        self.player_draw_one_internal(player, true, None)
+    }
+
+    /// Draw a card for the draw step with agent access for Optional replacement
+    /// effects (Dredge). Mirrors Java's draw path which calls
+    /// `confirmReplacementEffect` through the replacement handler.
+    pub fn player_draw_one_for_turn_with_agents(
+        &mut self,
+        player: PlayerId,
+        agents: &mut [Box<dyn crate::agent::PlayerAgent>],
+    ) -> Option<CardId> {
+        self.player_draw_one_internal(player, true, Some(agents))
     }
 
     /// Internal draw implementation shared by normal draws and draw-step draws.
     /// After the replacement handler runs, extra_draws are consumed by drawing
     /// additional cards (mirrors Java Draw replacement which increments NumCards).
-    fn player_draw_one_internal(
+    pub(crate) fn player_draw_one_internal(
         &mut self,
         player: PlayerId,
         is_first_in_draw_step: bool,
+        agents: Option<&mut [Box<dyn crate::agent::PlayerAgent>]>,
     ) -> Option<CardId> {
         if !self.player_can_draw(player) {
             return None;
@@ -675,7 +689,11 @@ impl GameState {
             extra_draws: 0,
             is_first_in_draw_step,
         };
-        let result = apply_replacements(self, &mut event);
+        let result = if let Some(agents) = agents {
+            apply_replacements_with_agents(self, agents, &mut event)
+        } else {
+            apply_replacements(self, &mut event)
+        };
         if result == ReplacementResult::Skipped || result == ReplacementResult::Replaced {
             return None;
         }

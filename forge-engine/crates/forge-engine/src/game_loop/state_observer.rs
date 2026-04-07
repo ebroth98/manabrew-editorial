@@ -41,7 +41,11 @@ impl GameLoop {
         hasher.write_u32(game.turn.turn_number);
         hasher.write_u32(game.turn.active_player.0);
         hasher.write_u8(game.turn.phase as u8);
-        hasher.write_u32(game.turn.priority_player.0);
+        // NOTE: priority_player is deliberately excluded from the fingerprint.
+        // Priority changes are already notified via notify_priority_changed(),
+        // so including it here would cause with_shared_state_mutation() to emit
+        // duplicate notify_state_changed() snapshots every time priority_player
+        // is assigned, breaking parity with Java.
         hasher.write_u8(game.game_over as u8);
         hasher.write_u32(game.winner.map(|p| p.0).unwrap_or(u32::MAX));
         hasher.write_u8(game.prevent_all_combat_damage as u8);

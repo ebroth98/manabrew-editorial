@@ -31,7 +31,11 @@ pub(super) fn resolve_hidden_origin(
     let change_type = sa.change_type().unwrap_or("").to_string();
     let controller = sa.activating_player;
     let change_num = sa.change_num();
-    let is_optional = sa.is_optional() || !sa.is_mandatory();
+    // Java parity: searches are mandatory by default. Only treat as optional
+    // when Optional$ True is explicitly set on the ability (e.g. "you may search").
+    // Previously `!sa.is_mandatory()` made everything optional by default,
+    // causing the agent to decline mandatory searches like Fabled Passage.
+    let is_optional = sa.is_optional();
 
     // ── Defined$ handling (mirrors Java lines 999-1011) ──────────────────
     // When Defined$ is set to a known card reference (Remembered, Imprinted,

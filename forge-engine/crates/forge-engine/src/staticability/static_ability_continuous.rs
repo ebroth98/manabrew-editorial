@@ -26,10 +26,20 @@ pub fn resolve(st_ab: &StaticAbility, source: &Card, game: &GameState) {
 }
 
 pub fn can_play(st_ab: &StaticAbility, card: &Card, _game: &GameState) -> bool {
-    if !st_ab.zones_check(card.zone) {
+    if !matches!(st_ab.params.get("MayPlay"), Some(v) if v.eq_ignore_ascii_case("True")) {
         return false;
     }
-    if !matches!(st_ab.params.get("MayPlay"), Some(v) if v.eq_ignore_ascii_case("True")) {
+    // Check AffectedZone$ — the zone where the affected cards must be.
+    // Default is Hand if not specified (normal MayPlay like casting from hand).
+    if let Some(affected_zone) = st_ab.params.get(keys::AFFECTED_ZONE) {
+        let zones: Vec<forge_foundation::ZoneType> = affected_zone
+            .split(',')
+            .filter_map(|z| forge_foundation::ZoneType::from_str_compat(z.trim()))
+            .collect();
+        if !zones.is_empty() && !zones.contains(&card.zone) {
+            return false;
+        }
+    } else if card.zone != forge_foundation::ZoneType::Hand {
         return false;
     }
     crate::card::valid_filter::matches_valid_card_opt(st_ab.params.get(keys::AFFECTED), card, card)
