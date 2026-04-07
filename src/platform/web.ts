@@ -317,6 +317,12 @@ class WorkerBridge {
       this.worker.terminate();
       this.worker = null;
     }
+    this.gameBuffer = null;
+    this.gameSignal = null;
+    this.gameData = null;
+    this.remoteBuffer = null;
+    this.remoteSignal = null;
+    this.remoteData = null;
     this.pendingRequests.clear();
     this.initPromise = null;
   }
@@ -394,6 +400,10 @@ class WebGameApi implements IGameApi {
     this.isMultiplayer = false;
     this.isHost = false;
     this.myPlayerSlot = null;
+    if (this.bridge.gameBuffer) {
+      this.bridge.terminate();
+      return;
+    }
     await this.bridge.invoke("end_game");
   }
 

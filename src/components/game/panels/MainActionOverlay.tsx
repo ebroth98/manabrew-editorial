@@ -94,6 +94,10 @@ export function MainActionOverlay({
           <DropdownMenuContent align="end">
             <DropdownMenuItem
               className="text-destructive focus:text-destructive"
+              onSelect={(event) => {
+                event.preventDefault();
+                onConcede();
+              }}
               onClick={onConcede}
             >
               Concede

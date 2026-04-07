@@ -27,6 +27,16 @@ interface ZoneTargetState {
   validCardIds: string[];
 }
 
+const AUTO_PASS_DELAY_MIN_MS = 250;
+const AUTO_PASS_DELAY_MAX_MS = 650;
+
+function getAutoPassDelayMs(): number {
+  return Math.floor(
+    AUTO_PASS_DELAY_MIN_MS +
+      Math.random() * (AUTO_PASS_DELAY_MAX_MS - AUTO_PASS_DELAY_MIN_MS + 1),
+  );
+}
+
 export function usePromptEffects({
   currentPrompt,
   isWaitingForResponse,
@@ -67,7 +77,7 @@ export function usePromptEffects({
         setPassUntilEotTurn(null);
       } else if (currentPrompt.type === PromptType.ChooseAction || currentPrompt.type === PromptType.ChooseAttackers) {
         setIsAutoPassing(true);
-        const timer = setTimeout(() => passPriority(), 0);
+        const timer = setTimeout(() => passPriority(), getAutoPassDelayMs());
         return () => clearTimeout(timer);
       } else {
         setPassUntilEotTurn(null);
@@ -92,7 +102,7 @@ export function usePromptEffects({
     if (!shouldAutoPass) return;
 
     setIsAutoPassing(true);
-    const timer = setTimeout(() => passPriority(), 0);
+    const timer = setTimeout(() => passPriority(), getAutoPassDelayMs());
 
     return () => clearTimeout(timer);
   }, [currentPrompt, isWaitingForResponse, autoPassEnabled, passPriority, passUntilEotTurn, turn, stackLength]);

@@ -223,19 +223,13 @@ function runInteractiveGame(
 
     console.log("[GameWorker] Game completed:", result);
     gameRunning = false;
-
-    // Emit game over
-    postEvent("game:prompt", {
-      type: "gameOver",
-      gameView: { gameOver: true },
-    });
   } catch (e) {
     gameRunning = false;
     const msg = e instanceof Error ? e.message : String(e);
     console.error("[GameWorker] Game error:", msg);
-    postEvent("game:prompt", {
-      type: "gameOver",
-      gameView: { gameOver: true },
+    postEvent("game:forced_end", {
+      reason: "worker_error",
+      message: msg,
     });
   }
 }
@@ -287,12 +281,14 @@ function runMultiplayerHostGame(
 
     console.log("[GameWorker] Multiplayer game completed:", result);
     gameRunning = false;
-    postEvent("game:prompt", { type: "gameOver", gameView: { gameOver: true } });
   } catch (e) {
     gameRunning = false;
     const msg = e instanceof Error ? e.message : String(e);
     console.error("[GameWorker] Multiplayer game error:", msg);
-    postEvent("game:prompt", { type: "gameOver", gameView: { gameOver: true } });
+    postEvent("game:forced_end", {
+      reason: "worker_error",
+      message: msg,
+    });
   }
 }
 

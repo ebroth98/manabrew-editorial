@@ -287,6 +287,10 @@ export const useGameStore = create<GameState>()(devtools((set, get) => ({
   },
 
   concede: () => {
+    if (getPlatform().type === 'web') {
+      void get().endGame();
+      return;
+    }
     get().respond({ type: 'concede' });
   },
 
