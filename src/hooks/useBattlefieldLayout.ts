@@ -22,7 +22,6 @@ export function useBattlefieldLayout({
   const [selectedCardIds, setSelectedCardIds] = useState<Set<string>>(new Set());
   const [draggingCardIds, setDraggingCardIds] = useState<Set<string>>(new Set());
   const [justDraggedCardIds, setJustDraggedCardIds] = useState<Set<string>>(new Set());
-  const [selectMode, setSelectMode] = useState(false);
 
   const positionsRef = useRef(positions);
   positionsRef.current = positions;
@@ -220,12 +219,10 @@ export function useBattlefieldLayout({
   }, [leftReserved, rightReserved]);
 
   const wrappedHandleContainerMouseDown = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
-    if (!selectMode) {
-      setSelectedCardIds(new Set());
-      return;
-    }
+    // Clear selection on click/drag on empty space (shift preserves it)
+    if (!e.shiftKey) setSelectedCardIds(new Set());
     handleContainerMouseDown(e);
-  }, [selectMode, handleContainerMouseDown]);
+  }, [handleContainerMouseDown]);
 
   return {
     containerRef,
@@ -233,8 +230,6 @@ export function useBattlefieldLayout({
     selectedCardIds,
     draggingCardIds,
     justDraggedCardIds,
-    selectMode,
-    setSelectMode,
     marqueeRect,
     handleCardMouseDown,
     handleContainerMouseDown: wrappedHandleContainerMouseDown,

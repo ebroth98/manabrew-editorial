@@ -4,25 +4,42 @@ import { Loader2 } from "lucide-react";
 import type { Card } from "@/types/openmagic";
 import { CounterDisplay } from "@/components/game/CounterBadge";
 import { ManaSymbols } from "@/components/game/ManaSymbols";
+import { TextWithMana } from "@/components/game/TextWithMana";
 import { useQuery } from "@tanstack/react-query";
 import { getCardByName } from "@/api/scryfall";
 import { FLASH_CARD_SIZE } from "./game.styles";
+import { useGameThemeColors, withAlpha } from "./game.theme";
+import { cn } from "@/lib/utils";
+import type { HandActionOption } from "@/stores/useGameUIStore";
+import { useEffect } from "react";
+import type { CSSProperties } from "react";
 
 interface CardPreviewProps {
   card: Card;
   mouseX: number;
   mouseY: number;
   showBackFace?: boolean;
+  /** Available actions for this card (cast options + activated abilities). */
+  actions?: HandActionOption[];
+  /** Called when the user selects an action from the preview. */
+  onSelectAction?: (action: HandActionOption) => void;
+  /** Called to dismiss the preview. */
+  onDismiss?: () => void;
 }
 
 const { w: CARD_W, h: CARD_H } = FLASH_CARD_SIZE;
+const ACTIONS_PANEL_W = 220;
 
 /**
  * Floating card preview rendered into document.body via portal.
  * Positions itself near the cursor, clamped to viewport edges.
- * Supports showing front or back face for double-faced cards.
+ * When actions are available the preview becomes interactive and locks in place
+ * until the user clicks an action, presses Escape, or clicks outside.
  */
-export function CardPreview({ card, mouseX, mouseY, showBackFace = false }: CardPreviewProps) {
+export function CardPreview({ card, mouseX, mouseY, showBackFace = false, actions, onSelectAction, onDismiss }: CardPreviewProps) {
+  const hasActions = actions && actions.length > 0 && onSelectAction;
+  const themeColors = useGameThemeColors();
+  const ringColor = themeColors.promptAction.defenseAction; // matches battlefield choosable ring
   const { data: fetchedUrl, isLoading } = useCardImage(card.name, card.imageUrl, card.isToken, card.color, card.setCode, card.cardNumber);
   const imageUrl = card.imageUrl ?? fetchedUrl ?? null;
 
@@ -32,12 +49,9 @@ export function CardPreview({ card, mouseX, mouseY, showBackFace = false }: Card
     queryFn: async () => {
       if (!card.isDoubleFaced) return null;
       const cardData = await getCardByName(card.name);
-
-      // For double-faced cards, get both faces
       if (cardData.card_faces && cardData.card_faces.length >= 2) {
         const frontFace = cardData.card_faces[0];
         const backFace = cardData.card_faces[1];
-
         return {
           frontImageUrl: frontFace.image_uris?.normal ?? frontFace.image_uris?.large ?? null,
           backImageUrl: backFace.image_uris?.normal ?? backFace.image_uris?.large ?? null,
@@ -52,23 +66,53 @@ export function CardPreview({ card, mouseX, mouseY, showBackFace = false }: Card
     gcTime: 1000 * 60 * 60,
   });
 
-  // Determine horizontal placement: prefer right of cursor, flip left if near edge
+  // Dismiss on Escape, outside click, or number key shortcut
+  useEffect(() => {
+    if (!hasActions || !onDismiss) return;
+    function handleKey(e: KeyboardEvent) {
+      if (e.key === "Escape") { onDismiss!(); return; }
+      // Number keys 1-9 activate the corresponding action
+      const num = parseInt(e.key);
+      if (num >= 1 && num <= actions!.length) {
+        e.preventDefault();
+        onSelectAction!(actions![num - 1]);
+      }
+    }
+    function handleClick(e: MouseEvent) {
+      const target = e.target as HTMLElement;
+      if (!target.closest("[data-card-preview]")) {
+        onDismiss!();
+      }
+    }
+    window.addEventListener("keydown", handleKey);
+    const timer = setTimeout(() => {
+      window.addEventListener("mousedown", handleClick);
+    }, 100);
+    return () => {
+      window.removeEventListener("keydown", handleKey);
+      clearTimeout(timer);
+      window.removeEventListener("mousedown", handleClick);
+    };
+  }, [hasActions, onDismiss, onSelectAction, actions]);
+
+  // Position the card preview
   const cardWidth = CARD_W;
   const cardHeight = CARD_H;
 
   const spaceRight = window.innerWidth - mouseX;
-  const left =
+  const cardLeft =
     spaceRight > cardWidth + 24
       ? mouseX + 16
       : mouseX - cardWidth - 16;
 
-  // Clamp vertical so the card stays within viewport
+  const spaceAfterCard = window.innerWidth - (cardLeft + cardWidth);
+  const actionsOnRight = spaceAfterCard >= ACTIONS_PANEL_W + 16;
+
   const top = Math.min(
     Math.max(mouseY - cardHeight / 2, 8),
     window.innerHeight - cardHeight - 8
   );
 
-  // Determine which image to show for double-faced cards
   const hasDoubleFace = !!card.isDoubleFaced && !!doubleFacedData?.backImageUrl;
   const currentImageUrl = hasDoubleFace && showBackFace
     ? doubleFacedData.backImageUrl
@@ -78,76 +122,144 @@ export function CardPreview({ card, mouseX, mouseY, showBackFace = false }: Card
     : (hasDoubleFace && !showBackFace ? doubleFacedData.frontName : card.name);
 
   return createPortal(
-    <div
-      className="fixed z-[9999] pointer-events-none select-none"
-      style={{ left, top, width: cardWidth, height: cardHeight }}
-    >
-      <div className="relative w-full h-full">
-        {/* Card display */}
-        <div className="w-full h-full rounded-xl shadow-2xl ring-1 ring-black/20 overflow-hidden bg-card">
-          {isLoading && !currentImageUrl ? (
-            <div className="w-full h-full flex flex-col items-center justify-center gap-2 p-4">
-              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-              <span className="text-xs text-muted-foreground text-center">{currentCardName}</span>
-            </div>
-          ) : currentImageUrl ? (
-            <>
-              <img
-                src={currentImageUrl}
-                alt={currentCardName}
-                className="w-full h-full object-contain"
-              />
-              {card.counters && (
-                <CounterDisplay
-                  counters={card.counters}
-                  size="md"
-                  className="absolute bottom-2 left-2 z-10"
+    <>
+      {/* Backdrop dim when interactive */}
+      {hasActions && (
+        <div
+          className="fixed inset-0 z-[9998] bg-black/30 animate-in fade-in duration-150"
+          onClick={onDismiss}
+        />
+      )}
+      <div
+        data-card-preview
+        className={cn(
+          "fixed z-[9999] select-none",
+          hasActions ? "pointer-events-auto" : "pointer-events-none",
+        )}
+        style={{ left: cardLeft, top }}
+      >
+        <div className="relative" style={{ width: cardWidth, height: cardHeight }}>
+          {/* Card image */}
+          <div
+            className={cn(
+              "w-full h-full rounded-xl shadow-2xl overflow-hidden bg-card transition-shadow duration-200",
+              hasActions ? "ring-2" : "ring-1 ring-black/20",
+            )}
+            style={hasActions ? {
+              "--tw-ring-color": ringColor,
+              boxShadow: `0 0 20px ${ringColor}`,
+            } as CSSProperties : undefined}
+          >
+            {isLoading && !currentImageUrl ? (
+              <div className="w-full h-full flex flex-col items-center justify-center gap-2 p-4">
+                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                <span className="text-xs text-muted-foreground text-center">{currentCardName}</span>
+              </div>
+            ) : currentImageUrl ? (
+              <>
+                <img
+                  src={currentImageUrl}
+                  alt={currentCardName}
+                  title=""
+                  className="w-full h-full object-contain"
                 />
-              )}
-            </>
-          ) : (
-            // Text fallback for cards with no image
-            <div className="w-full h-full p-4 flex flex-col gap-2 bg-card">
-              <div className="flex justify-between items-start">
-                <span className="font-bold text-sm leading-tight">{currentCardName}</span>
+                {card.counters && (
+                  <CounterDisplay
+                    counters={card.counters}
+                    size="md"
+                    className="absolute bottom-2 left-2 z-10"
+                  />
+                )}
+              </>
+            ) : (
+              <div className="w-full h-full p-4 flex flex-col gap-2 bg-card">
+                <div className="flex justify-between items-start">
+                  <span className="font-bold text-sm leading-tight">{currentCardName}</span>
+                  {!hasDoubleFace && (
+                    card.effectiveManaCost ? (
+                      <div className="flex flex-col items-end">
+                        <span className="line-through opacity-50">
+                          <ManaSymbols cost={card.manaCost} size="md" />
+                        </span>
+                        <span className="bg-green-500/20 rounded px-0.5">
+                          <ManaSymbols cost={card.effectiveManaCost} size="md" />
+                        </span>
+                      </div>
+                    ) : (
+                      <ManaSymbols cost={card.manaCost} size="md" />
+                    )
+                  )}
+                </div>
                 {!hasDoubleFace && (
-                  card.effectiveManaCost ? (
-                    <div className="flex flex-col items-end">
-                      <span className="line-through opacity-50">
-                        <ManaSymbols cost={card.manaCost} size="md" />
-                      </span>
-                      <span className="bg-green-500/20 rounded px-0.5">
-                        <ManaSymbols cost={card.effectiveManaCost} size="md" />
-                      </span>
-                    </div>
-                  ) : (
-                    <ManaSymbols cost={card.manaCost} size="md" />
-                  )
+                  <div className="text-xs text-muted-foreground">{card.types?.join(" ")}</div>
+                )}
+                <div className="flex-1 text-xs text-foreground/80 whitespace-pre-wrap">
+                  {hasDoubleFace && showBackFace
+                    ? `Back face: ${doubleFacedData!.backName}`
+                    : (hasDoubleFace && !showBackFace
+                      ? `Front face: ${doubleFacedData!.frontName}`
+                      : card.text)}
+                </div>
+                {card.counters && (
+                  <CounterDisplay counters={card.counters} size="md" />
+                )}
+                {card.power && card.toughness && (
+                  <div className="text-right font-bold text-sm">
+                    {card.power}/{card.toughness}
+                  </div>
                 )}
               </div>
-              {!hasDoubleFace && (
-                <div className="text-xs text-muted-foreground">{card.types?.join(" ")}</div>
-              )}
-              <div className="flex-1 text-xs text-foreground/80 whitespace-pre-wrap">
-                {hasDoubleFace && showBackFace
-                  ? `Back face: ${doubleFacedData!.backName}`
-                  : (hasDoubleFace && !showBackFace
-                    ? `Front face: ${doubleFacedData!.frontName}`
-                    : card.text)}
-              </div>
-              {card.counters && (
-                <CounterDisplay counters={card.counters} size="md" />
-              )}
-              {card.power && card.toughness && (
-                <div className="text-right font-bold text-sm">
-                  {card.power}/{card.toughness}
-                </div>
-              )}
+            )}
+          </div>
+
+          {/* Actions panel */}
+          {hasActions && (
+            <div
+              className="absolute top-0 flex flex-col gap-1.5"
+              style={actionsOnRight
+                ? { left: cardWidth + 10, width: ACTIONS_PANEL_W }
+                : { right: cardWidth + 10, width: ACTIONS_PANEL_W }
+              }
+            >
+              {actions.map((action, idx) => (
+                <button
+                  key={idx}
+                  onClick={() => onSelectAction(action)}
+                  className={cn(
+                    "group w-full text-left rounded-lg text-[11px] font-medium",
+                    "bg-popover text-popover-foreground border border-border",
+                    "backdrop-blur-md shadow-lg",
+                    "transition-all duration-150 ease-out",
+                    "hover:scale-[1.02] hover:-translate-y-px hover:shadow-xl",
+                    "flex flex-col px-2.5 py-1.5",
+                  )}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.backgroundColor = withAlpha(ringColor, 0.12);
+                    e.currentTarget.style.borderColor = ringColor;
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.backgroundColor = "";
+                    e.currentTarget.style.borderColor = "";
+                  }}
+                >
+                  <span className="flex items-center justify-between w-full">
+                    <span className="text-[11px] font-bold min-w-[20px] h-5 flex items-center justify-center rounded border border-border bg-muted shadow-[0_1px_0_rgba(0,0,0,0.1)]">{idx + 1}</span>
+                    {action.cost && (
+                      <span className="flex items-center gap-0.5 text-[10px] opacity-90">
+                        <TextWithMana text={action.cost} manaSize="sm" />
+                      </span>
+                    )}
+                  </span>
+                  <span className="leading-snug text-[11px]">
+                    <TextWithMana text={action.label} manaSize="sm" />
+                  </span>
+                </button>
+              ))}
             </div>
           )}
         </div>
       </div>
-    </div>,
+    </>,
     document.body
   );
 }

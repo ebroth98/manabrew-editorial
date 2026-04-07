@@ -45,9 +45,9 @@ pub struct PromptAgent<T: AgentTransport> {
     pub(crate) pending_display_events: Vec<DisplayEvent>,
     /// Card DTOs pre-built by on_library_peek() for Scry/Surveil/Dig prompts.
     pub(crate) peeked_library_cards: Vec<CardDto>,
-    /// Cached per-ability descriptions and is_mana_ability flags, populated in snapshot_state.
-    /// Key: (card_id.0, ability_index) → (description, is_mana_ability)
-    ability_descriptions: std::collections::HashMap<(u32, usize), (String, bool)>,
+    /// Cached per-ability descriptions, is_mana_ability flags, and cost strings, populated in snapshot_state.
+    /// Key: (card_id.0, ability_index) → (description, is_mana_ability, cost_string)
+    ability_descriptions: std::collections::HashMap<(u32, usize), (String, bool, Option<String>)>,
     pub(crate) pending_restore_checkpoint: Option<u64>,
 }
 
@@ -247,9 +247,12 @@ impl<T: AgentTransport> PlayerAgent for PromptAgent<T> {
                         .get("SpellDescription")
                         .or_else(|| ab.params.get("PrecostDesc"))
                         .map(|s| s.to_string())
-                        .unwrap_or_else(|| ab.ability_text.clone());
+                        .unwrap_or_else(|| ab.ability_text.clone())
+                        .replace("CARDNAME", &card.card_name);
+                    let cost_str = ab.cost.to_simple_string();
+                    let cost = if cost_str.is_empty() { None } else { Some(cost_str) };
                     self.ability_descriptions
-                        .insert((card_id.0, ab.ability_index), (desc, ab.is_mana_ability));
+                        .insert((card_id.0, ab.ability_index), (desc, ab.is_mana_ability, cost));
                 }
             }
         }
@@ -299,7 +302,7 @@ impl<T: AgentTransport> PlayerAgent for PromptAgent<T> {
         let mut activatable_ability_ids = Vec::new();
         for &(card_id, ability_idx) in activatable {
             let id_str = card_id_str(card_id);
-            let (description, is_mana) = self
+            let (description, is_mana, cost) = self
                 .ability_descriptions
                 .get(&(card_id.0, ability_idx))
                 .cloned()
@@ -311,13 +314,14 @@ impl<T: AgentTransport> PlayerAgent for PromptAgent<T> {
                         .find(|c| c.id == id_str)
                         .map(|c| c.text.clone())
                         .unwrap_or_default();
-                    (text, false)
+                    (text, false, None)
                 });
             activatable_ability_ids.push(ActivatableAbilityInfo {
                 card_id: id_str.clone(),
                 ability_index: ability_idx,
                 description,
                 is_mana_ability: is_mana,
+                cost,
             });
             // Only mana abilities should reuse the TAP affordance. Non-mana land
             // abilities like Evolving Wilds must stay as explicit activations.

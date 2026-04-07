@@ -1,0 +1,37 @@
+{
+  "label": "Activated Abilities Test",
+  "desc": "Cards with multiple activated abilities for UI testing",
+  "color": "text-purple-500",
+  "opponent": "green_stompy",
+  "ai_eligible": false,
+  "order": 900,
+  "cards": [
+    { "name": "Plains", "count": 2, "set": "m21" },
+    { "name": "Island", "count": 2, "set": "m21" },
+    { "name": "Swamp", "count": 2, "set": "m21" },
+    { "name": "Mountain", "count": 2, "set": "m21" },
+    { "name": "Forest", "count": 2, "set": "m21" },
+    { "name": "Command Tower", "count": 1, "set": "c20" },
+    { "name": "Hallowed Fountain", "count": 1, "set": "rna" },
+    { "name": "Watery Grave", "count": 1, "set": "grn" },
+    { "name": "Stomping Ground", "count": 1, "set": "rna" },
+    { "name": "Blood Crypt", "count": 1, "set": "rna" },
+    { "name": "Breeding Pool", "count": 1, "set": "rna" },
+    { "name": "Azorius Chancery", "count": 1, "set": "dis" },
+
+    { "name": "Morphling", "count": 2, "set": "usg" },
+    { "name": "Brightling", "count": 2, "set": "bbd" },
+    { "name": "Endling", "count": 2, "set": "mh1" },
+    { "name": "Aetherling", "count": 2, "set": "dgm" },
+
+    { "name": "Azorius Guildmage", "count": 2, "set": "dis" },
+    { "name": "Izzet Guildmage", "count": 2, "set": "gpt" },
+    { "name": "Golgari Guildmage", "count": 2, "set": "rav" },
+    { "name": "Boros Guildmage", "count": 2, "set": "rav" },
+    { "name": "Simic Guildmage", "count": 2, "set": "dis" },
+    { "name": "Selesnya Guildmage", "count": 2, "set": "rav" },
+
+    { "name": "Staff of Domination", "count": 2, "set": "5dn" },
+    { "name": "Trading Post", "count": 2, "set": "m14" }
+  ]
+}

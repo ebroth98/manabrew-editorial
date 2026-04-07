@@ -11,6 +11,7 @@ export interface HandActionOption {
   mode?: string;
   abilityIndex?: number;
   isManaAbility?: boolean;
+  cost?: string;
 }
 
 export interface AbilityPickerState {

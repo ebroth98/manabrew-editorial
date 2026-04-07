@@ -130,7 +130,6 @@ export default function Game() {
     playModePicker,
     viewingZone,
     isActionPanelCollapsed,
-    openAbilityPicker,
     closeAbilityPicker,
     openPlayModePicker,
     closePlayModePicker,
@@ -139,39 +138,62 @@ export default function Game() {
     toggleActionPanel,
   } = useGameUIStore();
 
-  const getHandActionOptions = (card: XMageCard): HandActionOption[] => {
-    const castOptions = (currentPrompt?.playableOptions ?? [])
-      .filter((option) => option.cardId === card.id)
-      .map((option) => ({
-        kind: "cast" as const,
-        cardId: card.id,
-        mode: option.mode,
-        label: option.modeLabel,
-      }));
+  /** Sentinel ability index for the synthetic "tap for mana" action on basic lands. */
+  const SYNTHETIC_MANA_INDEX = -1;
 
-    const handAbilities = (currentPrompt?.activatableAbilityIds ?? [])
-      .filter((ability) => ability.cardId === card.id)
-      .map((ability) => ({
-        kind: "ability" as const,
-        cardId: card.id,
-        abilityIndex: ability.abilityIndex,
-        label: ability.description,
-        isManaAbility: ability.isManaAbility,
-      }));
+  /** Map an ActivatableAbilityInfo to a HandActionOption. */
+  const toAbilityOption = (a: { cardId: string; abilityIndex: number; description: string; isManaAbility: boolean; cost?: string }): HandActionOption => ({
+    kind: "ability" as const,
+    cardId: a.cardId,
+    abilityIndex: a.abilityIndex,
+    label: a.description,
+    isManaAbility: a.isManaAbility,
+    cost: a.cost,
+  });
 
-    return [...castOptions, ...handAbilities];
-  };
+  /** Cast options for a card from the current prompt's playable options. */
+  const getCastOptions = (cardId: string): HandActionOption[] =>
+    (currentPrompt?.playableOptions ?? [])
+      .filter((o) => o.cardId === cardId)
+      .map((o) => ({ kind: "cast" as const, cardId, mode: o.mode, label: o.modeLabel }));
+
+  /** Activated abilities for a card from the current prompt. */
+  const getAbilitiesForCard = (cardId: string): HandActionOption[] =>
+    (currentPrompt?.activatableAbilityIds ?? [])
+      .filter((a) => a.cardId === cardId)
+      .map(toAbilityOption);
+
+  const getHandActionOptions = (card: XMageCard): HandActionOption[] =>
+    [...getCastOptions(card.id), ...getAbilitiesForCard(card.id)];
 
   const getBattlefieldAbilityOptions = (card: XMageCard): HandActionOption[] =>
-    (currentPrompt?.activatableAbilityIds ?? [])
-      .filter((ability) => ability.cardId === card.id)
-      .map((ability) => ({
-        kind: "ability" as const,
-        cardId: ability.cardId,
-        abilityIndex: ability.abilityIndex,
-        label: ability.description,
-        isManaAbility: ability.isManaAbility,
-      }));
+    getAbilitiesForCard(card.id);
+
+  /** All available actions for a card (cast + activated + mana abilities). */
+  const getCardActions = (card: XMageCard): HandActionOption[] => {
+    if (promptType === PromptType.PayManaCost) {
+      return (currentPrompt?.manaAbilityOptions ?? [])
+        .filter((a) => a.cardId === card.id)
+        .map(toAbilityOption);
+    }
+    if (promptType !== PromptType.ChooseAction) return [];
+
+    const abilities = getAbilitiesForCard(card.id);
+    // For tappable lands without explicit mana abilities, add a synthetic entry
+    const isLandTappable = (currentPrompt?.tappableLandIds ?? []).includes(card.id)
+      && card.types?.includes("Land");
+    if (isLandTappable && !abilities.some((a) => a.isManaAbility)) {
+      abilities.unshift({
+        kind: "ability",
+        cardId: card.id,
+        abilityIndex: SYNTHETIC_MANA_INDEX,
+        label: "Tap for mana",
+        isManaAbility: true,
+        cost: "{T}",
+      });
+    }
+    return [...getCastOptions(card.id), ...abilities];
+  };
 
   // Wraps castSpell: if a card has multiple play modes, show picker first
   const handleCastSpell = (cardId: string) => {
@@ -189,7 +211,7 @@ export default function Game() {
     }
   };
 
-  const handleHandCardAction = (card: XMageCard) => {
+  const handleHandCardAction = (card: XMageCard, e?: React.MouseEvent) => {
     const actions = getHandActionOptions(card);
     if (actions.length === 0) {
       if (card.isPlayable) {
@@ -208,23 +230,20 @@ export default function Game() {
       return;
     }
 
-    openAbilityPicker({
-      cardId: card.id,
-      cardName: card.name,
-      abilities: actions,
-    });
+    // Multiple actions — show the interactive preview without sending anything to the engine
+    showStickyPreview(card, e?.clientX, e?.clientY);
   };
 
   const handleHandCardDragStart = (card: XMageCard, e: React.MouseEvent) => {
     const actions = getHandActionOptions(card);
     if (actions.length > 1 || actions.some((action) => action.kind === "ability")) {
-      handleHandCardAction(card);
+      handleHandCardAction(card, e);
       return;
     }
     startHandCardDrag(card, e);
   };
 
-  const handleBattlefieldCardAction = (card: XMageCard) => {
+  const handleBattlefieldCardAction = (card: XMageCard, e?: React.MouseEvent) => {
     const abilities = getBattlefieldAbilityOptions(card);
     if (abilities.length === 0) return false;
 
@@ -237,11 +256,8 @@ export default function Game() {
       return false;
     }
 
-    openAbilityPicker({
-      cardId: card.id,
-      cardName: card.name,
-      abilities,
-    });
+    // Multiple abilities — show the interactive preview without sending anything
+    showStickyPreview(card, e?.clientX, e?.clientY);
     return true;
   };
 
@@ -276,7 +292,7 @@ export default function Game() {
     }});
   }
 
-  // Land tap/untap handler with ability picker support
+  // Land tap/untap handler — shows interactive preview for multi-ability lands
   const handleTapLand = (card: XMageCard) => {
     if (promptType === PromptType.PayManaCost) {
       const manaAbilities = (currentPrompt?.manaAbilityOptions ?? [])
@@ -287,14 +303,11 @@ export default function Game() {
           abilityIndex: ability.abilityIndex,
           label: ability.description,
           isManaAbility: true,
+          cost: ability.cost,
         }));
 
       if (manaAbilities.length > 1) {
-        openAbilityPicker({
-          cardId: card.id,
-          cardName: card.name,
-          abilities: manaAbilities,
-        });
+        showStickyPreview(card);
         return;
       }
       if (manaAbilities.length === 1) {
@@ -318,29 +331,14 @@ export default function Game() {
         abilityIndex: ability.abilityIndex,
         label: ability.description,
         isManaAbility: ability.isManaAbility,
+        cost: ability.cost,
       }));
     const isManaSource = (currentPrompt?.tappableLandIds ?? []).includes(card.id);
     const hasManaAbility = isManaSource && card.types.includes("Land");
 
-    // If the card has both a mana ability and non-mana abilities, show picker
+    // Multiple options — show interactive preview
     if (abilities.length > 1 || (abilities.length >= 1 && hasManaAbility)) {
-      const pickerAbilities = hasManaAbility
-        ? [
-            {
-              kind: "ability" as const,
-              cardId: card.id,
-              abilityIndex: -1,
-              label: "{T}: Tap for mana",
-              isManaAbility: true,
-            },
-            ...abilities,
-          ]
-        : abilities;
-      openAbilityPicker({
-        cardId: card.id,
-        cardName: card.name,
-        abilities: pickerAbilities,
-      });
+      showStickyPreview(card);
     } else if (abilities.length === 1) {
       if (abilities[0].abilityIndex != null) {
         activateAbility(card.id, abilities[0].abilityIndex);
@@ -353,6 +351,60 @@ export default function Game() {
   const handleUntapLand = (card: XMageCard) => {
     untapLand(card.id);
   };
+
+  // Queues for tapping/untapping multiple selected lands across prompt cycles
+  const pendingTapQueueRef = useRef<string[]>([]);
+  const pendingUntapQueueRef = useRef<string[]>([]);
+
+  /** Start a batch land action: execute the first immediately, queue the rest. */
+  const startBatchLandAction = (
+    cardIds: string[],
+    queueRef: React.MutableRefObject<string[]>,
+    action: (id: string) => void,
+  ) => {
+    if (cardIds.length === 0) return;
+    const [first, ...rest] = cardIds;
+    queueRef.current = rest;
+    action(first);
+  };
+
+  const handleTapLands = (cardIds: string[]) =>
+    startBatchLandAction(cardIds, pendingTapQueueRef, tapLand);
+
+  const handleUntapLands = (cardIds: string[]) =>
+    startBatchLandAction(cardIds, pendingUntapQueueRef, untapLand);
+
+  /** Drain the next item from a land action queue if still valid. Returns true if an action was taken. */
+  const drainQueue = (
+    queueRef: React.MutableRefObject<string[]>,
+    validIds: string[],
+    action: (id: string) => void,
+  ): boolean => {
+    const queue = queueRef.current;
+    if (queue.length === 0) return false;
+    const valid = new Set(validIds);
+    const nextId = queue.find((id) => valid.has(id));
+    if (!nextId) {
+      queueRef.current = [];
+      return false;
+    }
+    queueRef.current = queue.filter((id) => id !== nextId);
+    action(nextId);
+    return true;
+  };
+
+  // Process pending tap/untap queues when a new prompt arrives
+  useEffect(() => {
+    if (isWaitingForResponse) return;
+    if (!promptType) return;
+    if (promptType !== PromptType.ChooseAction && promptType !== PromptType.PayManaCost) {
+      pendingTapQueueRef.current = [];
+      pendingUntapQueueRef.current = [];
+      return;
+    }
+    if (drainQueue(pendingTapQueueRef, currentPrompt?.tappableLandIds ?? [], tapLand)) return;
+    drainQueue(pendingUntapQueueRef, currentPrompt?.untappableLandIds ?? [], untapLand);
+  }, [currentPrompt, isWaitingForResponse, promptType, tapLand, untapLand]);
 
   // Prompt-driven effects: auto-pass, passUntilEot, library peek, zone target, spell stack
   const {
@@ -388,6 +440,8 @@ export default function Game() {
     dismissHover,
     handleFlipCard,
     handleHoverCard,
+    makeSticky,
+    showStickyPreview,
   } = useCardHover(
     [viewingZone, zoneTargetSelector, libraryPeekModal, spellStackModalOpen, abilityPickerState],
   );
@@ -401,6 +455,29 @@ export default function Game() {
     onCastSpell: handleCastSpell,
     dismissHover,
   });
+
+  // Make the hover preview sticky when the hovered card has activatable actions
+  const hoveredCardActions = hoveredCard ? getCardActions(hoveredCard) : [];
+  useEffect(() => {
+    if (hoveredCardActions.length > 0) makeSticky();
+  }, [hoveredCard?.id, hoveredCardActions.length]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /** Handle an action selected from the hover preview. */
+  const handlePreviewAction = (action: HandActionOption) => {
+    dismissHover();
+    if (action.kind === "cast") {
+      castSpell(action.cardId, action.mode);
+    } else if (action.abilityIndex === SYNTHETIC_MANA_INDEX) {
+      tapLand(action.cardId);
+    } else if (action.abilityIndex != null) {
+      if (action.isManaAbility) {
+        // Mana abilities use tapLand (ActivateMana) in both ChooseAction and PayManaCost
+        tapLand(action.cardId, action.abilityIndex);
+      } else {
+        activateAbility(action.cardId, action.abilityIndex);
+      }
+    }
+  };
 
   // Display flash queue
   const activeFlash = useFlashQueue(flashDurationMs);
@@ -772,9 +849,19 @@ export default function Game() {
               ? handleTapLand
               : undefined
           }
+          onTapLands={
+            promptType === PromptType.ChooseAction || promptType === PromptType.PayManaCost
+              ? handleTapLands
+              : undefined
+          }
           onUntapLand={
             promptType === PromptType.ChooseAction || promptType === PromptType.PayCombatCost || promptType === PromptType.PayManaCost
               ? handleUntapLand
+              : undefined
+          }
+          onUntapLands={
+            promptType === PromptType.ChooseAction || promptType === PromptType.PayManaCost
+              ? handleUntapLands
               : undefined
           }
         />
@@ -1002,6 +1089,9 @@ export default function Game() {
           mouseX={mousePos.x}
           mouseY={mousePos.y}
           showBackFace={showBackFace}
+          actions={hoveredCardActions}
+          onSelectAction={handlePreviewAction}
+          onDismiss={dismissHover}
         />
       )}
     </div>

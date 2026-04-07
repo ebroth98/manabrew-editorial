@@ -205,6 +205,7 @@ export interface ActivatableAbilityInfo {
   abilityIndex: number;
   description: string;
   isManaAbility: boolean;
+  cost?: string;
 }
 
 export interface ClientCallback {

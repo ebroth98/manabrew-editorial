@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { ManaSymbols } from "@/components/game/ManaSymbols";
 import {
   X, Minus, Plus, Download, Upload, Crown,
-  Tag, Move, MousePointer2, Image as ImageIcon, GripVertical,
+  Tag, Image as ImageIcon, GripVertical,
 } from "lucide-react";
 import { useDraggable, useDroppable } from "@dnd-kit/core";
 import { cn } from "@/lib/utils";
@@ -686,7 +686,6 @@ export function DeckListView({
   coverCardName, coverCardFace, onSetCover, onSetCoverBack,
   stackPositions: savedStackPositions, onStackPositionsChange,
 }: DeckListViewProps) {
-  const [selectMode, setSelectMode] = useState(false);
   const gridCols = GRID_COLS[cardSize] ?? "grid-cols-8";
   const cardWidth = CARD_WIDTH_MAP[cardSize] ?? 115;
   const sideboardCount = sideboardGroups.reduce((s, g) => s + g.count, 0);
@@ -722,13 +721,9 @@ export function DeckListView({
   const wrappedHandleMouseDown = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
     const target = e.target as HTMLElement;
     if (target.closest("[data-card-name]")) return;
-    if (!selectMode) {
-      // In move mode, clicking background clears selection
-      if (onSelectAll) onSelectAll([]);
-      return;
-    }
+    // Dragging on empty space starts marquee selection
     handleContainerMouseDown(e);
-  }, [selectMode, handleContainerMouseDown, onSelectAll]);
+  }, [handleContainerMouseDown]);
 
   const sharedSectionProps = {
     commanderNames: new Set(commanders.map((c) => c.name)),
@@ -753,43 +748,13 @@ export function DeckListView({
     onSetCoverBack,
   };
 
-  const selectModeControls = (
-    <div className="absolute top-1 right-1 z-40 flex items-center gap-1">
-      {(selectedCards?.size ?? 0) > 0 && (
-        <span className="text-[10px] px-1.5 py-0.5 rounded bg-card/90 border text-selection">
-          {selectedCards!.size} selected
-        </span>
-      )}
-      <div className="flex gap-0.5 rounded bg-card/90 border p-0.5 shadow-sm">
-        <button
-          title="Move mode"
-          onMouseDown={(e) => e.stopPropagation()}
-          onClick={() => setSelectMode(false)}
-          className={cn(
-            "p-0.5 rounded transition-colors",
-            !selectMode
-              ? "text-foreground bg-muted"
-              : "text-muted-foreground hover:text-foreground",
-          )}
-        >
-          <Move size={12} />
-        </button>
-        <button
-          title="Select mode — drag to rubber-band select cards"
-          onMouseDown={(e) => e.stopPropagation()}
-          onClick={() => setSelectMode(true)}
-          className={cn(
-            "p-0.5 rounded transition-colors",
-            selectMode
-              ? "text-foreground bg-muted"
-              : "text-muted-foreground hover:text-foreground",
-          )}
-        >
-          <MousePointer2 size={12} />
-        </button>
-      </div>
+  const selectionBadge = (selectedCards?.size ?? 0) > 0 ? (
+    <div className="absolute top-1 right-1 z-40">
+      <span className="text-[10px] px-1.5 py-0.5 rounded bg-card/90 border text-selection">
+        {selectedCards!.size} selected
+      </span>
     </div>
-  );
+  ) : null;
 
   const marqueeOverlay = marqueeRect && (
     <div
@@ -1144,10 +1109,10 @@ export function DeckListView({
           (containerRef as any).current = el;
           stackContainerRef.current = el;
         }}
-        className={cn("h-full overflow-auto relative", selectMode && "cursor-crosshair", dragSection && "cursor-grabbing select-none")}
+        className={cn("h-full overflow-auto relative", dragSection && "cursor-grabbing select-none")}
         onMouseDown={wrappedHandleMouseDown}
       >
-        {selectModeControls}
+        {selectionBadge}
         <div
           className="relative p-3"
           style={{ minWidth: containerSize.width, minHeight: containerSize.height }}
@@ -1199,7 +1164,7 @@ export function DeckListView({
 
   return (
     <div className="h-full relative">
-      {selectModeControls}
+      {selectionBadge}
       {marqueeRect && (
         <div
           className="absolute pointer-events-none border-2 border-dashed border-selection bg-selection/10 z-[9999] rounded"
@@ -1213,7 +1178,7 @@ export function DeckListView({
       )}
     <ScrollArea
       ref={containerRef}
-      className={cn("h-full px-3 py-2 relative", selectMode && "cursor-crosshair")}
+      className="h-full px-3 py-2 relative"
       onMouseDown={wrappedHandleMouseDown}
     >
       {commanders.length > 0 && (

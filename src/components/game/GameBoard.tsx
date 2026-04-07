@@ -69,7 +69,7 @@ interface GameBoardProps {
 
   // Callbacks
   onHandCardDragStart: (card: Card, e: React.MouseEvent) => void;
-  onHandCardClick: (card: Card) => void;
+  onHandCardClick: (card: Card, e?: React.MouseEvent) => void;
   onHoverCard: (card: Card | null, e?: React.MouseEvent) => void;
   onFlipCard: () => void;
   onBattlefieldClick: (card: Card) => void;
@@ -78,7 +78,9 @@ interface GameBoardProps {
   onOpenZone: (title: string, cards: Card[], onClickCard?: (cardId: string) => void) => void;
   onOpenZoneAndCast: (title: string, cards: Card[], onClickCard: (cardId: string) => void) => void;
   onTapLand?: (card: Card) => void;
+  onTapLands?: (cardIds: string[]) => void;
   onUntapLand?: (card: Card) => void;
+  onUntapLands?: (cardIds: string[]) => void;
 }
 
 export function GameBoard({
@@ -122,7 +124,9 @@ export function GameBoard({
   onOpenZone,
   onOpenZoneAndCast,
   onTapLand,
+  onTapLands,
   onUntapLand,
+  onUntapLands,
 }: GameBoardProps) {
   const themeColors = useGameThemeColors();
   const handSize = usePreferencesStore((s) => s.handSize);
@@ -313,6 +317,7 @@ export function GameBoard({
                       : undefined
                   }
                   onTapLand={onTapLand}
+                  onTapLands={onTapLands}
                   untappableLandIds={
                     promptType === PT.ChooseAction ||
                     promptType === PT.PayCombatCost ||
@@ -321,6 +326,7 @@ export function GameBoard({
                       : undefined
                   }
                   onUntapLand={onUntapLand}
+                  onUntapLands={onUntapLands}
                   bottomReserved={handBottomReserved}
                   leftReserved={ZONE_COLUMN_RESERVED_PX}
                   rightReserved={0}

@@ -71,7 +71,7 @@ export interface HandDisplayProps {
   cards: XMageCard[];
   onHoverCard?: (card: XMageCard | null, e?: React.MouseEvent) => void;
   onStartDrag?: (card: XMageCard, e: React.MouseEvent) => void;
-  onClickCard?: (card: XMageCard) => void;
+  onClickCard?: (card: XMageCard, e?: React.MouseEvent) => void;
   onFlipCard?: () => void;
   showBackFace?: boolean;
   draggingCardId?: string;

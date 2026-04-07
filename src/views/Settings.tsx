@@ -351,6 +351,43 @@ export default function Settings() {
             </p>
           </div>
 
+          <div className="space-y-2">
+            <Label>Card Preview Trigger</Label>
+            <div className="flex items-center gap-2">
+              <Button
+                variant={prefs.cardPreviewMode === "hover" ? "default" : "outline"}
+                size="sm"
+                onClick={() => prefs.setCardPreviewMode("hover")}
+              >
+                Hover
+              </Button>
+              <Button
+                variant={prefs.cardPreviewMode === "shift" ? "default" : "outline"}
+                size="sm"
+                onClick={() => prefs.setCardPreviewMode("shift")}
+              >
+                Shift + Hover
+              </Button>
+              <Button
+                variant={prefs.cardPreviewMode === "alt" ? "default" : "outline"}
+                size="sm"
+                onClick={() => prefs.setCardPreviewMode("alt")}
+              >
+                Alt + Hover
+              </Button>
+              <Button
+                variant={prefs.cardPreviewMode === "ctrl" ? "default" : "outline"}
+                size="sm"
+                onClick={() => prefs.setCardPreviewMode("ctrl")}
+              >
+                Ctrl + Hover
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Controls when the card preview and ability panel appears. "Hover" shows on mouse over, others require holding a modifier key.
+            </p>
+          </div>
+
           <div className="space-y-4">
             <h2 className="text-lg font-semibold">Game Animations</h2>
 

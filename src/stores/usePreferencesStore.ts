@@ -6,6 +6,7 @@ export type ZonePanelSide = 'left' | 'right';
 export type ZonePanelItem = 'library' | 'graveyard' | 'exile';
 export type HandDisplayMode = 'cool' | 'normal';
 export type HandSize = 'small' | 'medium' | 'large';
+export type CardPreviewMode = 'hover' | 'shift' | 'alt' | 'ctrl';
 
 interface PreferencesState {
   /** App color theme preset id */
@@ -43,6 +44,10 @@ interface PreferencesState {
   /** Hand card size */
   handSize: HandSize;
   setHandSize: (size: HandSize) => void;
+
+  /** Card preview trigger mode */
+  cardPreviewMode: CardPreviewMode;
+  setCardPreviewMode: (mode: CardPreviewMode) => void;
 
   /** App theme color overrides (CSS variable name → HSL value) */
   appThemeColorOverrides: Record<string, string>;
@@ -86,6 +91,9 @@ export const usePreferencesStore = create<PreferencesState>()(
 
       handSize: 'medium',
       setHandSize: (handSize) => set({ handSize }),
+
+      cardPreviewMode: 'hover',
+      setCardPreviewMode: (cardPreviewMode) => set({ cardPreviewMode }),
 
       appThemeColorOverrides: {},
       setAppThemeColorOverride: (key, hsl) =>

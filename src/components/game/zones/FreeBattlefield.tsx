@@ -3,7 +3,6 @@ import { cn } from "@/lib/utils";
 import { Card } from "@/components/game/Card";
 import { CardOverlayButton } from "@/components/game/CardOverlayButton";
 import type { Card as XMageCard } from "@/types/openmagic";
-import { Move, MousePointer2 } from "lucide-react";
 import { CARD_W, CARD_H, CARD_GAP as GAP } from "../game.constants";
 import { CARD_RING, BATTLEFIELD_CARD } from "../game.styles";
 import { useGameThemeColors, withAlpha } from "../game.theme";
@@ -29,8 +28,12 @@ interface FreeBattlefieldProps {
   attackingCardIds?: string[];
   tappableLandIds?: string[];
   onTapLand?: (card: XMageCard) => void;
+  /** Tap multiple selected lands at once (queued). */
+  onTapLands?: (cardIds: string[]) => void;
   untappableLandIds?: string[];
   onUntapLand?: (card: XMageCard) => void;
+  /** Untap multiple selected lands at once (queued). */
+  onUntapLands?: (cardIds: string[]) => void;
   bottomReserved?: number;
   leftReserved?: number;
   rightReserved?: number;
@@ -53,8 +56,10 @@ export function FreeBattlefield({
   attackingCardIds,
   tappableLandIds,
   onTapLand,
+  onTapLands,
   untappableLandIds,
   onUntapLand,
+  onUntapLands,
   bottomReserved = 0,
   leftReserved = 0,
   rightReserved = 0,
@@ -96,8 +101,6 @@ export function FreeBattlefield({
     selectedCardIds,
     draggingCardIds,
     justDraggedCardIds,
-    selectMode,
-    setSelectMode,
     marqueeRect,
     handleCardMouseDown,
     handleContainerMouseDown,
@@ -148,6 +151,36 @@ export function FreeBattlefield({
                 ? (hostileTargeting ? themeColors.arrow.hostileTarget : themeColors.promptAction.defenseAction)
                 : null;
 
+    /** Render a TAP or UNTAP overlay with multi-selection support. */
+    const renderLandOverlay = (
+      c: XMageCard,
+      variant: "tap" | "untap",
+      label: string,
+      validIds: string[] | undefined,
+      onSingle: (c: XMageCard) => void,
+      onBatch: ((ids: string[]) => void) | undefined,
+      titleFn: (name: string) => string,
+    ) => (
+      <CardOverlayButton
+        variant={variant}
+        label={label}
+        stopMouseDown
+        onClick={() => {
+          if (justDraggedCardIds.has(c.id)) return;
+          if (selectedCardIds.has(c.id) && selectedCardIds.size > 1 && onBatch) {
+            const batchIds = [...selectedCardIds].filter((id) => validIds?.includes(id));
+            if (batchIds.length > 1) { onBatch(batchIds); return; }
+          }
+          onSingle(c);
+        }}
+        title={
+          selectedCardIds.has(c.id) && selectedCardIds.size > 1
+            ? `${label} ${selectedCardIds.size} selected lands`
+            : titleFn(c.name)
+        }
+      />
+    );
+
     return (
       <div
         key={card.id}
@@ -195,28 +228,14 @@ export function FreeBattlefield({
           } as React.CSSProperties) : undefined}
         />
 
-        {isTappable && onTapLand && (
-          <CardOverlayButton
-            variant="tap"
-            label="TAP"
-            onClick={() => {
-              if (justDraggedCardIds.has(card.id)) return;
-              onTapLand(card);
-            }}
-            title={`Tap ${card.name} for mana`}
-          />
+        {isTappable && onTapLand && renderLandOverlay(
+          card, "tap", "TAP", tappableLandIds, onTapLand, onTapLands,
+          (name) => `Tap ${name} for mana`,
         )}
 
-        {isUntappable && onUntapLand && (
-          <CardOverlayButton
-            variant="untap"
-            label="UNTAP"
-            onClick={() => {
-              if (justDraggedCardIds.has(card.id)) return;
-              onUntapLand(card);
-            }}
-            title={`Untap ${card.name} (undo mana)`}
-          />
+        {isUntappable && onUntapLand && renderLandOverlay(
+          card, "untap", "UNTAP", untappableLandIds, onUntapLand, onUntapLands,
+          (name) => `Untap ${name} (undo mana)`,
         )}
 
         {!isTappable && isChoosableClick && (
@@ -245,49 +264,18 @@ export function FreeBattlefield({
     <div className={cn("flex flex-col gap-1 min-h-0 flex-1", className)}>
       <div
         ref={containerRef}
-        className={cn(
-          "relative border rounded-lg bg-muted/20 overflow-hidden flex-1",
-          selectMode && "cursor-crosshair",
-        )}
+        className="relative border rounded-lg bg-muted/20 overflow-hidden flex-1"
         style={{ minHeight: `${minH}px` }}
         onMouseDown={handleContainerMouseDown}
       >
-        {/* Top-right tool controls */}
-        <div className="absolute top-1 right-1 z-40 flex items-center gap-1">
-          {selectedCardIds.size > 0 && (
+        {/* Selection count badge */}
+        {selectedCardIds.size > 0 && (
+          <div className="absolute top-1 right-1 z-40">
             <span className="text-[10px] px-1.5 py-0.5 rounded bg-card/90 border">
               {selectedCardIds.size} selected
             </span>
-          )}
-          <div className="flex gap-0.5 rounded bg-card/90 border p-0.5 shadow-sm">
-            <button
-              title="Move mode"
-              onMouseDown={(e) => e.stopPropagation()}
-              onClick={() => setSelectMode(false)}
-              className={cn(
-                "p-0.5 rounded transition-colors",
-                !selectMode
-                  ? "text-foreground bg-muted"
-                  : "text-muted-foreground hover:text-foreground",
-              )}
-            >
-              <Move size={12} />
-            </button>
-            <button
-              title="Select mode — drag to rubber-band select cards"
-              onMouseDown={(e) => e.stopPropagation()}
-              onClick={() => setSelectMode(true)}
-              className={cn(
-                "p-0.5 rounded transition-colors",
-                selectMode
-                  ? "text-foreground bg-muted"
-                  : "text-muted-foreground hover:text-foreground",
-              )}
-            >
-              <MousePointer2 size={12} />
-            </button>
           </div>
-        </div>
+        )}
 
         {cards.length === 0 && (
           <span className="absolute inset-0 flex items-center justify-center text-xs text-muted-foreground italic">

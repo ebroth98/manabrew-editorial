@@ -221,7 +221,7 @@ export function HandDisplayCool({
                   if (card.isPlayable && onStartDrag) {
                     onStartDrag?.(card, e);
                   } else if (card.isPlayable) {
-                    onClickCard?.(card);
+                    onClickCard?.(card, e);
                   } else {
                     startTug(card.id, e.clientX, e.clientY);
                   }

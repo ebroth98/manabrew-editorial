@@ -144,6 +144,7 @@ pub(super) fn pay_mana_cost<T: AgentTransport>(
                 ability_index: opt.ability_index,
                 description: opt.description.clone(),
                 is_mana_ability: true,
+                cost: None,
             })
             .collect(),
         tappable_land_ids,

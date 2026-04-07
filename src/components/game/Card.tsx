@@ -113,6 +113,7 @@ export function Card({
           <img
             src={imageUrl}
             alt={card.name}
+            title=""
             className="absolute inset-0 w-full h-full object-contain rounded-lg"
             onError={() => setHasError(true)}
             loading="lazy"
