@@ -26,7 +26,7 @@ interface CreateGameDialogProps {
   onOpenChange: (open: boolean) => void;
   /** Visual mode: full game creation (Play) or deck-only selection (Lobby). */
   mode?: "play" | "lobby";
-  /** Optional fixed format id (e.g. "constructed" | "commander"). */
+  /** Optional fixed format id (e.g. "standard" | "commander"). */
   forcedFormatId?: string;
   /** Pre-select a saved deck by ID (e.g. when launched from MyDecks) */
   preSelectedDeckId?: string;
@@ -97,7 +97,7 @@ export function CreateGameDialog({
       ...(currentDeck.planes ?? []),
       ...(currentDeck.commanders ?? []),
     ],
-    formatId: currentDeck.format ?? "constructed",
+    formatId: currentDeck.format ?? "standard",
     commanderName: currentDeck.commanders?.[0]?.name,
   }];
   const userDecks = [
@@ -118,7 +118,7 @@ export function CreateGameDialog({
         ...(s.deck.planes ?? []),
         ...(s.deck.commanders ?? []),
       ],
-      formatId: s.deck.format ?? "constructed",
+      formatId: s.deck.format ?? "standard",
       commanderName: s.deck.commanders?.[0]?.name,
     })),
   ];

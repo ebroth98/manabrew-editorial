@@ -3,11 +3,12 @@ import { getPlatform, type PresetDeckInfo } from "@/platform";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
-import { Search, Shuffle, Swords, User, Bot, Crown } from "lucide-react";
+import { Search, Shuffle, Swords, User, Bot } from "lucide-react";
 import { useDeckStore } from "@/stores/useDeckStore";
 import type { CardIdentity } from "@/types/server";
 import { getDeckFingerprint, serializeDeck } from "@/lib/decks";
 import { FormatBadge } from "@/components/game/FormatBadge";
+import { GAME_FORMATS } from "@/lib/formats";
 
 interface SelectedDeck {
   id: string;
@@ -29,14 +30,14 @@ interface DeckVsSelectorProps {
 }
 
 type PickingSide = "player" | "opponent";
-type PlayFormatId = "constructed" | "commander";
+type PlayFormatId = string;
 
 export function DeckVsSelector({ onStart }: DeckVsSelectorProps) {
   const [presetDecks, setPresetDecks] = useState<PresetDeckInfo[]>([]);
   const [playerDeck, setPlayerDeck] = useState<SelectedDeck | null>(null);
   const [opponentDeck, setOpponentDeck] = useState<SelectedDeck | null>(null);
   const [pickingSide, setPickingSide] = useState<PickingSide>("player");
-  const [selectedFormat, setSelectedFormat] = useState<PlayFormatId>("constructed");
+  const [selectedFormat, setSelectedFormat] = useState<PlayFormatId>("standard");
   const [deckSearch, setDeckSearch] = useState("");
   const { savedDecks, currentDeck } = useDeckStore();
 
@@ -72,7 +73,7 @@ export function DeckVsSelector({ onStart }: DeckVsSelectorProps) {
       id: index === 0 ? "current" : distinctSavedDecks[index - 1]!.id,
       name: deck.name,
       deckList,
-      formatId: deck.format ?? "constructed",
+      formatId: deck.format ?? "standard",
       commanderName: deck.commanders?.[0]?.name,
     };
   });
@@ -103,14 +104,14 @@ export function DeckVsSelector({ onStart }: DeckVsSelectorProps) {
   }
 
   function selectDeck(deck: PresetDeckInfo) {
-    if (selectedFormat !== "constructed") return;
+    if (selectedFormat === "commander" || selectedFormat === "brawl" || selectedFormat === "oathbreaker") return;
     assignDeck({
       id: deck.id,
       name: deck.label,
       desc: deck.desc,
       color: deck.color,
       deckList: [{ name: deck.id, setCode: "", section: "main" }],
-      formatId: "constructed",
+      formatId: selectedFormat,
     });
   }
 
@@ -120,7 +121,7 @@ export function DeckVsSelector({ onStart }: DeckVsSelectorProps) {
 
   function handleRandomOpponent() {
     // Pick a random preset for the opponent
-    if (selectedFormat !== "constructed") return;
+    if (selectedFormat === "commander" || selectedFormat === "brawl" || selectedFormat === "oathbreaker") return;
     if (presetDecks.length === 0) return;
     const random = presetDecks[Math.floor(Math.random() * presetDecks.length)];
     setOpponentDeck({
@@ -129,7 +130,7 @@ export function DeckVsSelector({ onStart }: DeckVsSelectorProps) {
       desc: random.desc,
       color: random.color,
       deckList: [{ name: random.id, setCode: "", section: "main" }],
-      formatId: "constructed",
+      formatId: selectedFormat,
     });
   }
 
@@ -232,35 +233,22 @@ export function DeckVsSelector({ onStart }: DeckVsSelectorProps) {
             Choose the game mode before selecting decks.
           </p>
         </div>
-        <div className="flex gap-2">
-          <button
-            type="button"
-            onClick={() => setSelectedFormat("constructed")}
-            className={cn(
-              "flex items-center gap-2 rounded-lg border px-3 py-2 text-xs transition-colors",
-              selectedFormat === "constructed"
-                ? "border-primary bg-primary/5"
-                : "border-border hover:bg-muted/60",
-            )}
-          >
-            <Swords className="h-3.5 w-3.5" />
-            <span>Standard</span>
-            <FormatBadge formatId="constructed" />
-          </button>
-          <button
-            type="button"
-            onClick={() => setSelectedFormat("commander")}
-            className={cn(
-              "flex items-center gap-2 rounded-lg border px-3 py-2 text-xs transition-colors",
-              selectedFormat === "commander"
-                ? "border-primary bg-primary/5"
-                : "border-border hover:bg-muted/60",
-            )}
-          >
-            <Crown className="h-3.5 w-3.5" />
-            <span>Commander</span>
-            <FormatBadge formatId="commander" />
-          </button>
+        <div className="flex gap-1.5 flex-wrap justify-end">
+          {GAME_FORMATS.map((f) => (
+            <button
+              key={f.id}
+              type="button"
+              onClick={() => setSelectedFormat(f.id)}
+              className={cn(
+                "rounded-md border px-2 py-1 text-xs transition-colors",
+                selectedFormat === f.id
+                  ? "border-primary bg-primary/5"
+                  : "border-border hover:bg-muted/60",
+              )}
+            >
+              <FormatBadge formatId={f.id} />
+            </button>
+          ))}
         </div>
       </div>
 
@@ -341,9 +329,9 @@ export function DeckVsSelector({ onStart }: DeckVsSelectorProps) {
               Preset Decks
             </p>
           )}
-          {selectedFormat === "commander" ? (
+          {(selectedFormat === "commander" || selectedFormat === "brawl" || selectedFormat === "oathbreaker") ? (
             <p className="text-xs text-muted-foreground italic py-4">
-              Preset AI decks are only available for Standard right now. For Commander, pick a saved Commander deck for the AI side.
+              Preset AI decks are not available for singleton formats. Pick a saved deck for the AI side.
             </p>
           ) : filteredDecks.length === 0 ? (
             <p className="text-xs text-muted-foreground italic py-4">

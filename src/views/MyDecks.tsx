@@ -319,7 +319,7 @@ export default function MyDecks() {
                   {colors.length > 0 && (
                     <ManaSymbols cost={colors.map((c) => `{${c}}`).join("")} size="sm" />
                   )}
-                  <FormatBadge formatId={selected.deck.format ?? "constructed"} />
+                  <FormatBadge formatId={selected.deck.format ?? "standard"} />
                 </div>
               </div>
               <div className="flex gap-2 shrink-0">

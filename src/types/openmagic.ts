@@ -1,6 +1,17 @@
 // Core OpenMagic Types (mirrored from Java forge-game)
 
-export type DeckFormatId = "constructed" | "commander";
+export type DeckFormatId =
+  | "standard"
+  | "pioneer"
+  | "modern"
+  | "legacy"
+  | "vintage"
+  | "pauper"
+  | "commander"
+  | "brawl"
+  | "oathbreaker"
+  | "draft"
+  | "sealed";
 
 export interface Card {
   id: string; // UUID

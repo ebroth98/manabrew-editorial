@@ -419,7 +419,7 @@ export function DeckBuilder({ onToggleSearch, onBack }: { onToggleSearch?: () =>
 
   // Filter
   // Compute deck legality for conditional save button
-  const deckFormat = getFormat(currentDeck.format ?? "constructed");
+  const deckFormat = getFormat(currentDeck.format ?? "standard");
   const isDeckLegal = deckFormat ? validateDeckSections({
     deckList: serializeDeck(currentDeck),
     availableCards: [
@@ -522,7 +522,7 @@ export function DeckBuilder({ onToggleSearch, onBack }: { onToggleSearch?: () =>
 
   function isAtCopyLimit(cardName: string): boolean {
     if (BASIC_LAND_NAMES.has(cardName)) return false;
-    const format = getFormat(currentDeck.format ?? "constructed");
+    const format = getFormat(currentDeck.format ?? "standard");
     if (!format) return false;
     const copies = currentDeck.cards.filter((c) => c.name === cardName);
     // Cards whose oracle text explicitly allows any number of copies are exempt
@@ -532,7 +532,7 @@ export function DeckBuilder({ onToggleSearch, onBack }: { onToggleSearch?: () =>
 
   function handleAddOneToMain(group: CardGroup) {
     if (isAtCopyLimit(group.card.name)) {
-      const format = getFormat(currentDeck.format ?? "constructed");
+      const format = getFormat(currentDeck.format ?? "standard");
       toast.error(`Max ${format?.deckRules.maxCopies} copies of "${group.card.name}" allowed in ${format?.name}`);
       return;
     }
@@ -541,7 +541,7 @@ export function DeckBuilder({ onToggleSearch, onBack }: { onToggleSearch?: () =>
 
   function handleAddOneToMainByName(cardName: string) {
     if (isAtCopyLimit(cardName)) {
-      const format = getFormat(currentDeck.format ?? "constructed");
+      const format = getFormat(currentDeck.format ?? "standard");
       toast.error(`Max ${format?.deckRules.maxCopies} copies of "${cardName}" allowed in ${format?.name}`);
       return;
     }
@@ -676,7 +676,7 @@ export function DeckBuilder({ onToggleSearch, onBack }: { onToggleSearch?: () =>
                 setNameInput("New Deck");
                 setDeckName("New Deck");
                 const snapshot = buildDeckSnapshot({
-                  format: "constructed",
+                  format: "standard",
                   cards: [],
                   sideboard: [],
                   commanders: [],
@@ -782,7 +782,7 @@ export function DeckBuilder({ onToggleSearch, onBack }: { onToggleSearch?: () =>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button type="button" className="shrink-0 cursor-pointer flex items-center gap-1">
-              <FormatBadge formatId={currentDeck.format ?? "constructed"} />
+              <FormatBadge formatId={currentDeck.format ?? "standard"} />
               <ChevronDown className="h-3 w-3 text-muted-foreground" />
             </button>
           </DropdownMenuTrigger>
@@ -795,7 +795,7 @@ export function DeckBuilder({ onToggleSearch, onBack }: { onToggleSearch?: () =>
               >
                 <FormatBadge formatId={f.id} />
                 <span className="text-xs">{f.name}</span>
-                {(currentDeck.format ?? "constructed") === f.id && (
+                {(currentDeck.format ?? "standard") === f.id && (
                   <Check className="h-3 w-3 ml-auto text-primary" />
                 )}
               </DropdownMenuItem>
@@ -805,7 +805,7 @@ export function DeckBuilder({ onToggleSearch, onBack }: { onToggleSearch?: () =>
 
         {/* Card count */}
         <span className="text-xs text-muted-foreground shrink-0 tabular-nums">
-          {(currentDeck.format ?? "constructed") === "commander"
+          {getFormat(currentDeck.format ?? "standard")?.deckRules.requiresCommander
             ? currentDeck.cards.length + (currentDeck.commanders?.length ?? 0)
             : currentDeck.cards.length}
           {currentDeck.sideboard.length > 0 && <span className="opacity-50"> · SB:{currentDeck.sideboard.length}</span>}
@@ -821,7 +821,7 @@ export function DeckBuilder({ onToggleSearch, onBack }: { onToggleSearch?: () =>
           <QuickCardSearch
             onAdd={(sc) => {
               if (isAtCopyLimit(sc.name)) {
-                const format = getFormat(currentDeck.format ?? "constructed");
+                const format = getFormat(currentDeck.format ?? "standard");
                 toast.error(`Max ${format?.deckRules.maxCopies} copies of "${sc.name}" allowed in ${format?.name}`);
                 return;
               }
@@ -1007,7 +1007,7 @@ export function DeckBuilder({ onToggleSearch, onBack }: { onToggleSearch?: () =>
           viewMode={viewMode}
           cardSize={cardSize}
           commanders={currentDeck.commanders ?? []}
-          deckFormat={currentDeck.format ?? "constructed"}
+          deckFormat={currentDeck.format ?? "standard"}
           mainSections={sectionGroups}
           otherGroups={otherGroups}
           sideboardGroups={sideGroups}
@@ -1132,7 +1132,7 @@ export function DeckBuilder({ onToggleSearch, onBack }: { onToggleSearch?: () =>
             }
           },
           isCommander: detailCard ? currentDeck.commanders?.some((c) => c.name === detailCard.name) ?? false : false,
-          deckFormat: currentDeck.format ?? "constructed",
+          deckFormat: currentDeck.format ?? "standard",
           customTags: currentDeck.customTags,
           onTagCard: tagCard,
           onAddTag: addCustomTag,
@@ -1158,7 +1158,7 @@ export function DeckBuilder({ onToggleSearch, onBack }: { onToggleSearch?: () =>
                 if (deckId) deleteSavedDeck(deckId);
                 clearDeck();
                 setConfirmClear(false);
-                const snapshot = buildDeckSnapshot({ format: "constructed", cards: [], sideboard: [], commanders: [], attractions: [], contraptions: [], schemes: [], planes: [], name: DEFAULT_DECK_NAME });
+                const snapshot = buildDeckSnapshot({ format: "standard", cards: [], sideboard: [], commanders: [], attractions: [], contraptions: [], schemes: [], planes: [], name: DEFAULT_DECK_NAME });
                 setLastSavedSnapshot(snapshot);
                 setUnsavedState(snapshot, snapshot);
                 toast.success("Deck deleted");

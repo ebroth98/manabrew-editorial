@@ -169,28 +169,39 @@ export default function Game() {
   const getBattlefieldAbilityOptions = (card: XMageCard): HandActionOption[] =>
     getAbilitiesForCard(card.id);
 
+  /** Mana abilities for a card from the current prompt (dual land per-color options). */
+  const getManaAbilitiesForCard = (cardId: string): HandActionOption[] =>
+    (currentPrompt?.manaAbilityOptions ?? [])
+      .filter((a) => a.cardId === cardId)
+      .map(toAbilityOption);
+
   /** All available actions for a card (cast + activated + mana abilities). */
   const getCardActions = (card: XMageCard): HandActionOption[] => {
     if (promptType === PromptType.PayManaCost) {
-      return (currentPrompt?.manaAbilityOptions ?? [])
-        .filter((a) => a.cardId === card.id)
-        .map(toAbilityOption);
+      return getManaAbilitiesForCard(card.id);
     }
     if (promptType !== PromptType.ChooseAction) return [];
 
     const abilities = getAbilitiesForCard(card.id);
-    // For tappable lands without explicit mana abilities, add a synthetic entry
+    const manaAbilities = getManaAbilitiesForCard(card.id);
     const isLandTappable = (currentPrompt?.tappableLandIds ?? []).includes(card.id)
       && card.types?.includes("Land");
-    if (isLandTappable && !abilities.some((a) => a.isManaAbility)) {
-      abilities.unshift({
-        kind: "ability",
-        cardId: card.id,
-        abilityIndex: SYNTHETIC_MANA_INDEX,
-        label: "Tap for mana",
-        isManaAbility: true,
-        cost: "{T}",
-      });
+
+    if (isLandTappable) {
+      if (manaAbilities.length > 0) {
+        // Use explicit mana abilities (e.g. dual land per-color options)
+        abilities.unshift(...manaAbilities);
+      } else if (!abilities.some((a) => a.isManaAbility)) {
+        // Fallback: synthetic "Tap for mana" for lands without explicit mana abilities
+        abilities.unshift({
+          kind: "ability",
+          cardId: card.id,
+          abilityIndex: SYNTHETIC_MANA_INDEX,
+          label: "Tap for mana",
+          isManaAbility: true,
+          cost: "{T}",
+        });
+      }
     }
     return [...getCastOptions(card.id), ...abilities];
   };
@@ -333,8 +344,21 @@ export default function Game() {
         isManaAbility: ability.isManaAbility,
         cost: ability.cost,
       }));
+    const manaAbilities = (currentPrompt?.manaAbilityOptions ?? [])
+      .filter((a) => a.cardId === card.id);
     const isManaSource = (currentPrompt?.tappableLandIds ?? []).includes(card.id);
     const hasManaAbility = isManaSource && card.types.includes("Land");
+
+    // Multiple mana abilities (dual land) — show interactive preview for color choice
+    if (manaAbilities.length > 1) {
+      showStickyPreview(card);
+      return;
+    }
+    // Single mana ability — tap directly with that ability index
+    if (manaAbilities.length === 1 && abilities.length === 0) {
+      tapLand(card.id, manaAbilities[0].abilityIndex);
+      return;
+    }
 
     // Multiple options — show interactive preview
     if (abilities.length > 1 || (abilities.length >= 1 && hasManaAbility)) {
@@ -854,6 +878,7 @@ export default function Game() {
               ? handleTapLands
               : undefined
           }
+          onTapLandAbility={(cardId, abilityIndex) => tapLand(cardId, abilityIndex)}
           onUntapLand={
             promptType === PromptType.ChooseAction || promptType === PromptType.PayCombatCost || promptType === PromptType.PayManaCost
               ? handleUntapLand

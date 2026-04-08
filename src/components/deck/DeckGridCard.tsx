@@ -121,7 +121,7 @@ export function DeckGridCard({ deck, onOpen, onDelete, onRename }: DeckGridCardP
             {deck.deck.name}
           </p>
           <div className="flex items-center gap-1 mt-1 flex-wrap">
-            <FormatBadge formatId={deck.deck.format ?? "constructed"} />
+            <FormatBadge formatId={deck.deck.format ?? "standard"} />
             {colorCost && <ManaSymbols cost={colorCost} size="sm" />}
             {deck.deck.labels?.map((label) => (
               <DeckLabelBadge key={label.name} label={label} size="sm" />

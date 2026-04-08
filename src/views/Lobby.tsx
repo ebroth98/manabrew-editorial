@@ -198,7 +198,7 @@ export default function Lobby() {
         open={deckDialogOpen}
         onOpenChange={setDeckDialogOpen}
         mode="lobby"
-        forcedFormatId={currentRoom?.format === "Commander" ? "commander" : "constructed"}
+        forcedFormatId={currentRoom?.format ? currentRoom.format.toLowerCase() : "standard"}
         onStart={(deckList, _formatId, commanderName, _playerCount, deckName) => {
           void handleDeckSelection(deckName ?? "Selected Deck", deckList, commanderName);
         }}

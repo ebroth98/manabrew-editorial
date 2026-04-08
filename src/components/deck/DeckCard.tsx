@@ -88,11 +88,11 @@ export function DeckCard({
           )}
           <div className="flex items-center gap-1 flex-wrap">
             <span className="text-xs text-muted-foreground">
-              {deck.deck.format === "commander"
+              {(deck.deck.commanders?.length ?? 0) > 0
                 ? deck.deck.cards.length + (deck.deck.commanders?.length ?? 0)
                 : deck.deck.cards.length} cards
             </span>
-            <FormatBadge formatId={deck.deck.format ?? "constructed"} />
+            <FormatBadge formatId={deck.deck.format ?? "standard"} />
             {deck.deck.labels?.map((label) => (
               <DeckLabelBadge key={label.name} label={label} size="sm" />
             ))}

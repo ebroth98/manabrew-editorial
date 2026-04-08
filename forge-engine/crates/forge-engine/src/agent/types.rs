@@ -43,7 +43,8 @@ pub enum MainPhaseAction {
     /// Play a card from hand / graveyard / exile / command with a specific cast mode.
     Play(PlayOption),
     /// Tap an untapped land on the battlefield to add its mana to the pool.
-    ActivateMana(CardId),
+    /// Optional ability index selects a specific mana ability (dual lands).
+    ActivateMana(CardId, Option<usize>),
     /// Untap a tapped land and remove its mana from the pool (undo tap).
     UntapMana(CardId),
     /// Activate an ability on a permanent. (source card, ability index)

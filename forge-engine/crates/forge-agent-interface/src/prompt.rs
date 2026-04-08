@@ -75,6 +75,9 @@ pub enum AgentPromptInner {
         /// Activated abilities on battlefield permanents.
         #[serde(rename = "activatableAbilityIds")]
         activatable_ability_ids: Vec<ActivatableAbilityInfo>,
+        /// Mana abilities on tappable permanents (for per-color tap buttons on dual lands).
+        #[serde(rename = "manaAbilityOptions", default)]
+        mana_ability_options: Vec<ActivatableAbilityInfo>,
         /// Canonical engine-defined actions for this priority window.
         /// Backward-compatible addition: existing UI can ignore this and keep
         /// using the legacy response variants until migrated.

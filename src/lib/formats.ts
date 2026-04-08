@@ -7,7 +7,7 @@ import type { CardIdentity, DeckSection } from "@/types/server";
 export interface GameFormat {
   id: string;
   name: string;
-  /** Short label used in badges, e.g. "Constr." / "EDH" */
+  /** Short label used in badges, e.g. "STD" / "CMD" */
   shortName: string;
   description: string;
   /** Tailwind color variant key for FormatBadge */
@@ -47,11 +47,12 @@ export function allowsAnyNumberOfCopies(oracleText: string | undefined): boolean
 }
 
 export const GAME_FORMATS: GameFormat[] = [
+  // ── 60-card Constructed formats ─────────────────────────────────────
   {
-    id: "constructed",
-    name: "Constructed",
-    shortName: "Constr.",
-    description: "60+ cards, max 4 copies, 20 life",
+    id: "standard",
+    name: "Standard",
+    shortName: "STD",
+    description: "60+ cards, max 4 copies, 20 life, rotating sets",
     badgeColor: "blue",
     deckRules: {
       minDeckSize: 60,
@@ -64,10 +65,91 @@ export const GAME_FORMATS: GameFormat[] = [
     bannedCards: [],
   },
   {
+    id: "pioneer",
+    name: "Pioneer",
+    shortName: "PIO",
+    description: "60+ cards, max 4 copies, 20 life, Return to Ravnica forward",
+    badgeColor: "amber",
+    deckRules: {
+      minDeckSize: 60,
+      maxDeckSize: null,
+      maxCopies: 4,
+      sideboardMax: 15,
+      startingLife: 20,
+      requiresCommander: false,
+    },
+    bannedCards: [],
+  },
+  {
+    id: "modern",
+    name: "Modern",
+    shortName: "MOD",
+    description: "60+ cards, max 4 copies, 20 life, 8th Edition forward",
+    badgeColor: "emerald",
+    deckRules: {
+      minDeckSize: 60,
+      maxDeckSize: null,
+      maxCopies: 4,
+      sideboardMax: 15,
+      startingLife: 20,
+      requiresCommander: false,
+    },
+    bannedCards: [],
+  },
+  {
+    id: "legacy",
+    name: "Legacy",
+    shortName: "LEG",
+    description: "60+ cards, max 4 copies, 20 life, all sets, banned list",
+    badgeColor: "rose",
+    deckRules: {
+      minDeckSize: 60,
+      maxDeckSize: null,
+      maxCopies: 4,
+      sideboardMax: 15,
+      startingLife: 20,
+      requiresCommander: false,
+    },
+    bannedCards: [],
+  },
+  {
+    id: "vintage",
+    name: "Vintage",
+    shortName: "VIN",
+    description: "60+ cards, max 4 copies, 20 life, all sets, restricted list",
+    badgeColor: "slate",
+    deckRules: {
+      minDeckSize: 60,
+      maxDeckSize: null,
+      maxCopies: 4,
+      sideboardMax: 15,
+      startingLife: 20,
+      requiresCommander: false,
+    },
+    bannedCards: [],
+  },
+  {
+    id: "pauper",
+    name: "Pauper",
+    shortName: "PAU",
+    description: "60+ cards, max 4 copies, 20 life, commons only",
+    badgeColor: "zinc",
+    deckRules: {
+      minDeckSize: 60,
+      maxDeckSize: null,
+      maxCopies: 4,
+      sideboardMax: 15,
+      startingLife: 20,
+      requiresCommander: false,
+    },
+    bannedCards: [],
+  },
+  // ── Singleton / Commander variants ──────────────────────────────────
+  {
     id: "commander",
     name: "Commander",
-    shortName: "EDH",
-    description: "100 cards, singleton, 40 life",
+    shortName: "CMD",
+    description: "100 cards, singleton, 40 life, requires commander",
     badgeColor: "purple",
     deckRules: {
       minDeckSize: 100,
@@ -76,6 +158,71 @@ export const GAME_FORMATS: GameFormat[] = [
       sideboardMax: 10,
       startingLife: 40,
       requiresCommander: true,
+    },
+    bannedCards: [],
+  },
+  {
+    id: "brawl",
+    name: "Brawl",
+    shortName: "BRL",
+    description: "60 cards, singleton, 25 life, Standard-legal commander",
+    badgeColor: "teal",
+    deckRules: {
+      minDeckSize: 60,
+      maxDeckSize: 60,
+      maxCopies: 1,
+      sideboardMax: 0,
+      startingLife: 25,
+      requiresCommander: true,
+    },
+    bannedCards: [],
+  },
+  {
+    id: "oathbreaker",
+    name: "Oathbreaker",
+    shortName: "OAT",
+    description: "60 cards, singleton, 20 life, planeswalker commander",
+    badgeColor: "orange",
+    deckRules: {
+      minDeckSize: 60,
+      maxDeckSize: 60,
+      maxCopies: 1,
+      sideboardMax: 0,
+      startingLife: 20,
+      requiresCommander: true,
+    },
+    bannedCards: [],
+  },
+  // ── Limited formats ─────────────────────────────────────────────────
+  {
+    id: "draft",
+    name: "Draft",
+    shortName: "DFT",
+    description: "40+ cards, no copy limit, 20 life",
+    badgeColor: "sky",
+    deckRules: {
+      minDeckSize: 40,
+      maxDeckSize: null,
+      maxCopies: Infinity,
+      sideboardMax: Infinity,
+      startingLife: 20,
+      requiresCommander: false,
+    },
+    bannedCards: [],
+  },
+  {
+    id: "sealed",
+    name: "Sealed",
+    shortName: "SLD",
+    description: "40+ cards, no copy limit, 20 life",
+    badgeColor: "indigo",
+    deckRules: {
+      minDeckSize: 40,
+      maxDeckSize: null,
+      maxCopies: Infinity,
+      sideboardMax: Infinity,
+      startingLife: 20,
+      requiresCommander: false,
     },
     bannedCards: [],
   },

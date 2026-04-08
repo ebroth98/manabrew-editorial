@@ -20,7 +20,7 @@ impl GameLoop {
             MainPhaseAction::Play(play) => {
                 format!("Play {}", card_name_or_id(play.card_id))
             }
-            MainPhaseAction::ActivateMana(card_id) => {
+            MainPhaseAction::ActivateMana(card_id, _) => {
                 format!("Activate mana ({})", card_name_or_id(card_id))
             }
             MainPhaseAction::UntapMana(card_id) => {
@@ -206,7 +206,7 @@ impl GameLoop {
                         );
                     }
                 }
-                MainPhaseAction::ActivateMana(land_id) => {
+                MainPhaseAction::ActivateMana(land_id, requested_ability_idx) => {
                     self.log_priority_response(
                         game,
                         priority_player,
@@ -241,81 +241,132 @@ impl GameLoop {
                             .collect()
                     };
                     if !mana_abs.is_empty() {
-                        // Resolve the primary (tap-cost) mana ability
-                        let primary = &mana_abs[0];
-                        self.with_shared_state_mutation(game, agents, |this, game, agents| {
-                            this.resolve_mana_ability(
-                                game,
-                                agents,
-                                priority_player,
-                                land_id,
-                                primary,
-                                None,
-                            );
-                        });
-                        // Resolve additional mana abilities whose tap cost was already paid
-                        for ab in mana_abs.iter().skip(1) {
-                            let is_tap_only = ab.cost.parts.len() == 1
-                                && ab
-                                    .cost
+                        // Separate tap-cost mana abilities from non-tap-cost ones.
+                        // Dual lands (e.g. Breeding Pool = Forest Island) generate
+                        // separate {T}: Add {G} and {T}: Add {U} abilities.  The
+                        // player must choose ONE; we must not fire both.
+                        let (tap_abs, non_tap_abs): (Vec<_>, Vec<_>) =
+                            mana_abs.iter().partition(|ab| {
+                                ab.cost
                                     .parts
                                     .iter()
-                                    .all(|p| matches!(p, crate::cost::CostPart::Tap));
-                            if is_tap_only {
-                                self.with_shared_state_mutation(
+                                    .any(|p| matches!(p, crate::cost::CostPart::Tap))
+                            });
+
+                        // Pick which tap-cost ability to activate.
+                        let chosen_ab = if let Some(req_idx) = requested_ability_idx {
+                            // Frontend specified a specific ability — use it directly.
+                            tap_abs.into_iter().find(|ab| ab.ability_index == req_idx)
+                        } else if tap_abs.len() <= 1 {
+                            tap_abs.into_iter().next()
+                        } else {
+                            // Multiple tap-cost abilities — ask the player to choose a color.
+                            let mut color_options: Vec<(String, usize)> = Vec::new();
+                            for (i, ab) in tap_abs.iter().enumerate() {
+                                if let Some(produced) =
+                                    ab.params.get(crate::parsing::keys::PRODUCED)
+                                {
+                                    let chosen_colors =
+                                        game.card(land_id).chosen_colors.clone();
+                                    let names = crate::mana::produced_to_color_names(
+                                        produced,
+                                        &chosen_colors,
+                                    );
+                                    for name in names {
+                                        if !color_options.iter().any(|(n, _)| *n == name) {
+                                            color_options.push((name, i));
+                                        }
+                                    }
+                                }
+                            }
+                            let color_names: Vec<String> =
+                                color_options.iter().map(|(n, _)| n.clone()).collect();
+                            let chosen_idx = if color_names.len() == 1 {
+                                Some(0usize)
+                            } else {
+                                agents[priority_player.index()]
+                                    .choose_color(priority_player, &color_names)
+                                    .and_then(|chosen| {
+                                        color_options.iter().position(|(n, _)| *n == chosen)
+                                    })
+                            };
+                            chosen_idx.and_then(|ci| {
+                                let (_, ab_idx) = &color_options[ci];
+                                tap_abs.into_iter().nth(*ab_idx)
+                            })
+                        };
+
+                        if let Some(ab) = chosen_ab {
+                            let ab = ab.clone();
+                            self.with_shared_state_mutation(game, agents, |this, game, agents| {
+                                this.resolve_mana_ability(
                                     game,
                                     agents,
-                                    |this, game, agents| {
-                                        let produced = ab
-                                            .params
-                                            .get(crate::parsing::keys::PRODUCED)
-                                            .unwrap_or("");
-                                        let mana_string = crate::mana::determine_mana_production(
-                                            game,
-                                            agents,
-                                            priority_player,
-                                            land_id,
-                                            produced,
-                                            ab.params.get(crate::parsing::keys::AMOUNT),
-                                            None,
-                                        );
-                                        if let Some(ms) = mana_string {
-                                            let source_is_snow =
-                                                game.card(land_id).type_line.is_snow();
-                                            let mana_params = crate::mana::ManaProductionParams {
-                                                source_card: land_id,
-                                                is_snow: source_is_snow,
-                                                restriction: ab.params.get_cloned(
-                                                    crate::parsing::keys::RESTRICT_VALID,
-                                                ),
-                                                adds_no_counter: ab
-                                                    .params
-                                                    .is_true(crate::parsing::keys::ADDS_NO_COUNTER),
-                                                adds_keywords: ab.params.get_cloned(
-                                                    crate::parsing::keys::ADDS_KEYWORDS,
-                                                ),
-                                                adds_keywords_valid: ab.params.get_cloned(
-                                                    crate::parsing::keys::ADDS_KEYWORDS_VALID,
-                                                ),
-                                                adds_counters: ab.params.get_cloned(
-                                                    crate::parsing::keys::ADDS_COUNTERS,
-                                                ),
-                                                adds_counters_valid: ab.params.get_cloned(
-                                                    crate::parsing::keys::ADDS_COUNTERS_VALID,
-                                                ),
-                                                triggers_when_spent: ab.params.get_cloned(
-                                                    crate::parsing::keys::TRIGGERS_WHEN_SPENT,
-                                                ),
-                                            };
-                                            crate::mana::add_produced_mana_to_pool(
-                                                this.pool_mut(priority_player),
-                                                &ms,
-                                                &mana_params,
-                                            );
-                                        }
-                                    },
+                                    priority_player,
+                                    land_id,
+                                    &ab,
+                                    None,
                                 );
-                            }
+                            });
+                        }
+
+                        // Resolve non-tap-cost mana abilities (e.g. granted by auras
+                        // that don't require their own tap).
+                        for ab in &non_tap_abs {
+                            let ab = (*ab).clone();
+                            self.with_shared_state_mutation(
+                                game,
+                                agents,
+                                |this, game, agents| {
+                                    let produced = ab
+                                        .params
+                                        .get(crate::parsing::keys::PRODUCED)
+                                        .unwrap_or("");
+                                    let mana_string = crate::mana::determine_mana_production(
+                                        game,
+                                        agents,
+                                        priority_player,
+                                        land_id,
+                                        produced,
+                                        ab.params.get(crate::parsing::keys::AMOUNT),
+                                        None,
+                                    );
+                                    if let Some(ms) = mana_string {
+                                        let source_is_snow =
+                                            game.card(land_id).type_line.is_snow();
+                                        let mana_params = crate::mana::ManaProductionParams {
+                                            source_card: land_id,
+                                            is_snow: source_is_snow,
+                                            restriction: ab.params.get_cloned(
+                                                crate::parsing::keys::RESTRICT_VALID,
+                                            ),
+                                            adds_no_counter: ab
+                                                .params
+                                                .is_true(crate::parsing::keys::ADDS_NO_COUNTER),
+                                            adds_keywords: ab.params.get_cloned(
+                                                crate::parsing::keys::ADDS_KEYWORDS,
+                                            ),
+                                            adds_keywords_valid: ab.params.get_cloned(
+                                                crate::parsing::keys::ADDS_KEYWORDS_VALID,
+                                            ),
+                                            adds_counters: ab.params.get_cloned(
+                                                crate::parsing::keys::ADDS_COUNTERS,
+                                            ),
+                                            adds_counters_valid: ab.params.get_cloned(
+                                                crate::parsing::keys::ADDS_COUNTERS_VALID,
+                                            ),
+                                            triggers_when_spent: ab.params.get_cloned(
+                                                crate::parsing::keys::TRIGGERS_WHEN_SPENT,
+                                            ),
+                                        };
+                                        crate::mana::add_produced_mana_to_pool(
+                                            this.pool_mut(priority_player),
+                                            &ms,
+                                            &mana_params,
+                                        );
+                                    }
+                                },
+                            );
                         }
                     } else {
                         // Legacy fallback for lands with no parsed mana abilities

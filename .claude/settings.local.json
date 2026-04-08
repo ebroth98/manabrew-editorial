@@ -59,7 +59,13 @@
       "Bash(find /Users/fede/Documents/Projects/bardidina2/bardidinaXmageUI/src-tauri -type f \\\\\\(-name *.swift -o -name *.swiftui \\\\\\))",
       "Bash(find /Users/fede/Documents/Projects/bardidina2/bardidinaXmageUI/forge -type f -name *Station*)",
       "Bash(find /Users/fede/Documents/Projects/bardidina2/bardidinaXmageUI/forge-engine/crates/forge-engine/src -type f -name \"*.rs\" -exec grep -l \"Station\\\\|K:.*\" {})",
-      "Bash(cargo test:*)"
+      "Bash(cargo test:*)",
+      "Bash(git checkout:*)",
+      "Bash(find /Users/fede/Documents/Projects/xmage/src -type f \\\\\\(-name *[Bb]adge* -o -name *[Ff]ormat* \\\\\\))",
+      "WebFetch(domain:media.wizards.com)",
+      "Bash(find /Users/fede/Documents/Projects/xmage/forge-engine -type f \\\\\\(-name *.tsx -o -name *.ts -o -name *.jsx -o -name *.js \\\\\\))",
+      "Bash(find /Users/fede/Documents/Projects/xmage/forge-engine -type f -name *Game*)",
+      "Bash(find /Users/fede/Documents/Projects/xmage/forge-engine -type f -name *Card*)"
     ]
   }
 }

@@ -73,6 +73,10 @@ function hexToHsl(hex: string): string {
 const FLASH_MIN = 200;
 const FLASH_MAX = 2000;
 const FLASH_STEP = 100;
+
+const HOVER_DELAY_MIN = 100;
+const HOVER_DELAY_MAX = 1500;
+const HOVER_DELAY_STEP = 50;
 export default function Settings() {
   const isGameActive = useGameStore((s) => s.isGameActive);
   const prefs = usePreferencesStore();
@@ -385,6 +389,28 @@ export default function Settings() {
             </div>
             <p className="text-xs text-muted-foreground">
               Controls when the card preview and ability panel appears. "Hover" shows on mouse over, others require holding a modifier key.
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <Label htmlFor="hover-delay">Card Preview Delay</Label>
+              <span className="text-sm font-mono text-muted-foreground">
+                {prefs.cardHoverDelayMs}ms
+              </span>
+            </div>
+            <input
+              id="hover-delay"
+              type="range"
+              min={HOVER_DELAY_MIN}
+              max={HOVER_DELAY_MAX}
+              step={HOVER_DELAY_STEP}
+              value={prefs.cardHoverDelayMs}
+              onChange={(e) => prefs.setCardHoverDelayMs(Number(e.target.value))}
+              className="w-full accent-primary"
+            />
+            <p className="text-xs text-muted-foreground">
+              How long to hover before the card preview appears. Lower values feel snappier, higher values reduce accidental popups.
             </p>
           </div>
 

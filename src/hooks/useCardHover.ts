@@ -14,7 +14,7 @@ function isModifierHeld(e: React.MouseEvent, mode: CardPreviewMode): boolean {
 }
 
 /**
- * Manages the delayed card hover preview with a 500ms debounce.
+ * Manages the delayed card hover preview with a configurable debounce.
  * Automatically dismisses when any dependency in `dismissDeps` changes.
  *
  * When the preview is sticky (has actions), mouse-leave is ignored entirely.
@@ -27,6 +27,7 @@ export function useCardHover(dismissDeps: unknown[]) {
   const [sticky, setSticky] = useState(false);
   const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const cardPreviewMode = usePreferencesStore((s) => s.cardPreviewMode);
+  const cardHoverDelayMs = usePreferencesStore((s) => s.cardHoverDelayMs);
 
   const dismissHover = useCallback(() => {
     if (hoverTimerRef.current) {
@@ -74,7 +75,7 @@ export function useCardHover(dismissDeps: unknown[]) {
         setHoveredCard(card);
         setShowBackFace(false);
         hoverTimerRef.current = null;
-      }, 500);
+      }, cardHoverDelayMs);
     }
   }
 

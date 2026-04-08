@@ -67,7 +67,7 @@ export function applyDeckFilters(
 
   const pass = decks.filter((s) => {
     if (search && !s.deck.name.toLowerCase().includes(search.toLowerCase())) return false;
-    if (formatFilter && (s.deck.format ?? "constructed") !== formatFilter) return false;
+    if (formatFilter && (s.deck.format ?? "standard") !== formatFilter) return false;
     if (colorFilter.length > 0) {
       const dc = extractColors(s.deck.cards);
       if (!colorFilter.every((c) => dc.includes(c))) return false;

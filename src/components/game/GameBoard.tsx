@@ -79,6 +79,7 @@ interface GameBoardProps {
   onOpenZoneAndCast: (title: string, cards: Card[], onClickCard: (cardId: string) => void) => void;
   onTapLand?: (card: Card) => void;
   onTapLands?: (cardIds: string[]) => void;
+  onTapLandAbility?: (cardId: string, abilityIndex: number) => void;
   onUntapLand?: (card: Card) => void;
   onUntapLands?: (cardIds: string[]) => void;
 }
@@ -125,6 +126,7 @@ export function GameBoard({
   onOpenZoneAndCast,
   onTapLand,
   onTapLands,
+  onTapLandAbility,
   onUntapLand,
   onUntapLands,
 }: GameBoardProps) {
@@ -318,6 +320,13 @@ export function GameBoard({
                   }
                   onTapLand={onTapLand}
                   onTapLands={onTapLands}
+                  manaAbilityOptions={
+                    promptType === PT.ChooseAction ||
+                    promptType === PT.PayManaCost
+                      ? (currentPrompt?.manaAbilityOptions ?? [])
+                      : undefined
+                  }
+                  onTapLandAbility={onTapLandAbility}
                   untappableLandIds={
                     promptType === PT.ChooseAction ||
                     promptType === PT.PayCombatCost ||

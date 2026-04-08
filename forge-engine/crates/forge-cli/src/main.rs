@@ -408,7 +408,7 @@ impl PlayerAgent for InteractiveAgent {
                 RESET,
                 card.card_name
             );
-            actions.push(PlayerAction::ActivateMana(cid));
+            actions.push(PlayerAction::ActivateMana(cid, None));
         }
         for &play in playable {
             let card = game.card(play.card_id);

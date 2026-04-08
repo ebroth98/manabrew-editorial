@@ -330,6 +330,25 @@ impl<T: AgentTransport> PlayerAgent for PromptAgent<T> {
             }
         }
 
+        // Build mana ability options for tappable lands (dual land per-color buttons)
+        let mana_ability_options: Vec<ActivatableAbilityInfo> = tappable_land_ids
+            .iter()
+            .flat_map(|id_str| {
+                self.ability_descriptions
+                    .iter()
+                    .filter(move |(&(raw_id, _), &(_, is_mana, _))| {
+                        is_mana && card_id_str(CardId(raw_id)) == *id_str
+                    })
+                    .map(|(&(raw_id, idx), (desc, _, cost))| ActivatableAbilityInfo {
+                        card_id: card_id_str(CardId(raw_id)),
+                        ability_index: idx,
+                        description: desc.clone(),
+                        is_mana_ability: true,
+                        cost: cost.clone(),
+                    })
+            })
+            .collect();
+
         let hand_activatable_ids: Vec<String> = activatable
             .iter()
             .map(|&(card_id, _)| card_id_str(card_id))
@@ -357,7 +376,7 @@ impl<T: AgentTransport> PlayerAgent for PromptAgent<T> {
                 tappable_lands
                     .iter()
                     .copied()
-                    .map(EnginePlayerAction::ActivateMana),
+                    .map(|cid| EnginePlayerAction::ActivateMana(cid, None)),
             )
             .chain(
                 untappable_lands
@@ -381,6 +400,7 @@ impl<T: AgentTransport> PlayerAgent for PromptAgent<T> {
             tappable_land_ids,
             untappable_land_ids,
             activatable_ability_ids,
+            mana_ability_options,
             available_player_actions,
         });
         match self.recv_action() {
@@ -413,20 +433,37 @@ impl<T: AgentTransport> PlayerAgent for PromptAgent<T> {
                 let parsed = parse_card_id(&card_id);
                 match parsed {
                     Some(cid) => {
-                        if let Some(idx) = ability_index {
+                        // Check if the specified ability is a non-mana activated ability
+                        // (e.g. Evolving Wilds sacrifice). Mana abilities route through
+                        // ActivateMana which handles the ability index directly.
+                        let is_non_mana_activatable = ability_index
+                            .map(|idx| {
+                                activatable
+                                    .iter()
+                                    .any(|&(id, ab_idx)| id == cid && ab_idx == idx)
+                            })
+                            .unwrap_or(false);
+                        if is_non_mana_activatable {
                             EnginePlayerAction::ActivateAbility(AbilityRef {
                                 card_id: cid,
-                                ability_index: idx,
+                                ability_index: ability_index.unwrap(),
                             })
-                        } else if let Some(&(id, idx)) =
-                            activatable.iter().find(|(id, _)| *id == cid)
-                        {
-                            EnginePlayerAction::ActivateAbility(AbilityRef {
-                                card_id: id,
-                                ability_index: idx,
-                            })
+                        } else if ability_index.is_none() {
+                            // No ability index — check if there's a single non-mana
+                            // activatable ability on this card (legacy fallback).
+                            if let Some(&(id, idx)) =
+                                activatable.iter().find(|(id, _)| *id == cid)
+                            {
+                                EnginePlayerAction::ActivateAbility(AbilityRef {
+                                    card_id: id,
+                                    ability_index: idx,
+                                })
+                            } else {
+                                EnginePlayerAction::ActivateMana(cid, None)
+                            }
                         } else {
-                            EnginePlayerAction::ActivateMana(cid)
+                            // Mana ability with specific index
+                            EnginePlayerAction::ActivateMana(cid, ability_index)
                         }
                     }
                     None => EnginePlayerAction::PassPriority,

@@ -67,7 +67,7 @@ export function getDeckFingerprint(deck: Deck): string {
     .sort();
   return JSON.stringify({
     name: deck.name,
-    format: deck.format ?? "constructed",
+    format: deck.format ?? "standard",
     commander: deck.commanders?.[0]?.name ?? null,
     cards: serialized,
   });

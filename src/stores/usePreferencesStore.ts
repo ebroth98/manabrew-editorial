@@ -49,6 +49,10 @@ interface PreferencesState {
   cardPreviewMode: CardPreviewMode;
   setCardPreviewMode: (mode: CardPreviewMode) => void;
 
+  /** Card hover preview delay in ms */
+  cardHoverDelayMs: number;
+  setCardHoverDelayMs: (ms: number) => void;
+
   /** App theme color overrides (CSS variable name → HSL value) */
   appThemeColorOverrides: Record<string, string>;
   setAppThemeColorOverride: (key: string, hsl: string) => void;
@@ -94,6 +98,9 @@ export const usePreferencesStore = create<PreferencesState>()(
 
       cardPreviewMode: 'hover',
       setCardPreviewMode: (cardPreviewMode) => set({ cardPreviewMode }),
+
+      cardHoverDelayMs: 500,
+      setCardHoverDelayMs: (ms) => set({ cardHoverDelayMs: ms }),
 
       appThemeColorOverrides: {},
       setAppThemeColorOverride: (key, hsl) =>

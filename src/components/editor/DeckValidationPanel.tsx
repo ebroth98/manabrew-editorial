@@ -8,7 +8,7 @@ export function DeckValidationPanel() {
   const [collapsed, setCollapsed] = useState(false);
   const { currentDeck } = useDeckStore();
 
-  const format = getFormat(currentDeck.format ?? "constructed");
+  const format = getFormat(currentDeck.format ?? "standard");
   if (!format) return null;
 
   const allCards = [

@@ -2,13 +2,42 @@ import React, { useEffect, useMemo } from "react";
 import { cn } from "@/lib/utils";
 import { Card } from "@/components/game/Card";
 import { CardOverlayButton } from "@/components/game/CardOverlayButton";
-import type { Card as XMageCard } from "@/types/openmagic";
+import type { Card as XMageCard, ActivatableAbilityInfo } from "@/types/openmagic";
 import { CARD_W, CARD_H, CARD_GAP as GAP } from "../game.constants";
 import { CARD_RING, BATTLEFIELD_CARD } from "../game.styles";
 import { useGameThemeColors, withAlpha } from "../game.theme";
 import { useBattlefieldLayout } from "@/hooks/useBattlefieldLayout";
 
 const ATTACH_OFFSET_Y = 16;
+
+/** Extract the mana letter from an ability description like "Add {G}." */
+function extractManaLetter(desc: string): string | null {
+  const m = desc.match(/\{([WUBRGC])\}/);
+  return m ? m[1] : null;
+}
+
+function manaSymbolUrl(symbol: string): string {
+  return `https://svgs.scryfall.io/card-symbols/${encodeURIComponent(symbol)}.svg`;
+}
+
+/** A small button with a mana symbol for tapping a dual land for a specific color. */
+function ManaAbilityTapButton({ description, onClick }: { description: string; onClick: () => void }) {
+  const letter = extractManaLetter(description);
+  return (
+    <button
+      className="flex-1 flex items-center justify-center rounded-md border bg-black/60 py-0.5 transition-all hover:scale-105 hover:bg-black/80 active:scale-95"
+      onClick={(e) => { e.stopPropagation(); onClick(); }}
+      onMouseDown={(e) => e.stopPropagation()}
+      title={`Tap: ${description}`}
+    >
+      {letter ? (
+        <img src={manaSymbolUrl(letter)} alt={`{${letter}}`} className="h-4 w-4" loading="lazy" />
+      ) : (
+        <span className="text-[9px] font-bold text-white">TAP</span>
+      )}
+    </button>
+  );
+}
 
 export interface PlacementGhost {
   stackObjectId: string;
@@ -30,6 +59,10 @@ interface FreeBattlefieldProps {
   onTapLand?: (card: XMageCard) => void;
   /** Tap multiple selected lands at once (queued). */
   onTapLands?: (cardIds: string[]) => void;
+  /** Mana ability options for tappable lands (per-color tap buttons on dual lands). */
+  manaAbilityOptions?: ActivatableAbilityInfo[];
+  /** Tap a land with a specific mana ability (dual land color choice). */
+  onTapLandAbility?: (cardId: string, abilityIndex: number) => void;
   untappableLandIds?: string[];
   onUntapLand?: (card: XMageCard) => void;
   /** Untap multiple selected lands at once (queued). */
@@ -57,6 +90,8 @@ export function FreeBattlefield({
   tappableLandIds,
   onTapLand,
   onTapLands,
+  manaAbilityOptions,
+  onTapLandAbility,
   untappableLandIds,
   onUntapLand,
   onUntapLands,
@@ -228,10 +263,29 @@ export function FreeBattlefield({
           } as React.CSSProperties) : undefined}
         />
 
-        {isTappable && onTapLand && renderLandOverlay(
-          card, "tap", "TAP", tappableLandIds, onTapLand, onTapLands,
-          (name) => `Tap ${name} for mana`,
-        )}
+        {isTappable && onTapLand && (() => {
+          const cardManaAbs = manaAbilityOptions?.filter((a) => a.cardId === card.id) ?? [];
+          if (cardManaAbs.length > 1 && onTapLandAbility) {
+            return (
+              <div className="absolute inset-0 z-20 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity flex items-end justify-center gap-0.5 pb-1">
+                {cardManaAbs.map((ab) => (
+                  <ManaAbilityTapButton
+                    key={ab.abilityIndex}
+                    description={ab.description}
+                    onClick={() => {
+                      if (justDraggedCardIds.has(card.id)) return;
+                      onTapLandAbility(card.id, ab.abilityIndex);
+                    }}
+                  />
+                ))}
+              </div>
+            );
+          }
+          return renderLandOverlay(
+            card, "tap", "TAP", tappableLandIds, onTapLand, onTapLands,
+            (name) => `Tap ${name} for mana`,
+          );
+        })()}
 
         {isUntappable && onUntapLand && renderLandOverlay(
           card, "untap", "UNTAP", untappableLandIds, onUntapLand, onUntapLands,

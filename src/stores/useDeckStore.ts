@@ -4,6 +4,12 @@ import type { Deck, Card, DeckFormatId } from '@/types/openmagic';
 import { STORAGE_KEYS, DEFAULT_DECK_NAME } from '@/lib/constants';
 import { getFormat, BASIC_LAND_NAMES, canBePartners, allowsAnyNumberOfCopies } from '@/lib/formats';
 
+/** Migrate legacy "constructed" format id to "standard". */
+function migrateFormatId(id: string): DeckFormatId {
+  if (id === "constructed") return "standard";
+  return id as DeckFormatId;
+}
+
 function getCardUpdateKey(name: string, setCode?: string): string {
   return setCode ? `${name.toLowerCase()}::${setCode.toLowerCase()}` : name.toLowerCase();
 }
@@ -68,7 +74,7 @@ function normalizeDeck(deck: Deck): Deck {
 
   const normalized: Deck = {
     ...deck,
-    format: deck.format ?? (commanders.length > 0 ? 'commander' : 'constructed'),
+    format: migrateFormatId(deck.format ?? (commanders.length > 0 ? 'commander' : 'standard')),
     cards: main,
     sideboard: remainingSideboard,
     attractions,
@@ -165,7 +171,7 @@ interface DeckState {
 
 const initialDeck: Deck = {
   name: DEFAULT_DECK_NAME,
-  format: 'constructed',
+  format: 'standard',
   cards: [],
   sideboard: [],
   attractions: [],
@@ -185,7 +191,7 @@ export const useDeckStore = create<DeckState>()(
         set((state) => {
           // Enforce max copy limit based on deck format
           if (!BASIC_LAND_NAMES.has(card.name) && !allowsAnyNumberOfCopies(card.text)) {
-            const format = getFormat(state.currentDeck.format ?? 'constructed');
+            const format = getFormat(state.currentDeck.format ?? 'standard');
             if (format) {
               const currentCount = state.currentDeck.cards.filter((c) => c.name === card.name).length;
               if (currentCount >= format.deckRules.maxCopies) {
@@ -290,7 +296,7 @@ export const useDeckStore = create<DeckState>()(
       setDeckFormat: (format) =>
         set((state) => {
           const deck = normalizeDeck(state.currentDeck);
-          if (format === 'constructed' && (deck.commanders?.length ?? 0) > 0) {
+          if (!getFormat(format)?.deckRules.requiresCommander && (deck.commanders?.length ?? 0) > 0) {
             // Move commanders back to main deck
             const movedBack = (deck.commanders ?? []).map((c) => ({ ...c, id: crypto.randomUUID() }));
             return {

@@ -37,7 +37,7 @@ export const useGameStore = create<GameState>()(devtools((set, get) => ({
       set({ debugInfo: 'Starting game...' });
       const format = formatId ? getFormat(formatId) : undefined;
       const startingLife = format?.deckRules.startingLife ?? 20;
-      const gameConfig: GameConfig = { formatId: formatId ?? 'constructed', startingLife };
+      const gameConfig: GameConfig = { formatId: formatId ?? 'standard', startingLife };
       set({ gameConfig });
       const platform = getPlatform();
       const playerAvailability = await platform.game.validateDeckAvailability(deckList);

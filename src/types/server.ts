@@ -1,4 +1,15 @@
-export type GameFormat = 'Standard' | 'Commander';
+export type GameFormat =
+  | 'Standard'
+  | 'Pioneer'
+  | 'Modern'
+  | 'Legacy'
+  | 'Vintage'
+  | 'Pauper'
+  | 'Commander'
+  | 'Brawl'
+  | 'Oathbreaker'
+  | 'Draft'
+  | 'Sealed';
 export type DeckSection =
   | 'main'
   | 'sideboard'

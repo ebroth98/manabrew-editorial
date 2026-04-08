@@ -6,11 +6,20 @@ import { Label } from '@/components/ui/label';
 import { useServerStore } from '@/stores/useServerStore';
 import type { GameFormat } from '@/types/server';
 import { cn } from '@/lib/utils';
-import { Swords, Crown, Users, Loader2 } from 'lucide-react';
+import { Swords, Crown, Users, Loader2, Layers, Shield, Gem, Coins, Sparkles, Wand2, BookOpen, Package } from 'lucide-react';
 
 const FORMATS: { value: GameFormat; label: string; icon: typeof Swords; description: string }[] = [
-  { value: 'Standard', label: 'Standard', icon: Swords, description: '60-card constructed, 1v1 or multiplayer' },
-  { value: 'Commander', label: 'Commander', icon: Crown, description: '100-card singleton, multiplayer focused' },
+  { value: 'Standard', label: 'Standard', icon: Swords, description: '60-card constructed, rotating sets' },
+  { value: 'Pioneer', label: 'Pioneer', icon: Layers, description: '60-card, Return to Ravnica forward' },
+  { value: 'Modern', label: 'Modern', icon: Shield, description: '60-card, 8th Edition forward' },
+  { value: 'Legacy', label: 'Legacy', icon: Gem, description: '60-card, all sets, banned list' },
+  { value: 'Vintage', label: 'Vintage', icon: Sparkles, description: '60-card, all sets, restricted list' },
+  { value: 'Pauper', label: 'Pauper', icon: Coins, description: '60-card, commons only' },
+  { value: 'Commander', label: 'Commander', icon: Crown, description: '100-card singleton, 40 life' },
+  { value: 'Brawl', label: 'Brawl', icon: Wand2, description: '60-card singleton, 25 life' },
+  { value: 'Oathbreaker', label: 'Oathbreaker', icon: Wand2, description: '60-card singleton, planeswalker cmdr' },
+  { value: 'Draft', label: 'Draft', icon: BookOpen, description: '40-card limited, drafted cards' },
+  { value: 'Sealed', label: 'Sealed', icon: Package, description: '40-card limited, sealed pool' },
 ];
 
 const PLAYER_OPTIONS = [2, 3, 4] as const;
@@ -42,7 +51,7 @@ export function CreateRoomDialog({ open, onOpenChange }: CreateRoomDialogProps) 
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md p-0 gap-0 overflow-hidden">
+      <DialogContent className="max-w-lg p-0 gap-0 overflow-hidden">
         <div className="px-6 pt-6 pb-4">
           <DialogTitle className="text-lg">Create Room</DialogTitle>
           <DialogDescription className="text-sm text-muted-foreground">
@@ -67,7 +76,7 @@ export function CreateRoomDialog({ open, onOpenChange }: CreateRoomDialogProps) 
           {/* Format */}
           <div className="space-y-1.5">
             <Label className="text-xs font-medium">Format</Label>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-3 gap-2 max-h-[240px] overflow-y-auto">
               {FORMATS.map((f) => {
                 const Icon = f.icon;
                 return (
@@ -76,17 +85,17 @@ export function CreateRoomDialog({ open, onOpenChange }: CreateRoomDialogProps) 
                     type="button"
                     onClick={() => setFormat(f.value)}
                     className={cn(
-                      "flex flex-col items-start gap-1 rounded-lg border p-3 text-left transition-colors",
+                      "flex flex-col items-start gap-0.5 rounded-lg border p-2 text-left transition-colors",
                       format === f.value
                         ? "border-primary bg-primary/5"
                         : "border-border hover:border-primary/30 hover:bg-muted/30",
                     )}
                   >
-                    <div className="flex items-center gap-2">
-                      <Icon className={cn("h-4 w-4", format === f.value ? "text-primary" : "text-muted-foreground")} />
-                      <span className="text-sm font-medium">{f.label}</span>
+                    <div className="flex items-center gap-1.5">
+                      <Icon className={cn("h-3.5 w-3.5", format === f.value ? "text-primary" : "text-muted-foreground")} />
+                      <span className="text-xs font-medium">{f.label}</span>
                     </div>
-                    <span className="text-[11px] text-muted-foreground leading-tight">{f.description}</span>
+                    <span className="text-[10px] text-muted-foreground leading-tight">{f.description}</span>
                   </button>
                 );
               })}

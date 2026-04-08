@@ -713,7 +713,7 @@ impl PlayerAgent for CapturingAgent {
                         format!("SPELL:{}{}", self.card_name(cid), fb_tag)
                     }
                 }),
-            forge_engine_core::player::actions::PlayerAction::ActivateMana(cid) => {
+            forge_engine_core::player::actions::PlayerAction::ActivateMana(cid, _) => {
                 format!("MANA:{}", self.card_name(cid))
             }
             forge_engine_core::player::actions::PlayerAction::UndoMana(cid) => {
