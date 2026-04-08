@@ -4,7 +4,7 @@
 //! to existing issues rather than creating duplicates.
 //! Uses `reqwest` + `GITHUB_TOKEN` env var instead of the `gh` CLI.
 
-use crate::llm::LlmAnalysis;
+use crate::infra::llm::LlmAnalysis;
 
 /// Normalize a divergence field by replacing array indices with `[*]`.
 /// e.g. `players[0].battlefield[3].power` → `players[*].battlefield[*].power`

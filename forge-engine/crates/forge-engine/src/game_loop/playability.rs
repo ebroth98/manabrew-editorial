@@ -567,10 +567,17 @@ impl GameLoop {
                 continue;
             }
             let available_mana = mana::calculate_available_mana(self.pool(player), game, player);
+            let spell_cost = Self::parse_spell_cost(&card.abilities);
+            let sp_additional_ok = if let Some(ref sc) = spell_cost {
+                crate::cost::can_pay_ignoring_mana_for_spell(sc, game, card_id, player)
+            } else {
+                true
+            };
             let flashback_ok = if let Some(fb_cost_str) = card.get_flashback_cost() {
                 let fb_cost = crate::cost::parse_cost(&fb_cost_str);
                 let fb_mana = Self::mana_from_cost(&fb_cost);
                 available_mana.can_pay(&fb_mana)
+                    && sp_additional_ok
                     && crate::cost::can_pay_ignoring_mana_for_spell(&fb_cost, game, card_id, player)
             } else {
                 false
@@ -604,8 +611,8 @@ impl GameLoop {
             }
         }
 
-        // Check exile for Foretold cards (face-down in exile with foretell cost)
-        // and Madness cards (exiled via discard with MadnessExiled marker)
+        // Check exile for Foretold cards (face-down in exile with foretell cost).
+        // Madness is handled by its triggered Play effect, not generic exile playability.
         let exile: Vec<CardId> = game.cards_in_zone(ZoneType::Exile, player).to_vec();
         for card_id in exile {
             let card = game.card(card_id);
@@ -629,24 +636,6 @@ impl GameLoop {
                             card_id,
                             mode: crate::agent::PlayCardMode::Alternative(
                                 crate::spellability::AlternativeCost::Foretell,
-                            ),
-                        });
-                    }
-                }
-            } else if card.has_keyword(crate::card::KEYWORD_MADNESS_EXILED) {
-                // Madness: exiled card that can be cast for madness cost
-                if let Some(madness_cost_str) = card.get_madness_cost() {
-                    if must_be_instant && !has_flash_permission(card_id) {
-                        continue;
-                    }
-                    let available_mana =
-                        mana::calculate_available_mana(self.pool(player), game, player);
-                    if available_mana.can_pay(&forge_foundation::ManaCost::parse(&madness_cost_str))
-                    {
-                        playable.push(crate::agent::PlayOption {
-                            card_id,
-                            mode: crate::agent::PlayCardMode::Alternative(
-                                crate::spellability::AlternativeCost::Madness,
                             ),
                         });
                     }

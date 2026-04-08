@@ -40,6 +40,7 @@ public final class SnapshotExtractor {
         snapshot.put("turn", game.getPhaseHandler().getTurn());
         snapshot.put("phase", phaseToRustName(game.getPhaseHandler().getPhase()));
         snapshot.put("active_player", playerIndex(game, game.getPhaseHandler().getPlayerTurn()));
+        snapshot.put("priority_player", playerIndex(game, game.getPhaseHandler().getPriorityPlayer()));
         snapshot.put("game_over", game.isGameOver());
 
         // winner

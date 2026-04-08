@@ -254,7 +254,6 @@ mod tests {
             None
         }
 
-        fn notify(&mut self, _: &str) {}
     }
 
     fn filler_card(owner: PlayerId) -> Card {

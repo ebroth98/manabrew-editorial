@@ -4,8 +4,6 @@ use crate::mana::ManaPool;
 use crate::spellability::MagicStack;
 use crate::trigger::handler::TriggerHandler;
 
-/// Snapshot of game state used for rollback and restart-style effects.
-/// Mirrors Java's `GameSnapshot` intent in a Rust-idiomatic way.
 #[derive(Debug, Clone)]
 pub struct GameSnapshot {
     game: GameState,
@@ -15,8 +13,6 @@ pub struct GameSnapshot {
 }
 
 impl GameSnapshot {
-    /// Capture a snapshot of current game + loop runtime state.
-    /// If `include_stack` is false, the copied game stack is cleared.
     pub fn capture(
         game: &GameState,
         mana_pools: &[ManaPool],

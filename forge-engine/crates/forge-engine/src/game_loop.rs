@@ -18,7 +18,7 @@ use crate::ids::{CardId, PlayerId};
 use crate::mana::{self, basic_land_mana_atom, ManaPool};
 use crate::parsing::{keys, Params};
 use crate::spellability::target_restrictions;
-use crate::spellability::{build_spell_ability, SpellAbility, StackEntry};
+use crate::spellability::{SpellAbility, StackEntry};
 use crate::staticability::layer::apply_continuous_effects;
 use crate::trigger::handler::TriggerHandler;
 
@@ -216,7 +216,7 @@ impl GameLoop {
         if restored {
             for agent in agents.iter_mut() {
                 agent.snapshot_state(game, &self.mana_pools);
-                agent.notify_state_changed();
+                agent.notify(crate::agent::notification::GameNotification::StateChanged);
             }
         }
         restored
@@ -284,6 +284,116 @@ impl GameLoop {
         );
     }
 
+    /// Run generic "opening hand" actions before the game begins.
+    ///
+    /// Mirrors Java's `GameAction.runOpeningHandActions()`: gather every
+    /// `MayEffectFromOpeningHand` keyword in hand, ask the controller whether
+    /// to use it, and resolve the referenced SVar immediately.
+    pub fn run_opening_hand_actions(
+        &mut self,
+        game: &mut GameState,
+        agents: &mut [Box<dyn PlayerAgent>],
+    ) {
+        let first_player = game.active_player();
+        let mut takes_action = first_player;
+        let mut new_first = first_player;
+
+        loop {
+            let usable = self.collect_opening_hand_actions(game, takes_action, first_player);
+            for mut sa in usable {
+                let Some(source_id) = sa.source else {
+                    continue;
+                };
+                if game.card(source_id).zone != ZoneType::Hand {
+                    continue;
+                }
+
+                agents[takes_action.index()].snapshot_state(game, &self.mana_pools);
+                let card_name = game.card(source_id).card_name.clone();
+                let prompt = sa
+                    .params
+                    .get(keys::SPELL_DESCRIPTION)
+                    .unwrap_or("Use opening hand effect?");
+                let accepted = agents[takes_action.index()].confirm_action(
+                    takes_action,
+                    Some("FromOpeningHand"),
+                    prompt,
+                    &[],
+                    Some(&card_name),
+                    sa.api,
+                );
+                if !accepted {
+                    continue;
+                }
+
+                if sa.uses_targeting() && !sa.setup_targets(game, agents, &self.mana_pools) {
+                    continue;
+                }
+
+                let becomes_starting_player = sa.params.has("BecomeStartingPlayer");
+                let entry = StackEntry {
+                    id: 0,
+                    spell_ability: sa,
+                    is_creature_spell: false,
+                    is_permanent_spell: false,
+                    cast_from_zone: Some(ZoneType::Hand),
+                    optional_trigger_decider: None,
+                    optional_trigger_description: None,
+                    optional_trigger_source_name: None,
+                };
+                self.resolve_spell_effect(game, agents, &entry);
+                apply_continuous_effects(game);
+
+                if becomes_starting_player {
+                    new_first = takes_action;
+                }
+            }
+
+            takes_action = game.next_player(takes_action);
+            if takes_action == first_player {
+                break;
+            }
+        }
+
+        if new_first != first_player {
+            game.turn.active_player = new_first;
+            game.turn.priority_player = new_first;
+        }
+    }
+
+    fn collect_opening_hand_actions(
+        &self,
+        game: &GameState,
+        player: PlayerId,
+        first_player: PlayerId,
+    ) -> Vec<SpellAbility> {
+        let mut usable = Vec::new();
+
+        for &card_id in game.cards_in_zone(ZoneType::Hand, player) {
+            let card = game.card(card_id);
+            for kw in card.keywords.as_string_list() {
+                if !kw.starts_with("MayEffectFromOpeningHand") {
+                    continue;
+                }
+                let split: Vec<&str> = kw.split(':').collect();
+                let Some(effect_name) = split.get(1).copied() else {
+                    continue;
+                };
+                if split.get(2).copied() == Some("!PlayFirst") && first_player == player {
+                    continue;
+                }
+                let Some(raw) = card.svars.get(effect_name) else {
+                    continue;
+                };
+                usable.push(crate::spellability::build_spell_ability(
+                    game, card_id, raw, player,
+                ));
+            }
+        }
+
+        usable
+    }
+
     /// Run the full game until someone wins or loses.
     /// Returns the winner's PlayerId.
     pub fn run(
@@ -294,24 +404,7 @@ impl GameLoop {
         max_turns: u32,
     ) -> Option<PlayerId> {
         self.setup(game, agents, rng);
-
-        // Leyline mechanic: cards with "MayEffectFromOpeningHand" in hand
-        // may begin the game on the battlefield (e.g. Leyline of the Void).
-        // Mirrors Java's Game.handleLeylines().
-        for &pid in &game.player_order.clone() {
-            let hand: Vec<CardId> = game.cards_in_zone(ZoneType::Hand, pid).to_vec();
-            for card_id in hand {
-                let has_leyline = game
-                    .card(card_id)
-                    .get_keyword_cost("MayEffectFromOpeningHand")
-                    .is_some();
-                if has_leyline {
-                    // Java always puts leylines into play without consuming RNG.
-                    // Mirrors Java's Game.handleLeylines() which auto-places.
-                    game.move_card(card_id, ZoneType::Battlefield, pid);
-                }
-            }
-        }
+        self.run_opening_hand_actions(game, agents);
 
         self.trigger_handler.reset_active_triggers(game);
         self.trigger_handler
@@ -353,10 +446,18 @@ impl GameLoop {
         }
         let (checkpoint_id, label) = self.record_checkpoint(game, true);
         for agent in agents.iter_mut() {
-            agent.notify_snapshot_created(checkpoint_id, &label);
+            agent.notify(
+                crate::agent::notification::GameNotification::SnapshotCreated {
+                    checkpoint_id,
+                    label: label.clone(),
+                },
+            );
         }
         for agent in agents.iter_mut() {
-            agent.notify_turn_changed(active, turn_number);
+            agent.notify(crate::agent::notification::GameNotification::TurnChanged {
+                active_player: active,
+                turn_number,
+            });
         }
 
         // Rebuild active triggers at start of turn
@@ -497,6 +598,9 @@ mod tests {
     }
 
     struct InvalidPlayAgent;
+    struct OpeningHandAgent {
+        accept: bool,
+    }
 
     impl PlayerAgent for InvalidPlayAgent {
         fn mulligan_decision(
@@ -579,7 +683,7 @@ mod tests {
             None
         }
 
-        fn notify(&mut self, _message: &str) {}
+        fn notify(&mut self, _message: crate::agent::notification::GameNotification) {}
     }
 
     impl RecordingPassAgent {
@@ -685,7 +789,100 @@ mod tests {
             None
         }
 
-        fn notify(&mut self, _message: &str) {}
+        fn notify(&mut self, _message: crate::agent::notification::GameNotification) {}
+    }
+
+    impl PlayerAgent for OpeningHandAgent {
+        fn mulligan_decision(
+            &mut self,
+            _player: PlayerId,
+            _hand: &[CardId],
+            _mulligan_count: u32,
+        ) -> bool {
+            true
+        }
+
+        fn choose_action(
+            &mut self,
+            _player: PlayerId,
+            _playable: &[crate::agent::PlayOption],
+            _tappable_lands: &[CardId],
+            _untappable_lands: &[CardId],
+            _activatable: &[(CardId, usize)],
+        ) -> PlayerAction {
+            PlayerAction::PassPriority
+        }
+
+        fn choose_attackers(
+            &mut self,
+            _player: PlayerId,
+            _available: &[CardId],
+            _possible_defenders: &[crate::combat::DefenderId],
+        ) -> Vec<(CardId, crate::combat::DefenderId)> {
+            Vec::new()
+        }
+
+        fn choose_blockers(
+            &mut self,
+            _player: PlayerId,
+            _attackers: &[CardId],
+            _available_blockers: &[CardId],
+            _max_blockers: Option<usize>,
+        ) -> Vec<(CardId, CardId)> {
+            Vec::new()
+        }
+
+        fn choose_target_player(
+            &mut self,
+            _player: PlayerId,
+            valid: &[PlayerId],
+            _sa: Option<&crate::spellability::SpellAbility>,
+        ) -> Option<PlayerId> {
+            valid.first().copied()
+        }
+
+        fn choose_target_card(
+            &mut self,
+            _player: PlayerId,
+            valid: &[CardId],
+            _sa: Option<&crate::spellability::SpellAbility>,
+        ) -> Option<CardId> {
+            valid.first().copied()
+        }
+
+        fn choose_target_any(
+            &mut self,
+            _player: PlayerId,
+            valid_players: &[PlayerId],
+            valid_cards: &[CardId],
+            _sa: Option<&crate::spellability::SpellAbility>,
+        ) -> TargetChoice {
+            if let Some(&pid) = valid_players.first() {
+                TargetChoice::Player(pid)
+            } else if let Some(&cid) = valid_cards.first() {
+                TargetChoice::Card(cid)
+            } else {
+                TargetChoice::None
+            }
+        }
+
+        fn choose_land_or_spell(&mut self, _player: PlayerId) -> Option<bool> {
+            None
+        }
+
+        fn confirm_action(
+            &mut self,
+            _player: PlayerId,
+            _mode: Option<&str>,
+            _message: &str,
+            _options: &[String],
+            _card_name: Option<&str>,
+            _api: Option<crate::ability::api_type::ApiType>,
+        ) -> bool {
+            self.accept
+        }
+
+        fn notify(&mut self, _message: crate::agent::notification::GameNotification) {}
     }
 
     fn zero_cost_instant(owner: PlayerId) -> Card {
@@ -782,6 +979,24 @@ mod tests {
             vec![],
             abilities.into_iter().map(|s| s.to_string()).collect(),
         )
+    }
+
+    fn opening_hand_card(owner: PlayerId, name: &str, keyword: &str, svar_text: &str) -> Card {
+        let mut card = Card::new(
+            CardId(0),
+            name.to_string(),
+            owner,
+            CardTypeLine::parse("Enchantment"),
+            ManaCost::parse("2 W"),
+            ColorSet::WHITE,
+            None,
+            None,
+            vec![keyword.to_string()],
+            vec![],
+        );
+        card.svars
+            .insert("FromHand".to_string(), svar_text.to_string());
+        card
     }
 
     #[test]
@@ -946,5 +1161,66 @@ mod tests {
                 == Some(crate::ability::api_type::ApiType::Sacrifice)),
             "Evoke sacrifice trigger should be on stack"
         );
+    }
+
+    #[test]
+    fn opening_hand_action_resolves_generic_keyword_effect() {
+        let p0 = PlayerId(0);
+        let p1 = PlayerId(1);
+        let mut game = GameState::new(&["A", "B"], 20);
+        game.turn.active_player = p0;
+        game.turn.priority_player = p0;
+
+        let card_id = game.create_card(opening_hand_card(
+            p0,
+            "Opening Hand Test",
+            "MayEffectFromOpeningHand:FromHand",
+            "DB$ ChangeZone | Defined$ Self | Origin$ Hand | Destination$ Battlefield | SpellDescription$ Test opening hand action.",
+        ));
+        game.move_card(card_id, ZoneType::Hand, p0);
+
+        let mut agents: Vec<Box<dyn PlayerAgent>> = vec![
+            Box::new(OpeningHandAgent { accept: true }),
+            Box::new(OpeningHandAgent { accept: true }),
+        ];
+
+        let mut game_loop = GameLoop::new(2);
+        game_loop.run_opening_hand_actions(&mut game, &mut agents);
+
+        assert_eq!(game.card(card_id).zone, ZoneType::Battlefield);
+        assert!(game
+            .cards_in_zone(ZoneType::Battlefield, p0)
+            .contains(&card_id));
+        assert!(!game.cards_in_zone(ZoneType::Hand, p0).contains(&card_id));
+        let _ = p1;
+    }
+
+    #[test]
+    fn opening_hand_action_respects_not_play_first_restriction() {
+        let p0 = PlayerId(0);
+        let p1 = PlayerId(1);
+        let mut game = GameState::new(&["A", "B"], 20);
+        game.turn.active_player = p0;
+        game.turn.priority_player = p0;
+
+        let card_id = game.create_card(opening_hand_card(
+            p0,
+            "Opening Hand Skip Test",
+            "MayEffectFromOpeningHand:FromHand:!PlayFirst",
+            "DB$ ChangeZone | Defined$ Self | Origin$ Hand | Destination$ Battlefield | SpellDescription$ Test opening hand action.",
+        ));
+        game.move_card(card_id, ZoneType::Hand, p0);
+
+        let mut agents: Vec<Box<dyn PlayerAgent>> = vec![
+            Box::new(OpeningHandAgent { accept: true }),
+            Box::new(OpeningHandAgent { accept: true }),
+        ];
+
+        let mut game_loop = GameLoop::new(2);
+        game_loop.run_opening_hand_actions(&mut game, &mut agents);
+
+        assert_eq!(game.card(card_id).zone, ZoneType::Hand);
+        assert!(game.cards_in_zone(ZoneType::Hand, p0).contains(&card_id));
+        let _ = p1;
     }
 }

@@ -1267,22 +1267,10 @@ impl GameLoop {
                 } else {
                     cost_str.clone()
                 };
-                // Save state for refund on cancel (recursive mana refund)
-                // Mirrors Java's ManaRefundService: save pool + permanent states
+                // Save pool for refund on failed deterministic mana payment.
+                // Java parity only refunds floating mana here; it does not roll
+                // back the activation costs of mana abilities that were used.
                 let saved_pool = self.pool(player).clone();
-                let saved_permanent_states: Vec<(
-                    CardId,
-                    bool,
-                    std::collections::BTreeMap<crate::card::CounterType, i32>,
-                )> = game
-                    .cards_in_zone(ZoneType::Battlefield, player)
-                    .iter()
-                    .map(|&cid| {
-                        let c = game.card(cid);
-                        (cid, c.tapped, c.counters.clone())
-                    })
-                    .collect();
-
                 let mut mana_loop_invalid_count = 0u32;
                 loop {
                     let tappable_lands: Vec<CardId> = game
@@ -1356,14 +1344,13 @@ impl GameLoop {
                                 mana_loop_invalid_count += 1;
                                 if mana_loop_invalid_count > 3 {
                                     *self.pool_mut(player) = saved_pool;
-                                    for &(cid, was_tapped, ref saved_counters) in
-                                        &saved_permanent_states
-                                    {
-                                        if !was_tapped && game.card(cid).tapped {
-                                            game.untap(cid);
-                                        }
-                                        game.card_mut(cid).set_counters_map(saved_counters.clone());
-                                    }
+                                    self.move_card_with_runtime(
+                                        game,
+                                        card_id,
+                                        ZoneType::Stack,
+                                        player,
+                                        agents,
+                                    );
                                     return None;
                                 }
                                 continue;
@@ -1455,15 +1442,13 @@ impl GameLoop {
                                     mana_loop_invalid_count += 1;
                                     if mana_loop_invalid_count > 3 {
                                         *self.pool_mut(player) = saved_pool;
-                                        for &(cid, was_tapped, ref saved_counters) in
-                                            &saved_permanent_states
-                                        {
-                                            if !was_tapped && game.card(cid).tapped {
-                                                game.untap(cid);
-                                            }
-                                            game.card_mut(cid)
-                                                .set_counters_map(saved_counters.clone());
-                                        }
+                                        self.move_card_with_runtime(
+                                            game,
+                                            card_id,
+                                            ZoneType::Stack,
+                                            player,
+                                            agents,
+                                        );
                                         return None;
                                     }
                                     continue;
@@ -1518,26 +1503,26 @@ impl GameLoop {
                                 mana_loop_invalid_count += 1;
                                 if mana_loop_invalid_count > 3 {
                                     *self.pool_mut(player) = saved_pool;
-                                    for &(cid, was_tapped, ref saved_counters) in
-                                        &saved_permanent_states
-                                    {
-                                        if !was_tapped && game.card(cid).tapped {
-                                            game.untap(cid);
-                                        }
-                                        game.card_mut(cid).set_counters_map(saved_counters.clone());
-                                    }
+                                    self.move_card_with_runtime(
+                                        game,
+                                        card_id,
+                                        ZoneType::Stack,
+                                        player,
+                                        agents,
+                                    );
                                     return None;
                                 }
                             }
                         }
                         ManaCostAction::Cancel => {
                             *self.pool_mut(player) = saved_pool;
-                            for &(cid, was_tapped, ref saved_counters) in &saved_permanent_states {
-                                if !was_tapped && game.card(cid).tapped {
-                                    game.untap(cid);
-                                }
-                                game.card_mut(cid).set_counters_map(saved_counters.clone());
-                            }
+                            self.move_card_with_runtime(
+                                game,
+                                card_id,
+                                ZoneType::Stack,
+                                player,
+                                agents,
+                            );
                             return None;
                         }
                     }
@@ -2110,14 +2095,16 @@ impl GameLoop {
                         );
                         if copy.spell_ability.uses_targeting() {
                             agents[player.index()].snapshot_state(game, &self.mana_pools);
-                            agents[player.index()].notify_event(
-                                crate::agent::GameLogEvent::stack(format!(
-                                    "Choose target for Storm copy {}/{}",
-                                    i + 1,
-                                    storm_count
-                                ))
-                                .with_player(player)
-                                .with_card(card_id),
+                            agents[player.index()].notify(
+                                crate::agent::notification::GameNotification::Event(
+                                    crate::agent::GameLogEvent::stack(format!(
+                                        "Choose target for Storm copy {}/{}",
+                                        i + 1,
+                                        storm_count
+                                    ))
+                                    .with_player(player)
+                                    .with_card(card_id),
+                                ),
                             );
                             copy.spell_ability
                                 .setup_targets(game, agents, &self.mana_pools);
@@ -2165,14 +2152,16 @@ impl GameLoop {
                         crate::card::card_factory::copy_spell_ability(&entry.spell_ability, player);
                     if copy.spell_ability.uses_targeting() {
                         agents[player.index()].snapshot_state(game, &self.mana_pools);
-                        agents[player.index()].notify_event(
-                            crate::agent::GameLogEvent::stack(format!(
-                                "Choose target for Replicate copy {}/{}",
-                                i + 1,
-                                replicate_count
-                            ))
-                            .with_player(player)
-                            .with_card(card_id),
+                        agents[player.index()].notify(
+                            crate::agent::notification::GameNotification::Event(
+                                crate::agent::GameLogEvent::stack(format!(
+                                    "Choose target for Replicate copy {}/{}",
+                                    i + 1,
+                                    replicate_count
+                                ))
+                                .with_player(player)
+                                .with_card(card_id),
+                            ),
                         );
                         copy.spell_ability
                             .setup_targets(game, agents, &self.mana_pools);

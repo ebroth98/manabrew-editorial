@@ -73,8 +73,8 @@ fn do_sacrifice(
         lki_power,
         lki_toughness,
     );
-    ctx.trigger_handler.flush_waiting_triggers(ctx.game);
     ctx.move_card(card_id, ZoneType::Graveyard, owner);
+    ctx.trigger_handler.flush_waiting_triggers(ctx.game);
     // Fire Exploited trigger when the sacrifice is from the Exploit keyword
     if let Some(source_id) = exploit_source {
         ctx.trigger_handler.run_trigger(

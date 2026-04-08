@@ -1,4 +1,5 @@
 use super::*;
+use crate::agent::notification::GameNotification;
 
 impl GameLoop {
     pub(crate) fn notify_phase_changed(
@@ -8,7 +9,9 @@ impl GameLoop {
     ) {
         for agent in agents.iter_mut() {
             agent.snapshot_state(game, &self.mana_pools);
-            agent.notify_phase_changed(game.turn.phase);
+            agent.notify(GameNotification::PhaseChanged {
+                phase: game.turn.phase,
+            });
         }
     }
 
@@ -20,7 +23,9 @@ impl GameLoop {
     ) {
         for agent in agents.iter_mut() {
             agent.snapshot_state(game, &self.mana_pools);
-            agent.notify_priority_player(priority_player);
+            agent.notify(GameNotification::PriorityChanged {
+                player: priority_player,
+            });
         }
     }
 
@@ -31,7 +36,7 @@ impl GameLoop {
     ) {
         for agent in agents.iter_mut() {
             agent.snapshot_state(game, &self.mana_pools);
-            agent.notify_state_changed();
+            agent.notify(GameNotification::StateChanged);
         }
     }
 

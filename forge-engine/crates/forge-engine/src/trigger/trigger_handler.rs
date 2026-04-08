@@ -478,12 +478,8 @@ impl TriggerHandler {
                 .get(&delayed.execute_svar)
                 .cloned();
             if let Some(text) = svar_text {
-                let mut sa = build_spell_ability(
-                    game,
-                    delayed.source_card,
-                    &text,
-                    delayed.controller,
-                );
+                let mut sa =
+                    build_spell_ability(game, delayed.source_card, &text, delayed.controller);
                 sa.is_trigger = true;
                 sa.trigger_source = Some(delayed.source_card);
                 sa.trigger_source_zone_timestamp =

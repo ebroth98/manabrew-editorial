@@ -95,7 +95,6 @@ impl PlayerAgent for PassAgent {
         }
     }
 
-    fn notify(&mut self, _message: &str) {}
 }
 
 fn make_counterspell_card(owner: PlayerId) -> CardInstance {

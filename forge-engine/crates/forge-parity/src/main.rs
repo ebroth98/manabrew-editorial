@@ -35,7 +35,7 @@
 //!    parallel burst (phase 1), then Java servers process results with streaming
 //!    comparison (phase 2). Java servers are never idle waiting for Rust.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -45,22 +45,21 @@ use std::time::Instant;
 use clap::Parser;
 use rayon::prelude::*;
 
-use forge_carddb::CardDatabase;
 use forge_parity::card_pool::CardPool;
 use forge_parity::comparator;
 use forge_parity::deck_generator;
+use forge_parity::deterministic_agent::VerboseMode;
 use forge_parity::java_bridge::{
     JavaBridge, JavaBridgeConfig, JavaBridgeError, JavaMatchupData, JavaServer, JavaServerConfig,
 };
 use forge_parity::java_cache::{self, JavaCache};
 use forge_parity::java_random::JavaRandom;
-use forge_parity::perf;
 use forge_parity::protocol::{
-    DecisionRecord, Divergence, FuzzReport, FuzzResult, MatchupResult, MatchupStatus, MatrixReport,
-    MechanicSignal,
+    CallbackRecord, Divergence, FuzzReport, FuzzResult, MatchupResult, MatchupStatus, MatrixReport,
 };
 use forge_parity::report;
-use forge_parity::runner::{self, available_presets, LoadedData, RunConfig, DEFAULT_DECKS_DIR};
+use forge_parity::runner::{self, LoadedData, RunConfig, DEFAULT_DECKS_DIR};
+use forge_parity::utils::decks::available_presets;
 use serde::Deserialize;
 
 #[derive(Debug, Clone, Deserialize)]
@@ -138,22 +137,7 @@ fn ignored_matchup<'a>(
 }
 
 fn skipped_result(config: &RunConfig, reason: &str) -> MatchupResult {
-    MatchupResult {
-        deck1: config.deck1.clone(),
-        deck2: config.deck2.clone(),
-        seed: config.seed,
-        status: MatchupStatus::Skipped,
-        snapshots_compared: 0,
-        divergence_count: 0,
-        first_divergence: None,
-        error_message: None,
-        skip_reason: Some(reason.to_string()),
-        trace: None,
-        java_trace: None,
-        covered_cards: vec![],
-        mechanic_signals: vec![],
-        finished_turn: None,
-    }
+    MatchupResult::skipped(config, reason.to_string())
 }
 
 /// Filter out decks matching any of the given prefixes.
@@ -230,9 +214,10 @@ struct Cli {
     #[arg(long, default_value = "text")]
     format: String,
 
-    /// Verbose output (log step-by-step decisions and per-game progress)
-    #[arg(long, short)]
-    verbose: bool,
+    /// Verbose output (log step-by-step decisions and per-game progress).
+    /// Use bare --verbose for all turns, or --verbose=21 / --verbose=21,22 for specific turns.
+    #[arg(long, short, num_args = 0..=1, default_missing_value = "")]
+    verbose: Option<String>,
 
     /// Bias random main-phase decisions toward taking an action instead of passing.
     #[arg(long)]
@@ -241,6 +226,10 @@ struct Cli {
     /// Capture and compare callback-entry snapshots before every decision callback.
     #[arg(long)]
     deep: bool,
+
+    /// On failures, print callback window diagnostics plus side-by-side Rust/Java decision logs.
+    #[arg(long)]
+    investigate: bool,
 
     /// Run all deck pair combinations across multiple seeds
     #[arg(long)]
@@ -356,6 +345,22 @@ struct Cli {
     exclude_prefix: Vec<String>,
 }
 
+impl Cli {
+    fn verbose_mode(&self) -> VerboseMode {
+        match &self.verbose {
+            None => VerboseMode::Off,
+            Some(s) => VerboseMode::from_flag(true, Some(s.as_str())),
+        }
+    }
+
+    /// True only for bare `--verbose` (all turns). Turn-specific `--verbose=25`
+    /// should not trigger general progress chatter — only the agent's per-turn
+    /// logging and the final diff.
+    fn is_verbose(&self) -> bool {
+        matches!(self.verbose, Some(ref s) if s.is_empty())
+    }
+}
+
 /// Resolve issue_threshold: CLI flag > env var > default (5)
 #[allow(dead_code)]
 fn resolve_issue_threshold(cli_val: i64) -> i64 {
@@ -373,6 +378,33 @@ fn resolve_issue_threshold(cli_val: i64) -> i64 {
 #[allow(dead_code)]
 fn resolve_github_repo(cli_val: Option<String>) -> Option<String> {
     cli_val.or_else(|| std::env::var("GITHUB_REPO").ok().filter(|s| !s.is_empty()))
+}
+
+fn build_config(cli: &Cli, deck1: &str, deck2: &str, seed: u64) -> RunConfig {
+    RunConfig {
+        deck1: deck1.to_string(),
+        deck2: deck2.to_string(),
+        seed,
+        max_turns: cli.max_turns,
+        cards_dir: cli.cards_dir.clone(),
+        decks_dir: cli.decks_dir.clone(),
+        verbose: cli.verbose_mode(),
+        prefer_actions: cli.prefer_actions,
+        deep: cli.deep,
+        java_heap: cli.java_heap.clone(),
+        variant: cli.variant.clone(),
+        commanders: cli.commander.clone(),
+    }
+}
+
+fn load_data_or_exit(cli: &Cli) -> runner::LoadedData {
+    match runner::load_data(cli.cards_dir.as_deref(), cli.is_verbose()) {
+        Ok(d) => d,
+        Err(e) => {
+            eprintln!("[parity] Load error: {}", e);
+            std::process::exit(1);
+        }
+    }
 }
 
 fn main() {
@@ -430,7 +462,7 @@ fn main() {
 
 fn run_multi_game_mode(cli: &Cli) {
     let t_mode = Instant::now();
-    if cli.verbose {
+    if cli.is_verbose() {
         eprintln!(
             "[parity] Running: {} vs {} | games={} | seed_start={} | max_turns={}",
             cli.deck1, cli.deck2, cli.games, cli.seed, cli.max_turns
@@ -439,13 +471,7 @@ fn run_multi_game_mode(cli: &Cli) {
 
     let ignores = load_parity_ignores();
     let seeds = game_seeds(cli.seed, cli.games);
-    let data = match runner::load_data(cli.cards_dir.as_deref(), cli.verbose) {
-        Ok(d) => d,
-        Err(e) => {
-            eprintln!("[parity] Load error: {}", e);
-            std::process::exit(1);
-        }
-    };
+    let data = load_data_or_exit(cli);
 
     let total = seeds.len();
     let results: Vec<MatchupResult> = if let Some(ref jar_path) = cli.java_jar {
@@ -454,12 +480,12 @@ fn run_multi_game_mode(cli: &Cli) {
             jar_path: jar_path.clone(),
             forge_home: None,
             decks_dir: cli.decks_dir.clone(),
-            verbose: cli.verbose,
+            verbose: cli.is_verbose(),
             java_heap: cli.java_heap.clone(),
         };
         match ServerPool::spawn(workers, &server_config) {
             Ok(pool) => {
-                if cli.verbose {
+                if cli.is_verbose() {
                     eprintln!(
                         "[parity] Multi-game mode: {} Java worker(s), {} games",
                         workers, total
@@ -470,24 +496,11 @@ fn run_multi_game_mode(cli: &Cli) {
                     .par_iter()
                     .enumerate()
                     .map(|(i, &seed)| {
-                        let config = RunConfig {
-                            deck1: cli.deck1.clone(),
-                            deck2: cli.deck2.clone(),
-                            seed,
-                            max_turns: cli.max_turns,
-                            cards_dir: cli.cards_dir.clone(),
-                            decks_dir: cli.decks_dir.clone(),
-                            verbose: cli.verbose,
-                            prefer_actions: cli.prefer_actions,
-                            deep: cli.deep,
-                            java_heap: cli.java_heap.clone(),
-                            variant: cli.variant.clone(),
-                            commanders: cli.commander.clone(),
-                        };
+                        let config = build_config(cli, &cli.deck1, &cli.deck2, seed);
 
                         if let Some(entry) = ignored_matchup(&config, &ignores) {
                             let result = skipped_result(&config, &entry.reason);
-                            if cli.verbose {
+                            if cli.is_verbose() {
                                 let n = completed.fetch_add(1, Ordering::Relaxed) + 1;
                                 eprintln!(
                                     "[parity] [{}/{}] seed={} ... SKIPPED: {}",
@@ -499,9 +512,8 @@ fn run_multi_game_mode(cli: &Cli) {
 
                         let t_match = Instant::now();
                         let result = run_single_matchup_pool(&config, &data, &pool);
-                        perf::record("multi_game.single_matchup_total", t_match.elapsed());
 
-                        if cli.verbose {
+                        if cli.is_verbose() {
                             let n = completed.fetch_add(1, Ordering::Relaxed) + 1;
                             match result.status {
                                 MatchupStatus::Pass => {
@@ -549,23 +561,10 @@ fn run_multi_game_mode(cli: &Cli) {
                 eprintln!("[parity] Falling back to one-shot mode");
                 let mut results: Vec<MatchupResult> = Vec::with_capacity(total);
                 for (i, seed) in seeds.iter().copied().enumerate() {
-                    let config = RunConfig {
-                        deck1: cli.deck1.clone(),
-                        deck2: cli.deck2.clone(),
-                        seed,
-                        max_turns: cli.max_turns,
-                        cards_dir: cli.cards_dir.clone(),
-                        decks_dir: cli.decks_dir.clone(),
-                        verbose: cli.verbose,
-                        prefer_actions: cli.prefer_actions,
-                        deep: cli.deep,
-                        java_heap: cli.java_heap.clone(),
-                        variant: cli.variant.clone(),
-                        commanders: cli.commander.clone(),
-                    };
+                    let config = build_config(cli, &cli.deck1, &cli.deck2, seed);
                     if let Some(entry) = ignored_matchup(&config, &ignores) {
                         let result = skipped_result(&config, &entry.reason);
-                        if cli.verbose {
+                        if cli.is_verbose() {
                             let n = i + 1;
                             eprintln!(
                                 "[parity] [{}/{}] seed={} ... SKIPPED: {}",
@@ -577,8 +576,7 @@ fn run_multi_game_mode(cli: &Cli) {
                     }
                     let t_match = Instant::now();
                     let result = run_single_matchup_oneshot(&config, &data, jar_path);
-                    perf::record("multi_game.single_matchup_total", t_match.elapsed());
-                    if cli.verbose {
+                    if cli.is_verbose() {
                         let n = i + 1;
                         match result.status {
                             MatchupStatus::Pass => {
@@ -621,25 +619,11 @@ fn run_multi_game_mode(cli: &Cli) {
     } else {
         let mut results: Vec<MatchupResult> = Vec::with_capacity(total);
         for (i, seed) in seeds.iter().copied().enumerate() {
-            let config = RunConfig {
-                deck1: cli.deck1.clone(),
-                deck2: cli.deck2.clone(),
-                seed,
-                max_turns: cli.max_turns,
-                cards_dir: cli.cards_dir.clone(),
-                decks_dir: cli.decks_dir.clone(),
-                verbose: cli.verbose,
-                prefer_actions: cli.prefer_actions,
-                deep: cli.deep,
-                java_heap: cli.java_heap.clone(),
-                variant: cli.variant.clone(),
-                commanders: cli.commander.clone(),
-            };
+            let config = build_config(cli, &cli.deck1, &cli.deck2, seed);
 
             let t_match = Instant::now();
             let result = run_single_matchup_rust_only(&config, &data);
-            perf::record("multi_game.single_matchup_total", t_match.elapsed());
-            if cli.verbose {
+            if cli.is_verbose() {
                 let n = i + 1;
                 match result.status {
                     MatchupStatus::Pass => {
@@ -720,20 +704,14 @@ fn run_multi_game_mode(cli: &Cli) {
                 &report_data.results,
                 dd,
             ));
-            out.push_str(&build_mechanics_report(
-                &cli.deck1,
-                &cli.deck2,
-                &report_data.results,
-                Some(&data.db),
-                dd,
-            ));
             out.push_str(&report::format_matrix_text(&report_data));
-            perf::record("multi_game.report_format_text", t_report.elapsed());
+            if cli.investigate {
+                out.push_str(&format_investigation_for_results(&report_data.results));
+            }
             out
         }
     };
     write_output(cli, &output);
-    perf::record("multi_game.total", t_mode.elapsed());
 
     if failed > 0 || errors > 0 {
         std::process::exit(1);
@@ -755,22 +733,9 @@ fn game_seeds(start_seed: u64, games: usize) -> Vec<u64> {
 }
 
 fn run_rust_only_mode(cli: &Cli) {
-    let config = RunConfig {
-        deck1: cli.deck1.clone(),
-        deck2: cli.deck2.clone(),
-        seed: cli.seed,
-        max_turns: cli.max_turns,
-        cards_dir: cli.cards_dir.clone(),
-        decks_dir: cli.decks_dir.clone(),
-        verbose: cli.verbose,
-        prefer_actions: cli.prefer_actions,
-        deep: cli.deep,
-        java_heap: cli.java_heap.clone(),
-        variant: cli.variant.clone(),
-        commanders: cli.commander.clone(),
-    };
+    let config = build_config(cli, &cli.deck1, &cli.deck2, cli.seed);
 
-    let data = match runner::load_data(config.cards_dir.as_deref(), cli.verbose) {
+    let data = match runner::load_data(config.cards_dir.as_deref(), cli.is_verbose()) {
         Ok(d) => d,
         Err(e) => {
             eprintln!("[parity] Load error: {}", e);
@@ -791,14 +756,9 @@ fn run_rust_only_mode(cli: &Cli) {
                     &collect_unique_deck_cards(&cli.deck1, &cli.deck2, dd),
                     &trace.covered_cards,
                 ));
-                let defs = collect_defined_mechanics(&cli.deck1, &cli.deck2, &data.db, dd);
-                output.push_str(&build_mechanics_report_from_signals(
-                    &trace.mechanic_signals,
-                    Some(&defs),
-                ));
             }
 
-            if cli.verbose {
+            if cli.is_verbose() {
                 eprintln!(
                     "[parity] Done: {} snapshots collected",
                     trace.snapshots.len()
@@ -810,149 +770,6 @@ fn run_rust_only_mode(cli: &Cli) {
             eprintln!("[parity] Error: {}", e);
             std::process::exit(1);
         }
-    }
-}
-
-#[allow(dead_code)]
-fn run_parity_mode(cli: &Cli, jar_path: &PathBuf) {
-    if cli.verbose {
-        eprintln!("[parity] Full parity mode — running both engines");
-    }
-
-    let config = RunConfig {
-        deck1: cli.deck1.clone(),
-        deck2: cli.deck2.clone(),
-        seed: cli.seed,
-        max_turns: cli.max_turns,
-        cards_dir: cli.cards_dir.clone(),
-        decks_dir: cli.decks_dir.clone(),
-        verbose: cli.verbose,
-        prefer_actions: cli.prefer_actions,
-        deep: cli.deep,
-        java_heap: cli.java_heap.clone(),
-        variant: cli.variant.clone(),
-        commanders: cli.commander.clone(),
-    };
-
-    if let Some(entry) = ignored_matchup(&config, &load_parity_ignores()) {
-        let report_data = MatrixReport {
-            total_matchups: 1,
-            passed: 0,
-            skipped: 1,
-            failed: 0,
-            errors: 0,
-            seeds: vec![config.seed],
-            decks: vec![config.deck1.clone(), config.deck2.clone()],
-            max_turns: config.max_turns,
-            results: vec![skipped_result(&config, &entry.reason)],
-        };
-        let output = match cli.format.as_str() {
-            "json" => report::format_matrix_json(&report_data),
-            _ => report::format_matrix_text(&report_data),
-        };
-        write_output(cli, &output);
-        return;
-    }
-
-    let data = match runner::load_data(config.cards_dir.as_deref(), cli.verbose) {
-        Ok(d) => d,
-        Err(e) => {
-            eprintln!("[parity] Load error: {}", e);
-            std::process::exit(1);
-        }
-    };
-
-    // Spawn a Java server for the single matchup
-    let server_config = JavaServerConfig {
-        jar_path: jar_path.clone(),
-        forge_home: None,
-        decks_dir: cli.decks_dir.clone(),
-        verbose: cli.verbose,
-        java_heap: cli.java_heap.clone(),
-    };
-
-    let result = match JavaServer::spawn(&server_config) {
-        Ok(mut server) => {
-            let result = run_single_matchup_server(&config, &data, &mut server);
-            server.shutdown();
-            result
-        }
-        Err(e) => {
-            eprintln!(
-                "[parity] Failed to spawn Java server, falling back to one-shot mode: {}",
-                e
-            );
-            run_single_matchup_oneshot(&config, &data, jar_path)
-        }
-    };
-
-    let parity_report = report::build_report(
-        // Build a minimal trace for the report
-        &forge_parity::protocol::GameTrace {
-            seed: config.seed,
-            deck1: config.deck1.clone(),
-            deck2: config.deck2.clone(),
-            max_turns: config.max_turns,
-            variant: config.variant.clone(),
-            commanders: config.commanders.clone(),
-            snapshots: vec![], // not used by build_report beyond len
-            decisions: vec![],
-            covered_cards: vec![],
-            mechanic_signals: vec![],
-        },
-        match &result.status {
-            MatchupStatus::Pass => vec![],
-            _ => result.first_divergence.clone().into_iter().collect(),
-        },
-    );
-
-    // Override total_snapshots from the actual result
-    let parity_report = forge_parity::protocol::ParityReport {
-        total_snapshots: result.snapshots_compared,
-        ..parity_report
-    };
-
-    let mut output = match cli.format.as_str() {
-        "json" => report::format_json(&parity_report),
-        _ => report::format_text(&parity_report),
-    };
-    if cli.format != "json" {
-        let dd = cli.decks_dir.as_deref().unwrap_or(DEFAULT_DECKS_DIR);
-        output.push_str(&build_coverage_report(
-            &cli.deck1,
-            &cli.deck2,
-            std::slice::from_ref(&result),
-            dd,
-        ));
-        output.push_str(&build_mechanics_report(
-            &cli.deck1,
-            &cli.deck2,
-            std::slice::from_ref(&result),
-            Some(&data.db),
-            dd,
-        ));
-    }
-
-    let mut exit_code = 0;
-    if result.status == MatchupStatus::Pass {
-        if cli.verbose {
-            eprintln!(
-                "[parity] PASS — engines agree on all {} snapshots",
-                result.snapshots_compared
-            );
-        }
-    } else {
-        eprintln!(
-            "[parity] FAIL — {} divergence(s) found across {} snapshots",
-            result.divergence_count, result.snapshots_compared
-        );
-        exit_code = 1;
-    }
-
-    write_output(cli, &output);
-
-    if exit_code != 0 {
-        std::process::exit(exit_code);
     }
 }
 
@@ -980,6 +797,7 @@ fn run_single_matchup_server(
             config.deep,
             &config.variant,
             &config.commanders,
+            config.verbose.to_java_arg(),
         );
 
         let rust_result = rust_handle.join().expect("Rust engine thread panicked");
@@ -989,44 +807,14 @@ fn run_single_matchup_server(
     let rust_trace = match rust_result {
         Ok(trace) => trace,
         Err(e) => {
-            return MatchupResult {
-                deck1: config.deck1.clone(),
-                deck2: config.deck2.clone(),
-                seed: config.seed,
-                status: MatchupStatus::Error,
-                snapshots_compared: 0,
-                divergence_count: 0,
-                first_divergence: None,
-                error_message: Some(format!("Rust engine error: {}", e)),
-                skip_reason: None,
-                trace: None,
-                java_trace: None,
-                covered_cards: vec![],
-                mechanic_signals: vec![],
-                finished_turn: None,
-            };
+            return MatchupResult::error(config, format!("Rust engine error: {}", e));
         }
     };
 
     let java_data = match java_result {
         Ok(snaps) => snaps,
         Err(e) => {
-            return MatchupResult {
-                deck1: config.deck1.clone(),
-                deck2: config.deck2.clone(),
-                seed: config.seed,
-                status: MatchupStatus::Error,
-                snapshots_compared: 0,
-                divergence_count: 0,
-                first_divergence: None,
-                error_message: Some(format!("Java server error: {}", e)),
-                skip_reason: None,
-                trace: None,
-                java_trace: None,
-                covered_cards: vec![],
-                mechanic_signals: vec![],
-                finished_turn: None,
-            };
+            return MatchupResult::error(config, format!("Java server error: {}", e));
         }
     };
 
@@ -1035,12 +823,10 @@ fn run_single_matchup_server(
         config,
         &rust_trace.snapshots,
         &rust_trace.decisions,
+        &rust_trace.callbacks,
         &java_data,
     );
-    perf::record("single_matchup_server.compare_snapshots", t_cmp.elapsed());
     result.covered_cards = rust_trace.covered_cards;
-    result.mechanic_signals = rust_trace.mechanic_signals;
-    perf::record("single_matchup_server.total", t_total.elapsed());
     result
 }
 
@@ -1063,6 +849,7 @@ fn run_single_matchup_pool(
             config.deep,
             &config.variant,
             &config.commanders,
+            config.verbose.to_java_arg(),
         );
         let rust_result = rust_handle.join().expect("Rust engine thread panicked");
         (rust_result, java_result)
@@ -1071,44 +858,14 @@ fn run_single_matchup_pool(
     let rust_trace = match rust_result {
         Ok(trace) => trace,
         Err(e) => {
-            return MatchupResult {
-                deck1: config.deck1.clone(),
-                deck2: config.deck2.clone(),
-                seed: config.seed,
-                status: MatchupStatus::Error,
-                snapshots_compared: 0,
-                divergence_count: 0,
-                first_divergence: None,
-                error_message: Some(format!("Rust engine error: {}", e)),
-                skip_reason: None,
-                trace: None,
-                java_trace: None,
-                covered_cards: vec![],
-                mechanic_signals: vec![],
-                finished_turn: None,
-            };
+            return MatchupResult::error(config, format!("Rust engine error: {}", e));
         }
     };
 
     let java_data = match java_result {
         Ok(snaps) => snaps,
         Err(e) => {
-            return MatchupResult {
-                deck1: config.deck1.clone(),
-                deck2: config.deck2.clone(),
-                seed: config.seed,
-                status: MatchupStatus::Error,
-                snapshots_compared: 0,
-                divergence_count: 0,
-                first_divergence: None,
-                error_message: Some(format!("Java server error: {}", e)),
-                skip_reason: None,
-                trace: None,
-                java_trace: None,
-                covered_cards: vec![],
-                mechanic_signals: vec![],
-                finished_turn: None,
-            };
+            return MatchupResult::error(config, format!("Java server error: {}", e));
         }
     };
 
@@ -1117,12 +874,10 @@ fn run_single_matchup_pool(
         config,
         &rust_trace.snapshots,
         &rust_trace.decisions,
+        &rust_trace.callbacks,
         &java_data,
     );
-    perf::record("single_matchup_pool.compare_snapshots", t_cmp.elapsed());
     result.covered_cards = rust_trace.covered_cards;
-    result.mechanic_signals = rust_trace.mechanic_signals;
-    perf::record("single_matchup_pool.total", t_total.elapsed());
     result
 }
 
@@ -1147,10 +902,11 @@ fn run_single_matchup_oneshot(
                 deck2: config.deck2.clone(),
                 forge_home: None,
                 decks_dir: config.decks_dir.clone(),
-                verbose: config.verbose,
+                verbose: config.verbose.is_any(),
                 prefer_actions: config.prefer_actions,
                 deep: config.deep,
                 java_heap: config.java_heap.clone(),
+                verbose_turns: config.verbose.to_java_arg(),
             };
             let bridge = JavaBridge::new(bridge_config);
             bridge.run()
@@ -1165,44 +921,14 @@ fn run_single_matchup_oneshot(
     let rust_trace = match rust_result {
         Ok(trace) => trace,
         Err(e) => {
-            return MatchupResult {
-                deck1: config.deck1.clone(),
-                deck2: config.deck2.clone(),
-                seed: config.seed,
-                status: MatchupStatus::Error,
-                snapshots_compared: 0,
-                divergence_count: 0,
-                first_divergence: None,
-                error_message: Some(format!("Rust engine error: {}", e)),
-                skip_reason: None,
-                trace: None,
-                java_trace: None,
-                covered_cards: vec![],
-                mechanic_signals: vec![],
-                finished_turn: None,
-            };
+            return MatchupResult::error(config, format!("Rust engine error: {}", e));
         }
     };
 
     let java_data = match java_result {
         Ok(data) => data,
         Err(e) => {
-            return MatchupResult {
-                deck1: config.deck1.clone(),
-                deck2: config.deck2.clone(),
-                seed: config.seed,
-                status: MatchupStatus::Error,
-                snapshots_compared: 0,
-                divergence_count: 0,
-                first_divergence: None,
-                error_message: Some(format!("Java engine error: {}", e)),
-                skip_reason: None,
-                trace: None,
-                java_trace: None,
-                covered_cards: vec![],
-                mechanic_signals: vec![],
-                finished_turn: None,
-            };
+            return MatchupResult::error(config, format!("Java engine error: {}", e));
         }
     };
 
@@ -1211,12 +937,10 @@ fn run_single_matchup_oneshot(
         config,
         &rust_trace.snapshots,
         &rust_trace.decisions,
+        &rust_trace.callbacks,
         &java_data,
     );
-    perf::record("single_matchup_oneshot.compare_snapshots", t_cmp.elapsed());
     result.covered_cards = rust_trace.covered_cards;
-    result.mechanic_signals = rust_trace.mechanic_signals;
-    perf::record("single_matchup_oneshot.total", t_total.elapsed());
     result
 }
 
@@ -1233,10 +957,12 @@ fn run_single_matchup_rust_only(config: &RunConfig, data: &LoadedData) -> Matchu
             first_divergence: None,
             error_message: None,
             skip_reason: None,
-            trace: None,
-            java_trace: None,
+            rust_snapshot: None,
+            java_snapshot: None,
             covered_cards: trace.covered_cards,
-            mechanic_signals: trace.mechanic_signals,
+            callback_window: vec![],
+            decision_window: vec![],
+            java_decision_window: vec![],
             finished_turn: trace.snapshots.last().and_then(|s| {
                 if s.game_over {
                     Some(s.turn)
@@ -1245,22 +971,7 @@ fn run_single_matchup_rust_only(config: &RunConfig, data: &LoadedData) -> Matchu
                 }
             }),
         },
-        Err(e) => MatchupResult {
-            deck1: config.deck1.clone(),
-            deck2: config.deck2.clone(),
-            seed: config.seed,
-            status: MatchupStatus::Error,
-            snapshots_compared: 0,
-            divergence_count: 0,
-            first_divergence: None,
-            error_message: Some(format!("Rust engine error: {}", e)),
-            skip_reason: None,
-            trace: None,
-            java_trace: None,
-            covered_cards: vec![],
-            mechanic_signals: vec![],
-            finished_turn: None,
-        },
+        Err(e) => MatchupResult::error(config, format!("Rust engine error: {}", e)),
     }
 }
 
@@ -1268,7 +979,8 @@ fn run_single_matchup_rust_only(config: &RunConfig, data: &LoadedData) -> Matchu
 fn compare_snapshots(
     config: &RunConfig,
     rust_snapshots: &[forge_parity::protocol::StateSnapshot],
-    rust_decisions: &[DecisionRecord],
+    rust_decisions: &[forge_parity::protocol::DecisionRecord],
+    rust_callbacks: &[CallbackRecord],
     java_data: &JavaMatchupData,
 ) -> MatchupResult {
     let java_snapshots = &java_data.snapshots;
@@ -1338,107 +1050,28 @@ fn compare_snapshots(
         }
     }
 
-    if first_divergence.is_none() && !config.deep {
-        let rust_payment_checkpoints: Vec<&DecisionRecord> = rust_decisions
-            .iter()
-            .filter(|d| d.kind == "pay_mana_cost_callback")
-            .collect();
-        let java_payment_checkpoints: Vec<&DecisionRecord> = java_data
-            .decisions
-            .iter()
-            .filter(|d| d.kind == "pay_mana_cost_callback")
-            .collect();
-        let max_checkpoints = rust_payment_checkpoints
-            .len()
-            .max(java_payment_checkpoints.len());
-        for i in 0..max_checkpoints {
-            match (
-                rust_payment_checkpoints.get(i),
-                java_payment_checkpoints.get(i),
-            ) {
-                (Some(rd), Some(jd)) => {
-                    if rd != jd {
-                        let (field, rust_value, java_value) = if rd.turn != jd.turn {
-                            (
-                                "payment_checkpoint.turn",
-                                rd.turn.to_string(),
-                                jd.turn.to_string(),
-                            )
-                        } else if rd.phase != jd.phase {
-                            (
-                                "payment_checkpoint.phase",
-                                rd.phase.clone(),
-                                jd.phase.clone(),
-                            )
-                        } else if rd.deciding_player != jd.deciding_player {
-                            (
-                                "payment_checkpoint.deciding_player",
-                                rd.deciding_player.to_string(),
-                                jd.deciding_player.to_string(),
-                            )
-                        } else if rd.options != jd.options {
-                            (
-                                "payment_checkpoint.options",
-                                format!("{:?}", rd.options),
-                                format!("{:?}", jd.options),
-                            )
-                        } else {
-                            (
-                                "payment_checkpoint.choice",
-                                rd.choice.clone(),
-                                jd.choice.clone(),
-                            )
-                        };
-                        first_divergence = Some(Divergence {
-                            snapshot_index: compared_until.saturating_sub(1),
-                            turn: rd.turn,
-                            phase: rd.phase.clone(),
-                            field: field.into(),
-                            rust_value,
-                            java_value,
-                        });
-                        break;
-                    }
-                }
-                (Some(rd), None) => {
-                    first_divergence = Some(Divergence {
-                        snapshot_index: compared_until.saturating_sub(1),
-                        turn: rd.turn,
-                        phase: rd.phase.clone(),
-                        field: "payment_checkpoint.exists".into(),
-                        rust_value: format!(
-                            "{} {} {:?} {}",
-                            rd.kind, rd.deciding_player, rd.options, rd.choice
-                        ),
-                        java_value: "missing".into(),
-                    });
-                    break;
-                }
-                (None, Some(jd)) => {
-                    first_divergence = Some(Divergence {
-                        snapshot_index: compared_until.saturating_sub(1),
-                        turn: jd.turn,
-                        phase: jd.phase.clone(),
-                        field: "payment_checkpoint.exists".into(),
-                        rust_value: "missing".into(),
-                        java_value: format!(
-                            "{} {} {:?} {}",
-                            jd.kind, jd.deciding_player, jd.options, jd.choice
-                        ),
-                    });
-                    break;
-                }
-                (None, None) => {}
-            }
-        }
-    }
-
     let divergence_count = usize::from(first_divergence.is_some());
     let status = if first_divergence.is_none() {
         MatchupStatus::Pass
     } else {
         MatchupStatus::Fail
     };
+    let callback_window: Vec<CallbackRecord> = first_divergence
+        .as_ref()
+        .map(|div| {
+            rust_callbacks
+                .iter()
+                .filter(|cb| cb.snapshot_index == div.snapshot_index)
+                .cloned()
+                .collect()
+        })
+        .unwrap_or_default();
+    let mut decision_window = decision_records_for_callbacks(&callback_window, rust_decisions);
+    if decision_window.is_empty() {
+        decision_window = synthesize_decisions_from_callbacks(&callback_window);
+    }
+    let java_decision_window =
+        decision_records_for_callbacks(&callback_window, &java_data.decisions);
 
     MatchupResult {
         deck1: config.deck1.clone(),
@@ -1447,25 +1080,25 @@ fn compare_snapshots(
         status,
         snapshots_compared: compared_until,
         divergence_count,
-        trace: first_divergence.as_ref().map(|_| {
-            format_rust_trace(
-                config,
-                &rust_snapshots[..compared_until.min(rust_snapshots.len())],
-                rust_decisions,
-            )
+        rust_snapshot: first_divergence.as_ref().map(|_| {
+            let idx = compared_until
+                .saturating_sub(1)
+                .min(rust_snapshots.len().saturating_sub(1));
+            rust_snapshots[idx].clone()
         }),
-        java_trace: first_divergence.as_ref().map(|_| {
-            format_java_trace(
-                config,
-                &java_snapshots[..compared_until.min(java_snapshots.len())],
-                &java_data.decisions,
-            )
+        java_snapshot: first_divergence.as_ref().map(|_| {
+            let idx = compared_until
+                .saturating_sub(1)
+                .min(java_snapshots.len().saturating_sub(1));
+            java_snapshots[idx].clone()
         }),
         first_divergence,
         error_message: None,
         skip_reason: None,
         covered_cards: vec![],
-        mechanic_signals: vec![],
+        callback_window,
+        decision_window,
+        java_decision_window,
         finished_turn: rust_snapshots.last().and_then(|s| {
             if s.game_over {
                 Some(s.turn)
@@ -1524,45 +1157,6 @@ fn find_deep_resync(
     best
 }
 
-fn format_rust_trace(
-    config: &RunConfig,
-    rust_snapshots: &[forge_parity::protocol::StateSnapshot],
-    rust_decisions: &[DecisionRecord],
-) -> String {
-    report::format_trace_text(&forge_parity::protocol::GameTrace {
-        seed: config.seed,
-        deck1: config.deck1.clone(),
-        deck2: config.deck2.clone(),
-        max_turns: config.max_turns,
-        variant: config.variant.clone(),
-        commanders: config.commanders.clone(),
-        snapshots: rust_snapshots.to_vec(),
-        decisions: rust_decisions.to_vec(),
-        covered_cards: vec![],
-        mechanic_signals: vec![],
-    })
-}
-
-fn format_java_trace(
-    config: &RunConfig,
-    java_snapshots: &[forge_parity::protocol::StateSnapshot],
-    java_decisions: &[DecisionRecord],
-) -> String {
-    report::format_trace_text(&forge_parity::protocol::GameTrace {
-        seed: config.seed,
-        deck1: config.deck1.clone(),
-        deck2: config.deck2.clone(),
-        max_turns: config.max_turns,
-        variant: config.variant.clone(),
-        commanders: config.commanders.clone(),
-        snapshots: java_snapshots.to_vec(),
-        decisions: java_decisions.to_vec(),
-        covered_cards: vec![],
-        mechanic_signals: vec![],
-    })
-    .replace("(Rust-only)", "(Java-only)")
-}
-
 /// A pool of JavaServer instances behind mutexes for parallel access.
 struct ServerPool {
     servers: Vec<Mutex<JavaServer>>,
@@ -1596,6 +1190,7 @@ impl ServerPool {
         deep: bool,
         variant: &str,
         commanders: &[String],
+        verbose_turns: Option<String>,
         on_snapshot: F,
     ) -> Result<JavaMatchupData, JavaBridgeError>
     where
@@ -1615,6 +1210,7 @@ impl ServerPool {
                     deep,
                     variant,
                     commanders,
+                    verbose_turns,
                     on_snapshot,
                 );
             }
@@ -1631,6 +1227,7 @@ impl ServerPool {
             deep,
             variant,
             commanders,
+            verbose_turns,
             on_snapshot,
         )
     }
@@ -1646,6 +1243,7 @@ impl ServerPool {
         deep: bool,
         variant: &str,
         commanders: &[String],
+        verbose_turns: Option<String>,
     ) -> Result<JavaMatchupData, JavaBridgeError> {
         self.run_matchup_streaming(
             deck1,
@@ -1656,6 +1254,7 @@ impl ServerPool {
             deep,
             variant,
             commanders,
+            verbose_turns,
             |_, _| true,
         )
     }
@@ -1710,7 +1309,7 @@ fn run_matrix_mode(cli: &Cli) {
     }
 
     let total = pairs.len() * seeds.len();
-    if cli.verbose {
+    if cli.is_verbose() {
         eprintln!(
             "[parity] Matrix mode: {} decks × {} seeds = {} matchups",
             deck_names.len(),
@@ -1720,13 +1319,7 @@ fn run_matrix_mode(cli: &Cli) {
     }
 
     // Load data once
-    let data = match runner::load_data(cli.cards_dir.as_deref(), cli.verbose) {
-        Ok(d) => d,
-        Err(e) => {
-            eprintln!("[parity] Load error: {}", e);
-            std::process::exit(1);
-        }
-    };
+    let data = load_data_or_exit(cli);
 
     // Build flat list of (d1, d2, seed) jobs for parallel execution
     let all_jobs: Vec<(&str, &str, u64)> = pairs
@@ -1736,20 +1329,7 @@ fn run_matrix_mode(cli: &Cli) {
     let mut skipped_results = Vec::new();
     let mut jobs = Vec::new();
     for (d1, d2, seed) in all_jobs {
-        let config = RunConfig {
-            deck1: d1.to_string(),
-            deck2: d2.to_string(),
-            seed,
-            max_turns: cli.max_turns,
-            cards_dir: cli.cards_dir.clone(),
-            decks_dir: cli.decks_dir.clone(),
-            verbose: cli.verbose,
-            prefer_actions: cli.prefer_actions,
-            deep: cli.deep,
-            java_heap: cli.java_heap.clone(),
-            variant: cli.variant.clone(),
-            commanders: cli.commander.clone(),
-        };
+        let config = build_config(cli, d1, d2, seed);
         if let Some(entry) = ignored_matchup(&config, &ignores) {
             skipped_results.push(skipped_result(&config, &entry.reason));
         } else {
@@ -1774,7 +1354,7 @@ fn run_matrix_mode(cli: &Cli) {
             jar_path: jar_path.clone(),
             forge_home: None,
             decks_dir: cli.decks_dir.clone(),
-            verbose: cli.verbose,
+            verbose: cli.is_verbose(),
             java_heap: cli.java_heap.clone(),
         };
         match ServerPool::spawn(num_workers.max(1), &server_config) {
@@ -1831,22 +1411,9 @@ fn run_matrix_mode(cli: &Cli) {
     let rust_phase: Vec<(RunConfig, Result<forge_parity::protocol::GameTrace, String>)> = jobs
         .par_iter()
         .map(|&(d1, d2, seed)| {
-            let config = RunConfig {
-                deck1: d1.to_string(),
-                deck2: d2.to_string(),
-                seed,
-                max_turns: cli.max_turns,
-                cards_dir: cli.cards_dir.clone(),
-                decks_dir: cli.decks_dir.clone(),
-                verbose: cli.verbose,
-                prefer_actions: cli.prefer_actions,
-                deep: cli.deep,
-                java_heap: cli.java_heap.clone(),
-                variant: cli.variant.clone(),
-                commanders: cli.commander.clone(),
-            };
+            let config = build_config(cli, d1, d2, seed);
             let result = runner::run_with_data(&config, &data);
-            if cli.verbose {
+            if cli.is_verbose() {
                 let n = rust_completed.fetch_add(1, Ordering::Relaxed) + 1;
                 eprintln!(
                     "[parity] [Rust {}/{}] {} vs {} seed={} ... {}",
@@ -1862,7 +1429,7 @@ fn run_matrix_mode(cli: &Cli) {
         })
         .collect();
 
-    if cli.verbose {
+    if cli.is_verbose() {
         eprintln!("[parity] Phase 1 complete: all Rust games finished");
     }
 
@@ -1889,10 +1456,10 @@ fn run_matrix_mode(cli: &Cli) {
                                 config,
                                 &trace.snapshots,
                                 &trace.decisions,
+                                &trace.callbacks,
                                 &cached_java,
                             );
                             result.covered_cards = trace.covered_cards.clone();
-                            result.mechanic_signals = trace.mechanic_signals.clone();
                             return result;
                         }
                         cache_misses.fetch_add(1, Ordering::Relaxed);
@@ -1907,25 +1474,10 @@ fn run_matrix_mode(cli: &Cli) {
                         build_rust_only_result(config, trace)
                     }
                 }
-                Err(e) => MatchupResult {
-                    deck1: config.deck1.clone(),
-                    deck2: config.deck2.clone(),
-                    seed: config.seed,
-                    status: MatchupStatus::Error,
-                    snapshots_compared: 0,
-                    divergence_count: 0,
-                    first_divergence: None,
-                    error_message: Some(format!("Rust engine error: {}", e)),
-                    skip_reason: None,
-                    trace: None,
-                    java_trace: None,
-                    covered_cards: vec![],
-                    mechanic_signals: vec![],
-                    finished_turn: None,
-                },
+                Err(e) => MatchupResult::error(config, format!("Rust engine error: {}", e)),
             };
 
-            if cli.verbose {
+            if cli.is_verbose() {
                 let n = completed.fetch_add(1, Ordering::Relaxed) + 1;
                 match result.status {
                     MatchupStatus::Pass => {
@@ -2067,26 +1619,12 @@ fn run_java_compare_and_cache(
         config.deep,
         &config.variant,
         &config.commanders,
+        config.verbose.to_java_arg(),
         |_, _| true, // collect all snapshots
     ) {
         Ok(data) => data,
         Err(e) => {
-            return MatchupResult {
-                deck1: config.deck1.clone(),
-                deck2: config.deck2.clone(),
-                seed: config.seed,
-                status: MatchupStatus::Error,
-                snapshots_compared: 0,
-                divergence_count: 0,
-                first_divergence: None,
-                error_message: Some(format!("Java server error: {}", e)),
-                skip_reason: None,
-                trace: None,
-                java_trace: None,
-                covered_cards: rust_trace.covered_cards.clone(),
-                mechanic_signals: rust_trace.mechanic_signals.clone(),
-                finished_turn: None,
-            };
+            return MatchupResult::error(config, format!("Java server error: {}", e));
         }
     };
 
@@ -2094,10 +1632,10 @@ fn run_java_compare_and_cache(
         config,
         &rust_trace.snapshots,
         &rust_trace.decisions,
+        &rust_trace.callbacks,
         &java_data,
     );
     result.covered_cards = rust_trace.covered_cards.clone();
-    result.mechanic_signals = rust_trace.mechanic_signals.clone();
 
     // Cache Java output — Java is deterministic for a given source hash,
     // so both passes and failures produce the same Java data next time.
@@ -2138,6 +1676,7 @@ fn run_java_streaming_compare_pool(
         config.deep,
         &config.variant,
         &config.commanders,
+        config.verbose.to_java_arg(),
         |idx, java_snap| {
             if let Some(rust_snap) = rust_snapshots.get(idx) {
                 let divs = comparator::compare(idx, rust_snap, java_snap);
@@ -2167,22 +1706,7 @@ fn run_java_streaming_compare_pool(
     let java_data = match java_result {
         Ok(data) => data,
         Err(e) => {
-            return MatchupResult {
-                deck1: config.deck1.clone(),
-                deck2: config.deck2.clone(),
-                seed: config.seed,
-                status: MatchupStatus::Error,
-                snapshots_compared: 0,
-                divergence_count: 0,
-                first_divergence: None,
-                error_message: Some(format!("Java server error: {}", e)),
-                skip_reason: None,
-                trace: None,
-                java_trace: None,
-                covered_cards: rust_trace.covered_cards.clone(),
-                mechanic_signals: rust_trace.mechanic_signals.clone(),
-                finished_turn: None,
-            };
+            return MatchupResult::error(config, format!("Java server error: {}", e));
         }
     };
 
@@ -2208,6 +1732,24 @@ fn run_java_streaming_compare_pool(
     } else {
         MatchupStatus::Fail
     };
+    let callback_window: Vec<CallbackRecord> = first_divergence
+        .as_ref()
+        .map(|div| {
+            rust_trace
+                .callbacks
+                .iter()
+                .filter(|cb| cb.snapshot_index == div.snapshot_index)
+                .cloned()
+                .collect()
+        })
+        .unwrap_or_default();
+    let mut decision_window =
+        decision_records_for_callbacks(&callback_window, &rust_trace.decisions);
+    if decision_window.is_empty() {
+        decision_window = synthesize_decisions_from_callbacks(&callback_window);
+    }
+    let java_decision_window =
+        decision_records_for_callbacks(&callback_window, &java_data.decisions);
 
     MatchupResult {
         deck1: config.deck1.clone(),
@@ -2220,25 +1762,25 @@ fn run_java_streaming_compare_pool(
             rust_snapshots.len().max(java_data.snapshots.len())
         },
         divergence_count,
-        trace: first_divergence.as_ref().map(|_| {
-            format_rust_trace(
-                config,
-                &rust_snapshots[..compared_until.min(rust_snapshots.len())],
-                &rust_trace.decisions,
-            )
+        rust_snapshot: first_divergence.as_ref().map(|_| {
+            let idx = compared_until
+                .saturating_sub(1)
+                .min(rust_snapshots.len().saturating_sub(1));
+            rust_snapshots[idx].clone()
         }),
-        java_trace: first_divergence.as_ref().map(|_| {
-            format_java_trace(
-                config,
-                &java_data.snapshots[..compared_until.min(java_data.snapshots.len())],
-                &java_data.decisions,
-            )
+        java_snapshot: first_divergence.as_ref().map(|_| {
+            let idx = compared_until
+                .saturating_sub(1)
+                .min(java_data.snapshots.len().saturating_sub(1));
+            java_data.snapshots[idx].clone()
         }),
         first_divergence,
         error_message: None,
         skip_reason: None,
         covered_cards: rust_trace.covered_cards.clone(),
-        mechanic_signals: rust_trace.mechanic_signals.clone(),
+        callback_window,
+        decision_window,
+        java_decision_window,
         finished_turn: rust_snapshots.last().and_then(|s| {
             if s.game_over {
                 Some(s.turn)
@@ -2264,41 +1806,27 @@ fn run_java_streaming_compare_oneshot(
         deck2: config.deck2.clone(),
         forge_home: None,
         decks_dir: config.decks_dir.clone(),
-        verbose: config.verbose,
+        verbose: config.verbose.is_any(),
         prefer_actions: config.prefer_actions,
         deep: config.deep,
         java_heap: config.java_heap.clone(),
+        verbose_turns: config.verbose.to_java_arg(),
     };
     let bridge = JavaBridge::new(bridge_config);
     let java_data = match bridge.run() {
         Ok(data) => data,
         Err(e) => {
-            return MatchupResult {
-                deck1: config.deck1.clone(),
-                deck2: config.deck2.clone(),
-                seed: config.seed,
-                status: MatchupStatus::Error,
-                snapshots_compared: 0,
-                divergence_count: 0,
-                first_divergence: None,
-                error_message: Some(format!("Java engine error: {}", e)),
-                skip_reason: None,
-                trace: None,
-                java_trace: None,
-                covered_cards: rust_trace.covered_cards.clone(),
-                mechanic_signals: rust_trace.mechanic_signals.clone(),
-                finished_turn: None,
-            };
+            return MatchupResult::error(config, format!("Java engine error: {}", e));
         }
     };
     let mut result = compare_snapshots(
         config,
         &rust_trace.snapshots,
         &rust_trace.decisions,
+        &rust_trace.callbacks,
         &java_data,
     );
     result.covered_cards = rust_trace.covered_cards.clone();
-    result.mechanic_signals = rust_trace.mechanic_signals.clone();
     result
 }
 
@@ -2317,10 +1845,12 @@ fn build_rust_only_result(
         first_divergence: None,
         error_message: None,
         skip_reason: None,
-        trace: None,
-        java_trace: None,
+        rust_snapshot: None,
+        java_snapshot: None,
         covered_cards: trace.covered_cards.clone(),
-        mechanic_signals: trace.mechanic_signals.clone(),
+        callback_window: vec![],
+        decision_window: vec![],
+        java_decision_window: vec![],
         finished_turn: trace.snapshots.last().and_then(|s| {
             if s.game_over {
                 Some(s.turn)
@@ -2331,8 +1861,185 @@ fn build_rust_only_result(
     }
 }
 
+fn format_callback_window_text(result: &MatchupResult) -> String {
+    if result.status != MatchupStatus::Fail {
+        return String::new();
+    }
+
+    let mut out = String::new();
+    out.push_str("\n--- Callback Window (last good -> first divergent snapshot) ---\n");
+
+    if result.callback_window.is_empty() {
+        out.push_str("(No callbacks captured in this window)\n");
+        return out;
+    }
+
+    for cb in &result.callback_window {
+        out.push_str(&format!(
+            "[snapshot {}] turn {} phase {} player {} {} => {}\n",
+            cb.snapshot_index, cb.turn, cb.phase, cb.player, cb.name, cb.outcome
+        ));
+    }
+    out.push_str("--- Callback Decisions (Rust | Java) ---\n");
+    out.push_str(&format_side_by_side_decisions(
+        &result.decision_window,
+        &result.java_decision_window,
+    ));
+    out
+}
+
+fn format_investigation_for_results(results: &[MatchupResult]) -> String {
+    let mut out = String::new();
+    for result in results {
+        if result.status != MatchupStatus::Fail {
+            continue;
+        }
+        out.push_str(&format!(
+            "\n=== Callback Debug: {} vs {} seed={} ===\n",
+            result.deck1, result.deck2, result.seed
+        ));
+        out.push_str(&format_callback_window_text(result));
+    }
+    out
+}
+
+fn decision_records_for_callbacks(
+    callbacks: &[CallbackRecord],
+    decisions: &[forge_parity::protocol::DecisionRecord],
+) -> Vec<forge_parity::protocol::DecisionRecord> {
+    callbacks
+        .iter()
+        .flat_map(|cb| {
+            decisions.iter().filter(move |d| {
+                d.turn == cb.turn
+                    && d.phase == cb.phase
+                    && d.deciding_player == cb.player
+                    && d.kind == cb.name
+            })
+        })
+        .cloned()
+        .collect()
+}
+
+fn synthesize_decisions_from_callbacks(
+    callbacks: &[CallbackRecord],
+) -> Vec<forge_parity::protocol::DecisionRecord> {
+    callbacks
+        .iter()
+        .map(|cb| forge_parity::protocol::DecisionRecord {
+            turn: cb.turn,
+            phase: cb.phase.clone(),
+            deciding_player: cb.player,
+            kind: cb.name.clone(),
+            options: vec![],
+            choice: cb.outcome.clone(),
+        })
+        .collect()
+}
+
+fn format_side_by_side_decisions(
+    rust: &[forge_parity::protocol::DecisionRecord],
+    java: &[forge_parity::protocol::DecisionRecord],
+) -> String {
+    if rust.is_empty() && java.is_empty() {
+        return "(No matching decision records in Rust or Java)\n".to_string();
+    }
+
+    fn fmt_decision(d: &forge_parity::protocol::DecisionRecord) -> String {
+        if d.options.is_empty() {
+            format!(
+                "T{} {} P{} {} -> {}",
+                d.turn, d.phase, d.deciding_player, d.kind, d.choice
+            )
+        } else {
+            format!(
+                "T{} {} P{} {} -> {} | opts={:?}",
+                d.turn, d.phase, d.deciding_player, d.kind, d.choice, d.options
+            )
+        }
+    }
+
+    fn wrap_cell(text: &str, width: usize) -> Vec<String> {
+        if text.is_empty() {
+            return vec!["-".to_string()];
+        }
+        let mut lines = Vec::new();
+        let mut current = String::new();
+        for word in text.split_whitespace() {
+            if word.len() > width {
+                if !current.is_empty() {
+                    lines.push(current);
+                    current = String::new();
+                }
+                let mut start = 0usize;
+                while start < word.len() {
+                    let end = (start + width).min(word.len());
+                    lines.push(word[start..end].to_string());
+                    start = end;
+                }
+                continue;
+            }
+            let sep = if current.is_empty() { 0 } else { 1 };
+            if current.len() + sep + word.len() > width {
+                lines.push(current);
+                current = word.to_string();
+            } else {
+                if !current.is_empty() {
+                    current.push(' ');
+                }
+                current.push_str(word);
+            }
+        }
+        if !current.is_empty() {
+            lines.push(current);
+        }
+        if lines.is_empty() {
+            lines.push("-".to_string());
+        }
+        lines
+    }
+
+    const COL_WIDTH: usize = 64;
+    let mut out = String::new();
+    let mut rows: Vec<(Vec<String>, Vec<String>)> = Vec::new();
+    let max_rows = rust.len().max(java.len());
+    for i in 0..max_rows {
+        let left = rust.get(i).map(fmt_decision).unwrap_or_default();
+        let right = java.get(i).map(fmt_decision).unwrap_or_default();
+        rows.push((wrap_cell(&left, COL_WIDTH), wrap_cell(&right, COL_WIDTH)));
+    }
+
+    out.push_str(&format!(
+        "{:<4} {:<COL_WIDTH$} | {:<COL_WIDTH$}\n",
+        "#", "Rust", "Java"
+    ));
+    out.push_str(&format!(
+        "{} {}+{}\n",
+        "-".repeat(4),
+        "-".repeat(COL_WIDTH + 1),
+        "-".repeat(COL_WIDTH + 1)
+    ));
+    for (idx, (left_lines, right_lines)) in rows.iter().enumerate() {
+        let height = left_lines.len().max(right_lines.len());
+        for line_idx in 0..height {
+            let row_label = if line_idx == 0 {
+                format!("{:>3}.", idx + 1)
+            } else {
+                "   ".to_string()
+            };
+            let left = left_lines.get(line_idx).map(String::as_str).unwrap_or("");
+            let right = right_lines.get(line_idx).map(String::as_str).unwrap_or("");
+            out.push_str(&format!(
+                "{:<4} {:<COL_WIDTH$} | {:<COL_WIDTH$}\n",
+                row_label, left, right
+            ));
+        }
+    }
+    out
+}
+
 fn run_fuzz_mode(cli: &Cli) {
-    if cli.verbose {
+    if cli.is_verbose() {
         eprintln!(
             "[parity] Fuzz mode: {} iterations, master_seed={}",
             cli.iterations, cli.master_seed
@@ -2340,17 +2047,11 @@ fn run_fuzz_mode(cli: &Cli) {
     }
 
     // Load data once
-    let data = match runner::load_data(cli.cards_dir.as_deref(), cli.verbose) {
-        Ok(d) => d,
-        Err(e) => {
-            eprintln!("[parity] Load error: {}", e);
-            std::process::exit(1);
-        }
-    };
+    let data = load_data_or_exit(cli);
 
     // Discover card pool
     let (pool, pool_stats) = CardPool::discover(&data.db);
-    if cli.verbose {
+    if cli.is_verbose() {
         eprintln!("[parity] {}", pool_stats);
     }
 
@@ -2368,7 +2069,7 @@ fn run_fuzz_mode(cli: &Cli) {
             jar_path: jar_path.clone(),
             forge_home: None,
             decks_dir: cli.decks_dir.clone(),
-            verbose: cli.verbose,
+            verbose: cli.is_verbose(),
             java_heap: cli.java_heap.clone(),
         };
         match JavaServer::spawn(&server_config) {
@@ -2410,7 +2111,7 @@ fn run_fuzz_mode(cli: &Cli) {
             max_turns: cli.max_turns,
             cards_dir: cli.cards_dir.clone(),
             decks_dir: cli.decks_dir.clone(),
-            verbose: cli.verbose,
+            verbose: cli.verbose_mode(),
             prefer_actions: cli.prefer_actions,
             deep: cli.deep,
             java_heap: cli.java_heap.clone(),
@@ -2423,14 +2124,14 @@ fn run_fuzz_mode(cli: &Cli) {
                 run_single_matchup_server(&config, &data, srv)
             } else {
                 // Server crashed — try to respawn
-                if cli.verbose {
+                if cli.is_verbose() {
                     eprintln!("[parity] Java server crashed, attempting respawn...");
                 }
                 match JavaServer::spawn(&JavaServerConfig {
                     jar_path: cli.java_jar.as_ref().unwrap().clone(),
                     forge_home: None,
                     decks_dir: cli.decks_dir.clone(),
-                    verbose: cli.verbose,
+                    verbose: cli.is_verbose(),
                     java_heap: cli.java_heap.clone(),
                 }) {
                     Ok(new_srv) => {
@@ -2454,7 +2155,7 @@ fn run_fuzz_mode(cli: &Cli) {
             run_single_matchup_rust_only(&config, &data)
         };
 
-        if cli.verbose {
+        if cli.is_verbose() {
             let n = iteration + 1;
             match matchup_result.status {
                 MatchupStatus::Pass => {
@@ -2555,14 +2256,12 @@ fn write_output(cli: &Cli, output: &str) {
     } else {
         println!("{}", output);
     }
-    perf::record("write_output.total", t_write.elapsed());
-    perf::print_summary("forge-parity");
 }
 
 fn collect_unique_deck_cards(deck1: &str, deck2: &str, decks_dir: &str) -> Vec<String> {
     let mut cards: BTreeSet<String> = BTreeSet::new();
     for deck in [deck1, deck2] {
-        match runner::resolve_deck_spec(deck, decks_dir) {
+        match forge_parity::utils::decks::resolve_deck_spec(deck, decks_dir) {
             Ok(spec) => {
                 for (name, _) in spec {
                     cards.insert(name);
@@ -2594,217 +2293,6 @@ fn build_coverage_report(
     }
     let covered_cards: Vec<String> = covered.into_iter().collect();
     build_coverage_report_from_cards(&deck_cards, &covered_cards)
-}
-
-#[derive(Debug, Default, Clone)]
-struct DefinedMechanics {
-    trigger_keys: BTreeSet<String>,
-    effect_keys: BTreeSet<String>,
-    ability_keys: BTreeSet<String>,
-}
-
-fn build_mechanics_report(
-    deck1: &str,
-    deck2: &str,
-    results: &[MatchupResult],
-    db: Option<&CardDatabase>,
-    decks_dir: &str,
-) -> String {
-    let mut aggregated: BTreeMap<String, usize> = BTreeMap::new();
-    for r in results {
-        for sig in &r.mechanic_signals {
-            *aggregated.entry(sig.label.clone()).or_insert(0) += sig.count;
-        }
-    }
-    let signals: Vec<MechanicSignal> = aggregated
-        .into_iter()
-        .map(|(label, count)| MechanicSignal { label, count })
-        .collect();
-    let defs = db.map(|card_db| collect_defined_mechanics(deck1, deck2, card_db, decks_dir));
-    build_mechanics_report_from_signals(&signals, defs.as_ref())
-}
-
-fn build_mechanics_report_from_signals(
-    signals: &[MechanicSignal],
-    defs: Option<&DefinedMechanics>,
-) -> String {
-    let mut triggers: BTreeSet<String> = BTreeSet::new();
-    let mut effects: BTreeSet<String> = BTreeSet::new();
-    let mut abilities: BTreeSet<String> = BTreeSet::new();
-    let mut other: BTreeSet<String> = BTreeSet::new();
-
-    for sig in signals {
-        let label = sig.label.clone();
-        if label.starts_with("Trigger fired:") {
-            triggers.insert(label);
-        } else if label.starts_with("Effect resolved:") {
-            effects.insert(label);
-        } else if label.starts_with("Activated ability:")
-            || label.starts_with("Suspend:")
-            || label.starts_with("Foretold:")
-            || label.starts_with("Rebound:")
-            || label.starts_with("Cascade")
-            || label.starts_with("Storm")
-            || label.starts_with("Replicate")
-        {
-            abilities.insert(label);
-        } else {
-            other.insert(label);
-        }
-    }
-
-    let mut out = String::new();
-    out.push_str("\n=== Ability/Effect/Trigger Signals (Low-Effort) ===\n\n");
-    if triggers.is_empty() && effects.is_empty() && abilities.is_empty() && other.is_empty() {
-        out.push_str("No mechanic signals observed.\n");
-        return out;
-    }
-
-    if let Some(d) = defs {
-        out.push_str(&coverage_line(
-            "Trigger coverage",
-            &d.trigger_keys,
-            &triggers,
-        ));
-    }
-    out.push_str(&format!("Unique triggers: {}\n", triggers.len()));
-    for label in &triggers {
-        out.push_str(&format!("  - {}\n", label));
-    }
-
-    if let Some(d) = defs {
-        out.push_str(&format!(
-            "\n{}\n",
-            coverage_line("Effect coverage", &d.effect_keys, &effects).trim_end()
-        ));
-    }
-    out.push_str(&format!("\nUnique effects: {}\n", effects.len()));
-    for label in &effects {
-        out.push_str(&format!("  - {}\n", label));
-    }
-
-    if let Some(d) = defs {
-        out.push_str(&format!(
-            "\n{}\n",
-            coverage_line("Ability coverage", &d.ability_keys, &abilities).trim_end()
-        ));
-    }
-    out.push_str(&format!("\nUnique abilities: {}\n", abilities.len()));
-    for label in &abilities {
-        out.push_str(&format!("  - {}\n", label));
-    }
-
-    if !other.is_empty() {
-        out.push_str(&format!("\nOther signals: {}\n", other.len()));
-        for label in &other {
-            out.push_str(&format!("  - {}\n", label));
-        }
-    }
-    out
-}
-
-fn coverage_line(label: &str, defined: &BTreeSet<String>, observed: &BTreeSet<String>) -> String {
-    let total = defined.len();
-    let matched = observed.iter().filter(|k| defined.contains(*k)).count();
-    let pct = if total == 0 {
-        0.0
-    } else {
-        (matched as f64 / total as f64) * 100.0
-    };
-    format!("{}: {}/{} ({:.1}%)\n", label, matched, total, pct)
-}
-
-fn collect_defined_mechanics(
-    deck1: &str,
-    deck2: &str,
-    db: &CardDatabase,
-    decks_dir: &str,
-) -> DefinedMechanics {
-    let mut card_names: BTreeSet<String> = BTreeSet::new();
-    for deck in [deck1, deck2] {
-        match runner::resolve_deck_spec(deck, decks_dir) {
-            Ok(spec) => {
-                for (name, _) in spec {
-                    card_names.insert(name);
-                }
-            }
-            Err(e) => {
-                eprintln!(
-                    "[parity] Mechanics warning: failed to parse deck '{}': {}",
-                    deck, e
-                );
-            }
-        }
-    }
-
-    let mut defs = DefinedMechanics::default();
-    for name in card_names {
-        let Some(rules) = db.get_by_card_name(&name) else {
-            continue;
-        };
-        collect_face_mechanics(&rules.main_part, &mut defs);
-        if let Some(other) = &rules.other_part {
-            collect_face_mechanics(other, &mut defs);
-        }
-    }
-    defs
-}
-
-fn collect_face_mechanics(face: &forge_carddb::CardFace, defs: &mut DefinedMechanics) {
-    for raw in &face.abilities {
-        if let Some(ab) = extract_param(raw, "AB") {
-            defs.ability_keys
-                .insert(format!("Activated ability: {}", ab));
-        }
-        if let Some(sp) = extract_param(raw, "SP") {
-            defs.effect_keys.insert(format!("Effect resolved: {}", sp));
-        }
-        if let Some(db) = extract_param(raw, "DB") {
-            defs.effect_keys.insert(format!("Effect resolved: {}", db));
-        }
-    }
-
-    for raw in face.svars.values() {
-        if let Some(ab) = extract_param(raw, "AB") {
-            defs.ability_keys
-                .insert(format!("Activated ability: {}", ab));
-        }
-        if let Some(sp) = extract_param(raw, "SP") {
-            defs.effect_keys.insert(format!("Effect resolved: {}", sp));
-        }
-        if let Some(db) = extract_param(raw, "DB") {
-            defs.effect_keys.insert(format!("Effect resolved: {}", db));
-        }
-    }
-
-    for raw in &face.triggers {
-        let mode = extract_param(raw, "Mode").unwrap_or_else(|| "Unknown".to_string());
-        let api = extract_param(raw, "Execute")
-            .and_then(|exec| face.svars.get(&exec).cloned())
-            .as_deref()
-            .and_then(extract_ability_api)
-            .unwrap_or_else(|| "Unknown".to_string());
-        defs.trigger_keys
-            .insert(format!("Trigger fired: mode={} | api={}", mode, api));
-    }
-}
-
-fn extract_ability_api(raw: &str) -> Option<String> {
-    extract_param(raw, "SP")
-        .or_else(|| extract_param(raw, "DB"))
-        .or_else(|| extract_param(raw, "AB"))
-}
-
-fn extract_param(raw: &str, key: &str) -> Option<String> {
-    raw.split('|').find_map(|part| {
-        let trimmed = part.trim();
-        let (lhs, rhs) = trimmed.split_once('$')?;
-        if lhs.trim().eq_ignore_ascii_case(key) {
-            Some(rhs.trim().to_string())
-        } else {
-            None
-        }
-    })
 }
 
 fn build_coverage_report_from_cards(deck_cards: &[String], covered_cards: &[String]) -> String {
@@ -2919,8 +2407,8 @@ fn get_total_memory_bytes() -> u64 {
 
 #[cfg(feature = "storage")]
 fn run_continuous_mode(cli: &Cli) {
+    use forge_parity::infra::storage::Storage;
     use forge_parity::scheduler::Scheduler;
-    use forge_parity::storage::Storage;
     use std::time::Instant;
 
     let jar_path = match &cli.java_jar {
@@ -2932,7 +2420,7 @@ fn run_continuous_mode(cli: &Cli) {
     };
 
     let max_games = cli.max_games.unwrap_or(100);
-    if cli.verbose {
+    if cli.is_verbose() {
         eprintln!(
             "[parity] Continuous mode: max_games={}, threshold={:.1}%, db={}",
             max_games,
@@ -2951,13 +2439,7 @@ fn run_continuous_mode(cli: &Cli) {
     };
 
     // Load card database
-    let data = match runner::load_data(cli.cards_dir.as_deref(), cli.verbose) {
-        Ok(d) => d,
-        Err(e) => {
-            eprintln!("[parity] Load error: {}", e);
-            std::process::exit(1);
-        }
-    };
+    let data = load_data_or_exit(cli);
 
     // Discover preset decks
     let dd = cli.decks_dir.as_deref().unwrap_or(DEFAULT_DECKS_DIR);
@@ -2973,7 +2455,7 @@ fn run_continuous_mode(cli: &Cli) {
         eprintln!("[parity] No preset decks found in {}", dd);
         std::process::exit(1);
     }
-    if cli.verbose {
+    if cli.is_verbose() {
         eprintln!(
             "[parity] Using {} preset decks: {:?}",
             deck_names.len(),
@@ -3003,7 +2485,7 @@ fn run_continuous_mode(cli: &Cli) {
         jar_path: jar_path.clone(),
         forge_home: None,
         decks_dir: cli.decks_dir.clone(),
-        verbose: cli.verbose,
+        verbose: cli.is_verbose(),
         java_heap: cli.java_heap.clone(),
     };
     let mut server = match JavaServer::spawn(&server_config) {
@@ -3025,20 +2507,7 @@ fn run_continuous_mode(cli: &Cli) {
     while completed < max_games {
         let job = scheduler.next_job();
 
-        let config = RunConfig {
-            deck1: job.deck1.clone(),
-            deck2: job.deck2.clone(),
-            seed: job.seed,
-            max_turns: cli.max_turns,
-            cards_dir: cli.cards_dir.clone(),
-            decks_dir: cli.decks_dir.clone(),
-            verbose: cli.verbose,
-            prefer_actions: cli.prefer_actions,
-            deep: cli.deep,
-            java_heap: cli.java_heap.clone(),
-            variant: cli.variant.clone(),
-            commanders: cli.commander.clone(),
-        };
+        let config = build_config(cli, &job.deck1, &job.deck2, job.seed);
 
         let game_start = Instant::now();
 
@@ -3070,7 +2539,7 @@ fn run_continuous_mode(cli: &Cli) {
         }
 
         // Progress logging
-        if cli.verbose {
+        if cli.is_verbose() {
             let status_char = match result.status {
                 MatchupStatus::Pass => "\x1b[32mPASS\x1b[0m",
                 MatchupStatus::Skipped => "\x1b[34mSKIP\x1b[0m",
@@ -3171,10 +2640,10 @@ fn short_deck(spec: &str) -> &str {
 
 #[cfg(feature = "serve")]
 fn run_serve_mode(cli: &Cli) {
+    use forge_parity::infra::storage::Storage;
+    use forge_parity::infra::web::{self, DashboardConfig};
     use forge_parity::log_buffer::{BufferLayer, LogBuffer};
     use forge_parity::scheduler::Scheduler;
-    use forge_parity::storage::Storage;
-    use forge_parity::web::{self, DashboardConfig};
     use std::backtrace::Backtrace;
     use std::sync::atomic::Ordering;
     use std::sync::Arc;
@@ -3246,13 +2715,7 @@ fn run_serve_mode(cli: &Cli) {
     };
 
     // Load card database
-    let data = match runner::load_data(cli.cards_dir.as_deref(), cli.verbose) {
-        Ok(d) => d,
-        Err(e) => {
-            tracing::error!(%e, "Failed to load card data");
-            std::process::exit(1);
-        }
-    };
+    let data = load_data_or_exit(cli);
 
     // Discover preset decks
     let dd = cli.decks_dir.as_deref().unwrap_or(DEFAULT_DECKS_DIR);
@@ -3310,7 +2773,7 @@ fn run_serve_mode(cli: &Cli) {
         jar_path: jar_path.clone(),
         forge_home: None,
         decks_dir: cli.decks_dir.clone(),
-        verbose: cli.verbose,
+        verbose: cli.is_verbose(),
         java_heap: cli.java_heap.clone(),
     };
     let mut java_server = match JavaServer::spawn(&server_config) {
@@ -3373,7 +2836,7 @@ fn run_serve_mode(cli: &Cli) {
     // Always spawn analysis daemon (paused by default, toggle via dashboard)
     #[cfg(feature = "analyze")]
     {
-        use forge_parity::analyzer::{self, AnalyzerConfig};
+        use forge_parity::infra::analyzer::{self, AnalyzerConfig};
 
         let analyzer_db = match Storage::open(&cli.db_path) {
             Ok(db) => db,
@@ -3411,7 +2874,7 @@ fn run_serve_mode(cli: &Cli) {
     let cli_max_turns = cli.max_turns;
     let cli_cards_dir = cli.cards_dir.clone();
     let cli_decks_dir = cli.decks_dir.clone();
-    let cli_verbose = cli.verbose;
+    let cli_verbose = cli.verbose_mode();
     let cli_prefer_actions = cli.prefer_actions;
     let cli_java_heap = cli.java_heap.clone();
     let cfg = Arc::clone(&dashboard_config);
@@ -3447,7 +2910,7 @@ fn run_serve_mode(cli: &Cli) {
                 deep: queued_job.deep,
                 cards_dir: cli_cards_dir.clone(),
                 decks_dir: cli_decks_dir.clone(),
-                verbose: cli_verbose,
+                verbose: cli_verbose.clone(),
                 prefer_actions: queued_job.prefer_actions,
                 java_heap: cli_java_heap.clone(),
                 variant: queued_job.variant.clone(),
@@ -3546,8 +3009,14 @@ fn run_serve_mode(cli: &Cli) {
                         rust_value: rust_val,
                         java_value: java_val,
                         divergence_location: div_loc,
-                        rust_trace: result.trace.as_ref().map(|t| truncate_trace(t, 200)),
-                        java_trace: result.java_trace.as_ref().map(|t| truncate_trace(t, 200)),
+                        rust_trace: result
+                            .rust_snapshot
+                            .clone()
+                            .map(|s| serde_json::to_string(&s).unwrap_or_default()),
+                        java_trace: result
+                            .java_snapshot
+                            .clone()
+                            .map(|s| serde_json::to_string(&s).unwrap_or_default()),
                     });
                     if batch.completed >= batch.total {
                         batch.done = true;
@@ -3669,7 +3138,7 @@ fn run_serve_mode(cli: &Cli) {
             max_turns: cli_max_turns,
             cards_dir: cli_cards_dir.clone(),
             decks_dir: cli_decks_dir.clone(),
-            verbose: cli_verbose,
+            verbose: cli_verbose.clone(),
             prefer_actions: cli_prefer_actions,
             deep: cli.deep,
             java_heap: cli_java_heap.clone(),
@@ -3771,12 +3240,12 @@ fn run_serve_mode(cli: &Cli) {
 
 #[cfg(feature = "analyze")]
 fn run_analyze_only(cli: &Cli) {
-    use forge_parity::analyzer::{self, AnalyzerConfig};
-    use forge_parity::storage::Storage;
+    use forge_parity::infra::analyzer::{self, AnalyzerConfig};
+    use forge_parity::infra::storage::Storage;
     use std::sync::atomic::AtomicBool;
     use std::sync::Arc;
 
-    if cli.verbose {
+    if cli.is_verbose() {
         eprintln!(
             "[parity] Analyze-only mode: db={}, poll={}s, summary={}s, threshold={}",
             cli.db_path, cli.poll_interval, cli.summary_interval, cli.issue_threshold

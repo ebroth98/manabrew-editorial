@@ -9,7 +9,7 @@ use std::time::{Duration, Instant};
 
 use serde_json::{json, Value};
 
-use crate::llm::{ClusterContext, LlmAnalysis, LlmClient};
+use crate::infra::llm::{ClusterContext, LlmAnalysis, LlmClient};
 use crate::tools::{code_tools, mtg_tools, parity_tools};
 
 /// Maximum tool-calling rounds before forcing a final answer.
@@ -658,7 +658,7 @@ mod tests {
     #[tokio::test]
     #[ignore]
     async fn live_agent_loop() {
-        let llm = crate::llm::LlmClient::from_env()
+        let llm = crate::infra::llm::LlmClient::from_env()
             .expect("Set OPENAI_API_KEY + OPENAI_API_BASE for this test");
 
         eprintln!(
@@ -667,7 +667,7 @@ mod tests {
             llm.context_size()
         );
 
-        let ctx = crate::llm::ClusterContext {
+        let ctx = crate::infra::llm::ClusterContext {
             count: 3,
             divergence_field: "players[0].life".to_string(),
             rust_value: "18".to_string(),

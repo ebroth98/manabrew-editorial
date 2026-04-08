@@ -14,6 +14,7 @@
 //! - [`runner`] — Orchestrates game execution and snapshot collection
 //! - [`java_bridge`] — Stubbed subprocess bridge for the Java engine
 
+pub mod auto_pay;
 pub mod card_pool;
 pub mod choice_space;
 pub mod combat_choice_space;
@@ -27,30 +28,19 @@ pub mod java_random;
 pub mod parity_card_map;
 pub mod parity_id;
 pub mod parity_order;
-pub mod perf;
 pub mod protocol;
 pub mod report;
 pub mod runner;
 pub mod snapshot;
+pub mod utils;
+
+pub mod infra;
 
 #[cfg(feature = "analyze")]
 pub mod agent_loop;
-#[cfg(feature = "analyze")]
-pub mod analyzer;
-pub mod auto_pay;
-#[cfg(feature = "analyze")]
-pub mod discord;
-#[cfg(feature = "analyze")]
-pub mod github_issues;
-#[cfg(feature = "analyze")]
-pub mod llm;
 #[cfg(feature = "serve")]
 pub mod log_buffer;
 #[cfg(feature = "storage")]
 pub mod scheduler;
-#[cfg(feature = "storage")]
-pub mod storage;
 #[cfg(feature = "analyze")]
 pub mod tools;
-#[cfg(feature = "serve")]
-pub mod web;

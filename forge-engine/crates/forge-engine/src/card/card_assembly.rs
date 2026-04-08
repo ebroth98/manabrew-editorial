@@ -182,7 +182,13 @@ pub(crate) fn assemble_card(
         && card.type_line.has_subtype("Room")
     {
         if let Some(ref other_face) = rules.other_part {
-            let unlock_cost = other_face.mana_cost.to_string().replace('{', "").replace('}', " ").trim().to_string();
+            let unlock_cost = other_face
+                .mana_cost
+                .to_string()
+                .replace('{', "")
+                .replace('}', " ")
+                .trim()
+                .to_string();
             let unlock_name = &other_face.name;
             // Build an activated ability for unlocking the second door.
             let ab_text = format!(
@@ -190,7 +196,8 @@ pub(crate) fn assemble_card(
                 unlock_cost, unlock_name
             );
             let next_idx = card.activated_abilities.len();
-            if let Some(ab) = crate::ability::activated::parse_activated_ability(&ab_text, next_idx) {
+            if let Some(ab) = crate::ability::activated::parse_activated_ability(&ab_text, next_idx)
+            {
                 card.activated_abilities.push(ab);
             }
             // Copy other face's SVars so the Execute$ SVar can be found

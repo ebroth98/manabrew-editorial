@@ -43,11 +43,6 @@ impl GameLoop {
         let must_be_instant = !can_play_sorcery;
 
         let playable = self.get_playable_cards(game, player, must_be_instant);
-        // Debug: check if Makeshift Munitions is on battlefield but not in activatable
-        let has_munitions = game
-            .cards_in_zone(ZoneType::Battlefield, player)
-            .iter()
-            .any(|&cid| game.card(cid).card_name.contains("Makeshift Munitions"));
         let activatable: Vec<(CardId, usize)> = self
             .get_activatable_abilities(game, player, can_play_sorcery)
             .into_iter()

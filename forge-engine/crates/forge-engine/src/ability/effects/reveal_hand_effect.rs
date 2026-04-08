@@ -47,6 +47,8 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         names.join(", ")
     );
     for agent in ctx.agents.iter_mut() {
-        agent.notify_event(GameLogEvent::rule(msg.clone()).with_player(target));
+        agent.notify(crate::agent::notification::GameNotification::Event(
+            GameLogEvent::rule(msg.clone()).with_player(target),
+        ));
     }
 }

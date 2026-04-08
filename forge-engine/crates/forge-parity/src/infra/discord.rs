@@ -6,7 +6,7 @@ use serde::Serialize;
 use std::collections::VecDeque;
 use std::time::{Duration, Instant};
 
-use crate::llm::LlmAnalysis;
+use crate::infra::llm::LlmAnalysis;
 
 /// Discord webhook client with rate limiting.
 pub struct DiscordClient {

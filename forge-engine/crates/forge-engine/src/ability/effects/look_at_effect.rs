@@ -46,6 +46,9 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         names.join(", ")
     );
     // Only the activating player can see these.
-    ctx.agents[sa.activating_player.index()]
-        .notify_event(GameLogEvent::info(msg).with_player(sa.activating_player));
+    ctx.agents[sa.activating_player.index()].notify(
+        crate::agent::notification::GameNotification::Event(
+            GameLogEvent::info(msg).with_player(sa.activating_player),
+        ),
+    );
 }

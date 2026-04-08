@@ -358,11 +358,7 @@ impl GameLoop {
         self.pool_mut(active).reset_pool();
     }
 
-    pub fn step_draw(
-        &mut self,
-        game: &mut GameState,
-        agents: &mut [Box<dyn PlayerAgent>],
-    ) {
+    pub fn step_draw(&mut self, game: &mut GameState, agents: &mut [Box<dyn PlayerAgent>]) {
         let active = game.active_player();
         // Skip draw on turn 1
         if game.turn.turn_number > 1 {

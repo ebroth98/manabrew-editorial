@@ -34,7 +34,9 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     for agent in ctx.agents.iter_mut() {
         for &id in revealed {
             let name = ctx.game.card(id).card_name.clone();
-            agent.notify_event(GameLogEvent::rule(format!("Revealed: {}", name)).with_card(id));
+            agent.notify(crate::agent::notification::GameNotification::Event(
+                GameLogEvent::rule(format!("Revealed: {}", name)).with_card(id),
+            ));
         }
     }
 }

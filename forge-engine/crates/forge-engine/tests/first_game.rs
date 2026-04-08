@@ -386,7 +386,6 @@ fn full_game_runs() {
         fn choose_land_or_spell(&mut self, _: PlayerId) -> Option<bool> {
             None
         }
-        fn notify(&mut self, _: &str) {}
     }
 
     let mut game_loop = GameLoop::new(2);
@@ -899,7 +898,6 @@ fn upkeep_trigger_fires_each_turn() {
         fn choose_land_or_spell(&mut self, _: PlayerId) -> Option<bool> {
             None
         }
-        fn notify(&mut self, _: &str) {}
     }
 
     let mut agents: Vec<Box<dyn PlayerAgent>> = vec![Box::new(PassAgent), Box::new(PassAgent)];
@@ -1026,7 +1024,6 @@ fn full_game_with_triggers_runs() {
         fn choose_land_or_spell(&mut self, _: PlayerId) -> Option<bool> {
             None
         }
-        fn notify(&mut self, _: &str) {}
     }
 
     let mut game_loop = GameLoop::new(2);
@@ -1214,7 +1211,6 @@ fn llanowar_elves_taps_for_mana() {
         fn choose_land_or_spell(&mut self, _: PlayerId) -> Option<bool> {
             None
         }
-        fn notify(&mut self, _: &str) {}
     }
 
     let bob_agent = ScriptedAgent::new("Bob");
@@ -1339,7 +1335,6 @@ fn summoning_sick_creature_cant_tap() {
         fn choose_land_or_spell(&mut self, _: PlayerId) -> Option<bool> {
             None
         }
-        fn notify(&mut self, _: &str) {}
     }
 
     let bob_agent = ScriptedAgent::new("Bob");
@@ -1457,7 +1452,6 @@ fn prodigal_sorcerer_pings_opponent() {
         fn choose_land_or_spell(&mut self, _: PlayerId) -> Option<bool> {
             None
         }
-        fn notify(&mut self, _: &str) {}
     }
 
     let bob_agent = ScriptedAgent::new("Bob");
@@ -1585,7 +1579,6 @@ fn sakura_tribe_elder_fetches_land() {
         fn choose_land_or_spell(&mut self, _: PlayerId) -> Option<bool> {
             None
         }
-        fn notify(&mut self, _: &str) {}
     }
 
     let bob_agent = ScriptedAgent::new("Bob");

@@ -13,7 +13,11 @@ use crate::spellability::SpellAbility;
 fn unlocked_room_count(ctx: &EffectContext, card_id: CardId) -> i32 {
     let card = ctx.game.card(card_id);
     // Check explicit counter first.
-    if let Some(count) = card.svars.get("UnlockedRoomCount").and_then(|v| v.parse::<i32>().ok()) {
+    if let Some(count) = card
+        .svars
+        .get("UnlockedRoomCount")
+        .and_then(|v| v.parse::<i32>().ok())
+    {
         return count;
     }
     // A Room on the battlefield always has at least its first door unlocked

@@ -21,10 +21,6 @@ pub(super) fn move_cards(
     lib_position: &str,
     controller: PlayerId,
 ) {
-    if cards.is_empty() {
-        return;
-    }
-
     // SearchedLibrary trigger
     if origin_zone == ZoneType::Library {
         ctx.trigger_handler.run_trigger(

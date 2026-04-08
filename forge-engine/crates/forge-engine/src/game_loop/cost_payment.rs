@@ -359,19 +359,10 @@ impl GameLoop {
                         crate::cost::cost_part_mana::get_mana_cost_for(game, card_id, sa, &part);
                     let card_name = game.card(card_id).card_name.clone();
                     let cost_str = mana_cost.to_string();
+                    // Match Java deterministic auto-pay: refund floating mana on
+                    // failure, but keep any activation costs already spent on
+                    // mana abilities that were used to generate it.
                     let saved_pool = self.mana_pools[player.index()].clone();
-                    let saved_permanent_states: Vec<(
-                        CardId,
-                        bool,
-                        std::collections::BTreeMap<crate::card::CounterType, i32>,
-                    )> = game
-                        .cards_in_zone(ZoneType::Battlefield, player)
-                        .iter()
-                        .map(|&cid| {
-                            let c = game.card(cid);
-                            (cid, c.tapped, c.counters.clone())
-                        })
-                        .collect();
                     let mut mana_loop_invalid_count = 0u32;
                     let mana_paid = loop {
                         let tappable_lands: Vec<CardId> = game
@@ -447,15 +438,6 @@ impl GameLoop {
                                     mana_loop_invalid_count += 1;
                                     if mana_loop_invalid_count > 3 {
                                         self.mana_pools[player.index()] = saved_pool.clone();
-                                        for &(cid, was_tapped, ref saved_counters) in
-                                            &saved_permanent_states
-                                        {
-                                            if !was_tapped && game.card(cid).tapped {
-                                                game.untap(cid);
-                                            }
-                                            game.card_mut(cid)
-                                                .set_counters_map(saved_counters.clone());
-                                        }
                                         break false;
                                     }
                                     continue;
@@ -541,29 +523,12 @@ impl GameLoop {
                                     mana_loop_invalid_count += 1;
                                     if mana_loop_invalid_count > 3 {
                                         self.mana_pools[player.index()] = saved_pool.clone();
-                                        for &(cid, was_tapped, ref saved_counters) in
-                                            &saved_permanent_states
-                                        {
-                                            if !was_tapped && game.card(cid).tapped {
-                                                game.untap(cid);
-                                            }
-                                            game.card_mut(cid)
-                                                .set_counters_map(saved_counters.clone());
-                                        }
                                         break false;
                                     }
                                 }
                             }
                             ManaCostAction::Cancel => {
                                 self.mana_pools[player.index()] = saved_pool.clone();
-                                for &(cid, was_tapped, ref saved_counters) in
-                                    &saved_permanent_states
-                                {
-                                    if !was_tapped && game.card(cid).tapped {
-                                        game.untap(cid);
-                                    }
-                                    game.card_mut(cid).set_counters_map(saved_counters.clone());
-                                }
                                 break false;
                             }
                         }

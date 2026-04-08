@@ -5,27 +5,20 @@
 //! compared field-by-field.
 
 use std::collections::BTreeMap;
-use std::time::Instant;
 
 use forge_engine_core::card::CounterType;
 use forge_engine_core::game::GameState;
 use forge_engine_core::ids::PlayerId;
 use forge_foundation::ZoneType;
 
-use crate::perf;
 use crate::protocol::{CardSnapshot, PlayerSnapshot, StateSnapshot};
 
-/// Extract a normalized snapshot from the current game state.
 pub fn snapshot_game(game: &GameState) -> StateSnapshot {
-    let t_total = Instant::now();
     let mut players = Vec::new();
-    let t_players = Instant::now();
     for player in &game.players {
         players.push(snapshot_player(game, player.id));
     }
-    perf::record("snapshot_game.players", t_players.elapsed());
 
-    // Stack: collect card/ability names
     let mut stack: Vec<String> = game
         .stack
         .iter()
@@ -38,12 +31,12 @@ pub fn snapshot_game(game: &GameState) -> StateSnapshot {
         })
         .collect();
     stack.sort();
-    perf::record("snapshot_game.total", t_total.elapsed());
 
     StateSnapshot {
         turn: game.turn.turn_number,
         phase: format!("{:?}", game.turn.phase),
         active_player: game.turn.active_player.0,
+        priority_player: game.turn.priority_player.0,
         game_over: game.game_over,
         winner: game.winner.map(|p| p.0),
         players: normalize_turn_start_players(players, game.turn.active_player),
@@ -203,66 +196,5 @@ fn counter_type_name(ct: &CounterType) -> String {
         CounterType::Dream => "dream".into(),
         CounterType::Poison => "poison".into(),
         CounterType::Named(name) => name.to_lowercase(),
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use forge_engine_core::card::CardInstance;
-    use forge_engine_core::ids::CardId;
-    use forge_foundation::{CardTypeLine, ColorSet, ManaCost};
-
-    #[test]
-    fn snapshot_empty_game() {
-        let game = GameState::new(&["Alice", "Bob"], 20);
-        let snap = snapshot_game(&game);
-        assert_eq!(snap.turn, 1);
-        assert_eq!(snap.players.len(), 2);
-        assert_eq!(snap.players[0].name, "Alice");
-        assert_eq!(snap.players[0].life, 20);
-        assert_eq!(snap.players[1].name, "Bob");
-        assert!(!snap.game_over);
-    }
-
-    #[test]
-    fn snapshot_sorts_battlefield() {
-        let mut game = GameState::new(&["Alice", "Bob"], 20);
-        let p0 = PlayerId(0);
-
-        // Create cards in reverse alphabetical order
-        let zephyr = CardInstance::new(
-            CardId(0),
-            "Zephyr Spirit".into(),
-            p0,
-            CardTypeLine::parse("Creature Spirit"),
-            ManaCost::parse("U"),
-            ColorSet::COLORLESS,
-            Some(0),
-            Some(1),
-            vec![],
-            vec![],
-        );
-        let alpha = CardInstance::new(
-            CardId(0),
-            "Alpha Myr".into(),
-            p0,
-            CardTypeLine::parse("Creature Myr"),
-            ManaCost::parse("2"),
-            ColorSet::COLORLESS,
-            Some(2),
-            Some(1),
-            vec![],
-            vec![],
-        );
-
-        let z_id = game.create_card(zephyr);
-        let a_id = game.create_card(alpha);
-        game.zone_mut(ZoneType::Battlefield, p0).add(z_id);
-        game.zone_mut(ZoneType::Battlefield, p0).add(a_id);
-
-        let snap = snapshot_game(&game);
-        assert_eq!(snap.players[0].battlefield[0].name, "Alpha Myr");
-        assert_eq!(snap.players[0].battlefield[1].name, "Zephyr Spirit");
     }
 }

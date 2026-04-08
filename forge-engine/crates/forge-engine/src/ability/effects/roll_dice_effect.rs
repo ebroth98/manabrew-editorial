@@ -1208,7 +1208,6 @@ mod tests {
             Some(true)
         }
 
-        fn notify(&mut self, _message: &str) {}
     }
 
     struct ModifyAgent;
@@ -1316,7 +1315,6 @@ mod tests {
             Some(true)
         }
 
-        fn notify(&mut self, _message: &str) {}
     }
 
     struct RerollAgent;
@@ -1412,7 +1410,6 @@ mod tests {
             Some(true)
         }
 
-        fn notify(&mut self, _message: &str) {}
     }
 
     #[test]

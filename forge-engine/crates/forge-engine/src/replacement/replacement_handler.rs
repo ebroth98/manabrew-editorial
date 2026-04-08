@@ -1396,8 +1396,6 @@ mod tests {
             Some(true)
         }
 
-        fn notify(&mut self, _message: &str) {}
-
         fn confirm_replacement_effect(
             &mut self,
             _player: PlayerId,

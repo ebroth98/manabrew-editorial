@@ -14,8 +14,8 @@ use axum::{
     Router,
 };
 
+use crate::infra::storage::Storage;
 use crate::log_buffer::LogBuffer;
-use crate::storage::Storage;
 
 /// Runtime-adjustable configuration, shared between web server, game loop, and analyzer.
 pub struct DashboardConfig {
@@ -739,7 +739,7 @@ async fn clusters_handler(
     State(state): State<Arc<AppState>>,
     Query(params): Query<SinceQuery>,
 ) -> impl IntoResponse {
-    use crate::storage::FieldCluster;
+    use crate::infra::storage::FieldCluster;
 
     let storage = state.storage.lock().unwrap();
     match storage.get_clusters_by_field(params.since.as_deref()) {

@@ -1,3 +1,4 @@
+use crate::agent::notification::GameNotification;
 use crate::combat::DefenderId;
 use crate::cost::payment_decision::PaymentDecision;
 use crate::cost::CostPart;
@@ -6,11 +7,11 @@ use crate::ids::{CardId, PlayerId};
 use crate::mana::ManaPool;
 use crate::player::actions::PlayerAction;
 use crate::spellability::SpellAbility;
-use forge_foundation::PhaseType;
 
 pub mod attach_ai;
 pub mod creature_evaluator;
 pub mod game_log;
+pub mod notification;
 pub mod types;
 
 pub use game_log::*;
@@ -22,9 +23,6 @@ pub trait PlayerAgent {
     /// Called before each agent decision point with the current game state.
     /// Override this to capture snapshots for a UI or network layer.
     fn snapshot_state(&mut self, _game: &GameState, _mana_pools: &[ManaPool]) {}
-
-    /// Called when the engine records a new checkpoint snapshot.
-    fn notify_snapshot_created(&mut self, _checkpoint_id: u64, _label: &str) {}
 
     /// Poll and clear any pending snapshot-restore request from this agent.
     fn take_restore_request(&mut self) -> Option<u64> {
@@ -894,41 +892,10 @@ pub trait PlayerAgent {
     /// Returns true for land, false for spell, None to pass.
     fn choose_land_or_spell(&mut self, player: PlayerId) -> Option<bool>;
 
-    /// Notify the agent of a game event (for display/logging).
-    fn notify(&mut self, message: &str);
+    /// Receive engine notifications for UI/game-log observers.
+    /// Default is a no-op so simple agents do not need to handle them.
+    fn notify(&mut self, _event: GameNotification) {}
 
-    /// Structured notification variant.
-    /// Default implementation forwards message text only.
-    fn notify_event(&mut self, event: GameLogEvent) {
-        self.notify(&event.message);
-    }
-
-    /// Display-only notification: a card was played (land or spell).
-    /// Called on all agents so every player's UI can show the animation.
-    fn notify_card_played(
-        &mut self,
-        _player: PlayerId,
-        _card_id: CardId,
-        _card_name: &str,
-        _set_code: &str,
-    ) {
-    }
-
-    /// Display-only notification: a new turn is starting for the given player.
-    /// Called on all agents before any turn actions so the UI can show the turn flash first.
-    fn notify_turn_changed(&mut self, _active_player: PlayerId, _turn_number: u32) {}
-
-    /// Display-only notification: phase/step changed.
-    /// Called on all agents so each client can update step UI even when no prompt is needed.
-    fn notify_phase_changed(&mut self, _phase: PhaseType) {}
-
-    /// Display-only notification: priority was assigned to a player.
-    /// Called on all agents at stable priority boundaries after SBA/trigger processing.
-    fn notify_priority_player(&mut self, _player: PlayerId) {}
-
-    /// Display-only notification: authoritative game state changed without
-    /// necessarily changing turn/phase (e.g. stack item resolved).
-    fn notify_state_changed(&mut self) {}
 
     /// Choose which replacement effect to apply when multiple effects match the same event.
     /// Mirrors Java's `PlayerController.chooseSingleReplacementEffect(List<ReplacementEffect>)`.
@@ -1038,5 +1005,4 @@ impl PlayerAgent for PassAgent {
         None
     }
 
-    fn notify(&mut self, _message: &str) {}
 }

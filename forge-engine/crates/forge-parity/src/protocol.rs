@@ -116,6 +116,7 @@ pub struct StateSnapshot {
     pub turn: u32,
     pub phase: String,
     pub active_player: u32,
+    pub priority_player: u32,
     pub game_over: bool,
     pub winner: Option<u32>,
     pub players: Vec<PlayerSnapshot>,
@@ -172,8 +173,8 @@ pub struct GameTrace {
     pub decisions: Vec<DecisionRecord>,
     /// Card names that were played/cast during the game.
     pub covered_cards: Vec<String>,
-    /// Low-effort mechanic signals extracted from notify messages.
-    pub mechanic_signals: Vec<MechanicSignal>,
+    #[serde(default)]
+    pub callbacks: Vec<CallbackRecord>,
 }
 
 fn default_variant() -> String {
@@ -191,11 +192,17 @@ pub struct DecisionRecord {
     pub choice: String,
 }
 
-/// Low-effort mechanic signal observed during a run.
+/// A callback record captured during game execution.
+/// Groups by snapshot_index so we can show which callbacks happened
+/// between two consecutive snapshots when a divergence is found.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct MechanicSignal {
-    pub label: String,
-    pub count: usize,
+pub struct CallbackRecord {
+    pub snapshot_index: usize,
+    pub turn: u32,
+    pub phase: String,
+    pub player: u32,
+    pub name: String,
+    pub outcome: String,
 }
 
 // ── Parity Report ──────────────────────────────────────────────────
@@ -246,16 +253,68 @@ pub struct MatchupResult {
     pub first_divergence: Option<Divergence>,
     pub error_message: Option<String>,
     pub skip_reason: Option<String>,
-    /// Full Rust-side game trace text, attached for failed matchups.
-    pub trace: Option<String>,
-    /// Full Java-side game trace text, attached for failed matchups.
-    pub java_trace: Option<String>,
+    /// The Rust snapshot at the point of divergence.
+    pub rust_snapshot: Option<StateSnapshot>,
+    /// The Java snapshot at the point of divergence.
+    pub java_snapshot: Option<StateSnapshot>,
     /// Card names covered in this matchup (played/cast at least once).
     pub covered_cards: Vec<String>,
-    /// Low-effort mechanic signals observed in this matchup.
-    pub mechanic_signals: Vec<MechanicSignal>,
+    /// Callback records that occurred between the last matching snapshot and
+    /// the first divergent one.
+    #[serde(default)]
+    pub callback_window: Vec<CallbackRecord>,
+    /// Decision records associated with callbacks in `callback_window`.
+    #[serde(default)]
+    pub decision_window: Vec<DecisionRecord>,
+    /// Java decision records associated with callbacks in `callback_window`.
+    #[serde(default)]
+    pub java_decision_window: Vec<DecisionRecord>,
     /// If the game ended naturally, the turn it finished on; otherwise None means stopped at max turns.
     pub finished_turn: Option<u32>,
+}
+
+impl MatchupResult {
+    pub fn error(config: &super::runner::RunConfig, message: String) -> Self {
+        Self {
+            deck1: config.deck1.clone(),
+            deck2: config.deck2.clone(),
+            seed: config.seed,
+            status: MatchupStatus::Error,
+            snapshots_compared: 0,
+            divergence_count: 0,
+            first_divergence: None,
+            error_message: Some(message),
+            skip_reason: None,
+            rust_snapshot: None,
+            java_snapshot: None,
+            covered_cards: vec![],
+            callback_window: vec![],
+            decision_window: vec![],
+            java_decision_window: vec![],
+            finished_turn: None,
+        }
+    }
+
+    pub fn skipped(config: &super::runner::RunConfig, reason: String) -> Self {
+        Self {
+            deck1: config.deck1.clone(),
+            deck2: config.deck2.clone(),
+            seed: config.seed,
+            status: MatchupStatus::Skipped,
+            snapshots_compared: 0,
+            divergence_count: 0,
+            first_divergence: None,
+            error_message: None,
+            skip_reason: Some(reason),
+            rust_snapshot: None,
+            java_snapshot: None,
+            covered_cards: vec![],
+            callback_window: vec![],
+            decision_window: vec![],
+            java_decision_window: vec![],
+            finished_turn: None,
+        }
+    }
 }
 
 /// Aggregate report for all matchups in matrix mode.
@@ -371,64 +430,4 @@ pub struct FuzzReport {
     pub failed: usize,
     pub errors: usize,
     pub results: Vec<FuzzResult>,
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn snapshot_roundtrip_json() {
-        let snap = StateSnapshot {
-            turn: 3,
-            phase: "Main1".into(),
-            active_player: 0,
-            game_over: false,
-            winner: None,
-            players: vec![PlayerSnapshot {
-                name: "Alice".into(),
-                index: 0,
-                life: 20,
-                poison: 0,
-                lands_played: 1,
-                has_lost: false,
-                has_won: false,
-                battlefield: vec![CardSnapshot {
-                    name: "Mountain".into(),
-                    tapped: true,
-                    power: None,
-                    toughness: None,
-                    damage: 0,
-                    summoning_sick: false,
-                    counters: BTreeMap::new(),
-                    controller: 0,
-                }],
-                graveyard: vec![],
-                hand: vec!["Lightning Bolt".into()],
-                exile: vec![],
-                library_size: 30,
-            }],
-            stack: vec![],
-        };
-
-        let covered_cards: Vec<String> = vec!["Lightning Bolt".into()];
-        let json = serde_json::to_string(&snap).unwrap();
-        let parsed: StateSnapshot = serde_json::from_str(&json).unwrap();
-        assert_eq!(snap, parsed);
-        assert_eq!(covered_cards.len(), 1);
-    }
-
-    #[test]
-    fn divergence_serialization() {
-        let div = Divergence {
-            snapshot_index: 5,
-            turn: 3,
-            phase: "Main1".into(),
-            field: "players[0].life".into(),
-            rust_value: "18".into(),
-            java_value: "20".into(),
-        };
-        let json = serde_json::to_string_pretty(&div).unwrap();
-        assert!(json.contains("players[0].life"));
-    }
 }

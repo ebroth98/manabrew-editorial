@@ -662,8 +662,10 @@ impl PlayerAgent for InteractiveAgent {
         None
     }
 
-    fn notify(&mut self, message: &str) {
-        println!("  {}>> {}{}", CYAN, message, RESET);
+    fn notify(&mut self, event: forge_engine_core::agent::notification::GameNotification) {
+        if let forge_engine_core::agent::notification::GameNotification::Event(ref e) = event {
+            println!("  {}>> {}{}", CYAN, e.message, RESET);
+        }
     }
 }
 
@@ -756,8 +758,10 @@ impl PlayerAgent for SimpleAiAgent {
         None
     }
 
-    fn notify(&mut self, message: &str) {
-        println!("  {}>> [AI] {}{}", RED, message, RESET);
+    fn notify(&mut self, event: forge_engine_core::agent::notification::GameNotification) {
+        if let forge_engine_core::agent::notification::GameNotification::Event(ref e) = event {
+            println!("  {}>> [AI] {}{}", RED, e.message, RESET);
+        }
     }
 }
 

@@ -206,7 +206,6 @@ mod tests {
         fn choose_land_or_spell(&mut self, _: PlayerId) -> Option<bool> {
             None
         }
-        fn notify(&mut self, _: &str) {}
         fn choose_scry(&mut self, _player: PlayerId, cards: &[CardId]) -> Vec<CardId> {
             cards.to_vec() // put all on bottom
         }

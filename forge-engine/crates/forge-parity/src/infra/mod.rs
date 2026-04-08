@@ -1,0 +1,12 @@
+#[cfg(feature = "analyze")]
+pub mod analyzer;
+#[cfg(feature = "analyze")]
+pub mod discord;
+#[cfg(feature = "analyze")]
+pub mod github_issues;
+#[cfg(feature = "analyze")]
+pub mod llm;
+#[cfg(feature = "storage")]
+pub mod storage;
+#[cfg(feature = "serve")]
+pub mod web;

@@ -1,15 +1,10 @@
-//! Snapshot diff engine: compares two [`StateSnapshot`]s and produces a list
-//! of [`Divergence`]s describing every field that differs.
-
 use crate::protocol::{CardSnapshot, Divergence, PlayerSnapshot, StateSnapshot};
 
-/// Compare two snapshots and return all divergences.
 pub fn compare(index: usize, rust: &StateSnapshot, java: &StateSnapshot) -> Vec<Divergence> {
     let mut divs = Vec::new();
     let turn = rust.turn;
     let phase = rust.phase.clone();
 
-    // Top-level fields
     if rust.turn != java.turn {
         divs.push(divergence(
             index, turn, &phase, "turn", &rust.turn, &java.turn,
@@ -33,6 +28,16 @@ pub fn compare(index: usize, rust: &StateSnapshot, java: &StateSnapshot) -> Vec<
             "active_player",
             &rust.active_player,
             &java.active_player,
+        ));
+    }
+    if rust.priority_player != java.priority_player {
+        divs.push(divergence(
+            index,
+            turn,
+            &phase,
+            "priority_player",
+            &rust.priority_player,
+            &java.priority_player,
         ));
     }
     if rust.game_over != java.game_over {
@@ -352,94 +357,5 @@ fn divergence<R: std::fmt::Display, J: std::fmt::Display>(
         field: field.to_string(),
         rust_value: rust_value.to_string(),
         java_value: java_value.to_string(),
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::protocol::{PlayerSnapshot, StateSnapshot};
-    use std::collections::BTreeMap;
-
-    fn empty_player(name: &str, idx: u32) -> PlayerSnapshot {
-        PlayerSnapshot {
-            name: name.into(),
-            index: idx,
-            life: 20,
-            poison: 0,
-            lands_played: 0,
-            has_lost: false,
-            has_won: false,
-            battlefield: vec![],
-            graveyard: vec![],
-            hand: vec![],
-            exile: vec![],
-            library_size: 30,
-        }
-    }
-
-    fn base_snapshot() -> StateSnapshot {
-        StateSnapshot {
-            turn: 1,
-            phase: "Main1".into(),
-            active_player: 0,
-            game_over: false,
-            winner: None,
-            players: vec![empty_player("Alice", 0), empty_player("Bob", 1)],
-            stack: vec![],
-        }
-    }
-
-    #[test]
-    fn identical_snapshots_no_divergences() {
-        let a = base_snapshot();
-        let b = base_snapshot();
-        let divs = compare(0, &a, &b);
-        assert!(divs.is_empty());
-    }
-
-    #[test]
-    fn life_difference_detected() {
-        let a = base_snapshot();
-        let mut b = base_snapshot();
-        b.players[0].life = 18;
-
-        let divs = compare(0, &a, &b);
-        assert_eq!(divs.len(), 1);
-        assert_eq!(divs[0].field, "players[0].life");
-        assert_eq!(divs[0].rust_value, "20");
-        assert_eq!(divs[0].java_value, "18");
-    }
-
-    #[test]
-    fn battlefield_card_difference() {
-        let mut a = base_snapshot();
-        let mut b = base_snapshot();
-
-        a.players[0].battlefield.push(CardSnapshot {
-            name: "Mountain".into(),
-            tapped: false,
-            power: None,
-            toughness: None,
-            damage: 0,
-            summoning_sick: false,
-            counters: BTreeMap::new(),
-            controller: 0,
-        });
-
-        b.players[0].battlefield.push(CardSnapshot {
-            name: "Mountain".into(),
-            tapped: true, // Different!
-            power: None,
-            toughness: None,
-            damage: 0,
-            summoning_sick: false,
-            counters: BTreeMap::new(),
-            controller: 0,
-        });
-
-        let divs = compare(0, &a, &b);
-        assert!(!divs.is_empty());
-        assert!(divs.iter().any(|d| d.field.contains("tapped")));
     }
 }

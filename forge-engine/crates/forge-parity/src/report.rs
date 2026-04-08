@@ -1,7 +1,8 @@
 //! Report generation: JSON and human-readable text summaries of parity results.
 
 use crate::protocol::{
-    Divergence, FuzzReport, GameTrace, MatchupStatus, MatrixReport, ParityReport,
+    CardSnapshot, Divergence, FuzzReport, GameTrace, MatchupStatus, MatrixReport, ParityReport,
+    StateSnapshot,
 };
 
 const ANSI_RESET: &str = "\x1b[0m";
@@ -33,6 +34,15 @@ pub fn format_json(report: &ParityReport) -> String {
 
 /// Format a parity report as human-readable text.
 pub fn format_text(report: &ParityReport) -> String {
+    format_text_with_snapshots(report, None, None)
+}
+
+/// Format a parity report, optionally including a snapshot diff at the divergence point.
+pub fn format_text_with_snapshots(
+    report: &ParityReport,
+    rust_snapshot: Option<&StateSnapshot>,
+    java_snapshot: Option<&StateSnapshot>,
+) -> String {
     let mut out = String::new();
 
     out.push_str("=== Forge Parity Report ===\n\n");
@@ -62,6 +72,10 @@ pub fn format_text(report: &ParityReport) -> String {
                 div.rust_value,
                 div.java_value,
             ));
+        }
+
+        if let (Some(rs), Some(js)) = (rust_snapshot, java_snapshot) {
+            out.push_str(&format_snapshot_diff(rs, js, "  "));
         }
     }
 
@@ -173,33 +187,8 @@ pub fn format_matrix_text(report: &MatrixReport) -> String {
                             div.rust_value,
                             div.java_value,
                         ));
-                        match (&r.trace, &r.java_trace) {
-                            (Some(rust_trace), Some(java_trace)) => {
-                                out.push_str("     Rust vs Java trace (git-style):\n");
-                                out.push_str(&format_unified_trace_diff(
-                                    rust_trace, java_trace, "       ",
-                                ));
-                                out.push('\n');
-                            }
-                            (Some(rust_trace), None) => {
-                                out.push_str("     Rust trace:\n");
-                                for line in rust_trace.lines() {
-                                    out.push_str("       ");
-                                    out.push_str(line);
-                                    out.push('\n');
-                                }
-                                out.push('\n');
-                            }
-                            (None, Some(java_trace)) => {
-                                out.push_str("     Java trace:\n");
-                                for line in java_trace.lines() {
-                                    out.push_str("       ");
-                                    out.push_str(line);
-                                    out.push('\n');
-                                }
-                                out.push('\n');
-                            }
-                            (None, None) => {}
+                        if let (Some(rs), Some(js)) = (&r.rust_snapshot, &r.java_snapshot) {
+                            out.push_str(&format_snapshot_diff(rs, js, "     "));
                         }
                     } else {
                         out.push_str(&format!(
@@ -352,30 +341,10 @@ pub fn format_fuzz_text(report: &FuzzReport) -> String {
                             "     [T{} {}] {}: Rust={} Java={}\n",
                             div.turn, div.phase, div.field, div.rust_value, div.java_value,
                         ));
-                        match (&r.result.trace, &r.result.java_trace) {
-                            (Some(rust_trace), Some(java_trace)) => {
-                                out.push_str("     Rust vs Java trace (git-style):\n");
-                                out.push_str(&format_unified_trace_diff(
-                                    rust_trace, java_trace, "       ",
-                                ));
-                            }
-                            (Some(rust_trace), None) => {
-                                out.push_str("     Rust trace:\n");
-                                for line in rust_trace.lines() {
-                                    out.push_str("       ");
-                                    out.push_str(line);
-                                    out.push('\n');
-                                }
-                            }
-                            (None, Some(java_trace)) => {
-                                out.push_str("     Java trace:\n");
-                                for line in java_trace.lines() {
-                                    out.push_str("       ");
-                                    out.push_str(line);
-                                    out.push('\n');
-                                }
-                            }
-                            (None, None) => {}
+                        if let (Some(rs), Some(js)) =
+                            (&r.result.rust_snapshot, &r.result.java_snapshot)
+                        {
+                            out.push_str(&format_snapshot_diff(rs, js, "     "));
                         }
                     }
                 }
@@ -410,6 +379,320 @@ fn completion_label(
     }
 }
 
+/// Find the turn number from the nearest `--- Snapshot ... | Turn N |` line
+/// at or before the first divergence in the traces.
+fn find_trace_divergence_turn(rust_trace: &str, java_trace: &str) -> Option<u32> {
+    let rust_lines: Vec<&str> = rust_trace.lines().collect();
+    let java_lines: Vec<&str> = java_trace.lines().collect();
+    let rows = rust_lines.len().max(java_lines.len());
+    let first_diff = (0..rows).find(|&i| {
+        rust_lines.get(i).copied().unwrap_or("") != java_lines.get(i).copied().unwrap_or("")
+    })?;
+    // Walk backwards from the diff to find the nearest "--- Snapshot ... | Turn N |" line
+    for i in (0..=first_diff).rev() {
+        let line = rust_lines.get(i).copied().unwrap_or("");
+        if let Some(rest) = line.strip_prefix("--- Snapshot ") {
+            // Format: "--- Snapshot 4 | Turn 5 | Untap | Active: P0 ---"
+            if let Some(turn_part) = rest.split("Turn ").nth(1) {
+                if let Some(num_str) = turn_part.split(' ').next() {
+                    if let Ok(turn) = num_str.parse::<u32>() {
+                        return Some(turn);
+                    }
+                }
+            }
+        }
+        // Also check Decision lines: "  Decision[P0 CombatEnd ...]" doesn't have turn,
+        // but lines like "--- Snapshot" do. Keep walking.
+    }
+    None
+}
+
+/// Render a side-by-side diff of two StateSnapshots, highlighting only the fields that differ.
+fn format_snapshot_diff(rust: &StateSnapshot, java: &StateSnapshot, indent: &str) -> String {
+    let mut out = String::new();
+    out.push_str(&format!(
+        "{indent}Snapshot diff at T{} ({}):\n",
+        rust.turn, rust.phase
+    ));
+
+    fn diff_field<T: std::fmt::Display + PartialEq>(
+        out: &mut String,
+        indent: &str,
+        name: &str,
+        rust: &T,
+        java: &T,
+    ) {
+        if rust != java {
+            out.push_str(&format!(
+                "{indent}  {ANSI_RED}{name}: Rust={rust}  Java={java}{ANSI_RESET}\n"
+            ));
+        }
+    }
+
+    diff_field(&mut out, indent, "turn", &rust.turn, &java.turn);
+    diff_field(&mut out, indent, "phase", &rust.phase, &java.phase);
+    diff_field(
+        &mut out,
+        indent,
+        "active_player",
+        &rust.active_player,
+        &java.active_player,
+    );
+    diff_field(
+        &mut out,
+        indent,
+        "game_over",
+        &rust.game_over,
+        &java.game_over,
+    );
+
+    let max_players = rust.players.len().max(java.players.len());
+    for i in 0..max_players {
+        match (rust.players.get(i), java.players.get(i)) {
+            (Some(rp), Some(jp)) => {
+                let label = format!("P{} {}", rp.index, rp.name);
+                diff_field(
+                    &mut out,
+                    indent,
+                    &format!("{label}.life"),
+                    &rp.life,
+                    &jp.life,
+                );
+                diff_field(
+                    &mut out,
+                    indent,
+                    &format!("{label}.poison"),
+                    &rp.poison,
+                    &jp.poison,
+                );
+                diff_field(
+                    &mut out,
+                    indent,
+                    &format!("{label}.has_lost"),
+                    &rp.has_lost,
+                    &jp.has_lost,
+                );
+                diff_field(
+                    &mut out,
+                    indent,
+                    &format!("{label}.has_won"),
+                    &rp.has_won,
+                    &jp.has_won,
+                );
+                diff_field(
+                    &mut out,
+                    indent,
+                    &format!("{label}.library_size"),
+                    &rp.library_size,
+                    &jp.library_size,
+                );
+                diff_field(
+                    &mut out,
+                    indent,
+                    &format!("{label}.lands_played"),
+                    &rp.lands_played,
+                    &jp.lands_played,
+                );
+
+                let r_hand = rp.hand.join(", ");
+                let j_hand = jp.hand.join(", ");
+                if r_hand != j_hand {
+                    out.push_str(&format!("{indent}  {ANSI_RED}{label}.hand:{ANSI_RESET}\n"));
+                    out.push_str(&format!(
+                        "{indent}    {ANSI_ORANGE}Rust: [{r_hand}]{ANSI_RESET}\n"
+                    ));
+                    out.push_str(&format!(
+                        "{indent}    {ANSI_GREEN}Java: [{j_hand}]{ANSI_RESET}\n"
+                    ));
+                }
+
+                let r_gy = rp.graveyard.join(", ");
+                let j_gy = jp.graveyard.join(", ");
+                if r_gy != j_gy {
+                    out.push_str(&format!(
+                        "{indent}  {ANSI_RED}{label}.graveyard:{ANSI_RESET}\n"
+                    ));
+                    out.push_str(&format!(
+                        "{indent}    {ANSI_ORANGE}Rust: [{r_gy}]{ANSI_RESET}\n"
+                    ));
+                    out.push_str(&format!(
+                        "{indent}    {ANSI_GREEN}Java: [{j_gy}]{ANSI_RESET}\n"
+                    ));
+                }
+
+                let r_exile = rp.exile.join(", ");
+                let j_exile = jp.exile.join(", ");
+                if r_exile != j_exile {
+                    out.push_str(&format!("{indent}  {ANSI_RED}{label}.exile:{ANSI_RESET}\n"));
+                    out.push_str(&format!(
+                        "{indent}    {ANSI_ORANGE}Rust: [{r_exile}]{ANSI_RESET}\n"
+                    ));
+                    out.push_str(&format!(
+                        "{indent}    {ANSI_GREEN}Java: [{j_exile}]{ANSI_RESET}\n"
+                    ));
+                }
+
+                // Battlefield card-by-card diff
+                if rp.battlefield != jp.battlefield {
+                    out.push_str(&format!(
+                        "{indent}  {ANSI_RED}{label}.battlefield:{ANSI_RESET}\n"
+                    ));
+                    let r_bf: Vec<String> =
+                        rp.battlefield.iter().map(format_card_snapshot).collect();
+                    let j_bf: Vec<String> =
+                        jp.battlefield.iter().map(format_card_snapshot).collect();
+                    out.push_str(&format!(
+                        "{indent}    {ANSI_ORANGE}Rust: [{}]{ANSI_RESET}\n",
+                        r_bf.join(", ")
+                    ));
+                    out.push_str(&format!(
+                        "{indent}    {ANSI_GREEN}Java: [{}]{ANSI_RESET}\n",
+                        j_bf.join(", ")
+                    ));
+                }
+            }
+            (Some(rp), None) => {
+                out.push_str(&format!(
+                    "{indent}  {ANSI_RED}P{} {}: exists in Rust but not Java{ANSI_RESET}\n",
+                    rp.index, rp.name
+                ));
+            }
+            (None, Some(jp)) => {
+                out.push_str(&format!(
+                    "{indent}  {ANSI_RED}P{} {}: exists in Java but not Rust{ANSI_RESET}\n",
+                    jp.index, jp.name
+                ));
+            }
+            (None, None) => {}
+        }
+    }
+
+    if rust.stack != java.stack {
+        out.push_str(&format!("{indent}  {ANSI_RED}stack:{ANSI_RESET}\n"));
+        out.push_str(&format!(
+            "{indent}    {ANSI_ORANGE}Rust: [{}]{ANSI_RESET}\n",
+            rust.stack.join(", ")
+        ));
+        out.push_str(&format!(
+            "{indent}    {ANSI_GREEN}Java: [{}]{ANSI_RESET}\n",
+            java.stack.join(", ")
+        ));
+    }
+
+    out.push('\n');
+    out
+}
+
+fn format_card_snapshot(c: &CardSnapshot) -> String {
+    let mut s = c.name.clone();
+    if c.tapped {
+        s.push_str(" (T)");
+    }
+    if let (Some(p), Some(t)) = (c.power, c.toughness) {
+        s.push_str(&format!(" {}/{}", p, t));
+    }
+    if c.damage > 0 {
+        s.push_str(&format!(" dmg={}", c.damage));
+    }
+    if !c.counters.is_empty() {
+        let counters: Vec<String> = c
+            .counters
+            .iter()
+            .map(|(k, v)| format!("{}={}", k, v))
+            .collect();
+        s.push_str(&format!(" [{}]", counters.join(",")));
+    }
+    s
+}
+
+/// Extract the snapshot block for a given turn from a formatted trace.
+/// A snapshot block starts with `--- Snapshot N | Turn T |` and ends before the next `--- Snapshot`.
+fn extract_snapshot_block(trace: &str, turn: u32) -> Option<String> {
+    let marker = format!("| Turn {} |", turn);
+    let lines: Vec<&str> = trace.lines().collect();
+    let start = lines
+        .iter()
+        .position(|l| l.contains("--- Snapshot") && l.contains(&marker))?;
+    let end = lines[start + 1..]
+        .iter()
+        .position(|l| l.starts_with("--- Snapshot"))
+        .map(|i| start + 1 + i)
+        .unwrap_or(lines.len());
+    Some(lines[start..end].join("\n"))
+}
+
+/// Diff only the snapshot block at the divergence turn between Rust and Java traces.
+fn format_snapshot_diff_at_turn(
+    rust_trace: &str,
+    java_trace: &str,
+    turn: u32,
+    indent: &str,
+) -> String {
+    let rust_block = extract_snapshot_block(rust_trace, turn);
+    let java_block = extract_snapshot_block(java_trace, turn);
+    let mut out = String::new();
+
+    match (rust_block.as_deref(), java_block.as_deref()) {
+        (Some(rb), Some(jb)) => {
+            let rust_lines: Vec<&str> = rb.lines().collect();
+            let java_lines: Vec<&str> = jb.lines().collect();
+            let rows = rust_lines.len().max(java_lines.len());
+            for i in 0..rows {
+                let rl = rust_lines.get(i).copied().unwrap_or("");
+                let jl = java_lines.get(i).copied().unwrap_or("");
+                if rl == jl {
+                    out.push_str(indent);
+                    out.push_str(&format!("{ANSI_DIM}{}{ANSI_RESET}\n", rl));
+                } else {
+                    out.push_str(indent);
+                    out.push_str(&format!(
+                        "{ANSI_ORANGE}Rust: {}{ANSI_RESET}\n",
+                        if rl.is_empty() { "<missing>" } else { rl }
+                    ));
+                    out.push_str(indent);
+                    out.push_str(&format!(
+                        "{ANSI_GREEN}Java: {}{ANSI_RESET}\n",
+                        if jl.is_empty() { "<missing>" } else { jl }
+                    ));
+                }
+            }
+        }
+        (Some(rb), None) => {
+            out.push_str(indent);
+            out.push_str(&format!(
+                "{ANSI_ORANGE}(Rust has snapshot for T{}, Java does not){ANSI_RESET}\n",
+                turn
+            ));
+            for line in rb.lines() {
+                out.push_str(indent);
+                out.push_str(&format!("{ANSI_ORANGE}{}{ANSI_RESET}\n", line));
+            }
+        }
+        (None, Some(jb)) => {
+            out.push_str(indent);
+            out.push_str(&format!(
+                "{ANSI_GREEN}(Java has snapshot for T{}, Rust does not){ANSI_RESET}\n",
+                turn
+            ));
+            for line in jb.lines() {
+                out.push_str(indent);
+                out.push_str(&format!("{ANSI_GREEN}{}{ANSI_RESET}\n", line));
+            }
+        }
+        (None, None) => {
+            out.push_str(indent);
+            out.push_str(&format!(
+                "{ANSI_DIM}(No snapshot found for T{}){ANSI_RESET}\n",
+                turn
+            ));
+        }
+    }
+    out
+}
+
+/// Max lines to show from the first divergence point in a trace diff.
+const TRACE_DIFF_CONTEXT_LINES: usize = 10;
+
 fn format_unified_trace_diff(rust_trace: &str, java_trace: &str, indent: &str) -> String {
     let rust_lines: Vec<&str> = rust_trace.lines().collect();
     let java_lines: Vec<&str> = java_trace.lines().collect();
@@ -423,7 +706,32 @@ fn format_unified_trace_diff(rust_trace: &str, java_trace: &str, indent: &str) -
     out.push_str(indent);
     out.push_str(&format!("{ANSI_ORANGE}Trace Diff{ANSI_RESET}\n"));
 
-    for i in 0..rows {
+    // Find the first divergent line.
+    let first_diff = (0..rows).find(|&i| {
+        rust_lines.get(i).copied().unwrap_or("") != java_lines.get(i).copied().unwrap_or("")
+    });
+
+    let Some(diff_start) = first_diff else {
+        // No diff found — all lines match.
+        out.push_str(indent);
+        out.push_str(&format!("{ANSI_DIM}  (traces are identical){ANSI_RESET}\n"));
+        return out;
+    };
+
+    // Show a few context lines before the divergence.
+    let context_before = 3;
+    let display_start = diff_start.saturating_sub(context_before);
+    let display_end = (diff_start + TRACE_DIFF_CONTEXT_LINES).min(rows);
+
+    if display_start > 0 {
+        out.push_str(indent);
+        out.push_str(&format!(
+            "{ANSI_DIM}  ... ({} matching lines omitted) ...{ANSI_RESET}\n",
+            display_start
+        ));
+    }
+
+    for i in display_start..display_end {
         let rust_line = rust_lines.get(i).copied().unwrap_or("");
         let java_line = java_lines.get(i).copied().unwrap_or("");
         if rust_line == java_line {
@@ -444,6 +752,14 @@ fn format_unified_trace_diff(rust_trace: &str, java_trace: &str, indent: &str) -
         } else {
             out.push_str(&format!("{ANSI_GREEN}Java: {java_line}{ANSI_RESET}\n"));
         }
+    }
+
+    if display_end < rows {
+        out.push_str(indent);
+        out.push_str(&format!(
+            "{ANSI_DIM}  ... ({} more lines omitted) ...{ANSI_RESET}\n",
+            rows - display_end
+        ));
     }
 
     out
@@ -591,7 +907,7 @@ mod tests {
             commanders: vec![],
             decisions: vec![],
             covered_cards: vec![],
-            mechanic_signals: vec![],
+            callbacks: vec![],
             snapshots: vec![StateSnapshot {
                 turn: 1,
                 phase: "Untap".into(),

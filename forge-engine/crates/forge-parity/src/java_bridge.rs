@@ -14,56 +14,38 @@ use std::time::Instant;
 
 use serde::{Deserialize, Serialize};
 
-use crate::perf;
 use crate::protocol::{DecisionRecord, StateSnapshot};
 
 /// Configuration for a Java bridge subprocess.
 pub struct JavaBridgeConfig {
-    /// Path to the Java Forge harness JAR file.
     pub jar_path: PathBuf,
-    /// RNG seed for reproducibility.
     pub seed: u64,
-    /// Maximum number of turns.
     pub max_turns: u32,
-    /// Deck 1 preset ID.
     pub deck1: String,
-    /// Deck 2 preset ID.
     pub deck2: String,
-    /// Path to the forge-gui/ assets directory (optional, auto-detected from JAR path).
     pub forge_home: Option<String>,
-    /// Path to the preset deck JSON files directory.
     pub decks_dir: Option<String>,
-    /// If true, print step-by-step Java bridge logs.
     pub verbose: bool,
-    /// If true, bias main-phase random decisions toward actions over pass.
     pub prefer_actions: bool,
-    /// If true, emit callback-entry snapshots before every decision callback.
     pub deep: bool,
-    /// Maximum JVM heap size (e.g. "512m", "1g"). Passed as -Xmx to the JVM.
     pub java_heap: String,
+    pub verbose_turns: Option<String>,
 }
 
-/// Java bridge that manages a subprocess running the Java Forge engine (one-shot mode).
 pub struct JavaBridge {
     pub config: JavaBridgeConfig,
 }
 
-/// Parsed protocol payload for a single Java matchup.
 pub struct JavaMatchupData {
     pub snapshots: Vec<StateSnapshot>,
     pub decisions: Vec<DecisionRecord>,
 }
 
 impl JavaBridge {
-    /// Create a new bridge from configuration.
     pub fn new(config: JavaBridgeConfig) -> Self {
         Self { config }
     }
 
-    /// Run the Java engine and collect snapshots from stdout.
-    ///
-    /// Launches `java -jar <path> --deck1 ... --deck2 ... --seed ... --max-turns ...`
-    /// and reads JSONL output (one `StateSnapshot` per line) from stdout.
     pub fn run(&self) -> Result<JavaMatchupData, JavaBridgeError> {
         let t_total = Instant::now();
         let jar = &self.config.jar_path;
@@ -121,6 +103,9 @@ impl JavaBridge {
         if self.config.deep {
             cmd.arg("--deep");
         }
+        if let Some(ref vt) = self.config.verbose_turns {
+            cmd.arg("--verbose-turns").arg(vt);
+        }
 
         // Add --forge-home if specified, otherwise auto-detect from JAR path
         if let Some(ref home) = self.config.forge_home {
@@ -138,13 +123,11 @@ impl JavaBridge {
             }
         }
 
-        let t_spawn = Instant::now();
         let mut child = cmd
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
             .map_err(|e| JavaBridgeError::SpawnError(format!("Failed to spawn java: {}", e)))?;
-        perf::record("java_bridge.oneshot.spawn", t_spawn.elapsed());
 
         // Read stderr in a background thread for diagnostics
         let stderr = child.stderr.take();
@@ -161,6 +144,7 @@ impl JavaBridge {
                         || line.contains("[rng-java")
                         || line.contains("[java-target")
                         || line.contains("[det-java")
+                        || line.contains("[parity-agent-java")
                     {
                         eprintln!("[java] {}", line);
                     }
@@ -216,7 +200,6 @@ impl JavaBridge {
                 }
             }
         }
-        perf::record("java_bridge.oneshot.read_stdout", t_read.elapsed());
 
         // Wait for process to finish
         let _ = stderr_handle.join();
@@ -238,7 +221,6 @@ impl JavaBridge {
                 snapshots.len()
             );
         }
-        perf::record("java_bridge.oneshot.total", t_total.elapsed());
         Ok(JavaMatchupData {
             snapshots,
             decisions,
@@ -249,18 +231,11 @@ impl JavaBridge {
 // ---------------------------------------------------------------------------
 // JavaServer — long-lived server mode
 // ---------------------------------------------------------------------------
-
-/// Configuration for spawning a Java server process.
 pub struct JavaServerConfig {
-    /// Path to the Java Forge harness JAR file.
     pub jar_path: PathBuf,
-    /// Path to the forge-gui/ assets directory (optional, auto-detected from JAR path).
     pub forge_home: Option<String>,
-    /// Path to the preset deck JSON files directory (passed to Java as -Dpreset.decks.dir).
     pub decks_dir: Option<String>,
-    /// If true, print step-by-step Java server logs.
     pub verbose: bool,
-    /// Maximum JVM heap size (e.g. "512m", "1g"). Passed as -Xmx to the JVM.
     pub java_heap: String,
 }
 
@@ -278,9 +253,11 @@ pub struct MatchupRequest {
     pub variant: String,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub commanders: Vec<String>,
+    /// Verbose callback logging for specific turns. Empty string = all, absent = off.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub verbose_turns: Option<String>,
 }
 
-/// Sentinel line from the Java server indicating end-of-game.
 #[derive(Deserialize)]
 struct DoneSentinel {
     done: bool,
@@ -301,9 +278,7 @@ pub struct JavaServer {
 }
 
 impl JavaServer {
-    /// Spawn a new Java server process with `--server` flag.
     pub fn spawn(config: &JavaServerConfig) -> Result<Self, JavaBridgeError> {
-        let t_total = Instant::now();
         let jar = &config.jar_path;
         let verbose = config.verbose;
 
@@ -358,14 +333,12 @@ impl JavaServer {
             }
         }
 
-        let t_spawn = Instant::now();
         let mut child = cmd
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
             .map_err(|e| JavaBridgeError::SpawnError(format!("Failed to spawn java: {}", e)))?;
-        perf::record("java_bridge.server.spawn_process", t_spawn.elapsed());
 
         let stdin = child
             .stdin
@@ -391,6 +364,7 @@ impl JavaServer {
                         || line.contains("[rng-java")
                         || line.contains("[java-target")
                         || line.contains("[det-java")
+                        || line.contains("[parity-agent-java")
                     {
                         eprintln!("[java] {}", line);
                     }
@@ -402,7 +376,6 @@ impl JavaServer {
             eprintln!("[parity] Java server spawned (pid={})", child.id());
         }
 
-        perf::record("java_bridge.server.spawn_total", t_total.elapsed());
         Ok(Self {
             child,
             stdin: BufWriter::new(stdin),
@@ -423,6 +396,7 @@ impl JavaServer {
         deep: bool,
         variant: &str,
         commanders: &[String],
+        verbose_turns: Option<String>,
     ) -> Result<JavaMatchupData, JavaBridgeError> {
         let t_total = Instant::now();
         let request = MatchupRequest {
@@ -435,6 +409,7 @@ impl JavaServer {
             deep,
             variant: variant.to_string(),
             commanders: commanders.to_vec(),
+            verbose_turns,
         };
 
         // Write request as a single JSON line
@@ -516,7 +491,6 @@ impl JavaServer {
                 }
             }
         }
-        perf::record("java_bridge.server.read_stdout", t_read.elapsed());
 
         if self.verbose {
             eprintln!(
@@ -524,7 +498,6 @@ impl JavaServer {
                 snapshots.len()
             );
         }
-        perf::record("java_bridge.server.run_matchup.total", t_total.elapsed());
         Ok(JavaMatchupData {
             snapshots,
             decisions,
@@ -550,12 +523,12 @@ impl JavaServer {
         deep: bool,
         variant: &str,
         commanders: &[String],
+        verbose_turns: Option<String>,
         mut on_snapshot: F,
     ) -> Result<JavaMatchupData, JavaBridgeError>
     where
         F: FnMut(usize, &StateSnapshot) -> bool,
     {
-        let t_total = Instant::now();
         let request = MatchupRequest {
             command: "run".to_string(),
             deck1: deck1.to_string(),
@@ -566,6 +539,7 @@ impl JavaServer {
             deep,
             variant: variant.to_string(),
             commanders: commanders.to_vec(),
+            verbose_turns,
         };
 
         let request_json = serde_json::to_string(&request).map_err(|e| {
@@ -588,7 +562,6 @@ impl JavaServer {
         let mut snapshot_idx: usize = 0;
         let mut draining = false;
 
-        let t_read = Instant::now();
         loop {
             line_buf.clear();
             let bytes_read = self.stdout.read_line(&mut line_buf).map_err(|e| {
@@ -654,7 +627,6 @@ impl JavaServer {
                 }
             }
         }
-        perf::record("java_bridge.server_streaming.read_stdout", t_read.elapsed());
 
         if self.verbose {
             eprintln!(
@@ -663,7 +635,6 @@ impl JavaServer {
                 if draining { " (early divergence)" } else { "" }
             );
         }
-        perf::record("java_bridge.server_streaming.total", t_total.elapsed());
         Ok(JavaMatchupData {
             snapshots,
             decisions,

@@ -9,11 +9,11 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use crate::agent_loop::{self, AgentConfig};
-use crate::discord::{DiscordClient, FailureAlert, PeriodSummary};
-use crate::github_issues::{DeckPairRow, GitHubIssues, IssueData};
-use crate::llm::{ClusterContext, LlmAnalysis, LlmClient};
+use crate::infra::discord::{DiscordClient, FailureAlert, PeriodSummary};
+use crate::infra::github_issues::{DeckPairRow, GitHubIssues, IssueData};
+use crate::infra::llm::{ClusterContext, LlmAnalysis, LlmClient};
+use crate::infra::storage::Storage;
 use crate::protocol::RunRecord;
-use crate::storage::Storage;
 
 /// Configuration for the analysis daemon.
 pub struct AnalyzerConfig {
@@ -434,7 +434,7 @@ pub async fn run(storage: Arc<Mutex<Storage>>, config: AnalyzerConfig, running: 
 
             // GitHub issue creation — runs independently of LLM analysis
             if total_count as i64 >= config.issue_threshold && github.is_available() {
-                let normalized_field = crate::github_issues::normalize_field(field);
+                let normalized_field = crate::infra::github_issues::normalize_field(field);
                 // Check local DB first for a known issue number (match by normalized field)
                 let local_issue = {
                     let db = storage.lock().unwrap();
@@ -442,7 +442,8 @@ pub async fn run(storage: Arc<Mutex<Storage>>, config: AnalyzerConfig, running: 
                         fields
                             .iter()
                             .find(|fc| {
-                                crate::github_issues::normalize_field(&fc.field) == normalized_field
+                                crate::infra::github_issues::normalize_field(&fc.field)
+                                    == normalized_field
                             })
                             .and_then(|fc| fc.github_issue)
                     })
@@ -551,7 +552,7 @@ pub async fn run(storage: Arc<Mutex<Storage>>, config: AnalyzerConfig, running: 
 }
 
 /// Check if a cluster grew significantly (doubled or more since last analysis).
-fn grew_significantly(cluster: &crate::storage::KnownCluster) -> bool {
+fn grew_significantly(cluster: &crate::infra::storage::KnownCluster) -> bool {
     // Consider significant if total count is at a power-of-2 boundary
     let count = cluster.failure_count;
     count > 0 && (count & (count - 1)) == 0
@@ -651,7 +652,7 @@ mod tests {
 
     #[test]
     fn grew_significantly_powers_of_two() {
-        use crate::storage::KnownCluster;
+        use crate::infra::storage::KnownCluster;
 
         let make = |count: i64| KnownCluster {
             id: 1,

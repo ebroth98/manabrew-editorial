@@ -18,24 +18,31 @@ public class DeterministicLobbyPlayer extends LobbyPlayer implements IGameEntiti
     private final CountingRandom rng;
     private final boolean preferActions;
     private final boolean deep;
+    /** Turns for which verbose callback logging is active. Empty = all, null = off. */
+    private final int[] verboseTurns;
 
     public DeterministicLobbyPlayer(String name, CountingRandom rng, boolean preferActions, boolean deep) {
+        this(name, rng, preferActions, deep, null);
+    }
+
+    public DeterministicLobbyPlayer(String name, CountingRandom rng, boolean preferActions, boolean deep, int[] verboseTurns) {
         super(name);
         this.rng = rng;
         this.preferActions = preferActions;
         this.deep = deep;
+        this.verboseTurns = verboseTurns;
     }
 
     @Override
     public Player createIngamePlayer(Game game, int id) {
         Player p = new Player(getName(), game, id);
-        p.setFirstController(new DeterministicController(game, p, this, rng, preferActions, deep));
+        p.setFirstController(new DeterministicController(game, p, this, rng, preferActions, deep, verboseTurns));
         return p;
     }
 
     @Override
     public PlayerController createMindSlaveController(Player master, Player slave) {
-        return new DeterministicController(slave.getGame(), slave, this, rng, preferActions, deep);
+        return new DeterministicController(slave.getGame(), slave, this, rng, preferActions, deep, verboseTurns);
     }
 
     @Override

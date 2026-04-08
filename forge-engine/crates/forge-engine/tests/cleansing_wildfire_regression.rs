@@ -148,7 +148,6 @@ impl PlayerAgent for AcceptSearchAgent {
         None
     }
 
-    fn notify(&mut self, _: &str) {}
 }
 
 #[test]

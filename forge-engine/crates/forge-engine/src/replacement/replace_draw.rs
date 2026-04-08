@@ -99,8 +99,7 @@ pub fn execute(
         let lib = game.cards_in_zone(ZoneType::Library, player);
         let lib_len = lib.len();
         let start = lib_len.saturating_sub(amount);
-        let mill_cards: Vec<crate::ids::CardId> =
-            lib[start..].iter().rev().copied().collect();
+        let mill_cards: Vec<crate::ids::CardId> = lib[start..].iter().rev().copied().collect();
         for cid in mill_cards {
             let owner = game.card(cid).owner;
             game.move_card(cid, ZoneType::Graveyard, owner);

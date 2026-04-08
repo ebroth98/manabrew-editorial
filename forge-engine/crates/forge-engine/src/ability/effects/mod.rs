@@ -760,7 +760,9 @@ fn check_condition_present(
         // Self-exclusion only makes sense for the zone-scan path below.
         let count = defined_cards
             .iter()
-            .filter(|&&cid| matches_condition_filter_no_self_exclude(game, cid, player, &alternatives))
+            .filter(|&&cid| {
+                matches_condition_filter_no_self_exclude(game, cid, player, &alternatives)
+            })
             .count() as i32;
 
         return if let Some(compare) = sa.params.get(keys::CONDITION_COMPARE) {

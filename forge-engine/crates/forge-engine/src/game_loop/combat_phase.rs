@@ -156,7 +156,11 @@ impl GameLoop {
 
                 if invalid {
                     // Declaration invalid — re-prompt like Java's PhaseHandler.
-                    agents[active.index()].notify("Attack declaration invalid");
+                    agents[active.index()].notify(
+                        crate::agent::notification::GameNotification::Event(
+                            crate::agent::GameLogEvent::warning("Attack declaration invalid"),
+                        ),
+                    );
                     continue;
                 }
 

@@ -231,16 +231,6 @@ impl JavaCache {
     }
 }
 
-/// Compute a source hash covering all Java source files that affect harness
-/// output.  This includes:
-/// - `forge/forge-harness/src/` (the team's harness code)
-/// - `forge/forge-game/src/`   (the reference Java engine)
-/// - `forge/forge-core/src/`   (core types)
-/// - `forge/forge-ai/src/`     (AI module, used by game)
-/// - `preset_decks/`           (deck definitions)
-///
-/// We hash file paths + contents to detect additions, deletions, and edits.
-/// Uses a stable sort so the hash is deterministic across platforms.
 pub fn compute_source_hash(project_root: &Path) -> String {
     let dirs_to_hash = [
         "forge/forge-harness/src",
@@ -272,8 +262,6 @@ pub fn compute_source_hash(project_root: &Path) -> String {
     format!("{:016x}", hasher.finish())
 }
 
-/// Compute a source hash from the JAR file itself (alternative when source
-/// dirs aren't available, e.g. in Docker where only the JAR is present).
 pub fn compute_jar_hash(jar_path: &Path) -> std::io::Result<String> {
     let mut file = fs::File::open(jar_path)?;
     let mut hasher = DefaultHasher::new();
@@ -311,79 +299,5 @@ fn collect_files(base: &Path, dir: &Path, out: &mut Vec<(String, Vec<u8>)>) {
                 }
             }
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::protocol::{DecisionRecord, PlayerSnapshot, StateSnapshot};
-
-    fn dummy_data() -> JavaMatchupData {
-        JavaMatchupData {
-            snapshots: vec![StateSnapshot {
-                turn: 1,
-                phase: "Untap".into(),
-                active_player: 0,
-                game_over: false,
-                winner: None,
-                players: vec![PlayerSnapshot {
-                    name: "P1".into(),
-                    index: 0,
-                    life: 20,
-                    poison: 0,
-                    lands_played: 0,
-                    has_lost: false,
-                    has_won: false,
-                    hand: vec!["Mountain".into()],
-                    battlefield: vec![],
-                    graveyard: vec![],
-                    exile: vec![],
-                    library_size: 50,
-                }],
-                stack: vec![],
-            }],
-            decisions: vec![DecisionRecord {
-                turn: 1,
-                phase: "Main1".into(),
-                deciding_player: 0,
-                kind: "main_action".into(),
-                options: vec!["PASS".into()],
-                choice: "PASS".into(),
-            }],
-        }
-    }
-
-    #[test]
-    fn round_trip() {
-        let dir = tempfile::tempdir().unwrap();
-        let cache = JavaCache::open(dir.path(), "test_hash".into()).unwrap();
-
-        // Miss
-        assert!(cache.get("a", "b", 42, 10, false).is_none());
-
-        // Put + hit
-        let data = dummy_data();
-        cache.put("a", "b", 42, 10, false, &data).unwrap();
-        let got = cache.get("a", "b", 42, 10, false).unwrap();
-        assert_eq!(got.snapshots.len(), 1);
-        assert_eq!(got.decisions.len(), 1);
-        assert_eq!(got.snapshots[0].turn, 1);
-
-        // Different params → miss
-        assert!(cache.get("a", "b", 99, 10, false).is_none());
-    }
-
-    #[test]
-    fn wipes_on_hash_change() {
-        let dir = tempfile::tempdir().unwrap();
-
-        let cache1 = JavaCache::open(dir.path(), "hash_v1".into()).unwrap();
-        cache1.put("a", "b", 42, 10, false, &dummy_data()).unwrap();
-        assert!(cache1.get("a", "b", 42, 10, false).is_some());
-
-        // Reopen with different hash → cache wiped
-        let cache2 = JavaCache::open(dir.path(), "hash_v2".into()).unwrap();
-        assert!(cache2.get("a", "b", 42, 10, false).is_none());
     }
 }

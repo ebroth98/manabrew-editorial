@@ -9,7 +9,7 @@ path = "src/main.rs"
 
 [[bin]]
 name = "parity-ci"
-path = "src/ci_client.rs"
+path = "src/infra/ci_client.rs"
 
 [features]
 default = []

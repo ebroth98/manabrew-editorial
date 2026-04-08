@@ -1,3 +1,4 @@
+use forge_engine_core::agent::notification::GameNotification;
 use forge_engine_core::agent::{
     BinaryChoiceKind, CombatCostAction, GameLogEvent, ManaCostAction, PlayOption, PlayerAgent,
     TargetChoice,
@@ -250,9 +251,15 @@ impl<T: AgentTransport> PlayerAgent for PromptAgent<T> {
                         .unwrap_or_else(|| ab.ability_text.clone())
                         .replace("CARDNAME", &card.card_name);
                     let cost_str = ab.cost.to_simple_string();
-                    let cost = if cost_str.is_empty() { None } else { Some(cost_str) };
-                    self.ability_descriptions
-                        .insert((card_id.0, ab.ability_index), (desc, ab.is_mana_ability, cost));
+                    let cost = if cost_str.is_empty() {
+                        None
+                    } else {
+                        Some(cost_str)
+                    };
+                    self.ability_descriptions.insert(
+                        (card_id.0, ab.ability_index),
+                        (desc, ab.is_mana_ability, cost),
+                    );
                 }
             }
         }
@@ -949,83 +956,77 @@ impl<T: AgentTransport> PlayerAgent for PromptAgent<T> {
         choices::choose_land_or_spell(self, player)
     }
 
-    fn notify(&mut self, message: &str) {
-        self.transport
-            .send_log(GameLogEntryDto::from_message(message));
-    }
-
-    fn notify_event(&mut self, event: GameLogEvent) {
-        self.transport.send_log(GameLogEntryDto::from_event(event));
-    }
-
-    fn notify_snapshot_created(&mut self, checkpoint_id: u64, label: &str) {
-        if let Some(view) = self.latest_view.clone() {
-            self.transport.send_snapshot(GameSnapshotEventDto::new(
+    fn notify(&mut self, event: GameNotification) {
+        match event {
+            GameNotification::Event(log_event) => {
+                self.transport
+                    .send_log(GameLogEntryDto::from_event(log_event));
+            }
+            GameNotification::CardPlayed {
+                player,
+                card_id,
+                card_name,
+                set_code,
+            } => {
+                self.pending_display_events.push(DisplayEvent::CardPlayed {
+                    card_id: card_id_str(card_id),
+                    card_name,
+                    set_code,
+                    player_id: player_id_str(player),
+                });
+                self.send_prompt(AgentPromptInner::StateUpdate {
+                    game_view: self.view(),
+                });
+            }
+            GameNotification::TurnChanged {
+                active_player,
+                turn_number,
+            } => {
+                let player_id = player_id_str(active_player);
+                let active_player_name = self
+                    .latest_view
+                    .as_ref()
+                    .and_then(|v| v.players.iter().find(|p| p.id == player_id))
+                    .map(|p| p.name.clone())
+                    .unwrap_or_else(|| format!("Player {}", active_player.0));
+                self.transport.send_log(GameLogEntryDto::from_event(
+                    forge_engine_core::agent::GameLogEvent::rule(format!(
+                        "TURN {} — {}",
+                        turn_number, active_player_name
+                    ))
+                    .with_player(active_player),
+                ));
+                self.pending_display_events.push(DisplayEvent::TurnChanged {
+                    active_player_id: player_id,
+                    active_player_name,
+                    turn_number,
+                });
+                self.send_prompt(AgentPromptInner::StateUpdate {
+                    game_view: self.view(),
+                });
+            }
+            GameNotification::PhaseChanged { .. } | GameNotification::StateChanged => {
+                self.send_prompt(AgentPromptInner::StateUpdate {
+                    game_view: self.view(),
+                });
+            }
+            GameNotification::PriorityChanged { .. } => {}
+            GameNotification::SnapshotCreated {
                 checkpoint_id,
-                label.to_string(),
-                view,
-            ));
+                label,
+            } => {
+                if let Some(view) = self.latest_view.clone() {
+                    self.transport.send_snapshot(GameSnapshotEventDto::new(
+                        checkpoint_id,
+                        label,
+                        view,
+                    ));
+                }
+            }
         }
     }
 
     fn take_restore_request(&mut self) -> Option<u64> {
         self.pending_restore_checkpoint.take()
-    }
-
-    fn notify_card_played(
-        &mut self,
-        player: PlayerId,
-        card_id: CardId,
-        card_name: &str,
-        set_code: &str,
-    ) {
-        self.pending_display_events.push(DisplayEvent::CardPlayed {
-            card_id: card_id_str(card_id),
-            card_name: card_name.to_string(),
-            set_code: set_code.to_string(),
-            player_id: player_id_str(player),
-        });
-        // Flush immediately so the frontend receives one event per card play.
-        self.send_prompt(AgentPromptInner::StateUpdate {
-            game_view: self.view(),
-        });
-    }
-
-    fn notify_turn_changed(&mut self, active_player: PlayerId, turn_number: u32) {
-        let player_id = player_id_str(active_player);
-        let active_player_name = self
-            .latest_view
-            .as_ref()
-            .and_then(|v| v.players.iter().find(|p| p.id == player_id))
-            .map(|p| p.name.clone())
-            .unwrap_or_else(|| format!("Player {}", active_player.0));
-        self.transport.send_log(GameLogEntryDto::from_event(
-            forge_engine_core::agent::GameLogEvent::rule(format!(
-                "TURN {} — {}",
-                turn_number, active_player_name
-            ))
-            .with_player(active_player),
-        ));
-        self.pending_display_events.push(DisplayEvent::TurnChanged {
-            active_player_id: player_id,
-            active_player_name,
-            turn_number,
-        });
-        // Flush immediately so the frontend receives one event per turn change.
-        self.send_prompt(AgentPromptInner::StateUpdate {
-            game_view: self.view(),
-        });
-    }
-
-    fn notify_phase_changed(&mut self, _phase: PhaseType) {
-        self.send_prompt(AgentPromptInner::StateUpdate {
-            game_view: self.view(),
-        });
-    }
-
-    fn notify_state_changed(&mut self) {
-        self.send_prompt(AgentPromptInner::StateUpdate {
-            game_view: self.view(),
-        });
     }
 }

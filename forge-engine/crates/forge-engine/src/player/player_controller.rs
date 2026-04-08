@@ -15,7 +15,7 @@ use crate::player::actions::PlayerAction;
 use crate::player::player_factory_util::build_priority_actions;
 use crate::player::DelayedReveal;
 use crate::spellability::SpellAbility;
-use forge_foundation::{ManaCost, PhaseType, ZoneType};
+use forge_foundation::{ManaCost, ZoneType};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum FullControlFlag {
@@ -86,16 +86,8 @@ impl<'a, A: PlayerAgent + ?Sized> PlayerController<'a, A> {
         self.full_controls.contains(&flag)
     }
 
-    pub fn notify(&mut self, message: &str) {
-        self.agent.notify(message);
-    }
-
-    pub fn notify_event(&mut self, event: GameLogEvent) {
-        self.agent.notify_event(event);
-    }
-
-    pub fn notify_phase_changed(&mut self, phase: PhaseType) {
-        self.agent.notify_phase_changed(phase);
+    pub fn notify(&mut self, event: crate::agent::notification::GameNotification) {
+        self.agent.notify(event);
     }
 
     pub fn reveal_cards(
@@ -112,11 +104,12 @@ impl<'a, A: PlayerAgent + ?Sized> PlayerController<'a, A> {
         }
         message.push_str("Reveal ");
         message.push_str(&format!("{zone:?} cards"));
-        self.agent.notify_event(
-            GameLogEvent::rule(message)
-                .with_player(owner)
-                .with_card(*cards.first().unwrap_or(&CardId(0))),
-        );
+        self.agent
+            .notify(crate::agent::notification::GameNotification::Event(
+                GameLogEvent::rule(message)
+                    .with_player(owner)
+                    .with_card(*cards.first().unwrap_or(&CardId(0))),
+            ));
     }
 
     pub fn temp_show_cards(&mut self, cards: &[CardId]) {
@@ -544,7 +537,9 @@ impl<'a, A: PlayerAgent + ?Sized> PlayerController<'a, A> {
     }
 
     pub fn notify_of_value(&mut self, label: &str, value: &str) {
-        self.notify_event(GameLogEvent::info(format!("{label}: {value}")).with_player(self.player));
+        self.notify(crate::agent::notification::GameNotification::Event(
+            GameLogEvent::info(format!("{label}: {value}")).with_player(self.player),
+        ));
     }
 
     pub fn choose_single_replacement_effect(&mut self, descriptions: &[String]) -> usize {
@@ -576,7 +571,9 @@ impl<'a, A: PlayerAgent + ?Sized> PlayerController<'a, A> {
     }
 
     pub fn cheat_shuffle(&mut self) {
-        self.notify("Shuffle requested");
+        self.notify(crate::agent::notification::GameNotification::Event(
+            GameLogEvent::info("Shuffle requested"),
+        ));
     }
 
     pub fn reset_inputs(&mut self) {}

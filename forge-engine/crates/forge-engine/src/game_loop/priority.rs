@@ -178,11 +178,13 @@ impl GameLoop {
                         let set_code = game.card(played_id).set_code.clone().unwrap_or_default();
                         for agent in agents.iter_mut() {
                             agent.snapshot_state(game, &self.mana_pools);
-                            agent.notify_card_played(
-                                priority_player,
-                                played_id,
-                                &played_name,
-                                &set_code,
+                            agent.notify(
+                                crate::agent::notification::GameNotification::CardPlayed {
+                                    player: priority_player,
+                                    card_id: played_id,
+                                    card_name: played_name.clone(),
+                                    set_code: set_code.clone(),
+                                },
                             );
                         }
                         // Process SpellCast / BecomesTarget triggers immediately so they

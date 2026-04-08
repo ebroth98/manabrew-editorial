@@ -218,8 +218,14 @@ impl Storage {
                 covered_json,
                 duration_ms as i64,
                 result.error_message,
-                result.trace,
-                result.java_trace,
+                result
+                    .rust_snapshot
+                    .as_ref()
+                    .and_then(|s| serde_json::to_string(s).ok()),
+                result
+                    .java_snapshot
+                    .as_ref()
+                    .and_then(|s| serde_json::to_string(s).ok()),
                 is_fuzz as i64,
                 commit_sha,
             ],
@@ -830,10 +836,9 @@ mod tests {
             } else {
                 None
             },
-            trace: None,
-            java_trace: None,
+            rust_snapshot: None,
+            java_snapshot: None,
             covered_cards: vec!["Lightning Bolt".into()],
-            mechanic_signals: vec![],
             finished_turn: None,
         }
     }

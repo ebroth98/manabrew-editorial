@@ -125,7 +125,6 @@ impl PlayerAgent for CounterspellAgent {
         None
     }
 
-    fn notify(&mut self, _message: &str) {}
 }
 
 fn make_island(owner: PlayerId) -> CardInstance {

@@ -55,6 +55,7 @@ public final class Main {
         boolean serverMode = false;
         String variant = "Constructed";
         String commandersArg = null;
+        String verboseTurnsArg = null;
 
         for (int i = 0; i < args.length; i++) {
             switch (args[i]) {
@@ -87,6 +88,9 @@ public final class Main {
                     break;
                 case "--commanders":
                     if (i + 1 < args.length) commandersArg = args[++i];
+                    break;
+                case "--verbose-turns":
+                    if (i + 1 < args.length) verboseTurnsArg = args[++i];
                     break;
                 case "--help":
                     printUsage();
@@ -131,10 +135,12 @@ public final class Main {
             System.exit(1);
         }
 
+        int[] verboseTurns = parseVerboseTurns(verboseTurnsArg);
+
         if (serverMode) {
             runServerMode();
         } else {
-            runOneShot(deck1Name, deck2Name, seed, maxTurns, preferActions, deep, variant, commanders);
+            runOneShot(deck1Name, deck2Name, seed, maxTurns, preferActions, deep, variant, commanders, verboseTurns);
         }
     }
 
@@ -149,7 +155,8 @@ public final class Main {
         boolean preferActions,
         boolean deep,
         String variant,
-        List<String> commanders
+        List<String> commanders,
+        int[] verboseTurns
     ) {
         // In one-shot mode, protocol output goes to real System.out
         protocolOut = System.out;
@@ -157,7 +164,7 @@ public final class Main {
         System.err.printf("[harness] Running: %s vs %s | seed=%d | max_turns=%d | variant=%s%n",
             deck1Name, deck2Name, seed, maxTurns, variant);
 
-        runGame(deck1Name, deck2Name, seed, maxTurns, preferActions, deep, variant, commanders);
+        runGame(deck1Name, deck2Name, seed, maxTurns, preferActions, deep, variant, commanders, verboseTurns);
 
         System.err.println("[harness] Done.");
         protocolOut.flush();
@@ -219,12 +226,17 @@ public final class Main {
                         gameCommanders.add(elem.getAsString());
                     }
                 }
+                int[] gameVerboseTurns = null;
+                if (request.has("verbose_turns")) {
+                    String vt = request.get("verbose_turns").getAsString();
+                    gameVerboseTurns = parseVerboseTurns(vt);
+                }
 
                 System.err.printf("[harness] Request: %s vs %s | seed=%d | max_turns=%d | variant=%s%n",
                     deck1, deck2, gameSeed, gameMaxTurns, gameVariant);
 
                 try {
-                    runGame(deck1, deck2, gameSeed, gameMaxTurns, gamePreferActions, gameDeep, gameVariant, gameCommanders);
+                    runGame(deck1, deck2, gameSeed, gameMaxTurns, gamePreferActions, gameDeep, gameVariant, gameCommanders, gameVerboseTurns);
                     protocolOut.println("{\"done\":true,\"error\":null}");
                 } catch (Exception e) {
                     System.err.println("[harness] Game error: " + e.getMessage());
@@ -256,7 +268,8 @@ public final class Main {
         boolean preferActions,
         boolean deep,
         String variant,
-        List<String> commanders
+        List<String> commanders,
+        int[] verboseTurns
     ) {
         // Build decks
         Deck deck1 = PresetDecks.buildDeck(deck1Name);
@@ -334,12 +347,12 @@ public final class Main {
         // Create registered players with variant support
         RegisteredPlayer rp1 = RegisteredPlayer.forVariants(
             2, appliedVariants, deck1, null, false, null, null);
-        rp1.setPlayer(new DeterministicLobbyPlayer("Player1", agentRng, preferActions, false));
+        rp1.setPlayer(new DeterministicLobbyPlayer("Player1", agentRng, preferActions, false, verboseTurns));
         players.add(rp1);
 
         RegisteredPlayer rp2 = RegisteredPlayer.forVariants(
             2, appliedVariants, deck2, null, false, null, null);
-        rp2.setPlayer(new DeterministicLobbyPlayer("Player2", agentRng, preferActions, false));
+        rp2.setPlayer(new DeterministicLobbyPlayer("Player2", agentRng, preferActions, false, verboseTurns));
         players.add(rp2);
 
         Match match = new Match(rules, players, "ParityTest");
@@ -365,6 +378,18 @@ public final class Main {
             @Subscribe
             public void onTurnPhase(GameEventTurnPhase event) {
                 int currentTurn = game.getPhaseHandler().getTurn();
+
+                // Update controllers' turn number and log phase/turn changes
+                int activePlayer = game.getPhaseHandler().getPlayerTurn().getId();
+                for (forge.game.player.Player p : game.getPlayers()) {
+                    if (p.getController() instanceof DeterministicController dc) {
+                        if (dc.getCurrentTurn() != currentTurn) {
+                            dc.setCurrentTurn(currentTurn);
+                            dc.logTurnChanged(currentTurn, activePlayer);
+                        }
+                        dc.logPhaseChanged(event.phase().name());
+                    }
+                }
 
                 // Stop before emitting if we've exceeded the turn limit
                 if (currentTurn > turnLimit) {
@@ -464,6 +489,30 @@ public final class Main {
         return "";
     }
 
+    /**
+     * Parse verbose turns from a comma-separated string.
+     * Returns null if input is null (verbose off), empty array if input is empty (all turns),
+     * or an array of specific turn numbers.
+     */
+    private static int[] parseVerboseTurns(String arg) {
+        if (arg == null) return null;
+        if (arg.isEmpty()) return new int[0];
+        String[] parts = arg.split(",");
+        List<Integer> turns = new ArrayList<>();
+        for (String part : parts) {
+            String trimmed = part.trim();
+            if (!trimmed.isEmpty()) {
+                try {
+                    turns.add(Integer.parseInt(trimmed));
+                } catch (NumberFormatException e) {
+                    // skip invalid
+                }
+            }
+        }
+        if (turns.isEmpty()) return new int[0];
+        return turns.stream().mapToInt(Integer::intValue).toArray();
+    }
+
     private static void printUsage() {
         System.err.println("Usage: forge-harness [OPTIONS]");
         System.err.println();
@@ -477,6 +526,7 @@ public final class Main {
         System.err.println("  --server             Run in server mode (stdin/stdout JSONL protocol)");
         System.err.println("  --variant <type>     Game variant: Constructed, Commander, Oathbreaker, TinyLeaders, Brawl");
         System.err.println("  --commanders <names> Comma-separated commander card names");
+        System.err.println("  --verbose-turns <t>  Verbose callback logging for specific turns (e.g. 21 or 21,22; empty = all)");
         System.err.println("  --help               Show this help");
         System.err.println();
         System.err.println("Available decks: " + Arrays.toString(PresetDecks.availablePresets()));

@@ -294,7 +294,6 @@ mod tests {
         fn choose_land_or_spell(&mut self, _: PlayerId) -> Option<bool> {
             None
         }
-        fn notify(&mut self, _: &str) {}
         fn choose_dig(
             &mut self,
             _player: PlayerId,

@@ -1,8 +1,8 @@
 use crate::ids::{CardId, PlayerId};
 
+use super::notification::GameNotification;
 use super::PlayerAgent;
 
-/// Structured log event delivered to agents for UI/debug rendering.
 #[derive(Debug, Clone)]
 pub struct GameLogEvent {
     pub kind: GameLogKind,
@@ -23,10 +23,9 @@ pub enum GameLogKind {
     Warning,
 }
 
-/// Broadcast a public log event to all agents.
 pub fn notify_all_agents(agents: &mut [Box<dyn PlayerAgent>], event: GameLogEvent) {
     for agent in agents.iter_mut() {
-        agent.notify_event(event.clone());
+        agent.notify(GameNotification::Event(event.clone()));
     }
 }
 
