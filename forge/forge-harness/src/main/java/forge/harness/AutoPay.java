@@ -43,15 +43,17 @@ final class AutoPay {
         this.costPlumbing = costPlumbing;
     }
 
-    boolean payManaCost(final ManaCost toPay, final SpellAbility saBeingPaid, final boolean effect) {
+    PayManaCostResult payManaCostWithTrace(final ManaCost toPay, final SpellAbility saBeingPaid, final boolean effect) {
         final ManaCostBeingPaid unpaid = new ManaCostBeingPaid(toPay);
         final ManaPool pool = payer.getManaPool();
         final List<Mana> spentFromPool = new ArrayList<>();
+        final List<String> steps = new ArrayList<>();
 
         // Consume already-floating mana first.
         if (pool.payManaCostFromPool(unpaid, saBeingPaid, false, spentFromPool)) {
             CostPayment.handleOfferings(saBeingPaid, false, true);
-            return true;
+            steps.add("Pay");
+            return new PayManaCostResult(true, steps);
         }
 
         int guard = 0;
@@ -71,6 +73,8 @@ final class AutoPay {
                 candidates.remove(chosen);
                 continue;
             }
+
+            steps.add(chosen.describeStep());
 
             // Mana abilities resolve immediately in engine flow.
             payer.getGame().getStack().addAndUnfreeze(chosen.spellAbility);
@@ -106,8 +110,15 @@ final class AutoPay {
         if (!paid) {
             pool.refundMana(spentFromPool);
             saBeingPaid.setSkip(true);
+            steps.add("Cancel");
+        } else {
+            steps.add("Pay");
         }
-        return paid;
+        return new PayManaCostResult(paid, steps);
+    }
+
+    boolean payManaCost(final ManaCost toPay, final SpellAbility saBeingPaid, final boolean effect) {
+        return payManaCostWithTrace(toPay, saBeingPaid, effect).paid;
     }
 
     private boolean payAbilityActivationCosts(final SpellAbility manaAbility, final boolean effect) {
@@ -447,6 +458,41 @@ final class AutoPay {
             // only breaks ties without overwhelming the primary score.
             s = s * 1000 + sourceOrder;
             return s;
+        }
+
+        String describeStep() {
+            final Card source = spellAbility.getHostCard();
+            final int abilityIndex = source == null ? -1 : source.getManaAbilities().indexOf(spellAbility);
+            final AbilityManaPart manaPart = spellAbility.getManaPart();
+            final String expressChoice = manaPart == null ? null : manaPart.getExpressChoice();
+            final String action = source != null && source.isLand() ? "TapLand" : "ActivateManaAbility";
+            final String express = expressChoice == null || expressChoice.isEmpty()
+                    ? "null"
+                    : expressChoice;
+            final String sourceLabel = source == null
+                    ? "null"
+                    : source.getName() + "@" + ParityCardMap.parityId(source);
+            return action + " { card: " + sourceLabel
+                    + ", mana_ability_index: " + abilityIndex
+                    + ", express_choice: " + express + " }";
+        }
+    }
+
+    static final class PayManaCostResult {
+        private final boolean paid;
+        private final List<String> steps;
+
+        private PayManaCostResult(final boolean paid, final List<String> steps) {
+            this.paid = paid;
+            this.steps = steps;
+        }
+
+        boolean paid() {
+            return paid;
+        }
+
+        List<String> steps() {
+            return steps;
         }
     }
 }

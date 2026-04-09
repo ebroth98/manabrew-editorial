@@ -38,6 +38,26 @@ public final class DecisionLog {
         logChoice(decidingPlayer, "main_action", options, choice);
     }
 
+    public static void logCallback(
+            final Player decidingPlayer,
+            final String kind,
+            final String outcome,
+            final List<String> args
+    ) {
+        if (decidingPlayer == null) {
+            return;
+        }
+        final Map<String, Object> row = new LinkedHashMap<>();
+        row.put("event", "callback");
+        row.put("turn", decidingPlayer.getGame().getPhaseHandler().getTurn());
+        row.put("phase", SnapshotExtractor.phaseToRustName(decidingPlayer.getGame().getPhaseHandler().getPhase()));
+        row.put("player", decidingPlayer.getId());
+        row.put("name", kind);
+        row.put("outcome", outcome);
+        row.put("args", new ArrayList<>(args == null ? List.of() : args));
+        sink.accept(GSON.toJson(row));
+    }
+
     public static void logChoice(
             final Player decidingPlayer,
             final String kind,

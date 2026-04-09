@@ -15,6 +15,7 @@
 //! - [`java_bridge`] — Stubbed subprocess bridge for the Java engine
 
 pub mod auto_pay;
+pub mod callback_fmt;
 pub mod card_pool;
 pub mod choice_space;
 pub mod combat_choice_space;

@@ -203,6 +203,7 @@ pub struct CallbackRecord {
     pub player: u32,
     pub name: String,
     pub outcome: String,
+    pub args: Vec<String>,
 }
 
 // ── Parity Report ──────────────────────────────────────────────────

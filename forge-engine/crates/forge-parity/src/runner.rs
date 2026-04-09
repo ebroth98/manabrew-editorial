@@ -18,6 +18,7 @@ use forge_foundation::ZoneType;
 use rand::rngs::StdRng;
 use rand::SeedableRng;
 
+use crate::callback_fmt::{FmtCtx, ParityFormat};
 use crate::deterministic_agent::{DeterministicAgent, VerboseMode};
 use crate::java_random::JavaRandom;
 use crate::parity_card_map::ParityCardMap;
@@ -31,30 +32,35 @@ pub const DEFAULT_DECKS_DIR: &str = "preset_decks";
 
 struct ParityObserver {
     shared_callbacks: Arc<Mutex<Vec<CallbackRecord>>>,
-    snapshot_index: usize,
+    shared_snapshot_index: Arc<Mutex<usize>>,
 }
 
 impl ParityObserver {
-    fn new(shared_callbacks: Arc<Mutex<Vec<CallbackRecord>>>) -> Self {
+    fn new(
+        shared_callbacks: Arc<Mutex<Vec<CallbackRecord>>>,
+        shared_snapshot_index: Arc<Mutex<usize>>,
+    ) -> Self {
         Self {
             shared_callbacks,
-            snapshot_index: 0,
+            shared_snapshot_index,
         }
     }
 
     fn on_callback(&mut self, name: &str, outcome: &str, player: u32, turn: u32, phase: &str) {
+        let snapshot_index = *self.shared_snapshot_index.lock().unwrap();
         self.shared_callbacks.lock().unwrap().push(CallbackRecord {
-            snapshot_index: self.snapshot_index,
+            snapshot_index,
             turn,
             phase: phase.to_string(),
             player,
             name: name.to_string(),
             outcome: outcome.to_string(),
+            args: vec![],
         });
     }
 
     fn mark_snapshot(&mut self) {
-        self.snapshot_index += 1;
+        *self.shared_snapshot_index.lock().unwrap() += 1;
     }
 }
 
@@ -65,6 +71,7 @@ struct CapturingAgent {
     shared_covered_cards: Arc<Mutex<BTreeSet<String>>>,
     shared_decisions: Arc<Mutex<Vec<DecisionRecord>>>,
     parity_observer: ParityObserver,
+    parity_map: Arc<ParityCardMap>,
     capture_snapshots: bool,
     deep: bool,
     callback_snapshots: bool,
@@ -83,6 +90,7 @@ impl CapturingAgent {
         covered: Arc<Mutex<BTreeSet<String>>>,
         decisions: Arc<Mutex<Vec<DecisionRecord>>>,
         callbacks: Arc<Mutex<Vec<CallbackRecord>>>,
+        snapshot_index: Arc<Mutex<usize>>,
         rng: Rc<RefCell<JavaRandom>>,
         game_rng: Rc<RefCell<JavaRandom>>,
         parity_map: Arc<ParityCardMap>,
@@ -103,7 +111,8 @@ impl CapturingAgent {
             shared_snapshots: shared,
             shared_covered_cards: covered,
             shared_decisions: decisions,
-            parity_observer: ParityObserver::new(callbacks),
+            parity_observer: ParityObserver::new(callbacks, snapshot_index),
+            parity_map,
             capture_snapshots,
             deep,
             callback_snapshots,
@@ -116,6 +125,15 @@ impl CapturingAgent {
 
     fn is_verbose(&self) -> bool {
         self.verbose.is_active(self.current_turn)
+    }
+
+    /// Build a formatting context for the current game state.
+    /// Returns `None` if no game state has been captured yet.
+    fn fmt_ctx(&self) -> Option<FmtCtx<'_>> {
+        self.last_game_state.as_ref().map(|game| FmtCtx {
+            game,
+            parity_map: &self.parity_map,
+        })
     }
 
     fn save_snapshot(&self, kind: &str) {
@@ -144,9 +162,13 @@ macro_rules! parity_agent_callback {
             fn $name(&mut self $(, $arg: $ty)*) -> $ret {
                 self.save_snapshot($kind);
                 let result = self.inner.$name($($arg),*);
+                let outcome = match self.fmt_ctx() {
+                    Some(ctx) => result.parity_fmt(&ctx),
+                    None => format!("{:?}", result),
+                };
                 self.parity_observer.on_callback(
                     $kind,
-                    &format!("{:?}", result),
+                    &outcome,
                     self.player_id.0,
                     self.current_turn,
                     &self.current_phase,
@@ -310,6 +332,8 @@ pub struct RunConfig {
     pub variant: String,
     /// Commander card names for Commander variants.
     pub commanders: Vec<String>,
+    /// Store full callback logs (for --full-log display).
+    pub full_log: bool,
 }
 
 pub struct LoadedData {
@@ -574,11 +598,14 @@ pub fn run_with_data(config: &RunConfig, data: &LoadedData) -> Result<GameTrace,
     }));
 
     let parity_map = Arc::new(ParityCardMap::from_opening_state(&game));
+    let shared_snapshot_index: Arc<Mutex<usize>> = Arc::new(Mutex::new(0));
 
     // Create deterministic agents — player 0 uses CapturingAgent to collect
     // turn-start snapshots (matching Java's GameEventTurnBegan timing).
     // Both agents share the same agent RNG so consumption order matches Java.
     // Both agents share the same game RNG so random effects match Java's MyRandom.
+    // Both agents share the same snapshot_index so callbacks from either player
+    // reference the correct snapshot position (matching Java's approach).
     let mut agents: Vec<Box<dyn PlayerAgent>> = vec![
         Box::new(CapturingAgent::new(
             p0,
@@ -588,6 +615,7 @@ pub fn run_with_data(config: &RunConfig, data: &LoadedData) -> Result<GameTrace,
             Arc::clone(&shared_covered_cards),
             Arc::clone(&shared_decisions),
             Arc::clone(&shared_callbacks),
+            Arc::clone(&shared_snapshot_index),
             Rc::clone(&agent_rng),
             Rc::clone(&game_rng),
             Arc::clone(&parity_map),
@@ -603,6 +631,7 @@ pub fn run_with_data(config: &RunConfig, data: &LoadedData) -> Result<GameTrace,
             Arc::clone(&shared_covered_cards),
             Arc::clone(&shared_decisions),
             Arc::clone(&shared_callbacks),
+            Arc::clone(&shared_snapshot_index),
             Rc::clone(&agent_rng),
             Rc::clone(&game_rng),
             Arc::clone(&parity_map),

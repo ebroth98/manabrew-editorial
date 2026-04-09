@@ -46,7 +46,6 @@ import org.apache.commons.lang3.tuple.Pair;
 
 import java.util.*;
 import java.util.function.Predicate;
-import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 /**
@@ -61,8 +60,6 @@ import java.util.stream.Collectors;
  * {@code rng.nextInt()} to pick, consuming the RNG in the same order.
  */
 public class DeterministicController extends PlayerController {
-    private static final boolean DEBUG_ACTIONS = Boolean.getBoolean("forge.parity.rng.trace");
-
     private static final int PREFER_ACTION_WEIGHT = 3;
     private final CountingRandom rng;
     private final boolean preferActions;
@@ -129,7 +126,14 @@ public class DeterministicController extends PlayerController {
         return false;
     }
 
+    /** Callbacks silenced from the parity log (e.g. handled differently by each engine). */
+    private static final Set<String> IGNORED_CALLBACKS = Set.of(
+            "mulligan_decision"
+    );
+
     public void onCallback(String callbackName, String callbackOutcome, String... args) {
+        if (IGNORED_CALLBACKS.contains(callbackName)) return;
+        DecisionLog.logCallback(player, callbackName, callbackOutcome, Arrays.asList(args));
         if (!isVerbose()) return;
         final String msg;
         if (args.length == 0) {
@@ -146,32 +150,73 @@ public class DeterministicController extends PlayerController {
         }
     }
 
-    private <T> T withDeepCheckpoint(final String kind, final Supplier<T> action) {
-        captureDeepCheckpoint(kind);
-        return action.get();
+
+    private static String formatCard(final Card card) {
+        if (card == null) {
+            return "null";
+        }
+        return card.getName() + "@" + ParityCardMap.parityId(card);
+    }
+
+    private static String formatCards(final Iterable<? extends Card> cards) {
+        if (cards == null) {
+            return "null";
+        }
+        final List<String> out = new ArrayList<>();
+        for (final Card card : cards) {
+            out.add(formatCard(card));
+        }
+        return "[" + String.join(", ", out) + "]";
+    }
+
+    private static String formatEntity(final GameEntity entity) {
+        if (entity == null) {
+            return "null";
+        }
+        if (entity instanceof Player p) {
+            return "Player(" + p.getId() + ")";
+        }
+        if (entity instanceof Card c) {
+            return "Card(" + formatCard(c) + ")";
+        }
+        return entity.getClass().getSimpleName() + "(" + entity.getName() + ")";
+    }
+
+    private static String formatChooseActionResult(final SpellAbility chosen, final Player player) {
+        if (chosen == null) {
+            return "PassPriority";
+        }
+        if (chosen.isActivatedAbility() || chosen.isManaAbility()) {
+            final Card host = chosen.getHostCard();
+            final int abilityIndex = host == null ? -1 : host.getAllPossibleAbilities(player, false).indexOf(chosen);
+            return "ActivateAbility(AbilityRef { card: "
+                    + formatCard(host)
+                    + ", ability_index: "
+                    + abilityIndex
+                    + " })";
+        }
+        return "CastSpell(PlayOption { card: " + formatCard(chosen.getHostCard()) + ", mode: Normal })";
     }
 
     private boolean chooseDeterministicBooleanDecision(final String decisionType, final String falseLabel, final String trueLabel) {
-        final boolean accepted = ChoiceSpace.pickBool(rng);
-        DecisionLog.logChoice(
-                player,
-                decisionType,
-                Arrays.asList(falseLabel, trueLabel),
-                accepted ? trueLabel : falseLabel);
-        return accepted;
+        return ChoiceSpace.pickBool(rng);
     }
 
     // ── Mulligan ──────────────────────────────────────────────────────
 
     @Override
     public boolean mulliganKeepHand(Player firstPlayer, int cardsToReturn) {
-        final int handSize = player.getCardsIn(ZoneType.Hand).size();
-        onCallback("mulligan_decision", "KEEP", String.valueOf(handSize), String.valueOf(cardsToReturn));
-        return true; // parity runner starts from prebuilt opening hands; don't emit deep mulligan checkpoints
+        // parity runner starts from prebuilt opening hands; always keep
+        final boolean result = true;
+        onCallback("mulligan_decision", Boolean.toString(result),
+                String.valueOf(player.getCardsIn(ZoneType.Hand).size()),
+                String.valueOf(cardsToReturn));
+        return result;
     }
 
     @Override
     public boolean confirmMulliganScry(Player p) {
+        onCallback("confirm_mulligan_scry", "false");
         return false;
     }
 
@@ -180,22 +225,14 @@ public class DeterministicController extends PlayerController {
     @Override
     public List<SpellAbility> chooseSpellAbilityToPlay() {
         captureDeepCheckpoint("main_action");
-        // Canonical legality source is the engine action space (Card#getAllPossibleAbilities).
-        // Preserve engine-provided order; agent only samples from this list.
         final List<SpellAbility> all = ChoiceSpace.sortNative(
                 new ArrayList<>(ActionSpace.getPossibleActions(player)),
                 ParityOrder.actionComparator());
 
         if (all.isEmpty()) {
-            if (DEBUG_ACTIONS) {
-                System.err.printf("[det-java p%d t%d] pass empty%n", player.getId(),
-                        getGame().getPhaseHandler().getTurn());
-            }
-            onCallback("choose_action", "PASS (nothing playable)", "0", "0");
-            return null; // pass — no RNG consumed
+            onCallback("choose_action", "PassPriority", "0", "0");
+            return null;
         }
-
-        final List<String> opts = ActionSpace.buildMainActionLabels(all);
 
         final int idx;
         if (preferActions) {
@@ -203,35 +240,16 @@ public class DeterministicController extends PlayerController {
         } else {
             idx = ChoiceSpace.pickIndexWithPass(all.size(), rng);
         }
-        final String choice = idx >= all.size() ? "PASS" : opts.get(idx);
-        DecisionLog.logMainAction(player, opts, choice);
-        if (DEBUG_ACTIONS) {
-            System.err.printf("[det-java p%d t%d] options=%s idx=%d/%d rng#%d%n", player.getId(),
-                    getGame().getPhaseHandler().getTurn(), opts, idx, all.size(), rng.getCallCount());
-        }
         if (idx >= all.size()) {
-            final String total = String.valueOf(all.size());
-            if (preferActions) {
-                onCallback("choose_action", "PASS (random weighted)", total);
-            } else {
-                onCallback("choose_action", "PASS (random)", total);
-            }
-            return null; // pass
+            onCallback("choose_action", "PassPriority",
+                    preferActions ? "weighted_pass" : "pass",
+                    String.valueOf(all.size()));
+            return null;
         }
 
         final SpellAbility chosen = all.get(idx);
-        final String total = String.valueOf(all.size());
-        final String idxStr = String.valueOf(idx);
-        if (chosen.isManaAbility()) {
-            // mana abilities are filtered out in Rust, shouldn't happen here
-            onCallback("choose_action", "ACTIVATE", chosen.getHostCard().getName(), idxStr, total);
-        } else if (chosen.isActivatedAbility()) {
-            final String abIdx = String.valueOf(chosen.getHostCard().getAllPossibleAbilities(player, false).indexOf(chosen));
-            onCallback("choose_action", "ACTIVATE", chosen.getHostCard().getName(), abIdx, idxStr, total);
-        } else {
-            onCallback("choose_action", "PLAY", chosen.getHostCard().getName(), idxStr, total);
-        }
-
+        onCallback("choose_action", formatChooseActionResult(chosen, player),
+                String.valueOf(idx), String.valueOf(all.size()));
         return Lists.newArrayList(chosen);
     }
 
@@ -279,11 +297,13 @@ public class DeterministicController extends PlayerController {
                 rng.getCallCount());
         }
         if (currentAbility == null || !currentAbility.usesTargeting()) {
+            onCallback("choose_targets_for", "true", "no_targeting");
             return true;
         }
 
         final TargetRestrictions tr = currentAbility.getTargetRestrictions();
         if (tr == null) {
+            onCallback("choose_targets_for", "true", "no_restrictions");
             return true;
         }
 
@@ -302,7 +322,9 @@ public class DeterministicController extends PlayerController {
             }
 
             if (valid.isEmpty()) {
-                return currentAbility.isTargetNumberValid();
+                final boolean result = currentAbility.isTargetNumberValid();
+                onCallback("choose_targets_for", Boolean.toString(result), "no_valid_candidates");
+                return result;
             }
 
             // Sort valid targets canonically (players first by index, then cards by name+parityId)
@@ -311,17 +333,13 @@ public class DeterministicController extends PlayerController {
 
             final GameEntity chosen = ChoiceSpace.pickOne(valid, rng);
             if (chosen == null) {
-                onCallback("choose_target_any", "NONE", String.valueOf(valid.size()));
-                return currentAbility.isTargetNumberValid();
+                onCallback("choose_target_any", "null", String.valueOf(valid.size()));
+                final boolean result = currentAbility.isTargetNumberValid();
+                onCallback("choose_targets_for", Boolean.toString(result), "null_pick");
+                return result;
             }
             final String validCount = String.valueOf(valid.size());
-            if (chosen instanceof Player p) {
-                onCallback("choose_target_any", "Player P" + p.getId(), validCount);
-            } else if (chosen instanceof Card c) {
-                onCallback("choose_target_any", "Card " + c.getName(), validCount);
-            } else {
-                onCallback("choose_target_any", chosen.getName(), validCount);
-            }
+            onCallback("choose_target_any", formatEntity(chosen), validCount);
             // getAllCandidates returns Cards from the Stack zone, but CounterEffect.resolve()
             // calls getTargetSpells() which filters for SpellAbility instances. Convert the
             // Card to its corresponding SpellAbility so the counter actually resolves.
@@ -347,7 +365,11 @@ public class DeterministicController extends PlayerController {
             }
         }
 
-        return currentAbility.isTargetNumberValid();
+        final boolean result = currentAbility.isTargetNumberValid();
+        final int chosen = currentAbility.getTargets().size();
+        onCallback("choose_targets_for", Boolean.toString(result),
+                String.valueOf(chosen) + "_targets");
+        return result;
     }
 
     // ── Combat ────────────────────────────────────────────────────────
@@ -386,10 +408,6 @@ public class DeterministicController extends PlayerController {
             }
 
             final int roll = ChoiceSpace.pickIndex(2, rng);
-            if (DEBUG_ACTIONS) {
-                System.err.printf("[det-java p%d t%d] atk roll %s -> %d rng#%d%n",
-                    player.getId(), getGame().getPhaseHandler().getTurn(), c.getName(), roll, rng.getCallCount());
-            }
             String choice = "PASS";
             if (roll == 1) {
                 final GameEntity defender = ChoiceSpace.pickOne(defenders, rng);
@@ -401,7 +419,6 @@ public class DeterministicController extends PlayerController {
                     }
                 }
             }
-            DecisionLog.logChoice(player, "combat_attacker_choice", options, choice);
         }
 
         // Summary callback mirroring Rust's choose_attackers
@@ -409,13 +426,13 @@ public class DeterministicController extends PlayerController {
         final String availableCount = String.valueOf(candidates.size());
         final String defenderCount = String.valueOf(combat.getDefenders().size());
         if (declared.isEmpty()) {
-            onCallback("choose_attackers", "NONE (random)", availableCount, defenderCount);
+            onCallback("choose_attackers", "[]", availableCount, defenderCount);
         } else {
             final List<String> names = new ArrayList<>();
             for (final Card c : declared) {
-                names.add(c.getName());
+                names.add(formatCard(c));
             }
-            onCallback("choose_attackers", String.join(", ", names), availableCount, defenderCount);
+            onCallback("choose_attackers", "[" + String.join(", ", names) + "]", availableCount, defenderCount);
         }
 
         // Intentionally do not "fix up" invalid declarations here.
@@ -426,7 +443,10 @@ public class DeterministicController extends PlayerController {
     public void declareBlockers(Player defender, Combat combat) {
         captureDeepCheckpoint("combat_blocker_choice");
         List<Card> attackers = new ArrayList<>(combat.getAttackers());
-        if (attackers.isEmpty()) return;
+        if (attackers.isEmpty()) {
+            onCallback("choose_blockers", "[]", "0", "0", "none");
+            return;
+        }
 
         final List<Card> legalBlockers = new ArrayList<>();
         for (final Card blocker : defender.getCreaturesInPlay()) {
@@ -453,18 +473,12 @@ public class DeterministicController extends PlayerController {
                 loggedOptions.add("BLOCK:" + blockerLabel + "->" + attackerLabel);
             }
             final int choice = ChoiceSpace.pickIndexWithPass(options.size(), rng);
-            if (DEBUG_ACTIONS) {
-                System.err.printf("[det-java p%d t%d] blk roll %s -> %d/%d%n",
-                    player.getId(), getGame().getPhaseHandler().getTurn(),
-                    blocker.getName(), choice, options.size());
-            }
             String loggedChoice = "PASS";
             if (choice > 0 && choice <= options.size()) {
                 final Card chosen = options.get(choice - 1);
                 combat.addBlocker(chosen, blocker);
                 loggedChoice = "BLOCK:" + blockerLabel + "->" + optionLabels.get(choice - 1);
             }
-            DecisionLog.logChoice(player, "combat_blocker_choice", loggedOptions, loggedChoice);
         }
 
         // Summary callback mirroring Rust's choose_blockers
@@ -480,15 +494,16 @@ public class DeterministicController extends PlayerController {
             }
         }
         if (pairDescs.isEmpty()) {
-            onCallback("choose_blockers", "NONE", attackerCount, blockerCount, maxStr);
+            onCallback("choose_blockers", "[]", attackerCount, blockerCount, maxStr);
         } else {
-            onCallback("choose_blockers", String.join(", ", pairDescs), attackerCount, blockerCount, maxStr);
+            onCallback("choose_blockers", "[" + String.join(", ", pairDescs) + "]", attackerCount, blockerCount, maxStr);
         }
     }
 
     @Override
     public CardCollection orderBlockers(Card attacker, CardCollection blockers) {
         blockers.sort(Comparator.comparing((Card c) -> c.getName()).thenComparingInt(ParityCardMap::parityId));
+        onCallback("choose_damage_assignment_order", formatCards(blockers), formatCard(attacker));
         return blockers;
     }
 
@@ -497,12 +512,14 @@ public class DeterministicController extends PlayerController {
         CardCollection all = new CardCollection(oldBlockers);
         all.add(blocker);
         all.sort(Comparator.comparing((Card c) -> c.getName()).thenComparingInt(ParityCardMap::parityId));
+        onCallback("choose_damage_assignment_order", formatCards(all), formatCard(attacker));
         return all;
     }
 
     @Override
     public CardCollection orderAttackers(Card blocker, CardCollection attackers) {
         attackers.sort(Comparator.comparing((Card c) -> c.getName()).thenComparingInt(ParityCardMap::parityId));
+        onCallback("order_attackers", formatCards(attackers), formatCard(blocker));
         return attackers;
     }
 
@@ -528,6 +545,12 @@ public class DeterministicController extends PlayerController {
                 result.put(last, result.getOrDefault(last, 0) + damageLeft);
             }
         }
+        final List<String> assignments = new ArrayList<>();
+        for (final Map.Entry<Card, Integer> e : result.entrySet()) {
+            assignments.add(formatCard(e.getKey()) + "=" + e.getValue());
+        }
+        onCallback("assign_combat_damage", "[" + String.join(", ", assignments) + "]",
+                formatCard(attacker), String.valueOf(damageDealt));
         return result;
     }
 
@@ -546,9 +569,9 @@ public class DeterministicController extends PlayerController {
         final T picked = ChoiceSpace.pickOne(sorted, rng);
         final String validCount = String.valueOf(sorted.size());
         if (picked == null) {
-            onCallback("choose_single_entity", "NONE", title, validCount);
+            onCallback("choose_single_entity", "null", title, validCount);
         } else {
-            onCallback("choose_single_entity", picked.getName(), title, validCount);
+            onCallback("choose_single_entity", formatEntity(picked), title, validCount);
         }
         return picked;
     }
@@ -562,13 +585,7 @@ public class DeterministicController extends PlayerController {
         final String validCount = String.valueOf(sourceList.size());
         final String minStr = String.valueOf(min);
         final String maxStr = String.valueOf(max);
-        if (result.isEmpty()) {
-            onCallback("choose_cards_for_effect", "NONE", validCount, minStr, maxStr);
-        } else {
-            final List<String> names = new ArrayList<>();
-            for (final Card c : result) names.add(c.getName());
-            onCallback("choose_cards_for_effect", String.join(", ", names), validCount, minStr, maxStr);
-        }
+        onCallback("choose_cards_for_effect", formatCards(result), validCount, minStr, maxStr);
         return result;
     }
 
@@ -581,6 +598,7 @@ public class DeterministicController extends PlayerController {
     ) {
         final CardCollection chosen = new CardCollection();
         if (validMap == null || validMap.isEmpty()) {
+            onCallback("choose_cards_for_effect_multiple", "[]", "0");
             return chosen;
         }
         for (final CardCollection pool : validMap.values()) {
@@ -595,6 +613,7 @@ public class DeterministicController extends PlayerController {
                 chosen.add(pick);
             }
         }
+        onCallback("choose_cards_for_effect_multiple", formatCards(chosen), String.valueOf(validMap.size()));
         return chosen;
     }
 
@@ -632,20 +651,15 @@ public class DeterministicController extends PlayerController {
 
             final String choice;
             if (selected.isEmpty()) {
-                choice = "PASS";
+                choice = "[]";
             } else {
                 final List<String> chosenLabels = new ArrayList<>();
                 for (final T entity : selected) {
-                    if (entity instanceof Card) {
-                        final Card card = (Card) entity;
-                        chosenLabels.add(card.getName() + "@" + ParityCardMap.parityId(card));
-                    } else {
-                        chosenLabels.add(entity == null ? "?" : entity.toString());
-                    }
+                    chosenLabels.add(entity instanceof GameEntity ? formatEntity((GameEntity) entity) : String.valueOf(entity));
                 }
-                choice = String.join(",", chosenLabels);
+                choice = "[" + String.join(", ", chosenLabels) + "]";
             }
-            DecisionLog.logChoice(player, "choose_dig", options, choice);
+            onCallback("choose_dig", choice, String.valueOf(optionList.size()), String.valueOf(min), String.valueOf(max));
         }
 
         return selected;
@@ -663,13 +677,7 @@ public class DeterministicController extends PlayerController {
         final String validCount = String.valueOf(validTargets.size());
         final String minStr = String.valueOf(min);
         final String maxStr = String.valueOf(max);
-        if (result.isEmpty()) {
-            onCallback("choose_sacrifice", "NONE", validCount, minStr, maxStr);
-        } else {
-            final List<String> names = new ArrayList<>();
-            for (final Card c : result) names.add(c.getName());
-            onCallback("choose_sacrifice", String.join(", ", names), validCount, minStr, maxStr);
-        }
+        onCallback("choose_sacrifice", formatCards(result), validCount, minStr, maxStr);
         return result;
     }
 
@@ -678,7 +686,10 @@ public class DeterministicController extends PlayerController {
             CardCollectionView validTargets, String message) {
         captureDeepCheckpoint("choose_destroy");
         final List<Card> sorted = ParityOrder.sortCardsByNameThenId(new ArrayList<Card>(validTargets));
-        return ChoiceSpace.pickManyCards(new CardCollection(sorted), min, max, rng);
+        final CardCollectionView result = ChoiceSpace.pickManyCards(new CardCollection(sorted), min, max, rng);
+        onCallback("choose_destroy", formatCards(result),
+                String.valueOf(validTargets.size()), String.valueOf(min), String.valueOf(max));
+        return result;
     }
 
     // ── Zone Change (Search/Tutor) ──────────────────────────────────
@@ -687,33 +698,33 @@ public class DeterministicController extends PlayerController {
     public Card chooseSingleCardForZoneChange(ZoneType destination, List<ZoneType> origin,
             SpellAbility sa, CardCollection fetchList, DelayedReveal delayedReveal,
             String selectPrompt, boolean isOptional, Player decider) {
-        return withDeepCheckpoint("choose_zone_change", () -> {
-            if (delayedReveal != null) reveal(delayedReveal);
-            final List<Card> sorted = ParityOrder.sortCardsByNameThenId((List<Card>) fetchList);
-            final Card chosen = ChoiceSpace.pickOne(sorted, rng);
-            final List<String> options = new ArrayList<>(sorted.size());
-            for (final Card card : sorted) {
-                options.add(card.getName() + "@" + ParityCardMap.parityId(card));
-            }
-            final String choice = chosen == null
-                    ? "PASS"
-                    : chosen.getName() + "@" + ParityCardMap.parityId(chosen);
-            DecisionLog.logChoice(player, "choose_zone_change", options, choice);
-            return chosen;
-        });
+        captureDeepCheckpoint("choose_zone_change");
+        if (delayedReveal != null) reveal(delayedReveal);
+        final List<Card> sorted = ParityOrder.sortCardsByNameThenId((List<Card>) fetchList);
+        final Card result = ChoiceSpace.pickOne(sorted, rng);
+        onCallback("choose_single_card_for_zone_change",
+                result == null ? "null" : formatCard(result),
+                String.valueOf(fetchList.size()),
+                selectPrompt == null ? "?" : selectPrompt,
+                String.valueOf(isOptional));
+        return result;
     }
 
     @Override
     public CardCollection chooseCardsToDiscardFrom(Player playerDiscard, SpellAbility sa,
             CardCollection validCards, int min, int max) {
         final List<Card> sorted = ParityOrder.sortCardsByNameThenId(new ArrayList<Card>(validCards));
-        return ChoiceSpace.pickManyCards(new CardCollection(sorted), min, max, rng);
+        final CardCollection result = ChoiceSpace.pickManyCards(new CardCollection(sorted), min, max, rng);
+        onCallback("choose_discard", formatCards(result), String.valueOf(validCards.size()), String.valueOf(min), String.valueOf(max));
+        return result;
     }
 
     @Override
     public CardCollection chooseCardsToDiscardToMaximumHandSize(int numDiscard) {
         final List<Card> sorted = ParityOrder.sortCardsByNameThenId(new ArrayList<Card>(player.getCardsIn(ZoneType.Hand)));
-        return ChoiceSpace.pickManyCards(new CardCollection(sorted), numDiscard, numDiscard, rng);
+        final CardCollection result = ChoiceSpace.pickManyCards(new CardCollection(sorted), numDiscard, numDiscard, rng);
+        onCallback("choose_discard", formatCards(result), String.valueOf(sorted.size()), String.valueOf(numDiscard), String.valueOf(numDiscard));
+        return result;
     }
 
     // ── Scry / Surveil / Library Manipulation ───────────────────────
@@ -728,6 +739,7 @@ public class DeterministicController extends PlayerController {
                 bottom.add(c);
             }
         }
+        onCallback("choose_scry", formatCards(bottom), String.valueOf(topN.size()));
         return ImmutablePair.of(top, bottom);
     }
 
@@ -741,12 +753,14 @@ public class DeterministicController extends PlayerController {
                 gy.add(c);
             }
         }
+        onCallback("choose_surveil", formatCards(gy), String.valueOf(topN.size()));
         return ImmutablePair.of(top, gy);
     }
 
     @Override
     public CardCollectionView orderMoveToZoneList(CardCollectionView cards, ZoneType destinationZone,
             SpellAbility source) {
+        onCallback("choose_reorder_library", formatCards(cards), String.valueOf(cards.size()));
         return new CardCollection(cards);
     }
 
@@ -754,76 +768,81 @@ public class DeterministicController extends PlayerController {
 
     @Override
     public List<AbilitySub> chooseModeForAbility(SpellAbility sa, List<AbilitySub> possible, int min, int num, boolean allowRepeat) {
-        return withDeepCheckpoint("choose_mode", () -> {
-            if (possible == null || possible.isEmpty()) return new ArrayList<>();
-            int count = ChoiceSpace.pickCount(min, num, possible.size(), rng);
-            List<AbilitySub> pool = new ArrayList<>(possible);
-            List<AbilitySub> out = new ArrayList<>();
-            for (int i = 0; i < count && !pool.isEmpty(); i++) {
-                out.add(pool.remove(ChoiceSpace.pickIndex(pool.size(), rng)));
-            }
-            return out;
-        });
+        captureDeepCheckpoint("choose_mode");
+        if (possible == null || possible.isEmpty()) {
+            onCallback("choose_mode", "[]", "0", String.valueOf(min), String.valueOf(num));
+            return new ArrayList<>();
+        }
+        int count = ChoiceSpace.pickCount(min, num, possible.size(), rng);
+        List<AbilitySub> pool = new ArrayList<>(possible);
+        List<AbilitySub> result = new ArrayList<>();
+        for (int i = 0; i < count && !pool.isEmpty(); i++) {
+            result.add(pool.remove(ChoiceSpace.pickIndex(pool.size(), rng)));
+        }
+        final List<String> labels = new ArrayList<>();
+        for (final AbilitySub mode : result) {
+            labels.add(mode == null ? "?" : mode.toString());
+        }
+        onCallback("choose_mode",
+                labels.isEmpty() ? "[]" : String.join(", ", labels),
+                String.valueOf(possible.size()), String.valueOf(min), String.valueOf(num));
+        return result;
     }
 
     @Override
     public boolean confirmTrigger(WrappedAbility sa) {
-        return withDeepCheckpoint(
-                "optional_trigger",
-                () -> {
-                    final boolean accept = chooseDeterministicBooleanDecision("optional_trigger", "DECLINE", "ACCEPT");
-                    final String outcome = accept ? "ACCEPTED" : "DECLINED";
-                    final String desc = sa != null ? sa.getStackDescription() : "?";
-                    final String cardName = sa != null && sa.getHostCard() != null ? sa.getHostCard().getName() : "?";
-                    final String api = sa != null && sa.getApi() != null ? sa.getApi().toString() : "None";
-                    onCallback("choose_optional_trigger", outcome, desc, cardName, api);
-                    return accept;
-                });
+        captureDeepCheckpoint("optional_trigger");
+        final boolean result = chooseDeterministicBooleanDecision("optional_trigger", "DECLINE", "ACCEPT");
+        final String desc = sa != null ? sa.getStackDescription() : "?";
+        final String cardName = sa != null && sa.getHostCard() != null ? sa.getHostCard().getName() : "?";
+        final String api = sa != null && sa.getApi() != null ? sa.getApi().toString() : "None";
+        onCallback("choose_optional_trigger", Boolean.toString(result), desc, cardName, api);
+        return result;
     }
 
     @Override
     public boolean confirmAction(SpellAbility sa, PlayerActionConfirmMode mode, String message,
             List<String> options, Card cardToShow, Map<String, Object> params) {
         captureDeepCheckpoint("confirm_action");
-        final boolean accept = chooseDeterministicBooleanDecision("confirm_action", "DECLINE", "ACCEPT");
-        final String outcome = accept ? "ACCEPTED" : "DECLINED";
+        final boolean result = chooseDeterministicBooleanDecision("confirm_action", "DECLINE", "ACCEPT");
         final String cardName = cardToShow != null ? cardToShow.getName() : (sa != null && sa.getHostCard() != null ? sa.getHostCard().getName() : "?");
         final String modeStr = mode != null ? mode.toString() : "None";
         final String apiStr = sa != null && sa.getApi() != null ? sa.getApi().toString() : "None";
-        onCallback("confirm_action", outcome, message != null ? message : "?", cardName, modeStr, apiStr);
-        return accept;
+        onCallback("confirm_action", Boolean.toString(result),
+                message != null ? message : "?", cardName, modeStr, apiStr);
+        return result;
     }
 
     @Override
     public boolean confirmPayment(final forge.game.cost.CostPart costPart, final String prompt, final SpellAbility sa) {
-        captureDeepCheckpoint("confirm_payment");
         if (costPart == null || costPart instanceof CostPartMana) {
+            onCallback("confirm_payment", "true", "auto_mana");
             return true;
         }
         if (DeterministicCostPlumbing.isSpellPaymentContext(sa)) {
+            onCallback("confirm_payment", "true", "spell_payment_context");
             return true;
         }
-        final boolean accept = chooseDeterministicBooleanDecision("confirm_payment", "DECLINE", "ACCEPT");
-        final String outcome = accept ? "ACCEPTED" : "DECLINED";
+        captureDeepCheckpoint("confirm_payment");
+        final boolean result = chooseDeterministicBooleanDecision("confirm_payment", "DECLINE", "ACCEPT");
         final String cardName = sa != null && sa.getHostCard() != null ? sa.getHostCard().getName() : "?";
-        final String costKind = costPart != null ? costPart.getClass().getSimpleName() : "?";
+        final String costKind = costPart.getClass().getSimpleName();
         final String apiStr = sa != null && sa.getApi() != null ? sa.getApi().toString() : "None";
-        onCallback("confirm_payment", outcome, prompt != null ? prompt : "?", cardName, costKind, apiStr);
-        return accept;
+        onCallback("confirm_payment", Boolean.toString(result),
+                prompt != null ? prompt : "?", cardName, costKind, apiStr);
+        return result;
     }
 
     @Override
     public boolean chooseBinary(final SpellAbility sa, final String question, final BinaryChoiceType kindOfChoice, final Boolean defaultVal) {
         captureDeepCheckpoint("choose_binary");
-        final String left = kindOfChoice.name() + ":LEFT";
-        final String right = kindOfChoice.name() + ":RIGHT";
-        final boolean chosenLeft = chooseDeterministicBooleanDecision("choose_binary", right, left);
-        final String outcome = chosenLeft ? "LEFT" : "RIGHT";
+        final boolean result = chooseDeterministicBooleanDecision("choose_binary",
+                kindOfChoice.name() + ":RIGHT", kindOfChoice.name() + ":LEFT");
         final String cardName = sa != null && sa.getHostCard() != null ? sa.getHostCard().getName() : "?";
-        final String kindStr = kindOfChoice.name();
         final String apiStr = sa != null && sa.getApi() != null ? sa.getApi().toString() : "None";
-        onCallback("choose_binary", outcome, question != null ? question : "?", cardName, kindStr, apiStr);
-        return chosenLeft;
+        onCallback("choose_binary", Boolean.toString(result),
+                question != null ? question : "?", cardName, kindOfChoice.name(), apiStr);
+        return result;
     }
 
     @Override
@@ -839,12 +858,15 @@ public class DeterministicController extends PlayerController {
     @Override
     public List<OptionalCostValue> chooseOptionalCosts(SpellAbility chosen,
             List<OptionalCostValue> optionalCostValues) {
+        onCallback("choose_optional_costs", "[]",
+                String.valueOf(optionalCostValues == null ? 0 : optionalCostValues.size()));
         return Collections.emptyList();
     }
 
     @Override
     public int chooseNumberForKeywordCost(SpellAbility sa, Cost cost,
             KeywordInterface keyword, String prompt, int max) {
+        onCallback("choose_number_for_keyword_cost", "0", String.valueOf(max));
         return 0;
     }
 
@@ -857,7 +879,9 @@ public class DeterministicController extends PlayerController {
 
     @Override
     public Integer announceRequirements(SpellAbility ability, String announce) {
-        return GuiRepro.announceRequirements(player, ability, announce, rng);
+        final Integer result = GuiRepro.announceRequirements(player, ability, announce, rng);
+        onCallback("announce_requirements", String.valueOf(result), announce != null ? announce : "?");
+        return result;
     }
 
     // ── Numbers & Colors ──────────────────────────────────────────────
@@ -867,16 +891,24 @@ public class DeterministicController extends PlayerController {
         captureDeepCheckpoint("choose_color");
         List<Byte> colorList = new ArrayList<>();
         for (Color color : colors) colorList.add(color.getColorMask());
-        if (colorList.isEmpty()) return Color.WHITE.getColorMask();
-        return colorList.get(ChoiceSpace.pickIndex(colorList.size(), rng));
+        final byte result = colorList.isEmpty()
+                ? Color.WHITE.getColorMask()
+                : colorList.get(ChoiceSpace.pickIndex(colorList.size(), rng));
+        onCallback("choose_color", Byte.toString(result), String.valueOf(colorList.size()));
+        return result;
     }
 
     @Override
     public byte chooseColorAllowColorless(String message, Card card, ColorSet colors) {
         List<Byte> colorList = new ArrayList<>();
         for (Color color : colors) colorList.add(color.getColorMask());
-        if (colorList.isEmpty()) return Color.COLORLESS.getColorMask();
-        return colorList.get(ChoiceSpace.pickIndex(colorList.size(), rng));
+        if (colorList.isEmpty()) {
+            onCallback("choose_color_allow_colorless", "colorless", "0");
+            return Color.COLORLESS.getColorMask();
+        }
+        final byte result = colorList.get(ChoiceSpace.pickIndex(colorList.size(), rng));
+        onCallback("choose_color_allow_colorless", Byte.toString(result), String.valueOf(colorList.size()));
+        return result;
     }
 
     // ── Type / Card Name / Number Selection ────────────────────────────
@@ -884,10 +916,15 @@ public class DeterministicController extends PlayerController {
 
     @Override
     public String chooseSomeType(String kindOfType, SpellAbility sa, Collection<String> validTypes, boolean isOptional) {
-        if (validTypes == null || validTypes.isEmpty()) return "";
+        if (validTypes == null || validTypes.isEmpty()) {
+            onCallback("choose_type", "", kindOfType == null ? "?" : kindOfType, "0");
+            return "";
+        }
         List<String> values = new ArrayList<>(validTypes);
         Collections.sort(values);
-        return values.get(ChoiceSpace.pickIndex(values.size(), rng));
+        final String chosen = values.get(ChoiceSpace.pickIndex(values.size(), rng));
+        onCallback("choose_type", chosen, kindOfType == null ? "?" : kindOfType, String.valueOf(values.size()));
+        return chosen;
     }
 
     @Override
@@ -916,27 +953,40 @@ public class DeterministicController extends PlayerController {
 
     @Override
     public String chooseCardName(SpellAbility sa, List<ICardFace> faces, String message) {
-        if (faces == null || faces.isEmpty()) return "";
-        return faces.get(ChoiceSpace.pickIndex(faces.size(), rng)).getName();
+        if (faces == null || faces.isEmpty()) {
+            onCallback("choose_card_name", "", "0");
+            return "";
+        }
+        final String chosen = faces.get(ChoiceSpace.pickIndex(faces.size(), rng)).getName();
+        onCallback("choose_card_name", chosen, String.valueOf(faces.size()));
+        return chosen;
     }
 
     @Override
     public int chooseNumber(SpellAbility sa, String title, int min, int max) {
         captureDeepCheckpoint("choose_number");
-        return ChoiceSpace.pickIntInRange(min, max, rng);
+        final int result = ChoiceSpace.pickIntInRange(min, max, rng);
+        onCallback("choose_number", String.valueOf(result), String.valueOf(min), String.valueOf(max));
+        return result;
     }
 
     @Override
     public int chooseNumber(SpellAbility sa, String title, List<Integer> values, Player relatedPlayer) {
-        return withDeepCheckpoint("choose_number_from_list", () -> {
-            if (values == null || values.isEmpty()) return 0;
-            return values.get(ChoiceSpace.pickIndex(values.size(), rng));
-        });
+        captureDeepCheckpoint("choose_number_from_list");
+        if (values == null || values.isEmpty()) {
+            onCallback("choose_number_from_list", "0", "0");
+            return 0;
+        }
+        final int result = values.get(ChoiceSpace.pickIndex(values.size(), rng));
+        onCallback("choose_number_from_list", String.valueOf(result), String.valueOf(values.size()));
+        return result;
     }
 
     @Override
     public int chooseNumberForCostReduction(final SpellAbility sa, final int min, final int max) {
-        return ChoiceSpace.pickIntInRange(min, max, rng);
+        final int result = ChoiceSpace.pickIntInRange(min, max, rng);
+        onCallback("choose_number_for_cost_reduction", String.valueOf(result), String.valueOf(min), String.valueOf(max));
+        return result;
     }
 
     // ── Coin Flip ─────────────────────────────────────────────────────
@@ -944,7 +994,9 @@ public class DeterministicController extends PlayerController {
 
     @Override
     public boolean chooseFlipResult(SpellAbility sa, Player flipper, boolean[] results, boolean call) {
-        return ChoiceSpace.pickBool(rng);
+        final boolean chosen = ChoiceSpace.pickBool(rng);
+        onCallback("flip_coin_call", String.valueOf(chosen));
+        return chosen;
     }
 
     // ── Mulligan Bottom Selection ────────────────────────────────────
@@ -959,6 +1011,13 @@ public class DeterministicController extends PlayerController {
         for (int i = 0; i < count && !pool.isEmpty(); i++) {
             out.add(pool.remove(ChoiceSpace.pickIndex(pool.size(), rng)));
         }
+        if (out.isEmpty()) {
+            onCallback("choose_cards_to_bottom", "NONE", String.valueOf(hand.size()), String.valueOf(cardsToReturn));
+        } else {
+            final List<String> names = new ArrayList<>();
+            for (final Card c : out) names.add(c.getName());
+            onCallback("choose_cards_to_bottom", String.join(", ", names), String.valueOf(hand.size()), String.valueOf(cardsToReturn));
+        }
         return out;
     }
 
@@ -966,7 +1025,9 @@ public class DeterministicController extends PlayerController {
 
     @Override
     public Player chooseStartingPlayer(boolean isFirstGame) {
-        return getGame().getPlayers().get(0);
+        final Player result = getGame().getPlayers().get(0);
+        onCallback("choose_starting_player", String.valueOf(result.getId()));
+        return result;
     }
 
     // ── Reveal (headless no-ops) ──────────────────────────────────────
@@ -994,14 +1055,19 @@ public class DeterministicController extends PlayerController {
     public boolean payCostToPreventEffect(Cost cost, SpellAbility sa, boolean alreadyPaid,
             FCollectionView<Player> allPayers) {
         if (!ComputerUtilCost.canPayCost(cost, sa, player, true)) {
+            onCallback("pay_cost_to_prevent_effect", "false", "cannot_pay");
             return false;
         }
-        return costPlumbing.payWithDeterministicDecision(cost, sa, true);
+        final boolean result = costPlumbing.payWithDeterministicDecision(cost, sa, true);
+        onCallback("pay_cost_to_prevent_effect", Boolean.toString(result));
+        return result;
     }
 
     @Override
     public boolean payCombatCost(Card c, Cost cost, SpellAbility sa, String prompt) {
-        return playPlumbing.playNoStackDeterministic(c.getController(), sa, getGame(), true);
+        final boolean result = playPlumbing.playNoStackDeterministic(c.getController(), sa, getGame(), true);
+        onCallback("pay_combat_cost", Boolean.toString(result), formatCard(c));
+        return result;
     }
 
     @Override
@@ -1025,7 +1091,11 @@ public class DeterministicController extends PlayerController {
 
     @Override
     public SpellAbility getAbilityToPlay(Card hostCard, List<SpellAbility> abilities, ITriggerEvent triggerEvent) {
-        return ChoiceSpace.pickOne(abilities, rng);
+        final SpellAbility result = ChoiceSpace.pickOne(abilities, rng);
+        onCallback("get_ability_to_play",
+                result == null ? "null" : result.toString(),
+                formatCard(hostCard), String.valueOf(abilities.size()));
+        return result;
     }
 
     @Override
@@ -1035,6 +1105,7 @@ public class DeterministicController extends PlayerController {
 
     @Override
     public TargetChoices chooseNewTargetsFor(SpellAbility ability, Predicate<GameObject> filter, boolean optional) {
+        onCallback("choose_new_targets_for", "null");
         return null;
     }
 
@@ -1043,21 +1114,28 @@ public class DeterministicController extends PlayerController {
             SpellAbility sa,
             List<Pair<SpellAbilityStackInstance, GameObject>> allTargets
     ) {
-        return ChoiceSpace.pickOne(allTargets, rng);
+        final Pair<SpellAbilityStackInstance, GameObject> result = ChoiceSpace.pickOne(allTargets, rng);
+        onCallback("choose_target_spell", result == null ? "null" : result.toString(), String.valueOf(allTargets.size()));
+        return result;
     }
 
     @Override
     public boolean helpPayForAssistSpell(ManaCostBeingPaid cost, SpellAbility sa, int max, int requested) {
-        return ChoiceSpace.pickBool(rng);
+        final boolean result = ChoiceSpace.pickBool(rng);
+        onCallback("help_pay_assist", Boolean.toString(result), String.valueOf(max), String.valueOf(requested));
+        return result;
     }
 
     @Override
     public Player choosePlayerToAssistPayment(FCollectionView<Player> optionList, SpellAbility sa, String title, int max) {
-        return ChoiceSpace.pickOne(optionList, rng);
+        final Player result = ChoiceSpace.pickOne(optionList, rng);
+        onCallback("choose_player_to_assist", result == null ? "null" : String.valueOf(result.getId()), String.valueOf(optionList.size()));
+        return result;
     }
 
     @Override
     public List<PaperCard> chooseCardsYouWonToAddToDeck(List<PaperCard> losses) {
+        onCallback("choose_cards_you_won", losses == null ? "null" : String.valueOf(losses.size()));
         return losses == null ? null : new ArrayList<>(losses);
     }
 
@@ -1065,6 +1143,7 @@ public class DeterministicController extends PlayerController {
     public Map<GameEntity, Integer> divideShield(Card effectSource, Map<GameEntity, Integer> affected, int shieldAmount) {
         final Map<GameEntity, Integer> out = new LinkedHashMap<>();
         if (affected == null || shieldAmount <= 0) {
+            onCallback("divide_shield", "{}", "0");
             return out;
         }
         final List<GameEntity> pool = new ArrayList<>();
@@ -1086,6 +1165,7 @@ public class DeterministicController extends PlayerController {
             out.put(chosen, current + 1);
             remaining--;
         }
+        onCallback("divide_shield", out.toString(), String.valueOf(shieldAmount));
         return out;
     }
 
@@ -1100,6 +1180,7 @@ public class DeterministicController extends PlayerController {
                 mutable = ColorSet.fromMask(mutable.getColor() & ~chosen);
             }
         }
+        onCallback("specify_mana_combo", result.toString(), String.valueOf(manaAmount));
         return result;
     }
 
@@ -1112,6 +1193,7 @@ public class DeterministicController extends PlayerController {
             Map<String, Object> params
     ) {
         if (spells == null || spells.isEmpty() || num <= 0) {
+            onCallback("choose_spell_abilities_for_effect", "[]", "0", String.valueOf(num));
             return new ArrayList<>();
         }
         final List<SpellAbility> pool = new ArrayList<>(spells);
@@ -1120,38 +1202,49 @@ public class DeterministicController extends PlayerController {
         for (int i = 0; i < count && !pool.isEmpty(); i++) {
             out.add(pool.remove(ChoiceSpace.pickIndex(pool.size(), rng)));
         }
+        onCallback("choose_spell_abilities_for_effect", String.valueOf(out.size()),
+                String.valueOf(spells.size()), String.valueOf(num));
         return out;
     }
 
     @Override
     public SpellAbility chooseSingleSpellForEffect(List<SpellAbility> spells, SpellAbility sa, String title, Map<String, Object> params) {
-        return ChoiceSpace.pickOne(spells, rng);
+        final SpellAbility result = ChoiceSpace.pickOne(spells, rng);
+        onCallback("choose_single_spell_for_effect",
+                result == null ? "null" : result.toString(),
+                String.valueOf(spells == null ? 0 : spells.size()));
+        return result;
     }
 
     @Override
     public boolean confirmBidAction(SpellAbility sa, PlayerActionConfirmMode bidlife, String string, int bid, Player winner) {
-        return ChoiceSpace.pickBool(rng);
+        final boolean result = ChoiceSpace.pickBool(rng);
+        onCallback("confirm_bid_action", Boolean.toString(result), String.valueOf(bid));
+        return result;
     }
 
     @Override
     public boolean confirmReplacementEffect(ReplacementEffect replacementEffect, SpellAbility effectSA, GameEntity affected, String question) {
         final boolean accept = ChoiceSpace.pickBool(rng);
-        final String outcome = accept ? "ACCEPTED" : "DECLINED";
         final String desc = replacementEffect != null ? replacementEffect.getDescription() : "?";
         final String cardName = replacementEffect != null && replacementEffect.getHostCard() != null
                 ? replacementEffect.getHostCard().getName() : "?";
-        onCallback("confirm_replacement_effect", outcome, question != null ? question : "?", desc, cardName);
+        onCallback("confirm_replacement_effect", Boolean.toString(accept), question != null ? question : "?", desc, cardName);
         return accept;
     }
 
     @Override
     public boolean confirmStaticApplication(Card hostCard, PlayerActionConfirmMode mode, String message, String logic) {
-        return ChoiceSpace.pickBool(rng);
+        final boolean result = ChoiceSpace.pickBool(rng);
+        onCallback("confirm_static_application", Boolean.toString(result),
+                hostCard != null ? hostCard.getName() : "?", message != null ? message : "?");
+        return result;
     }
 
     @Override
     public List<Card> exertAttackers(List<Card> attackers) {
         if (attackers == null) {
+            onCallback("exert_attackers", "[]", "0");
             return new ArrayList<>();
         }
         final List<Card> out = new ArrayList<>();
@@ -1160,39 +1253,49 @@ public class DeterministicController extends PlayerController {
                 out.add(attacker);
             }
         }
+        onCallback("exert_attackers", formatCards(out), String.valueOf(attackers.size()));
         return out;
     }
 
     @Override
     public List<Card> enlistAttackers(List<Card> attackers) {
         if (attackers == null || attackers.isEmpty()) {
+            onCallback("enlist_attackers", "[]", "0");
             return new ArrayList<>();
         }
         // Use engine legality only: if Enlist cannot currently be paid at all,
         // do not choose any attacker to pay that optional cost.
         if (CostEnlist.getCardsForEnlisting(player).isEmpty()) {
+            onCallback("enlist_attackers", "[]", String.valueOf(attackers.size()));
             return new ArrayList<>();
         }
-        return Lists.newArrayList(attackers.get(ChoiceSpace.pickIndex(attackers.size(), rng)));
+        final List<Card> result = Lists.newArrayList(attackers.get(ChoiceSpace.pickIndex(attackers.size(), rng)));
+        onCallback("enlist_attackers", formatCards(result), String.valueOf(attackers.size()));
+        return result;
     }
 
     @Override
     public boolean willPutCardOnTop(Card c) {
-        return ChoiceSpace.pickBool(rng);
+        final boolean result = ChoiceSpace.pickBool(rng);
+        onCallback("will_put_card_on_top", Boolean.toString(result), formatCard(c));
+        return result;
     }
 
     @Override
     public CardCollectionView chooseCardsToDiscardUnlessType(int min, CardCollectionView hand, String param, SpellAbility sa) {
         final List<Card> sorted = ParityOrder.sortCardsByNameThenId(new ArrayList<Card>(hand));
-        return ChoiceSpace.pickManyCards(new CardCollection(sorted), min, min, rng);
+        final CardCollectionView result = ChoiceSpace.pickManyCards(new CardCollection(sorted), min, min, rng);
+        onCallback("choose_discard_unless_type", formatCards(result), String.valueOf(hand.size()), String.valueOf(min));
+        return result;
     }
 
     @Override
     public CardCollectionView chooseCardsToDelve(int genericAmount, CardCollection grave) {
-        return withDeepCheckpoint("choose_delve", () -> {
-            final List<Card> sorted = ParityOrder.sortCardsByNameThenId(new ArrayList<Card>(grave));
-            return ChoiceSpace.pickManyCards(new CardCollection(sorted), 0, Math.min(genericAmount, grave.size()), rng);
-        });
+        captureDeepCheckpoint("choose_delve");
+        final List<Card> sorted = ParityOrder.sortCardsByNameThenId(new ArrayList<Card>(grave));
+        final CardCollectionView result = ChoiceSpace.pickManyCards(new CardCollection(sorted), 0, Math.min(genericAmount, grave.size()), rng);
+        onCallback("choose_delve", formatCards(result), String.valueOf(grave.size()), String.valueOf(genericAmount));
+        return result;
     }
 
     @Override
@@ -1205,26 +1308,28 @@ public class DeterministicController extends PlayerController {
             Integer maxReduction
     ) {
         final String kind = artifacts && !creatures ? "choose_improvise" : "choose_convoke";
-        return withDeepCheckpoint(kind, () -> {
-            final Map<Card, ManaCostShard> out = new LinkedHashMap<>();
-            if (untappedCards == null || untappedCards.isEmpty()) {
-                return out;
-            }
-            final int cap = maxReduction == null ? untappedCards.size() : Math.max(0, Math.min(maxReduction, untappedCards.size()));
-            final int count = ChoiceSpace.pickCount(0, cap, untappedCards.size(), rng);
-            final List<Card> sortedUntapped = ParityOrder.sortCardsByNameThenId(new ArrayList<Card>(untappedCards));
-            final CardCollection pool = new CardCollection(sortedUntapped);
-            for (int i = 0; i < count && !pool.isEmpty(); i++) {
-                final Card chosen = pool.remove(ChoiceSpace.pickIndex(pool.size(), rng));
-                out.put(chosen, ManaCostShard.GENERIC);
-            }
-            return out;
-        });
+        captureDeepCheckpoint(kind);
+        final Map<Card, ManaCostShard> result = new LinkedHashMap<>();
+        if (untappedCards == null || untappedCards.isEmpty()) {
+            onCallback(kind, "[]", "0", maxReduction == null ? "none" : String.valueOf(maxReduction));
+            return result;
+        }
+        final int cap = maxReduction == null ? untappedCards.size() : Math.max(0, Math.min(maxReduction, untappedCards.size()));
+        final int count = ChoiceSpace.pickCount(0, cap, untappedCards.size(), rng);
+        final List<Card> sortedUntapped = ParityOrder.sortCardsByNameThenId(new ArrayList<Card>(untappedCards));
+        final CardCollection pool = new CardCollection(sortedUntapped);
+        for (int i = 0; i < count && !pool.isEmpty(); i++) {
+            final Card chosen = pool.remove(ChoiceSpace.pickIndex(pool.size(), rng));
+            result.put(chosen, ManaCostShard.GENERIC);
+        }
+        onCallback(kind, formatCards(result.keySet()), String.valueOf(untappedCards.size()), String.valueOf(cap));
+        return result;
     }
 
     @Override
     public List<Card> chooseCardsForSplice(SpellAbility sa, List<Card> cards) {
         if (cards == null || cards.isEmpty()) {
+            onCallback("choose_cards_for_splice", "[]", "0");
             return new ArrayList<>();
         }
         final List<Card> sorted = ParityOrder.sortCardsByNameThenId(cards);
@@ -1234,18 +1339,22 @@ public class DeterministicController extends PlayerController {
                 out.add(card);
             }
         }
+        onCallback("choose_cards_for_splice", formatCards(out), String.valueOf(cards.size()));
         return out;
     }
 
     @Override
     public CardCollectionView chooseCardsToRevealFromHand(int min, int max, CardCollectionView valid) {
         final List<Card> sorted = ParityOrder.sortCardsByNameThenId(new ArrayList<Card>(valid));
-        return ChoiceSpace.pickManyCards(new CardCollection(sorted), min, max, rng);
+        final CardCollectionView result = ChoiceSpace.pickManyCards(new CardCollection(sorted), min, max, rng);
+        onCallback("choose_cards_to_reveal", formatCards(result), String.valueOf(valid.size()), String.valueOf(min), String.valueOf(max));
+        return result;
     }
 
     @Override
     public List<SpellAbility> chooseSaToActivateFromOpeningHand(List<SpellAbility> usableFromOpeningHand) {
         if (usableFromOpeningHand == null || usableFromOpeningHand.isEmpty()) {
+            onCallback("choose_sa_from_opening_hand", "[]", "0");
             return new ArrayList<>();
         }
         final List<SpellAbility> out = new ArrayList<>();
@@ -1254,27 +1363,35 @@ public class DeterministicController extends PlayerController {
                 out.add(sa);
             }
         }
+        onCallback("choose_sa_from_opening_hand", String.valueOf(out.size()), String.valueOf(usableFromOpeningHand.size()));
         return out;
     }
 
     @Override
     public PlayerZone chooseStartingHand(List<PlayerZone> zones) {
-        return ChoiceSpace.pickOne(zones, rng);
+        final PlayerZone result = ChoiceSpace.pickOne(zones, rng);
+        onCallback("choose_starting_hand", result == null ? "null" : result.toString(), String.valueOf(zones.size()));
+        return result;
     }
 
     @Override
     public Mana chooseManaFromPool(List<Mana> manaChoices) {
-        return ChoiceSpace.pickOne(manaChoices, rng);
+        final Mana result = ChoiceSpace.pickOne(manaChoices, rng);
+        onCallback("choose_mana_from_pool", result == null ? "null" : result.toString(), String.valueOf(manaChoices.size()));
+        return result;
     }
 
     @Override
     public String chooseSector(Card assignee, String ai, List<String> sectors) {
-        return ChoiceSpace.pickOne(sectors, rng);
+        final String result = ChoiceSpace.pickOne(sectors, rng);
+        onCallback("choose_sector", result == null ? "null" : result, String.valueOf(sectors.size()));
+        return result;
     }
 
     @Override
     public List<Card> chooseContraptionsToCrank(List<Card> contraptions) {
         if (contraptions == null || contraptions.isEmpty()) {
+            onCallback("choose_contraptions_to_crank", "[]", "0");
             return new ArrayList<>();
         }
         final List<Card> out = new ArrayList<>();
@@ -1283,27 +1400,35 @@ public class DeterministicController extends PlayerController {
                 out.add(contraption);
             }
         }
+        onCallback("choose_contraptions_to_crank", formatCards(out), String.valueOf(contraptions.size()));
         return out;
     }
 
     @Override
     public int chooseSprocket(Card assignee, boolean forceDifferent) {
-        return ChoiceSpace.pickIntInRange(1, 3, rng);
+        final int result = ChoiceSpace.pickIntInRange(1, 3, rng);
+        onCallback("choose_sprocket", String.valueOf(result));
+        return result;
     }
 
     @Override
     public PlanarDice choosePDRollToIgnore(List<PlanarDice> rolls) {
-        return ChoiceSpace.pickOne(rolls, rng);
+        final PlanarDice result = ChoiceSpace.pickOne(rolls, rng);
+        onCallback("choose_pd_roll_to_ignore", result == null ? "null" : result.toString(), String.valueOf(rolls.size()));
+        return result;
     }
 
     @Override
     public Integer chooseRollToIgnore(List<Integer> rolls) {
-        return ChoiceSpace.pickOne(rolls, rng);
+        final Integer result = ChoiceSpace.pickOne(rolls, rng);
+        onCallback("choose_roll_to_ignore", String.valueOf(result), String.valueOf(rolls.size()));
+        return result;
     }
 
     @Override
     public List<Integer> chooseDiceToReroll(List<Integer> rolls) {
         if (rolls == null || rolls.isEmpty()) {
+            onCallback("choose_dice_to_reroll", "[]", "0");
             return new ArrayList<>();
         }
         final List<Integer> out = new ArrayList<>();
@@ -1312,22 +1437,30 @@ public class DeterministicController extends PlayerController {
                 out.add(roll);
             }
         }
+        onCallback("choose_dice_to_reroll", out.toString(), String.valueOf(rolls.size()));
         return out;
     }
 
     @Override
     public Integer chooseRollToModify(List<Integer> rolls) {
-        return ChoiceSpace.pickOne(rolls, rng);
+        final Integer result = ChoiceSpace.pickOne(rolls, rng);
+        onCallback("choose_roll_to_modify", String.valueOf(result), String.valueOf(rolls.size()));
+        return result;
     }
 
     @Override
     public RollDiceEffect.DieRollResult chooseRollToSwap(List<RollDiceEffect.DieRollResult> rolls) {
-        return ChoiceSpace.pickOne(rolls, rng);
+        final RollDiceEffect.DieRollResult result = ChoiceSpace.pickOne(rolls, rng);
+        onCallback("choose_roll_to_swap", result == null ? "null" : result.toString(), String.valueOf(rolls.size()));
+        return result;
     }
 
     @Override
     public String chooseRollSwapValue(List<String> swapChoices, Integer currentResult, int power, int toughness) {
-        return ChoiceSpace.pickOne(swapChoices, rng);
+        final String result = ChoiceSpace.pickOne(swapChoices, rng);
+        onCallback("choose_roll_swap_value", result == null ? "null" : result,
+                String.valueOf(currentResult), String.valueOf(power), String.valueOf(toughness));
+        return result;
     }
 
     @Override
@@ -1340,14 +1473,18 @@ public class DeterministicController extends PlayerController {
             boolean optional
     ) {
         if (optional && ChoiceSpace.pickBool(rng)) {
+            onCallback("vote", "null", String.valueOf(options.size()));
             return null;
         }
-        return ChoiceSpace.pickOne(options, rng);
+        final Object result = ChoiceSpace.pickOne(options, rng);
+        onCallback("vote", result == null ? "null" : result.toString(), String.valueOf(options.size()));
+        return result;
     }
 
     @Override
     public ColorSet chooseColors(String message, SpellAbility sa, int min, int max, ColorSet options) {
         if (options == null || options.isColorless()) {
+            onCallback("choose_colors", "0", String.valueOf(min), String.valueOf(max));
             return ColorSet.fromMask(0);
         }
         final List<Byte> colors = new ArrayList<>();
@@ -1360,7 +1497,9 @@ public class DeterministicController extends PlayerController {
             final byte chosen = colors.remove(ChoiceSpace.pickIndex(colors.size(), rng));
             mask |= chosen;
         }
-        return ColorSet.fromMask(mask);
+        final ColorSet result = ColorSet.fromMask(mask);
+        onCallback("choose_colors", String.valueOf(mask), String.valueOf(min), String.valueOf(max));
+        return result;
     }
 
     @Override
@@ -1374,33 +1513,48 @@ public class DeterministicController extends PlayerController {
 
     @Override
     public ICardFace chooseSingleCardFace(SpellAbility sa, List<ICardFace> faces, String message) {
-        return ChoiceSpace.pickOne(faces, rng);
+        final ICardFace result = ChoiceSpace.pickOne(faces, rng);
+        onCallback("choose_single_card_face", result == null ? "null" : result.getName(), String.valueOf(faces.size()));
+        return result;
     }
 
     @Override
     public CardState chooseSingleCardState(SpellAbility sa, List<CardState> states, String message, Map<String, Object> params) {
-        return ChoiceSpace.pickOne(states, rng);
+        final CardState result = ChoiceSpace.pickOne(states, rng);
+        onCallback("choose_single_card_state", result == null ? "null" : result.toString(), String.valueOf(states.size()));
+        return result;
     }
 
     @Override
     public boolean chooseCardsPile(SpellAbility sa, CardCollectionView pile1, CardCollectionView pile2, String faceUp) {
-        return ChoiceSpace.pickBool(rng);
+        final boolean result = ChoiceSpace.pickBool(rng);
+        onCallback("choose_cards_pile", Boolean.toString(result),
+                String.valueOf(pile1.size()), String.valueOf(pile2.size()));
+        return result;
     }
 
     @Override
     public CounterType chooseCounterType(List<CounterType> options, SpellAbility sa, String prompt, Map<String, Object> params) {
-        return ChoiceSpace.pickOne(options, rng);
+        final CounterType result = ChoiceSpace.pickOne(options, rng);
+        onCallback("choose_counter_type", result == null ? "null" : result.toString(), String.valueOf(options.size()));
+        return result;
     }
 
     @Override
     public String chooseKeywordForPump(List<String> options, SpellAbility sa, String prompt, Card tgtCard) {
-        return ChoiceSpace.pickOne(options, rng);
+        final String result = ChoiceSpace.pickOne(options, rng);
+        onCallback("choose_keyword_for_pump", result == null ? "null" : result, String.valueOf(options.size()));
+        return result;
     }
 
     @Override
     public ReplacementEffect chooseSingleReplacementEffect(List<ReplacementEffect> possibleReplacers) {
         captureDeepCheckpoint("choose_single_replacement_effect");
-        return ChoiceSpace.pickOne(ParityOrder.sortReplacementEffects(possibleReplacers), rng);
+        final ReplacementEffect result = ChoiceSpace.pickOne(ParityOrder.sortReplacementEffects(possibleReplacers), rng);
+        onCallback("choose_single_replacement_effect",
+                result == null ? "null" : result.getDescription(),
+                String.valueOf(possibleReplacers == null ? 0 : possibleReplacers.size()));
+        return result;
     }
 
     @Override
@@ -1412,12 +1566,15 @@ public class DeterministicController extends PlayerController {
         if (possibleReplacers == null || possibleReplacers.isEmpty()) {
             return null;
         }
-        return possibleReplacers.get(0);
+        final StaticAbility result = possibleReplacers.get(0);
+        return result;
     }
 
     @Override
     public String chooseProtectionType(String string, SpellAbility sa, List<String> choices) {
-        return ChoiceSpace.pickOne(choices, rng);
+        final String result = ChoiceSpace.pickOne(choices, rng);
+        onCallback("choose_protection_type", result == null ? "null" : result, String.valueOf(choices.size()));
+        return result;
     }
 
     @Override
@@ -1443,19 +1600,24 @@ public class DeterministicController extends PlayerController {
     @Override
     public List<CostPart> orderCosts(List<CostPart> costs) {
         if (costs == null || costs.size() < 2) {
+            onCallback("order_costs", String.valueOf(costs == null ? 0 : costs.size()));
             return costs;
         }
         final List<CostPart> out = new ArrayList<>(costs);
         Collections.shuffle(out, rng);
+        onCallback("order_costs", String.valueOf(out.size()));
         return out;
     }
 
     @Override
     public boolean payCostDuringRoll(Cost cost, SpellAbility sa, FCollectionView<Player> allPayers) {
         if (!ComputerUtilCost.canPayCost(cost, sa, player, true)) {
+            onCallback("pay_cost_during_roll", "false", "cannot_pay");
             return false;
         }
-        return costPlumbing.payWithDeterministicDecision(cost, sa, true);
+        final boolean result = costPlumbing.payWithDeterministicDecision(cost, sa, true);
+        onCallback("pay_cost_during_roll", Boolean.toString(result));
+        return result;
     }
 
     @Override
@@ -1480,11 +1642,13 @@ public class DeterministicController extends PlayerController {
             final String sourceLabel = source == null
                     ? "UNKNOWN"
                     : source.getName() + "@" + ParityCardMap.parityId(source);
-            DecisionLog.logChoice(
-                    player,
-                    "pay_mana_cost_callback",
-                    Arrays.asList(sourceLabel, payableCost.toString()),
-                    "CALLBACK");
+            final AutoPay.PayManaCostResult result = autoPay.payManaCostWithTrace(payableCost, sa, effect);
+            onCallback(
+                    "pay_mana_cost",
+                    "[" + String.join(", ", result.steps()) + "]",
+                    sourceLabel,
+                    payableCost.toString());
+            return result.paid();
         }
         return autoPay.payManaCost(payableCost, sa, effect);
     }
@@ -1505,29 +1669,17 @@ public class DeterministicController extends PlayerController {
             String selectPrompt,
             Player decider
     ) {
-        return withDeepCheckpoint("choose_zone_change", () -> {
-            if (delayedReveal != null) {
-                reveal(delayedReveal);
-            }
-            final List<Card> sorted = ParityOrder.sortCardsByNameThenId(new ArrayList<Card>(fetchList));
-            final CardCollection chosen = ChoiceSpace.pickManyCards(new CardCollection(sorted), min, max, rng);
-            final List<String> options = new ArrayList<>(sorted.size());
-            for (final Card card : sorted) {
-                options.add(card.getName() + "@" + ParityCardMap.parityId(card));
-            }
-            final String choice;
-            if (chosen.isEmpty()) {
-                choice = "PASS";
-            } else {
-                final List<String> picked = new ArrayList<>(chosen.size());
-                for (final Card card : chosen) {
-                    picked.add(card.getName() + "@" + ParityCardMap.parityId(card));
-                }
-                choice = String.join(",", picked);
-            }
-            DecisionLog.logChoice(player, "choose_zone_change", options, choice);
-            return new ArrayList<>(chosen);
-        });
+        captureDeepCheckpoint("choose_zone_change");
+        if (delayedReveal != null) {
+            reveal(delayedReveal);
+        }
+        final List<Card> sorted = ParityOrder.sortCardsByNameThenId(new ArrayList<Card>(fetchList));
+        final CardCollection result = ChoiceSpace.pickManyCards(new CardCollection(sorted), min, max, rng);
+        onCallback("choose_cards_for_zone_change",
+                result.isEmpty() ? "[]" : formatCards(result),
+                String.valueOf(fetchList.size()), String.valueOf(min),
+                String.valueOf(max), selectPrompt == null ? "?" : selectPrompt);
+        return new ArrayList<>(result);
     }
 
     @Override

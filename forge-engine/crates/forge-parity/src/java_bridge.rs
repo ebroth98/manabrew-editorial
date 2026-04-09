@@ -14,7 +14,7 @@ use std::time::Instant;
 
 use serde::{Deserialize, Serialize};
 
-use crate::protocol::{DecisionRecord, StateSnapshot};
+use crate::protocol::{CallbackRecord, DecisionRecord, StateSnapshot};
 
 /// Configuration for a Java bridge subprocess.
 pub struct JavaBridgeConfig {
@@ -39,6 +39,7 @@ pub struct JavaBridge {
 pub struct JavaMatchupData {
     pub snapshots: Vec<StateSnapshot>,
     pub decisions: Vec<DecisionRecord>,
+    pub callbacks: Vec<CallbackRecord>,
 }
 
 impl JavaBridge {
@@ -161,6 +162,7 @@ impl JavaBridge {
         let reader = BufReader::new(stdout);
         let mut snapshots = Vec::new();
         let mut decisions = Vec::new();
+        let mut callbacks = Vec::new();
 
         let t_read = Instant::now();
         for line_result in reader.lines() {
@@ -175,6 +177,11 @@ impl JavaBridge {
 
             if let Some(decision) = parse_decision_line(&line) {
                 decisions.push(decision);
+                continue;
+            }
+
+            if let Some(callback) = parse_callback_line(&line, snapshots.len()) {
+                callbacks.push(callback);
                 continue;
             }
 
@@ -224,6 +231,7 @@ impl JavaBridge {
         Ok(JavaMatchupData {
             snapshots,
             decisions,
+            callbacks,
         })
     }
 }
@@ -430,6 +438,7 @@ impl JavaServer {
         // Read response lines until we get the done sentinel
         let mut snapshots = Vec::new();
         let mut decisions = Vec::new();
+        let mut callbacks = Vec::new();
         let mut line_buf = String::new();
 
         let t_read = Instant::now();
@@ -469,6 +478,11 @@ impl JavaServer {
                 continue;
             }
 
+            if let Some(callback) = parse_callback_line(line, snapshots.len()) {
+                callbacks.push(callback);
+                continue;
+            }
+
             // Otherwise parse as a snapshot
             match serde_json::from_str::<StateSnapshot>(line) {
                 Ok(snapshot) => {
@@ -501,6 +515,7 @@ impl JavaServer {
         Ok(JavaMatchupData {
             snapshots,
             decisions,
+            callbacks,
         })
     }
 
@@ -558,6 +573,7 @@ impl JavaServer {
 
         let mut snapshots = Vec::new();
         let mut decisions = Vec::new();
+        let mut callbacks = Vec::new();
         let mut line_buf = String::new();
         let mut snapshot_idx: usize = 0;
         let mut draining = false;
@@ -602,6 +618,11 @@ impl JavaServer {
                 continue;
             }
 
+            if let Some(callback) = parse_callback_line(line, snapshots.len()) {
+                callbacks.push(callback);
+                continue;
+            }
+
             match serde_json::from_str::<StateSnapshot>(line) {
                 Ok(snapshot) => {
                     if self.verbose {
@@ -638,6 +659,7 @@ impl JavaServer {
         Ok(JavaMatchupData {
             snapshots,
             decisions,
+            callbacks,
         })
     }
 
@@ -696,6 +718,18 @@ struct DecisionEnvelope {
     choice: String,
 }
 
+#[derive(Deserialize)]
+struct CallbackEnvelope {
+    event: String,
+    turn: u32,
+    phase: String,
+    player: u32,
+    name: String,
+    outcome: String,
+    #[serde(default)]
+    args: Vec<String>,
+}
+
 fn parse_decision_line(line: &str) -> Option<DecisionRecord> {
     let env = serde_json::from_str::<DecisionEnvelope>(line).ok()?;
     if env.event != "decision" {
@@ -708,6 +742,22 @@ fn parse_decision_line(line: &str) -> Option<DecisionRecord> {
         kind: env.kind,
         options: env.options,
         choice: env.choice,
+    })
+}
+
+fn parse_callback_line(line: &str, snapshot_index: usize) -> Option<CallbackRecord> {
+    let env = serde_json::from_str::<CallbackEnvelope>(line).ok()?;
+    if env.event != "callback" {
+        return None;
+    }
+    Some(CallbackRecord {
+        snapshot_index,
+        turn: env.turn,
+        phase: env.phase,
+        player: env.player,
+        name: env.name,
+        outcome: env.outcome,
+        args: env.args,
     })
 }
 
