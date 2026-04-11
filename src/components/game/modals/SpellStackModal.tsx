@@ -8,7 +8,8 @@ import { useCardPreview } from "@/hooks/useCardPreview";
 import { HoverCardPreview } from "@/components/game/HoverCardPreview";
 import { MODAL_CARD_SIZE } from "../game.styles";
 import { useGameThemeColors } from "../game.theme";
-import { CSSProperties } from "react";
+import type { CSSProperties } from "react";
+import { Button } from "@/components/ui/button";
 
 interface SpellStackModalProps {
   stack: StackObject[];
@@ -72,7 +73,7 @@ export function SpellStackModal({ stack, validSpellIds, onTarget, onCancel }: Sp
                     isValid ? "cursor-pointer" : "cursor-default",
                     !isValid && isTargeting && "opacity-50",
                   )}
-                  onMouseEnter={(e) => preview.handleMouseEnter(card, e)}
+                  onMouseEnter={(e) => preview.handleMouseEnter(cardStub, e)}
                   onMouseLeave={preview.handleMouseLeave}
 
                   onClick={isValid ? () => onTarget(obj.id) : undefined}

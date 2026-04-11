@@ -671,7 +671,8 @@ export default function Game() {
       preview.dismiss();
       return;
     }
-    const card = visibleCardsById.get(cardId) ?? stackCardsBySourceId.get(cardId) ?? null;
+    const card = visibleCardsById.get(cardId) ?? stackCardsBySourceId.get(cardId);
+    if (!card) { preview.dismiss(); return; }
     preview.handleMouseEnter(card, e, { ...options, useDelay: true });
   };
 

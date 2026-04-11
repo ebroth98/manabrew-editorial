@@ -32,10 +32,10 @@ export function useCardImage(
           (f) => f.name.toLowerCase() === name.toLowerCase(),
         );
         if (face?.image_uris) {
-          return face.image_uris[size] ?? face.image_uris.normal ?? face.image_uris.large ?? null;
+          return face.image_uris[size] ?? face.image_uris.normal ?? face.image_uris.large ?? undefined;
         }
       }
-      return card.image_uris?.[size] ?? card.image_uris?.normal ?? card.image_uris?.large ?? null;
+      return card.image_uris?.[size] ?? card.image_uris?.normal ?? card.image_uris?.large ?? undefined;
     },
     enabled: !!name && !existingUrl,
     staleTime: Infinity, // card images never change

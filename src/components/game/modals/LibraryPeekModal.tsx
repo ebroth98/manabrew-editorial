@@ -10,7 +10,7 @@ import { useState } from "react";
 import { useModalKeyboard } from "@/hooks/useModalKeyboard";
 import { MODAL_CARD_SIZE } from "../game.styles";
 import { useGameThemeColors } from "../game.theme";
-import { CSSProperties } from "react";
+import type { CSSProperties } from "react";
 
 export type LibraryPeekMode = "scry" | "surveil" | "dig" | "discard";
 

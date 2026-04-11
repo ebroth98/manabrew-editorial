@@ -60,7 +60,7 @@ export function CardPreview({
   const themeColors = useGameThemeColors();
   const ringColor = themeColors.cardRing; // matches battlefield playable color
   const { data: fetchedUrl, isLoading } = useCardImage(card.name, card.imageUrl, card.isToken, card.color, card.setCode, card.cardNumber, "large");
-  const imageUrl = upgradeScryfallUrl(card.imageUrl ?? fetchedUrl ?? null, "large");
+  const imageUrl = upgradeScryfallUrl(card.imageUrl ?? fetchedUrl, "large");
 
   // Fetch double-faced card data if needed
   const { data: doubleFacedData } = useQuery({

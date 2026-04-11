@@ -82,7 +82,7 @@ interface GameBoardProps {
   onOpenZoneAndCast: (title: string, cards: Card[], onClickCard: (cardId: string) => void) => void;
   onTapLand?: (card: Card) => void;
   onTapLands?: (cardIds: string[]) => void;
-  onTapLandAbility?: (cardId: string, abilityIndex: number) => void;
+  onTapLandAbility?: (cardId: string, abilityIndex: number, color?: string) => void;
   onUntapLand?: (card: Card) => void;
   onUntapLands?: (cardIds: string[]) => void;
 }

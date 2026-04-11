@@ -72,17 +72,8 @@ export function useBattlefieldLayout({
     const xMax = xMaxByRight;
 
     const landSet = landCardIds ? new Set(landCardIds) : null;
-    const hasLands = landSet !== null && landSet.size > 0;
     const landRowY =
       containerH > 0 ? Math.max(0, containerH - CARD_H - Math.max(0, bottomReserved) - GAP) : 0;
-    const yMax =
-      containerH > 0
-        ? Math.max(
-            0,
-            containerH - CARD_H - Math.max(0, bottomReserved) - (hasLands ? CARD_H + 2 * GAP : 0),
-          )
-        : Infinity;
-
     const cardIdSet = new Set(cardIds);
 
     setPositions((prev) => {

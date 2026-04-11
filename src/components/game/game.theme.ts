@@ -55,16 +55,7 @@ function setByPath(target: Record<string, unknown>, path: string, value: string)
   cursor[segments[lastIndex]!] = value;
 }
 
-function cloneThemeColors(colors: GameThemeColors): GameThemeColors {
-  return {
-    ...colors,
-    activeAction: { ...colors.activeAction },
-    promptAction: { ...colors.promptAction },
-    arrow: { ...colors.arrow },
-  };
-}
-
-/** 
+/**
  * Maps a flat string record (from theme presets or user overrides) into the structured GameThemeColors object.
  * Handles legacy path resolution and provides absolute fallbacks for missing keys.
  */
@@ -75,7 +66,7 @@ export function resolveGameThemeColors(
   // 1. Determine which preset to use as the base
   const activePresetId = presetId ?? usePreferencesStore.getState().appThemePreset;
   const preset = THEME_PRESETS.find((p) => p.id === activePresetId) || THEME_PRESETS[0]!;
-  const presetColors = preset.gameColors || {};
+  const presetColors = (preset.gameColors || {}) as unknown as Record<string, string>;
 
   // 2. Start with an absolute fallback base (never hardcoded in exported constants)
   const merged: GameThemeColors = {
@@ -111,7 +102,7 @@ export function resolveGameThemeColors(
   }
 
   // 5. Apply legacy fallback logic for derived fields if they are still using default values
-  const combined = { ...presetColors, ...overrides };
+  const combined: Record<string, string> = { ...presetColors, ...overrides };
 
   // activeAction.active resolution
   const explicitActive = overrides["activeAction.active"]?.trim() || presetColors["activeAction.active"]?.trim();
@@ -189,19 +180,6 @@ export function resolveGameThemeColors(
  * Now derived dynamically from the default theme.
  */
 export const GAME_THEME_COLORS: GameThemeColors = resolveGameThemeColors({}, "default");
-
-function flattenColorLeaves(node: Record<string, unknown>, prefix = ""): Record<string, string> {
-  const out: Record<string, string> = {};
-  for (const [key, value] of Object.entries(node)) {
-    const path = prefix ? `${prefix}.${key}` : key;
-    if (typeof value === "string") {
-      out[path] = value;
-    } else if (typeof value === "object" && value !== null) {
-      Object.assign(out, flattenColorLeaves(value as Record<string, unknown>, path));
-    }
-  }
-  return out;
-}
 
 export function getDefaultGameThemeColorMap(): Record<string, string> {
   const presetId = usePreferencesStore.getState().appThemePreset;

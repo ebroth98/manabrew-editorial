@@ -6,7 +6,7 @@ interface ActionLogProps {
   gameLog: GameLogEntry[];
   resolveCardName: (cardId: string) => string;
   resolvePlayerName: (playerId: string) => string;
-  onHoverLogCard: (cardId: string | null, event?: React.MouseEvent, useAnchor?: boolean) => void;
+  onHoverLogCard: (cardId: string | null, event?: React.MouseEvent, options?: { useAnchor?: boolean; placement?: "auto" | "top-center"; anchorOverride?: DOMRect }) => void;
 }
 
 export function ActionLog({
@@ -75,7 +75,7 @@ export function ActionLog({
                 "py-1 border-b border-border/40 last:border-b-0",
                 entry.entryType === "warning" && "text-red-400 font-semibold",
               )}
-              onMouseEnter={(e) => onHoverLogCard(entry.cardId ?? null, e, true)}
+              onMouseEnter={(e) => onHoverLogCard(entry.cardId ?? null, e, { useAnchor: true })}
               onMouseLeave={() => onHoverLogCard(null)}
             >
               <div className="flex items-center gap-1.5 mb-0.5">
@@ -104,7 +104,7 @@ export function ActionLog({
                     <span
                       className="px-1 py-0.5 rounded text-[10px] cursor-help"
                       style={{ backgroundColor: withAlpha(infoColor, 0.12), color: infoColor }}
-                      onMouseEnter={(e) => onHoverLogCard(entry.sourceCardId!, e, true)}
+                      onMouseEnter={(e) => onHoverLogCard(entry.sourceCardId!, e, { useAnchor: true })}
                       onMouseLeave={() => onHoverLogCard(null)}
                     >
                       {resolveCardName(entry.sourceCardId)}
@@ -114,7 +114,7 @@ export function ActionLog({
                     <span
                       className="px-1 py-0.5 rounded text-[10px] cursor-help"
                       style={{ backgroundColor: withAlpha(infoColor, 0.12), color: infoColor }}
-                      onMouseEnter={(e) => onHoverLogCard(entry.targetCardId!, e, true)}
+                      onMouseEnter={(e) => onHoverLogCard(entry.targetCardId!, e, { useAnchor: true })}
                       onMouseLeave={() => onHoverLogCard(null)}
                     >
                       {resolveCardName(entry.targetCardId)}

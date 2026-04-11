@@ -7,6 +7,7 @@ import { useCardPreview } from "@/hooks/useCardPreview";
 import { HoverCardPreview } from "@/components/game/HoverCardPreview";
 import { useGameThemeColors } from "../game.theme";
 import { Modal } from "./Modal";
+import type { CSSProperties } from "react";
 
 interface ZoneViewerProps {
   title: string;

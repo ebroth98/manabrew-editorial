@@ -1252,7 +1252,7 @@ export function DeckListView({
                       onAddOne={() => {}}
                       onRemoveOne={() => onRemoveCommander(cmd)}
                       onPickPrint={() => onPickPrint(cmd.name)}
-                      onHover={(e) => onHover(cmd, e, { useDelay: true })}
+                      onHover={(_, e) => onHover(cmd, e, { useDelay: true })}
                       onLeave={onLeave}
                       onShowInfo={onShowInfo ? () => onShowInfo(cmd.name) : undefined}
                       isCover={coverCardName === cmd.name && (coverCardFace ?? 0) === 0}
