@@ -174,5 +174,14 @@ pub enum RoomStatus {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum GameFormat {
     Standard,
+    Pioneer,
+    Modern,
+    Legacy,
+    Vintage,
+    Pauper,
     Commander,
+    Brawl,
+    Oathbreaker,
+    Draft,
+    Sealed,
 }

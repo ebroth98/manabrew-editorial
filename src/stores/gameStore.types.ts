@@ -203,7 +203,7 @@ export interface GameState {
   targetAny: (target: { kind: string; playerId?: string; cardId?: string }) => void;
   mulliganDecision: (keep: boolean) => void;
   mulliganPutBackDecision: (cardIds: string[]) => void;
-  tapLand: (cardId: string, abilityIndex?: number) => void;
+  tapLand: (cardId: string, abilityIndex?: number, color?: string) => void;
   untapLand: (cardId: string) => void;
   activateAbility: (cardId: string, abilityIndex: number) => void;
   scryDecision: (bottomCardIds: string[]) => void;

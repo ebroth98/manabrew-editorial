@@ -5,16 +5,35 @@ import { usePreferencesStore } from "@/stores/usePreferencesStore";
 import { useHandScale } from "@/hooks/useHandScale";
 import type { HandDisplayProps } from "../game.types";
 import { HAND_CARD_BASES } from "../game.styles";
+import { HandCardActions } from "./HandCardActions";
 
 const ARC_RADIUS = 900;
 const MAX_ARC_DEG = 30;
-const HOVER_SCALE = 1.22;
+const HOVER_SCALE = 1.8;
 
 /** Base layout params at 1920px reference, keyed by size preference. */
 const SIZE_PARAMS = {
-  small:  { hoverLift: 28, neighborPush: 30, maxSpread: 56, minSpread: 24, spreadWidth: 560 },
-  medium: { hoverLift: 46, neighborPush: 48, maxSpread: 90, minSpread: 38, spreadWidth: 900 },
-  large:  { hoverLift: 60, neighborPush: 62, maxSpread: 118, minSpread: 50, spreadWidth: 1180 },
+  small: {
+    hoverLift: 40,
+    neighborPush: 30,
+    maxSpread: 56,
+    minSpread: 24,
+    spreadWidth: 560,
+  },
+  medium: {
+    hoverLift: 70,
+    neighborPush: 48,
+    maxSpread: 90,
+    minSpread: 38,
+    spreadWidth: 900,
+  },
+  large: {
+    hoverLift: 90,
+    neighborPush: 62,
+    maxSpread: 118,
+    minSpread: 50,
+    spreadWidth: 1180,
+  },
 } as const;
 
 function computeLayout(
@@ -52,6 +71,8 @@ export function HandDisplayCool({
   showBackFace,
   draggingCardId,
   castingCardId,
+  getActions,
+  onSelectAction,
 }: HandDisplayProps) {
   const handSize = usePreferencesStore((s) => s.handSize);
   const vScale = useHandScale();
@@ -81,37 +102,40 @@ export function HandDisplayCool({
   const [tugId, setTugId] = useState<string | null>(null);
   const [tugOffset, setTugOffset] = useState({ x: 0, y: 0 });
 
-  const startTug = useCallback((cardId: string, startX: number, startY: number) => {
-    setTugId(cardId);
-    setTugOffset({ x: 0, y: 0 });
+  const startTug = useCallback(
+    (cardId: string, startX: number, startY: number) => {
+      setTugId(cardId);
+      setTugOffset({ x: 0, y: 0 });
 
-    const onMove = (me: MouseEvent) => {
-      const dx = me.clientX - startX;
-      const dy = me.clientY - startY;
-      const dist = Math.sqrt(dx * dx + dy * dy);
-      if (dist > TUG_LIMIT) {
-        // Hit the limit — snap back and flash
+      const onMove = (me: MouseEvent) => {
+        const dx = me.clientX - startX;
+        const dy = me.clientY - startY;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist > TUG_LIMIT) {
+          // Hit the limit — snap back and flash
+          document.removeEventListener("mousemove", onMove);
+          document.removeEventListener("mouseup", onUp);
+          setTugId(null);
+          setTugOffset({ x: 0, y: 0 });
+          rejectCard(cardId);
+        } else {
+          setTugOffset({ x: dx, y: dy });
+        }
+      };
+
+      const onUp = () => {
         document.removeEventListener("mousemove", onMove);
         document.removeEventListener("mouseup", onUp);
         setTugId(null);
         setTugOffset({ x: 0, y: 0 });
         rejectCard(cardId);
-      } else {
-        setTugOffset({ x: dx, y: dy });
-      }
-    };
+      };
 
-    const onUp = () => {
-      document.removeEventListener("mousemove", onMove);
-      document.removeEventListener("mouseup", onUp);
-      setTugId(null);
-      setTugOffset({ x: 0, y: 0 });
-      rejectCard(cardId);
-    };
-
-    document.addEventListener("mousemove", onMove);
-    document.addEventListener("mouseup", onUp);
-  }, [rejectCard]);
+      document.addEventListener("mousemove", onMove);
+      document.addEventListener("mouseup", onUp);
+    },
+    [rejectCard],
+  );
 
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const positions = useMemo(
@@ -120,16 +144,72 @@ export function HandDisplayCool({
   );
   const containerRef = useRef<HTMLDivElement>(null);
   const hoveredIdRef = useRef<string | null>(null);
+  const hideTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   const hovIdx = hoveredId ? cards.findIndex((c) => c.id === hoveredId) : -1;
 
   const handleMouseMove = (e: React.MouseEvent) => {
+    clearTimeout(hideTimerRef.current);
     const container = containerRef.current;
     if (!container || cards.length === 0) return;
 
     const rect = container.getBoundingClientRect();
     const centerX = rect.left + rect.width / 2;
     const mouseX = e.clientX - centerX;
+
+    // If a card is currently hovered, verify if the mouse is still inside its extended bounds
+    if (hoveredIdRef.current !== null) {
+      const targetEl = e.target as Element;
+
+      // 1. Check if physically hovering the bridge or actions panel
+      if (targetEl.closest('[data-hover-bridge="true"]')) {
+        return; // Stay on active card
+      }
+
+      // 2. Check if physically hovering a card
+      const cardEl = targetEl.closest("[data-card-id]");
+      if (cardEl) {
+        const id = cardEl.getAttribute("data-card-id");
+        if (id === hoveredIdRef.current) {
+          return; // Still physically on the active card, stay
+        } else if (id) {
+          // Physically on a DIFFERENT card.
+          // Switch immediately!
+          const newCard = cards.find((c) => c.id === id);
+          if (newCard) {
+            hoveredIdRef.current = id;
+            setHoveredId(id);
+            const activeIdx = cards.findIndex((c) => c.id === id);
+            const pos = positions[activeIdx];
+            const finalWidth = cardW * HOVER_SCALE;
+            const finalHeight = cardH * HOVER_SCALE;
+            const finalLeft = centerX + pos.x - finalWidth / 2;
+            const finalTop = rect.bottom - hoverLift - finalHeight;
+
+            onHoverCard?.(newCard, e, {
+              useAnchor: true,
+              placement: "top-center",
+              anchorOverride: {
+                left: finalLeft,
+                right: finalLeft + finalWidth,
+                top: finalTop,
+                bottom: finalTop + finalHeight,
+                width: finalWidth,
+                height: finalHeight,
+                x: finalLeft,
+                y: finalTop,
+                toJSON: () => ({}),
+              } as DOMRect,
+            });
+            return;
+          }
+        }
+      } else {
+        // 3. Mouse is over the empty container area (sweeping the fan).
+        // Since we removed the manual X threshold, sweeping the bottom will immediately
+        // switch cards as you cross their original centerlines. This is the desired Mac Dock behavior.
+      }
+    }
 
     let closest = 0;
     let closestDist = Infinity;
@@ -143,9 +223,11 @@ export function HandDisplayCool({
 
     if (closestDist > cardW) {
       if (hoveredIdRef.current !== null) {
-        hoveredIdRef.current = null;
-        setHoveredId(null);
-        onHoverCard?.(null);
+        hideTimerRef.current = setTimeout(() => {
+          hoveredIdRef.current = null;
+          setHoveredId(null);
+          onHoverCard?.(null);
+        }, 150);
       }
       return;
     }
@@ -154,19 +236,45 @@ export function HandDisplayCool({
     if (card.id !== hoveredIdRef.current) {
       hoveredIdRef.current = card.id;
       setHoveredId(card.id);
-      onHoverCard?.(card, e);
+
+      const pos = positions[closest];
+      const finalWidth = cardW * HOVER_SCALE;
+      const finalHeight = cardH * HOVER_SCALE;
+      const finalLeft = centerX + pos.x - finalWidth / 2;
+      const finalTop = rect.bottom - hoverLift - finalHeight;
+
+      onHoverCard?.(card, e, {
+        useAnchor: true,
+        placement: "top-center",
+        anchorOverride: {
+          left: finalLeft,
+          right: finalLeft + finalWidth,
+          top: finalTop,
+          bottom: finalTop + finalHeight,
+          width: finalWidth,
+          height: finalHeight,
+          x: finalLeft,
+          y: finalTop,
+          toJSON: () => ({}),
+        } as DOMRect,
+      });
     }
   };
 
   const handleMouseLeave = () => {
-    hoveredIdRef.current = null;
-    setHoveredId(null);
-    onHoverCard?.(null);
+    hideTimerRef.current = setTimeout(() => {
+      hoveredIdRef.current = null;
+      setHoveredId(null);
+      onHoverCard?.(null);
+    }, 150);
   };
 
   const containerWidth = Math.max(
     cardW + 40,
-    (positions[positions.length - 1]?.x ?? 0) - (positions[0]?.x ?? 0) + cardW + 80,
+    (positions[positions.length - 1]?.x ?? 0) -
+      (positions[0]?.x ?? 0) +
+      cardW +
+      80,
   );
 
   return (
@@ -191,31 +299,48 @@ export function HandDisplayCool({
 
           const isCasting = castingCardId != null && card.id === castingCardId;
           const isTugging = tugId === card.id;
-          const tx = pos.x + pushX + (isTugging ? tugOffset.x : 0);
-          const translateY = (isHov ? -hoverLift : pos.drop) + (isTugging ? tugOffset.y : 0);
+
+          // Use actual width/height changes instead of CSS scale() so the
+          // browser re-rasterises the image at the target size rather than
+          // stretching an already-downsampled bitmap.
+          const hovW = Math.round(cardW * HOVER_SCALE);
+          const hovH = Math.round(cardH * HOVER_SCALE);
+          const curW = isHov ? hovW : cardW;
+          const curH = isHov ? hovH : cardH;
+
+          const tx = Math.round(pos.x + pushX + (isTugging ? tugOffset.x : 0));
+          const translateY = Math.round(
+            (isHov ? -hoverLift : pos.drop) + (isTugging ? tugOffset.y : 0),
+          );
           const rot = isHov ? 0 : pos.rot;
-          const scale = isHov ? HOVER_SCALE : 1;
           const z = isTugging ? 100 : isHov ? 100 : idx + 1;
+
+          const actions = isHov && getActions ? getActions(card) : [];
 
           return (
             <div
               key={card.id}
+              data-card-id={card.id}
               className={cn(
-                "absolute will-change-transform isolate pointer-events-none",
+                "absolute isolate pointer-events-none",
                 card.isPlayable && "cursor-grab",
                 (card.id === draggingCardId || isCasting) && "opacity-0",
               )}
               style={{
                 left: "50%",
                 bottom: 0,
-                transform: `translateX(${tx - cardW / 2}px) translateY(${translateY}px) rotate(${rot}deg) scale(${scale})`,
+                transform: `translateX(${tx - curW / 2}px) translateY(${translateY}px) rotate(${rot}deg)`,
                 transformOrigin: "center bottom",
-                transition: isTugging ? "none" : "transform 280ms cubic-bezier(0.34, 1.56, 0.64, 1)",
+                transition: isTugging
+                  ? "none"
+                  : "transform 280ms cubic-bezier(0.34, 1.56, 0.64, 1), width 280ms cubic-bezier(0.34, 1.56, 0.64, 1), height 280ms cubic-bezier(0.34, 1.56, 0.64, 1)",
+                width: curW,
+                height: curH,
                 zIndex: z,
               }}
             >
               <div
-                className="pointer-events-auto"
+                className="pointer-events-auto relative w-full h-full"
                 onMouseDown={(e) => {
                   e.preventDefault();
                   if (card.isPlayable && onStartDrag) {
@@ -232,14 +357,51 @@ export function HandDisplayCool({
                   className={cn(
                     "shadow-md !bg-card",
                     isHov && "shadow-xl shadow-black/40",
-                    card.isPlayable && cn("playable-card", isHov && "is-hovered"),
+                    card.isPlayable &&
+                      cn("playable-card", isHov && "is-hovered"),
                     rejectedId === card.id && "animate-reject-flash",
                   )}
-                  style={{ width: cardW, height: cardH }}
+                  style={{
+                    width: curW,
+                    height: curH,
+                  }}
                   isHovered={isHov}
                   onFlip={onFlipCard}
                   showBackFace={showBackFace}
+                  resolution="large"
                 />
+
+                {isHov && actions.length > 0 && onSelectAction && (
+                  <div
+                    data-hover-bridge="true"
+                    style={{
+                      position: "absolute",
+                      top: 0,
+                      left: "100%",
+                    }}
+                  >
+                    {/* Curved invisible bridge to maintain hover without blocking cards below */}
+                    <div
+                      style={{
+                        position: "absolute",
+                        top: 0,
+                        left: -hovW,
+                        width: hovW + 10 + 220,
+                        height: hovH,
+                        // backgroundColor: "rgba(0, 255, 0, 0.4)", // Green for visibility during implementation
+                        borderBottomRightRadius: "100%",
+                        zIndex: -1,
+                      }}
+                    />
+
+                    <div style={{ paddingLeft: 10 }}>
+                      <HandCardActions
+                        actions={actions}
+                        onSelectAction={onSelectAction}
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           );

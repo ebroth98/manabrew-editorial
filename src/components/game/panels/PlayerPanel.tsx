@@ -33,7 +33,7 @@ function StatBadge({
   );
 
   const tooltip = (
-    <span className="pointer-events-none absolute left-1/2 top-full z-40 mt-1 -translate-x-1/2 whitespace-nowrap rounded bg-black/85 px-1.5 py-0.5 text-[10px] font-semibold text-white opacity-0 transition-opacity duration-150 delay-0 group-hover/stat:delay-300 group-hover/stat:opacity-100">
+    <span className="pointer-events-none absolute left-1/2 top-full z-40 mt-1 -translate-x-1/2 whitespace-nowrap rounded bg-black/85 px-1.5 py-0.5 text-xs font-semibold text-white opacity-0 transition-opacity duration-150 delay-0 group-hover/stat:delay-300 group-hover/stat:opacity-100">
       {label}
     </span>
   );
@@ -235,7 +235,7 @@ export function PlayerPanel({
               {getInitials(player.name)}
             </AvatarFallback>
           </Avatar>
-          <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-[60%] hidden group-hover/avatar:block whitespace-nowrap rounded bg-black/85 px-1.5 py-0.5 text-[10px] font-semibold text-white pointer-events-none z-40">
+          <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-[60%] hidden group-hover/avatar:block whitespace-nowrap rounded bg-black/85 px-1.5 py-0.5 text-xs font-semibold text-white pointer-events-none z-40">
             {player.name}
           </span>
         </div>

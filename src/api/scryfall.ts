@@ -95,12 +95,13 @@ export async function fetchCardCollection(cards: { name: string; setCode?: strin
  * Handles both single-faced cards (top-level image_uris) and double-faced cards
  * (image_uris in card_faces array).
  */
-export function getScryfallImageUrl(card: ScryfallCard): string | undefined {
+export function getScryfallImageUrl(card: ScryfallCard, size: string = "normal"): string | undefined {
   const sc = card as unknown as { 
-    card_faces?: { image_uris?: { normal?: string } }[];
-    image_uris?: { normal?: string };
+    card_faces?: { image_uris?: Record<string, string> }[];
+    image_uris?: Record<string, string>;
   };
-  return sc.image_uris?.normal ?? sc.card_faces?.[0]?.image_uris?.normal;
+  const uris = sc.image_uris ?? sc.card_faces?.[0]?.image_uris;
+  return uris?.[size] ?? uris?.normal ?? uris?.large;
 }
 
 /**

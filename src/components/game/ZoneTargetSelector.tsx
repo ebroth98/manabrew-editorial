@@ -1,9 +1,9 @@
 import { Card } from "@/components/game/Card";
 import type { Card as CardType } from "@/types/openmagic";
-import { CardPreview } from "@/components/game/CardPreview";
+import { HoverCardPreview } from "@/components/game/HoverCardPreview";
 import { Modal } from "@/components/game/modals/Modal";
 import { cn } from "@/lib/utils";
-import { useHoverPreview } from "@/hooks/useHoverPreview";
+import { useCardPreview } from "@/hooks/useCardPreview";
 import { MODAL_CARD_SIZE } from "./game.styles";
 
 interface ZoneTargetSelectorProps {
@@ -21,7 +21,7 @@ export function ZoneTargetSelector({
   onSelect,
   onCancel
 }: ZoneTargetSelectorProps) {
-  const { hoveredCard, mousePos, onMouseEnter, onMouseLeave } = useHoverPreview();
+  const preview = useCardPreview();
 
   const validCards = cards.filter(card => validCardIds.includes(card.id));
 
@@ -42,8 +42,8 @@ export function ZoneTargetSelector({
               <div
                 key={card.id}
                 className="shrink-0 cursor-pointer group"
-                onMouseEnter={(e) => onMouseEnter(card, e)}
-                onMouseLeave={onMouseLeave}
+                onMouseEnter={(e) => preview.handleMouseEnter(card, e)}
+                onMouseLeave={preview.handleMouseLeave}
                 onClick={() => onSelect(card.id)}
               >
                 <Card
@@ -59,9 +59,7 @@ export function ZoneTargetSelector({
         )}
       </Modal.Body>
 
-      {hoveredCard && (
-        <CardPreview card={hoveredCard} mouseX={mousePos.x} mouseY={mousePos.y} />
-      )}
+      <HoverCardPreview preview={preview} />
     </Modal>
   );
 }

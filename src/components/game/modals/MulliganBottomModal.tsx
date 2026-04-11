@@ -2,11 +2,11 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Modal } from "./Modal";
 import { Card } from "@/components/game/Card";
-import { CardPreview } from "@/components/game/CardPreview";
+import { HoverCardPreview } from "@/components/game/HoverCardPreview";
 import { cn } from "@/lib/utils";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useModalKeyboard } from "@/hooks/useModalKeyboard";
-import { useHoverPreview } from "@/hooks/useHoverPreview";
+import { useCardPreview } from "@/hooks/useCardPreview";
 import { CARD_RING, MODAL_FOOTER_BETWEEN, MULLIGAN_CARD_SIZE } from "../game.styles";
 import type { Card as CardType } from "@/types/openmagic";
 
@@ -24,7 +24,7 @@ export function MulliganBottomModal({
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const canConfirm = selected.size === count;
   const dialogRef = useRef<HTMLDivElement>(null);
-  const { hoveredCard, mousePos, onMouseEnter, onMouseLeave } = useHoverPreview();
+  const preview = useCardPreview();
 
   useEffect(() => {
     setSelected(new Set());
@@ -85,8 +85,8 @@ export function MulliganBottomModal({
                 <div
                   key={card.id}
                   onClick={() => toggleCard(card.id)}
-                  onMouseEnter={(e) => onMouseEnter(card, e)}
-                  onMouseLeave={onMouseLeave}
+                  onMouseEnter={(e) => preview.handleMouseEnter(card, e)}
+                  onMouseLeave={preview.handleMouseLeave}
                   className={cn(
                     "shrink-0 cursor-pointer transition-all rounded-lg",
                     isSelected
@@ -116,13 +116,7 @@ export function MulliganBottomModal({
         </div>
       </div>
 
-      {hoveredCard && (
-        <CardPreview
-          card={hoveredCard}
-          mouseX={mousePos.x}
-          mouseY={mousePos.y}
-        />
-      )}
+      <HoverCardPreview preview={preview} />
     </Modal>
   );
 }

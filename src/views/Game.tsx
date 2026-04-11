@@ -3,9 +3,8 @@ import { useGameUIStore } from "@/stores/useGameUIStore";
 import { usePreferencesStore } from "@/stores/usePreferencesStore";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import type { Card as XMageCard, Player, StackObject } from "@/types/openmagic";
+import type { Card as XMageCard, Player, StackObject, ActivatableAbilityInfo } from "@/types/openmagic";
 import { Card } from "@/components/game/Card";
-import { CardPreview } from "@/components/game/CardPreview";
 import { GameModals } from "@/components/game/GameModals";
 import { GameOverScreen } from "@/components/game/GameOverScreen";
 import { GameLoadingScreen } from "@/components/game/GameLoadingScreen";
@@ -20,7 +19,8 @@ import { HAND_CARD_BASES } from "@/components/game/game.styles";
 import { useHandScale } from "@/hooks/useHandScale";
 import { useFlashQueue } from "@/hooks/useFlashQueue";
 import { useHandDrag } from "@/hooks/useHandDrag";
-import { useCardHover } from "@/hooks/useCardHover";
+import { useCardPreview } from "@/hooks/useCardPreview";
+import { HoverCardPreview } from "@/components/game/HoverCardPreview";
 import { usePromptEffects } from "@/hooks/usePromptEffects";
 import { useCombatState } from "@/hooks/useCombatState";
 import { useGameEventListeners } from "@/hooks/useGameEventListeners";
@@ -170,10 +170,38 @@ export default function Game() {
     getAbilitiesForCard(card.id);
 
   /** Mana abilities for a card from the current prompt (dual land per-color options). */
-  const getManaAbilitiesForCard = (cardId: string): HandActionOption[] =>
-    (currentPrompt?.manaAbilityOptions ?? [])
-      .filter((a) => a.cardId === cardId)
-      .map(toAbilityOption);
+  const getManaAbilitiesForCard = (cardId: string): HandActionOption[] => {
+    const rawAbilities = (currentPrompt?.manaAbilityOptions ?? []).filter((a) => a.cardId === cardId);
+    const expanded: ActivatableAbilityInfo[] = [];
+
+    const ANY_COLOR_LETTERS = ["W", "U", "B", "R", "G"];
+
+    for (const ab of rawAbilities) {
+      const desc = ab.description.toLowerCase();
+      const matches = ab.description.matchAll(/\{([WUBRGC])\}/g);
+      const letters = Array.from(matches, (m) => m[1]);
+      const isAnyColor =
+        desc.includes("any color") ||
+        desc.includes("any one color") ||
+        desc.includes("mana of any color");
+
+      if (letters.length > 1) {
+        letters.forEach((letter) => {
+          expanded.push({ ...ab, description: `Add {${letter}}` });
+        });
+      } else if (letters.length === 1) {
+        expanded.push(ab);
+      } else if (isAnyColor) {
+        ANY_COLOR_LETTERS.forEach((letter) => {
+          expanded.push({ ...ab, description: `Add {${letter}}` });
+        });
+      } else {
+        expanded.push(ab);
+      }
+    }
+
+    return expanded.map(toAbilityOption);
+  };
 
   /** All available actions for a card (cast + activated + mana abilities). */
   const getCardActions = (card: XMageCard): HandActionOption[] => {
@@ -242,7 +270,7 @@ export default function Game() {
     }
 
     // Multiple actions — show the interactive preview without sending anything to the engine
-    showStickyPreview(card, e?.clientX, e?.clientY);
+    preview.showSticky(card, e?.clientX, e?.clientY);
   };
 
   const handleHandCardDragStart = (card: XMageCard, e: React.MouseEvent) => {
@@ -268,7 +296,7 @@ export default function Game() {
     }
 
     // Multiple abilities — show the interactive preview without sending anything
-    showStickyPreview(card, e?.clientX, e?.clientY);
+    preview.showSticky(card, e?.clientX, e?.clientY);
     return true;
   };
 
@@ -318,7 +346,7 @@ export default function Game() {
         }));
 
       if (manaAbilities.length > 1) {
-        showStickyPreview(card);
+        preview.showSticky(card);
         return;
       }
       if (manaAbilities.length === 1) {
@@ -351,7 +379,7 @@ export default function Game() {
 
     // Multiple mana abilities (dual land) — show interactive preview for color choice
     if (manaAbilities.length > 1) {
-      showStickyPreview(card);
+      preview.showSticky(card);
       return;
     }
     // Single mana ability — tap directly with that ability index
@@ -362,7 +390,7 @@ export default function Game() {
 
     // Multiple options — show interactive preview
     if (abilities.length > 1 || (abilities.length >= 1 && hasManaAbility)) {
-      showStickyPreview(card);
+      preview.showSticky(card);
     } else if (abilities.length === 1) {
       if (abilities[0].abilityIndex != null) {
         activateAbility(card.id, abilities[0].abilityIndex);
@@ -457,16 +485,7 @@ export default function Game() {
   // Note: promptType is NOT a dismiss dep — modal prompt types are already guarded
   // by the render condition on CardPreview, and modal states are tracked separately.
   // Including promptType caused hover to break during autopass (rapid prompt changes).
-  const {
-    hoveredCard,
-    mousePos,
-    showBackFace,
-    dismissHover,
-    handleFlipCard,
-    handleHoverCard,
-    makeSticky,
-    showStickyPreview,
-  } = useCardHover(
+  const preview = useCardPreview(
     [viewingZone, zoneTargetSelector, libraryPeekModal, spellStackModalOpen, abilityPickerState],
   );
 
@@ -477,26 +496,25 @@ export default function Game() {
     battlefieldContainerRef,
     handContainerRef,
     onCastSpell: handleCastSpell,
-    dismissHover,
+    dismissHover: preview.dismiss,
   });
 
-  // Make the hover preview sticky when the hovered card has activatable actions
-  const hoveredCardActions = hoveredCard ? getCardActions(hoveredCard) : [];
-  useEffect(() => {
-    if (hoveredCardActions.length > 0) makeSticky();
-  }, [hoveredCard?.id, hoveredCardActions.length]); // eslint-disable-line react-hooks/exhaustive-deps
+  const hoveredCardActions = preview.hoveredCard ? getCardActions(preview.hoveredCard) : [];
 
   /** Handle an action selected from the hover preview. */
   const handlePreviewAction = (action: HandActionOption) => {
-    dismissHover();
+    preview.dismiss();
     if (action.kind === "cast") {
       castSpell(action.cardId, action.mode);
     } else if (action.abilityIndex === SYNTHETIC_MANA_INDEX) {
       tapLand(action.cardId);
     } else if (action.abilityIndex != null) {
       if (action.isManaAbility) {
-        // Mana abilities use tapLand (ActivateMana) in both ChooseAction and PayManaCost
-        tapLand(action.cardId, action.abilityIndex);
+        // Mana abilities use tapLand (ActivateMana) in both ChooseAction and PayManaCost.
+        // Extract color from label (e.g. "Add {G}") if present.
+        const matches = action.label.match(/\{([WUBRGC])\}/);
+        const color = matches ? matches[1] : undefined;
+        tapLand(action.cardId, action.abilityIndex, color);
       } else {
         activateAbility(action.cardId, action.abilityIndex);
       }
@@ -644,32 +662,75 @@ export default function Game() {
     return byId;
   }, [gameView]);
 
-  const handleLogCardHover = (cardId: string | null, e?: React.MouseEvent) => {
+  const handleLogCardHover = (cardId: string | null, e?: React.MouseEvent, options: { useAnchor?: boolean; placement?: "auto" | "top-center"; anchorOverride?: DOMRect } = {}) => {
     if (draggingHandCard) {
-      handleHoverCard(null);
+      preview.dismiss();
       return;
     }
     if (!cardId) {
-      handleHoverCard(null);
+      preview.dismiss();
       return;
     }
     const card = visibleCardsById.get(cardId) ?? stackCardsBySourceId.get(cardId) ?? null;
-    handleHoverCard(card, e);
+    preview.handleMouseEnter(card, e, { ...options, useDelay: true });
   };
 
-  const handleHoverCardGuarded = (card: XMageCard | null, e?: React.MouseEvent) => {
+  const handleHoverCardGuarded = (card: XMageCard | null, e?: React.MouseEvent, options: { useAnchor?: boolean; placement?: "auto" | "top-center"; anchorOverride?: DOMRect } = {}) => {
     if (draggingHandCard) {
-      handleHoverCard(null);
+      preview.dismiss();
       return;
     }
-    handleHoverCard(card, e);
+    if (card === null) {
+      // Use handleMouseLeave so the 250ms grace period allows the user
+      // to move the mouse from the card to the preview popup.
+      preview.handleMouseLeave();
+    } else {
+      preview.handleMouseEnter(card, e, { ...options, useDelay: true });
+    }
   };
+
+  // Suppress native browser tooltips inside the game view by stripping `title`
+  // attributes as they appear. We move the value to `data-title` so it's still
+  // accessible to custom tooltip components if needed, but the browser won't
+  // show the default tooltip on hover.
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const strip = (root: Element) => {
+      for (const node of root.querySelectorAll("[title]")) {
+        const val = node.getAttribute("title");
+        if (val) {
+          node.setAttribute("data-title", val);
+          node.removeAttribute("title");
+        }
+      }
+    };
+    strip(el);
+    const observer = new MutationObserver((mutations) => {
+      for (const m of mutations) {
+        if (m.type === "attributes" && m.attributeName === "title" && m.target instanceof Element) {
+          const val = m.target.getAttribute("title");
+          if (val) {
+            m.target.setAttribute("data-title", val);
+            m.target.removeAttribute("title");
+          }
+        }
+        if (m.type === "childList") {
+          for (const node of m.addedNodes) {
+            if (node instanceof Element) strip(node);
+          }
+        }
+      }
+    });
+    observer.observe(el, { attributes: true, attributeFilter: ["title"], childList: true, subtree: true });
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(() => {
     if (draggingHandCard) {
-      handleHoverCard(null);
+      preview.dismiss();
     }
-  }, [draggingHandCard, handleHoverCard]);
+  }, [draggingHandCard, preview]);
 
   // If the previewed card leaves all visible zones (e.g. removed from the game),
   // close the preview. We use visibleCardsById so that cards in graveyard, exile,
@@ -679,11 +740,11 @@ export default function Game() {
   }, [visibleCardsById]);
 
   useEffect(() => {
-    if (!hoveredCard) return;
-    if (!hoverableCardIds.has(hoveredCard.id) && !stackCardsBySourceId.has(hoveredCard.id)) {
-      dismissHover();
+    if (!preview.hoveredCard) return;
+    if (!hoverableCardIds.has(preview.hoveredCard.id) && !stackCardsBySourceId.has(preview.hoveredCard.id)) {
+      preview.dismiss();
     }
-  }, [hoveredCard, hoverableCardIds, stackCardsBySourceId, dismissHover]);
+  }, [preview, hoverableCardIds, stackCardsBySourceId]);
 
   const cardNameById = useMemo(() => {
     const byId = new Map<string, string>();
@@ -805,14 +866,14 @@ export default function Game() {
   return (
     <div
       ref={containerRef}
-      className="relative flex flex-col h-full min-h-0 gap-1.5 p-1.5 overflow-hidden"
+      className="relative flex flex-col h-full min-h-0 gap-1.5 p-1.5 overflow-hidden select-none"
       style={
         {
           "--flash-duration": `${flashDurationMs}ms`,
-          "--playable-ring-color": withAlpha(themeColors.activeAction.active, 0.75),
-          "--playable-glow-color": withAlpha(themeColors.activeAction.active, 0.3),
-          "--playable-ring-color-strong": themeColors.activeAction.active,
-          "--playable-glow-color-strong": withAlpha(themeColors.activeAction.active, 0.6),
+          "--playable-ring-color": withAlpha(themeColors.cardRing, 0.75),
+          "--playable-glow-color": withAlpha(themeColors.cardRing, 0.3),
+          "--playable-ring-color-strong": themeColors.cardRing,
+          "--playable-glow-color-strong": withAlpha(themeColors.cardRing, 0.6),
         } as React.CSSProperties
       }
     >
@@ -840,7 +901,7 @@ export default function Game() {
           blockAssignments={blockAssignments}
           playerIsTargetable={playerIsTargetable}
           turnFlashPlayerId={turnFlashPlayerId}
-          showBackFace={showBackFace}
+          showBackFace={preview.showBackFace}
           zonePanelSide={zonePanelSide}
           zonePanelOrder={zonePanelOrder}
           placementGhost={placementGhost}
@@ -852,7 +913,9 @@ export default function Game() {
           onHandCardDragStart={handleHandCardDragStart}
           onHandCardClick={handleHandCardAction}
           onHoverCard={handleHoverCardGuarded}
-          onFlipCard={handleFlipCard}
+          getHandActions={getHandActionOptions}
+          onSelectHandAction={handlePreviewAction}
+          onFlipCard={preview.flipCard}
           onBattlefieldClick={(card) => {
             if (promptType === PromptType.ChooseAction && handleBattlefieldCardAction(card)) {
               return;
@@ -878,7 +941,7 @@ export default function Game() {
               ? handleTapLands
               : undefined
           }
-          onTapLandAbility={(cardId, abilityIndex) => tapLand(cardId, abilityIndex)}
+          onTapLandAbility={(cardId, abilityIndex, color) => tapLand(cardId, abilityIndex, color)}
           onUntapLand={
             promptType === PromptType.ChooseAction || promptType === PromptType.PayCombatCost || promptType === PromptType.PayManaCost
               ? handleUntapLand
@@ -1105,18 +1168,15 @@ export default function Game() {
       {/* ── Hover card preview ────────────────────────────── */}
       {/* Hide when any overlay modal is open or a modal-based prompt is active.
           Allow-list approach: only show the preview for prompt types that do NOT
-          open a modal (battlefield interaction, targeting, inline panel prompts). */}
-      {hoveredCard && !draggingHandCard && !viewingZone && !zoneTargetSelector && !libraryPeekModal && !spellStackModalOpen &&
+          open a modal (battlefield interaction, targeting, inline panel prompts).
+          Also hide for hand cards since the hand displays its own actions/preview. */}
+      {preview.hoveredCard && preview.hoveredCard.zoneId !== "hand" && !draggingHandCard && !viewingZone && !zoneTargetSelector && !libraryPeekModal && !spellStackModalOpen &&
        !abilityPickerState &&
        (!promptType || HOVER_ALLOWED_PROMPTS.has(promptType)) && (
-        <CardPreview
-          card={hoveredCard}
-          mouseX={mousePos.x}
-          mouseY={mousePos.y}
-          showBackFace={showBackFace}
+        <HoverCardPreview
+          preview={preview}
           actions={hoveredCardActions}
           onSelectAction={handlePreviewAction}
-          onDismiss={dismissHover}
         />
       )}
     </div>

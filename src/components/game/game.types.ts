@@ -1,8 +1,9 @@
-import type { Card as XMageCard, Player } from "@/types/openmagic";
+import type { Card as XMageCard, Player, ActivatableAbilityInfo } from "@/types/openmagic";
 import type { GameLogEntry } from "@/types/gameLog";
 import type { GameSnapshotEntry } from "@/types/gameSnapshot";
 import type { PromptType } from "@/types/promptType";
 import type { PlacementGhost } from "@/components/game/zones/FreeBattlefield";
+import type { HandActionOption } from "@/stores/useGameUIStore";
 
 export type PromptActionType = PromptType;
 
@@ -31,7 +32,7 @@ export interface OpponentHalfProps {
   attackerIds?: string[];
   onClickCard: (card: XMageCard) => void;
   onClickAnyCard: (card: XMageCard) => void;
-  onHoverCard: (card: XMageCard | null, e?: React.MouseEvent) => void;
+  onHoverCard: (card: XMageCard | null, e?: React.MouseEvent, options?: { useAnchor?: boolean; placement?: "auto" | "top-center"; anchorOverride?: DOMRect }) => void;
   onFlipCard: () => void;
   showBackFace: boolean;
   onOpenZone: (title: string, cards: XMageCard[], onClickCard?: (cardId: string) => void) => void;
@@ -39,6 +40,8 @@ export interface OpponentHalfProps {
   zonePanelOrder: ("library" | "graveyard" | "exile")[];
   placementGhost?: PlacementGhost | null;
   hostileTargeting?: boolean;
+  manaAbilityOptions?: ActivatableAbilityInfo[];
+  onTapLandAbility?: (cardId: string, abilityIndex: number, color?: string) => void;
 }
 
 export interface BattlefieldZoneProps {
@@ -51,13 +54,17 @@ export interface BattlefieldZoneProps {
   topReserved?: number;
   onClickCard?: (card: XMageCard) => void;
   onClickAnyCard?: (card: XMageCard) => void;
-  onHoverCard?: (card: XMageCard | null, e?: React.MouseEvent) => void;
+  onHoverCard?: (card: XMageCard | null, e?: React.MouseEvent, options?: { useAnchor?: boolean; placement?: "auto" | "top-center"; anchorOverride?: DOMRect }) => void;
   onFlipCard?: () => void;
   showBackFace?: boolean;
   pendingCardIds?: string[];
   attackingCardIds?: string[];
   tappableLandIds?: string[];
   onTapLand?: (card: XMageCard) => void;
+  /** Mana ability options for tappable lands (per-color tap buttons on dual lands). */
+  manaAbilityOptions?: ActivatableAbilityInfo[];
+  /** Tap a land with a specific mana ability (dual land color choice). */
+  onTapLandAbility?: (cardId: string, abilityIndex: number, color?: string) => void;
   untappableLandIds?: string[];
   onUntapLand?: (card: XMageCard) => void;
   leftReserved?: number;
@@ -69,20 +76,22 @@ export interface BattlefieldZoneProps {
 
 export interface HandDisplayProps {
   cards: XMageCard[];
-  onHoverCard?: (card: XMageCard | null, e?: React.MouseEvent) => void;
+  onHoverCard?: (card: XMageCard | null, e?: React.MouseEvent, options?: { useAnchor?: boolean; placement?: "auto" | "top-center"; anchorOverride?: DOMRect }) => void;
   onStartDrag?: (card: XMageCard, e: React.MouseEvent) => void;
   onClickCard?: (card: XMageCard, e?: React.MouseEvent) => void;
   onFlipCard?: () => void;
   showBackFace?: boolean;
   draggingCardId?: string;
   castingCardId?: string | null;
+  getActions?: (card: XMageCard) => HandActionOption[];
+  onSelectAction?: (action: HandActionOption) => void;
 }
 
 export interface RightActionPanelProps {
   collapsed: boolean;
   onToggleCollapse: () => void;
   gameLog: GameLogEntry[];
-  onHoverLogCard: (cardId: string | null, e?: React.MouseEvent) => void;
+  onHoverLogCard: (cardId: string | null, e?: React.MouseEvent, options?: { useAnchor?: boolean; placement?: "auto" | "top-center"; anchorOverride?: DOMRect }) => void;
   resolveCardName: (cardId: string) => string;
   resolvePlayerName: (playerId: string) => string;
   snapshots: GameSnapshotEntry[];

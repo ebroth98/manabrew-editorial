@@ -132,7 +132,8 @@ If 2+ components share the same `useState` + `useEffect` pattern, extract a cust
 
 - **`useModalKeyboard(handlers)`** — for Enter/Escape key handling in modals
 - **`useCardSelection(options)`** — for toggle-to-select card sets with min/max constraints
-- **`useHoverPreview()`** — for mouse hover → delayed card preview pattern
+- **`useCardPreview(dismissDeps)`** — unified mouse hover → card preview pattern with sticky & action support
+- **`HoverCardPreview`** — standard component to render the preview portal
 
 ### Hook file naming
 Place hooks in `src/hooks/` if they're app-wide, or co-locate as `useXxx.ts` next to the component if they're component-specific.

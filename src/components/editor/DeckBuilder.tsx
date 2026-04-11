@@ -26,7 +26,6 @@ import {
 import { extractColors } from "@/views/myDecks.utils";
 import { ManaSymbols } from "@/components/game/ManaSymbols";
 import { DeckStats } from "./DeckStats";
-import { CardPreview } from "@/components/game/CardPreview";
 import { useState, useRef, useEffect, useCallback } from "react";
 import { toast } from "sonner";
 import type { Card } from "@/types/openmagic";
@@ -44,7 +43,6 @@ import { CardDetailModal } from "./CardDetailModal";
 import { DeckLabelsModal } from "./DeckLabelsModal";
 import { DeckLabelBadge } from "@/components/deck/DeckLabelBadge";
 import { DeckValidationPanel } from "./DeckValidationPanel";
-// SetName removed — no longer used in quick add
 import { useDeckSelection } from "./useDeckSelection";
 import {
   type CardGroup,
@@ -57,6 +55,8 @@ import {
   computeGroupedSections,
   computeGroupedStackColumns,
 } from "./deckBuilder.utils";
+import { useCardPreview } from "@/hooks/useCardPreview";
+import { HoverCardPreview } from "@/components/game/HoverCardPreview";
 
 // ─── Unsaved changes tracking (shared with DeckEditor) ──────────────────────
 
@@ -132,7 +132,7 @@ function QuickCardSearch({ onAdd, onRemove, getCount, onHover, onLeave }: {
   onAdd: (card: ScryfallCard) => void;
   onRemove: (cardName: string) => void;
   getCount: (cardName: string) => number;
-  onHover: (card: Card, x: number, y: number) => void;
+  onHover: (card: Card, e: React.MouseEvent, options?: any) => void;
   onLeave: () => void;
 }) {
   const [query, setQuery] = useState("");
@@ -214,8 +214,8 @@ function QuickCardSearch({ onAdd, onRemove, getCount, onHover, onLeave }: {
             <div
               key={sc.id}
               className="flex items-center gap-2 px-2 py-1 hover:bg-muted border-b border-border/30 last:border-0"
-              onMouseEnter={(e) => onHover(previewCard, e.clientX, e.clientY)}
-              onMouseMove={(e) => onHover(previewCard, e.clientX, e.clientY)}
+              onMouseEnter={(e) => onHover(previewCard, e, { useDelay: true })}
+              onMouseMove={(e) => onHover(previewCard, e, { useDelay: true })}
               onMouseLeave={onLeave}
             >
               {sc.image_uris?.small && (
@@ -295,7 +295,9 @@ export function DeckBuilder({ onToggleSearch, onBack }: { onToggleSearch?: () =>
   const [newTagInput, setNewTagInput] = useState("");
   const [deckSearchFilter, setDeckSearchFilter] = useState("");
   const [nameInput, setNameInput] = useState(currentDeck.name);
-  const [hovered, setHovered] = useState<{ card: Card; x: number; y: number } | null>(null);
+  
+  const preview = useCardPreview();
+
   const [viewMode, setViewMode] = useState<ViewMode>("list");
   const [cardSize, setCardSize] = useState(3);
   const [groupBy, setGroupBy] = useState<GroupByMode>("type");
@@ -832,8 +834,8 @@ export function DeckBuilder({ onToggleSearch, onBack }: { onToggleSearch?: () =>
               handleRemoveOneFromMain(name);
             }}
             getCount={(name) => currentDeck.cards.filter((c) => c.name === name).length}
-            onHover={(card, x, y) => setHovered({ card, x, y })}
-            onLeave={() => setHovered(null)}
+            onHover={preview.handleMouseEnter}
+            onLeave={preview.handleMouseLeave}
           />
         </div>
 
@@ -1024,8 +1026,8 @@ export function DeckBuilder({ onToggleSearch, onBack }: { onToggleSearch?: () =>
           onMoveToSide={handleMoveToSide}
           onMoveToMain={handleMoveToMain}
           onPickPrint={(name) => setPrintPickerCard(name)}
-          onHover={(card, x, y) => setHovered({ card, x, y })}
-          onLeave={() => setHovered(null)}
+          onHover={preview.handleMouseEnter}
+          onLeave={preview.handleMouseLeave}
           onAddToSide={(card) => addToSide(card)}
           onRemoveFromSide={handleRemoveOneFromSide}
           onAddToMaybe={(card) => addToMaybe(card)}
@@ -1113,7 +1115,7 @@ export function DeckBuilder({ onToggleSearch, onBack }: { onToggleSearch?: () =>
       <DeckValidationPanel />
       <DeckStats />
 
-      {hovered && <CardPreview card={hovered.card} mouseX={hovered.x} mouseY={hovered.y} />}
+      <HoverCardPreview preview={preview} />
       <PrintPickerModal cardName={printPickerCard} onClose={() => setPrintPickerCard(null)} />
       <CardDetailModal
         card={detailCard}

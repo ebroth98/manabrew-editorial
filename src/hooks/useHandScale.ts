@@ -1,10 +1,10 @@
 import { useSyncExternalStore } from "react";
 
 /** Reference viewport width — sizes are authored at this width. */
-const REF_WIDTH = 1920;
+const REF_WIDTH = 1440;
 
 /** Clamp the scale so cards don't get absurdly tiny or huge. */
-const MIN_SCALE = 0.45;
+const MIN_SCALE = 0.65;
 const MAX_SCALE = 1.3;
 
 function getScale() {

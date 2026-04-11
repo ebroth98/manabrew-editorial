@@ -6,6 +6,7 @@ import type { BattlefieldZoneProps } from "../game.types";
 import { CARD_RING, BATTLEFIELD_CARD, ZONE_LABEL } from "../game.styles";
 import { useGameThemeColors, withAlpha } from "../game.theme";
 import type { Card as XMageCard } from "@/types/openmagic";
+import { ManaAbilityTapButton, getExpandedManaAbilities } from "./FreeBattlefield";
 
 const ATTACH_OFFSET_Y = 16;
 
@@ -26,6 +27,8 @@ export function BattlefieldZone({
   attackingCardIds,
   tappableLandIds,
   onTapLand,
+  manaAbilityOptions,
+  onTapLandAbility,
   untappableLandIds,
   onUntapLand,
   leftReserved = 0,
@@ -72,11 +75,10 @@ export function BattlefieldZone({
       : isPending
         ? themeColors.promptAction.passAction
         : isTappable
-          ? themeColors.activeAction.active
-          : isUntappable
-            ? themeColors.promptAction.cancel
+          ? themeColors.cardRing
+          : isUntappable            ? themeColors.promptAction.cancel
             : isChoosableClick
-              ? (hostileTargeting ? themeColors.arrow.hostileTarget : themeColors.promptAction.defenseAction)
+              ? (hostileTargeting ? themeColors.arrow.hostileTarget : themeColors.cardRing)
               : null;
     return (
       <div
@@ -85,7 +87,7 @@ export function BattlefieldZone({
         className={cn("relative group shrink-0", extraClass)}
         onMouseEnter={(e) => {
           setHoveredCardId(card.id);
-          onHoverCard?.(card, e);
+          onHoverCard?.(card, e, { useAnchor: true });
         }}
         onMouseLeave={() => {
           setHoveredCardId(null);
@@ -112,18 +114,51 @@ export function BattlefieldZone({
             "--tw-ring-color": ringColor,
             ...(card.isChoosable && onClickCard ? {
               "--choosable-ring-color": ringColor,
-              "--choosable-glow-color": ringColor.replace(/[\d.]+\)$/, "0.3)"),
+              "--choosable-glow-color": withAlpha(ringColor, 0.3),
             } : {}),
           } as CSSProperties) : undefined}
         />
-        {isTappable && onTapLand && (
-          <CardOverlayButton
-            variant="tap"
-            label="TAP"
-            onClick={() => onTapLand(card)}
-            title={`Tap ${card.name} for mana`}
-          />
-        )}
+        {isTappable && onTapLand && (() => {
+          const expanded = getExpandedManaAbilities(card.id, manaAbilityOptions ?? []);
+          if (expanded.length > 1 && onTapLandAbility) {
+            const isGrid = expanded.length > 2;
+            return (
+              <div
+                className={cn(
+                  "absolute inset-0 z-20 overflow-hidden rounded-lg opacity-0 group-hover:opacity-100 transition-opacity",
+                  isGrid ? "grid grid-cols-2 items-stretch" : "flex items-stretch justify-center",
+                )}
+              >
+                {expanded.map((ab, idx) => {
+                  const isLast = idx === expanded.length - 1;
+                  const isOdd = expanded.length % 2 !== 0;
+                  const shouldSpan = isGrid && isLast && isOdd;
+                  return (
+                    <ManaAbilityTapButton
+                      key={`${ab.abilityIndex}-${idx}`}
+                      description={ab.description}
+                      small={isGrid}
+                      className={shouldSpan ? "col-span-2" : ""}
+                      onClick={() => {
+                        const letters = extractManaLetters(ab.description);
+                        onTapLandAbility(card.id, ab.abilityIndex, letters[0]);
+                      }}
+                    />
+                  );
+                })}
+              </div>
+            );
+          }
+          return (
+            <CardOverlayButton
+
+              variant="tap"
+              label="TAP"
+              onClick={() => onTapLand(card)}
+              title={`Tap ${card.name} for mana`}
+            />
+          );
+        })()}
         {isUntappable && onUntapLand && (
           <CardOverlayButton
             variant="untap"

@@ -61,7 +61,7 @@ const preset: ThemePreset = {
     "activeAction.turnText": "#e6db74",
     "activeAction.myTurnRing": "#e6db74",
     "activeAction.opponentTurnRing": "#e6db74",
-    "highlight": "#fd971f",
+    highlight: "#fd971f",
     "hand.playableBorder": "rgba(248, 248, 242, 0.7)",
     "promptAction.default": "#a6e22e",
     "promptAction.passPriority": "#a6e22e",
@@ -72,6 +72,7 @@ const preset: ThemePreset = {
     "arrow.block": "rgba(249, 38, 114, 0.88)",
     "arrow.hostileTarget": "rgba(249, 38, 114, 0.88)",
     "arrow.friendlyTarget": "rgba(102, 217, 239, 0.88)",
+    cardRing: "#fd971f",
   },
 };
 

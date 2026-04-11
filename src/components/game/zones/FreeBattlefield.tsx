@@ -10,31 +10,128 @@ import { useBattlefieldLayout } from "@/hooks/useBattlefieldLayout";
 
 const ATTACH_OFFSET_Y = 16;
 
-/** Extract the mana letter from an ability description like "Add {G}." */
-function extractManaLetter(desc: string): string | null {
-  const m = desc.match(/\{([WUBRGC])\}/);
-  return m ? m[1] : null;
+/** Extract all mana letters from an ability description like "Add {G}." or "Add {W} or {U}." */
+export function extractManaLetters(desc: string): string[] {
+  const matches = desc.matchAll(/\{([WUBRGC])\}/g);
+  return Array.from(matches, (m) => m[1]);
 }
 
-function manaSymbolUrl(symbol: string): string {
+export function manaSymbolUrl(symbol: string): string {
   return `https://svgs.scryfall.io/card-symbols/${encodeURIComponent(symbol)}.svg`;
 }
 
-/** A small button with a mana symbol for tapping a dual land for a specific color. */
-function ManaAbilityTapButton({ description, onClick }: { description: string; onClick: () => void }) {
-  const letter = extractManaLetter(description);
+export const ANY_COLOR_LETTERS = ["W", "U", "B", "R", "G"];
+
+/**
+ * Expand mana abilities by detecting color options in descriptions.
+ * - If it has multiple symbols (e.g. "{W} or {U}"), returns 2 virtual buttons.
+ * - If it has NO symbols but says "any color", returns 5 virtual buttons (WUBRG).
+ * - Otherwise returns the ability as-is (handles already-split abilities).
+ */
+export function getExpandedManaAbilities(
+  cardId: string,
+  options: ActivatableAbilityInfo[],
+): ActivatableAbilityInfo[] {
+  const cardAbs = options.filter((a) => a.cardId === cardId);
+  if (cardAbs.length === 0) return [];
+
+  const expanded: ActivatableAbilityInfo[] = [];
+
+  for (const ab of cardAbs) {
+    const letters = extractManaLetters(ab.description);
+    const desc = ab.description.toLowerCase();
+    const isAnyColor =
+      desc.includes("any color") ||
+      desc.includes("any one color") ||
+      desc.includes("mana of any color");
+
+    if (letters.length > 1) {
+      // e.g. "Add {W} or {U}"
+      letters.forEach((letter) => {
+        expanded.push({
+          ...ab,
+          description: `Add {${letter}}`,
+        });
+      });
+    } else if (letters.length === 1) {
+      // Already has exactly one color symbol (e.g. "Add {W}").
+      // Trust the symbol and don't expand further even if "any color" is in the text.
+      // This prevents 25 buttons on cards where the engine already split the abilities.
+      expanded.push(ab);
+    } else if (isAnyColor) {
+      // No specific symbols found but wording implies any color, expand to WUBRG
+      ANY_COLOR_LETTERS.forEach((letter) => {
+        expanded.push({
+          ...ab,
+          description: `Add {${letter}}`,
+        });
+      });
+    } else {
+      expanded.push(ab);
+    }
+  }
+
+  return expanded;
+}
+
+export const MANA_COLORS: Record<string, string> = {
+  W: "rgba(248, 246, 216, 0.45)", // White
+  U: "rgba(193, 215, 233, 0.45)", // Blue
+  B: "rgba(186, 177, 171, 0.45)", // Black
+  R: "rgba(235, 159, 130, 0.45)", // Red
+  G: "rgba(196, 211, 202, 0.45)", // Green
+  C: "rgba(204, 202, 199, 0.45)", // Colorless
+};
+
+/** A button with a mana symbol for tapping a dual land for a specific color, styled to fill card sections. */
+export function ManaAbilityTapButton({
+  description,
+  onClick,
+  small = false,
+  className,
+}: {
+  description: string;
+  onClick: () => void;
+  small?: boolean;
+  className?: string;
+}) {
+  const letters = extractManaLetters(description);
+  const letter = letters[0] ?? null;
+  const bgColor = letter ? MANA_COLORS[letter] : "rgba(0, 0, 0, 0.4)";
+
   return (
     <button
-      className="flex-1 flex items-center justify-center rounded-md border bg-black/60 py-0.5 transition-all hover:scale-105 hover:bg-black/80 active:scale-95"
-      onClick={(e) => { e.stopPropagation(); onClick(); }}
-      onMouseDown={(e) => e.stopPropagation()}
+      className={cn(
+        "group/mana flex h-full w-full items-center justify-center transition-all hover:brightness-125",
+        className,
+      )}
+      style={{ backgroundColor: bgColor }}
+      onClick={(e) => {
+        e.stopPropagation();
+        onClick();
+      }}
+      onMouseDown={(e) => e.preventDefault()}
       title={`Tap: ${description}`}
     >
-      {letter ? (
-        <img src={manaSymbolUrl(letter)} alt={`{${letter}}`} className="h-4 w-4" loading="lazy" />
-      ) : (
-        <span className="text-[9px] font-bold text-white">TAP</span>
-      )}
+      <div
+        className={cn(
+          "flex items-center justify-center rounded-full bg-black/40 shadow-lg transition-transform group-hover/mana:scale-110",
+          small ? "h-6 w-6 p-0.5" : "h-8 w-8 p-1",
+        )}
+      >
+        {letter ? (
+          <img
+            src={manaSymbolUrl(letter)}
+            alt={`{${letter}}`}
+            className="h-full w-full drop-shadow-md"
+            loading="lazy"
+          />
+        ) : (
+          <span className={cn("font-bold text-white", small ? "text-[7px]" : "text-[9px]")}>
+            TAP
+          </span>
+        )}
+      </div>
     </button>
   );
 }
@@ -50,7 +147,7 @@ interface FreeBattlefieldProps {
   className?: string;
   onClickCard?: (card: XMageCard) => void;
   onClickAnyCard?: (card: XMageCard) => void;
-  onHoverCard?: (card: XMageCard | null, e?: React.MouseEvent) => void;
+  onHoverCard?: (card: XMageCard | null, e?: React.MouseEvent, options?: { useAnchor?: boolean; placement?: "auto" | "top-center"; anchorOverride?: DOMRect }) => void;
   onFlipCard?: () => void;
   showBackFace?: boolean;
   pendingCardIds?: string[];
@@ -62,7 +159,7 @@ interface FreeBattlefieldProps {
   /** Mana ability options for tappable lands (per-color tap buttons on dual lands). */
   manaAbilityOptions?: ActivatableAbilityInfo[];
   /** Tap a land with a specific mana ability (dual land color choice). */
-  onTapLandAbility?: (cardId: string, abilityIndex: number) => void;
+  onTapLandAbility?: (cardId: string, abilityIndex: number, color?: string) => void;
   untappableLandIds?: string[];
   onUntapLand?: (card: XMageCard) => void;
   /** Untap multiple selected lands at once (queued). */
@@ -173,17 +270,17 @@ export function FreeBattlefield({
     const isDragging = draggingCardIds.has(card.id);
     const isSelected = selectedCardIds.has(card.id);
     const ringColor = isSelected
-      ? themeColors.activeAction.active
+      ? themeColors.cardRing
       : isAttacking
         ? themeColors.promptAction.attackAction
         : isPending
           ? themeColors.promptAction.passAction
           : isTappable
-            ? themeColors.activeAction.active
+            ? themeColors.cardRing
             : isUntappable
               ? themeColors.promptAction.cancel
               : isChoosableClick
-                ? (hostileTargeting ? themeColors.arrow.hostileTarget : themeColors.promptAction.defenseAction)
+                ? (hostileTargeting ? themeColors.arrow.hostileTarget : themeColors.cardRing)
                 : null;
 
     /** Render a TAP or UNTAP overlay with multi-selection support. */
@@ -199,7 +296,6 @@ export function FreeBattlefield({
       <CardOverlayButton
         variant={variant}
         label={label}
-        stopMouseDown
         onClick={() => {
           if (justDraggedCardIds.has(c.id)) return;
           if (selectedCardIds.has(c.id) && selectedCardIds.size > 1 && onBatch) {
@@ -220,7 +316,7 @@ export function FreeBattlefield({
       <div
         key={card.id}
         data-card-id={card.id}
-        className="absolute group"
+        className="absolute group transition-transform duration-150 ease-out hover:scale-105"
         style={{
           width: CARD_W,
           ...opts.extraStyle,
@@ -234,7 +330,7 @@ export function FreeBattlefield({
             onHoverCard?.(null);
             return;
           }
-          onHoverCard?.(card, e);
+          onHoverCard?.(card, e, { useAnchor: true });
         }}
         onMouseLeave={() => onHoverCard?.(null)}
       >
@@ -258,26 +354,40 @@ export function FreeBattlefield({
             "--tw-ring-color": ringColor,
             ...(card.isChoosable && onClickCard ? {
               "--choosable-ring-color": ringColor,
-              "--choosable-glow-color": ringColor.replace(/[\d.]+\)$/, "0.3)"),
+              "--choosable-glow-color": withAlpha(ringColor, 0.3),
             } : {}),
           } as React.CSSProperties) : undefined}
         />
 
         {isTappable && onTapLand && (() => {
-          const cardManaAbs = manaAbilityOptions?.filter((a) => a.cardId === card.id) ?? [];
-          if (cardManaAbs.length > 1 && onTapLandAbility) {
+          const expanded = getExpandedManaAbilities(card.id, manaAbilityOptions ?? []);
+          if (expanded.length > 1 && onTapLandAbility) {
+            const isGrid = expanded.length > 2;
             return (
-              <div className="absolute inset-0 z-20 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity flex items-end justify-center gap-0.5 pb-1">
-                {cardManaAbs.map((ab) => (
-                  <ManaAbilityTapButton
-                    key={ab.abilityIndex}
-                    description={ab.description}
-                    onClick={() => {
-                      if (justDraggedCardIds.has(card.id)) return;
-                      onTapLandAbility(card.id, ab.abilityIndex);
-                    }}
-                  />
-                ))}
+              <div
+                className={cn(
+                  "absolute inset-0 z-20 overflow-hidden rounded-lg opacity-0 group-hover:opacity-100 transition-opacity",
+                  isGrid ? "grid grid-cols-2 items-stretch" : "flex items-stretch justify-center",
+                )}
+              >
+                {expanded.map((ab, idx) => {
+                  const isLast = idx === expanded.length - 1;
+                  const isOdd = expanded.length % 2 !== 0;
+                  const shouldSpan = isGrid && isLast && isOdd;
+                  return (
+                    <ManaAbilityTapButton
+                      key={`${ab.abilityIndex}-${idx}`}
+                      description={ab.description}
+                      small={isGrid}
+                      className={shouldSpan ? "col-span-2" : ""}
+                      onClick={() => {
+                        if (justDraggedCardIds.has(card.id)) return;
+                        const letters = extractManaLetters(ab.description);
+                        onTapLandAbility(card.id, ab.abilityIndex, letters[0]);
+                      }}
+                    />
+                  );
+                })}
               </div>
             );
           }
@@ -307,7 +417,6 @@ export function FreeBattlefield({
                   ? `Block ${card.name}`
                   : `Select ${card.name}`
             }
-            stopMouseDown
           />
         )}
       </div>
@@ -378,11 +487,29 @@ export function FreeBattlefield({
           const cw = containerRef.current!.clientWidth;
           const usableW = cw - leftReserved - rightReserved;
           const cols = Math.max(1, Math.floor((usableW + GAP) / (CARD_W + GAP)));
-          const nonLandCount = topLevelCards.filter((c) => !c.types.includes("Land")).length;
-          const slot = nonLandCount;
           const xMin = Math.max(0, leftReserved);
-          const ghostX = Math.min(cw - CARD_W - rightReserved, xMin + (slot % cols) * (CARD_W + GAP) + GAP);
-          const ghostY = Math.floor(slot / cols) * (CARD_H + GAP) + GAP;
+          const xMax = Math.max(xMin, cw - CARD_W - Math.max(0, rightReserved));
+
+          const isOccupied = (x: number, y: number) => {
+            return Object.values(positions).some((pos) => {
+              return (
+                x < pos.x + CARD_W + GAP / 2 &&
+                x + CARD_W + GAP / 2 > pos.x &&
+                y < pos.y + CARD_H + GAP / 2 &&
+                y + CARD_H + GAP / 2 > pos.y
+              );
+            });
+          };
+
+          let slot = 0;
+          let ghostX = 0;
+          let ghostY = 0;
+          while (true) {
+            ghostX = Math.min(xMax, xMin + (slot % cols) * (CARD_W + GAP) + GAP);
+            ghostY = Math.floor(slot / cols) * (CARD_H + GAP) + GAP;
+            if (!isOccupied(ghostX, ghostY) || slot > 200) break;
+            slot++;
+          }
           return (
             <div
               data-placement-ghost

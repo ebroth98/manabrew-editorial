@@ -46,6 +46,7 @@ export interface GameThemePresetColors {
   "arrow.block": string;
   "arrow.hostileTarget": string;
   "arrow.friendlyTarget": string;
+  "cardRing": string;
 }
 
 export interface ThemePreset {

@@ -10,7 +10,6 @@ import { Separator } from "@/components/ui/separator";
 import { ManaSymbols } from "@/components/game/ManaSymbols";
 import { Plus, Search, Swords, Crown, X, Pencil } from "lucide-react";
 import { toast } from "sonner";
-import { CardPreview } from "@/components/game/CardPreview";
 import { DeckStats } from "@/components/editor/DeckStats";
 import { FormatBadge } from "@/components/game/FormatBadge";
 import { CreateGameDialog } from "@/components/lobby/CreateGameDialog";
@@ -34,21 +33,8 @@ import {
 } from "./myDecks.utils";
 import type { SortBy } from "./myDecks.utils";
 import { getDeckCardNames } from "@/lib/decks";
-
-// ── Helpers ──────────────────────────────────────────────────────────────────
-
-function makeHoverHandlers(
-  card: Card,
-  setHovered: (h: { card: Card; x: number; y: number } | null) => void,
-) {
-  return {
-    onMouseEnter: (e: React.MouseEvent) =>
-      setHovered({ card, x: e.clientX, y: e.clientY }),
-    onMouseMove: (e: React.MouseEvent) =>
-      setHovered({ card, x: e.clientX, y: e.clientY }),
-    onMouseLeave: () => setHovered(null),
-  };
-}
+import { useCardPreview } from "@/hooks/useCardPreview";
+import { HoverCardPreview } from "@/components/game/HoverCardPreview";
 
 // ── Component ────────────────────────────────────────────────────────────────
 
@@ -75,11 +61,9 @@ export default function MyDecks() {
   const [cardFilter, setCardFilter] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
-  const [hovered, setHovered] = useState<{
-    card: Card;
-    x: number;
-    y: number;
-  } | null>(null);
+  
+  const preview = useCardPreview();
+
   const enrichedDecksRef = useRef(new Set<string>());
 
   function toggleColor(color: string) {
@@ -374,7 +358,8 @@ export default function MyDecks() {
                     </h3>
                     <div
                       className="flex items-center gap-2 py-0.5 px-1 rounded hover:bg-muted/40 group"
-                      {...makeHoverHandlers(selected.deck.commanders![0], setHovered)}
+                      onMouseEnter={(e) => preview.handleMouseEnter(selected.deck.commanders![0], e)}
+                      onMouseLeave={preview.handleMouseLeave}
                     >
                       <Crown className="h-3 w-3 text-yellow-500 shrink-0" />
                       <span className="text-sm flex-1 truncate">
@@ -413,7 +398,8 @@ export default function MyDecks() {
                           <div
                             key={card.name}
                             className="flex items-center gap-2 py-0.5 px-1 rounded hover:bg-muted/40 group"
-                            {...makeHoverHandlers(card, setHovered)}
+                            onMouseEnter={(e) => preview.handleMouseEnter(card, e)}
+                            onMouseLeave={preview.handleMouseLeave}
                           >
                             <span className="text-xs font-mono w-4 text-right text-muted-foreground shrink-0">
                               {count}
@@ -485,7 +471,8 @@ export default function MyDecks() {
                               <div
                                 key={`${label}-${card.name}`}
                                 className="flex items-center gap-2 py-0.5 px-1 rounded hover:bg-muted/40"
-                                {...makeHoverHandlers(card, setHovered)}
+                                onMouseEnter={(e) => preview.handleMouseEnter(card, e)}
+                                onMouseLeave={preview.handleMouseLeave}
                               >
                                 <span className="text-xs font-mono w-4 text-right text-muted-foreground shrink-0">
                                   {copies}
@@ -524,13 +511,7 @@ export default function MyDecks() {
         )}
       </ResizablePanel>
 
-      {hovered && (
-        <CardPreview
-          card={hovered.card}
-          mouseX={hovered.x}
-          mouseY={hovered.y}
-        />
-      )}
+      <HoverCardPreview preview={preview} />
 
       <CreateGameDialog
         key={playDeckId}

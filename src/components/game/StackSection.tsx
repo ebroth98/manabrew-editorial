@@ -3,6 +3,7 @@ import { cn } from "@/lib/utils";
 import type { StackObject } from "@/types/openmagic";
 import type { PromptActionType } from "./game.types";
 import { PromptType } from "@/types/promptType";
+import { useGameThemeColors, withAlpha } from "./game.theme";
 
 interface StackSectionProps {
   stack: StackObject[];
@@ -14,18 +15,21 @@ export function StackSection({ stack, promptType, onOpenStack }: StackSectionPro
   const isCounterPrompt = promptType === PromptType.ChooseTargetSpell;
   const show = stack.length > 0 || isCounterPrompt;
 
+  const themeColors = useGameThemeColors();
+  const accentColor = themeColors.cardRing;
+
   if (!show) return null;
 
   return (
-    <div className={cn(
-      "rounded-lg p-2",
-      isCounterPrompt ? "bg-blue-50 dark:bg-blue-950/20" : "bg-muted/20",
-    )}>
+    <div 
+      className={cn("rounded-lg p-2", !isCounterPrompt && "bg-muted/20")}
+      style={isCounterPrompt ? { backgroundColor: withAlpha(accentColor, 0.08) } : undefined}
+    >
       <div className="flex items-center justify-between gap-2">
-        <p className={cn(
-          "text-xs font-semibold",
-          isCounterPrompt ? "text-blue-700 dark:text-blue-400" : "text-muted-foreground",
-        )}>
+        <p 
+          className={cn("text-xs font-semibold", !isCounterPrompt && "text-muted-foreground")}
+          style={isCounterPrompt ? { color: accentColor } : undefined}
+        >
           Stack ({stack.length})
         </p>
         <Button size="sm" variant="outline" className="h-6 px-2 text-xs" onClick={onOpenStack}>

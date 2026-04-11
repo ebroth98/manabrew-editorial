@@ -71,8 +71,9 @@ const preset: ThemePreset = {
     "arrow.attack": "rgba(209, 154, 102, 0.88)",
     "arrow.block": "rgba(224, 108, 117, 0.88)",
     "arrow.hostileTarget": "rgba(224, 108, 117, 0.88)",
-    "arrow.friendlyTarget": "rgba(97, 175, 239, 0.88)",
-  },
-};
+    "arrow.friendlyTarget": "rgba(171, 178, 191, 0.88)",
+    "cardRing": "#e5c07b",
+    },
+    };
 
 export default preset;

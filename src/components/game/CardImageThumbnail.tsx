@@ -1,6 +1,7 @@
 import { useState, useRef } from "react";
 import { createPortal } from "react-dom";
 import { cn } from "@/lib/utils";
+import { upgradeScryfallUrl } from "./game.utils";
 
 const PREVIEW_W = 240;
 const PREVIEW_H = 336;
@@ -22,6 +23,8 @@ export function CardImageThumbnail({ imageUrl, cardName, className }: CardImageT
   const [hovered, setHovered] = useState(false);
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
   const imgRef = useRef<HTMLImageElement>(null);
+
+  const previewUrl = upgradeScryfallUrl(imageUrl, "large");
 
   function handleMouseEnter(e: React.MouseEvent) {
     setMousePos({ x: e.clientX, y: e.clientY });
@@ -62,7 +65,7 @@ export function CardImageThumbnail({ imageUrl, cardName, className }: CardImageT
             style={{ left, top, width: PREVIEW_W, height: PREVIEW_H }}
           >
             <img
-              src={imageUrl}
+              src={previewUrl || imageUrl}
               alt={cardName}
               className="w-full h-full object-contain rounded-xl shadow-2xl ring-1 ring-black/20"
             />

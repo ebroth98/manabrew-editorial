@@ -5,8 +5,10 @@ import { usePreferencesStore } from "@/stores/usePreferencesStore";
 import { useHandScale } from "@/hooks/useHandScale";
 import type { HandDisplayProps } from "../game.types";
 import { HAND_CARD_BASES, ZONE_LABEL } from "../game.styles";
+import { HandCardActions } from "./HandCardActions";
 
 const TUG_LIMIT = 100;
+const HOVER_SCALE = 1.8;
 
 export function HandDisplayNormal({
   cards,
@@ -17,6 +19,8 @@ export function HandDisplayNormal({
   showBackFace,
   draggingCardId,
   castingCardId,
+  getActions,
+  onSelectAction,
 }: HandDisplayProps) {
   const handSize = usePreferencesStore((s) => s.handSize);
   const vScale = useHandScale();
@@ -68,26 +72,37 @@ export function HandDisplayNormal({
   }, [rejectCard]);
 
   const [hoveredCardId, setHoveredCardId] = useState<string | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const hideTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   return (
-    <div className="flex flex-col gap-1 shrink-0">
+    <div className="flex flex-col gap-1 shrink-0" ref={containerRef}>
       <span className={ZONE_LABEL}>Hand ({cards.length})</span>
       <div className="overflow-x-auto">
         <div className="flex gap-2 pt-4 pb-2 px-1 items-end" style={{ minHeight: containerH - 8 }}>
           {cards.map((card) => {
             const isCasting = castingCardId != null && card.id === castingCardId;
             const isTugging = tugId === card.id;
+            const isHov = hoveredCardId === card.id;
+            const actions = isHov && getActions ? getActions(card) : [];
+
+            const scale = isHov ? HOVER_SCALE : 1;
+
             return (
               <div
                 key={card.id}
                 className={cn(
                   "relative group shrink-0",
                   !isTugging && "transition-[transform,z-index] duration-250 ease-[cubic-bezier(0.23,0.63,0.32,1)]",
-                  hoveredCardId === card.id && !isTugging && "-translate-y-3 z-30",
+                  isHov && !isTugging && "-translate-y-3 z-30",
                   card.isPlayable && "cursor-grab",
                   (card.id === draggingCardId || isCasting) && "opacity-0",
                 )}
-                style={isTugging ? { transform: `translate(${tugOffset.x}px, ${tugOffset.y}px)`, zIndex: 100 } : undefined}
+                style={{
+                  width: cardW,
+                  height: cardH,
+                  ...(isTugging ? { transform: `translate(${tugOffset.x}px, ${tugOffset.y}px)`, zIndex: 100 } : {}),
+                }}
                 onMouseDown={(e) => {
                   e.preventDefault();
                   if (card.isPlayable && onStartDrag) {
@@ -99,32 +114,94 @@ export function HandDisplayNormal({
                   }
                 }}
                 onMouseEnter={(e) => {
+                  clearTimeout(hideTimerRef.current);
                   setHoveredCardId(card.id);
-                  onHoverCard?.(card, e);
+                  const el = e.currentTarget as HTMLElement;
+                  const rect = el.getBoundingClientRect();
+                  const finalTop = rect.top - 12 - (cardH * HOVER_SCALE - cardH);
+
+                  onHoverCard?.(card, e, {
+                    useAnchor: true,
+                    placement: "top-center",
+                    anchorOverride: {
+                      left: rect.left,
+                      right: rect.right,
+                      top: finalTop,
+                      bottom: finalTop + cardH * HOVER_SCALE,
+                      width: cardW * HOVER_SCALE,
+                      height: cardH * HOVER_SCALE,
+                      x: rect.left,
+                      y: finalTop,
+                      toJSON: () => ({})
+                    } as DOMRect,
+                  });
                 }}
                 onMouseLeave={() => {
-                  setHoveredCardId(null);
-                  onHoverCard?.(null);
+                  hideTimerRef.current = setTimeout(() => {
+                    setHoveredCardId(null);
+                    onHoverCard?.(null);
+                  }, 150);
                 }}
               >
-                <Card
-                  card={card}
-                  className={cn(
-                    "transition-transform duration-250 ease-[cubic-bezier(0.23,0.63,0.32,1)] hover:scale-100",
-                    card.isPlayable && cn("playable-card", hoveredCardId === card.id && "is-hovered"),
-                    rejectedId === card.id && "animate-reject-flash",
-                  )}
-                  style={{ width: cardW, height: cardH }}
-                  isHovered={hoveredCardId === card.id}
-                  onFlip={onFlipCard}
-                  showBackFace={showBackFace}
-                />
-                {card.isPlayable && (
-                  <div
-                    className="absolute inset-0 z-20 rounded-lg opacity-0 group-hover:opacity-100 bg-primary/20 border-2 border-primary transition-opacity pointer-events-none"
-                    title={`Play ${card.name}`}
+                <div className="w-full h-full relative" style={{
+                  transform: isHov ? `scale(${HOVER_SCALE})` : "scale(1)",
+                  transformOrigin: "bottom center",
+                  transition: "transform 250ms cubic-bezier(0.23, 0.63, 0.32, 1)",
+                }}>
+                  <Card
+                    card={card}
+                    className={cn(
+                      "w-full h-full",
+                      card.isPlayable && cn("playable-card", isHov && "is-hovered"),
+                      rejectedId === card.id && "animate-reject-flash",
+                    )}
+                    isHovered={isHov}
+                    onFlip={onFlipCard}
+                    showBackFace={showBackFace}
+                    resolution="large"
                   />
-                )}
+                  {card.isPlayable && (
+                    <div
+                      className="absolute inset-0 z-20 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none"
+                      style={{
+                        backgroundColor: "var(--playable-glow-color, rgba(251, 146, 60, 0.3))",
+                        border: "2px solid var(--playable-ring-color-strong, rgba(251, 146, 60, 1))"
+                      }}
+                      title={`Play ${card.name}`}
+                    />
+                  )}
+
+                  {isHov && actions.length > 0 && onSelectAction && (
+                    <div style={{
+                      position: "absolute",
+                      top: 0,
+                      left: "100%",
+                      transform: `scale(${1 / scale})`,
+                      transformOrigin: "top left",
+                    }}>
+                      {/* Curved invisible bridge to maintain hover without blocking cards below */}
+                      <div
+                        style={{
+                          position: "absolute",
+                          top: 0,
+                          left: -cardW * scale,
+                          width: cardW * scale + 24 + 220,
+                          height: cardH * scale,
+                          backgroundColor: "transparent",
+                          borderBottomRightRadius: "100%",
+                          zIndex: -1,
+                        }}
+                      />
+                      
+                      <div style={{ paddingLeft: 24 }}>
+                        <HandCardActions 
+                          actions={actions} 
+                          onSelectAction={onSelectAction} 
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
             );
           })}

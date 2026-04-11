@@ -30,6 +30,21 @@ export function isLethalDamage(card: CardType): boolean {
   return !isNaN(toughness) && card.damage >= toughness;
 }
 
+export type ScryfallImageSize = "small" | "normal" | "large" | "png";
+
+/** Upgrade a Scryfall image URL to a higher resolution if it matches the Scryfall pattern. */
+export function upgradeScryfallUrl(url: string | undefined, size: ScryfallImageSize): string | undefined {
+  if (!url || !url.includes("cards.scryfall.io")) return url;
+  // 1. Swap the size component (small/normal/large/png)
+  const newUrl = url.replace(/\/(small|normal|large|png)\//, `/${size}/`);
+  // 2. Swap extension if moving to/from PNG
+  if (size === "png") {
+    return newUrl.replace(/\.jpg(\?.*)?$/, ".png$1");
+  } else {
+    return newUrl.replace(/\.png(\?.*)?$/, ".jpg$1");
+  }
+}
+
 export function stackObjectToCardStub(obj: StackObject): CardType {
   return {
     id: obj.sourceId,

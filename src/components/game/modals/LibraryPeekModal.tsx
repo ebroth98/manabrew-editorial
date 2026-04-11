@@ -1,14 +1,16 @@
 import { Card } from "@/components/game/Card";
-import { CardPreview } from "@/components/game/CardPreview";
+import { HoverCardPreview } from "@/components/game/HoverCardPreview";
+import { useCardPreview } from "@/hooks/useCardPreview";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Modal } from "./Modal";
 import type { Card as CardType } from "@/types/openmagic";
 import { cn } from "@/lib/utils";
 import { useState } from "react";
-import { useHoverPreview } from "@/hooks/useHoverPreview";
 import { useModalKeyboard } from "@/hooks/useModalKeyboard";
 import { MODAL_CARD_SIZE } from "../game.styles";
+import { useGameThemeColors } from "../game.theme";
+import { CSSProperties } from "react";
 
 export type LibraryPeekMode = "scry" | "surveil" | "dig" | "discard";
 
@@ -34,7 +36,6 @@ const MODE_CONFIG: Record<
     instructions: string;
     selectedLabel: string;
     unselectedLabel: string;
-    selectedRing: string;
     confirmLabel: (selected: number, total: number, required?: number) => string;
   }
 > = {
@@ -45,7 +46,6 @@ const MODE_CONFIG: Record<
       "Click cards you want to put on the bottom. Unselected cards return to the top.",
     selectedLabel: "BOTTOM",
     unselectedLabel: "TOP",
-    selectedRing: "ring-orange-400",
     confirmLabel: (n, t) => `Confirm — ${n} on bottom, ${t - n} on top`,
   },
   surveil: {
@@ -55,7 +55,6 @@ const MODE_CONFIG: Record<
       "Click cards to send to the graveyard. Unselected cards return to the top of your library.",
     selectedLabel: "GRAVEYARD",
     unselectedLabel: "TOP",
-    selectedRing: "ring-red-500",
     confirmLabel: (n, t) => `Confirm — ${n} to graveyard, ${t - n} on top`,
   },
   dig: {
@@ -65,7 +64,6 @@ const MODE_CONFIG: Record<
       "Select cards to take to your hand. The rest go to the graveyard.",
     selectedLabel: "HAND",
     unselectedLabel: "GRAVEYARD",
-    selectedRing: "ring-green-400",
     confirmLabel: (n) => `Take ${n} to Hand`,
   },
   discard: {
@@ -75,7 +73,6 @@ const MODE_CONFIG: Record<
       "Click cards to discard them. You must discard the required number.",
     selectedLabel: "DISCARD",
     unselectedLabel: "KEEP",
-    selectedRing: "ring-red-500",
     confirmLabel: (n, _t, required) =>
       n < (required ?? 0)
         ? `Select ${(required ?? 0) - n} more to discard`
@@ -91,7 +88,10 @@ export function LibraryPeekModal({
   onConfirm,
 }: LibraryPeekModalProps) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const { hoveredCard, mousePos, onMouseEnter, onMouseLeave } = useHoverPreview();
+  const preview = useCardPreview();
+
+  const themeColors = useGameThemeColors();
+  const ringColor = themeColors.cardRing;
 
   const config = MODE_CONFIG[mode];
   const required = mode === "discard" ? (numToTake ?? 1) : undefined;
@@ -154,8 +154,8 @@ export function LibraryPeekModal({
                 <div
                   key={card.id}
                   className="shrink-0 cursor-pointer group flex flex-col items-center gap-1"
-                  onMouseEnter={(e) => onMouseEnter(card, e)}
-                  onMouseLeave={onMouseLeave}
+                  onMouseEnter={(e) => preview.handleMouseEnter(card, e)}
+                  onMouseLeave={preview.handleMouseLeave}
                   onClick={() => toggleCard(card.id)}
                 >
                   <Card
@@ -164,8 +164,8 @@ export function LibraryPeekModal({
                       MODAL_CARD_SIZE,
                       "transition-transform group-hover:scale-105",
                       isSelected && "ring-2",
-                      isSelected && config.selectedRing,
                     )}
+                    style={isSelected ? { "--tw-ring-color": ringColor } as CSSProperties : undefined}
                   />
                   <Badge
                     variant={isSelected ? "default" : "outline"}
@@ -219,13 +219,7 @@ export function LibraryPeekModal({
         </div>
       </Modal.Footer>
 
-      {hoveredCard && (
-        <CardPreview
-          card={hoveredCard}
-          mouseX={mousePos.x}
-          mouseY={mousePos.y}
-        />
-      )}
+      <HoverCardPreview preview={preview} />
     </Modal>
   );
 }

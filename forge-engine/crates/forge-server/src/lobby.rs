@@ -239,7 +239,16 @@ pub fn start_game_sync(
         room.status = RoomStatus::InGame;
         let starting_life = match room.format {
             GameFormat::Commander => 40,
-            GameFormat::Standard => 20,
+            GameFormat::Brawl => 25,
+            GameFormat::Standard
+            | GameFormat::Pioneer
+            | GameFormat::Modern
+            | GameFormat::Legacy
+            | GameFormat::Vintage
+            | GameFormat::Pauper
+            | GameFormat::Oathbreaker
+            | GameFormat::Draft
+            | GameFormat::Sealed => 20,
         };
         (room.player_usernames(), room.player_decks(), starting_life)
     };

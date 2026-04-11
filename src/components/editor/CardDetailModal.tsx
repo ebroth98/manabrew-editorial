@@ -62,7 +62,7 @@ export function CardDetailModal({ card: initialCard, onClose, deckEditorActions 
 
   // Derive per-face data when the card has faces
   const activeFace = isDoubleFaced ? card.card_faces![faceIndex] : null;
-  const imageUrl = activeFace?.image_uris?.normal ?? activeFace?.image_uris?.large ?? getScryfallImageUrl(card);
+  const imageUrl = activeFace?.image_uris?.png ?? activeFace?.image_uris?.large ?? activeFace?.image_uris?.normal ?? getScryfallImageUrl(card, "png");
   const manaCost = activeFace?.mana_cost ?? getScryfallManaCost(card);
   const displayName = activeFace?.name ?? card.name;
   const typeLine = activeFace?.type_line ?? card.type_line;
@@ -99,7 +99,7 @@ export function CardDetailModal({ card: initialCard, onClose, deckEditorActions 
     setPreferredPrint(initialCard!.oracle_id, {
       set: print.set,
       collectorNumber: print.collector_number,
-      imageUrl: getScryfallImageUrl(print),
+      imageUrl: getScryfallImageUrl(print, "png"),
     });
     if (deckEditorActions) {
       updatePrint(card.name, print);

@@ -648,6 +648,9 @@ pub enum PlayerAction {
         card_id: String,
         #[serde(rename = "abilityIndex")]
         ability_index: Option<usize>,
+        /// Optional color choice for 'any color' mana abilities.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        color: Option<String>,
     },
     UntapLand {
         #[serde(rename = "cardId")]

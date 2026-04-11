@@ -9,17 +9,15 @@ interface CardOverlayButtonProps {
   onClick: () => void;
   title?: string;
   label?: string;
-  /** Stop mousedown propagation (needed in FreeBattlefield to prevent drag) */
-  stopMouseDown?: boolean;
 }
 
-export function CardOverlayButton({ variant, onClick, title, label, stopMouseDown }: CardOverlayButtonProps) {
+export function CardOverlayButton({ variant, onClick, title, label }: CardOverlayButtonProps) {
   const themeColors = useGameThemeColors();
 
   const variantColorMap: Record<OverlayVariant, string> = {
-    tap: themeColors.activeAction.active,
+    tap: themeColors.cardRing,
     untap: themeColors.promptAction.cancel,
-    choosable: themeColors.promptAction.defenseAction,
+    choosable: themeColors.cardRing,
     "choosable-hostile": themeColors.arrow.hostileTarget,
     pending: themeColors.promptAction.passAction,
     attacking: themeColors.promptAction.attackAction,
@@ -43,7 +41,7 @@ export function CardOverlayButton({ variant, onClick, title, label, stopMouseDow
       )}
       style={buttonStyle}
       onClick={onClick}
-      onMouseDown={stopMouseDown ? (e) => e.stopPropagation() : undefined}
+      onMouseDown={(e) => e.preventDefault()}
       title={title}
     >
       {label && (

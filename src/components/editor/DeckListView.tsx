@@ -34,7 +34,7 @@ function DraggableStackCard({
   index: number;
   onAddOne: () => void;
   onRemoveOne: () => void;
-  onHover: (card: Card, x: number, y: number) => void;
+  onHover: (card: Card, e: React.MouseEvent, options?: any) => void;
   onLeave: () => void;
   onUntag?: (cardName: string) => void;
   isSelected?: boolean;
@@ -61,8 +61,8 @@ function DraggableStackCard({
       )}
       style={{ top: topOffset, width: cardWidth, zIndex: index + 1 }}
       data-card-name={group.card.name}
-      onMouseEnter={(e) => { onCardHover(index); onHover(group.card, e.clientX, e.clientY); }}
-      onMouseMove={(e) => onHover(group.card, e.clientX, e.clientY)}
+      onMouseEnter={(e) => { onCardHover(index); onHover(group.card, e, { useDelay: true }); }}
+      onMouseMove={(e) => onHover(group.card, e, { useDelay: true })}
       onMouseLeave={() => { onCardLeave(); onLeave(); }}
       onClick={(e) => handleCardClick(e, group.card.name, onSelect, onShowInfo)}
     >
@@ -77,6 +77,8 @@ function DraggableStackCard({
       <CardHoverOverlay
         actions={buildCardActions(onAddOne, onRemoveOne, onUntag ? () => onUntag(group.card.name) : undefined)}
         rounded="rounded-[4%]"
+        onMouseEnter={(e) => onHover(group.card, e, { useDelay: true })}
+        onMouseLeave={onLeave}
       />
     </div>
   );
@@ -97,7 +99,7 @@ interface StackColumnProps {
   cardWidth: number;
   onAddOne: (g: CardGroup) => void;
   onRemoveOne: (name: string) => void;
-  onHover: (card: Card, x: number, y: number) => void;
+  onHover: (card: Card, e: React.MouseEvent, options?: any) => void;
   onLeave: () => void;
   onUntag?: (cardName: string) => void;
   selectedCards?: Set<string>;
@@ -181,7 +183,7 @@ interface CardVisualProps {
   onAddOne: () => void;
   onRemoveOne: () => void;
   onPickPrint: () => void;
-  onHover: (x: number, y: number) => void;
+  onHover: (card: Card, e: React.MouseEvent, options?: any) => void;
   onLeave: () => void;
   isSelected?: boolean;
   onSelect?: (cardName: string, addToSelection: boolean) => void;
@@ -220,8 +222,8 @@ function CardVisual({
         isSelected && cn(CARD_RING.selected, "rounded-lg"),
       )}
       data-card-name={group.card.name}
-      onMouseEnter={(e) => onHover(e.clientX, e.clientY)}
-      onMouseMove={(e) => onHover(e.clientX, e.clientY)}
+      onMouseEnter={(e) => onHover(group.card, e, { useDelay: true })}
+      onMouseMove={(e) => onHover(group.card, e, { useDelay: true })}
       onMouseLeave={onLeave}
       onClick={(e) => handleCardClick(e, group.card.name, onSelect, onShowInfo)}
     >
@@ -268,7 +270,11 @@ function CardVisual({
           </button>
         )}
       </div>
-      <CardHoverOverlay actions={buildCardActions(onAddOne, onRemoveOne, onUntag)} />
+      <CardHoverOverlay
+        actions={buildCardActions(onAddOne, onRemoveOne, onUntag)}
+        onMouseEnter={(e) => onHover(group.card, e, { useDelay: true })}
+        onMouseLeave={onLeave}
+      />
     </div>
   );
 }
@@ -287,7 +293,7 @@ interface CardRowProps {
   onRemoveCommander: () => void;
   onMoveToSide: () => void;
   onPickPrint: () => void;
-  onHover: (x: number, y: number) => void;
+  onHover: (card: Card, e: React.MouseEvent, options?: any) => void;
   onLeave: () => void;
   isSelected?: boolean;
   onSelect?: (cardName: string, addToSelection: boolean) => void;
@@ -321,8 +327,8 @@ function CardRow({
         isSelected && "bg-selection/20"
       )}
       data-card-name={group.card.name}
-      onMouseEnter={(e) => onHover(e.clientX, e.clientY)}
-      onMouseMove={(e) => onHover(e.clientX, e.clientY)}
+      onMouseEnter={(e) => onHover(group.card, e, { useDelay: true })}
+      onMouseMove={(e) => onHover(group.card, e, { useDelay: true })}
       onMouseLeave={onLeave}
       onClick={(e) => {
         e.stopPropagation();
@@ -414,7 +420,7 @@ interface CardSectionProps {
   onRemoveCommander: (card?: Card) => void;
   onMoveToSide: (name: string) => void;
   onPickPrint: (name: string) => void;
-  onHover: (card: Card, x: number, y: number) => void;
+  onHover: (card: Card, e: React.MouseEvent, options?: any) => void;
   onLeave: () => void;
   selectedCards?: Set<string>;
   onSelectCard?: (cardName: string, addToSelection: boolean) => void;
@@ -493,7 +499,7 @@ function CardSection({
                     onRemoveCommander={onRemoveCommander}
                     onMoveToSide={() => onMoveToSide(g.card.name)}
                     onPickPrint={() => onPickPrint(g.card.name)}
-                    onHover={(x, y) => onHover(g.card, x, y)}
+                    onHover={(card, e, opts) => onHover(card, e, opts)}
                     onLeave={onLeave}
                     isSelected={selectedCards?.has(g.card.name.toLowerCase())}
                     onSelect={onSelectCard}
@@ -528,7 +534,7 @@ function CardSection({
                 onRemoveOne={() => effectiveRemoveOne(g.card.name)}
                 onUntag={isTagSection && onUntagCard ? () => onUntagCard(g.card.name) : undefined}
                 onPickPrint={() => onPickPrint(g.card.name)}
-                onHover={(x, y) => onHover(g.card, x, y)}
+                onHover={(card, e, opts) => onHover(card, e, opts)}
                 onLeave={onLeave}
                 isSelected={selectedCards?.has(g.card.name.toLowerCase())}
                 onSelect={onSelectCard}
@@ -563,7 +569,7 @@ function DroppableStackTag({
   cardWidth: number;
   onAddOne: (g: CardGroup) => void;
   onRemoveOne: (name: string) => void;
-  onHover: (card: Card, x: number, y: number) => void;
+  onHover: (card: Card, e: React.MouseEvent, options?: any) => void;
   onLeave: () => void;
   onRemoveTag: () => void;
   onUntagCard?: (cardName: string, tag: string) => void;
@@ -648,7 +654,7 @@ export interface DeckListViewProps {
   onMoveToSide: (name: string) => void;
   onMoveToMain: (name: string) => void;
   onPickPrint: (name: string) => void;
-  onHover: (card: Card, x: number, y: number) => void;
+  onHover: (card: Card, e: React.MouseEvent, options?: any) => void;
   onLeave: () => void;
   onAddToSide: (card: Card) => void;
   onRemoveFromSide: (name: string) => void;
@@ -1195,8 +1201,9 @@ export function DeckListView({
                   <div
                     key={cmd.id}
                     className="flex items-center gap-1 group hover:bg-muted/40 rounded px-1 py-0.5 cursor-pointer"
-                    onMouseEnter={(e) => onHover(cmd, e.clientX, e.clientY)}
-                    onMouseMove={(e) => onHover(cmd, e.clientX, e.clientY)}
+                    onMouseEnter={(e) => onHover(cmd, e, { useDelay: true })}
+                    onMouseMove={(e) => onHover(cmd, e, { useDelay: true })}
+
                     onMouseLeave={onLeave}
                     onClick={() => onShowInfo?.(cmd.name)}
                   >
@@ -1245,7 +1252,7 @@ export function DeckListView({
                       onAddOne={() => {}}
                       onRemoveOne={() => onRemoveCommander(cmd)}
                       onPickPrint={() => onPickPrint(cmd.name)}
-                      onHover={(x, y) => onHover(cmd, x, y)}
+                      onHover={(e) => onHover(cmd, e, { useDelay: true })}
                       onLeave={onLeave}
                       onShowInfo={onShowInfo ? () => onShowInfo(cmd.name) : undefined}
                       isCover={coverCardName === cmd.name && (coverCardFace ?? 0) === 0}
@@ -1386,8 +1393,8 @@ export function DeckListView({
                 <div
                   key={g.card.name}
                   className="flex items-center gap-1 group hover:bg-muted/40 rounded px-1 py-0.5"
-                  onMouseEnter={(e) => onHover(g.card, e.clientX, e.clientY)}
-                  onMouseMove={(e) => onHover(g.card, e.clientX, e.clientY)}
+                  onMouseEnter={(e) => onHover(g.card, e, { useDelay: true })}
+                  onMouseMove={(e) => onHover(g.card, e, { useDelay: true })}
                   onMouseLeave={onLeave}
                 >
                   <span className="text-xs font-mono w-4 text-right text-muted-foreground shrink-0">{g.count}</span>
@@ -1414,7 +1421,7 @@ export function DeckListView({
                   onAddOne={() => onAddToSide({ ...g.card, id: crypto.randomUUID() })}
                   onRemoveOne={() => onRemoveFromSide(g.card.name)}
                   onPickPrint={() => onPickPrint(g.card.name)}
-                  onHover={(x, y) => onHover(g.card, x, y)}
+                  onHover={(card, e, opts) => onHover(card, e, opts)}
                   onLeave={onLeave}
                 />
               ))}
@@ -1442,8 +1449,8 @@ export function DeckListView({
                 <div
                   key={g.card.name}
                   className="flex items-center gap-1 group hover:bg-muted/40 rounded px-1 py-0.5"
-                  onMouseEnter={(e) => onHover(g.card, e.clientX, e.clientY)}
-                  onMouseMove={(e) => onHover(g.card, e.clientX, e.clientY)}
+                  onMouseEnter={(e) => onHover(g.card, e, { useDelay: true })}
+                  onMouseMove={(e) => onHover(g.card, e, { useDelay: true })}
                   onMouseLeave={onLeave}
                 >
                   <span className="text-xs font-mono w-4 text-right text-muted-foreground shrink-0">{g.count}</span>
@@ -1470,7 +1477,7 @@ export function DeckListView({
                   onAddOne={() => onAddToMaybe({ ...g.card, id: crypto.randomUUID() })}
                   onRemoveOne={() => onRemoveFromMaybe(g.card.name)}
                   onPickPrint={() => onPickPrint(g.card.name)}
-                  onHover={(x, y) => onHover(g.card, x, y)}
+                  onHover={(card, e, opts) => onHover(card, e, opts)}
                   onLeave={onLeave}
                 />
               ))}
@@ -1496,8 +1503,8 @@ export function DeckListView({
                     <div
                       key={g.card.name}
                       className="flex items-center gap-1 group hover:bg-muted/40 rounded px-1 py-0.5"
-                      onMouseEnter={(e) => onHover(g.card, e.clientX, e.clientY)}
-                      onMouseMove={(e) => onHover(g.card, e.clientX, e.clientY)}
+                      onMouseEnter={(e) => onHover(g.card, e, { useDelay: true })}
+                      onMouseMove={(e) => onHover(g.card, e, { useDelay: true })}
                       onMouseLeave={onLeave}
                     >
                       <span className="text-xs font-mono w-4 text-right text-muted-foreground shrink-0">{g.count}</span>
@@ -1519,7 +1526,7 @@ export function DeckListView({
                       onAddOne={() => onAddToSide({ ...g.card, id: crypto.randomUUID() })}
                       onRemoveOne={() => onRemoveFromSide(g.card.name)}
                       onPickPrint={() => onPickPrint(g.card.name)}
-                      onHover={(x, y) => onHover(g.card, x, y)}
+                      onHover={(card, e, opts) => onHover(card, e, opts)}
                       onLeave={onLeave}
                     />
                   ))}

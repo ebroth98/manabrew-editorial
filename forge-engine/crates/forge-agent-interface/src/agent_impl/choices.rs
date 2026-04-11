@@ -182,6 +182,12 @@ pub(super) fn choose_color<T: AgentTransport>(
     _player: PlayerId,
     valid_colors: &[String],
 ) -> Option<String> {
+    if let Some(pending) = agent.pending_mana_color.take() {
+        if let Some(matched) = super::find_matching_color(&pending, valid_colors.iter()) {
+            return Some(matched);
+        }
+    }
+
     agent.send_prompt(AgentPromptInner::ChooseColor {
         game_view: agent.view(),
         valid_colors: valid_colors.to_vec(),

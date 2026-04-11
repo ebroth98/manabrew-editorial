@@ -155,13 +155,17 @@ pub(super) fn pay_mana_cost<T: AgentTransport>(
         PlayerAction::TapLand {
             card_id,
             ability_index,
-        } => parse_card_id(&card_id)
-            .map(|card_id| ManaCostAction::TapLand {
-                card_id,
-                mana_ability_index: ability_index,
-                express_choice: None,
-            })
-            .unwrap_or(ManaCostAction::Cancel),
+            color,
+        } => {
+            agent.pending_mana_color = color;
+            parse_card_id(&card_id)
+                .map(|card_id| ManaCostAction::TapLand {
+                    card_id,
+                    mana_ability_index: ability_index,
+                    express_choice: None,
+                })
+                .unwrap_or(ManaCostAction::Cancel)
+        }
         PlayerAction::UntapLand { card_id } => parse_card_id(&card_id)
             .map(ManaCostAction::UntapLand)
             .unwrap_or(ManaCostAction::Cancel),
@@ -177,6 +181,12 @@ pub(super) fn specify_mana_combo<T: AgentTransport>(
     amount: usize,
     card_name: Option<&str>,
 ) -> Vec<String> {
+    if let Some(pending) = agent.pending_mana_color.take() {
+        if let Some(matched) = super::find_matching_color(&pending, available_colors.iter()) {
+            return vec![matched; amount];
+        }
+    }
+
     agent.send_prompt(AgentPromptInner::SpecifyManaCombo {
         game_view: agent.view(),
         available_colors: available_colors.to_vec(),

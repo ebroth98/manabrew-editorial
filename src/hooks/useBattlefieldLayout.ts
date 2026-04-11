@@ -87,35 +87,47 @@ export function useBattlefieldLayout({
 
     setPositions((prev) => {
       const next = { ...prev };
+      // Remove positions for cards no longer present
       for (const id of Object.keys(next)) {
         if (!cardIdSet.has(id)) delete next[id];
       }
 
-      const alreadyPositionedNonLands = Object.keys(next).filter(
-        (id) => !landSet || !landSet.has(id),
-      ).length;
-      const alreadyPositionedLands = Object.keys(next).filter(
-        (id) => landSet?.has(id),
-      ).length;
-      let newNonLandIdx = 0;
-      let newLandIdx = 0;
+      const isOccupied = (x: number, y: number, currentPositions: Record<string, { x: number; y: number }>) => {
+        return Object.values(currentPositions).some((pos) => {
+          return (
+            x < pos.x + CARD_W + GAP / 2 &&
+            x + CARD_W + GAP / 2 > pos.x &&
+            y < pos.y + CARD_H + GAP / 2 &&
+            y + CARD_H + GAP / 2 > pos.y
+          );
+        });
+      };
+
+      let nextNonLandSlot = 0;
+      let nextLandSlot = 0;
 
       for (const id of cardIds) {
         if (!next[id]) {
           if (landSet?.has(id)) {
-            const slot = alreadyPositionedLands + newLandIdx;
-            next[id] = {
-              x: Math.min(xMax, xMin + (slot % cols) * (CARD_W + GAP) + GAP),
-              y: landRowY,
-            };
-            newLandIdx++;
+            while (true) {
+              const x = Math.min(xMax, xMin + (nextLandSlot % cols) * (CARD_W + GAP) + GAP);
+              const y = landRowY - Math.floor(nextLandSlot / cols) * (CARD_H + GAP); // Grow lands upward if they overflow
+              if (!isOccupied(x, y, next) || nextLandSlot > 100) {
+                next[id] = { x, y };
+                break;
+              }
+              nextLandSlot++;
+            }
           } else {
-            const slot = alreadyPositionedNonLands + newNonLandIdx;
-            next[id] = {
-              x: Math.min(xMax, xMin + (slot % cols) * (CARD_W + GAP) + GAP),
-              y: Math.min(Math.floor(slot / cols) * (CARD_H + GAP) + GAP, yMax),
-            };
-            newNonLandIdx++;
+            while (true) {
+              const x = Math.min(xMax, xMin + (nextNonLandSlot % cols) * (CARD_W + GAP) + GAP);
+              const y = Math.floor(nextNonLandSlot / cols) * (CARD_H + GAP) + GAP;
+              if (!isOccupied(x, y, next) || nextNonLandSlot > 200) {
+                next[id] = { x, y };
+                break;
+              }
+              nextNonLandSlot++;
+            }
           }
         }
       }

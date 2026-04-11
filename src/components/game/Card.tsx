@@ -6,7 +6,7 @@ import { CounterDisplay } from "@/components/game/CounterBadge";
 import { ManaSymbols } from "@/components/game/ManaSymbols";
 import { KeywordChips } from "@/components/game/CardKeywords";
 import { useGameThemeColors, withAlpha } from "./game.theme";
-import { isCreature, isLethalDamage } from "./game.utils";
+import { isCreature, isLethalDamage, upgradeScryfallUrl, type ScryfallImageSize } from "./game.utils";
 import { CARD_BADGES } from "./game.constants";
 import { CARD_BANNER_CONTAINER, CARD_BANNER_TEXT } from "./game.styles";
 
@@ -42,6 +42,7 @@ interface CardProps {
   isHovered?: boolean;
   onFlip?: () => void;
   showBackFace?: boolean;
+  resolution?: ScryfallImageSize;
 }
 
 export function Card({
@@ -53,6 +54,7 @@ export function Card({
   isHovered,
   onFlip,
   showBackFace,
+  resolution = "normal",
 }: CardProps) {
   const [hasError, setHasError] = useState(false);
   const { data: scryfallUrl } = useCardImage(
@@ -62,8 +64,9 @@ export function Card({
     card.color,
     card.setCode,
     card.cardNumber,
+    resolution,
   );
-  const imageUrl = card.imageUrl || scryfallUrl;
+  const imageUrl = upgradeScryfallUrl(card.imageUrl || scryfallUrl, resolution);
   const themeColors = useGameThemeColors();
 
   const creature = isCreature(card);
@@ -83,9 +86,9 @@ export function Card({
     const currentT = parseInt(card.toughness ?? "0", 10);
     const buffed = currentP > card.basePower || currentT > (card.baseToughness ?? 0);
     const debuffed = currentP < card.basePower || currentT < (card.baseToughness ?? 0);
-    if (buffed && !debuffed) return { backgroundColor: themeColors.promptAction.defenseAction, color: "#fff" };
+    if (buffed && !debuffed) return { backgroundColor: themeColors.cardRing, color: "#fff" };
     if (debuffed && !buffed) return { backgroundColor: themeColors.promptAction.attackAction, color: "#fff" };
-    if (buffed && debuffed) return { backgroundColor: themeColors.activeAction.active, color: "#fff" };
+    if (buffed && debuffed) return { backgroundColor: themeColors.cardRing, color: "#fff" };
     return {
       backgroundColor: withAlpha(themeColors.promptAction.cancel, 0.72),
       color: "#fff",
@@ -95,7 +98,7 @@ export function Card({
   return (
     <div
       className={cn(
-        "relative rounded-lg border bg-card text-card-foreground shadow-sm transition-transform duration-200 ease-in-out hover:scale-105 cursor-pointer group overflow-hidden",
+        "relative rounded-lg border bg-card text-card-foreground shadow-sm cursor-pointer group overflow-hidden",
         "w-[150px] aspect-[5/7]",
         isTapped && "rotate-90",
         creature &&
@@ -116,7 +119,7 @@ export function Card({
             title=""
             className="absolute inset-0 w-full h-full object-contain rounded-lg"
             onError={() => setHasError(true)}
-            loading="lazy"
+            style={{ imageRendering: "auto" }}
           />
           {/* Status badge — only the highest-priority one shows */}
           {card.exerted ? (

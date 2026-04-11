@@ -1,13 +1,14 @@
 import { Card } from "@/components/game/Card";
-import { CardPreview } from "@/components/game/CardPreview";
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Modal } from "./Modal";
 import type { StackObject } from "@/types/openmagic";
 import { cn } from "@/lib/utils";
 import { stackObjectToCardStub } from "../game.utils";
-import { useHoverPreview } from "@/hooks/useHoverPreview";
+import { useCardPreview } from "@/hooks/useCardPreview";
+import { HoverCardPreview } from "@/components/game/HoverCardPreview";
 import { MODAL_CARD_SIZE } from "../game.styles";
+import { useGameThemeColors } from "../game.theme";
+import { CSSProperties } from "react";
 
 interface SpellStackModalProps {
   stack: StackObject[];
@@ -18,7 +19,10 @@ interface SpellStackModalProps {
 }
 
 export function SpellStackModal({ stack, validSpellIds, onTarget, onCancel }: SpellStackModalProps) {
-  const { hoveredCard, mousePos, onMouseEnter, onMouseLeave } = useHoverPreview();
+  const preview = useCardPreview();
+
+  const themeColors = useGameThemeColors();
+  const ringColor = themeColors.cardRing;
 
   const isTargeting = validSpellIds.length > 0;
 
@@ -68,8 +72,9 @@ export function SpellStackModal({ stack, validSpellIds, onTarget, onCancel }: Sp
                     isValid ? "cursor-pointer" : "cursor-default",
                     !isValid && isTargeting && "opacity-50",
                   )}
-                  onMouseEnter={(e) => onMouseEnter(cardStub, e)}
-                  onMouseLeave={onMouseLeave}
+                  onMouseEnter={(e) => preview.handleMouseEnter(card, e)}
+                  onMouseLeave={preview.handleMouseLeave}
+
                   onClick={isValid ? () => onTarget(obj.id) : undefined}
                 >
                   <Card
@@ -77,8 +82,9 @@ export function SpellStackModal({ stack, validSpellIds, onTarget, onCancel }: Sp
                     className={cn(
                       MODAL_CARD_SIZE,
                       "transition-transform",
-                      isValid && "ring-2 ring-blue-400 group-hover:scale-105 group-hover:-translate-y-2",
+                      isValid && "ring-2 group-hover:scale-105 group-hover:-translate-y-2",
                     )}
+                    style={isValid ? { "--tw-ring-color": ringColor } as CSSProperties : undefined}
                   />
                   <div className="flex items-center gap-1">
                     <Badge
@@ -88,7 +94,7 @@ export function SpellStackModal({ stack, validSpellIds, onTarget, onCancel }: Sp
                       {isTop ? "TOP" : `+${idx}`}
                     </Badge>
                     {isValid && (
-                      <Badge variant="secondary" className="text-[10px] h-4 px-1 text-blue-600">
+                      <Badge variant="secondary" className="text-[10px] h-4 px-1" style={{ color: ringColor }}>
                         ← Counter
                       </Badge>
                     )}
@@ -111,13 +117,7 @@ export function SpellStackModal({ stack, validSpellIds, onTarget, onCancel }: Sp
         </Button>
       </Modal.Footer>
 
-      {hoveredCard && (
-        <CardPreview
-          card={hoveredCard}
-          mouseX={mousePos.x}
-          mouseY={mousePos.y}
-        />
-      )}
+      <HoverCardPreview preview={preview} />
     </Modal>
   );
 }

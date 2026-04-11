@@ -13,6 +13,7 @@ import { ZONE_COLUMN_RESERVED_PX } from "@/components/game/game.constants";
 import { useHandScale } from "@/hooks/useHandScale";
 import { HAND_CARD_BASES } from "@/components/game/game.styles";
 import { useGameThemeColors, withAlpha } from "@/components/game/game.theme";
+import type { HandActionOption } from "@/stores/useGameUIStore";
 import {
   ResizablePanelGroup,
   ResizablePanel,
@@ -70,7 +71,9 @@ interface GameBoardProps {
   // Callbacks
   onHandCardDragStart: (card: Card, e: React.MouseEvent) => void;
   onHandCardClick: (card: Card, e?: React.MouseEvent) => void;
-  onHoverCard: (card: Card | null, e?: React.MouseEvent) => void;
+  onHoverCard: (card: Card | null, e?: React.MouseEvent, options?: { useAnchor?: boolean; placement?: "auto" | "top-center"; anchorOverride?: DOMRect }) => void;
+  getHandActions?: (card: Card) => HandActionOption[];
+  onSelectHandAction?: (action: HandActionOption) => void;
   onFlipCard: () => void;
   onBattlefieldClick: (card: Card) => void;
   onAttackerClick: (card: Card) => void;
@@ -118,6 +121,8 @@ export function GameBoard({
   onHandCardDragStart,
   onHandCardClick,
   onHoverCard,
+  getHandActions,
+  onSelectHandAction,
   onFlipCard,
   onBattlefieldClick,
   onAttackerClick,
@@ -158,7 +163,7 @@ export function GameBoard({
               attackerIds={currentPrompt?.attackerIds}
               onClickCard={onBattlefieldClick}
               onClickAnyCard={onAttackerClick}
-              onHoverCard={onHoverCard}
+              onHoverCard={(card, e, opts) => onHoverCard(card, e, { useAnchor: true, ...opts })}
               onFlipCard={onFlipCard}
               showBackFace={showBackFace}
               onOpenZone={onOpenZone}
@@ -166,6 +171,8 @@ export function GameBoard({
               zonePanelOrder={zonePanelOrder}
               placementGhost={placementGhost?.controllerId === opponents[0]!.id ? placementGhost : null}
               hostileTargeting={hostileTargeting}
+              manaAbilityOptions={currentPrompt?.manaAbilityOptions}
+              onTapLandAbility={onTapLandAbility}
             />
           ) : (
             <ResizablePanelGroup orientation="horizontal">
@@ -189,7 +196,7 @@ export function GameBoard({
                       attackerIds={currentPrompt?.attackerIds}
                       onClickCard={onBattlefieldClick}
                       onClickAnyCard={onAttackerClick}
-                      onHoverCard={onHoverCard}
+                      onHoverCard={(card, e, opts) => onHoverCard(card, e, { useAnchor: true, ...opts })}
                       onFlipCard={onFlipCard}
                       showBackFace={showBackFace}
                       onOpenZone={onOpenZone}
@@ -197,6 +204,8 @@ export function GameBoard({
                       zonePanelOrder={zonePanelOrder}
                       placementGhost={placementGhost?.controllerId === op.id ? placementGhost : null}
                       hostileTargeting={hostileTargeting}
+                      manaAbilityOptions={currentPrompt?.manaAbilityOptions}
+                      onTapLandAbility={onTapLandAbility}
                     />
                   </ResizablePanel>
                 </Fragment>
@@ -301,7 +310,7 @@ export function GameBoard({
                       ? onBattlefieldClick
                       : undefined
                   }
-                  onHoverCard={onHoverCard}
+                  onHoverCard={(card, e, opts) => onHoverCard(card, e, { useAnchor: true, ...opts })}
                   onFlipCard={onFlipCard}
                   showBackFace={showBackFace}
                   pendingCardIds={
@@ -353,6 +362,8 @@ export function GameBoard({
                     onStartDrag={onHandCardDragStart}
                     draggingCardId={draggingCardId}
                     castingCardId={castingCardId}
+                    getActions={getHandActions}
+                    onSelectAction={onSelectHandAction}
                   />
                 </div>
               </div>

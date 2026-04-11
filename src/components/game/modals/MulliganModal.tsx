@@ -2,8 +2,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Modal } from "./Modal";
 import { Card } from "@/components/game/Card";
-import { CardPreview } from "@/components/game/CardPreview";
-import { useHoverPreview } from "@/hooks/useHoverPreview";
+import { HoverCardPreview } from "@/components/game/HoverCardPreview";
+import { useCardPreview } from "@/hooks/useCardPreview";
 import { MODAL_FOOTER_BETWEEN, MULLIGAN_CARD_SIZE } from "../game.styles";
 import type { Card as CardType } from "@/types/openmagic";
 
@@ -23,7 +23,7 @@ export function MulliganModal({
   isWaitingForResponse,
 }: MulliganModalProps) {
   const putBackCount = mulliganCount;
-  const { hoveredCard, mousePos, onMouseEnter, onMouseLeave } = useHoverPreview();
+  const preview = useCardPreview();
 
   return (
     <Modal maxWidth="max-w-[80vw]" maxHeight="max-h-[85vh]" className="w-fit">
@@ -53,8 +53,8 @@ export function MulliganModal({
             <div
               key={card.id}
               className="shrink-0"
-              onMouseEnter={(e) => onMouseEnter(card, e)}
-              onMouseLeave={onMouseLeave}
+              onMouseEnter={(e) => preview.handleMouseEnter(card, e)}
+              onMouseLeave={preview.handleMouseLeave}
             >
               <Card card={card} className={MULLIGAN_CARD_SIZE} />
             </div>
@@ -89,13 +89,7 @@ export function MulliganModal({
         </div>
       </div>
 
-      {hoveredCard && (
-        <CardPreview
-          card={hoveredCard}
-          mouseX={mousePos.x}
-          mouseY={mousePos.y}
-        />
-      )}
+      <HoverCardPreview preview={preview} />
     </Modal>
   );
 }

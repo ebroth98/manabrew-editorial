@@ -26,6 +26,38 @@ mod costs;
 mod library;
 mod targeting;
 
+/// Match a mana symbol letter (e.g. "U") or a full color name (e.g. "Blue")
+/// against a list of color strings.  Handles the Blue/U mismatch where the
+/// mana symbol "U" doesn't match the first character of "Blue".
+pub(crate) fn find_matching_color<'a>(
+    pending: &str,
+    colors: impl Iterator<Item = &'a String>,
+) -> Option<String> {
+    let mana_to_name: &[(&str, &str)] = &[
+        ("W", "White"),
+        ("U", "Blue"),
+        ("B", "Black"),
+        ("R", "Red"),
+        ("G", "Green"),
+        ("C", "Colorless"),
+    ];
+    colors
+        .into_iter()
+        .find(|c| {
+            // Direct case-insensitive match (covers both "U"=="U" and "Blue"=="Blue")
+            c.eq_ignore_ascii_case(pending)
+            // Mana symbol → full name lookup (covers "U" matching "Blue")
+            || mana_to_name.iter().any(|(sym, name)| {
+                pending.eq_ignore_ascii_case(sym) && c.eq_ignore_ascii_case(name)
+            })
+            // Full name → mana symbol lookup (covers "Blue" matching "U")
+            || mana_to_name.iter().any(|(sym, name)| {
+                pending.eq_ignore_ascii_case(name) && c.eq_ignore_ascii_case(sym)
+            })
+        })
+        .cloned()
+}
+
 /// Platform-agnostic transport for sending prompts and receiving responses.
 /// Tauri implements this with mpsc channels, WASM with Atomics.wait().
 pub trait AgentTransport {
@@ -50,6 +82,7 @@ pub struct PromptAgent<T: AgentTransport> {
     /// Key: (card_id.0, ability_index) → (description, is_mana_ability, cost_string)
     ability_descriptions: std::collections::HashMap<(u32, usize), (String, bool, Option<String>)>,
     pub(crate) pending_restore_checkpoint: Option<u64>,
+    pub(crate) pending_mana_color: Option<String>,
 }
 
 impl<T: AgentTransport> PromptAgent<T> {
@@ -63,6 +96,7 @@ impl<T: AgentTransport> PromptAgent<T> {
             peeked_library_cards: Vec::new(),
             ability_descriptions: std::collections::HashMap::new(),
             pending_restore_checkpoint: None,
+            pending_mana_color: None,
         }
     }
 
@@ -436,7 +470,9 @@ impl<T: AgentTransport> PlayerAgent for PromptAgent<T> {
             PlayerAction::TapLand {
                 card_id,
                 ability_index,
+                color,
             } => {
+                self.pending_mana_color = color;
                 let parsed = parse_card_id(&card_id);
                 match parsed {
                     Some(cid) => {
@@ -458,8 +494,7 @@ impl<T: AgentTransport> PlayerAgent for PromptAgent<T> {
                         } else if ability_index.is_none() {
                             // No ability index — check if there's a single non-mana
                             // activatable ability on this card (legacy fallback).
-                            if let Some(&(id, idx)) =
-                                activatable.iter().find(|(id, _)| *id == cid)
+                            if let Some(&(id, idx)) = activatable.iter().find(|(id, _)| *id == cid)
                             {
                                 EnginePlayerAction::ActivateAbility(AbilityRef {
                                     card_id: id,

@@ -1,21 +1,30 @@
-import type { Card as CardType } from "@/types/openmagic";
-import { Card } from "@/components/game/Card";
-import { CardPreview } from "@/components/game/CardPreview";
-import { ManaSymbols } from "@/components/game/ManaSymbols";
-import { Modal } from "./Modal";
 import { cn } from "@/lib/utils";
-import { useHoverPreview } from "@/hooks/useHoverPreview";
+import type { Card as XMageCard } from "@/types/openmagic";
+import { Card } from "@/components/game/Card";
+import { ManaSymbols } from "@/components/game/ManaSymbols";
 import { HAND_CARD } from "../game.styles";
+import { useCardPreview } from "@/hooks/useCardPreview";
+import { HoverCardPreview } from "@/components/game/HoverCardPreview";
+import { useGameThemeColors } from "../game.theme";
+import { Modal } from "./Modal";
 
 interface ZoneViewerProps {
   title: string;
-  cards: CardType[];
+  cards: XMageCard[];
   onClose: () => void;
   onClickCard?: (cardId: string) => void;
 }
 
-export function ZoneViewer({ title, cards, onClose, onClickCard }: ZoneViewerProps) {
-  const { hoveredCard, mousePos, onMouseEnter, onMouseLeave } = useHoverPreview();
+export function ZoneViewer({
+  title,
+  cards,
+  onClose,
+  onClickCard,
+}: ZoneViewerProps) {
+  const preview = useCardPreview();
+
+  const themeColors = useGameThemeColors();
+  const ringColor = themeColors.cardRing;
 
   return (
     <Modal onClose={onClose}>
@@ -32,18 +41,34 @@ export function ZoneViewer({ title, cards, onClose, onClickCard }: ZoneViewerPro
               <div
                 key={card.id}
                 className="shrink-0 relative flex flex-col gap-1"
-                onMouseEnter={(e) => onMouseEnter(card, e)}
-                onMouseLeave={onMouseLeave}
+                onMouseEnter={(e) => preview.handleMouseEnter(card, e)}
+                onMouseLeave={preview.handleMouseLeave}
+
               >
                 <Card
                   card={card}
-                  className={cn(HAND_CARD, card.isPlayable && onClickCard && "ring-2 ring-green-400")}
-                  onClick={card.isPlayable && onClickCard ? () => onClickCard(card.id) : undefined}
+                  className={cn(
+                    HAND_CARD,
+                    card.isPlayable && onClickCard && "ring-2",
+                  )}
+                  style={
+                    card.isPlayable && onClickCard
+                      ? ({ "--tw-ring-color": ringColor } as CSSProperties)
+                      : undefined
+                  }
+                  onClick={
+                    card.isPlayable && onClickCard
+                      ? () => onClickCard(card.id)
+                      : undefined
+                  }
                 />
                 {(card.effectiveManaCost || card.manaCost) && (
                   <div className="min-h-5 flex items-center justify-center">
                     <div className="inline-flex items-center rounded bg-muted/70 px-1.5 py-0.5">
-                      <ManaSymbols cost={card.effectiveManaCost ?? card.manaCost} size="sm" />
+                      <ManaSymbols
+                        cost={card.effectiveManaCost ?? card.manaCost}
+                        size="sm"
+                      />
                     </div>
                   </div>
                 )}
@@ -53,9 +78,7 @@ export function ZoneViewer({ title, cards, onClose, onClickCard }: ZoneViewerPro
         )}
       </Modal.Body>
 
-      {hoveredCard && (
-        <CardPreview card={hoveredCard} mouseX={mousePos.x} mouseY={mousePos.y} />
-      )}
+      <HoverCardPreview preview={preview} />
     </Modal>
   );
 }

@@ -11,6 +11,8 @@ import type { ScryfallCard } from "@/types/scryfall";
 import type { Card as XMageCard } from "@/types/openmagic";
 import { useDraggable } from "@dnd-kit/core";
 import { CardDetailModal } from "@/components/editor/CardDetailModal";
+import { useCardPreview } from "@/hooks/useCardPreview";
+import { HoverCardPreview } from "@/components/game/HoverCardPreview";
 import { SetSelect } from "@/components/editor/SetSelect";
 import { scryfallToXMage } from "@/lib/scryfall.utils";
 import { manaSymbolUrl } from "@/api/scryfall";
@@ -377,10 +379,14 @@ function DraggableCardGrid({
   card,
   onMoreInfo,
   standalone,
+  onHover,
+  onLeave,
 }: {
   card: XMageCard;
   onMoreInfo: () => void;
   standalone?: boolean;
+  onHover: (card: XMageCard, e: React.MouseEvent) => void;
+  onLeave: () => void;
 }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: `search-${card.id}`,
@@ -397,6 +403,8 @@ function DraggableCardGrid({
         !standalone && "cursor-grab active:cursor-grabbing",
         isDragging && "opacity-30",
       )}
+      onMouseEnter={(e) => onHover(card, e)}
+      onMouseLeave={onLeave}
     >
       <Card card={card} className="w-full" />
       <div className="absolute inset-0 bg-overlay/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-1.5 rounded-lg pointer-events-none group-hover:pointer-events-auto">
@@ -420,10 +428,14 @@ function DraggableCardRow({
   card,
   onMoreInfo,
   standalone,
+  onHover,
+  onLeave,
 }: {
   card: XMageCard;
   onMoreInfo: () => void;
   standalone?: boolean;
+  onHover: (card: XMageCard, e: React.MouseEvent) => void;
+  onLeave: () => void;
 }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: `search-${card.id}`,
@@ -442,6 +454,8 @@ function DraggableCardRow({
         !standalone && "cursor-grab active:cursor-grabbing",
         isDragging && "opacity-30"
       )}
+      onMouseEnter={(e) => onHover(card, e)}
+      onMouseLeave={onLeave}
     >
       {card.imageUrl && (
         <div className="w-8 h-8 shrink-0 rounded overflow-hidden bg-muted">
@@ -493,6 +507,7 @@ export function CardSearch({ standalone, onClose }: CardSearchProps) {
   const [detailCard, setDetailCard] = useState<ScryfallCard | null>(null);
   const [showFilters, setShowFilters] = useState(false);
   const [advanced, setAdvanced] = useState<AdvancedFilters>(INITIAL_ADVANCED);
+  const preview = useCardPreview();
 
   const advCount = countAdvancedFilters(advanced);
   const basicCount = activeColors.size + activeTypes.size + (activeCmc !== "any" ? 1 : 0);
@@ -820,6 +835,8 @@ export function CardSearch({ standalone, onClose }: CardSearchProps) {
                     card={card}
                     onMoreInfo={() => setDetailCard(rawCards[i])}
                     standalone={standalone}
+                    onHover={preview.handleMouseEnter}
+                    onLeave={preview.handleMouseLeave}
                   />
               ))}
             </div>
@@ -831,6 +848,8 @@ export function CardSearch({ standalone, onClose }: CardSearchProps) {
                     card={card}
                     onMoreInfo={() => setDetailCard(rawCards[i])}
                     standalone={standalone}
+                    onHover={preview.handleMouseEnter}
+                    onLeave={preview.handleMouseLeave}
                   />
               ))}
             </div>
@@ -846,6 +865,8 @@ export function CardSearch({ standalone, onClose }: CardSearchProps) {
         card={detailCard}
         onClose={() => setDetailCard(null)}
       />
+
+      <HoverCardPreview preview={preview} />
     </div>
   );
 }

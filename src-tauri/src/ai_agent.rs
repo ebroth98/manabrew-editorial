@@ -220,6 +220,7 @@ pub fn spawn_ai_prompt_responder(
                         Some(PlayerAction::TapLand {
                             card_id: tappable_land_ids[0].clone(),
                             ability_index: None,
+                            color: None,
                         })
                     } else {
                         Some(PlayerAction::DeclineCombatCost)

@@ -33,6 +33,8 @@ export function OpponentHalf({
   zonePanelOrder,
   placementGhost,
   hostileTargeting,
+  manaAbilityOptions,
+  onTapLandAbility,
 }: OpponentHalfProps) {
   const themeColors = useGameThemeColors();
 
@@ -119,6 +121,8 @@ export function OpponentHalf({
             }
             placementGhost={placementGhost}
             hostileTargeting={hostileTargeting}
+            manaAbilityOptions={manaAbilityOptions}
+            onTapLandAbility={onTapLandAbility}
           />
         </div>
       </div>

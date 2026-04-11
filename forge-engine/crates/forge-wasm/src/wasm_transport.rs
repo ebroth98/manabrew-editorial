@@ -360,6 +360,7 @@ fn ai_respond(inner: &forge_agent_interface::prompt::AgentPromptInner) -> Player
                 PlayerAction::TapLand {
                     card_id: tappable_land_ids[0].clone(),
                     ability_index: None,
+                    color: None,
                 }
             } else {
                 PlayerAction::DeclineCombatCost
