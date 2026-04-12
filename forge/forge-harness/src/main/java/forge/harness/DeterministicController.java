@@ -136,17 +136,7 @@ public class DeterministicController extends PlayerController {
     public void onCallback(String callbackName, String callbackOutcome, String... args) {
         if (IGNORED_CALLBACKS.contains(callbackName)) return;
         final List<String> choiceLogs = ParityLog.drain();
-        final List<String> allArgs = new ArrayList<>(Arrays.asList(args));
-        allArgs.addAll(choiceLogs);
-        DecisionLog.logCallback(player, callbackName, callbackOutcome, allArgs);
-        if (!isVerbose()) return;
-        final String msg;
-        if (allArgs.isEmpty()) {
-            msg = callbackName + ", " + callbackOutcome;
-        } else {
-            msg = callbackName + ", " + callbackOutcome + " [" + String.join(", ", allArgs) + "]";
-        }
-        System.err.printf("[parity-agent-java p%d] %s%n", player.getId(), msg);
+        DecisionLog.logCallback(player, callbackName, callbackOutcome, choiceLogs);
     }
 
     private void captureDeepCheckpoint(final String kind) {

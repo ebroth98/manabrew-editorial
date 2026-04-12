@@ -121,6 +121,8 @@ pub struct StateSnapshot {
     pub winner: Option<u32>,
     pub players: Vec<PlayerSnapshot>,
     pub stack: Vec<String>,
+    #[serde(default)]
+    pub timestamp_ms: u64,
 }
 
 /// Per-player state snapshot.
@@ -168,28 +170,115 @@ pub struct GameTrace {
     /// Commander card names (for Commander variants).
     #[serde(default)]
     pub commanders: Vec<String>,
-    pub snapshots: Vec<StateSnapshot>,
-    #[serde(default)]
-    pub decisions: Vec<DecisionRecord>,
+    pub log: Vec<ParityLogEntry>,
     /// Card names that were played/cast during the game.
     pub covered_cards: Vec<String>,
-    #[serde(default)]
-    pub callbacks: Vec<CallbackRecord>,
+}
+
+impl GameTrace {
+    pub fn snapshots(&self) -> impl Iterator<Item = &StateSnapshot> {
+        self.log.iter().filter_map(|e| e.as_snapshot())
+    }
+
+    pub fn callbacks(&self) -> impl Iterator<Item = &CallbackRecord> {
+        self.log.iter().filter_map(|e| e.as_callback())
+    }
+
+    pub fn decisions(&self) -> impl Iterator<Item = &DecisionRecord> {
+        self.log.iter().filter_map(|e| e.as_decision())
+    }
+
+    pub fn snapshot_vec(&self) -> Vec<StateSnapshot> {
+        self.snapshots().cloned().collect()
+    }
+
+    pub fn callback_vec(&self) -> Vec<CallbackRecord> {
+        self.callbacks().cloned().collect()
+    }
 }
 
 fn default_variant() -> String {
     "Constructed".to_string()
 }
 
-/// A normalized decision record emitted at a choice point.
+pub trait ParityLog {
+    fn turn(&self) -> u32;
+    fn phase(&self) -> &str;
+    fn player(&self) -> u32;
+    fn kind(&self) -> &str;
+    fn choice(&self) -> &str;
+    fn options(&self) -> &[ChoiceLogEntry];
+    fn timestamp_ms(&self) -> u64;
+
+    fn format(&self) -> String {
+        let header = format!(
+            "    T{}::{}::P{} \x1b[94m{}\x1b[0m -> {}",
+            self.turn(),
+            self.phase(),
+            self.player(),
+            self.kind(),
+            self.choice(),
+        );
+        let opts = self.options();
+        if opts.is_empty() {
+            header
+        } else {
+            let mut lines = vec![header];
+            for entry in opts {
+                lines.push(format!("        {}", entry.format()));
+            }
+            lines.join("\n")
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct DecisionRecord {
     pub turn: u32,
     pub phase: String,
     pub deciding_player: u32,
     pub kind: String,
-    pub options: Vec<String>,
+    pub options: Vec<ChoiceLogEntry>,
     pub choice: String,
+    #[serde(default)]
+    pub timestamp_ms: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ChoiceLogEntry {
+    pub name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub choices: Option<usize>,
+    pub outcome: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rng_call_count: Option<u64>,
+}
+
+impl ChoiceLogEntry {
+    pub fn from_json(s: String) -> Self {
+        serde_json::from_str::<ChoiceLogEntry>(&s).unwrap_or_else(|_| Self {
+            name: s,
+            choices: None,
+            outcome: String::new(),
+            rng_call_count: None,
+        })
+    }
+
+    pub fn format(&self) -> String {
+        let mut s = String::new();
+        s.push_str(&self.name);
+        if let Some(n) = self.choices {
+            s.push_str(&format!("[{}]", n));
+        }
+        if !self.outcome.is_empty() {
+            s.push_str(&format!(" -> {}", self.outcome));
+        }
+        if let Some(cc) = self.rng_call_count {
+            s.push_str(&format!(" \x1b[33m{{{}}}\x1b[0m", cc));
+        }
+        s
+    }
+
 }
 
 /// A callback record captured during game execution.
@@ -203,7 +292,122 @@ pub struct CallbackRecord {
     pub player: u32,
     pub name: String,
     pub outcome: String,
-    pub args: Vec<String>,
+    pub args: Vec<ChoiceLogEntry>,
+    #[serde(default)]
+    pub timestamp_ms: u64,
+}
+
+impl ParityLog for StateSnapshot {
+    fn turn(&self) -> u32 { self.turn }
+    fn phase(&self) -> &str { &self.phase }
+    fn player(&self) -> u32 { self.active_player }
+    fn kind(&self) -> &str { "snapshot" }
+    fn choice(&self) -> &str { if self.game_over { "game_over" } else { "in_progress" } }
+    fn options(&self) -> &[ChoiceLogEntry] { &[] }
+    fn timestamp_ms(&self) -> u64 { self.timestamp_ms }
+}
+
+impl ParityLog for DecisionRecord {
+    fn turn(&self) -> u32 { self.turn }
+    fn phase(&self) -> &str { &self.phase }
+    fn player(&self) -> u32 { self.deciding_player }
+    fn kind(&self) -> &str { &self.kind }
+    fn choice(&self) -> &str { &self.choice }
+    fn options(&self) -> &[ChoiceLogEntry] { &self.options }
+    fn timestamp_ms(&self) -> u64 { self.timestamp_ms }
+}
+
+impl ParityLog for CallbackRecord {
+    fn turn(&self) -> u32 { self.turn }
+    fn phase(&self) -> &str { &self.phase }
+    fn player(&self) -> u32 { self.player }
+    fn kind(&self) -> &str { &self.name }
+    fn choice(&self) -> &str { &self.outcome }
+    fn options(&self) -> &[ChoiceLogEntry] { &self.args }
+    fn timestamp_ms(&self) -> u64 { self.timestamp_ms }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "entry_type", rename_all = "snake_case")]
+pub enum ParityLogEntry {
+    Snapshot(StateSnapshot),
+    Callback(CallbackRecord),
+    Decision(DecisionRecord),
+}
+
+impl ParityLogEntry {
+    pub fn as_snapshot(&self) -> Option<&StateSnapshot> {
+        match self {
+            Self::Snapshot(s) => Some(s),
+            _ => None,
+        }
+    }
+
+    pub fn as_callback(&self) -> Option<&CallbackRecord> {
+        match self {
+            Self::Callback(c) => Some(c),
+            _ => None,
+        }
+    }
+
+    pub fn as_decision(&self) -> Option<&DecisionRecord> {
+        match self {
+            Self::Decision(d) => Some(d),
+            _ => None,
+        }
+    }
+}
+
+impl ParityLog for ParityLogEntry {
+    fn turn(&self) -> u32 {
+        match self {
+            Self::Snapshot(s) => s.turn(),
+            Self::Callback(c) => c.turn(),
+            Self::Decision(d) => d.turn(),
+        }
+    }
+    fn phase(&self) -> &str {
+        match self {
+            Self::Snapshot(s) => s.phase(),
+            Self::Callback(c) => c.phase(),
+            Self::Decision(d) => d.phase(),
+        }
+    }
+    fn player(&self) -> u32 {
+        match self {
+            Self::Snapshot(s) => s.player(),
+            Self::Callback(c) => c.player(),
+            Self::Decision(d) => d.player(),
+        }
+    }
+    fn kind(&self) -> &str {
+        match self {
+            Self::Snapshot(s) => s.kind(),
+            Self::Callback(c) => c.kind(),
+            Self::Decision(d) => d.kind(),
+        }
+    }
+    fn choice(&self) -> &str {
+        match self {
+            Self::Snapshot(s) => s.choice(),
+            Self::Callback(c) => c.choice(),
+            Self::Decision(d) => d.choice(),
+        }
+    }
+    fn options(&self) -> &[ChoiceLogEntry] {
+        match self {
+            Self::Snapshot(s) => s.options(),
+            Self::Callback(c) => c.options(),
+            Self::Decision(d) => d.options(),
+        }
+    }
+    fn timestamp_ms(&self) -> u64 {
+        match self {
+            Self::Snapshot(s) => s.timestamp_ms(),
+            Self::Callback(c) => c.timestamp_ms(),
+            Self::Decision(d) => d.timestamp_ms(),
+        }
+    }
 }
 
 // ── Parity Report ──────────────────────────────────────────────────
@@ -260,17 +464,10 @@ pub struct MatchupResult {
     pub java_snapshot: Option<StateSnapshot>,
     /// Card names covered in this matchup (played/cast at least once).
     pub covered_cards: Vec<String>,
-    /// Callback records that occurred between the last matching snapshot and
-    /// the first divergent one.
     #[serde(default)]
-    pub callback_window: Vec<CallbackRecord>,
-    /// Decision records associated with callbacks in `callback_window`.
+    pub rust_log: Vec<ParityLogEntry>,
     #[serde(default)]
-    pub decision_window: Vec<DecisionRecord>,
-    /// Java decision records associated with callbacks in `callback_window`.
-    #[serde(default)]
-    pub java_decision_window: Vec<DecisionRecord>,
-    /// If the game ended naturally, the turn it finished on; otherwise None means stopped at max turns.
+    pub java_log: Vec<ParityLogEntry>,
     pub finished_turn: Option<u32>,
 }
 
@@ -289,9 +486,8 @@ impl MatchupResult {
             rust_snapshot: None,
             java_snapshot: None,
             covered_cards: vec![],
-            callback_window: vec![],
-            decision_window: vec![],
-            java_decision_window: vec![],
+            rust_log: vec![],
+            java_log: vec![],
             finished_turn: None,
         }
     }
@@ -310,9 +506,8 @@ impl MatchupResult {
             rust_snapshot: None,
             java_snapshot: None,
             covered_cards: vec![],
-            callback_window: vec![],
-            decision_window: vec![],
-            java_decision_window: vec![],
+            rust_log: vec![],
+            java_log: vec![],
             finished_turn: None,
         }
     }

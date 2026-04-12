@@ -76,6 +76,8 @@ public final class SnapshotExtractor {
         Collections.sort(stack);
         snapshot.put("stack", stack);
 
+        snapshot.put("timestamp_ms", System.currentTimeMillis());
+
         return snapshot;
     }
 

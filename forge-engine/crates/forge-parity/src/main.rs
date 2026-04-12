@@ -56,6 +56,7 @@ use forge_parity::java_cache::{self, JavaCache};
 use forge_parity::java_random::JavaRandom;
 use forge_parity::protocol::{
     CallbackRecord, Divergence, FuzzReport, FuzzResult, MatchupResult, MatchupStatus, MatrixReport,
+    ParityLogEntry,
 };
 use forge_parity::report;
 use forge_parity::runner::{self, LoadedData, RunConfig, DEFAULT_DECKS_DIR};
@@ -781,7 +782,7 @@ fn run_rust_only_mode(cli: &Cli) {
             if cli.is_verbose() {
                 eprintln!(
                     "[parity] Done: {} snapshots collected",
-                    trace.snapshots.len()
+                    trace.snapshot_vec().len()
                 );
             }
             write_output(cli, &output);
@@ -841,9 +842,7 @@ fn run_single_matchup_server(
     let t_cmp = Instant::now();
     let mut result = compare_snapshots(
         config,
-        &rust_trace.snapshots,
-        &rust_trace.decisions,
-        &rust_trace.callbacks,
+        &rust_trace,
         &java_data,
     );
     result.covered_cards = rust_trace.covered_cards;
@@ -892,9 +891,7 @@ fn run_single_matchup_pool(
     let t_cmp = Instant::now();
     let mut result = compare_snapshots(
         config,
-        &rust_trace.snapshots,
-        &rust_trace.decisions,
-        &rust_trace.callbacks,
+        &rust_trace,
         &java_data,
     );
     result.covered_cards = rust_trace.covered_cards;
@@ -955,9 +952,7 @@ fn run_single_matchup_oneshot(
     let t_cmp = Instant::now();
     let mut result = compare_snapshots(
         config,
-        &rust_trace.snapshots,
-        &rust_trace.decisions,
-        &rust_trace.callbacks,
+        &rust_trace,
         &java_data,
     );
     result.covered_cards = rust_trace.covered_cards;
@@ -967,30 +962,33 @@ fn run_single_matchup_oneshot(
 /// Run a single matchup: Rust only (no Java). Used when no JAR is provided.
 fn run_single_matchup_rust_only(config: &RunConfig, data: &LoadedData) -> MatchupResult {
     match runner::run_with_data(config, data) {
-        Ok(trace) => MatchupResult {
-            deck1: config.deck1.clone(),
-            deck2: config.deck2.clone(),
-            seed: config.seed,
-            status: MatchupStatus::Pass,
-            snapshots_compared: trace.snapshots.len(),
-            divergence_count: 0,
-            first_divergence: None,
-            error_message: None,
-            skip_reason: None,
-            rust_snapshot: None,
-            java_snapshot: None,
-            covered_cards: trace.covered_cards,
-            callback_window: vec![],
-            decision_window: vec![],
-            java_decision_window: vec![],
-            finished_turn: trace.snapshots.last().and_then(|s| {
+        Ok(trace) => {
+            let snapshots = trace.snapshot_vec();
+            let finished_turn = snapshots.last().and_then(|s| {
                 if s.game_over {
                     Some(s.turn)
                 } else {
                     None
                 }
-            }),
-        },
+            });
+            MatchupResult {
+                deck1: config.deck1.clone(),
+                deck2: config.deck2.clone(),
+                seed: config.seed,
+                status: MatchupStatus::Pass,
+                snapshots_compared: snapshots.len(),
+                divergence_count: 0,
+                first_divergence: None,
+                error_message: None,
+                skip_reason: None,
+                rust_snapshot: None,
+                java_snapshot: None,
+                covered_cards: trace.covered_cards,
+                rust_log: vec![],
+                java_log: vec![],
+                finished_turn,
+            }
+        }
         Err(e) => MatchupResult::error(config, format!("Rust engine error: {}", e)),
     }
 }
@@ -998,13 +996,12 @@ fn run_single_matchup_rust_only(config: &RunConfig, data: &LoadedData) -> Matchu
 /// Compare Rust and Java snapshot lists and build a MatchupResult.
 fn compare_snapshots(
     config: &RunConfig,
-    rust_snapshots: &[forge_parity::protocol::StateSnapshot],
-    rust_decisions: &[forge_parity::protocol::DecisionRecord],
-    rust_callbacks: &[CallbackRecord],
+    rust_trace: &forge_parity::protocol::GameTrace,
     java_data: &JavaMatchupData,
 ) -> MatchupResult {
     let full_log = config.full_log;
-    let java_snapshots = &java_data.snapshots;
+    let rust_snapshots = rust_trace.snapshot_vec();
+    let java_snapshots = java_data.snapshot_vec();
     let mut first_divergence: Option<Divergence> = None;
     let mut compared_until = rust_snapshots.len().max(java_snapshots.len());
     let mut rust_idx = 0usize;
@@ -1028,8 +1025,8 @@ fn compare_snapshots(
 
                 if config.loose_parity {
                     if let Some((next_rust_idx, next_java_idx)) = find_deep_resync(
-                        rust_snapshots,
-                        java_snapshots,
+                        &rust_snapshots,
+                        &java_snapshots,
                         rust_idx,
                         java_idx,
                         compared_index,
@@ -1081,7 +1078,7 @@ fn compare_snapshots(
 
     // --- Snapshot timeline dump (--log-snapshots) ---
     if config.log_snapshots {
-        dump_snapshot_timeline(rust_snapshots, java_snapshots);
+        dump_snapshot_timeline(&rust_snapshots, &java_snapshots);
     }
 
     let divergence_count = usize::from(first_divergence.is_some());
@@ -1090,22 +1087,18 @@ fn compare_snapshots(
     } else {
         MatchupStatus::Fail
     };
-    let (callback_window, decision_window, java_decision_window) = if full_log {
-        let rust_all = rust_callbacks.to_vec();
-        let java_all = java_data.callbacks.clone();
-        let dw = synthesize_decisions_from_callbacks(&rust_all);
-        let jdw = synthesize_decisions_from_callbacks(&java_all);
-        (rust_all, dw, jdw)
+    let (rust_log, java_log) = if full_log {
+        (rust_trace.log.clone(), java_data.log.clone())
     } else {
-        let cutoff = compute_callback_cutoff(first_divergence.as_ref(), rust_snapshots, java_snapshots);
-        let cw = build_callback_window(cutoff, rust_callbacks);
-        let mut dw = decision_records_for_callbacks(&cw, rust_decisions);
-        if dw.is_empty() {
-            dw = synthesize_decisions_from_callbacks(&cw);
-        }
-        let jcw = build_callback_window(cutoff, &java_data.callbacks);
-        let jdw = synthesize_decisions_from_callbacks(&jcw);
-        (cw, dw, jdw)
+        let cutoff = compute_callback_cutoff(first_divergence.as_ref(), &rust_snapshots, &java_snapshots);
+        let rust_cbs = rust_trace.callback_vec();
+        let java_cbs = java_data.callback_vec();
+        let rw = build_callback_window(cutoff, &rust_cbs);
+        let jw = build_callback_window(cutoff, &java_cbs);
+        (
+            rw.into_iter().map(ParityLogEntry::Callback).collect(),
+            jw.into_iter().map(ParityLogEntry::Callback).collect(),
+        )
     };
 
     MatchupResult {
@@ -1135,9 +1128,8 @@ fn compare_snapshots(
         error_message: None,
         skip_reason: None,
         covered_cards: vec![],
-        callback_window,
-        decision_window,
-        java_decision_window,
+        rust_log,
+        java_log,
         finished_turn: rust_snapshots.last().and_then(|s| {
             if s.game_over {
                 Some(s.turn)
@@ -1550,9 +1542,7 @@ fn run_matrix_mode(cli: &Cli) {
                             cache_hits.fetch_add(1, Ordering::Relaxed);
                             let mut result = compare_snapshots(
                                 config,
-                                &trace.snapshots,
-                                &trace.decisions,
-                                &trace.callbacks,
+                                &trace,
                                 &cached_java,
                             );
                             result.covered_cards = trace.covered_cards.clone();
@@ -1726,9 +1716,7 @@ fn run_java_compare_and_cache(
 
     let mut result = compare_snapshots(
         config,
-        &rust_trace.snapshots,
-        &rust_trace.decisions,
-        &rust_trace.callbacks,
+        &rust_trace,
         &java_data,
     );
     result.covered_cards = rust_trace.covered_cards.clone();
@@ -1759,7 +1747,7 @@ fn run_java_streaming_compare_pool(
     rust_trace: &forge_parity::protocol::GameTrace,
     pool: &ServerPool,
 ) -> MatchupResult {
-    let rust_snapshots = &rust_trace.snapshots;
+    let rust_snapshots = rust_trace.snapshot_vec();
     let mut first_divergence: Option<Divergence> = None;
     let mut compared_until: usize = 0;
 
@@ -1807,8 +1795,9 @@ fn run_java_streaming_compare_pool(
     };
 
     // Check if Rust has more snapshots than Java
-    if first_divergence.is_none() && rust_snapshots.len() > java_data.snapshots.len() {
-        let idx = java_data.snapshots.len();
+    let java_snapshots = java_data.snapshot_vec();
+    if first_divergence.is_none() && rust_snapshots.len() > java_snapshots.len() {
+        let idx = java_snapshots.len();
         if let Some(rs) = rust_snapshots.get(idx) {
             first_divergence = Some(Divergence {
                 snapshot_index: idx,
@@ -1828,22 +1817,18 @@ fn run_java_streaming_compare_pool(
     } else {
         MatchupStatus::Fail
     };
-    let (callback_window, decision_window, java_decision_window) = if config.full_log {
-        let rust_all = rust_trace.callbacks.clone();
-        let java_all = java_data.callbacks.clone();
-        let dw = synthesize_decisions_from_callbacks(&rust_all);
-        let jdw = synthesize_decisions_from_callbacks(&java_all);
-        (rust_all, dw, jdw)
+    let (rust_log, java_log) = if config.full_log {
+        (rust_trace.log.clone(), java_data.log.clone())
     } else {
-        let cutoff = compute_callback_cutoff(first_divergence.as_ref(), &rust_trace.snapshots, &java_data.snapshots);
-        let cw = build_callback_window(cutoff, &rust_trace.callbacks);
-        let mut dw = decision_records_for_callbacks(&cw, &rust_trace.decisions);
-        if dw.is_empty() {
-            dw = synthesize_decisions_from_callbacks(&cw);
-        }
-        let jcw = build_callback_window(cutoff, &java_data.callbacks);
-        let jdw = synthesize_decisions_from_callbacks(&jcw);
-        (cw, dw, jdw)
+        let cutoff = compute_callback_cutoff(first_divergence.as_ref(), &rust_snapshots, &java_snapshots);
+        let rust_cbs = rust_trace.callback_vec();
+        let java_cbs = java_data.callback_vec();
+        let rw = build_callback_window(cutoff, &rust_cbs);
+        let jw = build_callback_window(cutoff, &java_cbs);
+        (
+            rw.into_iter().map(ParityLogEntry::Callback).collect(),
+            jw.into_iter().map(ParityLogEntry::Callback).collect(),
+        )
     };
 
     MatchupResult {
@@ -1854,7 +1839,7 @@ fn run_java_streaming_compare_pool(
         snapshots_compared: if first_divergence.is_some() {
             compared_until
         } else {
-            rust_snapshots.len().max(java_data.snapshots.len())
+            rust_snapshots.len().max(java_snapshots.len())
         },
         divergence_count,
         rust_snapshot: first_divergence.as_ref().map(|_| {
@@ -1866,16 +1851,15 @@ fn run_java_streaming_compare_pool(
         java_snapshot: first_divergence.as_ref().map(|_| {
             let idx = compared_until
                 .saturating_sub(1)
-                .min(java_data.snapshots.len().saturating_sub(1));
-            java_data.snapshots[idx].clone()
+                .min(java_snapshots.len().saturating_sub(1));
+            java_snapshots[idx].clone()
         }),
         first_divergence,
         error_message: None,
         skip_reason: None,
         covered_cards: rust_trace.covered_cards.clone(),
-        callback_window,
-        decision_window,
-        java_decision_window,
+        rust_log,
+        java_log,
         finished_turn: rust_snapshots.last().and_then(|s| {
             if s.game_over {
                 Some(s.turn)
@@ -1916,9 +1900,7 @@ fn run_java_streaming_compare_oneshot(
     };
     let mut result = compare_snapshots(
         config,
-        &rust_trace.snapshots,
-        &rust_trace.decisions,
-        &rust_trace.callbacks,
+        &rust_trace,
         &java_data,
     );
     result.covered_cards = rust_trace.covered_cards.clone();
@@ -1935,7 +1917,7 @@ fn build_rust_only_result(
         deck2: config.deck2.clone(),
         seed: config.seed,
         status: MatchupStatus::Pass,
-        snapshots_compared: trace.snapshots.len(),
+        snapshots_compared: trace.snapshots().count(),
         divergence_count: 0,
         first_divergence: None,
         error_message: None,
@@ -1943,10 +1925,9 @@ fn build_rust_only_result(
         rust_snapshot: None,
         java_snapshot: None,
         covered_cards: trace.covered_cards.clone(),
-        callback_window: vec![],
-        decision_window: vec![],
-        java_decision_window: vec![],
-        finished_turn: trace.snapshots.last().and_then(|s| {
+        rust_log: vec![],
+        java_log: vec![],
+        finished_turn: trace.snapshots().last().and_then(|s| {
             if s.game_over {
                 Some(s.turn)
             } else {
@@ -1956,39 +1937,218 @@ fn build_rust_only_result(
     }
 }
 
-fn format_callback_window_text(result: &MatchupResult) -> String {
-    if result.status != MatchupStatus::Fail {
-        return String::new();
+fn extract_investigation_window<'a>(
+    rust_log: &'a [ParityLogEntry],
+    java_log: &'a [ParityLogEntry],
+    divergent_snapshot: usize,
+) -> (&'a [ParityLogEntry], &'a [ParityLogEntry]) {
+    fn find_snapshot_range(log: &[ParityLogEntry], snap_idx: usize) -> (usize, usize) {
+        let mut count = 0usize;
+        let mut start = 0usize;
+        let mut end = log.len();
+        for (i, entry) in log.iter().enumerate() {
+            if entry.as_snapshot().is_some() {
+                if count == snap_idx {
+                    // This is the divergent snapshot — everything before it
+                    // (back to previous snapshot) is what we want, plus this snapshot.
+                    end = i + 1;
+                    break;
+                }
+                count += 1;
+                // The entry right after this snapshot starts the next window.
+                start = i + 1;
+            }
+        }
+        if snap_idx > 0 && start > 0 {
+            // Walk back to include the previous snapshot itself.
+            let mut s = start - 1;
+            while s > 0 {
+                if log[s].as_snapshot().is_some() {
+                    start = s;
+                    break;
+                }
+                s -= 1;
+            }
+            if s == 0 && log[0].as_snapshot().is_some() {
+                start = 0;
+            }
+        }
+        (start, end)
     }
 
-    let mut out = String::new();
+    let (rs, re) = find_snapshot_range(rust_log, divergent_snapshot);
+    let (js, je) = find_snapshot_range(java_log, divergent_snapshot);
+    (&rust_log[rs..re], &java_log[js..je])
+}
 
-    if result.callback_window.is_empty() {
-        out.push_str("(No callbacks captured)\n");
-        return out;
+/// Wrap text to `width` visible characters, respecting ANSI escape sequences.
+fn wrap_cell(text: &str, width: usize) -> Vec<String> {
+    if text.is_empty() {
+        return vec![String::new()];
     }
+    let mut lines = Vec::new();
+    for raw_line in text.split('\n') {
+        let indent_len = visible_width(raw_line) - visible_width(raw_line.trim_start());
+        let indent: &str = &raw_line[..raw_line.len() - raw_line.trim_start().len()];
+        let content = &raw_line[raw_line.len() - raw_line.trim_start().len()..];
+        let effective_width = width.saturating_sub(indent_len);
+        if effective_width == 0 || content.is_empty() {
+            if !raw_line.is_empty() {
+                lines.push(raw_line.to_string());
+            }
+            continue;
+        }
+        let mut current = String::new();
+        let mut current_vis = 0usize;
+        for word in content.split_whitespace() {
+            let word_vis = visible_width(word);
+            if word_vis > effective_width {
+                if !current.is_empty() {
+                    lines.push(format!("{indent}{current}"));
+                    current = String::new();
+                    current_vis = 0;
+                }
+                // Long word — just push as-is (don't break mid-ANSI)
+                lines.push(format!("{indent}{word}"));
+                continue;
+            }
+            let sep = if current.is_empty() { 0 } else { 1 };
+            if current_vis + sep + word_vis > effective_width {
+                lines.push(format!("{indent}{current}"));
+                current = word.to_string();
+                current_vis = word_vis;
+            } else {
+                if !current.is_empty() {
+                    current.push(' ');
+                }
+                current.push_str(word);
+                current_vis += sep + word_vis;
+            }
+        }
+        if !current.is_empty() {
+            lines.push(format!("{indent}{current}"));
+        }
+    }
+    if lines.is_empty() {
+        lines.push(String::new());
+    }
+    lines
+}
 
-    let divergent_snapshot = result
-        .first_divergence
-        .as_ref()
-        .map(|d| d.snapshot_index)
-        .unwrap_or(usize::MAX);
+fn pad_visible(s: &str, width: usize) -> String {
+    let visible_len = visible_width(s);
+    if visible_len >= width {
+        s.to_string()
+    } else {
+        format!("{}{}", s, " ".repeat(width - visible_len))
+    }
+}
 
-    // Count how many Rust callbacks are context (before the divergent snapshot).
-    // Decisions are synthesized 1:1 from callbacks in order, so this count tells
-    // the side-by-side formatter where the snapshot boundary falls.
-    let rust_context_count = result
-        .callback_window
-        .iter()
-        .filter(|cb| cb.snapshot_index < divergent_snapshot)
-        .count();
+fn visible_width(s: &str) -> usize {
+    let mut width = 0;
+    let mut in_escape = false;
+    for c in s.chars() {
+        if in_escape {
+            if c == 'm' {
+                in_escape = false;
+            }
+        } else if c == '\x1b' {
+            in_escape = true;
+        } else {
+            width += 1;
+        }
+    }
+    width
+}
 
-    out.push_str(&format_side_by_side_decisions(
-        &result.decision_window,
-        &result.java_decision_window,
-        rust_context_count,
+const COL_WIDTH: usize = 64;
+
+/// Segment a unified log into buckets separated by snapshots.
+/// Returns (buckets, snapshot_count) where buckets[i] contains the formatted
+/// log lines between snapshot i-1 and snapshot i.
+fn bucket_log(log: &[ParityLogEntry]) -> (Vec<Vec<String>>, usize) {
+    use forge_parity::protocol::ParityLog;
+    let mut buckets: Vec<Vec<String>> = vec![vec![]];
+    let mut snap_count = 0usize;
+    for entry in log {
+        if entry.as_snapshot().is_some() {
+            snap_count += 1;
+            buckets.push(vec![]);
+        } else {
+            buckets.last_mut().unwrap().push(entry.format().trim_start().to_string());
+        }
+    }
+    (buckets, snap_count)
+}
+
+/// Render a side-by-side parity log table.
+///
+/// `snapshot_offset` is added to bucket indices for display (e.g. 0 for full log,
+/// `divergent - 1` for investigation windows).
+fn render_side_by_side(
+    rust_log: &[ParityLogEntry],
+    java_log: &[ParityLogEntry],
+    divergent_snapshot: usize,
+    snapshot_offset: usize,
+    out: &mut String,
+) {
+    let (rust_buckets, rust_snap_count) = bucket_log(rust_log);
+    let (java_buckets, java_snap_count) = bucket_log(java_log);
+    let max_snapshots = rust_snap_count.max(java_snap_count);
+
+    out.push_str(&format!(
+        "{:<5} {:<COL_WIDTH$} | {:<COL_WIDTH$}\n",
+        "#", "Rust", "Java"
     ));
-    out
+    out.push_str(&format!(
+        "{} {}+{}\n",
+        "-".repeat(5),
+        "-".repeat(COL_WIDTH + 1),
+        "-".repeat(COL_WIDTH + 1)
+    ));
+
+    let mut row_num = 0usize;
+
+    for snap_idx in 0..=max_snapshots {
+        let rust_logs = rust_buckets.get(snap_idx).map(|v| v.as_slice()).unwrap_or(&[]);
+        let java_logs = java_buckets.get(snap_idx).map(|v| v.as_slice()).unwrap_or(&[]);
+        let max_rows = rust_logs.len().max(java_logs.len());
+
+        for i in 0..max_rows {
+            row_num += 1;
+            let left_text = rust_logs.get(i).map(|s| s.as_str()).unwrap_or("");
+            let right_text = java_logs.get(i).map(|s| s.as_str()).unwrap_or("");
+            let left_lines = wrap_cell(left_text, COL_WIDTH);
+            let right_lines = wrap_cell(right_text, COL_WIDTH);
+            let height = left_lines.len().max(right_lines.len());
+            for line_idx in 0..height {
+                let label = if line_idx == 0 {
+                    format!("{:>4}.", row_num)
+                } else {
+                    "     ".to_string()
+                };
+                let left = left_lines.get(line_idx).map(String::as_str).unwrap_or("");
+                let right = right_lines.get(line_idx).map(String::as_str).unwrap_or("");
+                out.push_str(&format!(
+                    "{:<5} {} | {}\n",
+                    label, pad_visible(left, COL_WIDTH), pad_visible(right, COL_WIDTH)
+                ));
+            }
+        }
+
+        if snap_idx < max_snapshots {
+            let abs_snap = snapshot_offset + snap_idx;
+            let passed = abs_snap < divergent_snapshot;
+            let color = if passed { "\x1b[32m" } else { "\x1b[31m" };
+            let status_label = if passed { "PASS" } else { "DIVERGE" };
+            let label = format!("── snapshot {} ({}) ", abs_snap, status_label);
+            let fill = (COL_WIDTH * 2 + 8).saturating_sub(label.len());
+            out.push_str(&format!(
+                "      {color}{label}{}\x1b[0m\n",
+                "─".repeat(fill),
+            ));
+        }
+    }
 }
 
 fn format_investigation_for_results(results: &[MatchupResult]) -> String {
@@ -1997,11 +2157,31 @@ fn format_investigation_for_results(results: &[MatchupResult]) -> String {
         if result.status != MatchupStatus::Fail {
             continue;
         }
+
+        let divergent_snapshot = result
+            .first_divergence
+            .as_ref()
+            .map(|d| d.snapshot_index)
+            .unwrap_or(0);
+
+        let (rust_window, java_window) = extract_investigation_window(
+            &result.rust_log,
+            &result.java_log,
+            divergent_snapshot,
+        );
+
         out.push_str(&format!(
-            "\n=== Callback Debug: {} vs {} seed={} ===\n",
-            result.deck1, result.deck2, result.seed
+            "\n=== Investigation: {} vs {} seed={} (snapshot {}) ===\n",
+            result.deck1, result.deck2, result.seed, divergent_snapshot,
         ));
-        out.push_str(&format_callback_window_text(result));
+
+        if rust_window.is_empty() && java_window.is_empty() {
+            out.push_str("(No log entries in window)\n");
+            continue;
+        }
+
+        let snapshot_offset = if divergent_snapshot > 0 { divergent_snapshot - 1 } else { 0 };
+        render_side_by_side(rust_window, java_window, divergent_snapshot, snapshot_offset, &mut out);
     }
     out
 }
@@ -2010,7 +2190,7 @@ fn format_full_log_for_results(results: &[MatchupResult]) -> String {
     let mut out = String::new();
     for result in results {
         out.push_str(&format!(
-            "\n=== Full Callback Log: {} vs {} seed={} ({}) ===\n",
+            "\n=== Full Log: {} vs {} seed={} ({}) ===\n",
             result.deck1,
             result.deck2,
             result.seed,
@@ -2028,19 +2208,7 @@ fn format_full_log_for_results(results: &[MatchupResult]) -> String {
             .map(|d| d.snapshot_index)
             .unwrap_or(usize::MAX);
 
-        // decision_window and java_decision_window already contain the full
-        // callback log (synthesized into decisions) when full_log is active.
-        let rust_context_count = result
-            .callback_window
-            .iter()
-            .filter(|cb| cb.snapshot_index < divergent_snapshot)
-            .count();
-
-        out.push_str(&format_side_by_side_decisions_full(
-            &result.decision_window,
-            &result.java_decision_window,
-            rust_context_count,
-        ));
+        render_side_by_side(&result.rust_log, &result.java_log, divergent_snapshot, 0, &mut out);
     }
     out
 }
@@ -2128,260 +2296,6 @@ fn build_callback_window(
         })
         .cloned()
         .collect()
-}
-
-fn decision_records_for_callbacks(
-    callbacks: &[CallbackRecord],
-    decisions: &[forge_parity::protocol::DecisionRecord],
-) -> Vec<forge_parity::protocol::DecisionRecord> {
-    callbacks
-        .iter()
-        .flat_map(|cb| {
-            decisions.iter().filter(move |d| {
-                d.turn == cb.turn
-                    && d.phase == cb.phase
-                    && d.deciding_player == cb.player
-                    && d.kind == cb.name
-            })
-        })
-        .cloned()
-        .collect()
-}
-
-fn synthesize_decisions_from_callbacks(
-    callbacks: &[CallbackRecord],
-) -> Vec<forge_parity::protocol::DecisionRecord> {
-    callbacks
-        .iter()
-        .map(|cb| forge_parity::protocol::DecisionRecord {
-            turn: cb.turn,
-            phase: cb.phase.clone(),
-            deciding_player: cb.player,
-            kind: cb.name.clone(),
-            options: cb.args.clone(),
-            choice: cb.outcome.clone(),
-        })
-        .collect()
-}
-
-
-/// Format Rust vs Java decisions side-by-side.
-///
-/// `rust_context_count` is the number of Rust decisions that come from
-/// callbacks **before** the divergent snapshot.  The separator is placed
-/// after that many Rust rows — this is the actual snapshot boundary, not
-/// a content-based heuristic.
-fn format_side_by_side_decisions(
-    rust: &[forge_parity::protocol::DecisionRecord],
-    java: &[forge_parity::protocol::DecisionRecord],
-    rust_context_count: usize,
-) -> String {
-    format_side_by_side_decisions_inner(rust, java, rust_context_count, true)
-}
-
-fn format_side_by_side_decisions_full(
-    rust: &[forge_parity::protocol::DecisionRecord],
-    java: &[forge_parity::protocol::DecisionRecord],
-    rust_context_count: usize,
-) -> String {
-    format_side_by_side_decisions_inner(rust, java, rust_context_count, false)
-}
-
-fn format_side_by_side_decisions_inner(
-    rust: &[forge_parity::protocol::DecisionRecord],
-    java: &[forge_parity::protocol::DecisionRecord],
-    rust_context_count: usize,
-    truncate: bool,
-) -> String {
-    if rust.is_empty() && java.is_empty() {
-        return "(No matching decision records in Rust or Java)\n".to_string();
-    }
-
-    fn fmt_decision(d: &forge_parity::protocol::DecisionRecord) -> String {
-        let header = format!(
-            "T{} {} P{} {} -> {}",
-            d.turn, d.phase, d.deciding_player, d.kind, d.choice
-        );
-        let choice_logs: Vec<&str> = d.options.iter()
-            .filter_map(|o| o.strip_prefix("> "))
-            .collect();
-        if choice_logs.is_empty() {
-            header
-        } else {
-            let mut lines = vec![header];
-            for entry in choice_logs {
-                lines.push(format!("    {}", entry));
-            }
-            lines.join("\n")
-        }
-    }
-
-    fn wrap_cell(text: &str, width: usize) -> Vec<String> {
-        if text.is_empty() {
-            return vec!["-".to_string()];
-        }
-        let mut lines = Vec::new();
-        for raw_line in text.split('\n') {
-            // Preserve leading whitespace (indentation for choice logs).
-            let indent_len = raw_line.len() - raw_line.trim_start().len();
-            let indent: &str = &raw_line[..indent_len];
-            let content = &raw_line[indent_len..];
-            let effective_width = width.saturating_sub(indent_len);
-            if effective_width == 0 || content.is_empty() {
-                if !raw_line.is_empty() {
-                    lines.push(raw_line.to_string());
-                }
-                continue;
-            }
-            let mut current = String::new();
-            for word in content.split_whitespace() {
-                if word.len() > effective_width {
-                    if !current.is_empty() {
-                        lines.push(format!("{indent}{current}"));
-                        current = String::new();
-                    }
-                    let mut start = 0usize;
-                    while start < word.len() {
-                        let end = (start + effective_width).min(word.len());
-                        lines.push(format!("{indent}{}", &word[start..end]));
-                        start = end;
-                    }
-                    continue;
-                }
-                let sep = if current.is_empty() { 0 } else { 1 };
-                if current.len() + sep + word.len() > effective_width {
-                    lines.push(format!("{indent}{current}"));
-                    current = word.to_string();
-                } else {
-                    if !current.is_empty() {
-                        current.push(' ');
-                    }
-                    current.push_str(word);
-                }
-            }
-            if !current.is_empty() {
-                lines.push(format!("{indent}{current}"));
-            }
-        }
-        if lines.is_empty() {
-            lines.push("-".to_string());
-        }
-        lines
-    }
-
-    // Decision key for alignment: (turn, phase, player, callback_name).
-    fn decision_key(d: &forge_parity::protocol::DecisionRecord) -> (u32, String, u32, String) {
-        (d.turn, d.phase.clone(), d.deciding_player, d.kind.clone())
-    }
-
-    // Build LCS table on decision keys to align matching callbacks.
-    let rust_keys: Vec<_> = rust.iter().map(decision_key).collect();
-    let java_keys: Vec<_> = java.iter().map(decision_key).collect();
-    let n = rust_keys.len();
-    let m = java_keys.len();
-    let mut dp = vec![vec![0u32; m + 1]; n + 1];
-    for i in (0..n).rev() {
-        for j in (0..m).rev() {
-            dp[i][j] = if rust_keys[i] == java_keys[j] {
-                1 + dp[i + 1][j + 1]
-            } else {
-                dp[i + 1][j].max(dp[i][j + 1])
-            };
-        }
-    }
-
-    // Walk the LCS to build aligned rows: (Option<rust_idx>, Option<java_idx>).
-    let mut aligned: Vec<(Option<usize>, Option<usize>)> = Vec::new();
-    let (mut i, mut j) = (0, 0);
-    while i < n || j < m {
-        if i < n && j < m && rust_keys[i] == java_keys[j] {
-            aligned.push((Some(i), Some(j)));
-            i += 1;
-            j += 1;
-        } else if j >= m || (i < n && dp[i + 1][j] >= dp[i][j + 1]) {
-            aligned.push((Some(i), None));
-            i += 1;
-        } else {
-            aligned.push((None, Some(j)));
-            j += 1;
-        }
-    }
-
-    const COL_WIDTH: usize = 64;
-    let mut out = String::new();
-
-    let mut rows: Vec<(Vec<String>, Vec<String>)> = Vec::new();
-    for &(ri, ji) in &aligned {
-        let left = ri.map(|i| fmt_decision(&rust[i])).unwrap_or_default();
-        let right = ji.map(|j| fmt_decision(&java[j])).unwrap_or_default();
-        rows.push((wrap_cell(&left, COL_WIDTH), wrap_cell(&right, COL_WIDTH)));
-    }
-
-    out.push_str(&format!(
-        "{:<4} {:<COL_WIDTH$} | {:<COL_WIDTH$}\n",
-        "#", "Rust", "Java"
-    ));
-    out.push_str(&format!(
-        "{} {}+{}\n",
-        "-".repeat(4),
-        "-".repeat(COL_WIDTH + 1),
-        "-".repeat(COL_WIDTH + 1)
-    ));
-
-    // Map rust_context_count to the aligned row index.
-    // The separator goes after the last aligned row whose Rust side index < rust_context_count.
-    let aligned_separator = aligned
-        .iter()
-        .enumerate()
-        .filter_map(|(row_idx, &(ri, _))| ri.map(|i| (row_idx, i)))
-        .take_while(|&(_, rust_idx)| rust_idx < rust_context_count)
-        .last()
-        .map(|(row_idx, _)| row_idx + 1)
-        .unwrap_or(0);
-
-    // In truncated mode, show context + one divergent row then stop.
-    let last_row = if truncate && aligned_separator > 0 && aligned_separator < rows.len() {
-        aligned_separator + 1
-    } else {
-        rows.len()
-    };
-
-    for (idx, (left_lines, right_lines)) in rows[..last_row].iter().enumerate() {
-        // Insert green separator at the start (last good snapshot boundary).
-        if idx == 0 && aligned_separator > 0 {
-            let label = "-- last matching snapshot ";
-            let fill = COL_WIDTH.saturating_sub(label.len());
-            let line = format!("{label}{}", "-".repeat(fill));
-            out.push_str(&format!(
-                "     \x1b[32m{line} | {line}\x1b[0m\n"
-            ));
-        }
-        // Insert red separator at the snapshot boundary.
-        if idx == aligned_separator && aligned_separator > 0 {
-            let label = "-- snapshot divergence ";
-            let fill = COL_WIDTH.saturating_sub(label.len());
-            let line = format!("{label}{}", "-".repeat(fill));
-            out.push_str(&format!(
-                "     \x1b[31m{line} | {line}\x1b[0m\n"
-            ));
-        }
-
-        let height = left_lines.len().max(right_lines.len());
-        for line_idx in 0..height {
-            let row_label = if line_idx == 0 {
-                format!("{:>3}.", idx + 1)
-            } else {
-                "    ".to_string()
-            };
-            let left = left_lines.get(line_idx).map(String::as_str).unwrap_or("");
-            let right = right_lines.get(line_idx).map(String::as_str).unwrap_or("");
-            out.push_str(&format!(
-                "{:<4} {:<COL_WIDTH$} | {:<COL_WIDTH$}\n",
-                row_label, left, right
-            ));
-        }
-    }
-    out
 }
 
 fn run_fuzz_mode(cli: &Cli) {

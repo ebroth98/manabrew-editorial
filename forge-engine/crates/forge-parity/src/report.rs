@@ -21,7 +21,7 @@ pub fn build_report(trace: &GameTrace, divergences: Vec<Divergence>) -> ParityRe
         seed: trace.seed,
         deck1: trace.deck1.clone(),
         deck2: trace.deck2.clone(),
-        total_snapshots: trace.snapshots.len(),
+        total_snapshots: trace.snapshots().count(),
         divergences,
         passed,
     }
@@ -774,10 +774,12 @@ pub fn format_trace_text(trace: &GameTrace) -> String {
     out.push_str(&format!("Deck 1:     {}\n", trace.deck1));
     out.push_str(&format!("Deck 2:     {}\n", trace.deck2));
     out.push_str(&format!("Max turns:  {}\n", trace.max_turns));
-    out.push_str(&format!("Snapshots:  {}\n\n", trace.snapshots.len()));
+    let snapshots: Vec<_> = trace.snapshots().collect();
+    let decisions: Vec<_> = trace.decisions().collect();
+    out.push_str(&format!("Snapshots:  {}\n\n", snapshots.len()));
 
     let mut decision_idx = 0usize;
-    for (i, snap) in trace.snapshots.iter().enumerate() {
+    for (i, snap) in snapshots.iter().enumerate() {
         out.push_str(&format!(
             "--- Snapshot {} | Turn {} | {} | Active: P{} ---\n",
             i, snap.turn, snap.phase, snap.active_player,
@@ -837,8 +839,8 @@ pub fn format_trace_text(trace: &GameTrace) -> String {
         if !snap.stack.is_empty() {
             out.push_str(&format!("  Stack: {}\n", snap.stack.join(", ")));
         }
-        while decision_idx < trace.decisions.len() {
-            let d = &trace.decisions[decision_idx];
+        while decision_idx < decisions.len() {
+            let d = decisions[decision_idx];
             if d.turn != snap.turn {
                 break;
             }
@@ -898,6 +900,7 @@ mod tests {
 
     #[test]
     fn trace_text_format() {
+        use crate::protocol::ParityLogEntry;
         let trace = GameTrace {
             seed: 42,
             deck1: "red_burn".into(),
@@ -905,18 +908,18 @@ mod tests {
             max_turns: 5,
             variant: "Constructed".into(),
             commanders: vec![],
-            decisions: vec![],
             covered_cards: vec![],
-            callbacks: vec![],
-            snapshots: vec![StateSnapshot {
+            log: vec![ParityLogEntry::Snapshot(StateSnapshot {
                 turn: 1,
                 phase: "Untap".into(),
                 active_player: 0,
+                priority_player: 0,
                 game_over: false,
                 winner: None,
                 players: vec![],
                 stack: vec![],
-            }],
+                timestamp_ms: 0,
+            })],
         };
         let text = format_trace_text(&trace);
         assert!(text.contains("Rust-only"));

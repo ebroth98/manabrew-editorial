@@ -5,6 +5,7 @@
 //! compared field-by-field.
 
 use std::collections::BTreeMap;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use forge_engine_core::card::CounterType;
 use forge_engine_core::game::GameState;
@@ -32,6 +33,11 @@ pub fn snapshot_game(game: &GameState) -> StateSnapshot {
         .collect();
     stack.sort();
 
+    let timestamp_ms = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0);
+
     StateSnapshot {
         turn: game.turn.turn_number,
         phase: format!("{:?}", game.turn.phase),
@@ -41,6 +47,7 @@ pub fn snapshot_game(game: &GameState) -> StateSnapshot {
         winner: game.winner.map(|p| p.0),
         players: normalize_turn_start_players(players, game.turn.active_player),
         stack,
+        timestamp_ms,
     }
 }
 

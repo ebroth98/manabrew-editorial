@@ -17,8 +17,6 @@ import java.util.Random;
  * already provided by Java engine callbacks (PlayerController methods).
  */
 public final class ChoiceSpace {
-    /** Prefix on all choice-space log entries so the display layer can filter them. */
-    private static final String P = "> ";
 
     public static final class ChoiceResult<T> {
         public final List<T> sorted;
@@ -38,21 +36,16 @@ public final class ChoiceSpace {
 
     private ChoiceSpace() {}
 
-    private static String cc() {
-        final int n = ParityLog.rngCallCount();
-        return n >= 0 ? " {" + n + "}" : "";
-    }
-
     public static <T> T pickOne(final FCollectionView<T> options, final Random rng) {
         if (options == null || options.isEmpty()) {
             return null;
         }
         if (options.size() == 1) {
-            ParityLog.log(P + "pick_one [1] -> idx=0" + cc());
+            ParityLog.log("pick_one", 1, "idx=0");
             return options.get(0);
         }
         final int idx = rng.nextInt(options.size());
-        ParityLog.log(P + "pick_one [" + options.size() + "] -> idx=" + idx + cc());
+        ParityLog.log("pick_one", options.size(), "idx=" + idx);
         return options.get(idx);
     }
 
@@ -61,11 +54,11 @@ public final class ChoiceSpace {
             return null;
         }
         if (options.size() == 1) {
-            ParityLog.log(P + "pick_one [1] -> idx=0" + cc());
+            ParityLog.log("pick_one", 1, "idx=0");
             return options.get(0);
         }
         final int idx = rng.nextInt(options.size());
-        ParityLog.log(P + "pick_one [" + options.size() + "] -> idx=" + idx + cc());
+        ParityLog.log("pick_one", options.size(), "idx=" + idx);
         return options.get(idx);
     }
 
@@ -73,13 +66,13 @@ public final class ChoiceSpace {
         final int hi = Math.min(Math.max(max, 0), Math.max(available, 0));
         final int lo = Math.min(Math.max(min, 0), hi);
         final int count = lo + (hi > lo ? rng.nextInt(hi - lo + 1) : 0);
-        ParityLog.log(P + "pick_count [" + min + "-" + max + "] of " + available + " -> " + count + cc());
+        ParityLog.log("pick_count [" + min + "-" + max + "]", available, String.valueOf(count));
         return count;
     }
 
     public static int pickIntInRange(final int min, final int max, final Random rng) {
         if (max <= min) {
-            ParityLog.log(P + "pick_int_in_range [" + min + "-" + max + "] -> " + min + cc());
+            ParityLog.log("pick_int_in_range[" + min + " to " + max + "]", null, String.valueOf(min));
             return min;
         }
         final long span = (long) max - (long) min + 1L;
@@ -90,7 +83,7 @@ public final class ChoiceSpace {
             final long candidate = (long) min + rng.nextInt(Integer.MAX_VALUE);
             val = (int) Math.min(candidate, (long) max);
         }
-        ParityLog.log(P + "pick_int_in_range [" + min + "-" + max + "] -> " + val + cc());
+        ParityLog.log("pick_int_in_range [" + min + " to " + max + "]", null, String.valueOf(val));
         return val;
     }
 
@@ -106,35 +99,35 @@ public final class ChoiceSpace {
             out.add(pool.remove(pickIndex(pool.size(), rng)));
         }
         final int poolSize = options == null ? 0 : options.size();
-        ParityLog.log(P + "pick_many_unique [" + min + "-" + max + "] of " + poolSize + " -> picked " + out.size() + cc());
+        ParityLog.log("pick_many_unique [" + min + " to " + max + "]", poolSize, "picked " + out.size());
         return out;
     }
 
     public static <T> List<T> shuffleCopy(final List<T> options, final Random rng) {
         final List<T> out = new ArrayList<>(options);
         Collections.shuffle(out, rng);
-        ParityLog.log(P + "shuffle_copy [" + options.size() + "]" + cc());
+        ParityLog.log("shuffle_copy", options.size(), "done");
         return out;
     }
 
     public static boolean pickBool(final Random rng) {
         final boolean result = rng.nextInt(2) == 1;
-        ParityLog.log(P + "pick_bool -> " + result + cc());
+        ParityLog.log("pick_bool", 2, String.valueOf(result));
         return result;
     }
 
     /** Pick an index in [0, size). Does not consume RNG when size <= 1. */
     public static int pickIndex(final int size, final Random rng) {
         if (size <= 0) {
-            ParityLog.log(P + "pick_index [0] -> idx=-1" + cc());
+            ParityLog.log("pick_index", 0, "idx=-1");
             return -1;
         }
         if (size == 1) {
-            ParityLog.log(P + "pick_index [1] -> idx=0" + cc());
+            ParityLog.log("pick_index", 1, "idx=0");
             return 0;
         }
         final int idx = rng.nextInt(size);
-        ParityLog.log(P + "pick_index [" + size + "] -> idx=" + idx + cc());
+        ParityLog.log("pick_index", size, "idx=" + idx);
         return idx;
     }
 
@@ -144,11 +137,8 @@ public final class ChoiceSpace {
             return 0;
         }
         final int idx = rng.nextInt(size + 1);
-        if (idx >= size) {
-            ParityLog.log(P + "pick_index_with_pass [" + size + "] -> PASS" + cc());
-        } else {
-            ParityLog.log(P + "pick_index_with_pass [" + size + "] -> idx=" + idx + cc());
-        }
+        final String outcome = idx >= size ? "PASS" : "idx=" + idx;
+        ParityLog.log("pick_index_with_pass", size, outcome);
         return idx;
     }
 
@@ -190,11 +180,8 @@ public final class ChoiceSpace {
         } else {
             idx = roll / safeWeight;
         }
-        if (idx >= safeSize) {
-            ParityLog.log(P + "pick_weighted [" + safeSize + "] w=" + safeWeight + " -> PASS" + cc());
-        } else {
-            ParityLog.log(P + "pick_weighted [" + safeSize + "] w=" + safeWeight + " -> idx=" + idx + cc());
-        }
+        final String outcome = idx >= safeSize ? "PASS" : "idx=" + idx;
+        ParityLog.log("pick_weighted w=" + safeWeight, safeSize, outcome);
         return idx;
     }
 }

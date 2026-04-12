@@ -16,7 +16,7 @@ use std::io::Read;
 use std::path::{Path, PathBuf};
 
 use crate::java_bridge::JavaMatchupData;
-use crate::protocol::{CallbackRecord, DecisionRecord, StateSnapshot};
+use crate::protocol::ParityLogEntry;
 
 /// Lightweight wrapper that manages a directory of cached Java matchup outputs.
 pub struct JavaCache {
@@ -38,18 +38,13 @@ struct MatchupKey<'a> {
 // requiring Serialize/Deserialize on the original struct.
 #[derive(serde::Serialize, serde::Deserialize)]
 struct CachedMatchup {
-    snapshots: Vec<StateSnapshot>,
-    decisions: Vec<DecisionRecord>,
-    #[serde(default)]
-    callbacks: Vec<CallbackRecord>,
+    log: Vec<ParityLogEntry>,
 }
 
 impl From<&JavaMatchupData> for CachedMatchup {
     fn from(d: &JavaMatchupData) -> Self {
         Self {
-            snapshots: d.snapshots.clone(),
-            decisions: d.decisions.clone(),
-            callbacks: d.callbacks.clone(),
+            log: d.log.clone(),
         }
     }
 }
@@ -57,9 +52,7 @@ impl From<&JavaMatchupData> for CachedMatchup {
 impl From<CachedMatchup> for JavaMatchupData {
     fn from(c: CachedMatchup) -> Self {
         Self {
-            snapshots: c.snapshots,
-            decisions: c.decisions,
-            callbacks: c.callbacks,
+            log: c.log,
         }
     }
 }
@@ -71,7 +64,7 @@ struct Manifest {
 }
 
 const MANIFEST_FILE: &str = "manifest.json";
-const CACHE_VERSION: u32 = 2;
+const CACHE_VERSION: u32 = 3;
 
 impl JavaCache {
     /// Open (or create) a cache directory.

@@ -55,6 +55,7 @@ public final class DecisionLog {
         row.put("name", kind);
         row.put("outcome", outcome);
         row.put("args", new ArrayList<>(args == null ? List.of() : args));
+        row.put("timestamp_ms", System.currentTimeMillis());
         sink.accept(GSON.toJson(row));
     }
 
@@ -75,6 +76,7 @@ public final class DecisionLog {
         row.put("kind", kind);
         row.put("options", new ArrayList<>(options));
         row.put("choice", choice);
+        row.put("timestamp_ms", System.currentTimeMillis());
         sink.accept(GSON.toJson(row));
     }
 }

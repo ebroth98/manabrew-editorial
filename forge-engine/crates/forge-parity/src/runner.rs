@@ -2,7 +2,7 @@ use std::cell::RefCell;
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::rc::Rc;
 use std::sync::{Arc, Mutex};
-use std::time::Instant;
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use forge_carddb::CardDatabase;
 use forge_engine_core::agent::{
@@ -24,24 +24,24 @@ use crate::java_random::JavaRandom;
 use crate::parity_card_map::ParityCardMap;
 use crate::parity_id;
 use crate::parity_order;
-use crate::protocol::{CallbackRecord, DecisionRecord, GameTrace, StateSnapshot};
+use crate::protocol::{CallbackRecord, DecisionRecord, GameTrace, ParityLogEntry, StateSnapshot};
 use crate::snapshot::snapshot_game;
 use crate::utils::decks::{build_deck_from_spec, resolve_deck_spec};
 
 pub const DEFAULT_DECKS_DIR: &str = "preset_decks";
 
 pub(crate) struct ParityObserver {
-    shared_callbacks: Arc<Mutex<Vec<CallbackRecord>>>,
+    shared_log: Arc<Mutex<Vec<ParityLogEntry>>>,
     shared_snapshot_index: Arc<Mutex<usize>>,
 }
 
 impl ParityObserver {
     fn new(
-        shared_callbacks: Arc<Mutex<Vec<CallbackRecord>>>,
+        shared_log: Arc<Mutex<Vec<ParityLogEntry>>>,
         shared_snapshot_index: Arc<Mutex<usize>>,
     ) -> Self {
         Self {
-            shared_callbacks,
+            shared_log,
             shared_snapshot_index,
         }
     }
@@ -50,7 +50,11 @@ impl ParityObserver {
         let choice_logs = crate::parity_log::drain();
 
         let snapshot_index = *self.shared_snapshot_index.lock().unwrap();
-        self.shared_callbacks.lock().unwrap().push(CallbackRecord {
+        let timestamp_ms = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_millis() as u64)
+            .unwrap_or(0);
+        self.shared_log.lock().unwrap().push(ParityLogEntry::Callback(CallbackRecord {
             snapshot_index,
             turn,
             phase: phase.to_string(),
@@ -58,7 +62,8 @@ impl ParityObserver {
             name: name.to_string(),
             outcome: outcome.to_string(),
             args: choice_logs,
-        });
+            timestamp_ms,
+        }));
     }
 
     fn mark_snapshot(&self) {
@@ -69,9 +74,8 @@ impl ParityObserver {
 struct CapturingAgent {
     player_id: PlayerId,
     inner: DeterministicAgent,
-    shared_snapshots: Arc<Mutex<Vec<StateSnapshot>>>,
+    shared_log: Arc<Mutex<Vec<ParityLogEntry>>>,
     shared_covered_cards: Arc<Mutex<BTreeSet<String>>>,
-    shared_decisions: Arc<Mutex<Vec<DecisionRecord>>>,
     parity_observer: Arc<ParityObserver>,
     parity_map: Arc<ParityCardMap>,
     capture_snapshots: bool,
@@ -88,10 +92,8 @@ impl CapturingAgent {
         player_id: PlayerId,
         verbose: VerboseMode,
         prefer_actions: bool,
-        shared: Arc<Mutex<Vec<StateSnapshot>>>,
+        shared_log: Arc<Mutex<Vec<ParityLogEntry>>>,
         covered: Arc<Mutex<BTreeSet<String>>>,
-        decisions: Arc<Mutex<Vec<DecisionRecord>>>,
-        callbacks: Arc<Mutex<Vec<CallbackRecord>>>,
         snapshot_index: Arc<Mutex<usize>>,
         rng: Rc<RefCell<JavaRandom>>,
         game_rng: Rc<RefCell<JavaRandom>>,
@@ -100,7 +102,7 @@ impl CapturingAgent {
         deep: bool,
         callback_snapshots: bool,
     ) -> Self {
-        let observer = Arc::new(ParityObserver::new(callbacks, snapshot_index));
+        let observer = Arc::new(ParityObserver::new(Arc::clone(&shared_log), snapshot_index));
         Self {
             player_id,
             inner: DeterministicAgent::new(
@@ -112,9 +114,8 @@ impl CapturingAgent {
                 Arc::clone(&parity_map),
                 Some(Arc::clone(&observer)),
             ),
-            shared_snapshots: shared,
+            shared_log,
             shared_covered_cards: covered,
-            shared_decisions: decisions,
             parity_observer: observer,
             parity_map,
             capture_snapshots,
@@ -148,15 +149,21 @@ impl CapturingAgent {
             return;
         };
         let snapshot = snapshot_game(game);
-        self.shared_snapshots.lock().unwrap().push(snapshot.clone());
-        self.shared_decisions.lock().unwrap().push(DecisionRecord {
+        let timestamp_ms = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_millis() as u64)
+            .unwrap_or(0);
+        let mut log = self.shared_log.lock().unwrap();
+        log.push(ParityLogEntry::Snapshot(snapshot.clone()));
+        log.push(ParityLogEntry::Decision(DecisionRecord {
             turn: snapshot.turn,
             phase: snapshot.phase.clone(),
             deciding_player: self.player_id.0,
             kind: kind.to_string(),
             options: vec![],
             choice: "CALLBACK_ENTRY".to_string(),
-        });
+            timestamp_ms,
+        }));
     }
 }
 
@@ -208,7 +215,7 @@ impl PlayerAgent for CapturingAgent {
                                 p.lands_played = 0;
                             }
                         }
-                        self.shared_snapshots.lock().unwrap().push(snap);
+                        self.shared_log.lock().unwrap().push(ParityLogEntry::Snapshot(snap));
                         self.parity_observer.mark_snapshot();
                     }
                 }
@@ -220,10 +227,10 @@ impl PlayerAgent for CapturingAgent {
                 }
                 if self.deep && self.player_id.0 == 0 {
                     if let Some(ref game) = self.last_game_state {
-                        self.shared_snapshots
+                        self.shared_log
                             .lock()
                             .unwrap()
-                            .push(snapshot_game(game));
+                            .push(ParityLogEntry::Snapshot(snapshot_game(game)));
                         self.parity_observer.mark_snapshot();
                     }
                 }
@@ -234,10 +241,10 @@ impl PlayerAgent for CapturingAgent {
                 }
                 if self.deep && self.player_id.0 == 0 {
                     if let Some(ref game) = self.last_game_state {
-                        self.shared_snapshots
+                        self.shared_log
                             .lock()
                             .unwrap()
-                            .push(snapshot_game(game));
+                            .push(ParityLogEntry::Snapshot(snapshot_game(game)));
                         self.parity_observer.mark_snapshot();
                     }
                 }
@@ -537,11 +544,9 @@ pub fn run_with_data(config: &RunConfig, data: &LoadedData) -> Result<GameTrace,
     game_loop.token_art_variants = data.db.token_art_variants().clone();
     game_loop.token_fallback = data.db.token_fallback().clone();
 
-    // Shared storage for turn-start snapshots captured by CapturingAgent
-    let shared_snapshots: Arc<Mutex<Vec<StateSnapshot>>> = Arc::new(Mutex::new(Vec::new()));
+    // Shared storage for parity log entries captured by CapturingAgent
+    let shared_log: Arc<Mutex<Vec<ParityLogEntry>>> = Arc::new(Mutex::new(Vec::new()));
     let shared_covered_cards: Arc<Mutex<BTreeSet<String>>> = Arc::new(Mutex::new(BTreeSet::new()));
-    let shared_decisions: Arc<Mutex<Vec<DecisionRecord>>> = Arc::new(Mutex::new(Vec::new()));
-    let shared_callbacks: Arc<Mutex<Vec<CallbackRecord>>> = Arc::new(Mutex::new(Vec::new()));
 
     // Run game with fixed seed (for any engine-internal randomness)
     let mut rng = StdRng::seed_from_u64(config.seed);
@@ -614,7 +619,7 @@ pub fn run_with_data(config: &RunConfig, data: &LoadedData) -> Result<GameTrace,
         r
     }));
 
-    let parity_log_sink: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+    let parity_log_sink: Arc<Mutex<Vec<crate::protocol::ChoiceLogEntry>>> = Arc::new(Mutex::new(Vec::new()));
     crate::parity_log::set_sink(Arc::clone(&parity_log_sink));
 
     let parity_map = Arc::new(ParityCardMap::from_opening_state(&game));
@@ -631,10 +636,8 @@ pub fn run_with_data(config: &RunConfig, data: &LoadedData) -> Result<GameTrace,
             p0,
             config.verbose.clone(),
             config.prefer_actions,
-            Arc::clone(&shared_snapshots),
+            Arc::clone(&shared_log),
             Arc::clone(&shared_covered_cards),
-            Arc::clone(&shared_decisions),
-            Arc::clone(&shared_callbacks),
             Arc::clone(&shared_snapshot_index),
             Rc::clone(&agent_rng),
             Rc::clone(&game_rng),
@@ -647,10 +650,8 @@ pub fn run_with_data(config: &RunConfig, data: &LoadedData) -> Result<GameTrace,
             p1,
             config.verbose.clone(),
             config.prefer_actions,
-            Arc::clone(&shared_snapshots),
+            Arc::clone(&shared_log),
             Arc::clone(&shared_covered_cards),
-            Arc::clone(&shared_decisions),
-            Arc::clone(&shared_callbacks),
             Arc::clone(&shared_snapshot_index),
             Rc::clone(&agent_rng),
             Rc::clone(&game_rng),
@@ -676,18 +677,13 @@ pub fn run_with_data(config: &RunConfig, data: &LoadedData) -> Result<GameTrace,
 
     crate::parity_log::clear_sink();
 
-    // Collect turn-start snapshots from the shared storage.
-    let turn_snapshots = shared_snapshots.lock().unwrap();
-    let snapshots: Vec<StateSnapshot> = turn_snapshots.clone();
-    drop(turn_snapshots);
-    let decisions: Vec<DecisionRecord> = shared_decisions.lock().unwrap().clone();
+    let log: Vec<ParityLogEntry> = shared_log.lock().unwrap().clone();
     let covered_cards: Vec<String> = shared_covered_cards
         .lock()
         .unwrap()
         .iter()
         .cloned()
         .collect();
-    let callbacks: Vec<CallbackRecord> = shared_callbacks.lock().unwrap().clone();
 
     Ok(GameTrace {
         seed: config.seed,
@@ -696,10 +692,8 @@ pub fn run_with_data(config: &RunConfig, data: &LoadedData) -> Result<GameTrace,
         max_turns: config.max_turns,
         variant: config.variant.clone(),
         commanders: config.commanders.clone(),
-        snapshots,
-        decisions,
+        log,
         covered_cards,
-        callbacks,
     })
 }
 

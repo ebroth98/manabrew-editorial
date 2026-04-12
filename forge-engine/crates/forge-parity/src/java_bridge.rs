@@ -14,7 +14,7 @@ use std::time::Instant;
 
 use serde::{Deserialize, Serialize};
 
-use crate::protocol::{CallbackRecord, DecisionRecord, StateSnapshot};
+use crate::protocol::{CallbackRecord, ChoiceLogEntry, DecisionRecord, ParityLogEntry, StateSnapshot};
 
 /// Configuration for a Java bridge subprocess.
 pub struct JavaBridgeConfig {
@@ -37,9 +37,7 @@ pub struct JavaBridge {
 }
 
 pub struct JavaMatchupData {
-    pub snapshots: Vec<StateSnapshot>,
-    pub decisions: Vec<DecisionRecord>,
-    pub callbacks: Vec<CallbackRecord>,
+    pub log: Vec<ParityLogEntry>,
 }
 
 impl JavaBridge {
@@ -160,9 +158,8 @@ impl JavaBridge {
             .ok_or_else(|| JavaBridgeError::ProtocolError("No stdout from Java process".into()))?;
 
         let reader = BufReader::new(stdout);
-        let mut snapshots = Vec::new();
-        let mut decisions = Vec::new();
-        let mut callbacks = Vec::new();
+        let mut log = Vec::new();
+        let mut snapshot_count = 0usize;
 
         let t_read = Instant::now();
         for line_result in reader.lines() {
@@ -176,12 +173,12 @@ impl JavaBridge {
             }
 
             if let Some(decision) = parse_decision_line(&line) {
-                decisions.push(decision);
+                log.push(ParityLogEntry::Decision(decision));
                 continue;
             }
 
-            if let Some(callback) = parse_callback_line(&line, snapshots.len()) {
-                callbacks.push(callback);
+            if let Some(callback) = parse_callback_line(&line, snapshot_count) {
+                log.push(ParityLogEntry::Callback(callback));
                 continue;
             }
 
@@ -193,7 +190,8 @@ impl JavaBridge {
                             snapshot.turn, snapshot.phase, snapshot.game_over
                         );
                     }
-                    snapshots.push(snapshot);
+                    log.push(ParityLogEntry::Snapshot(snapshot));
+                    snapshot_count += 1;
                 }
                 Err(e) => {
                     if verbose {
@@ -203,7 +201,6 @@ impl JavaBridge {
                         );
                         eprintln!("[parity]   line: {}", line);
                     }
-                    // Continue reading — might be a diagnostic line that leaked to stdout
                 }
             }
         }
@@ -225,14 +222,10 @@ impl JavaBridge {
         if verbose {
             eprintln!(
                 "[parity] Java harness completed: {} snapshot(s)",
-                snapshots.len()
+                snapshot_count
             );
         }
-        Ok(JavaMatchupData {
-            snapshots,
-            decisions,
-            callbacks,
-        })
+        Ok(JavaMatchupData { log })
     }
 }
 
@@ -435,10 +428,8 @@ impl JavaServer {
             .flush()
             .map_err(|e| JavaBridgeError::ProtocolError(format!("Failed to flush stdin: {}", e)))?;
 
-        // Read response lines until we get the done sentinel
-        let mut snapshots = Vec::new();
-        let mut decisions = Vec::new();
-        let mut callbacks = Vec::new();
+        let mut log = Vec::new();
+        let mut snapshot_count = 0usize;
         let mut line_buf = String::new();
 
         let t_read = Instant::now();
@@ -449,7 +440,6 @@ impl JavaServer {
             })?;
 
             if bytes_read == 0 {
-                // EOF — server crashed or exited
                 return Err(JavaBridgeError::ProtocolError(
                     "Java server closed stdout (crashed?)".into(),
                 ));
@@ -460,7 +450,6 @@ impl JavaServer {
                 continue;
             }
 
-            // Try to parse as done sentinel first
             if let Ok(sentinel) = serde_json::from_str::<DoneSentinel>(line) {
                 if sentinel.done {
                     if let Some(err) = sentinel.error {
@@ -474,16 +463,15 @@ impl JavaServer {
             }
 
             if let Some(decision) = parse_decision_line(line) {
-                decisions.push(decision);
+                log.push(ParityLogEntry::Decision(decision));
                 continue;
             }
 
-            if let Some(callback) = parse_callback_line(line, snapshots.len()) {
-                callbacks.push(callback);
+            if let Some(callback) = parse_callback_line(line, snapshot_count) {
+                log.push(ParityLogEntry::Callback(callback));
                 continue;
             }
 
-            // Otherwise parse as a snapshot
             match serde_json::from_str::<StateSnapshot>(line) {
                 Ok(snapshot) => {
                     if self.verbose {
@@ -492,7 +480,8 @@ impl JavaServer {
                             snapshot.turn, snapshot.phase, snapshot.game_over
                         );
                     }
-                    snapshots.push(snapshot);
+                    log.push(ParityLogEntry::Snapshot(snapshot));
+                    snapshot_count += 1;
                 }
                 Err(e) => {
                     if self.verbose {
@@ -501,7 +490,6 @@ impl JavaServer {
                             e, line
                         );
                     }
-                    // Continue — might be a stray diagnostic line
                 }
             }
         }
@@ -509,14 +497,10 @@ impl JavaServer {
         if self.verbose {
             eprintln!(
                 "[parity] Java server matchup completed: {} snapshot(s)",
-                snapshots.len()
+                snapshot_count
             );
         }
-        Ok(JavaMatchupData {
-            snapshots,
-            decisions,
-            callbacks,
-        })
+        Ok(JavaMatchupData { log })
     }
 
     /// Run a matchup with streaming snapshot comparison.
@@ -571,11 +555,9 @@ impl JavaServer {
             .flush()
             .map_err(|e| JavaBridgeError::ProtocolError(format!("Failed to flush stdin: {}", e)))?;
 
-        let mut snapshots = Vec::new();
-        let mut decisions = Vec::new();
-        let mut callbacks = Vec::new();
+        let mut log = Vec::new();
+        let mut snapshot_count = 0usize;
         let mut line_buf = String::new();
-        let mut snapshot_idx: usize = 0;
         let mut draining = false;
 
         loop {
@@ -595,7 +577,6 @@ impl JavaServer {
                 continue;
             }
 
-            // Always check for done sentinel
             if let Ok(sentinel) = serde_json::from_str::<DoneSentinel>(line) {
                 if sentinel.done {
                     if let Some(err) = sentinel.error {
@@ -608,18 +589,17 @@ impl JavaServer {
                 }
             }
 
-            // When draining after divergence, skip parsing snapshots entirely
             if draining {
                 continue;
             }
 
             if let Some(decision) = parse_decision_line(line) {
-                decisions.push(decision);
+                log.push(ParityLogEntry::Decision(decision));
                 continue;
             }
 
-            if let Some(callback) = parse_callback_line(line, snapshots.len()) {
-                callbacks.push(callback);
+            if let Some(callback) = parse_callback_line(line, snapshot_count) {
+                log.push(ParityLogEntry::Callback(callback));
                 continue;
             }
 
@@ -631,9 +611,9 @@ impl JavaServer {
                             snapshot.turn, snapshot.phase, snapshot.game_over
                         );
                     }
-                    let keep_going = on_snapshot(snapshot_idx, &snapshot);
-                    snapshots.push(snapshot);
-                    snapshot_idx += 1;
+                    let keep_going = on_snapshot(snapshot_count, &snapshot);
+                    log.push(ParityLogEntry::Snapshot(snapshot));
+                    snapshot_count += 1;
                     if !keep_going {
                         draining = true;
                     }
@@ -652,15 +632,11 @@ impl JavaServer {
         if self.verbose {
             eprintln!(
                 "[parity] Java server matchup completed: {} snapshot(s){}",
-                snapshots.len(),
+                snapshot_count,
                 if draining { " (early divergence)" } else { "" }
             );
         }
-        Ok(JavaMatchupData {
-            snapshots,
-            decisions,
-            callbacks,
-        })
+        Ok(JavaMatchupData { log })
     }
 
     /// Check if the server process is still alive.
@@ -714,8 +690,11 @@ struct DecisionEnvelope {
     phase: String,
     deciding_player: u32,
     kind: String,
+    #[serde(default)]
     options: Vec<String>,
     choice: String,
+    #[serde(default)]
+    timestamp_ms: u64,
 }
 
 #[derive(Deserialize)]
@@ -728,6 +707,8 @@ struct CallbackEnvelope {
     outcome: String,
     #[serde(default)]
     args: Vec<String>,
+    #[serde(default)]
+    timestamp_ms: u64,
 }
 
 fn parse_decision_line(line: &str) -> Option<DecisionRecord> {
@@ -740,8 +721,9 @@ fn parse_decision_line(line: &str) -> Option<DecisionRecord> {
         phase: env.phase,
         deciding_player: env.deciding_player,
         kind: env.kind,
-        options: env.options,
+        options: env.options.into_iter().map(ChoiceLogEntry::from_json).collect(),
         choice: env.choice,
+        timestamp_ms: env.timestamp_ms,
     })
 }
 
@@ -757,7 +739,8 @@ fn parse_callback_line(line: &str, snapshot_index: usize) -> Option<CallbackReco
         player: env.player,
         name: env.name,
         outcome: env.outcome,
-        args: env.args,
+        args: env.args.into_iter().map(ChoiceLogEntry::from_json).collect(),
+        timestamp_ms: env.timestamp_ms,
     })
 }
 
@@ -830,6 +813,21 @@ fn resolve_java_bin(verbose: bool) -> String {
     }
 
     "java".to_string()
+}
+
+impl JavaMatchupData {
+    pub fn snapshots(&self) -> impl Iterator<Item = &StateSnapshot> {
+        self.log.iter().filter_map(|e| e.as_snapshot())
+    }
+    pub fn snapshot_vec(&self) -> Vec<StateSnapshot> {
+        self.snapshots().cloned().collect()
+    }
+    pub fn callbacks(&self) -> impl Iterator<Item = &CallbackRecord> {
+        self.log.iter().filter_map(|e| e.as_callback())
+    }
+    pub fn callback_vec(&self) -> Vec<CallbackRecord> {
+        self.callbacks().cloned().collect()
+    }
 }
 
 /// Errors from the Java bridge.

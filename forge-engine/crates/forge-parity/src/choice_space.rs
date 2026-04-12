@@ -1,17 +1,23 @@
 use crate::java_random::JavaRandom;
 use crate::parity_log;
+use crate::protocol::ChoiceLogEntry;
 use std::cmp::Ordering;
 
-/// Prefix used on all choice-space log entries so the display layer can
-/// distinguish them from regular callback args.
-const P: &str = "> ";
+fn rng_log(name: &str, choices: Option<usize>, outcome: String, rng: &JavaRandom) {
+    parity_log::log(ChoiceLogEntry {
+        name: name.to_string(),
+        choices,
+        outcome,
+        rng_call_count: Some(rng.call_count),
+    });
+}
 
 // ── Choice functions ──────────────────────────────────────────────
 
 pub fn pick_bool(rng: &mut JavaRandom) -> bool {
     let idx = pick_index(2, rng);
     let result = idx == 1;
-    parity_log::log(&format!("{P}pick_bool -> {result} {{{}}}", rng.call_count));
+    rng_log("pick_bool", Some(2), result.to_string(), rng);
     result
 }
 
@@ -20,37 +26,30 @@ pub fn pick_one<T: Copy>(options: &[T], rng: &mut JavaRandom) -> Option<T> {
         return None;
     }
     let idx = pick_index(options.len(), rng);
-    parity_log::log(&format!("{P}pick_one [{len}] -> idx={idx} {{{cc}}}", len = options.len(), cc = rng.call_count));
+    rng_log("pick_one", Some(options.len()), format!("idx={idx}"), rng);
     Some(options[idx])
 }
 
 /// Pick index in [0, size). Does not consume RNG when size <= 1.
 pub fn pick_index(size: usize, rng: &mut JavaRandom) -> usize {
     if size == 0 {
-        parity_log::log(&format!("{P}pick_index [0] -> idx=0 {{{}}}", rng.call_count));
+        rng_log("pick_index", Some(0), "idx=0".into(), rng);
         return 0;
     }
     if size == 1 {
-        parity_log::log(&format!("{P}pick_index [1] -> idx=0 {{{}}}", rng.call_count));
+        rng_log("pick_index", Some(1), "idx=0".into(), rng);
         return 0;
     }
     let idx = rng.next_int(size as i32) as usize;
-    parity_log::log(&format!(
-        "{P}pick_index [{size}] -> idx={idx} {{{cc}}}",
-        cc = rng.call_count
-    ));
+    rng_log("pick_index", Some(size), format!("idx={idx}"), rng);
     idx
 }
 
 /// Pick index in [0, size] where size is PASS.
 pub fn pick_index_with_pass(size: usize, rng: &mut JavaRandom) -> usize {
     let idx = rng.next_int((size + 1) as i32) as usize;
-    let cc = rng.call_count;
-    if idx >= size {
-        parity_log::log(&format!("{P}pick_index_with_pass [{size}] -> PASS {{{cc}}}"));
-    } else {
-        parity_log::log(&format!("{P}pick_index_with_pass [{size}] -> idx={idx} {{{cc}}}"));
-    }
+    let outcome = if idx >= size { "PASS".into() } else { format!("idx={idx}") };
+    rng_log("pick_index_with_pass", Some(size), outcome, rng);
     idx
 }
 
@@ -68,12 +67,8 @@ pub fn pick_weighted_index_with_pass(
     } else {
         roll / safe_weight
     };
-    let cc = rng.call_count;
-    if idx >= safe_size {
-        parity_log::log(&format!("{P}pick_weighted [{safe_size}] w={safe_weight} -> PASS {{{cc}}}"));
-    } else {
-        parity_log::log(&format!("{P}pick_weighted [{safe_size}] w={safe_weight} -> idx={idx} {{{cc}}}"));
-    }
+    let outcome = if idx >= safe_size { "PASS".into() } else { format!("idx={idx}") };
+    rng_log(&format!("pick_weighted w={safe_weight}"), Some(safe_size), outcome, rng);
     idx
 }
 
@@ -91,7 +86,7 @@ pub fn pick_count(min: usize, max: usize, available: usize, rng: &mut JavaRandom
     } else {
         0
     };
-    parity_log::log(&format!("{P}pick_count [{min}-{max}] of {available} -> {count} {{{cc}}}", cc = rng.call_count));
+    rng_log(&format!("pick_count [{min}-{max}]"), Some(available), count.to_string(), rng);
     count
 }
 
@@ -113,6 +108,6 @@ pub fn pick_many_unique<T: Copy>(
     }
     let len = options.len();
     let picked = out.len();
-    parity_log::log(&format!("{P}pick_many_unique [{min}-{max}] of {len} -> picked {picked} {{{cc}}}", cc = rng.call_count));
+    rng_log(&format!("pick_many_unique [{min}-{max}]"), Some(len), format!("picked {picked}"), rng);
     out
 }
