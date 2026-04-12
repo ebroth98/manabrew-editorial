@@ -191,6 +191,8 @@ mod tests {
         th: &'a mut TriggerHandler,
         mp: &'a mut Vec<ManaPool>,
         templates: &'a HashMap<String, Card>,
+        templates_variants: &'a HashMap<(String, String), usize>,
+        token_fallback: &'a HashMap<String, String>,
         rng: &'a mut dyn crate::game_rng::GameRng,
     ) -> EffectContext<'a> {
         EffectContext {
@@ -199,6 +201,8 @@ mod tests {
             agents,
             trigger_handler: th,
             token_templates: templates,
+            token_art_variants: templates_variants,
+            token_fallback,
             mana_pools: mp,
             parent_target_card: None,
             rng,
@@ -223,6 +227,8 @@ mod tests {
             vec![Box::new(PassAgent), Box::new(PassAgent)];
         let mut mp = vec![ManaPool::default(), ManaPool::default()];
         let templates = HashMap::new();
+        let templates_variants: HashMap<(String, String), usize> = HashMap::new();
+        let token_fallback: HashMap<String, String> = HashMap::new();
         let mut rng_adapter = crate::game_rng::ThreadRngAdapter;
         let mut ctx = make_ctx(
             &mut game,
@@ -230,6 +236,8 @@ mod tests {
             &mut th,
             &mut mp,
             &templates,
+            &templates_variants,
+            &token_fallback,
             &mut rng_adapter,
         );
 
@@ -256,6 +264,8 @@ mod tests {
             vec![Box::new(PassAgent), Box::new(PassAgent)];
         let mut mp = vec![ManaPool::default(), ManaPool::default()];
         let templates = HashMap::new();
+        let templates_variants: HashMap<(String, String), usize> = HashMap::new();
+        let token_fallback: HashMap<String, String> = HashMap::new();
         let mut rng_adapter = crate::game_rng::ThreadRngAdapter;
         let mut ctx = make_ctx(
             &mut game,
@@ -263,6 +273,8 @@ mod tests {
             &mut th,
             &mut mp,
             &templates,
+            &templates_variants,
+            &token_fallback,
             &mut rng_adapter,
         );
 

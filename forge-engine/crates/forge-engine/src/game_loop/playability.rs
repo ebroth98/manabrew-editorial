@@ -612,7 +612,6 @@ impl GameLoop {
         }
 
         // Check exile for Foretold cards (face-down in exile with foretell cost).
-        // Madness is handled by its triggered Play effect, not generic exile playability.
         let exile: Vec<CardId> = game.cards_in_zone(ZoneType::Exile, player).to_vec();
         for card_id in exile {
             let card = game.card(card_id);

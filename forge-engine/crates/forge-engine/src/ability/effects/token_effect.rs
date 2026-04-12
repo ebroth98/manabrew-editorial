@@ -179,13 +179,9 @@ fn create_tokens(
     amount: usize,
     token_controller: crate::ids::PlayerId,
 ) -> Vec<CardId> {
-    // Java consumes 2 game-level RNG values when creating the token prototype:
-    //   1. Aggregates.random() in TokenDb.getToken() — selects token art variant
-    //   2. MyRandom.nextInt(artIndex) in PaperToken.getImageKey() — selects image
-    // Both advance the seed once (artIndex is typically 1). Rust doesn't have
-    // token art selection, but must consume the same RNG to stay in sync.
-    ctx.rng.next_int(1); // match Aggregates.random() in TokenDb.getToken()
-    ctx.rng.next_int(1); // match MyRandom.nextInt(artIndex) in PaperToken.getImageKey()
+    // Sync game RNG with Java's token art selection (Aggregates.random + getImageKey).
+    let script_key = sa.token_script().unwrap_or("").to_string();
+    ctx.sync_token_art_rng(&script_key, sa);
 
     let mut created = Vec::with_capacity(amount);
     for _ in 0..amount {

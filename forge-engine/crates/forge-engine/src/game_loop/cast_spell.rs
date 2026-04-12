@@ -1,7 +1,5 @@
 use super::*;
-
-use crate::cost::cost_adjustment::{count_affinity_permanents, get_affinity_type};
-use forge_foundation::mana::ManaAtom;
+use crate::mana::mana_cost_being_paid::ManaCostBeingPaid;
 
 impl GameLoop {
     pub(crate) fn parse_spell_cost(abilities: &[String]) -> Option<crate::cost::Cost> {
@@ -84,7 +82,6 @@ impl GameLoop {
             let mut is_overload = false;
             let mut is_dash = false;
             let mut is_blitz = false;
-            let mut is_madness = false;
             let mut is_emerge = false;
             let mut is_plot_cast = false;
             let mut is_bestow = false;
@@ -146,7 +143,11 @@ impl GameLoop {
                     crate::spellability::AlternativeCost::Blitz => is_blitz = true,
                     crate::spellability::AlternativeCost::Escape => is_escape = true,
                     crate::spellability::AlternativeCost::Overload => is_overload = true,
-                    crate::spellability::AlternativeCost::Madness => is_madness = true,
+                    crate::spellability::AlternativeCost::Madness => {
+                        // Madness is cast via DB$ Play, not the normal cast pipeline.
+                        // This branch should not be reachable.
+                        return None;
+                    }
                     crate::spellability::AlternativeCost::Emerge => is_emerge = true,
                     crate::spellability::AlternativeCost::Bestow => is_bestow = true,
                     crate::spellability::AlternativeCost::Warp => is_warp = true,
@@ -298,12 +299,6 @@ impl GameLoop {
                 forge_foundation::ManaCost::parse(&foretell_cost_str)
             } else if is_flashback {
                 flashback_mana_cost.unwrap_or_else(forge_foundation::ManaCost::zero)
-            } else if is_madness {
-                let madness_cost_str = game.card(card_id).get_madness_cost().unwrap_or_default();
-                crate::ability::effects::helpers::remove_madness_exiled_marker(
-                    game.card_mut(card_id),
-                );
-                forge_foundation::ManaCost::parse(&madness_cost_str)
             } else if is_spectacle {
                 let spec_cost_str = game.card(card_id).get_spectacle_cost().unwrap_or_default();
                 forge_foundation::ManaCost::parse(&spec_cost_str)
@@ -346,142 +341,17 @@ impl GameLoop {
                 game.card(card_id).mana_cost.clone()
             };
 
-            // ── Emerge: sacrifice a creature to reduce cost ──────────
-            let mana_cost = if is_emerge {
-                let mut cost = mana_cost;
-                let creatures: Vec<CardId> = game
-                    .cards_in_zone(ZoneType::Battlefield, player)
-                    .iter()
-                    .filter(|&&cid| cid != card_id && game.card(cid).is_creature())
-                    .copied()
-                    .collect();
-                if !creatures.is_empty() {
-                    agents[player.index()].snapshot_state(game, &self.mana_pools);
-                    if let Some(sac_id) =
-                        agents[player.index()].choose_sacrifice(player, &creatures, None)
-                    {
-                        // Reduce emerge cost by the sacrificed creature's mana value
-                        let sac_cmc = game.card(sac_id).mana_cost.cmc();
-                        cost = cost.reduce_generic(sac_cmc);
-                        // Sacrifice the creature
-                        let sac_owner = game.card(sac_id).owner;
-                        self.trigger_handler.run_trigger(
-                            TriggerType::Sacrificed,
-                            RunParams {
-                                card: Some(sac_id),
-                                player: Some(player),
-                                ..Default::default()
-                            },
-                            false,
-                        );
-                        {
-                            let card = game.card_mut(sac_id);
-                            card.clear_pump_triggers();
-                        }
-                        crate::ability::effects::emit_zone_trigger(
-                            &mut self.trigger_handler,
-                            sac_id,
-                            ZoneType::Battlefield,
-                            ZoneType::Graveyard,
-                        );
-                        self.trigger_handler.flush_waiting_triggers(game);
-                        self.move_card_with_runtime(
-                            game,
-                            sac_id,
-                            ZoneType::Graveyard,
-                            sac_owner,
-                            agents,
-                        );
-                    }
-                }
-                cost
-            } else {
-                mana_cost
-            };
-
-            // ── Offering: sacrifice a permanent of a type to reduce cost ──────────
-            let mana_cost = if let Some(offering_type) = game.card(card_id).get_offering_type() {
-                let mut cost = mana_cost;
-                let offering_type_lower = offering_type.to_lowercase();
-                let candidates: Vec<CardId> = game
-                    .cards_in_zone(ZoneType::Battlefield, player)
-                    .iter()
-                    .filter(|&&cid| {
-                        cid != card_id && {
-                            let c = game.card(cid);
-                            match offering_type_lower.as_str() {
-                                "creature" => c.is_creature(),
-                                "artifact" => c.type_line.is_artifact(),
-                                "enchantment" => c.type_line.is_enchantment(),
-                                "land" => c.is_land(),
-                                _ => c.type_line.has_subtype(&offering_type),
-                            }
-                        }
-                    })
-                    .copied()
-                    .collect();
-                if !candidates.is_empty() {
-                    agents[player.index()].snapshot_state(game, &self.mana_pools);
-                    if let Some(sac_id) =
-                        agents[player.index()].choose_sacrifice(player, &candidates, None)
-                    {
-                        // Reduce cost by sacrificed permanent's mana value
-                        let sac_cmc = game.card(sac_id).mana_cost.cmc();
-                        cost = cost.reduce_generic(sac_cmc);
-                        let sac_owner = game.card(sac_id).owner;
-                        self.trigger_handler.run_trigger(
-                            TriggerType::Sacrificed,
-                            RunParams {
-                                card: Some(sac_id),
-                                player: Some(player),
-                                ..Default::default()
-                            },
-                            false,
-                        );
-                        {
-                            let card = game.card_mut(sac_id);
-                            card.clear_pump_triggers();
-                        }
-                        crate::ability::effects::emit_zone_trigger(
-                            &mut self.trigger_handler,
-                            sac_id,
-                            ZoneType::Battlefield,
-                            ZoneType::Graveyard,
-                        );
-                        self.trigger_handler.flush_waiting_triggers(game);
-                        self.move_card_with_runtime(
-                            game,
-                            sac_id,
-                            ZoneType::Graveyard,
-                            sac_owner,
-                            agents,
-                        );
-                    }
-                }
-                cost
-            } else {
-                mana_cost
-            };
-
-            // ── Cost reduction / increase from static abilities ──────────
+            // NOTE: Static mana-cost reduction/increase is now handled centrally
+            // by cost_adjustment::adjust() called later in this function.
+            // Do not apply compute_cost_adjustment here.
+            // We still need raise_cost for its non-mana cost parts (e.g. Waterbend).
             let cast_zone = game.card(card_id).zone;
-            let cost_adj = crate::cost::cost_adjustment::compute_cost_adjustment(
-                game,
-                game.card(card_id),
-                player,
-                cast_zone,
-            );
             let raise_cost = crate::cost::cost_adjustment::compute_raise_cost_parts(
                 game,
                 game.card(card_id),
                 player,
                 cast_zone,
             );
-            let raise_mana = raise_cost
-                .as_ref()
-                .map(Self::mana_from_cost)
-                .unwrap_or_else(|| forge_foundation::ManaCost::generic(0));
-            let mana_cost = cost_adj.apply(&mana_cost).add(&raise_mana);
 
             // ── Additional cost checks (Kicker, Buyback, Multikicker, Replicate) ──
             // Check Kicker: offer to pay additional kicker cost
@@ -884,203 +754,6 @@ impl GameLoop {
 
             let mana_cost = mana_cost;
 
-            // ── Delve: exile graveyard cards to reduce generic cost ──
-            let mana_cost = if game.card(card_id).has_keyword("Delve") {
-                let generic = mana_cost.generic_cost() + commander_tax;
-                if generic > 0 {
-                    let gy_cards: Vec<CardId> = game
-                        .cards_in_zone(ZoneType::Graveyard, player)
-                        .iter()
-                        .filter(|&&cid| cid != card_id)
-                        .copied()
-                        .collect();
-                    let max_delve = (generic as usize).min(gy_cards.len());
-                    if max_delve > 0 {
-                        let card_name = game.card(card_id).card_name.clone();
-                        agents[player.index()].snapshot_state(game, &self.mana_pools);
-                        let to_exile = agents[player.index()].choose_delve(
-                            player,
-                            &gy_cards,
-                            max_delve,
-                            Some(&card_name),
-                        );
-                        let delve_count = to_exile.len().min(max_delve) as i32;
-                        for cid in &to_exile[..delve_count as usize] {
-                            self.move_card_with_runtime(
-                                game,
-                                *cid,
-                                ZoneType::Exile,
-                                player,
-                                agents,
-                            );
-                        }
-                        if delve_count > 0 {
-                            // Reduce generic cost (or commander tax first, then generic)
-                            let reduce_tax = delve_count.min(commander_tax);
-                            commander_tax -= reduce_tax;
-                            let reduce_generic = delve_count - reduce_tax;
-                            if reduce_generic > 0 {
-                                let new_generic =
-                                    (mana_cost.generic_cost() - reduce_generic).max(0);
-                                mana_cost.with_generic(new_generic)
-                            } else {
-                                mana_cost
-                            }
-                        } else {
-                            mana_cost
-                        }
-                    } else {
-                        mana_cost
-                    }
-                } else {
-                    mana_cost
-                }
-            } else {
-                mana_cost
-            };
-
-            // ── Convoke: tap creatures to pay colored/generic mana ──
-            let mana_cost = if game.card(card_id).has_keyword("Convoke") {
-                let untapped_creatures: Vec<CardId> = game
-                    .cards_in_zone(ZoneType::Battlefield, player)
-                    .iter()
-                    .filter(|&&cid| {
-                        let c = game.card(cid);
-                        c.is_creature() && !c.tapped && cid != card_id
-                    })
-                    .copied()
-                    .collect();
-                if !untapped_creatures.is_empty() && mana_cost.cmc() > 0 {
-                    let card_name = game.card(card_id).card_name.clone();
-                    agents[player.index()].snapshot_state(game, &self.mana_pools);
-                    let to_tap = agents[player.index()].choose_convoke(
-                        player,
-                        &untapped_creatures,
-                        &mana_cost,
-                        Some(&card_name),
-                    );
-                    if !to_tap.is_empty() {
-                        let mut reduced = mana_cost.clone();
-                        for &cid in &to_tap {
-                            if !untapped_creatures.contains(&cid) {
-                                continue;
-                            }
-                            // Try to pay a colored shard matching the creature's color first
-                            let creature_colors = &game.card(cid).color;
-                            let mut paid_colored = false;
-                            for color in creature_colors.iter() {
-                                let atom = match color {
-                                    forge_foundation::Color::White => ManaAtom::WHITE,
-                                    forge_foundation::Color::Blue => ManaAtom::BLUE,
-                                    forge_foundation::Color::Black => ManaAtom::BLACK,
-                                    forge_foundation::Color::Red => ManaAtom::RED,
-                                    forge_foundation::Color::Green => ManaAtom::GREEN,
-                                };
-                                if reduced.has_color_shard(atom) {
-                                    reduced = reduced.remove_color_shard(atom);
-                                    paid_colored = true;
-                                    break;
-                                }
-                            }
-                            if !paid_colored {
-                                // Pay generic
-                                let g = reduced.generic_cost();
-                                if g > 0 {
-                                    reduced = reduced.with_generic(g - 1);
-                                } else {
-                                    continue; // Can't reduce further
-                                }
-                            }
-                            game.tap(cid);
-                        }
-                        reduced
-                    } else {
-                        mana_cost
-                    }
-                } else {
-                    mana_cost
-                }
-            } else {
-                mana_cost
-            };
-
-            // ── Improvise: tap artifacts to pay generic mana ──
-            let mana_cost = if game.card(card_id).has_keyword("Improvise") {
-                let untapped_artifacts: Vec<CardId> = game
-                    .cards_in_zone(ZoneType::Battlefield, player)
-                    .iter()
-                    .filter(|&&cid| {
-                        let c = game.card(cid);
-                        c.type_line.is_artifact() && !c.tapped && cid != card_id
-                    })
-                    .copied()
-                    .collect();
-                let generic = mana_cost.generic_cost() + commander_tax;
-                if !untapped_artifacts.is_empty() && generic > 0 {
-                    let card_name = game.card(card_id).card_name.clone();
-                    agents[player.index()].snapshot_state(game, &self.mana_pools);
-                    let to_tap = agents[player.index()].choose_improvise(
-                        player,
-                        &untapped_artifacts,
-                        &mana_cost,
-                        Some(&card_name),
-                    );
-                    if !to_tap.is_empty() {
-                        let mut reduced = mana_cost.clone();
-                        let max_improvise = generic as usize;
-                        let mut count = 0usize;
-                        for &cid in &to_tap {
-                            if count >= max_improvise {
-                                break;
-                            }
-                            if !untapped_artifacts.contains(&cid) {
-                                continue;
-                            }
-                            // Improvise only pays generic
-                            let g = reduced.generic_cost() + commander_tax;
-                            if g > 0 {
-                                if commander_tax > 0 {
-                                    commander_tax -= 1;
-                                } else {
-                                    reduced = reduced.with_generic(reduced.generic_cost() - 1);
-                                }
-                                game.tap(cid);
-                                count += 1;
-                            }
-                        }
-                        reduced
-                    } else {
-                        mana_cost
-                    }
-                } else {
-                    mana_cost
-                }
-            } else {
-                mana_cost
-            };
-
-            // ── Affinity: automatic generic cost reduction based on permanent count ──
-            let mana_cost = if let Some(affinity_type) = get_affinity_type(game.card(card_id)) {
-                let count = count_affinity_permanents(game, player, &affinity_type, card_id);
-                if count > 0 {
-                    let generic = mana_cost.generic_cost() + commander_tax;
-                    let reduce = count.min(generic);
-                    // Reduce commander_tax first, then generic
-                    let from_tax = reduce.min(commander_tax);
-                    commander_tax -= from_tax;
-                    let from_generic = reduce - from_tax;
-                    if from_generic > 0 {
-                        mana_cost.with_generic(mana_cost.generic_cost() - from_generic)
-                    } else {
-                        mana_cost
-                    }
-                } else {
-                    mana_cost
-                }
-            } else {
-                mana_cost
-            };
-
             // Build SpellAbility chain and choose modes/targets from the pre-payment
             // game state. This matches Java/MTG casting order: announce modes and
             // targets before paying costs, so mana payments can invalidate a chosen
@@ -1093,8 +766,6 @@ impl GameLoop {
                 sa.alt_cost = Some(crate::spellability::AlternativeCost::Foretell);
             } else if is_flashback {
                 sa.alt_cost = Some(crate::spellability::AlternativeCost::Flashback);
-            } else if is_madness {
-                sa.alt_cost = Some(crate::spellability::AlternativeCost::Madness);
             } else if is_spectacle {
                 sa.alt_cost = Some(crate::spellability::AlternativeCost::Spectacle);
             } else if is_evoke {
@@ -1184,9 +855,35 @@ impl GameLoop {
                 }
             }
 
+            let display_total_cost = if commander_tax > 0 {
+                original_mana_cost.add(&forge_foundation::ManaCost::generic(commander_tax))
+            } else {
+                original_mana_cost.clone()
+            };
+            let payable_base_cost = if commander_tax > 0 {
+                mana_cost.add(&forge_foundation::ManaCost::generic(commander_tax))
+            } else {
+                mana_cost.clone()
+            };
+            let mut total_unpaid = ManaCostBeingPaid::from_mana_cost(&payable_base_cost);
+            if !crate::cost::cost_adjustment::adjust(
+                game,
+                agents,
+                &mut self.trigger_handler,
+                &self.mana_pools,
+                &mut total_unpaid,
+                &mut sa,
+                player,
+                None,
+                false,
+                false,
+            ) {
+                return None;
+            }
+            let total_cost = total_unpaid.to_mana_cost();
+
             // Java CostPayment decides sacrifice/discard targets in the accept
-            // phase before paying mana. Pre-choose sacrifice targets here so RNG
-            // consumption order matches Java for spell additional costs.
+            // phase after cost adjustment but before payment.
             let spell_cost = Self::parse_spell_cost(&abilities_for_spell);
             let prechosen_spell_sacrifices = if let Some(ref sc) = spell_cost {
                 match self.prechoose_additional_cost_sacrifices(game, agents, player, sc, Some(&sa))
@@ -1246,16 +943,6 @@ impl GameLoop {
             // auto-pay through their `pay_mana_cost()` implementation; the engine
             // should not branch on `is_human()` here.
             let card_name = game.card(card_id).card_name.clone();
-            let total_cost = if commander_tax > 0 {
-                mana_cost.add(&forge_foundation::ManaCost::generic(commander_tax))
-            } else {
-                mana_cost.clone()
-            };
-            let display_total_cost = if commander_tax > 0 {
-                original_mana_cost.add(&forge_foundation::ManaCost::generic(commander_tax))
-            } else {
-                original_mana_cost.clone()
-            };
             if total_cost.is_zero() {
                 // Zero-cost spell payments have no mana-payment interaction.
                 // Skip the callback loop entirely so parity/UI only see real payments.
@@ -1430,33 +1117,16 @@ impl GameLoop {
                             let mut test_pool = self.pool(player).clone();
                             if let Some(test_life_to_pay) = test_pool
                                 .try_pay_for_spell_converted_with_phyrexian_life(
-                                    &mana_cost,
+                                    &total_cost,
                                     &payment_ctx,
                                     any_color_conversion,
                                     game.player(player).life,
                                 )
                             {
-                                if commander_tax > 0
-                                    && !test_pool.try_pay_extra_generic(commander_tax)
-                                {
-                                    mana_loop_invalid_count += 1;
-                                    if mana_loop_invalid_count > 3 {
-                                        *self.pool_mut(player) = saved_pool;
-                                        self.move_card_with_runtime(
-                                            game,
-                                            card_id,
-                                            ZoneType::Stack,
-                                            player,
-                                            agents,
-                                        );
-                                        return None;
-                                    }
-                                    continue;
-                                }
                                 let life_to_pay = self
                                     .pool_mut(player)
                                     .try_pay_for_spell_converted_with_phyrexian_life(
-                                        &mana_cost,
+                                        &total_cost,
                                         &payment_ctx,
                                         any_color_conversion,
                                         game.player(player).life,
@@ -1464,9 +1134,6 @@ impl GameLoop {
                                     .expect("tested phyrexian payment should still be legal");
                                 if life_to_pay != test_life_to_pay {
                                     continue;
-                                }
-                                if commander_tax > 0 {
-                                    self.pool_mut(player).try_pay_extra_generic(commander_tax);
                                 }
                                 if life_to_pay > 0 {
                                     let skip_life = {
@@ -1699,6 +1366,8 @@ impl GameLoop {
                                                 agents,
                                                 trigger_handler: &mut self.trigger_handler,
                                                 token_templates: &self.token_templates,
+                                                token_art_variants: &self.token_art_variants,
+                                                token_fallback: &self.token_fallback,
                                                 mana_pools: &mut self.mana_pools,
                                                 parent_target_card: None,
                                                 rng: &mut *self.game_rng,
@@ -1909,6 +1578,13 @@ impl GameLoop {
                 }
             }
 
+            crate::cost::cost_adjustment::commit_offerings_and_emerge(
+                game,
+                agents,
+                &mut self.trigger_handler,
+                &mut sa,
+            );
+
             // Increment commander cast count (before moving card to stack)
             if is_commander_cast {
                 game.player_increment_commander_cast(player, card_id);
@@ -1919,38 +1595,6 @@ impl GameLoop {
             }
             // Track spell cast on the stack (storm count, etc.)
             game.stack.record_spell_cast(card_id);
-
-            // Emit SpellCast trigger only after successful target setup.
-            // Java parity: apply paying-mana effects before cast-family triggers.
-            sa.apply_paying_mana_effects();
-            self.trigger_handler.run_trigger(
-                TriggerType::SpellCast,
-                RunParams {
-                    spell_card: Some(card_id),
-                    spell_controller: Some(player),
-                    ..Default::default()
-                },
-                false,
-            );
-            if !waterbend_tapped.is_empty() {
-                let bend_params = RunParams {
-                    player: Some(player),
-                    card: Some(card_id),
-                    spell_card: Some(card_id),
-                    spell_controller: Some(player),
-                    spell_ability: Some(sa.clone()),
-                    source_sa: Some(sa.clone()),
-                    cause: Some(sa.clone()),
-                    cause_card: Some(card_id),
-                    cards: Some(waterbend_tapped.clone()),
-                    ..Default::default()
-                };
-                self.trigger_handler.run_trigger(
-                    TriggerType::Elementalbend,
-                    bend_params.clone(),
-                    false,
-                );
-            }
 
             // Fire BecomesTarget trigger if a card/player was targeted
             if let Some(target_card) = sa.target_chosen.target_card {
@@ -2015,7 +1659,7 @@ impl GameLoop {
                 Some(ZoneType::Exile)
             } else if is_flashback || is_escape {
                 Some(ZoneType::Graveyard)
-            } else if is_madness || is_plot_cast {
+            } else if is_plot_cast {
                 Some(ZoneType::Exile)
             } else if is_commander_cast {
                 Some(ZoneType::Command)
@@ -2067,6 +1711,49 @@ impl GameLoop {
             // (e.g. Writhing Chrysalis "When you cast this spell, create tokens")
             // are active while the card is on the stack.
             self.trigger_handler.register_active_trigger(game, card_id);
+
+            // Java order: once the spell is on the stack and self-triggers are
+            // registered, apply paying-mana effects and emit cast-family triggers.
+            if let Some(top) = game.stack.iter_mut().last() {
+                top.spell_ability.apply_paying_mana_effects();
+            }
+            let sa_for_trigger = game
+                .stack
+                .peek()
+                .map(|top| top.spell_ability.clone())
+                .unwrap_or_else(|| entry.spell_ability.clone());
+            self.trigger_handler.run_trigger(
+                TriggerType::SpellCast,
+                RunParams {
+                    spell_card: Some(card_id),
+                    spell_controller: Some(player),
+                    spell_ability: Some(sa_for_trigger.clone()),
+                    source_sa: Some(sa_for_trigger.clone()),
+                    cause: Some(sa_for_trigger.clone()),
+                    cause_card: Some(card_id),
+                    ..Default::default()
+                },
+                true,
+            );
+            if !waterbend_tapped.is_empty() {
+                let bend_params = RunParams {
+                    player: Some(player),
+                    card: Some(card_id),
+                    spell_card: Some(card_id),
+                    spell_controller: Some(player),
+                    spell_ability: Some(sa_for_trigger.clone()),
+                    source_sa: Some(sa_for_trigger.clone()),
+                    cause: Some(sa_for_trigger.clone()),
+                    cause_card: Some(card_id),
+                    cards: Some(waterbend_tapped.clone()),
+                    ..Default::default()
+                };
+                self.trigger_handler.run_trigger(
+                    TriggerType::Elementalbend,
+                    bend_params.clone(),
+                    false,
+                );
+            }
 
             // Storm: create N copies where N = spells_cast_this_turn - 1.
             if game.card(card_id).has_storm() {

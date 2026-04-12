@@ -363,7 +363,7 @@ effect_dispatch! {
     ApiType::RevealHand => reveal_hand_effect::resolve,
     ApiType::LookAt => look_at_effect::resolve,
     ApiType::Charm => charm_effect::resolve,
-    ApiType::GenericChoice => charm_effect::resolve,
+    ApiType::GenericChoice => choose_generic_effect::resolve,
     ApiType::Plot => plot_effect::resolve,
     ApiType::PeekAndReveal => peek_and_reveal_effect::resolve,
     ApiType::SetState => set_state_effect::resolve,
@@ -500,6 +500,10 @@ pub struct EffectContext<'a> {
     pub agents: &'a mut [Box<dyn PlayerAgent>],
     pub trigger_handler: &'a mut TriggerHandler,
     pub token_templates: &'a HashMap<String, Card>,
+    /// Token art variant counts for game-RNG parity with Java.
+    pub token_art_variants: &'a HashMap<(String, String), usize>,
+    /// Token fallback codes: edition_code → fallback_edition_code.
+    pub token_fallback: &'a HashMap<String, String>,
     pub mana_pools: &'a mut Vec<ManaPool>,
     /// CardId of the parent SA's chosen target card, propagated through the
     /// sub-ability chain so that `Defined$ ParentTarget` effects can resolve it.
@@ -512,10 +516,52 @@ pub struct EffectContext<'a> {
 }
 
 impl EffectContext<'_> {
+    /// Get the number of art variants for a token in a given edition,
+    /// following TokenFallbackCode chains. Returns 1 if not found.
+    /// When edition_code is empty, scans all editions and returns the first
+    /// match (mirrors Java's `fallbackToken` which iterates all editions).
+    pub fn token_art_variant_count(&self, token_script: &str, edition_code: &str) -> usize {
+        if edition_code.is_empty() {
+            // No edition info — fall back to 1 (single variant assumed).
+            // This preserves the original hardcoded 2-call behavior (1 for
+            // Aggregates.random + 1 for getImageKey).
+            return 1;
+        }
+        let key = (
+            token_script.to_lowercase(),
+            edition_code.to_uppercase(),
+        );
+        if let Some(&count) = self.token_art_variants.get(&key) {
+            return count;
+        }
+        if let Some(fallback) = self.token_fallback.get(&edition_code.to_uppercase()) {
+            return self.token_art_variant_count(token_script, fallback);
+        }
+        1
+    }
+
+    /// Consume game-RNG calls to match Java's token prototype creation.
+    /// Java calls Aggregates.random(Set) which does nextInt() per element,
+    /// plus PaperToken.getImageKey() which does nextInt(artIndex).
+    pub fn sync_token_art_rng(&mut self, token_script: &str, sa: &crate::spellability::SpellAbility) {
+        let host_edition = sa.source
+            .and_then(|cid| self.game.card(cid).set_code.as_deref())
+            .unwrap_or("");
+        let art_variants = self.token_art_variant_count(token_script, host_edition);
+        // Aggregates.random on Iterable: nextInt() per element
+        for _ in 0..art_variants {
+            self.rng.next_int(1);
+        }
+        // PaperToken.getImageKey(): nextInt(artIndex)
+        self.rng.next_int(1);
+    }
+
     pub fn move_card(&mut self, card_id: CardId, dest_zone: ZoneType, dest_owner: PlayerId) {
         let mut runtime = crate::replacement::replacement_handler::ReplacementRuntime {
             trigger_handler: self.trigger_handler,
             token_templates: self.token_templates,
+            token_art_variants: self.token_art_variants,
+            token_fallback: self.token_fallback,
             mana_pools: self.mana_pools,
             rng: self.rng,
         };
@@ -969,7 +1015,10 @@ fn resolve_effect_with_unless_cost(ctx: &mut EffectContext, sa: &SpellAbility, u
         ) {
             continue;
         }
-        if try_pay_unless_cost(ctx, sa, source, payer, &cost) {
+        let paid = try_pay_unless_cost(ctx, sa, source, payer, &cost);
+        // Mirrors Java's payCostToPreventEffect callback after payment attempt.
+        ctx.agents[payer.index()].pay_cost_to_prevent_effect(payer, paid);
+        if paid {
             already_paid = true;
             break;
         }
@@ -1058,8 +1107,9 @@ fn try_pay_unless_cost(
                 CostPart::Mill(_) => true,
                 // Java: CostAddMana.visit() → confirm(cost, true)
                 CostPart::AddMana { .. } => true,
-                // Java: CostDiscard.visit() → confirm(cost, true)
-                CostPart::Discard { .. } => true,
+                // Java: CostDiscard.visit() → confirm(cost, "Hand".equals(type))
+                // Only asks confirm when discarding entire hand, not for regular card discard.
+                CostPart::Discard { type_filter, .. } => type_filter.eq_ignore_ascii_case("Hand"),
                 // Java: CostSacrifice.visit() → confirm(cost, true)
                 CostPart::Sacrifice { .. } => true,
                 // Java: CostPayEnergy, CostPayShards, CostPutCounter, CostPartMana → no confirm
@@ -1165,6 +1215,8 @@ fn try_pay_unless_cost(
                 type_filter,
             } => {
                 // UnlessCost discard: pick cards from hand and discard them.
+                // Java uses chooseCardsForEffect (via DeterministicCostPlumbing.chooseCards),
+                // NOT chooseCardsToDiscardFrom. Mirror that here for RNG parity.
                 for _ in 0..*amount {
                     let valid: Vec<CardId> = ctx
                         .game
@@ -1186,14 +1238,15 @@ fn try_pay_unless_cost(
                     if valid.is_empty() {
                         return false;
                     }
-                    let chosen = ctx.agents[payer.index()].choose_discard(payer, &valid, 1);
+                    let chosen =
+                        ctx.agents[payer.index()].choose_cards_for_effect(payer, &valid, 1, 1);
                     if let Some(&cid) = chosen.first() {
-                        helpers::discard_with_madness_replacement(
-                            ctx.game,
-                            ctx.trigger_handler,
+                        ctx.game.discard_card(
                             cid,
                             payer,
                             Some(sa),
+                            Some(ctx.agents),
+                            ctx.trigger_handler,
                         );
                     }
                 }

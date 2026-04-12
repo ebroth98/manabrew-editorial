@@ -38,17 +38,9 @@ use crate::keyword::keyword_instance::Keyword as Kw;
 // These are synthetic keywords injected at runtime to track card state.
 // Using constants avoids magic strings scattered across the codebase.
 
-/// Marker added to cards exiled via the Madness replacement effect.
-/// Presence means the card is eligible for casting at its madness cost.
-/// Removed when the card is cast or moved to graveyard.
-pub const KEYWORD_MADNESS_EXILED: &str = "MadnessExiled";
-
 /// Prefix for the Plotted marker. Full keyword is `"Plotted:{turn}"`.
 /// The turn number prevents casting on the same turn the card was plotted.
 pub const KEYWORD_PLOTTED_PREFIX: &str = "Plotted:";
-
-/// SpellAbility parameter key indicating a Madness Play effect.
-pub const PARAM_MADNESS_PLAY: &str = "MadnessPlay";
 
 /// Marker for cards exiled via Warp's end-of-turn trigger.
 /// These cards can be cast from exile on a later turn for their normal mana cost.

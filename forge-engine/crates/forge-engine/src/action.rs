@@ -30,7 +30,7 @@ impl GameState {
     /// replacement effects (Rest in Peace, Leyline of the Void) and redirects to the
     /// correct zone. Use `move_card_final` to skip the replacement check.
     pub fn move_card(&mut self, card_id: CardId, dest_zone: ZoneType, dest_owner: PlayerId) {
-        self.move_card_internal(card_id, dest_zone, dest_owner, None, true);
+        self.move_card_internal(card_id, dest_zone, dest_owner, None, true, false);
     }
 
     pub fn move_card_with_agents(
@@ -40,7 +40,7 @@ impl GameState {
         dest_owner: PlayerId,
         agents: &mut [Box<dyn PlayerAgent>],
     ) {
-        self.move_card_internal(card_id, dest_zone, dest_owner, Some(agents), true);
+        self.move_card_internal(card_id, dest_zone, dest_owner, Some(agents), true, false);
     }
 
     pub fn move_card_with_agents_and_replacement_runtime(
@@ -51,7 +51,7 @@ impl GameState {
         agents: &mut [Box<dyn PlayerAgent>],
         runtime: &mut ReplacementRuntime<'_>,
     ) {
-        self.move_card_internal(card_id, dest_zone, dest_owner, Some(agents), true);
+        self.move_card_internal(card_id, dest_zone, dest_owner, Some(agents), true, false);
     }
 
     fn move_card_without_replacement(
@@ -60,7 +60,78 @@ impl GameState {
         dest_zone: ZoneType,
         dest_owner: PlayerId,
     ) {
-        self.move_card_internal(card_id, dest_zone, dest_owner, None, false);
+        self.move_card_internal(card_id, dest_zone, dest_owner, None, false, false);
+    }
+
+    /// Discard a card. Mirrors Java's `Player.discard()`.
+    ///
+    /// Records the discard, marks the card, and moves it to graveyard through
+    /// the normal zone-change machinery (which runs replacement effects like
+    /// Madness automatically). Fires Discarded triggers afterwards.
+    pub fn discard_card(
+        &mut self,
+        card_id: CardId,
+        discard_player: PlayerId,
+        sa: Option<&crate::spellability::SpellAbility>,
+        agents: Option<&mut [Box<dyn PlayerAgent>]>,
+        trigger_handler: &mut TriggerHandler,
+    ) {
+        let owner = self.card(card_id).owner;
+        self.player_record_discard(discard_player, 1);
+        self.card_mut(card_id).set_discarded(true);
+
+        // Move to graveyard through normal zone-change with is_discard=true.
+        // Replacement effects (e.g. Madness → Exile) are handled generically.
+        self.move_card_internal(
+            card_id,
+            ZoneType::Graveyard,
+            owner,
+            agents,
+            true,
+            true, // is_discard
+        );
+
+        // RememberDiscarded
+        if let Some(sa) = sa {
+            if sa.params.has("RememberDiscarded") {
+                if let Some(source_id) = sa.source {
+                    self.card_mut(source_id).add_remembered_card(card_id);
+                }
+            }
+        }
+
+        // Register active triggers on the card in its new zone.
+        trigger_handler.register_active_trigger(self, card_id);
+
+        // Emit zone-change trigger for Hand → actual destination.
+        let dest_zone = self.card(card_id).zone;
+        crate::ability::effects::zone_triggers::emit_zone_trigger(
+            trigger_handler,
+            card_id,
+            ZoneType::Hand,
+            dest_zone,
+        );
+
+        // Fire Discarded trigger.
+        trigger_handler.run_trigger(
+            TriggerType::Discarded,
+            RunParams {
+                card: Some(card_id),
+                player: Some(discard_player),
+                ..Default::default()
+            },
+            false,
+        );
+        trigger_handler.run_trigger(
+            TriggerType::DiscardedAll,
+            RunParams {
+                card: Some(card_id),
+                cards: Some(vec![card_id]),
+                player: Some(discard_player),
+                ..Default::default()
+            },
+            false,
+        );
     }
 
     fn move_card_internal(
@@ -70,6 +141,7 @@ impl GameState {
         dest_owner: PlayerId,
         mut agents: Option<&mut [Box<dyn PlayerAgent>]>,
         apply_move_replacement: bool,
+        is_discard: bool,
     ) {
         let (src_zone, src_owner, was_permanent, was_land, is_token) = {
             let card = &self.cards[card_id.index()];
@@ -85,6 +157,7 @@ impl GameState {
             card: card_id,
             origin: src_zone,
             destination: dest_zone,
+            is_discard,
         };
         let tapped_before_replacement = self.card(card_id).tapped;
         if apply_move_replacement {
@@ -808,6 +881,7 @@ impl GameState {
                             card: cid,
                             origin: ZoneType::Battlefield,
                             destination: ZoneType::Graveyard,
+                            is_discard: false,
                         };
                         if let Some(agents) = agents.as_deref_mut() {
                             apply_replacements_with_agents(self, agents, &mut moved_event);

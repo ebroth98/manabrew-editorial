@@ -32,14 +32,23 @@ pub fn can_replace(
     if effect.event != ReplacementType::Moved {
         return false;
     }
-    let (moving_id, origin, destination) = match event {
+    let (moving_id, origin, destination, is_discard) = match event {
         ReplacementEvent::Moved {
             card,
             origin,
             destination,
-        } => (*card, *origin, *destination),
+            is_discard,
+        } => (*card, *origin, *destination, *is_discard),
         _ => return false,
     };
+    // Discard$ True — only match when the move is from a discard action.
+    // Mirrors Java ReplaceMoved.canReplace() Discard$ check.
+    if let Some(discard_param) = effect.params.get("Discard") {
+        let requires_discard = discard_param.eq_ignore_ascii_case("True");
+        if requires_discard != is_discard {
+            return false;
+        }
+    }
     if let Some(dest) = effect.params.get(keys::DESTINATION) {
         if !zone_matches(dest, destination) {
             return false;
@@ -153,6 +162,8 @@ fn execute_replace_with(
 
     let mut local_trigger_handler = TriggerHandler::new();
     let local_token_templates: HashMap<String, Card> = HashMap::new();
+    let local_token_art_variants: HashMap<(String, String), usize> = HashMap::new();
+    let local_token_fallback: HashMap<String, String> = HashMap::new();
     let mut local_rng = ThreadRngAdapter;
 
     let mut parent_target_card: Option<CardId> = None;
@@ -169,15 +180,19 @@ fn execute_replace_with(
             cur
         };
 
-        let (trigger_handler_ref, token_templates_ref, mana_pools_ref, rng_ref): (
+        let (trigger_handler_ref, token_templates_ref, token_art_ref, token_fb_ref, mana_pools_ref, rng_ref): (
             &mut TriggerHandler,
             &HashMap<String, Card>,
+            &HashMap<(String, String), usize>,
+            &HashMap<String, String>,
             &mut Vec<ManaPool>,
             &mut dyn crate::game_rng::GameRng,
         ) = if let Some(rt) = runtime.as_deref_mut() {
             (
                 rt.trigger_handler,
                 rt.token_templates,
+                rt.token_art_variants,
+                rt.token_fallback,
                 rt.mana_pools,
                 rt.rng,
             )
@@ -185,6 +200,8 @@ fn execute_replace_with(
             (
                 &mut local_trigger_handler,
                 &local_token_templates,
+                &local_token_art_variants,
+                &local_token_fallback,
                 &mut local_mana_pools,
                 &mut local_rng,
             )
@@ -196,6 +213,8 @@ fn execute_replace_with(
             agents,
             trigger_handler: trigger_handler_ref,
             token_templates: token_templates_ref,
+            token_art_variants: token_art_ref,
+            token_fallback: token_fb_ref,
             mana_pools: mana_pools_ref,
             parent_target_card,
             rng: rng_ref,

@@ -1,19 +1,7 @@
-//! Implements `DB$ Play` — cast a card (often without paying its mana cost).
-//!
-//! Two distinct use-cases share this handler:
-//!
-//! * **Rebound** — exiles a spell on resolution, then casts it again on the
-//!   controller's next upkeep via a delayed trigger (no cost, no optional).
-//! * **Madness** — optional casting at madness cost after a discard exile.
-//!   If the player declines, the card moves from exile to graveyard.
-//!
-//! Mirrors Java's `forge/game/ability/effects/PlayEffect.java` (simplified).
-
 use forge_foundation::ZoneType;
 
 use super::EffectContext;
 use crate::agent::GameLogEvent;
-use crate::card::PARAM_MADNESS_PLAY;
 use crate::event::{RunParams, TriggerType};
 use crate::ids::CardId;
 use crate::parsing::keys;
@@ -25,17 +13,170 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         None => return,
     };
 
-    // Card must exist and not already be on the stack
     if ctx.game.card(card_id).zone == ZoneType::Stack {
         return;
     }
 
-    let is_madness = sa.param_is_true(PARAM_MADNESS_PLAY);
+    let controller = sa.activating_player;
+    let without_mana_cost = sa.params.has("WithoutManaCost");
+    let play_cost = sa.params.get(keys::PLAY_COST).map(|s| s.to_string());
+    let remember = sa.param_is_true("RememberPlayed");
+    let optional = sa.param_is_true(keys::OPTIONAL);
+    let is_madness = sa.params.get(keys::PLAY_COST).is_some()
+        && sa.source.map_or(false, |src| ctx.game.card(src).has_keyword("Madness"));
 
+    // ── Step 1: Choose card — mirrors Java PlayEffect.java line 234 ──
+    // chooseSingleEntityForEffect(tgtCards, sa, ..., !singleOption && optional, ...)
+    // For single-card + optional: isOptional=false (auto-pick), then confirmAction below.
+    let tgt_cards = vec![card_id];
+    let chosen = ctx.agents[controller.index()].choose_single_entity_for_effect(
+        controller,
+        &tgt_cards,
+        false, // !singleOption && optional = false for single card
+    );
+    let card_id = match chosen {
+        Some(cid) => cid,
+        None => return,
+    };
+
+    // ── Step 2: Optional confirm — mirrors Java PlayEffect.java line 250 ──
+    // if (singleOption && !confirmAction(...)) break;
+    if optional {
+        let card_name = ctx.game.card(card_id).card_name.clone();
+        let accepted = ctx.agents[controller.index()].confirm_action(
+            controller,
+            None,
+            &format!("Do you want to play {}?", card_name),
+            &[],
+            Some(&card_name),
+            Some(crate::ability::api_type::ApiType::Play),
+        );
+        if !accepted {
+            return;
+        }
+    }
+
+    // ── Step 3: Get ability to play — mirrors Java PlayEffect.java line 318 ──
+    // tgtSA = controller.getController().getAbilityToPlay(tgtCard, sas);
+    let spell_sa_base =
+        crate::spellability::build_spell_ability_for_card_cast(ctx.game, card_id, controller);
+    let abilities = vec![spell_sa_base];
+    let sa_idx = ctx.agents[controller.index()].get_ability_to_play(controller, &abilities);
+    let mut spell_sa = match sa_idx {
+        Some(idx) => abilities.into_iter().nth(idx).unwrap(),
+        None => return,
+    };
+
+    // Mirror Java's DeterministicPlayPlumbing.playSaFromPlayEffect():
+    // optional play-effect spells consume one more boolean after ability
+    // selection and before the spell is actually played.
+    let play_effect_optional = spell_sa
+        .pay_costs
+        .as_ref()
+        .map(|cost| !cost.mandatory)
+        .unwrap_or(false);
+    if play_effect_optional {
+        let card_name = ctx.game.card(card_id).card_name.clone();
+        let accepted = ctx.agents[controller.index()].confirm_action(
+            controller,
+            Some("PlayEffectOptional"),
+            "play_effect_optional",
+            &[],
+            Some(&card_name),
+            Some(crate::ability::api_type::ApiType::Play),
+        );
+        if !accepted {
+            return;
+        }
+    }
+
+    // ── Step 3: Cost replacement ────────────────────────────────────
+    if without_mana_cost {
+        if let Some(ref mut cost) = spell_sa.pay_costs {
+            cost.parts
+                .retain(|part| !matches!(part, crate::cost::CostPart::Mana { .. }));
+        }
+    } else if let Some(ref cost_str) = play_cost {
+        let alt_mc = forge_foundation::ManaCost::parse(cost_str);
+        if let Some(ref existing) = spell_sa.pay_costs {
+            spell_sa.pay_costs = Some(existing.copy_with_defined_mana(alt_mc));
+        }
+    }
+
+    // ── Step 4: Alt-cost flags ──────────────────────────────────────
     if is_madness {
-        resolve_madness_play(ctx, sa, card_id);
+        spell_sa.alt_cost = Some(crate::spellability::AlternativeCost::Madness);
+    }
+
+    // Java PlayEffect.java line 398: setMandatory(true) for 118.8c
+    if let Some(ref mut cost) = spell_sa.pay_costs {
+        cost.mandatory = true;
+    }
+
+    // Remove zone restriction — allow casting from exile/library/etc.
+    spell_sa
+        .params
+        .put("CastFromPlayEffect".to_string(), "True".to_string());
+
+    // ── Step 5: Pay mana ────────────────────────────────────────────
+    if !without_mana_cost {
+        let mc = if let Some(ref cost_str) = play_cost {
+            forge_foundation::ManaCost::parse(cost_str)
+        } else {
+            ctx.game.card(card_id).mana_cost.clone()
+        };
+
+        let available = crate::mana::calculate_available_mana(
+            &ctx.mana_pools[controller.index()],
+            ctx.game,
+            controller,
+        );
+        if !available.can_pay(&mc) {
+            return;
+        }
+        let tapped = crate::mana::auto_tap_lands(
+            ctx.game,
+            &mut ctx.mana_pools[controller.index()],
+            controller,
+            &mc,
+            Some(card_id),
+        );
+        for &land_id in &tapped {
+            ctx.trigger_handler.run_trigger(
+                TriggerType::TapsForMana,
+                RunParams {
+                    card: Some(land_id),
+                    player: Some(controller),
+                    ..Default::default()
+                },
+                false,
+            );
+        }
+        ctx.mana_pools[controller.index()].try_pay(&mc);
+    }
+
+    // ── Step 6: Set up targets ──────────────────────────────────────
+    spell_sa.setup_targets(ctx.game, ctx.agents, ctx.mana_pools);
+
+    // ── Step 7: Push to stack ───────────────────────────────────────
+    let label = if is_madness {
+        "Madness"
+    } else if without_mana_cost {
+        "Rebound"
     } else {
-        resolve_rebound_play(ctx, sa, card_id);
+        "Play"
+    };
+    push_spell_to_stack(ctx, card_id, spell_sa, label);
+
+    // ── Step 8: RememberPlayed ──────────────────────────────────────
+    // Mirrors Java PlayEffect.java line 457:
+    //   if (remember) source.addRemembered(played);
+    // The sub-ability chain (ChangeZone + Cleanup) uses ConditionCompare$ EQ0
+    // on Remembered to decide whether to move the card to graveyard.
+    if remember {
+        if let Some(source_id) = sa.source {
+            ctx.game.card_mut(source_id).remembered_cards.push(card_id);
+        }
     }
 }
 
@@ -53,36 +194,6 @@ fn resolve_target_card(sa: &SpellAbility) -> Option<CardId> {
     } else {
         // "Self" or fallback — use the source card
         sa.source
-    }
-}
-
-/// Optional play prompt. Returns `true` if the player accepts (or if not optional).
-fn prompt_optional_play(
-    ctx: &mut EffectContext,
-    sa: &SpellAbility,
-    card_id: CardId,
-    controller: crate::ids::PlayerId,
-) -> bool {
-    if !sa.param_is_true(keys::OPTIONAL) {
-        return true;
-    }
-    let card_name = ctx.game.card(card_id).card_name.clone();
-    ctx.agents[controller.index()].confirm_action(
-        controller,
-        None,
-        &format!("Do you want to play {}?", card_name),
-        &[],
-        Some(&card_name),
-        Some(crate::ability::api_type::ApiType::Play),
-    )
-}
-
-/// Move a madness-exiled card to graveyard (cleanup when play is declined).
-fn madness_exile_to_graveyard(ctx: &mut EffectContext, card_id: CardId) {
-    if ctx.game.card(card_id).zone == ZoneType::Exile {
-        let owner = ctx.game.card(card_id).owner;
-        ctx.move_card(card_id, ZoneType::Graveyard, owner);
-        super::helpers::remove_madness_exiled_marker(ctx.game.card_mut(card_id));
     }
 }
 
@@ -139,13 +250,6 @@ fn push_spell_to_stack(
 
 /// Create a replacement effect that exiles a card instead of putting it into
 /// the graveyard from the stack. Mirrors Java `PlayEffect.addReplaceGraveyardEffect`.
-///
-/// Used by effects like Flashback, Escape, and similar — when the card would go
-/// to the graveyard after resolving, exile it instead (to the specified zone).
-///
-/// Creates an effect card in the command zone with a `ReplacementEffect` SVar
-/// that the replacement handler intercepts during zone transitions. The effect
-/// is removed at end of turn.
 pub fn add_replace_graveyard_effect(
     ctx: &mut EffectContext,
     card_id: CardId,
@@ -155,7 +259,6 @@ pub fn add_replace_graveyard_effect(
 ) {
     let controller = sa.activating_player;
 
-    // Create a minimal effect card
     let effect_card = crate::card::Card::new(
         CardId(0),
         "ReplaceGraveyard Effect".to_string(),
@@ -170,101 +273,20 @@ pub fn add_replace_graveyard_effect(
     );
     let effect_id = ctx.game.create_card(effect_card);
 
-    // Remember the card this effect applies to
     ctx.game.card_mut(effect_id).remembered_cards.push(card_id);
 
-    // Store the replacement effect description:
-    // "If this card would go to graveyard from the stack, put it into <zone> instead"
     let dest_zone = if zone.is_empty() { "Exile" } else { zone };
     ctx.game.card_mut(effect_id).set_s_var(
         "ReplacementEffect",
-        format!(
-            "Event$ Moved | ValidCard$ Card.IsRemembered | Origin$ Stack | Destination$ Graveyard | Description$ If that card would be put into your graveyard this turn, exile it instead."
-        ),
+        "Event$ Moved | ValidCard$ Card.IsRemembered | Origin$ Stack | Destination$ Graveyard | Description$ If that card would be put into your graveyard this turn, exile it instead.".to_string(),
     );
     ctx.game
         .card_mut(effect_id)
         .set_s_var("ReplacementDestination", dest_zone.to_string());
 
-    // Move to command zone
     ctx.game.move_card(effect_id, ZoneType::Command, controller);
 
-    // Mark for end-of-turn cleanup
     ctx.game
         .card_mut(effect_id)
         .set_s_var("ExileAtEndOfTurn", "True".to_string());
-}
-
-// ── Madness path ──────────────────────────────────────────────────────
-
-fn resolve_madness_play(ctx: &mut EffectContext, sa: &SpellAbility, card_id: CardId) {
-    let controller = sa.activating_player;
-
-    if !prompt_optional_play(ctx, sa, card_id, controller) {
-        madness_exile_to_graveyard(ctx, card_id);
-        return;
-    }
-
-    let play_cost = sa.params.get(keys::PLAY_COST).map(|s| s.to_string());
-
-    // Pay madness mana cost BEFORE target setup (matches Java's cast flow order).
-    if let Some(ref cost_str) = play_cost {
-        let madness_mc = forge_foundation::ManaCost::parse(cost_str);
-        let available = crate::mana::calculate_available_mana(
-            &ctx.mana_pools[controller.index()],
-            ctx.game,
-            controller,
-        );
-        if !available.can_pay(&madness_mc) {
-            madness_exile_to_graveyard(ctx, card_id);
-            return;
-        }
-        let tapped = crate::mana::auto_tap_lands(
-            ctx.game,
-            &mut ctx.mana_pools[controller.index()],
-            controller,
-            &madness_mc,
-            Some(card_id),
-        );
-        for &land_id in &tapped {
-            ctx.trigger_handler.run_trigger(
-                TriggerType::TapsForMana,
-                RunParams {
-                    card: Some(land_id),
-                    player: Some(controller),
-                    ..Default::default()
-                },
-                false,
-            );
-        }
-        ctx.mana_pools[controller.index()].try_pay(&madness_mc);
-    }
-
-    // Build SA, set up targets, push to stack
-    let mut spell_sa =
-        crate::spellability::build_spell_ability_for_card_cast(ctx.game, card_id, controller);
-    spell_sa.alt_cost = Some(crate::spellability::AlternativeCost::Madness);
-    if let Some(cost) = spell_sa.pay_costs.as_mut() {
-        cost.mandatory = true;
-    }
-
-    spell_sa.setup_targets(ctx.game, ctx.agents, ctx.mana_pools);
-
-    super::helpers::remove_madness_exiled_marker(ctx.game.card_mut(card_id));
-    push_spell_to_stack(ctx, card_id, spell_sa, "Madness");
-}
-
-// ── Rebound path ──────────────────────────────────────────────────────
-
-fn resolve_rebound_play(ctx: &mut EffectContext, sa: &SpellAbility, card_id: CardId) {
-    let controller = sa.activating_player;
-
-    let mut spell_sa =
-        crate::spellability::build_spell_ability_for_card_cast(ctx.game, card_id, controller);
-    if let Some(cost) = spell_sa.pay_costs.as_mut() {
-        cost.mandatory = true;
-    }
-
-    spell_sa.setup_targets(ctx.game, ctx.agents, ctx.mana_pools);
-    push_spell_to_stack(ctx, card_id, spell_sa, "Rebound");
 }

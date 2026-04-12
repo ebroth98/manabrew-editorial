@@ -209,6 +209,14 @@ mod tests {
         fn choose_scry(&mut self, _player: PlayerId, cards: &[CardId]) -> Vec<CardId> {
             cards.to_vec() // put all on bottom
         }
+        fn choose_targets_for(
+            &mut self,
+            _sa: &mut SpellAbility,
+            _game: &GameState,
+            _mana_pools: &[ManaPool],
+        ) -> bool {
+            false
+        }
     }
 
     #[test]
@@ -230,6 +238,8 @@ mod tests {
             vec![Box::new(BottomAllAgent), Box::new(PassAgent)];
         let mut mana_pools = vec![ManaPool::default(), ManaPool::default()];
         let token_templates = HashMap::new();
+        let templates_variants: HashMap<(String, String), usize> = HashMap::new();
+        let token_fallback: HashMap<String, String> = HashMap::new();
         let mut rng_adapter = crate::game_rng::ThreadRngAdapter;
         let mut ctx = EffectContext {
             game: &mut game,
@@ -237,6 +247,8 @@ mod tests {
             agents: &mut agents,
             trigger_handler: &mut trigger_handler,
             token_templates: &token_templates,
+            token_art_variants: &templates_variants,
+            token_fallback: &token_fallback,
             mana_pools: &mut mana_pools,
             parent_target_card: None,
             rng: &mut rng_adapter,
@@ -265,6 +277,8 @@ mod tests {
         let mut agents: Vec<Box<dyn PlayerAgent>> = vec![Box::new(PassAgent), Box::new(PassAgent)];
         let mut mana_pools = vec![ManaPool::default(), ManaPool::default()];
         let token_templates = HashMap::new();
+        let templates_variants: HashMap<(String, String), usize> = HashMap::new();
+        let token_fallback: HashMap<String, String> = HashMap::new();
         let mut rng_adapter = crate::game_rng::ThreadRngAdapter;
         let mut ctx = EffectContext {
             game: &mut game,
@@ -272,6 +286,8 @@ mod tests {
             agents: &mut agents,
             trigger_handler: &mut trigger_handler,
             token_templates: &token_templates,
+            token_art_variants: &templates_variants,
+            token_fallback: &token_fallback,
             mana_pools: &mut mana_pools,
             parent_target_card: None,
             rng: &mut rng_adapter,

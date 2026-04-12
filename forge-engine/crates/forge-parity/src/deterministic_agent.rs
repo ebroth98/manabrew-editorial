@@ -7,6 +7,7 @@ use forge_engine_core::agent::{
     BinaryChoiceKind, GameEntity, ManaCostAction, PlayCardMode, PlayOption, PlayerAgent,
     TargetChoice,
 };
+use forge_engine_core::spellability::SpellAbility;
 use forge_engine_core::combat::DefenderId;
 use forge_engine_core::game::GameState;
 use forge_engine_core::ids::{CardId, PlayerId};
@@ -96,6 +97,7 @@ pub struct DeterministicAgent {
     game_rng: Rc<RefCell<JavaRandom>>,
     prefer_actions: bool,
     parity_map: Arc<ParityCardMap>,
+    parity_observer: Option<Arc<crate::runner::ParityObserver>>,
 }
 
 struct GameSnapshot {
@@ -119,6 +121,7 @@ impl DeterministicAgent {
         game_rng: Rc<RefCell<JavaRandom>>,
         prefer_actions: bool,
         parity_map: Arc<ParityCardMap>,
+        parity_observer: Option<Arc<crate::runner::ParityObserver>>,
     ) -> Self {
         Self {
             player_id,
@@ -130,6 +133,7 @@ impl DeterministicAgent {
             game_rng,
             prefer_actions,
             parity_map,
+            parity_observer,
         }
     }
 
@@ -365,6 +369,18 @@ impl DeterministicAgent {
         self.verbose.is_active(self.current_turn)
     }
 
+    fn emit_callback(&self, name: &str, outcome: &str) {
+        if let Some(ref observer) = self.parity_observer {
+            observer.on_callback(
+                name,
+                outcome,
+                self.player_id.0,
+                self.current_turn,
+                &format!("{:?}", self.last_game_snapshot.as_ref().map(|s| &s.game.turn.phase).unwrap_or(&PhaseType::Untap)),
+            );
+        }
+    }
+
     fn log_decision(&self, msg: &str) {
         if std::env::var("FORGE_RNG_TRACE").is_ok() {
             let count = self.rng.borrow().call_count;
@@ -411,6 +427,49 @@ impl PlayerAgent for DeterministicAgent {
             card_is_land,
             ability_is_mana,
         });
+    }
+
+    fn choose_targets_for(
+        &mut self,
+        sa: &mut forge_engine_core::spellability::SpellAbility,
+        game: &GameState,
+        mana_pools: &[ManaPool],
+    ) -> bool {
+        self.snapshot_state(game, mana_pools);
+        if let Some(tr) = sa.target_restrictions.as_ref() {
+            let min_targets = tr.get_min_targets(game, sa);
+            let current_targets = sa.target_chosen.all_target_cards().len() as i32
+                + i32::from(sa.target_chosen.target_player.is_some())
+                + i32::from(sa.target_chosen.target_stack_entry.is_some());
+            if current_targets == 0 && min_targets <= 0 {
+                return true;
+            }
+        }
+        let result = forge_engine_core::spellability::choose_targets_by_kind(
+            self, sa, game, mana_pools,
+        );
+
+        // Log the actual targets chosen for parity debugging.
+        let mut target_names = Vec::new();
+        if let Some(pid) = sa.target_chosen.target_player {
+            target_names.push(format!("Player({})", pid.0));
+        }
+        if let Some(cid) = sa.target_chosen.target_card {
+            target_names.push(format!("{}@{}", self.card_name(cid), self.parity_map.id(cid)));
+        }
+        for &cid in sa.target_chosen.divided_map.keys() {
+            target_names.push(format!("{}@{}", self.card_name(cid), self.parity_map.id(cid)));
+        }
+        if let Some(stack_id) = sa.target_chosen.target_stack_entry {
+            target_names.push(format!("Stack({})", stack_id));
+        }
+        if !target_names.is_empty() {
+            self.emit_callback(
+                "choose_targets_for(inner)",
+                &format!("[{}]", target_names.join(", ")),
+            );
+        }
+        result
     }
 
     fn mulligan_decision(
@@ -508,10 +567,10 @@ impl PlayerAgent for DeterministicAgent {
         let Some(ref snap) = self.last_game_snapshot else {
             return ManaCostAction::Cancel;
         };
-        let callback_cost = if mana_cost_display.contains('X') {
+        let callback_cost = if mana_cost.contains('X') {
             mana_cost_checkpoint
         } else {
-            mana_cost_display
+            mana_cost
         };
         auto_pay::next_mana_cost_action(
             &snap.game,
@@ -1164,6 +1223,58 @@ impl PlayerAgent for DeterministicAgent {
             out.push(pool.remove(idx));
         }
         out
+    }
+
+    fn choose_spell_abilities_for_effect(
+        &mut self,
+        _player: PlayerId,
+        abilities: &[SpellAbility],
+        num: usize,
+    ) -> Vec<usize> {
+        if abilities.is_empty() || num == 0 {
+            return vec![];
+        }
+        let count = num.min(abilities.len());
+        let mut pool: Vec<usize> = (0..abilities.len()).collect();
+        let mut out = Vec::with_capacity(count);
+        let mut rng = self.rng.borrow_mut();
+        for _ in 0..count {
+            if pool.is_empty() {
+                break;
+            }
+            let idx = choice_space::pick_index(pool.len(), &mut rng);
+            out.push(pool.remove(idx));
+        }
+        out
+    }
+
+    fn choose_single_entity_for_effect(
+        &mut self,
+        _player: PlayerId,
+        valid: &[CardId],
+        _is_optional: bool,
+    ) -> Option<CardId> {
+        if valid.is_empty() {
+            return None;
+        }
+        let sorted = choice_space::sort_native(valid, |a, b| {
+            self.card_name(*a)
+                .cmp(&self.card_name(*b))
+                .then_with(|| self.parity_map.id(*a).cmp(&self.parity_map.id(*b)))
+        });
+        choice_space::pick_one(&sorted, &mut self.rng.borrow_mut())
+    }
+
+    fn get_ability_to_play(
+        &mut self,
+        _player: PlayerId,
+        abilities: &[SpellAbility],
+    ) -> Option<usize> {
+        if abilities.is_empty() {
+            return None;
+        }
+        let idx = choice_space::pick_index(abilities.len(), &mut self.rng.borrow_mut());
+        Some(idx)
     }
 
     fn choose_scry(&mut self, _player: PlayerId, cards: &[CardId]) -> Vec<CardId> {

@@ -417,6 +417,7 @@ public final class Main {
         });
 
         System.err.println("[harness] Starting game...");
+        ParityLog.enable(agentRng);
         DecisionLog.setSink(line -> {
             protocolOut.println(line);
             protocolOut.flush();
@@ -442,6 +443,7 @@ public final class Main {
             System.err.println("[harness] Game ended in a draw.");
         }
         DecisionLog.setSink(null, false);
+        ParityLog.disable();
     }
 
     /** Escape a string for embedding in a JSON string value. */

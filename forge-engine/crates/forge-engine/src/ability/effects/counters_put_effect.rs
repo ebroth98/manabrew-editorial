@@ -213,6 +213,8 @@ mod tests {
         trigger_handler: &'a mut TriggerHandler,
         mana_pools: &'a mut Vec<ManaPool>,
         token_templates: &'a HashMap<String, Card>,
+        token_art_variants: &'a HashMap<(String, String), usize>,
+        token_fallback: &'a HashMap<String, String>,
         rng: &'a mut dyn crate::game_rng::GameRng,
     ) -> EffectContext<'a> {
         EffectContext {
@@ -221,6 +223,8 @@ mod tests {
             agents,
             trigger_handler,
             token_templates,
+            token_art_variants,
+            token_fallback,
             mana_pools,
             parent_target_card: None,
             rng,
@@ -245,6 +249,8 @@ mod tests {
             vec![Box::new(PassAgent), Box::new(PassAgent)];
         let mut mana_pools = vec![ManaPool::default(), ManaPool::default()];
         let token_templates = HashMap::new();
+        let templates_variants: HashMap<(String, String), usize> = HashMap::new();
+        let token_fallback: HashMap<String, String> = HashMap::new();
         let mut rng_adapter = crate::game_rng::ThreadRngAdapter;
         let mut ctx = make_ctx(
             &mut game,
@@ -252,6 +258,8 @@ mod tests {
             &mut trigger_handler,
             &mut mana_pools,
             &token_templates,
+            &templates_variants,
+            &token_fallback,
             &mut rng_adapter,
         );
 

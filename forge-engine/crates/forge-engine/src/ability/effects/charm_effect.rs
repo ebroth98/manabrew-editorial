@@ -1,12 +1,9 @@
 use super::{resolve_numeric_svar, EffectContext};
 use crate::agent::PlayerAgent;
-use crate::agent::TargetChoice;
-use crate::card::card_util;
 use crate::game::GameState;
 use crate::ids::PlayerId;
 use crate::parsing::keys;
 use crate::parsing::Params;
-use crate::spellability::target_restrictions::{get_all_candidates_spells, TargetKind};
 use crate::spellability::{build_spell_ability, SpellAbility};
 
 /// `SP$ Charm` — modal spell: player chooses N effects from a list.
@@ -502,91 +499,12 @@ fn mode_has_valid_targets_in_game(
     tr.has_candidates(game, player, sa.source)
 }
 
-/// Set up targeting for a charm mode SpellAbility at resolution time.
-///
-/// Reads the mode's `TargetRestrictions` and calls the appropriate agent
-/// method to choose targets, then stores the result in `target_chosen`.
 fn setup_mode_targets(ctx: &mut EffectContext, mode_sa: &mut SpellAbility, player: PlayerId) {
-    let tr = match &mode_sa.target_restrictions {
-        Some(tr) => tr.clone(),
-        None => return,
-    };
-
-    match &tr.target_kind {
-        TargetKind::Player => {
-            let players = ctx.game.alive_players();
-            if let Some(p) = ctx.agents[player.index()].choose_target_player(player, &players, None)
-            {
-                mode_sa.target_chosen.target_player = Some(p);
-            }
-        }
-
-        TargetKind::Spell => {
-            let stack_ids = get_all_candidates_spells(ctx.game);
-            if let Some(id) = ctx.agents[player.index()].choose_target_spell(player, &stack_ids) {
-                mode_sa.target_chosen.target_stack_entry = Some(id);
-            }
-        }
-
-        TargetKind::Creature(ref filter) => {
-            let _ = filter;
-            let valid = card_util::get_valid_cards_to_target(ctx.game, mode_sa);
-            if let Some(card) = ctx.agents[player.index()].choose_target_card(player, &valid, None)
-            {
-                mode_sa.target_chosen.target_card = Some(card);
-            }
-        }
-
-        TargetKind::Permanent(ref filter) => {
-            let _ = filter;
-            let valid = card_util::get_valid_cards_to_target(ctx.game, mode_sa);
-            if let Some(card) = ctx.agents[player.index()].choose_target_card(player, &valid, None)
-            {
-                mode_sa.target_chosen.target_card = Some(card);
-            }
-        }
-
-        TargetKind::CardInZone { zone, filter } => {
-            let zone = *zone;
-            let _ = filter;
-            let valid = card_util::get_valid_cards_to_target(ctx.game, mode_sa);
-            if let Some(card) =
-                ctx.agents[player.index()].choose_target_card_from_zone(player, zone, &valid, None)
-            {
-                mode_sa.target_chosen.target_card = Some(card);
-            }
-        }
-
-        // Generic fallback: use valid_tgts[0] with matches_valid_cards for battlefield
-        TargetKind::Any => {
-            let valid_players =
-                if crate::spellability::target_restrictions::any_target_allows_players(
-                    &tr.valid_tgts,
-                ) {
-                    ctx.game.alive_players()
-                } else {
-                    Vec::new()
-                };
-            let valid_cards = card_util::get_valid_cards_to_target(ctx.game, mode_sa);
-            let choice = ctx.agents[player.index()].choose_target_any(
-                player,
-                &valid_players,
-                &valid_cards,
-                None,
-            );
-            match choice {
-                TargetChoice::Player(p) => {
-                    mode_sa.target_chosen.target_player = Some(p);
-                }
-                TargetChoice::Card(c) => {
-                    mode_sa.target_chosen.target_card = Some(c);
-                }
-                TargetChoice::None => {}
-            }
-        }
-
-        TargetKind::None => {}
+    if !mode_sa.uses_targeting() {
+        return;
     }
+    mode_sa.targeting_player = Some(player);
+    ctx.agents[player.index()].choose_targets_for(mode_sa, ctx.game, ctx.mana_pools);
 }
 
 #[cfg(test)]
@@ -627,6 +545,8 @@ mod tests {
             vec![Box::new(PassAgent), Box::new(PassAgent)];
         let mut mp = vec![ManaPool::default(), ManaPool::default()];
         let templates = HashMap::new();
+        let templates_variants = HashMap::new();
+        let token_fallback = HashMap::new();
         let mut rng_adapter = crate::game_rng::ThreadRngAdapter;
         let mut ctx = EffectContext {
             game: &mut game,
@@ -634,6 +554,8 @@ mod tests {
             agents: &mut agents,
             trigger_handler: &mut th,
             token_templates: &templates,
+            token_art_variants: &templates_variants,
+            token_fallback: &token_fallback,
             mana_pools: &mut mp,
             parent_target_card: None,
             rng: &mut rng_adapter,
@@ -702,6 +624,8 @@ mod tests {
             vec![Box::new(PassAgent), Box::new(PassAgent)];
         let mut mp = vec![ManaPool::default(), ManaPool::default()];
         let templates = HashMap::new();
+        let templates_variants = HashMap::new();
+        let token_fallback = HashMap::new();
         let mut rng_adapter = crate::game_rng::ThreadRngAdapter;
         let mut ctx = EffectContext {
             game: &mut game,
@@ -709,6 +633,8 @@ mod tests {
             agents: &mut agents,
             trigger_handler: &mut th,
             token_templates: &templates,
+            token_art_variants: &templates_variants,
+            token_fallback: &token_fallback,
             mana_pools: &mut mp,
             parent_target_card: None,
             rng: &mut rng_adapter,

@@ -223,6 +223,34 @@ pub fn make_etb_counter(_kw: &str, _card: &Card, _intrinsic: bool) -> Option<Rep
     None
 }
 
+pub fn add_madness_replacement(card: &mut Card) {
+    let keywords = card.keywords.as_string_list();
+    for keyword in keywords {
+        let Some(cost) = keyword.strip_prefix("Madness:") else {
+            continue;
+        };
+        let cost = cost.trim();
+        let desc = if cost == "ManaCost" {
+            format!("Madness: If you discard this card, discard it into exile.")
+        } else {
+            let display = forge_foundation::ManaCost::parse(cost);
+            format!(
+                "Madness {}: If you discard this card, discard it into exile.",
+                display
+            )
+        };
+        let repl_str = format!(
+            "R$ Event$ Moved | ActiveZones$ Hand | ValidCard$ Card.Self | Discard$ True \
+             | Secondary$ True | NewDestination$ Exile \
+             | Description$ {}",
+            desc
+        );
+        if let Some(repl) = parse_replacement_effect(&repl_str) {
+            card.replacement_effects.push(repl);
+        }
+    }
+}
+
 pub fn add_trigger_ability(card: &mut Card, trig: Trigger) {
     card.add_trigger(trig);
 }

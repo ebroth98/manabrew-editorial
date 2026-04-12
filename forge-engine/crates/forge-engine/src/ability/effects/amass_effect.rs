@@ -119,9 +119,10 @@ fn create_army_token(
     token.set_controller(controller);
     token.set_is_token(true);
 
-    // RNG sync: match Java's token art selection
-    ctx.rng.next_int(1);
-    ctx.rng.next_int(1);
+    // Sync game RNG with Java's token art selection.
+    // Amass army tokens use a script like "b_0_0_{type}_army".
+    let army_script = format!("b_0_0_{}_army", amass_type.to_lowercase());
+    ctx.sync_token_art_rng(&army_script, _sa);
 
     let token_id = ctx.game.create_card(token);
     ctx.game

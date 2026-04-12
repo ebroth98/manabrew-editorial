@@ -34,7 +34,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
 /// Create a single Incubator token with N +1/+1 counters.
 fn create_incubator_token(
     ctx: &mut EffectContext,
-    _sa: &SpellAbility,
+    sa: &SpellAbility,
     player: crate::ids::PlayerId,
     counter_amount: i32,
 ) {
@@ -44,9 +44,7 @@ fn create_incubator_token(
         .get("incubator_c_0_0_a_phyrexian")
         .cloned()
     {
-        // RNG sync
-        ctx.rng.next_int(1);
-        ctx.rng.next_int(1);
+        ctx.sync_token_art_rng("incubator_c_0_0_a_phyrexian", sa);
 
         let mut token = template;
         token.set_owner(player);
@@ -83,8 +81,7 @@ fn create_incubator_token(
         );
     } else {
         // Fallback: create inline Incubator token
-        ctx.rng.next_int(1);
-        ctx.rng.next_int(1);
+        ctx.sync_token_art_rng("incubator_c_0_0_a_phyrexian", sa);
 
         let mut token = Card::new(
             CardId(0),

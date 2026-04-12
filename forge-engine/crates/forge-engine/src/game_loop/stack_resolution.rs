@@ -132,29 +132,6 @@ impl GameLoop {
                     api,
                 );
                 if !accepted {
-                    // Player declined — trigger does nothing.
-                    // For Madness triggers: move the source card from exile to graveyard.
-                    // Mirrors Java's Madness cleanup when the trigger is declined.
-                    if entry
-                        .spell_ability
-                        .param_is_true(crate::card::PARAM_MADNESS_PLAY)
-                    {
-                        if let Some(source_id) = entry.spell_ability.source {
-                            if game.card(source_id).zone == ZoneType::Exile {
-                                let owner = game.card(source_id).owner;
-                                self.move_card_with_runtime(
-                                    game,
-                                    source_id,
-                                    ZoneType::Graveyard,
-                                    owner,
-                                    agents,
-                                );
-                                crate::ability::effects::helpers::remove_madness_exiled_marker(
-                                    game.card_mut(source_id),
-                                );
-                            }
-                        }
-                    }
                     apply_continuous_effects(game);
                     return;
                 }
@@ -795,6 +772,8 @@ impl GameLoop {
             agents,
             trigger_handler: &mut self.trigger_handler,
             token_templates: &self.token_templates,
+            token_art_variants: &self.token_art_variants,
+            token_fallback: &self.token_fallback,
             mana_pools: &mut self.mana_pools,
             parent_target_card,
             rng: &mut *self.game_rng,

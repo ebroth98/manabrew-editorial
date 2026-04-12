@@ -398,6 +398,8 @@ impl GameLoop {
                     agents,
                     trigger_handler: &mut self.trigger_handler,
                     token_templates: &self.token_templates,
+                    token_art_variants: &self.token_art_variants,
+                    token_fallback: &self.token_fallback,
                     mana_pools: &mut self.mana_pools,
                     parent_target_card: None,
                     rng: &mut *self.game_rng,

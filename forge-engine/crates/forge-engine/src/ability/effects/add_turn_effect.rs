@@ -110,6 +110,8 @@ mod tests {
             vec![Box::new(PassAgent), Box::new(PassAgent)];
         let mut mp = vec![ManaPool::default(), ManaPool::default()];
         let templates = HashMap::new();
+        let templates_variants = HashMap::new();
+        let token_fallback = HashMap::new();
         let mut rng_adapter = crate::game_rng::ThreadRngAdapter;
         let mut ctx = EffectContext {
             game: &mut game,
@@ -117,6 +119,8 @@ mod tests {
             agents: &mut agents,
             trigger_handler: &mut th,
             token_templates: &templates,
+            token_art_variants: &templates_variants,
+            token_fallback: &token_fallback,
             mana_pools: &mut mp,
             parent_target_card: None,
             rng: &mut rng_adapter,
@@ -140,6 +144,8 @@ mod tests {
             vec![Box::new(PassAgent), Box::new(PassAgent)];
         let mut mp = vec![ManaPool::default(), ManaPool::default()];
         let templates = HashMap::new();
+        let templates_variants = HashMap::new();
+        let token_fallback = HashMap::new();
         let mut rng_adapter = crate::game_rng::ThreadRngAdapter;
         let mut ctx = EffectContext {
             game: &mut game,
@@ -147,6 +153,8 @@ mod tests {
             agents: &mut agents,
             trigger_handler: &mut th,
             token_templates: &templates,
+            token_art_variants: &templates_variants,
+            token_fallback: &token_fallback,
             mana_pools: &mut mp,
             parent_target_card: None,
             rng: &mut rng_adapter,

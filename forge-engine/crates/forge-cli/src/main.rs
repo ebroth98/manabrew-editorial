@@ -294,6 +294,15 @@ impl InteractiveAgent {
 }
 
 impl PlayerAgent for InteractiveAgent {
+    fn choose_targets_for(
+        &mut self,
+        sa: &mut forge_engine_core::spellability::SpellAbility,
+        game: &GameState,
+        mana_pools: &[forge_engine_core::mana::ManaPool],
+    ) -> bool {
+        forge_engine_core::spellability::choose_targets_by_kind(self, sa, game, mana_pools)
+    }
+
     fn mulligan_decision(
         &mut self,
         _player: PlayerId,
@@ -674,6 +683,15 @@ impl PlayerAgent for InteractiveAgent {
 struct SimpleAiAgent;
 
 impl PlayerAgent for SimpleAiAgent {
+    fn choose_targets_for(
+        &mut self,
+        sa: &mut forge_engine_core::spellability::SpellAbility,
+        game: &GameState,
+        mana_pools: &[forge_engine_core::mana::ManaPool],
+    ) -> bool {
+        forge_engine_core::spellability::choose_targets_by_kind(self, sa, game, mana_pools)
+    }
+
     fn mulligan_decision(&mut self, _: PlayerId, _: &[CardId], _: u32) -> bool {
         true
     }

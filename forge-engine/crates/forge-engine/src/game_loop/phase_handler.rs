@@ -445,55 +445,78 @@ impl GameLoop {
     }
 
     pub fn step_cleanup(&mut self, game: &mut GameState, agents: &mut [Box<dyn PlayerAgent>]) {
-        let active = game.active_player();
+        // Rule 514.3a: If state-based actions are performed or triggers fire
+        // during Cleanup, players get priority and then a new Cleanup step
+        // begins. This mirrors Java's bRepeatCleanup / givePriorityToPlayer
+        // loop in PhaseHandler.java.
+        let mut is_repeat = false;
+        loop {
+            // On repeat iterations, re-notify the phase so that parity agents
+            // see the same snapshot Java emits when it re-enters onPhaseBegin(CLEANUP).
+            if is_repeat {
+                self.notify_phase_changed(game, agents);
+            }
 
-        // Discard down to max hand size — player chooses which cards to discard.
-        // Mirrors Java's Player.discard() during cleanup step.
-        let hand_size = game.zone(ZoneType::Hand, active).len() as i32;
-        let max = game.player(active).max_hand_size;
-        if hand_size > max {
-            let to_discard = (hand_size - max) as usize;
-            let hand: Vec<CardId> = game.cards_in_zone(ZoneType::Hand, active).to_vec();
-            agents[active.index()].snapshot_state(game, &self.mana_pools);
-            self.game_log.log(
-                GameLogEntryType::PriorityWaiting,
-                2,
-                format!(
-                    "Waiting for {} discard decision (choose {})",
-                    game.player(active).name,
-                    to_discard
-                ),
-            );
-            let chosen = agents[active.index()].choose_discard(active, &hand, to_discard);
-            self.game_log.log(
-                GameLogEntryType::PriorityResponse,
-                2,
-                format!(
-                    "{} selected {} card(s) to discard",
-                    game.player(active).name,
-                    chosen.len().min(to_discard)
-                ),
-            );
-            for card_id in chosen.iter().take(to_discard) {
-                if game.card(*card_id).zone == ZoneType::Hand {
-                    effects::helpers::discard_with_madness_replacement(
-                        game,
-                        &mut self.trigger_handler,
-                        *card_id,
-                        active,
-                        None,
-                    );
+            let active = game.active_player();
+
+            // Rule 514.1: Discard down to max hand size.
+            let hand_size = game.zone(ZoneType::Hand, active).len() as i32;
+            let max = game.player(active).max_hand_size;
+            if hand_size > max {
+                let to_discard = (hand_size - max) as usize;
+                let hand: Vec<CardId> = game.cards_in_zone(ZoneType::Hand, active).to_vec();
+                agents[active.index()].snapshot_state(game, &self.mana_pools);
+                self.game_log.log(
+                    GameLogEntryType::PriorityWaiting,
+                    2,
+                    format!(
+                        "Waiting for {} discard decision (choose {})",
+                        game.player(active).name,
+                        to_discard
+                    ),
+                );
+                let chosen =
+                    agents[active.index()].choose_discard(active, &hand, to_discard);
+                self.game_log.log(
+                    GameLogEntryType::PriorityResponse,
+                    2,
+                    format!(
+                        "{} selected {} card(s) to discard",
+                        game.player(active).name,
+                        chosen.len().min(to_discard)
+                    ),
+                );
+                for card_id in chosen.iter().take(to_discard) {
+                    if game.card(*card_id).zone == ZoneType::Hand {
+                        game.discard_card(
+                            *card_id,
+                            active,
+                            None,
+                            Some(agents),
+                            &mut self.trigger_handler,
+                        );
+                    }
                 }
             }
+
+            // Rule 514.2: Remove damage from permanents and end "until end of
+            // turn" / "this turn" effects.  Java does this inside
+            // onPhaseBegin(CLEANUP) every iteration.
+            self.cleanup_damage_and_eot(game);
+
+            // Process triggers from cleanup actions (e.g. madness exile trigger).
+            self.process_triggers(game, agents);
+
+            // Rule 514.3a: If anything is on the stack (triggers fired, SBAs
+            // created triggers, etc.), give players priority and repeat cleanup.
+            if game.stack.is_empty() {
+                break;
+            }
+            self.step_with_priority(game, agents, false);
+            is_repeat = true;
         }
 
-        // Process any triggers from cleanup discard (e.g. Madness triggers that
-        // need to resolve before end of turn). Mirrors Java's cleanup step which
-        // processes triggers after discard-to-hand-size.
-        self.process_triggers(game, agents);
-        if !game.stack.is_empty() {
-            self.resolve_stack(game, agents);
-        }
+        // --- One-time end-of-turn resets (after the cleanup loop) ---
 
         // Reset fog flag (issue #22: Fog effect lasts until end of turn).
         game.prevent_all_combat_damage = false;
@@ -505,13 +528,17 @@ impl GameLoop {
         game.stack.reset_max_distinct_sources();
 
         // Empty mana pool at end of turn (cleanup step), per Magic rules.
+        let active = game.active_player();
         self.pool_mut(active).reset_pool();
         self.trigger_handler.clear_this_turn_delayed_trigger();
+    }
 
+    /// Rule 514.2: Remove damage from permanents, expire "until end of turn"
+    /// effects, and clean up temporary state. Called every cleanup iteration
+    /// (including repeats per rule 514.3a), mirroring Java's onPhaseBegin(CLEANUP).
+    fn cleanup_damage_and_eot(&mut self, game: &mut GameState) {
         // Remove temporary command-zone effect cards created by AB$ Effect
         // that expire at end of turn.
-        // These helper effect cards should cease to exist when they expire;
-        // keeping them in Exile causes parity drift versus Java snapshots.
         let temp_effect_ids: Vec<CardId> = game
             .cards
             .iter()
@@ -554,8 +581,6 @@ impl GameLoop {
         for i in 0..game.cards.len() {
             if game.cards[i].zone == ZoneType::Battlefield {
                 // Restore animate state before checking creature status (issue #52).
-                // Must happen first: if the card was animated into a creature but its base
-                // form is not a creature, we still need to reset its type/P/T.
                 if let Some(state) = game.cards[i].animate_state.take() {
                     game.cards[i].restore_animate_snapshot(
                         state.original_type_line,
@@ -563,10 +588,6 @@ impl GameLoop {
                         state.original_base_toughness,
                         state.original_color,
                     );
-                    // Clear damage accumulated while animated as a creature.
-                    // Without this, damage leaks into the next turn if the
-                    // card is re-animated (the is_creature() check below would
-                    // miss it since the card is no longer a creature).
                     game.cards[i].clear_damage();
                 }
 
@@ -581,15 +602,10 @@ impl GameLoop {
                     }
                     game.cards[i].reset_turn_modifiers();
                     game.cards[i].clear_pump_keywords();
-                    // Remove triggers added by Animate effects (Supernatural Stamina etc.)
                     game.cards[i].clear_pump_triggers();
                     game.cards[i].clear_deathtouch_damage();
-                    // Reset regeneration shields at end of turn (issue #22).
                     game.cards[i].reset_regeneration_shields();
-                    // Reset damage prevention shields at end of turn.
-                    // Mirrors Java's DamagePreventEffect which exiles Effect cards at EOT.
                     game.cards[i].reset_shield_count();
-                    // Reset per-turn damage history.
                     game.cards[i].damage_history.new_turn();
                 }
             }

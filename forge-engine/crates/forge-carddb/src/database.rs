@@ -16,6 +16,17 @@ pub struct CardDatabase {
     flavor_name_aliases: HashMap<String, String>,
     /// Accent-stripped flavor-name aliases (lowercase) to canonical Oracle card names.
     flavor_name_aliases_normalized: HashMap<String, String>,
+    /// Token art variant counts per edition: (token_script, edition_code) → count.
+    /// Used for game-RNG parity: Java's `Aggregates.random()` on a Set calls
+    /// `nextInt()` once per element, so the count determines how many RNG calls
+    /// to consume during token creation.
+    token_art_variants: HashMap<(String, String), usize>,
+    /// Token fallback codes: edition_code → fallback_edition_code.
+    /// Mirrors Java's `TokenFallbackCode` metadata in edition files.
+    token_fallback: HashMap<String, String>,
+    /// Default edition per card name (lowercase) — the latest edition containing
+    /// the card, matching Java's CardDb default art preference (LATEST_ART_ALL).
+    card_default_edition: HashMap<String, String>,
 }
 
 /// Result of loading a batch of card scripts.
@@ -33,6 +44,9 @@ impl CardDatabase {
             normalized_names: HashMap::new(),
             flavor_name_aliases: HashMap::new(),
             flavor_name_aliases_normalized: HashMap::new(),
+            token_art_variants: HashMap::new(),
+            token_fallback: HashMap::new(),
+            card_default_edition: HashMap::new(),
         }
     }
 
@@ -76,6 +90,43 @@ impl CardDatabase {
 
     pub fn card_names(&self) -> impl Iterator<Item = String> + '_ {
         self.cards.values().map(|r| r.name())
+    }
+
+    /// Access the raw token art variant map.
+    pub fn token_art_variants(&self) -> &HashMap<(String, String), usize> {
+        &self.token_art_variants
+    }
+
+    /// Access the raw token fallback map.
+    pub fn token_fallback(&self) -> &HashMap<String, String> {
+        &self.token_fallback
+    }
+
+    /// Get the default edition for a card by name (lowercase).
+    pub fn card_default_edition(&self, card_name: &str) -> Option<&str> {
+        self.card_default_edition
+            .get(&card_name.to_lowercase())
+            .map(|s| s.as_str())
+    }
+
+    /// Get the number of art variants for a token script in a given edition.
+    /// Follows `TokenFallbackCode` chains to find the edition that has the token.
+    /// Returns 1 if not found (single variant assumed).
+    pub fn token_art_variant_count(&self, token_script: &str, edition_code: &str) -> usize {
+        let key = (
+            token_script.to_lowercase(),
+            edition_code.to_uppercase(),
+        );
+        if let Some(&count) = self.token_art_variants.get(&key) {
+            return count;
+        }
+        // Follow TokenFallbackCode chain
+        if let Some(fallback) = self.token_fallback.get(&edition_code.to_uppercase()) {
+            return self.token_art_variant_count(token_script, fallback);
+        }
+        // Not found in any edition — Java's fallbackToken iterates all editions
+        // until it finds one. We return 1 as a safe default (single variant).
+        1
     }
 
     /// Mirror of Java's CardDb.getNormalizedName().
@@ -230,6 +281,11 @@ impl CardDatabase {
 
     fn extract_flavor_aliases_from_edition_contents(&mut self, contents: &str) {
         let mut in_entries = false;
+        let mut in_tokens = false;
+        let mut in_metadata = false;
+        let mut edition_code = String::new();
+        // Count occurrences of each token script in this edition
+        let mut token_counts: HashMap<String, usize> = HashMap::new();
 
         for raw_line in contents.lines() {
             let line = raw_line.trim();
@@ -238,11 +294,40 @@ impl CardDatabase {
             }
             if line.starts_with('[') && line.ends_with(']') {
                 let section = &line[1..line.len() - 1];
-                in_entries = !section.eq_ignore_ascii_case("metadata");
+                in_metadata = section.eq_ignore_ascii_case("metadata");
+                in_tokens = section.eq_ignore_ascii_case("tokens");
+                in_entries = !in_metadata && !in_tokens;
+                continue;
+            }
+            if in_metadata {
+                // Extract edition code and token fallback
+                if let Some(code) = line.strip_prefix("Code=") {
+                    edition_code = code.trim().to_uppercase();
+                } else if let Some(fallback) = line.strip_prefix("TokenFallbackCode=") {
+                    let fb = fallback.trim().to_uppercase();
+                    if !edition_code.is_empty() && !fb.is_empty() {
+                        self.token_fallback.insert(edition_code.clone(), fb);
+                    }
+                }
+                continue;
+            }
+            if in_tokens {
+                // Parse token line: "1a c_0_1_eldrazi_spawn_sac @Aleksi Briclot"
+                if let Some(token_name) = parse_token_line(line) {
+                    *token_counts.entry(token_name).or_insert(0) += 1;
+                }
                 continue;
             }
             if !in_entries {
                 continue;
+            }
+            // Track card → edition mapping (latest edition wins).
+            // Card line format: "1 M All Is Dust @Jason Felix"
+            if !edition_code.is_empty() {
+                if let Some(card_name) = parse_card_name_from_edition_line(line) {
+                    self.card_default_edition
+                        .insert(card_name.to_lowercase(), edition_code.clone());
+                }
             }
             if let Some((printed_name, flavor_name)) = parse_edition_flavor_alias_line(line) {
                 let canonical = self
@@ -252,7 +337,41 @@ impl CardDatabase {
                 self.register_flavor_alias(&flavor_name, &canonical);
             }
         }
+
+        // Store token variant counts for this edition
+        if !edition_code.is_empty() {
+            for (token_name, count) in token_counts {
+                self.token_art_variants
+                    .insert((token_name, edition_code.clone()), count);
+            }
+        }
     }
+}
+
+/// Parse a card name from an edition's `[cards]` section line.
+/// Format: "1 M All Is Dust @Jason Felix" → "All Is Dust"
+fn parse_card_name_from_edition_line(line: &str) -> Option<&str> {
+    let mut parts = line.splitn(3, char::is_whitespace);
+    let _collector = parts.next()?; // "1"
+    let _rarity = parts.next()?; // "M"
+    let rest = parts.next()?.trim(); // "All Is Dust @Jason Felix"
+    if rest.is_empty() {
+        return None;
+    }
+    Some(split_at_any(rest, &[" @", " ${"]))
+}
+
+/// Parse a token line from an edition's `[tokens]` section.
+/// Format: "1a c_0_1_eldrazi_spawn_sac @Aleksi Briclot"
+/// Returns the token script name (lowercase).
+fn parse_token_line(line: &str) -> Option<String> {
+    let mut parts = line.splitn(3, char::is_whitespace);
+    let _collector = parts.next()?; // e.g. "1a"
+    let token_name = parts.next()?.trim(); // e.g. "c_0_1_eldrazi_spawn_sac"
+    if token_name.is_empty() {
+        return None;
+    }
+    Some(token_name.to_lowercase())
 }
 
 fn parse_edition_flavor_alias_line(line: &str) -> Option<(String, String)> {

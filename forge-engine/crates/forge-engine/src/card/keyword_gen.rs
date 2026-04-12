@@ -644,15 +644,20 @@ impl Card {
                     });
             }
 
-            // Madness: K:Madness:{cost} → trigger when this card is exiled from hand
+            // Madness: K:Madness:{cost} → trigger when this card is exiled
             // (via the discard replacement). Mirrors Java's Madness trigger created in
             // CardFactoryUtil.java:1474-1508.
             //
-            // Flow: discard → exile (replacement) → ChangesZone trigger fires →
-            // optional trigger prompt → Play effect with Optional$ True →
+            // Flow: player discards → replacement asks "exile instead?" (optional) →
+            // if yes, card goes to exile → ChangesZone trigger fires →
+            // Play effect with Optional$ True (player chooses to cast or not) →
             // if not played, card moves to graveyard.
+            //
+            // NOTE: No OptionalDecider$ on the trigger — the first optionality is
+            // in the replacement effect (choose_single_replacement_effect), and
+            // the second is in the Play effect's Optional$ True.
             if let Some(madness_cost) = crate::keyword::extract_keyword_cost_str(&kw, "Madness") {
-                let raw = "Mode$ ChangesZone | Origin$ Hand | Destination$ Exile | ValidCard$ Card.Self | OptionalDecider$ You | Secondary$ True | TriggerZones$ Exile | TriggerDescription$ You may cast this card for its madness cost.";
+                let raw = "Mode$ ChangesZone | Origin$ Hand | Destination$ Exile | ValidCard$ Card.Self | Secondary$ True | TriggerZones$ Exile | TriggerDescription$ You may cast this card for its madness cost.";
                 if let Some(mut trig) = parse_trigger(raw, &mut next_id) {
                     trig.execute = "TrigMadnessPlay".to_string();
                     self.add_trigger(trig);
@@ -661,9 +666,19 @@ impl Card {
                     .entry("TrigMadnessPlay".to_string())
                     .or_insert_with(|| {
                         format!(
-                            "DB$ Play | Defined$ Self | Optional$ True | PlayCost$ {} | MadnessPlay$ True",
+                            "DB$ Play | Defined$ Self | ValidSA$ Spell | PlayCost$ {} | Optional$ True | RememberPlayed$ True | SubAbility$ MadnessMoveToYard",
                             madness_cost
                         )
+                    });
+                self.svars
+                    .entry("MadnessMoveToYard".to_string())
+                    .or_insert_with(|| {
+                        "DB$ ChangeZone | Defined$ Self | Origin$ Exile | Destination$ Graveyard | TrackDiscarded$ True | ConditionDefined$ Remembered | ConditionPresent$ Card | ConditionCompare$ EQ0 | SubAbility$ MadnessCleanup".to_string()
+                    });
+                self.svars
+                    .entry("MadnessCleanup".to_string())
+                    .or_insert_with(|| {
+                        "DB$ Cleanup | ClearRemembered$ True".to_string()
                     });
             }
         }

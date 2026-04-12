@@ -145,6 +145,7 @@ mod tests {
     use crate::ids::{CardId, PlayerId};
     use crate::mana::ManaPool;
     use crate::player::actions::PlayerAction;
+    use crate::spellability::SpellAbility;
     use forge_foundation::{CardTypeLine, ColorSet, ManaCost, ZoneType};
     use rand::SeedableRng;
 
@@ -254,6 +255,14 @@ mod tests {
             None
         }
 
+        fn choose_targets_for(
+            &mut self,
+            _sa: &mut SpellAbility,
+            _game: &GameState,
+            _mana_pools: &[ManaPool],
+        ) -> bool {
+            false
+        }
     }
 
     fn filler_card(owner: PlayerId) -> Card {

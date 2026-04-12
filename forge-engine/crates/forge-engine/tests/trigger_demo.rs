@@ -295,6 +295,15 @@ impl PlayerAgent for VerboseAgent {
     fn notify(&mut self, msg: &str) {
         println!("    [{}] {}", self.name, msg);
     }
+
+    fn choose_targets_for(
+        &mut self,
+        _sa: &mut forge_engine_core::spellability::SpellAbility,
+        _game: &forge_engine_core::game::GameState,
+        _mana_pools: &[forge_engine_core::mana::ManaPool],
+    ) -> bool {
+        false
+    }
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────

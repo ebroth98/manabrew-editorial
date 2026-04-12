@@ -17,6 +17,9 @@ import java.util.Random;
  * already provided by Java engine callbacks (PlayerController methods).
  */
 public final class ChoiceSpace {
+    /** Prefix on all choice-space log entries so the display layer can filter them. */
+    private static final String P = "> ";
+
     public static final class ChoiceResult<T> {
         public final List<T> sorted;
         public final int index;
@@ -35,14 +38,22 @@ public final class ChoiceSpace {
 
     private ChoiceSpace() {}
 
+    private static String cc() {
+        final int n = ParityLog.rngCallCount();
+        return n >= 0 ? " {" + n + "}" : "";
+    }
+
     public static <T> T pickOne(final FCollectionView<T> options, final Random rng) {
         if (options == null || options.isEmpty()) {
             return null;
         }
         if (options.size() == 1) {
+            ParityLog.log(P + "pick_one [1] -> idx=0" + cc());
             return options.get(0);
         }
-        return options.get(rng.nextInt(options.size()));
+        final int idx = rng.nextInt(options.size());
+        ParityLog.log(P + "pick_one [" + options.size() + "] -> idx=" + idx + cc());
+        return options.get(idx);
     }
 
     public static <T> T pickOne(final List<T> options, final Random rng) {
@@ -50,28 +61,37 @@ public final class ChoiceSpace {
             return null;
         }
         if (options.size() == 1) {
+            ParityLog.log(P + "pick_one [1] -> idx=0" + cc());
             return options.get(0);
         }
-        return options.get(rng.nextInt(options.size()));
+        final int idx = rng.nextInt(options.size());
+        ParityLog.log(P + "pick_one [" + options.size() + "] -> idx=" + idx + cc());
+        return options.get(idx);
     }
 
     public static int pickCount(final int min, final int max, final int available, final Random rng) {
         final int hi = Math.min(Math.max(max, 0), Math.max(available, 0));
         final int lo = Math.min(Math.max(min, 0), hi);
-        return lo + (hi > lo ? rng.nextInt(hi - lo + 1) : 0);
+        final int count = lo + (hi > lo ? rng.nextInt(hi - lo + 1) : 0);
+        ParityLog.log(P + "pick_count [" + min + "-" + max + "] of " + available + " -> " + count + cc());
+        return count;
     }
 
     public static int pickIntInRange(final int min, final int max, final Random rng) {
         if (max <= min) {
+            ParityLog.log(P + "pick_int_in_range [" + min + "-" + max + "] -> " + min + cc());
             return min;
         }
         final long span = (long) max - (long) min + 1L;
+        final int val;
         if (span <= Integer.MAX_VALUE) {
-            return min + rng.nextInt((int) span);
+            val = min + rng.nextInt((int) span);
+        } else {
+            final long candidate = (long) min + rng.nextInt(Integer.MAX_VALUE);
+            val = (int) Math.min(candidate, (long) max);
         }
-        // Extremely wide ranges are rare; keep deterministic behavior without overflow.
-        final long candidate = (long) min + rng.nextInt(Integer.MAX_VALUE);
-        return (int) Math.min(candidate, (long) max);
+        ParityLog.log(P + "pick_int_in_range [" + min + "-" + max + "] -> " + val + cc());
+        return val;
     }
 
     public static CardCollection pickManyCards(
@@ -85,28 +105,37 @@ public final class ChoiceSpace {
         for (int i = 0; i < count && !pool.isEmpty(); i++) {
             out.add(pool.remove(pickIndex(pool.size(), rng)));
         }
+        final int poolSize = options == null ? 0 : options.size();
+        ParityLog.log(P + "pick_many_unique [" + min + "-" + max + "] of " + poolSize + " -> picked " + out.size() + cc());
         return out;
     }
 
     public static <T> List<T> shuffleCopy(final List<T> options, final Random rng) {
         final List<T> out = new ArrayList<>(options);
         Collections.shuffle(out, rng);
+        ParityLog.log(P + "shuffle_copy [" + options.size() + "]" + cc());
         return out;
     }
 
     public static boolean pickBool(final Random rng) {
-        return rng.nextInt(2) == 1;
+        final boolean result = rng.nextInt(2) == 1;
+        ParityLog.log(P + "pick_bool -> " + result + cc());
+        return result;
     }
 
     /** Pick an index in [0, size). Does not consume RNG when size <= 1. */
     public static int pickIndex(final int size, final Random rng) {
         if (size <= 0) {
+            ParityLog.log(P + "pick_index [0] -> idx=-1" + cc());
             return -1;
         }
         if (size == 1) {
+            ParityLog.log(P + "pick_index [1] -> idx=0" + cc());
             return 0;
         }
-        return rng.nextInt(size);
+        final int idx = rng.nextInt(size);
+        ParityLog.log(P + "pick_index [" + size + "] -> idx=" + idx + cc());
+        return idx;
     }
 
     /** Pick an index in [0, size] where size means PASS. */
@@ -114,7 +143,13 @@ public final class ChoiceSpace {
         if (size < 0) {
             return 0;
         }
-        return rng.nextInt(size + 1);
+        final int idx = rng.nextInt(size + 1);
+        if (idx >= size) {
+            ParityLog.log(P + "pick_index_with_pass [" + size + "] -> PASS" + cc());
+        } else {
+            ParityLog.log(P + "pick_index_with_pass [" + size + "] -> idx=" + idx + cc());
+        }
+        return idx;
     }
 
     /** Canonical parity pipeline: native list -> parity sort -> choose (optionally PASS). */
@@ -149,9 +184,17 @@ public final class ChoiceSpace {
         final int safeWeight = Math.max(1, actionWeight);
         final int totalWeight = safeSize * safeWeight + 1;
         final int roll = rng.nextInt(totalWeight);
+        final int idx;
         if (roll >= safeSize * safeWeight) {
-            return safeSize; // PASS
+            idx = safeSize;
+        } else {
+            idx = roll / safeWeight;
         }
-        return roll / safeWeight;
+        if (idx >= safeSize) {
+            ParityLog.log(P + "pick_weighted [" + safeSize + "] w=" + safeWeight + " -> PASS" + cc());
+        } else {
+            ParityLog.log(P + "pick_weighted [" + safeSize + "] w=" + safeWeight + " -> idx=" + idx + cc());
+        }
+        return idx;
     }
 }

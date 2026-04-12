@@ -159,7 +159,6 @@ pub struct CardDto {
     /// Madness cost string, if the card has madness (e.g. "R").
     #[serde(skip_serializing_if = "Option::is_none")]
     pub madness_cost: Option<String>,
-    /// True if this card is currently exiled via Madness replacement.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub is_madness_exiled: bool,
     /// True if this card has been plotted (exiled face-up, castable for free later).
@@ -504,7 +503,8 @@ pub fn card_to_dto(
             }
         },
         madness_cost: card.get_madness_cost(),
-        is_madness_exiled: card.has_keyword(forge_engine_core::card::KEYWORD_MADNESS_EXILED),
+        is_madness_exiled: card.zone == forge_foundation::ZoneType::Exile
+            && card.get_madness_cost().is_some(),
         is_plotted: card
             .keywords
             .iter_strings()

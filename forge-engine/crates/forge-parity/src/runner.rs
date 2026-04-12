@@ -30,7 +30,7 @@ use crate::utils::decks::{build_deck_from_spec, resolve_deck_spec};
 
 pub const DEFAULT_DECKS_DIR: &str = "preset_decks";
 
-struct ParityObserver {
+pub(crate) struct ParityObserver {
     shared_callbacks: Arc<Mutex<Vec<CallbackRecord>>>,
     shared_snapshot_index: Arc<Mutex<usize>>,
 }
@@ -46,7 +46,9 @@ impl ParityObserver {
         }
     }
 
-    fn on_callback(&mut self, name: &str, outcome: &str, player: u32, turn: u32, phase: &str) {
+    pub(crate) fn on_callback(&self, name: &str, outcome: &str, player: u32, turn: u32, phase: &str) {
+        let choice_logs = crate::parity_log::drain();
+
         let snapshot_index = *self.shared_snapshot_index.lock().unwrap();
         self.shared_callbacks.lock().unwrap().push(CallbackRecord {
             snapshot_index,
@@ -55,11 +57,11 @@ impl ParityObserver {
             player,
             name: name.to_string(),
             outcome: outcome.to_string(),
-            args: vec![],
+            args: choice_logs,
         });
     }
 
-    fn mark_snapshot(&mut self) {
+    fn mark_snapshot(&self) {
         *self.shared_snapshot_index.lock().unwrap() += 1;
     }
 }
@@ -70,7 +72,7 @@ struct CapturingAgent {
     shared_snapshots: Arc<Mutex<Vec<StateSnapshot>>>,
     shared_covered_cards: Arc<Mutex<BTreeSet<String>>>,
     shared_decisions: Arc<Mutex<Vec<DecisionRecord>>>,
-    parity_observer: ParityObserver,
+    parity_observer: Arc<ParityObserver>,
     parity_map: Arc<ParityCardMap>,
     capture_snapshots: bool,
     deep: bool,
@@ -98,6 +100,7 @@ impl CapturingAgent {
         deep: bool,
         callback_snapshots: bool,
     ) -> Self {
+        let observer = Arc::new(ParityObserver::new(callbacks, snapshot_index));
         Self {
             player_id,
             inner: DeterministicAgent::new(
@@ -107,11 +110,12 @@ impl CapturingAgent {
                 game_rng,
                 prefer_actions,
                 Arc::clone(&parity_map),
+                Some(Arc::clone(&observer)),
             ),
             shared_snapshots: shared,
             shared_covered_cards: covered,
             shared_decisions: decisions,
-            parity_observer: ParityObserver::new(callbacks, snapshot_index),
+            parity_observer: observer,
             parity_map,
             capture_snapshots,
             deep,
@@ -253,6 +257,7 @@ impl PlayerAgent for CapturingAgent {
     }
 
     parity_agent_callback! {
+        fn choose_targets_for(&mut self, sa: &mut forge_engine_core::spellability::SpellAbility, game: &GameState, mana_pools: &[forge_engine_core::mana::ManaPool]) -> bool => "choose_targets_for";
         fn mulligan_decision(&mut self, player: PlayerId, hand: &[CardId], mulligan_count: u32) -> bool => "mulligan_decision";
         fn choose_cards_to_bottom(&mut self, player: PlayerId, hand: &[CardId], count: usize) -> Vec<CardId> => "choose_cards_to_bottom";
         fn choose_action(&mut self, player: PlayerId, playable: &[PlayOption], tappable_lands: &[CardId], untappable_lands: &[CardId], activatable: &[(CardId, usize)]) -> forge_engine_core::player::actions::PlayerAction => "choose_action";
@@ -282,11 +287,15 @@ impl PlayerAgent for CapturingAgent {
         fn choose_cards_for_zone_change(&mut self, player: PlayerId, valid: &[CardId], min: usize, max: usize, select_prompt: &str) -> Vec<CardId> => "choose_cards_for_zone_change";
         fn choose_target_spell(&mut self, player: PlayerId, valid: &[u32]) -> Option<u32> => "choose_target_spell";
         fn choose_mode(&mut self, player: PlayerId, descriptions: &[String], min: usize, max: usize, card_name: Option<&str>) -> Vec<usize> => "choose_mode";
+        fn choose_spell_abilities_for_effect(&mut self, player: PlayerId, abilities: &[forge_engine_core::spellability::SpellAbility], num: usize) -> Vec<usize> => "choose_spell_abilities_for_effect";
+        fn choose_single_entity_for_effect(&mut self, player: PlayerId, valid: &[CardId], is_optional: bool) -> Option<CardId> => "choose_single_entity_for_effect";
+        fn get_ability_to_play(&mut self, player: PlayerId, abilities: &[forge_engine_core::spellability::SpellAbility]) -> Option<usize> => "get_ability_to_play";
         fn choose_x_value(&mut self, player: PlayerId, max_x: u32, card_name: Option<&str>) -> u32 => "choose_x_value";
         fn choose_optional_trigger(&mut self, player: PlayerId, description: &str, card_name: Option<&str>, api: Option<forge_engine_core::ability::api_type::ApiType>) -> bool => "choose_optional_trigger";
         fn choose_land_or_spell(&mut self, player: PlayerId) -> Option<bool> => "choose_land_or_spell";
         fn confirm_action(&mut self, player: PlayerId, mode: Option<&str>, message: &str, options: &[String], card_name: Option<&str>, api: Option<forge_engine_core::ability::api_type::ApiType>) -> bool => "confirm_action";
         fn confirm_payment(&mut self, player: PlayerId, cost_kind: &str, message: &str, card_name: Option<&str>, api: Option<forge_engine_core::ability::api_type::ApiType>) -> bool => "confirm_payment";
+        fn pay_cost_to_prevent_effect(&mut self, player: PlayerId, paid: bool) -> bool => "pay_cost_to_prevent_effect";
         fn confirm_replacement_effect(&mut self, player: PlayerId, question: &str, effect_description: &str, card_name: Option<&str>) -> bool => "confirm_replacement_effect";
         fn choose_binary(&mut self, player: PlayerId, question: &str, kind: BinaryChoiceKind, default_choice: Option<bool>, card_name: Option<&str>, api: Option<forge_engine_core::ability::api_type::ApiType>) -> bool => "choose_binary";
         fn choose_color(&mut self, player: PlayerId, valid_colors: &[String]) -> Option<String> => "choose_color";
@@ -327,6 +336,8 @@ pub struct RunConfig {
     pub verbose: VerboseMode,
     pub prefer_actions: bool,
     pub deep: bool,
+    pub loose_parity: bool,
+    pub log_snapshots: bool,
     pub java_heap: String,
     /// Game variant: "Constructed", "Commander", "Oathbreaker", "TinyLeaders", "Brawl".
     pub variant: String,
@@ -520,6 +531,12 @@ pub fn run_with_data(config: &RunConfig, data: &LoadedData) -> Result<GameTrace,
         game_loop.register_token(script_name.clone(), template.clone());
     }
 
+    // Copy token art variant data from the card DB for game-RNG parity.
+    // Java's Aggregates.random() on a Set consumes nextInt() per element,
+    // so Rust must know how many art variants each token has per edition.
+    game_loop.token_art_variants = data.db.token_art_variants().clone();
+    game_loop.token_fallback = data.db.token_fallback().clone();
+
     // Shared storage for turn-start snapshots captured by CapturingAgent
     let shared_snapshots: Arc<Mutex<Vec<StateSnapshot>>> = Arc::new(Mutex::new(Vec::new()));
     let shared_covered_cards: Arc<Mutex<BTreeSet<String>>> = Arc::new(Mutex::new(BTreeSet::new()));
@@ -597,6 +614,9 @@ pub fn run_with_data(config: &RunConfig, data: &LoadedData) -> Result<GameTrace,
         r
     }));
 
+    let parity_log_sink: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+    crate::parity_log::set_sink(Arc::clone(&parity_log_sink));
+
     let parity_map = Arc::new(ParityCardMap::from_opening_state(&game));
     let shared_snapshot_index: Arc<Mutex<usize>> = Arc::new(Mutex::new(0));
 
@@ -653,6 +673,8 @@ pub fn run_with_data(config: &RunConfig, data: &LoadedData) -> Result<GameTrace,
         let t_turn = Instant::now();
         game_loop.run_turn(&mut game, &mut agents, &mut rng);
     }
+
+    crate::parity_log::clear_sink();
 
     // Collect turn-start snapshots from the shared storage.
     let turn_snapshots = shared_snapshots.lock().unwrap();

@@ -84,12 +84,12 @@ impl GameLoop {
             .collect();
         let chosen = agents[player.index()].choose_discard(player, &eligible, amount as usize);
         for &cid in &chosen {
-            crate::ability::effects::helpers::discard_with_madness_replacement(
-                game,
-                &mut self.trigger_handler,
+            game.discard_card(
                 cid,
                 player,
                 None,
+                Some(agents),
+                &mut self.trigger_handler,
             );
         }
         chosen
@@ -623,12 +623,12 @@ impl GameLoop {
                             .drain(..(*amount as usize).min(pre_picked_discards.len()))
                             .collect();
                         for cid in to_discard {
-                            crate::ability::effects::helpers::discard_with_madness_replacement(
-                                game,
-                                &mut self.trigger_handler,
+                            game.discard_card(
                                 cid,
                                 player,
                                 None,
+                                Some(agents),
+                                &mut self.trigger_handler,
                             );
                             // Store discarded card for SVar evaluation
                             game.card_mut(card_id).add_remembered_card(cid);
@@ -1158,7 +1158,7 @@ impl GameLoop {
                     amount,
                 } => {
                     if type_filter != "CARDNAME" {
-                        self.pay_sacrifice_cost_internal(
+                        if !self.pay_sacrifice_cost_internal(
                             game,
                             agents,
                             player,
@@ -1167,7 +1167,10 @@ impl GameLoop {
                             sa,
                             prechosen_sacrifices,
                             &mut pre_sac_idx,
-                        );
+                        ) {
+                            payment_ok = false;
+                            break;
+                        }
                     }
                 }
                 CostPart::Discard {
@@ -1183,6 +1186,10 @@ impl GameLoop {
                             type_filter,
                             *amount,
                         );
+                        if discarded.len() < (*amount).max(0) as usize {
+                            payment_ok = false;
+                            break;
+                        }
                         // Store discarded cards on the source card for SVar evaluation
                         // (e.g. Grab the Prize: X = Discarded$Valid Card.nonLand/Times.2)
                         game.card_mut(card_id).add_remembered_cards(discarded);
@@ -2963,7 +2970,7 @@ impl GameLoop {
         sa: Option<&SpellAbility>,
     ) {
         let mut pre_idx = 0usize;
-        self.pay_sacrifice_cost_internal(
+        let _ = self.pay_sacrifice_cost_internal(
             game,
             agents,
             player,
@@ -2985,11 +2992,11 @@ impl GameLoop {
         sa: Option<&SpellAbility>,
         prechosen_sacrifices: Option<&[CardId]>,
         pre_sac_idx: &mut usize,
-    ) {
+    ) -> bool {
         for _ in 0..amount {
             let valid = cost::get_sacrifice_targets(game, player, type_filter);
             if valid.is_empty() {
-                break;
+                return false;
             }
             let chosen = if let Some(prechosen) = prechosen_sacrifices {
                 if *pre_sac_idx < prechosen.len() && valid.contains(&prechosen[*pre_sac_idx]) {
@@ -3057,8 +3064,11 @@ impl GameLoop {
                 );
                 self.trigger_handler.flush_waiting_triggers(game);
                 self.move_card_with_runtime(game, chosen, ZoneType::Graveyard, owner, agents);
+            } else {
+                return false;
             }
         }
+        true
     }
 }
 

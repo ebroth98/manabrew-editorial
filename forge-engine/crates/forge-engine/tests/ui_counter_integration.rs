@@ -125,6 +125,15 @@ impl PlayerAgent for CounterspellAgent {
         None
     }
 
+
+    fn choose_targets_for(
+        &mut self,
+        _sa: &mut forge_engine_core::spellability::SpellAbility,
+        _game: &forge_engine_core::game::GameState,
+        _mana_pools: &[forge_engine_core::mana::ManaPool],
+    ) -> bool {
+        false
+    }
 }
 
 fn make_island(owner: PlayerId) -> CardInstance {

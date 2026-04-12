@@ -227,6 +227,16 @@ struct Cli {
     #[arg(long)]
     deep: bool,
 
+    /// Allow snapshot resync: tolerate extra/missing snapshots by scanning ahead
+    /// to find a matching pair. Without this flag, snapshot count mismatches are
+    /// treated as hard failures.
+    #[arg(long)]
+    loose_parity: bool,
+
+    /// Print side-by-side Rust/Java snapshot timeline to stderr for debugging.
+    #[arg(long)]
+    log_snapshots: bool,
+
     /// On failures, print callback window diagnostics plus side-by-side Rust/Java decision logs.
     #[arg(long)]
     investigate: bool,
@@ -395,6 +405,8 @@ fn build_config(cli: &Cli, deck1: &str, deck2: &str, seed: u64) -> RunConfig {
         verbose: cli.verbose_mode(),
         prefer_actions: cli.prefer_actions,
         deep: cli.deep,
+        loose_parity: cli.loose_parity,
+        log_snapshots: cli.log_snapshots,
         java_heap: cli.java_heap.clone(),
         variant: cli.variant.clone(),
         commanders: cli.commander.clone(),
@@ -998,6 +1010,10 @@ fn compare_snapshots(
     let mut rust_idx = 0usize;
     let mut java_idx = 0usize;
     let mut compared_index = 0usize;
+    // Track the actual array indices at the point of divergence, which may
+    // differ from compared_index after deep-mode resync skips.
+    let mut diverge_rust_idx: Option<usize> = None;
+    let mut diverge_java_idx: Option<usize> = None;
 
     while rust_idx < rust_snapshots.len() || java_idx < java_snapshots.len() {
         match (rust_snapshots.get(rust_idx), java_snapshots.get(java_idx)) {
@@ -1010,7 +1026,7 @@ fn compare_snapshots(
                     continue;
                 }
 
-                if config.deep {
+                if config.loose_parity {
                     if let Some((next_rust_idx, next_java_idx)) = find_deep_resync(
                         rust_snapshots,
                         java_snapshots,
@@ -1026,6 +1042,8 @@ fn compare_snapshots(
 
                 first_divergence = divs.into_iter().next();
                 compared_until = compared_index + 1;
+                diverge_rust_idx = Some(rust_idx);
+                diverge_java_idx = Some(java_idx);
                 break;
             }
             (Some(rs), None) => {
@@ -1038,6 +1056,7 @@ fn compare_snapshots(
                     java_value: "missing".into(),
                 });
                 compared_until = compared_index + 1;
+                diverge_rust_idx = Some(rust_idx);
                 break;
             }
             (None, Some(js)) => {
@@ -1050,6 +1069,7 @@ fn compare_snapshots(
                     java_value: "present".into(),
                 });
                 compared_until = compared_index + 1;
+                diverge_java_idx = Some(java_idx);
                 break;
             }
             (None, None) => {
@@ -1057,6 +1077,11 @@ fn compare_snapshots(
                 break;
             }
         }
+    }
+
+    // --- Snapshot timeline dump (--log-snapshots) ---
+    if config.log_snapshots {
+        dump_snapshot_timeline(rust_snapshots, java_snapshots);
     }
 
     let divergence_count = usize::from(first_divergence.is_some());
@@ -1072,12 +1097,13 @@ fn compare_snapshots(
         let jdw = synthesize_decisions_from_callbacks(&java_all);
         (rust_all, dw, jdw)
     } else {
-        let cw = build_callback_window(first_divergence.as_ref(), rust_callbacks);
+        let cutoff = compute_callback_cutoff(first_divergence.as_ref(), rust_snapshots, java_snapshots);
+        let cw = build_callback_window(cutoff, rust_callbacks);
         let mut dw = decision_records_for_callbacks(&cw, rust_decisions);
         if dw.is_empty() {
             dw = synthesize_decisions_from_callbacks(&cw);
         }
-        let jcw = build_callback_window(first_divergence.as_ref(), &java_data.callbacks);
+        let jcw = build_callback_window(cutoff, &java_data.callbacks);
         let jdw = synthesize_decisions_from_callbacks(&jcw);
         (cw, dw, jdw)
     };
@@ -1090,15 +1116,19 @@ fn compare_snapshots(
         snapshots_compared: compared_until,
         divergence_count,
         rust_snapshot: first_divergence.as_ref().map(|_| {
-            let idx = compared_until
-                .saturating_sub(1)
-                .min(rust_snapshots.len().saturating_sub(1));
+            let idx = diverge_rust_idx.unwrap_or_else(|| {
+                compared_until
+                    .saturating_sub(1)
+                    .min(rust_snapshots.len().saturating_sub(1))
+            });
             rust_snapshots[idx].clone()
         }),
         java_snapshot: first_divergence.as_ref().map(|_| {
-            let idx = compared_until
-                .saturating_sub(1)
-                .min(java_snapshots.len().saturating_sub(1));
+            let idx = diverge_java_idx.unwrap_or_else(|| {
+                compared_until
+                    .saturating_sub(1)
+                    .min(java_snapshots.len().saturating_sub(1))
+            });
             java_snapshots[idx].clone()
         }),
         first_divergence,
@@ -1164,6 +1194,63 @@ fn find_deep_resync(
     }
 
     best
+}
+
+/// Print all Rust and Java snapshots side-by-side so we can see exactly what
+/// each engine checkpointed and when.
+fn dump_snapshot_timeline(
+    rust_snapshots: &[forge_parity::protocol::StateSnapshot],
+    java_snapshots: &[forge_parity::protocol::StateSnapshot],
+) {
+    fn fmt_snap(idx: usize, s: &forge_parity::protocol::StateSnapshot) -> String {
+        format!(
+            "{:>4}  T{} {} P{} prio{}",
+            idx, s.turn, s.phase, s.active_player, s.priority_player
+        )
+    }
+
+    let max_len = rust_snapshots.len().max(java_snapshots.len());
+    let col_w = 40;
+
+    eprintln!();
+    eprintln!(
+        "{:col_w$} | {}",
+        "  #   Rust snapshots", "  #   Java snapshots",
+        col_w = col_w
+    );
+    eprintln!("{:-<col_w$}-+-{:-<col_w$}", "", "", col_w = col_w);
+
+    for i in 0..max_len {
+        let rust_col = rust_snapshots
+            .get(i)
+            .map(|s| fmt_snap(i, s))
+            .unwrap_or_default();
+        let java_col = java_snapshots
+            .get(i)
+            .map(|s| fmt_snap(i, s))
+            .unwrap_or_default();
+        let marker = match (rust_snapshots.get(i), java_snapshots.get(i)) {
+            (Some(r), Some(j)) => {
+                if r.turn == j.turn && r.phase == j.phase && r.priority_player == j.priority_player {
+                    " "
+                } else {
+                    "*"
+                }
+            }
+            _ => "!",
+        };
+        eprintln!(
+            "{:<col_w$} |{} {:<col_w$}",
+            rust_col, marker, java_col,
+            col_w = col_w
+        );
+    }
+    eprintln!(
+        "Rust: {} snapshots, Java: {} snapshots",
+        rust_snapshots.len(),
+        java_snapshots.len()
+    );
+    eprintln!();
 }
 
 /// A pool of JavaServer instances behind mutexes for parallel access.
@@ -1748,12 +1835,13 @@ fn run_java_streaming_compare_pool(
         let jdw = synthesize_decisions_from_callbacks(&java_all);
         (rust_all, dw, jdw)
     } else {
-        let cw = build_callback_window(first_divergence.as_ref(), &rust_trace.callbacks);
+        let cutoff = compute_callback_cutoff(first_divergence.as_ref(), &rust_trace.snapshots, &java_data.snapshots);
+        let cw = build_callback_window(cutoff, &rust_trace.callbacks);
         let mut dw = decision_records_for_callbacks(&cw, &rust_trace.decisions);
         if dw.is_empty() {
             dw = synthesize_decisions_from_callbacks(&cw);
         }
-        let jcw = build_callback_window(first_divergence.as_ref(), &java_data.callbacks);
+        let jcw = build_callback_window(cutoff, &java_data.callbacks);
         let jdw = synthesize_decisions_from_callbacks(&jcw);
         (cw, dw, jdw)
     };
@@ -1968,37 +2056,78 @@ fn format_full_log_for_results(results: &[MatchupResult]) -> String {
 /// context we only consider callbacks that share the same `snapshot_index`
 /// tracking as the divergent ones (i.e. `snapshot_index > 0` when the
 /// divergent index is large).
-const CONTEXT_CALLBACKS: usize = 15;
 
-fn build_callback_window(
+/// Map phase name to its position in the turn cycle for ordering.
+fn phase_order(phase: &str) -> u32 {
+    match phase {
+        "Untap" => 0,
+        "Upkeep" => 1,
+        "Draw" => 2,
+        "Main1" => 3,
+        "CombatBegin" => 4,
+        "CombatDeclareAttackers" => 5,
+        "CombatDeclareBlockers" => 6,
+        "CombatFirstStrikeDamage" => 7,
+        "CombatDamage" => 8,
+        "CombatEnd" => 9,
+        "Main2" => 10,
+        "EndOfTurn" => 11,
+        "Cleanup" => 12,
+        _ => 99,
+    }
+}
+
+/// Compute the turn/phase cutoff for the callback window by taking the earlier
+/// of the two engines' last-good snapshots.  This ensures both sides show
+/// callbacks from the same point in the game.
+fn compute_callback_cutoff(
     divergence: Option<&Divergence>,
+    rust_snapshots: &[forge_parity::protocol::StateSnapshot],
+    java_snapshots: &[forge_parity::protocol::StateSnapshot],
+) -> Option<(u32, u32)> {
+    let div = divergence?;
+    if div.snapshot_index == 0 {
+        return Some((0, 0));
+    }
+    let last_good_idx = div.snapshot_index.saturating_sub(1);
+    let rust_cutoff = rust_snapshots
+        .get(last_good_idx)
+        .map(|s| (s.turn, phase_order(&s.phase)));
+    let java_cutoff = java_snapshots
+        .get(last_good_idx)
+        .map(|s| (s.turn, phase_order(&s.phase)));
+    // Take the earlier of the two so both sides show the full story.
+    match (rust_cutoff, java_cutoff) {
+        (Some(r), Some(j)) => {
+            if r.0 < j.0 || (r.0 == j.0 && r.1 <= j.1) {
+                Some(r)
+            } else {
+                Some(j)
+            }
+        }
+        (Some(r), None) => Some(r),
+        (None, Some(j)) => Some(j),
+        (None, None) => Some((0, 0)),
+    }
+}
+
+/// Build the callback window for display: all callbacks from the cutoff
+/// turn/phase onwards.
+fn build_callback_window(
+    cutoff: Option<(u32, u32)>,
     callbacks: &[CallbackRecord],
 ) -> Vec<CallbackRecord> {
-    let Some(div) = divergence else {
+    let Some((cutoff_turn, cutoff_phase_ord)) = cutoff else {
         return vec![];
     };
-    // Callbacks from the divergent snapshot.
-    let divergent: Vec<CallbackRecord> = callbacks
+    callbacks
         .iter()
-        .filter(|cb| cb.snapshot_index == div.snapshot_index)
+        .filter(|cb| {
+            let cb_ord = phase_order(&cb.phase);
+            cb.turn > cutoff_turn || (cb.turn == cutoff_turn && cb_ord >= cutoff_phase_ord)
+        })
         .cloned()
-        .collect();
-    // Context: last N callbacks from before the divergent snapshot.
-    let context: Vec<CallbackRecord> = callbacks
-        .iter()
-        .filter(|cb| cb.snapshot_index < div.snapshot_index)
-        .cloned()
-        .collect::<Vec<_>>()
-        .into_iter()
-        .rev()
-        .take(CONTEXT_CALLBACKS)
-        .collect::<Vec<_>>()
-        .into_iter()
-        .rev()
-        .collect();
-    let mut window = context;
-    window.extend(divergent);
-    window
+        .collect()
 }
 
 fn decision_records_for_callbacks(
@@ -2029,7 +2158,7 @@ fn synthesize_decisions_from_callbacks(
             phase: cb.phase.clone(),
             deciding_player: cb.player,
             kind: cb.name.clone(),
-            options: vec![],
+            options: cb.args.clone(),
             choice: cb.outcome.clone(),
         })
         .collect()
@@ -2069,10 +2198,22 @@ fn format_side_by_side_decisions_inner(
     }
 
     fn fmt_decision(d: &forge_parity::protocol::DecisionRecord) -> String {
-        format!(
+        let header = format!(
             "T{} {} P{} {} -> {}",
             d.turn, d.phase, d.deciding_player, d.kind, d.choice
-        )
+        );
+        let choice_logs: Vec<&str> = d.options.iter()
+            .filter_map(|o| o.strip_prefix("> "))
+            .collect();
+        if choice_logs.is_empty() {
+            header
+        } else {
+            let mut lines = vec![header];
+            for entry in choice_logs {
+                lines.push(format!("    {}", entry));
+            }
+            lines.join("\n")
+        }
     }
 
     fn wrap_cell(text: &str, width: usize) -> Vec<String> {
@@ -2080,34 +2221,47 @@ fn format_side_by_side_decisions_inner(
             return vec!["-".to_string()];
         }
         let mut lines = Vec::new();
-        let mut current = String::new();
-        for word in text.split_whitespace() {
-            if word.len() > width {
-                if !current.is_empty() {
-                    lines.push(current);
-                    current = String::new();
-                }
-                let mut start = 0usize;
-                while start < word.len() {
-                    let end = (start + width).min(word.len());
-                    lines.push(word[start..end].to_string());
-                    start = end;
+        for raw_line in text.split('\n') {
+            // Preserve leading whitespace (indentation for choice logs).
+            let indent_len = raw_line.len() - raw_line.trim_start().len();
+            let indent: &str = &raw_line[..indent_len];
+            let content = &raw_line[indent_len..];
+            let effective_width = width.saturating_sub(indent_len);
+            if effective_width == 0 || content.is_empty() {
+                if !raw_line.is_empty() {
+                    lines.push(raw_line.to_string());
                 }
                 continue;
             }
-            let sep = if current.is_empty() { 0 } else { 1 };
-            if current.len() + sep + word.len() > width {
-                lines.push(current);
-                current = word.to_string();
-            } else {
-                if !current.is_empty() {
-                    current.push(' ');
+            let mut current = String::new();
+            for word in content.split_whitespace() {
+                if word.len() > effective_width {
+                    if !current.is_empty() {
+                        lines.push(format!("{indent}{current}"));
+                        current = String::new();
+                    }
+                    let mut start = 0usize;
+                    while start < word.len() {
+                        let end = (start + effective_width).min(word.len());
+                        lines.push(format!("{indent}{}", &word[start..end]));
+                        start = end;
+                    }
+                    continue;
                 }
-                current.push_str(word);
+                let sep = if current.is_empty() { 0 } else { 1 };
+                if current.len() + sep + word.len() > effective_width {
+                    lines.push(format!("{indent}{current}"));
+                    current = word.to_string();
+                } else {
+                    if !current.is_empty() {
+                        current.push(' ');
+                    }
+                    current.push_str(word);
+                }
             }
-        }
-        if !current.is_empty() {
-            lines.push(current);
+            if !current.is_empty() {
+                lines.push(format!("{indent}{current}"));
+            }
         }
         if lines.is_empty() {
             lines.push("-".to_string());
@@ -2193,6 +2347,15 @@ fn format_side_by_side_decisions_inner(
     };
 
     for (idx, (left_lines, right_lines)) in rows[..last_row].iter().enumerate() {
+        // Insert green separator at the start (last good snapshot boundary).
+        if idx == 0 && aligned_separator > 0 {
+            let label = "-- last matching snapshot ";
+            let fill = COL_WIDTH.saturating_sub(label.len());
+            let line = format!("{label}{}", "-".repeat(fill));
+            out.push_str(&format!(
+                "     \x1b[32m{line} | {line}\x1b[0m\n"
+            ));
+        }
         // Insert red separator at the snapshot boundary.
         if idx == aligned_separator && aligned_separator > 0 {
             let label = "-- snapshot divergence ";
@@ -2297,6 +2460,8 @@ fn run_fuzz_mode(cli: &Cli) {
             verbose: cli.verbose_mode(),
             prefer_actions: cli.prefer_actions,
             deep: cli.deep,
+            loose_parity: cli.loose_parity,
+            log_snapshots: cli.log_snapshots,
             java_heap: cli.java_heap.clone(),
             variant: "Constructed".to_string(),
             commanders: vec![],
@@ -3092,6 +3257,8 @@ fn run_serve_mode(cli: &Cli) {
                 seed: queued_job.seed,
                 max_turns: queued_job.max_turns,
                 deep: queued_job.deep,
+                loose_parity: false,
+                log_snapshots: false,
                 cards_dir: cli_cards_dir.clone(),
                 decks_dir: cli_decks_dir.clone(),
                 verbose: cli_verbose.clone(),
@@ -3326,10 +3493,12 @@ fn run_serve_mode(cli: &Cli) {
             verbose: cli_verbose.clone(),
             prefer_actions: cli_prefer_actions,
             deep: cli.deep,
+            loose_parity: cli.loose_parity,
             java_heap: cli_java_heap.clone(),
             variant: "Constructed".to_string(),
             commanders: vec![],
             full_log: false,
+            log_snapshots: false,
         };
 
         let game_start = Instant::now();

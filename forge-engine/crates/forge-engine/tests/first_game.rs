@@ -157,6 +157,15 @@ impl PlayerAgent for ScriptedAgent {
     fn notify(&mut self, message: &str) {
         self.log.push(format!("[{}] {}", self.name, message));
     }
+
+    fn choose_targets_for(
+        &mut self,
+        _sa: &mut forge_engine_core::spellability::SpellAbility,
+        _game: &forge_engine_core::game::GameState,
+        _mana_pools: &[forge_engine_core::mana::ManaPool],
+    ) -> bool {
+        false
+    }
 }
 
 fn make_mountain(owner: PlayerId) -> CardInstance {
@@ -385,6 +394,15 @@ fn full_game_runs() {
         }
         fn choose_land_or_spell(&mut self, _: PlayerId) -> Option<bool> {
             None
+        }
+
+        fn choose_targets_for(
+            &mut self,
+            _sa: &mut forge_engine_core::spellability::SpellAbility,
+            _game: &forge_engine_core::game::GameState,
+            _mana_pools: &[forge_engine_core::mana::ManaPool],
+        ) -> bool {
+            false
         }
     }
 
@@ -898,6 +916,15 @@ fn upkeep_trigger_fires_each_turn() {
         fn choose_land_or_spell(&mut self, _: PlayerId) -> Option<bool> {
             None
         }
+
+        fn choose_targets_for(
+            &mut self,
+            _sa: &mut forge_engine_core::spellability::SpellAbility,
+            _game: &forge_engine_core::game::GameState,
+            _mana_pools: &[forge_engine_core::mana::ManaPool],
+        ) -> bool {
+            false
+        }
     }
 
     let mut agents: Vec<Box<dyn PlayerAgent>> = vec![Box::new(PassAgent), Box::new(PassAgent)];
@@ -1023,6 +1050,15 @@ fn full_game_with_triggers_runs() {
         }
         fn choose_land_or_spell(&mut self, _: PlayerId) -> Option<bool> {
             None
+        }
+
+        fn choose_targets_for(
+            &mut self,
+            _sa: &mut forge_engine_core::spellability::SpellAbility,
+            _game: &forge_engine_core::game::GameState,
+            _mana_pools: &[forge_engine_core::mana::ManaPool],
+        ) -> bool {
+            false
         }
     }
 
@@ -1211,6 +1247,15 @@ fn llanowar_elves_taps_for_mana() {
         fn choose_land_or_spell(&mut self, _: PlayerId) -> Option<bool> {
             None
         }
+
+        fn choose_targets_for(
+            &mut self,
+            _sa: &mut forge_engine_core::spellability::SpellAbility,
+            _game: &forge_engine_core::game::GameState,
+            _mana_pools: &[forge_engine_core::mana::ManaPool],
+        ) -> bool {
+            false
+        }
     }
 
     let bob_agent = ScriptedAgent::new("Bob");
@@ -1335,6 +1380,15 @@ fn summoning_sick_creature_cant_tap() {
         fn choose_land_or_spell(&mut self, _: PlayerId) -> Option<bool> {
             None
         }
+
+        fn choose_targets_for(
+            &mut self,
+            _sa: &mut forge_engine_core::spellability::SpellAbility,
+            _game: &forge_engine_core::game::GameState,
+            _mana_pools: &[forge_engine_core::mana::ManaPool],
+        ) -> bool {
+            false
+        }
     }
 
     let bob_agent = ScriptedAgent::new("Bob");
@@ -1451,6 +1505,15 @@ fn prodigal_sorcerer_pings_opponent() {
         }
         fn choose_land_or_spell(&mut self, _: PlayerId) -> Option<bool> {
             None
+        }
+
+        fn choose_targets_for(
+            &mut self,
+            _sa: &mut forge_engine_core::spellability::SpellAbility,
+            _game: &forge_engine_core::game::GameState,
+            _mana_pools: &[forge_engine_core::mana::ManaPool],
+        ) -> bool {
+            false
         }
     }
 
@@ -1578,6 +1641,15 @@ fn sakura_tribe_elder_fetches_land() {
         }
         fn choose_land_or_spell(&mut self, _: PlayerId) -> Option<bool> {
             None
+        }
+
+        fn choose_targets_for(
+            &mut self,
+            _sa: &mut forge_engine_core::spellability::SpellAbility,
+            _game: &forge_engine_core::game::GameState,
+            _mana_pools: &[forge_engine_core::mana::ManaPool],
+        ) -> bool {
+            false
         }
     }
 

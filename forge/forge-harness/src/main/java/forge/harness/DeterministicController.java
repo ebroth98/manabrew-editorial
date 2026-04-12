@@ -10,6 +10,7 @@ import forge.ai.ComputerUtilCost;
 import forge.game.ability.ApiType;
 import forge.game.ability.effects.RollDiceEffect;
 import forge.game.cost.Cost;
+import forge.game.cost.CostAdjustment;
 import forge.game.cost.CostEnlist;
 import forge.game.cost.CostPart;
 import forge.game.player.PlayerController;
@@ -33,6 +34,7 @@ import forge.game.replacement.ReplacementEffect;
 import forge.game.spellability.*;
 import forge.card.ICardFace;
 import forge.game.keyword.KeywordInterface;
+import forge.game.keyword.Keyword;
 import forge.game.staticability.StaticAbility;
 import forge.game.trigger.WrappedAbility;
 import forge.game.zone.PlayerZone;
@@ -133,13 +135,16 @@ public class DeterministicController extends PlayerController {
 
     public void onCallback(String callbackName, String callbackOutcome, String... args) {
         if (IGNORED_CALLBACKS.contains(callbackName)) return;
-        DecisionLog.logCallback(player, callbackName, callbackOutcome, Arrays.asList(args));
+        final List<String> choiceLogs = ParityLog.drain();
+        final List<String> allArgs = new ArrayList<>(Arrays.asList(args));
+        allArgs.addAll(choiceLogs);
+        DecisionLog.logCallback(player, callbackName, callbackOutcome, allArgs);
         if (!isVerbose()) return;
         final String msg;
-        if (args.length == 0) {
+        if (allArgs.isEmpty()) {
             msg = callbackName + ", " + callbackOutcome;
         } else {
-            msg = callbackName + ", " + callbackOutcome + " [" + String.join(", ", args) + "]";
+            msg = callbackName + ", " + callbackOutcome + " [" + String.join(", ", allArgs) + "]";
         }
         System.err.printf("[parity-agent-java p%d] %s%n", player.getId(), msg);
     }
@@ -199,7 +204,9 @@ public class DeterministicController extends PlayerController {
     }
 
     private boolean chooseDeterministicBooleanDecision(final String decisionType, final String falseLabel, final String trueLabel) {
-        return ChoiceSpace.pickBool(rng);
+        final boolean result = ChoiceSpace.pickBool(rng);
+        onCallback(decisionType, Boolean.toString(result), falseLabel, trueLabel);
+        return result;
     }
 
     // ── Mulligan ──────────────────────────────────────────────────────
@@ -307,12 +314,7 @@ public class DeterministicController extends PlayerController {
             return true;
         }
 
-        boolean forceOptionalSingleTarget = currentAbility.isTargetNumberValid()
-                && currentAbility.getMinTargets() == 0
-                && currentAbility.getMaxTargets() == 1;
-
-        while (forceOptionalSingleTarget || !currentAbility.isTargetNumberValid()) {
-            forceOptionalSingleTarget = false;
+        while (!currentAbility.isTargetNumberValid()) {
             final List<GameEntity> candidates = tr.getAllCandidates(currentAbility, true);
             final List<GameEntity> valid = new ArrayList<>();
             for (final GameEntity candidate : candidates) {
@@ -333,13 +335,10 @@ public class DeterministicController extends PlayerController {
 
             final GameEntity chosen = ChoiceSpace.pickOne(valid, rng);
             if (chosen == null) {
-                onCallback("choose_target_any", "null", String.valueOf(valid.size()));
                 final boolean result = currentAbility.isTargetNumberValid();
                 onCallback("choose_targets_for", Boolean.toString(result), "null_pick");
                 return result;
             }
-            final String validCount = String.valueOf(valid.size());
-            onCallback("choose_target_any", formatEntity(chosen), validCount);
             // getAllCandidates returns Cards from the Stack zone, but CounterEffect.resolve()
             // calls getTargetSpells() which filters for SpellAbility instances. Convert the
             // Card to its corresponding SpellAbility so the counter actually resolves.
@@ -366,9 +365,14 @@ public class DeterministicController extends PlayerController {
         }
 
         final boolean result = currentAbility.isTargetNumberValid();
-        final int chosen = currentAbility.getTargets().size();
-        onCallback("choose_targets_for", Boolean.toString(result),
-                String.valueOf(chosen) + "_targets");
+        final List<String> targetNames = new ArrayList<>();
+        for (final Card c : currentAbility.getTargets().getTargetCards()) {
+            targetNames.add(formatCard(c));
+        }
+        for (final Player p : currentAbility.getTargets().getTargetPlayers()) {
+            targetNames.add("Player(" + p.getId() + ")");
+        }
+        onCallback("choose_targets_for", "[" + String.join(", ", targetNames) + "]");
         return result;
     }
 
@@ -569,9 +573,9 @@ public class DeterministicController extends PlayerController {
         final T picked = ChoiceSpace.pickOne(sorted, rng);
         final String validCount = String.valueOf(sorted.size());
         if (picked == null) {
-            onCallback("choose_single_entity", "null", title, validCount);
+            onCallback("choose_single_entity_for_effect", "null", title, validCount);
         } else {
-            onCallback("choose_single_entity", formatEntity(picked), title, validCount);
+            onCallback("choose_single_entity_for_effect", formatEntity(picked), title, validCount);
         }
         return picked;
     }
@@ -816,11 +820,11 @@ public class DeterministicController extends PlayerController {
     @Override
     public boolean confirmPayment(final forge.game.cost.CostPart costPart, final String prompt, final SpellAbility sa) {
         if (costPart == null || costPart instanceof CostPartMana) {
-            onCallback("confirm_payment", "true", "auto_mana");
+            onCallback("confirm_payment", "true (auto_mana no-rng)", "auto_mana");
             return true;
         }
         if (DeterministicCostPlumbing.isSpellPaymentContext(sa)) {
-            onCallback("confirm_payment", "true", "spell_payment_context");
+            onCallback("confirm_payment", "true (spc no-rng)", "spell_payment_context");
             return true;
         }
         captureDeepCheckpoint("confirm_payment");
@@ -1634,6 +1638,20 @@ public class DeterministicController extends PlayerController {
             final ManaCostBeingPaid expanded = new ManaCostBeingPaid(toPay);
             expanded.setXManaCostPaid(sa.getXManaCostPaid(), sa.getXColor());
             payableCost = expanded.toManaCost();
+        }
+        if (sa != null && sa.getManaCostBeingPaid() != null) {
+            payableCost = new ManaCostBeingPaid(sa.getManaCostBeingPaid()).toManaCost();
+        } else if (sa != null
+                && sa.isSpell()
+                && sa.getHostCard() != null
+                && sa.getHostCard().hasKeyword(Keyword.AFFINITY)
+                && payableCost != null
+                && !payableCost.isNoCost()) {
+            final ManaCostBeingPaid adjusted = new ManaCostBeingPaid(payableCost);
+            final Player payer = sa.getActivatingPlayer() != null ? sa.getActivatingPlayer() : player;
+            if (CostAdjustment.adjust(adjusted, sa, payer, null, true, effect)) {
+                payableCost = adjusted.toManaCost();
+            }
         }
         if (sa != null
                 && !sa.isManaAbility()

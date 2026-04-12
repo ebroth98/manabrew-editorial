@@ -303,6 +303,14 @@ mod tests {
         ) -> Vec<CardId> {
             cards.iter().copied().take(max).collect()
         }
+        fn choose_targets_for(
+            &mut self,
+            _sa: &mut SpellAbility,
+            _game: &GameState,
+            _mana_pools: &[ManaPool],
+        ) -> bool {
+            false
+        }
     }
 
     #[test]
@@ -327,6 +335,8 @@ mod tests {
             vec![Box::new(TakeFirstAgent), Box::new(PassAgent)];
         let mut mana_pools = vec![ManaPool::default(), ManaPool::default()];
         let token_templates = HashMap::new();
+        let templates_variants: HashMap<(String, String), usize> = HashMap::new();
+        let token_fallback: HashMap<String, String> = HashMap::new();
         let mut rng_adapter = crate::game_rng::ThreadRngAdapter;
         let mut ctx = EffectContext {
             game: &mut game,
@@ -334,6 +344,8 @@ mod tests {
             agents: &mut agents,
             trigger_handler: &mut trigger_handler,
             token_templates: &token_templates,
+            token_art_variants: &templates_variants,
+            token_fallback: &token_fallback,
             mana_pools: &mut mana_pools,
             parent_target_card: None,
             rng: &mut rng_adapter,

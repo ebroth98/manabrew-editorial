@@ -33,6 +33,14 @@ pub struct GameLoop {
     /// Token templates keyed by their script filename stem (e.g. "r_1_1_goblin").
     /// Populated at game start by the Tauri layer; used by the Token effect handler.
     pub token_templates: HashMap<String, Card>,
+    /// Token art variant counts: (token_script, edition_code) → count.
+    /// Used for game-RNG parity with Java. When Java creates a token, it calls
+    /// `Aggregates.random(collection)` on a Set of art variants, which consumes
+    /// `nextInt()` once per element. Rust needs to consume the same number of
+    /// RNG calls to keep the game RNG in sync.
+    pub token_art_variants: HashMap<(String, String), usize>,
+    /// Token fallback codes: edition_code → fallback_edition_code.
+    pub token_fallback: HashMap<String, String>,
     /// Pluggable RNG for game effects (shuffles, coin flips, dice rolls).
     /// Default: ThreadRngAdapter (non-deterministic). For parity testing,
     /// replace with a JavaRandom-backed implementation.
@@ -83,6 +91,8 @@ impl GameLoop {
             trigger_handler: TriggerHandler::new(),
             game_log: GameLog::new(),
             token_templates: HashMap::new(),
+            token_art_variants: HashMap::new(),
+            token_fallback: HashMap::new(),
             game_rng: Box::new(ThreadRngAdapter),
             experimental_restore_snapshot: false,
             previous_game_state: None,
@@ -95,6 +105,22 @@ impl GameLoop {
     /// Called at game start by the Tauri layer for every token script in the token DB.
     pub fn register_token(&mut self, script_name: impl Into<String>, template: Card) {
         self.token_templates.insert(script_name.into(), template);
+    }
+
+    /// Get the number of art variants for a token in a given edition.
+    /// Follows TokenFallbackCode chains. Returns 1 if not found.
+    pub fn token_art_variant_count(&self, token_script: &str, edition_code: &str) -> usize {
+        let key = (
+            token_script.to_lowercase(),
+            edition_code.to_uppercase(),
+        );
+        if let Some(&count) = self.token_art_variants.get(&key) {
+            return count;
+        }
+        if let Some(fallback) = self.token_fallback.get(&edition_code.to_uppercase()) {
+            return self.token_art_variant_count(token_script, fallback);
+        }
+        1
     }
 
     pub fn pool(&self, pid: PlayerId) -> &ManaPool {
@@ -116,6 +142,8 @@ impl GameLoop {
         let mut runtime = crate::replacement::replacement_handler::ReplacementRuntime {
             trigger_handler: &mut self.trigger_handler,
             token_templates: &self.token_templates,
+            token_art_variants: &self.token_art_variants,
+            token_fallback: &self.token_fallback,
             mana_pools: &mut self.mana_pools,
             rng: &mut *self.game_rng,
         };
@@ -683,6 +711,15 @@ mod tests {
             None
         }
 
+        fn choose_targets_for(
+            &mut self,
+            _sa: &mut crate::spellability::SpellAbility,
+            _game: &GameState,
+            _mana_pools: &[ManaPool],
+        ) -> bool {
+            false
+        }
+
         fn notify(&mut self, _message: crate::agent::notification::GameNotification) {}
     }
 
@@ -789,6 +826,15 @@ mod tests {
             None
         }
 
+        fn choose_targets_for(
+            &mut self,
+            _sa: &mut crate::spellability::SpellAbility,
+            _game: &GameState,
+            _mana_pools: &[ManaPool],
+        ) -> bool {
+            false
+        }
+
         fn notify(&mut self, _message: crate::agent::notification::GameNotification) {}
     }
 
@@ -880,6 +926,15 @@ mod tests {
             _api: Option<crate::ability::api_type::ApiType>,
         ) -> bool {
             self.accept
+        }
+
+        fn choose_targets_for(
+            &mut self,
+            _sa: &mut crate::spellability::SpellAbility,
+            _game: &GameState,
+            _mana_pools: &[ManaPool],
+        ) -> bool {
+            false
         }
 
         fn notify(&mut self, _message: crate::agent::notification::GameNotification) {}

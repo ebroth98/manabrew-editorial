@@ -223,6 +223,13 @@ pub trait PlayerAgent {
         out
     }
 
+    fn choose_targets_for(
+        &mut self,
+        sa: &mut SpellAbility,
+        game: &GameState,
+        mana_pools: &[ManaPool],
+    ) -> bool;
+
     /// Choose a target player (e.g. for Lightning Bolt targeting a player).
     /// `sa` is the active spell ability context (source card, API type, etc.) for UI display.
     fn choose_target_player(
@@ -353,6 +360,32 @@ pub trait PlayerAgent {
         (0..min.min(descriptions.len())).collect()
     }
 
+    fn choose_spell_abilities_for_effect(
+        &mut self,
+        _player: PlayerId,
+        abilities: &[SpellAbility],
+        num: usize,
+    ) -> Vec<usize> {
+        (0..num.min(abilities.len())).collect()
+    }
+
+    fn choose_single_entity_for_effect(
+        &mut self,
+        _player: PlayerId,
+        valid: &[CardId],
+        _is_optional: bool,
+    ) -> Option<CardId> {
+        valid.first().copied()
+    }
+
+    fn get_ability_to_play(
+        &mut self,
+        _player: PlayerId,
+        abilities: &[SpellAbility],
+    ) -> Option<usize> {
+        if abilities.is_empty() { None } else { Some(0) }
+    }
+
     /// Choose whether to put a revealed nonland card into the graveyard during Explore.
     /// Mirrors Java's `ExploreAi.shouldPutInGraveyard()`.
     ///
@@ -458,6 +491,14 @@ pub trait PlayerAgent {
     ) -> bool {
         let _ = (player, cost_kind, message, card_name, api);
         true
+    }
+
+    fn pay_cost_to_prevent_effect(
+        &mut self,
+        _player: PlayerId,
+        paid: bool,
+    ) -> bool {
+        paid
     }
 
     /// Java-parity binary choice hook.
@@ -919,6 +960,15 @@ pub trait PlayerAgent {
 pub struct PassAgent;
 
 impl PlayerAgent for PassAgent {
+    fn choose_targets_for(
+        &mut self,
+        _sa: &mut SpellAbility,
+        _game: &GameState,
+        _mana_pools: &[ManaPool],
+    ) -> bool {
+        true
+    }
+
     fn mulligan_decision(
         &mut self,
         _player: PlayerId,

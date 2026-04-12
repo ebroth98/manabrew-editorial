@@ -51,12 +51,12 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
 
         for card_id in to_discard {
             if ctx.game.card(card_id).zone == ZoneType::Hand {
-                super::helpers::discard_with_madness_replacement(
-                    ctx.game,
-                    ctx.trigger_handler,
+                ctx.game.discard_card(
                     card_id,
                     target_player,
                     Some(sa),
+                    Some(ctx.agents),
+                    ctx.trigger_handler,
                 );
             }
         }

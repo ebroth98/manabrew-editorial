@@ -102,8 +102,10 @@ pub fn build_deck_from_spec(
     for (name, count) in spec {
         match db.get_by_card_name(name) {
             Some(rules) => {
+                let edition = db.card_default_edition(name).map(|s| s.to_string());
                 for _ in 0..*count {
-                    let card = CardInstance::from_rules(rules, owner);
+                    let mut card = CardInstance::from_rules(rules, owner);
+                    card.set_code = edition.clone();
                     let id = game.create_card(card);
                     game.move_card(id, ZoneType::Library, owner);
                 }

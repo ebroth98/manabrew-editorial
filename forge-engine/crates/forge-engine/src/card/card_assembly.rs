@@ -167,6 +167,9 @@ pub(crate) fn assemble_card(
     // Java parity: convert Dredge:N keywords into Draw replacement effects.
     super::card_factory_util::add_dredge_replacement(&mut card);
 
+    // Java parity: convert Madness:{cost} keywords into Moved replacement effects.
+    super::card_factory_util::add_madness_replacement(&mut card);
+
     // Add parsed static abilities and replacement effects.
     for sa in components.static_abilities {
         card.add_static_ability(sa);

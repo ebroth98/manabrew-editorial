@@ -215,6 +215,8 @@ mod tests {
         let mut agents: Vec<Box<dyn PlayerAgent>> = vec![Box::new(PassAgent), Box::new(PassAgent)];
         let mut trigger_handler = TriggerHandler::new();
         let token_templates = std::collections::HashMap::new();
+        let templates_variants: std::collections::HashMap<(String, String), usize> = std::collections::HashMap::new();
+        let token_fallback: std::collections::HashMap<String, String> = std::collections::HashMap::new();
         let mut mana_pools = vec![ManaPool::new(), ManaPool::new()];
         let mut rng_adapter = crate::game_rng::ThreadRngAdapter;
         let mut ctx = EffectContext {
@@ -223,6 +225,8 @@ mod tests {
             agents: &mut agents,
             trigger_handler: &mut trigger_handler,
             token_templates: &token_templates,
+            token_art_variants: &templates_variants,
+            token_fallback: &token_fallback,
             mana_pools: &mut mana_pools,
             parent_target_card: None,
             rng: &mut rng_adapter,

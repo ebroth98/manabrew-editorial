@@ -10,12 +10,19 @@ use forge_foundation::color::Color;
 use forge_foundation::mana::ManaCost;
 use forge_foundation::ZoneType;
 
+use crate::agent::PlayerAgent;
+use crate::card::CounterType;
 use crate::card::{valid_filter, Card};
 use crate::cost::{parse_cost, Cost};
+use crate::event::RunParams;
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
+use crate::mana::ManaPool;
+use crate::mana::mana_cost_being_paid::ManaCostBeingPaid;
 use crate::parsing::keys;
+use crate::spellability::SpellAbility;
 use crate::staticability::StaticMode;
+use crate::trigger::{TriggerHandler, TriggerType};
 
 // ── CostAdjustment result struct ─────────────────────────────────────
 
@@ -782,12 +789,472 @@ pub fn apply_cost_reductions(
     }
 }
 
-/// Scanner parity shim for Java `CostAdjustment.adjust(...)`.
+/// Java-like `CostAdjustment.adjust(...)` entrypoint.
+///
+/// This composes the Rust cost-adjustment pieces and owns the cast-time
+/// reduction choices that Java performs inside `CostAdjustment.adjust(...)`.
+/// The helper mutates `sa` and can mutate the game when `test == false`.
 pub fn adjust(
-    game: &GameState,
+    game: &mut GameState,
+    agents: &mut [Box<dyn PlayerAgent>],
+    trigger_handler: &mut TriggerHandler,
+    mana_pools: &[ManaPool],
+    cost: &mut ManaCostBeingPaid,
+    sa: &mut SpellAbility,
+    payer: PlayerId,
+    mut cards_to_delve_out: Option<&mut Vec<CardId>>,
+    test: bool,
+    effect: bool,
+) -> bool {
+    if effect || sa.is_trigger {
+        return true;
+    }
+
+    let Some(card_id) = sa.source else {
+        return true;
+    };
+    let cast_zone = game.card(card_id).zone;
+    let target_cards = sa.get_targets().all_target_cards();
+
+    let adjusted = compute_cost_adjustment_with_targets(
+        game,
+        game.card(card_id),
+        payer,
+        cast_zone,
+        &target_cards,
+    )
+    .apply(&cost.to_mana_cost());
+    *cost = ManaCostBeingPaid::from_mana_cost(&adjusted);
+
+    if let Some(raise_cost) = compute_raise_cost_parts_with_targets(
+        game,
+        game.card(card_id),
+        payer,
+        cast_zone,
+        &target_cards,
+    ) {
+        let raise_mana = mana_from_cost(&raise_cost);
+        cost.add_mana_cost(&raise_mana);
+    }
+
+    apply_pip_reductions(cost, sa);
+    if sa.is_spell {
+        if !apply_offering_reduction(game, agents, mana_pools, trigger_handler, cost, sa, test) {
+            return false;
+        }
+        if !apply_emerge_reduction(game, agents, mana_pools, trigger_handler, cost, sa, test) {
+            return false;
+        }
+        if !apply_delve_reduction(
+            game,
+            agents,
+            mana_pools,
+            trigger_handler,
+            cost,
+            sa,
+            test,
+            cards_to_delve_out.as_deref_mut(),
+        ) {
+            return false;
+        }
+        apply_convoke_or_improvise_reduction(
+            game,
+            agents,
+            mana_pools,
+            cost,
+            sa,
+            payer,
+            false,
+            true,
+            None,
+            test,
+        );
+        apply_convoke_or_improvise_reduction(
+            game,
+            agents,
+            mana_pools,
+            cost,
+            sa,
+            payer,
+            true,
+            false,
+            None,
+            test,
+        );
+    }
+    if sa.params.has("TapCreaturesForMana") {
+        let max_reduction = cost.get_generic_mana_amount();
+        apply_convoke_or_improvise_reduction(
+            game,
+            agents,
+            mana_pools,
+            cost,
+            sa,
+            payer,
+            false,
+            true,
+            Some(max_reduction),
+            test,
+        );
+    }
+    apply_affinity_reduction(cost, payer, game.card(card_id), game);
+    if effect {
+        let max_reduction = cost.get_generic_mana_amount();
+        apply_convoke_or_improvise_reduction(
+            game,
+            agents,
+            mana_pools,
+            cost,
+            sa,
+            payer,
+            true,
+            true,
+            Some(max_reduction),
+            test,
+        );
+    }
+
+    true
+}
+
+fn apply_pip_reductions(cost: &mut ManaCostBeingPaid, sa: &SpellAbility) {
+    for pip in &sa.pips_to_reduce {
+        match pip.to_ascii_uppercase().as_str() {
+            "W" => cost.decrease_shard(forge_foundation::mana::ManaCostShard::White, 1),
+            "U" => cost.decrease_shard(forge_foundation::mana::ManaCostShard::Blue, 1),
+            "B" => cost.decrease_shard(forge_foundation::mana::ManaCostShard::Black, 1),
+            "R" => cost.decrease_shard(forge_foundation::mana::ManaCostShard::Red, 1),
+            "G" => cost.decrease_shard(forge_foundation::mana::ManaCostShard::Green, 1),
+            "C" => cost.decrease_shard(forge_foundation::mana::ManaCostShard::Colorless, 1),
+            _ => {}
+        }
+    }
+}
+
+fn apply_offering_reduction(
+    game: &mut GameState,
+    agents: &mut [Box<dyn PlayerAgent>],
+    mana_pools: &[ManaPool],
+    _trigger_handler: &mut TriggerHandler,
+    cost: &mut ManaCostBeingPaid,
+    sa: &mut SpellAbility,
+    _test: bool,
+) -> bool {
+    let Some(offering_type) = game.card(sa.source.expect("spell source")).get_offering_type() else {
+        return true;
+    };
+    if sa.sacrificed_as_offering.is_some() {
+        let reduce = game
+            .card(sa.sacrificed_as_offering.expect("checked above"))
+            .mana_cost
+            .cmc();
+        cost.decrease_generic_mana(reduce);
+        return true;
+    }
+    let offering_type_lower = offering_type.to_lowercase();
+    let source = sa.source.expect("spell source");
+    let player = sa.activating_player;
+    let candidates: Vec<CardId> = game
+        .cards_in_zone(ZoneType::Battlefield, player)
+        .iter()
+        .filter(|&&cid| {
+            cid != source && {
+                let c = game.card(cid);
+                match offering_type_lower.as_str() {
+                    "creature" => c.is_creature(),
+                    "artifact" => c.type_line.is_artifact(),
+                    "enchantment" => c.type_line.is_enchantment(),
+                    "land" => c.is_land(),
+                    _ => c.type_line.has_subtype(&offering_type),
+                }
+            }
+        })
+        .copied()
+        .collect();
+    if candidates.is_empty() {
+        return true;
+    }
+    agents[player.index()].snapshot_state(game, mana_pools);
+    if let Some(chosen) = agents[player.index()].choose_sacrifice(player, &candidates, Some(sa)) {
+        sa.sacrificed_as_offering = Some(chosen);
+        cost.decrease_generic_mana(game.card(chosen).mana_cost.cmc());
+    }
+    true
+}
+
+fn apply_emerge_reduction(
+    game: &mut GameState,
+    agents: &mut [Box<dyn PlayerAgent>],
+    mana_pools: &[ManaPool],
+    _trigger_handler: &mut TriggerHandler,
+    cost: &mut ManaCostBeingPaid,
+    sa: &mut SpellAbility,
+    _test: bool,
+) -> bool {
+    if sa.alt_cost != Some(crate::spellability::AlternativeCost::Emerge) {
+        return true;
+    }
+    if sa.sacrificed_as_emerge.is_some() {
+        let reduce = game
+            .card(sa.sacrificed_as_emerge.expect("checked above"))
+            .mana_cost
+            .cmc();
+        cost.decrease_generic_mana(reduce);
+        return true;
+    }
+    let source = sa.source.expect("spell source");
+    let player = sa.activating_player;
+    let valid_type = game
+        .card(source)
+        .keywords
+        .get_values()
+        .into_iter()
+        .chain(game.card(source).granted_keywords.get_values().into_iter())
+        .find_map(|kw| {
+            kw.original.strip_prefix("Emerge:").map(|rest| {
+                rest.split(':')
+                    .nth(1)
+                    .unwrap_or("Creature")
+                    .to_string()
+            })
+        })
+        .unwrap_or_else(|| "Creature".to_string());
+    let candidates: Vec<CardId> = game
+        .cards_in_zone(ZoneType::Battlefield, player)
+        .iter()
+        .filter(|&&cid| {
+            cid != source && {
+                let c = game.card(cid);
+                match valid_type.as_str() {
+                    "Creature" => c.is_creature(),
+                    "Artifact" => c.type_line.is_artifact(),
+                    "Enchantment" => c.type_line.is_enchantment(),
+                    "Land" => c.is_land(),
+                    other => c.type_line.has_subtype(other),
+                }
+            }
+        })
+        .copied()
+        .collect();
+    if candidates.is_empty() {
+        return true;
+    }
+    agents[player.index()].snapshot_state(game, mana_pools);
+    if let Some(chosen) = agents[player.index()].choose_sacrifice(player, &candidates, Some(sa)) {
+        sa.sacrificed_as_emerge = Some(chosen);
+        cost.decrease_generic_mana(game.card(chosen).mana_cost.cmc());
+    }
+    true
+}
+
+fn apply_affinity_reduction(
+    cost: &mut ManaCostBeingPaid,
+    payer: PlayerId,
     spell_card: &Card,
-    caster: PlayerId,
-    cast_zone: ZoneType,
-) -> CostAdjustment {
-    compute_cost_adjustment(game, spell_card, caster, cast_zone)
+    game: &GameState,
+) {
+    let Some(affinity_type) = get_affinity_type(spell_card) else {
+        return;
+    };
+    let count = count_affinity_permanents(game, payer, &affinity_type, spell_card.id);
+    if count > 0 {
+        cost.decrease_generic_mana(count);
+    }
+}
+
+fn apply_delve_reduction(
+    game: &mut GameState,
+    agents: &mut [Box<dyn PlayerAgent>],
+    mana_pools: &[ManaPool],
+    _trigger_handler: &mut TriggerHandler,
+    cost: &mut ManaCostBeingPaid,
+    sa: &mut SpellAbility,
+    test: bool,
+    cards_to_delve_out: Option<&mut Vec<CardId>>,
+) -> bool {
+    let source = sa.source.expect("spell source");
+    if !game.card(source).has_keyword("Delve") {
+        return true;
+    }
+    let generic = cost.get_generic_mana_amount();
+    if generic <= 0 {
+        return true;
+    }
+    let player = sa.activating_player;
+    let graveyard: Vec<CardId> = game
+        .cards_in_zone(ZoneType::Graveyard, player)
+        .iter()
+        .filter(|&&cid| cid != source)
+        .copied()
+        .collect();
+    if graveyard.is_empty() {
+        return true;
+    }
+    let max_delve = (generic as usize).min(graveyard.len());
+    agents[player.index()].snapshot_state(game, mana_pools);
+    let chosen = agents[player.index()].choose_delve(player, &graveyard, max_delve, Some(&game.card(source).card_name));
+    game.card_mut(source).clear_delved();
+    match cards_to_delve_out {
+        Some(out) => {
+            for &cid in chosen.iter().take(max_delve) {
+                cost.decrease_generic_mana(1);
+                out.push(cid);
+            }
+        }
+        None => {
+            for &cid in chosen.iter().take(max_delve) {
+                cost.decrease_generic_mana(1);
+                if !test {
+                    game.card_mut(source).add_delved(cid);
+                    let owner = game.card(cid).owner;
+                    game.move_card_with_agents(cid, ZoneType::Exile, owner, agents);
+                }
+            }
+        }
+    }
+    true
+}
+
+#[allow(clippy::too_many_arguments)]
+fn apply_convoke_or_improvise_reduction(
+    game: &mut GameState,
+    agents: &mut [Box<dyn PlayerAgent>],
+    mana_pools: &[ManaPool],
+    cost: &mut ManaCostBeingPaid,
+    sa: &mut SpellAbility,
+    payer: PlayerId,
+    artifacts: bool,
+    creatures: bool,
+    max_reduction: Option<i32>,
+    test: bool,
+) {
+    let source = sa.source.expect("spell source");
+    if creatures && !artifacts {
+        sa.clear_tapped_for_convoke();
+    }
+    let mut untapped: Vec<CardId> = game
+        .cards_in_zone(ZoneType::Battlefield, payer)
+        .iter()
+        .filter(|&&cid| !game.card(cid).tapped && cid != source)
+        .copied()
+        .collect();
+    untapped.retain(|&cid| {
+        let c = game.card(cid);
+        if artifacts && creatures {
+            c.type_line.is_artifact() || c.is_creature()
+        } else if artifacts {
+            c.type_line.is_artifact()
+        } else {
+            c.is_creature()
+        }
+    });
+    if untapped.is_empty() {
+        return;
+    }
+    let remaining_cost = cost.to_mana_cost();
+    if remaining_cost.cmc() <= 0 {
+        return;
+    }
+    let card_name = game.card(source).card_name.clone();
+    agents[payer.index()].snapshot_state(game, mana_pools);
+    let chosen = if artifacts && !creatures {
+        agents[payer.index()].choose_improvise(payer, &untapped, &remaining_cost, Some(&card_name))
+    } else {
+        agents[payer.index()].choose_convoke(payer, &untapped, &remaining_cost, Some(&card_name))
+    };
+    let mut reduced = 0i32;
+    for &cid in &chosen {
+        if !untapped.contains(&cid) {
+            continue;
+        }
+        if let Some(max) = max_reduction {
+            if reduced >= max {
+                break;
+            }
+        }
+        let pay_generic_only = artifacts && !creatures;
+        let mut paid = false;
+        if !pay_generic_only {
+            let payable_colors = game.card(cid).color.mask() as u16;
+            let distinct = cost.get_distinct_shards();
+            let payable: Vec<_> = distinct
+                .into_iter()
+                .filter(|shard| {
+                    let shard_mask = shard.shard();
+                    (shard_mask & payable_colors) != 0
+                        && *shard != forge_foundation::mana::ManaCostShard::Generic
+                })
+                .collect();
+            if let Some(chosen_shard) = payable.first().copied() {
+                cost.decrease_shard(chosen_shard, 1);
+                paid = true;
+            }
+        }
+        if !paid && cost.get_generic_mana_amount() > 0 {
+            cost.decrease_generic_mana(1);
+            paid = true;
+        }
+        if !paid {
+            continue;
+        }
+        if creatures && !artifacts {
+            sa.add_tapped_for_convoke(cid);
+        }
+        if !test {
+            game.tap(cid);
+        }
+        reduced += 1;
+    }
+}
+
+fn mana_from_cost(cost: &Cost) -> ManaCost {
+    cost.parts
+        .iter()
+        .filter_map(|part| match part {
+            crate::cost::CostPart::Mana { cost, .. } => Some(cost.clone()),
+            _ => None,
+        })
+        .fold(ManaCost::generic(0), |acc, mana| acc.add(&mana))
+}
+
+pub fn commit_offerings_and_emerge(
+    game: &mut GameState,
+    agents: &mut [Box<dyn PlayerAgent>],
+    trigger_handler: &mut TriggerHandler,
+    sa: &mut SpellAbility,
+) {
+    let to_sacrifice = [sa.sacrificed_as_offering, sa.sacrificed_as_emerge];
+    for chosen in to_sacrifice.into_iter().flatten() {
+        if game.card(chosen).zone != ZoneType::Battlefield {
+            continue;
+        }
+        let owner = game.card(chosen).owner;
+        let lki_p1p1 = *game.card(chosen).counters.get(&CounterType::P1P1).unwrap_or(&0);
+        let lki_power = game.card(chosen).power();
+        let lki_toughness = game.card(chosen).toughness();
+        trigger_handler.run_trigger(
+            TriggerType::Sacrificed,
+            RunParams {
+                card: Some(chosen),
+                player: Some(sa.activating_player),
+                ..Default::default()
+            },
+            false,
+        );
+        {
+            let card = game.card_mut(chosen);
+            card.clear_pump_triggers();
+        }
+        crate::ability::effects::emit_zone_trigger_with_lki_counters(
+            trigger_handler,
+            chosen,
+            ZoneType::Battlefield,
+            ZoneType::Graveyard,
+            lki_p1p1,
+            lki_power,
+            lki_toughness,
+        );
+        trigger_handler.flush_waiting_triggers(game);
+        game.move_card_with_agents(chosen, ZoneType::Graveyard, owner, agents);
+    }
 }

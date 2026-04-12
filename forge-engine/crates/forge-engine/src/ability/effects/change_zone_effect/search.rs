@@ -55,13 +55,6 @@ pub(super) fn resolve_each_search(
     out
 }
 
-/// Single card search — always delegates to the agent for parity with Java.
-///
-/// Java's `ChangeZoneEffect.changeHiddenOriginResolve` always calls
-/// `chooseSingleCardForZoneChange` regardless of whether all candidates
-/// share the same name. The Java `ChoiceSpace.pickOne` only short-circuits
-/// for size == 1 (no RNG consumed), so we must also call the agent when
-/// multiple fungible candidates exist to keep agent RNG consumption in sync.
 pub(super) fn resolve_single_search(
     ctx: &mut EffectContext,
     sa: &SpellAbility,

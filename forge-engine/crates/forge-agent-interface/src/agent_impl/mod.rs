@@ -256,6 +256,15 @@ impl<T: AgentTransport> PromptAgent<T> {
 }
 
 impl<T: AgentTransport> PlayerAgent for PromptAgent<T> {
+    fn choose_targets_for(
+        &mut self,
+        sa: &mut forge_engine_core::spellability::SpellAbility,
+        game: &GameState,
+        mana_pools: &[ManaPool],
+    ) -> bool {
+        forge_engine_core::spellability::choose_targets_by_kind(self, sa, game, mana_pools)
+    }
+
     fn snapshot_state(&mut self, game: &GameState, mana_pools: &[ManaPool]) {
         self.latest_view = Some(GameViewDto::from_engine(
             game,

@@ -74,6 +74,9 @@ pub enum ReplacementEvent {
         card: CardId,
         origin: ZoneType,
         destination: ZoneType,
+        /// True when this move originates from a discard action.
+        /// Mirrors Java's `AbilityKey.Discard` in replacement params.
+        is_discard: bool,
     },
 
     /// A player is gaining life.
@@ -227,6 +230,8 @@ use crate::agent::PlayerAgent;
 pub struct ReplacementRuntime<'a> {
     pub trigger_handler: &'a mut TriggerHandler,
     pub token_templates: &'a HashMap<String, Card>,
+    pub token_art_variants: &'a HashMap<(String, String), usize>,
+    pub token_fallback: &'a HashMap<String, String>,
     pub mana_pools: &'a mut Vec<ManaPool>,
     pub rng: &'a mut dyn GameRng,
 }
@@ -331,7 +336,7 @@ impl ReplacementHandler {
                 return ReplacementResult::NotReplaced;
             }
 
-            let chosen_idx = if eligible.len() > 1 && layer != ReplacementLayer::CantHappen {
+            let chosen_idx = if !eligible.is_empty() && layer != ReplacementLayer::CantHappen {
                 if let Some(agents) = agents.as_deref_mut() {
                     let descriptions: Vec<String> = eligible
                         .iter()
@@ -452,6 +457,7 @@ pub fn apply_moved_replacement(
         card: card_id,
         origin: src_zone,
         destination: ZoneType::Graveyard,
+        is_discard: false,
     };
     let mut handler = ReplacementHandler::new();
     handler.run(game, agents, None, &mut event);
@@ -1405,6 +1411,15 @@ mod tests {
         ) -> bool {
             self.confirm
         }
+
+        fn choose_targets_for(
+            &mut self,
+            _sa: &mut crate::spellability::SpellAbility,
+            _game: &GameState,
+            _mana_pools: &[ManaPool],
+        ) -> bool {
+            false
+        }
     }
 
     // ── Draw replacement tests ────────────────────────────────────────────
@@ -1813,6 +1828,7 @@ mod tests {
             card: cid,
             origin: ZoneType::Battlefield,
             destination: ZoneType::Graveyard,
+            is_discard: false,
         };
         let result = apply_replacements(&mut game, &mut event);
         assert_eq!(result, ReplacementResult::Updated);
@@ -1840,6 +1856,7 @@ mod tests {
             card: cid,
             origin: ZoneType::Hand,
             destination: ZoneType::Graveyard,
+            is_discard: false,
         };
         let result = apply_replacements(&mut game, &mut event);
         assert_eq!(result, ReplacementResult::NotReplaced);
@@ -1868,6 +1885,7 @@ mod tests {
             card: cid,
             origin: ZoneType::Battlefield,
             destination: ZoneType::Graveyard,
+            is_discard: false,
         };
         let result = apply_replacements_with_agents(&mut game, agents.as_mut_slice(), &mut event);
         assert_eq!(result, ReplacementResult::Updated);
@@ -1900,6 +1918,7 @@ mod tests {
             card: cid,
             origin: ZoneType::Battlefield,
             destination: ZoneType::Graveyard,
+            is_discard: false,
         };
         let result = apply_replacements_with_agents(&mut game, agents.as_mut_slice(), &mut event);
         assert_eq!(result, ReplacementResult::Updated);

@@ -53,9 +53,7 @@ fn create_clue_token(
     let token_id;
     // Try to use the registered token template first
     if let Some(template) = ctx.token_templates.get("c_a_clue_draw").cloned() {
-        // RNG sync
-        ctx.rng.next_int(1);
-        ctx.rng.next_int(1);
+        ctx.sync_token_art_rng("c_a_clue_draw", sa);
 
         let mut token = template;
         token.set_owner(player);
@@ -85,8 +83,7 @@ fn create_clue_token(
         );
     } else {
         // Fallback: create inline Clue token
-        ctx.rng.next_int(1);
-        ctx.rng.next_int(1);
+        ctx.sync_token_art_rng("c_a_clue_draw", sa);
 
         let mut token = Card::new(
             CardId(0),

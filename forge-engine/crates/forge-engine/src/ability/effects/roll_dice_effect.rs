@@ -1208,6 +1208,14 @@ mod tests {
             Some(true)
         }
 
+        fn choose_targets_for(
+            &mut self,
+            _sa: &mut SpellAbility,
+            _game: &GameState,
+            _mana_pools: &[ManaPool],
+        ) -> bool {
+            false
+        }
     }
 
     struct ModifyAgent;
@@ -1315,6 +1323,14 @@ mod tests {
             Some(true)
         }
 
+        fn choose_targets_for(
+            &mut self,
+            _sa: &mut SpellAbility,
+            _game: &GameState,
+            _mana_pools: &[ManaPool],
+        ) -> bool {
+            false
+        }
     }
 
     struct RerollAgent;
@@ -1410,6 +1426,14 @@ mod tests {
             Some(true)
         }
 
+        fn choose_targets_for(
+            &mut self,
+            _sa: &mut SpellAbility,
+            _game: &GameState,
+            _mana_pools: &[ManaPool],
+        ) -> bool {
+            false
+        }
     }
 
     #[test]
@@ -1642,12 +1666,16 @@ mod tests {
         let mut mana_pools = vec![ManaPool::default(), ManaPool::default()];
         let mut rng = FixedRng::new(&[0, 5]);
         let token_templates = HashMap::new();
+        let templates_variants: HashMap<(String, String), usize> = HashMap::new();
+        let token_fallback: HashMap<String, String> = HashMap::new();
         let mut ctx = EffectContext {
             game: &mut game,
             combat: None,
             agents: &mut agents,
             trigger_handler: &mut trigger_handler,
             token_templates: &token_templates,
+            token_art_variants: &templates_variants,
+            token_fallback: &token_fallback,
             mana_pools: &mut mana_pools,
             parent_target_card: None,
             rng: &mut rng,
@@ -1694,12 +1722,16 @@ mod tests {
         let mut mana_pools = vec![ManaPool::default(), ManaPool::default()];
         let mut rng = FixedRng::new(&[0, 4]);
         let token_templates = HashMap::new();
+        let templates_variants: HashMap<(String, String), usize> = HashMap::new();
+        let token_fallback: HashMap<String, String> = HashMap::new();
         let mut ctx = EffectContext {
             game: &mut game,
             combat: None,
             agents: &mut agents,
             trigger_handler: &mut trigger_handler,
             token_templates: &token_templates,
+            token_art_variants: &templates_variants,
+            token_fallback: &token_fallback,
             mana_pools: &mut mana_pools,
             parent_target_card: None,
             rng: &mut rng,
