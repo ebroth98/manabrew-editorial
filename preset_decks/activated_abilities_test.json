@@ -11,7 +11,6 @@
     { "name": "Swamp", "count": 2, "set": "m21" },
     { "name": "Mountain", "count": 2, "set": "m21" },
     { "name": "Forest", "count": 3, "set": "m21" },
-    ,
     { "name": "Hallowed Fountain", "count": 1, "set": "rna" },
     { "name": "Watery Grave", "count": 1, "set": "grn" },
     { "name": "Stomping Ground", "count": 1, "set": "rna" },
