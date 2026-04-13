@@ -40,7 +40,6 @@ use std::fs;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Mutex;
-use std::time::Instant;
 
 use clap::Parser;
 use rayon::prelude::*;
@@ -55,7 +54,7 @@ use forge_parity::java_bridge::{
 use forge_parity::java_cache::{self, JavaCache};
 use forge_parity::java_random::JavaRandom;
 use forge_parity::protocol::{
-    CallbackRecord, Divergence, FuzzReport, FuzzResult, MatchupResult, MatchupStatus, MatrixReport,
+    Divergence, FuzzReport, FuzzResult, MatchupResult, MatchupStatus, MatrixReport,
     ParityLogEntry,
 };
 use forge_parity::report;
@@ -152,22 +151,6 @@ fn filter_decks(decks: Vec<String>, exclude_prefixes: &[String]) -> Vec<String> 
         .collect()
 }
 
-/// Truncate a trace string to at most `max_lines` lines to limit memory usage.
-#[allow(dead_code)]
-fn truncate_trace(trace: &str, max_lines: usize) -> String {
-    let lines: Vec<&str> = trace.lines().collect();
-    if lines.len() <= max_lines {
-        return trace.to_string();
-    }
-    let half = max_lines / 2;
-    let mut result = lines[..half].join("\n");
-    result.push_str(&format!(
-        "\n... ({} lines omitted) ...\n",
-        lines.len() - max_lines
-    ));
-    result.push_str(&lines[lines.len() - half..].join("\n"));
-    result
-}
 
 #[derive(Parser, Debug)]
 #[command(
@@ -376,24 +359,7 @@ impl Cli {
     }
 }
 
-/// Resolve issue_threshold: CLI flag > env var > default (5)
-#[allow(dead_code)]
-fn resolve_issue_threshold(cli_val: i64) -> i64 {
-    if cli_val != 5 {
-        return cli_val;
-    }
-    std::env::var("ISSUE_THRESHOLD")
-        .ok()
-        .filter(|s| !s.is_empty())
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(cli_val)
-}
 
-/// Resolve github_repo: CLI flag > env var
-#[allow(dead_code)]
-fn resolve_github_repo(cli_val: Option<String>) -> Option<String> {
-    cli_val.or_else(|| std::env::var("GITHUB_REPO").ok().filter(|s| !s.is_empty()))
-}
 
 fn build_config(cli: &Cli, deck1: &str, deck2: &str, seed: u64) -> RunConfig {
     RunConfig {
@@ -479,7 +445,6 @@ fn main() {
 }
 
 fn run_multi_game_mode(cli: &Cli) {
-    let t_mode = Instant::now();
     if cli.is_verbose() {
         eprintln!(
             "[parity] Running: {} vs {} | games={} | seed_start={} | max_turns={}",
@@ -528,7 +493,6 @@ fn run_multi_game_mode(cli: &Cli) {
                             return (i, result);
                         }
 
-                        let t_match = Instant::now();
                         let result = run_single_matchup_pool(&config, &data, &pool);
 
                         if cli.is_verbose() {
@@ -592,7 +556,6 @@ fn run_multi_game_mode(cli: &Cli) {
                         results.push(result);
                         continue;
                     }
-                    let t_match = Instant::now();
                     let result = run_single_matchup_oneshot(&config, &data, jar_path);
                     if cli.is_verbose() {
                         let n = i + 1;
@@ -639,7 +602,6 @@ fn run_multi_game_mode(cli: &Cli) {
         for (i, seed) in seeds.iter().copied().enumerate() {
             let config = build_config(cli, &cli.deck1, &cli.deck2, seed);
 
-            let t_match = Instant::now();
             let result = run_single_matchup_rust_only(&config, &data);
             if cli.is_verbose() {
                 let n = i + 1;
@@ -713,7 +675,6 @@ fn run_multi_game_mode(cli: &Cli) {
     let output = match cli.format.as_str() {
         "json" => report::format_matrix_json(&report_data),
         _ => {
-            let t_report = Instant::now();
             let mut out = String::new();
             let dd = cli.decks_dir.as_deref().unwrap_or(DEFAULT_DECKS_DIR);
             out.push_str(&build_coverage_report(
@@ -802,7 +763,6 @@ fn run_single_matchup_server(
     data: &LoadedData,
     server: &mut JavaServer,
 ) -> MatchupResult {
-    let t_total = Instant::now();
     // Run Rust and Java engines concurrently:
     // Rust on a scoped thread, Java on the current thread (needs &mut server).
     let (rust_result, java_result) = std::thread::scope(|s| {
@@ -839,7 +799,6 @@ fn run_single_matchup_server(
         }
     };
 
-    let t_cmp = Instant::now();
     let mut result = compare_snapshots(
         config,
         &rust_trace,
@@ -856,7 +815,6 @@ fn run_single_matchup_pool(
     data: &LoadedData,
     pool: &ServerPool,
 ) -> MatchupResult {
-    let t_total = Instant::now();
     let (rust_result, java_result) = std::thread::scope(|s| {
         let rust_handle = s.spawn(|| runner::run_with_data(config, data));
         let java_result = pool.run_matchup(
@@ -888,7 +846,6 @@ fn run_single_matchup_pool(
         }
     };
 
-    let t_cmp = Instant::now();
     let mut result = compare_snapshots(
         config,
         &rust_trace,
@@ -905,7 +862,6 @@ fn run_single_matchup_oneshot(
     data: &LoadedData,
     jar_path: &PathBuf,
 ) -> MatchupResult {
-    let t_total = Instant::now();
     // Run Rust and Java engines concurrently
     let (rust_result, java_result) = std::thread::scope(|s| {
         let rust_handle = s.spawn(|| runner::run_with_data(config, data));
@@ -949,7 +905,6 @@ fn run_single_matchup_oneshot(
         }
     };
 
-    let t_cmp = Instant::now();
     let mut result = compare_snapshots(
         config,
         &rust_trace,
@@ -999,7 +954,6 @@ fn compare_snapshots(
     rust_trace: &forge_parity::protocol::GameTrace,
     java_data: &JavaMatchupData,
 ) -> MatchupResult {
-    let full_log = config.full_log;
     let rust_snapshots = rust_trace.snapshot_vec();
     let java_snapshots = java_data.snapshot_vec();
     let mut first_divergence: Option<Divergence> = None;
@@ -1087,20 +1041,6 @@ fn compare_snapshots(
     } else {
         MatchupStatus::Fail
     };
-    let (rust_log, java_log) = if full_log {
-        (rust_trace.log.clone(), java_data.log.clone())
-    } else {
-        let cutoff = compute_callback_cutoff(first_divergence.as_ref(), &rust_snapshots, &java_snapshots);
-        let rust_cbs = rust_trace.callback_vec();
-        let java_cbs = java_data.callback_vec();
-        let rw = build_callback_window(cutoff, &rust_cbs);
-        let jw = build_callback_window(cutoff, &java_cbs);
-        (
-            rw.into_iter().map(ParityLogEntry::Callback).collect(),
-            jw.into_iter().map(ParityLogEntry::Callback).collect(),
-        )
-    };
-
     MatchupResult {
         deck1: config.deck1.clone(),
         deck2: config.deck2.clone(),
@@ -1128,8 +1068,8 @@ fn compare_snapshots(
         error_message: None,
         skip_reason: None,
         covered_cards: vec![],
-        rust_log,
-        java_log,
+        rust_log: rust_trace.log.clone(),
+        java_log: java_data.log.clone(),
         finished_turn: rust_snapshots.last().and_then(|s| {
             if s.game_over {
                 Some(s.turn)
@@ -1739,137 +1679,6 @@ fn run_java_compare_and_cache(
     result
 }
 
-/// Run Java via server pool with streaming comparison against pre-computed Rust trace.
-/// Compares each Java snapshot as it arrives, skipping JSON parsing after divergence.
-#[allow(dead_code)]
-fn run_java_streaming_compare_pool(
-    config: &RunConfig,
-    rust_trace: &forge_parity::protocol::GameTrace,
-    pool: &ServerPool,
-) -> MatchupResult {
-    let rust_snapshots = rust_trace.snapshot_vec();
-    let mut first_divergence: Option<Divergence> = None;
-    let mut compared_until: usize = 0;
-
-    let java_result = pool.run_matchup_streaming(
-        &config.deck1,
-        &config.deck2,
-        config.seed,
-        config.max_turns,
-        config.prefer_actions,
-        config.deep,
-        &config.variant,
-        &config.commanders,
-        config.verbose.to_java_arg(),
-        |idx, java_snap| {
-            if let Some(rust_snap) = rust_snapshots.get(idx) {
-                let divs = comparator::compare(idx, rust_snap, java_snap);
-                if let Some(div) = divs.into_iter().next() {
-                    first_divergence = Some(div);
-                    compared_until = idx + 1;
-                    return false; // divergence found — stop storing
-                }
-            } else {
-                // Java has more snapshots than Rust
-                first_divergence = Some(Divergence {
-                    snapshot_index: idx,
-                    turn: java_snap.turn,
-                    phase: java_snap.phase.clone(),
-                    field: "snapshot.exists".into(),
-                    rust_value: "missing".into(),
-                    java_value: "present".into(),
-                });
-                compared_until = idx + 1;
-                return false;
-            }
-            compared_until = idx + 1;
-            true
-        },
-    );
-
-    let java_data = match java_result {
-        Ok(data) => data,
-        Err(e) => {
-            return MatchupResult::error(config, format!("Java server error: {}", e));
-        }
-    };
-
-    // Check if Rust has more snapshots than Java
-    let java_snapshots = java_data.snapshot_vec();
-    if first_divergence.is_none() && rust_snapshots.len() > java_snapshots.len() {
-        let idx = java_snapshots.len();
-        if let Some(rs) = rust_snapshots.get(idx) {
-            first_divergence = Some(Divergence {
-                snapshot_index: idx,
-                turn: rs.turn,
-                phase: rs.phase.clone(),
-                field: "snapshot.exists".into(),
-                rust_value: "present".into(),
-                java_value: "missing".into(),
-            });
-            compared_until = idx + 1;
-        }
-    }
-
-    let divergence_count = usize::from(first_divergence.is_some());
-    let status = if first_divergence.is_none() {
-        MatchupStatus::Pass
-    } else {
-        MatchupStatus::Fail
-    };
-    let (rust_log, java_log) = if config.full_log {
-        (rust_trace.log.clone(), java_data.log.clone())
-    } else {
-        let cutoff = compute_callback_cutoff(first_divergence.as_ref(), &rust_snapshots, &java_snapshots);
-        let rust_cbs = rust_trace.callback_vec();
-        let java_cbs = java_data.callback_vec();
-        let rw = build_callback_window(cutoff, &rust_cbs);
-        let jw = build_callback_window(cutoff, &java_cbs);
-        (
-            rw.into_iter().map(ParityLogEntry::Callback).collect(),
-            jw.into_iter().map(ParityLogEntry::Callback).collect(),
-        )
-    };
-
-    MatchupResult {
-        deck1: config.deck1.clone(),
-        deck2: config.deck2.clone(),
-        seed: config.seed,
-        status,
-        snapshots_compared: if first_divergence.is_some() {
-            compared_until
-        } else {
-            rust_snapshots.len().max(java_snapshots.len())
-        },
-        divergence_count,
-        rust_snapshot: first_divergence.as_ref().map(|_| {
-            let idx = compared_until
-                .saturating_sub(1)
-                .min(rust_snapshots.len().saturating_sub(1));
-            rust_snapshots[idx].clone()
-        }),
-        java_snapshot: first_divergence.as_ref().map(|_| {
-            let idx = compared_until
-                .saturating_sub(1)
-                .min(java_snapshots.len().saturating_sub(1));
-            java_snapshots[idx].clone()
-        }),
-        first_divergence,
-        error_message: None,
-        skip_reason: None,
-        covered_cards: rust_trace.covered_cards.clone(),
-        rust_log,
-        java_log,
-        finished_turn: rust_snapshots.last().and_then(|s| {
-            if s.game_over {
-                Some(s.turn)
-            } else {
-                None
-            }
-        }),
-    }
-}
-
 /// Run Java via one-shot bridge with streaming comparison against pre-computed Rust trace.
 fn run_java_streaming_compare_oneshot(
     config: &RunConfig,
@@ -2140,12 +1949,17 @@ fn render_side_by_side(
             let abs_snap = snapshot_offset + snap_idx;
             let passed = abs_snap < divergent_snapshot;
             let color = if passed { "\x1b[32m" } else { "\x1b[31m" };
-            let status_label = if passed { "PASS" } else { "DIVERGE" };
-            let label = format!("── snapshot {} ({}) ", abs_snap, status_label);
-            let fill = (COL_WIDTH * 2 + 8).saturating_sub(label.len());
+            let status_label = if passed { "✅" } else { "❌" };
+            let label = format!(" snapshot {} {} ", abs_snap, status_label);
+            let total = COL_WIDTH * 2 + 8;
+            let pad = total.saturating_sub(label.chars().count());
+            let left = pad / 2;
+            let right = pad - left;
             out.push_str(&format!(
-                "      {color}{label}{}\x1b[0m\n",
-                "─".repeat(fill),
+                "{color}{}{}{}\x1b[0m\n",
+                "─".repeat(left),
+                label,
+                "─".repeat(right),
             ));
         }
     }
@@ -2211,91 +2025,6 @@ fn format_full_log_for_results(results: &[MatchupResult]) -> String {
         render_side_by_side(&result.rust_log, &result.java_log, divergent_snapshot, 0, &mut out);
     }
     out
-}
-
-/// Build the callback window for investigation output.
-///
-/// Includes a tail of context callbacks from **before** the divergent snapshot
-/// (so the reader can see the last decisions both engines agreed on) followed
-/// by all callbacks from the divergent snapshot itself.
-///
-/// In deep mode, only player 0's observer increments `snapshot_index` (via
-/// `mark_snapshot`).  Player 1's callbacks all sit at index 0.  To get useful
-/// context we only consider callbacks that share the same `snapshot_index`
-/// tracking as the divergent ones (i.e. `snapshot_index > 0` when the
-/// divergent index is large).
-
-/// Map phase name to its position in the turn cycle for ordering.
-fn phase_order(phase: &str) -> u32 {
-    match phase {
-        "Untap" => 0,
-        "Upkeep" => 1,
-        "Draw" => 2,
-        "Main1" => 3,
-        "CombatBegin" => 4,
-        "CombatDeclareAttackers" => 5,
-        "CombatDeclareBlockers" => 6,
-        "CombatFirstStrikeDamage" => 7,
-        "CombatDamage" => 8,
-        "CombatEnd" => 9,
-        "Main2" => 10,
-        "EndOfTurn" => 11,
-        "Cleanup" => 12,
-        _ => 99,
-    }
-}
-
-/// Compute the turn/phase cutoff for the callback window by taking the earlier
-/// of the two engines' last-good snapshots.  This ensures both sides show
-/// callbacks from the same point in the game.
-fn compute_callback_cutoff(
-    divergence: Option<&Divergence>,
-    rust_snapshots: &[forge_parity::protocol::StateSnapshot],
-    java_snapshots: &[forge_parity::protocol::StateSnapshot],
-) -> Option<(u32, u32)> {
-    let div = divergence?;
-    if div.snapshot_index == 0 {
-        return Some((0, 0));
-    }
-    let last_good_idx = div.snapshot_index.saturating_sub(1);
-    let rust_cutoff = rust_snapshots
-        .get(last_good_idx)
-        .map(|s| (s.turn, phase_order(&s.phase)));
-    let java_cutoff = java_snapshots
-        .get(last_good_idx)
-        .map(|s| (s.turn, phase_order(&s.phase)));
-    // Take the earlier of the two so both sides show the full story.
-    match (rust_cutoff, java_cutoff) {
-        (Some(r), Some(j)) => {
-            if r.0 < j.0 || (r.0 == j.0 && r.1 <= j.1) {
-                Some(r)
-            } else {
-                Some(j)
-            }
-        }
-        (Some(r), None) => Some(r),
-        (None, Some(j)) => Some(j),
-        (None, None) => Some((0, 0)),
-    }
-}
-
-/// Build the callback window for display: all callbacks from the cutoff
-/// turn/phase onwards.
-fn build_callback_window(
-    cutoff: Option<(u32, u32)>,
-    callbacks: &[CallbackRecord],
-) -> Vec<CallbackRecord> {
-    let Some((cutoff_turn, cutoff_phase_ord)) = cutoff else {
-        return vec![];
-    };
-    callbacks
-        .iter()
-        .filter(|cb| {
-            let cb_ord = phase_order(&cb.phase);
-            cb.turn > cutoff_turn || (cb.turn == cutoff_turn && cb_ord >= cutoff_phase_ord)
-        })
-        .cloned()
-        .collect()
 }
 
 fn run_fuzz_mode(cli: &Cli) {
@@ -2507,7 +2236,6 @@ fn run_fuzz_mode(cli: &Cli) {
 }
 
 fn write_output(cli: &Cli, output: &str) {
-    let t_write = Instant::now();
     if let Some(ref path) = cli.output {
         match std::fs::write(path, output) {
             Ok(_) => eprintln!("[parity] Report written to {:?}", path),

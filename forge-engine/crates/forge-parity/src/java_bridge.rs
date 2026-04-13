@@ -46,7 +46,6 @@ impl JavaBridge {
     }
 
     pub fn run(&self) -> Result<JavaMatchupData, JavaBridgeError> {
-        let t_total = Instant::now();
         let jar = &self.config.jar_path;
         let verbose = self.config.verbose;
 
@@ -161,7 +160,6 @@ impl JavaBridge {
         let mut log = Vec::new();
         let mut snapshot_count = 0usize;
 
-        let t_read = Instant::now();
         for line_result in reader.lines() {
             let line = line_result.map_err(|e| {
                 JavaBridgeError::ProtocolError(format!("Failed to read stdout: {}", e))
@@ -399,7 +397,6 @@ impl JavaServer {
         commanders: &[String],
         verbose_turns: Option<String>,
     ) -> Result<JavaMatchupData, JavaBridgeError> {
-        let t_total = Instant::now();
         let request = MatchupRequest {
             command: "run".to_string(),
             deck1: deck1.to_string(),
@@ -432,7 +429,6 @@ impl JavaServer {
         let mut snapshot_count = 0usize;
         let mut line_buf = String::new();
 
-        let t_read = Instant::now();
         loop {
             line_buf.clear();
             let bytes_read = self.stdout.read_line(&mut line_buf).map_err(|e| {

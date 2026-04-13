@@ -12,6 +12,7 @@ const ANSI_YELLOW: &str = "\x1b[33m";
 #[allow(dead_code)]
 const ANSI_BLUE: &str = "\x1b[34m";
 const ANSI_ORANGE: &str = "\x1b[38;5;208m";
+#[allow(dead_code)]
 const ANSI_DIM: &str = "\x1b[90m";
 
 /// Build a parity report from a Rust trace and a set of divergences.
@@ -379,34 +380,6 @@ fn completion_label(
     }
 }
 
-/// Find the turn number from the nearest `--- Snapshot ... | Turn N |` line
-/// at or before the first divergence in the traces.
-fn find_trace_divergence_turn(rust_trace: &str, java_trace: &str) -> Option<u32> {
-    let rust_lines: Vec<&str> = rust_trace.lines().collect();
-    let java_lines: Vec<&str> = java_trace.lines().collect();
-    let rows = rust_lines.len().max(java_lines.len());
-    let first_diff = (0..rows).find(|&i| {
-        rust_lines.get(i).copied().unwrap_or("") != java_lines.get(i).copied().unwrap_or("")
-    })?;
-    // Walk backwards from the diff to find the nearest "--- Snapshot ... | Turn N |" line
-    for i in (0..=first_diff).rev() {
-        let line = rust_lines.get(i).copied().unwrap_or("");
-        if let Some(rest) = line.strip_prefix("--- Snapshot ") {
-            // Format: "--- Snapshot 4 | Turn 5 | Untap | Active: P0 ---"
-            if let Some(turn_part) = rest.split("Turn ").nth(1) {
-                if let Some(num_str) = turn_part.split(' ').next() {
-                    if let Ok(turn) = num_str.parse::<u32>() {
-                        return Some(turn);
-                    }
-                }
-            }
-        }
-        // Also check Decision lines: "  Decision[P0 CombatEnd ...]" doesn't have turn,
-        // but lines like "--- Snapshot" do. Keep walking.
-    }
-    None
-}
-
 /// Render a side-by-side diff of two StateSnapshots, highlighting only the fields that differ.
 fn format_snapshot_diff(rust: &StateSnapshot, java: &StateSnapshot, indent: &str) -> String {
     let mut out = String::new();
@@ -603,166 +576,6 @@ fn format_card_snapshot(c: &CardSnapshot) -> String {
         s.push_str(&format!(" [{}]", counters.join(",")));
     }
     s
-}
-
-/// Extract the snapshot block for a given turn from a formatted trace.
-/// A snapshot block starts with `--- Snapshot N | Turn T |` and ends before the next `--- Snapshot`.
-fn extract_snapshot_block(trace: &str, turn: u32) -> Option<String> {
-    let marker = format!("| Turn {} |", turn);
-    let lines: Vec<&str> = trace.lines().collect();
-    let start = lines
-        .iter()
-        .position(|l| l.contains("--- Snapshot") && l.contains(&marker))?;
-    let end = lines[start + 1..]
-        .iter()
-        .position(|l| l.starts_with("--- Snapshot"))
-        .map(|i| start + 1 + i)
-        .unwrap_or(lines.len());
-    Some(lines[start..end].join("\n"))
-}
-
-/// Diff only the snapshot block at the divergence turn between Rust and Java traces.
-fn format_snapshot_diff_at_turn(
-    rust_trace: &str,
-    java_trace: &str,
-    turn: u32,
-    indent: &str,
-) -> String {
-    let rust_block = extract_snapshot_block(rust_trace, turn);
-    let java_block = extract_snapshot_block(java_trace, turn);
-    let mut out = String::new();
-
-    match (rust_block.as_deref(), java_block.as_deref()) {
-        (Some(rb), Some(jb)) => {
-            let rust_lines: Vec<&str> = rb.lines().collect();
-            let java_lines: Vec<&str> = jb.lines().collect();
-            let rows = rust_lines.len().max(java_lines.len());
-            for i in 0..rows {
-                let rl = rust_lines.get(i).copied().unwrap_or("");
-                let jl = java_lines.get(i).copied().unwrap_or("");
-                if rl == jl {
-                    out.push_str(indent);
-                    out.push_str(&format!("{ANSI_DIM}{}{ANSI_RESET}\n", rl));
-                } else {
-                    out.push_str(indent);
-                    out.push_str(&format!(
-                        "{ANSI_ORANGE}Rust: {}{ANSI_RESET}\n",
-                        if rl.is_empty() { "<missing>" } else { rl }
-                    ));
-                    out.push_str(indent);
-                    out.push_str(&format!(
-                        "{ANSI_GREEN}Java: {}{ANSI_RESET}\n",
-                        if jl.is_empty() { "<missing>" } else { jl }
-                    ));
-                }
-            }
-        }
-        (Some(rb), None) => {
-            out.push_str(indent);
-            out.push_str(&format!(
-                "{ANSI_ORANGE}(Rust has snapshot for T{}, Java does not){ANSI_RESET}\n",
-                turn
-            ));
-            for line in rb.lines() {
-                out.push_str(indent);
-                out.push_str(&format!("{ANSI_ORANGE}{}{ANSI_RESET}\n", line));
-            }
-        }
-        (None, Some(jb)) => {
-            out.push_str(indent);
-            out.push_str(&format!(
-                "{ANSI_GREEN}(Java has snapshot for T{}, Rust does not){ANSI_RESET}\n",
-                turn
-            ));
-            for line in jb.lines() {
-                out.push_str(indent);
-                out.push_str(&format!("{ANSI_GREEN}{}{ANSI_RESET}\n", line));
-            }
-        }
-        (None, None) => {
-            out.push_str(indent);
-            out.push_str(&format!(
-                "{ANSI_DIM}(No snapshot found for T{}){ANSI_RESET}\n",
-                turn
-            ));
-        }
-    }
-    out
-}
-
-/// Max lines to show from the first divergence point in a trace diff.
-const TRACE_DIFF_CONTEXT_LINES: usize = 10;
-
-fn format_unified_trace_diff(rust_trace: &str, java_trace: &str, indent: &str) -> String {
-    let rust_lines: Vec<&str> = rust_trace.lines().collect();
-    let java_lines: Vec<&str> = java_trace.lines().collect();
-    let rows = rust_lines.len().max(java_lines.len());
-    let mut out = String::new();
-
-    out.push_str(indent);
-    out.push_str(&format!("{ANSI_ORANGE}Rust Trace{ANSI_RESET}\n"));
-    out.push_str(indent);
-    out.push_str(&format!("{ANSI_GREEN}Java Trace{ANSI_RESET}\n"));
-    out.push_str(indent);
-    out.push_str(&format!("{ANSI_ORANGE}Trace Diff{ANSI_RESET}\n"));
-
-    // Find the first divergent line.
-    let first_diff = (0..rows).find(|&i| {
-        rust_lines.get(i).copied().unwrap_or("") != java_lines.get(i).copied().unwrap_or("")
-    });
-
-    let Some(diff_start) = first_diff else {
-        // No diff found — all lines match.
-        out.push_str(indent);
-        out.push_str(&format!("{ANSI_DIM}  (traces are identical){ANSI_RESET}\n"));
-        return out;
-    };
-
-    // Show a few context lines before the divergence.
-    let context_before = 3;
-    let display_start = diff_start.saturating_sub(context_before);
-    let display_end = (diff_start + TRACE_DIFF_CONTEXT_LINES).min(rows);
-
-    if display_start > 0 {
-        out.push_str(indent);
-        out.push_str(&format!(
-            "{ANSI_DIM}  ... ({} matching lines omitted) ...{ANSI_RESET}\n",
-            display_start
-        ));
-    }
-
-    for i in display_start..display_end {
-        let rust_line = rust_lines.get(i).copied().unwrap_or("");
-        let java_line = java_lines.get(i).copied().unwrap_or("");
-        if rust_line == java_line {
-            out.push_str(indent);
-            out.push_str(&format!("{ANSI_DIM}  {}{ANSI_RESET}\n", rust_line));
-            continue;
-        }
-
-        out.push_str(indent);
-        if rust_line.is_empty() {
-            out.push_str(&format!("{ANSI_ORANGE}Rust: <no line>{ANSI_RESET}\n"));
-        } else {
-            out.push_str(&format!("{ANSI_ORANGE}Rust: {rust_line}{ANSI_RESET}\n"));
-        }
-        out.push_str(indent);
-        if java_line.is_empty() {
-            out.push_str(&format!("{ANSI_GREEN}Java: <no line>{ANSI_RESET}\n"));
-        } else {
-            out.push_str(&format!("{ANSI_GREEN}Java: {java_line}{ANSI_RESET}\n"));
-        }
-    }
-
-    if display_end < rows {
-        out.push_str(indent);
-        out.push_str(&format!(
-            "{ANSI_DIM}  ... ({} more lines omitted) ...{ANSI_RESET}\n",
-            rows - display_end
-        ));
-    }
-
-    out
 }
 
 /// Format a game trace as human-readable text (Rust-only mode).

@@ -5,7 +5,6 @@ members = [
     "forge-engine/crates/forge-foundation",
     "forge-engine/crates/forge-carddb",
     "forge-engine/crates/forge-engine",
-    "forge-engine/crates/forge-cli",
     "forge-engine/crates/forge-server",
     "forge-engine/crates/forge-parity",
     "forge-engine/crates/forge-wasm",

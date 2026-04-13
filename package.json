@@ -19,7 +19,7 @@
     "parity": "node scripts/parity.mjs",
     "parity:test": "bash scripts/check-harness.sh && cargo run -p forge-parity --bin forge-parity -- --java-jar forge/forge-harness/target/forge-harness-jar-with-dependencies.jar",
     "scan": "node scan_structure.cjs",
-    "format-engine": "cargo fmt --manifest-path Cargo.toml -p forge-foundation -p forge-carddb -p forge-engine-core -p forge-cli -p forge-server -p forge-parity -p forge-wasm -p forge-agent-interface",
+    "format-engine": "cargo fmt --manifest-path Cargo.toml -p forge-foundation -p forge-carddb -p forge-engine-core -p forge-server -p forge-parity -p forge-wasm -p forge-agent-interface",
     "test:forge-engine": "cargo test -p forge-engine-core --lib",
     "build:wasm": "bash scripts/build-wasm.sh",
     "dev:web": "npm run build:wasm && vite",

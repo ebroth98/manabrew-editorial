@@ -24,8 +24,11 @@ use crate::java_random::JavaRandom;
 use crate::parity_card_map::ParityCardMap;
 use crate::parity_order;
 
+#[allow(dead_code)]
 const ANSI_RESET: &str = "\x1b[0m";
+#[allow(dead_code)]
 const ANSI_DIM_GRAY: &str = "\x1b[90m";
+#[allow(dead_code)]
 const ANSI_YELLOW: &str = "\x1b[33m";
 const PREFER_ACTION_WEIGHT: usize = 3;
 
@@ -113,6 +116,7 @@ enum ActionChoice {
     Ability(CardId, usize),
 }
 
+#[allow(private_interfaces)]
 impl DeterministicAgent {
     pub fn new(
         player_id: PlayerId,
@@ -380,16 +384,6 @@ impl DeterministicAgent {
             );
         }
     }
-
-    fn log_decision(&self, msg: &str) {
-        if std::env::var("FORGE_RNG_TRACE").is_ok() {
-            let count = self.rng.borrow().call_count;
-            eprintln!("[agent-P{} rng#{}] {}", self.player_id.0, count, msg);
-        }
-        if self.is_verbose() {
-            eprintln!("[parity-agent-rust p{}] {}", self.player_id.0, msg);
-        }
-    }
 }
 
 impl PlayerAgent for DeterministicAgent {
@@ -556,7 +550,7 @@ impl PlayerAgent for DeterministicAgent {
         card_id: CardId,
         _card_name: &str,
         mana_cost: &str,
-        mana_cost_display: &str,
+        _mana_cost_display: &str,
         mana_cost_checkpoint: &str,
         allow_reserved_source_reuse: bool,
         _mana_ability_options: &[forge_engine_core::agent::ManaAbilityOption],
@@ -630,7 +624,7 @@ impl PlayerAgent for DeterministicAgent {
                 .iter()
                 .map(|&(id, _)| self.card_name(id))
                 .collect();
-            let joined = names.join(", ");
+            let _joined = names.join(", ");
         } else {
         }
         attackers
@@ -698,17 +692,9 @@ impl PlayerAgent for DeterministicAgent {
                 pairs.push((blocker, legal_attackers[choice - 1]));
             }
         }
-        let attacker_count = attackers.len().to_string();
-        let blocker_count = available_blockers.len().to_string();
-        let max_str = max_blockers.map_or("none".to_string(), |m| m.to_string());
         if pairs.is_empty() {
             return pairs;
         }
-        let desc: Vec<String> = pairs
-            .iter()
-            .map(|(b, a)| format!("{} → {}", self.card_name(*b), self.card_name(*a)))
-            .collect();
-        let joined = desc.join(", ");
         pairs
     }
 
@@ -725,8 +711,6 @@ impl PlayerAgent for DeterministicAgent {
                 .then_with(|| self.parity_map.id(*a).cmp(&self.parity_map.id(*b)))
         });
         let legal_attackers = self.legal_attackers_for_blocker(blocker, &sorted_attackers);
-        let blocker_name = self.card_name(blocker);
-        let attacker_count = attackers.len().to_string();
         if legal_attackers.is_empty() {
             // Java DeterministicController always rolls `nextInt(options.size() + 1)`.
             // When options is empty, that's `nextInt(1)` (consumes RNG, always 0).
@@ -741,7 +725,6 @@ impl PlayerAgent for DeterministicAgent {
             return None;
         }
         let attacker = attacker.unwrap();
-        let attacker_name = self.card_name(attacker);
         Some(attacker)
     }
 
@@ -925,9 +908,9 @@ impl PlayerAgent for DeterministicAgent {
     fn choose_optional_trigger(
         &mut self,
         _player: PlayerId,
-        description: &str,
-        card_name: Option<&str>,
-        api: Option<forge_engine_core::ability::api_type::ApiType>,
+        _description: &str,
+        _card_name: Option<&str>,
+        _api: Option<forge_engine_core::ability::api_type::ApiType>,
     ) -> bool {
         let accept = choice_space::pick_bool(&mut self.rng.borrow_mut());
         accept
@@ -936,11 +919,11 @@ impl PlayerAgent for DeterministicAgent {
     fn confirm_action(
         &mut self,
         _player: PlayerId,
-        mode: Option<&str>,
-        message: &str,
+        _mode: Option<&str>,
+        _message: &str,
         _options: &[String],
-        card_name: Option<&str>,
-        api: Option<forge_engine_core::ability::api_type::ApiType>,
+        _card_name: Option<&str>,
+        _api: Option<forge_engine_core::ability::api_type::ApiType>,
     ) -> bool {
         let accept = choice_space::pick_bool(&mut self.rng.borrow_mut());
         accept
@@ -949,9 +932,9 @@ impl PlayerAgent for DeterministicAgent {
     fn confirm_replacement_effect(
         &mut self,
         _player: PlayerId,
-        question: &str,
-        effect_description: &str,
-        card_name: Option<&str>,
+        _question: &str,
+        _effect_description: &str,
+        _card_name: Option<&str>,
     ) -> bool {
         let accept = choice_space::pick_bool(&mut self.rng.borrow_mut());
         accept
@@ -960,10 +943,10 @@ impl PlayerAgent for DeterministicAgent {
     fn confirm_payment(
         &mut self,
         _player: PlayerId,
-        cost_kind: &str,
-        message: &str,
-        card_name: Option<&str>,
-        api: Option<forge_engine_core::ability::api_type::ApiType>,
+        _cost_kind: &str,
+        _message: &str,
+        _card_name: Option<&str>,
+        _api: Option<forge_engine_core::ability::api_type::ApiType>,
     ) -> bool {
         let accept = choice_space::pick_bool(&mut self.rng.borrow_mut());
         accept
@@ -972,11 +955,11 @@ impl PlayerAgent for DeterministicAgent {
     fn choose_binary(
         &mut self,
         _player: PlayerId,
-        question: &str,
-        kind: BinaryChoiceKind,
+        _question: &str,
+        _kind: BinaryChoiceKind,
         _default_choice: Option<bool>,
-        card_name: Option<&str>,
-        api: Option<forge_engine_core::ability::api_type::ApiType>,
+        _card_name: Option<&str>,
+        _api: Option<forge_engine_core::ability::api_type::ApiType>,
     ) -> bool {
         let chosen_left = choice_space::pick_bool(&mut self.rng.borrow_mut());
         chosen_left

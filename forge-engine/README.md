@@ -19,9 +19,6 @@ Forge is one of the most complete MTG implementations (~30,000+ cards), but its 
 │                    Frontend (Web/Tauri)              │
 │              HTML/CSS/JS  ←→  WASM bindings          │
 ├─────────────────────────────────────────────────────┤
-│                      forge-cli                       │
-│              Terminal UI for development/testing      │
-├─────────────────────────────────────────────────────┤
 │                     forge-engine                     │
 │     GameState, GameLoop, combat, mana, stack,        │
 │     state-based actions, PlayerAgent trait            │
@@ -43,7 +40,6 @@ Forge is one of the most complete MTG implementations (~30,000+ cards), but its 
 | `forge-foundation` | Core MTG types: colors (5-color bitmask), mana costs (45 shard types incl. hybrid/phyrexian), card types, 19 zone types, 13 phase types |
 | `forge-carddb` | Parses Forge's `.txt` card scripts into structured `CardRules`. Loads via string iterators (no filesystem — WASM-ready). **Parses all 32,000+ cards with zero failures.** |
 | `forge-engine` | Mutable game state & rules enforcement. Arena-based entity system (`Vec<CardInstance>`, typed `CardId`/`PlayerId` indices). GameLoop drives turns; `PlayerAgent` trait decouples decisions from engine. |
-| `forge-cli` | Interactive terminal client for development. ANSI-colored board display, 4 prebuilt decks, human vs AI play. |
 
 ### Key Design Decisions
 
@@ -98,9 +94,6 @@ cargo test --workspace
 # Parse all 32K+ Forge card scripts (requires Forge res/ directory)
 cargo test --test parse_all_cards -- --ignored
 
-# Run the CLI game
-cargo run --package forge-cli
-```
 
 ## Roadmap
 
@@ -163,9 +156,6 @@ forge-engine/
 │   │   │   └── agent.rs               # PlayerAgent trait, TargetChoice
 │   │   └── tests/
 │   │       └── first_game.rs           # End-to-end game integration tests
-│   └── forge-cli/
-│       └── src/
-│           └── main.rs                 # Interactive terminal game client
 ```
 
 ## Parity Engine

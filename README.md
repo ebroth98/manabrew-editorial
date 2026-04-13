@@ -56,7 +56,6 @@ A modern desktop and web client for Magic: The Gathering, powered by a Rust rewr
 │       ├── forge-carddb/       # Card script parser (32K+ cards)
 │       ├── forge-engine/       # Game state, rules, combat, stack, effects
 │       ├── forge-parity/       # Parity test harness (Rust vs Java comparison)
-│       └── forge-cli/          # Terminal client for dev/testing
 ├── forge/                      # Java Forge source (reference implementation)
 │   ├── forge-game/             # Java rules engine (the source of truth)
 │   ├── forge-gui/res/          # Card scripts, tokens, editions
@@ -119,15 +118,6 @@ Creates a distributable native app in `src-tauri/target/release/`.
 | `yarn ios` | Start iOS development build |
 | `yarn android` | Start Android development build |
 
-### Rust Engine
-
-```bash
-cd forge-engine
-
-cargo build                     # Build all crates
-cargo test                      # Run all engine tests
-cargo run -p forge-cli          # Interactive terminal game client
-```
 
 ### Parity Testing
 

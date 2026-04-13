@@ -1,19 +1,18 @@
 use std::cell::RefCell;
-use std::collections::{BTreeSet, HashMap, HashSet};
+use std::collections::{BTreeSet, HashSet};
 use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use forge_carddb::CardDatabase;
 use forge_engine_core::agent::{
-    BinaryChoiceKind, GameEntity, ManaCostAction, PlayCardMode, PlayOption, PlayerAgent,
+    BinaryChoiceKind, GameEntity, ManaCostAction, PlayOption, PlayerAgent,
 };
 use forge_engine_core::card::CardInstance;
 use forge_engine_core::combat::DefenderId;
 use forge_engine_core::game::GameState;
 use forge_engine_core::game_loop::GameLoop;
 use forge_engine_core::ids::{CardId, PlayerId};
-use forge_engine_core::spellability::AlternativeCost;
 use forge_foundation::ZoneType;
 use rand::rngs::StdRng;
 use rand::SeedableRng;
@@ -22,9 +21,7 @@ use crate::callback_fmt::{FmtCtx, ParityFormat};
 use crate::deterministic_agent::{DeterministicAgent, VerboseMode};
 use crate::java_random::JavaRandom;
 use crate::parity_card_map::ParityCardMap;
-use crate::parity_id;
-use crate::parity_order;
-use crate::protocol::{CallbackRecord, DecisionRecord, GameTrace, ParityLogEntry, StateSnapshot};
+use crate::protocol::{CallbackRecord, DecisionRecord, GameTrace, ParityLogEntry};
 use crate::snapshot::snapshot_game;
 use crate::utils::decks::{build_deck_from_spec, resolve_deck_spec};
 
@@ -84,6 +81,7 @@ struct CapturingAgent {
     current_turn: u32,
     current_phase: String,
     last_game_state: Option<GameState>,
+    #[allow(dead_code)]
     verbose: VerboseMode,
 }
 
@@ -128,6 +126,7 @@ impl CapturingAgent {
         }
     }
 
+    #[allow(dead_code)]
     fn is_verbose(&self) -> bool {
         self.verbose.is_active(self.current_turn)
     }
@@ -360,7 +359,7 @@ pub struct LoadedData {
 }
 
 pub fn load_data(cards_dir: Option<&str>, verbose: bool) -> Result<LoadedData, String> {
-    let t_total = Instant::now();
+    let _t_total = Instant::now();
     let cards_dir = cards_dir.unwrap_or("forge/forge-gui/res/cardsfolder");
     let cards_path = std::path::Path::new(cards_dir);
 
@@ -374,7 +373,7 @@ pub fn load_data(cards_dir: Option<&str>, verbose: bool) -> Result<LoadedData, S
     if verbose {
         eprintln!("[parity] Loading cards from {:?} ...", cards_path);
     }
-    let t_cards = Instant::now();
+    let _t_cards = Instant::now();
     let (db, result) = CardDatabase::load_from_directory(cards_path);
     if verbose {
         eprintln!(
@@ -395,7 +394,7 @@ pub fn load_data(cards_dir: Option<&str>, verbose: bool) -> Result<LoadedData, S
                 token_dir_path
             );
         }
-        let t_tokens = Instant::now();
+        let _t_tokens = Instant::now();
         let (token_db, token_result) = CardDatabase::load_from_directory(&token_dir_path);
         if verbose {
             eprintln!("[parity] Loaded {} token scripts", token_result.loaded);
@@ -422,14 +421,14 @@ pub fn load_data(cards_dir: Option<&str>, verbose: bool) -> Result<LoadedData, S
         if verbose {
             eprintln!("[parity] Loading type lists from {:?} ...", type_list_path);
         }
-        let t_types_read = Instant::now();
+        let _t_types_read = Instant::now();
         let content = std::fs::read_to_string(&type_list_path).map_err(|e| {
             format!(
                 "Failed to read TypeLists.txt at {:?}: {}",
                 type_list_path, e
             )
         })?;
-        let t_types_parse = Instant::now();
+        let _t_types_parse = Instant::now();
         forge_engine_core::game::TypeRegistry::load(&content);
         if verbose {
             eprintln!(
@@ -446,10 +445,10 @@ pub fn load_data(cards_dir: Option<&str>, verbose: bool) -> Result<LoadedData, S
 }
 
 pub fn run_with_data(config: &RunConfig, data: &LoadedData) -> Result<GameTrace, String> {
-    let t_total = Instant::now();
+    let _t_total = Instant::now();
     // Resolve deck lists — supports preset names, inline: specs, and file: specs
     let decks_dir = config.decks_dir.as_deref().unwrap_or(DEFAULT_DECKS_DIR);
-    let t_resolve = Instant::now();
+    let _t_resolve = Instant::now();
     let deck1_spec = resolve_deck_spec(&config.deck1, decks_dir)?;
     let deck2_spec = resolve_deck_spec(&config.deck2, decks_dir)?;
 
@@ -467,7 +466,7 @@ pub fn run_with_data(config: &RunConfig, data: &LoadedData) -> Result<GameTrace,
     let p1 = PlayerId(1);
     let mut game = GameState::new(&["Player1", "Player2"], starting_life);
 
-    let t_build = Instant::now();
+    let _t_build = Instant::now();
     build_deck_from_spec(
         &mut game,
         &data.db,
@@ -570,7 +569,7 @@ pub fn run_with_data(config: &RunConfig, data: &LoadedData) -> Result<GameTrace,
         r
     }));
     {
-        let t_shuffle = Instant::now();
+        let _t_shuffle = Instant::now();
         let mut shuffle_rng = game_rng.borrow_mut();
         for &pid in &game.player_order.clone() {
             // Sort library by card name for deterministic pre-shuffle ordering,
@@ -671,7 +670,7 @@ pub fn run_with_data(config: &RunConfig, data: &LoadedData) -> Result<GameTrace,
 
     // Run turns — CapturingAgent captures turn-start snapshots automatically
     while !game.game_over && game.turn.turn_number <= config.max_turns {
-        let t_turn = Instant::now();
+        let _t_turn = Instant::now();
         game_loop.run_turn(&mut game, &mut agents, &mut rng);
     }
 
