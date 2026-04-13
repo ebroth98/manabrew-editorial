@@ -42,7 +42,8 @@ public final class DecisionLog {
             final Player decidingPlayer,
             final String kind,
             final String outcome,
-            final List<String> args
+            final List<String> args,
+            final String... callbackArgs
     ) {
         if (decidingPlayer == null) {
             return;
@@ -55,6 +56,9 @@ public final class DecisionLog {
         row.put("name", kind);
         row.put("outcome", outcome);
         row.put("args", new ArrayList<>(args == null ? List.of() : args));
+        if (callbackArgs != null && callbackArgs.length > 0) {
+            row.put("callback_args", List.of(callbackArgs));
+        }
         row.put("timestamp_ms", System.currentTimeMillis());
         sink.accept(GSON.toJson(row));
     }

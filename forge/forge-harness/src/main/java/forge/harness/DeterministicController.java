@@ -136,7 +136,7 @@ public class DeterministicController extends PlayerController {
     public void onCallback(String callbackName, String callbackOutcome, String... args) {
         if (IGNORED_CALLBACKS.contains(callbackName)) return;
         final List<String> choiceLogs = ParityLog.drain();
-        DecisionLog.logCallback(player, callbackName, callbackOutcome, choiceLogs);
+        DecisionLog.logCallback(player, callbackName, callbackOutcome, choiceLogs, args);
     }
 
     private void captureDeepCheckpoint(final String kind) {
@@ -227,7 +227,7 @@ public class DeterministicController extends PlayerController {
                 ParityOrder.actionComparator());
 
         if (all.isEmpty()) {
-            onCallback("choose_action", "PassPriority", "0", "0");
+            onCallback("choose_action", "PassPriority");
             return null;
         }
 
@@ -294,13 +294,13 @@ public class DeterministicController extends PlayerController {
                 rng.getCallCount());
         }
         if (currentAbility == null || !currentAbility.usesTargeting()) {
-            onCallback("choose_targets_for", "true", "no_targeting");
+            onCallback("choose_targets_for", "true", currentAbility.toString());
             return true;
         }
 
         final TargetRestrictions tr = currentAbility.getTargetRestrictions();
         if (tr == null) {
-            onCallback("choose_targets_for", "true", "no_restrictions");
+            onCallback("choose_targets_for", "true", currentAbility.toString());
             return true;
         }
 
@@ -315,7 +315,7 @@ public class DeterministicController extends PlayerController {
 
             if (valid.isEmpty()) {
                 final boolean result = currentAbility.isTargetNumberValid();
-                onCallback("choose_targets_for", Boolean.toString(result), "no_valid_candidates");
+                onCallback("choose_targets_for", Boolean.toString(result), currentAbility.toString());
                 return result;
             }
 
@@ -326,7 +326,7 @@ public class DeterministicController extends PlayerController {
             final GameEntity chosen = ChoiceSpace.pickOne(valid, rng);
             if (chosen == null) {
                 final boolean result = currentAbility.isTargetNumberValid();
-                onCallback("choose_targets_for", Boolean.toString(result), "null_pick");
+                onCallback("choose_targets_for", Boolean.toString(result), currentAbility.toString());
                 return result;
             }
             // getAllCandidates returns Cards from the Stack zone, but CounterEffect.resolve()
@@ -362,7 +362,7 @@ public class DeterministicController extends PlayerController {
         for (final Player p : currentAbility.getTargets().getTargetPlayers()) {
             targetNames.add("Player(" + p.getId() + ")");
         }
-        onCallback("choose_targets_for", "[" + String.join(", ", targetNames) + "]");
+        onCallback("choose_targets_for", "[" + String.join(", ", targetNames) + "]", currentAbility.toString());
         return result;
     }
 

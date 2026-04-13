@@ -381,6 +381,7 @@ impl DeterministicAgent {
                 self.player_id.0,
                 self.current_turn,
                 &format!("{:?}", self.last_game_snapshot.as_ref().map(|s| &s.game.turn.phase).unwrap_or(&PhaseType::Untap)),
+                Vec::new(),
             );
         }
     }

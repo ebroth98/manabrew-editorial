@@ -17,7 +17,7 @@ use forge_foundation::ZoneType;
 use rand::rngs::StdRng;
 use rand::SeedableRng;
 
-use crate::callback_fmt::{FmtCtx, ParityFormat};
+use crate::callback_fmt::{CallbackArgDisplay, FmtCtx, ParityFormat};
 use crate::deterministic_agent::{DeterministicAgent, VerboseMode};
 use crate::java_random::JavaRandom;
 use crate::parity_card_map::ParityCardMap;
@@ -43,7 +43,7 @@ impl ParityObserver {
         }
     }
 
-    pub(crate) fn on_callback(&self, name: &str, outcome: &str, player: u32, turn: u32, phase: &str) {
+    pub(crate) fn on_callback(&self, name: &str, outcome: &str, player: u32, turn: u32, phase: &str, callback_args: Vec<String>) {
         let choice_logs = crate::parity_log::drain();
 
         let snapshot_index = *self.shared_snapshot_index.lock().unwrap();
@@ -59,6 +59,7 @@ impl ParityObserver {
             name: name.to_string(),
             outcome: outcome.to_string(),
             args: choice_logs,
+            callback_args,
             timestamp_ms,
         }));
     }
@@ -171,6 +172,8 @@ macro_rules! parity_agent_callback {
         $(
             fn $name(&mut self $(, $arg: $ty)*) -> $ret {
                 self.save_snapshot($kind);
+                let fmt = self.fmt_ctx();
+                let cb_args: Vec<String> = vec![$($arg.callback_arg_display(fmt.as_ref())),*];
                 let result = self.inner.$name($($arg),*);
                 let outcome = match self.fmt_ctx() {
                     Some(ctx) => result.parity_fmt(&ctx),
@@ -182,6 +185,7 @@ macro_rules! parity_agent_callback {
                     self.player_id.0,
                     self.current_turn,
                     &self.current_phase,
+                    cb_args,
                 );
                 result
             }

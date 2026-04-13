@@ -704,6 +704,8 @@ struct CallbackEnvelope {
     #[serde(default)]
     args: Vec<String>,
     #[serde(default)]
+    callback_args: Vec<String>,
+    #[serde(default)]
     timestamp_ms: u64,
 }
 
@@ -736,6 +738,7 @@ fn parse_callback_line(line: &str, snapshot_index: usize) -> Option<CallbackReco
         name: env.name,
         outcome: env.outcome,
         args: env.args.into_iter().map(ChoiceLogEntry::from_json).collect(),
+        callback_args: env.callback_args,
         timestamp_ms: env.timestamp_ms,
     })
 }

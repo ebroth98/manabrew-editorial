@@ -26,6 +26,7 @@ serde_json = { workspace = true }
 rand = "0.8"
 clap = { version = "4", features = ["derive", "env"] }
 rayon = "1.10"
+terminal_size = "0.4"
 
 # Continuous parity (behind feature flags)
 rusqlite = { version = "0.31", features = ["bundled"], optional = true }

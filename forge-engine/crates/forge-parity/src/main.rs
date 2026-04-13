@@ -1870,24 +1870,133 @@ fn visible_width(s: &str) -> usize {
     width
 }
 
-const COL_WIDTH: usize = 64;
+const COL_WIDTH_DEFAULT: usize = 64;
+const ROW_LABEL_WIDTH: usize = 0;
+const SEPARATOR_WIDTH: usize = 3; // " | "
+
+fn col_widths() -> (usize, usize) {
+    let term_w = terminal_size::terminal_size()
+        .map(|(w, _)| w.0 as usize)
+        .unwrap_or(COL_WIDTH_DEFAULT * 2 + SEPARATOR_WIDTH);
+    let left = (term_w.saturating_sub(SEPARATOR_WIDTH)) / 2;
+    let left = left.max(20);
+    let right = term_w.saturating_sub(left + SEPARATOR_WIDTH).max(20);
+    (left, right)
+}
+
+/// A callback entry's matching key: (turn, phase, player, callback_name).
+#[derive(Clone, PartialEq, Eq, Hash)]
+struct CallbackKey {
+    turn: u32,
+    phase: String,
+    player: u32,
+    name: String,
+}
+
+impl CallbackKey {
+    fn from_entry(entry: &ParityLogEntry) -> Option<Self> {
+        use forge_parity::protocol::ParityLog;
+        if entry.as_snapshot().is_some() {
+            return None;
+        }
+        Some(Self {
+            turn: entry.turn(),
+            phase: entry.phase().to_string(),
+            player: entry.player(),
+            name: entry.kind().to_string(),
+        })
+    }
+}
 
 /// Segment a unified log into buckets separated by snapshots.
-/// Returns (buckets, snapshot_count) where buckets[i] contains the formatted
-/// log lines between snapshot i-1 and snapshot i.
-fn bucket_log(log: &[ParityLogEntry]) -> (Vec<Vec<String>>, usize) {
-    use forge_parity::protocol::ParityLog;
-    let mut buckets: Vec<Vec<String>> = vec![vec![]];
+/// Returns (buckets, snapshot_count) where buckets[i] contains the entries
+/// between snapshot i-1 and snapshot i.
+fn bucket_log_entries<'a>(log: &'a [ParityLogEntry]) -> (Vec<Vec<&'a ParityLogEntry>>, usize) {
+    let mut buckets: Vec<Vec<&ParityLogEntry>> = vec![vec![]];
     let mut snap_count = 0usize;
     for entry in log {
         if entry.as_snapshot().is_some() {
             snap_count += 1;
             buckets.push(vec![]);
         } else {
-            buckets.last_mut().unwrap().push(entry.format().trim_start().to_string());
+            buckets.last_mut().unwrap().push(entry);
         }
     }
     (buckets, snap_count)
+}
+
+/// Pair entries from two buckets by matching (turn, phase, player, callback_name).
+/// Returns a list of (Option<left_text>, Option<right_text>) pairs.
+/// Matched entries appear side by side; unmatched entries appear with None on the other side.
+fn pair_bucket_entries(
+    rust_entries: &[&ParityLogEntry],
+    java_entries: &[&ParityLogEntry],
+) -> Vec<(Option<String>, Option<String>)> {
+    use forge_parity::protocol::ParityLog;
+
+    // Build a list of (key, formatted_text) for each side, tracking which
+    // occurrence of a key this is (to handle duplicate keys correctly).
+    let rust_keyed: Vec<(Option<CallbackKey>, String)> = rust_entries
+        .iter()
+        .map(|e| (CallbackKey::from_entry(e), e.format().trim_start().to_string()))
+        .collect();
+    let java_keyed: Vec<(Option<CallbackKey>, String)> = java_entries
+        .iter()
+        .map(|e| (CallbackKey::from_entry(e), e.format().trim_start().to_string()))
+        .collect();
+
+    // For each key on the Java side, track how many times it appears and
+    // which ones have been consumed by a match. We use a Vec to preserve
+    // ordering of duplicates.
+    let mut java_available: Vec<(Option<CallbackKey>, String, bool)> = java_keyed
+        .into_iter()
+        .map(|(k, text)| (k, text, false))
+        .collect();
+
+    let mut rows: Vec<(Option<String>, Option<String>)> = Vec::new();
+
+    // Walk the Rust side in order.  For each entry, try to find the first
+    // unmatched Java entry with the same key.
+    for (rkey, rtext) in &rust_keyed {
+        let mut matched = false;
+
+        // First, emit any unmatched Java entries that appear *before* the
+        // matching Java entry (so we preserve Java-side ordering).
+        if let Some(rk) = rkey {
+            if let Some(match_pos) = java_available
+                .iter()
+                .position(|(jk, _, used)| !used && jk.as_ref() == Some(rk))
+            {
+                // Emit all unmatched Java entries before this match position.
+                for j in 0..match_pos {
+                    if !java_available[j].2 {
+                        java_available[j].2 = true;
+                        rows.push((None, Some(java_available[j].1.clone())));
+                    }
+                }
+                // Emit the matched pair.
+                java_available[match_pos].2 = true;
+                rows.push((
+                    Some(rtext.clone()),
+                    Some(java_available[match_pos].1.clone()),
+                ));
+                matched = true;
+            }
+        }
+
+        if !matched {
+            rows.push((Some(rtext.clone()), None));
+        }
+    }
+
+    // Emit any remaining unmatched Java entries.
+    for (_, jtext, used) in &java_available {
+        if !*used {
+            rows.push((None, Some(jtext.clone())));
+        }
+    }
+
+    rows
 }
 
 /// Render a side-by-side parity log table.
@@ -1901,46 +2010,39 @@ fn render_side_by_side(
     snapshot_offset: usize,
     out: &mut String,
 ) {
-    let (rust_buckets, rust_snap_count) = bucket_log(rust_log);
-    let (java_buckets, java_snap_count) = bucket_log(java_log);
+    let (lw, rw) = col_widths();
+    let (rust_buckets, rust_snap_count) = bucket_log_entries(rust_log);
+    let (java_buckets, java_snap_count) = bucket_log_entries(java_log);
     let max_snapshots = rust_snap_count.max(java_snap_count);
 
     out.push_str(&format!(
-        "{:<5} {:<COL_WIDTH$} | {:<COL_WIDTH$}\n",
-        "#", "Rust", "Java"
+        "{:<lw$} | {:<rw$}\n",
+        "Rust", "Java"
     ));
     out.push_str(&format!(
-        "{} {}+{}\n",
-        "-".repeat(5),
-        "-".repeat(COL_WIDTH + 1),
-        "-".repeat(COL_WIDTH + 1)
+        "{}+{}\n",
+        "-".repeat(lw + 1),
+        "-".repeat(rw + 1)
     ));
 
-    let mut row_num = 0usize;
-
     for snap_idx in 0..=max_snapshots {
-        let rust_logs = rust_buckets.get(snap_idx).map(|v| v.as_slice()).unwrap_or(&[]);
-        let java_logs = java_buckets.get(snap_idx).map(|v| v.as_slice()).unwrap_or(&[]);
-        let max_rows = rust_logs.len().max(java_logs.len());
+        let rust_entries = rust_buckets.get(snap_idx).map(|v| v.as_slice()).unwrap_or(&[]);
+        let java_entries = java_buckets.get(snap_idx).map(|v| v.as_slice()).unwrap_or(&[]);
 
-        for i in 0..max_rows {
-            row_num += 1;
-            let left_text = rust_logs.get(i).map(|s| s.as_str()).unwrap_or("");
-            let right_text = java_logs.get(i).map(|s| s.as_str()).unwrap_or("");
-            let left_lines = wrap_cell(left_text, COL_WIDTH);
-            let right_lines = wrap_cell(right_text, COL_WIDTH);
+        let paired = pair_bucket_entries(rust_entries, java_entries);
+
+        for (left_opt, right_opt) in &paired {
+            let left_text = left_opt.as_deref().unwrap_or("-");
+            let right_text = right_opt.as_deref().unwrap_or("-");
+            let left_lines = wrap_cell(left_text, lw);
+            let right_lines = wrap_cell(right_text, rw);
             let height = left_lines.len().max(right_lines.len());
             for line_idx in 0..height {
-                let label = if line_idx == 0 {
-                    format!("{:>4}.", row_num)
-                } else {
-                    "     ".to_string()
-                };
                 let left = left_lines.get(line_idx).map(String::as_str).unwrap_or("");
                 let right = right_lines.get(line_idx).map(String::as_str).unwrap_or("");
                 out.push_str(&format!(
-                    "{:<5} {} | {}\n",
-                    label, pad_visible(left, COL_WIDTH), pad_visible(right, COL_WIDTH)
+                    "{} | {}\n",
+                    pad_visible(left, lw), pad_visible(right, rw)
                 ));
             }
         }
@@ -1951,7 +2053,7 @@ fn render_side_by_side(
             let color = if passed { "\x1b[32m" } else { "\x1b[31m" };
             let status_label = if passed { "✅" } else { "❌" };
             let label = format!(" snapshot {} {} ", abs_snap, status_label);
-            let total = COL_WIDTH * 2 + 8;
+            let total = lw + rw + ROW_LABEL_WIDTH + SEPARATOR_WIDTH;
             let pad = total.saturating_sub(label.chars().count());
             let left = pad / 2;
             let right = pad - left;

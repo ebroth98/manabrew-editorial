@@ -208,6 +208,7 @@ pub trait ParityLog {
     fn kind(&self) -> &str;
     fn choice(&self) -> &str;
     fn options(&self) -> &[ChoiceLogEntry];
+    fn callback_args(&self) -> &[String] { &[] }
     fn timestamp_ms(&self) -> u64;
 
     fn format(&self) -> String {
@@ -293,6 +294,8 @@ pub struct CallbackRecord {
     pub name: String,
     pub outcome: String,
     pub args: Vec<ChoiceLogEntry>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub callback_args: Vec<String>,
     #[serde(default)]
     pub timestamp_ms: u64,
 }
@@ -324,6 +327,7 @@ impl ParityLog for CallbackRecord {
     fn kind(&self) -> &str { &self.name }
     fn choice(&self) -> &str { &self.outcome }
     fn options(&self) -> &[ChoiceLogEntry] { &self.args }
+    fn callback_args(&self) -> &[String] { &self.callback_args }
     fn timestamp_ms(&self) -> u64 { self.timestamp_ms }
 }
 
@@ -399,6 +403,13 @@ impl ParityLog for ParityLogEntry {
             Self::Snapshot(s) => s.options(),
             Self::Callback(c) => c.options(),
             Self::Decision(d) => d.options(),
+        }
+    }
+    fn callback_args(&self) -> &[String] {
+        match self {
+            Self::Snapshot(s) => s.callback_args(),
+            Self::Callback(c) => c.callback_args(),
+            Self::Decision(d) => d.callback_args(),
         }
     }
     fn timestamp_ms(&self) -> u64 {

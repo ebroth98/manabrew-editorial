@@ -77,7 +77,6 @@ jobs:
           -p forge-foundation
           -p forge-carddb
           -p forge-engine-core
-          -p forge-cli
           -p forge-agent-interface
 
       - name: Run engine tests
