@@ -1012,6 +1012,7 @@ impl GameLoop {
                         &cost_display_str,
                         &cost_checkpoint_str,
                         false,
+                        &[],
                         &mana_ability_options,
                         &tappable_lands,
                         &untappable_lands,

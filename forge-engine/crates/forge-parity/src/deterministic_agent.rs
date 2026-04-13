@@ -554,6 +554,7 @@ impl PlayerAgent for DeterministicAgent {
         _mana_cost_display: &str,
         mana_cost_checkpoint: &str,
         allow_reserved_source_reuse: bool,
+        reserved_sacrifices: &[CardId],
         _mana_ability_options: &[forge_engine_core::agent::ManaAbilityOption],
         _tappable_lands: &[CardId],
         _untappable_lands: &[CardId],
@@ -574,6 +575,7 @@ impl PlayerAgent for DeterministicAgent {
             card_id,
             callback_cost,
             allow_reserved_source_reuse,
+            reserved_sacrifices,
         )
         .action
     }

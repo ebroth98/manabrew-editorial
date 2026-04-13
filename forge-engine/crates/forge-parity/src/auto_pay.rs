@@ -62,6 +62,7 @@ pub fn next_mana_cost_action(
     source: CardId,
     mana_cost: &str,
     _allow_reserved_source_reuse: bool,
+    reserved_sacrifices: &[CardId],
 ) -> NextManaCostAction {
     let cost = parse_callback_mana_cost(mana_cost);
     let mut unpaid = ManaCostBeingPaid::from_mana_cost(&cost);
@@ -73,7 +74,7 @@ pub fn next_mana_cost_action(
         };
     }
 
-    let candidates = collect_playable_mana_abilities(game, player, source);
+    let candidates = collect_playable_mana_abilities(game, player, source, reserved_sacrifices);
     if let Some((candidate, chosen_atom)) = choose_candidate(&unpaid, &candidates) {
         return NextManaCostAction {
             action: ManaCostAction::TapLand {
@@ -193,6 +194,7 @@ fn collect_playable_mana_abilities(
     game: &GameState,
     player: PlayerId,
     source_being_paid: CardId,
+    reserved_sacrifices: &[CardId],
 ) -> Vec<ManaAbilityCandidate> {
     let mut candidates = Vec::new();
     let mut source_order = 0usize;
@@ -217,6 +219,15 @@ fn collect_playable_mana_abilities(
                 continue;
             }
             if !can_pay_ignoring_mana(&ab.cost, game, card_id, player) {
+                continue;
+            }
+            if !can_pay_mana_ability_costs_with_reserved(
+                game,
+                player,
+                card_id,
+                &ab.cost.parts,
+                reserved_sacrifices,
+            ) {
                 continue;
             }
 
@@ -284,6 +295,59 @@ fn collect_playable_mana_abilities(
         autopay_source_score(game, candidate) * 1000 + candidate.source_order as i32
     });
     candidates
+}
+
+fn can_pay_mana_ability_costs_with_reserved(
+    game: &GameState,
+    player: PlayerId,
+    source_id: CardId,
+    cost_parts: &[CostPart],
+    reserved_sacrifices: &[CardId],
+) -> bool {
+    for part in cost_parts {
+        match part {
+            CostPart::Tap | CostPart::Mana { .. } => {}
+            CostPart::PayLife(amount) => {
+                if game.player(player).life < *amount {
+                    return false;
+                }
+            }
+            CostPart::SubCounter {
+                amount,
+                counter_type,
+            } => {
+                if game.card(source_id).counter_count(counter_type) < *amount {
+                    return false;
+                }
+            }
+            CostPart::Sacrifice {
+                type_filter,
+                amount,
+            } => {
+                if type_filter == "CARDNAME" {
+                    if *amount > 1
+                        || game.card(source_id).zone != ZoneType::Battlefield
+                        || reserved_sacrifices.contains(&source_id)
+                    {
+                        return false;
+                    }
+                } else {
+                    let mut targets = forge_engine_core::cost::get_sacrifice_targets_for_cost(
+                        game,
+                        player,
+                        type_filter,
+                        None,
+                    );
+                    targets.retain(|cid| !reserved_sacrifices.contains(cid));
+                    if (targets.len() as i32) < *amount {
+                        return false;
+                    }
+                }
+            }
+            _ => return false,
+        }
+    }
+    true
 }
 
 fn autopay_source_score(game: &GameState, candidate: &ManaAbilityCandidate) -> i32 {

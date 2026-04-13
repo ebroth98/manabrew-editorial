@@ -14,6 +14,15 @@ impl GameLoop {
         player: PlayerId,
         card_id: CardId,
     ) -> bool {
+        Self::mana_source_available_for_payment_with_reserved(game, player, card_id, &[])
+    }
+
+    pub(crate) fn mana_source_available_for_payment_with_reserved(
+        game: &GameState,
+        player: PlayerId,
+        card_id: CardId,
+        reserved_sacrifices: &[CardId],
+    ) -> bool {
         let card = game.card(card_id);
         let summoning_sick = card.is_creature() && card.summoning_sick && !card.has_haste();
 
@@ -26,10 +35,55 @@ impl GameLoop {
             ab.is_mana_ability
                 && (!card.tapped || !needs_tap)
                 && (!summoning_sick || !needs_tap)
-                && crate::cost::can_pay_ignoring_mana(&ab.cost, game, card_id, player)
+                && Self::mana_ability_available_for_payment_with_reserved(
+                    game,
+                    player,
+                    card_id,
+                    ab,
+                    reserved_sacrifices,
+                )
         });
 
         (card.is_land() && !card.tapped) || has_usable_mana_ability
+    }
+
+    pub(crate) fn mana_ability_available_for_payment_with_reserved(
+        game: &GameState,
+        player: PlayerId,
+        card_id: CardId,
+        ab: &crate::ability::activated::ActivatedAbility,
+        reserved_sacrifices: &[CardId],
+    ) -> bool {
+        if !crate::cost::can_pay_ignoring_mana(&ab.cost, game, card_id, player) {
+            return false;
+        }
+
+        for part in &ab.cost.parts {
+            if let CostPart::Sacrifice {
+                type_filter,
+                amount,
+            } = part
+            {
+                if type_filter == "CARDNAME" {
+                    if *amount > 1 || reserved_sacrifices.contains(&card_id) {
+                        return false;
+                    }
+                } else {
+                    let mut targets = crate::cost::get_sacrifice_targets_for_cost(
+                        game,
+                        player,
+                        type_filter,
+                        None,
+                    );
+                    targets.retain(|cid| !reserved_sacrifices.contains(cid));
+                    if (targets.len() as i32) < *amount {
+                        return false;
+                    }
+                }
+            }
+        }
+
+        true
     }
 
     pub(crate) fn action_space(

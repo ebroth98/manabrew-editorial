@@ -850,6 +850,7 @@ pub trait PlayerAgent {
         _mana_cost_display: &str,
         _mana_cost_checkpoint: &str,
         _allow_reserved_source_reuse: bool,
+        _reserved_sacrifices: &[CardId],
         _mana_ability_options: &[ManaAbilityOption],
         _tappable_lands: &[CardId],
         _untappable_lands: &[CardId],

@@ -758,7 +758,7 @@ pub fn add_produced_mana_to_pool(
 /// total mana check in `can_pay` prevents dual/multi-color lands from being
 /// double-counted (e.g. Breeding Pool counts as 1 mana, not 2).
 pub fn calculate_available_mana(pool: &ManaPool, game: &GameState, player: PlayerId) -> ManaPool {
-    calculate_available_mana_excluding(pool, game, player, None)
+    calculate_available_mana_excluding_with_reserved(pool, game, player, None, &[])
 }
 
 /// Calculate available mana while excluding a specific battlefield source.
@@ -771,6 +771,16 @@ pub fn calculate_available_mana_excluding(
     game: &GameState,
     player: PlayerId,
     excluded_source: Option<CardId>,
+) -> ManaPool {
+    calculate_available_mana_excluding_with_reserved(pool, game, player, excluded_source, &[])
+}
+
+pub fn calculate_available_mana_excluding_with_reserved(
+    pool: &ManaPool,
+    game: &GameState,
+    player: PlayerId,
+    excluded_source: Option<CardId>,
+    reserved_sacrifices: &[CardId],
 ) -> ManaPool {
     let mut available = pool.clone();
     let battlefield = game.cards_in_zone(ZoneType::Battlefield, player);
@@ -853,6 +863,13 @@ pub fn calculate_available_mana_excluding(
                     // only count mana abilities whose non-mana costs are currently payable
                     // (e.g. Gilded Goose needs a Food to produce mana).
                     && crate::cost::can_pay_ignoring_mana(&ab.cost, game, card_id, player)
+                    && crate::game_loop::GameLoop::mana_ability_available_for_payment_with_reserved(
+                        game,
+                        player,
+                        card_id,
+                        ab,
+                        reserved_sacrifices,
+                    )
             })
             .collect();
 

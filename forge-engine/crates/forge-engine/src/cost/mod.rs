@@ -969,6 +969,59 @@ pub fn can_pay_with_ability(
     can_pay(cost, game, Some(available_mana), source, player, ability)
 }
 
+pub fn can_pay_with_ability_and_reserved(
+    cost: &Cost,
+    game: &GameState,
+    available_mana: &ManaPool,
+    source: CardId,
+    player: PlayerId,
+    ability: Option<&SpellAbility>,
+    reserved_sacrifices: &[CardId],
+) -> bool {
+    for part in &cost.parts {
+        match part {
+            CostPart::Sacrifice {
+                type_filter,
+                amount,
+            } => {
+                if type_filter == "CARDNAME"
+                    || type_filter == "NICKNAME"
+                    || type_filter == "OriginalHost"
+                {
+                    if !cost_sacrifice::can_pay(game, available_mana, source, player, ability, part) {
+                        return false;
+                    }
+                    continue;
+                }
+
+                let mut valid =
+                    get_sacrifice_targets_for_cost(game, player, type_filter, ability);
+                valid.retain(|cid| !reserved_sacrifices.contains(cid));
+                if type_filter.eq_ignore_ascii_case("All") {
+                    if valid.is_empty() {
+                        return false;
+                    }
+                } else if (valid.len() as i32) < *amount {
+                    return false;
+                }
+            }
+            _ => {
+                if !can_pay_part_distributed(
+                    part,
+                    game,
+                    Some(available_mana),
+                    source,
+                    player,
+                    ability,
+                ) {
+                    return false;
+                }
+            }
+        }
+    }
+    true
+}
+
 /// Check if a cost can be paid ignoring mana requirements.
 /// Used for mana ability availability checks (to avoid circular dependency).
 pub fn can_pay_ignoring_mana(

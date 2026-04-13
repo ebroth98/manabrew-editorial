@@ -918,6 +918,7 @@ impl<T: AgentTransport> PlayerAgent for PromptAgent<T> {
         mana_cost_display: &str,
         _mana_cost_checkpoint: &str,
         _allow_reserved_source_reuse: bool,
+        _reserved_sacrifices: &[CardId],
         mana_ability_options: &[forge_engine_core::agent::ManaAbilityOption],
         tappable_lands: &[CardId],
         untappable_lands: &[CardId],

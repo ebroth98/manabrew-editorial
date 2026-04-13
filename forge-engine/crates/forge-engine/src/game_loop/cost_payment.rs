@@ -7,6 +7,13 @@ pub(crate) enum CostPaymentContext {
 }
 
 impl GameLoop {
+    fn current_reserved_sacrifices(&self) -> &[CardId] {
+        self.reserved_sacrifice_stack
+            .last()
+            .map(Vec::as_slice)
+            .unwrap_or(&[])
+    }
+
     fn emit_untap_all_cost_trigger(&mut self, player: PlayerId, card_id: CardId) {
         self.trigger_handler.run_trigger(
             TriggerType::UntapAll,
@@ -272,11 +279,13 @@ impl GameLoop {
         //   - CostDiscard → discard the pre-picked cards
         //   - CostSacrifice → sacrifice
         //
-        // We match this by pre-picking discards and pre-confirming sacrifices
-        // before the main payment loop.
+        // We match this by pre-picking discards and typed sacrifices before
+        // the main payment loop.
 
         // Phase 1: visit/decide (matching Java's accept loop order).
         let mut pre_picked_discards: Vec<CardId> = Vec::new();
+        let mut pre_picked_sacrifices: Vec<CardId> = Vec::new();
+        let mut reserved_sacrifices: Vec<CardId> = self.current_reserved_sacrifices().to_vec();
         for part in cost.parts.clone() {
             match &part {
                 CostPart::Discard {
@@ -313,6 +322,47 @@ impl GameLoop {
                         pre_picked_discards.extend(chosen);
                     }
                 }
+                CostPart::Sacrifice {
+                    type_filter,
+                    amount,
+                } if type_filter == "CARDNAME" && *amount > 0 => {
+                    if !reserved_sacrifices.contains(&card_id) {
+                        reserved_sacrifices.push(card_id);
+                    }
+                    if !self.confirm_cost_part_payment(
+                        game, agents, player, card_id, &part, api, mandatory, &context,
+                    ) {
+                        payment_ok = false;
+                        break;
+                    }
+                }
+                CostPart::Sacrifice {
+                    type_filter,
+                    amount,
+                } if type_filter != "CARDNAME" => {
+                    let mut valid =
+                        cost::get_sacrifice_targets_for_cost(game, player, type_filter, sa);
+                    valid.retain(|cid| !reserved_sacrifices.contains(cid));
+                    let required = (*amount).max(0) as usize;
+                    if valid.len() < required {
+                        payment_ok = false;
+                        break;
+                    }
+                    for _ in 0..required {
+                        let Some(chosen) =
+                            agents[player.index()].choose_sacrifice(player, &valid, sa)
+                        else {
+                            payment_ok = false;
+                            break;
+                        };
+                        pre_picked_sacrifices.push(chosen);
+                        reserved_sacrifices.push(chosen);
+                        valid.retain(|&cid| cid != chosen);
+                    }
+                    if !payment_ok {
+                        break;
+                    }
+                }
                 _ => {
                     // Confirm decisions for parts that need them
                     if !self.confirm_cost_part_payment(
@@ -329,7 +379,11 @@ impl GameLoop {
             return false;
         }
 
+        self.reserved_sacrifice_stack
+            .push(reserved_sacrifices.clone());
+
         // Phase 2: execute payments.
+        let mut pre_sac_idx = 0usize;
         for part in cost.parts.clone() {
             match &part {
                 CostPart::Tap => {
@@ -370,7 +424,12 @@ impl GameLoop {
                             .to_vec()
                             .into_iter()
                             .filter(|&cid| {
-                                Self::mana_source_available_for_payment(game, player, cid)
+                                Self::mana_source_available_for_payment_with_reserved(
+                                    game,
+                                    player,
+                                    cid,
+                                    &reserved_sacrifices,
+                                )
                             })
                             .collect();
                         let mut mana_ability_options: Vec<crate::agent::ManaAbilityOption> =
@@ -379,8 +438,12 @@ impl GameLoop {
                             let c = game.card(cid);
                             for ab in &c.activated_abilities {
                                 if ab.is_mana_ability
-                                    && crate::cost::can_pay_ignoring_mana(
-                                        &ab.cost, game, cid, player,
+                                    && Self::mana_ability_available_for_payment_with_reserved(
+                                        game,
+                                        player,
+                                        cid,
+                                        ab,
+                                        &reserved_sacrifices,
                                     )
                                 {
                                     mana_ability_options.push(crate::agent::ManaAbilityOption {
@@ -422,6 +485,7 @@ impl GameLoop {
                             &cost_str,
                             &cost_str,
                             matches!(context, CostPaymentContext::ActivatedAbility),
+                            &reserved_sacrifices,
                             &mana_ability_options,
                             &tappable_lands,
                             &untappable_lands,
@@ -449,8 +513,12 @@ impl GameLoop {
                                         .and_then(|idx| c.activated_abilities.get(idx))
                                         .filter(|ab| {
                                             ab.is_mana_ability
-                                                && crate::cost::can_pay_ignoring_mana(
-                                                    &ab.cost, game, land_id, player,
+                                                && Self::mana_ability_available_for_payment_with_reserved(
+                                                    game,
+                                                    player,
+                                                    land_id,
+                                                    ab,
+                                                    &reserved_sacrifices,
                                                 )
                                         })
                                         .cloned()
@@ -459,8 +527,12 @@ impl GameLoop {
                                                 .iter()
                                                 .find(|ab| {
                                                     ab.is_mana_ability
-                                                        && crate::cost::can_pay_ignoring_mana(
-                                                            &ab.cost, game, land_id, player,
+                                                        && Self::mana_ability_available_for_payment_with_reserved(
+                                                            game,
+                                                            player,
+                                                            land_id,
+                                                            ab,
+                                                            &reserved_sacrifices,
                                                         )
                                                 })
                                                 .cloned()
@@ -592,7 +664,19 @@ impl GameLoop {
                             agents,
                         );
                     } else {
-                        self.pay_sacrifice_cost(game, agents, player, type_filter, *amount, sa);
+                        if !self.pay_sacrifice_cost_internal(
+                            game,
+                            agents,
+                            player,
+                            type_filter,
+                            *amount,
+                            sa,
+                            Some(&pre_picked_sacrifices),
+                            &mut pre_sac_idx,
+                        ) {
+                            payment_ok = false;
+                            break;
+                        }
                     }
                 }
                 CostPart::Discard {
@@ -1115,6 +1199,7 @@ impl GameLoop {
                 }
             }
         }
+        self.reserved_sacrifice_stack.pop();
         if !payment_ok {
             self.restore_snapshot(game, &payment_snapshot);
             return false;
@@ -2999,12 +3084,15 @@ impl GameLoop {
                 return false;
             }
             let chosen = if let Some(prechosen) = prechosen_sacrifices {
-                if *pre_sac_idx < prechosen.len() && valid.contains(&prechosen[*pre_sac_idx]) {
-                    let cid = prechosen[*pre_sac_idx];
-                    *pre_sac_idx += 1;
+                if *pre_sac_idx >= prechosen.len() {
+                    return false;
+                }
+                let cid = prechosen[*pre_sac_idx];
+                *pre_sac_idx += 1;
+                if valid.contains(&cid) {
                     Some(cid)
                 } else {
-                    None
+                    return false;
                 }
             } else {
                 agents[player.index()].choose_sacrifice(player, &valid, sa)

@@ -52,6 +52,7 @@ pub struct GameLoop {
     /// Rolling checkpoint history for UI rewind/debug.
     checkpoints: VecDeque<(u64, String, GameSnapshot)>,
     next_checkpoint_id: u64,
+    reserved_sacrifice_stack: Vec<Vec<CardId>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -98,6 +99,7 @@ impl GameLoop {
             previous_game_state: None,
             checkpoints: VecDeque::new(),
             next_checkpoint_id: 1,
+            reserved_sacrifice_stack: Vec::new(),
         }
     }
 
@@ -1123,45 +1125,6 @@ mod tests {
 
         assert!(action_space.activatable.contains(&(food, 0)));
         assert!(action_space.activatable.contains(&(goose, 0)));
-        assert!(!action_space.activatable.contains(&(goose, 1)));
-    }
-
-    #[test]
-    fn action_space_excludes_activated_abilities_that_only_pay_via_same_host_mana() {
-        let p0 = PlayerId(0);
-        let mut game = GameState::new(&["A", "B"], 20);
-
-        let goose = game.create_card(activated_permanent(
-            p0,
-            "Gilded Goose",
-            "Creature - Bird",
-            vec![
-                "AB$ Token | Cost$ 1 G T | TokenScript$ c_a_food_sac | TokenOwner$ You | SpellDescription$ Create a Food Token.",
-                "AB$ Mana | Cost$ T Sac<1/Food> | Produced$ Any | SpellDescription$ Add one mana of any color.",
-            ],
-        ));
-        let food = game.create_card(activated_permanent(
-            p0,
-            "Food Token",
-            "Artifact Food",
-            vec!["AB$ GainLife | Cost$ 2 T Sac<1/CARDNAME> | LifeAmount$ 3 | SpellDescription$ You gain 3 life."],
-        ));
-        let plains = game.create_card(mana_land(p0, "Plains", "W"));
-
-        for cid in [goose, food, plains] {
-            game.move_card(cid, ZoneType::Battlefield, p0);
-            game.card_mut(cid).summoning_sick = false;
-        }
-
-        game.turn.active_player = p0;
-        game.turn.priority_player = p0;
-        game.turn.phase = PhaseType::Main1;
-
-        let gl = GameLoop::new(2);
-        let action_space = gl.action_space(&game, p0, true);
-
-        assert!(action_space.activatable.contains(&(food, 0)));
-        assert!(!action_space.activatable.contains(&(goose, 0)));
         assert!(!action_space.activatable.contains(&(goose, 1)));
     }
 

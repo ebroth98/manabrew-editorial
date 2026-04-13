@@ -18,8 +18,10 @@ import forge.game.spellability.SpellAbilityStackInstance;
 import forge.game.zone.ZoneType;
 
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Deterministic cost-payment bridge used by {@link DeterministicController}.
@@ -30,6 +32,7 @@ import java.util.Map;
 final class DeterministicCostPlumbing {
     private final DeterministicController controller;
     private final Player payer;
+    private final List<Set<Card>> reservedSacrificeStack = new ArrayList<>();
 
     DeterministicCostPlumbing(final DeterministicController controller, final Player payer) {
         this.controller = controller;
@@ -56,8 +59,38 @@ final class DeterministicCostPlumbing {
     }
 
     boolean payWithDeterministicDecision(final Cost cost, final SpellAbility sa, final boolean effect) {
-        final CostPayment pay = new CostPayment(cost, sa);
-        return pay.payComputerCosts(new DeterministicCostDecision(payer, sa, effect));
+        final Set<Card> inheritedReserved = currentReservedSacrifices();
+        final Set<Card> localReserved = new LinkedHashSet<>(inheritedReserved);
+        reservedSacrificeStack.add(localReserved);
+        try {
+            final CostPayment pay = new CostPayment(cost, sa);
+            return pay.payComputerCosts(new DeterministicCostDecision(payer, sa, effect));
+        } finally {
+            reservedSacrificeStack.remove(reservedSacrificeStack.size() - 1);
+        }
+    }
+
+    Set<Card> currentReservedSacrifices() {
+        if (reservedSacrificeStack.isEmpty()) {
+            return Set.of();
+        }
+        return reservedSacrificeStack.get(reservedSacrificeStack.size() - 1);
+    }
+
+    boolean isSacrificeReserved(final Card card) {
+        return currentReservedSacrifices().contains(card);
+    }
+
+    void reserveSacrifices(final Iterable<Card> cards) {
+        if (reservedSacrificeStack.isEmpty()) {
+            return;
+        }
+        final Set<Card> reserved = reservedSacrificeStack.get(reservedSacrificeStack.size() - 1);
+        for (final Card card : cards) {
+            if (card != null) {
+                reserved.add(card);
+            }
+        }
     }
 
     private final class DeterministicCostDecision extends CostDecisionMakerBase {
@@ -559,26 +592,38 @@ final class DeterministicCostPlumbing {
                     (cost.payCostFromSource() && !isMandatory()) || "OriginalHost".equals(cost.getType());
             if (!confirm(cost, shouldAsk)) return null;
             if (cost.payCostFromSource()) {
+                if (isSacrificeReserved(source)) {
+                    return null;
+                }
+                reserveSacrifices(List.of(source));
                 return PaymentDecision.card(source);
             }
             if ("OriginalHost".equals(cost.getType()) && ability.getOriginalHost() != null) {
-                return PaymentDecision.card(ability.getOriginalHost());
+                final Card originalHost = ability.getOriginalHost();
+                if (isSacrificeReserved(originalHost)) {
+                    return null;
+                }
+                reserveSacrifices(List.of(originalHost));
+                return PaymentDecision.card(originalHost);
             }
             if ("All".equalsIgnoreCase(cost.getAmount())) {
-                final CardCollectionView all = CardLists.filter(
+                final CardCollection all = new CardCollection(CardLists.filter(
                         CardLists.getValidCards(player.getCardsIn(ZoneType.Battlefield), cost.getType().split(";"), player, source, ability),
-                        CardPredicates.canBeSacrificedBy(ability, isEffect()));
+                        CardPredicates.canBeSacrificedBy(ability, isEffect())));
+                all.removeIf(DeterministicCostPlumbing.this::isSacrificeReserved);
+                reserveSacrifices(all);
                 return PaymentDecision.card(all);
             }
 
             final int amount = cost.getAbilityAmount(ability);
-            CardCollectionView valid = CardLists.getValidCards(
+            CardCollection valid = new CardCollection(CardLists.getValidCards(
                     player.getCardsIn(ZoneType.Battlefield),
                     cost.getType().split(";"),
                     player,
                     source,
-                    ability);
-            valid = CardLists.filter(valid, CardPredicates.canBeSacrificedBy(ability, isEffect()));
+                    ability));
+            valid = new CardCollection(CardLists.filter(valid, CardPredicates.canBeSacrificedBy(ability, isEffect())));
+            valid.removeIf(DeterministicCostPlumbing.this::isSacrificeReserved);
             if (valid.size() < amount) {
                 return null;
             }
@@ -587,6 +632,7 @@ final class DeterministicCostPlumbing {
             if (selected == null || selected.size() < amount) {
                 return null;
             }
+            reserveSacrifices(selected);
             return PaymentDecision.card(selected);
         }
 

@@ -6,10 +6,14 @@ import forge.card.mana.ManaCost;
 import forge.card.mana.ManaCostShard;
 import forge.game.ability.ApiType;
 import forge.game.card.Card;
+import forge.game.card.CardCollection;
 import forge.game.card.CardCollectionView;
+import forge.game.card.CardLists;
+import forge.game.card.CardPredicates;
 import forge.game.card.CardUtil;
 import forge.game.cost.Cost;
 import forge.game.cost.CostPayment;
+import forge.game.cost.CostPart;
 import forge.game.mana.Mana;
 import forge.game.mana.ManaCostBeingPaid;
 import forge.game.mana.ManaPool;
@@ -338,6 +342,9 @@ final class AutoPay {
                         && !CostPayment.canPayAdditionalCosts(manaAbility.getPayCosts(), manaAbility, false, payer)) {
                     continue;
                 }
+                if (!canPayWithReservedSacrifices(manaAbility)) {
+                    continue;
+                }
                 out.add(new ManaAbilityCandidate(manaAbility, sourceOrder++));
             }
         }
@@ -349,6 +356,62 @@ final class AutoPay {
         // leaving the dork unavailable for a later spell that needs its colors.
         out.sort(Comparator.comparingInt(ManaAbilityCandidate::score));
         return out;
+    }
+
+    private boolean canPayWithReservedSacrifices(final SpellAbility manaAbility) {
+        final Cost payCosts = manaAbility.getPayCosts();
+        if (payCosts == null) {
+            return true;
+        }
+
+        final Set<Card> reserved = costPlumbing.currentReservedSacrifices();
+        if (reserved.isEmpty()) {
+            return true;
+        }
+
+        final Card source = manaAbility.getHostCard();
+        for (final CostPart part : payCosts.getCostParts()) {
+            if (!(part instanceof forge.game.cost.CostSacrifice)) {
+                continue;
+            }
+            final forge.game.cost.CostSacrifice sacrifice = (forge.game.cost.CostSacrifice) part;
+
+            if (sacrifice.payCostFromSource()) {
+                if (reserved.contains(source)) {
+                    return false;
+                }
+                continue;
+            }
+
+            if ("OriginalHost".equals(sacrifice.getType())) {
+                final Card originalHost = manaAbility.getOriginalHost();
+                if (originalHost != null && reserved.contains(originalHost)) {
+                    return false;
+                }
+                continue;
+            }
+
+            CardCollection valid = new CardCollection(CardLists.getValidCards(
+                    payer.getCardsIn(ZoneType.Battlefield),
+                    sacrifice.getType().split(";"),
+                    payer,
+                    source,
+                    manaAbility));
+            valid = new CardCollection(CardLists.filter(
+                    valid,
+                    CardPredicates.canBeSacrificedBy(manaAbility, false)));
+            valid.removeIf(reserved::contains);
+
+            final int amount = sacrifice.getAbilityAmount(manaAbility);
+            if ("All".equalsIgnoreCase(sacrifice.getAmount())) {
+                continue;
+            }
+            if (valid.size() < amount) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private List<Byte> producedAtoms(final SpellAbility manaAbility) {

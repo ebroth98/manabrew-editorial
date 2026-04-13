@@ -331,7 +331,7 @@ impl PlayerAgent for CapturingAgent {
         fn choose_multikicker(&mut self, player: PlayerId, cost: &str, max_kicks: u32, card_name: Option<&str>) -> u32 => "choose_multikicker";
         fn choose_replicate(&mut self, player: PlayerId, cost: &str, max_replicates: u32, card_name: Option<&str>) -> u32 => "choose_replicate";
         fn choose_alternative_cost(&mut self, player: PlayerId, options: &[String], card_name: Option<&str>) -> usize => "choose_alternative_cost";
-        fn pay_mana_cost(&mut self, player: PlayerId, card_id: CardId, card_name: &str, mana_cost: &str, mana_cost_display: &str, mana_cost_checkpoint: &str, allow_reserved_source_reuse: bool, mana_ability_options: &[forge_engine_core::agent::ManaAbilityOption], tappable_lands: &[CardId], untappable_lands: &[CardId], mana_pool: &forge_engine_core::mana::ManaPool) -> ManaCostAction => "pay_mana_cost";
+        fn pay_mana_cost(&mut self, player: PlayerId, card_id: CardId, card_name: &str, mana_cost: &str, mana_cost_display: &str, mana_cost_checkpoint: &str, allow_reserved_source_reuse: bool, reserved_sacrifices: &[CardId], mana_ability_options: &[forge_engine_core::agent::ManaAbilityOption], tappable_lands: &[CardId], untappable_lands: &[CardId], mana_pool: &forge_engine_core::mana::ManaPool) -> ManaCostAction => "pay_mana_cost";
         fn choose_single_replacement_effect(&mut self, player: PlayerId, descriptions: &[String]) -> usize => "choose_single_replacement_effect";
     }
 }
