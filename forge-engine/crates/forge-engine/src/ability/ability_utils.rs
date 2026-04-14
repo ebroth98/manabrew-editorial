@@ -675,7 +675,8 @@ pub fn parse_zone_type(s: &str) -> Option<ZoneType> {
 /// Full ValidCards$ filter matching with controller and keyword qualifier support.
 ///
 /// This is the preferred function for mass effects (DestroyAll, DamageAll, etc.)
-/// because it handles `YouCtrl`, `OppCtrl`, `withFlying`, and color (`nonBlack`)
+/// because it handles `YouCtrl`, `OppCtrl`, `withFlying` / `withoutFlying`,
+/// and color (`nonBlack`)
 /// qualifiers in addition to card types.
 ///
 /// `activating_player` is the player who cast/activated the ability; used to
@@ -765,6 +766,12 @@ fn matches_valid_cards_qualifier(
                 || card.granted_keywords.contains_string_ignore_case("Flying")
         }
         _ => {
+            if let Some(keyword) = qualifier.strip_prefix("without") {
+                return keyword.is_empty() || !card.has_keyword(keyword);
+            }
+            if let Some(keyword) = qualifier.strip_prefix("with") {
+                return !keyword.is_empty() && card.has_keyword(keyword);
+            }
             // "attacking Opponent" / "attacking Planeswalker" — space-separated combat qualifier
             if let Some(target) = qualifier.strip_prefix("attacking ") {
                 let attacking = card.attacking_player;

@@ -382,12 +382,7 @@ fn autopay_source_score(game: &GameState, candidate: &ManaAbilityCandidate) -> i
     }
 
     if card.is_creature() {
-        if card.can_attack() {
-            score += 13;
-        }
-        if card.can_block() {
-            score += 13;
-        }
+        score += 26;
     }
 
     score

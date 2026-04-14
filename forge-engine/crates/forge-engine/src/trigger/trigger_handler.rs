@@ -25,6 +25,7 @@ struct ActiveTrigger {
 struct TriggerWaiting {
     mode: TriggerType,
     params: RunParams,
+    trigger_refs: Option<Vec<(CardId, usize)>>,
 }
 
 /// A one-shot delayed trigger.
@@ -108,49 +109,35 @@ impl TriggerHandler {
                 TriggerType::Always | TriggerType::TapsForMana | TriggerType::ManaAdded
             );
         if urgent {
-            self.waiting_triggers.insert(
-                0,
-                TriggerWaiting {
-                    mode,
-                    params: params.clone(),
-                },
-            );
+            self.waiting_triggers
+                .insert(0, self.build_waiting_trigger(mode, params.clone()));
         } else {
-            self.waiting_triggers.push(TriggerWaiting {
-                mode,
-                params: params.clone(),
-            });
+            self.waiting_triggers
+                .push(self.build_waiting_trigger(mode, params.clone()));
         }
 
         if mode == TriggerType::SpellCast {
-            self.waiting_triggers.push(TriggerWaiting {
-                mode: TriggerType::SpellAbilityCast,
-                params: params.clone(),
-            });
-            self.waiting_triggers.push(TriggerWaiting {
-                mode: TriggerType::SpellCastOrCopy,
-                params: params.clone(),
-            });
+            self.waiting_triggers.push(
+                self.build_waiting_trigger(TriggerType::SpellAbilityCast, params.clone()),
+            );
+            self.waiting_triggers.push(
+                self.build_waiting_trigger(TriggerType::SpellCastOrCopy, params.clone()),
+            );
         }
         if mode == TriggerType::AbilityCast {
-            self.waiting_triggers.push(TriggerWaiting {
-                mode: TriggerType::SpellAbilityCast,
-                params: params.clone(),
-            });
+            self.waiting_triggers.push(
+                self.build_waiting_trigger(TriggerType::SpellAbilityCast, params.clone()),
+            );
         }
         if mode == TriggerType::SpellCopied {
-            self.waiting_triggers.push(TriggerWaiting {
-                mode: TriggerType::SpellCopy,
-                params: params.clone(),
-            });
-            self.waiting_triggers.push(TriggerWaiting {
-                mode: TriggerType::SpellAbilityCopy,
-                params: params.clone(),
-            });
-            self.waiting_triggers.push(TriggerWaiting {
-                mode: TriggerType::SpellCastOrCopy,
-                params: params.clone(),
-            });
+            self.waiting_triggers
+                .push(self.build_waiting_trigger(TriggerType::SpellCopy, params.clone()));
+            self.waiting_triggers.push(
+                self.build_waiting_trigger(TriggerType::SpellAbilityCopy, params.clone()),
+            );
+            self.waiting_triggers.push(
+                self.build_waiting_trigger(TriggerType::SpellCastOrCopy, params.clone()),
+            );
         }
     }
 
@@ -182,7 +169,7 @@ impl TriggerHandler {
 
     /// Java parity wrapper for TriggerHandler.collectTriggerForWaiting(...).
     pub fn collect_trigger_for_waiting(&mut self, mode: TriggerType, params: RunParams) {
-        self.waiting_triggers.push(TriggerWaiting { mode, params });
+        self.waiting_triggers.push(self.build_waiting_trigger(mode, params));
     }
 
     /// Number of triggers in the waiting queue (for debug/diagnostics).
@@ -272,17 +259,27 @@ impl TriggerHandler {
         let mut entries: Vec<(PendingTrigger, PlayerId, u64)> = Vec::new();
 
         for event in &waiting {
-            let mut trigger_refs: Vec<(CardId, usize, usize)> = self
-                .active_triggers
-                .iter()
-                .enumerate()
-                .map(|(idx, active)| (active.card_id, active.trigger_index, idx))
-                .collect();
-            for (card_id, trigger_index) in self.ltb_trigger_refs_for_event(game, event) {
-                if !trigger_refs.iter().any(|(existing_card, existing_idx, _)| {
-                    *existing_card == card_id && *existing_idx == trigger_index
-                }) {
-                    trigger_refs.push((card_id, trigger_index, usize::MAX));
+            let mut trigger_refs: Vec<(CardId, usize, usize)> =
+                if let Some(stored_refs) = &event.trigger_refs {
+                    stored_refs
+                        .iter()
+                        .enumerate()
+                        .map(|(idx, (card_id, trigger_index))| (*card_id, *trigger_index, idx))
+                        .collect()
+                } else {
+                    self.active_triggers
+                        .iter()
+                        .enumerate()
+                        .map(|(idx, active)| (active.card_id, active.trigger_index, idx))
+                        .collect()
+                };
+            if event.trigger_refs.is_none() {
+                for (card_id, trigger_index) in self.ltb_trigger_refs_for_event(game, event) {
+                    if !trigger_refs.iter().any(|(existing_card, existing_idx, _)| {
+                        *existing_card == card_id && *existing_idx == trigger_index
+                    }) {
+                        trigger_refs.push((card_id, trigger_index, usize::MAX));
+                    }
                 }
             }
             trigger_refs.sort_by_key(|&(card_id, trigger_index, idx)| {
@@ -456,6 +453,28 @@ impl TriggerHandler {
         }
 
         entries
+    }
+
+    fn build_waiting_trigger(&self, mode: TriggerType, params: RunParams) -> TriggerWaiting {
+        let trigger_refs = if mode == TriggerType::Drawn {
+            Some(
+                self.active_triggers
+                    .iter()
+                    .filter_map(|active| {
+                        let trigger = (active.card_id, active.trigger_index);
+                        Some(trigger)
+                    })
+                    .collect(),
+            )
+        } else {
+            None
+        };
+
+        TriggerWaiting {
+            mode,
+            params,
+            trigger_refs,
+        }
     }
 
     /// Fire Immediate delayed triggers — these fire on the next trigger
