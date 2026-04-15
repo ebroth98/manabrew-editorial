@@ -117,7 +117,34 @@ Creates a distributable native app in `src-tauri/target/release/`.
 | `yarn preview` | Preview production build locally |
 | `yarn ios` | Start iOS development build |
 | `yarn android` | Start Android development build |
+| `yarn import-deck` | Import a deck from Archidekt/Moxfield into `preset_decks/` ([details](#deck-importer)) |
 
+
+### Deck Importer
+
+Pull decks from [Archidekt](https://archidekt.com) or [Moxfield](https://moxfield.com) and write them out as a preset deck JSON in `preset_decks/`. Useful for bootstrapping new test decks without hand-typing card lists.
+
+```bash
+# Search Archidekt by name, pick a result, preview, then import
+yarn import-deck "jund wildfire"
+
+# Jump straight to a specific deck by URL (Archidekt or Moxfield)
+yarn import-deck --url=https://archidekt.com/decks/16127024/jund_lands
+yarn import-deck --url=https://moxfield.com/decks/6S6hLVDqKkqWEl8hAgSYkw
+
+# Tag the preset with a format (default: standard)
+yarn import-deck "korvold" --format=commander
+```
+
+The interactive flow searches Archidekt (URL mode dispatches to the matching provider), lists results with author/format/blurb, lets you pick one to preview the full card list, and on confirm prompts for label / description / filename before writing the preset JSON. Commanders are detected from deck categories and folded into the preset's `cards` field.
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| *(positional)* | — | Search query. Ignored when `--url` is passed. |
+| `--url=<url>` | — | Archidekt or Moxfield deck URL; skips the search step. |
+| `--format=<name>` | `standard` | Value written to the preset's `format` field. |
+
+The same Archidekt / Moxfield core powers the in-app **Import from URL** and **Search deck** entries in the deck editor menu, so the CLI and the UI stay in sync.
 
 ### Parity Testing
 

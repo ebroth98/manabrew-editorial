@@ -42,6 +42,7 @@ fn load_type_registry() -> Result<(), String> {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_http::init())
         .setup(|_app| {
             load_type_registry().map_err(|err| {
                 eprintln!("[startup] {}", err);

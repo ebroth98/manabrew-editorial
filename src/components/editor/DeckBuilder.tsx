@@ -22,7 +22,10 @@ import {
   Plus, Minus, Loader2, ChevronDown, FileBox,
   ClipboardPaste, ClipboardCopy, Palette, Bookmark, BookmarkMinus,
   Group, ArrowUpToLine, ArrowDownToLine, EllipsisVertical, ArrowLeft,
+  Link as LinkIcon, Globe,
 } from "lucide-react";
+import { ImportDeckDialog, type ImportDeckDialogMode } from "./ImportDeckDialog";
+import type { ArchidektDeck } from "@/lib/archidekt";
 import { extractColors } from "@/views/myDecks.utils";
 import { ManaSymbols } from "@/components/game/ManaSymbols";
 import { DeckStats } from "./DeckStats";
@@ -263,6 +266,7 @@ export function DeckBuilder({ onToggleSearch, onBack }: { onToggleSearch?: () =>
   const [printPickerCard, setPrintPickerCard] = useState<string | null>(null);
   const [detailCard, setDetailCard] = useState<ScryfallCard | null>(null);
   const [labelsOpen, setLabelsOpen] = useState(false);
+  const [importDialogMode, setImportDialogMode] = useState<ImportDeckDialogMode | null>(null);
   const {
     currentDeck,
     savedDecks,
@@ -561,6 +565,39 @@ export function DeckBuilder({ onToggleSearch, onBack }: { onToggleSearch?: () =>
     navigator.clipboard.writeText(text).then(() => toast.success("Deck copied to clipboard"));
   }
 
+  /**
+   * Add a list of cards (by name + count + board) to the current deck and
+   * asynchronously enrich them with Scryfall data. Shared by clipboard import
+   * and by the Archidekt deck importer.
+   */
+  const loadCardList = useCallback(
+    async (entries: { name: string; count: number; side?: boolean }[]) => {
+      if (entries.length === 0) {
+        toast.error("No cards to import");
+        return;
+      }
+      let imported = 0;
+      for (const { name, count, side } of entries) {
+        for (let i = 0; i < count; i++) {
+          const card = createEmptyCard(name);
+          if (side) addToSide(card); else addToMain(card);
+          imported++;
+        }
+      }
+      toast.success(`Imported ${imported} cards — fetching data…`);
+      try {
+        const scryfallMap = await fetchCardCollection(entries.map((p) => ({ name: p.name })));
+        const updates = new Map<string, Partial<Card>>();
+        for (const [key, sc] of scryfallMap) updates.set(key, scryfallCardToPartial(sc));
+        enrichDeckCards(updates);
+        toast.success("Card data loaded from Scryfall");
+      } catch {
+        toast.error("Could not fetch card data from Scryfall");
+      }
+    },
+    [addToMain, addToSide, enrichDeckCards],
+  );
+
   function handleImport() {
     navigator.clipboard.readText().then(async (text) => {
       const lines = text.split("\n").map((l) => l.trim()).filter(Boolean);
@@ -573,24 +610,31 @@ export function DeckBuilder({ onToggleSearch, onBack }: { onToggleSearch?: () =>
         parsed.push({ count: parseInt(match[1], 10), name: match[2].trim(), side: inSide });
       }
       if (parsed.length === 0) { toast.error("No cards found in clipboard"); return; }
-      let imported = 0;
-      for (const { name, count, side } of parsed) {
-        for (let i = 0; i < count; i++) {
-          const card = createEmptyCard(name);
-          if (side) addToSide(card); else addToMain(card);
-          imported++;
-        }
-      }
-      toast.success(`Imported ${imported} cards — fetching data…`);
-      try {
-        const scryfallMap = await fetchCardCollection(parsed.map((p) => ({ name: p.name })));
-        const updates = new Map<string, Partial<Card>>();
-        for (const [key, sc] of scryfallMap) updates.set(key, scryfallCardToPartial(sc));
-        enrichDeckCards(updates);
-        toast.success("Card data loaded from Scryfall");
-      } catch { toast.error("Could not fetch card data from Scryfall"); }
+      await loadCardList(parsed);
     }).catch(() => toast.error("Could not read clipboard"));
   }
+
+  const handleArchidektImport = useCallback(
+    async (deck: ArchidektDeck) => {
+      // The user explicitly chose Import from the dialog — replace the current
+      // deck without the unsaved-changes guard.
+      clearDeck();
+      setDeckName(deck.name);
+      setNameInput(deck.name);
+      const entries = deck.cards.map((c) => ({ name: c.name, count: c.count }));
+      const mainLoad = loadCardList(entries);
+
+      // Commanders are singletons; one fetch per distinct name.
+      const commanderLoads = deck.commanders.map((cmd) =>
+        getCardByName(cmd.name)
+          .then((sc) => setCommander(scryfallToXMage(sc)))
+          .catch(() => setCommander(createEmptyCard(cmd.name))),
+      );
+
+      await Promise.all([mainLoad, ...commanderLoads]);
+    },
+    [loadCardList, clearDeck, setDeckName, setCommander],
+  );
 
   function handleSave() {
     saveCurrentDeck();
@@ -885,6 +929,12 @@ export function DeckBuilder({ onToggleSearch, onBack }: { onToggleSearch?: () =>
             <DropdownMenuItem onSelect={handleImport}>
               <ClipboardPaste className="h-3.5 w-3.5 mr-2" /> Import from clipboard
             </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => setImportDialogMode("url")}>
+              <LinkIcon className="h-3.5 w-3.5 mr-2" /> Import from URL
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => setImportDialogMode("search")}>
+              <Globe className="h-3.5 w-3.5 mr-2" /> Search deck
+            </DropdownMenuItem>
             <DropdownMenuItem onSelect={handleExport} disabled={currentDeck.cards.length === 0 && !(currentDeck.commanders?.length)}>
               <ClipboardCopy className="h-3.5 w-3.5 mr-2" /> Export to clipboard
             </DropdownMenuItem>
@@ -1141,6 +1191,12 @@ export function DeckBuilder({ onToggleSearch, onBack }: { onToggleSearch?: () =>
         }}
       />
       <DeckLabelsModal open={labelsOpen} onClose={() => setLabelsOpen(false)} />
+      <ImportDeckDialog
+        open={importDialogMode !== null}
+        onOpenChange={(o) => { if (!o) setImportDialogMode(null); }}
+        mode={importDialogMode ?? "url"}
+        onImport={handleArchidektImport}
+      />
 
       {/* Clear/delete deck confirm dialog */}
       {confirmClear && (

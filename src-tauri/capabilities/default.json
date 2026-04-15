@@ -6,6 +6,15 @@
   "permissions": [
     "core:default",
     "opener:default",
-    "core:event:default"
+    "core:event:default",
+    {
+      "identifier": "http:default",
+      "allow": [
+        { "url": "https://archidekt.com/*" },
+        { "url": "https://api2.moxfield.com/*" },
+        { "url": "https://api.scryfall.com/*" },
+        { "url": "https://cards.scryfall.io/*" }
+      ]
+    }
   ]
 }
