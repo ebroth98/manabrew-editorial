@@ -446,6 +446,7 @@ impl GameLoop {
                     token_templates: &self.token_templates,
                     token_art_variants: &self.token_art_variants,
                     token_fallback: &self.token_fallback,
+                    edition_dates: &self.edition_dates,
                     mana_pools: &mut self.mana_pools,
                     parent_target_card: None,
                     rng: &mut *self.game_rng,

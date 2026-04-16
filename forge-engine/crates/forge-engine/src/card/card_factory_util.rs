@@ -251,6 +251,40 @@ pub fn add_madness_replacement(card: &mut Card) {
     }
 }
 
+/// Mirrors Java `CardFactoryUtil.aaFlashback()` — registers a replacement effect
+/// that exiles the card instead of sending it to the graveyard from the stack.
+/// Java uses `ValidStackSa$ Spell.Flashback+castKeyword` but in practice the
+/// replacement fires for ANY card with the Flashback keyword leaving the stack,
+/// because `castKeyword` matches the keyword's presence, not the cast mode.
+pub fn add_flashback_replacement(card: &mut Card) {
+    let keywords = card.keywords.as_string_list();
+    let has_flashback = keywords.iter().any(|kw| kw.starts_with("Flashback:"));
+    if !has_flashback {
+        return;
+    }
+    let cost_display = keywords
+        .iter()
+        .find_map(|kw| kw.strip_prefix("Flashback:"))
+        .map(|c| {
+            let mc = forge_foundation::ManaCost::parse(c.trim());
+            format!("{}", mc)
+        })
+        .unwrap_or_default();
+    let desc = format!(
+        "Flashback {} (You may cast this card from your graveyard for its flashback cost. Then exile it.)",
+        cost_display
+    );
+    let repl_str = format!(
+        "R$ Event$ Moved | ValidCard$ Card.Self | Origin$ Stack | ExcludeDestination$ Exile \
+         | FlashbackCast$ True | Secondary$ True | NewDestination$ Exile \
+         | Description$ {}",
+        desc
+    );
+    if let Some(repl) = parse_replacement_effect(&repl_str) {
+        card.replacement_effects.push(repl);
+    }
+}
+
 pub fn add_trigger_ability(card: &mut Card, trig: Trigger) {
     card.add_trigger(trig);
 }

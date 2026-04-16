@@ -88,6 +88,14 @@ pub struct MagicStack {
     #[serde(default)]
     cur_resolving_card: Option<CardId>,
 
+    /// Short-lived LKI cache of entries that were removed from the stack
+    /// during the current resolution cycle (e.g. by Counter effects). Used
+    /// by `find_by_id` so sub-abilities like An Offer You Can't Refuse's
+    /// "its controller creates two Treasure tokens" can still look up the
+    /// countered spell's controller after it's left the stack.
+    #[serde(default, skip)]
+    recently_removed: Vec<StackEntry>,
+
     /// Cards (by ID) of spells cast this turn — for storm count, etc.
     #[serde(default)]
     this_turn_cast: Vec<CardId>,
@@ -146,6 +154,7 @@ impl MagicStack {
             undo_stack_owner: None,
             simultaneous_entries: Vec::new(),
             cast_commands: std::collections::HashMap::new(),
+            recently_removed: Vec::new(),
         }
     }
 
@@ -190,18 +199,34 @@ impl MagicStack {
         self.entries.iter_mut()
     }
 
-    /// Find a stack entry by ID without removing it.
+    /// Find a stack entry by ID without removing it. Also searches the
+    /// short-lived LKI cache populated by Counter effects so that follow-up
+    /// sub-abilities can still resolve `Defined$ TargetedController` after
+    /// the target spell has been pulled off the stack.
     pub fn find_by_id(&self, id: u32) -> Option<&StackEntry> {
-        self.entries.iter().find(|e| e.id == id)
+        self.entries
+            .iter()
+            .find(|e| e.id == id)
+            .or_else(|| self.recently_removed.iter().find(|e| e.id == id))
     }
 
     /// Remove and return the stack entry with the given ID (for Counter effects).
+    /// The removed entry is kept in a short-lived LKI cache so follow-up
+    /// sub-abilities can still observe its metadata (see `find_by_id`).
     pub fn remove_by_id(&mut self, id: u32) -> Option<StackEntry> {
         if let Some(pos) = self.entries.iter().position(|e| e.id == id) {
-            Some(self.entries.remove(pos))
+            let entry = self.entries.remove(pos);
+            self.recently_removed.push(entry.clone());
+            Some(entry)
         } else {
             None
         }
+    }
+
+    /// Clear the LKI cache of recently-removed entries. Called at the end of
+    /// each stack-resolution cycle so the cache doesn't leak state.
+    pub fn clear_recently_removed(&mut self) {
+        self.recently_removed.clear();
     }
 
     /// Find a stack entry by its source card ID (for Ward — finding the targeting spell).

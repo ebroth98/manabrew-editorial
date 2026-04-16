@@ -140,6 +140,11 @@ pub struct PlayerSnapshot {
     pub hand: Vec<String>,
     pub exile: Vec<String>,
     pub library_size: usize,
+    /// Top N cards of the library in draw order (top first). Diagnostic field
+    /// for detecting silent library-order divergences between Rust and Java;
+    /// compared as an ordered list, not sorted.
+    #[serde(default)]
+    pub library_top: Vec<String>,
 }
 
 /// A card on the battlefield, normalized for comparison.

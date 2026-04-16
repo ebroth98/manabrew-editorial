@@ -21,9 +21,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     let controller = sa.activating_player;
     let etb = sa.params.has(crate::parsing::keys::ETB);
 
-    let mut targets = resolve_untap_target(ctx, sa)
-        .into_iter()
-        .collect::<Vec<_>>();
+    let mut targets = resolve_untap_targets(ctx, sa);
     targets.extend(card_util::get_radiance(ctx.game, sa).iter().copied());
     targets.sort_unstable_by_key(|cid| cid.0);
     targets.dedup();
@@ -35,15 +33,22 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     }
 }
 
-/// Resolve the target card for untap: explicit target, Defined$ Self, or Defined$ ParentTarget.
-fn resolve_untap_target(ctx: &EffectContext, sa: &SpellAbility) -> Option<CardId> {
-    sa.target_chosen
-        .target_card
-        .or_else(|| match sa.params.get(crate::parsing::keys::DEFINED) {
-            Some("Self") => sa.source,
-            Some("ParentTarget") => ctx.parent_target_card,
-            _ => None,
-        })
+/// Resolve target cards for untap: explicit target, or `Defined$ Self`,
+/// `Defined$ ParentTarget`, or `Defined$ Remembered` (cards remembered by the
+/// source — e.g. Fabled Passage's conditional untap of the fetched land).
+fn resolve_untap_targets(ctx: &EffectContext, sa: &SpellAbility) -> Vec<CardId> {
+    if let Some(c) = sa.target_chosen.target_card {
+        return vec![c];
+    }
+    match sa.params.get(crate::parsing::keys::DEFINED) {
+        Some("Self") => sa.source.into_iter().collect(),
+        Some("ParentTarget") => ctx.parent_target_card.into_iter().collect(),
+        Some("Remembered") => sa
+            .source
+            .map(|sid| ctx.game.card(sid).remembered_cards.clone())
+            .unwrap_or_default(),
+        _ => Vec::new(),
+    }
 }
 
 fn untap_card(
@@ -120,6 +125,7 @@ mod tests {
         let templates = HashMap::new();
         let templates_variants = HashMap::new();
         let token_fallback = HashMap::new();
+        let edition_dates: HashMap<String, String> = HashMap::new();
         let mut rng_adapter = crate::game_rng::ThreadRngAdapter;
         let mut ctx = EffectContext {
             game: &mut game,
@@ -129,6 +135,7 @@ mod tests {
             token_templates: &templates,
             token_art_variants: &templates_variants,
             token_fallback: &token_fallback,
+            edition_dates: &edition_dates,
             mana_pools: &mut mp,
             parent_target_card: None,
             rng: &mut rng_adapter,

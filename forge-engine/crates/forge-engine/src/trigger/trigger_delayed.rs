@@ -56,6 +56,15 @@ pub fn resolve_delayed_trigger(ctx: &mut EffectContext, sa: &SpellAbility) {
         sa.activating_player
     };
 
+    // `RememberObjects$ Remembered` — snapshot the source card's current
+    // remembered_cards into the delayed trigger so the executed ability sees
+    // them later via `SpellAbility::trigger_remembered`. Ashling uses this to
+    // track the token copy it created for its end-step sacrifice clause.
+    let remembered_cards: Vec<crate::ids::CardId> = match sa.params.get("RememberObjects") {
+        Some("Remembered") => ctx.game.card(source_id).remembered_cards.clone(),
+        _ => Vec::new(),
+    };
+
     let delayed = crate::trigger::handler::DelayedTrigger {
         mode,
         trigger_mode: parsed.mode,
@@ -64,6 +73,7 @@ pub fn resolve_delayed_trigger(ctx: &mut EffectContext, sa: &SpellAbility) {
         source_card: source_id,
         target_card: None,
         remembered_amount,
+        remembered_cards,
     };
     if sa.params.has("ThisTurn") {
         ctx.trigger_handler

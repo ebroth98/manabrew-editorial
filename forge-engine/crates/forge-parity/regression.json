@@ -118,5 +118,9 @@
   {
     "name": "worldShaper",
     "args": "--variant Commander --commander 'Hearthhull, the Worldseed' --commander 'Hearthhull, the Worldseed' --deck1 hearthhull_world_shaper_commander --deck2 hearthhull_world_shaper_commander --seed 42 --max-turns 22 --games 1"
+  },
+  {
+    "name": "ashling",
+    "args": "--variant Commander --commander 'Ashling, the Limitless' --commander 'Ashling, the Limitless' --deck1 ashling_limitless_commander --deck2 ashling_limitless_commander --seed 42 --max-turns 22 --games 1"
   }
 ]

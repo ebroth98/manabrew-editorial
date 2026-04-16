@@ -46,6 +46,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                 source_card: sa.source.unwrap_or(crate::ids::CardId(0)),
                 target_card: None,
                 remembered_amount: target_player.0 as i32,
+                remembered_cards: Vec::new(),
             });
     }
 }

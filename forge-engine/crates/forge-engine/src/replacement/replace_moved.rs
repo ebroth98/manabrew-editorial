@@ -54,6 +54,11 @@ pub fn can_replace(
             return false;
         }
     }
+    if let Some(exclude) = effect.params.get("ExcludeDestination") {
+        if zone_matches(exclude, destination) {
+            return false;
+        }
+    }
     if let Some(orig) = effect.params.get(keys::ORIGIN) {
         if !zone_matches(orig, origin) {
             return false;
@@ -62,6 +67,12 @@ pub fn can_replace(
     let moving_card = &game.cards[moving_id.index()];
     if let Some(valid) = effect.params.get(keys::VALID_CARD) {
         if !matches_valid_card(valid, moving_card, source_card) {
+            return false;
+        }
+    }
+    // FlashbackCast$ True — only match when the card was cast via Flashback.
+    if let Some(fb) = effect.params.get("FlashbackCast") {
+        if fb.eq_ignore_ascii_case("True") && !moving_card.cast_with_flashback {
             return false;
         }
     }
@@ -188,6 +199,7 @@ fn execute_replace_with(
     let local_token_templates: HashMap<String, Card> = HashMap::new();
     let local_token_art_variants: HashMap<(String, String), usize> = HashMap::new();
     let local_token_fallback: HashMap<String, String> = HashMap::new();
+    let local_edition_dates: HashMap<String, String> = HashMap::new();
     let mut local_rng = ThreadRngAdapter;
 
     let mut parent_target_card: Option<CardId> = None;
@@ -204,10 +216,11 @@ fn execute_replace_with(
             cur
         };
 
-        let (trigger_handler_ref, token_templates_ref, token_art_ref, token_fb_ref, mana_pools_ref, rng_ref): (
+        let (trigger_handler_ref, token_templates_ref, token_art_ref, token_fb_ref, edition_dates_ref, mana_pools_ref, rng_ref): (
             &mut TriggerHandler,
             &HashMap<String, Card>,
             &HashMap<(String, String), usize>,
+            &HashMap<String, String>,
             &HashMap<String, String>,
             &mut Vec<ManaPool>,
             &mut dyn crate::game_rng::GameRng,
@@ -217,6 +230,7 @@ fn execute_replace_with(
                 rt.token_templates,
                 rt.token_art_variants,
                 rt.token_fallback,
+                rt.edition_dates,
                 rt.mana_pools,
                 rt.rng,
             )
@@ -226,6 +240,7 @@ fn execute_replace_with(
                 &local_token_templates,
                 &local_token_art_variants,
                 &local_token_fallback,
+                &local_edition_dates,
                 &mut local_mana_pools,
                 &mut local_rng,
             )
@@ -239,6 +254,7 @@ fn execute_replace_with(
             token_templates: token_templates_ref,
             token_art_variants: token_art_ref,
             token_fallback: token_fb_ref,
+            edition_dates: edition_dates_ref,
             mana_pools: mana_pools_ref,
             parent_target_card,
             rng: rng_ref,

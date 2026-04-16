@@ -41,6 +41,11 @@ pub struct DelayedTrigger {
     pub target_card: Option<CardId>,
     /// Sum of integer values remembered by the delayed trigger at creation.
     pub remembered_amount: i32,
+    /// Cards remembered by the delayed trigger (e.g. `RememberObjects$ Remembered`
+    /// copies the source card's remembered_cards snapshot at registration time).
+    /// Exposed to the executed ability via `SpellAbility::trigger_remembered`.
+    #[allow(dead_code)]
+    pub remembered_cards: Vec<CardId>,
 }
 
 /// A triggered ability ready to be placed on the stack, with optional metadata.
@@ -424,6 +429,16 @@ impl TriggerHandler {
                 sa.trigger_source_zone_timestamp =
                     Some(game.card(delayed.source_card).zone_timestamp);
                 sa.trigger_remembered_amount = delayed.remembered_amount;
+                // Propagate remembered cards (e.g. `RememberObjects$ Remembered`
+                // captured at registration) so the executed ability can target
+                // exactly the cards the parent trigger remembered.
+                sa.trigger_remembered.extend(
+                    delayed
+                        .remembered_cards
+                        .iter()
+                        .copied()
+                        .map(crate::event::AbilityValue::Card),
+                );
 
                 let entry = StackEntry {
                     id: 0,

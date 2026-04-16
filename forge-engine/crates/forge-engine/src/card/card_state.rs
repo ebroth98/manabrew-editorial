@@ -61,12 +61,17 @@ pub fn has_intrinsic_keyword(card: &Card, keyword: &str) -> bool {
 }
 
 pub fn update_keywords_cache(card: &mut Card) {
+    // Only collapse duplicates of "redundant" keywords (Flying, Trample, ...).
+    // Stackable keywords like Cascade or Annihilator must keep every instance
+    // because they trigger once per copy on the source.
     let mut seen = std::collections::HashSet::new();
     let keywords = card.keywords.as_string_list();
     card.keywords.clear();
     for kw in keywords {
+        let parsed = crate::keyword::keyword_collection::parse_keyword_string(&kw).0;
+        let stackable = !parsed.is_multiple_redundant();
         let key = kw.to_ascii_lowercase();
-        if seen.insert(key) {
+        if stackable || seen.insert(key) {
             card.keywords.add(&kw);
         }
     }

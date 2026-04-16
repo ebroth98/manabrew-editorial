@@ -147,12 +147,7 @@ impl PlayerAgent for ShockTestAgent {
         None
     }
 
-    fn notify(&mut self, _message: &str) {
-        println!(
-            "[{}] {}",
-            if self.is_alice { "Alice" } else { "Bob" },
-            _message
-        );
+    fn notify(&mut self, _event: forge_engine_core::agent::notification::GameNotification) {
     }
 
     fn choose_targets_for(

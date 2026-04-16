@@ -290,10 +290,10 @@ impl PlayerAgent for CapturingAgent {
         fn choose_dig(&mut self, player: PlayerId, valid: &[CardId], max: usize, optional: bool) -> Vec<CardId> => "choose_dig";
         fn choose_reorder_library(&mut self, player: PlayerId, cards: &[CardId]) -> Vec<CardId> => "choose_reorder_library";
         fn choose_discard(&mut self, player: PlayerId, hand: &[CardId], num: usize) -> Vec<CardId> => "choose_discard";
+        fn choose_discard_any_number(&mut self, player: PlayerId, hand: &[CardId], min: usize, max: usize) -> Vec<CardId> => "choose_discard";
         fn choose_random_discard(&mut self, player: PlayerId, hand: &[CardId], num: usize) -> Vec<CardId> => "choose_random_discard";
         fn choose_cards_for_effect(&mut self, player: PlayerId, valid: &[CardId], min: usize, max: usize) -> Vec<CardId> => "choose_cards_for_effect";
         fn choose_entities_for_effect(&mut self, player: PlayerId, candidates: &[GameEntity], min: usize, max: usize) -> Vec<GameEntity> => "choose_entities_for_effect";
-        fn choose_single_card_for_zone_change(&mut self, player: PlayerId, valid: &[CardId], select_prompt: &str, is_optional: bool) -> Option<CardId> => "choose_single_card_for_zone_change";
         fn choose_cards_for_zone_change(&mut self, player: PlayerId, valid: &[CardId], min: usize, max: usize, select_prompt: &str) -> Vec<CardId> => "choose_cards_for_zone_change";
         fn choose_target_spell(&mut self, player: PlayerId, valid: &[u32]) -> Option<u32> => "choose_target_spell";
         fn choose_mode(&mut self, player: PlayerId, descriptions: &[String], min: usize, max: usize, card_name: Option<&str>) -> Vec<usize> => "choose_mode";
@@ -331,9 +331,46 @@ impl PlayerAgent for CapturingAgent {
         fn choose_multikicker(&mut self, player: PlayerId, cost: &str, max_kicks: u32, card_name: Option<&str>) -> u32 => "choose_multikicker";
         fn choose_replicate(&mut self, player: PlayerId, cost: &str, max_replicates: u32, card_name: Option<&str>) -> u32 => "choose_replicate";
         fn choose_alternative_cost(&mut self, player: PlayerId, options: &[String], card_name: Option<&str>) -> usize => "choose_alternative_cost";
-        fn pay_mana_cost(&mut self, player: PlayerId, card_id: CardId, card_name: &str, mana_cost: &str, mana_cost_display: &str, mana_cost_checkpoint: &str, allow_reserved_source_reuse: bool, reserved_sacrifices: &[CardId], mana_ability_options: &[forge_engine_core::agent::ManaAbilityOption], tappable_lands: &[CardId], untappable_lands: &[CardId], mana_pool: &forge_engine_core::mana::ManaPool) -> ManaCostAction => "pay_mana_cost";
         fn choose_single_replacement_effect(&mut self, player: PlayerId, descriptions: &[String]) -> usize => "choose_single_replacement_effect";
+        fn pay_mana_cost(&mut self, player: PlayerId, card_id: CardId, card_name: &str, mana_cost: &str, mana_cost_display: &str, mana_cost_checkpoint: &str, allow_reserved_source_reuse: bool, reserved_sacrifices: &[CardId], mana_ability_options: &[forge_engine_core::agent::ManaAbilityOption], tappable_lands: &[CardId], untappable_lands: &[CardId], mana_pool: &forge_engine_core::mana::ManaPool) -> ManaCostAction => "pay_mana_cost";
     }
+
+    fn choose_single_card_for_zone_change(
+        &mut self,
+        player: PlayerId,
+        valid: &[CardId],
+        select_prompt: &str,
+        is_optional: bool,
+    ) -> Option<CardId> {
+        // Java emits the raw card label (or "null") — no `Some(..)` wrapper —
+        // so we can't go through the macro which uses the generic Option impl.
+        self.save_snapshot("choose_single_card_for_zone_change");
+        let fmt = self.fmt_ctx();
+        let cb_args: Vec<String> = vec![
+            player.callback_arg_display(fmt.as_ref()),
+            valid.callback_arg_display(fmt.as_ref()),
+            select_prompt.callback_arg_display(fmt.as_ref()),
+            is_optional.callback_arg_display(fmt.as_ref()),
+        ];
+        let result =
+            self.inner
+                .choose_single_card_for_zone_change(player, valid, select_prompt, is_optional);
+        let outcome = match (result, self.fmt_ctx()) {
+            (Some(cid), Some(ctx)) => ctx.card(cid),
+            (Some(cid), None) => format!("{cid:?}"),
+            (None, _) => "null".to_string(),
+        };
+        self.parity_observer.on_callback(
+            "choose_single_card_for_zone_change",
+            &outcome,
+            self.player_id.0,
+            self.current_turn,
+            &self.current_phase,
+            cb_args,
+        );
+        result
+    }
+
 }
 
 pub struct RunConfig {
@@ -546,6 +583,7 @@ pub fn run_with_data(config: &RunConfig, data: &LoadedData) -> Result<GameTrace,
     // so Rust must know how many art variants each token has per edition.
     game_loop.token_art_variants = data.db.token_art_variants().clone();
     game_loop.token_fallback = data.db.token_fallback().clone();
+    game_loop.edition_dates = data.db.edition_dates().clone();
 
     // Shared storage for parity log entries captured by CapturingAgent
     let shared_log: Arc<Mutex<Vec<ParityLogEntry>>> = Arc::new(Mutex::new(Vec::new()));

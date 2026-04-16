@@ -28,6 +28,11 @@ pub trait GameRng {
     /// Return a random integer in `[0, bound)`.
     /// Must match `java.util.Random.nextInt(bound)` for parity.
     fn next_int(&mut self, bound: i32) -> i32;
+
+    /// Debug: return the total number of RNG calls made so far (if tracked).
+    fn call_count(&self) -> u64 {
+        0
+    }
 }
 
 /// Default RNG using `rand::thread_rng()` — non-deterministic, for normal gameplay.

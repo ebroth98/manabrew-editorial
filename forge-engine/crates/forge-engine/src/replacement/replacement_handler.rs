@@ -232,6 +232,7 @@ pub struct ReplacementRuntime<'a> {
     pub token_templates: &'a HashMap<String, Card>,
     pub token_art_variants: &'a HashMap<(String, String), usize>,
     pub token_fallback: &'a HashMap<String, String>,
+    pub edition_dates: &'a HashMap<String, String>,
     pub mana_pools: &'a mut Vec<ManaPool>,
     pub rng: &'a mut dyn GameRng,
 }

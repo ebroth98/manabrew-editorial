@@ -172,6 +172,7 @@ pub fn zone_matches(expr: &str, zone: ZoneType) -> bool {
         "Library" => zone == ZoneType::Library,
         "Exile" => zone == ZoneType::Exile,
         "Command" => zone == ZoneType::Command,
+        "Stack" => zone == ZoneType::Stack,
         _ => false,
     })
 }

@@ -203,14 +203,12 @@ impl ParityFormat for TargetChoice {
 impl ParityFormat for PlayOption {
     fn parity_fmt(&self, ctx: &FmtCtx<'_>) -> String {
         let card = ctx.card(self.card_id);
-        match self.mode {
-            PlayCardMode::Normal => {
-                format!("PlayOption {{ card: {card}, mode: Normal }}")
-            }
-            ref mode => {
-                format!("PlayOption {{ card: {card}, mode: {mode:?} }}")
-            }
-        }
+        // Java's DeterministicController always formats play actions as
+        // `mode: Normal` regardless of alternative costs (Evoke, Flashback,
+        // etc.), because Java surfaces alt costs via the underlying
+        // SpellAbility, not a distinct PlayOption. Match that for parity.
+        let _ = self.mode;
+        format!("PlayOption {{ card: {card}, mode: Normal }}")
     }
 }
 

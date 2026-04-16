@@ -291,7 +291,7 @@ impl GameLoop {
                             controller: player,
                             source_card: card_id,
                             target_card: Some(card_id),
-                            remembered_amount: 0,
+                            remembered_amount: 0, remembered_cards: Vec::new(),
                         },
                     );
                 }
@@ -325,7 +325,7 @@ impl GameLoop {
                             controller: player,
                             source_card: card_id,
                             target_card: Some(card_id),
-                            remembered_amount: 0,
+                            remembered_amount: 0, remembered_cards: Vec::new(),
                         },
                     );
                 }
@@ -350,7 +350,7 @@ impl GameLoop {
                             controller: player,
                             source_card: card_id,
                             target_card: Some(card_id),
-                            remembered_amount: 0,
+                            remembered_amount: 0, remembered_cards: Vec::new(),
                         },
                     );
                 }
@@ -434,7 +434,7 @@ impl GameLoop {
                             controller: player,
                             source_card: card_id,
                             target_card: Some(card_id),
-                            remembered_amount: 0,
+                            remembered_amount: 0, remembered_cards: Vec::new(),
                         },
                     );
                 }
@@ -487,7 +487,7 @@ impl GameLoop {
                                 controller: player,
                                 source_card: card_id,
                                 target_card: Some(card_id),
-                                remembered_amount: 0,
+                                remembered_amount: 0, remembered_cards: Vec::new(),
                             },
                         );
                         ZoneType::Exile
@@ -531,6 +531,7 @@ impl GameLoop {
         // `Defined$ ParentTarget`. Mirrors Java's resolveApiAbility() + resolveSubAbilities().
         let mut parent_target_card: Option<CardId> = None;
         let mut parent_target_player = None;
+        let mut parent_target_stack_entry: Option<u32> = None;
         let mut inherited_trigger_index = entry.spell_ability.trigger_index;
         let root_kicked = entry.spell_ability.kicked;
         let mut current = Some(&entry.spell_ability);
@@ -551,6 +552,8 @@ impl GameLoop {
             let needs_ctx_clone = (root_kicked && !sa.kicked)
                 || (parent_target_card.is_some() && sa.target_chosen.target_card.is_none())
                 || (parent_target_player.is_some() && sa.target_chosen.target_player.is_none())
+                || (parent_target_stack_entry.is_some()
+                    && sa.target_chosen.target_stack_entry.is_none())
                 || (inherited_trigger_index.is_some() && sa.trigger_index.is_none());
             let sa_ref = if needs_ctx_clone {
                 sa_with_ctx = sa.clone();
@@ -563,6 +566,9 @@ impl GameLoop {
                 if sa_with_ctx.target_chosen.target_player.is_none() {
                     sa_with_ctx.target_chosen.target_player = parent_target_player;
                 }
+                if sa_with_ctx.target_chosen.target_stack_entry.is_none() {
+                    sa_with_ctx.target_chosen.target_stack_entry = parent_target_stack_entry;
+                }
                 if sa_with_ctx.trigger_index.is_none() {
                     sa_with_ctx.trigger_index = inherited_trigger_index;
                 }
@@ -571,9 +577,13 @@ impl GameLoop {
                 sa
             };
             self.resolve_single_effect(game, agents, sa_ref, parent_target_card);
-            // This SA's target card becomes the parent context for the next sub-ability.
+            // This SA's target context becomes the parent for the next sub-ability.
+            // Stack-entry targets are propagated so sub-abilities can resolve
+            // `Defined$ TargetedController` (e.g. An Offer You Can't Refuse's
+            // "its controller creates two Treasure tokens") correctly.
             parent_target_card = sa_ref.target_chosen.target_card;
             parent_target_player = sa_ref.target_chosen.target_player;
+            parent_target_stack_entry = sa_ref.target_chosen.target_stack_entry;
             inherited_trigger_index = sa_ref.trigger_index;
             current = sa.get_sub_ability();
         }
@@ -581,6 +591,7 @@ impl GameLoop {
         // Avoid leaking shared tables into subsequent stack entries.
         game.clear_pending_damage_maps();
         game.clear_pending_change_zone_table();
+        game.stack.clear_recently_removed();
     }
 
     /// Check whether a spell/ability should fizzle (CR 608.2b).
@@ -774,6 +785,7 @@ impl GameLoop {
             token_templates: &self.token_templates,
             token_art_variants: &self.token_art_variants,
             token_fallback: &self.token_fallback,
+                    edition_dates: &self.edition_dates,
             mana_pools: &mut self.mana_pools,
             parent_target_card,
             rng: &mut *self.game_rng,

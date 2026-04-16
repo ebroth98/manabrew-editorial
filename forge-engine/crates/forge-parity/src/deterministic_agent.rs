@@ -7,7 +7,6 @@ use forge_engine_core::agent::{
     BinaryChoiceKind, GameEntity, ManaCostAction, PlayCardMode, PlayOption, PlayerAgent,
     TargetChoice,
 };
-use forge_engine_core::spellability::SpellAbility;
 use forge_engine_core::combat::DefenderId;
 use forge_engine_core::game::GameState;
 use forge_engine_core::ids::{CardId, PlayerId};
@@ -15,6 +14,7 @@ use forge_engine_core::mana::ManaPool;
 use forge_engine_core::player::actions::{AbilityRef, PlayerAction};
 use forge_engine_core::replacement::replacement_handler::{apply_replacements, ReplacementEvent};
 use forge_engine_core::spellability::AlternativeCost;
+use forge_engine_core::spellability::SpellAbility;
 use forge_foundation::PhaseType;
 
 use crate::choice_space;
@@ -184,6 +184,26 @@ impl DeterministicAgent {
         false
     }
 
+    /// Find the ability_index of the UnlockDoor activated ability on a Room card.
+    /// Used by `action_sort_key` to produce the correct Java-matching sort key
+    /// for Room unlock actions.
+    fn unlock_door_ability_index(&self, card_id: CardId) -> usize {
+        if let Some(ref snap) = self.last_game_snapshot {
+            let card = snap.game.card(card_id);
+            for ab in &card.activated_abilities {
+                if ab
+                    .params
+                    .get(forge_engine_core::parsing::keys::AB)
+                    .map(|v| v.eq_ignore_ascii_case("UnlockDoor"))
+                    .unwrap_or(false)
+                {
+                    return ab.ability_index;
+                }
+            }
+        }
+        0
+    }
+
     fn ability_sort_text(&self, card_id: CardId, ability_idx: usize) -> String {
         if let Some(ref snap) = self.last_game_snapshot {
             let card = snap.game.card(card_id);
@@ -268,6 +288,12 @@ impl DeterministicAgent {
         if self.is_land(play.card_id) {
             return format!("LAND:{}", self.card_name(play.card_id));
         }
+        // Java harness: Room UnlockDoor is a StaticAbilityApiBased where
+        // isSpell()=false, isLandAbility()=false, isManaAbility()=false,
+        // so actionBaseLabel() classifies it as "AB:".
+        if play.mode == PlayCardMode::UnlockDoor {
+            return format!("AB:{}", self.card_name(play.card_id));
+        }
         let fb_tag = match play.mode {
             PlayCardMode::Alternative(AlternativeCost::Flashback) => "[FB]",
             _ => "",
@@ -312,6 +338,7 @@ impl DeterministicAgent {
             // as `StaticAlternative`; parity uses the same explicit label.
             PlayCardMode::StaticAlternative => "StaticAlternative",
             PlayCardMode::ForetellExile => "ForetellExile",
+            PlayCardMode::UnlockDoor => "0",
         }
     }
 
@@ -332,6 +359,19 @@ impl DeterministicAgent {
     fn action_sort_key(&self, choice: &ActionChoice) -> String {
         match *choice {
             ActionChoice::Card(play) => {
+                // Room UnlockDoor: Java models this as a StaticAbilityApiBased
+                // where isSpell()=false, so it sorts in the ability bucket (|1|)
+                // with abilityDeclarationIndex as the variant, not the spell bucket.
+                if play.mode == PlayCardMode::UnlockDoor {
+                    let ability_idx = self.unlock_door_ability_index(play.card_id);
+                    return format!(
+                        "AB:{}|1|{}|{:05}|{}",
+                        self.card_name(play.card_id),
+                        self.parity_map.id(play.card_id),
+                        ability_idx,
+                        self.ability_sort_text(play.card_id, ability_idx),
+                    );
+                }
                 let label = self.play_option_label(play);
                 format!(
                     "{}|0|{}|{}|{}",
@@ -380,7 +420,13 @@ impl DeterministicAgent {
                 outcome,
                 self.player_id.0,
                 self.current_turn,
-                &format!("{:?}", self.last_game_snapshot.as_ref().map(|s| &s.game.turn.phase).unwrap_or(&PhaseType::Untap)),
+                &format!(
+                    "{:?}",
+                    self.last_game_snapshot
+                        .as_ref()
+                        .map(|s| &s.game.turn.phase)
+                        .unwrap_or(&PhaseType::Untap)
+                ),
                 Vec::new(),
             );
         }
@@ -440,9 +486,8 @@ impl PlayerAgent for DeterministicAgent {
                 return true;
             }
         }
-        let result = forge_engine_core::spellability::choose_targets_by_kind(
-            self, sa, game, mana_pools,
-        );
+        let result =
+            forge_engine_core::spellability::choose_targets_by_kind(self, sa, game, mana_pools);
 
         // Log the actual targets chosen for parity debugging.
         let mut target_names = Vec::new();
@@ -450,10 +495,18 @@ impl PlayerAgent for DeterministicAgent {
             target_names.push(format!("Player({})", pid.0));
         }
         if let Some(cid) = sa.target_chosen.target_card {
-            target_names.push(format!("{}@{}", self.card_name(cid), self.parity_map.id(cid)));
+            target_names.push(format!(
+                "{}@{}",
+                self.card_name(cid),
+                self.parity_map.id(cid)
+            ));
         }
         for &cid in sa.target_chosen.divided_map.keys() {
-            target_names.push(format!("{}@{}", self.card_name(cid), self.parity_map.id(cid)));
+            target_names.push(format!(
+                "{}@{}",
+                self.card_name(cid),
+                self.parity_map.id(cid)
+            ));
         }
         if let Some(stack_id) = sa.target_chosen.target_stack_entry {
             target_names.push(format!("Stack({})", stack_id));
@@ -1013,6 +1066,25 @@ impl PlayerAgent for DeterministicAgent {
         gui_repro::pick_many_unique(&sorted, num, num, &mut self.rng.borrow_mut())
     }
 
+    fn choose_discard_any_number(
+        &mut self,
+        _player: PlayerId,
+        hand: &[CardId],
+        min: usize,
+        max: usize,
+    ) -> Vec<CardId> {
+        if hand.is_empty() {
+            return vec![];
+        }
+        let sorted = choice_space::sort_native(hand, |a, b| {
+            self.card_name(*a)
+                .cmp(&self.card_name(*b))
+                .then_with(|| self.parity_map.id(*a).cmp(&self.parity_map.id(*b)))
+        });
+        let clamped_max = max.min(sorted.len());
+        gui_repro::pick_many_unique(&sorted, min, clamped_max, &mut self.rng.borrow_mut())
+    }
+
     fn choose_random_discard(
         &mut self,
         _player: PlayerId,
@@ -1160,6 +1232,12 @@ impl PlayerAgent for DeterministicAgent {
         _select_prompt: &str,
         _is_optional: bool,
     ) -> Option<CardId> {
+        if valid.is_empty() {
+            return None;
+        }
+        // Parity: Java DeterministicController calls ChoiceSpace.pickOne (single RNG draw).
+        // Must NOT go through pick_many_unique (pick_count + pick_index) which consumes
+        // multiple RNG values and desyncs subsequent picks.
         let sorted = choice_space::sort_native(valid, |a, b| {
             self.card_name(*a)
                 .cmp(&self.card_name(*b))

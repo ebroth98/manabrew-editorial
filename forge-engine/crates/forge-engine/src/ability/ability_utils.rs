@@ -834,7 +834,12 @@ pub fn matches_change_type(
             .any(|alt| matches_change_type(card, alt.trim(), source_chosen_colors));
     }
 
-    let parts: Vec<&str> = change_type.split('.').collect();
+    // Forge separates qualifiers with '.' for the first qualifier after the
+    // type and '+' for additional qualifiers (e.g. "Card.Red+Other"). Split
+    // on both so every qualifier is visited individually.
+    let parts: Vec<&str> = change_type
+        .split(|c| c == '.' || c == '+')
+        .collect();
     let type_part = parts[0];
 
     let type_matches = match type_part {
@@ -878,6 +883,119 @@ pub fn matches_change_type(
                     return false;
                 }
             }
+            "Red" => {
+                if !card.color.has_red() {
+                    return false;
+                }
+            }
+            "White" => {
+                if !card.color.has_white() {
+                    return false;
+                }
+            }
+            "Blue" => {
+                if !card.color.has_blue() {
+                    return false;
+                }
+            }
+            "Black" => {
+                if !card.color.has_black() {
+                    return false;
+                }
+            }
+            "Green" => {
+                if !card.color.has_green() {
+                    return false;
+                }
+            }
+            "Colorless" => {
+                if !card.color.is_colorless() {
+                    return false;
+                }
+            }
+            // "Other" means "other than the source" and is enforced by callers
+            // that have source context; treat as a no-op here.
+            "Other" => {}
+            // Controller/owner qualifiers require game state that this helper
+            // doesn't carry. Callers that actually need to enforce them pass
+            // the correct zone + player to e.g. `cards_in_zone`, so we accept
+            // them as no-ops here rather than treating them as subtypes and
+            // failing every match.
+            "YouCtrl" | "YouControl" | "You" | "YouOwn" | "OppCtrl" | "OpponentCtrl"
+            | "OppOwn" | "OpponentOwn" | "Opponent" => {}
+            // Token / nonToken qualifiers.
+            "Token" => {
+                if !card.is_token {
+                    return false;
+                }
+            }
+            "nonToken" => {
+                if card.is_token {
+                    return false;
+                }
+            }
+            // Supertype qualifiers beyond Basic (Basic is handled above).
+            "Legendary" => {
+                if !card.type_line.is_legendary() {
+                    return false;
+                }
+            }
+            "nonLegendary" => {
+                if card.type_line.is_legendary() {
+                    return false;
+                }
+            }
+            "Snow" => {
+                if !card.type_line.is_snow() {
+                    return false;
+                }
+            }
+            "nonBasic" => {
+                if card.type_line.is_basic() {
+                    return false;
+                }
+            }
+            "nonCreature" => {
+                if card.is_creature() {
+                    return false;
+                }
+            }
+            "nonArtifact" => {
+                if card.type_line.is_artifact() {
+                    return false;
+                }
+            }
+            "nonEnchantment" => {
+                if card.type_line.is_enchantment() {
+                    return false;
+                }
+            }
+            // Generic cmc comparators:
+            //   cmcEQ<N>, cmcLE<N>, cmcGE<N>, cmcLT<N>, cmcGT<N>
+            // where <N> may be a literal integer or an SVar name (e.g. X, Y).
+            // When <N> is a literal we enforce it. When <N> references an SVar
+            // we lack context in this helper and accept as permissive (the
+            // caller that resolves the SVar is responsible for filtering).
+            q if q.starts_with("cmc") && q.len() > 5 => {
+                let op = &q[3..5];
+                let rest = &q[5..];
+                let mana_value = card.mana_value();
+                let pass = if let Ok(n) = rest.parse::<i32>() {
+                    match op {
+                        "EQ" => mana_value == n,
+                        "LE" => mana_value <= n,
+                        "GE" => mana_value >= n,
+                        "LT" => mana_value < n,
+                        "GT" => mana_value > n,
+                        _ => true,
+                    }
+                } else {
+                    true
+                };
+                if !pass {
+                    return false;
+                }
+            }
             "ChosenColor" => {
                 if source_chosen_colors.is_empty() {
                     return false;
@@ -890,7 +1008,18 @@ pub fn matches_change_type(
                     return false;
                 }
             }
-            _ => {}
+            // Fallback: treat unknown qualifiers as subtype checks. Java's
+            // CardPredicates does the same — `Card.Elemental` filters by
+            // the Elemental subtype. Changeling creatures are every creature
+            // type, so a changeling creature passes any creature-type check.
+            other => {
+                let has_sub = card.type_line.has_subtype(other);
+                let changeling_match =
+                    card.is_creature() && card.has_keyword("Changeling");
+                if !has_sub && !changeling_match {
+                    return false;
+                }
+            }
         }
     }
 

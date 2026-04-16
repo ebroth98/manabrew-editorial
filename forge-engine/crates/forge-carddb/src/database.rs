@@ -24,6 +24,14 @@ pub struct CardDatabase {
     /// Token fallback codes: edition_code → fallback_edition_code.
     /// Mirrors Java's `TokenFallbackCode` metadata in edition files.
     token_fallback: HashMap<String, String>,
+    /// Edition release dates: edition_code → "YYYY-MM-DD".
+    /// Used to sort editions newest-first for token fallback, matching
+    /// Java's `CardEdition.Collection` ordering.
+    edition_dates: HashMap<String, String>,
+    /// Edition names: edition_code → display name (e.g. "Duskmourn House of Horror").
+    /// Used as tiebreaker when two editions share the same release date,
+    /// matching Java's `CardEdition.compareTo(date, then name)`.
+    edition_names: HashMap<String, String>,
     /// Default edition per card name (lowercase) — the latest edition containing
     /// the card, matching Java's CardDb default art preference (LATEST_ART_ALL).
     card_default_edition: HashMap<String, String>,
@@ -46,6 +54,8 @@ impl CardDatabase {
             flavor_name_aliases_normalized: HashMap::new(),
             token_art_variants: HashMap::new(),
             token_fallback: HashMap::new(),
+            edition_dates: HashMap::new(),
+            edition_names: HashMap::new(),
             card_default_edition: HashMap::new(),
         }
     }
@@ -102,6 +112,11 @@ impl CardDatabase {
         &self.token_fallback
     }
 
+    /// Access the edition release dates map.
+    pub fn edition_dates(&self) -> &HashMap<String, String> {
+        &self.edition_dates
+    }
+
     /// Get the default edition for a card by name (lowercase).
     pub fn card_default_edition(&self, card_name: &str) -> Option<&str> {
         self.card_default_edition
@@ -127,6 +142,17 @@ impl CardDatabase {
         // Not found in any edition — Java's fallbackToken iterates all editions
         // until it finds one. We return 1 as a safe default (single variant).
         1
+    }
+
+    /// Number of editions that contain a given token script.
+    /// Mirrors the size of the `Set<String>` passed to `Aggregates.random()`
+    /// in Java's `TokenDb.loadTokenFromSet()`.
+    pub fn token_edition_count(&self, token_script: &str) -> usize {
+        let key_lower = token_script.to_lowercase();
+        self.token_art_variants
+            .keys()
+            .filter(|(script, _)| *script == key_lower)
+            .count()
     }
 
     /// Mirror of Java's CardDb.getNormalizedName().
@@ -284,6 +310,8 @@ impl CardDatabase {
         let mut in_tokens = false;
         let mut in_metadata = false;
         let mut edition_code = String::new();
+        let mut edition_date = String::new();
+        let mut edition_name = String::new();
         // Count occurrences of each token script in this edition
         let mut token_counts: HashMap<String, usize> = HashMap::new();
 
@@ -301,8 +329,12 @@ impl CardDatabase {
             }
             if in_metadata {
                 // Extract edition code and token fallback
-                if let Some(code) = line.strip_prefix("Code=") {
+                if let Some(name) = line.strip_prefix("Name=") {
+                    edition_name = name.trim().to_string();
+                } else if let Some(code) = line.strip_prefix("Code=") {
                     edition_code = code.trim().to_uppercase();
+                } else if let Some(date) = line.strip_prefix("Date=") {
+                    edition_date = date.trim().to_string();
                 } else if let Some(fallback) = line.strip_prefix("TokenFallbackCode=") {
                     let fb = fallback.trim().to_uppercase();
                     if !edition_code.is_empty() && !fb.is_empty() {
@@ -321,12 +353,29 @@ impl CardDatabase {
             if !in_entries {
                 continue;
             }
-            // Track card → edition mapping (latest edition wins).
-            // Card line format: "1 M All Is Dust @Jason Felix"
-            if !edition_code.is_empty() {
+            // Track card → edition mapping (newest release date wins).
+            // Mirrors Java's LATEST_ART_ALL which picks the most recent
+            // printing. Java's CardEdition.compareTo sorts by date then
+            // name — Collections.reverse gives newest/alphabetically-last
+            // first. We replicate: prefer newer date, break ties by
+            // edition name descending (lexicographic).
+            if !edition_code.is_empty() && !edition_date.is_empty() {
                 if let Some(card_name) = parse_card_name_from_edition_line(line) {
-                    self.card_default_edition
-                        .insert(card_name.to_lowercase(), edition_code.clone());
+                    let key = card_name.to_lowercase();
+                    let dominated = if let Some(existing_code) = self.card_default_edition.get(&key) {
+                        let existing_date = self.edition_dates.get(existing_code).map(|s| s.as_str()).unwrap_or("0000-00-00");
+                        let existing_name = self.edition_names.get(existing_code).map(|s| s.as_str()).unwrap_or("");
+                        match edition_date.as_str().cmp(existing_date) {
+                            std::cmp::Ordering::Greater => true,
+                            std::cmp::Ordering::Less => false,
+                            std::cmp::Ordering::Equal => edition_name.as_str() >= existing_name,
+                        }
+                    } else {
+                        true
+                    };
+                    if dominated {
+                        self.card_default_edition.insert(key, edition_code.clone());
+                    }
                 }
             }
             if let Some((printed_name, flavor_name)) = parse_edition_flavor_alias_line(line) {
@@ -338,8 +387,16 @@ impl CardDatabase {
             }
         }
 
-        // Store token variant counts for this edition
+        // Store edition date, name, and token variant counts
         if !edition_code.is_empty() {
+            if !edition_date.is_empty() {
+                self.edition_dates
+                    .insert(edition_code.clone(), edition_date);
+            }
+            if !edition_name.is_empty() {
+                self.edition_names
+                    .insert(edition_code.clone(), edition_name);
+            }
             for (token_name, count) in token_counts {
                 self.token_art_variants
                     .insert((token_name, edition_code.clone()), count);

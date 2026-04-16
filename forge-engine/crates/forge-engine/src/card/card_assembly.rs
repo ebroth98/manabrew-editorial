@@ -170,6 +170,10 @@ pub(crate) fn assemble_card(
     // Java parity: convert Madness:{cost} keywords into Moved replacement effects.
     super::card_factory_util::add_madness_replacement(&mut card);
 
+    // Java parity: convert Flashback:{cost} keywords into Moved replacement effects
+    // that exile the card instead of putting it into the graveyard from the stack.
+    super::card_factory_util::add_flashback_replacement(&mut card);
+
     // Add parsed static abilities and replacement effects.
     for sa in components.static_abilities {
         card.add_static_ability(sa);
@@ -204,16 +208,16 @@ pub(crate) fn assemble_card(
                 card.activated_abilities.push(ab);
             }
             // Copy other face's SVars so the Execute$ SVar can be found
+            // when the second door is unlocked via the activated ability.
             for (k, v) in &other_face.svars {
                 card.svars.entry(k.clone()).or_insert_with(|| v.clone());
             }
-            // Copy other face's triggers (the UnlockDoor trigger)
-            let mut next_trig_id = card.triggers.len() as u32;
-            for raw in &other_face.triggers {
-                if let Some(trig) = crate::trigger::parse_trigger(raw, &mut next_trig_id) {
-                    card.add_trigger(trig);
-                }
-            }
+            // NOTE: do NOT copy the other face's triggers. Java parity — each
+            // face's own `UnlockDoor` trigger belongs to that face's CardState
+            // and fires only when THAT face unlocks. Copying the other face's
+            // trigger onto this face caused `Walk-In Closet`'s ETB unlock to
+            // spuriously fire `Forgotten Cellar`'s trigger, adding an extra
+            // priority round to the phase.
         }
     }
 

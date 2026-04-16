@@ -180,6 +180,7 @@ mod tests {
         templates: &'a HashMap<String, Card>,
         templates_variants: &'a HashMap<(String, String), usize>,
         token_fallback: &'a HashMap<String, String>,
+        edition_dates: &'a HashMap<String, String>,
         rng: &'a mut dyn crate::game_rng::GameRng,
     ) -> EffectContext<'a> {
         EffectContext {
@@ -190,6 +191,7 @@ mod tests {
             token_templates: templates,
             token_art_variants: templates_variants,
             token_fallback,
+            edition_dates,
             mana_pools: mp,
             parent_target_card: None,
             rng,
@@ -218,6 +220,7 @@ mod tests {
         let templates = HashMap::new();
         let templates_variants: HashMap<(String, String), usize> = HashMap::new();
         let token_fallback: HashMap<String, String> = HashMap::new();
+        let edition_dates: HashMap<String, String> = HashMap::new();
         let mut rng_adapter = crate::game_rng::ThreadRngAdapter;
         let mut ctx = make_ctx(
             &mut game,
@@ -227,6 +230,7 @@ mod tests {
             &templates,
             &templates_variants,
             &token_fallback,
+            &edition_dates,
             &mut rng_adapter,
         );
         super::resolve(&mut ctx, &sa);
@@ -257,6 +261,7 @@ mod tests {
         let templates = HashMap::new();
         let templates_variants: HashMap<(String, String), usize> = HashMap::new();
         let token_fallback: HashMap<String, String> = HashMap::new();
+        let edition_dates: HashMap<String, String> = HashMap::new();
         let mut rng_adapter = crate::game_rng::ThreadRngAdapter;
         let mut ctx = make_ctx(
             &mut game,
@@ -266,6 +271,7 @@ mod tests {
             &templates,
             &templates_variants,
             &token_fallback,
+            &edition_dates,
             &mut rng_adapter,
         );
         super::resolve(&mut ctx, &sa);
@@ -297,6 +303,7 @@ mod tests {
         let templates = HashMap::new();
         let templates_variants: HashMap<(String, String), usize> = HashMap::new();
         let token_fallback: HashMap<String, String> = HashMap::new();
+        let edition_dates: HashMap<String, String> = HashMap::new();
         let mut rng_adapter = crate::game_rng::ThreadRngAdapter;
         let mut ctx = make_ctx(
             &mut game,
@@ -306,6 +313,7 @@ mod tests {
             &templates,
             &templates_variants,
             &token_fallback,
+            &edition_dates,
             &mut rng_adapter,
         );
         super::resolve(&mut ctx, &sa);

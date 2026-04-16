@@ -141,6 +141,17 @@ public final class SnapshotExtractor {
         // Library size (don't reveal contents)
         ps.put("library_size", p.getCardsIn(ZoneType.Library).size());
 
+        // Diagnostic: just the top card (next to be drawn). Rust's comparator
+        // only checks the single top card, so match that here.
+        List<String> libraryTop = new ArrayList<>();
+        int libTopCount = 0;
+        for (Card libCard : p.getCardsIn(ZoneType.Library)) {
+            if (libTopCount >= 10) break;
+            libraryTop.add(libCard.getName());
+            libTopCount++;
+        }
+        ps.put("library_top", libraryTop);
+
         return ps;
     }
 

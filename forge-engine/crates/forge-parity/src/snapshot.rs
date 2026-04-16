@@ -140,6 +140,18 @@ fn snapshot_player(game: &GameState, pid: PlayerId) -> PlayerSnapshot {
     exile.sort();
 
     let library_size = game.zone(ZoneType::Library, pid).len();
+    // Library is a Vec with top-of-library at the END (push/pop). Capture
+    // only the single top card: drawing mismatches are the earliest signal
+    // of a silent library divergence, while deeper ordering differences
+    // commonly stem from independent shuffle trajectories that don't
+    // actually affect gameplay until another card is drawn.
+    let library_top: Vec<String> = game
+        .cards_in_zone(ZoneType::Library, pid)
+        .iter()
+        .rev()
+        .take(10)
+        .map(|&cid| game.card(cid).full_name.clone())
+        .collect();
 
     PlayerSnapshot {
         name: player.name.clone(),
@@ -154,6 +166,7 @@ fn snapshot_player(game: &GameState, pid: PlayerId) -> PlayerSnapshot {
         hand,
         exile,
         library_size,
+        library_top,
     }
 }
 

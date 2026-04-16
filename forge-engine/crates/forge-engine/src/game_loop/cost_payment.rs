@@ -243,6 +243,12 @@ impl GameLoop {
         if !Self::should_confirm_payment(part, source_is_planeswalker, mandatory) {
             return true;
         }
+        // Java's harness short-circuits confirm for `CostPartMana` (always
+        // returns true without consuming RNG or emitting a callback). Mirror
+        // that by returning true directly instead of asking the agent.
+        if matches!(part, CostPart::Mana { .. }) {
+            return true;
+        }
         let card_name = game.card(source).card_name.clone();
         let kind = Self::cost_part_kind(part);
         let message = format!("Pay {} cost for {}?", kind, card_name);
@@ -2020,8 +2026,10 @@ impl GameLoop {
             if valid.is_empty() {
                 break;
             }
-            // Use choose_sacrifice to pick target (reuse the choose interface)
-            if let Some(chosen) = agents[player.index()].choose_sacrifice(player, &valid, None) {
+            // Mirror Java's DeterministicCostPlumbing.visit(CostExile) which
+            // uses chooseCardsForEffect (not choose_sacrifice) for the picks.
+            let picks = agents[player.index()].choose_cards_for_effect(player, &valid, 1, 1);
+            if let Some(&chosen) = picks.first() {
                 let owner = game.card(chosen).owner;
                 self.move_card_with_runtime(game, chosen, ZoneType::Exile, owner, agents);
                 self.record_paid_cost_exile(game, source, chosen);

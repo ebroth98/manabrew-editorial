@@ -146,12 +146,41 @@ impl TargetRestrictions {
                 has_valid_target_in_zone(game, player, *zone, filter.as_deref(), source_card)
             }
             TargetKind::Spell => {
-                // If we have a TargetType$ filter, apply it
-                if let Some(ref filter) = self.target_type_filter {
-                    has_valid_spell_with_filter(game, filter)
-                } else {
-                    !game.stack.is_empty()
+                // Counterspells use ValidTgts$ to constrain the spell types
+                // they can counter (e.g. An Offer You Can't Refuse: ValidTgts$
+                // Card.nonCreature). Java's TargetRestrictions checks both the
+                // TargetType (must be Spell) and the ValidTgts filter against
+                // each stack entry's source card. We do the same so we don't
+                // mark Counter-spells as playable when the only stack entry
+                // is excluded by the filter.
+                let target_type_ok = match self.target_type_filter.as_deref() {
+                    Some(t) if !t.eq_ignore_ascii_case("Spell") => false,
+                    _ => true,
+                };
+                if !target_type_ok {
+                    return false;
                 }
+                game.stack.iter().any(|entry| {
+                    if !entry.spell_ability.is_spell {
+                        return false;
+                    }
+                    let Some(src_id) = entry.spell_ability.source else {
+                        return self.valid_tgts.is_empty();
+                    };
+                    if src_id.index() >= game.cards.len() {
+                        return false;
+                    }
+                    let card = game.card(src_id);
+                    self.valid_tgts.iter().any(|filter| {
+                        // "Card" / "Spell" with no qualifiers matches anything.
+                        if filter.eq_ignore_ascii_case("Card")
+                            || filter.eq_ignore_ascii_case("Spell")
+                        {
+                            return true;
+                        }
+                        crate::card::valid_filter::matches_valid_card(filter, card, card)
+                    })
+                })
             }
         }
     }

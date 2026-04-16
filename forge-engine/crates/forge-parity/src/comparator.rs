@@ -138,6 +138,20 @@ fn compare_players(
     cmp_field!(has_won);
     cmp_field!(library_size);
 
+    // Diagnostic: compare library top order (ordered, not sorted) so silent
+    // library-order divergences surface early. `library_top` is the first few
+    // cards in draw order on each side.
+    if rust.library_top != java.library_top {
+        divs.push(crate::protocol::Divergence {
+            snapshot_index: index,
+            turn,
+            phase: phase.to_string(),
+            field: format!("{}.library_top", prefix),
+            rust_value: format!("{:?}", rust.library_top),
+            java_value: format!("{:?}", java.library_top),
+        });
+    }
+
     // Zone comparisons (sorted card name lists)
     compare_name_list(
         divs,

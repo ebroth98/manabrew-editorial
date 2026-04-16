@@ -217,6 +217,7 @@ mod tests {
         let token_templates = std::collections::HashMap::new();
         let templates_variants: std::collections::HashMap<(String, String), usize> = std::collections::HashMap::new();
         let token_fallback: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+        let edition_dates: std::collections::HashMap<String, String> = std::collections::HashMap::new();
         let mut mana_pools = vec![ManaPool::new(), ManaPool::new()];
         let mut rng_adapter = crate::game_rng::ThreadRngAdapter;
         let mut ctx = EffectContext {
@@ -227,6 +228,7 @@ mod tests {
             token_templates: &token_templates,
             token_art_variants: &templates_variants,
             token_fallback: &token_fallback,
+            edition_dates: &edition_dates,
             mana_pools: &mut mana_pools,
             parent_target_card: None,
             rng: &mut rng_adapter,

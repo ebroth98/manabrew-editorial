@@ -3561,11 +3561,17 @@ pub(crate) fn parse_phase(s: &str) -> Option<PhaseType> {
         "Untap" => Some(PhaseType::Untap),
         "Upkeep" => Some(PhaseType::Upkeep),
         "Draw" => Some(PhaseType::Draw),
-        "Main1" => Some(PhaseType::Main1),
-        "Main2" => Some(PhaseType::Main2),
+        "Main1" | "BeginningOfPreCombatMain" => Some(PhaseType::Main1),
+        "Main2" | "BeginningOfPostCombatMain" => Some(PhaseType::Main2),
         "CombatBegin" | "BeginCombat" => Some(PhaseType::CombatBegin),
         "CombatEnd" | "EndCombat" | "EndOfCombat" => Some(PhaseType::CombatEnd),
-        "EndOfTurn" | "End" => Some(PhaseType::EndOfTurn),
+        // Forge card scripts spell the end step several ways; canonicalize
+        // them all to PhaseType::EndOfTurn so delayed Phase triggers fire at
+        // the right step (e.g. Ashling's "At the beginning of your next end
+        // step, sacrifice that token...").
+        "EndOfTurn" | "End" | "End of Turn" | "EndStep" | "EndOfTurnStep" => {
+            Some(PhaseType::EndOfTurn)
+        }
         "Cleanup" => Some(PhaseType::Cleanup),
         _ => None,
     }

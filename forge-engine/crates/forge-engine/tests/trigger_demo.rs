@@ -292,8 +292,7 @@ impl PlayerAgent for VerboseAgent {
     fn choose_land_or_spell(&mut self, _: PlayerId) -> Option<bool> {
         None
     }
-    fn notify(&mut self, msg: &str) {
-        println!("    [{}] {}", self.name, msg);
+    fn notify(&mut self, _event: forge_engine_core::agent::notification::GameNotification) {
     }
 
     fn choose_targets_for(

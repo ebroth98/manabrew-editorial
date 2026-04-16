@@ -197,6 +197,12 @@ pub struct Card {
     /// Keywords granted by continuous static effects (Layer 6).
     /// Reset and recomputed each time [`layer::apply_continuous_effects`] runs.
     pub granted_keywords: crate::keyword::keyword_collection::KeywordCollection,
+    /// Subtypes added by continuous static effects (Layer 4, `AddType$`).
+    /// Reset and recomputed each time [`layer::apply_continuous_effects`] runs.
+    /// The listed strings are also pushed onto `type_line.subtypes` so normal
+    /// subtype queries see them; keeping a separate list lets us revert on reset
+    /// without losing the card's intrinsic subtypes.
+    pub static_added_subtypes: Vec<String>,
     /// Keywords granted temporarily by pump effects (`KW$` parameter) until end of turn.
     /// Cleared during step_cleanup alongside power_modifier / toughness_modifier.
     pub pump_keywords: crate::keyword::keyword_collection::KeywordCollection,
@@ -257,6 +263,10 @@ pub struct Card {
 
     /// True if this permanent is a token or a copy-token (ceases to exist on zone change).
     pub is_token: bool,
+
+    /// Set when the card is cast from graveyard via Flashback. Used by the
+    /// flashback replacement effect to exile the card when it leaves the stack.
+    pub cast_with_flashback: bool,
 
     // Replacement effects — parsed from R$ lines in card abilities.
     // Mirrors Java `Card.getReplacementEffects()`.
@@ -580,6 +590,7 @@ impl Card {
                 &keywords,
             ),
             granted_keywords: crate::keyword::keyword_collection::KeywordCollection::new(),
+            static_added_subtypes: Vec::new(),
             pump_keywords: crate::keyword::keyword_collection::KeywordCollection::new(),
             pump_trigger_count: 0,
             abilities,
@@ -599,6 +610,7 @@ impl Card {
             move_to_command_zone: false,
             commander_cast_count: 0,
             is_token: false,
+            cast_with_flashback: false,
             replacement_effects,
             attached_to: None,
             attached_this_turn: false,

@@ -32,7 +32,7 @@ pub fn resolve_immediate_trigger(ctx: &mut EffectContext, sa: &SpellAbility) {
                     controller: sa.activating_player,
                     source_card: source_id,
                     target_card: None,
-                    remembered_amount: 0,
+                    remembered_amount: 0, remembered_cards: Vec::new(),
                 };
                 ctx.trigger_handler.register_delayed_trigger(delayed);
             }

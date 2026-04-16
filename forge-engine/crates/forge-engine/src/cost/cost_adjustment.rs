@@ -857,30 +857,38 @@ pub fn adjust(
         ) {
             return false;
         }
-        apply_convoke_or_improvise_reduction(
-            game,
-            agents,
-            mana_pools,
-            cost,
-            sa,
-            payer,
-            false,
-            true,
-            None,
-            test,
-        );
-        apply_convoke_or_improvise_reduction(
-            game,
-            agents,
-            mana_pools,
-            cost,
-            sa,
-            payer,
-            true,
-            false,
-            None,
-            test,
-        );
+        // Only offer Convoke/Improvise when the card actually has the
+        // keyword. Otherwise Rust sends a spurious `choose_convoke` callback
+        // to the agent on every spell cast, which diverges from Java.
+        let source_card = game.card(card_id);
+        if source_card.has_keyword("Convoke") {
+            apply_convoke_or_improvise_reduction(
+                game,
+                agents,
+                mana_pools,
+                cost,
+                sa,
+                payer,
+                false,
+                true,
+                None,
+                test,
+            );
+        }
+        if game.card(card_id).has_keyword("Improvise") {
+            apply_convoke_or_improvise_reduction(
+                game,
+                agents,
+                mana_pools,
+                cost,
+                sa,
+                payer,
+                true,
+                false,
+                None,
+                test,
+            );
+        }
     }
     if sa.params.has("TapCreaturesForMana") {
         let max_reduction = cost.get_generic_mana_amount();

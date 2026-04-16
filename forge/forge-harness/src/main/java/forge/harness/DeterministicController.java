@@ -308,13 +308,6 @@ public class DeterministicController extends PlayerController {
     @Override
     public boolean chooseTargetsFor(final SpellAbility currentAbility) {
         captureDeepCheckpoint("choose_targets_for");
-        if (Boolean.getBoolean("forge.parity.rng.trace")) {
-            String name = currentAbility != null && currentAbility.getHostCard() != null
-                ? currentAbility.getHostCard().getName() : "null";
-            System.err.printf("[java-target] chooseTargetsFor: %s api=%s rng#%d%n", name,
-                currentAbility != null ? currentAbility.getApi() : "null",
-                rng.getCallCount());
-        }
         if (currentAbility == null || !currentAbility.usesTargeting()) {
             onCallback("choose_targets_for", "true", currentAbility.toString());
             return true;
@@ -862,7 +855,6 @@ public class DeterministicController extends PlayerController {
             return true;
         }
         if (DeterministicCostPlumbing.isSpellPaymentContext(sa)) {
-            onCallback("confirm_payment", "true (spc no-rng)", "spell_payment_context");
             return true;
         }
         captureDeepCheckpoint("confirm_payment");
@@ -1693,8 +1685,10 @@ public class DeterministicController extends PlayerController {
         }
         if (sa != null
                 && !sa.isManaAbility()
-                && !isCheckpointSkippableManaCost(payableCost)) {
-            final Card source = sa != null ? sa.getHostCard() : null;
+                && payableCost != null
+                && !payableCost.isNoCost()
+                && !payableCost.isZero()) {
+            final Card source = sa.getHostCard();
             final String sourceLabel = source == null
                     ? "UNKNOWN"
                     : source.getName() + "@" + ParityCardMap.parityId(source);
@@ -1707,10 +1701,6 @@ public class DeterministicController extends PlayerController {
             return result.paid();
         }
         return autoPay.payManaCost(payableCost, sa, effect);
-    }
-
-    private static boolean isCheckpointSkippableManaCost(final ManaCost toPay) {
-        return toPay == null || toPay.isNoCost() || toPay.isZero();
     }
 
     @Override

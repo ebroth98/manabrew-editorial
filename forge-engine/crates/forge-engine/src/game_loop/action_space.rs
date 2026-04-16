@@ -105,7 +105,24 @@ impl GameLoop {
                     .activated_abilities
                     .iter()
                     .find(|ab| ab.ability_index == ability_idx)
-                    .map(|ab| !ab.is_mana_ability)
+                    .map(|ab| {
+                        // Exclude mana abilities (they go through tappable_lands).
+                        if ab.is_mana_ability {
+                            return false;
+                        }
+                        // Exclude Room UnlockDoor abilities — Java models these as
+                        // StaticAbilityApiBased (not ActivatedAbility), so they
+                        // belong in the `playable` list with PlayCardMode::UnlockDoor.
+                        if ab
+                            .params
+                            .get(crate::parsing::keys::AB)
+                            .map(|v| v.eq_ignore_ascii_case("UnlockDoor"))
+                            .unwrap_or(false)
+                        {
+                            return false;
+                        }
+                        true
+                    })
                     .unwrap_or(false)
             })
             .collect();

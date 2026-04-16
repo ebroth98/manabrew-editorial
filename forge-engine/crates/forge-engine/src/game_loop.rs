@@ -41,6 +41,8 @@ pub struct GameLoop {
     pub token_art_variants: HashMap<(String, String), usize>,
     /// Token fallback codes: edition_code → fallback_edition_code.
     pub token_fallback: HashMap<String, String>,
+    /// Edition release dates: edition_code → "YYYY-MM-DD".
+    pub edition_dates: HashMap<String, String>,
     /// Pluggable RNG for game effects (shuffles, coin flips, dice rolls).
     /// Default: ThreadRngAdapter (non-deterministic). For parity testing,
     /// replace with a JavaRandom-backed implementation.
@@ -94,6 +96,7 @@ impl GameLoop {
             token_templates: HashMap::new(),
             token_art_variants: HashMap::new(),
             token_fallback: HashMap::new(),
+            edition_dates: HashMap::new(),
             game_rng: Box::new(ThreadRngAdapter),
             experimental_restore_snapshot: false,
             previous_game_state: None,
@@ -146,6 +149,7 @@ impl GameLoop {
             token_templates: &self.token_templates,
             token_art_variants: &self.token_art_variants,
             token_fallback: &self.token_fallback,
+            edition_dates: &self.edition_dates,
             mana_pools: &mut self.mana_pools,
             rng: &mut *self.game_rng,
         };

@@ -80,11 +80,20 @@ pub fn next_mana_cost_action(
     let candidates =
         collect_playable_mana_abilities(game, player, source, mana_ability_options, tappable_lands);
     if let Some((candidate, chosen_atom)) = choose_candidate(&unpaid, &candidates) {
+        // Java's AutoPay only sets expressChoice when the ability is
+        // isAnyMana / isComboMana / ManaReflected — i.e. when a single
+        // mana ability can produce more than one color. Single-color
+        // abilities leave expressChoice null.
+        let express_choice = if candidate.atoms.len() > 1 {
+            Some(chosen_atom)
+        } else {
+            None
+        };
         return NextManaCostAction {
             action: ManaCostAction::TapLand {
                 card_id: candidate.card_id,
                 mana_ability_index: candidate.ability_index,
-                express_choice: Some(chosen_atom),
+                express_choice,
             },
         };
     }

@@ -45,7 +45,6 @@ impl GameLoop {
                 ) {
                     continue;
                 }
-                // Delegate to land_ability module for timing/land-play checks
                 let land_sa = SpellAbility::new_land(Some(card_id), player);
                 if !must_be_instant && crate::spellability::land_ability::can_play(&land_sa, game) {
                     playable.push(crate::agent::PlayOption {
@@ -85,12 +84,22 @@ impl GameLoop {
                     }
                 }
 
-                // Check if we can pay the mana cost (normal or alternative)
-                let available_mana = mana::calculate_available_mana_for_casting_excluding(
+                // Check if we can pay the mana cost (normal or alternative).
+                // Mirror Java's per-spell restriction filtering: mana sources
+                // with RestrictValid$ that don't match the spell being cast
+                // must not count toward availability.
+                let payment_ctx = mana::ManaPaymentContext {
+                    is_spell: true,
+                    type_line: Some(card.type_line.clone()),
+                    card_name: Some(card.card_name.clone()),
+                };
+                let available_mana = mana::calculate_available_mana_with_context(
                     self.pool(player),
                     game,
                     player,
                     Some(card_id),
+                    &[],
+                    Some(&payment_ctx),
                 );
 
                 // Apply cost reduction/increase from static abilities
@@ -182,12 +191,17 @@ impl GameLoop {
                     false
                 };
 
-                // Evoke: alt cost for creatures
-                let evoke_ok = if let Some(evoke_cost_str) = card.get_evoke_cost() {
-                    let adjusted = cost_adj
-                        .apply(&forge_foundation::ManaCost::parse(&evoke_cost_str))
-                        .add(&raise_mana);
+                // Evoke: alt cost for creatures. The evoke cost string may be a
+                // full Cost (mana + non-mana, e.g. Fury's "ExileFromHand<1/...>"),
+                // so parse it as a Cost and check both the mana and non-mana parts.
+                let evoke_full_cost = card.get_evoke_cost().map(|s| crate::cost::parse_cost(&s));
+                let evoke_ok = if let Some(ref evoke_cost) = evoke_full_cost {
+                    let evoke_mana = Self::mana_from_cost(evoke_cost);
+                    let adjusted = cost_adj.apply(&evoke_mana).add(&raise_mana);
                     available_mana.can_pay(&adjusted)
+                        && crate::cost::can_pay_ignoring_mana_for_spell(
+                            evoke_cost, game, card_id, player,
+                        )
                 } else {
                     false
                 };
@@ -559,6 +573,54 @@ impl GameLoop {
                         card_id,
                         mode: crate::agent::PlayCardMode::Normal,
                     });
+                }
+            }
+        }
+
+        // Check battlefield for Room enchantments with a locked door that can be
+        // unlocked. Java models this as a `StaticAbilityApiBased` (`ST$ UnlockDoor`)
+        // which falls through to the CastSpell branch in the harness, NOT as an
+        // activated ability. We mirror that by putting it in `playable` with
+        // `PlayCardMode::UnlockDoor`.
+        if !must_be_instant {
+            let bf_cards: Vec<CardId> = game.cards_in_zone(ZoneType::Battlefield, player).to_vec();
+            for &card_id in &bf_cards {
+                let card = game.card(card_id);
+                if !card.type_line.has_subtype("Room") {
+                    continue;
+                }
+                // Find the synthetic UnlockDoor activated ability
+                let has_unlock_ab = card.activated_abilities.iter().any(|ab| {
+                    ab.params
+                        .get(crate::parsing::keys::AB)
+                        .map(|v| v.eq_ignore_ascii_case("UnlockDoor"))
+                        .unwrap_or(false)
+                });
+                if !has_unlock_ab {
+                    continue;
+                }
+                // Check if the ability can actually be activated (cost, etc.)
+                // We reuse the same checks from get_activatable_abilities inline.
+                for ab in &card.activated_abilities {
+                    let is_unlock = ab
+                        .params
+                        .get(crate::parsing::keys::AB)
+                        .map(|v| v.eq_ignore_ascii_case("UnlockDoor"))
+                        .unwrap_or(false);
+                    if !is_unlock {
+                        continue;
+                    }
+                    let mana_cost = Self::mana_from_cost(&ab.cost);
+                    let available_mana =
+                        mana::calculate_available_mana(self.pool(player), game, player);
+                    if available_mana.can_pay(&mana_cost)
+                        && crate::cost::can_pay_ignoring_mana(&ab.cost, game, card_id, player)
+                    {
+                        playable.push(crate::agent::PlayOption {
+                            card_id,
+                            mode: crate::agent::PlayCardMode::UnlockDoor,
+                        });
+                    }
                 }
             }
         }

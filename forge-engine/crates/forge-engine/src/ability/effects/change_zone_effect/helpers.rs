@@ -390,7 +390,7 @@ pub(super) fn apply_post_move(
                     controller,
                     source_card: card_id,
                     target_card: Some(card_id),
-                    remembered_amount: 0,
+                    remembered_amount: 0, remembered_cards: Vec::new(),
                 });
         }
         if sa.param_is_true(keys::ATTACKING) {

@@ -25,6 +25,10 @@ pub enum PlayCardMode {
     /// Alternative cost granted by `Mode$ AlternativeCost` static abilities.
     StaticAlternative,
     ForetellExile,
+    /// Unlock a Room door on a permanent already on the battlefield.
+    /// Mirrors Java's `StaticAbilityApiBased` for `ST$ UnlockDoor` which falls
+    /// through to the `CastSpell` branch in the harness (not `ActivateAbility`).
+    UnlockDoor,
 }
 
 /// A target choice that can be a player, a card, or nothing.

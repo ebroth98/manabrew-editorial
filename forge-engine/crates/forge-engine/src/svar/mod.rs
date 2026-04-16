@@ -759,7 +759,17 @@ pub fn resolve_numeric_svar(
 
     // It's an SVar reference — look it up on the source card
     if let Some(source_id) = sa.source {
-        if let Some(svar_expr) = game.card(source_id).svars.get(val_str) {
+        if let Some(svar_expr) = game.card(source_id).svars.get(val_str.trim()) {
+            // `Remembered$Property` — Java parity for AbilityUtils' "Remembered$"
+            // shortcut (e.g. Cavalier of Flame's `Y:Remembered$Amount`).
+            if let Some(property) = svar_expr.strip_prefix("Remembered$") {
+                return crate::ability::ability_utils::handle_paid(
+                    game,
+                    &game.card(source_id).remembered_cards,
+                    property,
+                    source_id,
+                );
+            }
             // Game-aware SVar resolution for patterns that need GameState.
             if svar_expr.starts_with("Count$") {
                 return sign * resolve_count_svar_for_sa(
@@ -1068,6 +1078,15 @@ pub fn resolve_count_svar_for_sa(
                 (filter_str, false)
             };
 
+        // Check for $Colors suffix — return distinct colors among matching
+        // permanents (e.g. Faeburrow Elder: Count$Valid Permanent.YouCtrl$Colors).
+        let count_distinct_colors = filter_str.ends_with("$Colors");
+        let filter_str = if count_distinct_colors {
+            filter_str.trim_end_matches("$Colors")
+        } else {
+            filter_str
+        };
+
         // Check for /Times.N multiplier suffix (e.g. "Enchantment.Other/Times.2")
         let (filter_str, multiplier) = crate::parsing::strip_times_multiplier(filter_str);
 
@@ -1106,6 +1125,21 @@ pub fn resolve_count_svar_for_sa(
                 }
             }
             return max_power;
+        } else if count_distinct_colors {
+            let mut mask: u8 = 0;
+            for &cid in &cards_to_check {
+                let card = game.card(cid);
+                if valid_card_matches_with_source(
+                    filter_str,
+                    card,
+                    controller,
+                    source_id,
+                    chosen_type.as_deref(),
+                ) {
+                    mask |= card.color.mask();
+                }
+            }
+            return (mask.count_ones() as i32) * multiplier;
         } else {
             let mut count = 0;
             for &cid in &cards_to_check {

@@ -334,7 +334,8 @@ public final class Main {
         rules.setSimTimeout(120);
 
         // Reset global state for cross-game isolation in multi-game batches
-        forge.util.MyRandom.setRandom(new Random(seed));
+        CountingRandom gameRng = new CountingRandom(seed);
+        forge.util.MyRandom.setRandom(gameRng);
         ParityReset.resetAllIdCounters();
 
         // Create a shared Random for agent decisions, seeded identically to

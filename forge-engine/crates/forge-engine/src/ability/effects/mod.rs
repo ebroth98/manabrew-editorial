@@ -504,6 +504,9 @@ pub struct EffectContext<'a> {
     pub token_art_variants: &'a HashMap<(String, String), usize>,
     /// Token fallback codes: edition_code → fallback_edition_code.
     pub token_fallback: &'a HashMap<String, String>,
+    /// Edition release dates: edition_code → "YYYY-MM-DD". Used to sort
+    /// editions newest-first for token fallback (Java parity).
+    pub edition_dates: &'a HashMap<String, String>,
     pub mana_pools: &'a mut Vec<ManaPool>,
     /// CardId of the parent SA's chosen target card, propagated through the
     /// sub-ability chain so that `Defined$ ParentTarget` effects can resolve it.
@@ -521,22 +524,21 @@ impl EffectContext<'_> {
     /// When edition_code is empty, scans all editions and returns the first
     /// match (mirrors Java's `fallbackToken` which iterates all editions).
     pub fn token_art_variant_count(&self, token_script: &str, edition_code: &str) -> usize {
-        if edition_code.is_empty() {
-            // No edition info — fall back to 1 (single variant assumed).
-            // This preserves the original hardcoded 2-call behavior (1 for
-            // Aggregates.random + 1 for getImageKey).
-            return 1;
+        let script_lower = token_script.to_lowercase();
+        if !edition_code.is_empty() {
+            let key = (script_lower.clone(), edition_code.to_uppercase());
+            if let Some(&count) = self.token_art_variants.get(&key) {
+                return count;
+            }
+            if let Some(fallback) = self.token_fallback.get(&edition_code.to_uppercase()) {
+                return self.token_art_variant_count(token_script, fallback);
+            }
         }
-        let key = (
-            token_script.to_lowercase(),
-            edition_code.to_uppercase(),
-        );
-        if let Some(&count) = self.token_art_variants.get(&key) {
-            return count;
-        }
-        if let Some(fallback) = self.token_fallback.get(&edition_code.to_uppercase()) {
-            return self.token_art_variant_count(token_script, fallback);
-        }
+        // Fallback: host edition doesn't have this token. Java's
+        // `fallbackToken` iterates editions in a specific order that's
+        // hard to reproduce exactly. In practice Java almost always
+        // resolves to an edition with 1 art variant for common tokens.
+        // Default to 1 to match the typical Java behavior.
         1
     }
 
@@ -544,12 +546,22 @@ impl EffectContext<'_> {
     /// Java calls Aggregates.random(Set) which does nextInt() per element,
     /// plus PaperToken.getImageKey() which does nextInt(artIndex).
     pub fn sync_token_art_rng(&mut self, token_script: &str, sa: &crate::spellability::SpellAbility) {
+        // Java's TokenDb caches token prototypes globally. The first creation
+        // of a token type consumes game RNG (Aggregates.random + getImageKey);
+        // Java's TokenDb caches token prototypes globally. The first creation
+        // of a token type consumes game RNG (Aggregates.random + getImageKey);
+        // subsequent creations reuse the cached prototype without RNG.
         let host_edition = sa.source
             .and_then(|cid| self.game.card(cid).set_code.as_deref())
             .unwrap_or("");
-        let art_variants = self.token_art_variant_count(token_script, host_edition);
-        // Aggregates.random on Iterable: nextInt() per element
-        for _ in 0..art_variants {
+        let art_count = self.token_art_variant_count(token_script, host_edition);
+        if std::env::var("FORGE_TOKEN_DEBUG").is_ok() {
+            eprintln!("[TOKEN_DBG] sync_token_art_rng script={:?} host_edition={:?} art_count={}", token_script, host_edition, art_count);
+        }
+        // Java's Aggregates.random(Collection<PaperToken>) uses min-random
+        // selection: for each element, call nextInt() (unbounded). Collection
+        // size = number of art variants in the resolved edition.
+        for _ in 0..art_count {
             self.rng.next_int(1);
         }
         // PaperToken.getImageKey(): nextInt(artIndex)
@@ -562,6 +574,7 @@ impl EffectContext<'_> {
             token_templates: self.token_templates,
             token_art_variants: self.token_art_variants,
             token_fallback: self.token_fallback,
+            edition_dates: self.edition_dates,
             mana_pools: self.mana_pools,
             rng: self.rng,
         };
@@ -911,44 +924,53 @@ fn matches_condition_filter(
     }
     let card = game.card(cid);
     let source = game.card(source_id);
-    alternatives.iter().any(|alt| {
-        let (base, qualifier) = if let Some((b, q)) = alt.split_once('.') {
-            (b, Some(q))
-        } else {
-            (*alt, None)
-        };
-        let type_ok = match base.to_ascii_lowercase().as_str() {
-            "card" => true,
-            "creature" => card.is_creature(),
-            "instant" => card.type_line.is_instant(),
-            "sorcery" => card.type_line.is_sorcery(),
-            "artifact" => card.type_line.is_artifact(),
-            "enchantment" => card.type_line.is_enchantment(),
-            "land" => card.is_land(),
-            "planeswalker" => card.type_line.is_planeswalker(),
-            _ => card.type_line.has_subtype(base),
-        };
-        if !type_ok {
-            return false;
-        }
-        // Check qualifier
-        if let Some(q) = qualifier {
-            match q.to_ascii_lowercase().as_str() {
-                "basic" => card.type_line.is_basic(),
-                "nonbasic" => !card.type_line.is_basic(),
-                "youctrl" | "youown" => card.controller == player,
-                "oppctrl" => card.controller != player,
-                "chosenctrl" => {
-                    // Card must be controlled by the secretly chosen player
-                    source
-                        .chosen_player
-                        .map_or(false, |chosen| card.controller == chosen)
-                }
-                _ => true,
-            }
-        } else {
-            true
-        }
+    alternatives
+        .iter()
+        .any(|alt| filter_expr_matches(card, source, player, alt))
+}
+
+/// Evaluate a single `Type.Qualifier1+Qualifier2+...` filter expression.
+/// All qualifiers must pass (AND semantics, mirroring Java's CardType.matches).
+fn filter_expr_matches(
+    card: &crate::card::Card,
+    source: &crate::card::Card,
+    player: PlayerId,
+    alt: &str,
+) -> bool {
+    let (base, qualifiers) = if let Some((b, q)) = alt.split_once('.') {
+        (b, Some(q))
+    } else {
+        (alt, None)
+    };
+    let type_ok = match base.to_ascii_lowercase().as_str() {
+        "card" | "permanent" => true,
+        "creature" => card.is_creature(),
+        "instant" => card.type_line.is_instant(),
+        "sorcery" => card.type_line.is_sorcery(),
+        "artifact" => card.type_line.is_artifact(),
+        "enchantment" => card.type_line.is_enchantment(),
+        "land" => card.is_land(),
+        "planeswalker" => card.type_line.is_planeswalker(),
+        _ => card.type_line.has_subtype(base),
+    };
+    if !type_ok {
+        return false;
+    }
+    let Some(qualifiers) = qualifiers else {
+        return true;
+    };
+    // Qualifiers are '+'-separated and must all match (AND).
+    qualifiers.split('+').all(|q| match q.to_ascii_lowercase().as_str() {
+        "basic" => card.type_line.is_basic(),
+        "nonbasic" => !card.type_line.is_basic(),
+        "youctrl" | "youown" => card.controller == player,
+        "oppctrl" | "oppown" => card.controller != player,
+        "chosenctrl" => source
+            .chosen_player
+            .map_or(false, |chosen| card.controller == chosen),
+        "" => true,
+        // Unknown qualifier — permissive (matches Java fallthrough).
+        _ => true,
     })
 }
 

@@ -321,6 +321,20 @@ pub trait PlayerAgent {
         hand.iter().copied().take(num).collect()
     }
 
+    /// Choose any number of cards to discard (for `AnyNumber$ True` on
+    /// SP$/DB$ Discard). The agent may pick 0..=hand.len() cards.
+    /// Default: discard `min` cards (the minimum forced amount).
+    fn choose_discard_any_number(
+        &mut self,
+        _player: PlayerId,
+        hand: &[CardId],
+        min: usize,
+        max: usize,
+    ) -> Vec<CardId> {
+        let _ = max;
+        hand.iter().copied().take(min).collect()
+    }
+
     /// Choose cards to discard at random (for Mode$ Random discard, e.g. Hypnotic Specter).
     /// The engine calls this instead of `choose_discard` when the discard is random.
     /// Default: discard the first `num` cards (same as choose_discard).

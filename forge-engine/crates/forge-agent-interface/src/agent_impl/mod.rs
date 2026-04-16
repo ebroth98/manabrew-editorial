@@ -167,6 +167,7 @@ impl<T: AgentTransport> PromptAgent<T> {
                 "foretellExile".to_string(),
                 "Foretell (exile face-down)".to_string(),
             ),
+            PlayCardMode::UnlockDoor => ("unlockDoor".to_string(), "Unlock door".to_string()),
         };
         PlayOptionDto {
             card_id,
@@ -182,6 +183,7 @@ impl<T: AgentTransport> PromptAgent<T> {
             "normal" => Some(PlayCardMode::Normal),
             "staticAlternative" => Some(PlayCardMode::StaticAlternative),
             "foretellExile" => Some(PlayCardMode::ForetellExile),
+            "unlockDoor" => Some(PlayCardMode::UnlockDoor),
             s if s.starts_with("alternative:") => {
                 let alt_name = &s["alternative:".len()..];
                 let alt = match alt_name {

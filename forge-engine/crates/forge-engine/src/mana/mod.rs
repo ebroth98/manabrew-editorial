@@ -813,6 +813,7 @@ pub fn calculate_available_mana_for_casting_excluding(
         excluded_source,
         &[],
         true,
+        None,
     )
 }
 
@@ -844,6 +845,34 @@ pub fn calculate_available_mana_excluding_with_reserved(
         excluded_source,
         reserved_sacrifices,
         false,
+        None,
+    )
+}
+
+/// Like `calculate_available_mana_excluding_with_reserved` but filters mana
+/// abilities whose `RestrictValid$` cannot be satisfied by the given payment
+/// context. Java's ActionSpace filters per-spell via
+/// `manaPart.meetsManaRestrictions(saBeingPaid)`; this mirrors that for
+/// Rust's playability checks.
+pub fn calculate_available_mana_with_context(
+    pool: &ManaPool,
+    game: &GameState,
+    player: PlayerId,
+    excluded_source: Option<CardId>,
+    reserved_sacrifices: &[CardId],
+    payment_ctx: Option<&ManaPaymentContext>,
+) -> ManaPool {
+    // Include hand-based mana sources (e.g. Simian Spirit Guide's exile-
+    // from-hand ability) so playability checks account for them. Mirrors
+    // Java's ComputerUtilMana which iterates hand mana abilities.
+    calculate_available_mana_excluding_with_reserved_impl(
+        pool,
+        game,
+        player,
+        excluded_source,
+        reserved_sacrifices,
+        true,
+        payment_ctx,
     )
 }
 
@@ -854,6 +883,7 @@ fn calculate_available_mana_excluding_with_reserved_impl(
     excluded_source: Option<CardId>,
     reserved_sacrifices: &[CardId],
     include_hand_sources: bool,
+    payment_ctx: Option<&ManaPaymentContext>,
 ) -> ManaPool {
     let mut available = pool.clone();
     let battlefield = game.cards_in_zone(ZoneType::Battlefield, player);
@@ -958,6 +988,31 @@ fn calculate_available_mana_excluding_with_reserved_impl(
                         ab,
                         reserved_sacrifices,
                     )
+                    // If a payment context is provided, filter out mana
+                    // abilities whose RestrictValid$ cannot be satisfied.
+                    // Substitute "ChosenType" with the source card's chosen
+                    // type (e.g. Unclaimed Territory).
+                    && {
+                        if let Some(ctx) = payment_ctx {
+                            match ab.params.get(keys::RESTRICT_VALID) {
+                                Some(raw) => {
+                                    let resolved = if raw.contains("ChosenType") {
+                                        let chosen = card
+                                            .chosen_type
+                                            .clone()
+                                            .unwrap_or_default();
+                                        raw.replace("ChosenType", &chosen)
+                                    } else {
+                                        raw.to_string()
+                                    };
+                                    mana_meets_restriction(&resolved, ctx)
+                                }
+                                None => true,
+                            }
+                        } else {
+                            true
+                        }
+                    }
             })
             .collect();
 
@@ -1037,6 +1092,7 @@ fn calculate_available_mana_excluding_with_reserved_impl(
                         added_any = true;
                     }
                 } else {
+                    let amount = resolve_mana_ability_amount(game, card_id, player, ab);
                     if let Some(fixed_atoms) = fixed_produced_atoms(produced, &card.chosen_colors)
                     {
                         for atom in fixed_atoms {
@@ -1055,6 +1111,16 @@ fn calculate_available_mana_excluding_with_reserved_impl(
                                 src_mask |= atom;
                                 added_any = true;
                             }
+                        }
+                    }
+                    // Amount > 1 (e.g. Sol Ring: Amount$ 2) — one activation produces
+                    // multiple mana, so push extra source entries so
+                    // can_pay_source_matching's source-count budget matches the real
+                    // mana count and this source can satisfy multiple generic shards.
+                    if amount > 1 && added_any {
+                        for _ in 0..(amount - 1) {
+                            source_count += 1;
+                            source_colors.push(src_mask);
                         }
                     }
                 }

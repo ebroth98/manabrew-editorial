@@ -66,6 +66,8 @@ enum EffectKind {
     GrantKeyword(String),
     /// Grant an activated ability (from AddAbility$). The string is the ability text.
     GrantAbility(String),
+    /// Add a type/subtype to the card (`AddType$`). Mirrors Java layer 4.
+    AddType(String),
 }
 
 // ── Public API ───────────────────────────────────────────────────────────────
@@ -97,6 +99,12 @@ pub fn apply_continuous_effects(game: &mut GameState) {
             card.static_set_toughness = None;
         }
         card.granted_keywords.clear();
+        // Remove any subtypes previously added by AddType$ statics so this
+        // cycle starts from the intrinsic type line.
+        if !card.static_added_subtypes.is_empty() {
+            let added = std::mem::take(&mut card.static_added_subtypes);
+            card.type_line.subtypes.retain(|s| !added.contains(s));
+        }
         card.cant_attack_static = false;
         card.cant_block_static = false;
     }
@@ -191,11 +199,21 @@ pub fn apply_continuous_effects(game: &mut GameState) {
                 .collect()
         } else {
             let filter = CardFilter::parse(affected_str);
-            // Collect matching target IDs before any mutation.
+            // AffectedZone$ overrides the default Battlefield filter (e.g.
+            // Ashling, the Limitless grants Evoke:4 to Elementals in Hand).
+            let affected_zones: Vec<ZoneType> = sa
+                .params
+                .get(keys::AFFECTED_ZONE)
+                .map(|s| {
+                    s.split(',')
+                        .filter_map(|z| ZoneType::from_str_compat(z.trim()))
+                        .collect()
+                })
+                .unwrap_or_else(|| vec![ZoneType::Battlefield]);
             game.cards
                 .iter()
                 .filter(|c| {
-                    c.zone == ZoneType::Battlefield
+                    affected_zones.contains(&c.zone)
                         && filter.matches_with_game(c, source_card, game)
                 })
                 .map(|c| c.id)
@@ -262,6 +280,22 @@ pub fn apply_continuous_effects(game: &mut GameState) {
                                 layer: Layer::Ability,
                                 target,
                                 kind: EffectKind::GrantKeyword(kw.to_string()),
+                            });
+                        }
+                    }
+
+                    // AddType$ — grant a type/subtype (layer 4). Supports
+                    // comma or " & " separated lists, e.g. Yavimaya, Cradle of
+                    // Growth: AddType$ Forest.
+                    if let Some(raw) = sa.params.get(keys::ADD_TYPE) {
+                        for t in raw.split(|c| c == ',' || c == '&').map(str::trim) {
+                            if t.is_empty() {
+                                continue;
+                            }
+                            pending.push(PendingEffect {
+                                layer: Layer::Type,
+                                target,
+                                kind: EffectKind::AddType(t.to_string()),
                             });
                         }
                     }
@@ -414,6 +448,13 @@ pub fn apply_continuous_effects(game: &mut GameState) {
             EffectKind::GrantKeyword(kw) => {
                 let card = &mut game.cards[effect.target.index()];
                 card.granted_keywords.add(&kw);
+            }
+            EffectKind::AddType(t) => {
+                let card = &mut game.cards[effect.target.index()];
+                if !card.type_line.subtypes.iter().any(|s| s == &t) {
+                    card.type_line.subtypes.push(t.clone());
+                    card.static_added_subtypes.push(t);
+                }
             }
             EffectKind::GrantAbility(ab_text) => {
                 // Parse the ability text and add it to the target's activated abilities.

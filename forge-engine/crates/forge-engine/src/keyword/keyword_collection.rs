@@ -274,7 +274,7 @@ impl KeywordCollection {
 
 /// Parse a keyword string into a (Keyword, details) pair.
 /// Mirrors Java's `Keyword.getKeywordDetails`.
-fn parse_keyword_string(k: &str) -> (Keyword, String) {
+pub(crate) fn parse_keyword_string(k: &str) -> (Keyword, String) {
     if k.contains(':') {
         let parts: Vec<&str> = k.splitn(2, ':').collect();
         let keyword = Keyword::smart_value_of(parts[0]);

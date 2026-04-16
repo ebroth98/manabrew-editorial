@@ -91,6 +91,12 @@ impl GameLoop {
                 return;
             }
 
+            // Refresh continuous static effects before enumerating the action
+            // space. Otherwise granted keywords from statics (e.g. Ashling's
+            // `AddKeyword$ Evoke:4 | AffectedZone$ Hand`) may be stale when a
+            // new card just entered hand or the zone set changed, and the
+            // first playability check misses those grants.
+            crate::staticability::layer::apply_continuous_effects(game);
             let action_space = self.action_space(game, priority_player, is_main_phase);
             self.log_waiting_for_priority(game, priority_player);
             let action = {
@@ -170,6 +176,51 @@ impl GameLoop {
                         });
                         continue;
                     }
+
+                    // Room UnlockDoor: dispatch to activate_ability instead of play_card.
+                    // Java models this as a StaticAbilityApiBased that goes through the
+                    // ability activation path, not the spell cast path.
+                    if play.mode == crate::agent::PlayCardMode::UnlockDoor {
+                        let unlock_ab_idx = game
+                            .card(play.card_id)
+                            .activated_abilities
+                            .iter()
+                            .find(|ab| {
+                                ab.params
+                                    .get(crate::parsing::keys::AB)
+                                    .map(|v| v.eq_ignore_ascii_case("UnlockDoor"))
+                                    .unwrap_or(false)
+                            })
+                            .map(|ab| ab.ability_index);
+                        if let Some(ability_idx) = unlock_ab_idx {
+                            let activated = self.with_shared_state_mutation(
+                                game,
+                                agents,
+                                |this, game, agents| {
+                                    this.activate_ability(
+                                        game,
+                                        agents,
+                                        priority_player,
+                                        play.card_id,
+                                        ability_idx,
+                                    )
+                                },
+                            );
+                            if activated {
+                                self.with_shared_state_mutation(
+                                    game,
+                                    agents,
+                                    |this, game, agents| {
+                                        this.process_triggers(game, agents);
+                                    },
+                                );
+                                passed_count = 0;
+                            }
+                            // Whether activated or not, skip the normal play_card path
+                            continue;
+                        }
+                    }
+
                     let played =
                         self.with_shared_state_mutation(game, agents, |this, game, agents| {
                             this.play_card(game, agents, priority_player, play.card_id, play.mode)
@@ -268,8 +319,7 @@ impl GameLoop {
                                 if let Some(produced) =
                                     ab.params.get(crate::parsing::keys::PRODUCED)
                                 {
-                                    let chosen_colors =
-                                        game.card(land_id).chosen_colors.clone();
+                                    let chosen_colors = game.card(land_id).chosen_colors.clone();
                                     let names = crate::mana::produced_to_color_names(
                                         produced,
                                         &chosen_colors,
@@ -316,59 +366,52 @@ impl GameLoop {
                         // that don't require their own tap).
                         for ab in &non_tap_abs {
                             let ab = (*ab).clone();
-                            self.with_shared_state_mutation(
-                                game,
-                                agents,
-                                |this, game, agents| {
-                                    let produced = ab
-                                        .params
-                                        .get(crate::parsing::keys::PRODUCED)
-                                        .unwrap_or("");
-                                    let mana_string = crate::mana::determine_mana_production(
-                                        game,
-                                        agents,
-                                        priority_player,
-                                        land_id,
-                                        produced,
-                                        ab.params.get(crate::parsing::keys::AMOUNT),
-                                        None,
+                            self.with_shared_state_mutation(game, agents, |this, game, agents| {
+                                let produced =
+                                    ab.params.get(crate::parsing::keys::PRODUCED).unwrap_or("");
+                                let mana_string = crate::mana::determine_mana_production(
+                                    game,
+                                    agents,
+                                    priority_player,
+                                    land_id,
+                                    produced,
+                                    ab.params.get(crate::parsing::keys::AMOUNT),
+                                    None,
+                                );
+                                if let Some(ms) = mana_string {
+                                    let source_is_snow = game.card(land_id).type_line.is_snow();
+                                    let mana_params = crate::mana::ManaProductionParams {
+                                        source_card: land_id,
+                                        is_snow: source_is_snow,
+                                        restriction: ab
+                                            .params
+                                            .get_cloned(crate::parsing::keys::RESTRICT_VALID),
+                                        adds_no_counter: ab
+                                            .params
+                                            .is_true(crate::parsing::keys::ADDS_NO_COUNTER),
+                                        adds_keywords: ab
+                                            .params
+                                            .get_cloned(crate::parsing::keys::ADDS_KEYWORDS),
+                                        adds_keywords_valid: ab
+                                            .params
+                                            .get_cloned(crate::parsing::keys::ADDS_KEYWORDS_VALID),
+                                        adds_counters: ab
+                                            .params
+                                            .get_cloned(crate::parsing::keys::ADDS_COUNTERS),
+                                        adds_counters_valid: ab
+                                            .params
+                                            .get_cloned(crate::parsing::keys::ADDS_COUNTERS_VALID),
+                                        triggers_when_spent: ab
+                                            .params
+                                            .get_cloned(crate::parsing::keys::TRIGGERS_WHEN_SPENT),
+                                    };
+                                    crate::mana::add_produced_mana_to_pool(
+                                        this.pool_mut(priority_player),
+                                        &ms,
+                                        &mana_params,
                                     );
-                                    if let Some(ms) = mana_string {
-                                        let source_is_snow =
-                                            game.card(land_id).type_line.is_snow();
-                                        let mana_params = crate::mana::ManaProductionParams {
-                                            source_card: land_id,
-                                            is_snow: source_is_snow,
-                                            restriction: ab.params.get_cloned(
-                                                crate::parsing::keys::RESTRICT_VALID,
-                                            ),
-                                            adds_no_counter: ab
-                                                .params
-                                                .is_true(crate::parsing::keys::ADDS_NO_COUNTER),
-                                            adds_keywords: ab.params.get_cloned(
-                                                crate::parsing::keys::ADDS_KEYWORDS,
-                                            ),
-                                            adds_keywords_valid: ab.params.get_cloned(
-                                                crate::parsing::keys::ADDS_KEYWORDS_VALID,
-                                            ),
-                                            adds_counters: ab.params.get_cloned(
-                                                crate::parsing::keys::ADDS_COUNTERS,
-                                            ),
-                                            adds_counters_valid: ab.params.get_cloned(
-                                                crate::parsing::keys::ADDS_COUNTERS_VALID,
-                                            ),
-                                            triggers_when_spent: ab.params.get_cloned(
-                                                crate::parsing::keys::TRIGGERS_WHEN_SPENT,
-                                            ),
-                                        };
-                                        crate::mana::add_produced_mana_to_pool(
-                                            this.pool_mut(priority_player),
-                                            &ms,
-                                            &mana_params,
-                                        );
-                                    }
-                                },
-                            );
+                                }
+                            });
                         }
                     } else {
                         // Legacy fallback for lands with no parsed mana abilities

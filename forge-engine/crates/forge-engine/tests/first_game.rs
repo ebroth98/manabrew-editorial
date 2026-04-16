@@ -154,8 +154,7 @@ impl PlayerAgent for ScriptedAgent {
         None
     }
 
-    fn notify(&mut self, message: &str) {
-        self.log.push(format!("[{}] {}", self.name, message));
+    fn notify(&mut self, _event: forge_engine_core::agent::notification::GameNotification) {
     }
 
     fn choose_targets_for(

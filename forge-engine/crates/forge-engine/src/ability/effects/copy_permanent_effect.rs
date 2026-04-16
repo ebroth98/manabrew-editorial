@@ -118,6 +118,19 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         ZoneType::None,
         ZoneType::Battlefield,
     );
+
+    // `RememberTokens$ True` — track each created token on the source card so
+    // a downstream SubAbility (e.g. Ashling's `DelTrig` with
+    // `RememberObjects$ Remembered`) can find it later.
+    let remember_tokens = sa
+        .params
+        .get("RememberTokens")
+        .map_or(false, |v| v.eq_ignore_ascii_case("True"));
+    if remember_tokens {
+        if let Some(sid) = sa.source {
+            ctx.game.card_mut(sid).add_remembered_card(copy_id);
+        }
+    }
 }
 
 fn resolve_original(sa: &SpellAbility) -> Option<CardId> {
@@ -126,6 +139,16 @@ fn resolve_original(sa: &SpellAbility) -> Option<CardId> {
         match defined {
             "Self" => return sa.source,
             "ParentTarget" => return sa.target_chosen.target_card,
+            "TriggeredCard" | "TriggeredCardLKICopy" | "TriggeredSacrificedCard" => {
+                // The triggering object for a Sacrificed/ChangesZone trigger
+                // is stored under the "Card" key; read it back as a CardId.
+                if let Some(id_str) = sa.trigger_objects.get("Card") {
+                    if let Ok(id) = id_str.parse::<u32>() {
+                        return Some(CardId(id));
+                    }
+                }
+                return None;
+            }
             _ => {}
         }
     }

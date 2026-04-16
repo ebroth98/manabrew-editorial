@@ -91,6 +91,11 @@ impl GameLoop {
 
             match play_mode {
                 crate::agent::PlayCardMode::Normal => {}
+                crate::agent::PlayCardMode::UnlockDoor => {
+                    // UnlockDoor should be handled by priority.rs routing to
+                    // activate_ability, not play_card. If we reach here, bail.
+                    return None;
+                }
                 crate::agent::PlayCardMode::StaticAlternative => {
                     is_static_alternative = true;
                 }
@@ -304,7 +309,11 @@ impl GameLoop {
                 forge_foundation::ManaCost::parse(&spec_cost_str)
             } else if is_evoke {
                 let evoke_cost_str = game.card(card_id).get_evoke_cost().unwrap_or_default();
-                forge_foundation::ManaCost::parse(&evoke_cost_str)
+                // Evoke cost may include non-mana parts (e.g. Fury:
+                // ExileFromHand<1/Card.Red+Other/red card>). Parse as a full
+                // Cost and extract only the mana portion for mana payment;
+                // the non-mana parts are paid below via pay_additional_costs.
+                Self::mana_from_cost(&crate::cost::parse_cost(&evoke_cost_str))
             } else if is_escape {
                 let (escape_mana_str, _) = game
                     .card(card_id)
@@ -766,6 +775,7 @@ impl GameLoop {
                 sa.alt_cost = Some(crate::spellability::AlternativeCost::Foretell);
             } else if is_flashback {
                 sa.alt_cost = Some(crate::spellability::AlternativeCost::Flashback);
+                game.card_mut(card_id).cast_with_flashback = true;
             } else if is_spectacle {
                 sa.alt_cost = Some(crate::spellability::AlternativeCost::Spectacle);
             } else if is_evoke {
@@ -1358,6 +1368,7 @@ impl GameLoop {
                                                 token_templates: &self.token_templates,
                                                 token_art_variants: &self.token_art_variants,
                                                 token_fallback: &self.token_fallback,
+                    edition_dates: &self.edition_dates,
                                                 mana_pools: &mut self.mana_pools,
                                                 parent_target_card: None,
                                                 rng: &mut *self.game_rng,
@@ -1549,6 +1560,26 @@ impl GameLoop {
                             waterbend_tapped.push(cid);
                         }
                     }
+                }
+            }
+
+            // Pay Evoke additional (non-mana) costs, e.g. Fury's
+            // ExileFromHand<1/Card.Red+Other/red card>.
+            if is_evoke {
+                let evoke_cost_str = game.card(card_id).get_evoke_cost().unwrap_or_default();
+                let evoke_cost = crate::cost::parse_cost(&evoke_cost_str);
+                if !self.pay_additional_costs(
+                    game,
+                    agents,
+                    player,
+                    card_id,
+                    &evoke_cost,
+                    None,
+                    evoke_cost.mandatory,
+                    Some(&sa),
+                    None,
+                ) {
+                    return None;
                 }
             }
 

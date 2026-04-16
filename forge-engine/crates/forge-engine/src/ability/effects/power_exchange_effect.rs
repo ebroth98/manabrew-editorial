@@ -169,6 +169,7 @@ mod tests {
         let templates = HashMap::new();
         let templates_variants = HashMap::new();
         let token_fallback = HashMap::new();
+        let edition_dates: HashMap<String, String> = HashMap::new();
         let mut rng_adapter = crate::game_rng::ThreadRngAdapter;
         let mut ctx = EffectContext {
             game: &mut game,
@@ -178,6 +179,7 @@ mod tests {
             token_templates: &templates,
             token_art_variants: &templates_variants,
             token_fallback: &token_fallback,
+            edition_dates: &edition_dates,
             mana_pools: &mut mp,
             parent_target_card: None,
             rng: &mut rng_adapter,

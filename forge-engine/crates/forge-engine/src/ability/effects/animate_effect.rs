@@ -82,6 +82,9 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         }
     }
 
+    // Snapshot target IDs for AtEOT$ delayed trigger registration after the loop.
+    let eot_targets = target_ids.clone();
+
     for card_id in target_ids {
         // Only animate cards on the battlefield
         if ctx.game.card(card_id).zone != ZoneType::Battlefield {
@@ -261,6 +264,41 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             } else {
                 ctx.game.card_mut(card_id).set_color(new_color);
             }
+        }
+    }
+
+    // AtEOT$ — register a delayed trigger for the end step that performs
+    // the specified action (Sacrifice, Exile, Hand, etc.) on the animated
+    // cards. Mirrors Java's AnimateEffect → registerDelayedTrigger.
+    if let Some(eot_action) = sa.params.get(keys::AT_EOT) {
+        let execute_svar = match eot_action {
+            "Sacrifice" => "DB$ SacrificeAll | Defined$ DelayTriggerRememberedLKI | Controller$ You".to_string(),
+            "SacrificeCtrl" => "DB$ SacrificeAll | Defined$ DelayTriggerRememberedLKI".to_string(),
+            "Exile" => "DB$ ChangeZone | Defined$ DelayTriggerRememberedLKI | Origin$ Battlefield | Destination$ Exile".to_string(),
+            "Hand" => "DB$ ChangeZone | Defined$ DelayTriggerRememberedLKI | Origin$ Battlefield | Destination$ Hand".to_string(),
+            "Destroy" => "DB$ Destroy | Defined$ DelayTriggerRememberedLKI".to_string(),
+            _ => "DB$ SacrificeAll | Defined$ DelayTriggerRememberedLKI | Controller$ You".to_string(),
+        };
+        let remembered: Vec<crate::ids::CardId> = eot_targets
+            .iter()
+            .copied()
+            .filter(|&cid| ctx.game.card(cid).zone == ZoneType::Battlefield)
+            .collect();
+        if !remembered.is_empty() {
+            ctx.trigger_handler
+                .register_delayed_trigger(crate::trigger::handler::DelayedTrigger {
+                    mode: crate::event::TriggerType::Phase,
+                    trigger_mode: crate::trigger::TriggerMode::Phase {
+                        phase: Some(forge_foundation::PhaseType::EndOfTurn),
+                        valid_player: None,
+                    },
+                    execute_svar,
+                    controller,
+                    source_card: sa.source.unwrap_or(remembered[0]),
+                    target_card: None,
+                    remembered_amount: 0,
+                    remembered_cards: remembered,
+                });
         }
     }
 }

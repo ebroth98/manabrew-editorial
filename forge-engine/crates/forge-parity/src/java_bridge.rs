@@ -84,6 +84,12 @@ impl JavaBridge {
         if std::env::var("FORGE_RNG_TRACE").is_ok() {
             cmd.arg("-Dforge.parity.rng.trace=true");
         }
+        if std::env::var("FORGE_LIB_DUMP").is_ok() {
+            cmd.env("FORGE_LIB_DUMP", "1");
+        }
+        if std::env::var("FORGE_TOKEN_DEBUG").is_ok() {
+            cmd.env("FORGE_TOKEN_DEBUG", "1");
+        }
 
         cmd.arg("-jar")
             .arg(jar)
@@ -143,6 +149,10 @@ impl JavaBridge {
                         || line.contains("[java-target")
                         || line.contains("[det-java")
                         || line.contains("[parity-agent-java")
+                        || line.contains("[LIB_DUMP_JAVA")
+                        || line.contains("[TOKEN_DBG_JAVA")
+                        || line.contains("[rng-java-bt")
+                        || line.contains("  at ")
                     {
                         eprintln!("[java] {}", line);
                     }
@@ -315,6 +325,12 @@ impl JavaServer {
         if std::env::var("FORGE_RNG_TRACE").is_ok() {
             cmd.arg("-Dforge.parity.rng.trace=true");
         }
+        if std::env::var("FORGE_LIB_DUMP").is_ok() {
+            cmd.env("FORGE_LIB_DUMP", "1");
+        }
+        if std::env::var("FORGE_TOKEN_DEBUG").is_ok() {
+            cmd.env("FORGE_TOKEN_DEBUG", "1");
+        }
 
         cmd.arg("-jar").arg(jar).arg("--server");
 
@@ -364,6 +380,10 @@ impl JavaServer {
                         || line.contains("[java-target")
                         || line.contains("[det-java")
                         || line.contains("[parity-agent-java")
+                        || line.contains("[LIB_DUMP_JAVA")
+                        || line.contains("[TOKEN_DBG_JAVA")
+                        || line.contains("[rng-java-bt")
+                        || line.contains("  at ")
                     {
                         eprintln!("[java] {}", line);
                     }

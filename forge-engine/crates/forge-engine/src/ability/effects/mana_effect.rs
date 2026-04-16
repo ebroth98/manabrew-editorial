@@ -45,8 +45,22 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         None => return,
     };
 
-    // Read metadata params from the ability
-    let restriction = sa.params.get_cloned(keys::RESTRICT_VALID);
+    // Read metadata params from the ability. Substitute "ChosenType" with
+    // the source card's chosen type so the restriction stored on the Mana
+    // can be checked without needing the source card later.
+    let restriction = sa.params.get_cloned(keys::RESTRICT_VALID).map(|r| {
+        if r.contains("ChosenType") {
+            let chosen = ctx
+                .game
+                .card(source_id)
+                .chosen_type
+                .clone()
+                .unwrap_or_default();
+            r.replace("ChosenType", &chosen)
+        } else {
+            r
+        }
+    });
     let adds_no_counter = sa
         .params
         .get(keys::ADDS_NO_COUNTER)

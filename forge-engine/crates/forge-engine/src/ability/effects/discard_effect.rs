@@ -13,6 +13,15 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         .as_usize(crate::parsing::keys::NUM_CARDS)
         .unwrap_or(1);
 
+    // AnyNumber$ True — the discarder may pick 0..=hand.len cards (e.g.
+    // Cavalier of Flame, Careful Study). Routed through a distinct agent
+    // method so deterministic agents can sample a count + selection with the
+    // same RNG trajectory Java uses via its AnyNumber chooser.
+    let any_number = sa
+        .params
+        .get("AnyNumber")
+        .map_or(false, |v| v.eq_ignore_ascii_case("True"));
+
     // Mode$ Random — discard at random (e.g. Hypnotic Specter).
     // Mirrors Java's DiscardEffect which calls Aggregates.random() bypassing the controller.
     // We route through the agent's choose_random_discard so deterministic agents can
@@ -28,7 +37,11 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             .cards_in_zone(ZoneType::Hand, target_player)
             .to_vec();
 
-        if sa.params.has(crate::parsing::keys::OPTIONAL) {
+        // AnyNumber$ True implicitly subsumes Optional — picking 0 cards is
+        // the "decline" choice. Java's DiscardEffect doesn't fire a separate
+        // confirm_action in that case; mirror that to keep callback counts
+        // in parity.
+        if sa.params.has(crate::parsing::keys::OPTIONAL) && !any_number {
             let source_name = sa.source.map(|cid| ctx.game.card(cid).card_name.as_str());
             let accepted = ctx.agents[target_player.index()].confirm_action(
                 target_player,
@@ -45,12 +58,32 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
 
         let to_discard = if is_random {
             ctx.agents[target_player.index()].choose_random_discard(target_player, &hand, num)
+        } else if any_number {
+            ctx.agents[target_player.index()].choose_discard_any_number(
+                target_player,
+                &hand,
+                0,
+                hand.len(),
+            )
         } else {
             ctx.agents[target_player.index()].choose_discard(target_player, &hand, num)
         };
 
+        // RememberDiscarded$ — source remembers each card actually discarded
+        // so downstream SubAbility effects (e.g. Cavalier of Flame's
+        // `NumCards$ Y` where Y = Remembered count) can compute amounts.
+        let remember_discarded = sa
+            .params
+            .get("RememberDiscarded")
+            .map_or(false, |v| v.eq_ignore_ascii_case("True"));
+
         for card_id in to_discard {
             if ctx.game.card(card_id).zone == ZoneType::Hand {
+                if remember_discarded {
+                    if let Some(sid) = sa.source {
+                        ctx.game.card_mut(sid).add_remembered_card(card_id);
+                    }
+                }
                 ctx.game.discard_card(
                     card_id,
                     target_player,

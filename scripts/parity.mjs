@@ -12,13 +12,16 @@ const javaJar = join(root, "forge/forge-harness/target/forge-harness-jar-with-de
 execSync("bash scripts/check-harness.sh", { stdio: "inherit", cwd: root });
 
 const name = process.argv[2];
+const extraArgs = process.argv.slice(3).join(" ");
+
 if (!name) {
   const registry = JSON.parse(readFileSync(registryPath, "utf-8"));
-  console.error("Usage: npm run parity <test-name>\n");
+  console.error("Usage: npm run parity <test-name> [extra-args]\n");
   console.error("Available tests:");
   for (const entry of registry) {
     console.error(`  - ${entry.name}`);
   }
+  console.error("\nExtra args are appended to the cargo command (e.g. --investigate --verbose)");
   process.exit(1);
 }
 
@@ -29,6 +32,6 @@ if (!entry) {
   process.exit(1);
 }
 
-const cmd = `cargo run -p forge-parity --bin forge-parity -- --java-jar "${javaJar}" ${entry.args}`;
+const cmd = `cargo run -p forge-parity --bin forge-parity -- --java-jar "${javaJar}" ${entry.args}${extraArgs ? " " + extraArgs : ""}`;
 console.log(`> ${cmd}\n`);
 execSync(cmd, { stdio: "inherit", cwd: root });
