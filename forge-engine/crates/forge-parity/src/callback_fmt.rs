@@ -28,6 +28,7 @@ use forge_engine_core::ids::{CardId, PlayerId};
 use forge_engine_core::mana::ManaPool;
 use forge_engine_core::player::actions::player_action::{AbilityRef, PlayerAction};
 use forge_engine_core::spellability::SpellAbility;
+use forge_foundation::mana::ManaAtom;
 use forge_foundation::{ManaCost, ZoneType};
 
 use crate::parity_card_map::ParityCardMap;
@@ -268,15 +269,33 @@ impl ParityFormat for ManaCostAction {
                     write!(out, ", mana_ability_index: {idx}").unwrap();
                 }
                 if let Some(ec) = express_choice {
-                    write!(out, ", express_choice: {ec}").unwrap();
+                    write!(out, ", express_choice: {}", fmt_mana_atom(*ec)).unwrap();
                 }
                 out.push_str(" }");
                 out
             }
             ManaCostAction::UntapLand(cid) => format!("UntapLand({})", ctx.card(*cid)),
-            ManaCostAction::Pay => "Pay".to_string(),
+            ManaCostAction::Pay { auto } => {
+                if *auto {
+                    "Pay { auto: true }".to_string()
+                } else {
+                    "Pay".to_string()
+                }
+            }
             ManaCostAction::Cancel => "Cancel".to_string(),
         }
+    }
+}
+
+fn fmt_mana_atom(atom: u16) -> &'static str {
+    match atom {
+        ManaAtom::WHITE => "W",
+        ManaAtom::BLUE => "U",
+        ManaAtom::BLACK => "B",
+        ManaAtom::RED => "R",
+        ManaAtom::GREEN => "G",
+        ManaAtom::COLORLESS => "C",
+        _ => "?",
     }
 }
 
@@ -293,10 +312,14 @@ pub trait CallbackArgDisplay {
 }
 
 impl<T: CallbackArgDisplay + ?Sized> CallbackArgDisplay for &T {
-    fn callback_arg_display(&self, ctx: Option<&FmtCtx<'_>>) -> String { (**self).callback_arg_display(ctx) }
+    fn callback_arg_display(&self, ctx: Option<&FmtCtx<'_>>) -> String {
+        (**self).callback_arg_display(ctx)
+    }
 }
 impl<T: CallbackArgDisplay + ?Sized> CallbackArgDisplay for &mut T {
-    fn callback_arg_display(&self, ctx: Option<&FmtCtx<'_>>) -> String { (**self).callback_arg_display(ctx) }
+    fn callback_arg_display(&self, ctx: Option<&FmtCtx<'_>>) -> String {
+        (**self).callback_arg_display(ctx)
+    }
 }
 
 impl CallbackArgDisplay for [CardId] {
@@ -328,8 +351,15 @@ macro_rules! impl_slice_len {
     }
 }
 impl_slice_len!(
-    PlayOption, DefenderId, String, u32, i32, GameEntity,
-    SpellAbility, ManaPool, (CardId, usize),
+    PlayOption,
+    DefenderId,
+    String,
+    u32,
+    i32,
+    GameEntity,
+    SpellAbility,
+    ManaPool,
+    (CardId, usize),
     forge_engine_core::agent::ManaAbilityOption
 );
 
@@ -343,27 +373,87 @@ impl<T: CallbackArgDisplay> CallbackArgDisplay for Option<T> {
 }
 
 // Primitives
-impl CallbackArgDisplay for bool { fn callback_arg_display(&self, _ctx: Option<&FmtCtx<'_>>) -> String { self.to_string() } }
-impl CallbackArgDisplay for u32 { fn callback_arg_display(&self, _ctx: Option<&FmtCtx<'_>>) -> String { self.to_string() } }
-impl CallbackArgDisplay for i32 { fn callback_arg_display(&self, _ctx: Option<&FmtCtx<'_>>) -> String { self.to_string() } }
-impl CallbackArgDisplay for usize { fn callback_arg_display(&self, _ctx: Option<&FmtCtx<'_>>) -> String { self.to_string() } }
-impl CallbackArgDisplay for str { fn callback_arg_display(&self, _ctx: Option<&FmtCtx<'_>>) -> String { self.to_string() } }
+impl CallbackArgDisplay for bool {
+    fn callback_arg_display(&self, _ctx: Option<&FmtCtx<'_>>) -> String {
+        self.to_string()
+    }
+}
+impl CallbackArgDisplay for u32 {
+    fn callback_arg_display(&self, _ctx: Option<&FmtCtx<'_>>) -> String {
+        self.to_string()
+    }
+}
+impl CallbackArgDisplay for i32 {
+    fn callback_arg_display(&self, _ctx: Option<&FmtCtx<'_>>) -> String {
+        self.to_string()
+    }
+}
+impl CallbackArgDisplay for usize {
+    fn callback_arg_display(&self, _ctx: Option<&FmtCtx<'_>>) -> String {
+        self.to_string()
+    }
+}
+impl CallbackArgDisplay for str {
+    fn callback_arg_display(&self, _ctx: Option<&FmtCtx<'_>>) -> String {
+        self.to_string()
+    }
+}
 impl CallbackArgDisplay for PlayerId {
     fn callback_arg_display(&self, ctx: Option<&FmtCtx<'_>>) -> String {
-        if let Some(ctx) = ctx { ctx.player(*self) } else { format!("P{}", self.0) }
+        if let Some(ctx) = ctx {
+            ctx.player(*self)
+        } else {
+            format!("P{}", self.0)
+        }
     }
 }
 impl CallbackArgDisplay for CardId {
     fn callback_arg_display(&self, ctx: Option<&FmtCtx<'_>>) -> String {
-        if let Some(ctx) = ctx { ctx.card(*self) } else { format!("{:?}", self) }
+        if let Some(ctx) = ctx {
+            ctx.card(*self)
+        } else {
+            format!("{:?}", self)
+        }
     }
 }
-impl CallbackArgDisplay for ZoneType { fn callback_arg_display(&self, _ctx: Option<&FmtCtx<'_>>) -> String { format!("{:?}", self) } }
-impl CallbackArgDisplay for DefenderId { fn callback_arg_display(&self, _ctx: Option<&FmtCtx<'_>>) -> String { format!("{:?}", self) } }
-impl CallbackArgDisplay for BinaryChoiceKind { fn callback_arg_display(&self, _ctx: Option<&FmtCtx<'_>>) -> String { format!("{:?}", self) } }
-impl CallbackArgDisplay for ApiType { fn callback_arg_display(&self, _ctx: Option<&FmtCtx<'_>>) -> String { format!("{:?}", self) } }
+impl CallbackArgDisplay for ZoneType {
+    fn callback_arg_display(&self, _ctx: Option<&FmtCtx<'_>>) -> String {
+        format!("{:?}", self)
+    }
+}
+impl CallbackArgDisplay for DefenderId {
+    fn callback_arg_display(&self, _ctx: Option<&FmtCtx<'_>>) -> String {
+        format!("{:?}", self)
+    }
+}
+impl CallbackArgDisplay for BinaryChoiceKind {
+    fn callback_arg_display(&self, _ctx: Option<&FmtCtx<'_>>) -> String {
+        format!("{:?}", self)
+    }
+}
+impl CallbackArgDisplay for ApiType {
+    fn callback_arg_display(&self, _ctx: Option<&FmtCtx<'_>>) -> String {
+        format!("{:?}", self)
+    }
+}
 
-impl CallbackArgDisplay for GameState { fn callback_arg_display(&self, _ctx: Option<&FmtCtx<'_>>) -> String { "_".to_string() } }
-impl CallbackArgDisplay for SpellAbility { fn callback_arg_display(&self, _ctx: Option<&FmtCtx<'_>>) -> String { "_".to_string() } }
-impl CallbackArgDisplay for ManaPool { fn callback_arg_display(&self, _ctx: Option<&FmtCtx<'_>>) -> String { "_".to_string() } }
-impl CallbackArgDisplay for ManaCost { fn callback_arg_display(&self, _ctx: Option<&FmtCtx<'_>>) -> String { "_".to_string() } }
+impl CallbackArgDisplay for GameState {
+    fn callback_arg_display(&self, _ctx: Option<&FmtCtx<'_>>) -> String {
+        "_".to_string()
+    }
+}
+impl CallbackArgDisplay for SpellAbility {
+    fn callback_arg_display(&self, _ctx: Option<&FmtCtx<'_>>) -> String {
+        "_".to_string()
+    }
+}
+impl CallbackArgDisplay for ManaPool {
+    fn callback_arg_display(&self, _ctx: Option<&FmtCtx<'_>>) -> String {
+        "_".to_string()
+    }
+}
+impl CallbackArgDisplay for ManaCost {
+    fn callback_arg_display(&self, _ctx: Option<&FmtCtx<'_>>) -> String {
+        "_".to_string()
+    }
+}

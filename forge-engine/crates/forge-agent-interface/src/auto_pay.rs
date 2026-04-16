@@ -182,7 +182,7 @@ pub fn choose_pay_mana_cost_action(
     }
 
     if can_pay_mana_cost(&player_pool, mana_cost, player_life) {
-        return Some(PlayerAction::PayManaCost);
+        return Some(PlayerAction::PayManaCost { auto: true });
     }
 
     if let Some(ability) = mana_ability_options

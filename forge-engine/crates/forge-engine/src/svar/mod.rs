@@ -632,22 +632,24 @@ pub fn resolve_numeric_svar(
         if let Some(source_id) = sa.source {
             if let Some(svar_expr) = game.card(source_id).svars.get("X") {
                 if svar_expr.starts_with("Count$") {
-                    return sign * resolve_count_svar_for_sa(
-                        svar_expr,
-                        game,
-                        source_id,
-                        sa.activating_player,
-                        sa,
-                    );
+                    return sign
+                        * resolve_count_svar_for_sa(
+                            svar_expr,
+                            game,
+                            source_id,
+                            sa.activating_player,
+                            sa,
+                        );
                 }
                 if svar_expr.starts_with("PlayerCount") {
-                    return sign * resolve_player_count_svar(
-                        svar_expr,
-                        game,
-                        source_id,
-                        sa.activating_player,
-                        sa,
-                    );
+                    return sign
+                        * resolve_player_count_svar(
+                            svar_expr,
+                            game,
+                            source_id,
+                            sa.activating_player,
+                            sa,
+                        );
                 }
                 if svar_expr.starts_with("TriggerCount$")
                     || svar_expr.starts_with("TriggerCountMax$")
@@ -711,7 +713,8 @@ pub fn resolve_numeric_svar(
                     if let Some(trigger_src) =
                         parse_trigger_card_object(sa, "Card").or(sa.trigger_source)
                     {
-                        return sign * crate::lki::resolve_lki_counter_count(game, trigger_src, &ct);
+                        return sign
+                            * crate::lki::resolve_lki_counter_count(game, trigger_src, &ct);
                     }
                     return 0;
                 }
@@ -772,22 +775,24 @@ pub fn resolve_numeric_svar(
             }
             // Game-aware SVar resolution for patterns that need GameState.
             if svar_expr.starts_with("Count$") {
-                return sign * resolve_count_svar_for_sa(
-                    svar_expr,
-                    game,
-                    source_id,
-                    sa.activating_player,
-                    sa,
-                );
+                return sign
+                    * resolve_count_svar_for_sa(
+                        svar_expr,
+                        game,
+                        source_id,
+                        sa.activating_player,
+                        sa,
+                    );
             }
             if svar_expr.starts_with("PlayerCount") {
-                return sign * resolve_player_count_svar(
-                    svar_expr,
-                    game,
-                    source_id,
-                    sa.activating_player,
-                    sa,
-                );
+                return sign
+                    * resolve_player_count_svar(
+                        svar_expr,
+                        game,
+                        source_id,
+                        sa.activating_player,
+                        sa,
+                    );
             }
             if let Some(value) = resolve_spell_ability_expr(svar_expr, game, sa) {
                 return sign * value;

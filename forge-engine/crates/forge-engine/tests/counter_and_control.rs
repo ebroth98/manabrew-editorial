@@ -96,7 +96,6 @@ impl PlayerAgent for PassAgent {
         None
     }
 
-
     fn choose_targets_for(
         &mut self,
         _sa: &mut forge_engine_core::spellability::SpellAbility,

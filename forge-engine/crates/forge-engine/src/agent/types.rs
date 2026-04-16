@@ -79,8 +79,9 @@ pub enum ManaCostAction {
     },
     /// Untap a tapped land and remove its mana from the pool (undo).
     UntapLand(CardId),
-    /// Confirm payment from the mana pool.
-    Pay,
+    /// Confirm payment from the mana pool. When `auto` is true, the engine
+    /// should complete the payment session using engine auto-pay.
+    Pay { auto: bool },
     /// Cancel casting this spell.
     Cancel,
 }

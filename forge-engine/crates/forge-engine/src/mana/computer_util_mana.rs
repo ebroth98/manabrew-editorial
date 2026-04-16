@@ -4,8 +4,8 @@ use indexmap::IndexMap;
 use std::collections::HashMap;
 
 use crate::agent::ManaAbilityOption;
-use crate::cost::{can_pay_ignoring_mana, CostPart};
 use crate::cost::cost_part::pay_cost_from_source;
+use crate::cost::{can_pay_ignoring_mana, CostPart};
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
 
@@ -74,6 +74,10 @@ pub enum ManaPayCallback<'a> {
     /// Choose which permanent to sacrifice from the given list.
     /// Return the chosen card, or None to cancel.
     ChooseSacrifice(&'a [CardId]),
+    /// Notify the caller that auto-pay is making a color-choice prompt.
+    /// The callback may use this to preserve parity-visible prompt ordering.
+    /// The return value is ignored for this variant.
+    ChooseColor(&'a [String]),
     /// Confirm whether to sacrifice the given card for a mana ability.
     /// Return true to proceed, false to cancel.
     /// Mirrors Java's DeterministicCostDecision.confirmPayment() path.
@@ -81,9 +85,13 @@ pub enum ManaPayCallback<'a> {
     /// Confirm whether to remove counters from the source for a mana ability.
     /// Mirrors Java CostPayment confirm for CostRemoveCounter (SubCounter).
     ConfirmSubCounter(CardId),
-    /// Notify that a permanent was sacrificed for mana, so the caller can
-    /// fire sacrifice triggers (TriggerType::Sacrificed). The mana module
-    /// cannot access the trigger handler directly.
+    /// Confirm whether to exile the source for a mana ability.
+    /// Mirrors Java CostPayment confirm for source-paid CostExile.
+    ConfirmSourceExile(CardId),
+    /// Execute the sacrifice of the given permanent for a mana ability.
+    /// The callback is responsible for firing Sacrificed/ChangesZone using
+    /// battlefield LKI, moving the card, and returning the same card id on
+    /// success. Returning `None` cancels the payment.
     NotifySacrificeForMana(CardId),
 }
 
@@ -102,7 +110,16 @@ pub fn auto_tap_lands(
     cost: &ManaCost,
     current_spell: Option<CardId>,
 ) -> Vec<CardId> {
-    auto_tap_lands_internal(game, pool, player, cost, current_spell, false, &mut None)
+    auto_tap_lands_trace(
+        game,
+        pool,
+        player,
+        cost,
+        current_spell,
+    )
+    .into_iter()
+    .map(|choice| choice.card_id)
+    .collect()
 }
 
 pub fn auto_tap_lands_allow_reserved_source_reuse(
@@ -112,7 +129,54 @@ pub fn auto_tap_lands_allow_reserved_source_reuse(
     cost: &ManaCost,
     current_spell: Option<CardId>,
 ) -> Vec<CardId> {
-    auto_tap_lands_internal(game, pool, player, cost, current_spell, true, &mut None)
+    auto_tap_lands_allow_reserved_source_reuse_trace(
+        game,
+        pool,
+        player,
+        cost,
+        current_spell,
+    )
+    .into_iter()
+    .map(|choice| choice.card_id)
+    .collect()
+}
+
+pub fn auto_tap_lands_trace(
+    game: &mut GameState,
+    pool: &mut ManaPool,
+    player: PlayerId,
+    cost: &ManaCost,
+    current_spell: Option<CardId>,
+) -> Vec<AutoTapChoice> {
+    auto_tap_lands_internal(
+        game,
+        pool,
+        player,
+        cost,
+        current_spell,
+        false,
+        &[],
+        &mut None,
+    )
+}
+
+pub fn auto_tap_lands_allow_reserved_source_reuse_trace(
+    game: &mut GameState,
+    pool: &mut ManaPool,
+    player: PlayerId,
+    cost: &ManaCost,
+    current_spell: Option<CardId>,
+) -> Vec<AutoTapChoice> {
+    auto_tap_lands_internal(
+        game,
+        pool,
+        player,
+        cost,
+        current_spell,
+        true,
+        &[],
+        &mut None,
+    )
 }
 
 /// Auto-tap with an explicit sacrifice chooser callback for parity with Java's
@@ -128,8 +192,10 @@ pub fn auto_tap_lands_with_chooser(
     let mut callback = |kind: ManaPayCallback<'_>| -> Option<CardId> {
         match kind {
             ManaPayCallback::ChooseSacrifice(valid) => sacrifice_chooser(valid),
+            ManaPayCallback::ChooseColor(_) => None,
             ManaPayCallback::ConfirmSelfSacrifice(cid) => Some(cid),
             ManaPayCallback::ConfirmSubCounter(cid) => Some(cid),
+            ManaPayCallback::ConfirmSourceExile(cid) => Some(cid),
             ManaPayCallback::NotifySacrificeForMana(cid) => Some(cid),
         }
     };
@@ -140,8 +206,12 @@ pub fn auto_tap_lands_with_chooser(
         cost,
         current_spell,
         false,
+        &[],
         &mut Some(&mut callback),
     )
+    .into_iter()
+    .map(|choice| choice.card_id)
+    .collect()
 }
 
 pub fn auto_tap_lands_allow_reserved_source_reuse_with_chooser(
@@ -155,8 +225,10 @@ pub fn auto_tap_lands_allow_reserved_source_reuse_with_chooser(
     let mut callback = |kind: ManaPayCallback<'_>| -> Option<CardId> {
         match kind {
             ManaPayCallback::ChooseSacrifice(valid) => sacrifice_chooser(valid),
+            ManaPayCallback::ChooseColor(_) => None,
             ManaPayCallback::ConfirmSelfSacrifice(cid) => Some(cid),
             ManaPayCallback::ConfirmSubCounter(cid) => Some(cid),
+            ManaPayCallback::ConfirmSourceExile(cid) => Some(cid),
             ManaPayCallback::NotifySacrificeForMana(cid) => Some(cid),
         }
     };
@@ -167,8 +239,12 @@ pub fn auto_tap_lands_allow_reserved_source_reuse_with_chooser(
         cost,
         current_spell,
         true,
+        &[],
         &mut Some(&mut callback),
     )
+    .into_iter()
+    .map(|choice| choice.card_id)
+    .collect()
 }
 
 /// Auto-tap with unified callback for both sacrifice chooser and confirm payment.
@@ -188,6 +264,30 @@ pub fn auto_tap_lands_with_callbacks(
         cost,
         current_spell,
         false,
+        &[],
+        &mut Some(callback),
+    )
+    .into_iter()
+    .map(|choice| choice.card_id)
+    .collect()
+}
+
+pub fn auto_tap_lands_trace_with_callbacks(
+    game: &mut GameState,
+    pool: &mut ManaPool,
+    player: PlayerId,
+    cost: &ManaCost,
+    current_spell: Option<CardId>,
+    callback: ManaPayCallbackFn<'_>,
+) -> Vec<AutoTapChoice> {
+    auto_tap_lands_internal(
+        game,
+        pool,
+        player,
+        cost,
+        current_spell,
+        false,
+        &[],
         &mut Some(callback),
     )
 }
@@ -203,13 +303,33 @@ pub fn next_auto_tap_choice(
     current_spell: Option<CardId>,
     allow_reserved_source_reuse: bool,
 ) -> Option<AutoTapChoice> {
+    next_auto_tap_choice_with_reserved_sacrifices(
+        game,
+        pool,
+        player,
+        cost,
+        current_spell,
+        allow_reserved_source_reuse,
+        &[],
+    )
+}
+
+pub fn next_auto_tap_choice_with_reserved_sacrifices(
+    game: &GameState,
+    pool: &ManaPool,
+    player: PlayerId,
+    cost: &ManaCost,
+    current_spell: Option<CardId>,
+    allow_reserved_source_reuse: bool,
+    reserved_sacrifices: &[CardId],
+) -> Option<AutoTapChoice> {
     let mut unpaid = ManaCostBeingPaid::from_mana_cost(cost);
     pay_cost_from_pool(&mut unpaid, pool);
     if unpaid.is_paid() {
         return None;
     }
 
-    let mana_ability_map = group_sources_by_mana_color(game, player);
+    let mana_ability_map = group_sources_by_mana_color(game, player, reserved_sacrifices);
     if mana_ability_map.is_empty() {
         return None;
     }
@@ -229,6 +349,7 @@ pub fn next_auto_tap_choice(
         to_pay,
         ma_list,
         allow_reserved_source_reuse,
+        reserved_sacrifices,
         &sources_for_shards,
         &unpaid,
     )?;
@@ -255,8 +376,57 @@ pub fn auto_tap_lands_allow_reserved_source_reuse_with_callbacks(
         cost,
         current_spell,
         true,
+        &[],
         &mut Some(callback),
     )
+    .into_iter()
+    .map(|choice| choice.card_id)
+    .collect()
+}
+
+pub fn auto_tap_lands_allow_reserved_source_reuse_trace_with_callbacks_and_reserved_sacrifices(
+    game: &mut GameState,
+    pool: &mut ManaPool,
+    player: PlayerId,
+    cost: &ManaCost,
+    current_spell: Option<CardId>,
+    reserved_sacrifices: &[CardId],
+    callback: ManaPayCallbackFn<'_>,
+) -> Vec<AutoTapChoice> {
+    auto_tap_lands_internal(
+        game,
+        pool,
+        player,
+        cost,
+        current_spell,
+        true,
+        reserved_sacrifices,
+        &mut Some(callback),
+    )
+}
+
+pub fn auto_tap_lands_allow_reserved_source_reuse_with_callbacks_and_reserved_sacrifices(
+    game: &mut GameState,
+    pool: &mut ManaPool,
+    player: PlayerId,
+    cost: &ManaCost,
+    current_spell: Option<CardId>,
+    reserved_sacrifices: &[CardId],
+    callback: ManaPayCallbackFn<'_>,
+) -> Vec<CardId> {
+    auto_tap_lands_internal(
+        game,
+        pool,
+        player,
+        cost,
+        current_spell,
+        true,
+        reserved_sacrifices,
+        &mut Some(callback),
+    )
+    .into_iter()
+    .map(|choice| choice.card_id)
+    .collect()
 }
 
 /// Mirrors Java AutoPay.payManaCost() — the main auto-tap loop.
@@ -273,14 +443,15 @@ fn auto_tap_lands_internal(
     cost: &ManaCost,
     current_spell: Option<CardId>,
     allow_reserved_source_reuse: bool,
+    reserved_sacrifices: &[CardId],
     callback: &mut Option<ManaPayCallbackFn<'_>>,
-) -> Vec<CardId> {
-    let mut tapped_lands: Vec<CardId> = Vec::new();
+) -> Vec<AutoTapChoice> {
+    let mut tapped_choices: Vec<AutoTapChoice> = Vec::new();
 
     let mut unpaid = ManaCostBeingPaid::from_mana_cost(cost);
     pay_cost_from_pool(&mut unpaid, pool);
     if unpaid.is_paid() {
-        return tapped_lands;
+        return tapped_choices;
     }
 
     // Guard counter mirrors Java's AutoPay.payManaCost() `guard++ < 128`.
@@ -290,7 +461,7 @@ fn auto_tap_lands_internal(
 
         // Java re-collects candidates every iteration. This ensures tapped/sacrificed
         // sources are excluded and state changes from the previous iteration are visible.
-        let mana_ability_map = group_sources_by_mana_color(game, player);
+        let mana_ability_map = group_sources_by_mana_color(game, player, reserved_sacrifices);
         if mana_ability_map.is_empty() {
             break;
         }
@@ -308,6 +479,7 @@ fn auto_tap_lands_internal(
             &candidates,
             &unpaid,
             allow_reserved_source_reuse,
+            reserved_sacrifices,
         ) else {
             break;
         };
@@ -324,6 +496,7 @@ fn auto_tap_lands_internal(
             &sa_payment,
             current_spell,
             allow_reserved_source_reuse,
+            reserved_sacrifices,
             callback,
         ) {
             // Java: candidate became unpayable; remove and continue.
@@ -348,8 +521,23 @@ fn auto_tap_lands_internal(
             if pain > 0 {
                 game.player_lose_life(player, pain);
             }
-            tapped_lands.push(sa_payment.card_id);
+            tapped_choices.push(AutoTapChoice {
+                card_id: sa_payment.card_id,
+                mana_ability_index: sa_payment.ability_index,
+                chosen_atom,
+            });
         } else {
+            if let Some(ref mut cb) = callback {
+                let chosen_colors = game.card(sa_payment.card_id).chosen_colors.clone();
+                let valid_colors =
+                    super::produced_to_color_names(&sa_payment.mana_text, &chosen_colors);
+                if valid_colors.len() > 1 {
+                    if let Some(color_name) = super::mana_atom_to_color_name(chosen_atom) {
+                        let forced = [color_name.to_string()];
+                        cb(ManaPayCallback::ChooseColor(&forced));
+                    }
+                }
+            }
             tap_land_for_mana(
                 game,
                 pool,
@@ -357,8 +545,14 @@ fn auto_tap_lands_internal(
                 sa_payment.card_id,
                 chosen_atom,
                 source_requires_tap(game, &sa_payment),
-                &mut tapped_lands,
+                &mut Vec::new(),
             );
+
+            tapped_choices.push(AutoTapChoice {
+                card_id: sa_payment.card_id,
+                mana_ability_index: sa_payment.ability_index,
+                chosen_atom,
+            });
 
             let _ = unpaid.try_pay_mana(chosen_atom, chosen_atom as u8);
             for _ in 1..sa_payment.amount.max(1) {
@@ -368,7 +562,7 @@ fn auto_tap_lands_internal(
         }
     }
 
-    tapped_lands
+    tapped_choices
 }
 
 fn pay_cost_from_pool(unpaid: &mut ManaCostBeingPaid, pool: &ManaPool) {
@@ -430,6 +624,7 @@ fn choose_candidate(
     candidates: &[ManaAbilityRef],
     unpaid: &ManaCostBeingPaid,
     allow_reserved_source_reuse: bool,
+    reserved_sacrifices: &[CardId],
 ) -> Option<(ManaAbilityRef, ManaCostShard)> {
     for shard in shard_priority(unpaid, candidates) {
         if let Some(ma) = choose_least_versatile_candidate(
@@ -440,6 +635,7 @@ fn choose_candidate(
             shard,
             unpaid,
             allow_reserved_source_reuse,
+            reserved_sacrifices,
         ) {
             return Some((ma, shard));
         }
@@ -489,6 +685,7 @@ fn choose_least_versatile_candidate(
     shard: ManaCostShard,
     unpaid: &ManaCostBeingPaid,
     allow_reserved_source_reuse: bool,
+    reserved_sacrifices: &[CardId],
 ) -> Option<ManaAbilityRef> {
     let mut fallback: Option<ManaAbilityRef> = None;
     for ma in candidates {
@@ -504,6 +701,7 @@ fn choose_least_versatile_candidate(
             ma,
             current_spell,
             allow_reserved_source_reuse,
+            reserved_sacrifices,
         ) {
             continue;
         }
@@ -566,6 +764,7 @@ fn choose_mana_ability(
     to_pay: ManaCostShard,
     ma_list: &[ManaAbilityRef],
     allow_reserved_source_reuse: bool,
+    reserved_sacrifices: &[CardId],
     sources_for_shards: &IndexMap<ManaCostShard, Vec<ManaAbilityRef>>,
     unpaid: &ManaCostBeingPaid,
 ) -> Option<ManaAbilityRef> {
@@ -582,6 +781,7 @@ fn choose_mana_ability(
                 ma,
                 current_spell,
                 allow_reserved_source_reuse,
+                reserved_sacrifices,
             )
         {
             continue;
@@ -649,6 +849,7 @@ fn can_pay_non_tap_mana_ability_costs(
     ma: &ManaAbilityRef,
     reserved_source: Option<CardId>,
     allow_reserved_source_reuse: bool,
+    reserved_sacrifices: &[CardId],
 ) -> bool {
     let Some(ab_idx) = ma.ability_index else {
         return true;
@@ -658,47 +859,16 @@ fn can_pay_non_tap_mana_ability_costs(
         .parts
         .clone();
     for part in &cost_parts {
-        match part {
-            CostPart::Tap | CostPart::Mana { .. } => {}
-            CostPart::PayLife(amount) => {
-                if game.player(player).life < *amount {
-                    return false;
-                }
-            }
-            CostPart::SubCounter {
-                amount,
-                counter_type,
-            } => {
-                if game.card(ma.card_id).counter_count(counter_type) < *amount {
-                    return false;
-                }
-            }
-            CostPart::Sacrifice {
-                type_filter,
-                amount,
-            } => {
-                if type_filter == "CARDNAME" {
-                    if *amount > 1 || game.card(ma.card_id).zone != ZoneType::Battlefield {
-                        return false;
-                    }
-                } else {
-                    let mut targets = crate::cost::get_sacrifice_targets_for_cost(
-                        game,
-                        player,
-                        type_filter,
-                        None,
-                    );
-                    if !allow_reserved_source_reuse {
-                        if let Some(reserved) = reserved_source {
-                            targets.retain(|&cid| cid != reserved);
-                        }
-                    }
-                    if (targets.len() as i32) < *amount {
-                        return false;
-                    }
-                }
-            }
-            _ => return false,
+        if !can_pay_source_paid_mana_cost_part(
+            game,
+            player,
+            ma.card_id,
+            part,
+            reserved_source,
+            allow_reserved_source_reuse,
+            reserved_sacrifices,
+        ) {
+            return false;
         }
     }
     true
@@ -710,6 +880,7 @@ fn pay_non_tap_mana_ability_costs(
     ma: &ManaAbilityRef,
     reserved_source: Option<CardId>,
     allow_reserved_source_reuse: bool,
+    reserved_sacrifices: &[CardId],
     callback: &mut Option<ManaPayCallbackFn<'_>>,
 ) -> bool {
     let Some(ab_idx) = ma.ability_index else {
@@ -770,11 +941,19 @@ fn pay_non_tap_mana_ability_costs(
                             return false; // confirmation declined
                         }
                     }
-                    let owner = game.card(ma.card_id).owner;
-                    game.move_card(ma.card_id, ZoneType::Graveyard, owner);
-                    // Notify caller so sacrifice triggers can fire.
                     if let Some(ref mut cb) = callback {
-                        cb(ManaPayCallback::NotifySacrificeForMana(ma.card_id));
+                        if let Some(sacrificed_id) =
+                            cb(ManaPayCallback::NotifySacrificeForMana(ma.card_id))
+                        {
+                            if sacrificed_id != ma.card_id {
+                                return false;
+                            }
+                        } else {
+                            return false;
+                        }
+                    } else {
+                        let owner = game.card(ma.card_id).owner;
+                        game.move_card(ma.card_id, ZoneType::Graveyard, owner);
                     }
                 } else {
                     let mut targets = crate::cost::get_sacrifice_targets_for_cost(
@@ -783,6 +962,7 @@ fn pay_non_tap_mana_ability_costs(
                         type_filter,
                         None,
                     );
+                    targets.retain(|cid| !reserved_sacrifices.contains(cid));
                     if !allow_reserved_source_reuse {
                         if let Some(reserved) = reserved_source {
                             targets.retain(|&cid| cid != reserved);
@@ -809,16 +989,107 @@ fn pay_non_tap_mana_ability_costs(
                         };
                         if let Some(cid) = chosen {
                             targets.retain(|&c| c != cid);
-                            let owner = game.card(cid).owner;
-                            game.move_card(cid, ZoneType::Graveyard, owner);
+                            if let Some(ref mut cb) = callback {
+                                if let Some(sacrificed_id) =
+                                    cb(ManaPayCallback::NotifySacrificeForMana(cid))
+                                {
+                                    if sacrificed_id != cid {
+                                        return false;
+                                    }
+                                } else {
+                                    return false;
+                                }
+                            } else {
+                                let owner = game.card(cid).owner;
+                                game.move_card(cid, ZoneType::Graveyard, owner);
+                            }
                         }
                     }
                 }
+            }
+            CostPart::Exile { amount, from, .. } => {
+                if !pay_cost_from_source(part) || *amount > 1 || game.card(ma.card_id).zone != *from
+                {
+                    return false;
+                }
+                if let Some(ref mut cb) = callback {
+                    if let Some(confirmed_id) = cb(ManaPayCallback::ConfirmSourceExile(ma.card_id))
+                    {
+                        if confirmed_id != ma.card_id {
+                            return false;
+                        }
+                    } else {
+                        return false;
+                    }
+                }
+                let owner = game.card(ma.card_id).owner;
+                game.move_card(ma.card_id, ZoneType::Exile, owner);
             }
             _ => return false,
         }
     }
     true
+}
+
+fn can_pay_source_paid_mana_cost_part(
+    game: &GameState,
+    player: PlayerId,
+    source_id: CardId,
+    part: &CostPart,
+    reserved_source: Option<CardId>,
+    allow_reserved_source_reuse: bool,
+    reserved_sacrifices: &[CardId],
+) -> bool {
+    match part {
+        CostPart::Tap | CostPart::Mana { .. } => true,
+        CostPart::PayLife(amount) => game.player(player).life >= *amount,
+        CostPart::SubCounter {
+            amount,
+            counter_type,
+        } => game.card(source_id).counter_count(counter_type) >= *amount,
+        CostPart::Sacrifice {
+            type_filter,
+            amount,
+        } => {
+            if type_filter == "CARDNAME" {
+                *amount <= 1
+                    && game.card(source_id).zone == ZoneType::Battlefield
+                    && !reserved_sacrifices.contains(&source_id)
+            } else {
+                let targets = get_payable_mana_sacrifice_targets(
+                    game,
+                    player,
+                    type_filter,
+                    reserved_source,
+                    allow_reserved_source_reuse,
+                    reserved_sacrifices,
+                );
+                (targets.len() as i32) >= *amount
+            }
+        }
+        CostPart::Exile { amount, from, .. } => {
+            pay_cost_from_source(part) && *amount <= 1 && game.card(source_id).zone == *from
+        }
+        _ => false,
+    }
+}
+
+fn get_payable_mana_sacrifice_targets(
+    game: &GameState,
+    player: PlayerId,
+    type_filter: &str,
+    reserved_source: Option<CardId>,
+    allow_reserved_source_reuse: bool,
+    reserved_sacrifices: &[CardId],
+) -> Vec<CardId> {
+    let mut targets = crate::cost::get_sacrifice_targets_for_cost(game, player, type_filter, None);
+    targets.retain(|cid| !reserved_sacrifices.contains(cid));
+    if !allow_reserved_source_reuse {
+        if let Some(reserved) = reserved_source {
+            targets.retain(|&cid| cid != reserved);
+        }
+    }
+    targets
 }
 
 fn choose_atom_for_shard(mana_ab: &ManaAbilityRef, shard: ManaCostShard) -> Option<u16> {
@@ -1027,16 +1298,17 @@ fn sort_mana_abilities(
 fn group_sources_by_mana_color(
     game: &GameState,
     player: PlayerId,
+    reserved_sacrifices: &[CardId],
 ) -> IndexMap<i32, Vec<ManaAbilityRef>> {
     let mut mana_map: IndexMap<i32, Vec<ManaAbilityRef>> = IndexMap::new();
     let mut source_order = 0usize;
 
-    for card_id in get_available_mana_sources(game, player, &[]) {
+    for card_id in get_available_mana_sources(game, player, reserved_sacrifices) {
         let card = game.card(card_id);
         let mut explicit_mana_added = false;
 
         for ab in &card.activated_abilities {
-            if !is_payable_mana_ability(game, player, card_id, ab, &[]) {
+            if !is_payable_mana_ability(game, player, card_id, ab, reserved_sacrifices) {
                 continue;
             }
             // Handle ManaReflected abilities (e.g. Incubation Druid)
@@ -1205,7 +1477,11 @@ pub fn can_pay_mana_cost_with_reserved_sacrifices(
         let mut source_mask = 0u16;
         for ab in &card.activated_abilities {
             if !ab.is_mana_ability
-                || ab.cost.parts.iter().any(|p| matches!(p, CostPart::Mana { .. }))
+                || ab
+                    .cost
+                    .parts
+                    .iter()
+                    .any(|p| matches!(p, CostPart::Mana { .. }))
             {
                 continue;
             }
@@ -1352,7 +1628,13 @@ fn is_payable_mana_ability(
     if !can_pay_ignoring_mana(&ab.cost, game, card_id, player) {
         return false;
     }
-    can_pay_mana_ability_costs_with_reserved(game, player, card_id, &ab.cost.parts, reserved_sacrifices)
+    can_pay_mana_ability_costs_with_reserved(
+        game,
+        player,
+        card_id,
+        &ab.cost.parts,
+        reserved_sacrifices,
+    )
 }
 
 fn can_pay_mana_ability_costs_with_reserved(
@@ -1363,50 +1645,16 @@ fn can_pay_mana_ability_costs_with_reserved(
     reserved_sacrifices: &[CardId],
 ) -> bool {
     for part in cost_parts {
-        match part {
-            CostPart::Tap | CostPart::Mana { .. } => {}
-            CostPart::PayLife(amount) => {
-                if game.player(player).life < *amount {
-                    return false;
-                }
-            }
-            CostPart::SubCounter {
-                amount,
-                counter_type,
-            } => {
-                if game.card(source_id).counter_count(counter_type) < *amount {
-                    return false;
-                }
-            }
-            CostPart::Sacrifice {
-                type_filter,
-                amount,
-            } => {
-                if type_filter == "CARDNAME" {
-                    if *amount > 1
-                        || game.card(source_id).zone != ZoneType::Battlefield
-                        || reserved_sacrifices.contains(&source_id)
-                    {
-                        return false;
-                    }
-                } else {
-                    let mut targets =
-                        crate::cost::get_sacrifice_targets_for_cost(game, player, type_filter, None);
-                    targets.retain(|cid| !reserved_sacrifices.contains(cid));
-                    if (targets.len() as i32) < *amount {
-                        return false;
-                    }
-                }
-            }
-            CostPart::Exile { amount, from, .. } => {
-                if !pay_cost_from_source(part)
-                    || *amount > 1
-                    || game.card(source_id).zone != *from
-                {
-                    return false;
-                }
-            }
-            _ => return false,
+        if !can_pay_source_paid_mana_cost_part(
+            game,
+            player,
+            source_id,
+            part,
+            None,
+            true,
+            reserved_sacrifices,
+        ) {
+            return false;
         }
     }
     true
@@ -1951,15 +2199,23 @@ mod tests {
         {
             let mut pool = ManaPool::new();
             let tapped = {
+                let game_ptr: *mut GameState = &mut game;
                 let mut callback = |kind: ManaPayCallback<'_>| -> Option<CardId> {
                     match kind {
                         ManaPayCallback::ChooseSacrifice(_) => None,
+                        ManaPayCallback::ChooseColor(_) => None,
                         ManaPayCallback::ConfirmSelfSacrifice(cid) => {
                             assert_eq!(cid, treasure); // should be asking about Treasure
                             Some(cid) // confirm
                         }
                         ManaPayCallback::ConfirmSubCounter(cid) => Some(cid),
-                        ManaPayCallback::NotifySacrificeForMana(cid) => Some(cid),
+                        ManaPayCallback::ConfirmSourceExile(cid) => Some(cid),
+                        ManaPayCallback::NotifySacrificeForMana(cid) => unsafe {
+                            let game = &mut *game_ptr;
+                            let owner = game.card(cid).owner;
+                            game.move_card(cid, ZoneType::Graveyard, owner);
+                            Some(cid)
+                        },
                     }
                 };
 
@@ -2005,15 +2261,23 @@ mod tests {
         {
             let mut pool = ManaPool::new();
             let tapped = {
+                let game_ptr: *mut GameState = &mut game;
                 let mut callback = |kind: ManaPayCallback<'_>| -> Option<CardId> {
                     match kind {
                         ManaPayCallback::ChooseSacrifice(_) => None,
+                        ManaPayCallback::ChooseColor(_) => None,
                         ManaPayCallback::ConfirmSelfSacrifice(cid) => {
                             assert_eq!(cid, treasure2);
                             None // decline
                         }
                         ManaPayCallback::ConfirmSubCounter(cid) => Some(cid),
-                        ManaPayCallback::NotifySacrificeForMana(cid) => Some(cid),
+                        ManaPayCallback::ConfirmSourceExile(cid) => Some(cid),
+                        ManaPayCallback::NotifySacrificeForMana(cid) => unsafe {
+                            let game = &mut *game_ptr;
+                            let owner = game.card(cid).owner;
+                            game.move_card(cid, ZoneType::Graveyard, owner);
+                            Some(cid)
+                        },
                     }
                 };
 

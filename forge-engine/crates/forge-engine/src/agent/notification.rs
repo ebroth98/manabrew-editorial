@@ -1,4 +1,5 @@
 use crate::agent::GameLogEvent;
+use crate::agent::ManaCostAction;
 use crate::ids::{CardId, PlayerId};
 use forge_foundation::PhaseType;
 
@@ -25,5 +26,9 @@ pub enum GameNotification {
     SnapshotCreated {
         checkpoint_id: u64,
         label: String,
+    },
+    ManaPaymentResolved {
+        player: PlayerId,
+        actions: Vec<ManaCostAction>,
     },
 }

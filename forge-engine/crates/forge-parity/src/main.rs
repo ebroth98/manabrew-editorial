@@ -54,8 +54,7 @@ use forge_parity::java_bridge::{
 use forge_parity::java_cache::{self, JavaCache};
 use forge_parity::java_random::JavaRandom;
 use forge_parity::protocol::{
-    Divergence, FuzzReport, FuzzResult, MatchupResult, MatchupStatus, MatrixReport,
-    ParityLogEntry,
+    Divergence, FuzzReport, FuzzResult, MatchupResult, MatchupStatus, MatrixReport, ParityLogEntry,
 };
 use forge_parity::report;
 use forge_parity::runner::{self, LoadedData, RunConfig, DEFAULT_DECKS_DIR};
@@ -150,7 +149,6 @@ fn filter_decks(decks: Vec<String>, exclude_prefixes: &[String]) -> Vec<String> 
         .filter(|d| !exclude_prefixes.iter().any(|p| d.starts_with(p)))
         .collect()
 }
-
 
 #[derive(Parser, Debug)]
 #[command(
@@ -358,8 +356,6 @@ impl Cli {
         matches!(self.verbose, Some(ref s) if s.is_empty())
     }
 }
-
-
 
 fn build_config(cli: &Cli, deck1: &str, deck2: &str, seed: u64) -> RunConfig {
     RunConfig {
@@ -799,11 +795,7 @@ fn run_single_matchup_server(
         }
     };
 
-    let mut result = compare_snapshots(
-        config,
-        &rust_trace,
-        &java_data,
-    );
+    let mut result = compare_snapshots(config, &rust_trace, &java_data);
     result.covered_cards = rust_trace.covered_cards;
     result
 }
@@ -846,11 +838,7 @@ fn run_single_matchup_pool(
         }
     };
 
-    let mut result = compare_snapshots(
-        config,
-        &rust_trace,
-        &java_data,
-    );
+    let mut result = compare_snapshots(config, &rust_trace, &java_data);
     result.covered_cards = rust_trace.covered_cards;
     result
 }
@@ -905,11 +893,7 @@ fn run_single_matchup_oneshot(
         }
     };
 
-    let mut result = compare_snapshots(
-        config,
-        &rust_trace,
-        &java_data,
-    );
+    let mut result = compare_snapshots(config, &rust_trace, &java_data);
     result.covered_cards = rust_trace.covered_cards;
     result
 }
@@ -919,13 +903,10 @@ fn run_single_matchup_rust_only(config: &RunConfig, data: &LoadedData) -> Matchu
     match runner::run_with_data(config, data) {
         Ok(trace) => {
             let snapshots = trace.snapshot_vec();
-            let finished_turn = snapshots.last().and_then(|s| {
-                if s.game_over {
-                    Some(s.turn)
-                } else {
-                    None
-                }
-            });
+            let finished_turn =
+                snapshots
+                    .last()
+                    .and_then(|s| if s.game_over { Some(s.turn) } else { None });
             MatchupResult {
                 deck1: config.deck1.clone(),
                 deck2: config.deck2.clone(),
@@ -1147,7 +1128,8 @@ fn dump_snapshot_timeline(
     eprintln!();
     eprintln!(
         "{:col_w$} | {}",
-        "  #   Rust snapshots", "  #   Java snapshots",
+        "  #   Rust snapshots",
+        "  #   Java snapshots",
         col_w = col_w
     );
     eprintln!("{:-<col_w$}-+-{:-<col_w$}", "", "", col_w = col_w);
@@ -1163,7 +1145,8 @@ fn dump_snapshot_timeline(
             .unwrap_or_default();
         let marker = match (rust_snapshots.get(i), java_snapshots.get(i)) {
             (Some(r), Some(j)) => {
-                if r.turn == j.turn && r.phase == j.phase && r.priority_player == j.priority_player {
+                if r.turn == j.turn && r.phase == j.phase && r.priority_player == j.priority_player
+                {
                     " "
                 } else {
                     "*"
@@ -1173,7 +1156,9 @@ fn dump_snapshot_timeline(
         };
         eprintln!(
             "{:<col_w$} |{} {:<col_w$}",
-            rust_col, marker, java_col,
+            rust_col,
+            marker,
+            java_col,
             col_w = col_w
         );
     }
@@ -1480,11 +1465,7 @@ fn run_matrix_mode(cli: &Cli) {
                             config.prefer_actions,
                         ) {
                             cache_hits.fetch_add(1, Ordering::Relaxed);
-                            let mut result = compare_snapshots(
-                                config,
-                                &trace,
-                                &cached_java,
-                            );
+                            let mut result = compare_snapshots(config, &trace, &cached_java);
                             result.covered_cards = trace.covered_cards.clone();
                             return result;
                         }
@@ -1654,11 +1635,7 @@ fn run_java_compare_and_cache(
         }
     };
 
-    let mut result = compare_snapshots(
-        config,
-        &rust_trace,
-        &java_data,
-    );
+    let mut result = compare_snapshots(config, &rust_trace, &java_data);
     result.covered_cards = rust_trace.covered_cards.clone();
 
     // Cache Java output — Java is deterministic for a given source hash,
@@ -1707,11 +1684,7 @@ fn run_java_streaming_compare_oneshot(
             return MatchupResult::error(config, format!("Java engine error: {}", e));
         }
     };
-    let mut result = compare_snapshots(
-        config,
-        &rust_trace,
-        &java_data,
-    );
+    let mut result = compare_snapshots(config, &rust_trace, &java_data);
     result.covered_cards = rust_trace.covered_cards.clone();
     result
 }
@@ -1938,11 +1911,21 @@ fn pair_bucket_entries(
     // occurrence of a key this is (to handle duplicate keys correctly).
     let rust_keyed: Vec<(Option<CallbackKey>, String)> = rust_entries
         .iter()
-        .map(|e| (CallbackKey::from_entry(e), e.format().trim_start().to_string()))
+        .map(|e| {
+            (
+                CallbackKey::from_entry(e),
+                e.format().trim_start().to_string(),
+            )
+        })
         .collect();
     let java_keyed: Vec<(Option<CallbackKey>, String)> = java_entries
         .iter()
-        .map(|e| (CallbackKey::from_entry(e), e.format().trim_start().to_string()))
+        .map(|e| {
+            (
+                CallbackKey::from_entry(e),
+                e.format().trim_start().to_string(),
+            )
+        })
         .collect();
 
     // For each key on the Java side, track how many times it appears and
@@ -2015,19 +1998,18 @@ fn render_side_by_side(
     let (java_buckets, java_snap_count) = bucket_log_entries(java_log);
     let max_snapshots = rust_snap_count.max(java_snap_count);
 
-    out.push_str(&format!(
-        "{:<lw$} | {:<rw$}\n",
-        "Rust", "Java"
-    ));
-    out.push_str(&format!(
-        "{}+{}\n",
-        "-".repeat(lw + 1),
-        "-".repeat(rw + 1)
-    ));
+    out.push_str(&format!("{:<lw$} | {:<rw$}\n", "Rust", "Java"));
+    out.push_str(&format!("{}+{}\n", "-".repeat(lw + 1), "-".repeat(rw + 1)));
 
     for snap_idx in 0..=max_snapshots {
-        let rust_entries = rust_buckets.get(snap_idx).map(|v| v.as_slice()).unwrap_or(&[]);
-        let java_entries = java_buckets.get(snap_idx).map(|v| v.as_slice()).unwrap_or(&[]);
+        let rust_entries = rust_buckets
+            .get(snap_idx)
+            .map(|v| v.as_slice())
+            .unwrap_or(&[]);
+        let java_entries = java_buckets
+            .get(snap_idx)
+            .map(|v| v.as_slice())
+            .unwrap_or(&[]);
 
         let paired = pair_bucket_entries(rust_entries, java_entries);
 
@@ -2042,7 +2024,8 @@ fn render_side_by_side(
                 let right = right_lines.get(line_idx).map(String::as_str).unwrap_or("");
                 out.push_str(&format!(
                     "{} | {}\n",
-                    pad_visible(left, lw), pad_visible(right, rw)
+                    pad_visible(left, lw),
+                    pad_visible(right, rw)
                 ));
             }
         }
@@ -2080,11 +2063,8 @@ fn format_investigation_for_results(results: &[MatchupResult]) -> String {
             .map(|d| d.snapshot_index)
             .unwrap_or(0);
 
-        let (rust_window, java_window) = extract_investigation_window(
-            &result.rust_log,
-            &result.java_log,
-            divergent_snapshot,
-        );
+        let (rust_window, java_window) =
+            extract_investigation_window(&result.rust_log, &result.java_log, divergent_snapshot);
 
         out.push_str(&format!(
             "\n=== Investigation: {} vs {} seed={} (snapshot {}) ===\n",
@@ -2096,8 +2076,18 @@ fn format_investigation_for_results(results: &[MatchupResult]) -> String {
             continue;
         }
 
-        let snapshot_offset = if divergent_snapshot > 0 { divergent_snapshot - 1 } else { 0 };
-        render_side_by_side(rust_window, java_window, divergent_snapshot, snapshot_offset, &mut out);
+        let snapshot_offset = if divergent_snapshot > 0 {
+            divergent_snapshot - 1
+        } else {
+            0
+        };
+        render_side_by_side(
+            rust_window,
+            java_window,
+            divergent_snapshot,
+            snapshot_offset,
+            &mut out,
+        );
     }
     out
 }
@@ -2124,7 +2114,13 @@ fn format_full_log_for_results(results: &[MatchupResult]) -> String {
             .map(|d| d.snapshot_index)
             .unwrap_or(usize::MAX);
 
-        render_side_by_side(&result.rust_log, &result.java_log, divergent_snapshot, 0, &mut out);
+        render_side_by_side(
+            &result.rust_log,
+            &result.java_log,
+            divergent_snapshot,
+            0,
+            &mut out,
+        );
     }
     out
 }

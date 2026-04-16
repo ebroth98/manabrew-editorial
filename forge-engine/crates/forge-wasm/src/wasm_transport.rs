@@ -366,19 +366,7 @@ fn ai_respond(inner: &forge_agent_interface::prompt::AgentPromptInner) -> Player
                 PlayerAction::DeclineCombatCost
             }
         }
-        AgentPromptInner::PayManaCost {
-            game_view,
-            mana_cost,
-            tappable_land_ids,
-            mana_ability_options,
-            ..
-        } => forge_agent_interface::auto_pay::choose_pay_mana_cost_action(
-            game_view,
-            mana_cost,
-            tappable_land_ids,
-            mana_ability_options,
-        )
-        .unwrap_or(PlayerAction::CancelManaCost),
+        AgentPromptInner::PayManaCost { .. } => PlayerAction::PayManaCost { auto: true },
         AgentPromptInner::ChooseDelve {
             valid_card_ids,
             max_cards,

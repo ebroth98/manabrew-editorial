@@ -43,17 +43,13 @@ struct CachedMatchup {
 
 impl From<&JavaMatchupData> for CachedMatchup {
     fn from(d: &JavaMatchupData) -> Self {
-        Self {
-            log: d.log.clone(),
-        }
+        Self { log: d.log.clone() }
     }
 }
 
 impl From<CachedMatchup> for JavaMatchupData {
     fn from(c: CachedMatchup) -> Self {
-        Self {
-            log: c.log,
-        }
+        Self { log: c.log }
     }
 }
 

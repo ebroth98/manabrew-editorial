@@ -50,7 +50,11 @@ fn pick_index_inner(size: usize, rng: &mut JavaRandom) -> usize {
 /// Pick index in [0, size] where size is PASS.
 pub fn pick_index_with_pass(size: usize, rng: &mut JavaRandom) -> usize {
     let idx = rng.next_int((size + 1) as i32) as usize;
-    let outcome = if idx >= size { "PASS".into() } else { format!("idx={idx}") };
+    let outcome = if idx >= size {
+        "PASS".into()
+    } else {
+        format!("idx={idx}")
+    };
     rng_log("pick_index_with_pass", Some(size), outcome, rng);
     idx
 }
@@ -69,8 +73,17 @@ pub fn pick_weighted_index_with_pass(
     } else {
         roll / safe_weight
     };
-    let outcome = if idx >= safe_size { "PASS".into() } else { format!("idx={idx}") };
-    rng_log(&format!("pick_weighted w={safe_weight}"), Some(safe_size), outcome, rng);
+    let outcome = if idx >= safe_size {
+        "PASS".into()
+    } else {
+        format!("idx={idx}")
+    };
+    rng_log(
+        &format!("pick_weighted w={safe_weight}"),
+        Some(safe_size),
+        outcome,
+        rng,
+    );
     idx
 }
 
@@ -83,12 +96,18 @@ pub fn sort_native<T: Clone>(native: &[T], mut cmp: impl FnMut(&T, &T) -> Orderi
 pub fn pick_count(min: usize, max: usize, available: usize, rng: &mut JavaRandom) -> usize {
     let hi = max.min(available);
     let lo = min.min(hi);
-    let count = lo + if hi > lo {
-        rng.next_int((hi - lo + 1) as i32) as usize
-    } else {
-        0
-    };
-    rng_log(&format!("pick_count [{min}-{max}]"), Some(available), count.to_string(), rng);
+    let count = lo
+        + if hi > lo {
+            rng.next_int((hi - lo + 1) as i32) as usize
+        } else {
+            0
+        };
+    rng_log(
+        &format!("pick_count [{min}-{max}]"),
+        Some(available),
+        count.to_string(),
+        rng,
+    );
     count
 }
 
@@ -110,6 +129,11 @@ pub fn pick_many_unique<T: Copy>(
     }
     let len = options.len();
     let picked = out.len();
-    rng_log(&format!("pick_many_unique [{min}-{max}]"), Some(len), format!("picked {picked}"), rng);
+    rng_log(
+        &format!("pick_many_unique [{min}-{max}]"),
+        Some(len),
+        format!("picked {picked}"),
+        rng,
+    );
     out
 }

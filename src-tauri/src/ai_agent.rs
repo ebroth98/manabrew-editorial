@@ -226,19 +226,9 @@ pub fn spawn_ai_prompt_responder(
                         Some(PlayerAction::DeclineCombatCost)
                     }
                 }
-                AgentPromptInner::PayManaCost {
-                    game_view,
-                    mana_cost,
-                    tappable_land_ids,
-                    mana_ability_options,
-                    ..
-                } => forge_agent_interface::auto_pay::choose_pay_mana_cost_action(
-                    &game_view,
-                    &mana_cost,
-                    &tappable_land_ids,
-                    &mana_ability_options,
-                )
-                .or(Some(PlayerAction::CancelManaCost)),
+                AgentPromptInner::PayManaCost { .. } => {
+                    Some(PlayerAction::PayManaCost { auto: true })
+                }
                 AgentPromptInner::ChooseDelve {
                     ref valid_card_ids,
                     max_cards,

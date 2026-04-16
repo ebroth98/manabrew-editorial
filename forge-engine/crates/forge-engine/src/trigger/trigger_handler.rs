@@ -122,27 +122,22 @@ impl TriggerHandler {
         }
 
         if mode == TriggerType::SpellCast {
-            self.waiting_triggers.push(
-                self.build_waiting_trigger(TriggerType::SpellAbilityCast, params.clone()),
-            );
-            self.waiting_triggers.push(
-                self.build_waiting_trigger(TriggerType::SpellCastOrCopy, params.clone()),
-            );
+            self.waiting_triggers
+                .push(self.build_waiting_trigger(TriggerType::SpellAbilityCast, params.clone()));
+            self.waiting_triggers
+                .push(self.build_waiting_trigger(TriggerType::SpellCastOrCopy, params.clone()));
         }
         if mode == TriggerType::AbilityCast {
-            self.waiting_triggers.push(
-                self.build_waiting_trigger(TriggerType::SpellAbilityCast, params.clone()),
-            );
+            self.waiting_triggers
+                .push(self.build_waiting_trigger(TriggerType::SpellAbilityCast, params.clone()));
         }
         if mode == TriggerType::SpellCopied {
             self.waiting_triggers
                 .push(self.build_waiting_trigger(TriggerType::SpellCopy, params.clone()));
-            self.waiting_triggers.push(
-                self.build_waiting_trigger(TriggerType::SpellAbilityCopy, params.clone()),
-            );
-            self.waiting_triggers.push(
-                self.build_waiting_trigger(TriggerType::SpellCastOrCopy, params.clone()),
-            );
+            self.waiting_triggers
+                .push(self.build_waiting_trigger(TriggerType::SpellAbilityCopy, params.clone()));
+            self.waiting_triggers
+                .push(self.build_waiting_trigger(TriggerType::SpellCastOrCopy, params.clone()));
         }
     }
 
@@ -174,7 +169,8 @@ impl TriggerHandler {
 
     /// Java parity wrapper for TriggerHandler.collectTriggerForWaiting(...).
     pub fn collect_trigger_for_waiting(&mut self, mode: TriggerType, params: RunParams) {
-        self.waiting_triggers.push(self.build_waiting_trigger(mode, params));
+        self.waiting_triggers
+            .push(self.build_waiting_trigger(mode, params));
     }
 
     /// Number of triggers in the waiting queue (for debug/diagnostics).

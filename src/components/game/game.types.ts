@@ -121,7 +121,13 @@ export interface MainActionOverlayProps {
   activePlayerName: string;
   isMyTurn: boolean;
   step: string;
-  payManaCostInfo: { cardName: string; manaCost: string; manaPool: Record<string, number> } | null;
+  payManaCostInfo: {
+    cardName: string;
+    manaCost: string;
+    manaPool: Record<string, number>;
+    canConfirmFromPool: boolean;
+  } | null;
   onPayManaCost: () => void;
+  onAutoManaCost: () => void;
   onCancelManaCost: () => void;
 }

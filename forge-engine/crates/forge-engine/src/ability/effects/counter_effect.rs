@@ -85,7 +85,6 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         .and_then(|d| super::parse_zone_type(d))
         .unwrap_or(ZoneType::Graveyard);
 
-
     // Check if the spell has a "can't be countered" replacement effect.
     // Find the source card of the targeted stack entry.
     if let Some(entry) = ctx.game.stack.find_by_id(entry_id) {

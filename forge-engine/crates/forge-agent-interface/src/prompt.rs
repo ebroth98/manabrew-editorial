@@ -445,6 +445,8 @@ pub enum AgentPromptInner {
         untappable_land_ids: Vec<String>,
         #[serde(rename = "manaPoolTotal")]
         mana_pool_total: i32,
+        #[serde(rename = "canConfirmFromPool")]
+        can_confirm_from_pool: bool,
     },
     /// Specify mana color distribution for combo/any mana production.
     SpecifyManaCombo {
@@ -814,7 +816,11 @@ pub enum PlayerAction {
         chosen_colors: Vec<String>,
     },
     /// Confirm mana cost payment from the mana pool.
-    PayManaCost,
+    /// `auto=true` asks the engine to finish the payment session via engine auto-pay.
+    PayManaCost {
+        #[serde(default)]
+        auto: bool,
+    },
     /// Cancel casting the spell (mana cost payment).
     CancelManaCost,
     Concede,

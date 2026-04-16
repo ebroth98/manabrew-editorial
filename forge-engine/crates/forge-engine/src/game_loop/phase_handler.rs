@@ -365,7 +365,11 @@ impl GameLoop {
             .iter()
             .copied()
             .filter(|&pid| pid != active)
-            .flat_map(|pid| game.cards_in_zone(ZoneType::Battlefield, pid).iter().copied())
+            .flat_map(|pid| {
+                game.cards_in_zone(ZoneType::Battlefield, pid)
+                    .iter()
+                    .copied()
+            })
             .collect();
         for cid in other_battlefield_cards {
             let card = game.card(cid);
@@ -501,8 +505,7 @@ impl GameLoop {
                         to_discard
                     ),
                 );
-                let chosen =
-                    agents[active.index()].choose_discard(active, &hand, to_discard);
+                let chosen = agents[active.index()].choose_discard(active, &hand, to_discard);
                 self.game_log.log(
                     GameLogEntryType::PriorityResponse,
                     2,

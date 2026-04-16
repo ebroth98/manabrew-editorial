@@ -128,10 +128,7 @@ impl CardDatabase {
     /// Follows `TokenFallbackCode` chains to find the edition that has the token.
     /// Returns 1 if not found (single variant assumed).
     pub fn token_art_variant_count(&self, token_script: &str, edition_code: &str) -> usize {
-        let key = (
-            token_script.to_lowercase(),
-            edition_code.to_uppercase(),
-        );
+        let key = (token_script.to_lowercase(), edition_code.to_uppercase());
         if let Some(&count) = self.token_art_variants.get(&key) {
             return count;
         }

@@ -138,11 +138,8 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     } else {
         // Player chooses — mirrors Java's chooseSpellAbilitiesForEffect
         ctx.agents[player.index()].snapshot_state(ctx.game, ctx.mana_pools);
-        let chosen_indices = ctx.agents[player.index()].choose_spell_abilities_for_effect(
-            player,
-            &abilities,
-            amount,
-        );
+        let chosen_indices = ctx.agents[player.index()]
+            .choose_spell_abilities_for_effect(player, &abilities, amount);
 
         chosen_sas = chosen_indices
             .into_iter()

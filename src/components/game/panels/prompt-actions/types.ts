@@ -37,8 +37,14 @@ export interface ChooseTargetSpellProps extends PromptActionLayoutProps {
 }
 
 export interface PayManaCostProps extends PromptActionLayoutProps {
-  payManaCostInfo?: { cardName: string; manaCost: string; manaPool: Record<string, number> } | null;
+  payManaCostInfo?: {
+    cardName: string;
+    manaCost: string;
+    manaPool: Record<string, number>;
+    canConfirmFromPool: boolean;
+  } | null;
   onPayManaCost?: () => void;
+  onAutoManaCost?: () => void;
   onCancelManaCost?: () => void;
 }
 

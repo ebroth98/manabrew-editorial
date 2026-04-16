@@ -128,6 +128,8 @@ export interface AgentPrompt {
   attackerName?: string;
   /** payCombatCost: mana pool total available */
   manaPoolTotal?: number;
+  /** payManaCost: whether the current pool can already confirm payment */
+  canConfirmFromPool?: boolean;
   /** specifyManaCombo: available color letters */
   availableColors?: string[];
   /** specifyManaCombo: total mana to distribute */
@@ -220,7 +222,8 @@ export interface GameState {
   cardNameDecision: (chosenName: string | null) => void;
   payCombatCost: () => void;
   declineCombatCost: () => void;
-  payManaCost: () => void;
+  payManaCost: (auto?: boolean) => void;
+  autoManaCost: () => void;
   cancelManaCost: () => void;
   delveDecision: (chosenCardIds: string[]) => void;
   convokeDecision: (chosenCardIds: string[]) => void;

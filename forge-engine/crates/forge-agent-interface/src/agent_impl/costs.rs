@@ -1,6 +1,8 @@
 use forge_engine_core::agent::{ManaAbilityOption, ManaCostAction};
 use forge_engine_core::ids::{CardId, PlayerId};
 use forge_engine_core::mana::ManaPool;
+use forge_foundation::ManaAtom;
+use forge_foundation::ManaCost;
 
 use crate::ids_codec::{card_id_str, parse_card_id};
 use crate::prompt::{AgentPromptInner, PlayerAction};
@@ -131,6 +133,12 @@ pub(super) fn pay_mana_cost<T: AgentTransport>(
     let card_id_s = card_id_str(card_id);
     let tappable_land_ids = PromptAgent::<T>::card_ids(tappable_lands);
     let untappable_land_ids = PromptAgent::<T>::card_ids(untappable_lands);
+    let can_confirm_from_pool = {
+        let mut confirm_pool = mana_pool.clone();
+        confirm_pool.source_colors = None;
+        confirm_pool.total_sources = None;
+        confirm_pool.try_pay(&ManaCost::parse(mana_cost))
+    };
 
     agent.send_prompt(AgentPromptInner::PayManaCost {
         game_view: agent.view(),
@@ -150,6 +158,7 @@ pub(super) fn pay_mana_cost<T: AgentTransport>(
         tappable_land_ids,
         untappable_land_ids,
         mana_pool_total: mana_pool.total_mana(),
+        can_confirm_from_pool,
     });
     match agent.recv_action() {
         PlayerAction::TapLand {
@@ -162,14 +171,18 @@ pub(super) fn pay_mana_cost<T: AgentTransport>(
                 .map(|card_id| ManaCostAction::TapLand {
                     card_id,
                     mana_ability_index: ability_index,
-                    express_choice: None,
+                    express_choice: agent
+                        .pending_mana_color
+                        .as_deref()
+                        .map(|color| ManaAtom::from_name(&color.to_ascii_lowercase()))
+                        .filter(|&atom| atom != 0),
                 })
                 .unwrap_or(ManaCostAction::Cancel)
         }
         PlayerAction::UntapLand { card_id } => parse_card_id(&card_id)
             .map(ManaCostAction::UntapLand)
             .unwrap_or(ManaCostAction::Cancel),
-        PlayerAction::PayManaCost => ManaCostAction::Pay,
+        PlayerAction::PayManaCost { auto } => ManaCostAction::Pay { auto },
         _ => ManaCostAction::Cancel,
     }
 }

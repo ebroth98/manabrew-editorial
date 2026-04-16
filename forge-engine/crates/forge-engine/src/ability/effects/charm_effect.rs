@@ -521,18 +521,6 @@ mod tests {
     use crate::spellability::SpellAbility;
     use crate::trigger::handler::TriggerHandler;
 
-    fn make_spell_ability_with_svars(
-        player: PlayerId,
-        ability_text: &str,
-        svars: &[(&str, &str)],
-    ) -> SpellAbility {
-        let mut sa = SpellAbility::new_simple(None, player, ability_text);
-        // Inject SVars into a fake source card — we embed them in params here
-        // for the unit test (in real games, svars come from Card.svars).
-        let _ = svars; // svars are normally on the card; this test uses a custom setup
-        sa
-    }
-
     #[test]
     fn charm_choose_mode_zero_choices_noops() {
         let mut game = GameState::new(&["Alice", "Bob"], 20);

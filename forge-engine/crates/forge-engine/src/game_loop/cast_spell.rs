@@ -1,3 +1,4 @@
+use super::mana_payment::ManaPaymentSession;
 use super::*;
 use crate::mana::mana_cost_being_paid::ManaCostBeingPaid;
 
@@ -15,216 +16,463 @@ impl GameLoop {
         None
     }
 
-    /// Play a card from hand (or graveyard for Escape). Returns the (card_id, card_name)
-    /// if the card was successfully played, so the caller can emit the notification.
-    pub(crate) fn play_card(
+    pub(crate) fn play_land(
+        &mut self,
+        game: &mut GameState,
+        agents: &mut [Box<dyn PlayerAgent>],
+        player: PlayerId,
+        card_id: CardId,
+        card_name: &str,
+        play_mode: crate::agent::PlayCardMode,
+    ) -> Option<(CardId, String)> {
+        if play_mode != crate::agent::PlayCardMode::Normal {
+            return None;
+        }
+        let origin_zone = game.card(card_id).zone;
+
+        self.move_card_with_runtime(game, card_id, ZoneType::Battlefield, player, agents);
+
+        game.player_record_land_play(player);
+        crate::agent::notify_all_agents(
+            agents,
+            crate::agent::GameLogEvent::action(format!("Played land: {}", card_name))
+                .with_player(player)
+                .with_card(card_id),
+        );
+
+        self.trigger_handler.register_active_trigger(game, card_id);
+        crate::ability::effects::emit_zone_trigger(
+            &mut self.trigger_handler,
+            card_id,
+            origin_zone,
+            ZoneType::Battlefield,
+        );
+        self.trigger_handler.run_trigger(
+            TriggerType::LandPlayed,
+            RunParams {
+                card: Some(card_id),
+                player: Some(player),
+                ..Default::default()
+            },
+            false,
+        );
+
+        Some((card_id, card_name.to_string()))
+    }
+
+    pub(crate) fn emit_becomes_target_triggers(
+        &mut self,
+        game: &mut GameState,
+        cause_player: PlayerId,
+        cause_card: CardId,
+        source_sa: Option<&SpellAbility>,
+        target_card: Option<CardId>,
+        target_player: Option<PlayerId>,
+    ) {
+        if let Some(target_id) = target_card {
+            let first_time = !game.card(target_id).has_become_target_this_turn();
+            game.card_mut(target_id).add_target_from_this_turn();
+            self.trigger_handler.run_trigger(
+                TriggerType::BecomesTarget,
+                RunParams {
+                    card: Some(target_id),
+                    target_card: Some(target_id),
+                    cards: Some(vec![target_id]),
+                    cause_player: Some(cause_player),
+                    cause_card: Some(cause_card),
+                    source_sa: source_sa.cloned(),
+                    first_time: Some(first_time),
+                    ..Default::default()
+                },
+                false,
+            );
+            self.trigger_handler.run_trigger(
+                TriggerType::BecomesTargetOnce,
+                RunParams {
+                    card: Some(target_id),
+                    target_card: Some(target_id),
+                    cards: Some(vec![target_id]),
+                    cause_player: Some(cause_player),
+                    cause_card: Some(cause_card),
+                    source_sa: source_sa.cloned(),
+                    first_time: Some(first_time),
+                    ..Default::default()
+                },
+                false,
+            );
+        }
+
+        if let Some(target_id) = target_player {
+            self.trigger_handler.run_trigger(
+                TriggerType::BecomesTarget,
+                RunParams {
+                    player: Some(target_id),
+                    target_player: Some(target_id),
+                    cause_player: Some(cause_player),
+                    cause_card: Some(cause_card),
+                    source_sa: source_sa.cloned(),
+                    ..Default::default()
+                },
+                false,
+            );
+            self.trigger_handler.run_trigger(
+                TriggerType::BecomesTargetOnce,
+                RunParams {
+                    player: Some(target_id),
+                    target_player: Some(target_id),
+                    cause_player: Some(cause_player),
+                    cause_card: Some(cause_card),
+                    source_sa: source_sa.cloned(),
+                    ..Default::default()
+                },
+                false,
+            );
+        }
+    }
+
+    pub(crate) fn push_spell_ability_to_stack(
+        &mut self,
+        game: &mut GameState,
+        agents: &mut [Box<dyn PlayerAgent>],
+        player: PlayerId,
+        stack_push: StackPushContext,
+    ) -> SpellAbility {
+        game.stack.push(stack_push.entry.clone());
+        self.log_stack_push(&stack_push.stack_log_name, &game.player(player).name);
+        let mut event = if stack_push.event_kind == SpellAbilityLogEventKind::Stack {
+            crate::agent::GameLogEvent::stack(stack_push.stack_message)
+        } else {
+            crate::agent::GameLogEvent::action(stack_push.stack_message)
+        }
+        .with_player(player)
+        .with_source_card(stack_push.source_card);
+        if let Some(target_id) = stack_push.target_card {
+            event = event.with_target_card(target_id);
+        }
+        crate::agent::notify_all_agents(agents, event);
+
+        if stack_push.move_source_to_stack {
+            self.move_card_with_runtime(
+                game,
+                stack_push.source_card,
+                ZoneType::Stack,
+                player,
+                agents,
+            );
+        }
+        if stack_push.register_source_trigger {
+            self.trigger_handler
+                .register_active_trigger(game, stack_push.source_card);
+        }
+
+        if let Some(top) = game.stack.iter_mut().last() {
+            top.spell_ability.apply_paying_mana_effects();
+            top.spell_ability.clone()
+        } else {
+            stack_push.entry.spell_ability
+        }
+    }
+
+    pub(crate) fn emit_post_stack_spell_ability_triggers(
+        &mut self,
+        game: &mut GameState,
+        player: PlayerId,
+        sa_for_trigger: &SpellAbility,
+        trigger_ctx: PostStackTriggerContext,
+    ) {
+        if trigger_ctx.emit_ability_activated {
+            self.trigger_handler.run_trigger(
+                TriggerType::AbilityActivated,
+                RunParams {
+                    card: Some(trigger_ctx.source_card),
+                    player: Some(player),
+                    ..Default::default()
+                },
+                false,
+            );
+        }
+
+        let run_params = match trigger_ctx.cast_trigger {
+            TriggerType::SpellCast => RunParams {
+                spell_card: Some(trigger_ctx.source_card),
+                spell_controller: Some(player),
+                spell_ability: Some(sa_for_trigger.clone()),
+                source_sa: Some(sa_for_trigger.clone()),
+                cause: Some(sa_for_trigger.clone()),
+                cause_card: Some(trigger_ctx.source_card),
+                ..Default::default()
+            },
+            TriggerType::AbilityCast => RunParams {
+                card: Some(trigger_ctx.source_card),
+                spell_card: Some(trigger_ctx.source_card),
+                player: Some(player),
+                activator: Some(player),
+                spell_controller: Some(player),
+                spell_ability: Some(sa_for_trigger.clone()),
+                source_sa: Some(sa_for_trigger.clone()),
+                cause: Some(sa_for_trigger.clone()),
+                cause_card: Some(trigger_ctx.source_card),
+                ..Default::default()
+            },
+            _ => return,
+        };
+        self.trigger_handler
+            .run_trigger(trigger_ctx.cast_trigger, run_params, true);
+
+        if trigger_ctx.emit_waterbend {
+            let mut bend_params = RunParams {
+                player: Some(player),
+                card: Some(trigger_ctx.source_card),
+                spell_card: Some(trigger_ctx.source_card),
+                spell_controller: Some(player),
+                spell_ability: Some(sa_for_trigger.clone()),
+                source_sa: Some(sa_for_trigger.clone()),
+                cause: Some(sa_for_trigger.clone()),
+                cause_card: Some(trigger_ctx.source_card),
+                ..Default::default()
+            };
+            if !trigger_ctx.waterbend_cards.is_empty() {
+                bend_params.cards = Some(trigger_ctx.waterbend_cards);
+            }
+            self.trigger_handler
+                .run_trigger(TriggerType::Elementalbend, bend_params, false);
+        }
+
+        self.emit_becomes_target_triggers(
+            game,
+            player,
+            trigger_ctx.source_card,
+            Some(sa_for_trigger),
+            sa_for_trigger.target_chosen.target_card,
+            sa_for_trigger.target_chosen.target_player,
+        );
+    }
+
+    /// Orchestrates the full non-land SpellAbility entrypoint after the action
+    /// has already been chosen. Card spells and activated abilities both route
+    /// through here; only lands stay outside this boundary.
+    pub(crate) fn play_spell_ability(
+        &mut self,
+        game: &mut GameState,
+        agents: &mut [Box<dyn PlayerAgent>],
+        player: PlayerId,
+        prepared: PreparedSpellAbility,
+    ) -> Option<PlaySpellAbilityResult> {
+        if let Some(ability_idx) = prepared.activated_ability_index {
+            let card_id = prepared.spell_ability.source?;
+            {
+                let ab = {
+                    let card = game.card(card_id);
+                    card.activated_abilities
+                        .iter()
+                        .find(|a| a.ability_index == ability_idx)
+                        .cloned()
+                }?;
+
+                let played = if ab.is_mana_ability {
+                    self.resolve_mana_ability(game, agents, player, card_id, &ab, None);
+                    true
+                } else if ab
+                    .params
+                    .get(keys::AB)
+                    .and_then(crate::ability::api_type::ApiType::smart_value_of)
+                    == Some(crate::ability::api_type::ApiType::Plot)
+                {
+                    // Java models Plot as AbilityStatic, which resolves immediately.
+                    self.resolve_immediate_ability(game, agents, player, card_id, &ab)
+                } else if ab.ability_text.contains("Mode$ TurnFaceUp") {
+                    // Morph face-up is a special action: pay the cost and resolve immediately.
+                    self.resolve_immediate_ability(game, agents, player, card_id, &ab)
+                } else {
+                    self.play_activated_ability_on_stack(game, agents, player, card_id, &ab)
+                };
+
+                played.then_some(PlaySpellAbilityResult::AbilityActivated)
+            }
+        } else {
+            self.cast_card_spell_ability(
+                game,
+                agents,
+                player,
+                prepared.spell_ability,
+                prepared.static_alternative_cost_prepared,
+            )
+                .map(|(card_id, card_name)| PlaySpellAbilityResult::CardPlayed { card_id, card_name })
+        }
+    }
+
+    pub(crate) fn prepare_card_spell_ability(
+        &mut self,
+        game: &GameState,
+        player: PlayerId,
+        card_id: CardId,
+        play_mode: crate::agent::PlayCardMode,
+    ) -> Option<PreparedSpellAbility> {
+        let mut sa = crate::spellability::build_spell_ability_for_card_cast(game, card_id, player);
+        let mut static_alternative_cost_prepared = false;
+        match play_mode {
+            crate::agent::PlayCardMode::Normal => {}
+            crate::agent::PlayCardMode::UnlockDoor | crate::agent::PlayCardMode::ForetellExile => {
+                return None;
+            }
+            crate::agent::PlayCardMode::StaticAlternative => {
+                let entry = crate::staticability::static_ability_alternative_cost::alternative_costs(
+                    game,
+                    &game.cards,
+                    &sa,
+                    game.card(card_id),
+                    player,
+                )
+                .into_iter()
+                .find(|entry| {
+                    crate::cost::can_pay_ignoring_mana_for_spell(&entry.cost, game, card_id, player)
+                })?;
+                crate::staticability::static_ability_alternative_cost::apply_alternative_cost_to_sa(
+                    &mut sa,
+                    &entry,
+                );
+                static_alternative_cost_prepared = true;
+            }
+            crate::agent::PlayCardMode::Alternative(alt_cost) => {
+                if alt_cost == crate::spellability::AlternativeCost::Suspend {
+                    return None;
+                }
+                sa.alt_cost = Some(alt_cost);
+            }
+        }
+        Some(PreparedSpellAbility {
+            spell_ability: sa,
+            activated_ability_index: None,
+            static_alternative_cost_prepared,
+        })
+    }
+
+    pub(crate) fn play_special_card_action(
         &mut self,
         game: &mut GameState,
         agents: &mut [Box<dyn PlayerAgent>],
         player: PlayerId,
         card_id: CardId,
         play_mode: crate::agent::PlayCardMode,
+    ) -> Option<Option<(CardId, String)>> {
+        let card_name = game.card(card_id).card_name.clone();
+        match play_mode {
+            crate::agent::PlayCardMode::ForetellExile => {
+                if game.card(card_id).get_foretell_cost().is_some()
+                    && game.card(card_id).zone == ZoneType::Hand
+                {
+                    let available_mana =
+                        mana::calculate_available_mana(self.pool(player), game, player);
+                    let foretell_exile_cost = forge_foundation::ManaCost::generic(2);
+                    if !available_mana.can_pay(&foretell_exile_cost) {
+                        return Some(None);
+                    }
+                    let tapped = mana::auto_tap_lands(
+                        game,
+                        self.pool_mut(player),
+                        player,
+                        &foretell_exile_cost,
+                        Some(card_id),
+                    );
+                    self.emit_tap_for_mana_triggers(player, &tapped);
+                    self.pool_mut(player).try_pay(&foretell_exile_cost);
+                    game.card_mut(card_id).set_face_down(true);
+                    self.move_card_with_runtime(game, card_id, ZoneType::Exile, player, agents);
+                    self.trigger_handler.run_trigger(
+                        TriggerType::Foretell,
+                        RunParams {
+                            card: Some(card_id),
+                            player: Some(player),
+                            ..Default::default()
+                        },
+                        false,
+                    );
+                    crate::agent::notify_all_agents(
+                        agents,
+                        crate::agent::GameLogEvent::rule(format!("Foretold: {}", card_name))
+                            .with_player(player)
+                            .with_card(card_id),
+                    );
+                    return Some(Some((card_id, card_name)));
+                }
+                Some(None)
+            }
+            crate::agent::PlayCardMode::Alternative(crate::spellability::AlternativeCost::Suspend) => {
+                if let Some((suspend_cost, counters)) = game.card(card_id).get_suspend_cost() {
+                    if game.card(card_id).zone != ZoneType::Hand {
+                        return Some(None);
+                    }
+                    let available_mana =
+                        mana::calculate_available_mana(self.pool(player), game, player);
+                    let suspend_mc = forge_foundation::ManaCost::parse(&suspend_cost);
+                    if !available_mana.can_pay(&suspend_mc) {
+                        return Some(None);
+                    }
+                    let tapped = mana::auto_tap_lands(
+                        game,
+                        self.pool_mut(player),
+                        player,
+                        &suspend_mc,
+                        Some(card_id),
+                    );
+                    self.emit_tap_for_mana_triggers(player, &tapped);
+                    self.pool_mut(player).try_pay(&suspend_mc);
+                    self.move_card_with_runtime(game, card_id, ZoneType::Exile, player, agents);
+                    game.card_mut(card_id)
+                        .add_counter(&crate::card::CounterType::Time, counters);
+                    crate::agent::notify_all_agents(
+                        agents,
+                        crate::agent::GameLogEvent::rule(format!(
+                            "Suspended: {} with {} time counters",
+                            card_name, counters
+                        ))
+                        .with_player(player)
+                        .with_card(card_id),
+                    );
+                    return Some(Some((card_id, card_name)));
+                }
+                Some(None)
+            }
+            _ => None,
+        }
+    }
+
+    fn cast_card_spell_ability(
+        &mut self,
+        game: &mut GameState,
+        agents: &mut [Box<dyn PlayerAgent>],
+        player: PlayerId,
+        mut sa: SpellAbility,
+        static_alternative_cost_prepared: bool,
     ) -> Option<(CardId, String)> {
+        let card_id = sa.source?;
         let card = game.card(card_id);
         let card_name = card.card_name.clone();
+        let original_zone = card.zone;
+        let original_owner = card.owner;
 
-        if card.is_land() {
-            if play_mode != crate::agent::PlayCardMode::Normal {
-                return None;
-            }
-            // Track origin zone before the move (may be Hand or Graveyard for MayPlay).
-            let origin_zone = game.card(card_id).zone;
-
-            // Play land — goes directly to battlefield
-            self.move_card_with_runtime(game, card_id, ZoneType::Battlefield, player, agents);
-
-            game.player_record_land_play(player);
-            crate::agent::notify_all_agents(
-                agents,
-                crate::agent::GameLogEvent::action(format!("Played land: {}", card_name))
-                    .with_player(player)
-                    .with_card(card_id),
-            );
-
-            // Register triggers for the new permanent (must happen before
-            // emitting ChangesZone so the land's own ETB triggers are active).
-            self.trigger_handler.register_active_trigger(game, card_id);
-
-            // Emit ChangesZone trigger (ETB) — mirrors the stack resolver's
-            // emit_zone_trigger for spells entering the battlefield.
-            crate::ability::effects::emit_zone_trigger(
-                &mut self.trigger_handler,
-                card_id,
-                origin_zone,
-                ZoneType::Battlefield,
-            );
-
-            // Fire LandPlayed trigger
-            self.trigger_handler.run_trigger(
-                TriggerType::LandPlayed,
-                RunParams {
-                    card: Some(card_id),
-                    player: Some(player),
-                    ..Default::default()
-                },
-                false,
-            );
-        } else {
-            // Cast spell — tap lands for mana, put on stack, resolve
+        // Cast spell — tap lands for mana, put on stack, resolve
             let is_creature = game.card(card_id).is_creature();
             let is_permanent = game.card(card_id).is_permanent();
             // ── Alternative cost mode selection (from action-space choice) ──────────
-            let mut is_foretell = false;
-            let mut is_flashback = false;
-            let mut is_spectacle = false;
-            let mut is_evoke = false;
-            let mut is_escape = false;
-            let mut is_overload = false;
-            let mut is_dash = false;
-            let mut is_blitz = false;
-            let mut is_emerge = false;
-            let mut is_plot_cast = false;
-            let mut is_bestow = false;
-            let mut is_warp = false;
-            let mut is_morph_facedown = false;
-            let mut is_static_alternative = false;
-
-            match play_mode {
-                crate::agent::PlayCardMode::Normal => {}
-                crate::agent::PlayCardMode::UnlockDoor => {
-                    // UnlockDoor should be handled by priority.rs routing to
-                    // activate_ability, not play_card. If we reach here, bail.
-                    return None;
-                }
-                crate::agent::PlayCardMode::StaticAlternative => {
-                    is_static_alternative = true;
-                }
-                crate::agent::PlayCardMode::ForetellExile => {
-                    if game.card(card_id).get_foretell_cost().is_some()
-                        && game.card(card_id).zone == ZoneType::Hand
-                    {
-                        let available_mana =
-                            mana::calculate_available_mana(self.pool(player), game, player);
-                        let foretell_exile_cost = forge_foundation::ManaCost::generic(2);
-                        if !available_mana.can_pay(&foretell_exile_cost) {
-                            return None;
-                        }
-                        let tapped = mana::auto_tap_lands(
-                            game,
-                            self.pool_mut(player),
-                            player,
-                            &foretell_exile_cost,
-                            Some(card_id),
-                        );
-                        self.emit_tap_for_mana_triggers(player, &tapped);
-                        self.pool_mut(player).try_pay(&foretell_exile_cost);
-                        game.card_mut(card_id).set_face_down(true);
-                        self.move_card_with_runtime(game, card_id, ZoneType::Exile, player, agents);
-                        self.trigger_handler.run_trigger(
-                            TriggerType::Foretell,
-                            RunParams {
-                                card: Some(card_id),
-                                player: Some(player),
-                                ..Default::default()
-                            },
-                            false,
-                        );
-                        crate::agent::notify_all_agents(
-                            agents,
-                            crate::agent::GameLogEvent::rule(format!("Foretold: {}", card_name))
-                                .with_player(player)
-                                .with_card(card_id),
-                        );
-                        return Some((card_id, card_name));
-                    }
-                    return None;
-                }
-                crate::agent::PlayCardMode::Alternative(alt) => match alt {
-                    crate::spellability::AlternativeCost::Foretell => is_foretell = true,
-                    crate::spellability::AlternativeCost::Flashback => is_flashback = true,
-                    crate::spellability::AlternativeCost::Spectacle => is_spectacle = true,
-                    crate::spellability::AlternativeCost::Evoke => is_evoke = true,
-                    crate::spellability::AlternativeCost::Dash => is_dash = true,
-                    crate::spellability::AlternativeCost::Blitz => is_blitz = true,
-                    crate::spellability::AlternativeCost::Escape => is_escape = true,
-                    crate::spellability::AlternativeCost::Overload => is_overload = true,
-                    crate::spellability::AlternativeCost::Madness => {
-                        // Madness is cast via DB$ Play, not the normal cast pipeline.
-                        // This branch should not be reachable.
-                        return None;
-                    }
-                    crate::spellability::AlternativeCost::Emerge => is_emerge = true,
-                    crate::spellability::AlternativeCost::Bestow => is_bestow = true,
-                    crate::spellability::AlternativeCost::Warp => is_warp = true,
-                    crate::spellability::AlternativeCost::Plot => is_plot_cast = true,
-                    crate::spellability::AlternativeCost::Morph
-                    | crate::spellability::AlternativeCost::Megamorph => {
-                        is_morph_facedown = true;
-                    }
-                    crate::spellability::AlternativeCost::Suspend => {
-                        if let Some((suspend_cost, counters)) =
-                            game.card(card_id).get_suspend_cost()
-                        {
-                            if game.card(card_id).zone != ZoneType::Hand {
-                                return None;
-                            }
-                            let available_mana =
-                                mana::calculate_available_mana(self.pool(player), game, player);
-                            let suspend_mc = forge_foundation::ManaCost::parse(&suspend_cost);
-                            if !available_mana.can_pay(&suspend_mc) {
-                                return None;
-                            }
-                            let tapped = mana::auto_tap_lands(
-                                game,
-                                self.pool_mut(player),
-                                player,
-                                &suspend_mc,
-                                Some(card_id),
-                            );
-                            self.emit_tap_for_mana_triggers(player, &tapped);
-                            self.pool_mut(player).try_pay(&suspend_mc);
-                            self.move_card_with_runtime(
-                                game,
-                                card_id,
-                                ZoneType::Exile,
-                                player,
-                                agents,
-                            );
-                            game.card_mut(card_id)
-                                .add_counter(&crate::card::CounterType::Time, counters);
-                            crate::agent::notify_all_agents(
-                                agents,
-                                crate::agent::GameLogEvent::rule(format!(
-                                    "Suspended: {} with {} time counters",
-                                    card_name, counters
-                                ))
-                                .with_player(player)
-                                .with_card(card_id),
-                            );
-                            return Some((card_id, card_name));
-                        }
-                        return None;
-                    }
-                    // New alternative cost variants — not yet fully wired into
-                    // the cast-spell pipeline. Return None to skip casting.
-                    crate::spellability::AlternativeCost::Awaken
-                    | crate::spellability::AlternativeCost::Disturb
-                    | crate::spellability::AlternativeCost::Harmonize
-                    | crate::spellability::AlternativeCost::Freerunning
-                    | crate::spellability::AlternativeCost::Impending
-                    | crate::spellability::AlternativeCost::Mayhem
-                    | crate::spellability::AlternativeCost::MTMtE
-                    | crate::spellability::AlternativeCost::Mutate
-                    | crate::spellability::AlternativeCost::Prowl
-                    | crate::spellability::AlternativeCost::SacrificeAlt
-                    | crate::spellability::AlternativeCost::Sneak
-                    | crate::spellability::AlternativeCost::Surge
-                    | crate::spellability::AlternativeCost::WebSlinging
-                    | crate::spellability::AlternativeCost::Plotted => {
-                        return None;
-                    }
-                },
-            }
+            let is_foretell = sa.alt_cost == Some(crate::spellability::AlternativeCost::Foretell);
+            let is_flashback = sa.alt_cost == Some(crate::spellability::AlternativeCost::Flashback);
+            let is_spectacle =
+                sa.alt_cost == Some(crate::spellability::AlternativeCost::Spectacle);
+            let is_evoke = sa.alt_cost == Some(crate::spellability::AlternativeCost::Evoke);
+            let is_escape = sa.alt_cost == Some(crate::spellability::AlternativeCost::Escape);
+            let is_overload = sa.alt_cost == Some(crate::spellability::AlternativeCost::Overload);
+            let is_dash = sa.alt_cost == Some(crate::spellability::AlternativeCost::Dash);
+            let is_blitz = sa.alt_cost == Some(crate::spellability::AlternativeCost::Blitz);
+            let is_emerge = sa.alt_cost == Some(crate::spellability::AlternativeCost::Emerge);
+            let is_plot_cast = sa.alt_cost == Some(crate::spellability::AlternativeCost::Plot);
+            let is_bestow = sa.alt_cost == Some(crate::spellability::AlternativeCost::Bestow);
+            let is_warp = sa.alt_cost == Some(crate::spellability::AlternativeCost::Warp);
+            let is_morph_facedown = sa
+                .alt_cost
+                .map(|alt| alt.is_morph())
+                .unwrap_or(false);
+            let is_static_alternative = static_alternative_cost_prepared;
 
             // Select the card's spell ability line (SP$ ...) for cast-time logic.
             // Mirrors Java where casting operates on a concrete SpellAbility, not
@@ -236,25 +484,8 @@ impl GameLoop {
                 .cloned()
                 .unwrap_or_default();
 
-            let static_alt_entry = if is_static_alternative {
-                let probe_sa =
-                    crate::spellability::build_spell_ability_for_card_cast(game, card_id, player);
-                let entry =
-                    crate::staticability::static_ability_alternative_cost::alternative_costs(
-                        game,
-                        &game.cards,
-                        &probe_sa,
-                        game.card(card_id),
-                        player,
-                    )
-                    .into_iter()
-                    .find(|e| {
-                        crate::cost::can_pay_ignoring_mana_for_spell(&e.cost, game, card_id, player)
-                    });
-                if entry.is_none() {
-                    return None;
-                }
-                entry
+            let static_alt_cost = if is_static_alternative {
+                sa.pay_costs.clone()
             } else {
                 None
             };
@@ -336,8 +567,7 @@ impl GameLoop {
                 // Plot: cast from exile for free (already paid plot cost).
                 forge_foundation::ManaCost::generic(0)
             } else if is_static_alternative {
-                let entry = static_alt_entry.as_ref()?;
-                Self::mana_from_cost(&entry.cost)
+                Self::mana_from_cost(static_alt_cost.as_ref()?)
             } else if is_bestow {
                 let bestow_cost_str = game.card(card_id).get_bestow_cost().unwrap_or_default();
                 forge_foundation::ManaCost::parse(&bestow_cost_str)
@@ -767,57 +997,19 @@ impl GameLoop {
             // game state. This matches Java/MTG casting order: announce modes and
             // targets before paying costs, so mana payments can invalidate a chosen
             // target later (for example, sacrificing a Food token used as a target).
-            let mut sa =
-                crate::spellability::build_spell_ability_for_card_cast(game, card_id, player);
-
-            // Set alternative cost on the SpellAbility
-            if is_foretell {
-                sa.alt_cost = Some(crate::spellability::AlternativeCost::Foretell);
-            } else if is_flashback {
-                sa.alt_cost = Some(crate::spellability::AlternativeCost::Flashback);
+            if is_flashback {
                 game.card_mut(card_id).cast_with_flashback = true;
-            } else if is_spectacle {
-                sa.alt_cost = Some(crate::spellability::AlternativeCost::Spectacle);
-            } else if is_evoke {
-                sa.alt_cost = Some(crate::spellability::AlternativeCost::Evoke);
-            } else if is_escape {
-                sa.alt_cost = Some(crate::spellability::AlternativeCost::Escape);
             } else if is_overload {
-                sa.alt_cost = Some(crate::spellability::AlternativeCost::Overload);
                 sa.overloaded = true;
-            } else if is_dash {
-                sa.alt_cost = Some(crate::spellability::AlternativeCost::Dash);
-            } else if is_blitz {
-                sa.alt_cost = Some(crate::spellability::AlternativeCost::Blitz);
-            } else if is_emerge {
-                sa.alt_cost = Some(crate::spellability::AlternativeCost::Emerge);
-            } else if is_bestow {
-                sa.alt_cost = Some(crate::spellability::AlternativeCost::Bestow);
-                if sa.target_restrictions.is_none() {
-                    sa.target_restrictions =
-                        crate::spellability::target_restrictions::TargetRestrictions::new(
-                            &Params::from_raw("ValidTgts$ Creature"),
-                        );
-                }
-            } else if is_warp {
-                sa.alt_cost = Some(crate::spellability::AlternativeCost::Warp);
-            } else if is_morph_facedown {
-                let is_mega = game.card(card_id).keywords.any_starts_with("Megamorph:");
-                sa.alt_cost = Some(if is_mega {
-                    crate::spellability::AlternativeCost::Megamorph
-                } else {
-                    crate::spellability::AlternativeCost::Morph
-                });
+            } else if is_bestow && sa.target_restrictions.is_none() {
+                sa.target_restrictions =
+                    crate::spellability::target_restrictions::TargetRestrictions::new(
+                        &Params::from_raw("ValidTgts$ Creature"),
+                    );
             }
 
             if kicked || kick_count > 0 || entwine_paid {
                 sa.kicked = true;
-            }
-
-            if let Some(entry) = static_alt_entry.as_ref() {
-                crate::staticability::static_ability_alternative_cost::apply_alternative_cost_to_sa(
-                    &mut sa, entry,
-                );
             }
 
             sa.buyback_paid = buyback_paid;
@@ -910,12 +1102,12 @@ impl GameLoop {
             } else {
                 None
             };
-            let prechosen_static_alt_sacrifices = if let Some(ref entry) = static_alt_entry {
+            let prechosen_static_alt_sacrifices = if let Some(ref cost) = static_alt_cost {
                 match self.prechoose_additional_cost_sacrifices(
                     game,
                     agents,
                     player,
-                    &entry.cost,
+                    cost,
                     Some(&sa),
                 ) {
                     Some(picks) => Some(picks),
@@ -970,229 +1162,129 @@ impl GameLoop {
                 } else {
                     cost_str.clone()
                 };
-                // Save pool for refund on failed deterministic mana payment.
-                // Java parity only refunds floating mana here; it does not roll
-                // back the activation costs of mana abilities that were used.
-                let saved_pool = self.pool(player).clone();
-                let mut mana_loop_invalid_count = 0u32;
-                loop {
-                    let mana_sources =
-                        mana::collect_mana_payment_sources(game, player, &[]);
-                    let tappable_lands = mana_sources.source_cards.clone();
-                    let mana_ability_options = mana_sources.mana_ability_options;
-                    let pool_snapshot = self.pool(player).clone();
-                    let untappable_lands: Vec<CardId> = game
-                        .cards_in_zone(ZoneType::Battlefield, player)
-                        .to_vec()
-                        .into_iter()
-                        .filter(|&cid| {
-                            let c = game.card(cid);
-                            if !c.tapped {
-                                return false;
-                            }
-                            let atoms = mana::land_mana_atoms(c);
-                            if !atoms.is_empty() {
-                                atoms.iter().any(|&a| pool_snapshot.has_atom(a, 1))
-                            } else if let Some(atom) = basic_land_mana_atom(c) {
-                                pool_snapshot.has_atom(atom, 1)
-                            } else {
-                                false
-                            }
-                        })
-                        .collect();
-                    let pool_ref = self.pool(player).clone();
-
-                    agents[player.index()].snapshot_state(game, &self.mana_pools);
-                    let action = agents[player.index()].pay_mana_cost(
-                        player,
-                        card_id,
-                        &card_name,
-                        &cost_str,
-                        &cost_display_str,
-                        &cost_checkpoint_str,
-                        false,
-                        &[],
-                        &mana_ability_options,
-                        &tappable_lands,
-                        &untappable_lands,
-                        &pool_ref,
-                    );
-
-                    match action {
-                        ManaCostAction::TapLand {
-                            card_id: land_id,
-                            mana_ability_index,
-                            express_choice,
-                        } => {
-                            if !tappable_lands.contains(&land_id) {
-                                // Agent requested a card that is not tappable.
-                                // After repeated invalid attempts, treat as payment
-                                // failure to avoid an infinite loop.
-                                mana_loop_invalid_count += 1;
-                                if mana_loop_invalid_count > 3 {
-                                    *self.pool_mut(player) = saved_pool;
-                                    self.move_card_with_runtime(
-                                        game,
-                                        card_id,
-                                        ZoneType::Stack,
-                                        player,
-                                        agents,
-                                    );
-                                    return None;
-                                }
-                                continue;
-                            }
-                            mana_loop_invalid_count = 0;
-                            let mana_ab = {
-                                let c = game.card(land_id);
-                                mana_ability_index
-                                    .and_then(|idx| c.activated_abilities.get(idx))
-                                    .filter(|ab| {
-                                        ab.is_mana_ability
-                                            && crate::cost::can_pay_ignoring_mana(
-                                                &ab.cost, game, land_id, player,
-                                            )
-                                    })
-                                    .cloned()
-                                    .or_else(|| {
-                                        c.activated_abilities
-                                            .iter()
-                                            .find(|ab| {
-                                                ab.is_mana_ability
-                                                    && crate::cost::can_pay_ignoring_mana(
-                                                        &ab.cost, game, land_id, player,
-                                                    )
-                                            })
-                                            .cloned()
-                                    })
-                            };
-                            if let Some(ab) = mana_ab {
-                                self.resolve_mana_ability(
-                                    game,
-                                    agents,
-                                    player,
-                                    land_id,
-                                    &ab,
-                                    express_choice,
+                let session = ManaPaymentSession {
+                    player,
+                    card_id,
+                    card_name: &card_name,
+                    mana_cost: &total_cost,
+                    cost_str: &cost_str,
+                    cost_display_str: &cost_display_str,
+                    cost_checkpoint_str: &cost_checkpoint_str,
+                    is_activated_ability: false,
+                    reserved_sacrifices: &[],
+                };
+                let mana_paid = self.pay_mana_cost_session(
+                    game,
+                    agents,
+                    session,
+                    |game, player, land_id, ab, _reserved_sacrifices| {
+                        crate::cost::can_pay_ignoring_mana(&ab.cost, game, land_id, player)
+                    },
+                    |slf, game, agents, session| {
+                        let auto_result = {
+                            let game_ptr: *mut GameState = game;
+                            let trigger_handler_ptr = std::ptr::from_mut(&mut slf.trigger_handler);
+                            let mut callback = Self::make_mana_payment_callback(
+                                trigger_handler_ptr,
+                                game_ptr,
+                                agents,
+                                session.player,
+                            );
+                            mana::pay_mana_cost_auto_with_callback(
+                                game,
+                                slf.pool_mut(session.player),
+                                session.player,
+                                session.mana_cost,
+                                Some(session.card_id),
+                                0,
+                                &payment_ctx,
+                                any_color_conversion,
+                                &mut callback,
+                            )
+                        };
+                        if let Some(result) = auto_result {
+                            let trace: Vec<ManaCostAction> = result
+                                .choices
+                                .iter()
+                                .map(|choice| ManaCostAction::TapLand {
+                                    card_id: choice.card_id,
+                                    mana_ability_index: Some(
+                                        choice.mana_ability_index.unwrap_or(0),
+                                    ),
+                                    express_choice: choice.mana_ability_index.map(|_| choice.chosen_atom),
+                                })
+                                .collect();
+                            for &tapped_id in &result.tapped {
+                                slf.trigger_handler.run_trigger(
+                                    TriggerType::Taps,
+                                    RunParams {
+                                        card: Some(tapped_id),
+                                        player: Some(session.player),
+                                        ..Default::default()
+                                    },
+                                    false,
                                 );
-                            } else if let Some(atom) = basic_land_mana_atom(game.card(land_id)) {
-                                game.tap(land_id);
-                                self.pool_mut(player).add(atom, 1);
-                                self.trigger_handler.run_trigger(
+                                slf.trigger_handler.run_trigger(
                                     TriggerType::TapsForMana,
                                     RunParams {
-                                        card: Some(land_id),
-                                        player: Some(player),
+                                        card: Some(tapped_id),
+                                        player: Some(session.player),
+                                        activator: Some(session.player),
                                         ..Default::default()
                                     },
                                     false,
                                 );
                             }
-                        }
-                        ManaCostAction::UntapLand(land_id) => {
-                            if !untappable_lands.contains(&land_id) {
-                                continue;
+                            if result.life_paid > 0 {
+                                slf.pay_life_cost(game, session.player, result.life_paid);
                             }
-                            let atoms = {
-                                let c = game.card(land_id);
-                                if c.is_land() && c.tapped {
-                                    let a = mana::land_mana_atoms(c);
-                                    if a.is_empty() {
-                                        basic_land_mana_atom(c).into_iter().collect::<Vec<_>>()
-                                    } else {
-                                        a
-                                    }
-                                } else {
-                                    vec![]
-                                }
-                            };
-                            if !atoms.is_empty() {
-                                game.untap(land_id);
-                                for atom in atoms {
-                                    self.pool_mut(player).remove(atom, 1);
-                                }
-                            }
+                            Some(trace)
+                        } else {
+                            None
                         }
-                        ManaCostAction::Pay => {
-                            let mut test_pool = self.pool(player).clone();
-                            if let Some(test_life_to_pay) = test_pool
+                    },
+                    |slf, game, player| {
+                        let mut test_pool = slf.pool(player).clone();
+                        if let Some(test_life_to_pay) = test_pool
+                            .try_pay_for_spell_converted_with_phyrexian_life(
+                                &total_cost,
+                                &payment_ctx,
+                                any_color_conversion,
+                                game.player(player).life,
+                            )
+                        {
+                            let life_to_pay = slf
+                                .pool_mut(player)
                                 .try_pay_for_spell_converted_with_phyrexian_life(
                                     &total_cost,
                                     &payment_ctx,
                                     any_color_conversion,
                                     game.player(player).life,
                                 )
-                            {
-                                let life_to_pay = self
-                                    .pool_mut(player)
-                                    .try_pay_for_spell_converted_with_phyrexian_life(
-                                        &total_cost,
-                                        &payment_ctx,
-                                        any_color_conversion,
-                                        game.player(player).life,
-                                    )
-                                    .expect("tested phyrexian payment should still be legal");
-                                if life_to_pay != test_life_to_pay {
-                                    continue;
-                                }
-                                if life_to_pay > 0 {
-                                    let skip_life = {
-                                        use crate::replacement::replacement_handler::{
-                                            apply_replacements, ReplacementEvent,
-                                        };
-                                        use crate::replacement::ReplacementResult;
-                                        let mut event = ReplacementEvent::PayLife {
-                                            player,
-                                            amount: life_to_pay,
-                                        };
-                                        let result = apply_replacements(game, &mut event);
-                                        result == ReplacementResult::Skipped
-                                            || result == ReplacementResult::Replaced
-                                    };
-                                    if !skip_life {
-                                        game.player_lose_life(player, life_to_pay);
-                                        self.trigger_handler.run_trigger(
-                                            TriggerType::LifeLost,
-                                            RunParams {
-                                                player: Some(player),
-                                                life_amount: Some(life_to_pay),
-                                                ..Default::default()
-                                            },
-                                            false,
-                                        );
-                                    }
-                                }
-                                break;
-                            } else {
-                                // Pool cannot pay the cost — agent thinks it can
-                                // but restrictions/colors prevent it. Treat as
-                                // invalid to avoid infinite loop.
-                                mana_loop_invalid_count += 1;
-                                if mana_loop_invalid_count > 3 {
-                                    *self.pool_mut(player) = saved_pool;
-                                    self.move_card_with_runtime(
-                                        game,
-                                        card_id,
-                                        ZoneType::Stack,
-                                        player,
-                                        agents,
-                                    );
-                                    return None;
-                                }
+                                .expect("tested phyrexian payment should still be legal");
+                            if life_to_pay != test_life_to_pay {
+                                return false;
                             }
+                            if life_to_pay > 0 {
+                                slf.pay_life_cost(game, player, life_to_pay);
+                            }
+                            true
+                        } else {
+                            false
                         }
-                        ManaCostAction::Cancel => {
-                            *self.pool_mut(player) = saved_pool;
-                            self.move_card_with_runtime(
-                                game,
-                                card_id,
-                                ZoneType::Stack,
-                                player,
-                                agents,
-                            );
-                            return None;
-                        }
+                    },
+                );
+                if !mana_paid {
+                    if game.card(card_id).zone != original_zone {
+                        self.move_card_with_runtime(
+                            game,
+                            card_id,
+                            original_zone,
+                            original_owner,
+                            agents,
+                        );
                     }
+                    return None;
                 }
             }
 
@@ -1429,9 +1521,8 @@ impl GameLoop {
                     }
                 }
             }
-            if let Some(ref entry) = static_alt_entry {
-                let has_waterbend = entry
-                    .cost
+            if let Some(ref cost) = static_alt_cost {
+                let has_waterbend = cost
                     .parts
                     .iter()
                     .any(|p| matches!(p, crate::cost::CostPart::Waterbend { .. }));
@@ -1454,9 +1545,9 @@ impl GameLoop {
                     agents,
                     player,
                     card_id,
-                    &entry.cost,
+                    cost,
                     None,
-                    entry.cost.mandatory,
+                    cost.mandatory,
                     Some(&sa),
                     prechosen_static_alt_sacrifices.as_deref(),
                 ) {
@@ -1617,65 +1708,6 @@ impl GameLoop {
             // Track spell cast on the stack (storm count, etc.)
             game.stack.record_spell_cast(card_id);
 
-            // Fire BecomesTarget trigger if a card/player was targeted
-            if let Some(target_card) = sa.target_chosen.target_card {
-                let first_time = !game.card(target_card).has_become_target_this_turn();
-                game.card_mut(target_card).add_target_from_this_turn();
-                self.trigger_handler.run_trigger(
-                    TriggerType::BecomesTarget,
-                    RunParams {
-                        card: Some(target_card),
-                        target_card: Some(target_card),
-                        cards: Some(vec![target_card]),
-                        cause_player: Some(player),
-                        cause_card: Some(card_id),
-                        source_sa: Some(sa.clone()),
-                        first_time: Some(first_time),
-                        ..Default::default()
-                    },
-                    false,
-                );
-                self.trigger_handler.run_trigger(
-                    TriggerType::BecomesTargetOnce,
-                    RunParams {
-                        card: Some(target_card),
-                        target_card: Some(target_card),
-                        cards: Some(vec![target_card]),
-                        cause_player: Some(player),
-                        cause_card: Some(card_id),
-                        source_sa: Some(sa.clone()),
-                        first_time: Some(first_time),
-                        ..Default::default()
-                    },
-                    false,
-                );
-            } else if let Some(target_player) = sa.target_chosen.target_player {
-                self.trigger_handler.run_trigger(
-                    TriggerType::BecomesTarget,
-                    RunParams {
-                        player: Some(target_player),
-                        target_player: Some(target_player),
-                        cause_player: Some(player),
-                        cause_card: Some(card_id),
-                        source_sa: Some(sa.clone()),
-                        ..Default::default()
-                    },
-                    false,
-                );
-                self.trigger_handler.run_trigger(
-                    TriggerType::BecomesTargetOnce,
-                    RunParams {
-                        player: Some(target_player),
-                        target_player: Some(target_player),
-                        cause_player: Some(player),
-                        cause_card: Some(card_id),
-                        source_sa: Some(sa.clone()),
-                        ..Default::default()
-                    },
-                    false,
-                );
-            }
-
             let cast_zone = if is_foretell {
                 Some(ZoneType::Exile)
             } else if is_flashback || is_escape {
@@ -1700,81 +1732,39 @@ impl GameLoop {
                 optional_trigger_description: None,
                 optional_trigger_source_name: None,
             };
-
-            game.stack.push(entry.clone());
-            self.log_stack_push(&card_name, &game.player(player).name);
             let chosen_target = entry.spell_ability.target_chosen.target_card;
-            if is_flashback {
-                let mut event = crate::agent::GameLogEvent::stack(format!(
-                    "Cast: {} [Flashback from Graveyard]",
-                    card_name
-                ))
-                .with_player(player)
-                .with_source_card(card_id);
-                if let Some(target_id) = chosen_target {
-                    event = event.with_target_card(target_id);
-                }
-                crate::agent::notify_all_agents(agents, event);
+            let stack_message = if is_flashback {
+                format!("Cast: {} [Flashback from Graveyard]", card_name)
             } else {
-                let mut event = crate::agent::GameLogEvent::stack(format!("Cast: {}", card_name))
-                    .with_player(player)
-                    .with_source_card(card_id);
-                if let Some(target_id) = chosen_target {
-                    event = event.with_target_card(target_id);
-                }
-                crate::agent::notify_all_agents(agents, event);
-            }
-
-            // Move spell to stack zone
-            self.move_card_with_runtime(game, card_id, ZoneType::Stack, player, agents);
-
-            // Register the cast card's triggers so that SpellCast self-triggers
-            // (e.g. Writhing Chrysalis "When you cast this spell, create tokens")
-            // are active while the card is on the stack.
-            self.trigger_handler.register_active_trigger(game, card_id);
-
-            // Java order: once the spell is on the stack and self-triggers are
-            // registered, apply paying-mana effects and emit cast-family triggers.
-            if let Some(top) = game.stack.iter_mut().last() {
-                top.spell_ability.apply_paying_mana_effects();
-            }
-            let sa_for_trigger = game
-                .stack
-                .peek()
-                .map(|top| top.spell_ability.clone())
-                .unwrap_or_else(|| entry.spell_ability.clone());
-            self.trigger_handler.run_trigger(
-                TriggerType::SpellCast,
-                RunParams {
-                    spell_card: Some(card_id),
-                    spell_controller: Some(player),
-                    spell_ability: Some(sa_for_trigger.clone()),
-                    source_sa: Some(sa_for_trigger.clone()),
-                    cause: Some(sa_for_trigger.clone()),
-                    cause_card: Some(card_id),
-                    ..Default::default()
+                format!("Cast: {}", card_name)
+            };
+            let sa_for_trigger = self.push_spell_ability_to_stack(
+                game,
+                agents,
+                player,
+                StackPushContext {
+                    source_card: card_id,
+                    entry: entry.clone(),
+                    stack_log_name: card_name.clone(),
+                    stack_message,
+                    target_card: chosen_target,
+                    event_kind: SpellAbilityLogEventKind::Stack,
+                    move_source_to_stack: true,
+                    register_source_trigger: true,
                 },
-                true,
             );
-            if !waterbend_tapped.is_empty() {
-                let bend_params = RunParams {
-                    player: Some(player),
-                    card: Some(card_id),
-                    spell_card: Some(card_id),
-                    spell_controller: Some(player),
-                    spell_ability: Some(sa_for_trigger.clone()),
-                    source_sa: Some(sa_for_trigger.clone()),
-                    cause: Some(sa_for_trigger.clone()),
-                    cause_card: Some(card_id),
-                    cards: Some(waterbend_tapped.clone()),
-                    ..Default::default()
-                };
-                self.trigger_handler.run_trigger(
-                    TriggerType::Elementalbend,
-                    bend_params.clone(),
-                    false,
-                );
-            }
+            self.emit_post_stack_spell_ability_triggers(
+                game,
+                player,
+                &sa_for_trigger,
+                PostStackTriggerContext {
+                    source_card: card_id,
+                    cast_trigger: TriggerType::SpellCast,
+                    emit_ability_activated: false,
+                    emit_waterbend: !waterbend_tapped.is_empty(),
+                    waterbend_cards: waterbend_tapped.clone(),
+                },
+            );
 
             // Storm: create N copies where N = spells_cast_this_turn - 1.
             if game.card(card_id).has_storm() {
@@ -1918,8 +1908,6 @@ impl GameLoop {
                     }
                 }
             }
-        }
-
         Some((card_id, card_name))
     }
     pub(crate) fn resolve_cascade(
@@ -2025,62 +2013,16 @@ impl GameLoop {
                     },
                     false,
                 );
-                if let Some(top) = game.stack.peek() {
-                    if let Some(target_card) = top.spell_ability.target_chosen.target_card {
-                        let first_time = !game.card(target_card).has_become_target_this_turn();
-                        game.card_mut(target_card).add_target_from_this_turn();
-                        self.trigger_handler.run_trigger(
-                            TriggerType::BecomesTarget,
-                            RunParams {
-                                card: Some(target_card),
-                                target_card: Some(target_card),
-                                cards: Some(vec![target_card]),
-                                cause_player: Some(player),
-                                cause_card: Some(cascade_card_id),
-                                first_time: Some(first_time),
-                                ..Default::default()
-                            },
-                            false,
-                        );
-                        self.trigger_handler.run_trigger(
-                            TriggerType::BecomesTargetOnce,
-                            RunParams {
-                                card: Some(target_card),
-                                target_card: Some(target_card),
-                                cards: Some(vec![target_card]),
-                                cause_player: Some(player),
-                                cause_card: Some(cascade_card_id),
-                                first_time: Some(first_time),
-                                ..Default::default()
-                            },
-                            false,
-                        );
-                    } else if let Some(target_player) =
-                        top.spell_ability.target_chosen.target_player
-                    {
-                        self.trigger_handler.run_trigger(
-                            TriggerType::BecomesTarget,
-                            RunParams {
-                                player: Some(target_player),
-                                target_player: Some(target_player),
-                                cause_player: Some(player),
-                                cause_card: Some(cascade_card_id),
-                                ..Default::default()
-                            },
-                            false,
-                        );
-                        self.trigger_handler.run_trigger(
-                            TriggerType::BecomesTargetOnce,
-                            RunParams {
-                                player: Some(target_player),
-                                target_player: Some(target_player),
-                                cause_player: Some(player),
-                                cause_card: Some(cascade_card_id),
-                                ..Default::default()
-                            },
-                            false,
-                        );
-                    }
+                if let Some(sa_for_target) = game.stack.peek().map(|top| top.spell_ability.clone())
+                {
+                    self.emit_becomes_target_triggers(
+                        game,
+                        player,
+                        cascade_card_id,
+                        Some(&sa_for_target),
+                        sa_for_target.target_chosen.target_card,
+                        sa_for_target.target_chosen.target_player,
+                    );
                 }
             } else {
                 // Player declined — found card goes to bottom with the rest

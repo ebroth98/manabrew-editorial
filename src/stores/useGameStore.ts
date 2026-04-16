@@ -242,8 +242,12 @@ export const useGameStore = create<GameState>()(devtools((set, get) => ({
     get().respond({ type: 'declineCombatCost' });
   },
 
-  payManaCost: () => {
-    get().respond({ type: 'payManaCost' });
+  payManaCost: (auto = false) => {
+    get().respond({ type: 'payManaCost', auto });
+  },
+
+  autoManaCost: () => {
+    get().respond({ type: 'payManaCost', auto: true });
   },
 
   cancelManaCost: () => {

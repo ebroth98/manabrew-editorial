@@ -677,9 +677,7 @@ impl Card {
                     });
                 self.svars
                     .entry("MadnessCleanup".to_string())
-                    .or_insert_with(|| {
-                        "DB$ Cleanup | ClearRemembered$ True".to_string()
-                    });
+                    .or_insert_with(|| "DB$ Cleanup | ClearRemembered$ True".to_string());
             }
         }
     }

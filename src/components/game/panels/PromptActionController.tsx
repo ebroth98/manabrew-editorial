@@ -78,8 +78,14 @@ interface PromptActionControllerProps {
   onOpenStack: () => void;
   buttonLayout?: PromptButtonLayout;
   // Pay mana cost
-  payManaCostInfo?: { cardName: string; manaCost: string; manaPool: Record<string, number> } | null;
+  payManaCostInfo?: {
+    cardName: string;
+    manaCost: string;
+    manaPool: Record<string, number>;
+    canConfirmFromPool: boolean;
+  } | null;
   onPayManaCost?: () => void;
+  onAutoManaCost?: () => void;
   onCancelManaCost?: () => void;
 }
 
@@ -102,6 +108,7 @@ export function PromptActionController({
   buttonLayout = "full",
   payManaCostInfo,
   onPayManaCost,
+  onAutoManaCost,
   onCancelManaCost,
 }: PromptActionControllerProps) {
   const promptActionOverride = useGameDevStore((s) => s.promptActionOverride);
@@ -152,6 +159,7 @@ export function PromptActionController({
         isWaitingForResponse={isWaitingForResponse}
         payManaCostInfo={payManaCostInfo}
         onPayManaCost={onPayManaCost}
+        onAutoManaCost={onAutoManaCost}
         onCancelManaCost={onCancelManaCost}
       />
     ),

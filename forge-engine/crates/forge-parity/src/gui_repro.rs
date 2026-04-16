@@ -21,11 +21,21 @@ fn rng_log(name: &str, choices: Option<usize>, outcome: String, rng: &JavaRandom
 /// Mirrors Java ChoiceSpace.pickIntInRange(min, max, rng): inclusive range.
 pub fn pick_int_in_range(min: i32, max: i32, rng: &mut JavaRandom) -> i32 {
     if max <= min {
-        rng_log(&format!("pick_int_in_range [{min}-{max}]"), None, min.to_string(), rng);
+        rng_log(
+            &format!("pick_int_in_range [{min}-{max}]"),
+            None,
+            min.to_string(),
+            rng,
+        );
         min
     } else {
         let val = min + rng.next_int(max - min + 1);
-        rng_log(&format!("pick_int_in_range [{min}-{max}]"), None, val.to_string(), rng);
+        rng_log(
+            &format!("pick_int_in_range [{min}-{max}]"),
+            None,
+            val.to_string(),
+            rng,
+        );
         val
     }
 }
@@ -37,7 +47,12 @@ pub fn choose_color(valid_colors: &[String], rng: &mut JavaRandom) -> Option<Str
     }
     let idx = choice_space::pick_index(valid_colors.len(), rng);
     let chosen = valid_colors.get(idx).cloned();
-    rng_log("choose_color", Some(valid_colors.len()), format!("{chosen:?}"), rng);
+    rng_log(
+        "choose_color",
+        Some(valid_colors.len()),
+        format!("{chosen:?}"),
+        rng,
+    );
     chosen
 }
 
@@ -50,7 +65,12 @@ pub fn choose_type(valid_types: &[String], rng: &mut JavaRandom) -> Option<Strin
     sorted.sort();
     let idx = choice_space::pick_index(sorted.len(), rng);
     let chosen = sorted.get(idx).cloned();
-    rng_log("choose_type", Some(sorted.len()), format!("{chosen:?}"), rng);
+    rng_log(
+        "choose_type",
+        Some(sorted.len()),
+        format!("{chosen:?}"),
+        rng,
+    );
     chosen
 }
 
@@ -61,7 +81,12 @@ pub fn choose_card_name(valid_names: &[String], rng: &mut JavaRandom) -> Option<
     }
     let idx = choice_space::pick_index(valid_names.len(), rng);
     let chosen = valid_names.get(idx).cloned();
-    rng_log("choose_card_name", Some(valid_names.len()), format!("{chosen:?}"), rng);
+    rng_log(
+        "choose_card_name",
+        Some(valid_names.len()),
+        format!("{chosen:?}"),
+        rng,
+    );
     chosen
 }
 
@@ -81,12 +106,18 @@ pub fn pick_bool(rng: &mut JavaRandom) -> bool {
 pub fn pick_count(min: usize, max: usize, available: usize, rng: &mut JavaRandom) -> usize {
     let hi = max.min(available);
     let lo = min.min(hi);
-    let count = lo + if hi > lo {
-        rng.next_int((hi - lo + 1) as i32) as usize
-    } else {
-        0
-    };
-    rng_log(&format!("pick_count [{min}-{max}]"), Some(available), count.to_string(), rng);
+    let count = lo
+        + if hi > lo {
+            rng.next_int((hi - lo + 1) as i32) as usize
+        } else {
+            0
+        };
+    rng_log(
+        &format!("pick_count [{min}-{max}]"),
+        Some(available),
+        count.to_string(),
+        rng,
+    );
     count
 }
 
@@ -109,7 +140,12 @@ pub fn pick_many_unique<T: Copy>(
     }
     let len = options.len();
     let picked = out.len();
-    rng_log(&format!("pick_many_unique [{min}-{max}]"), Some(len), format!("picked {picked}"), rng);
+    rng_log(
+        &format!("pick_many_unique [{min}-{max}]"),
+        Some(len),
+        format!("picked {picked}"),
+        rng,
+    );
     out
 }
 

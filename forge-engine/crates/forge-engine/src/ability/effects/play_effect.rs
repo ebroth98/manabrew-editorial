@@ -23,16 +23,16 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     let remember = sa.param_is_true("RememberPlayed");
     let optional = sa.param_is_true(keys::OPTIONAL);
     let is_madness = sa.params.get(keys::PLAY_COST).is_some()
-        && sa.source.map_or(false, |src| ctx.game.card(src).has_keyword("Madness"));
+        && sa
+            .source
+            .map_or(false, |src| ctx.game.card(src).has_keyword("Madness"));
 
     // ── Step 1: Choose card — mirrors Java PlayEffect.java line 234 ──
     // chooseSingleEntityForEffect(tgtCards, sa, ..., !singleOption && optional, ...)
     // For single-card + optional: isOptional=false (auto-pick), then confirmAction below.
     let tgt_cards = vec![card_id];
     let chosen = ctx.agents[controller.index()].choose_single_entity_for_effect(
-        controller,
-        &tgt_cards,
-        false, // !singleOption && optional = false for single card
+        controller, &tgt_cards, false, // !singleOption && optional = false for single card
     );
     let card_id = match chosen {
         Some(cid) => cid,

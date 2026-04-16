@@ -489,7 +489,10 @@ pub fn replace_dying(game: &mut GameState, sa: &SpellAbility) -> Vec<CardId> {
         effect.set_temp_effect_until_eot(true);
     }
 
-    let valid = sa.params.get("ReplaceDyingValid").unwrap_or("Card.IsRemembered");
+    let valid = sa
+        .params
+        .get("ReplaceDyingValid")
+        .unwrap_or("Card.IsRemembered");
     let zone = sa.params.get("ReplaceDyingZone").unwrap_or("Exile");
     let mut replacement_raw = format!(
         "R$ Event$ Moved | ValidLKI$ {} | Origin$ Battlefield | Destination$ Graveyard | NewDestination$ {} | Description$ If that permanent would die this turn, exile it instead.",

@@ -315,10 +315,7 @@ pub(super) fn apply_post_move(
     let controller = sa.activating_player;
     let exile_source = sa.source.and_then(|source_id| {
         if sa.params.has("ExiledWithEffectSource") {
-            ctx.game
-                .card(source_id)
-                .effect_source
-                .or(Some(source_id))
+            ctx.game.card(source_id).effect_source.or(Some(source_id))
         } else {
             None
         }

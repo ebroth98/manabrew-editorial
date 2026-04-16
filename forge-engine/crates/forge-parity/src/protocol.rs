@@ -213,7 +213,9 @@ pub trait ParityLog {
     fn kind(&self) -> &str;
     fn choice(&self) -> &str;
     fn options(&self) -> &[ChoiceLogEntry];
-    fn callback_args(&self) -> &[String] { &[] }
+    fn callback_args(&self) -> &[String] {
+        &[]
+    }
     fn timestamp_ms(&self) -> u64;
 
     fn format(&self) -> String {
@@ -284,7 +286,6 @@ impl ChoiceLogEntry {
         }
         s
     }
-
 }
 
 /// A callback record captured during game execution.
@@ -306,34 +307,82 @@ pub struct CallbackRecord {
 }
 
 impl ParityLog for StateSnapshot {
-    fn turn(&self) -> u32 { self.turn }
-    fn phase(&self) -> &str { &self.phase }
-    fn player(&self) -> u32 { self.active_player }
-    fn kind(&self) -> &str { "snapshot" }
-    fn choice(&self) -> &str { if self.game_over { "game_over" } else { "in_progress" } }
-    fn options(&self) -> &[ChoiceLogEntry] { &[] }
-    fn timestamp_ms(&self) -> u64 { self.timestamp_ms }
+    fn turn(&self) -> u32 {
+        self.turn
+    }
+    fn phase(&self) -> &str {
+        &self.phase
+    }
+    fn player(&self) -> u32 {
+        self.active_player
+    }
+    fn kind(&self) -> &str {
+        "snapshot"
+    }
+    fn choice(&self) -> &str {
+        if self.game_over {
+            "game_over"
+        } else {
+            "in_progress"
+        }
+    }
+    fn options(&self) -> &[ChoiceLogEntry] {
+        &[]
+    }
+    fn timestamp_ms(&self) -> u64 {
+        self.timestamp_ms
+    }
 }
 
 impl ParityLog for DecisionRecord {
-    fn turn(&self) -> u32 { self.turn }
-    fn phase(&self) -> &str { &self.phase }
-    fn player(&self) -> u32 { self.deciding_player }
-    fn kind(&self) -> &str { &self.kind }
-    fn choice(&self) -> &str { &self.choice }
-    fn options(&self) -> &[ChoiceLogEntry] { &self.options }
-    fn timestamp_ms(&self) -> u64 { self.timestamp_ms }
+    fn turn(&self) -> u32 {
+        self.turn
+    }
+    fn phase(&self) -> &str {
+        &self.phase
+    }
+    fn player(&self) -> u32 {
+        self.deciding_player
+    }
+    fn kind(&self) -> &str {
+        &self.kind
+    }
+    fn choice(&self) -> &str {
+        &self.choice
+    }
+    fn options(&self) -> &[ChoiceLogEntry] {
+        &self.options
+    }
+    fn timestamp_ms(&self) -> u64 {
+        self.timestamp_ms
+    }
 }
 
 impl ParityLog for CallbackRecord {
-    fn turn(&self) -> u32 { self.turn }
-    fn phase(&self) -> &str { &self.phase }
-    fn player(&self) -> u32 { self.player }
-    fn kind(&self) -> &str { &self.name }
-    fn choice(&self) -> &str { &self.outcome }
-    fn options(&self) -> &[ChoiceLogEntry] { &self.args }
-    fn callback_args(&self) -> &[String] { &self.callback_args }
-    fn timestamp_ms(&self) -> u64 { self.timestamp_ms }
+    fn turn(&self) -> u32 {
+        self.turn
+    }
+    fn phase(&self) -> &str {
+        &self.phase
+    }
+    fn player(&self) -> u32 {
+        self.player
+    }
+    fn kind(&self) -> &str {
+        &self.name
+    }
+    fn choice(&self) -> &str {
+        &self.outcome
+    }
+    fn options(&self) -> &[ChoiceLogEntry] {
+        &self.args
+    }
+    fn callback_args(&self) -> &[String] {
+        &self.callback_args
+    }
+    fn timestamp_ms(&self) -> u64 {
+        self.timestamp_ms
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

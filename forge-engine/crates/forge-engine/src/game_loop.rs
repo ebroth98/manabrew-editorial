@@ -57,6 +57,46 @@ pub struct GameLoop {
     reserved_sacrifice_stack: Vec<Vec<CardId>>,
 }
 
+#[derive(Debug, Clone)]
+pub(crate) struct PreparedSpellAbility {
+    pub spell_ability: SpellAbility,
+    pub activated_ability_index: Option<usize>,
+    pub static_alternative_cost_prepared: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum SpellAbilityLogEventKind {
+    Stack,
+    Action,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct StackPushContext {
+    pub source_card: CardId,
+    pub entry: StackEntry,
+    pub stack_log_name: String,
+    pub stack_message: String,
+    pub target_card: Option<CardId>,
+    pub event_kind: SpellAbilityLogEventKind,
+    pub move_source_to_stack: bool,
+    pub register_source_trigger: bool,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct PostStackTriggerContext {
+    pub source_card: CardId,
+    pub cast_trigger: TriggerType,
+    pub emit_ability_activated: bool,
+    pub emit_waterbend: bool,
+    pub waterbend_cards: Vec<CardId>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum PlaySpellAbilityResult {
+    CardPlayed { card_id: CardId, card_name: String },
+    AbilityActivated,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum TurnMachineState {
     Untap,
@@ -115,10 +155,7 @@ impl GameLoop {
     /// Get the number of art variants for a token in a given edition.
     /// Follows TokenFallbackCode chains. Returns 1 if not found.
     pub fn token_art_variant_count(&self, token_script: &str, edition_code: &str) -> usize {
-        let key = (
-            token_script.to_lowercase(),
-            edition_code.to_uppercase(),
-        );
+        let key = (token_script.to_lowercase(), edition_code.to_uppercase());
         if let Some(&count) = self.token_art_variants.get(&key) {
             return count;
         }
@@ -603,6 +640,7 @@ mod cast_spell;
 mod combat_phase;
 mod cost_payment;
 mod game_action;
+mod mana_payment;
 mod phase_handler;
 mod playability;
 mod priority;

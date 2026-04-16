@@ -35,7 +35,10 @@ fn shares_any_subtype(a: &Card, b: &Card) -> bool {
         .any(|creature_type| {
             a.has_creature_type(creature_type) && b.has_creature_type(creature_type)
         })
-        || a.type_line.subtypes.iter().any(|s| b.type_line.has_subtype(s))
+        || a.type_line
+            .subtypes
+            .iter()
+            .any(|s| b.type_line.has_subtype(s))
 }
 
 pub fn owner_lives(game: &GameState, card_id: CardId) -> bool {

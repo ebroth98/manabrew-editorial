@@ -545,13 +545,19 @@ impl EffectContext<'_> {
     /// Consume game-RNG calls to match Java's token prototype creation.
     /// Java calls Aggregates.random(Set) which does nextInt() per element,
     /// plus PaperToken.getImageKey() which does nextInt(artIndex).
-    pub fn sync_token_art_rng(&mut self, token_script: &str, sa: &crate::spellability::SpellAbility) {
-        // Java's TokenDb caches token prototypes globally. The first creation
-        // of a token type consumes game RNG (Aggregates.random + getImageKey);
         // Java's TokenDb caches token prototypes globally. The first creation
         // of a token type consumes game RNG (Aggregates.random + getImageKey);
         // subsequent creations reuse the cached prototype without RNG.
-        let host_edition = sa.source
+    pub fn sync_token_art_rng(
+        &mut self,
+        token_script: &str,
+        sa: &crate::spellability::SpellAbility,
+    ) {
+        // Java's TokenDb caches token prototypes globally. The first creation
+        // of a token type consumes game RNG (Aggregates.random + getImageKey);
+        // subsequent creations reuse the cached prototype without RNG.
+        let host_edition = sa
+            .source
             .and_then(|cid| self.game.card(cid).set_code.as_deref())
             .unwrap_or("");
         let art_count = self.token_art_variant_count(token_script, host_edition);

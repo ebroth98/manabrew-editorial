@@ -43,7 +43,15 @@ impl ParityObserver {
         }
     }
 
-    pub(crate) fn on_callback(&self, name: &str, outcome: &str, player: u32, turn: u32, phase: &str, callback_args: Vec<String>) {
+    pub(crate) fn on_callback(
+        &self,
+        name: &str,
+        outcome: &str,
+        player: u32,
+        turn: u32,
+        phase: &str,
+        callback_args: Vec<String>,
+    ) {
         let choice_logs = crate::parity_log::drain();
 
         let snapshot_index = *self.shared_snapshot_index.lock().unwrap();
@@ -51,17 +59,20 @@ impl ParityObserver {
             .duration_since(UNIX_EPOCH)
             .map(|d| d.as_millis() as u64)
             .unwrap_or(0);
-        self.shared_log.lock().unwrap().push(ParityLogEntry::Callback(CallbackRecord {
-            snapshot_index,
-            turn,
-            phase: phase.to_string(),
-            player,
-            name: name.to_string(),
-            outcome: outcome.to_string(),
-            args: choice_logs,
-            callback_args,
-            timestamp_ms,
-        }));
+        self.shared_log
+            .lock()
+            .unwrap()
+            .push(ParityLogEntry::Callback(CallbackRecord {
+                snapshot_index,
+                turn,
+                phase: phase.to_string(),
+                player,
+                name: name.to_string(),
+                outcome: outcome.to_string(),
+                args: choice_logs,
+                callback_args,
+                timestamp_ms,
+            }));
     }
 
     fn mark_snapshot(&self) {
@@ -82,6 +93,7 @@ struct CapturingAgent {
     current_turn: u32,
     current_phase: String,
     last_game_state: Option<GameState>,
+    pending_pay_mana_cost_args: Option<Vec<String>>,
     #[allow(dead_code)]
     verbose: VerboseMode,
 }
@@ -123,6 +135,7 @@ impl CapturingAgent {
             current_turn: 0,
             current_phase: "Unknown".to_string(),
             last_game_state: None,
+            pending_pay_mana_cost_args: None,
             verbose,
         }
     }
@@ -168,6 +181,33 @@ impl CapturingAgent {
 }
 
 macro_rules! parity_agent_callback {
+    ($(fn $name:ident (&mut self $(, $arg:ident : $ty:ty )* ) -> $ret:ty => $kind:expr, defer_if $pat:pat => $pending:ident;)+) => {
+        $(
+            fn $name(&mut self $(, $arg: $ty)*) -> $ret {
+                self.save_snapshot($kind);
+                let fmt = self.fmt_ctx();
+                let cb_args: Vec<String> = vec![$($arg.callback_arg_display(fmt.as_ref())),*];
+                let result = self.inner.$name($($arg),*);
+                if matches!(result, $pat) {
+                    self.$pending = Some(cb_args);
+                    return result;
+                }
+                let outcome = match self.fmt_ctx() {
+                    Some(ctx) => result.parity_fmt(&ctx),
+                    None => format!("{:?}", result),
+                };
+                self.parity_observer.on_callback(
+                    $kind,
+                    &outcome,
+                    self.player_id.0,
+                    self.current_turn,
+                    &self.current_phase,
+                    cb_args,
+                );
+                result
+            }
+        )+
+    };
     ($(fn $name:ident (&mut self $(, $arg:ident : $ty:ty )* ) -> $ret:ty => $kind:expr;)+) => {
         $(
             fn $name(&mut self $(, $arg: $ty)*) -> $ret {
@@ -218,7 +258,10 @@ impl PlayerAgent for CapturingAgent {
                                 p.lands_played = 0;
                             }
                         }
-                        self.shared_log.lock().unwrap().push(ParityLogEntry::Snapshot(snap));
+                        self.shared_log
+                            .lock()
+                            .unwrap()
+                            .push(ParityLogEntry::Snapshot(snap));
                         self.parity_observer.mark_snapshot();
                     }
                 }
@@ -249,6 +292,24 @@ impl PlayerAgent for CapturingAgent {
                             .unwrap()
                             .push(ParityLogEntry::Snapshot(snapshot_game(game)));
                         self.parity_observer.mark_snapshot();
+                    }
+                }
+            }
+            GameNotification::ManaPaymentResolved { player, actions } => {
+                if *player == self.player_id {
+                    if let Some(cb_args) = self.pending_pay_mana_cost_args.take() {
+                        let outcome = match self.fmt_ctx() {
+                            Some(ctx) => actions.parity_fmt(&ctx),
+                            None => format!("{actions:?}"),
+                        };
+                        self.parity_observer.on_callback(
+                            "pay_mana_cost",
+                            &outcome,
+                            self.player_id.0,
+                            self.current_turn,
+                            &self.current_phase,
+                            cb_args,
+                        );
                     }
                 }
             }
@@ -332,7 +393,10 @@ impl PlayerAgent for CapturingAgent {
         fn choose_replicate(&mut self, player: PlayerId, cost: &str, max_replicates: u32, card_name: Option<&str>) -> u32 => "choose_replicate";
         fn choose_alternative_cost(&mut self, player: PlayerId, options: &[String], card_name: Option<&str>) -> usize => "choose_alternative_cost";
         fn choose_single_replacement_effect(&mut self, player: PlayerId, descriptions: &[String]) -> usize => "choose_single_replacement_effect";
-        fn pay_mana_cost(&mut self, player: PlayerId, card_id: CardId, card_name: &str, mana_cost: &str, mana_cost_display: &str, mana_cost_checkpoint: &str, allow_reserved_source_reuse: bool, reserved_sacrifices: &[CardId], mana_ability_options: &[forge_engine_core::agent::ManaAbilityOption], tappable_lands: &[CardId], untappable_lands: &[CardId], mana_pool: &forge_engine_core::mana::ManaPool) -> ManaCostAction => "pay_mana_cost";
+    }
+
+    parity_agent_callback! {
+        fn pay_mana_cost(&mut self, player: PlayerId, card_id: CardId, card_name: &str, mana_cost: &str, mana_cost_display: &str, mana_cost_checkpoint: &str, allow_reserved_source_reuse: bool, reserved_sacrifices: &[CardId], mana_ability_options: &[forge_engine_core::agent::ManaAbilityOption], tappable_lands: &[CardId], untappable_lands: &[CardId], mana_pool: &forge_engine_core::mana::ManaPool) -> ManaCostAction => "pay_mana_cost", defer_if ManaCostAction::Pay { auto: true } => pending_pay_mana_cost_args;
     }
 
     fn choose_single_card_for_zone_change(
@@ -660,7 +724,8 @@ pub fn run_with_data(config: &RunConfig, data: &LoadedData) -> Result<GameTrace,
         r
     }));
 
-    let parity_log_sink: Arc<Mutex<Vec<crate::protocol::ChoiceLogEntry>>> = Arc::new(Mutex::new(Vec::new()));
+    let parity_log_sink: Arc<Mutex<Vec<crate::protocol::ChoiceLogEntry>>> =
+        Arc::new(Mutex::new(Vec::new()));
     crate::parity_log::set_sink(Arc::clone(&parity_log_sink));
 
     let parity_map = Arc::new(ParityCardMap::from_opening_state(&game));

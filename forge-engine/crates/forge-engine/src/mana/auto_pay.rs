@@ -4,9 +4,16 @@ use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
 
 use super::{
-    auto_tap_lands, auto_tap_lands_with_callbacks, auto_tap_lands_with_chooser, ManaPayCallbackFn,
-    ManaPaymentContext, ManaPool, SacrificeChooser,
+    auto_tap_lands_trace, auto_tap_lands_trace_with_callbacks,
+    auto_tap_lands_with_chooser, AutoTapChoice, ManaPayCallbackFn, ManaPaymentContext, ManaPool,
+    SacrificeChooser,
 };
+
+pub struct AutoPayResult {
+    pub tapped: Vec<CardId>,
+    pub choices: Vec<AutoTapChoice>,
+    pub life_paid: i32,
+}
 
 /// Deterministic auto-pay entrypoint used by parity AI paths.
 ///
@@ -23,7 +30,7 @@ pub fn pay_mana_cost_auto(
     commander_tax: i32,
     payment_ctx: &ManaPaymentContext,
     any_color_conversion: bool,
-) -> Option<Vec<CardId>> {
+) -> Option<AutoPayResult> {
     pay_mana_cost_auto_with_chooser(
         game,
         pool,
@@ -49,7 +56,7 @@ pub fn pay_mana_cost_auto_with_chooser(
     payment_ctx: &ManaPaymentContext,
     any_color_conversion: bool,
     sacrifice_chooser: Option<SacrificeChooser<'_>>,
-) -> Option<Vec<CardId>> {
+) -> Option<AutoPayResult> {
     let mut tapped = match sacrifice_chooser {
         Some(chooser) => {
             let mut tapped =
@@ -67,9 +74,9 @@ pub fn pay_mana_cost_auto_with_chooser(
             tapped
         }
         None => {
-            let mut tapped = auto_tap_lands(game, pool, player, mana_cost, current_spell);
+            let mut choices = auto_tap_lands_trace(game, pool, player, mana_cost, current_spell);
             if commander_tax > 0 {
-                tapped.extend(auto_tap_lands(
+                choices.extend(auto_tap_lands_trace(
                     game,
                     pool,
                     player,
@@ -77,17 +84,34 @@ pub fn pay_mana_cost_auto_with_chooser(
                     current_spell,
                 ));
             }
-            tapped
+            choices.into_iter().map(|choice| choice.card_id).collect()
         }
     };
+    let choices = tapped
+        .iter()
+        .map(|&card_id| AutoTapChoice {
+            card_id,
+            mana_ability_index: None,
+            chosen_atom: 0,
+        })
+        .collect();
 
-    if !pool.try_pay_for_spell_converted(mana_cost, payment_ctx, any_color_conversion) {
+    let Some(life_paid) = pool.try_pay_for_spell_converted_with_phyrexian_life(
+        mana_cost,
+        payment_ctx,
+        any_color_conversion,
+        game.player(player).life,
+    ) else {
         return None;
-    }
+    };
     if commander_tax > 0 && !pool.try_pay_extra_generic(commander_tax) {
         return None;
     }
-    Some(tapped)
+    Some(AutoPayResult {
+        tapped,
+        choices,
+        life_paid,
+    })
 }
 
 /// Same as [`pay_mana_cost_auto`] but accepts the unified callback for both
@@ -102,11 +126,17 @@ pub fn pay_mana_cost_auto_with_callback(
     payment_ctx: &ManaPaymentContext,
     any_color_conversion: bool,
     callback: ManaPayCallbackFn<'_>,
-) -> Option<Vec<CardId>> {
-    let mut tapped =
-        auto_tap_lands_with_callbacks(game, pool, player, mana_cost, current_spell, callback);
+) -> Option<AutoPayResult> {
+    let mut choices = auto_tap_lands_trace_with_callbacks(
+        game,
+        pool,
+        player,
+        mana_cost,
+        current_spell,
+        callback,
+    );
     if commander_tax > 0 {
-        let tapped_tax = auto_tap_lands_with_callbacks(
+        let tapped_tax = auto_tap_lands_trace_with_callbacks(
             game,
             pool,
             player,
@@ -114,14 +144,24 @@ pub fn pay_mana_cost_auto_with_callback(
             current_spell,
             callback,
         );
-        tapped.extend(tapped_tax);
+        choices.extend(tapped_tax);
     }
+    let tapped = choices.iter().map(|choice| choice.card_id).collect();
 
-    if !pool.try_pay_for_spell_converted(mana_cost, payment_ctx, any_color_conversion) {
+    let Some(life_paid) = pool.try_pay_for_spell_converted_with_phyrexian_life(
+        mana_cost,
+        payment_ctx,
+        any_color_conversion,
+        game.player(player).life,
+    ) else {
         return None;
-    }
+    };
     if commander_tax > 0 && !pool.try_pay_extra_generic(commander_tax) {
         return None;
     }
-    Some(tapped)
+    Some(AutoPayResult {
+        tapped,
+        choices,
+        life_paid,
+    })
 }

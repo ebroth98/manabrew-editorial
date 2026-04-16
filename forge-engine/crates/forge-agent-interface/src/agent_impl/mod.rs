@@ -1070,6 +1070,7 @@ impl<T: AgentTransport> PlayerAgent for PromptAgent<T> {
                     ));
                 }
             }
+            GameNotification::ManaPaymentResolved { .. } => {}
         }
     }
 

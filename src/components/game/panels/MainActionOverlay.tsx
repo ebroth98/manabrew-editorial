@@ -36,6 +36,7 @@ export function MainActionOverlay({
   step,
   payManaCostInfo,
   onPayManaCost,
+  onAutoManaCost,
   onCancelManaCost,
 }: MainActionOverlayProps) {
   if (promptType === PromptType.GameOver) return null;
@@ -78,6 +79,7 @@ export function MainActionOverlay({
               buttonLayout={buttonLayout}
               payManaCostInfo={payManaCostInfo}
               onPayManaCost={onPayManaCost}
+              onAutoManaCost={onAutoManaCost}
               onCancelManaCost={onCancelManaCost}
             />
           </div>

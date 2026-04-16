@@ -1241,8 +1241,7 @@ pub fn choose_targets_by_kind(
                     }
                 }
             } else {
-                sa.target_chosen.target_card =
-                    agent.choose_target_card(player, &valid, Some(&*sa));
+                sa.target_chosen.target_card = agent.choose_target_card(player, &valid, Some(&*sa));
                 if let Some(cid) = sa.target_chosen.target_card {
                     sa.target_chosen.target_card_zone_timestamp =
                         Some(game.card(cid).zone_timestamp);
@@ -1271,8 +1270,7 @@ pub fn choose_targets_by_kind(
                     }
                 }
             } else {
-                sa.target_chosen.target_card =
-                    agent.choose_target_card(player, &valid, Some(&*sa));
+                sa.target_chosen.target_card = agent.choose_target_card(player, &valid, Some(&*sa));
                 if let Some(cid) = sa.target_chosen.target_card {
                     sa.target_chosen.target_card_zone_timestamp =
                         Some(game.card(cid).zone_timestamp);

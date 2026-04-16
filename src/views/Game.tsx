@@ -68,7 +68,7 @@ export default function Game() {
     targetSpell, modeDecision, optionalTriggerDecision,
     colorDecision, chooseCardsDecision, typeDecision, numberDecision,
     cardNameDecision, respond, payCombatCost, declineCombatCost,
-    payManaCost, cancelManaCost, delveDecision, convokeDecision,
+    payManaCost, autoManaCost, cancelManaCost, delveDecision, convokeDecision,
     improviseDecision, manaComboDecision, exploreDecision, exertDecision,
     enlistDecision, reorderLibraryDecision, assistDecision,
     concede, endGame, restoreSnapshot,
@@ -86,7 +86,7 @@ export default function Game() {
     typeDecision: s.typeDecision, numberDecision: s.numberDecision,
     cardNameDecision: s.cardNameDecision, respond: s.respond,
     payCombatCost: s.payCombatCost, declineCombatCost: s.declineCombatCost,
-    payManaCost: s.payManaCost, cancelManaCost: s.cancelManaCost,
+    payManaCost: s.payManaCost, autoManaCost: s.autoManaCost, cancelManaCost: s.cancelManaCost,
     delveDecision: s.delveDecision, convokeDecision: s.convokeDecision,
     improviseDecision: s.improviseDecision, manaComboDecision: s.manaComboDecision,
     exploreDecision: s.exploreDecision, exertDecision: s.exertDecision,
@@ -1018,10 +1018,12 @@ export default function Game() {
                 cardName: currentPrompt.cardName ?? "Spell",
                 manaCost: currentPrompt.manaCost,
                 manaPool: currentPrompt.gameView?.players?.find(p => p.isHuman)?.manaPool ?? {},
+                canConfirmFromPool: currentPrompt.canConfirmFromPool ?? false,
               }
             : null
         }
         onPayManaCost={payManaCost}
+        onAutoManaCost={autoManaCost}
         onCancelManaCost={cancelManaCost}
       />
 

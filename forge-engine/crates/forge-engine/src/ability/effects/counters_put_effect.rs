@@ -26,7 +26,6 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         .source
         .map(|id| ctx.game.card(id).controller)
         .unwrap_or_else(|| ctx.game.player_order[0]);
-
     // Check for Defined$ — if targeting a player (e.g. Defined$ You for energy),
     // handle player-level counters like ENERGY instead of card counters.
     if let Some(defined) = sa.params.get(keys::DEFINED) {

@@ -177,9 +177,8 @@ impl GameLoop {
                         continue;
                     }
 
-                    // Room UnlockDoor: dispatch to activate_ability instead of play_card.
-                    // Java models this as a StaticAbilityApiBased that goes through the
-                    // ability activation path, not the spell cast path.
+                    // Room UnlockDoor: route through the activated-ability branch of
+                    // play_spell_ability. Java models this as a StaticAbilityApiBased.
                     if play.mode == crate::agent::PlayCardMode::UnlockDoor {
                         let unlock_ab_idx = game
                             .card(play.card_id)
@@ -193,20 +192,36 @@ impl GameLoop {
                             })
                             .map(|ab| ab.ability_index);
                         if let Some(ability_idx) = unlock_ab_idx {
-                            let activated = self.with_shared_state_mutation(
+                            let played = self.with_shared_state_mutation(
                                 game,
                                 agents,
                                 |this, game, agents| {
-                                    this.activate_ability(
+                                    let ability_text = game
+                                        .card(play.card_id)
+                                        .activated_abilities
+                                        .iter()
+                                        .find(|ab| ab.ability_index == ability_idx)
+                                        .map(|ab| ab.ability_text.clone())?;
+                                    let mut sa = crate::spellability::build_spell_ability(
+                                        game,
+                                        play.card_id,
+                                        &ability_text,
+                                        priority_player,
+                                    );
+                                    sa.is_activated = true;
+                                    this.play_spell_ability(
                                         game,
                                         agents,
                                         priority_player,
-                                        play.card_id,
-                                        ability_idx,
+                                        PreparedSpellAbility {
+                                            spell_ability: sa,
+                                            activated_ability_index: Some(ability_idx),
+                                            static_alternative_cost_prepared: false,
+                                        },
                                     )
                                 },
                             );
-                            if activated {
+                            if played.is_some() {
                                 self.with_shared_state_mutation(
                                     game,
                                     agents,
@@ -223,9 +238,51 @@ impl GameLoop {
 
                     let played =
                         self.with_shared_state_mutation(game, agents, |this, game, agents| {
-                            this.play_card(game, agents, priority_player, play.card_id, play.mode)
+                            let card_name = game.card(play.card_id).card_name.clone();
+                            if game.card(play.card_id).is_land() {
+                                this.play_land(
+                                    game,
+                                    agents,
+                                    priority_player,
+                                    play.card_id,
+                                    &card_name,
+                                    play.mode,
+                                )
+                                .map(|(card_id, card_name)| {
+                                    PlaySpellAbilityResult::CardPlayed { card_id, card_name }
+                                })
+                            } else {
+                                if let Some(result) = this.play_special_card_action(
+                                    game,
+                                    agents,
+                                    priority_player,
+                                    play.card_id,
+                                    play.mode,
+                                ) {
+                                    result.map(|(card_id, card_name)| {
+                                        PlaySpellAbilityResult::CardPlayed { card_id, card_name }
+                                    })
+                                } else {
+                                    let prepared = this.prepare_card_spell_ability(
+                                        game,
+                                        priority_player,
+                                        play.card_id,
+                                        play.mode,
+                                    )?;
+                                    this.play_spell_ability(
+                                        game,
+                                        agents,
+                                        priority_player,
+                                        prepared,
+                                    )
+                                }
+                            }
                         });
-                    if let Some((played_id, played_name)) = played {
+                    if let Some(PlaySpellAbilityResult::CardPlayed {
+                        card_id: played_id,
+                        card_name: played_name,
+                    }) = played
+                    {
                         let set_code = game.card(played_id).set_code.clone().unwrap_or_default();
                         for agent in agents.iter_mut() {
                             agent.snapshot_state(game, &self.mana_pools);
@@ -559,15 +616,31 @@ impl GameLoop {
                     }
                     let activated =
                         self.with_shared_state_mutation(game, agents, |this, game, agents| {
-                            this.activate_ability(
+                            let ability_text = game
+                                .card(card_id)
+                                .activated_abilities
+                                .iter()
+                                .find(|ab| ab.ability_index == ability_idx)
+                                .map(|ab| ab.ability_text.clone())?;
+                            let mut sa = crate::spellability::build_spell_ability(
+                                game,
+                                card_id,
+                                &ability_text,
+                                priority_player,
+                            );
+                            sa.is_activated = true;
+                            this.play_spell_ability(
                                 game,
                                 agents,
                                 priority_player,
-                                card_id,
-                                ability_idx,
+                                PreparedSpellAbility {
+                                    spell_ability: sa,
+                                    activated_ability_index: Some(ability_idx),
+                                    static_alternative_cost_prepared: false,
+                                },
                             )
                         });
-                    if activated {
+                    if activated.is_some() {
                         // Process triggers immediately after ability activation so
                         // they go on the stack above the ability (mirroring the
                         // Play arm and Java's addAndUnfreeze behaviour).

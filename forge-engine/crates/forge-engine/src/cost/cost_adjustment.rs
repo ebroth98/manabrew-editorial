@@ -17,8 +17,8 @@ use crate::cost::{parse_cost, Cost};
 use crate::event::RunParams;
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
-use crate::mana::ManaPool;
 use crate::mana::mana_cost_being_paid::ManaCostBeingPaid;
+use crate::mana::ManaPool;
 use crate::parsing::keys;
 use crate::spellability::SpellAbility;
 use crate::staticability::StaticMode;
@@ -948,7 +948,10 @@ fn apply_offering_reduction(
     sa: &mut SpellAbility,
     _test: bool,
 ) -> bool {
-    let Some(offering_type) = game.card(sa.source.expect("spell source")).get_offering_type() else {
+    let Some(offering_type) = game
+        .card(sa.source.expect("spell source"))
+        .get_offering_type()
+    else {
         return true;
     };
     if sa.sacrificed_as_offering.is_some() {
@@ -1019,12 +1022,9 @@ fn apply_emerge_reduction(
         .into_iter()
         .chain(game.card(source).granted_keywords.get_values().into_iter())
         .find_map(|kw| {
-            kw.original.strip_prefix("Emerge:").map(|rest| {
-                rest.split(':')
-                    .nth(1)
-                    .unwrap_or("Creature")
-                    .to_string()
-            })
+            kw.original
+                .strip_prefix("Emerge:")
+                .map(|rest| rest.split(':').nth(1).unwrap_or("Creature").to_string())
         })
         .unwrap_or_else(|| "Creature".to_string());
     let candidates: Vec<CardId> = game
@@ -1100,7 +1100,12 @@ fn apply_delve_reduction(
     }
     let max_delve = (generic as usize).min(graveyard.len());
     agents[player.index()].snapshot_state(game, mana_pools);
-    let chosen = agents[player.index()].choose_delve(player, &graveyard, max_delve, Some(&game.card(source).card_name));
+    let chosen = agents[player.index()].choose_delve(
+        player,
+        &graveyard,
+        max_delve,
+        Some(&game.card(source).card_name),
+    );
     game.card_mut(source).clear_delved();
     match cards_to_delve_out {
         Some(out) => {
@@ -1237,7 +1242,11 @@ pub fn commit_offerings_and_emerge(
             continue;
         }
         let owner = game.card(chosen).owner;
-        let lki_p1p1 = *game.card(chosen).counters.get(&CounterType::P1P1).unwrap_or(&0);
+        let lki_p1p1 = *game
+            .card(chosen)
+            .counters
+            .get(&CounterType::P1P1)
+            .unwrap_or(&0);
         let lki_power = game.card(chosen).power();
         let lki_toughness = game.card(chosen).toughness();
         trigger_handler.run_trigger(

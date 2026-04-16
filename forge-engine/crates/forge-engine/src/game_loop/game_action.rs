@@ -2,10 +2,7 @@ use super::cost_payment::CostPaymentContext;
 use super::*;
 
 impl GameLoop {
-    fn fixed_reserved_sacrifices_for_action(
-        sa: &SpellAbility,
-        source: CardId,
-    ) -> Vec<CardId> {
+    fn fixed_reserved_sacrifices_for_action(sa: &SpellAbility, source: CardId) -> Vec<CardId> {
         let mut reserved = Vec::new();
         let Some(pay_costs) = sa.pay_costs.as_ref() else {
             return reserved;
@@ -162,15 +159,14 @@ impl GameLoop {
                     card_id,
                     player,
                     &sa_for_target_check,
+                ) && mana::can_pay_mana_cost_with_reserved_sacrifices(
+                    game,
+                    self.pool(player),
+                    player,
+                    card_id,
+                    &ab.cost,
+                    &reserved_sacrifices,
                 )
-                    && mana::can_pay_mana_cost_with_reserved_sacrifices(
-                        game,
-                        self.pool(player),
-                        player,
-                        card_id,
-                        &ab.cost,
-                        &reserved_sacrifices,
-                    )
             };
             if !can_pay_cost {
                 return false;
@@ -245,58 +241,11 @@ impl GameLoop {
         result
     }
 
-    /// Activate an ability on a permanent.
-    /// Activate an ability. Returns `true` if the ability was successfully
-    /// activated (costs paid, placed on stack / resolved). Returns `false` if
-    /// the activation failed (e.g. payment declined, targets invalid).
-    pub(crate) fn activate_ability(
-        &mut self,
-        game: &mut GameState,
-        agents: &mut [Box<dyn PlayerAgent>],
-        player: PlayerId,
-        card_id: CardId,
-        ability_idx: usize,
-    ) -> bool {
-        // Clone the ability data we need before mutating game
-        let ab = {
-            let card = game.card(card_id);
-            card.activated_abilities
-                .iter()
-                .find(|a| a.ability_index == ability_idx)
-                .cloned()
-        };
-
-        let ab = match ab {
-            Some(ab) => ab,
-            None => return false,
-        };
-
-        if ab.is_mana_ability {
-            self.resolve_mana_ability(game, agents, player, card_id, &ab, None);
-            true
-        } else if ab
-            .params
-            .get(keys::AB)
-            .and_then(crate::ability::api_type::ApiType::smart_value_of)
-            == Some(crate::ability::api_type::ApiType::Plot)
-        {
-            // Java models Plot as AbilityStatic, which resolves immediately
-            // instead of using the stack.
-            self.resolve_immediate_ability(game, agents, player, card_id, &ab)
-        } else if ab.ability_text.contains("Mode$ TurnFaceUp") {
-            // Morph face-up is a special action (CR 702.36e): doesn't use the stack,
-            // can't be responded to. Pay the cost and resolve immediately.
-            self.resolve_immediate_ability(game, agents, player, card_id, &ab)
-        } else {
-            self.activate_ability_on_stack(game, agents, player, card_id, &ab)
-        }
-    }
-
     /// Resolve an ability immediately without using the stack.
     ///
     /// Used for abilities that Java models as `AbilityStatic` (e.g. Plot) and
     /// for special actions like turning a Morph face up.
-    fn resolve_immediate_ability(
+    pub(crate) fn resolve_immediate_ability(
         &mut self,
         game: &mut GameState,
         agents: &mut [Box<dyn PlayerAgent>],
@@ -551,7 +500,7 @@ impl GameLoop {
     }
 
     /// Activate a non-mana ability: choose targets, pay costs, put on stack.
-    pub(crate) fn activate_ability_on_stack(
+    pub(crate) fn play_activated_ability_on_stack(
         &mut self,
         game: &mut GameState,
         agents: &mut [Box<dyn PlayerAgent>],
@@ -662,9 +611,7 @@ impl GameLoop {
 
         // Push to stack
         let card_name = game.card(card_id).card_name.clone();
-        let mut sa_for_trigger = sa.clone();
         let target_card = sa.target_chosen.target_card;
-        let target_player = sa.target_chosen.target_player;
         let entry = StackEntry {
             id: 0,
             spell_ability: sa,
@@ -675,64 +622,35 @@ impl GameLoop {
             optional_trigger_description: None,
             optional_trigger_source_name: None,
         };
-        game.stack.push(entry);
-        self.log_stack_push(&format!("{} ability", card_name), &game.player(player).name);
-        let ability_kind = ab.params.get(keys::AB).unwrap_or("Unknown").to_string();
-        let mut event = crate::agent::GameLogEvent::action(format!(
-            "Activated ability: {} | source={}",
-            ability_kind, card_name
-        ))
-        .with_player(player)
-        .with_source_card(card_id);
-        if let Some(target_id) = target_card {
-            event = event.with_target_card(target_id);
-        }
-        crate::agent::notify_all_agents(agents, event);
-
-        // Fire AbilityActivated trigger
-        self.trigger_handler.run_trigger(
-            TriggerType::AbilityActivated,
-            RunParams {
-                card: Some(card_id),
-                player: Some(player),
-                ..Default::default()
+        let ability_kind = ab.params.get(keys::AB).unwrap_or("Unknown");
+        let stack_message = format!("Activated ability: {} | source={}", ability_kind, card_name);
+        let sa_for_trigger = self.push_spell_ability_to_stack(
+            game,
+            agents,
+            player,
+            StackPushContext {
+                source_card: card_id,
+                entry,
+                stack_log_name: format!("{} ability", card_name),
+                stack_message,
+                target_card,
+                event_kind: SpellAbilityLogEventKind::Action,
+                move_source_to_stack: false,
+                register_source_trigger: false,
             },
-            false,
         );
-        // Java parity: apply paying-mana effects before cast-family triggers.
-        sa_for_trigger.apply_paying_mana_effects();
-        self.trigger_handler.run_trigger(
-            TriggerType::AbilityCast,
-            RunParams {
-                card: Some(card_id),
-                spell_card: Some(card_id),
-                player: Some(player),
-                activator: Some(player),
-                spell_controller: Some(player),
-                spell_ability: Some(sa_for_trigger.clone()),
-                source_sa: Some(sa_for_trigger.clone()),
-                cause: Some(sa_for_trigger.clone()),
-                cause_card: Some(card_id),
-                ..Default::default()
+        self.emit_post_stack_spell_ability_triggers(
+            game,
+            player,
+            &sa_for_trigger,
+            PostStackTriggerContext {
+                source_card: card_id,
+                cast_trigger: TriggerType::AbilityCast,
+                emit_ability_activated: true,
+                emit_waterbend: uses_waterbend,
+                waterbend_cards: Vec::new(),
             },
-            true,
         );
-        if uses_waterbend {
-            let bend_params = RunParams {
-                player: Some(player),
-                card: Some(card_id),
-                spell_ability: Some(sa_for_trigger.clone()),
-                source_sa: Some(sa_for_trigger.clone()),
-                cause: Some(sa_for_trigger.clone()),
-                cause_card: Some(card_id),
-                ..Default::default()
-            };
-            self.trigger_handler.run_trigger(
-                TriggerType::Elementalbend,
-                bend_params.clone(),
-                false,
-            );
-        }
         if is_vehicle_crew || is_mount_saddle || is_station {
             for crew_card in &tapped_crews {
                 let run_params = RunParams {
@@ -767,64 +685,6 @@ impl GameLoop {
                     );
                 }
             }
-        }
-        if let Some(target_id) = target_card {
-            let first_time = !game.card(target_id).has_become_target_this_turn();
-            game.card_mut(target_id).add_target_from_this_turn();
-            self.trigger_handler.run_trigger(
-                TriggerType::BecomesTarget,
-                RunParams {
-                    card: Some(target_id),
-                    target_card: Some(target_id),
-                    cards: Some(vec![target_id]),
-                    cause_player: Some(player),
-                    cause_card: Some(card_id),
-                    source_sa: Some(sa_for_trigger.clone()),
-                    first_time: Some(first_time),
-                    ..Default::default()
-                },
-                false,
-            );
-            self.trigger_handler.run_trigger(
-                TriggerType::BecomesTargetOnce,
-                RunParams {
-                    card: Some(target_id),
-                    target_card: Some(target_id),
-                    cards: Some(vec![target_id]),
-                    cause_player: Some(player),
-                    cause_card: Some(card_id),
-                    source_sa: Some(sa_for_trigger.clone()),
-                    first_time: Some(first_time),
-                    ..Default::default()
-                },
-                false,
-            );
-        }
-        if let Some(target_id) = target_player {
-            self.trigger_handler.run_trigger(
-                TriggerType::BecomesTarget,
-                RunParams {
-                    player: Some(target_id),
-                    target_player: Some(target_id),
-                    cause_player: Some(player),
-                    cause_card: Some(card_id),
-                    source_sa: Some(sa_for_trigger.clone()),
-                    ..Default::default()
-                },
-                false,
-            );
-            self.trigger_handler.run_trigger(
-                TriggerType::BecomesTargetOnce,
-                RunParams {
-                    player: Some(target_id),
-                    target_player: Some(target_id),
-                    cause_player: Some(player),
-                    cause_card: Some(card_id),
-                    source_sa: Some(sa_for_trigger.clone()),
-                    ..Default::default()
-                },
-                false,
-            );
         }
         true
     }

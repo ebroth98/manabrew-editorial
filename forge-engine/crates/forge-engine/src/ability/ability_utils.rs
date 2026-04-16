@@ -1026,8 +1026,6 @@ pub fn matches_change_type(
     true
 }
 
-
-
 // ── X-count and math helpers ────────────────────────────────────────
 
 /// Evaluate an X-count expression on a card.

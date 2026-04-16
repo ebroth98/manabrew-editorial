@@ -988,14 +988,14 @@ pub fn can_pay_with_ability_and_reserved(
                     || type_filter == "NICKNAME"
                     || type_filter == "OriginalHost"
                 {
-                    if !cost_sacrifice::can_pay(game, available_mana, source, player, ability, part) {
+                    if !cost_sacrifice::can_pay(game, available_mana, source, player, ability, part)
+                    {
                         return false;
                     }
                     continue;
                 }
 
-                let mut valid =
-                    get_sacrifice_targets_for_cost(game, player, type_filter, ability);
+                let mut valid = get_sacrifice_targets_for_cost(game, player, type_filter, ability);
                 valid.retain(|cid| !reserved_sacrifices.contains(cid));
                 if type_filter.eq_ignore_ascii_case("All") {
                     if valid.is_empty() {

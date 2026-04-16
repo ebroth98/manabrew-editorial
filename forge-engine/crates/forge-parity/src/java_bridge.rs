@@ -14,7 +14,9 @@ use std::time::Instant;
 
 use serde::{Deserialize, Serialize};
 
-use crate::protocol::{CallbackRecord, ChoiceLogEntry, DecisionRecord, ParityLogEntry, StateSnapshot};
+use crate::protocol::{
+    CallbackRecord, ChoiceLogEntry, DecisionRecord, ParityLogEntry, StateSnapshot,
+};
 
 /// Configuration for a Java bridge subprocess.
 pub struct JavaBridgeConfig {
@@ -739,7 +741,11 @@ fn parse_decision_line(line: &str) -> Option<DecisionRecord> {
         phase: env.phase,
         deciding_player: env.deciding_player,
         kind: env.kind,
-        options: env.options.into_iter().map(ChoiceLogEntry::from_json).collect(),
+        options: env
+            .options
+            .into_iter()
+            .map(ChoiceLogEntry::from_json)
+            .collect(),
         choice: env.choice,
         timestamp_ms: env.timestamp_ms,
     })
@@ -757,7 +763,11 @@ fn parse_callback_line(line: &str, snapshot_index: usize) -> Option<CallbackReco
         player: env.player,
         name: env.name,
         outcome: env.outcome,
-        args: env.args.into_iter().map(ChoiceLogEntry::from_json).collect(),
+        args: env
+            .args
+            .into_iter()
+            .map(ChoiceLogEntry::from_json)
+            .collect(),
         callback_args: env.callback_args,
         timestamp_ms: env.timestamp_ms,
     })

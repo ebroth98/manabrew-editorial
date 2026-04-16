@@ -948,6 +948,17 @@ impl ManaPool {
         Some(life_to_pay)
     }
 
+    /// Pay a non-spell cost with phyrexian-life fallback.
+    /// Unlike `try_pay_for_spell_converted_with_phyrexian_life`, this does not
+    /// filter mana by spell restriction context first.
+    pub fn try_pay_with_phyrexian_life_unrestricted(
+        &mut self,
+        cost: &forge_foundation::ManaCost,
+        player_life: i32,
+    ) -> Option<i32> {
+        self.try_pay_with_phyrexian_life(cost, false, player_life)
+    }
+
     /// Iterator over all floating mana.
     /// Mirrors Java's `ManaPool.iterator()`.
     pub fn iterator(&self) -> impl Iterator<Item = &Mana> {

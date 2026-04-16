@@ -397,7 +397,11 @@ pub trait PlayerAgent {
         _player: PlayerId,
         abilities: &[SpellAbility],
     ) -> Option<usize> {
-        if abilities.is_empty() { None } else { Some(0) }
+        if abilities.is_empty() {
+            None
+        } else {
+            Some(0)
+        }
     }
 
     /// Choose whether to put a revealed nonland card into the graveyard during Explore.
@@ -507,11 +511,7 @@ pub trait PlayerAgent {
         true
     }
 
-    fn pay_cost_to_prevent_effect(
-        &mut self,
-        _player: PlayerId,
-        paid: bool,
-    ) -> bool {
+    fn pay_cost_to_prevent_effect(&mut self, _player: PlayerId, paid: bool) -> bool {
         paid
     }
 
@@ -852,9 +852,12 @@ pub trait PlayerAgent {
         vec![]
     }
 
-    /// Pay a mana cost interactively (human players only).
-    /// Called in a loop: tap lands to build mana, then Pay or Cancel.
-    /// Default: always cancel (AI agents use auto-tap instead).
+    /// Pay a mana cost within a single payment session.
+    /// Called in a loop for manual interaction: tap lands to build mana, then
+    /// `Pay { auto: false }` or `Cancel`. Agents can also return
+    /// `Pay { auto: true }` to delegate the rest of the session to engine
+    /// auto-pay.
+    /// Default: always cancel.
     fn pay_mana_cost(
         &mut self,
         _player: PlayerId,
@@ -951,7 +954,6 @@ pub trait PlayerAgent {
     /// Receive engine notifications for UI/game-log observers.
     /// Default is a no-op so simple agents do not need to handle them.
     fn notify(&mut self, _event: GameNotification) {}
-
 
     /// Choose which replacement effect to apply when multiple effects match the same event.
     /// Mirrors Java's `PlayerController.chooseSingleReplacementEffect(List<ReplacementEffect>)`.
@@ -1069,5 +1071,4 @@ impl PlayerAgent for PassAgent {
     fn choose_land_or_spell(&mut self, _player: PlayerId) -> Option<bool> {
         None
     }
-
 }

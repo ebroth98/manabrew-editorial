@@ -12,6 +12,7 @@ use crate::replacement::replacement_handler::{apply_replacements, ReplacementEve
 use crate::replacement::ReplacementResult;
 use crate::spellability::{build_spell_ability, SpellAbility};
 use crate::trigger::handler::TriggerHandler;
+use forge_foundation::ZoneType;
 
 /// Build a formatted description for a roll dice effect.
 /// Mirrors Java's `RollDiceEffect.makeFormatedDescription(SpellAbility)`.
@@ -872,10 +873,18 @@ fn pay_roll_cost(
             CostPart::Mana {
                 cost: mana_cost, ..
             } => {
+                let game_ptr: *mut GameState = game;
+                let trigger_handler_ptr = std::ptr::from_mut(trigger_handler);
                 let mut callback = |kind: mana::ManaPayCallback<'_>| -> Option<crate::ids::CardId> {
                     match kind {
                         mana::ManaPayCallback::ChooseSacrifice(valid) => {
                             agents[player.index()].choose_sacrifice(player, valid, None)
+                        }
+                        mana::ManaPayCallback::ChooseColor(valid_colors) => {
+                            if !agents[player.index()].is_human() {
+                                let _ = agents[player.index()].choose_color(player, valid_colors);
+                            }
+                            None
                         }
                         mana::ManaPayCallback::ConfirmSelfSacrifice(sacrifice_id) => {
                             if agents[player.index()].confirm_payment(
@@ -903,9 +912,52 @@ fn pay_roll_cost(
                                 None
                             }
                         }
-                        mana::ManaPayCallback::NotifySacrificeForMana(sacrificed_id) => {
-                            Some(sacrificed_id) // No trigger handler access here
+                        mana::ManaPayCallback::ConfirmSourceExile(source_id) => {
+                            if agents[player.index()].confirm_payment(
+                                player,
+                                "Exile",
+                                "Exile for mana",
+                                None,
+                                Some(crate::ability::api_type::ApiType::Mana),
+                            ) {
+                                Some(source_id)
+                            } else {
+                                None
+                            }
                         }
+                        mana::ManaPayCallback::NotifySacrificeForMana(sacrificed_id) => unsafe {
+                            let game = &mut *game_ptr;
+                            let trigger_handler = &mut *trigger_handler_ptr;
+                            let owner = game.card(sacrificed_id).owner;
+                            let lki_p1p1 = *game
+                                .card(sacrificed_id)
+                                .counters
+                                .get(&crate::card::CounterType::P1P1)
+                                .unwrap_or(&0);
+                            let lki_power = game.card(sacrificed_id).power();
+                            let lki_toughness = game.card(sacrificed_id).toughness();
+                            trigger_handler.run_trigger(
+                                TriggerType::Sacrificed,
+                                RunParams {
+                                    card: Some(sacrificed_id),
+                                    player: Some(player),
+                                    ..Default::default()
+                                },
+                                false,
+                            );
+                            crate::ability::effects::emit_zone_trigger_with_lki_counters(
+                                trigger_handler,
+                                sacrificed_id,
+                                ZoneType::Battlefield,
+                                ZoneType::Graveyard,
+                                lki_p1p1,
+                                lki_power,
+                                lki_toughness,
+                            );
+                            trigger_handler.flush_waiting_triggers(game);
+                            game.move_card(sacrificed_id, ZoneType::Graveyard, owner);
+                            Some(sacrificed_id)
+                        },
                     }
                 };
                 let tapped = mana::auto_tap_lands_with_callbacks(

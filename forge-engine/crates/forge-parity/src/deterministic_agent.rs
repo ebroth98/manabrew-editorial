@@ -2,7 +2,6 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use crate::auto_pay;
 use forge_engine_core::agent::{
     BinaryChoiceKind, GameEntity, ManaCostAction, PlayCardMode, PlayOption, PlayerAgent,
     TargetChoice,
@@ -601,38 +600,19 @@ impl PlayerAgent for DeterministicAgent {
     fn pay_mana_cost(
         &mut self,
         _player: PlayerId,
-        card_id: CardId,
+        _card_id: CardId,
         _card_name: &str,
-        mana_cost: &str,
+        _mana_cost: &str,
         _mana_cost_display: &str,
-        mana_cost_checkpoint: &str,
-        allow_reserved_source_reuse: bool,
-        reserved_sacrifices: &[CardId],
+        _mana_cost_checkpoint: &str,
+        _allow_reserved_source_reuse: bool,
+        _reserved_sacrifices: &[CardId],
         _mana_ability_options: &[forge_engine_core::agent::ManaAbilityOption],
         _tappable_lands: &[CardId],
         _untappable_lands: &[CardId],
-        mana_pool: &ManaPool,
+        _mana_pool: &ManaPool,
     ) -> ManaCostAction {
-        let Some(ref snap) = self.last_game_snapshot else {
-            return ManaCostAction::Cancel;
-        };
-        let callback_cost = if mana_cost.contains('X') {
-            mana_cost_checkpoint
-        } else {
-            mana_cost
-        };
-        auto_pay::next_mana_cost_action(
-            &snap.game,
-            mana_pool,
-            self.player_id,
-            card_id,
-            callback_cost,
-            allow_reserved_source_reuse,
-            reserved_sacrifices,
-            _mana_ability_options,
-            _tappable_lands,
-        )
-        .action
+        ManaCostAction::Pay { auto: true }
     }
 
     fn choose_attackers(
