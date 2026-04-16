@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo } from "react";
+import React, { memo, useEffect, useMemo, useRef } from "react";
 import { cn } from "@/lib/utils";
 import { Card } from "@/components/game/Card";
 import { CardOverlayButton } from "@/components/game/CardOverlayButton";
@@ -84,7 +84,7 @@ export const MANA_COLORS: Record<string, string> = {
 };
 
 /** A button with a mana symbol for tapping a dual land for a specific color, styled to fill card sections. */
-export function ManaAbilityTapButton({
+export const ManaAbilityTapButton = memo(function ManaAbilityTapButton({
   description,
   onClick,
   small = false,
@@ -134,7 +134,7 @@ export function ManaAbilityTapButton({
       </div>
     </button>
   );
-}
+});
 
 export interface PlacementGhost {
   stackObjectId: string;
@@ -238,13 +238,25 @@ export function FreeBattlefield({
     handleContainerMouseDown,
   } = useBattlefieldLayout({ cardIds: topLevelIds, bottomReserved, leftReserved, rightReserved, landCardIds });
 
+  const expandedManaByCard = useMemo(() => {
+    if (!tappableLandIds?.length || !manaAbilityOptions?.length) return new Map<string, ActivatableAbilityInfo[]>();
+    const map = new Map<string, ActivatableAbilityInfo[]>();
+    for (const id of tappableLandIds) {
+      map.set(id, getExpandedManaAbilities(id, manaAbilityOptions));
+    }
+    return map;
+  }, [tappableLandIds, manaAbilityOptions]);
+
   const isDraggingAnyCard = draggingCardIds.size > 0;
+
+  const onHoverCardRef = useRef(onHoverCard);
+  onHoverCardRef.current = onHoverCard;
 
   useEffect(() => {
     if (isDraggingAnyCard) {
-      onHoverCard?.(null);
+      onHoverCardRef.current?.(null);
     }
-  }, [isDraggingAnyCard, onHoverCard]);
+  }, [isDraggingAnyCard]);
 
   // Minimum container height to show all positioned cards (account for attachment offset)
   const minH = Math.max(
@@ -360,7 +372,7 @@ export function FreeBattlefield({
         />
 
         {isTappable && onTapLand && (() => {
-          const expanded = getExpandedManaAbilities(card.id, manaAbilityOptions ?? []);
+          const expanded = expandedManaByCard.get(card.id) ?? [];
           if (expanded.length > 1 && onTapLandAbility) {
             const isGrid = expanded.length > 2;
             return (

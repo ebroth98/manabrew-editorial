@@ -63,6 +63,15 @@ export function BattlefieldZone({
   const nonLands = useMemo(() => topLevel.filter((c) => !c.types.includes("Land")), [topLevel]);
   const lands = useMemo(() => topLevel.filter((c) => c.types.includes("Land")), [topLevel]);
 
+  const expandedManaByCard = useMemo(() => {
+    if (!tappableLandIds?.length || !manaAbilityOptions?.length) return new Map<string, import("@/types/openmagic").ActivatableAbilityInfo[]>();
+    const map = new Map<string, import("@/types/openmagic").ActivatableAbilityInfo[]>();
+    for (const id of tappableLandIds) {
+      map.set(id, getExpandedManaAbilities(id, manaAbilityOptions));
+    }
+    return map;
+  }, [tappableLandIds, manaAbilityOptions]);
+
   const renderSingleCard = (card: XMageCard, extraClass?: string) => {
     const isPending = pendingCardIds?.includes(card.id);
     const isAttacking = attackingCardIds?.includes(card.id);
@@ -119,7 +128,7 @@ export function BattlefieldZone({
           } as CSSProperties) : undefined}
         />
         {isTappable && onTapLand && (() => {
-          const expanded = getExpandedManaAbilities(card.id, manaAbilityOptions ?? []);
+          const expanded = expandedManaByCard.get(card.id) ?? [];
           if (expanded.length > 1 && onTapLandAbility) {
             const isGrid = expanded.length > 2;
             return (

@@ -1,7 +1,8 @@
 import { useGameStore } from "@/stores/useGameStore";
 import { useGameUIStore } from "@/stores/useGameUIStore";
 import { usePreferencesStore } from "@/stores/usePreferencesStore";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useShallow } from "zustand/react/shallow";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { Card as XMageCard, Player, StackObject, ActivatableAbilityInfo } from "@/types/openmagic";
 import { Card } from "@/components/game/Card";
@@ -49,58 +50,50 @@ const HOVER_ALLOWED_PROMPTS = new Set<PromptType>([
 
 export default function Game() {
   const USE_STACK_FLASH_PREVIEW = true;
+  const gameView = useGameStore(s => s.gameView);
+  const currentPrompt = useGameStore(s => s.currentPrompt);
+  const isGameActive = useGameStore(s => s.isGameActive);
+  const isWaitingForResponse = useGameStore(s => s.isWaitingForResponse);
+  const gameLog = useGameStore(s => s.gameLog);
+  const snapshots = useGameStore(s => s.snapshots);
+  const debugInfo = useGameStore(s => s.debugInfo);
+  const isMultiplayer = useGameStore(s => s.isMultiplayer);
+  const isHost = useGameStore(s => s.isHost);
   const {
-    gameView,
-    currentPrompt,
-    isGameActive,
-    isWaitingForResponse,
-    gameLog,
-    snapshots,
-    debugInfo,
-    passPriority,
-    castSpell,
-    declareAttackers,
-    declareBlockers,
-    targetPlayer,
-    targetCard,
-    targetAny,
-    mulliganDecision,
-    mulliganPutBackDecision,
-    tapLand,
-    untapLand,
-    activateAbility,
-    scryDecision,
-    surveilDecision,
-    digDecision,
-    discardDecision,
-    targetSpell,
-    modeDecision,
-    optionalTriggerDecision,
-    colorDecision,
-    chooseCardsDecision,
-    typeDecision,
-    numberDecision,
-    cardNameDecision,
-    respond,
-    payCombatCost,
-    declineCombatCost,
-    payManaCost,
-    cancelManaCost,
-    delveDecision,
-    convokeDecision,
-    improviseDecision,
-    manaComboDecision,
-    exploreDecision,
-    exertDecision,
-    enlistDecision,
-    reorderLibraryDecision,
-    assistDecision,
-    concede,
-    endGame,
-    restoreSnapshot,
-    isMultiplayer,
-    isHost,
-  } = useGameStore();
+    passPriority, castSpell, declareAttackers, declareBlockers,
+    targetPlayer, targetCard, targetAny,
+    mulliganDecision, mulliganPutBackDecision,
+    tapLand, untapLand, activateAbility,
+    scryDecision, surveilDecision, digDecision, discardDecision,
+    targetSpell, modeDecision, optionalTriggerDecision,
+    colorDecision, chooseCardsDecision, typeDecision, numberDecision,
+    cardNameDecision, respond, payCombatCost, declineCombatCost,
+    payManaCost, cancelManaCost, delveDecision, convokeDecision,
+    improviseDecision, manaComboDecision, exploreDecision, exertDecision,
+    enlistDecision, reorderLibraryDecision, assistDecision,
+    concede, endGame, restoreSnapshot,
+  } = useGameStore(useShallow(s => ({
+    passPriority: s.passPriority, castSpell: s.castSpell,
+    declareAttackers: s.declareAttackers, declareBlockers: s.declareBlockers,
+    targetPlayer: s.targetPlayer, targetCard: s.targetCard, targetAny: s.targetAny,
+    mulliganDecision: s.mulliganDecision, mulliganPutBackDecision: s.mulliganPutBackDecision,
+    tapLand: s.tapLand, untapLand: s.untapLand, activateAbility: s.activateAbility,
+    scryDecision: s.scryDecision, surveilDecision: s.surveilDecision,
+    digDecision: s.digDecision, discardDecision: s.discardDecision,
+    targetSpell: s.targetSpell, modeDecision: s.modeDecision,
+    optionalTriggerDecision: s.optionalTriggerDecision,
+    colorDecision: s.colorDecision, chooseCardsDecision: s.chooseCardsDecision,
+    typeDecision: s.typeDecision, numberDecision: s.numberDecision,
+    cardNameDecision: s.cardNameDecision, respond: s.respond,
+    payCombatCost: s.payCombatCost, declineCombatCost: s.declineCombatCost,
+    payManaCost: s.payManaCost, cancelManaCost: s.cancelManaCost,
+    delveDecision: s.delveDecision, convokeDecision: s.convokeDecision,
+    improviseDecision: s.improviseDecision, manaComboDecision: s.manaComboDecision,
+    exploreDecision: s.exploreDecision, exertDecision: s.exertDecision,
+    enlistDecision: s.enlistDecision, reorderLibraryDecision: s.reorderLibraryDecision,
+    assistDecision: s.assistDecision, concede: s.concede,
+    endGame: s.endGame, restoreSnapshot: s.restoreSnapshot,
+  })));
   const flashDurationMs = usePreferencesStore((s) => s.flashDurationMs);
   const zonePanelSide = usePreferencesStore((s) => s.zonePanelSide);
   const zonePanelOrder = usePreferencesStore((s) => s.zonePanelOrder);
@@ -136,7 +129,18 @@ export default function Game() {
     openZoneViewer,
     closeZoneViewer,
     toggleActionPanel,
-  } = useGameUIStore();
+  } = useGameUIStore(useShallow(s => ({
+    abilityPicker: s.abilityPicker,
+    playModePicker: s.playModePicker,
+    viewingZone: s.viewingZone,
+    isActionPanelCollapsed: s.isActionPanelCollapsed,
+    closeAbilityPicker: s.closeAbilityPicker,
+    openPlayModePicker: s.openPlayModePicker,
+    closePlayModePicker: s.closePlayModePicker,
+    openZoneViewer: s.openZoneViewer,
+    closeZoneViewer: s.closeZoneViewer,
+    toggleActionPanel: s.toggleActionPanel,
+  })));
 
   /** Sentinel ability index for the synthetic "tap for mana" action on basic lands. */
   const SYNTHETIC_MANA_INDEX = -1;
@@ -151,76 +155,86 @@ export default function Game() {
     cost: a.cost,
   });
 
-  /** Cast options for a card from the current prompt's playable options. */
-  const getCastOptions = (cardId: string): HandActionOption[] =>
-    (currentPrompt?.playableOptions ?? [])
-      .filter((o) => o.cardId === cardId)
-      .map((o) => ({ kind: "cast" as const, cardId, mode: o.mode, label: o.modeLabel }));
-
-  /** Activated abilities for a card from the current prompt. */
-  const getAbilitiesForCard = (cardId: string): HandActionOption[] =>
-    (currentPrompt?.activatableAbilityIds ?? [])
-      .filter((a) => a.cardId === cardId)
-      .map(toAbilityOption);
-
-  const getHandActionOptions = (card: XMageCard): HandActionOption[] =>
-    [...getCastOptions(card.id), ...getAbilitiesForCard(card.id)];
-
-  const getBattlefieldAbilityOptions = (card: XMageCard): HandActionOption[] =>
-    getAbilitiesForCard(card.id);
-
-  /** Mana abilities for a card from the current prompt (dual land per-color options). */
-  const getManaAbilitiesForCard = (cardId: string): HandActionOption[] => {
-    const rawAbilities = (currentPrompt?.manaAbilityOptions ?? []).filter((a) => a.cardId === cardId);
-    const expanded: ActivatableAbilityInfo[] = [];
-
-    const ANY_COLOR_LETTERS = ["W", "U", "B", "R", "G"];
-
-    for (const ab of rawAbilities) {
-      const desc = ab.description.toLowerCase();
-      const matches = ab.description.matchAll(/\{([WUBRGC])\}/g);
-      const letters = Array.from(matches, (m) => m[1]);
-      const isAnyColor =
-        desc.includes("any color") ||
-        desc.includes("any one color") ||
-        desc.includes("mana of any color");
-
-      if (letters.length > 1) {
-        letters.forEach((letter) => {
-          expanded.push({ ...ab, description: `Add {${letter}}` });
-        });
-      } else if (letters.length === 1) {
-        expanded.push(ab);
-      } else if (isAnyColor) {
-        ANY_COLOR_LETTERS.forEach((letter) => {
-          expanded.push({ ...ab, description: `Add {${letter}}` });
-        });
-      } else {
-        expanded.push(ab);
-      }
+  const castOptionsByCardId = useMemo(() => {
+    const map = new Map<string, HandActionOption[]>();
+    for (const o of currentPrompt?.playableOptions ?? []) {
+      const arr = map.get(o.cardId) ?? [];
+      arr.push({ kind: "cast" as const, cardId: o.cardId, mode: o.mode, label: o.modeLabel });
+      map.set(o.cardId, arr);
     }
+    return map;
+  }, [currentPrompt?.playableOptions]);
 
-    return expanded.map(toAbilityOption);
-  };
+  const abilitiesByCardId = useMemo(() => {
+    const map = new Map<string, HandActionOption[]>();
+    for (const a of currentPrompt?.activatableAbilityIds ?? []) {
+      const arr = map.get(a.cardId) ?? [];
+      arr.push(toAbilityOption(a));
+      map.set(a.cardId, arr);
+    }
+    return map;
+  }, [currentPrompt?.activatableAbilityIds]);
+
+  const manaAbilitiesByCardId = useMemo(() => {
+    const map = new Map<string, HandActionOption[]>();
+    const rawOptions = currentPrompt?.manaAbilityOptions ?? [];
+    if (rawOptions.length === 0) return map;
+    const ANY_COLOR_LETTERS = ["W", "U", "B", "R", "G"];
+    const byCard = new Map<string, ActivatableAbilityInfo[]>();
+    for (const ab of rawOptions) {
+      const arr = byCard.get(ab.cardId) ?? [];
+      arr.push(ab);
+      byCard.set(ab.cardId, arr);
+    }
+    for (const [cardId, abilities] of byCard) {
+      const expanded: ActivatableAbilityInfo[] = [];
+      for (const ab of abilities) {
+        const desc = ab.description.toLowerCase();
+        const matches = ab.description.matchAll(/\{([WUBRGC])\}/g);
+        const letters = Array.from(matches, (m) => m[1]);
+        const isAnyColor = desc.includes("any color") || desc.includes("any one color") || desc.includes("mana of any color");
+        if (letters.length > 1) {
+          letters.forEach((letter) => expanded.push({ ...ab, description: `Add {${letter}}` }));
+        } else if (letters.length === 1) {
+          expanded.push(ab);
+        } else if (isAnyColor) {
+          ANY_COLOR_LETTERS.forEach((letter) => expanded.push({ ...ab, description: `Add {${letter}}` }));
+        } else {
+          expanded.push(ab);
+        }
+      }
+      map.set(cardId, expanded.map(toAbilityOption));
+    }
+    return map;
+  }, [currentPrompt?.manaAbilityOptions]);
+
+  const tappableLandIdSet = useMemo(
+    () => new Set(currentPrompt?.tappableLandIds ?? []),
+    [currentPrompt?.tappableLandIds],
+  );
+
+  const getHandActionOptions = useCallback((card: XMageCard): HandActionOption[] =>
+    [...(castOptionsByCardId.get(card.id) ?? []), ...(abilitiesByCardId.get(card.id) ?? [])],
+    [castOptionsByCardId, abilitiesByCardId]);
+
+  const getBattlefieldAbilityOptions = useCallback((card: XMageCard): HandActionOption[] =>
+    abilitiesByCardId.get(card.id) ?? [], [abilitiesByCardId]);
 
   /** All available actions for a card (cast + activated + mana abilities). */
-  const getCardActions = (card: XMageCard): HandActionOption[] => {
+  const getCardActions = useCallback((card: XMageCard): HandActionOption[] => {
     if (promptType === PromptType.PayManaCost) {
-      return getManaAbilitiesForCard(card.id);
+      return manaAbilitiesByCardId.get(card.id) ?? [];
     }
     if (promptType !== PromptType.ChooseAction) return [];
 
-    const abilities = getAbilitiesForCard(card.id);
-    const manaAbilities = getManaAbilitiesForCard(card.id);
-    const isLandTappable = (currentPrompt?.tappableLandIds ?? []).includes(card.id)
-      && card.types?.includes("Land");
+    const abilities = [...(abilitiesByCardId.get(card.id) ?? [])];
+    const manaAbilities = manaAbilitiesByCardId.get(card.id) ?? [];
+    const isLandTappable = tappableLandIdSet.has(card.id) && card.types?.includes("Land");
 
     if (isLandTappable) {
       if (manaAbilities.length > 0) {
-        // Use explicit mana abilities (e.g. dual land per-color options)
         abilities.unshift(...manaAbilities);
       } else if (!abilities.some((a) => a.isManaAbility)) {
-        // Fallback: synthetic "Tap for mana" for lands without explicit mana abilities
         abilities.unshift({
           kind: "ability",
           cardId: card.id,
@@ -231,8 +245,8 @@ export default function Game() {
         });
       }
     }
-    return [...getCastOptions(card.id), ...abilities];
-  };
+    return [...(castOptionsByCardId.get(card.id) ?? []), ...abilities];
+  }, [promptType, castOptionsByCardId, abilitiesByCardId, manaAbilitiesByCardId, tappableLandIdSet]);
 
   // Wraps castSpell: if a card has multiple play modes, show picker first
   const handleCastSpell = (cardId: string) => {
@@ -633,10 +647,10 @@ export default function Game() {
       ...(gameView.opponentCommandZone ?? []),
     ];
     return new Map(cards.map((c) => [c.id, c]));
-  }, [gameView]);
+  }, [gameView?.battlefield, gameView?.myHand, gameView?.graveyard, gameView?.exile, gameView?.opponentGraveyard, gameView?.opponentExile, gameView?.myCommandZone, gameView?.opponentCommandZone]);
 
   const stackCardsBySourceId = useMemo(() => {
-    if (!gameView) return new Map<string, XMageCard>();
+    if (!gameView?.stack) return new Map<string, XMageCard>();
     const byId = new Map<string, XMageCard>();
     for (const s of gameView.stack) {
       if (byId.has(s.sourceId)) continue;
@@ -660,7 +674,7 @@ export default function Game() {
       });
     }
     return byId;
-  }, [gameView]);
+  }, [gameView?.stack]);
 
   const handleLogCardHover = (cardId: string | null, e?: React.MouseEvent, options: { useAnchor?: boolean; placement?: "auto" | "top-center"; anchorOverride?: DOMRect } = {}) => {
     if (draggingHandCard) {

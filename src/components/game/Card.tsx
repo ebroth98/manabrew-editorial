@@ -1,7 +1,7 @@
 import type { Card as CardType } from "@/types/openmagic";
 import { useCardImage } from "@/hooks/useCardImage";
 import { cn } from "@/lib/utils";
-import { useState, type CSSProperties } from "react";
+import { memo, useState, useMemo, type CSSProperties } from "react";
 import { CounterDisplay } from "@/components/game/CounterBadge";
 import { ManaSymbols } from "@/components/game/ManaSymbols";
 import { KeywordChips } from "@/components/game/CardKeywords";
@@ -45,7 +45,7 @@ interface CardProps {
   resolution?: ScryfallImageSize;
 }
 
-export function Card({
+function CardComponent({
   card,
   className,
   style,
@@ -74,7 +74,7 @@ export function Card({
   const onBattlefield = card.zoneId === "battlefield";
 
   // P/T color-coding: green if buffed above base, red if debuffed
-  const ptStyle = (() => {
+  const ptStyle = useMemo(() => {
     if (lethal) return { backgroundColor: themeColors.promptAction.attackAction, color: "#fff" };
     if (card.basePower == null || card.power == null) {
       return {
@@ -93,7 +93,7 @@ export function Card({
       backgroundColor: withAlpha(themeColors.promptAction.cancel, 0.72),
       color: "#fff",
     };
-  })();
+  }, [lethal, card.basePower, card.power, card.toughness, card.baseToughness, themeColors]);
 
   return (
     <div
@@ -300,3 +300,54 @@ export function Card({
     </div>
   );
 }
+
+function shallowStyleEqual(a: CSSProperties | undefined, b: CSSProperties | undefined): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  const ak = Object.keys(a);
+  const bk = Object.keys(b);
+  if (ak.length !== bk.length) return false;
+  for (const k of ak) { if ((a as Record<string, unknown>)[k] !== (b as Record<string, unknown>)[k]) return false; }
+  return true;
+}
+
+function arraysEqual(a: string[] | undefined, b: string[] | undefined): boolean {
+  if (a === b) return true;
+  if (!a || !b || a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) { if (a[i] !== b[i]) return false; }
+  return true;
+}
+
+export const Card = memo(CardComponent, (prev, next) => {
+  if (prev.className !== next.className ||
+      prev.isTapped !== next.isTapped ||
+      prev.isHovered !== next.isHovered ||
+      prev.showBackFace !== next.showBackFace ||
+      prev.resolution !== next.resolution ||
+      prev.onClick !== next.onClick ||
+      prev.onFlip !== next.onFlip) return false;
+  if (!shallowStyleEqual(prev.style, next.style)) return false;
+  const pc = prev.card, nc = next.card;
+  if (pc === nc) return true;
+  if (pc.id !== nc.id || pc.name !== nc.name ||
+      pc.power !== nc.power || pc.toughness !== nc.toughness ||
+      pc.damage !== nc.damage || pc.basePower !== nc.basePower ||
+      pc.baseToughness !== nc.baseToughness ||
+      pc.tapped !== nc.tapped || pc.phasedOut !== nc.phasedOut ||
+      pc.exerted !== nc.exerted || pc.summoningSick !== nc.summoningSick ||
+      pc.isFaceDown !== nc.isFaceDown || pc.isBestowed !== nc.isBestowed ||
+      pc.isTransformed !== nc.isTransformed || pc.isPlotted !== nc.isPlotted ||
+      pc.isMadnessExiled !== nc.isMadnessExiled || pc.isWarpExiled !== nc.isWarpExiled ||
+      pc.isToken !== nc.isToken || pc.isDoubleFaced !== nc.isDoubleFaced ||
+      pc.isPlayable !== nc.isPlayable || pc.isChoosable !== nc.isChoosable ||
+      pc.imageUrl !== nc.imageUrl || pc.color !== nc.color ||
+      pc.setCode !== nc.setCode || pc.cardNumber !== nc.cardNumber ||
+      pc.zoneId !== nc.zoneId || pc.text !== nc.text ||
+      pc.manaCost !== nc.manaCost || pc.effectiveManaCost !== nc.effectiveManaCost) return false;
+  if (!arraysEqual(pc.types, nc.types)) return false;
+  if (!arraysEqual(pc.keywords, nc.keywords)) return false;
+  if (pc.counters !== nc.counters) {
+    if (JSON.stringify(pc.counters) !== JSON.stringify(nc.counters)) return false;
+  }
+  return true;
+});
