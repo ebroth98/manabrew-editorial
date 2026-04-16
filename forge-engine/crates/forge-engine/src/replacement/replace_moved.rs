@@ -65,6 +65,11 @@ pub fn can_replace(
             return false;
         }
     }
+    if let Some(valid_lki) = effect.params.get("ValidLKI") {
+        if !matches_valid_card(valid_lki, moving_card, source_card) {
+            return false;
+        }
+    }
     true
 }
 
@@ -77,8 +82,10 @@ pub fn execute(
     mut agents: Option<&mut [Box<dyn PlayerAgent>]>,
     mut runtime: Option<&mut ReplacementRuntime<'_>>,
 ) -> ReplacementResult {
-    let destination = match event {
-        ReplacementEvent::Moved { destination, .. } => destination,
+    let (moving_id, destination) = match event {
+        ReplacementEvent::Moved {
+            card, destination, ..
+        } => (*card, destination),
         _ => return ReplacementResult::NotReplaced,
     };
     // Check NewDestination$ first (explicit redirect), then ReplaceWith$ (common alias).
@@ -102,6 +109,14 @@ pub fn execute(
             if let ReplacementEvent::Moved { destination, .. } = event {
                 *destination = z;
             }
+            if z == ZoneType::Exile && effect.params.has("ExiledWithEffectSource") {
+                let exile_source = game
+                    .card(source_card_id)
+                    .effect_source
+                    .unwrap_or(source_card_id);
+                game.card_mut(moving_id).set_exiled_by(Some(exile_source));
+                game.card_mut(exile_source).add_remembered_card(moving_id);
+            }
             return ReplacementResult::Updated;
         }
     }
@@ -118,6 +133,15 @@ pub fn execute(
         if !succeeded {
             return ReplacementResult::NotReplaced;
         }
+    }
+    if let Some(result) = effect.params.get("ReplacementResult") {
+        return match result {
+            "Updated" => ReplacementResult::Updated,
+            "Replaced" => ReplacementResult::Replaced,
+            "Skipped" => ReplacementResult::Skipped,
+            "Prevented" => ReplacementResult::Prevented,
+            _ => ReplacementResult::Replaced,
+        };
     }
     ReplacementResult::Replaced
 }

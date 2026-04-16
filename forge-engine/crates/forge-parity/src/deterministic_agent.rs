@@ -576,6 +576,8 @@ impl PlayerAgent for DeterministicAgent {
             callback_cost,
             allow_reserved_source_reuse,
             reserved_sacrifices,
+            _mana_ability_options,
+            _tappable_lands,
         )
         .action
     }
@@ -1163,11 +1165,8 @@ impl PlayerAgent for DeterministicAgent {
                 .cmp(&self.card_name(*b))
                 .then_with(|| self.parity_map.id(*a).cmp(&self.parity_map.id(*b)))
         });
-        let result = self
-            .choose_cards_for_effect(player, &sorted, 1, 1)
-            .into_iter()
-            .next();
-        result
+        let _ = player;
+        choice_space::pick_one(&sorted, &mut self.rng.borrow_mut())
     }
 
     fn choose_cards_for_zone_change(

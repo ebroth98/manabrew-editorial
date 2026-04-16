@@ -101,8 +101,7 @@ public final class ParityOrder {
      * Players sort first (by index), cards sort second (by name + parityId).
      */
     public static String targetSortKey(final GameEntity e) {
-        if (e instanceof Card) {
-            Card c = (Card) e;
+        if (e instanceof Card c) {
             final int ownerId = c.getOwner() == null ? Integer.MAX_VALUE : c.getOwner().getId();
             final int controllerId = c.getController() == null ? Integer.MAX_VALUE : c.getController().getId();
             return "1|"

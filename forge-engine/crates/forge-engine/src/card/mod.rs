@@ -49,7 +49,7 @@ pub const KEYWORD_WARP_EXILED: &str = "WarpExiled";
 use std::collections::{BTreeMap, HashMap, HashSet};
 
 use forge_carddb::CardRules;
-use forge_foundation::{CardTypeLine, ColorSet, ManaCost, ZoneType};
+use forge_foundation::{CardTypeLine, ColorSet, CoreType, ManaCost, ZoneType};
 use serde::{Deserialize, Serialize};
 
 use crate::ability::activated::{parse_activated_ability, ActivatedAbility};
@@ -2747,6 +2747,18 @@ impl Card {
     pub fn shares_name_with(&self, other: &Card) -> bool {
         self.card_name.eq_ignore_ascii_case(&other.card_name)
     }
+    pub fn has_creature_type(&self, creature_type: &str) -> bool {
+        if !self.is_creature() && !self.type_line.core_types.contains(&CoreType::Kindred) {
+            return false;
+        }
+        if self.type_line.has_subtype(creature_type) {
+            return true;
+        }
+        self.has_keyword("Changeling") && crate::game::TypeRegistry::is_creature_type(creature_type)
+    }
+    pub fn has_subtype(&self, subtype: &str) -> bool {
+        self.type_line.has_subtype(subtype) || self.has_creature_type(subtype)
+    }
     pub fn shares_color_with(&self, other: &Card) -> bool {
         (self.color.has_white() && other.color.has_white())
             || (self.color.has_blue() && other.color.has_blue())
@@ -2759,13 +2771,11 @@ impl Card {
         self.mana_value() == other.mana_value()
     }
     pub fn shares_creature_type_with(&self, other: &Card) -> bool {
-        self.type_line.subtypes.iter().any(|s| {
-            other
-                .type_line
-                .subtypes
-                .iter()
-                .any(|o| o.eq_ignore_ascii_case(s))
-        })
+        crate::game::TypeRegistry::creature_types()
+            .iter()
+            .any(|creature_type| {
+                self.has_creature_type(creature_type) && other.has_creature_type(creature_type)
+            })
     }
     pub fn shares_land_type_with(&self, other: &Card) -> bool {
         self.shares_creature_type_with(other) && self.is_land() && other.is_land()

@@ -103,6 +103,15 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         return;
     }
 
+    let is_bloodthirst = sa
+        .params
+        .get("Bloodthirst")
+        .map(|s| s.eq_ignore_ascii_case("True"))
+        .unwrap_or(false);
+    if is_bloodthirst && !ctx.game.player_has_bloodthirst(controller) {
+        return;
+    }
+
     if crate::staticability::static_ability_cant_put_counter::any_cant_put_counter_on_card(
         &ctx.game.cards,
         ctx.game.card(card_id),

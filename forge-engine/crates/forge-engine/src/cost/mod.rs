@@ -1033,6 +1033,24 @@ pub fn can_pay_ignoring_mana(
     can_pay(cost, game, None, source, player, None)
 }
 
+/// Check if a cost can be paid ignoring mana requirements while preserving
+/// the full spell/ability context for non-mana legality checks.
+///
+/// This is needed for action-space generation paths that separately validate
+/// mana production (for example when some permanents are reserved to be
+/// sacrificed and therefore cannot also be tapped for mana), but still need
+/// `ValidCause$ Activated` / `ValidCause$ Spell` statics such as Yasharn to
+/// see the real ability being paid.
+pub fn can_pay_ignoring_mana_with_ability(
+    cost: &Cost,
+    game: &GameState,
+    source: CardId,
+    player: PlayerId,
+    ability: &SpellAbility,
+) -> bool {
+    can_pay(cost, game, None, source, player, Some(ability))
+}
+
 /// Check if a cost can be paid ignoring mana requirements, for a spell.
 /// Passes a minimal SpellAbility with `is_spell = true` so that CantSacrifice
 /// checks (e.g. Yasharn) can properly evaluate `ValidCause$ Spell` restrictions.
@@ -1186,13 +1204,7 @@ pub fn static_ability_source_cards(game: &GameState) -> Vec<Card> {
 pub(crate) fn shares_creature_type(game: &GameState, a: CardId, b: CardId) -> bool {
     let ca = game.card(a);
     let cb = game.card(b);
-    if !ca.is_creature() || !cb.is_creature() {
-        return false;
-    }
-    ca.type_line
-        .subtypes
-        .iter()
-        .any(|st| cb.type_line.has_subtype(st))
+    ca.shares_creature_type_with(cb)
 }
 
 pub(crate) fn shares_card_type(game: &GameState, a: CardId, b: CardId) -> bool {

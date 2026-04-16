@@ -50,11 +50,18 @@ pub(super) fn resolve_known_origin(
     }
 
     let cards_to_move: Vec<CardId> = if sa.uses_targeting() {
-        sa.target_chosen
+        let targeted_cards: Vec<CardId> = sa
+            .target_chosen
             .all_target_cards()
             .into_iter()
             .filter(|&cid| ctx.game.card(cid).zone == origin_zone)
-            .collect()
+            .collect();
+
+        if !targeted_cards.is_empty() || sa.defined_player().is_none() {
+            targeted_cards
+        } else {
+            resolve_defined_player_choice(ctx, sa, origin_zone, &change_type)
+        }
     } else if defined.eq_ignore_ascii_case("TriggeredCard")
         || defined.eq_ignore_ascii_case("TriggeredCardLKICopy")
     {

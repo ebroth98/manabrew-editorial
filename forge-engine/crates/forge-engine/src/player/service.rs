@@ -843,7 +843,7 @@ impl GameState {
     }
 
     pub fn player_has_bloodthirst(&self, player: PlayerId) -> bool {
-        self.player_opponents_lost_life_this_turn(player)
+        self.player(player).opponents_assigned_damage_this_turn > 0
     }
 
     pub fn player_can_surge(&self, player: PlayerId) -> bool {

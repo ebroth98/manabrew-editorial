@@ -30,10 +30,12 @@ fn shares_all_core_types(a: &Card, b: &Card) -> bool {
 }
 
 fn shares_any_subtype(a: &Card, b: &Card) -> bool {
-    a.type_line
-        .subtypes
+    crate::game::TypeRegistry::creature_types()
         .iter()
-        .any(|s| b.type_line.has_subtype(s))
+        .any(|creature_type| {
+            a.has_creature_type(creature_type) && b.has_creature_type(creature_type)
+        })
+        || a.type_line.subtypes.iter().any(|s| b.type_line.has_subtype(s))
 }
 
 pub fn owner_lives(game: &GameState, card_id: CardId) -> bool {

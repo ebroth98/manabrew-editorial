@@ -126,8 +126,10 @@ fn matches_type_and_qualifiers(filter: &str, card: &Card, source: &Card) -> bool
                     _ => false,
                 })
             } else {
-                // Try matching as subtype (e.g. "Zombie", "Wall", "Dragon")
-                card.type_line.has_subtype(type_part)
+                // Try matching as subtype (e.g. "Zombie", "Wall", "Dragon").
+                // This must be changeling-aware for creature types, matching
+                // Java's CardType.hasStringType()/hasCreatureType() path.
+                card.has_subtype(type_part)
             }
         }
     };
@@ -160,7 +162,7 @@ fn matches_type_and_qualifiers(filter: &str, card: &Card, source: &Card) -> bool
                     "legendary" => card.type_line.is_legendary(),
                     _ => {
                         // Try subtype match
-                        card.type_line.has_subtype(raw)
+                        card.has_subtype(raw)
                     }
                 };
                 if positive_match {
@@ -186,6 +188,16 @@ fn matches_type_and_qualifiers(filter: &str, card: &Card, source: &Card) -> bool
                 }
                 "youown" => {
                     if card.owner != source.controller {
+                        return false;
+                    }
+                }
+                "isremembered" => {
+                    if !source.remembered_cards.contains(&card.id) {
+                        return false;
+                    }
+                }
+                "effectsource" => {
+                    if source.effect_source != Some(card.id) {
                         return false;
                     }
                 }
@@ -345,7 +357,7 @@ fn matches_type_and_qualifiers(filter: &str, card: &Card, source: &Card) -> bool
                                     card.color.has_color(color)
                                 } else {
                                     // nonSubtype: e.g., "nonHuman", "nonWall"
-                                    card.type_line.has_subtype(
+                                    card.has_subtype(
                                         &sub[3..], // use original case for subtype
                                     )
                                 }
@@ -375,7 +387,7 @@ fn matches_type_and_qualifiers(filter: &str, card: &Card, source: &Card) -> bool
                             // Fall through: check as creature subtype (Wall, Zombie, etc.)
                             // Mirrors card_has_property behavior: unrecognized qualifiers
                             // are checked against the card's type_line subtypes.
-                            if !card.type_line.has_subtype(sub) {
+                            if !card.has_subtype(sub) {
                                 return false;
                             }
                         }

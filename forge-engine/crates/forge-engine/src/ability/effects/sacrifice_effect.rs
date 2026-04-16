@@ -1,6 +1,7 @@
 use forge_foundation::ZoneType;
 
 use super::{emit_zone_trigger_with_lki_counters, matches_change_type, EffectContext};
+use crate::ability::spell_ability_effect::get_target_players;
 use crate::card::CounterType;
 use crate::event::{RunParams, TriggerType};
 use crate::ids::PlayerId;
@@ -154,12 +155,6 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         .params
         .get_cloned(keys::SAC_VALID)
         .unwrap_or_else(|| "Self".to_string());
-    let defined = sa
-        .params
-        .get(keys::DEFINED)
-        .map(|s| s.to_lowercase())
-        .unwrap_or_default();
-
     // How many permanents to sacrifice (e.g. Annihilator N).
     let amount: usize = sa
         .params
@@ -173,33 +168,13 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
 
     let optional = sa.params.has(keys::OPTIONAL);
     let is_strict = sa.params.has(keys::STRICT_AMOUNT);
+    let defined = sa
+        .params
+        .get(keys::DEFINED)
+        .map(|s| s.to_lowercase())
+        .unwrap_or_default();
 
-    // "Defined$ Player" means each player sacrifices (e.g. Innocent Blood).
-    // "Defined$ TriggeredDefendingPlayer" means the defending player from an attack trigger.
-    // "ValidTgts$ Player" means a targeted player sacrifices (e.g. Diabolic Edict) —
-    // in that case sa.target_chosen.target_player is set. Otherwise default to the controller.
-    let sacrificing_players: Vec<PlayerId> = if defined == "player" {
-        // Match Java getTargetPlayers(): in-game players, ordered in turn
-        // order starting with the current turn player (APNAP base order).
-        let alive = ctx.game.alive_players();
-        let active = ctx.game.active_player();
-        let start = alive.iter().position(|&pid| pid == active).unwrap_or(0);
-        (0..alive.len())
-            .map(|i| alive[(start + i) % alive.len()])
-            .collect()
-    } else if defined == "triggereddefendingplayer" {
-        // Defending player from an attack trigger (e.g. Annihilator).
-        // The trigger handler propagates defending_player into target_chosen.target_player.
-        vec![sa
-            .target_chosen
-            .target_player
-            .unwrap_or_else(|| ctx.game.opponent_of(sa.activating_player))]
-    } else {
-        vec![sa
-            .target_chosen
-            .target_player
-            .unwrap_or(sa.activating_player)]
-    };
+    let sacrificing_players = get_target_players(ctx.game, sa);
 
     for sacrificing_player in sacrificing_players {
         if optional {

@@ -820,6 +820,12 @@ impl GameLoop {
 
             if !sa.overloaded {
                 let mut targeting_game = game.clone();
+                if sa.is_spell && targeting_game.card(card_id).zone != ZoneType::Stack {
+                    // Java deterministic spell casting moves the spell to stack
+                    // before setupTargets(), so counterspells can see themselves
+                    // as legal stack targets during target selection.
+                    targeting_game.move_card(card_id, ZoneType::Stack, player);
+                }
                 if sa.api == Some(crate::ability::api_type::ApiType::Charm)
                     && !crate::ability::effects::charm_effect::make_choices_precast(
                         &mut targeting_game,
@@ -960,27 +966,10 @@ impl GameLoop {
                 let saved_pool = self.pool(player).clone();
                 let mut mana_loop_invalid_count = 0u32;
                 loop {
-                    let tappable_lands: Vec<CardId> = game
-                        .cards_in_zone(ZoneType::Battlefield, player)
-                        .to_vec()
-                        .into_iter()
-                        .filter(|&cid| Self::mana_source_available_for_payment(game, player, cid))
-                        .collect();
-                    let mut mana_ability_options: Vec<crate::agent::ManaAbilityOption> = Vec::new();
-                    for &cid in &tappable_lands {
-                        let c = game.card(cid);
-                        for ab in &c.activated_abilities {
-                            if ab.is_mana_ability
-                                && crate::cost::can_pay_ignoring_mana(&ab.cost, game, cid, player)
-                            {
-                                mana_ability_options.push(crate::agent::ManaAbilityOption {
-                                    card_id: cid,
-                                    ability_index: ab.ability_index,
-                                    description: ab.ability_text.clone(),
-                                });
-                            }
-                        }
-                    }
+                    let mana_sources =
+                        mana::collect_mana_payment_sources(game, player, &[]);
+                    let tappable_lands = mana_sources.source_cards.clone();
+                    let mana_ability_options = mana_sources.mana_ability_options;
                     let pool_snapshot = self.pool(player).clone();
                     let untappable_lands: Vec<CardId> = game
                         .cards_in_zone(ZoneType::Battlefield, player)

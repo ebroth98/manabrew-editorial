@@ -313,11 +313,32 @@ pub(super) fn apply_post_move(
     lib_position: &str,
 ) {
     let controller = sa.activating_player;
+    let exile_source = sa.source.and_then(|source_id| {
+        if sa.params.has("ExiledWithEffectSource") {
+            ctx.game
+                .card(source_id)
+                .effect_source
+                .or(Some(source_id))
+        } else {
+            None
+        }
+    });
+
+    if dest_zone == ZoneType::Exile {
+        if let Some(exile_source) = exile_source {
+            ctx.game.card_mut(card_id).set_exiled_by(Some(exile_source));
+        }
+    }
 
     // Remember / Forget / Imprint
     if sa.is_remember_changed() {
         if let Some(sid) = sa.source {
             ctx.game.card_mut(sid).add_remembered_card(card_id);
+        }
+    }
+    if dest_zone == ZoneType::Exile && sa.params.has("ExiledWithEffectSource") {
+        if let Some(exile_source) = exile_source {
+            ctx.game.card_mut(exile_source).add_remembered_card(card_id);
         }
     }
     if sa.is_forget_changed() {

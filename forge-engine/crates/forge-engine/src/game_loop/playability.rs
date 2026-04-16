@@ -86,8 +86,12 @@ impl GameLoop {
                 }
 
                 // Check if we can pay the mana cost (normal or alternative)
-                let available_mana =
-                    mana::calculate_available_mana(self.pool(player), game, player);
+                let available_mana = mana::calculate_available_mana_for_casting_excluding(
+                    self.pool(player),
+                    game,
+                    player,
+                    Some(card_id),
+                );
 
                 // Apply cost reduction/increase from static abilities
                 let cost_adj = crate::cost::cost_adjustment::compute_cost_adjustment(
@@ -566,7 +570,12 @@ impl GameLoop {
             if must_be_instant && !has_flash_permission(card_id) {
                 continue;
             }
-            let available_mana = mana::calculate_available_mana(self.pool(player), game, player);
+            let available_mana = mana::calculate_available_mana_for_casting_excluding(
+                self.pool(player),
+                game,
+                player,
+                Some(card_id),
+            );
             let spell_cost = Self::parse_spell_cost(&card.abilities);
             let sp_additional_ok = if let Some(ref sc) = spell_cost {
                 crate::cost::can_pay_ignoring_mana_for_spell(sc, game, card_id, player)
@@ -620,8 +629,12 @@ impl GameLoop {
                     if must_be_instant && !has_flash_permission(card_id) {
                         continue;
                     }
-                    let available_mana =
-                        mana::calculate_available_mana(self.pool(player), game, player);
+                    let available_mana = mana::calculate_available_mana_for_casting_excluding(
+                        self.pool(player),
+                        game,
+                        player,
+                        Some(card_id),
+                    );
                     let foretell_mc = forge_foundation::ManaCost::parse(&foretell_cost_str);
                     let cost_adj = crate::cost::cost_adjustment::compute_cost_adjustment(
                         game,
@@ -663,8 +676,12 @@ impl GameLoop {
                 if must_be_instant && !has_flash_permission(card_id) {
                     continue;
                 }
-                let available_mana =
-                    mana::calculate_available_mana(self.pool(player), game, player);
+                let available_mana = mana::calculate_available_mana_for_casting_excluding(
+                    self.pool(player),
+                    game,
+                    player,
+                    Some(card_id),
+                );
                 let cost_adj = crate::cost::cost_adjustment::compute_cost_adjustment(
                     game,
                     card,
@@ -697,8 +714,12 @@ impl GameLoop {
                     ZoneType::Command,
                 );
                 let adjusted_cost = cost_adj.apply(&card.mana_cost);
-                let available_mana =
-                    mana::calculate_available_mana(self.pool(player), game, player);
+                let available_mana = mana::calculate_available_mana_for_casting_excluding(
+                    self.pool(player),
+                    game,
+                    player,
+                    Some(card_id),
+                );
                 if available_mana.can_pay_with_extra_generic(&adjusted_cost, tax) {
                     playable.push(crate::agent::PlayOption {
                         card_id,

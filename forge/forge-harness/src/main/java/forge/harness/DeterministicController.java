@@ -177,6 +177,28 @@ public class DeterministicController extends PlayerController {
         return entity.getClass().getSimpleName() + "(" + entity.getName() + ")";
     }
 
+    private static String targetCandidateKey(final Pair<GameEntity, GameObject> pair) {
+        final GameObject normalized = pair == null ? null : pair.getRight();
+        if (normalized instanceof SpellAbility sa) {
+            return "spell:" + sa.getId();
+        }
+        if (normalized instanceof Card c) {
+            return "card:" + c.getId();
+        }
+        if (normalized instanceof Player p) {
+            return "player:" + p.getId();
+        }
+
+        final GameEntity entity = pair == null ? null : pair.getLeft();
+        if (entity instanceof Card c) {
+            return "entity-card:" + c.getId();
+        }
+        if (entity instanceof Player p) {
+            return "entity-player:" + p.getId();
+        }
+        return String.valueOf(normalized);
+    }
+
     private static String formatChooseActionResult(final SpellAbility chosen, final Player player) {
         if (chosen == null) {
             return "PassPriority";
@@ -306,12 +328,36 @@ public class DeterministicController extends PlayerController {
 
         while (!currentAbility.isTargetNumberValid()) {
             final List<GameEntity> candidates = tr.getAllCandidates(currentAbility, true);
-            final List<GameEntity> valid = new ArrayList<>();
+            final List<Pair<GameEntity, GameObject>> valid = new ArrayList<>();
             for (final GameEntity candidate : candidates) {
-                if (currentAbility.canTarget(candidate)) {
-                    valid.add(candidate);
+                final GameObject normalized = normalizeStackTargetCandidate(candidate);
+                if (currentAbility.canTarget(normalized)) {
+                    valid.add(ImmutablePair.of(candidate, normalized));
                 }
             }
+
+            // Java's TargetRestrictions.getAllCandidates() does not enumerate stack
+            // spell targets here even when the restriction zone is Stack; the engine
+            // handles those separately via canTargetSpellAbility(). Mirror that path
+            // in the deterministic harness so counterspell targeting is legal.
+            valid.addAll(ActionSpace.getStackTargetCandidates(currentAbility));
+            final Map<String, Pair<GameEntity, GameObject>> deduped = new LinkedHashMap<>();
+            for (final Pair<GameEntity, GameObject> pair : valid) {
+                deduped.putIfAbsent(targetCandidateKey(pair), pair);
+            }
+            valid.clear();
+            valid.addAll(deduped.values());
+            final List<String> validNames = new ArrayList<>(valid.size());
+            for (final Pair<GameEntity, GameObject> pair : valid) {
+                validNames.add(formatEntity(pair.getLeft()));
+            }
+            DecisionLog.logCallback(
+                    player,
+                    "choose_targets_for(candidates)",
+                    validNames.toString(),
+                    new ArrayList<>(),
+                    ""
+            );
 
             if (valid.isEmpty()) {
                 final boolean result = currentAbility.isTargetNumberValid();
@@ -321,9 +367,9 @@ public class DeterministicController extends PlayerController {
 
             // Sort valid targets canonically (players first by index, then cards by name+parityId)
             // to ensure deterministic cross-engine parity regardless of internal iteration order.
-            valid.sort(Comparator.comparing(ParityOrder::targetSortKey));
+            valid.sort(Comparator.comparing(pair -> ParityOrder.targetSortKey(pair.getLeft())));
 
-            final GameEntity chosen = ChoiceSpace.pickOne(valid, rng);
+            final Pair<GameEntity, GameObject> chosen = ChoiceSpace.pickOne(valid, rng);
             if (chosen == null) {
                 final boolean result = currentAbility.isTargetNumberValid();
                 onCallback("choose_targets_for", Boolean.toString(result), currentAbility.toString());
@@ -332,15 +378,7 @@ public class DeterministicController extends PlayerController {
             // getAllCandidates returns Cards from the Stack zone, but CounterEffect.resolve()
             // calls getTargetSpells() which filters for SpellAbility instances. Convert the
             // Card to its corresponding SpellAbility so the counter actually resolves.
-            GameObject toAdd = chosen;
-            if (chosen instanceof Card c && c.isInZone(ZoneType.Stack)) {
-                for (final SpellAbilityStackInstance si : c.getGame().getStack()) {
-                    if (si.getSourceCard() == c) {
-                        toAdd = si.getSpellAbility();
-                        break;
-                    }
-                }
-            }
+            GameObject toAdd = chosen.getRight();
             currentAbility.getTargets().add(toAdd);
 
             if (!currentAbility.canAddMoreTarget()) {
@@ -364,6 +402,17 @@ public class DeterministicController extends PlayerController {
         }
         onCallback("choose_targets_for", "[" + String.join(", ", targetNames) + "]", currentAbility.toString());
         return result;
+    }
+
+    private GameObject normalizeStackTargetCandidate(final GameObject candidate) {
+        if (candidate instanceof Card c && c.isInZone(ZoneType.Stack)) {
+            for (final SpellAbilityStackInstance si : c.getGame().getStack()) {
+                if (si.getSourceCard() == c) {
+                    return si.getSpellAbility();
+                }
+            }
+        }
+        return candidate;
     }
 
     // ── Combat ────────────────────────────────────────────────────────
@@ -810,7 +859,6 @@ public class DeterministicController extends PlayerController {
     @Override
     public boolean confirmPayment(final forge.game.cost.CostPart costPart, final String prompt, final SpellAbility sa) {
         if (costPart == null || costPart instanceof CostPartMana) {
-            onCallback("confirm_payment", "true (auto_mana no-rng)", "auto_mana");
             return true;
         }
         if (DeterministicCostPlumbing.isSpellPaymentContext(sa)) {

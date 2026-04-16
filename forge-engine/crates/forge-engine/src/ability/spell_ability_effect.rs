@@ -7,6 +7,7 @@
 
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
+use crate::player::player_factory_util::add_replacement_effect;
 use crate::spellability::SpellAbility;
 
 use super::ability_utils;
@@ -172,10 +173,47 @@ fn get_players(
         }
     }
 
+    fn ordered_players(game: &GameState, starter: PlayerId) -> Vec<PlayerId> {
+        let Some(offset) = game.player_order.iter().position(|&pid| pid == starter) else {
+            return game.player_order.clone();
+        };
+
+        (0..game.player_order.len())
+            .map(|idx| game.player_order[(offset + idx) % game.player_order.len()])
+            .collect()
+    }
+
+    fn sort_in_turn_order(game: &GameState, sa: &SpellAbility, players: &mut [PlayerId]) {
+        let starter = sa
+            .params
+            .get("StartingWith")
+            .and_then(|defined| {
+                ability_utils::resolve_defined_players_with_sa(
+                    defined,
+                    sa,
+                    sa.activating_player,
+                    game,
+                )
+                .into_iter()
+                .next()
+            })
+            .unwrap_or(game.turn.active_player);
+        let ordered = ordered_players(game, starter);
+
+        players.sort_by_key(|pid| {
+            ordered
+                .iter()
+                .position(|ordered_pid| ordered_pid == pid)
+                .unwrap_or(usize::MAX)
+        });
+    }
+
     let use_targets = sa.uses_targeting() && (!defined_first || !sa.params.has(defined_param));
 
     if use_targets {
-        sa.target_chosen.target_player.into_iter().collect()
+        let mut result: Vec<_> = sa.target_chosen.target_player.into_iter().collect();
+        sort_in_turn_order(game, sa, &mut result);
+        result
     } else {
         let defined = sa.params.get(defined_param).unwrap_or("You");
 
@@ -188,6 +226,7 @@ fn get_players(
                 unique_push(&mut result, player);
             }
         }
+        sort_in_turn_order(game, sa, &mut result);
         result
     }
 }
@@ -341,6 +380,8 @@ pub fn create_effect(game: &mut GameState, sa: &SpellAbility, name: &str, image:
     if let Some(source_id) = sa.source {
         let _ = image; // image parameter used in Java for UI; we track source_id instead
         game.card_mut(effect_id).effect_source = Some(source_id);
+        let source_svars = game.card(source_id).svars.clone();
+        game.card_mut(effect_id).set_svars_map(source_svars);
     }
 
     // Mark as an effect card (not a "real" card) via SVar
@@ -413,10 +454,7 @@ pub fn exile_effect_command(
 /// be exiled instead of dying this turn.
 ///
 /// Mirrors Java's `SpellAbilityEffect.replaceDying(sa)`.
-/// Currently a stub — the full replacement-effect registration requires
-/// the replacement handler infrastructure. Effects that need this should
-/// check `ReplaceDyingDefined$` / `ReplaceDyingValid$` params.
-pub fn replace_dying(game: &GameState, sa: &SpellAbility) -> Vec<CardId> {
+pub fn replace_dying(game: &mut GameState, sa: &SpellAbility) -> Vec<CardId> {
     if !sa.params.has("ReplaceDyingDefined") && !sa.params.has("ReplaceDyingValid") {
         return Vec::new();
     }
@@ -428,10 +466,41 @@ pub fn replace_dying(game: &GameState, sa: &SpellAbility) -> Vec<CardId> {
         }
     }
 
-    // Resolve which cards should be replaced
-    if let Some(defined) = sa.params.get("ReplaceDyingDefined") {
-        resolve_defined_cards_for_sa(game, sa, defined)
+    let cards = if let Some(defined) = sa.params.get("ReplaceDyingDefined") {
+        let cards = resolve_defined_cards_for_sa(game, sa, defined);
+        if cards.is_empty() {
+            return Vec::new();
+        }
+        cards
     } else {
         Vec::new()
+    };
+
+    let effect_name = sa
+        .source
+        .map(|source_id| format!("{}'s Effect", game.card(source_id).card_name))
+        .unwrap_or_else(|| "Effect".to_string());
+    let effect_id = create_effect(game, sa, &effect_name, "");
+    {
+        let effect = game.card_mut(effect_id);
+        effect.add_remembered_cards(cards.iter().copied());
+        effect.set_forget_on_moved_origin(Some(forge_foundation::ZoneType::Battlefield));
+        effect.set_exile_when_no_remembered(true);
+        effect.set_temp_effect_until_eot(true);
     }
+
+    let valid = sa.params.get("ReplaceDyingValid").unwrap_or("Card.IsRemembered");
+    let zone = sa.params.get("ReplaceDyingZone").unwrap_or("Exile");
+    let mut replacement_raw = format!(
+        "R$ Event$ Moved | ValidLKI$ {} | Origin$ Battlefield | Destination$ Graveyard | NewDestination$ {} | Description$ If that permanent would die this turn, exile it instead.",
+        valid, zone
+    );
+    if sa.params.has("ReplaceDyingExiledWith") {
+        replacement_raw.push_str(" | ExiledWithEffectSource$ True");
+    }
+
+    let effect = game.card_mut(effect_id);
+    add_replacement_effect(effect, &replacement_raw);
+
+    cards
 }

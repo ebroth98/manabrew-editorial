@@ -600,29 +600,39 @@ pub fn resolve_numeric_svar(
     param_name: &str,
     default: i32,
 ) -> i32 {
-    let val_str = match sa.params.get(param_name) {
+    let raw_val = match sa.params.get(param_name) {
         Some(v) if !v.is_empty() => v.to_string(),
         _ => return default,
     };
+    let val_str = raw_val.trim();
 
     // Try direct integer parse first
-    if let Ok(n) = val_str.trim().parse::<i32>() {
+    if let Ok(n) = val_str.parse::<i32>() {
         return n;
     }
     // Try with leading + sign (e.g. "+3")
-    if let Some(stripped) = val_str.trim().strip_prefix('+') {
+    if let Some(stripped) = val_str.strip_prefix('+') {
         if let Ok(n) = stripped.parse::<i32>() {
             return n;
         }
     }
 
+    // Support signed SVar references like "-X" / "+X".
+    let (sign, val_str) = if let Some(stripped) = val_str.strip_prefix('-') {
+        (-1, stripped.trim())
+    } else if let Some(stripped) = val_str.strip_prefix('+') {
+        (1, stripped.trim())
+    } else {
+        (1, val_str)
+    };
+
     // Check if it's the X mana cost value directly
-    if val_str.trim() == "X" {
+    if val_str == "X" {
         // First check if there's an SVar named "X" on the source card
         if let Some(source_id) = sa.source {
             if let Some(svar_expr) = game.card(source_id).svars.get("X") {
                 if svar_expr.starts_with("Count$") {
-                    return resolve_count_svar_for_sa(
+                    return sign * resolve_count_svar_for_sa(
                         svar_expr,
                         game,
                         source_id,
@@ -631,7 +641,7 @@ pub fn resolve_numeric_svar(
                     );
                 }
                 if svar_expr.starts_with("PlayerCount") {
-                    return resolve_player_count_svar(
+                    return sign * resolve_player_count_svar(
                         svar_expr,
                         game,
                         source_id,
@@ -642,10 +652,10 @@ pub fn resolve_numeric_svar(
                 if svar_expr.starts_with("TriggerCount$")
                     || svar_expr.starts_with("TriggerCountMax$")
                 {
-                    return evaluate_svar(svar_expr, sa);
+                    return sign * evaluate_svar(svar_expr, sa);
                 }
                 if let Some(value) = resolve_spell_ability_expr(svar_expr, game, sa) {
-                    return value;
+                    return sign * value;
                 }
                 // Sacrificed$CardPower / Sacrificed$CardToughness — LKI from cost payment
                 // Mirrors Java's AbilityUtils which reads from sa.getPaidList("SacrificedCards").
@@ -663,7 +673,7 @@ pub fn resolve_numeric_svar(
                                 .lki_toughness
                                 .unwrap_or(sac_card.base_toughness.unwrap_or(0))
                         };
-                        return val;
+                        return sign * val;
                     }
                     return 0;
                 }
@@ -673,24 +683,24 @@ pub fn resolve_numeric_svar(
                 // incorrectly match "TriggeredCard" as a player definition.
                 if svar_expr == "TriggeredCard$CardPower" {
                     if let Some(power) = parse_trigger_int_object(sa, "TriggeredCardPower") {
-                        return power;
+                        return sign * power;
                     }
                     if let Some(trigger_src) =
                         parse_trigger_card_object(sa, "Card").or(sa.trigger_source)
                     {
-                        return crate::lki::resolve_lki_power(game, trigger_src);
+                        return sign * crate::lki::resolve_lki_power(game, trigger_src);
                     }
                     return 0;
                 }
                 if svar_expr == "TriggeredCard$CardToughness" {
                     if let Some(toughness) = parse_trigger_int_object(sa, "TriggeredCardToughness")
                     {
-                        return toughness;
+                        return sign * toughness;
                     }
                     if let Some(trigger_src) =
                         parse_trigger_card_object(sa, "Card").or(sa.trigger_source)
                     {
-                        return crate::lki::resolve_lki_toughness(game, trigger_src);
+                        return sign * crate::lki::resolve_lki_toughness(game, trigger_src);
                     }
                     return 0;
                 }
@@ -701,7 +711,7 @@ pub fn resolve_numeric_svar(
                     if let Some(trigger_src) =
                         parse_trigger_card_object(sa, "Card").or(sa.trigger_source)
                     {
-                        return crate::lki::resolve_lki_counter_count(game, trigger_src, &ct);
+                        return sign * crate::lki::resolve_lki_counter_count(game, trigger_src, &ct);
                     }
                     return 0;
                 }
@@ -730,7 +740,7 @@ pub fn resolve_numeric_svar(
                             true // default: accept
                         };
                         if matches {
-                            return times;
+                            return sign * times;
                         }
                     }
                     return 0;
@@ -738,21 +748,21 @@ pub fn resolve_numeric_svar(
                 if let Some(value) =
                     resolve_direct_player_expr(svar_expr, game, source_id, sa.activating_player, sa)
                 {
-                    return value;
+                    return sign * value;
                 }
-                return evaluate_svar(svar_expr, sa);
+                return sign * evaluate_svar(svar_expr, sa);
             }
         }
         // Otherwise use x_mana_cost_paid directly
-        return sa.x_mana_cost_paid as i32;
+        return sign * sa.x_mana_cost_paid as i32;
     }
 
     // It's an SVar reference — look it up on the source card
     if let Some(source_id) = sa.source {
-        if let Some(svar_expr) = game.card(source_id).svars.get(val_str.trim()) {
+        if let Some(svar_expr) = game.card(source_id).svars.get(val_str) {
             // Game-aware SVar resolution for patterns that need GameState.
             if svar_expr.starts_with("Count$") {
-                return resolve_count_svar_for_sa(
+                return sign * resolve_count_svar_for_sa(
                     svar_expr,
                     game,
                     source_id,
@@ -761,7 +771,7 @@ pub fn resolve_numeric_svar(
                 );
             }
             if svar_expr.starts_with("PlayerCount") {
-                return resolve_player_count_svar(
+                return sign * resolve_player_count_svar(
                     svar_expr,
                     game,
                     source_id,
@@ -770,30 +780,30 @@ pub fn resolve_numeric_svar(
                 );
             }
             if let Some(value) = resolve_spell_ability_expr(svar_expr, game, sa) {
-                return value;
+                return sign * value;
             }
             // TriggeredCard$CardPower / TriggeredCard$CardToughness — LKI resolution
             // Mirrors Java AbilityUtils: TriggeredCard → Card, then Card$CardPower.
             // Must be checked before resolve_direct_player_expr.
             if svar_expr == "TriggeredCard$CardPower" {
                 if let Some(power) = parse_trigger_int_object(sa, "TriggeredCardPower") {
-                    return power;
+                    return sign * power;
                 }
                 if let Some(trigger_src) =
                     parse_trigger_card_object(sa, "Card").or(sa.trigger_source)
                 {
-                    return crate::lki::resolve_lki_power(game, trigger_src);
+                    return sign * crate::lki::resolve_lki_power(game, trigger_src);
                 }
                 return 0;
             }
             if svar_expr == "TriggeredCard$CardToughness" {
                 if let Some(toughness) = parse_trigger_int_object(sa, "TriggeredCardToughness") {
-                    return toughness;
+                    return sign * toughness;
                 }
                 if let Some(trigger_src) =
                     parse_trigger_card_object(sa, "Card").or(sa.trigger_source)
                 {
-                    return crate::lki::resolve_lki_toughness(game, trigger_src);
+                    return sign * crate::lki::resolve_lki_toughness(game, trigger_src);
                 }
                 return 0;
             }
@@ -803,7 +813,7 @@ pub fn resolve_numeric_svar(
                 if let Some(trigger_src) =
                     parse_trigger_card_object(sa, "Card").or(sa.trigger_source)
                 {
-                    return crate::lki::resolve_lki_counter_count(game, trigger_src, &ct);
+                    return sign * crate::lki::resolve_lki_counter_count(game, trigger_src, &ct);
                 }
                 return 0;
             }
@@ -812,14 +822,14 @@ pub fn resolve_numeric_svar(
             // any foo$bar pattern via the resolve_defined_players fallback.
             let eval = evaluate_svar(svar_expr, sa);
             if eval != 0 || svar_expr.starts_with("Number$") || svar_expr.starts_with("Count$") {
-                return eval;
+                return sign * eval;
             }
             if let Some(value) =
                 resolve_direct_player_expr(svar_expr, game, source_id, sa.activating_player, sa)
             {
-                return value;
+                return sign * value;
             }
-            return eval;
+            return sign * eval;
         }
     }
 

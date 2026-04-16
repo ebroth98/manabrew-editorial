@@ -323,6 +323,7 @@ impl GameLoop {
 
     pub fn step_untap(&mut self, game: &mut GameState, agents: &mut [Box<dyn PlayerAgent>]) {
         let active = game.active_player();
+        let cards_snapshot = game.cards.clone();
 
         // Delegate phasing to the phase module.
         crate::phase::untap::do_phasing(game, active);
@@ -355,6 +356,31 @@ impl GameLoop {
                 }
             }
         }
+
+        // Java parity: untap permanents on other players' battlefields that
+        // have an UntapOtherPlayer static ability applying during the active
+        // player's untap step, e.g. Bender's Waterskin.
+        let other_battlefield_cards: Vec<_> = game
+            .player_order
+            .iter()
+            .copied()
+            .filter(|&pid| pid != active)
+            .flat_map(|pid| game.cards_in_zone(ZoneType::Battlefield, pid).iter().copied())
+            .collect();
+        for cid in other_battlefield_cards {
+            let card = game.card(cid);
+            if !card.tapped {
+                continue;
+            }
+            if crate::staticability::static_ability_untap_other_player::untap(
+                &cards_snapshot,
+                card,
+                active,
+            ) {
+                game.untap(cid);
+            }
+        }
+
         self.pool_mut(active).reset_pool();
     }
 

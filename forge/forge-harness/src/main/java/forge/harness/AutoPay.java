@@ -316,10 +316,12 @@ final class AutoPay {
 
     private List<ManaAbilityCandidate> collectPlayableManaAbilities(final SpellAbility saBeingPaid) {
         final List<ManaAbilityCandidate> out = new ArrayList<>();
-        final CardCollectionView battlefield = payer.getCardsIn(ZoneType.Battlefield);
+        final CardCollectionView manaSources = CardCollection.combine(
+                payer.getCardsIn(ZoneType.Battlefield),
+                payer.getCardsIn(ZoneType.Hand));
 
         int sourceOrder = 0;
-        for (final Card source : battlefield) {
+        for (final Card source : manaSources) {
             for (final SpellAbility manaAbility : source.getManaAbilities()) {
                 if (!manaAbility.isManaAbility()) {
                     continue;

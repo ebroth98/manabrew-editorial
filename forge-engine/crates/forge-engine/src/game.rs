@@ -50,6 +50,18 @@ impl TypeRegistry {
         )
     }
 
+    /// Return whether `creature_type` is a known creature subtype.
+    ///
+    /// Unlike [`TypeRegistry::creature_types`], this is safe to call in unit
+    /// tests that haven't loaded type data yet; it simply returns `false`.
+    pub fn is_creature_type(creature_type: &str) -> bool {
+        CREATURE_TYPES.get().is_some_and(|types| {
+            types
+                .iter()
+                .any(|ty| ty.eq_ignore_ascii_case(creature_type))
+        })
+    }
+
     fn parse_creature_types(content: &str) -> Vec<String> {
         let mut in_creature_section = false;
         let mut types = Vec::new();

@@ -156,22 +156,21 @@ impl GameLoop {
                     Some(&sa_for_target_check),
                 )
             } else {
-                let reserved_mana = mana::calculate_available_mana_excluding_with_reserved(
-                    self.pool(player),
-                    game,
-                    player,
-                    Some(card_id),
-                    &reserved_sacrifices,
-                );
-                crate::cost::can_pay_with_ability_and_reserved(
+                crate::cost::can_pay_ignoring_mana_with_ability(
                     &ab.cost,
                     game,
-                    &reserved_mana,
                     card_id,
                     player,
-                    Some(&sa_for_target_check),
-                    &reserved_sacrifices,
+                    &sa_for_target_check,
                 )
+                    && mana::can_pay_mana_cost_with_reserved_sacrifices(
+                        game,
+                        self.pool(player),
+                        player,
+                        card_id,
+                        &ab.cost,
+                        &reserved_sacrifices,
+                    )
             };
             if !can_pay_cost {
                 return false;

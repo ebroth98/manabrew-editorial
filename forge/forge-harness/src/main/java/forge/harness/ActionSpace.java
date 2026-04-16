@@ -6,6 +6,8 @@ import forge.card.mana.ManaAtom;
 import forge.card.mana.ManaCost;
 import forge.card.mana.ManaCostShard;
 import forge.game.Game;
+import forge.game.GameEntity;
+import forge.game.GameObject;
 import forge.game.card.Card;
 import forge.game.card.CardCollectionView;
 import forge.game.card.CardLists;
@@ -13,11 +15,14 @@ import forge.game.card.CardPredicates;
 import forge.game.player.Player;
 import forge.game.spellability.AbilityManaPart;
 import forge.game.spellability.SpellAbility;
+import forge.game.spellability.SpellAbilityStackInstance;
 import forge.game.spellability.TargetRestrictions;
 import forge.game.cost.Cost;
 import forge.game.cost.CostPart;
 import forge.game.cost.CostSacrifice;
 import forge.game.zone.ZoneType;
+import org.apache.commons.lang3.tuple.ImmutablePair;
+import org.apache.commons.lang3.tuple.Pair;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -140,6 +145,37 @@ public final class ActionSpace {
             }
         }
         return actions;
+    }
+
+    /**
+     * Enumerate stack spell targets for a targeting spell ability.
+     *
+     * Mirrors Java engine stack-target candidate checks used by
+     * {@link TargetRestrictions#getNumCandidates(SpellAbility, boolean)} while
+     * preserving parity sort keys via the stack spell's source card.
+     */
+    public static List<Pair<GameEntity, GameObject>> getStackTargetCandidates(final SpellAbility sa) {
+        final List<Pair<GameEntity, GameObject>> valid = new ArrayList<>();
+        final TargetRestrictions tr = sa.getTargetRestrictions();
+        if (tr == null || !tr.getZone().contains(ZoneType.Stack)) {
+            return valid;
+        }
+
+        for (final SpellAbilityStackInstance si : sa.getHostCard().getGame().getStack()) {
+            final SpellAbility stackSa = si.getSpellAbility();
+            // CR 115.5: a spell or ability on the stack can't target itself.
+            if (stackSa == sa || stackSa.getId() == sa.getId()) {
+                continue;
+            }
+            if (!sa.canTarget(stackSa)) {
+                continue;
+            }
+            final Card sourceCard = si.getSourceCard();
+            if (sourceCard != null) {
+                valid.add(ImmutablePair.of(sourceCard, stackSa));
+            }
+        }
+        return valid;
     }
 
     private static Set<Card> getFixedReservedSacrifices(final SpellAbility sa) {

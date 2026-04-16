@@ -419,41 +419,13 @@ impl GameLoop {
                     let saved_pool = self.mana_pools[player.index()].clone();
                     let mut mana_loop_invalid_count = 0u32;
                     let mana_paid = loop {
-                        let tappable_lands: Vec<CardId> = game
-                            .cards_in_zone(ZoneType::Battlefield, player)
-                            .to_vec()
-                            .into_iter()
-                            .filter(|&cid| {
-                                Self::mana_source_available_for_payment_with_reserved(
-                                    game,
-                                    player,
-                                    cid,
-                                    &reserved_sacrifices,
-                                )
-                            })
-                            .collect();
-                        let mut mana_ability_options: Vec<crate::agent::ManaAbilityOption> =
-                            Vec::new();
-                        for &cid in &tappable_lands {
-                            let c = game.card(cid);
-                            for ab in &c.activated_abilities {
-                                if ab.is_mana_ability
-                                    && Self::mana_ability_available_for_payment_with_reserved(
-                                        game,
-                                        player,
-                                        cid,
-                                        ab,
-                                        &reserved_sacrifices,
-                                    )
-                                {
-                                    mana_ability_options.push(crate::agent::ManaAbilityOption {
-                                        card_id: cid,
-                                        ability_index: ab.ability_index,
-                                        description: ab.ability_text.clone(),
-                                    });
-                                }
-                            }
-                        }
+                        let mana_sources = mana::collect_mana_payment_sources(
+                            game,
+                            player,
+                            &reserved_sacrifices,
+                        );
+                        let tappable_lands = mana_sources.source_cards.clone();
+                        let mana_ability_options = mana_sources.mana_ability_options;
                         let pool_snapshot = self.mana_pools[player.index()].clone();
                         let untappable_lands: Vec<CardId> = game
                             .cards_in_zone(ZoneType::Battlefield, player)
@@ -1356,7 +1328,19 @@ impl GameLoop {
                     type_filter,
                 } => {
                     if type_filter != "CARDNAME" {
-                        self.pay_return_cost(game, agents, player, type_filter, *amount, sa);
+                        if !self.pay_return_cost_internal(
+                            game,
+                            agents,
+                            player,
+                            type_filter,
+                            *amount,
+                            sa,
+                            prechosen_sacrifices,
+                            &mut pre_sac_idx,
+                        ) {
+                            payment_ok = false;
+                            break;
+                        }
                     }
                 }
                 CostPart::TapType {
@@ -1778,53 +1762,76 @@ impl GameLoop {
     ) -> Option<Vec<CardId>> {
         let mut picked: Vec<CardId> = Vec::new();
         for part in spell_cost.parts.clone() {
-            if let CostPart::Sacrifice {
-                type_filter,
-                amount,
-            } = part
-            {
-                if type_filter == "CARDNAME" {
-                    continue;
-                }
-                let mut valid =
-                    cost::get_sacrifice_targets_for_cost(game, player, &type_filter, sa);
-                if valid.len() < amount.max(0) as usize {
-                    return None;
-                }
-                // Java parity: DeterministicCostDecision.visit(CostSacrifice) calls
-                // confirm(cost, shouldAsk=true) → confirmPayment() before choosing.
-                // Spells auto-accept (isSpellPaymentContext), but activated abilities
-                // ask the agent, consuming RNG.
-                let is_spell_context = sa
-                    .map(|s| {
-                        s.is_spell
-                            || s.source
-                                .map(|cid| {
-                                    let card = game.card(cid);
-                                    card.type_line.is_instant() || card.type_line.is_sorcery()
-                                })
-                                .unwrap_or(false)
-                    })
-                    .unwrap_or(false);
-                if !is_spell_context {
-                    let card_name =
-                        sa.and_then(|s| s.source.map(|cid| game.card(cid).card_name.as_str()));
-                    let confirmed = agents[player.index()].confirm_payment(
-                        player,
-                        "Sacrifice",
-                        "Confirm sacrifice cost",
-                        card_name,
-                        sa.and_then(|s| s.api),
-                    );
-                    if !confirmed {
+            match part {
+                CostPart::Sacrifice {
+                    type_filter,
+                    amount,
+                } => {
+                    if type_filter == "CARDNAME" {
+                        continue;
+                    }
+                    let mut valid =
+                        cost::get_sacrifice_targets_for_cost(game, player, &type_filter, sa);
+                    if valid.len() < amount.max(0) as usize {
                         return None;
                     }
+                    // Java parity: DeterministicCostDecision.visit(CostSacrifice) calls
+                    // confirm(cost, shouldAsk=true) → confirmPayment() before choosing.
+                    // Spells auto-accept (isSpellPaymentContext), but activated abilities
+                    // ask the agent, consuming RNG.
+                    let is_spell_context = sa
+                        .map(|s| {
+                            s.is_spell
+                                || s.source
+                                    .map(|cid| {
+                                        let card = game.card(cid);
+                                        card.type_line.is_instant() || card.type_line.is_sorcery()
+                                    })
+                                    .unwrap_or(false)
+                        })
+                        .unwrap_or(false);
+                    if !is_spell_context {
+                        let card_name =
+                            sa.and_then(|s| s.source.map(|cid| game.card(cid).card_name.as_str()));
+                        let confirmed = agents[player.index()].confirm_payment(
+                            player,
+                            "Sacrifice",
+                            "Confirm sacrifice cost",
+                            card_name,
+                            sa.and_then(|s| s.api),
+                        );
+                        if !confirmed {
+                            return None;
+                        }
+                    }
+                    for _ in 0..amount.max(0) {
+                        let chosen = agents[player.index()].choose_sacrifice(player, &valid, sa)?;
+                        picked.push(chosen);
+                        valid.retain(|&cid| cid != chosen);
+                    }
                 }
-                for _ in 0..amount.max(0) {
-                    let chosen = agents[player.index()].choose_sacrifice(player, &valid, sa)?;
-                    picked.push(chosen);
-                    valid.retain(|&cid| cid != chosen);
+                CostPart::Return {
+                    type_filter,
+                    amount,
+                } => {
+                    if type_filter == "CARDNAME" {
+                        continue;
+                    }
+                    let mut valid =
+                        cost::get_sacrifice_targets_for_cost(game, player, &type_filter, sa);
+                    if valid.len() < amount.max(0) as usize {
+                        return None;
+                    }
+                    for _ in 0..amount.max(0) {
+                        let chosen = agents[player.index()]
+                            .choose_cards_for_effect(player, &valid, 1, 1)
+                            .into_iter()
+                            .next()?;
+                        picked.push(chosen);
+                        valid.retain(|&cid| cid != chosen);
+                    }
                 }
+                _ => {}
             }
         }
         Some(picked)
@@ -2797,7 +2804,11 @@ impl GameLoop {
             if valid.is_empty() {
                 break;
             }
-            if let Some(chosen) = agents[player.index()].choose_sacrifice(player, &valid, sa) {
+            let chosen = agents[player.index()]
+                .choose_cards_for_effect(player, &valid, 1, 1)
+                .into_iter()
+                .next();
+            if let Some(chosen) = chosen {
                 let owner = game.card(chosen).owner;
                 let from_zone = game.card(chosen).zone;
                 self.move_card_with_runtime(game, chosen, ZoneType::Hand, owner, agents);
@@ -2809,6 +2820,55 @@ impl GameLoop {
                 );
             }
         }
+    }
+
+    fn pay_return_cost_internal(
+        &mut self,
+        game: &mut GameState,
+        agents: &mut [Box<dyn PlayerAgent>],
+        player: PlayerId,
+        type_filter: &str,
+        amount: i32,
+        sa: Option<&SpellAbility>,
+        prechosen_returns: Option<&[CardId]>,
+        pre_return_idx: &mut usize,
+    ) -> bool {
+        for _ in 0..amount {
+            let valid = cost::get_sacrifice_targets_for_cost(game, player, type_filter, sa);
+            if valid.is_empty() {
+                return false;
+            }
+            let chosen = if let Some(prechosen) = prechosen_returns {
+                if *pre_return_idx >= prechosen.len() {
+                    return false;
+                }
+                let cid = prechosen[*pre_return_idx];
+                *pre_return_idx += 1;
+                if valid.contains(&cid) {
+                    Some(cid)
+                } else {
+                    return false;
+                }
+            } else {
+                agents[player.index()]
+                    .choose_cards_for_effect(player, &valid, 1, 1)
+                    .into_iter()
+                    .next()
+            };
+            let Some(chosen) = chosen else {
+                return false;
+            };
+            let owner = game.card(chosen).owner;
+            let from_zone = game.card(chosen).zone;
+            self.move_card_with_runtime(game, chosen, ZoneType::Hand, owner, agents);
+            crate::ability::effects::emit_zone_trigger(
+                &mut self.trigger_handler,
+                chosen,
+                from_zone,
+                ZoneType::Hand,
+            );
+        }
+        true
     }
 
     /// Tap `amount` other permanents matching `type_filter` as cost.
@@ -3163,13 +3223,7 @@ impl GameLoop {
 fn shares_creature_type(game: &GameState, a: CardId, b: CardId) -> bool {
     let ca = game.card(a);
     let cb = game.card(b);
-    if !ca.is_creature() || !cb.is_creature() {
-        return false;
-    }
-    ca.type_line
-        .subtypes
-        .iter()
-        .any(|st| cb.type_line.has_subtype(st))
+    ca.shares_creature_type_with(cb)
 }
 
 fn can_exile_for_cost(game: &GameState, card_id: CardId) -> bool {

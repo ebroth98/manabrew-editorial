@@ -224,7 +224,7 @@ pub fn resolve_defined_player_with_sa(
         });
     }
     match key {
-        "TriggeredPlayer" | "TargetedPlayer" => sa
+        "TriggeredPlayer" | "Targeted" | "TargetedPlayer" => sa
             .target_chosen
             .target_player
             .or_else(|| parse_player_object(sa, "Player")),
@@ -323,7 +323,7 @@ pub fn resolve_defined_players_with_sa(
             .collect();
     }
     match key {
-        "TriggeredPlayer" | "TargetedPlayer" => {
+        "TriggeredPlayer" | "Targeted" | "TargetedPlayer" => {
             let mut players = Vec::new();
             for player in sa
                 .target_chosen
@@ -854,7 +854,7 @@ pub fn matches_change_type(
             .subtypes
             .iter()
             .any(|st| st.eq_ignore_ascii_case(type_part)),
-        _ => card.type_line.has_subtype(type_part),
+        _ => card.has_subtype(type_part),
     };
 
     if !type_matches {

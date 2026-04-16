@@ -55,6 +55,8 @@ fn matches_single_property(card: &Card, property: &str, source_controller: Playe
         fc::NON_LAND => !card.type_line.is_land(),
         fc::NON_CREATURE => !card.is_creature(),
         fc::NON_ARTIFACT => !card.type_line.is_artifact(),
+        "tapped" => card.tapped,
+        "untapped" => !card.tapped,
         _ => {
             let lower = property.to_ascii_lowercase();
             // Power comparisons (powerLE2, powerGE3, etc.)
@@ -162,7 +164,7 @@ fn matches_single_property(card: &Card, property: &str, source_controller: Playe
                         "artifact" => !card.type_line.is_artifact(),
                         "enchantment" => !card.type_line.is_enchantment(),
                         "token" => !card.is_token,
-                        _ => !card.type_line.has_subtype(&property[3..]),
+                        _ => !card.has_subtype(&property[3..]),
                     }
                 }
             } else if let Some(keyword) = property.strip_prefix("without") {
@@ -172,7 +174,7 @@ fn matches_single_property(card: &Card, property: &str, source_controller: Playe
             } else {
                 // Check if it's a creature subtype (Wall, Zombie, Elf, etc.).
                 // Mirrors Java's CardProperty.cardHasProperty() subtype matching.
-                card.type_line.has_subtype(property)
+                card.has_subtype(property)
             }
         }
     }

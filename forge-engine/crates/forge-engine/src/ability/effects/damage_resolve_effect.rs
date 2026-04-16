@@ -194,4 +194,57 @@ mod tests {
         assert!(ctx.game.pending_damage_map.is_none());
         assert!(ctx.game.pending_prevent_map.is_none());
     }
+
+    #[test]
+    fn damage_resolve_replace_dying_exiles_lethal_target() {
+        let mut game = GameState::new(&["A", "B"], 20);
+        let p0 = PlayerId(0);
+        let p1 = PlayerId(1);
+        let src = creature(&mut game, p0, "Scorching Dragonfire");
+        let tgt = creature(&mut game, p1, "Talruum Minotaur");
+
+        let mut map = CardDamageMap::default();
+        map.put(src, DamageTarget::Card(tgt), 3);
+        game.pending_damage_map = Some(map);
+        game.pending_prevent_map = Some(CardDamageMap::default());
+
+        let mut sa = SpellAbility::new_simple(
+            Some(src),
+            p0,
+            "DB$ DamageResolve | ReplaceDyingDefined$ Targeted",
+        );
+        sa.target_chosen.target_card = Some(tgt);
+
+        let mut th = TriggerHandler::new();
+        let mut agents: Vec<Box<dyn PlayerAgent>> = vec![Box::new(PassAgent), Box::new(PassAgent)];
+        let mut pools = vec![ManaPool::default(), ManaPool::default()];
+        let templates = HashMap::new();
+        let templates_variants = HashMap::new();
+        let token_fallback = HashMap::new();
+        let mut rng = crate::game_rng::ThreadRngAdapter;
+        let mut ctx = EffectContext {
+            game: &mut game,
+            combat: None,
+            agents: &mut agents,
+            trigger_handler: &mut th,
+            token_templates: &templates,
+            token_art_variants: &templates_variants,
+            token_fallback: &token_fallback,
+            mana_pools: &mut pools,
+            parent_target_card: None,
+            rng: &mut rng,
+        };
+
+        super::resolve(&mut ctx, &sa);
+        assert_eq!(ctx.game.card(tgt).zone, ZoneType::Battlefield);
+        assert!(ctx.game.cards.iter().any(|c| {
+            c.zone == ZoneType::Command
+                && c.remembered_cards == vec![tgt]
+                && !c.replacement_effects.is_empty()
+        }));
+
+        assert!(ctx.game.check_state_based_actions());
+        assert_eq!(ctx.game.card(tgt).zone, ZoneType::Exile);
+        assert!(!ctx.game.cards.iter().any(|c| c.zone == ZoneType::Command));
+    }
 }

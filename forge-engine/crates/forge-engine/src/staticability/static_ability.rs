@@ -502,7 +502,7 @@ impl CardFilter {
             return false;
         }
         if let Some(ref sub) = self.subtype {
-            if !card.type_line.has_subtype(sub) {
+            if !card.has_subtype(sub) {
                 return false;
             }
         }
@@ -577,12 +577,7 @@ impl CardFilter {
 }
 
 fn shares_creature_type_with(a: &Card, b: &Card) -> bool {
-    a.type_line.subtypes.iter().any(|a_sub| {
-        b.type_line
-            .subtypes
-            .iter()
-            .any(|b_sub| a_sub.eq_ignore_ascii_case(b_sub))
-    })
+    a.shares_creature_type_with(b)
 }
 
 // ── Parser ───────────────────────────────────────────────────────────────────

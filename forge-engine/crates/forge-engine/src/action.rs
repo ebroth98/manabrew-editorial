@@ -10,7 +10,7 @@ use crate::replacement::replacement_handler::{
 };
 use crate::replacement::GameLossReason;
 use crate::replacement::ReplacementResult;
-use crate::staticability::layer::apply_etb_tapped;
+use crate::staticability::layer::{apply_continuous_effects, apply_etb_tapped};
 use crate::trigger::handler::TriggerHandler;
 
 /// Game state mutation methods — moving cards, dealing damage, state-based actions.
@@ -224,6 +224,7 @@ impl GameState {
                 self.zone_mut(ZoneType::Command, controller).remove(eff_id);
                 self.cards[eff_id.index()].zone = ZoneType::None;
             }
+            apply_continuous_effects(self);
             return;
         }
 
@@ -377,6 +378,7 @@ impl GameState {
                 // Ensures it's available for later TriggeredCard$CardPower lookups
                 // even if it dies within the same resolution chain.
                 self.update_lki_snapshot(card_id);
+                apply_continuous_effects(self);
                 return;
             }
             ZoneType::Graveyard | ZoneType::Hand | ZoneType::Exile | ZoneType::Library => {
@@ -530,6 +532,8 @@ impl GameState {
                 self.move_card(exiled_id, ZoneType::Battlefield, owner);
             }
         }
+
+        apply_continuous_effects(self);
     }
 
     /// Deal damage to a card (creature).

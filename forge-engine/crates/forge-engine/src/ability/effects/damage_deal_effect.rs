@@ -109,6 +109,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                 );
             }
         }
+        let _ = crate::ability::spell_ability_effect::replace_dying(ctx.game, sa);
         return;
     }
 
@@ -297,6 +298,8 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             }
         }
     }
+
+    let _ = crate::ability::spell_ability_effect::replace_dying(ctx.game, sa);
 }
 
 /// Resolve the NumDmg$ parameter, supporting both integer literals and SVar

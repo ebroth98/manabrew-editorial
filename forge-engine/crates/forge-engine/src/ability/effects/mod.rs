@@ -807,7 +807,13 @@ fn check_condition_present(
         let count = defined_cards
             .iter()
             .filter(|&&cid| {
-                matches_condition_filter_no_self_exclude(game, cid, player, &alternatives)
+                matches_condition_filter_no_self_exclude(
+                    game,
+                    cid,
+                    source_id,
+                    player,
+                    &alternatives,
+                )
             })
             .count() as i32;
 
@@ -850,11 +856,12 @@ fn check_condition_present(
 fn matches_condition_filter_no_self_exclude(
     game: &GameState,
     cid: CardId,
+    source_id: CardId,
     player: PlayerId,
     alternatives: &[&str],
 ) -> bool {
     let card = game.card(cid);
-    let source = card; // dummy, not used for self-check
+    let source = game.card(source_id);
     alternatives.iter().any(|alt| {
         let (base, qualifier) = if let Some((b, q)) = alt.split_once('.') {
             (b, Some(q))
@@ -881,6 +888,9 @@ fn matches_condition_filter_no_self_exclude(
                 "nonbasic" => !card.type_line.is_basic(),
                 "youctrl" | "youown" => card.controller == player,
                 "oppctrl" => card.controller != player,
+                "chosenctrl" => source
+                    .chosen_player
+                    .is_some_and(|chosen| card.controller == chosen),
                 _ => true,
             }
         } else {
@@ -1020,7 +1030,6 @@ fn resolve_effect_with_unless_cost(ctx: &mut EffectContext, sa: &SpellAbility, u
         ctx.agents[payer.index()].pay_cost_to_prevent_effect(payer, paid);
         if paid {
             already_paid = true;
-            break;
         }
     }
 

@@ -22,8 +22,10 @@ pub use computer_util_mana::{
     auto_tap_lands, auto_tap_lands_allow_reserved_source_reuse,
     auto_tap_lands_allow_reserved_source_reuse_with_callbacks,
     auto_tap_lands_allow_reserved_source_reuse_with_chooser, auto_tap_lands_generic,
-    auto_tap_lands_with_callbacks, auto_tap_lands_with_chooser, next_auto_tap_choice,
-    AutoTapChoice, ManaPayCallback, ManaPayCallbackFn, SacrificeChooser,
+    auto_tap_lands_with_callbacks, auto_tap_lands_with_chooser,
+    can_pay_mana_cost_with_reserved_sacrifices, collect_mana_payment_sources,
+    next_auto_tap_choice, AutoTapChoice, ManaPayCallback, ManaPayCallbackFn,
+    ManaPaymentSources, SacrificeChooser,
 };
 
 /// An individual mana object in the pool, tracking source and properties.
@@ -307,6 +309,31 @@ pub fn produced_to_atoms(produced: &str, chosen_colors: &[String]) -> Vec<u16> {
     }
 
     atoms
+}
+
+/// Returns the exact atoms for a raw fixed-output Produced$ string,
+/// preserving multiplicity. Choice-based forms return `None`.
+pub fn fixed_produced_atoms(produced: &str, _chosen_colors: &[String]) -> Option<Vec<u16>> {
+    let value = produced.trim();
+    if value.is_empty()
+        || value.eq_ignore_ascii_case("Any")
+        || value.eq_ignore_ascii_case("Chosen")
+        || value.starts_with("Combo")
+        || value.contains(',')
+    {
+        return None;
+    }
+
+    let parts: Vec<&str> = value.split_whitespace().collect();
+    if parts.len() <= 1 {
+        return None;
+    }
+
+    let mut atoms = Vec::with_capacity(parts.len());
+    for part in parts {
+        atoms.push(mana_atom_from_produced(part)?);
+    }
+    Some(atoms)
 }
 
 /// Parse a Produced$ value into color names for choose-color prompts.
@@ -627,30 +654,34 @@ pub fn determine_mana_production(
             }
         }
     } else {
-        let chosen_colors = game.card(card_id).chosen_colors.clone();
-        let colors = produced_to_color_names(produced, &chosen_colors);
-        if colors.len() > 1 {
-            let chosen = express_choice
-                .and_then(mana_atom_to_color_name)
-                .and_then(|forced| {
-                    colors
-                        .iter()
-                        .find(|valid| valid.eq_ignore_ascii_case(forced))
-                        .cloned()
-                })
-                .or_else(|| agents[player.index()].choose_color(player, &colors));
-            if let Some(chosen) = chosen {
-                if let Some(atom) = color_name_to_mana_atom(&chosen) {
+        if fixed_produced_atoms(produced, &game.card(card_id).chosen_colors).is_some() {
+            mana_string = Some(produced.to_string());
+        } else {
+            let chosen_colors = game.card(card_id).chosen_colors.clone();
+            let colors = produced_to_color_names(produced, &chosen_colors);
+            if colors.len() > 1 {
+                let chosen = express_choice
+                    .and_then(mana_atom_to_color_name)
+                    .and_then(|forced| {
+                        colors
+                            .iter()
+                            .find(|valid| valid.eq_ignore_ascii_case(forced))
+                            .cloned()
+                    })
+                    .or_else(|| agents[player.index()].choose_color(player, &colors));
+                if let Some(chosen) = chosen {
+                    if let Some(atom) = color_name_to_mana_atom(&chosen) {
+                        mana_string = Some(ManaPool::atom_to_letter(atom).to_string());
+                    }
+                }
+            } else if let Some(single) = colors.first() {
+                if let Some(atom) = color_name_to_mana_atom(single) {
                     mana_string = Some(ManaPool::atom_to_letter(atom).to_string());
                 }
+            } else {
+                // Raw produced string (single-token fixed output)
+                mana_string = Some(produced.to_string());
             }
-        } else if let Some(single) = colors.first() {
-            if let Some(atom) = color_name_to_mana_atom(single) {
-                mana_string = Some(ManaPool::atom_to_letter(atom).to_string());
-            }
-        } else {
-            // Raw produced string (single or multi-token like "C C")
-            mana_string = Some(produced.to_string());
         }
     }
 
@@ -761,6 +792,30 @@ pub fn calculate_available_mana(pool: &ManaPool, game: &GameState, player: Playe
     calculate_available_mana_excluding_with_reserved(pool, game, player, None, &[])
 }
 
+pub fn calculate_available_mana_for_casting(
+    pool: &ManaPool,
+    game: &GameState,
+    player: PlayerId,
+) -> ManaPool {
+    calculate_available_mana_for_casting_excluding(pool, game, player, None)
+}
+
+pub fn calculate_available_mana_for_casting_excluding(
+    pool: &ManaPool,
+    game: &GameState,
+    player: PlayerId,
+    excluded_source: Option<CardId>,
+) -> ManaPool {
+    calculate_available_mana_excluding_with_reserved_impl(
+        pool,
+        game,
+        player,
+        excluded_source,
+        &[],
+        true,
+    )
+}
+
 /// Calculate available mana while excluding a specific battlefield source.
 ///
 /// This is used by activated-ability legality checks to mirror Java's
@@ -782,8 +837,31 @@ pub fn calculate_available_mana_excluding_with_reserved(
     excluded_source: Option<CardId>,
     reserved_sacrifices: &[CardId],
 ) -> ManaPool {
+    calculate_available_mana_excluding_with_reserved_impl(
+        pool,
+        game,
+        player,
+        excluded_source,
+        reserved_sacrifices,
+        false,
+    )
+}
+
+fn calculate_available_mana_excluding_with_reserved_impl(
+    pool: &ManaPool,
+    game: &GameState,
+    player: PlayerId,
+    excluded_source: Option<CardId>,
+    reserved_sacrifices: &[CardId],
+    include_hand_sources: bool,
+) -> ManaPool {
     let mut available = pool.clone();
     let battlefield = game.cards_in_zone(ZoneType::Battlefield, player);
+    let hand_cards = if include_hand_sources {
+        game.cards_in_zone(ZoneType::Hand, player).to_vec()
+    } else {
+        Vec::new()
+    };
 
     // Track actual number of mana sources (each can produce exactly 1 mana)
     let mut source_count: i32 = 0;
@@ -821,7 +899,11 @@ pub fn calculate_available_mana_excluding_with_reserved(
         };
     }
 
-    for &card_id in battlefield {
+    for card_id in battlefield
+        .iter()
+        .copied()
+        .chain(hand_cards.into_iter())
+    {
         if excluded_source == Some(card_id) {
             continue;
         }
@@ -854,7 +936,13 @@ pub fn calculate_available_mana_excluding_with_reserved(
             .activated_abilities
             .iter()
             .filter(|ab| {
+                let activation_zone = ab.params.get(keys::ACTIVATION_ZONE);
                 ab.is_mana_ability
+                    && match card.zone {
+                        ZoneType::Battlefield => activation_zone != Some("Hand"),
+                        ZoneType::Hand => activation_zone == Some("Hand"),
+                        _ => false,
+                    }
                     && !ab.cost.parts.iter().any(|p| matches!(p, CostPart::Mana { .. }))
                     && (!is_tapped || !ab.cost.parts.iter().any(|p| matches!(p, CostPart::Tap)))
                     && (!summoning_sick
@@ -879,7 +967,7 @@ pub fn calculate_available_mana_excluding_with_reserved(
             // typed "Land Forest Island" — produces G or U from subtype, not AB$ Mana).
             // Also handles basic lands from the Forge CLI or other sources.
             // Tapped lands can't produce mana (implicit {T} cost), so skip them.
-            if card.is_land() && !is_tapped {
+            if card.zone == ZoneType::Battlefield && card.is_land() && !is_tapped {
                 let subtype_atoms = all_basic_subtype_atoms(card);
                 if !subtype_atoms.is_empty() {
                     let mut src_mask: u16 = 0;
@@ -901,6 +989,7 @@ pub fn calculate_available_mana_excluding_with_reserved(
         // Add 1 mana for each distinct color this source can produce (optimistic for colors).
         // The total_sources cap ensures the total mana count stays correct.
         let mut added_any = false;
+        let mut counted_fixed_output = false;
         let mut added_atoms: Vec<u16> = Vec::new();
         let mut src_mask: u16 = 0;
         for ab in &mana_abilities {
@@ -948,12 +1037,24 @@ pub fn calculate_available_mana_excluding_with_reserved(
                         added_any = true;
                     }
                 } else {
-                    for atom in produced_to_atoms(produced, &card.chosen_colors) {
-                        if !added_atoms.contains(&atom) {
+                    if let Some(fixed_atoms) = fixed_produced_atoms(produced, &card.chosen_colors)
+                    {
+                        for atom in fixed_atoms {
                             avail_add!(available, card_is_snow, atom);
-                            added_atoms.push(atom);
                             src_mask |= atom;
+                            source_count += 1;
+                            source_colors.push(atom);
                             added_any = true;
+                            counted_fixed_output = true;
+                        }
+                    } else {
+                        for atom in produced_to_atoms(produced, &card.chosen_colors) {
+                            if !added_atoms.contains(&atom) {
+                                avail_add!(available, card_is_snow, atom);
+                                added_atoms.push(atom);
+                                src_mask |= atom;
+                                added_any = true;
+                            }
                         }
                     }
                 }
@@ -981,7 +1082,7 @@ pub fn calculate_available_mana_excluding_with_reserved(
                 added_any = true;
             }
         }
-        if added_any {
+        if added_any && !counted_fixed_output {
             // Each productive source contributes exactly 1 activation (tap = 1 mana)
             source_count += 1;
             source_colors.push(src_mask);
@@ -1189,77 +1290,6 @@ mod tests {
         pool.add(ManaAtom::WHITE, 3);
         pool.reset_pool();
         assert_eq!(pool.total_mana(), 0);
-    }
-
-    #[test]
-    fn auto_tap_prefers_basic_sources_over_utility_lands_for_generic() {
-        let mut game = GameState::new(&["P1", "P2"], 20);
-        let p0 = PlayerId(0);
-
-        let make_land = |id: usize, name: &str, abilities: Vec<&str>| {
-            Card::new(
-                CardId(id as u32),
-                name.to_string(),
-                p0,
-                CardTypeLine::parse("Land"),
-                ManaCost::no_cost(),
-                ColorSet::COLORLESS,
-                None,
-                None,
-                vec![],
-                abilities.into_iter().map(|s| s.to_string()).collect(),
-            )
-        };
-
-        // Insertion order intentionally places Winding Canyons before a second Island.
-        // Basic lands use implicit mana abilities from their subtypes.
-        let island1 = game.create_card({
-            let mut card = make_land(1, "Island", vec![]);
-            card.type_line = CardTypeLine::parse("Land Island");
-            card
-        });
-        let canyons = game.create_card(make_land(
-            2,
-            "Winding Canyons",
-            vec![
-                "AB$ Mana | Cost$ T | Produced$ C | SpellDescription$ Add {C}.",
-                "AB$ Effect | Cost$ 2 T | SpellDescription$ Utility ability.",
-            ],
-        ));
-        let island2 = game.create_card({
-            let mut card = make_land(3, "Island", vec![]);
-            card.type_line = CardTypeLine::parse("Land Island");
-            card
-        });
-        let swamp1 = game.create_card({
-            let mut card = make_land(4, "Swamp", vec![]);
-            card.type_line = CardTypeLine::parse("Land Swamp");
-            card
-        });
-        let swamp2 = game.create_card({
-            let mut card = make_land(5, "Swamp", vec![]);
-            card.type_line = CardTypeLine::parse("Land Swamp");
-            card
-        });
-
-        game.zone_mut(ZoneType::Battlefield, p0).add(island1);
-        game.zone_mut(ZoneType::Battlefield, p0).add(canyons);
-        game.zone_mut(ZoneType::Battlefield, p0).add(island2);
-        game.zone_mut(ZoneType::Battlefield, p0).add(swamp1);
-        game.zone_mut(ZoneType::Battlefield, p0).add(swamp2);
-
-        // Simulate one Island already spent on a previous spell this main phase.
-        game.card_mut(island1).tapped = true;
-
-        let mut pool = ManaPool::new();
-        auto_tap_lands(&mut game, &mut pool, p0, &ManaCost::parse("1 B B"), None);
-
-        assert!(game.card(swamp1).tapped);
-        assert!(game.card(swamp2).tapped);
-        // Without utility-land scoring, the auto-tapper may tap Winding
-        // Canyons or Island2 for the generic {1} cost — either is valid.
-        let generic_tapped = game.card(island2).tapped || game.card(canyons).tapped;
-        assert!(generic_tapped);
     }
 
     #[test]

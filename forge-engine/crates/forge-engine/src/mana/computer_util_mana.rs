@@ -3,7 +3,9 @@ use forge_foundation::{ManaCost, ManaCostShard, ZoneType};
 use indexmap::IndexMap;
 use std::collections::HashMap;
 
+use crate::agent::ManaAbilityOption;
 use crate::cost::{can_pay_ignoring_mana, CostPart};
+use crate::cost::cost_part::pay_cost_from_source;
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
 
@@ -12,7 +14,7 @@ use crate::parsing::keys;
 use super::mana_cost_being_paid::{can_pay_for_shard_with_color, ManaCostBeingPaid};
 use super::{
     all_basic_subtype_atoms, atom_short, basic_land_mana_atom, compute_reflected_atoms,
-    produced_to_atoms, tap_land_for_mana, ManaPool,
+    fixed_produced_atoms, produced_to_atoms, tap_land_for_mana, ManaPool,
 };
 
 #[derive(Debug, Clone)]
@@ -38,6 +40,22 @@ pub struct AutoTapChoice {
     pub card_id: CardId,
     pub mana_ability_index: Option<usize>,
     pub chosen_atom: u16,
+}
+
+#[derive(Debug, Clone)]
+pub struct ManaPaymentSources {
+    pub source_cards: Vec<CardId>,
+    pub mana_ability_options: Vec<ManaAbilityOption>,
+}
+
+fn mana_cost_from_cost(cost: &crate::cost::Cost) -> ManaCost {
+    let mut out = ManaCost::generic(0);
+    for part in &cost.parts {
+        if let CostPart::Mana { cost, .. } = part {
+            out = out.add(cost);
+        }
+    }
+    out
 }
 
 /// Optional callback for choosing which permanent to sacrifice during mana
@@ -313,20 +331,40 @@ fn auto_tap_lands_internal(
             continue;
         }
 
-        tap_land_for_mana(
-            game,
-            pool,
-            player,
-            sa_payment.card_id,
-            chosen_atom,
-            source_requires_tap(game, &sa_payment),
-            &mut tapped_lands,
-        );
+        if let Some(fixed_atoms) = fixed_produced_atoms(&sa_payment.mana_text, &[]) {
+            let pain = super::land_pain_damage(game.card(sa_payment.card_id), chosen_atom);
+            let is_snow = game.card(sa_payment.card_id).type_line.is_snow();
+            if source_requires_tap(game, &sa_payment) && !game.card(sa_payment.card_id).tapped {
+                game.tap(sa_payment.card_id);
+            }
+            for atom in fixed_atoms {
+                if is_snow {
+                    pool.add_snow(atom, 1);
+                } else {
+                    pool.add(atom, 1);
+                }
+                let _ = unpaid.try_pay_mana(atom, atom as u8);
+            }
+            if pain > 0 {
+                game.player_lose_life(player, pain);
+            }
+            tapped_lands.push(sa_payment.card_id);
+        } else {
+            tap_land_for_mana(
+                game,
+                pool,
+                player,
+                sa_payment.card_id,
+                chosen_atom,
+                source_requires_tap(game, &sa_payment),
+                &mut tapped_lands,
+            );
 
-        let _ = unpaid.try_pay_mana(chosen_atom, chosen_atom as u8);
-        for _ in 1..sa_payment.amount.max(1) {
-            pool.add(chosen_atom, 1);
             let _ = unpaid.try_pay_mana(chosen_atom, chosen_atom as u8);
+            for _ in 1..sa_payment.amount.max(1) {
+                pool.add(chosen_atom, 1);
+                let _ = unpaid.try_pay_mana(chosen_atom, chosen_atom as u8);
+            }
         }
     }
 
@@ -993,23 +1031,12 @@ fn group_sources_by_mana_color(
     let mut mana_map: IndexMap<i32, Vec<ManaAbilityRef>> = IndexMap::new();
     let mut source_order = 0usize;
 
-    for card_id in get_available_mana_sources(game, player) {
+    for card_id in get_available_mana_sources(game, player, &[]) {
         let card = game.card(card_id);
         let mut explicit_mana_added = false;
 
         for ab in &card.activated_abilities {
-            if !ab.is_mana_ability {
-                continue;
-            }
-            if ab
-                .cost
-                .parts
-                .iter()
-                .any(|p| matches!(p, CostPart::Mana { .. }))
-            {
-                continue;
-            }
-            if !can_pay_ignoring_mana(&ab.cost, game, card_id, player) {
+            if !is_payable_mana_ability(game, player, card_id, ab, &[]) {
                 continue;
             }
             // Handle ManaReflected abilities (e.g. Incubation Druid)
@@ -1049,6 +1076,9 @@ fn group_sources_by_mana_color(
             }
 
             explicit_mana_added = true;
+            let fixed_output_multiplier = fixed_produced_atoms(produced, &card.chosen_colors)
+                .map(|atoms| atoms.len() as i32)
+                .unwrap_or(1);
             let ma = ManaAbilityRef {
                 card_id,
                 ability_index: Some(ab.ability_index),
@@ -1058,8 +1088,8 @@ fn group_sources_by_mana_color(
                     Some(game),
                     Some(card_id),
                     Some(player),
-                ),
-                mana_text: ability_mana_text_for_score(produced, &card.chosen_colors),
+                ) * fixed_output_multiplier,
+                mana_text: produced.to_string(),
                 source_order,
             };
             source_order += 1;
@@ -1067,23 +1097,25 @@ fn group_sources_by_mana_color(
         }
 
         if !explicit_mana_added {
-            let mut atoms = all_basic_subtype_atoms(card);
-            if atoms.is_empty() {
-                if let Some(a) = basic_land_mana_atom(card) {
-                    atoms.push(a);
+            if card.zone == ZoneType::Battlefield && card.is_land() && !card.tapped {
+                let mut atoms = all_basic_subtype_atoms(card);
+                if atoms.is_empty() {
+                    if let Some(a) = basic_land_mana_atom(card) {
+                        atoms.push(a);
+                    }
                 }
-            }
-            for atom in atoms {
-                let ma = ManaAbilityRef {
-                    card_id,
-                    ability_index: None,
-                    atoms: vec![atom],
-                    amount: 1,
-                    mana_text: atom_short(atom).to_string(),
-                    source_order,
-                };
-                source_order += 1;
-                add_mana_ability_to_color_map(&mut mana_map, &ma);
+                for atom in atoms {
+                    let ma = ManaAbilityRef {
+                        card_id,
+                        ability_index: None,
+                        atoms: vec![atom],
+                        amount: 1,
+                        mana_text: atom_short(atom).to_string(),
+                        source_order,
+                    };
+                    source_order += 1;
+                    add_mana_ability_to_color_map(&mut mana_map, &ma);
+                }
             }
         }
     }
@@ -1104,31 +1136,177 @@ fn add_mana_ability_to_color_map(
     }
 }
 
-fn get_available_mana_sources(game: &GameState, player: PlayerId) -> Vec<CardId> {
-    let mut sources: Vec<CardId> = game
-        .cards_in_zone(forge_foundation::ZoneType::Battlefield, player)
-        .iter()
-        .copied()
-        .collect();
-    sources.retain(|&cid| {
-        let card = game.card(cid);
+pub fn collect_mana_payment_sources(
+    game: &GameState,
+    player: PlayerId,
+    reserved_sacrifices: &[CardId],
+) -> ManaPaymentSources {
+    let source_cards = get_available_mana_sources(game, player, reserved_sacrifices);
+    let mut mana_ability_options = Vec::new();
+
+    for &card_id in &source_cards {
+        let card = game.card(card_id);
         for ab in &card.activated_abilities {
-            if !ab.is_mana_ability {
+            if !is_payable_mana_ability(game, player, card_id, ab, reserved_sacrifices) {
                 continue;
             }
-            if ab
-                .cost
-                .parts
-                .iter()
-                .any(|p| matches!(p, CostPart::Mana { .. }))
+            mana_ability_options.push(ManaAbilityOption {
+                card_id,
+                ability_index: ab.ability_index,
+                description: ab.ability_text.clone(),
+            });
+        }
+    }
+
+    ManaPaymentSources {
+        source_cards,
+        mana_ability_options,
+    }
+}
+
+/// Mirrors Java harness `ActionSpace.canPayManaCostWithReservedSacrifices(...)`
+/// for activated-ability action-space checks that reserve self/original-host
+/// sacrifices while probing mana feasibility.
+pub fn can_pay_mana_cost_with_reserved_sacrifices(
+    game: &GameState,
+    pool: &ManaPool,
+    player: PlayerId,
+    excluded_source: CardId,
+    cost: &crate::cost::Cost,
+    reserved_sacrifices: &[CardId],
+) -> bool {
+    let mana_cost = mana_cost_from_cost(cost);
+    let mut source_masks: Vec<u16> = Vec::new();
+
+    for _ in 0..pool.white() {
+        source_masks.push(ManaAtom::WHITE);
+    }
+    for _ in 0..pool.blue() {
+        source_masks.push(ManaAtom::BLUE);
+    }
+    for _ in 0..pool.black() {
+        source_masks.push(ManaAtom::BLACK);
+    }
+    for _ in 0..pool.red() {
+        source_masks.push(ManaAtom::RED);
+    }
+    for _ in 0..pool.green() {
+        source_masks.push(ManaAtom::GREEN);
+    }
+    for _ in 0..pool.colorless() {
+        source_masks.push(0);
+    }
+
+    for &card_id in game.cards_in_zone(ZoneType::Battlefield, player) {
+        if card_id == excluded_source {
+            continue;
+        }
+        let card = game.card(card_id);
+        let mut source_mask = 0u16;
+        for ab in &card.activated_abilities {
+            if !ab.is_mana_ability
+                || ab.cost.parts.iter().any(|p| matches!(p, CostPart::Mana { .. }))
             {
                 continue;
             }
-            if can_pay_ignoring_mana(&ab.cost, game, cid, player) {
+            if !is_payable_mana_ability(game, player, card_id, ab, reserved_sacrifices) {
+                continue;
+            }
+            if let Some(produced) = ab.params.get(keys::PRODUCED) {
+                for atom in produced_to_atoms(produced, &card.chosen_colors) {
+                    source_mask |= atom;
+                }
+            }
+        }
+
+        if source_mask != 0 {
+            source_masks.push(source_mask);
+            continue;
+        }
+
+        if card.is_land() && !card.tapped {
+            let implicit_atoms = all_basic_subtype_atoms(card);
+            if !implicit_atoms.is_empty() {
+                let mut implicit_mask = 0u16;
+                for atom in implicit_atoms {
+                    implicit_mask |= atom;
+                }
+                source_masks.push(implicit_mask);
+            } else if let Some(atom) = basic_land_mana_atom(card) {
+                source_masks.push(atom);
+            }
+        }
+    }
+
+    let mut requirements = Vec::new();
+    for shard in mana_cost.shards() {
+        let color_mask = u16::from(shard.color_mask());
+        if color_mask != 0 {
+            requirements.push(color_mask);
+        }
+    }
+    let generic_count = mana_cost.generic_cost();
+    if source_masks.len() < requirements.len() + generic_count as usize {
+        return false;
+    }
+
+    requirements.sort_by_key(|&req| source_masks.iter().filter(|src| (**src & req) != 0).count());
+
+    let mut committed = std::collections::HashSet::new();
+    for requirement in requirements {
+        let mut best_index: Option<usize> = None;
+        let mut best_pop = usize::MAX;
+        let mut best_mask = u16::MAX;
+        for (i, source_mask) in source_masks.iter().copied().enumerate() {
+            if committed.contains(&i) || (source_mask & requirement) == 0 {
+                continue;
+            }
+            let pop = source_mask.count_ones() as usize;
+            if pop < best_pop || (pop == best_pop && source_mask < best_mask) {
+                best_index = Some(i);
+                best_pop = pop;
+                best_mask = source_mask;
+            }
+        }
+        let Some(best_index) = best_index else {
+            return false;
+        };
+        committed.insert(best_index);
+    }
+
+    source_masks.len() - committed.len() >= generic_count as usize
+}
+
+fn get_available_mana_sources(
+    game: &GameState,
+    player: PlayerId,
+    reserved_sacrifices: &[CardId],
+) -> Vec<CardId> {
+    let mut sources: Vec<CardId> = game
+        .cards_in_zone(ZoneType::Battlefield, player)
+        .iter()
+        .copied()
+        .collect();
+
+    for &cid in game.cards_in_zone(ZoneType::Hand, player) {
+        let card = game.card(cid);
+        if card
+            .activated_abilities
+            .iter()
+            .any(|ab| is_payable_mana_ability(game, player, cid, ab, reserved_sacrifices))
+        {
+            sources.push(cid);
+        }
+    }
+
+    sources.retain(|&cid| {
+        let card = game.card(cid);
+        for ab in &card.activated_abilities {
+            if is_payable_mana_ability(game, player, cid, ab, reserved_sacrifices) {
                 return true;
             }
         }
-        if card.tapped || !card.is_land() {
+        if card.zone != ZoneType::Battlefield || card.tapped || !card.is_land() {
             return false;
         }
         let has_subtype = !all_basic_subtype_atoms(card).is_empty();
@@ -1136,6 +1314,102 @@ fn get_available_mana_sources(game: &GameState, player: PlayerId) -> Vec<CardId>
         has_subtype || has_basic
     });
     sources
+}
+
+fn is_payable_mana_ability(
+    game: &GameState,
+    player: PlayerId,
+    card_id: CardId,
+    ab: &crate::ability::activated::ActivatedAbility,
+    reserved_sacrifices: &[CardId],
+) -> bool {
+    if !ab.is_mana_ability {
+        return false;
+    }
+    let card = game.card(card_id);
+    let activation_zone = ab.params.get(keys::ACTIVATION_ZONE);
+    match card.zone {
+        ZoneType::Battlefield => {
+            if activation_zone == Some("Hand") {
+                return false;
+            }
+        }
+        ZoneType::Hand => {
+            if activation_zone != Some("Hand") {
+                return false;
+            }
+        }
+        _ => return false,
+    }
+    if ab
+        .cost
+        .parts
+        .iter()
+        .any(|p| matches!(p, CostPart::Mana { .. }))
+    {
+        return false;
+    }
+    if !can_pay_ignoring_mana(&ab.cost, game, card_id, player) {
+        return false;
+    }
+    can_pay_mana_ability_costs_with_reserved(game, player, card_id, &ab.cost.parts, reserved_sacrifices)
+}
+
+fn can_pay_mana_ability_costs_with_reserved(
+    game: &GameState,
+    player: PlayerId,
+    source_id: CardId,
+    cost_parts: &[CostPart],
+    reserved_sacrifices: &[CardId],
+) -> bool {
+    for part in cost_parts {
+        match part {
+            CostPart::Tap | CostPart::Mana { .. } => {}
+            CostPart::PayLife(amount) => {
+                if game.player(player).life < *amount {
+                    return false;
+                }
+            }
+            CostPart::SubCounter {
+                amount,
+                counter_type,
+            } => {
+                if game.card(source_id).counter_count(counter_type) < *amount {
+                    return false;
+                }
+            }
+            CostPart::Sacrifice {
+                type_filter,
+                amount,
+            } => {
+                if type_filter == "CARDNAME" {
+                    if *amount > 1
+                        || game.card(source_id).zone != ZoneType::Battlefield
+                        || reserved_sacrifices.contains(&source_id)
+                    {
+                        return false;
+                    }
+                } else {
+                    let mut targets =
+                        crate::cost::get_sacrifice_targets_for_cost(game, player, type_filter, None);
+                    targets.retain(|cid| !reserved_sacrifices.contains(cid));
+                    if (targets.len() as i32) < *amount {
+                        return false;
+                    }
+                }
+            }
+            CostPart::Exile { amount, from, .. } => {
+                if !pay_cost_from_source(part)
+                    || *amount > 1
+                    || game.card(source_id).zone != *from
+                {
+                    return false;
+                }
+            }
+            _ => return false,
+        }
+    }
+    true
 }
 
 /// Forward-ported from Java for future use. Currently unused but will be needed
@@ -1406,7 +1680,7 @@ pub fn auto_tap_lands_generic(
     let mut remaining = deficit;
     let mut tapped_lands: Vec<CardId> = Vec::new();
 
-    for card_id in get_available_mana_sources(game, player) {
+    for card_id in get_available_mana_sources(game, player, &[]) {
         if remaining <= 0 {
             break;
         }

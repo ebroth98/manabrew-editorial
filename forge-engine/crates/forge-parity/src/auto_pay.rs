@@ -1,5 +1,6 @@
-use forge_engine_core::agent::ManaCostAction;
+use forge_engine_core::agent::{ManaAbilityOption, ManaCostAction};
 use forge_engine_core::cost::{can_pay_ignoring_mana, CostPart};
+use forge_engine_core::cost::cost_part::pay_cost_from_source;
 use forge_engine_core::game::GameState;
 use forge_engine_core::ids::{CardId, PlayerId};
 use forge_engine_core::mana::mana_cost_being_paid::{
@@ -62,7 +63,9 @@ pub fn next_mana_cost_action(
     source: CardId,
     mana_cost: &str,
     _allow_reserved_source_reuse: bool,
-    reserved_sacrifices: &[CardId],
+    _reserved_sacrifices: &[CardId],
+    mana_ability_options: &[ManaAbilityOption],
+    tappable_lands: &[CardId],
 ) -> NextManaCostAction {
     let cost = parse_callback_mana_cost(mana_cost);
     let mut unpaid = ManaCostBeingPaid::from_mana_cost(&cost);
@@ -74,7 +77,8 @@ pub fn next_mana_cost_action(
         };
     }
 
-    let candidates = collect_playable_mana_abilities(game, player, source, reserved_sacrifices);
+    let candidates =
+        collect_playable_mana_abilities(game, player, source, mana_ability_options, tappable_lands);
     if let Some((candidate, chosen_atom)) = choose_candidate(&unpaid, &candidates) {
         return NextManaCostAction {
             action: ManaCostAction::TapLand {
@@ -194,100 +198,89 @@ fn collect_playable_mana_abilities(
     game: &GameState,
     player: PlayerId,
     source_being_paid: CardId,
-    reserved_sacrifices: &[CardId],
+    mana_ability_options: &[ManaAbilityOption],
+    tappable_lands: &[CardId],
 ) -> Vec<ManaAbilityCandidate> {
     let mut candidates = Vec::new();
     let mut source_order = 0usize;
+    let mut explicit_sources = Vec::new();
 
-    for &card_id in game.cards_in_zone(ZoneType::Battlefield, player) {
-        if card_id == source_being_paid {
+    for option in mana_ability_options {
+        if option.card_id == source_being_paid {
             continue;
         }
-        let card = game.card(card_id);
-        let mut explicit_mana_added = false;
+        let card = game.card(option.card_id);
+        let Some(ab) = card
+            .activated_abilities
+            .iter()
+            .find(|ab| ab.ability_index == option.ability_index)
+        else {
+            continue;
+        };
 
-        for ab in &card.activated_abilities {
-            if !ab.is_mana_ability {
-                continue;
-            }
-            if ab
-                .cost
-                .parts
-                .iter()
-                .any(|part| matches!(part, CostPart::Mana { .. }))
-            {
-                continue;
-            }
-            if !can_pay_ignoring_mana(&ab.cost, game, card_id, player) {
-                continue;
-            }
-            if !can_pay_mana_ability_costs_with_reserved(
-                game,
-                player,
-                card_id,
-                &ab.cost.parts,
-                reserved_sacrifices,
-            ) {
-                continue;
-            }
-
-            if ab.params.get(keys::AB) == Some("ManaReflected") {
-                let atoms = compute_reflected_atoms(game, player, card_id, ab);
-                if atoms.is_empty() {
-                    continue;
-                }
-                explicit_mana_added = true;
-                candidates.push(ManaAbilityCandidate {
-                    card_id,
-                    ability_index: Some(ab.ability_index),
-                    atoms,
-                    mana_text: "Any".to_string(),
-                    source_order,
-                });
-                source_order += 1;
-                continue;
-            }
-
-            let Some(produced) = ab.params.get(keys::PRODUCED) else {
-                continue;
-            };
-            if produced == "Combo ColorIdentity" {
-                continue;
-            }
-
-            let atoms = produced_to_atoms(produced, &card.chosen_colors);
+        if ab.params.get(keys::AB) == Some("ManaReflected") {
+            let atoms = compute_reflected_atoms(game, player, option.card_id, ab);
             if atoms.is_empty() {
                 continue;
             }
-
-            explicit_mana_added = true;
+            explicit_sources.push(option.card_id);
             candidates.push(ManaAbilityCandidate {
-                card_id,
-                ability_index: Some(ab.ability_index),
+                card_id: option.card_id,
+                ability_index: Some(option.ability_index),
                 atoms,
-                mana_text: ability_mana_text_for_score(produced, &card.chosen_colors),
+                mana_text: "Any".to_string(),
                 source_order,
             });
             source_order += 1;
+            continue;
         }
 
-        if !explicit_mana_added && card.is_land() && !card.tapped {
-            let mut atoms = all_basic_subtype_atoms(card);
-            if atoms.is_empty() {
-                if let Some(atom) = basic_land_mana_atom(card) {
-                    atoms.push(atom);
-                }
+        let Some(produced) = ab.params.get(keys::PRODUCED) else {
+            continue;
+        };
+        if produced == "Combo ColorIdentity" {
+            continue;
+        }
+
+        let atoms = produced_to_atoms(produced, &card.chosen_colors);
+        if atoms.is_empty() {
+            continue;
+        }
+
+        explicit_sources.push(option.card_id);
+        candidates.push(ManaAbilityCandidate {
+            card_id: option.card_id,
+            ability_index: Some(option.ability_index),
+            atoms,
+            mana_text: ability_mana_text_for_score(produced, &card.chosen_colors),
+            source_order,
+        });
+        source_order += 1;
+    }
+
+    for &card_id in tappable_lands {
+        if card_id == source_being_paid || explicit_sources.contains(&card_id) {
+            continue;
+        }
+        let card = game.card(card_id);
+        if !card.is_land() || card.tapped {
+            continue;
+        }
+        let mut atoms = all_basic_subtype_atoms(card);
+        if atoms.is_empty() {
+            if let Some(atom) = basic_land_mana_atom(card) {
+                atoms.push(atom);
             }
-            for atom in atoms {
-                candidates.push(ManaAbilityCandidate {
-                    card_id,
-                    ability_index: None,
-                    atoms: vec![atom],
-                    mana_text: atom_short(atom).to_string(),
-                    source_order,
-                });
-                source_order += 1;
-            }
+        }
+        for atom in atoms {
+            candidates.push(ManaAbilityCandidate {
+                card_id,
+                ability_index: None,
+                atoms: vec![atom],
+                mana_text: atom_short(atom).to_string(),
+                source_order,
+            });
+            source_order += 1;
         }
     }
 
@@ -295,59 +288,6 @@ fn collect_playable_mana_abilities(
         autopay_source_score(game, candidate) * 1000 + candidate.source_order as i32
     });
     candidates
-}
-
-fn can_pay_mana_ability_costs_with_reserved(
-    game: &GameState,
-    player: PlayerId,
-    source_id: CardId,
-    cost_parts: &[CostPart],
-    reserved_sacrifices: &[CardId],
-) -> bool {
-    for part in cost_parts {
-        match part {
-            CostPart::Tap | CostPart::Mana { .. } => {}
-            CostPart::PayLife(amount) => {
-                if game.player(player).life < *amount {
-                    return false;
-                }
-            }
-            CostPart::SubCounter {
-                amount,
-                counter_type,
-            } => {
-                if game.card(source_id).counter_count(counter_type) < *amount {
-                    return false;
-                }
-            }
-            CostPart::Sacrifice {
-                type_filter,
-                amount,
-            } => {
-                if type_filter == "CARDNAME" {
-                    if *amount > 1
-                        || game.card(source_id).zone != ZoneType::Battlefield
-                        || reserved_sacrifices.contains(&source_id)
-                    {
-                        return false;
-                    }
-                } else {
-                    let mut targets = forge_engine_core::cost::get_sacrifice_targets_for_cost(
-                        game,
-                        player,
-                        type_filter,
-                        None,
-                    );
-                    targets.retain(|cid| !reserved_sacrifices.contains(cid));
-                    if (targets.len() as i32) < *amount {
-                        return false;
-                    }
-                }
-            }
-            _ => return false,
-        }
-    }
-    true
 }
 
 fn autopay_source_score(game: &GameState, candidate: &ManaAbilityCandidate) -> i32 {

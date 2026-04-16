@@ -40,7 +40,14 @@ pub(super) fn resolve_stack_removal(
     // ExiledWith for exile
     if dest_zone == ZoneType::Exile {
         if let Some(source_id) = sa.source {
-            ctx.game.card_mut(card_id).set_exiled_by(Some(source_id));
+            if sa.params.has("ExiledWithEffectSource") {
+                let exile_source = ctx.game
+                    .card(source_id)
+                    .effect_source
+                    .unwrap_or(source_id);
+                ctx.game.card_mut(card_id).set_exiled_by(Some(exile_source));
+                ctx.game.card_mut(exile_source).add_remembered_card(card_id);
+            }
         }
     }
 
