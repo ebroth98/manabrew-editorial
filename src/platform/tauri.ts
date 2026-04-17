@@ -26,6 +26,7 @@ import type {
   JoinRoomParams,
   SetReadyParams,
   SetDeckSelectionParams,
+  SpawnAiBotParams,
 } from "./types";
 import type { RoomRelayEnvelope } from "@/types/server";
 
@@ -138,6 +139,20 @@ class TauriServerApi implements IServerApi {
 
   async sendRoomMessage(message: RoomRelayEnvelope): Promise<void> {
     return invoke<void>("server_send_room_message", { message });
+  }
+
+  async spawnAiBot(params: SpawnAiBotParams): Promise<void> {
+    return invoke<void>("server_spawn_ai_bot", {
+      roomId: params.roomId,
+      username: params.username,
+      deckName: params.deckName,
+      deckList: params.deckList,
+      commanderName: params.commanderName,
+    });
+  }
+
+  async removeAiBot(): Promise<void> {
+    return invoke<void>("server_remove_ai_bot");
   }
 }
 

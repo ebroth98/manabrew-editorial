@@ -12,10 +12,10 @@ use forge_agent_interface::agent_impl::PromptAgent;
 use forge_agent_interface::game_view_dto::GameViewDto;
 use forge_agent_interface::ids_codec::{parse_player_slot, player_slot};
 use forge_agent_interface::prompt::{AgentPrompt, AgentPromptInner, PlayerAction};
-use forge_agent_interface::simple_ai::spawn_simple_ai_prompt_responder;
+use forge_agent_interface::simple_ai::{choose_simple_ai_action, spawn_simple_ai_prompt_responder};
 use forge_carddb::CardDatabase;
 use forge_engine_core::agent::PlayerAgent;
-use forge_engine_core::game::GameState;
+use forge_engine_core::game::{GameState, TypeRegistry};
 use forge_engine_core::game_loop::GameLoop;
 use forge_engine_core::ids::PlayerId;
 use forge_game_runtime::deck::{
@@ -29,6 +29,7 @@ use forge_server::protocol::{
 use futures_util::stream::{SplitSink, SplitStream};
 use futures_util::{SinkExt, StreamExt};
 use rand::SeedableRng;
+use serde::Deserialize;
 use serde_json::{json, Value};
 use tokio::net::TcpStream;
 use tokio::sync::mpsc as tokio_mpsc;
@@ -61,8 +62,32 @@ struct EngineSession {
     remote_response_txs: HashMap<usize, std_mpsc::Sender<PlayerAction>>,
 }
 
+#[derive(Default)]
+struct ClientLoopState {
+    player_slot: Option<String>,
+    last_choose_action_signature: Option<String>,
+    last_choose_action_choice: Option<forge_engine_core::player::actions::PlayerAction>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SpawnBotPayload {
+    #[serde(default)]
+    deck: Option<SpawnBotDeckPayload>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SpawnBotDeckPayload {
+    deck_name: String,
+    deck_list: Vec<CardIdentity>,
+    #[serde(default)]
+    commander_name: Option<String>,
+}
+
 type SharedEngineSession = Arc<Mutex<Option<EngineSession>>>;
 type SharedBotState = Arc<Mutex<bool>>;
+type SharedClientLoopState = Arc<Mutex<ClientLoopState>>;
 
 #[tokio::main]
 async fn main() {
@@ -81,6 +106,8 @@ async fn main() {
 }
 
 async fn run(config: Config) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    load_type_registry()?;
+
     info!(
         relay_url = %config.relay_url,
         username = %config.username,
@@ -129,6 +156,7 @@ async fn run(config: Config) -> Result<(), Box<dyn std::error::Error + Send + Sy
     }
 
     let engine_session: SharedEngineSession = Arc::new(Mutex::new(None));
+    let loop_state = Arc::new(Mutex::new(ClientLoopState::default()));
     let (outbound_tx, outbound_rx) = tokio_mpsc::unbounded_channel::<ClientMessage>();
     run_client_loop(
         host,
@@ -137,6 +165,7 @@ async fn run(config: Config) -> Result<(), Box<dyn std::error::Error + Send + Sy
         room_id,
         engine_session,
         bot_state,
+        loop_state,
         outbound_tx,
         outbound_rx,
     )
@@ -159,6 +188,7 @@ async fn run_bot(
     wait_until_room_contains(&mut bot, &room_id, &config.bot_username).await?;
     seat_client(&mut bot, &config.bot_deck).await?;
     let engine_session: SharedEngineSession = Arc::new(Mutex::new(None));
+    let loop_state = Arc::new(Mutex::new(ClientLoopState::default()));
     let (outbound_tx, outbound_rx) = tokio_mpsc::unbounded_channel::<ClientMessage>();
     run_client_loop(
         bot,
@@ -167,6 +197,7 @@ async fn run_bot(
         room_id,
         engine_session,
         Arc::new(Mutex::new(false)),
+        loop_state,
         outbound_tx,
         outbound_rx,
     )
@@ -198,6 +229,18 @@ fn maybe_spawn_bot(config: Config, room_id: String, bot_state: SharedBotState) {
             error!(%error, "bot task exited");
         }
     });
+}
+
+fn load_type_registry() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let type_lists_path = workspace_root()
+        .join("forge")
+        .join("forge-gui")
+        .join("res")
+        .join("lists")
+        .join("TypeLists.txt");
+    let contents = std::fs::read_to_string(&type_lists_path)?;
+    TypeRegistry::load(&contents);
+    Ok(())
 }
 
 async fn wait_for_host_room(
@@ -289,6 +332,7 @@ async fn run_client_loop(
     room_id: String,
     engine_session: SharedEngineSession,
     bot_state: SharedBotState,
+    loop_state: SharedClientLoopState,
     outbound_tx: tokio_mpsc::UnboundedSender<ClientMessage>,
     mut outbound_rx: tokio_mpsc::UnboundedReceiver<ClientMessage>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
@@ -323,6 +367,7 @@ async fn run_client_loop(
                     &room_id,
                     &engine_session,
                     &bot_state,
+                    &loop_state,
                     &outbound_tx,
                     message,
                 ).await?;
@@ -338,6 +383,7 @@ async fn handle_server_message(
     room_id: &str,
     engine_session: &SharedEngineSession,
     bot_state: &SharedBotState,
+    loop_state: &SharedClientLoopState,
     outbound_tx: &tokio_mpsc::UnboundedSender<ClientMessage>,
     message: ServerMessage,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
@@ -354,6 +400,7 @@ async fn handle_server_message(
                 room_id,
                 engine_session,
                 bot_state,
+                loop_state,
                 from_player,
                 state,
             )
@@ -375,6 +422,7 @@ async fn handle_server_message(
             starting_life,
         } => {
             info!(room_id, ?player_order, observer = %client.username, "game started");
+            remember_player_slot(&client.username, role, loop_state, &player_order);
             maybe_start_hosted_engine(
                 config,
                 role,
@@ -403,11 +451,17 @@ async fn handle_state_update(
     room_id: &str,
     engine_session: &SharedEngineSession,
     bot_state: &SharedBotState,
+    loop_state: &SharedClientLoopState,
     from_player: String,
     state: Value,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     if state.get("kind").and_then(Value::as_str) == Some("response") {
         route_remote_response(engine_session, &state);
+        return Ok(());
+    }
+
+    if state.get("kind").and_then(Value::as_str) == Some("prompt") {
+        maybe_answer_bot_prompt(client, role, loop_state, &state).await?;
         return Ok(());
     }
 
@@ -433,6 +487,19 @@ async fn handle_state_update(
         .and_then(|payload| payload.get("type"))
         .and_then(Value::as_str);
 
+    if protocol == SELF_HOSTED_NODE_PROTOCOL && payload_type == Some("removeBot") {
+        if matches!(role, Role::Host) {
+            match bot_state.lock() {
+                Ok(mut spawned) => *spawned = false,
+                Err(error) => warn!(%error, "bot state lock poisoned"),
+            }
+        }
+        if matches!(role, Role::Bot) {
+            info!(observer = %client.username, "received self-hosted-node removeBot request");
+            client.send(&ClientMessage::LeaveRoom).await?;
+        }
+    }
+
     if protocol == SELF_HOSTED_NODE_PROTOCOL && payload_type == Some("startGame") {
         if matches!(role, Role::Host) {
             info!(observer = %client.username, "received self-hosted-node startGame request");
@@ -448,7 +515,8 @@ async fn handle_state_update(
                 .unwrap_or(room_id);
             if requested_room_id == room_id {
                 info!(observer = %client.username, room_id, "received self-hosted-node spawnBot request");
-                maybe_spawn_bot(config.clone(), room_id.to_string(), bot_state.clone());
+                let bot_config = config_for_spawn_bot(config, &state);
+                maybe_spawn_bot(bot_config, room_id.to_string(), bot_state.clone());
             } else {
                 debug!(
                     observer = %client.username,
@@ -477,6 +545,154 @@ async fn handle_state_update(
     Ok(())
 }
 
+fn remember_player_slot(
+    username: &str,
+    role: &Role,
+    loop_state: &SharedClientLoopState,
+    player_order: &[String],
+) {
+    if !matches!(role, Role::Bot) {
+        return;
+    }
+    let slot = player_order
+        .iter()
+        .position(|player| player == username)
+        .map(player_slot);
+    let Some(slot) = slot else {
+        warn!(
+            username,
+            ?player_order,
+            "bot was not present in game player order"
+        );
+        return;
+    };
+    match loop_state.lock() {
+        Ok(mut state) => {
+            state.player_slot = Some(slot.clone());
+            info!(username, player_slot = %slot, "bot player slot assigned");
+        }
+        Err(error) => warn!(%error, "client loop state lock poisoned"),
+    }
+}
+
+async fn maybe_answer_bot_prompt(
+    client: &mut RelayClient,
+    role: &Role,
+    loop_state: &SharedClientLoopState,
+    state: &Value,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    if !matches!(role, Role::Bot) {
+        return Ok(());
+    }
+
+    let Some(for_player) = state.get("forPlayer").and_then(Value::as_str) else {
+        debug!(observer = %client.username, state = %state, "bot prompt missing forPlayer");
+        return Ok(());
+    };
+    let Some(prompt_value) = state.get("prompt") else {
+        debug!(observer = %client.username, state = %state, "bot prompt missing prompt body");
+        return Ok(());
+    };
+
+    let action = {
+        let mut guard = match loop_state.lock() {
+            Ok(guard) => guard,
+            Err(error) => {
+                warn!(%error, "client loop state lock poisoned");
+                return Ok(());
+            }
+        };
+        if guard.player_slot.as_deref() != Some(for_player) {
+            debug!(
+                observer = %client.username,
+                for_player,
+                bot_slot = ?guard.player_slot,
+                "ignoring prompt for another player"
+            );
+            return Ok(());
+        }
+        if let Some(action) = choose_simple_ai_action_from_prompt_value(prompt_value) {
+            Some(action)
+        } else {
+            let prompt: AgentPrompt = match serde_json::from_value(prompt_value.clone()) {
+                Ok(prompt) => prompt,
+                Err(error) => {
+                    warn!(observer = %client.username, %error, "bot prompt payload was invalid");
+                    return Ok(());
+                }
+            };
+            let mut signature = guard.last_choose_action_signature.take();
+            let mut choice = guard.last_choose_action_choice.take();
+            let action = choose_simple_ai_action(prompt, &mut signature, &mut choice);
+            guard.last_choose_action_signature = signature;
+            guard.last_choose_action_choice = choice;
+            action
+        }
+    };
+
+    let Some(action) = action else {
+        warn!(observer = %client.username, for_player, "simple AI had no response for prompt");
+        return Ok(());
+    };
+
+    client
+        .send(&ClientMessage::BroadcastState {
+            state: json!({
+                "kind": "response",
+                "fromPlayer": for_player,
+                "action": action,
+            }),
+        })
+        .await?;
+    info!(observer = %client.username, for_player, "bot answered prompt");
+    Ok(())
+}
+
+fn choose_simple_ai_action_from_prompt_value(prompt: &Value) -> Option<PlayerAction> {
+    match prompt.get("type").and_then(Value::as_str)? {
+        "mulligan" => Some(PlayerAction::MulliganDecision { keep: true }),
+        "mulliganPutBack" => {
+            let count = prompt
+                .get("count")
+                .and_then(Value::as_u64)
+                .unwrap_or_default() as usize;
+            let card_ids = prompt
+                .get("handCardIds")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+                .filter_map(Value::as_str)
+                .take(count)
+                .map(str::to_string)
+                .collect();
+            Some(PlayerAction::MulliganPutBackDecision { card_ids })
+        }
+        _ => None,
+    }
+}
+
+fn config_for_spawn_bot(config: &Config, state: &Value) -> Config {
+    let mut config = config.clone();
+    let deck = state
+        .get("payload")
+        .and_then(|payload| serde_json::from_value::<SpawnBotPayload>(payload.clone()).ok())
+        .and_then(|payload| payload.deck);
+    if let Some(deck) = deck {
+        info!(
+            deck = %deck.deck_name,
+            cards = deck.deck_list.len(),
+            commander = ?deck.commander_name,
+            "using requested bot deck"
+        );
+        config.bot_deck = DeckSelection {
+            name: deck.deck_name,
+            cards: deck.deck_list,
+            commander_name: deck.commander_name,
+        };
+    }
+    config
+}
+
 async fn maybe_auto_start_room(
     client: &mut RelayClient,
     config: &Config,
@@ -486,7 +702,10 @@ async fn maybe_auto_start_room(
     if !config.auto_start || !matches!(role, Role::Host) {
         return Ok(());
     }
-    if room.host != config.username || room.status != RoomStatus::Lobby || room.players.len() < 2 {
+    if room.host != config.username
+        || room.status != RoomStatus::Lobby
+        || room.players.len() < config.max_players as usize
+    {
         return Ok(());
     }
     let all_ready = room

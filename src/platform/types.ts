@@ -82,6 +82,11 @@ export interface SetDeckSelectionParams {
   commanderName: string | null;
 }
 
+export interface SpawnAiBotParams extends SetDeckSelectionParams {
+  roomId: string;
+  username: string;
+}
+
 // ============================================================================
 // Platform Interfaces
 // ============================================================================
@@ -133,6 +138,8 @@ export interface IServerApi {
   startGame(): Promise<void>;
   broadcastState(state: Record<string, unknown>): Promise<void>;
   sendRoomMessage(message: RoomRelayEnvelope): Promise<void>;
+  spawnAiBot(params: SpawnAiBotParams): Promise<void>;
+  removeAiBot(): Promise<void>;
 }
 
 /**

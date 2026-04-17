@@ -23,6 +23,7 @@ import type {
   JoinRoomParams,
   SetReadyParams,
   SetDeckSelectionParams,
+  SpawnAiBotParams,
 } from "./types";
 import { isRoomRelayEnvelope } from "@/types/server";
 import type { RoomRelayEnvelope } from "@/types/server";
@@ -613,6 +614,14 @@ class WebServerApi implements IServerApi {
 
   async sendRoomMessage(message: RoomRelayEnvelope): Promise<void> {
     this.send({ type: "BroadcastState", state: message });
+  }
+
+  async spawnAiBot(_params: SpawnAiBotParams): Promise<void> {
+    throw new Error("Client-hosted AI bots are only available in the Tauri app.");
+  }
+
+  async removeAiBot(): Promise<void> {
+    throw new Error("Client-hosted AI bots are only available in the Tauri app.");
   }
 
   private send(msg: Record<string, unknown>): void {

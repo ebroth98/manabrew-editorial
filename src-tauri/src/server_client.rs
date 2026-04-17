@@ -10,9 +10,17 @@ use forge_server::protocol::ServerMessage;
 pub struct ServerClient {
     tx: Mutex<Option<mpsc::UnboundedSender<String>>>,
     task: Mutex<Option<tauri::async_runtime::JoinHandle<()>>>,
+    config: Mutex<Option<ServerConnectionConfig>>,
     pub connected: Mutex<bool>,
     pub username: Mutex<Option<String>>,
     pub player_id: Mutex<Option<String>>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ServerConnectionConfig {
+    pub host: String,
+    pub port: u16,
+    pub password: String,
 }
 
 impl ServerClient {
@@ -20,6 +28,7 @@ impl ServerClient {
         ServerClient {
             tx: Mutex::new(None),
             task: Mutex::new(None),
+            config: Mutex::new(None),
             connected: Mutex::new(false),
             username: Mutex::new(None),
             player_id: Mutex::new(None),
@@ -55,6 +64,17 @@ impl ServerClient {
         if let Ok(mut guard) = self.player_id.lock() {
             *guard = None;
         }
+        if let Ok(mut guard) = self.config.lock() {
+            *guard = None;
+        }
+    }
+
+    pub fn connection_config(&self) -> Result<ServerConnectionConfig, String> {
+        self.config
+            .lock()
+            .map_err(|e| e.to_string())?
+            .clone()
+            .ok_or_else(|| "Not connected".to_string())
     }
 
     pub fn connect(
@@ -74,6 +94,13 @@ impl ServerClient {
         }
         if let Ok(mut guard) = self.username.lock() {
             *guard = Some(username.clone());
+        }
+        if let Ok(mut guard) = self.config.lock() {
+            *guard = Some(ServerConnectionConfig {
+                host: host.clone(),
+                port,
+                password: password.clone(),
+            });
         }
 
         let scheme = if port == 443 { "wss" } else { "ws" };

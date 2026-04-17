@@ -144,7 +144,7 @@ pub struct CardDto {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub attached_to: Option<String>,
     /// IDs of cards attached to this permanent (equipment, auras).
-    #[serde(skip_serializing_if = "Vec::is_empty")]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub attachment_ids: Vec<String>,
     /// Flashback cost string, if the card has flashback (e.g. "1 R").
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -159,13 +159,13 @@ pub struct CardDto {
     /// Madness cost string, if the card has madness (e.g. "R").
     #[serde(skip_serializing_if = "Option::is_none")]
     pub madness_cost: Option<String>,
-    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub is_madness_exiled: bool,
     /// True if this card has been plotted (exiled face-up, castable for free later).
-    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub is_plotted: bool,
     /// True if this card was exiled via Warp (castable from exile for normal cost).
-    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub is_warp_exiled: bool,
 }
 

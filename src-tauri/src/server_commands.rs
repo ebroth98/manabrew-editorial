@@ -1,5 +1,6 @@
 use tauri::{AppHandle, State};
 
+use crate::client_bot::{ClientBotConfig, ClientBotManager};
 use crate::multiplayer_controller::relay_response_value;
 use crate::preset_decks::CardIdentity;
 use crate::server_client::ServerClient;
@@ -21,8 +22,39 @@ pub async fn server_connect(
 }
 
 #[tauri::command]
-pub async fn server_disconnect(client: State<'_, ServerClient>) -> Result<(), String> {
+pub async fn server_disconnect(
+    client: State<'_, ServerClient>,
+    bot_manager: State<'_, ClientBotManager>,
+) -> Result<(), String> {
+    bot_manager.stop_bot();
     client.disconnect();
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn server_spawn_ai_bot(
+    client: State<'_, ServerClient>,
+    bot_manager: State<'_, ClientBotManager>,
+    room_id: String,
+    username: String,
+    deck_name: String,
+    deck_list: Vec<CardIdentity>,
+    commander_name: Option<String>,
+) -> Result<(), String> {
+    let connection = client.connection_config()?;
+    bot_manager.spawn_bot(ClientBotConfig {
+        connection,
+        room_id,
+        username,
+        deck_name,
+        deck_list,
+        commander_name,
+    })
+}
+
+#[tauri::command]
+pub async fn server_remove_ai_bot(bot_manager: State<'_, ClientBotManager>) -> Result<(), String> {
+    bot_manager.stop_bot();
     Ok(())
 }
 
@@ -73,7 +105,11 @@ pub async fn server_join_room(
 }
 
 #[tauri::command]
-pub async fn server_leave_room(client: State<'_, ServerClient>) -> Result<(), String> {
+pub async fn server_leave_room(
+    client: State<'_, ServerClient>,
+    bot_manager: State<'_, ClientBotManager>,
+) -> Result<(), String> {
+    bot_manager.stop_bot();
     send_server_message(&client, serde_json::json!({"type": "LeaveRoom"}))
 }
 

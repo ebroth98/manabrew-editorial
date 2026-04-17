@@ -1,5 +1,6 @@
 mod ai_agent;
 mod card_db;
+mod client_bot;
 mod commands;
 mod game_manager;
 mod multiplayer_controller;
@@ -11,6 +12,7 @@ mod tauri_transport;
 
 use std::path::PathBuf;
 
+use client_bot::ClientBotManager;
 use forge_engine_core::game::TypeRegistry;
 use game_manager::GameManager;
 use server_client::ServerClient;
@@ -52,6 +54,7 @@ pub fn run() {
         })
         .manage(GameManager::new())
         .manage(ServerClient::new())
+        .manage(ClientBotManager::new())
         .invoke_handler(tauri::generate_handler![
             commands::start_game,
             commands::respond,
@@ -61,6 +64,8 @@ pub fn run() {
             commands::get_preset_decks,
             server_commands::server_connect,
             server_commands::server_disconnect,
+            server_commands::server_spawn_ai_bot,
+            server_commands::server_remove_ai_bot,
             server_commands::server_list_rooms,
             server_commands::server_list_players,
             server_commands::server_create_room,
