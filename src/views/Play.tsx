@@ -16,7 +16,13 @@ interface MultiplayerLocationState {
 
 export default function Play() {
   const location = useLocation();
-  const { isGameActive, startGame, startMultiplayerGame, setMultiplayerState } = useGameStore();
+  const {
+    isGameActive,
+    startGame,
+    startManualTabletopGame,
+    startMultiplayerGame,
+    setMultiplayerState,
+  } = useGameStore();
   const multiplayerStarted = useRef(false);
 
   const mpState = location.state as MultiplayerLocationState | null;
@@ -72,10 +78,13 @@ export default function Play() {
 
   // Single-player: fighting-game style deck selector
   return (
-    <DeckVsSelector
-      onStart={(playerDeck, opponentDeck, formatId, commanderName) => {
-        startGame(playerDeck, formatId, commanderName, opponentDeck);
-      }}
-    />
+    <div className="relative h-full min-h-0">
+      <DeckVsSelector
+        onStart={(playerDeck, opponentDeck, formatId, commanderName) => {
+          startGame(playerDeck, formatId, commanderName, opponentDeck);
+        }}
+        onStartTabletop={(deck) => void startManualTabletopGame(deck)}
+      />
+    </div>
   );
 }

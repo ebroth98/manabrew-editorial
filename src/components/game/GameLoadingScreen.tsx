@@ -1,4 +1,4 @@
-import { getPlatform } from "@/platform";
+import { getSelectedGameRuntime } from "@/game";
 import { useGameStore } from "@/stores/useGameStore";
 import { Button } from "@/components/ui/button";
 
@@ -18,8 +18,8 @@ export function GameLoadingScreen({ debugInfo }: GameLoadingScreenProps) {
         size="sm"
         onClick={async () => {
           try {
-            const platform = getPlatform();
-            const raw = await platform.game.getPrompt();
+            const runtime = getSelectedGameRuntime();
+            const raw = await runtime.api.getPrompt();
             useGameStore.setState({
               debugInfo: `Manual poll: ${JSON.stringify(raw)?.slice(0, 200)}`,
             });

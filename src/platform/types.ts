@@ -129,6 +129,7 @@ export interface IServerApi {
   setReady(params: SetReadyParams): Promise<void>;
   setDeckSelection(params: SetDeckSelectionParams): Promise<void>;
   startGame(): Promise<void>;
+  broadcastState(state: Record<string, unknown>): Promise<void>;
 }
 
 /**

@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
-import { getPlatform, type PresetDeckInfo } from "@/platform";
+import { getDefaultGameRuntime } from "@/game";
+import type { PresetDeckInfo } from "@/platform";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -63,8 +64,8 @@ export function CreateGameDialog({
   const [deckSearch, setDeckSearch] = useState("");
 
   useEffect(() => {
-    const platform = getPlatform();
-    platform.game.getPresetDecks()
+    const runtime = getDefaultGameRuntime();
+    runtime.api.getPresetDecks()
       .then(setPresetDecks)
       .catch((e) => console.error("[CreateGameDialog] Failed to load preset decks:", e));
   }, []);

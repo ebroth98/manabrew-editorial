@@ -1,9 +1,20 @@
 import { create } from 'zustand';
 import { devtools } from 'zustand/middleware';
 import { toast } from 'sonner';
-import { getPlatform } from '@/platform';
+import {
+  BroadcastRoomHost,
+  getSelectedGameRuntime,
+  resetSelectedGameRuntime,
+  selectGameRuntime,
+  startManualRoomSync,
+  stopManualRoomSync as stopActiveManualRoomSync,
+} from '@/game';
 import { getFormat } from '@/lib/formats';
+import { applyPrompt } from './gameStore.constants';
 import type { GameState, GameConfig } from './gameStore.types';
+import type { AgentPrompt } from './gameStore.types';
+import type { Card, Deck, GameView } from '@/types/openmagic';
+import type { GameRuntime, ManualTabletopApi } from '@/game';
 
 export type { AgentPrompt, GameConfig, GameState, DisplayEvent, DeferredSnapshot } from './gameStore.types';
 
@@ -11,6 +22,63 @@ function formatMissingCardsMessage(deckLabel: string, missingCards: string[]): s
   const preview = missingCards.slice(0, 8).join(', ');
   const extra = missingCards.length > 8 ? ` (+${missingCards.length - 8} more)` : '';
   return `${deckLabel} contains cards not available in the web engine bundle: ${preview}${extra}`;
+}
+
+function isManualTabletopApi(
+  runtime: GameRuntime,
+): runtime is GameRuntime & { api: ManualTabletopApi } {
+  return runtime.capabilities.manualTabletop && 'applyManualAction' in runtime.api;
+}
+
+function manualZoneCard(card: Card, playerId: string, zoneId: string): Card {
+  return {
+    ...card,
+    id: `manual-card-${crypto.randomUUID()}`,
+    controllerId: playerId,
+    ownerId: playerId,
+    zoneId,
+    isPlayable: false,
+    isSelected: false,
+    isChoosable: false,
+    tapped: false,
+  };
+}
+
+function seedManualDeck(
+  gameView: GameView,
+  deck: Deck,
+): { gameView: GameView; libraries: Record<string, Card[]> } {
+  const playerId = gameView.players[0]?.id ?? 'player-0';
+  const openingHandSize = Math.min(7, deck.cards.length);
+  const hand = deck.cards
+    .slice(0, openingHandSize)
+    .map((card) => manualZoneCard(card, playerId, 'hand'));
+  const library = deck.cards
+    .slice(openingHandSize)
+    .map((card) => manualZoneCard(card, playerId, 'library'));
+  const commandZone = (deck.commanders ?? []).map((card) =>
+    manualZoneCard(card, playerId, 'command'),
+  );
+
+  return {
+    gameView: {
+      ...gameView,
+      myHand: hand,
+      myCommandZone: commandZone,
+      players: gameView.players.map((player) =>
+        player.id === playerId
+          ? {
+              ...player,
+              handCount: hand.length,
+              libraryCount: library.length,
+            }
+          : player,
+      ),
+    },
+    libraries: {
+      [playerId]: library,
+    },
+  };
 }
 
 export const useGameStore = create<GameState>()(devtools((set, get) => ({
@@ -39,18 +107,18 @@ export const useGameStore = create<GameState>()(devtools((set, get) => ({
       const startingLife = format?.deckRules.startingLife ?? 20;
       const gameConfig: GameConfig = { formatId: formatId ?? 'standard', startingLife };
       set({ gameConfig });
-      const platform = getPlatform();
-      const playerAvailability = await platform.game.validateDeckAvailability(deckList);
+      const runtime = getSelectedGameRuntime();
+      const playerAvailability = await runtime.api.validateDeckAvailability(deckList);
       if (!playerAvailability.supported) {
         throw new Error(formatMissingCardsMessage('Selected deck', playerAvailability.missingCards));
       }
       if (opponentDeckList) {
-        const opponentAvailability = await platform.game.validateDeckAvailability(opponentDeckList);
+        const opponentAvailability = await runtime.api.validateDeckAvailability(opponentDeckList);
         if (!opponentAvailability.supported) {
           throw new Error(formatMissingCardsMessage('Opponent deck', opponentAvailability.missingCards));
         }
       }
-      const result = await platform.game.startGame({
+      const result = await runtime.api.startGame({
         deckList: deckList,
         startingLife,
         commanderName: commanderName ?? null,
@@ -58,6 +126,12 @@ export const useGameStore = create<GameState>()(devtools((set, get) => ({
       });
       // Clear old game state so stale gameView/prompts don't bleed into new game
       set({ isGameActive: true, gameLog: [], snapshots: [], gameView: null, currentPrompt: null, deferredQueue: [], isFlashing: false, isWaitingForResponse: false, debugInfo: `Game started: ${result}. Polling...` });
+      if (runtime.capabilities.manualTabletop) {
+        const prompt = await runtime.api.getPrompt();
+        if (prompt && (prompt as AgentPrompt).gameView) {
+          applyPrompt(prompt as AgentPrompt, 'Manual', set, get);
+        }
+      }
     } catch (e) {
       set({ debugInfo: `Start failed: ${e}` });
       console.error('[store] Failed to start game:', e);
@@ -65,17 +139,92 @@ export const useGameStore = create<GameState>()(devtools((set, get) => ({
     }
   },
 
+  startManualTabletopGame: async (deck?: Deck) => {
+    selectGameRuntime('manual-tabletop');
+    await get().startGame([], deck?.format ?? 'standard', undefined, []);
+    if (!deck) return;
+
+    const runtime = getSelectedGameRuntime();
+    if (!isManualTabletopApi(runtime)) return;
+    const gameView = runtime.api.getGameView();
+    if (!gameView) return;
+
+    await runtime.api.applyManualAction({
+      type: 'replaceState',
+      ...seedManualDeck(gameView, deck),
+    });
+    const prompt = await runtime.api.getPrompt();
+    if (prompt && (prompt as AgentPrompt).gameView) {
+      applyPrompt(prompt as AgentPrompt, 'Manual', set, get);
+    }
+  },
+
+  startManualRoomHost: async (localPlayerSlot: string) => {
+    const runtime = getSelectedGameRuntime();
+    if (!isManualTabletopApi(runtime)) {
+      throw new Error('Manual room host requires the manual tabletop runtime.');
+    }
+    const roomHost = new BroadcastRoomHost({
+      localPlayerSlot,
+      mode: 'authoritative-host',
+      seats: [
+        {
+          kind: 'local-human',
+          playerSlot: localPlayerSlot,
+          displayName: 'You',
+        },
+      ],
+    });
+    startManualRoomSync({ roomHost, api: runtime.api });
+    const gameView = runtime.api.getGameView();
+    if (gameView) {
+      await roomHost.broadcastManualState(gameView);
+    }
+  },
+
+  startManualRoomClient: async (localPlayerSlot: string) => {
+    selectGameRuntime('manual-tabletop');
+    const runtime = getSelectedGameRuntime();
+    if (!isManualTabletopApi(runtime)) {
+      throw new Error('Manual room client requires the manual tabletop runtime.');
+    }
+    const roomHost = new BroadcastRoomHost({
+      localPlayerSlot,
+      mode: 'relay-client',
+      seats: [
+        {
+          kind: 'local-human',
+          playerSlot: localPlayerSlot,
+          displayName: 'You',
+        },
+      ],
+    });
+    startManualRoomSync({ roomHost, api: runtime.api });
+    set({
+      isGameActive: true,
+      isMultiplayer: true,
+      isHost: false,
+      myPlayerSlot: localPlayerSlot,
+      debugInfo: 'Manual room client connected. Waiting for table state...',
+    });
+  },
+
+  stopManualRoomSync: () => {
+    stopActiveManualRoomSync();
+  },
+
   startMultiplayerGame: async (playerNames, deckLists, commanderNames, enginePlayerIndex, localIsHost, startingLife) => {
     try {
       set({ debugInfo: 'Starting multiplayer game...' });
-      const platform = getPlatform();
+      resetSelectedGameRuntime();
+      const runtime = getSelectedGameRuntime();
       for (const [index, deckList] of deckLists.entries()) {
-        const availability = await platform.game.validateDeckAvailability(deckList);
+        const availability = await runtime.api.validateDeckAvailability(deckList);
         if (!availability.supported) {
           throw new Error(formatMissingCardsMessage(`Player ${index + 1} deck`, availability.missingCards));
         }
       }
-      await platform.game.startMultiplayerGame({
+      await runtime.api.startMultiplayerGame({
         playerNames,
         deckLists,
         commanderNames,
@@ -108,8 +257,8 @@ export const useGameStore = create<GameState>()(devtools((set, get) => ({
     try {
       set({ isWaitingForResponse: true, debugInfo: `Responding: ${action.type}` });
       const { myPlayerSlot } = get();
-      const platform = getPlatform();
-      await platform.game.respond({ action, playerSlot: myPlayerSlot });
+      const runtime = getSelectedGameRuntime();
+      await runtime.api.respond({ action, playerSlot: myPlayerSlot });
     } catch (e) {
       set({ isWaitingForResponse: false, debugInfo: `Respond error: ${e}` });
       console.error('Failed to respond:', e);
@@ -291,7 +440,8 @@ export const useGameStore = create<GameState>()(devtools((set, get) => ({
   },
 
   concede: () => {
-    if (getPlatform().type === 'web') {
+    const runtime = getSelectedGameRuntime();
+    if (runtime.capabilities.concedeBehavior === 'end-session') {
       void get().endGame();
       return;
     }
@@ -300,8 +450,10 @@ export const useGameStore = create<GameState>()(devtools((set, get) => ({
 
   endGame: async () => {
     try {
-      const platform = getPlatform();
-      await platform.game.endGame();
+      const runtime = getSelectedGameRuntime();
+      await runtime.api.endGame();
+      stopActiveManualRoomSync();
+      resetSelectedGameRuntime();
       set({ isGameActive: false, gameView: null, currentPrompt: null, gameLog: [], snapshots: [], deferredQueue: [], isFlashing: false, isWaitingForResponse: false, isMultiplayer: false, isHost: false, myPlayerSlot: null });
     } catch (e) {
       console.error('Failed to end game:', e);
@@ -324,8 +476,8 @@ export const useGameStore = create<GameState>()(devtools((set, get) => ({
       set({ debugInfo: 'Snapshot restore is only available during priority/combat declaration prompts.' });
       return;
     }
-    const platform = getPlatform();
-    await platform.game.restoreSnapshot({ checkpointId });
+    const runtime = getSelectedGameRuntime();
+    await runtime.api.restoreSnapshot({ checkpointId });
     set({ debugInfo: `Requested snapshot restore: #${checkpointId}` });
   },
 }), { name: "game", enabled: import.meta.env.DEV }));

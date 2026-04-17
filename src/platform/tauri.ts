@@ -130,6 +130,10 @@ class TauriServerApi implements IServerApi {
   async startGame(): Promise<void> {
     return invoke<void>("server_start_game");
   }
+
+  async broadcastState(state: Record<string, unknown>): Promise<void> {
+    return invoke<void>("server_broadcast_state", { state });
+  }
 }
 
 // ============================================================================

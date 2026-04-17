@@ -604,7 +604,7 @@ class WebServerApi implements IServerApi {
   }
 
   /** Broadcast game state to other players in the room */
-  broadcastState(state: Record<string, unknown>): void {
+  async broadcastState(state: Record<string, unknown>): Promise<void> {
     this.send({ type: "BroadcastState", state });
   }
 

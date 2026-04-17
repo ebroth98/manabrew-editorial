@@ -9,6 +9,7 @@ import { Card } from "@/components/game/Card";
 import { GameModals } from "@/components/game/GameModals";
 import { GameOverScreen } from "@/components/game/GameOverScreen";
 import { GameLoadingScreen } from "@/components/game/GameLoadingScreen";
+import { ManualTabletopControls } from "@/components/game/ManualTabletopControls";
 import { MainActionOverlay, RightActionPanel } from "@/components/game/panels";
 import { StackDisplay } from "@/components/game/panels/StackDisplay";
 import { CastingArrow } from "@/components/game/CastingArrow";
@@ -31,8 +32,10 @@ import { cn } from "@/lib/utils";
 import { Navigate, useLocation } from "react-router-dom";
 import { PromptType } from "@/types/promptType";
 import { useStackUIStore } from "@/stores/useStackUIStore";
+import { applyManualTabletopAction, getSelectedGameRuntime } from "@/game";
 import type { HandActionOption } from "@/stores/useGameUIStore";
 import type { PlacementGhost } from "@/components/game/zones/FreeBattlefield";
+import type { GameRuntime, ManualTabletopApi } from "@/game";
 
 /** Prompt types where hover card preview is allowed (no modal overlay). */
 const HOVER_ALLOWED_PROMPTS = new Set<PromptType>([
@@ -48,6 +51,12 @@ const HOVER_ALLOWED_PROMPTS = new Set<PromptType>([
   PromptType.GameOver,
 ]);
 
+function isManualTabletopApi(
+  runtime: GameRuntime,
+): runtime is GameRuntime & { api: ManualTabletopApi } {
+  return runtime.capabilities.manualTabletop && "applyManualAction" in runtime.api;
+}
+
 export default function Game() {
   const USE_STACK_FLASH_PREVIEW = true;
   const gameView = useGameStore(s => s.gameView);
@@ -59,6 +68,10 @@ export default function Game() {
   const debugInfo = useGameStore(s => s.debugInfo);
   const isMultiplayer = useGameStore(s => s.isMultiplayer);
   const isHost = useGameStore(s => s.isHost);
+  const selectedRuntime = getSelectedGameRuntime();
+  const manualApi = isManualTabletopApi(selectedRuntime)
+    ? selectedRuntime.api
+    : null;
   const {
     passPriority, castSpell, declareAttackers, declareBlockers,
     targetPlayer, targetCard, targetAny,
@@ -106,10 +119,11 @@ export default function Game() {
   const devExtraOpponents = ((location.state as { devExtraOpponents?: number } | null)?.devExtraOpponents ?? 0);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  const promptType = currentPrompt?.type;
+  const activePrompt = manualApi ? null : currentPrompt;
+  const promptType = activePrompt?.type;
 
   const casting = useCastingState({
-    currentPrompt,
+    currentPrompt: activePrompt,
     hand: gameView?.myHand ?? [],
     battlefield: gameView?.battlefield ?? [],
     targetCard,
@@ -154,27 +168,27 @@ export default function Game() {
 
   const castOptionsByCardId = useMemo(() => {
     const map = new Map<string, HandActionOption[]>();
-    for (const o of currentPrompt?.playableOptions ?? []) {
+    for (const o of activePrompt?.playableOptions ?? []) {
       const arr = map.get(o.cardId) ?? [];
       arr.push({ kind: "cast" as const, cardId: o.cardId, mode: o.mode, label: o.modeLabel });
       map.set(o.cardId, arr);
     }
     return map;
-  }, [currentPrompt?.playableOptions]);
+  }, [activePrompt?.playableOptions]);
 
   const abilitiesByCardId = useMemo(() => {
     const map = new Map<string, HandActionOption[]>();
-    for (const a of currentPrompt?.activatableAbilityIds ?? []) {
+    for (const a of activePrompt?.activatableAbilityIds ?? []) {
       const arr = map.get(a.cardId) ?? [];
       arr.push(toAbilityOption(a));
       map.set(a.cardId, arr);
     }
     return map;
-  }, [currentPrompt?.activatableAbilityIds]);
+  }, [activePrompt?.activatableAbilityIds]);
 
   const manaAbilitiesByCardId = useMemo(() => {
     const map = new Map<string, HandActionOption[]>();
-    const rawOptions = currentPrompt?.manaAbilityOptions ?? [];
+    const rawOptions = activePrompt?.manaAbilityOptions ?? [];
     if (rawOptions.length === 0) return map;
     const ANY_COLOR_LETTERS = ["W", "U", "B", "R", "G"];
     const byCard = new Map<string, ActivatableAbilityInfo[]>();
@@ -203,22 +217,71 @@ export default function Game() {
       map.set(cardId, expanded.map(toAbilityOption));
     }
     return map;
-  }, [currentPrompt?.manaAbilityOptions]);
+  }, [activePrompt?.manaAbilityOptions]);
 
   const tappableLandIdSet = useMemo(
-    () => new Set(currentPrompt?.tappableLandIds ?? []),
-    [currentPrompt?.tappableLandIds],
+    () => new Set(activePrompt?.tappableLandIds ?? []),
+    [activePrompt?.tappableLandIds],
   );
 
+  const applyManualAction = useCallback(
+    async (action: Parameters<typeof applyManualTabletopAction>[1]) => {
+      if (!manualApi) return;
+      const nextView = await applyManualTabletopAction(manualApi, action);
+      if (nextView) useGameStore.setState({ gameView: nextView });
+    },
+    [manualApi],
+  );
+
+  const getManualCardActions = useCallback((card: XMageCard): HandActionOption[] => {
+    if (!manualApi) return [];
+    const humanPlayerId = gameView?.players[0]?.id;
+    const ownsHumanZone = card.controllerId === humanPlayerId || card.ownerId === humanPlayerId;
+    const graveyardZone = ownsHumanZone ? "graveyard" : "opponentGraveyard";
+    const exileZone = ownsHumanZone ? "exile" : "opponentExile";
+    const commandZone = ownsHumanZone ? "command" : "opponentCommand";
+    const move = (label: string, toZoneId: string): HandActionOption => ({
+      kind: "manual-move",
+      cardId: card.id,
+      label,
+      toZoneId,
+    });
+
+    if (card.zoneId === "battlefield") {
+      return [
+        {
+          kind: "manual-tap",
+          cardId: card.id,
+          label: card.tapped ? "Untap" : "Tap",
+          tapped: !card.tapped,
+        },
+        move("Move to Hand", "hand"),
+        move("Move to Graveyard", graveyardZone),
+        move("Move to Exile", exileZone),
+        move("Move to Command", commandZone),
+      ];
+    }
+
+    return [
+      move("Put onto Battlefield", "battlefield"),
+      move("Move to Graveyard", graveyardZone),
+      move("Move to Exile", exileZone),
+      move("Move to Command", commandZone),
+    ];
+  }, [manualApi, gameView?.players]);
+
   const getHandActionOptions = useCallback((card: XMageCard): HandActionOption[] =>
-    [...(castOptionsByCardId.get(card.id) ?? []), ...(abilitiesByCardId.get(card.id) ?? [])],
-    [castOptionsByCardId, abilitiesByCardId]);
+    manualApi
+      ? getManualCardActions(card)
+      : [...(castOptionsByCardId.get(card.id) ?? []), ...(abilitiesByCardId.get(card.id) ?? [])],
+    [manualApi, getManualCardActions, castOptionsByCardId, abilitiesByCardId]);
 
   const getBattlefieldAbilityOptions = useCallback((card: XMageCard): HandActionOption[] =>
     abilitiesByCardId.get(card.id) ?? [], [abilitiesByCardId]);
 
   /** All available actions for a card (cast + activated + mana abilities). */
   const getCardActions = useCallback((card: XMageCard): HandActionOption[] => {
+    if (manualApi) return getManualCardActions(card);
     if (promptType === PromptType.PayManaCost) {
       return manaAbilitiesByCardId.get(card.id) ?? [];
     }
@@ -233,11 +296,11 @@ export default function Game() {
       abilities.unshift(...manaAbilities);
     }
     return [...(castOptionsByCardId.get(card.id) ?? []), ...abilities];
-  }, [promptType, castOptionsByCardId, abilitiesByCardId, manaAbilitiesByCardId, tappableLandIdSet]);
+  }, [manualApi, getManualCardActions, promptType, castOptionsByCardId, abilitiesByCardId, manaAbilitiesByCardId, tappableLandIdSet]);
 
   // Wraps castSpell: if a card has multiple play modes, show picker first
   const handleCastSpell = (cardId: string) => {
-    const options = currentPrompt?.playableOptions?.filter((o) => o.cardId === cardId);
+    const options = activePrompt?.playableOptions?.filter((o) => o.cardId === cardId);
     if (options && options.length > 1) {
       const cardName = gameView?.myHand?.find((c) => c.id === cardId)?.name
         ?? gameView?.graveyard?.find((c) => c.id === cardId)?.name
@@ -252,6 +315,10 @@ export default function Game() {
   };
 
   const handleHandCardAction = (card: XMageCard, e?: React.MouseEvent) => {
+    if (manualApi) {
+      preview.showSticky(card, e?.clientX, e?.clientY);
+      return;
+    }
     const actions = getHandActionOptions(card);
     if (actions.length === 0) {
       if (card.isPlayable) {
@@ -275,6 +342,10 @@ export default function Game() {
   };
 
   const handleHandCardDragStart = (card: XMageCard, e: React.MouseEvent) => {
+    if (manualApi) {
+      preview.showSticky(card, e.clientX, e.clientY);
+      return;
+    }
     const actions = getHandActionOptions(card);
     if (actions.length > 1 || actions.some((action) => action.kind === "ability")) {
       handleHandCardAction(card, e);
@@ -315,12 +386,29 @@ export default function Game() {
     targetCard: casting.wrappedTargetCard,
     targetAny: casting.wrappedTargetAny,
     targetPlayer: casting.wrappedTargetPlayer,
-    currentPrompt,
+    currentPrompt: activePrompt,
   });
 
   // Zone viewer helpers (wrap store actions)
   function openZone(title: string, cards: XMageCard[], onClickCard?: (cardId: string) => void) {
     openZoneViewer({ title, cards, onClickCard });
+  }
+  function openManualZone(title: string, cards: XMageCard[]) {
+    openZoneViewer({
+      title,
+      cards: cards.map((card) => ({ ...card, isPlayable: true })),
+      onClickCard: (cardId) => {
+        const card = cards.find((candidate) => candidate.id === cardId);
+        closeZoneViewer();
+        if (!card) return;
+        void applyManualAction({
+          type: "moveCard",
+          cardId,
+          fromZoneId: card.zoneId,
+          toZoneId: "battlefield",
+        });
+      },
+    });
   }
   function closeZone() {
     closeZoneViewer();
@@ -335,7 +423,7 @@ export default function Game() {
   // Land tap/untap handler — shows interactive preview for multi-ability lands
   const handleTapLand = (card: XMageCard) => {
     if (promptType === PromptType.PayManaCost) {
-      const manaAbilities = (currentPrompt?.manaAbilityOptions ?? [])
+      const manaAbilities = (activePrompt?.manaAbilityOptions ?? [])
         .filter((a) => a.cardId === card.id)
         .map((ability) => ({
           kind: "ability" as const,
@@ -363,7 +451,7 @@ export default function Game() {
       return;
     }
 
-    const abilities = (currentPrompt?.activatableAbilityIds ?? [])
+    const abilities = (activePrompt?.activatableAbilityIds ?? [])
       .filter((a) => a.cardId === card.id)
       .map((ability) => ({
         kind: "ability" as const,
@@ -373,9 +461,9 @@ export default function Game() {
         isManaAbility: ability.isManaAbility,
         cost: ability.cost,
       }));
-    const manaAbilities = (currentPrompt?.manaAbilityOptions ?? [])
+    const manaAbilities = (activePrompt?.manaAbilityOptions ?? [])
       .filter((a) => a.cardId === card.id);
-    const isManaSource = (currentPrompt?.tappableLandIds ?? []).includes(card.id);
+    const isManaSource = (activePrompt?.tappableLandIds ?? []).includes(card.id);
     const hasManaAbility = isManaSource && card.types.includes("Land");
 
     // Multiple mana abilities (dual land) — show interactive preview for color choice
@@ -455,9 +543,9 @@ export default function Game() {
       pendingUntapQueueRef.current = [];
       return;
     }
-    if (drainQueue(pendingTapQueueRef, currentPrompt?.tappableLandIds ?? [], tapLand)) return;
-    drainQueue(pendingUntapQueueRef, currentPrompt?.untappableLandIds ?? [], untapLand);
-  }, [currentPrompt, isWaitingForResponse, promptType, tapLand, untapLand]);
+    if (drainQueue(pendingTapQueueRef, activePrompt?.tappableLandIds ?? [], tapLand)) return;
+    drainQueue(pendingUntapQueueRef, activePrompt?.untappableLandIds ?? [], untapLand);
+  }, [activePrompt, isWaitingForResponse, promptType, tapLand, untapLand]);
 
   // Prompt-driven effects: auto-pass, passUntilEot, library peek, zone target, spell stack
   const {
@@ -471,7 +559,7 @@ export default function Game() {
     spellStackModalOpen,
     setSpellStackModalOpen,
   } = usePromptEffects({
-    currentPrompt,
+    currentPrompt: activePrompt,
     isWaitingForResponse,
     passPriority,
     myHand: gameView?.myHand ?? [],
@@ -507,6 +595,26 @@ export default function Game() {
     preview.dismiss();
     if (action.kind === "cast") {
       castSpell(action.cardId, action.mode);
+    } else if (action.kind === "manual-move" && action.toZoneId) {
+      const sourceCard = [
+        ...(gameView?.myHand ?? []),
+        ...(gameView?.battlefield ?? []),
+        ...(gameView?.graveyard ?? []),
+        ...(gameView?.exile ?? []),
+        ...(gameView?.myCommandZone ?? []),
+      ].find((card) => card.id === action.cardId);
+      void applyManualAction({
+        type: "moveCard",
+        cardId: action.cardId,
+        fromZoneId: sourceCard?.zoneId ?? "",
+        toZoneId: action.toZoneId,
+      });
+    } else if (action.kind === "manual-tap") {
+      void applyManualAction({
+        type: "tapCard",
+        cardId: action.cardId,
+        tapped: action.tapped ?? true,
+      });
     } else if (action.abilityIndex != null) {
       if (action.isManaAbility) {
         // Mana abilities use tapLand (ActivateMana) in both ChooseAction and PayManaCost.
@@ -549,6 +657,7 @@ export default function Game() {
         e.target instanceof HTMLTextAreaElement
       )
         return;
+      if (manualApi) return;
       if (e.code === "Space") {
         e.preventDefault();
         passPriority();
@@ -583,9 +692,9 @@ export default function Game() {
   ];
   // Stabilize attackerIds so useGameArrows' useEffect doesn't re-run every render
   const attackerIds = useMemo(
-    () => currentPrompt?.attackerIds ?? [],
+    () => activePrompt?.attackerIds ?? [],
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [currentPrompt?.attackerIds?.join(",")],
+    [activePrompt?.attackerIds?.join(",")],
   );
   const combatAssignments = useMemo(
     () => gameView?.combatAssignments ?? [],
@@ -810,10 +919,10 @@ export default function Game() {
 
   // Auto-return to play menu when game is over
   useEffect(() => {
-    if (!gameView?.gameOver && currentPrompt?.type !== PromptType.GameOver) return;
+    if (!gameView?.gameOver && activePrompt?.type !== PromptType.GameOver) return;
     const timer = setTimeout(() => endGame(), 3000);
     return () => clearTimeout(timer);
-  }, [gameView?.gameOver, currentPrompt?.type]);
+  }, [gameView?.gameOver, activePrompt?.type]);
 
   if (!isGameActive) return <Navigate to="/lobby" replace />;
 
@@ -824,7 +933,7 @@ export default function Game() {
 
   const battlefieldActivatableIds = new Set(
     promptType === PromptType.ChooseAction
-      ? (currentPrompt?.activatableAbilityIds ?? []).map((ability) => ability.cardId)
+      ? (activePrompt?.activatableAbilityIds ?? []).map((ability) => ability.cardId)
       : [],
   );
   const myPermanents = gameView.battlefield
@@ -895,7 +1004,7 @@ export default function Game() {
           priorityPlayerId={effectivePriorityHighlightPlayerId}
           step={gameView.step}
           promptType={promptType}
-          currentPrompt={currentPrompt}
+          currentPrompt={activePrompt}
           pendingAttackers={pendingAttackers}
           pendingAttacker={pendingAttacker}
           blockAssignments={blockAssignments}
@@ -918,10 +1027,18 @@ export default function Game() {
           onFlipCard={preview.flipCard}
           actionableCardIds={
             promptType === PromptType.ChooseAction
-              ? (currentPrompt?.activatableAbilityIds ?? []).map((ability) => ability.cardId)
+              ? (activePrompt?.activatableAbilityIds ?? []).map((ability) => ability.cardId)
               : undefined
           }
           onBattlefieldClick={(card) => {
+            if (manualApi) {
+              void applyManualAction({
+                type: "tapCard",
+                cardId: card.id,
+                tapped: !card.tapped,
+              });
+              return;
+            }
             if (promptType === PromptType.ChooseAction && handleBattlefieldCardAction(card)) {
               return;
             }
@@ -929,7 +1046,13 @@ export default function Game() {
           }}
           onAttackerClick={handleAttackerClick}
           onTargetPlayer={handleTargetPlayer}
-          onOpenZone={openZone}
+          onOpenZone={(title, cards, onClickCard) => {
+            if (manualApi) {
+              openManualZone(title, cards);
+              return;
+            }
+            openZone(title, cards, onClickCard);
+          }}
           onOpenZoneAndCast={(title, cards, onClickCard) =>
             openZoneAndCast(title, cards, (cardId) => {
               handleCastSpell(cardId);
@@ -977,45 +1100,51 @@ export default function Game() {
         onRestoreSnapshot={restoreSnapshot}
       />
 
-      <MainActionOverlay
-        promptType={promptType}
-        isWaitingForResponse={isWaitingForResponse}
-        isAutoPassing={isAutoPassing}
-        isPassingUntilEot={isPassingUntilEot}
-        availableAttackerIds={currentPrompt?.availableAttackerIds ?? []}
-        pendingAttackers={pendingAttackers}
-        onPassPriority={passPriority}
-        onPassUntilEot={activatePassUntilEot}
-        onDeclareAttackers={declareAttackers}
-        pendingAttacker={pendingAttacker}
-        attackerIds={currentPrompt?.attackerIds ?? []}
-        blockAssignments={blockAssignments}
-        onDeclareBlockers={declareBlockers}
-        onOpenStack={() => setSpellStackModalOpen(true)}
-        onConcede={concede}
-        resolveCardName={(cardId) => cardNameById.get(cardId) ?? cardId}
-        isMyPriority={gameView.priorityPlayerId === me!.id}
-        turn={gameView.turn}
-        activePlayerName={
-          gameView.players.find((p) => p.id === gameView.activePlayerId)?.name ??
-          "Unknown"
-        }
-        isMyTurn={gameView.activePlayerId === me!.id}
-        step={gameView.step}
-        payManaCostInfo={
-          promptType === PromptType.PayManaCost && currentPrompt?.manaCost != null
-            ? {
-                cardName: currentPrompt.cardName ?? "Spell",
-                manaCost: currentPrompt.manaCost,
-                manaPool: currentPrompt.gameView?.players?.find(p => p.isHuman)?.manaPool ?? {},
-                canConfirmFromPool: currentPrompt.canConfirmFromPool ?? false,
-              }
-            : null
-        }
-        onPayManaCost={payManaCost}
-        onAutoManaCost={autoManaCost}
-        onCancelManaCost={cancelManaCost}
-      />
+      {manualApi && (
+        <ManualTabletopControls gameView={gameView} api={manualApi} />
+      )}
+
+      {!manualApi && (
+        <MainActionOverlay
+          promptType={promptType}
+          isWaitingForResponse={isWaitingForResponse}
+          isAutoPassing={isAutoPassing}
+          isPassingUntilEot={isPassingUntilEot}
+          availableAttackerIds={activePrompt?.availableAttackerIds ?? []}
+          pendingAttackers={pendingAttackers}
+          onPassPriority={passPriority}
+          onPassUntilEot={activatePassUntilEot}
+          onDeclareAttackers={declareAttackers}
+          pendingAttacker={pendingAttacker}
+          attackerIds={activePrompt?.attackerIds ?? []}
+          blockAssignments={blockAssignments}
+          onDeclareBlockers={declareBlockers}
+          onOpenStack={() => setSpellStackModalOpen(true)}
+          onConcede={concede}
+          resolveCardName={(cardId) => cardNameById.get(cardId) ?? cardId}
+          isMyPriority={gameView.priorityPlayerId === me!.id}
+          turn={gameView.turn}
+          activePlayerName={
+            gameView.players.find((p) => p.id === gameView.activePlayerId)?.name ??
+            "Unknown"
+          }
+          isMyTurn={gameView.activePlayerId === me!.id}
+          step={gameView.step}
+          payManaCostInfo={
+            promptType === PromptType.PayManaCost && activePrompt?.manaCost != null
+              ? {
+                  cardName: activePrompt.cardName ?? "Spell",
+                  manaCost: activePrompt.manaCost,
+                  manaPool: activePrompt.gameView?.players?.find(p => p.isHuman)?.manaPool ?? {},
+                  canConfirmFromPool: activePrompt.canConfirmFromPool ?? false,
+                }
+              : null
+          }
+          onPayManaCost={payManaCost}
+          onAutoManaCost={autoManaCost}
+          onCancelManaCost={cancelManaCost}
+        />
+      )}
 
       <StackDisplay
         stack={gameView.stack}
@@ -1039,7 +1168,7 @@ export default function Game() {
 
       <GameModals
         promptType={promptType}
-        currentPrompt={currentPrompt}
+        currentPrompt={activePrompt}
         viewingZone={viewingZone}
         onCloseZone={closeZone}
         zoneTargetSelector={zoneTargetSelector}
@@ -1055,7 +1184,7 @@ export default function Game() {
         }}
         spellStackModalOpen={spellStackModalOpen}
         stack={gameView.stack}
-        validSpellIds={promptType === PromptType.ChooseTargetSpell ? (currentPrompt?.validSpellIds ?? []) : []}
+        validSpellIds={promptType === PromptType.ChooseTargetSpell ? (activePrompt?.validSpellIds ?? []) : []}
         onTargetSpell={(spellId) => { targetSpell(spellId); setSpellStackModalOpen(false); }}
         onCloseStack={() => setSpellStackModalOpen(false)}
         abilityPickerState={abilityPickerState}

@@ -39,6 +39,7 @@ export type {
   RespondParams,
   RestoreSnapshotParams,
   PresetDeckInfo,
+  DeckAvailabilityResult,
   ServerConnectParams,
   CreateRoomParams,
   JoinRoomParams,

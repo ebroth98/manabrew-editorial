@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { getPlatform } from '@/platform';
+import { getSelectedGameRuntime } from '@/game';
 import { useGameStore } from '@/stores/useGameStore';
 import { normalizeGameLogPayload } from '@/types/gameLog';
 import { normalizeSnapshotPayload } from '@/types/gameSnapshot';
@@ -14,13 +15,14 @@ import type { AgentPrompt } from '@/stores/gameStore.types';
 export function useGameEventListeners() {
   useEffect(() => {
     const platform = getPlatform();
+    const runtime = getSelectedGameRuntime();
     const unsubscribers: (() => void)[] = [];
 
     // Fetch initial game state on mount to handle race condition where
     // the game:prompt event was emitted before this component mounted
     const fetchInitialState = async () => {
       try {
-        const prompt = await platform.game.getPrompt?.();
+        const prompt = await runtime.api.getPrompt();
         if (prompt && (prompt as AgentPrompt).gameView) {
           const currentView = useGameStore.getState().gameView;
           if (!currentView) {
@@ -37,8 +39,15 @@ export function useGameEventListeners() {
     try {
       unsubscribers.push(
         platform.events.on<AgentPrompt>('game:prompt', (prompt) => {
+          const activeRuntime = getSelectedGameRuntime();
           const gameView = useGameStore.getState().gameView;
           if (gameView?.gameOver) return;
+          if (
+            activeRuntime.capabilities.manualTabletop &&
+            prompt?.gameView?.gameId !== gameView?.gameId
+          ) {
+            return;
+          }
           if (prompt && prompt.gameView) {
             applyPrompt(prompt, 'Event', useGameStore.setState, useGameStore.getState);
           }

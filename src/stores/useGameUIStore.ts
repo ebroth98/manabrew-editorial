@@ -5,13 +5,15 @@ import type { Card } from "@/types/openmagic";
 // ── State Shapes ──────────────────────────────────────────────────────────────
 
 export interface HandActionOption {
-  kind: "cast" | "ability";
+  kind: "cast" | "ability" | "manual-move" | "manual-tap";
   cardId: string;
   label: string;
   mode?: string;
   abilityIndex?: number;
   isManaAbility?: boolean;
   cost?: string;
+  toZoneId?: string;
+  tapped?: boolean;
 }
 
 export interface AbilityPickerState {

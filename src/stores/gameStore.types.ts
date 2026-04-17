@@ -1,4 +1,4 @@
-import type { GameView, Card, ActivatableAbilityInfo } from '@/types/openmagic';
+import type { GameView, Card, ActivatableAbilityInfo, Deck } from '@/types/openmagic';
 import type { GameLogEntry } from '@/types/gameLog';
 import type { GameSnapshotEntry } from '@/types/gameSnapshot';
 import type { PromptType } from '@/types/promptType';
@@ -187,6 +187,10 @@ export interface GameState {
   setGameConfig: (config: GameConfig) => void;
   // Actions
   startGame: (deckList: CardIdentity[], formatId?: string, commanderName?: string, opponentDeckList?: CardIdentity[]) => Promise<void>;
+  startManualTabletopGame: (deck?: Deck) => Promise<void>;
+  startManualRoomHost: (localPlayerSlot: string) => Promise<void>;
+  startManualRoomClient: (localPlayerSlot: string) => Promise<void>;
+  stopManualRoomSync: () => void;
   startMultiplayerGame: (
     playerNames: string[],
     deckLists: CardIdentity[][],

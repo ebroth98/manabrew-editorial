@@ -1,14 +1,16 @@
 import { useState, useEffect } from "react";
-import { getPlatform, type PresetDeckInfo } from "@/platform";
+import { getDefaultGameRuntime } from "@/game";
+import type { PresetDeckInfo } from "@/platform";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
-import { Search, Shuffle, Swords, User, Bot } from "lucide-react";
+import { Hand, Search, Shuffle, Swords, User, Bot } from "lucide-react";
 import { useDeckStore } from "@/stores/useDeckStore";
 import type { CardIdentity } from "@/types/server";
 import { getDeckFingerprint, serializeDeck } from "@/lib/decks";
 import { FormatBadge } from "@/components/game/FormatBadge";
 import { GAME_FORMATS } from "@/lib/formats";
+import type { Deck } from "@/types/openmagic";
 
 interface SelectedDeck {
   id: string;
@@ -16,6 +18,7 @@ interface SelectedDeck {
   desc?: string;
   color?: string;
   deckList: CardIdentity[];
+  sourceDeck?: Deck;
   formatId?: string;
   commanderName?: string;
 }
@@ -27,12 +30,13 @@ interface DeckVsSelectorProps {
     formatId?: string,
     commanderName?: string,
   ) => void;
+  onStartTabletop?: (deck: Deck) => void;
 }
 
 type PickingSide = "player" | "opponent";
 type PlayFormatId = string;
 
-export function DeckVsSelector({ onStart }: DeckVsSelectorProps) {
+export function DeckVsSelector({ onStart, onStartTabletop }: DeckVsSelectorProps) {
   const [presetDecks, setPresetDecks] = useState<PresetDeckInfo[]>([]);
   const [playerDeck, setPlayerDeck] = useState<SelectedDeck | null>(null);
   const [opponentDeck, setOpponentDeck] = useState<SelectedDeck | null>(null);
@@ -42,8 +46,8 @@ export function DeckVsSelector({ onStart }: DeckVsSelectorProps) {
   const { savedDecks, currentDeck } = useDeckStore();
 
   useEffect(() => {
-    const platform = getPlatform();
-    platform.game.getPresetDecks()
+    const runtime = getDefaultGameRuntime();
+    runtime.api.getPresetDecks()
       .then(setPresetDecks)
       .catch((e) =>
         console.error("[DeckVsSelector] Failed to load preset decks:", e)
@@ -73,6 +77,7 @@ export function DeckVsSelector({ onStart }: DeckVsSelectorProps) {
       id: index === 0 ? "current" : distinctSavedDecks[index - 1]!.id,
       name: deck.name,
       deckList,
+      sourceDeck: deck,
       formatId: deck.format ?? "standard",
       commanderName: deck.commanders?.[0]?.name,
     };
@@ -144,7 +149,14 @@ export function DeckVsSelector({ onStart }: DeckVsSelectorProps) {
     );
   }
 
+  function handleTabletop() {
+    if (!playerDeck?.sourceDeck || playerDeck.sourceDeck.cards.length === 0) return;
+    onStartTabletop?.(playerDeck.sourceDeck);
+  }
+
   const isReady = !!playerDeck && !!opponentDeck;
+  const canStartTabletop =
+    !!onStartTabletop && !!playerDeck?.sourceDeck && playerDeck.sourceDeck.cards.length > 0;
 
   return (
     <div className="flex flex-col h-full">
@@ -418,15 +430,29 @@ export function DeckVsSelector({ onStart }: DeckVsSelectorProps) {
             </span>
           )}
         </div>
-        <Button
-          size="sm"
-          onClick={handleFight}
-          disabled={!isReady}
-          className="gap-1.5"
-        >
-          <Swords className="h-3.5 w-3.5" />
-          Fight!
-        </Button>
+        <div className="flex items-center gap-2">
+          {onStartTabletop && (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleTabletop}
+              disabled={!canStartTabletop}
+              className="gap-1.5"
+            >
+              <Hand className="h-3.5 w-3.5" />
+              Tabletop
+            </Button>
+          )}
+          <Button
+            size="sm"
+            onClick={handleFight}
+            disabled={!isReady}
+            className="gap-1.5"
+          >
+            <Swords className="h-3.5 w-3.5" />
+            Fight!
+          </Button>
+        </div>
       </div>
     </div>
   );
