@@ -6,6 +6,8 @@ members = [
     "forge-engine/crates/forge-carddb",
     "forge-engine/crates/forge-engine",
     "forge-engine/crates/forge-server",
+    "forge-engine/crates/self-hosted-node",
+    "forge-engine/crates/forge-game-runtime",
     "forge-engine/crates/forge-parity",
     "forge-engine/crates/forge-wasm",
     "forge-engine/crates/forge-agent-interface",

@@ -189,7 +189,7 @@ export interface GameState {
   startGame: (deckList: CardIdentity[], formatId?: string, commanderName?: string, opponentDeckList?: CardIdentity[]) => Promise<void>;
   startManualTabletopGame: (deck?: Deck) => Promise<void>;
   startManualRoomHost: (localPlayerSlot: string) => Promise<void>;
-  startManualRoomClient: (localPlayerSlot: string) => Promise<void>;
+  startManualRoomClient: (localPlayerSlot: string, initialGameView?: import('@/types/openmagic').GameView) => Promise<void>;
   stopManualRoomSync: () => void;
   startMultiplayerGame: (
     playerNames: string[],

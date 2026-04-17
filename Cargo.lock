@@ -1305,6 +1305,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "forge-game-runtime"
+version = "0.1.0"
+dependencies = [
+ "forge-agent-interface",
+ "forge-carddb",
+ "forge-engine-core",
+ "forge-foundation",
+]
+
+[[package]]
 name = "forge-parity"
 version = "0.1.0"
 dependencies = [
@@ -1374,6 +1384,7 @@ dependencies = [
  "forge-carddb",
  "forge-engine-core",
  "forge-foundation",
+ "forge-game-runtime",
  "forge-server",
  "futures-util",
  "rand 0.8.5",
@@ -3996,6 +4007,27 @@ dependencies = [
  "precomputed-hash",
  "servo_arc",
  "smallvec",
+]
+
+[[package]]
+name = "self-hosted-node"
+version = "0.1.0"
+dependencies = [
+ "forge-agent-interface",
+ "forge-carddb",
+ "forge-engine-core",
+ "forge-foundation",
+ "forge-game-runtime",
+ "forge-server",
+ "futures-util",
+ "rand 0.8.5",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tokio-tungstenite",
+ "tracing",
+ "tracing-subscriber",
+ "uuid",
 ]
 
 [[package]]

@@ -510,12 +510,14 @@ fn handle_client_message(
             room_name,
             max_players,
             format,
+            hosted,
         } => {
             info!(
-                "[lobby] '{}' creating room '{}' (max={}, format={:?})",
-                username, room_name, max_players, format
+                "[lobby] '{}' creating room '{}' (max={}, format={:?}, hosted={})",
+                username, room_name, max_players, format, hosted
             );
-            match lobby::create_room_sync(state, player_id, room_name, max_players, format) {
+            match lobby::create_room_sync(state, player_id, room_name, max_players, format, hosted)
+            {
                 Ok(info) => {
                     info!(
                         "[lobby] room created: {} (id={})",
@@ -544,23 +546,26 @@ fn handle_client_message(
             }
         }
 
-        ClientMessage::JoinRoom { room_id } => {
+        ClientMessage::JoinRoom { room_id, observe } => {
             info!(
-                "[lobby] '{}' joining room {}",
+                "[lobby] '{}' joining room {} (observe={})",
                 username,
-                &room_id[..8.min(room_id.len())]
+                &room_id[..8.min(room_id.len())],
+                observe
             );
-            match lobby::join_room_sync(state, player_id, &room_id) {
+            match lobby::join_room_sync(state, player_id, &room_id, observe) {
                 Ok(info) => {
                     info!("[lobby] '{}' joined room '{}'", username, info.room_name);
-                    broadcast_to_room(
-                        state,
-                        &room_id,
-                        &ServerMessage::PlayerJoined {
-                            room_id: room_id.clone(),
-                            username: username.to_string(),
-                        },
-                    );
+                    if !observe {
+                        broadcast_to_room(
+                            state,
+                            &room_id,
+                            &ServerMessage::PlayerJoined {
+                                room_id: room_id.clone(),
+                                username: username.to_string(),
+                            },
+                        );
+                    }
                     broadcast_to_room(state, &room_id, &ServerMessage::RoomUpdate { room: info });
                 }
                 Err(e) => {
@@ -818,9 +823,48 @@ fn mark_disconnected(state: &Arc<ServerState>, player_id: &str, our_generation: 
         match room_status {
             Some(RoomStatus::InGame) => {
                 // InGame: always preserve session for reconnection.
-                if let Some(mut room) = state.rooms.get_mut(rid) {
+                let host_without_player = state
+                    .rooms
+                    .get(rid)
+                    .map(|room| room.is_host(player_id) && !room.host_is_player())
+                    .unwrap_or(false);
+                if host_without_player {
+                    info!(
+                        "[cleanup] hosted in-game room {} lost its non-playing host -- removing",
+                        &rid[..8]
+                    );
+                    remove_room_and_clear_sessions(state, rid);
+                    return;
+                }
+
+                let all_disconnected = if let Some(mut room) = state.rooms.get_mut(rid) {
                     room.set_connected(player_id, false);
+                    room.all_disconnected()
                 } else {
+                    return;
+                };
+
+                if all_disconnected {
+                    info!(
+                        "[cleanup] in-game room {} has no connected players -- removing",
+                        &rid[..8]
+                    );
+                    state.rooms.remove(rid);
+                    let player_ids = state
+                        .players
+                        .iter()
+                        .filter_map(|entry| {
+                            entry
+                                .value()
+                                .room_id
+                                .as_deref()
+                                .is_some_and(|room_id| room_id == rid)
+                                .then(|| entry.key().clone())
+                        })
+                        .collect::<Vec<_>>();
+                    for player_id in player_ids {
+                        state.players.remove(&player_id);
+                    }
                     return;
                 }
 
@@ -855,10 +899,24 @@ fn mark_disconnected(state: &Arc<ServerState>, player_id: &str, our_generation: 
                     &rid[..8]
                 );
 
+                let remove_hosted_room = state
+                    .rooms
+                    .get(rid)
+                    .map(|room| room.is_host(player_id) && !room.host_is_player())
+                    .unwrap_or(false);
+                if remove_hosted_room {
+                    info!(
+                        "[cleanup] hosted lobby room {} lost its non-playing host -- removing",
+                        &rid[..8]
+                    );
+                    remove_room_and_clear_sessions(state, rid);
+                    return;
+                }
+
                 let room_empty = {
                     if let Some(mut room) = state.rooms.get_mut(rid) {
-                        room.remove_player(player_id);
-                        room.players.is_empty()
+                        room.remove_participant(player_id);
+                        room.is_empty()
                     } else {
                         false
                     }
@@ -873,7 +931,7 @@ fn mark_disconnected(state: &Arc<ServerState>, player_id: &str, our_generation: 
                         "[cleanup] lobby room {} is now empty -- removing",
                         &rid[..8]
                     );
-                    state.rooms.remove(rid);
+                    remove_room_and_clear_sessions(state, rid);
                 } else {
                     broadcast_to_room(
                         state,
@@ -914,6 +972,25 @@ fn get_username(state: &Arc<ServerState>, player_id: &str) -> String {
         .get(player_id)
         .map(|p| p.username.clone())
         .unwrap_or_default()
+}
+
+fn remove_room_and_clear_sessions(state: &Arc<ServerState>, room_id: &str) {
+    state.rooms.remove(room_id);
+    let player_ids = state
+        .players
+        .iter()
+        .filter_map(|entry| {
+            entry
+                .value()
+                .room_id
+                .as_deref()
+                .is_some_and(|rid| rid == room_id)
+                .then(|| entry.key().clone())
+        })
+        .collect::<Vec<_>>();
+    for player_id in player_ids {
+        state.players.remove(&player_id);
+    }
 }
 
 fn msg_type_of(msg: &ServerMessage) -> &'static str {

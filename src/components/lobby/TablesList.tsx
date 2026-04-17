@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Users, Crown, Swords, Shield, LogOut } from "lucide-react";
+import { Hand, Users, Crown, Swords, Shield, LogOut } from "lucide-react";
 import type { RoomInfo } from "@/types/server";
 import { cn } from "@/lib/utils";
 
@@ -19,6 +19,7 @@ interface TablesListProps {
   onSetReady: (ready: boolean) => void;
   onOpenDeckDialog: () => void;
   onStartGame: () => void;
+  onStartTabletop?: () => void;
 }
 
 export function TablesList({
@@ -30,6 +31,7 @@ export function TablesList({
   onSetReady,
   onOpenDeckDialog,
   onStartGame,
+  onStartTabletop,
 }: TablesListProps) {
   const [joiningRoomId, setJoiningRoomId] = useState<string | null>(null);
 
@@ -133,9 +135,16 @@ export function TablesList({
                 <LogOut className="h-3 w-3" /> Leave
               </Button>
               {isHost && (
-                <Button size="sm" className="ml-auto gap-1" onClick={onStartGame} disabled={!allReady}>
-                  <Swords className="h-3 w-3" /> Start Game
-                </Button>
+                <div className="ml-auto flex items-center gap-2">
+                  {onStartTabletop && (
+                    <Button size="sm" variant="outline" className="gap-1" onClick={onStartTabletop} disabled={!allReady}>
+                      <Hand className="h-3 w-3" /> Tabletop
+                    </Button>
+                  )}
+                  <Button size="sm" className="gap-1" onClick={onStartGame} disabled={!allReady}>
+                    <Swords className="h-3 w-3" /> Start Game
+                  </Button>
+                </div>
               )}
             </div>
           </div>

@@ -11,6 +11,7 @@ pub fn create_room_sync(
     room_name: String,
     max_players: u8,
     format: GameFormat,
+    hosted: bool,
 ) -> Result<RoomInfo, ServerError> {
     {
         if let Some(player) = state.players.get(player_id) {
@@ -40,6 +41,7 @@ pub fn create_room_sync(
         username,
         max_players,
         format,
+        !hosted,
     );
     let info = room.to_room_info();
 
@@ -56,6 +58,7 @@ pub fn join_room_sync(
     state: &Arc<ServerState>,
     player_id: &str,
     room_id: &str,
+    observe: bool,
 ) -> Result<RoomInfo, ServerError> {
     {
         if let Some(player) = state.players.get(player_id) {
@@ -83,14 +86,19 @@ pub fn join_room_sync(
             return Err(ServerError::GameAlreadyStarted);
         }
 
-        room.add_player(player_id.to_string(), username)
-            .map_err(|msg| {
-                if msg.contains("full") {
-                    ServerError::RoomFull(room_id.to_string())
-                } else {
-                    ServerError::AlreadyInRoom(room_id.to_string())
-                }
-            })?;
+        if observe {
+            room.add_observer(player_id.to_string(), username)
+                .map_err(|_| ServerError::AlreadyInRoom(room_id.to_string()))?;
+        } else {
+            room.add_player(player_id.to_string(), username)
+                .map_err(|msg| {
+                    if msg.contains("full") {
+                        ServerError::RoomFull(room_id.to_string())
+                    } else {
+                        ServerError::AlreadyInRoom(room_id.to_string())
+                    }
+                })?;
+        }
 
         room.to_room_info()
     };
@@ -111,18 +119,35 @@ pub fn leave_room_sync(state: &Arc<ServerState>, player_id: &str) -> Result<(), 
             .ok_or(ServerError::NotInRoom)?
     };
 
-    let room_empty = {
+    let (room_empty, no_connected_players) = {
         let mut room = state
             .rooms
             .get_mut(&room_id)
             .ok_or_else(|| ServerError::RoomNotFound(room_id.clone()))?;
 
-        room.remove_player(player_id);
-        room.players.is_empty()
+        room.remove_participant(player_id);
+        (room.is_empty(), room.connected_player_ids().is_empty())
     };
 
-    if room_empty {
+    if room_empty || no_connected_players {
         state.rooms.remove(&room_id);
+        let player_ids = state
+            .players
+            .iter()
+            .filter_map(|entry| {
+                entry
+                    .value()
+                    .room_id
+                    .as_deref()
+                    .is_some_and(|rid| rid == room_id)
+                    .then(|| entry.key().clone())
+            })
+            .collect::<Vec<_>>();
+        for player_id in player_ids {
+            if let Some(mut player) = state.players.get_mut(&player_id) {
+                player.room_id = None;
+            }
+        }
     }
 
     if let Some(mut player) = state.players.get_mut(player_id) {

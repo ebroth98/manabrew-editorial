@@ -93,10 +93,12 @@ export interface CreateRoomParams {
   roomName: string;
   maxPlayers: number;
   format: GameFormat;
+  hosted?: boolean;
 }
 
 export interface JoinRoomParams {
   roomId: string;
+  observe?: boolean;
 }
 
 export interface SetReadyParams {

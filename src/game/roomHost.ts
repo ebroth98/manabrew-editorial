@@ -1,27 +1,31 @@
 import { getPlatform } from "@/platform";
 import type { GameView } from "@/types/openmagic";
 import type { ManualTabletopAction, SeatController } from "./runtime.types";
-
-const ROOM_HOST_ENVELOPE_KIND = "roomHost";
+import {
+  MANUAL_TABLETOP_RELAY_PROTOCOL,
+  createRoomRelayEnvelope,
+  isRoomRelayProtocol,
+} from "./roomRelay";
+import type { RoomRelayEnvelope, RoomMessagePayload } from "@/types/server";
 
 export type RoomHostMode = "authoritative-host" | "relay-client";
 
 export type RoomHostPayload =
   | {
       type: "manualState";
+      mode: RoomHostMode;
       gameView: GameView;
     }
   | {
       type: "manualAction";
+      mode: RoomHostMode;
       action: ManualTabletopAction;
     };
 
-export interface RoomHostEnvelope {
-  kind: typeof ROOM_HOST_ENVELOPE_KIND;
+export type RoomHostEnvelope = RoomRelayEnvelope<RoomHostPayload> & {
+  protocol: typeof MANUAL_TABLETOP_RELAY_PROTOCOL;
   fromPlayer: string;
-  mode: RoomHostMode;
-  payload: RoomHostPayload;
-}
+};
 
 export interface BroadcastRoomHostConfig {
   localPlayerSlot: string;
@@ -43,6 +47,7 @@ export class BroadcastRoomHost {
   async broadcastManualState(gameView: GameView): Promise<void> {
     await this.broadcast({
       type: "manualState",
+      mode: this.mode,
       gameView,
     });
   }
@@ -50,6 +55,7 @@ export class BroadcastRoomHost {
   async broadcastManualAction(action: ManualTabletopAction): Promise<void> {
     await this.broadcast({
       type: "manualAction",
+      mode: this.mode,
       action,
     });
   }
@@ -57,8 +63,8 @@ export class BroadcastRoomHost {
   subscribe(
     handler: (envelope: RoomHostEnvelope) => void,
   ): () => void {
-    return getPlatform().events.on<{ from_player?: string; state?: unknown }>(
-      "server:state_update",
+    return getPlatform().events.on<RoomMessagePayload<RoomHostPayload>>(
+      "server:room_message",
       (payload) => {
         const envelope = payload.state;
         if (!isRoomHostEnvelope(envelope)) return;
@@ -73,26 +79,26 @@ export class BroadcastRoomHost {
     if (!server) {
       throw new Error("Room hosting requires a server connection.");
     }
-    await server.broadcastState({
-      kind: ROOM_HOST_ENVELOPE_KIND,
+    await server.sendRoomMessage(createRoomRelayEnvelope({
+      protocol: MANUAL_TABLETOP_RELAY_PROTOCOL,
       fromPlayer: this.localPlayerSlot,
-      mode: this.mode,
       payload,
-    });
+    }));
   }
 }
 
 export function isRoomHostEnvelope(
   value: unknown,
 ): value is RoomHostEnvelope {
-  if (!value || typeof value !== "object") return false;
+  if (!isRoomRelayProtocol<RoomHostPayload>(value, MANUAL_TABLETOP_RELAY_PROTOCOL)) return false;
   const candidate = value as Partial<RoomHostEnvelope>;
+  const payload = candidate.payload as Partial<RoomHostPayload> | undefined;
   return (
-    candidate.kind === ROOM_HOST_ENVELOPE_KIND &&
     typeof candidate.fromPlayer === "string" &&
-    (candidate.mode === "authoritative-host" ||
-      candidate.mode === "relay-client") &&
-    !!candidate.payload &&
-    typeof candidate.payload === "object"
+    !!payload &&
+    typeof payload === "object" &&
+    (payload.type === "manualState" || payload.type === "manualAction") &&
+    (payload.mode === "authoritative-host" ||
+      payload.mode === "relay-client")
   );
 }

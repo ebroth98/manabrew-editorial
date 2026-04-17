@@ -8,10 +8,50 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useServerStore } from "@/stores/useServerStore";
 import { usePreferencesStore } from "@/stores/usePreferencesStore";
+import { useDeckStore } from "@/stores/useDeckStore";
+import { useGameStore } from "@/stores/useGameStore";
+import { getFormat } from "@/lib/formats";
+import { getPlatform } from "@/platform";
 import type { CardIdentity } from "@/types/server";
+import type { RoomMessagePayload } from "@/types/server";
+import type { GameView } from "@/types/openmagic";
+import {
+  MANUAL_TABLETOP_RELAY_PROTOCOL,
+  SELF_HOSTED_NODE_RELAY_PROTOCOL,
+  createRoomRelayEnvelope,
+  isRoomRelayProtocol,
+} from "@/game";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { Wifi, WifiOff, Loader2, Settings, RefreshCw, MessageSquare, Users } from "lucide-react";
+import { Bot, Wifi, WifiOff, Loader2, Settings, RefreshCw, MessageSquare, Users } from "lucide-react";
+
+interface ManualTabletopLaunchPayload {
+  type: "launch";
+  roomId: string;
+  hostPlayer: string;
+  playerOrder: string[];
+  startingLife: number;
+  initialGameView: GameView;
+}
+
+function isManualTabletopLaunchPayload(value: unknown): value is ManualTabletopLaunchPayload {
+  if (!value || typeof value !== "object") return false;
+  const candidate = value as Partial<ManualTabletopLaunchPayload>;
+  return (
+    candidate.type === "launch" &&
+    typeof candidate.roomId === "string" &&
+    typeof candidate.hostPlayer === "string" &&
+    Array.isArray(candidate.playerOrder) &&
+    typeof candidate.startingLife === "number" &&
+    !!candidate.initialGameView
+  );
+}
+
+function samePlayers(left: string[], right: string[]) {
+  if (left.length !== right.length) return false;
+  const rightSet = new Set(right);
+  return left.every((player) => rightSet.has(player));
+}
 
 export default function Lobby() {
   const navigate = useNavigate();
@@ -23,6 +63,8 @@ export default function Lobby() {
     setReady, startGame,
   } = useServerStore();
   const prefs = usePreferencesStore();
+  const { currentDeck, savedDecks } = useDeckStore();
+  const { startManualTabletopGame, startManualRoomHost, endGame } = useGameStore();
   const [createRoomOpen, setCreateRoomOpen] = useState(false);
   const [deckDialogOpen, setDeckDialogOpen] = useState(false);
   const [refreshingLobby, setRefreshingLobby] = useState(false);
@@ -47,6 +89,10 @@ export default function Lobby() {
   useEffect(() => {
     if (gameStarted && playerOrder.length > 0) {
       const isHost = currentRoom?.host === username;
+      if (currentRoom && !samePlayers(playerOrder, currentRoom.players.map((player) => player.username))) {
+        toast.error("Server player order does not match the current room.");
+        return;
+      }
       const myIndex = playerOrder.indexOf(username ?? '');
       if (myIndex < 0) {
         toast.error("Could not determine your player slot for this game.");
@@ -66,6 +112,36 @@ export default function Lobby() {
     }
   }, [gameStarted]);
 
+  useEffect(() => {
+    const unsubscribe = getPlatform().events.on<RoomMessagePayload>(
+      "server:room_message",
+      (payload) => {
+        const message = payload.state;
+        if (!isRoomRelayProtocol(message, MANUAL_TABLETOP_RELAY_PROTOCOL)) return;
+        const launch = message.payload;
+        if (!isManualTabletopLaunchPayload(launch)) return;
+        if (!currentRoom || launch.roomId !== currentRoom.room_id) return;
+        const myIndex = launch.playerOrder.indexOf(username ?? "");
+        if (myIndex < 0) {
+          toast.error("Could not determine your player slot for tabletop.");
+          return;
+        }
+        useServerStore.setState({ gameStarted: false });
+        navigate("/play", {
+          state: {
+            manualTabletop: true,
+            playerOrder: launch.playerOrder,
+            isHost: launch.hostPlayer === username,
+            startingLife: launch.startingLife,
+            myPlayerSlot: `player-${myIndex}`,
+            initialGameView: launch.initialGameView,
+          },
+        });
+      },
+    );
+    return unsubscribe;
+  }, [currentRoom, navigate, username]);
+
   async function refreshLobbyData() {
     if (!connected || refreshingLobby) return;
     setRefreshingLobby(true);
@@ -82,6 +158,110 @@ export default function Lobby() {
       toast.success(`Selected deck: ${deckName}`);
     } catch (error) {
       toast.error(`Failed to set deck: ${String(error)}`);
+    }
+  }
+
+  function findLocalDeckByName(deckName: string | undefined) {
+    if (!deckName) return currentDeck.cards.length > 0 ? currentDeck : undefined;
+    if (currentDeck.name === deckName) return currentDeck;
+    return savedDecks.find((saved) => saved.deck.name === deckName)?.deck;
+  }
+
+  function tabletopPlayerOrder(room: NonNullable<typeof currentRoom>) {
+    // Manual tabletop has no server-side GameStarted order, so every peer
+    // derives seats from this deterministic room snapshot: host first, then
+    // stable username ordering for the remaining players.
+    return [...room.players]
+      .sort((a, b) => {
+        if (a.username === room.host) return -1;
+        if (b.username === room.host) return 1;
+        return a.username.localeCompare(b.username);
+      })
+      .map((player) => player.username);
+  }
+
+  async function handleStartTabletop() {
+    const room = currentRoom;
+    if (!room || !username) return;
+    if (!getPlatform().server) {
+      toast.error("Tabletop multiplayer requires a server connection.");
+      return;
+    }
+
+    const playerOrder = tabletopPlayerOrder(room);
+    const myIndex = playerOrder.indexOf(username);
+    if (myIndex < 0) {
+      toast.error("Could not determine your player slot for tabletop.");
+      return;
+    }
+
+    const myDeckName = room.players.find((player) => player.username === username)?.selected_deck_name;
+    const deck = findLocalDeckByName(myDeckName);
+    if (!deck) {
+      toast.error("Select one of your local decks before starting tabletop.");
+      return;
+    }
+
+    try {
+      await startManualTabletopGame(deck);
+      const initialGameView = useGameStore.getState().gameView;
+      if (!initialGameView) throw new Error("Manual tabletop state did not initialize.");
+      const startingLife = getFormat(deck.format ?? room.format.toLowerCase())?.deckRules.startingLife ?? 20;
+      await getPlatform().server!.sendRoomMessage(createRoomRelayEnvelope({
+        protocol: MANUAL_TABLETOP_RELAY_PROTOCOL,
+        fromPlayer: `player-${myIndex}`,
+        roomId: room.room_id,
+        payload: {
+          type: "launch",
+          roomId: room.room_id,
+          hostPlayer: username,
+          playerOrder,
+          startingLife,
+          initialGameView,
+        },
+      }));
+      await startManualRoomHost(`player-${myIndex}`);
+      navigate("/play", {
+        state: {
+          manualTabletop: true,
+          playerOrder,
+          isHost: true,
+          startingLife,
+          myPlayerSlot: `player-${myIndex}`,
+          initialGameView,
+        },
+      });
+    } catch (error) {
+      await endGame();
+      toast.error(error instanceof Error ? error.message : "Failed to start tabletop.");
+    }
+  }
+
+  async function handleAddAiBot() {
+    const room = currentRoom;
+    if (!room || !username) return;
+    if (!getPlatform().server) {
+      toast.error("Adding an AI player requires a server connection.");
+      return;
+    }
+    if (room.players.length >= room.max_players) {
+      toast.error("The room is full.");
+      return;
+    }
+
+    try {
+      await getPlatform().server!.sendRoomMessage(createRoomRelayEnvelope({
+        protocol: SELF_HOSTED_NODE_RELAY_PROTOCOL,
+        roomId: room.room_id,
+        payload: {
+          type: "spawnBot",
+          roomId: room.room_id,
+          requestedBy: username,
+        },
+      }));
+      toast.success("AI player requested.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to request AI player.");
     }
   }
 
@@ -136,6 +316,15 @@ export default function Lobby() {
             <Button size="sm" className="h-7 text-xs" onClick={() => setCreateRoomOpen(true)} disabled={currentRoom != null}>
               New Room
             </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 text-xs"
+              onClick={handleAddAiBot}
+              disabled={!currentRoom || currentRoom.players.length >= currentRoom.max_players}
+            >
+              <Bot className="h-3 w-3 mr-1" /> Add AI
+            </Button>
             <div className="w-px h-4 bg-border mx-1" />
             <Button
               size="icon"
@@ -181,6 +370,7 @@ export default function Lobby() {
             onSetReady={setReady}
             onOpenDeckDialog={() => setDeckDialogOpen(true)}
             onStartGame={startGame}
+            onStartTabletop={handleStartTabletop}
           />
         </div>
 

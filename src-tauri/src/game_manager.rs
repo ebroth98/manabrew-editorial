@@ -8,7 +8,7 @@ use forge_engine_core::game::GameState;
 use forge_engine_core::game_loop::GameLoop;
 use forge_engine_core::ids::PlayerId;
 use forge_engine_core::player::RegisteredPlayer;
-use forge_foundation::ZoneType;
+use forge_game_runtime::deck::{force_commander_by_name, instantiate_registered_players};
 
 use rand::SeedableRng;
 use tauri::{AppHandle, Emitter};
@@ -22,7 +22,6 @@ use crate::multiplayer_controller::{
 use crate::preset_decks::{
     is_preset_id, prepare_ai_registered_player, prepare_custom_registered_player,
     prepare_preset_opponent_registered_player, prepare_preset_registered_player, CardIdentity,
-    PreparedRegisteredPlayer,
 };
 use crate::tauri_transport::TauriTransport;
 use forge_agent_interface::agent_impl::PromptAgent;
@@ -392,47 +391,6 @@ fn uuid_simple() -> String {
     use rand::Rng;
     let mut rng = rand::thread_rng();
     format!("{:08x}{:08x}", rng.gen::<u32>(), rng.gen::<u32>())
-}
-
-fn force_commander_by_name(player: &mut PreparedRegisteredPlayer, commander_name: &str) {
-    let already_present = player
-        .registered
-        .commanders
-        .iter()
-        .any(|name| name == commander_name);
-    if already_present {
-        return;
-    }
-
-    if let Some((_, zone)) = player
-        .cards
-        .iter_mut()
-        .find(|(card, _)| card.card_name == commander_name)
-    {
-        *zone = ZoneType::Command;
-        player
-            .registered
-            .commanders
-            .push(commander_name.to_string());
-        player
-            .registered
-            .current_deck
-            .retain(|name| name != commander_name);
-        player
-            .registered
-            .original_deck
-            .retain(|name| name != commander_name);
-    }
-}
-
-fn instantiate_registered_players(
-    game: &mut GameState,
-    prepared_players: Vec<PreparedRegisteredPlayer>,
-) {
-    for (idx, prepared) in prepared_players.into_iter().enumerate() {
-        let pid = PlayerId(idx as u32);
-        game.initialize_registered_player_cards(pid, &prepared.registered, prepared.cards, None);
-    }
 }
 
 fn run_game(

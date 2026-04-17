@@ -32,10 +32,14 @@ pub enum ClientMessage {
         room_name: String,
         max_players: u8,
         format: GameFormat,
+        #[serde(default)]
+        hosted: bool,
     },
 
     JoinRoom {
         room_id: String,
+        #[serde(default)]
+        observe: bool,
     },
 
     LeaveRoom,
@@ -141,6 +145,8 @@ pub struct RoomInfo {
     pub room_id: String,
     pub room_name: String,
     pub host: String,
+    #[serde(default)]
+    pub hosted: bool,
     pub players: Vec<RoomPlayerInfo>,
     pub max_players: u8,
     pub format: GameFormat,

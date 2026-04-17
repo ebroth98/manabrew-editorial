@@ -11,6 +11,7 @@ import {
 } from '@/game';
 import { getFormat } from '@/lib/formats';
 import { applyPrompt } from './gameStore.constants';
+import { useServerStore } from './useServerStore';
 import type { GameState, GameConfig } from './gameStore.types';
 import type { AgentPrompt } from './gameStore.types';
 import type { Card, Deck, GameView } from '@/types/openmagic';
@@ -180,9 +181,15 @@ export const useGameStore = create<GameState>()(devtools((set, get) => ({
     if (gameView) {
       await roomHost.broadcastManualState(gameView);
     }
+    set({
+      isMultiplayer: true,
+      isHost: true,
+      myPlayerSlot: localPlayerSlot,
+      debugInfo: 'Manual room host started.',
+    });
   },
 
-  startManualRoomClient: async (localPlayerSlot: string) => {
+  startManualRoomClient: async (localPlayerSlot: string, initialGameView?: GameView) => {
     selectGameRuntime('manual-tabletop');
     const runtime = getSelectedGameRuntime();
     if (!isManualTabletopApi(runtime)) {
@@ -200,6 +207,16 @@ export const useGameStore = create<GameState>()(devtools((set, get) => ({
       ],
     });
     startManualRoomSync({ roomHost, api: runtime.api });
+    if (initialGameView) {
+      await runtime.api.applyManualAction({
+        type: 'replaceState',
+        gameView: initialGameView,
+      });
+      const prompt = await runtime.api.getPrompt();
+      if (prompt && (prompt as AgentPrompt).gameView) {
+        applyPrompt(prompt as AgentPrompt, 'Manual', set, get);
+      }
+    }
     set({
       isGameActive: true,
       isMultiplayer: true,
@@ -451,7 +468,15 @@ export const useGameStore = create<GameState>()(devtools((set, get) => ({
   endGame: async () => {
     try {
       const runtime = getSelectedGameRuntime();
+      const wasMultiplayer = get().isMultiplayer;
       await runtime.api.endGame();
+      if (wasMultiplayer) {
+        try {
+          await useServerStore.getState().leaveRoom();
+        } catch (e) {
+          console.debug('Failed to leave multiplayer room after game end:', e);
+        }
+      }
       stopActiveManualRoomSync();
       resetSelectedGameRuntime();
       set({ isGameActive: false, gameView: null, currentPrompt: null, gameLog: [], snapshots: [], deferredQueue: [], isFlashing: false, isWaitingForResponse: false, isMultiplayer: false, isHost: false, myPlayerSlot: null });

@@ -38,3 +38,9 @@ export {
   type RoomHostMode,
   type RoomHostPayload,
 } from "./roomHost";
+export {
+  MANUAL_TABLETOP_RELAY_PROTOCOL,
+  SELF_HOSTED_NODE_RELAY_PROTOCOL,
+  createRoomRelayEnvelope,
+  isRoomRelayProtocol,
+} from "./roomRelay";

@@ -4,6 +4,7 @@ import { useGameStore } from "@/stores/useGameStore";
 import { DeckVsSelector } from "@/components/lobby/DeckVsSelector";
 import Game from "./Game";
 import type { PlayerDeckInfo } from "@/types/server";
+import type { GameView } from "@/types/openmagic";
 
 interface MultiplayerLocationState {
   multiplayer: true;
@@ -14,18 +15,30 @@ interface MultiplayerLocationState {
   myPlayerSlot: string;
 }
 
+interface ManualTabletopLocationState {
+  manualTabletop: true;
+  playerOrder: string[];
+  isHost: boolean;
+  startingLife: number;
+  myPlayerSlot: string;
+  initialGameView?: GameView;
+}
+
 export default function Play() {
   const location = useLocation();
   const {
     isGameActive,
     startGame,
     startManualTabletopGame,
+    startManualRoomClient,
     startMultiplayerGame,
     setMultiplayerState,
   } = useGameStore();
   const multiplayerStarted = useRef(false);
 
-  const mpState = location.state as MultiplayerLocationState | null;
+  const routeState = location.state as MultiplayerLocationState | ManualTabletopLocationState | null;
+  const mpState = routeState && "multiplayer" in routeState ? routeState : null;
+  const tabletopState = routeState && "manualTabletop" in routeState ? routeState : null;
 
   // Handle multiplayer game start from lobby navigation
   useEffect(() => {
@@ -54,6 +67,16 @@ export default function Play() {
     );
   }, [mpState]);
 
+  useEffect(() => {
+    if (!tabletopState?.manualTabletop || multiplayerStarted.current) return;
+    multiplayerStarted.current = true;
+    if (tabletopState.isHost) {
+      setMultiplayerState(true, true, tabletopState.myPlayerSlot);
+      return;
+    }
+    void startManualRoomClient(tabletopState.myPlayerSlot, tabletopState.initialGameView);
+  }, [setMultiplayerState, startManualRoomClient, tabletopState]);
+
   if (isGameActive) {
     return (
       <div className="h-full min-h-0 no-scrollbar">
@@ -63,11 +86,13 @@ export default function Play() {
   }
 
   // Multiplayer: show waiting state while game starts
-  if (mpState?.multiplayer) {
+  if (mpState?.multiplayer || tabletopState?.manualTabletop) {
     return (
       <div className="flex flex-col items-center justify-center h-full gap-4">
         <div className="text-center space-y-2">
-          <h1 className="text-2xl font-bold">Starting multiplayer game...</h1>
+          <h1 className="text-2xl font-bold">
+            {tabletopState?.manualTabletop ? "Starting tabletop room..." : "Starting multiplayer game..."}
+          </h1>
           <p className="text-muted-foreground">
             Waiting for game synchronization...
           </p>

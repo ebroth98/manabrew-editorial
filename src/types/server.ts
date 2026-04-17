@@ -29,6 +29,7 @@ export interface RoomInfo {
   room_id: string;
   room_name: string;
   host: string;
+  hosted: boolean;
   players: RoomPlayerInfo[];
   max_players: number;
   format: GameFormat;
@@ -109,6 +110,36 @@ export interface GameStartedPayload {
 export interface StateUpdatePayload {
   from_player: string;
   state: unknown;
+}
+
+export const ROOM_RELAY_KIND = "roomRelay" as const;
+
+export interface RoomRelayEnvelope<TPayload = unknown> {
+  kind: typeof ROOM_RELAY_KIND;
+  protocol: string;
+  version: 1;
+  messageId: string;
+  fromPlayer?: string;
+  targetPlayer?: string;
+  roomId?: string;
+  payload: TPayload;
+}
+
+export interface RoomMessagePayload<TPayload = unknown> {
+  from_player: string;
+  state: RoomRelayEnvelope<TPayload>;
+}
+
+export function isRoomRelayEnvelope(value: unknown): value is RoomRelayEnvelope {
+  if (!value || typeof value !== "object") return false;
+  const candidate = value as Partial<RoomRelayEnvelope>;
+  return (
+    candidate.kind === ROOM_RELAY_KIND &&
+    typeof candidate.protocol === "string" &&
+    candidate.version === 1 &&
+    typeof candidate.messageId === "string" &&
+    "payload" in candidate
+  );
 }
 
 export interface TurnChangedPayload {

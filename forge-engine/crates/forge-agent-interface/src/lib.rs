@@ -5,3 +5,4 @@ pub mod game_snapshot_event;
 pub mod game_view_dto;
 pub mod ids_codec;
 pub mod prompt;
+pub mod simple_ai;

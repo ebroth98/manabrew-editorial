@@ -6,7 +6,7 @@
  * work with both desktop (Tauri) and web (WASM) deployments.
  */
 
-import type { CardIdentity, GameFormat } from "@/types/server";
+import type { CardIdentity, GameFormat, RoomRelayEnvelope } from "@/types/server";
 
 // ============================================================================
 // Game API Types
@@ -64,10 +64,12 @@ export interface CreateRoomParams {
   roomName: string;
   maxPlayers: number;
   format: GameFormat;
+  hosted?: boolean;
 }
 
 export interface JoinRoomParams {
   roomId: string;
+  observe?: boolean;
 }
 
 export interface SetReadyParams {
@@ -130,6 +132,7 @@ export interface IServerApi {
   setDeckSelection(params: SetDeckSelectionParams): Promise<void>;
   startGame(): Promise<void>;
   broadcastState(state: Record<string, unknown>): Promise<void>;
+  sendRoomMessage(message: RoomRelayEnvelope): Promise<void>;
 }
 
 /**

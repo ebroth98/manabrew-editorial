@@ -24,6 +24,8 @@ import type {
   SetReadyParams,
   SetDeckSelectionParams,
 } from "./types";
+import { isRoomRelayEnvelope } from "@/types/server";
+import type { RoomRelayEnvelope } from "@/types/server";
 
 // ============================================================================
 // Worker Message Types
@@ -575,11 +577,12 @@ class WebServerApi implements IServerApi {
       room_name: params.roomName,
       max_players: params.maxPlayers,
       format: params.format,
+      hosted: params.hosted ?? false,
     });
   }
 
   async joinRoom(params: JoinRoomParams): Promise<void> {
-    this.send({ type: "JoinRoom", room_id: params.roomId });
+    this.send({ type: "JoinRoom", room_id: params.roomId, observe: params.observe ?? false });
   }
 
   async leaveRoom(): Promise<void> {
@@ -608,6 +611,10 @@ class WebServerApi implements IServerApi {
     this.send({ type: "BroadcastState", state });
   }
 
+  async sendRoomMessage(message: RoomRelayEnvelope): Promise<void> {
+    this.send({ type: "BroadcastState", state: message });
+  }
+
   private send(msg: Record<string, unknown>): void {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
       console.error("[WebServerApi] Not connected");
@@ -630,6 +637,11 @@ class WebServerApi implements IServerApi {
           state,
         });
         return;
+      } else if (isRoomRelayEnvelope(state)) {
+        this.eventBus.emit("server:room_message", {
+          from_player: msg.from_player,
+          state,
+        });
       } else if (kind === "prompt") {
         this.eventBus.emit("game:remote_prompt", state);
         return;

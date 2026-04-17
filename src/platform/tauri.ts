@@ -27,6 +27,7 @@ import type {
   SetReadyParams,
   SetDeckSelectionParams,
 } from "./types";
+import type { RoomRelayEnvelope } from "@/types/server";
 
 // ============================================================================
 // Tauri Game API
@@ -133,6 +134,10 @@ class TauriServerApi implements IServerApi {
 
   async broadcastState(state: Record<string, unknown>): Promise<void> {
     return invoke<void>("server_broadcast_state", { state });
+  }
+
+  async sendRoomMessage(message: RoomRelayEnvelope): Promise<void> {
+    return invoke<void>("server_send_room_message", { message });
   }
 }
 

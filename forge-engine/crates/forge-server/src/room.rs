@@ -13,15 +13,24 @@ pub struct RoomSlot {
     pub selected_commander_name: Option<String>,
 }
 
+#[derive(Debug, Clone)]
+pub struct RoomObserver {
+    pub player_id: String,
+    pub connected: bool,
+}
+
 #[derive(Debug)]
 pub struct Room {
     pub room_id: String,
     pub room_name: String,
     pub host_player_id: String,
+    pub host_username: String,
+    pub hosted: bool,
     pub max_players: u8,
     pub format: GameFormat,
     pub status: RoomStatus,
     pub players: Vec<RoomSlot>,
+    pub observers: Vec<RoomObserver>,
 }
 
 impl Room {
@@ -32,29 +41,51 @@ impl Room {
         host_username: String,
         max_players: u8,
         format: GameFormat,
+        host_plays: bool,
     ) -> Self {
         let max_players = max_players.clamp(2, 8);
+        let (players, observers) = if host_plays {
+            (
+                vec![RoomSlot {
+                    player_id: host_player_id.clone(),
+                    username: host_username.clone(),
+                    ready: false,
+                    connected: true,
+                    selected_deck_name: None,
+                    selected_deck_list: vec![],
+                    selected_commander_name: None,
+                }],
+                vec![],
+            )
+        } else {
+            (
+                vec![],
+                vec![RoomObserver {
+                    player_id: host_player_id.clone(),
+                    connected: true,
+                }],
+            )
+        };
         Room {
             room_id,
             room_name,
             host_player_id: host_player_id.clone(),
+            host_username,
+            hosted: !host_plays,
             max_players,
             format,
             status: RoomStatus::Lobby,
-            players: vec![RoomSlot {
-                player_id: host_player_id,
-                username: host_username,
-                ready: false,
-                connected: true,
-                selected_deck_name: None,
-                selected_deck_list: vec![],
-                selected_commander_name: None,
-            }],
+            players,
+            observers,
         }
     }
 
     pub fn is_full(&self) -> bool {
         self.players.len() >= self.max_players as usize
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.players.is_empty() && self.observers.is_empty()
     }
 
     pub fn all_ready(&self) -> bool {
@@ -83,6 +114,19 @@ impl Room {
         Ok(())
     }
 
+    pub fn add_observer(&mut self, player_id: String, _username: String) -> Result<(), String> {
+        if self.players.iter().any(|p| p.player_id == player_id)
+            || self.observers.iter().any(|p| p.player_id == player_id)
+        {
+            return Err("Already in this room".into());
+        }
+        self.observers.push(RoomObserver {
+            player_id,
+            connected: true,
+        });
+        Ok(())
+    }
+
     pub fn remove_player(&mut self, player_id: &str) -> Option<RoomSlot> {
         if let Some(idx) = self.players.iter().position(|p| p.player_id == player_id) {
             let slot = self.players.remove(idx);
@@ -90,6 +134,7 @@ impl Room {
             if self.host_player_id == player_id {
                 if let Some(new_host) = self.players.first() {
                     self.host_player_id = new_host.player_id.clone();
+                    self.host_username = new_host.username.clone();
                 }
             }
             Some(slot)
@@ -98,16 +143,31 @@ impl Room {
         }
     }
 
+    pub fn remove_observer(&mut self, player_id: &str) -> Option<RoomObserver> {
+        self.observers
+            .iter()
+            .position(|p| p.player_id == player_id)
+            .map(|idx| self.observers.remove(idx))
+    }
+
+    pub fn remove_participant(&mut self, player_id: &str) -> bool {
+        self.remove_player(player_id).is_some() || self.remove_observer(player_id).is_some()
+    }
+
     pub fn set_connected(&mut self, player_id: &str, connected: bool) {
         if let Some(slot) = self.players.iter_mut().find(|p| p.player_id == player_id) {
             slot.connected = connected;
+            return;
+        }
+        if let Some(observer) = self.observers.iter_mut().find(|p| p.player_id == player_id) {
+            observer.connected = connected;
         }
     }
 
     /// Forward-ported for future use when room cleanup logic is implemented.
     #[allow(dead_code)]
     pub fn all_disconnected(&self) -> bool {
-        self.players.iter().all(|p| !p.connected)
+        self.players.iter().all(|p| !p.connected) && self.observers.iter().all(|p| !p.connected)
     }
 
     pub fn set_ready(&mut self, player_id: &str, ready: bool) -> Result<(), String> {
@@ -165,11 +225,13 @@ impl Room {
     }
 
     pub fn host_username(&self) -> String {
+        self.host_username.clone()
+    }
+
+    pub fn host_is_player(&self) -> bool {
         self.players
             .iter()
-            .find(|p| p.player_id == self.host_player_id)
-            .map(|p| p.username.clone())
-            .unwrap_or_default()
+            .any(|p| p.player_id == self.host_player_id)
     }
 
     pub fn player_usernames(&self) -> Vec<String> {
@@ -187,6 +249,12 @@ impl Room {
             .iter()
             .filter(|p| p.connected)
             .map(|p| p.player_id.clone())
+            .chain(
+                self.observers
+                    .iter()
+                    .filter(|p| p.connected)
+                    .map(|p| p.player_id.clone()),
+            )
             .collect()
     }
 
@@ -195,6 +263,7 @@ impl Room {
             room_id: self.room_id.clone(),
             room_name: self.room_name.clone(),
             host: self.host_username(),
+            hosted: self.hosted,
             players: self
                 .players
                 .iter()

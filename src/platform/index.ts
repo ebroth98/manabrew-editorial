@@ -46,6 +46,7 @@ export type {
   SetReadyParams,
   SetDeckSelectionParams,
 } from "./types";
+export type { RoomRelayEnvelope, RoomMessagePayload } from "@/types/server";
 
 // ============================================================================
 // Platform Detection

@@ -42,6 +42,7 @@ pub async fn server_create_room(
     room_name: String,
     max_players: u8,
     format: String,
+    hosted: Option<bool>,
 ) -> Result<(), String> {
     send_server_message(
         &client,
@@ -50,6 +51,7 @@ pub async fn server_create_room(
             "room_name": room_name,
             "max_players": max_players,
             "format": format,
+            "hosted": hosted.unwrap_or(false),
         }),
     )
 }
@@ -58,12 +60,14 @@ pub async fn server_create_room(
 pub async fn server_join_room(
     client: State<'_, ServerClient>,
     room_id: String,
+    observe: Option<bool>,
 ) -> Result<(), String> {
     send_server_message(
         &client,
         serde_json::json!({
             "type": "JoinRoom",
             "room_id": room_id,
+            "observe": observe.unwrap_or(false),
         }),
     )
 }
@@ -117,6 +121,23 @@ pub async fn server_broadcast_state(
         serde_json::json!({
             "type": "BroadcastState",
             "state": state,
+        }),
+    )
+}
+
+#[tauri::command]
+pub async fn server_send_room_message(
+    client: State<'_, ServerClient>,
+    message: serde_json::Value,
+) -> Result<(), String> {
+    if message.get("kind").and_then(|value| value.as_str()) != Some("roomRelay") {
+        return Err("Room message must be a roomRelay envelope".to_string());
+    }
+    send_server_message(
+        &client,
+        serde_json::json!({
+            "type": "BroadcastState",
+            "state": message,
         }),
     )
 }

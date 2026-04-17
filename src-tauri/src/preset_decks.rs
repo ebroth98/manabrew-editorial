@@ -4,12 +4,15 @@ use forge_engine_core::card::CardInstance;
 use forge_engine_core::game::GameState;
 use forge_engine_core::ids::PlayerId;
 use forge_engine_core::player::RegisteredPlayer;
-use forge_foundation::CoreType;
 use forge_foundation::ZoneType;
+use forge_game_runtime::deck::{
+    card_rules_to_instance, deck_zone_for_identity, fallback_deck_zone_for_card, lookup_card_rules,
+    register_card_name, PreparedRegisteredPlayer,
+};
 use rand::seq::SliceRandom;
 use serde::{Deserialize, Serialize};
 
-use crate::card_db::{card_rules_to_instance, get_card_db};
+use crate::card_db::get_card_db;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -18,12 +21,6 @@ pub struct CardIdentity {
     pub set_code: String,
     #[serde(default)]
     pub section: Option<String>,
-}
-
-#[derive(Debug, Clone)]
-pub struct PreparedRegisteredPlayer {
-    pub registered: RegisteredPlayer,
-    pub cards: Vec<(CardInstance, ZoneType)>,
 }
 
 // ── Preset deck registry ───────────────────────────────────────────
@@ -451,7 +448,7 @@ pub fn build_custom_deck(game: &mut GameState, owner: PlayerId, identities: &[Ca
                 if !identity.set_code.is_empty() {
                     card.set_code = Some(identity.set_code.clone());
                 }
-                let destination = deck_zone_for_identity(identity, &card);
+                let destination = deck_zone_for_identity(identity.section.as_deref(), &card);
                 let id = game.create_card(card);
                 if destination == ZoneType::Command {
                     game.card_mut(id).is_commander = true;
@@ -510,7 +507,7 @@ fn prepare_cards_from_identities(
                 if !identity.set_code.is_empty() {
                     card.set_code = Some(identity.set_code.clone());
                 }
-                let destination = deck_zone_for_identity(identity, &card);
+                let destination = deck_zone_for_identity(identity.section.as_deref(), &card);
                 register_card_name(registered, &card.card_name, destination);
                 cards.push((card, destination));
             }
@@ -518,75 +515,6 @@ fn prepare_cards_from_identities(
         }
     }
     cards
-}
-
-fn register_card_name(registered: &mut RegisteredPlayer, card_name: &str, destination: ZoneType) {
-    let name = card_name.to_string();
-    match destination {
-        ZoneType::Library => {
-            registered.original_deck.push(name.clone());
-            registered.current_deck.push(name);
-        }
-        ZoneType::Command => registered.commanders.push(name),
-        ZoneType::Battlefield => registered.cards_on_battlefield.push(name),
-        ZoneType::SchemeDeck => registered.schemes.push(name),
-        ZoneType::PlanarDeck => registered.planes.push(name),
-        ZoneType::AttractionDeck => registered.attractions.push(name),
-        ZoneType::ContraptionDeck => registered.contraptions.push(name),
-        ZoneType::Sideboard => {}
-        _ => {}
-    }
-}
-
-fn lookup_card_rules<'a>(
-    db: &'a forge_carddb::CardDatabase,
-    raw_name: &str,
-) -> Option<&'a forge_carddb::CardRules> {
-    db.get_by_card_name(raw_name).or_else(|| {
-        raw_name
-            .split_once(" // ")
-            .and_then(|(front_face, _)| db.get_by_card_name(front_face.trim()))
-    })
-}
-
-fn fallback_deck_zone_for_card(card: &forge_engine_core::card::Card) -> ZoneType {
-    if card
-        .type_line
-        .subtypes
-        .iter()
-        .any(|subtype| subtype.eq_ignore_ascii_case("Attraction"))
-    {
-        ZoneType::AttractionDeck
-    } else if card
-        .type_line
-        .subtypes
-        .iter()
-        .any(|subtype| subtype.eq_ignore_ascii_case("Contraption"))
-    {
-        ZoneType::ContraptionDeck
-    } else if card.type_line.core_types.contains(&CoreType::Scheme) {
-        ZoneType::SchemeDeck
-    } else if card.type_line.core_types.contains(&CoreType::Plane) {
-        ZoneType::PlanarDeck
-    } else {
-        ZoneType::Library
-    }
-}
-
-fn deck_zone_for_identity(
-    identity: &CardIdentity,
-    card: &forge_engine_core::card::Card,
-) -> ZoneType {
-    match identity.section.as_deref() {
-        Some("main") => ZoneType::Library,
-        Some("sideboard") => ZoneType::Sideboard,
-        Some("commander") => ZoneType::Command,
-        Some("attractions") => ZoneType::AttractionDeck,
-        Some("contraptions") => ZoneType::ContraptionDeck,
-        Some("schemes") => ZoneType::SchemeDeck,
-        Some("planes") => ZoneType::PlanarDeck,
-        _ => fallback_deck_zone_for_card(card),
-    }
 }
 
 #[cfg(test)]
@@ -663,25 +591,11 @@ mod tests {
             vec![],
         );
         assert_eq!(
-            deck_zone_for_identity(
-                &CardIdentity {
-                    name: "Forest".to_string(),
-                    set_code: "".to_string(),
-                    section: Some("sideboard".to_string()),
-                },
-                &normal,
-            ),
+            deck_zone_for_identity(Some("sideboard"), &normal,),
             ZoneType::Sideboard
         );
         assert_eq!(
-            deck_zone_for_identity(
-                &CardIdentity {
-                    name: "Forest".to_string(),
-                    set_code: "".to_string(),
-                    section: Some("commander".to_string()),
-                },
-                &normal,
-            ),
+            deck_zone_for_identity(Some("commander"), &normal,),
             ZoneType::Command
         );
     }

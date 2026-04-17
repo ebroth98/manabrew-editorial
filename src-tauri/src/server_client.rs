@@ -175,6 +175,13 @@ fn emit_server_message(app: &AppHandle, msg: &ServerMessage) {
                     app.state::<crate::game_manager::GameManager>();
                 gm.route_remote_response(state);
                 return;
+            } else if kind == "roomRelay" {
+                if let ServerMessage::StateUpdate { from_player, state } = msg {
+                    let _ = app.emit(
+                        "server:room_message",
+                        serde_json::json!({ "from_player": from_player, "state": state }),
+                    );
+                }
             } else if kind == "prompt" {
                 let _ = app.emit("game:remote_prompt", state);
                 return;

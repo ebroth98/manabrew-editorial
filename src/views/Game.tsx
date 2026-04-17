@@ -958,6 +958,9 @@ export default function Game() {
   if (!gameView) {
     return <GameLoadingScreen debugInfo={debugInfo} />;
   }
+  if (!me) {
+    return <GameLoadingScreen debugInfo={debugInfo || "Waiting for player state..."} />;
+  }
 
   const battlefieldActivatableIds = new Set(
     promptType === PromptType.ChooseAction
@@ -965,7 +968,7 @@ export default function Game() {
       : [],
   );
   const myPermanents = gameView.battlefield
-    .filter((c) => c.controllerId === me!.id)
+    .filter((c) => c.controllerId === me.id)
     .map((c) =>
       battlefieldActivatableIds.has(c.id)
         ? { ...c, isChoosable: true }
@@ -983,7 +986,7 @@ export default function Game() {
     return (
       <GameOverScreen
         winnerId={gameView.winnerId}
-        me={me!}
+        me={me}
         opponents={opponents}
         turn={gameView.turn}
         onEndGame={endGame}
@@ -1017,7 +1020,7 @@ export default function Game() {
       <ArrowOverlay arrows={arrows} />
       <div className="flex gap-1 min-h-0 flex-1 overflow-visible">
         <GameBoard
-          me={me!}
+          me={me}
           opponents={displayOpponents}
           myPermanents={myPermanents}
           opponentPermanentsByPlayer={opponentPermanentsByPlayer}
@@ -1151,13 +1154,13 @@ export default function Game() {
           onOpenStack={() => setSpellStackModalOpen(true)}
           onConcede={concede}
           resolveCardName={(cardId) => cardNameById.get(cardId) ?? cardId}
-          isMyPriority={gameView.priorityPlayerId === me!.id}
+          isMyPriority={gameView.priorityPlayerId === me.id}
           turn={gameView.turn}
           activePlayerName={
             gameView.players.find((p) => p.id === gameView.activePlayerId)?.name ??
             "Unknown"
           }
-          isMyTurn={gameView.activePlayerId === me!.id}
+          isMyTurn={gameView.activePlayerId === me.id}
           step={gameView.step}
           payManaCostInfo={
             promptType === PromptType.PayManaCost && activePrompt?.manaCost != null
