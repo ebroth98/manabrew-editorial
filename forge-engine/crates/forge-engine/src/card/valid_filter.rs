@@ -176,6 +176,11 @@ fn matches_type_and_qualifiers(filter: &str, card: &Card, source: &Card) -> bool
                         return false;
                     }
                 }
+                "strictlyself" => {
+                    if card.id != source.id {
+                        return false;
+                    }
+                }
                 "other" | "strictlyother" => {
                     if card.id == source.id {
                         return false;

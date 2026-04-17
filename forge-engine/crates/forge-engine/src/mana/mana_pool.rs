@@ -12,6 +12,12 @@ use super::mana_conversion_matrix::ManaConversionMatrix;
 use super::{mana_meets_restriction, Mana, ManaPaymentContext};
 use crate::ids::CardId;
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct ManaPaymentOutcome {
+    pub life_paid: i32,
+    pub colors_spent: u16,
+}
+
 fn mana_matches_context(mana: &Mana, ctx: &ManaPaymentContext) -> bool {
     let Some(restriction) = &mana.restriction else {
         return true;
@@ -386,6 +392,22 @@ impl ManaPool {
         any_color: bool,
         player_life: i32,
     ) -> Option<i32> {
+        self.try_pay_for_spell_converted_with_phyrexian_life_result(
+            cost,
+            ctx,
+            any_color,
+            player_life,
+        )
+        .map(|outcome| outcome.life_paid)
+    }
+
+    pub fn try_pay_for_spell_converted_with_phyrexian_life_result(
+        &mut self,
+        cost: &forge_foundation::ManaCost,
+        ctx: &ManaPaymentContext,
+        any_color: bool,
+        player_life: i32,
+    ) -> Option<ManaPaymentOutcome> {
         let mut ineligible: Vec<Mana> = Vec::new();
         let mut eligible: Vec<Mana> = Vec::new();
         for m in self.mana.drain(..) {
@@ -396,7 +418,7 @@ impl ManaPool {
             eligible.push(m);
         }
         self.mana = eligible;
-        let result = self.try_pay_with_phyrexian_life(cost, any_color, player_life);
+        let result = self.try_pay_with_phyrexian_life_result(cost, any_color, player_life);
         self.mana.extend(ineligible);
         result
     }
@@ -409,7 +431,8 @@ impl ManaPool {
         any_color: bool,
         player_life: i32,
     ) -> Option<i32> {
-        self.try_pay_with_phyrexian_life(cost, any_color, player_life)
+        self.try_pay_with_phyrexian_life_result(cost, any_color, player_life)
+            .map(|outcome| outcome.life_paid)
     }
 
     /// Returns true if the pool can pay `cost` plus `extra_generic` additional generic mana.
@@ -913,6 +936,16 @@ impl ManaPool {
         any_color: bool,
         player_life: i32,
     ) -> Option<i32> {
+        self.try_pay_with_phyrexian_life_result(cost, any_color, player_life)
+            .map(|outcome| outcome.life_paid)
+    }
+
+    fn try_pay_with_phyrexian_life_result(
+        &mut self,
+        cost: &forge_foundation::ManaCost,
+        any_color: bool,
+        player_life: i32,
+    ) -> Option<ManaPaymentOutcome> {
         use super::mana_cost_being_paid::ManaCostBeingPaid;
         let unpaid = ManaCostBeingPaid::from_mana_cost(cost);
         let mut best: Option<(i32, Vec<usize>)> = None;
@@ -926,10 +959,17 @@ impl ManaPool {
         );
 
         let (life_to_pay, spent_indices) = best?;
+        let mut colors_spent = 0u16;
+        for &idx in &spent_indices {
+            colors_spent |= self.mana[idx].color;
+        }
         for idx in spent_indices.into_iter().rev() {
             self.mana.remove(idx);
         }
-        Some(life_to_pay)
+        Some(ManaPaymentOutcome {
+            life_paid: life_to_pay,
+            colors_spent,
+        })
     }
 
     fn search_phyrexian_payment(
@@ -1058,7 +1098,8 @@ impl ManaPool {
         cost: &forge_foundation::ManaCost,
         player_life: i32,
     ) -> Option<i32> {
-        self.try_pay_with_phyrexian_life(cost, false, player_life)
+        self.try_pay_with_phyrexian_life_result(cost, false, player_life)
+            .map(|outcome| outcome.life_paid)
     }
 
     /// Iterator over all floating mana.

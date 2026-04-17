@@ -359,9 +359,18 @@ impl CardDatabase {
             if !edition_code.is_empty() && !edition_date.is_empty() {
                 if let Some(card_name) = parse_card_name_from_edition_line(line) {
                     let key = card_name.to_lowercase();
-                    let dominated = if let Some(existing_code) = self.card_default_edition.get(&key) {
-                        let existing_date = self.edition_dates.get(existing_code).map(|s| s.as_str()).unwrap_or("0000-00-00");
-                        let existing_name = self.edition_names.get(existing_code).map(|s| s.as_str()).unwrap_or("");
+                    let dominated = if let Some(existing_code) = self.card_default_edition.get(&key)
+                    {
+                        let existing_date = self
+                            .edition_dates
+                            .get(existing_code)
+                            .map(|s| s.as_str())
+                            .unwrap_or("0000-00-00");
+                        let existing_name = self
+                            .edition_names
+                            .get(existing_code)
+                            .map(|s| s.as_str())
+                            .unwrap_or("");
                         match edition_date.as_str().cmp(existing_date) {
                             std::cmp::Ordering::Greater => true,
                             std::cmp::Ordering::Less => false,

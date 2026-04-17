@@ -33,6 +33,38 @@ fn parse_trigger_int_object(sa: &SpellAbility, key: &str) -> Option<i32> {
         .and_then(|value| value.trim().parse::<i32>().ok())
 }
 
+fn parse_trigger_int_values(sa: &SpellAbility, key: &str) -> Vec<i32> {
+    sa.trigger_objects
+        .get(key)
+        .map(|raw| {
+            raw.split(',')
+                .filter_map(|part| part.trim().parse::<i32>().ok())
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default()
+}
+
+fn apply_simple_operator_chain(num: i32, operators: &str) -> i32 {
+    let mut value = num;
+    for op in operators.split('/') {
+        let op = op.trim();
+        if let Some(arg) = op.strip_prefix("Plus.") {
+            value += arg.parse::<i32>().unwrap_or(0);
+        } else if let Some(arg) = op.strip_prefix("Minus.") {
+            value -= arg.parse::<i32>().unwrap_or(0);
+        } else if let Some(arg) = op.strip_prefix("Times.") {
+            value *= arg.parse::<i32>().unwrap_or(1);
+        } else if let Some(arg) = op.strip_prefix("HalfUp") {
+            let _ = arg;
+            value = (value + 1) / 2;
+        } else if let Some(arg) = op.strip_prefix("HalfDown") {
+            let _ = arg;
+            value /= 2;
+        }
+    }
+    value
+}
+
 fn do_x_math(
     num: i32,
     operators: &str,
@@ -868,6 +900,20 @@ pub fn evaluate_svar(expr: &str, sa: &SpellAbility) -> i32 {
     if expr == "Count$TriggerRememberAmount" {
         return sa.trigger_remembered_amount;
     }
+    if let Some(rest) = expr.strip_prefix("TriggerCount$") {
+        let (key, operators) = rest.split_once('/').unwrap_or((rest, ""));
+        let values = parse_trigger_int_values(sa, key.trim());
+        let count = values.into_iter().sum::<i32>();
+        return apply_simple_operator_chain(count, operators);
+    }
+    if let Some(rest) = expr.strip_prefix("TriggerCountMax$") {
+        let (key, operators) = rest.split_once('/').unwrap_or((rest, ""));
+        let count = parse_trigger_int_values(sa, key.trim())
+            .into_iter()
+            .max()
+            .unwrap_or(0);
+        return apply_simple_operator_chain(count, operators);
+    }
     if expr == "TriggerCount$Result" {
         return trigger_result_values(sa).into_iter().sum();
     }
@@ -938,6 +984,10 @@ pub fn resolve_count_svar_for_sa(
     sa: &SpellAbility,
 ) -> i32 {
     use forge_foundation::ZoneType;
+
+    if expr == "Count$xPaid" || expr == "Count$XPaid" {
+        return sa.x_mana_cost_paid as i32;
+    }
 
     if expr == "Count$TriggerRememberAmount" {
         return sa.trigger_remembered_amount;
@@ -1043,6 +1093,10 @@ pub fn resolve_count_svar_for_sa(
     // - Count$ValidBattlefield Creature.YouCtrl
     // Mirrors Java xCount() Valid* zone parsing.
     if let Some(rest) = expr.strip_prefix("Count$Valid") {
+        let (rest, operators) = rest
+            .split_once('/')
+            .map(|(base, ops)| (base, ops))
+            .unwrap_or((rest, ""));
         let mut parts = rest.trim_start().splitn(2, ' ');
         let zone_part = parts.next().unwrap_or("").trim();
         let restrictions = parts.next().unwrap_or("").trim();
@@ -1057,7 +1111,7 @@ pub fn resolve_count_svar_for_sa(
             };
             if !zones.is_empty() {
                 let source = game.card(source_id);
-                return game
+                let count = game
                     .cards
                     .iter()
                     .filter(|card| {
@@ -1069,6 +1123,7 @@ pub fn resolve_count_svar_for_sa(
                             )
                     })
                     .count() as i32;
+                return do_x_math(count, operators, game, source_id, controller, sa);
             }
         }
     }
@@ -1077,6 +1132,10 @@ pub fn resolve_count_svar_for_sa(
     // Count$Valid TYPE.QUALIFIERS/Times.N — count × N multiplier
     // Count$Valid TYPE.QUALIFIERS$GreatestCardPower — greatest power among matching creatures
     if let Some(filter_str) = expr.strip_prefix("Count$Valid ") {
+        let (filter_str, operators) = filter_str
+            .split_once('/')
+            .map(|(base, ops)| (base, ops))
+            .unwrap_or((filter_str, ""));
         // Check for $GreatestCardPower suffix
         let (filter_str, greatest_power) =
             if let Some(base) = filter_str.strip_suffix("$GreatestCardPower") {
@@ -1131,7 +1190,7 @@ pub fn resolve_count_svar_for_sa(
                     max_power = max_power.max(card.power());
                 }
             }
-            return max_power;
+            return do_x_math(max_power, operators, game, source_id, controller, sa);
         } else if count_distinct_colors {
             let mut mask: u8 = 0;
             for &cid in &cards_to_check {
@@ -1146,7 +1205,14 @@ pub fn resolve_count_svar_for_sa(
                     mask |= card.color.mask();
                 }
             }
-            return (mask.count_ones() as i32) * multiplier;
+            return do_x_math(
+                (mask.count_ones() as i32) * multiplier,
+                operators,
+                game,
+                source_id,
+                controller,
+                sa,
+            );
         } else {
             let mut count = 0;
             for &cid in &cards_to_check {
@@ -1161,7 +1227,14 @@ pub fn resolve_count_svar_for_sa(
                     count += 1;
                 }
             }
-            return count * multiplier;
+            return do_x_math(
+                count * multiplier,
+                operators,
+                game,
+                source_id,
+                controller,
+                sa,
+            );
         }
     }
 
@@ -1286,7 +1359,9 @@ fn valid_card_matches_with_source(
                     return false;
                 }
             } else if sub_qual.eq_ignore_ascii_case(fc::OTHER) {
-                // handled by caller if needed
+                if card.id == source_id {
+                    return false;
+                }
             } else if sub_qual.eq_ignore_ascii_case("ChosenType") {
                 // Card must have the source card's chosen creature type as a subtype.
                 // Mirrors Java CardTraitBase.isValid() ChosenType qualifier.

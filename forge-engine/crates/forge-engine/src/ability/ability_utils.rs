@@ -108,6 +108,13 @@ pub fn get_defined_cards(
                 Vec::new()
             }
         }
+        "Enchanted" => {
+            if let Some(src) = host_card {
+                game.card(src).attached_to.into_iter().collect()
+            } else {
+                Vec::new()
+            }
+        }
         "Imprinted" => {
             if let Some(src) = host_card {
                 game.card(src).imprinted_cards.clone()
@@ -233,6 +240,7 @@ pub fn resolve_defined_player_with_sa(
             .target_chosen
             .target_player
             .or_else(|| parse_player_object(sa, "Player")),
+        "ParentTarget" => sa.target_chosen.target_player,
         "ThisTargetedPlayer" => sa.target_chosen.target_player,
         "TargetedOrController" => sa
             .target_chosen
@@ -348,6 +356,7 @@ pub fn resolve_defined_players_with_sa(
             }
             players
         }
+        "ParentTarget" => sa.target_chosen.target_player.into_iter().collect(),
         "ThisTargetedPlayer" => sa.target_chosen.target_player.into_iter().collect(),
         "TargetedOrController" => {
             let mut players: Vec<_> = sa.target_chosen.target_player.into_iter().collect();

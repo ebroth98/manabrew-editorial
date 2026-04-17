@@ -610,6 +610,31 @@ impl Card {
                     });
             }
 
+            // Living Weapon — when this Equipment enters, create a 0/0 black
+            // Phyrexian Germ token, then attach this to it.
+            // Mirrors Java CardFactoryUtil lines 1449-1464.
+            if kw == "Living Weapon" {
+                let raw = "Mode$ ChangesZone | Destination$ Battlefield | ValidCard$ Card.Self | Secondary$ True | TriggerDescription$ Living Weapon";
+                if let Some(mut trig) = parse_trigger(raw, &mut next_id) {
+                    trig.execute = "TrigLivingWeapon".to_string();
+                    self.add_trigger(trig);
+                }
+                self.svars
+                    .entry("TrigLivingWeapon".to_string())
+                    .or_insert_with(|| {
+                        "DB$ Token | TokenScript$ b_0_0_phyrexian_germ | TokenOwner$ You | RememberTokens$ True | SubAbility$ DBLivingWeaponAttach".to_string()
+                    });
+                self.svars
+                    .entry("DBLivingWeaponAttach".to_string())
+                    .or_insert_with(|| {
+                        "DB$ Attach | Defined$ Remembered | SubAbility$ DBLivingWeaponCleanup"
+                            .to_string()
+                    });
+                self.svars
+                    .entry("DBLivingWeaponCleanup".to_string())
+                    .or_insert_with(|| "DB$ Cleanup | ClearRemembered$ True".to_string());
+            }
+
             // Renown N — when this creature deals combat damage to a player, if it's not
             // renowned, put N +1/+1 counters on it and it becomes renowned.
             // Mirrors Java CardFactoryUtil lines 1744-1756.
@@ -778,6 +803,29 @@ impl Card {
                 self.svars
                     .entry("MadnessCleanup".to_string())
                     .or_insert_with(|| "DB$ Cleanup | ClearRemembered$ True".to_string());
+            }
+
+            // Partner with X — ETB trigger lets target player tutor the named partner.
+            // Mirrors Java CardFactoryUtil lines 1646-1659.
+            if let Some(partner_name) = kw.strip_prefix("Partner with:") {
+                let mut partner_name = partner_name.trim().to_string();
+                let raw = format!(
+                    "Mode$ ChangesZone | Destination$ Battlefield | ValidCard$ Card.Self | Secondary$ True | TriggerDescription$ Partner with {}",
+                    partner_name
+                );
+                if let Some(mut trig) = parse_trigger(&raw, &mut next_id) {
+                    trig.execute = "TrigPartnerWith".to_string();
+                    self.add_trigger(trig);
+                }
+                partner_name = partner_name.replace(',', ";");
+                self.svars
+                    .entry("TrigPartnerWith".to_string())
+                    .or_insert_with(|| {
+                        format!(
+                            "DB$ ChangeZone | ValidTgts$ Player | Origin$ Library | Destination$ Hand | ChangeType$ Card.named{} | Hidden$ True | Chooser$ Targeted | Optional$ True",
+                            partner_name
+                        )
+                    });
             }
         }
     }

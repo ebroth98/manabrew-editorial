@@ -43,7 +43,6 @@ impl GameLoop {
         let mut last_notified_priority: Option<PlayerId> = None;
         let mut passed_count = 0;
         let num_players = game.players.len();
-
         while passed_count < num_players {
             if game.game_over {
                 return;
@@ -145,7 +144,6 @@ impl GameLoop {
                     }
                 }
             };
-
             match priority_action {
                 MainPhaseAction::Pass => {
                     self.log_priority_pass(game, priority_player);

@@ -48,6 +48,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     } else {
         Some(anim_params.add_keywords.join(","))
     };
+    let remove_keywords_str = sa.params.get_cloned("RemoveKeywords");
     let colors_str = anim_params.colors.map(|c| c.join(","));
     let triggers_str = sa.params.get_cloned(keys::TRIGGERS);
     let overwrite_types = anim_params.overwrite_types;
@@ -57,6 +58,11 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         .params
         .get(keys::DURATION)
         .map(|d| d.eq_ignore_ascii_case("Perpetual"))
+        .unwrap_or(false);
+    let is_permanent_duration = sa
+        .params
+        .get(keys::DURATION)
+        .map(|d| d.eq_ignore_ascii_case("Permanent"))
         .unwrap_or(false);
     let resolve_ts = ctx.game.next_effect_timestamp();
 
@@ -175,22 +181,55 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             }
         }
 
-        // Apply keywords (until EOT — stored in pump_keywords so they get cleared at cleanup)
-        if let Some(ref kws) = keywords_str {
-            for kw in kws.split(',') {
-                let kw = kw.trim().to_string();
-                if !kw.is_empty() {
-                    if let Some(ts) = effect_ts {
-                        perpetual_keywords::PerpetualKeywords {
-                            timestamp: ts,
-                            add_keywords: vec![kw],
-                            remove_keywords: Vec::new(),
-                            remove_all: false,
-                        }
-                        .apply_effect(ctx.game.card_mut(card_id));
-                    } else {
-                        ctx.game.card_mut(card_id).add_pump_keyword(&kw);
-                    }
+        // Apply keyword changes. Permanent-duration animate effects need to mutate
+        // the card's live keyword set (e.g. Animate Dead changing its Enchant text),
+        // not just temporary pump keywords.
+        let add_keywords: Vec<String> = keywords_str
+            .as_deref()
+            .map(|kws| {
+                kws.split(',')
+                    .map(str::trim)
+                    .filter(|kw| !kw.is_empty())
+                    .map(str::to_string)
+                    .collect()
+            })
+            .unwrap_or_default();
+        let remove_keywords: Vec<String> = remove_keywords_str
+            .as_deref()
+            .map(|kws| {
+                kws.split(',')
+                    .map(str::trim)
+                    .filter(|kw| !kw.is_empty())
+                    .map(str::to_string)
+                    .collect()
+            })
+            .unwrap_or_default();
+        if !add_keywords.is_empty() || !remove_keywords.is_empty() {
+            if let Some(ts) = effect_ts {
+                perpetual_keywords::PerpetualKeywords {
+                    timestamp: ts,
+                    add_keywords,
+                    remove_keywords,
+                    remove_all: false,
+                }
+                .apply_effect(ctx.game.card_mut(card_id));
+            } else if is_permanent_duration {
+                let card = ctx.game.card_mut(card_id);
+                for kw in &remove_keywords {
+                    card.remove_changed_card_keywords(kw);
+                    card.remove_hidden_extrinsic_keywords(kw);
+                    card.pump_keywords.remove(kw);
+                }
+                for kw in &add_keywords {
+                    card.add_changed_card_keywords(kw);
+                }
+            } else {
+                let card = ctx.game.card_mut(card_id);
+                for kw in &remove_keywords {
+                    card.pump_keywords.remove(kw);
+                }
+                for kw in &add_keywords {
+                    card.add_pump_keyword(kw);
                 }
             }
         }

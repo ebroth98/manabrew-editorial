@@ -1,6 +1,6 @@
 use forge_foundation::ZoneType;
 
-use super::{emit_zone_trigger, parse_param, resolve_defined_player, EffectContext};
+use super::{emit_zone_trigger, resolve_defined_player, resolve_numeric_svar, EffectContext};
 use crate::event::{RunParams, TriggerType};
 use crate::replacement::replacement_handler::{apply_replacements, ReplacementEvent};
 use crate::replacement::ReplacementResult;
@@ -11,7 +11,7 @@ use crate::spellability::SpellAbility;
 /// `SP$ Mill | NumCards$ N | Defined$ You`
 /// Moves the top N cards of the target player's library to their graveyard.
 pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
-    let num = parse_param(&sa.ability_text, "NumCards$ ").unwrap_or(1) as usize;
+    let num = resolve_numeric_svar(ctx.game, sa, "NumCards", 1).max(0) as usize;
 
     // Determine target player: targeted (ValidTgts$) takes priority, then Defined$.
     let target = sa
@@ -39,31 +39,55 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         num
     };
 
-    let lib_len = ctx.game.cards_in_zone(ZoneType::Library, target).len();
-    let count = num.min(lib_len);
+    if num == 0 {
+        return;
+    }
 
-    let mut milled_cards: Vec<crate::ids::CardId> = Vec::new();
-    for _ in 0..count {
-        let top = ctx.game.zone_mut(ZoneType::Library, target).take_top();
-        if let Some(card_id) = top {
-            ctx.move_card(card_id, ZoneType::Graveyard, target);
-            milled_cards.push(card_id);
-            emit_zone_trigger(
-                ctx.trigger_handler,
-                card_id,
-                ZoneType::Library,
-                ZoneType::Graveyard,
-            );
-            // Fire Milled trigger per card
-            ctx.trigger_handler.run_trigger(
-                TriggerType::Milled,
-                RunParams {
-                    card: Some(card_id),
-                    player: Some(target),
-                    ..Default::default()
-                },
-                false,
-            );
+    let lib = ctx.game.cards_in_zone(ZoneType::Library, target);
+    let mut milled_cards: Vec<crate::ids::CardId> = lib.iter().rev().take(num).copied().collect();
+    if milled_cards.len() > 1 {
+        ctx.agents[target.index()].snapshot_state(ctx.game, ctx.mana_pools);
+        ctx.agents[target.index()].on_library_peek(ctx.game, &milled_cards);
+        let reordered = ctx.agents[target.index()].choose_reorder_library(target, &milled_cards);
+        if reordered.len() == milled_cards.len()
+            && milled_cards.iter().all(|id| reordered.contains(id))
+        {
+            milled_cards = reordered;
+        }
+    }
+
+    for &card_id in &milled_cards {
+        ctx.move_card(card_id, ZoneType::Graveyard, target);
+        emit_zone_trigger(
+            ctx.trigger_handler,
+            card_id,
+            ZoneType::Library,
+            ZoneType::Graveyard,
+        );
+        // Fire Milled trigger per card
+        ctx.trigger_handler.run_trigger(
+            TriggerType::Milled,
+            RunParams {
+                card: Some(card_id),
+                player: Some(target),
+                ..Default::default()
+            },
+            false,
+        );
+    }
+
+    if sa.params.has("RememberMilled") {
+        if let Some(source_id) = sa.source {
+            ctx.game
+                .card_mut(source_id)
+                .add_remembered_cards(milled_cards.iter().copied());
+        }
+    }
+    if sa.params.has("Imprint") {
+        if let Some(source_id) = sa.source {
+            ctx.game
+                .card_mut(source_id)
+                .add_imprinted_cards(milled_cards.iter().copied());
         }
     }
 

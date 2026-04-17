@@ -1091,12 +1091,10 @@ impl GameState {
                                 return true; // Invalid host ID
                             }
                             let host = &self.cards[host_id.index()];
-                            if host.zone != ZoneType::Battlefield {
-                                return true; // Host left the battlefield
-                            }
                             // CR 704.5n: check if the enchant restriction is still met.
-                            // E.g. "Enchant creature" — if the host is no longer a creature,
-                            // the aura falls off.
+                            // E.g. "Enchant creature" requires a battlefield creature, while
+                            // Animate Dead's "Enchant creature card in a graveyard" remains legal
+                            // while attached to a creature card in a graveyard.
                             let enchant_type = c
                                 .keywords
                                 .iter_strings()

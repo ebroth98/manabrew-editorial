@@ -88,10 +88,15 @@ impl TargetRestrictions {
         // Parse TargetType$ parameter if present (used by counterspells)
         let target_type_filter = params.get_cloned(keys::TARGET_TYPE);
 
-        // If TargetType$ Spell is specified, override to Spell targeting
-        // This handles cases like Counterspell: "ValidTgts$ Card | TargetType$ Spell"
+        // If TargetType$ Spell* is specified, override to Spell targeting.
+        // This handles cases like Counterspell ("Spell") and Imp's Mischief
+        // ("Spell.singleTarget").
         if let Some(ref target_type) = target_type_filter {
-            if target_type.eq_ignore_ascii_case("Spell") {
+            if target_type
+                .split('.')
+                .next()
+                .is_some_and(|kind| kind.eq_ignore_ascii_case("Spell"))
+            {
                 target_kind = TargetKind::Spell;
             }
         }
@@ -292,7 +297,12 @@ pub fn filter_spells_for_target_restrictions(
     if let Some(ref filter) = restrictions.target_type_filter {
         filtered = filter_spells_by_type(game, &filtered, filter);
     }
-    if !restrictions.valid_tgts.is_empty() {
+    if !restrictions.valid_tgts.is_empty()
+        && !restrictions
+            .valid_tgts
+            .iter()
+            .all(|clause| clause.eq_ignore_ascii_case("Card"))
+    {
         let valid_filter = restrictions.valid_tgts.join(",");
         filtered = filter_spells_by_type(game, &filtered, &valid_filter);
     }
@@ -328,6 +338,21 @@ pub fn filter_spells_by_type(game: &GameState, candidates: &[u32], filter: &str)
                 return false;
             };
             clauses.iter().any(|clause| {
+                if clause.eq_ignore_ascii_case("Card") {
+                    return true;
+                }
+                let mut parts = clause.split('.');
+                if parts
+                    .next()
+                    .is_some_and(|kind| kind.eq_ignore_ascii_case("Spell"))
+                {
+                    return parts.all(|qualifier| match qualifier {
+                        q if q.eq_ignore_ascii_case("singleTarget") => {
+                            entry.spell_ability.targets_single_target()
+                        }
+                        _ => false,
+                    });
+                }
                 card_property::card_has_property(
                     game.card(source_card),
                     clause,

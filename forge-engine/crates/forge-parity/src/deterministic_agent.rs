@@ -7,7 +7,6 @@ use forge_engine_core::agent::{
     TargetChoice,
 };
 use forge_engine_core::combat::DefenderId;
-use forge_engine_core::cost::CostPart;
 use forge_engine_core::game::GameState;
 use forge_engine_core::ids::{CardId, PlayerId};
 use forge_engine_core::mana::ManaPool;
@@ -17,7 +16,6 @@ use forge_engine_core::spellability::AlternativeCost;
 use forge_engine_core::spellability::SpellAbility;
 use forge_foundation::PhaseType;
 
-use crate::auto_pay;
 use crate::choice_space;
 use crate::combat_choice_space;
 use crate::gui_repro;
@@ -351,8 +349,8 @@ impl DeterministicAgent {
     /// this ensures a deterministic ordering.
     fn play_option_fallback(play: PlayOption) -> &'static str {
         match play.mode {
-            PlayCardMode::Normal => "Normal",
-            PlayCardMode::BackFaceLand => "BackFaceLand",
+            PlayCardMode::Normal => "0",
+            PlayCardMode::BackFaceLand => "1",
             PlayCardMode::Alternative(AlternativeCost::Warp) => "Warp",
             PlayCardMode::StaticAlternative => "StaticAlternative",
             // Other modes already have unique variant strings, so fallback rarely matters.
@@ -393,66 +391,6 @@ impl DeterministicAgent {
                 self.ability_sort_text(card_id, ability_idx),
             ),
         }
-    }
-
-    fn java_action_space_allows_play(&self, play: PlayOption) -> bool {
-        let Some(ref snap) = self.last_game_snapshot else {
-            return true;
-        };
-        if !matches!(play.mode, PlayCardMode::Normal) {
-            return true;
-        }
-
-        let card = snap.game.card(play.card_id);
-        if !card.mana_cost.has_phyrexian() {
-            return true;
-        }
-
-        auto_pay::can_pay_action_space_phyrexian_cost(
-            &snap.game,
-            &snap.mana_pools[self.player_id.index()],
-            self.player_id,
-            play.card_id,
-            &card.mana_cost,
-        )
-    }
-
-    fn java_action_space_allows_ability(&self, card_id: CardId, ability_idx: usize) -> bool {
-        let Some(ref snap) = self.last_game_snapshot else {
-            return true;
-        };
-        let card = snap.game.card(card_id);
-        let Some(ability) = card
-            .activated_abilities
-            .iter()
-            .find(|ab| ab.ability_index == ability_idx)
-        else {
-            return true;
-        };
-        if !ability.cost.has_mana_cost() {
-            return true;
-        }
-
-        let reserved_sacrifices: Vec<CardId> = ability
-            .cost
-            .parts
-            .iter()
-            .filter_map(|part| match part {
-                CostPart::Sacrifice { type_filter, .. } if type_filter == "CARDNAME" => {
-                    Some(card_id)
-                }
-                _ => None,
-            })
-            .collect();
-
-        forge_engine_core::mana::can_pay_mana_cost_with_reserved_sacrifices(
-            &snap.game,
-            &snap.mana_pools[self.player_id.index()],
-            self.player_id,
-            card_id,
-            &ability.cost,
-            &reserved_sacrifices,
-        )
     }
 
     fn legal_attackers_for_blocker(&self, blocker: CardId, attackers: &[CardId]) -> Vec<CardId> {
@@ -602,26 +540,63 @@ impl PlayerAgent for DeterministicAgent {
         _untappable_lands: &[CardId],
         activatable: &[(CardId, usize)],
     ) -> PlayerAction {
+        if self.is_verbose() {
+            let raw_playable: Vec<String> = playable
+                .iter()
+                .map(|play| {
+                    format!(
+                        "{} [{}]",
+                        self.action_sort_key(&ActionChoice::Card(*play)),
+                        match play.mode {
+                            PlayCardMode::Normal => "Normal",
+                            PlayCardMode::BackFaceLand => "BackFaceLand",
+                            PlayCardMode::UnlockDoor => "UnlockDoor",
+                            PlayCardMode::StaticAlternative => "StaticAlternative",
+                            PlayCardMode::ForetellExile => "ForetellExile",
+                            PlayCardMode::Alternative(_) => "Alternative",
+                        }
+                    )
+                })
+                .collect();
+            let raw_activatable: Vec<String> = activatable
+                .iter()
+                .map(|(card_id, ability_idx)| {
+                    format!(
+                        "AB:{}@{}:{} mana={}",
+                        self.card_name(*card_id),
+                        self.parity_map.id(*card_id),
+                        ability_idx,
+                        self.is_mana_ability(*card_id, *ability_idx)
+                    )
+                })
+                .collect();
+            eprintln!(
+                "[parity-agent p{}] raw playable({}): {}",
+                self.player_id.0,
+                playable.len(),
+                raw_playable.join(" | ")
+            );
+            eprintln!(
+                "[parity-agent p{}] raw activatable({}): {}",
+                self.player_id.0,
+                activatable.len(),
+                raw_activatable.join(" | ")
+            );
+        }
         if playable.is_empty() && activatable.is_empty() {
             return PlayerAction::PassPriority;
         }
 
-        // Match Java harness ActionSpace: omit explicit mana abilities and
-        // filter non-mana activated abilities through Java-style mana
-        // feasibility. This still permits legal instant-speed activations
-        // while a spell is on the stack, such as Nivmagus Elemental.
+        // Match Java harness ActionSpace: omit explicit mana abilities.
+        // Activated-ability payability comes directly from engine action-space.
         let filtered_activatable: Vec<(CardId, usize)> = activatable
             .iter()
             .copied()
             .filter(|(card_id, ability_idx)| !self.is_mana_ability(*card_id, *ability_idx))
-            .filter(|(card_id, ability_idx)| {
-                self.java_action_space_allows_ability(*card_id, *ability_idx)
-            })
             .collect();
         let choices: Vec<ActionChoice> = playable
             .iter()
             .copied()
-            .filter(|play| self.java_action_space_allows_play(*play))
             .map(ActionChoice::Card)
             .chain(
                 filtered_activatable
@@ -633,6 +608,38 @@ impl PlayerAgent for DeterministicAgent {
         let choices = choice_space::sort_native(&choices, |a, b| {
             self.action_sort_key(a).cmp(&self.action_sort_key(b))
         });
+        if self.is_verbose() {
+            let rendered: Vec<String> = choices
+                .iter()
+                .enumerate()
+                .map(|(idx, choice)| match *choice {
+                    ActionChoice::Card(play) => format!(
+                        "#{idx}: {} [{}]",
+                        self.action_sort_key(choice),
+                        match play.mode {
+                            PlayCardMode::Normal => "Normal",
+                            PlayCardMode::BackFaceLand => "BackFaceLand",
+                            PlayCardMode::UnlockDoor => "UnlockDoor",
+                            PlayCardMode::StaticAlternative => "StaticAlternative",
+                            PlayCardMode::ForetellExile => "ForetellExile",
+                            PlayCardMode::Alternative(_) => "Alternative",
+                        }
+                    ),
+                    ActionChoice::Ability(card_id, ability_idx) => format!(
+                        "#{idx}: AB:{}@{}:{}",
+                        self.card_name(card_id),
+                        self.parity_map.id(card_id),
+                        ability_idx
+                    ),
+                })
+                .collect();
+            eprintln!(
+                "[parity-agent p{}] actions({}): {}",
+                self.player_id.0,
+                choices.len(),
+                rendered.join(" | ")
+            );
+        }
         if choices.is_empty() {
             return PlayerAction::PassPriority;
         }

@@ -8,6 +8,7 @@ use crate::cost::CostPart;
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
 use crate::parsing::keys;
+use crate::spellability::SpellAbility;
 
 pub mod auto_pay;
 pub mod computer_util_mana;
@@ -52,7 +53,7 @@ pub use computer_util_mana::{
     auto_tap_lands_allow_reserved_source_reuse_with_chooser, auto_tap_lands_generic,
     auto_tap_lands_trace, auto_tap_lands_trace_with_callbacks, auto_tap_lands_with_callbacks,
     auto_tap_lands_with_chooser, can_pay_mana_cost_with_reserved_sacrifices,
-    collect_mana_payment_sources, next_auto_tap_choice,
+    can_pay_spell_mana_cost_for_action_space, collect_mana_payment_sources, next_auto_tap_choice,
     next_auto_tap_choice_with_reserved_sacrifices, AutoTapChoice, ManaPayCallback,
     ManaPayCallbackFn, ManaPaymentSources, SacrificeChooser,
 };
@@ -153,6 +154,26 @@ pub struct ManaPaymentContext {
     pub card_name: Option<String>,
     /// Chosen creature/card types keyed by mana source card ID (e.g. Cavern of Souls).
     pub chosen_types_by_source: std::collections::HashMap<CardId, String>,
+}
+
+pub fn payment_context_for_sa(game: &GameState, sa: &SpellAbility) -> ManaPaymentContext {
+    let (type_line, card_name) = if let Some(source) = sa.source {
+        let card = game.card(source);
+        (Some(card.type_line.clone()), Some(card.card_name.clone()))
+    } else {
+        (None, None)
+    };
+
+    ManaPaymentContext {
+        is_spell: sa.is_spell,
+        type_line,
+        card_name,
+        chosen_types_by_source: game
+            .cards
+            .iter()
+            .filter_map(|c| c.chosen_type.clone().map(|chosen| (c.id, chosen)))
+            .collect(),
+    }
 }
 
 /// Check if a mana with the given restriction can be spent in the given context.

@@ -12,6 +12,7 @@ pub struct AutoPayResult {
     pub tapped: Vec<CardId>,
     pub choices: Vec<AutoTapChoice>,
     pub life_paid: i32,
+    pub colors_spent: u16,
 }
 
 /// Deterministic auto-pay entrypoint used by parity AI paths.
@@ -95,7 +96,7 @@ pub fn pay_mana_cost_auto_with_chooser(
         })
         .collect();
 
-    let Some(life_paid) = pool.try_pay_for_spell_converted_with_phyrexian_life(
+    let Some(payment) = pool.try_pay_for_spell_converted_with_phyrexian_life_result(
         mana_cost,
         payment_ctx,
         any_color_conversion,
@@ -109,7 +110,8 @@ pub fn pay_mana_cost_auto_with_chooser(
     Some(AutoPayResult {
         tapped,
         choices,
-        life_paid,
+        life_paid: payment.life_paid,
+        colors_spent: payment.colors_spent,
     })
 }
 
@@ -141,7 +143,7 @@ pub fn pay_mana_cost_auto_with_callback(
     }
     let tapped = choices.iter().map(|choice| choice.card_id).collect();
 
-    let Some(life_paid) = pool.try_pay_for_spell_converted_with_phyrexian_life(
+    let Some(payment) = pool.try_pay_for_spell_converted_with_phyrexian_life_result(
         mana_cost,
         payment_ctx,
         any_color_conversion,
@@ -155,6 +157,7 @@ pub fn pay_mana_cost_auto_with_callback(
     Some(AutoPayResult {
         tapped,
         choices,
-        life_paid,
+        life_paid: payment.life_paid,
+        colors_spent: payment.colors_spent,
     })
 }

@@ -150,11 +150,7 @@ impl GameLoop {
             } else {
                 available_mana.clone()
             };
-            let can_pay_cost = if reserved_sacrifices.is_empty()
-                || (needs_mana
-                    && reserved_sacrifices.len() == 1
-                    && reserved_sacrifices[0] == card_id)
-            {
+            let can_pay_cost = if reserved_sacrifices.is_empty() {
                 crate::cost::can_pay_with_ability(
                     &ab.cost,
                     game,
@@ -177,6 +173,10 @@ impl GameLoop {
                     card_id,
                     &ab.cost,
                     &reserved_sacrifices,
+                    Some(&crate::mana::payment_context_for_sa(
+                        game,
+                        &sa_for_target_check,
+                    )),
                 )
             };
             if !can_pay_cost {

@@ -280,7 +280,16 @@ impl GameLoop {
                 // when an Aura spell resolves and enters the battlefield.
                 if game.card(card_id).type_line.has_subtype("Aura") {
                     if let Some(target_id) = entry.spell_ability.target_chosen.target_card {
-                        if game.card(target_id).zone == ZoneType::Battlefield {
+                        let enchant_type = game
+                            .card(card_id)
+                            .keywords
+                            .iter_strings()
+                            .find_map(|kw| crate::keyword::extract_keyword_cost_str(&kw, "Enchant"))
+                            .unwrap_or_default();
+                        if crate::parsing::enchant_type_matches_card(
+                            &enchant_type,
+                            game.card(target_id),
+                        ) {
                             game.attach_to(card_id, target_id);
                         }
                     } else if let Some(target_player_id) =

@@ -1104,7 +1104,6 @@ impl TriggerHandler {
         if !valid_filter::check_is_present(game, &trigger.params, card) {
             return false;
         }
-
         true
     }
 

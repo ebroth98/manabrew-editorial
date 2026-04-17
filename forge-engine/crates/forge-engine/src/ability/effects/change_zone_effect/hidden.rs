@@ -5,7 +5,7 @@
 
 use forge_foundation::ZoneType;
 
-use super::super::{resolve_defined_player_with_sa, EffectContext};
+use super::super::EffectContext;
 use super::helpers::{
     can_search_library, find_opposition_agent, find_search_limit, matches_with_context,
     resolve_destination,
@@ -15,6 +15,7 @@ use super::search::{
     resolve_defined_player_choice, resolve_each_search, resolve_multi_search,
     resolve_random_selection, resolve_single_search,
 };
+use crate::agent::GameEntity;
 use crate::ids::PlayerId;
 use crate::parsing::keys;
 use crate::spellability::SpellAbility;
@@ -176,14 +177,47 @@ pub(super) fn resolve_hidden_origin(
         return;
     }
 
-    let search_player = if defined.eq_ignore_ascii_case("Opponent") {
+    let search_player = if sa.defined_player().is_none() {
+        sa.target_chosen.target_player.unwrap_or_else(|| {
+            if defined.eq_ignore_ascii_case("Opponent") {
+                ctx.game.opponent_of(controller)
+            } else {
+                controller
+            }
+        })
+    } else if defined.eq_ignore_ascii_case("Opponent") {
         ctx.game.opponent_of(controller)
     } else {
         controller
     };
 
     let chooser = if let Some(chooser_def) = sa.chooser() {
-        resolve_defined_player_with_sa(chooser_def, sa, controller, ctx.game).unwrap_or(controller)
+        let chooser_players = crate::ability::ability_utils::resolve_defined_players_with_sa(
+            chooser_def,
+            sa,
+            controller,
+            ctx.game,
+        );
+        if chooser_players.is_empty() {
+            controller
+        } else {
+            let chooser_entities: Vec<_> = chooser_players
+                .iter()
+                .copied()
+                .map(GameEntity::Player)
+                .collect();
+            ctx.agents[controller.index()].snapshot_state(ctx.game, ctx.mana_pools);
+            let chosen = ctx.agents[controller.index()].choose_entities_for_effect(
+                controller,
+                &chooser_entities,
+                1,
+                1,
+            );
+            match chosen.first().copied() {
+                Some(GameEntity::Player(pid)) => pid,
+                _ => chooser_players[0],
+            }
+        }
     } else {
         controller
     };
@@ -201,6 +235,37 @@ pub(super) fn resolve_hidden_origin(
     } else {
         chooser
     };
+
+    if is_optional {
+        let source_name = sa.source.map(|cid| ctx.game.card(cid).card_name.as_str());
+        let origin_label = origin_zone.to_string().to_lowercase();
+        let message = if is_defined {
+            format!(
+                "Put that card from {}'s {} to {}?",
+                ctx.game.player(search_player).name,
+                origin_label,
+                dest_zone.to_string().to_lowercase()
+            )
+        } else {
+            format!(
+                "Search {}'s {}?",
+                ctx.game.player(search_player).name,
+                origin_label
+            )
+        };
+        ctx.agents[effective_chooser.index()].snapshot_state(ctx.game, ctx.mana_pools);
+        let accepted = ctx.agents[effective_chooser.index()].confirm_action(
+            effective_chooser,
+            Some("ChangeZoneGeneral"),
+            &message,
+            &[],
+            source_name,
+            Some(crate::ability::api_type::ApiType::ChangeZone),
+        );
+        if !accepted {
+            return;
+        }
+    }
 
     let mut zone_cards = ctx.game.cards_in_zone(origin_zone, search_player).to_vec();
 

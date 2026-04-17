@@ -10,6 +10,7 @@ pub mod keys;
 
 use std::collections::BTreeMap;
 
+use forge_foundation::ZoneType;
 use serde::{Deserialize, Serialize};
 
 // ── Params wrapper ──────────────────────────────────────────────────────────
@@ -219,8 +220,16 @@ pub fn strip_times_multiplier(s: &str) -> (&str, i32) {
 /// Used by aura targeting (ability_factory) and aura SBA legality (action.rs).
 ///
 /// Example: `"creature"` → `"Creature"`, `"land"` → `"Land"`
+fn normalize_enchant_type(enchant_type: &str) -> &str {
+    enchant_type
+        .split_once(':')
+        .map(|(kind, _)| kind)
+        .unwrap_or(enchant_type)
+        .trim()
+}
+
 pub fn enchant_type_to_valid_tgts(enchant_type: &str) -> &'static str {
-    match enchant_type.to_lowercase().as_str() {
+    match normalize_enchant_type(enchant_type).to_lowercase().as_str() {
         "creature" => "Creature",
         "land" => "Land",
         "artifact" => "Artifact",
@@ -236,11 +245,12 @@ pub fn enchant_type_to_valid_tgts(enchant_type: &str) -> &'static str {
 /// Build a minimal targeting params string from an Enchant keyword payload.
 /// Handles special cases like `Creature.inZoneGraveyard` used by Animate Dead.
 pub fn enchant_type_to_target_params(enchant_type: &str) -> String {
-    let lower = enchant_type.to_lowercase();
+    let normalized = normalize_enchant_type(enchant_type);
+    let lower = normalized.to_lowercase();
     if lower == "creature.inzonegraveyard" {
         return "Origin$ Graveyard | ValidTgts$ Creature".to_string();
     }
-    format!("ValidTgts$ {}", enchant_type_to_valid_tgts(enchant_type))
+    format!("ValidTgts$ {}", enchant_type_to_valid_tgts(normalized))
 }
 
 /// Check if a card type matches an "Enchant <type>" keyword value.
@@ -248,13 +258,14 @@ pub fn enchant_type_to_target_params(enchant_type: &str) -> String {
 ///
 /// Example: `enchant_type_matches_card("creature", card)` → true if card is a creature
 pub fn enchant_type_matches_card(enchant_type: &str, card: &crate::card::CardInstance) -> bool {
-    match enchant_type.to_lowercase().as_str() {
-        "creature" => card.is_creature(),
-        "land" => card.is_land(),
-        "artifact" => card.type_line.is_artifact(),
-        "enchantment" => card.type_line.is_enchantment(),
-        "planeswalker" => card.type_line.is_planeswalker(),
-        "permanent" | "" => true,
+    match normalize_enchant_type(enchant_type).to_lowercase().as_str() {
+        "creature" => card.zone == ZoneType::Battlefield && card.is_creature(),
+        "creature.inzonegraveyard" => card.zone == ZoneType::Graveyard && card.is_creature(),
+        "land" => card.zone == ZoneType::Battlefield && card.is_land(),
+        "artifact" => card.zone == ZoneType::Battlefield && card.type_line.is_artifact(),
+        "enchantment" => card.zone == ZoneType::Battlefield && card.type_line.is_enchantment(),
+        "planeswalker" => card.zone == ZoneType::Battlefield && card.type_line.is_planeswalker(),
+        "permanent" | "" => card.zone == ZoneType::Battlefield,
         _ => true,
     }
 }

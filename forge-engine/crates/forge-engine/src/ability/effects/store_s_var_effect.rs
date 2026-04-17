@@ -12,29 +12,60 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
 
     let svar_name = sa
         .params
-        .get(keys::SVAR_NAME)
+        .get("SVar")
+        .or_else(|| sa.params.get(keys::SVAR_NAME))
         .map(|s| s.to_string())
         .unwrap_or_default();
-    let svar_value = sa
+    let svar_type = sa
         .params
-        .get(keys::SVAR_VALUE)
+        .get("Type")
+        .map(|s| s.to_string())
+        .unwrap_or_default();
+    let expression = sa
+        .params
+        .get("Expression")
+        .or_else(|| sa.params.get(keys::SVAR_VALUE))
         .map(|s| s.to_string())
         .unwrap_or_default();
 
-    if svar_name.is_empty() {
+    if svar_name.is_empty() || svar_type.is_empty() || expression.is_empty() {
         return;
     }
 
-    // Calculate the value if it's a numeric expression
-    let resolved_value = if let Ok(n) = svar_value.parse::<i32>() {
-        format!("Number${}", n)
-    } else {
-        let calculated = super::resolve_numeric_svar(ctx.game, sa, "SVarValue", 0);
-        format!("Number${}", calculated)
+    let resolved_number = match svar_type.as_str() {
+        "Number" => expression
+            .parse::<i32>()
+            .unwrap_or_else(|_| crate::svar::evaluate_svar(&expression, sa)),
+        "Count" => crate::svar::resolve_count_svar_for_sa(
+            &expression,
+            ctx.game,
+            source_id,
+            sa.activating_player,
+            sa,
+        ),
+        "Calculate" => {
+            if let Some(svar_expr) = ctx.game.card(source_id).svars.get(&expression) {
+                crate::svar::resolve_count_svar_for_sa(
+                    svar_expr,
+                    ctx.game,
+                    source_id,
+                    sa.activating_player,
+                    sa,
+                )
+            } else {
+                expression
+                    .parse::<i32>()
+                    .unwrap_or_else(|_| crate::svar::evaluate_svar(&expression, sa))
+            }
+        }
+        _ => expression
+            .parse::<i32>()
+            .unwrap_or_else(|_| crate::svar::evaluate_svar(&expression, sa)),
     };
+    let resolved_value = format!("Number${}", resolved_number);
 
     ctx.game
         .card_mut(source_id)
         .svars
-        .insert(svar_name, resolved_value);
+        .insert(svar_name.clone(), resolved_value);
 }

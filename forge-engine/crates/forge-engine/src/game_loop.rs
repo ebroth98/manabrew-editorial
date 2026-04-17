@@ -646,7 +646,7 @@ mod cast_spell;
 mod combat_phase;
 mod cost_payment;
 mod game_action;
-mod mana_payment;
+pub(crate) mod mana_payment;
 mod phase_handler;
 mod playability;
 mod priority;

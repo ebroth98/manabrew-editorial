@@ -122,5 +122,9 @@
   {
     "name": "ashling",
     "args": "--variant Commander --commander 'Ashling, the Limitless' --commander 'Ashling, the Limitless' --deck1 ashling_limitless_commander --deck2 ashling_limitless_commander --seed 42 --max-turns 22 --games 1"
+  },
+  {
+    "name": "ramsesCommander",
+    "args": "--variant Commander --commander 'Ramses, Assassin Lord' --commander 'Ramses, Assassin Lord' --deck1 ramses_commander --deck2 ramses_commander --seed 42 --max-turns 40 --games 1"
   }
 ]

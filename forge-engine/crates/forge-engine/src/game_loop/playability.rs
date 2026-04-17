@@ -51,6 +51,16 @@ impl GameLoop {
                         card_id,
                         mode: crate::agent::PlayCardMode::Normal,
                     });
+                    if card
+                        .other_part
+                        .as_ref()
+                        .is_some_and(|other| other.type_line.is_land())
+                    {
+                        playable.push(crate::agent::PlayOption {
+                            card_id,
+                            mode: crate::agent::PlayCardMode::BackFaceLand,
+                        });
+                    }
                 }
             } else if card
                 .other_part
@@ -184,9 +194,13 @@ impl GameLoop {
                             _ => true,
                         };
                         if phyrexian_life_allowed {
-                            available_mana.can_pay_with_phyrexian_life(
+                            crate::mana::can_pay_spell_mana_cost_for_action_space(
+                                game,
+                                self.pool(player),
+                                player,
+                                card_id,
                                 &payable_base,
-                                game.player(player).life,
+                                &payment_ctx,
                             )
                         } else {
                             let colored = payable_base.phyrexian_to_colored();

@@ -13,6 +13,7 @@ use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
 use crate::parsing::keys;
 use crate::staticability::static_ability::StaticMode;
+use crate::staticability::static_ability_cant_attack_block;
 
 // ── Attacker queries ────────────────────────────────────────────────────
 
@@ -127,7 +128,7 @@ pub fn get_possible_defenders(game: &GameState, attacking_player: PlayerId) -> V
 pub fn get_available_blockers(game: &GameState, player: PlayerId) -> Vec<CardId> {
     game.creatures_on_battlefield(player)
         .into_iter()
-        .filter(|&cid| game.card(cid).can_block())
+        .filter(|&cid| can_block(game, cid))
         .collect()
 }
 
@@ -487,7 +488,29 @@ pub fn pay_required_block_costs(game: &GameState, blocker_id: CardId, attacker_i
 /// Check if a creature can block (basic check: untapped creature).
 /// Mirrors Java `CombatUtil.canBlock(Card)`.
 pub fn can_block(game: &GameState, blocker_id: CardId) -> bool {
-    game.card(blocker_id).can_block()
+    let blocker = game.card(blocker_id);
+
+    if !blocker.is_creature() || blocker.phased_out {
+        return false;
+    }
+
+    if blocker.tapped
+        && !static_ability_cant_attack_block::can_block_tapped(game, &game.cards, blocker)
+    {
+        return false;
+    }
+
+    if blocker.has_keyword("CARDNAME can't block.")
+        || blocker.has_keyword("CARDNAME can't attack or block.")
+    {
+        return false;
+    }
+
+    if static_ability_cant_attack_block::cant_block(game, &game.cards, blocker) {
+        return false;
+    }
+
+    blocker.zone == ZoneType::Battlefield
 }
 
 /// Check if an attacker can be blocked by the given set of potential blockers.

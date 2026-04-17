@@ -1093,6 +1093,53 @@ pub fn resolve_effect(ctx: &mut EffectContext, sa: &SpellAbility) {
     }
 }
 
+/// Resolve a SpellAbility and its linked sub-ability chain, inheriting parent
+/// card/player targets onto child nodes when those nodes don't choose their own.
+/// Mirrors the target-context propagation used by stack resolution.
+pub fn resolve_effect_chain_with_parent(
+    ctx: &mut EffectContext,
+    initial: SpellAbility,
+    initial_parent_target_card: Option<CardId>,
+    initial_parent_target_player: Option<PlayerId>,
+) {
+    let mut current = Some(initial);
+    let mut parent_target_card = initial_parent_target_card;
+    let mut parent_target_player = initial_parent_target_player;
+    let mut is_first = true;
+
+    while let Some(sa) = current {
+        let mut sa_with_ctx;
+        let needs_ctx_clone = !is_first
+            && ((parent_target_card.is_some() && sa.target_chosen.target_card.is_none())
+                || (parent_target_player.is_some() && sa.target_chosen.target_player.is_none()));
+        let sa_ref = if needs_ctx_clone {
+            sa_with_ctx = sa.clone();
+            if sa_with_ctx.target_chosen.target_card.is_none() {
+                sa_with_ctx.target_chosen.target_card = parent_target_card;
+            }
+            if sa_with_ctx.target_chosen.target_player.is_none() {
+                sa_with_ctx.target_chosen.target_player = parent_target_player;
+            }
+            &sa_with_ctx
+        } else {
+            &sa
+        };
+
+        resolve_effect(ctx, sa_ref);
+        parent_target_card = sa_ref.target_chosen.target_card.or(parent_target_card);
+        parent_target_player = sa_ref.target_chosen.target_player.or(parent_target_player);
+        current = sa.sub_ability.map(|b| *b);
+        is_first = false;
+        if ctx.game.game_over {
+            break;
+        }
+    }
+}
+
+pub fn resolve_effect_chain(ctx: &mut EffectContext, initial: SpellAbility) {
+    resolve_effect_chain_with_parent(ctx, initial, None, None);
+}
+
 fn resolve_mana_ability_for_effect_payment(
     ctx: &mut EffectContext,
     player: PlayerId,
@@ -1189,183 +1236,6 @@ fn resolve_mana_ability_for_effect_payment(
     }
 }
 
-fn try_auto_pay_mana_cost_for_effect(
-    ctx: &mut EffectContext,
-    payer: PlayerId,
-    source: CardId,
-    mana_cost: &forge_foundation::ManaCost,
-) -> bool {
-    let saved_game = ctx.game.clone();
-    let saved_pool = ctx.mana_pools[payer.index()].clone();
-    let payment_ctx = crate::mana::ManaPaymentContext::default();
-    let auto_result = {
-        let game_ptr: *mut GameState = ctx.game;
-        let trigger_handler_ptr: *mut TriggerHandler = ctx.trigger_handler;
-        let agents = &mut ctx.agents;
-        let mut callback = |kind: crate::mana::ManaPayCallback<'_>| -> Option<CardId> {
-            match kind {
-                crate::mana::ManaPayCallback::ChooseSacrifice(valid) => {
-                    agents[payer.index()].choose_sacrifice(payer, valid, None)
-                }
-                crate::mana::ManaPayCallback::ChooseColor(valid_colors) => {
-                    if !agents[payer.index()].is_human() {
-                        let _ = agents[payer.index()].choose_color(payer, valid_colors);
-                    }
-                    None
-                }
-                crate::mana::ManaPayCallback::ConfirmSelfSacrifice(source_id) => {
-                    if agents[payer.index()].confirm_payment(
-                        payer,
-                        "Sacrifice",
-                        "Sacrifice for mana",
-                        None,
-                        Some(crate::ability::api_type::ApiType::Mana),
-                    ) {
-                        Some(source_id)
-                    } else {
-                        None
-                    }
-                }
-                crate::mana::ManaPayCallback::ConfirmSubCounter(source_id) => {
-                    if agents[payer.index()].confirm_payment(
-                        payer,
-                        "SubCounter",
-                        "Remove counter for mana",
-                        None,
-                        Some(crate::ability::api_type::ApiType::Mana),
-                    ) {
-                        Some(source_id)
-                    } else {
-                        None
-                    }
-                }
-                crate::mana::ManaPayCallback::ConfirmSourceExile(source_id) => {
-                    if agents[payer.index()].confirm_payment(
-                        payer,
-                        "Exile",
-                        "Exile for mana",
-                        None,
-                        Some(crate::ability::api_type::ApiType::Mana),
-                    ) {
-                        Some(source_id)
-                    } else {
-                        None
-                    }
-                }
-                crate::mana::ManaPayCallback::NotifySacrificeForMana(sacrificed_id) => unsafe {
-                    let game = &mut *game_ptr;
-                    let trigger_handler = &mut *trigger_handler_ptr;
-                    let owner = game.card(sacrificed_id).owner;
-                    let lki_p1p1 = *game
-                        .card(sacrificed_id)
-                        .counters
-                        .get(&crate::card::CounterType::P1P1)
-                        .unwrap_or(&0);
-                    let lki_power = game.card(sacrificed_id).power();
-                    let lki_toughness = game.card(sacrificed_id).toughness();
-                    trigger_handler.run_trigger(
-                        TriggerType::Sacrificed,
-                        RunParams {
-                            card: Some(sacrificed_id),
-                            player: Some(payer),
-                            ..Default::default()
-                        },
-                        false,
-                    );
-                    emit_zone_trigger_with_lki_counters(
-                        trigger_handler,
-                        sacrificed_id,
-                        ZoneType::Battlefield,
-                        ZoneType::Graveyard,
-                        lki_p1p1,
-                        lki_power,
-                        lki_toughness,
-                    );
-                    trigger_handler.flush_waiting_triggers(game);
-                    game.move_card(sacrificed_id, ZoneType::Graveyard, owner);
-                    Some(sacrificed_id)
-                },
-            }
-        };
-        crate::mana::pay_mana_cost_auto_with_callback(
-            ctx.game,
-            &mut ctx.mana_pools[payer.index()],
-            payer,
-            mana_cost,
-            Some(source),
-            0,
-            &payment_ctx,
-            false,
-            &mut callback,
-        )
-    };
-
-    let Some(result) = auto_result else {
-        *ctx.game = saved_game;
-        ctx.mana_pools[payer.index()] = saved_pool;
-        let notification = crate::agent::notification::GameNotification::ManaPaymentResolved {
-            player: payer,
-            actions: vec![crate::agent::ManaCostAction::Cancel],
-        };
-        for agent in ctx.agents.iter_mut() {
-            agent.notify(notification.clone());
-        }
-        return false;
-    };
-
-    let mut actions: Vec<crate::agent::ManaCostAction> = result
-        .choices
-        .iter()
-        .map(|choice| crate::agent::ManaCostAction::TapLand {
-            card_id: choice.card_id,
-            mana_ability_index: Some(choice.mana_ability_index.unwrap_or(0)),
-            express_choice: choice.mana_ability_index.map(|_| choice.chosen_atom),
-        })
-        .collect();
-    for &tapped_id in &result.tapped {
-        ctx.trigger_handler.run_trigger(
-            TriggerType::Taps,
-            RunParams {
-                card: Some(tapped_id),
-                player: Some(payer),
-                ..Default::default()
-            },
-            false,
-        );
-        ctx.trigger_handler.run_trigger(
-            TriggerType::TapsForMana,
-            RunParams {
-                card: Some(tapped_id),
-                player: Some(payer),
-                activator: Some(payer),
-                ..Default::default()
-            },
-            false,
-        );
-    }
-    if result.life_paid > 0 {
-        ctx.game.player_lose_life(payer, result.life_paid);
-        ctx.trigger_handler.run_trigger(
-            TriggerType::LifeLost,
-            RunParams {
-                player: Some(payer),
-                life_amount: Some(result.life_paid),
-                ..Default::default()
-            },
-            false,
-        );
-    }
-    actions.push(crate::agent::ManaCostAction::Pay { auto: false });
-    let notification = crate::agent::notification::GameNotification::ManaPaymentResolved {
-        player: payer,
-        actions,
-    };
-    for agent in ctx.agents.iter_mut() {
-        agent.notify(notification.clone());
-    }
-    true
-}
-
 fn can_auto_pay_mana_cost_for_effect(
     ctx: &EffectContext,
     payer: PlayerId,
@@ -1385,6 +1255,453 @@ fn can_auto_pay_mana_cost_for_effect(
         false,
     )
     .is_some()
+}
+
+fn pay_mana_cost_for_effect(
+    ctx: &mut EffectContext,
+    payer: PlayerId,
+    source: CardId,
+    mana_cost: &forge_foundation::ManaCost,
+    allow_auto: bool,
+) -> bool {
+    let ctx_ptr: *mut EffectContext<'_> = ctx;
+    let card_name = ctx.game.card(source).card_name.clone();
+    let cost_str = mana_cost.to_string();
+    let payable_mana_cost =
+        crate::mana::apply_player_life_payment_keywords(ctx.game, payer, mana_cost);
+    if allow_auto
+        && !ctx.agents[payer.index()].is_human()
+        && !can_auto_pay_mana_cost_for_effect(ctx, payer, source, &payable_mana_cost)
+    {
+        return false;
+    }
+
+    crate::game_loop::mana_payment::pay_mana_cost_session_generic(
+        ctx.game,
+        ctx.agents,
+        ctx.mana_pools,
+        crate::game_loop::mana_payment::ManaPaymentSession {
+            player: payer,
+            card_id: source,
+            card_name: &card_name,
+            mana_cost: &payable_mana_cost,
+            cost_str: &cost_str,
+            cost_display_str: &cost_str,
+            cost_checkpoint_str: &cost_str,
+            is_activated_ability: false,
+            reserved_sacrifices: &[],
+        },
+        |game, player, cid, ab, _reserved| {
+            crate::game_loop::GameLoop::mana_source_available_for_payment(game, player, cid)
+                && crate::cost::can_pay_ignoring_mana(&ab.cost, game, cid, player)
+        },
+        |game, agents, mana_pools, session| unsafe {
+            let ctx = &mut *ctx_ptr;
+            let saved_game = game.clone();
+            let saved_pool = mana_pools[session.player.index()].clone();
+            let payment_ctx = crate::mana::ManaPaymentContext::default();
+            let auto_result = {
+                let game_ptr: *mut GameState = game;
+                let trigger_handler_ptr: *mut TriggerHandler = ctx.trigger_handler;
+                let mut callback = crate::game_loop::GameLoop::make_mana_payment_callback(
+                    trigger_handler_ptr,
+                    game_ptr,
+                    agents,
+                    session.player,
+                );
+                crate::mana::pay_mana_cost_auto_with_callback(
+                    game,
+                    &mut mana_pools[session.player.index()],
+                    session.player,
+                    session.mana_cost,
+                    Some(session.card_id),
+                    0,
+                    &payment_ctx,
+                    false,
+                    &mut callback,
+                )
+            };
+
+            let Some(result) = auto_result else {
+                *game = saved_game;
+                mana_pools[session.player.index()] = saved_pool;
+                return None;
+            };
+
+            if result.life_paid > 0 {
+                game.player_lose_life(session.player, result.life_paid);
+                ctx.trigger_handler.run_trigger(
+                    TriggerType::LifeLost,
+                    RunParams {
+                        player: Some(session.player),
+                        life_amount: Some(result.life_paid),
+                        ..Default::default()
+                    },
+                    false,
+                );
+            }
+
+            Some(
+                result
+                    .choices
+                    .iter()
+                    .map(|choice| crate::agent::ManaCostAction::TapLand {
+                        card_id: choice.card_id,
+                        mana_ability_index: Some(choice.mana_ability_index.unwrap_or(0)),
+                        express_choice: choice.mana_ability_index.map(|_| choice.chosen_atom),
+                    })
+                    .chain(std::iter::once(crate::agent::ManaCostAction::Pay {
+                        auto: false,
+                    }))
+                    .collect(),
+            )
+        },
+        |game, mana_pools, player| unsafe {
+            let ctx = &mut *ctx_ptr;
+            let mut test_pool = mana_pools[player.index()].clone();
+            if let Some(test_life_to_pay) = test_pool.try_pay_cost_with_phyrexian_life(
+                &payable_mana_cost,
+                false,
+                game.player(player).life,
+            ) {
+                let life_to_pay = mana_pools[player.index()]
+                    .try_pay_cost_with_phyrexian_life(
+                        &payable_mana_cost,
+                        false,
+                        game.player(player).life,
+                    )
+                    .expect("tested phyrexian payment should still be legal");
+                if life_to_pay != test_life_to_pay {
+                    return false;
+                }
+                if life_to_pay > 0 {
+                    game.player_lose_life(player, life_to_pay);
+                    ctx.trigger_handler.run_trigger(
+                        TriggerType::LifeLost,
+                        RunParams {
+                            player: Some(player),
+                            life_amount: Some(life_to_pay),
+                            ..Default::default()
+                        },
+                        false,
+                    );
+                }
+                true
+            } else {
+                false
+            }
+        },
+        |_game, _agents, _mana_pools, player, card_id, ab, express_choice| unsafe {
+            let ctx = &mut *ctx_ptr;
+            resolve_mana_ability_for_effect_payment(ctx, player, card_id, ab, express_choice);
+        },
+        |_game, player, land_id| unsafe {
+            let ctx = &mut *ctx_ptr;
+            ctx.trigger_handler.run_trigger(
+                TriggerType::TapsForMana,
+                RunParams {
+                    card: Some(land_id),
+                    player: Some(player),
+                    activator: Some(player),
+                    ..Default::default()
+                },
+                false,
+            );
+            ctx.trigger_handler.run_trigger(
+                TriggerType::ManaAdded,
+                RunParams {
+                    card: Some(land_id),
+                    player: Some(player),
+                    activator: Some(player),
+                    ..Default::default()
+                },
+                false,
+            );
+            let pending = ctx.trigger_handler.run_waiting_triggers(ctx.game);
+            for pt in pending {
+                resolve_effect(ctx, &pt.entry.spell_ability);
+            }
+        },
+    )
+}
+
+#[derive(Clone, Copy)]
+enum EffectCostPaymentMode {
+    Unless { spell_context: bool },
+    CumulativeUpkeep,
+}
+
+fn should_confirm_effect_cost_part(mode: EffectCostPaymentMode, part: &CostPart) -> bool {
+    match mode {
+        EffectCostPaymentMode::Unless { spell_context } => {
+            if spell_context {
+                return false;
+            }
+            match part {
+                CostPart::DamageYou(_) => true,
+                CostPart::PayLife(_) => true,
+                CostPart::Draw(_) => true,
+                CostPart::Mill(_) => true,
+                CostPart::AddMana { .. } => true,
+                CostPart::Discard { type_filter, .. } => type_filter.eq_ignore_ascii_case("Hand"),
+                CostPart::Sacrifice { .. } => true,
+                _ => false,
+            }
+        }
+        EffectCostPaymentMode::CumulativeUpkeep => matches!(
+            part,
+            CostPart::DamageYou(_)
+                | CostPart::PayLife(_)
+                | CostPart::Draw(_)
+                | CostPart::Mill(_)
+                | CostPart::AddMana { .. }
+                | CostPart::FlipCoin(_)
+        ),
+    }
+}
+
+fn try_pay_effect_cost(
+    ctx: &mut EffectContext,
+    sa: &SpellAbility,
+    source: CardId,
+    payer: PlayerId,
+    cost: &Cost,
+    mode: EffectCostPaymentMode,
+) -> bool {
+    let available_mana =
+        crate::mana::calculate_available_mana(&ctx.mana_pools[payer.index()], ctx.game, payer);
+    if !crate::cost::can_pay_with_ability(cost, ctx.game, &available_mana, source, payer, Some(sa))
+    {
+        return false;
+    }
+
+    for part in &cost.parts {
+        if !matches!(
+            part,
+            CostPart::FlipCoin(_)
+                | CostPart::DamageYou(_)
+                | CostPart::PayLife(_)
+                | CostPart::Mana { .. }
+                | CostPart::PayEnergy(_)
+                | CostPart::PayShards(_)
+                | CostPart::Draw(_)
+                | CostPart::Mill(_)
+                | CostPart::Discard { .. }
+                | CostPart::Sacrifice { .. }
+                | CostPart::AddCounter { .. }
+                | CostPart::AddMana { .. }
+        ) {
+            return false;
+        }
+    }
+
+    for part in &cost.parts {
+        if should_confirm_effect_cost_part(mode, part) {
+            let card_name = sa.source.map(|cid| ctx.game.card(cid).card_name.clone());
+            let kind = effect_cost_part_kind(part);
+            let message = format!(
+                "Pay {} cost for {}?",
+                kind,
+                card_name.as_deref().unwrap_or("unknown")
+            );
+            if !ctx.agents[payer.index()].confirm_payment(
+                payer,
+                kind,
+                &message,
+                card_name.as_deref(),
+                sa.api,
+            ) {
+                return false;
+            }
+        }
+    }
+
+    for part in &cost.parts {
+        match part {
+            CostPart::FlipCoin(amount) => {
+                let resolved_amount =
+                    crate::cost::resolve_dynamic_amount(ctx.game, source, payer, *amount);
+                for _ in 0..resolved_amount {
+                    let source_name = ctx.game.card(source).card_name.clone();
+                    let called_heads = ctx.agents[payer.index()].choose_binary(
+                        payer,
+                        "Call the coin flip",
+                        crate::agent::BinaryChoiceKind::HeadsOrTails,
+                        None,
+                        Some(&source_name),
+                        None,
+                    );
+                    let is_heads = ctx.rng.next_int(2) == 0;
+                    let won = called_heads == is_heads;
+                    ctx.trigger_handler.run_trigger(
+                        TriggerType::FlippedCoin,
+                        RunParams {
+                            player: Some(payer),
+                            coin_flip_won: Some(won),
+                            ..Default::default()
+                        },
+                        false,
+                    );
+                }
+            }
+            CostPart::DamageYou(amount) => {
+                ctx.game.deal_damage_to_player(payer, *amount);
+                ctx.trigger_handler.run_trigger(
+                    TriggerType::DamageDone,
+                    RunParams {
+                        damage_target_player: Some(payer),
+                        damage_amount: Some(*amount),
+                        is_combat_damage: Some(false),
+                        ..Default::default()
+                    },
+                    false,
+                );
+            }
+            CostPart::PayLife(amount) => {
+                ctx.game.player_lose_life(payer, *amount);
+                ctx.trigger_handler.run_trigger(
+                    TriggerType::LifeLost,
+                    RunParams {
+                        player: Some(payer),
+                        life_amount: Some(*amount),
+                        ..Default::default()
+                    },
+                    false,
+                );
+            }
+            CostPart::Mana {
+                cost: mana_cost, ..
+            } => {
+                if !pay_mana_cost_for_effect(
+                    ctx,
+                    payer,
+                    source,
+                    mana_cost,
+                    matches!(mode, EffectCostPaymentMode::Unless { .. }),
+                ) {
+                    return false;
+                }
+            }
+            CostPart::PayEnergy(amount) => {
+                ctx.game.player_add_energy(payer, -*amount);
+            }
+            CostPart::PayShards(amount) => {
+                ctx.game.player_add_shards(payer, -*amount);
+            }
+            CostPart::Draw(amount) => {
+                for _ in 0..*amount {
+                    ctx.game.draw_card(payer);
+                }
+            }
+            CostPart::Mill(amount) => {
+                for _ in 0..*amount {
+                    if let Some(top) = ctx.game.zone_mut(ZoneType::Library, payer).take_top() {
+                        ctx.move_card(top, ZoneType::Graveyard, payer);
+                        ctx.trigger_handler.run_trigger(
+                            TriggerType::Milled,
+                            RunParams {
+                                card: Some(top),
+                                player: Some(payer),
+                                ..Default::default()
+                            },
+                            false,
+                        );
+                        emit_zone_trigger(
+                            &mut ctx.trigger_handler,
+                            top,
+                            ZoneType::Library,
+                            ZoneType::Graveyard,
+                        );
+                    }
+                }
+            }
+            CostPart::AddCounter {
+                amount,
+                counter_type,
+            } => {
+                ctx.game.card_mut(source).add_counter(counter_type, *amount);
+            }
+            CostPart::Discard {
+                amount,
+                type_filter,
+            } => {
+                for _ in 0..*amount {
+                    let valid: Vec<CardId> = ctx
+                        .game
+                        .cards_in_zone(ZoneType::Hand, payer)
+                        .to_vec()
+                        .into_iter()
+                        .filter(|&cid| {
+                            if type_filter == "Card" || type_filter.is_empty() {
+                                true
+                            } else {
+                                crate::ability::effects::helpers::matches_change_type(
+                                    ctx.game.card(cid),
+                                    type_filter,
+                                    &[],
+                                )
+                            }
+                        })
+                        .collect();
+                    if valid.is_empty() {
+                        return false;
+                    }
+                    let chosen =
+                        ctx.agents[payer.index()].choose_cards_for_effect(payer, &valid, 1, 1);
+                    if let Some(&cid) = chosen.first() {
+                        ctx.game.discard_card(
+                            cid,
+                            payer,
+                            Some(sa),
+                            Some(ctx.agents),
+                            ctx.trigger_handler,
+                        );
+                    }
+                }
+            }
+            CostPart::Sacrifice {
+                amount,
+                type_filter,
+            } => {
+                for _ in 0..*amount {
+                    let valid = crate::cost::get_sacrifice_targets_for_cost(
+                        ctx.game,
+                        payer,
+                        type_filter,
+                        Some(sa),
+                    );
+                    if valid.is_empty() {
+                        return false;
+                    }
+                    if let Some(chosen) =
+                        ctx.agents[payer.index()].choose_sacrifice(payer, &valid, None)
+                    {
+                        let owner = ctx.game.card(chosen).owner;
+                        ctx.trigger_handler.run_trigger(
+                            TriggerType::Sacrificed,
+                            RunParams {
+                                card: Some(chosen),
+                                player: Some(payer),
+                                ..Default::default()
+                            },
+                            false,
+                        );
+                        ctx.move_card(chosen, ZoneType::Graveyard, owner);
+                        emit_zone_trigger(
+                            &mut ctx.trigger_handler,
+                            chosen,
+                            ZoneType::Battlefield,
+                            ZoneType::Graveyard,
+                        );
+                    }
+                }
+            }
+            CostPart::AddMana { .. } => {}
+            _ => return false,
+        }
+    }
+
+    true
 }
 
 /// Resolve a SpellAbility with Java-style `UnlessCost` payment flow.
@@ -1503,461 +1820,16 @@ pub(super) fn try_pay_unless_cost(
     payer: PlayerId,
     cost: &Cost,
 ) -> bool {
-    let available_mana =
-        crate::mana::calculate_available_mana(&ctx.mana_pools[payer.index()], ctx.game, payer);
-    if !crate::cost::can_pay_with_ability(cost, ctx.game, &available_mana, source, payer, Some(sa))
-    {
-        return false;
-    }
-
-    // Java parity: UnlessCost payment goes through CostPayment.payComputerCosts()
-    // with DeterministicCostDecision, which calls confirm() on certain cost parts.
-    // confirm() skips the prompt if isSpellPaymentContext(ability) is true.
-    // Mirrors Java's DeterministicCostPlumbing.isSpellPaymentContext().
-    let spell_context = is_spell_payment_context(sa, ctx.game);
-
-    // Pre-check that all cost parts are supported before executing any,
-    // to avoid partial side-effects (damage/life loss) that can't be rolled back.
-    for part in &cost.parts {
-        match part {
-            CostPart::DamageYou(_)
-            | CostPart::PayLife(_)
-            | CostPart::Mana { .. }
-            | CostPart::PayEnergy(_)
-            | CostPart::PayShards(_)
-            | CostPart::Draw(_)
-            | CostPart::Mill(_)
-            | CostPart::Discard { .. }
-            | CostPart::Sacrifice { .. }
-            | CostPart::AddCounter { .. } => {}
-            _ => {
-                return false;
-            }
-        }
-    }
-
-    // Java parity: DeterministicCostDecision.confirm() calls confirmPayment()
-    // for certain cost parts when NOT in a spell payment context.
-    // If the agent declines, the entire UnlessCost payment fails.
-    if !spell_context {
-        for part in &cost.parts {
-            let should_ask = match part {
-                // Java: CostDamage.visit() → confirm(cost, true)
-                CostPart::DamageYou(_) => true,
-                // Java: CostPayLife.visit() → confirm(cost, !isMandatory())
-                // UnlessCost is never mandatory
-                CostPart::PayLife(_) => true,
-                // Java: CostDraw.visit() → confirm(cost, true)
-                CostPart::Draw(_) => true,
-                // Java: CostMill.visit() → confirm(cost, true)
-                CostPart::Mill(_) => true,
-                // Java: CostAddMana.visit() → confirm(cost, true)
-                CostPart::AddMana { .. } => true,
-                // Java: CostDiscard.visit() → confirm(cost, "Hand".equals(type))
-                // Only asks confirm when discarding entire hand, not for regular card discard.
-                CostPart::Discard { type_filter, .. } => type_filter.eq_ignore_ascii_case("Hand"),
-                // Java: CostSacrifice.visit() → confirm(cost, true)
-                CostPart::Sacrifice { .. } => true,
-                // Java: CostPayEnergy, CostPayShards, CostPutCounter, CostPartMana → no confirm
-                _ => false,
-            };
-            if should_ask {
-                let card_name = sa.source.map(|cid| ctx.game.card(cid).card_name.clone());
-                let api = sa.api;
-                let kind = unless_cost_part_kind(part);
-                let message = format!(
-                    "Pay {} cost for {}?",
-                    kind,
-                    card_name.as_deref().unwrap_or("unknown")
-                );
-                if !ctx.agents[payer.index()].confirm_payment(
-                    payer,
-                    kind,
-                    &message,
-                    card_name.as_deref(),
-                    api,
-                ) {
-                    return false;
-                }
-            }
-        }
-    }
-
-    for part in &cost.parts {
-        match part {
-            CostPart::DamageYou(amount) => {
-                ctx.game.deal_damage_to_player(payer, *amount);
-                ctx.trigger_handler.run_trigger(
-                    TriggerType::DamageDone,
-                    RunParams {
-                        damage_target_player: Some(payer),
-                        damage_amount: Some(*amount),
-                        is_combat_damage: Some(false),
-                        ..Default::default()
-                    },
-                    false,
-                );
-            }
-            CostPart::PayLife(amount) => {
-                ctx.game.player_lose_life(payer, *amount);
-                ctx.trigger_handler.run_trigger(
-                    TriggerType::LifeLost,
-                    RunParams {
-                        player: Some(payer),
-                        life_amount: Some(*amount),
-                        ..Default::default()
-                    },
-                    false,
-                );
-            }
-            CostPart::Mana {
-                cost: mana_cost, ..
-            } => {
-                let card_name = ctx.game.card(source).card_name.clone();
-                let cost_str = mana_cost.to_string();
-                let saved_pool = ctx.mana_pools[payer.index()].clone();
-                let mut mana_loop_invalid_count = 0u32;
-
-                let payable_mana_cost =
-                    crate::mana::apply_player_life_payment_keywords(ctx.game, payer, mana_cost);
-                if !ctx.agents[payer.index()].is_human()
-                    && !can_auto_pay_mana_cost_for_effect(ctx, payer, source, &payable_mana_cost)
-                {
-                    return false;
-                }
-                let mana_paid = loop {
-                    let tappable_lands: Vec<CardId> = ctx
-                        .game
-                        .cards_in_zone(ZoneType::Battlefield, payer)
-                        .to_vec()
-                        .into_iter()
-                        .filter(|&cid| {
-                            crate::game_loop::GameLoop::mana_source_available_for_payment(
-                                ctx.game, payer, cid,
-                            )
-                        })
-                        .collect();
-                    let mut mana_ability_options: Vec<crate::agent::ManaAbilityOption> = Vec::new();
-                    for &cid in &tappable_lands {
-                        let c = ctx.game.card(cid);
-                        for ab in &c.activated_abilities {
-                            if ab.is_mana_ability
-                                && crate::cost::can_pay_ignoring_mana(
-                                    &ab.cost, ctx.game, cid, payer,
-                                )
-                            {
-                                mana_ability_options.push(crate::agent::ManaAbilityOption {
-                                    card_id: cid,
-                                    ability_index: ab.ability_index,
-                                    description: ab.ability_text.clone(),
-                                });
-                            }
-                        }
-                    }
-                    let pool_snapshot = ctx.mana_pools[payer.index()].clone();
-                    let untappable_lands: Vec<CardId> = ctx
-                        .game
-                        .cards_in_zone(ZoneType::Battlefield, payer)
-                        .to_vec()
-                        .into_iter()
-                        .filter(|&cid| {
-                            let c = ctx.game.card(cid);
-                            if !c.tapped {
-                                return false;
-                            }
-                            let atoms = crate::mana::land_mana_atoms(c);
-                            if !atoms.is_empty() {
-                                atoms.iter().any(|&a| pool_snapshot.has_atom(a, 1))
-                            } else if let Some(atom) = crate::mana::basic_land_mana_atom(c) {
-                                pool_snapshot.has_atom(atom, 1)
-                            } else {
-                                false
-                            }
-                        })
-                        .collect();
-                    let pool_ref = ctx.mana_pools[payer.index()].clone();
-
-                    ctx.agents[payer.index()].snapshot_state(ctx.game, ctx.mana_pools);
-                    let action = ctx.agents[payer.index()].pay_mana_cost(
-                        payer,
-                        source,
-                        &card_name,
-                        &cost_str,
-                        &cost_str,
-                        &cost_str,
-                        false,
-                        &[],
-                        &mana_ability_options,
-                        &tappable_lands,
-                        &untappable_lands,
-                        &pool_ref,
-                    );
-
-                    match action {
-                        crate::agent::ManaCostAction::TapLand {
-                            card_id: land_id,
-                            mana_ability_index,
-                            express_choice,
-                        } => {
-                            if !tappable_lands.contains(&land_id) {
-                                mana_loop_invalid_count += 1;
-                                if mana_loop_invalid_count > 3 {
-                                    ctx.mana_pools[payer.index()] = saved_pool.clone();
-                                    break false;
-                                }
-                                continue;
-                            }
-                            mana_loop_invalid_count = 0;
-                            let pool_snapshot = ctx.mana_pools[payer.index()].begin_tap_tracking();
-                            let mana_ab = {
-                                let c = ctx.game.card(land_id);
-                                mana_ability_index
-                                    .and_then(|idx| c.activated_abilities.get(idx))
-                                    .filter(|ab| {
-                                        ab.is_mana_ability
-                                            && crate::cost::can_pay_ignoring_mana(
-                                                &ab.cost, ctx.game, land_id, payer,
-                                            )
-                                    })
-                                    .cloned()
-                                    .or_else(|| {
-                                        c.activated_abilities
-                                            .iter()
-                                            .find(|ab| {
-                                                ab.is_mana_ability
-                                                    && crate::cost::can_pay_ignoring_mana(
-                                                        &ab.cost, ctx.game, land_id, payer,
-                                                    )
-                                            })
-                                            .cloned()
-                                    })
-                            };
-                            if let Some(ab) = mana_ab {
-                                resolve_mana_ability_for_effect_payment(
-                                    ctx,
-                                    payer,
-                                    land_id,
-                                    &ab,
-                                    express_choice,
-                                );
-                            } else if let Some(atom) =
-                                crate::mana::basic_land_mana_atom(ctx.game.card(land_id))
-                            {
-                                ctx.game.tap(land_id);
-                                ctx.mana_pools[payer.index()].add(atom, 1);
-                                ctx.trigger_handler.run_trigger(
-                                    TriggerType::TapsForMana,
-                                    RunParams {
-                                        card: Some(land_id),
-                                        player: Some(payer),
-                                        ..Default::default()
-                                    },
-                                    false,
-                                );
-                            }
-                            let produced =
-                                ctx.mana_pools[payer.index()].end_tap_tracking(&pool_snapshot);
-                            if !produced.is_empty() {
-                                ctx.game.card_mut(land_id).last_mana_produced = Some(produced);
-                            }
-                        }
-                        crate::agent::ManaCostAction::UntapLand(land_id) => {
-                            if !untappable_lands.contains(&land_id) {
-                                continue;
-                            }
-                            if ctx.game.card(land_id).is_land() && ctx.game.card(land_id).tapped {
-                                ctx.game.untap(land_id);
-                                if let Some(produced) =
-                                    ctx.game.card_mut(land_id).last_mana_produced.take()
-                                {
-                                    ctx.mana_pools[payer.index()].rollback_tap(&produced);
-                                }
-                            }
-                        }
-                        crate::agent::ManaCostAction::Pay { auto } => {
-                            if auto {
-                                break try_auto_pay_mana_cost_for_effect(
-                                    ctx,
-                                    payer,
-                                    source,
-                                    &payable_mana_cost,
-                                );
-                            }
-                            let mut test_pool = ctx.mana_pools[payer.index()].clone();
-                            if let Some(test_life_to_pay) = test_pool
-                                .try_pay_cost_with_phyrexian_life(
-                                    &payable_mana_cost,
-                                    false,
-                                    ctx.game.player(payer).life,
-                                )
-                            {
-                                let life_to_pay = ctx.mana_pools[payer.index()]
-                                    .try_pay_cost_with_phyrexian_life(
-                                        &payable_mana_cost,
-                                        false,
-                                        ctx.game.player(payer).life,
-                                    )
-                                    .expect("tested phyrexian payment should still be legal");
-                                if life_to_pay != test_life_to_pay {
-                                    continue;
-                                }
-                                if life_to_pay > 0 {
-                                    ctx.game.player_lose_life(payer, life_to_pay);
-                                    ctx.trigger_handler.run_trigger(
-                                        TriggerType::LifeLost,
-                                        RunParams {
-                                            player: Some(payer),
-                                            life_amount: Some(life_to_pay),
-                                            ..Default::default()
-                                        },
-                                        false,
-                                    );
-                                }
-                                break true;
-                            }
-                            mana_loop_invalid_count += 1;
-                            if mana_loop_invalid_count > 3 {
-                                ctx.mana_pools[payer.index()] = saved_pool.clone();
-                                break false;
-                            }
-                        }
-                        crate::agent::ManaCostAction::Cancel => {
-                            ctx.mana_pools[payer.index()] = saved_pool.clone();
-                            break false;
-                        }
-                    }
-                };
-
-                if !mana_paid {
-                    return false;
-                }
-            }
-            CostPart::PayEnergy(amount) => {
-                ctx.game.player_add_energy(payer, -*amount);
-            }
-            CostPart::PayShards(amount) => {
-                ctx.game.player_add_shards(payer, -*amount);
-            }
-            CostPart::Draw(amount) => {
-                for _ in 0..*amount {
-                    ctx.game.draw_card(payer);
-                }
-            }
-            CostPart::Mill(amount) => {
-                for _ in 0..*amount {
-                    if let Some(top) = ctx.game.zone_mut(ZoneType::Library, payer).take_top() {
-                        ctx.move_card(top, ZoneType::Graveyard, payer);
-                        ctx.trigger_handler.run_trigger(
-                            TriggerType::Milled,
-                            RunParams {
-                                card: Some(top),
-                                player: Some(payer),
-                                ..Default::default()
-                            },
-                            false,
-                        );
-                        emit_zone_trigger(
-                            &mut ctx.trigger_handler,
-                            top,
-                            ZoneType::Library,
-                            ZoneType::Graveyard,
-                        );
-                    }
-                }
-            }
-            CostPart::AddCounter {
-                amount,
-                counter_type,
-            } => {
-                // Put counters on the source permanent (e.g. Fabricate UnlessCost).
-                // Mirrors Java CostPutCounter payment.
-                ctx.game.card_mut(source).add_counter(counter_type, *amount);
-            }
-            CostPart::Discard {
-                amount,
-                type_filter,
-            } => {
-                // UnlessCost discard: pick cards from hand and discard them.
-                // Java uses chooseCardsForEffect (via DeterministicCostPlumbing.chooseCards),
-                // NOT chooseCardsToDiscardFrom. Mirror that here for RNG parity.
-                for _ in 0..*amount {
-                    let valid: Vec<CardId> = ctx
-                        .game
-                        .cards_in_zone(ZoneType::Hand, payer)
-                        .to_vec()
-                        .into_iter()
-                        .filter(|&cid| {
-                            if type_filter == "Card" || type_filter.is_empty() {
-                                true
-                            } else {
-                                crate::ability::effects::helpers::matches_change_type(
-                                    ctx.game.card(cid),
-                                    type_filter,
-                                    &[],
-                                )
-                            }
-                        })
-                        .collect();
-                    if valid.is_empty() {
-                        return false;
-                    }
-                    let chosen =
-                        ctx.agents[payer.index()].choose_cards_for_effect(payer, &valid, 1, 1);
-                    if let Some(&cid) = chosen.first() {
-                        ctx.game.discard_card(
-                            cid,
-                            payer,
-                            Some(sa),
-                            Some(ctx.agents),
-                            ctx.trigger_handler,
-                        );
-                    }
-                }
-            }
-            CostPart::Sacrifice {
-                amount,
-                type_filter,
-            } => {
-                for _ in 0..*amount {
-                    let valid = crate::cost::get_sacrifice_targets_for_cost(
-                        ctx.game,
-                        payer,
-                        type_filter,
-                        Some(sa),
-                    );
-                    if valid.is_empty() {
-                        return false;
-                    }
-                    if let Some(chosen) =
-                        ctx.agents[payer.index()].choose_sacrifice(payer, &valid, None)
-                    {
-                        let owner = ctx.game.card(chosen).owner;
-                        ctx.trigger_handler.run_trigger(
-                            TriggerType::Sacrificed,
-                            RunParams {
-                                card: Some(chosen),
-                                player: Some(payer),
-                                ..Default::default()
-                            },
-                            false,
-                        );
-                        ctx.move_card(chosen, ZoneType::Graveyard, owner);
-                        emit_zone_trigger(
-                            &mut ctx.trigger_handler,
-                            chosen,
-                            ZoneType::Battlefield,
-                            ZoneType::Graveyard,
-                        );
-                    }
-                }
-            }
-            _ => {
-                // Unsupported UnlessCost part in effect resolution path.
-                return false;
-            }
-        }
-    }
-    true
+    try_pay_effect_cost(
+        ctx,
+        sa,
+        source,
+        payer,
+        cost,
+        EffectCostPaymentMode::Unless {
+            spell_context: is_spell_payment_context(sa, ctx.game),
+        },
+    )
 }
 
 /// Pay the merged cumulative upkeep cost. Mirrors Java's payCostToPreventEffect
@@ -1970,379 +1842,14 @@ pub(super) fn try_pay_cumulative_upkeep(
     payer: PlayerId,
     cost: &Cost,
 ) -> bool {
-    // Check payability
-    let available_mana =
-        crate::mana::calculate_available_mana(&ctx.mana_pools[payer.index()], ctx.game, payer);
-    if !crate::cost::can_pay_with_ability(cost, ctx.game, &available_mana, source, payer, Some(sa))
-    {
-        return false;
-    }
-
-    // Cumulative upkeep is never a spell context — always confirm
-    for part in &cost.parts {
-        let should_ask = match part {
-            CostPart::DamageYou(_) => true,
-            CostPart::PayLife(_) => true,
-            CostPart::Draw(_) => true,
-            CostPart::Mill(_) => true,
-            CostPart::AddMana { .. } => true,
-            // Java: CostFlipCoin.visit() → confirm(cost, true)
-            CostPart::FlipCoin(_) => true,
-            _ => false,
-        };
-        if should_ask {
-            let card_name = ctx.game.card(source).card_name.clone();
-            let api = sa.api;
-            let kind = unless_cost_part_kind(part);
-            let message = format!("Pay {} cost for {}?", kind, card_name);
-            let result = ctx.agents[payer.index()].confirm_payment(
-                payer,
-                kind,
-                &message,
-                Some(&card_name),
-                api,
-            );
-            if !result {
-                return false;
-            }
-        }
-    }
-
-    // Pay each cost part
-    for part in &cost.parts {
-        match part {
-            CostPart::FlipCoin(amount) => {
-                let resolved_amount =
-                    crate::cost::resolve_dynamic_amount(ctx.game, source, payer, *amount);
-                for _ in 0..resolved_amount {
-                    let source_name = ctx.game.card(source).card_name.clone();
-                    let called_heads = ctx.agents[payer.index()].choose_binary(
-                        payer,
-                        "Call the coin flip",
-                        crate::agent::BinaryChoiceKind::HeadsOrTails,
-                        None,
-                        Some(&source_name),
-                        None,
-                    );
-                    let is_heads = ctx.rng.next_int(2) == 0;
-                    let won = called_heads == is_heads;
-                    ctx.trigger_handler.run_trigger(
-                        TriggerType::FlippedCoin,
-                        RunParams {
-                            player: Some(payer),
-                            coin_flip_won: Some(won),
-                            ..Default::default()
-                        },
-                        false,
-                    );
-                }
-            }
-            CostPart::DamageYou(amount) => {
-                ctx.game.deal_damage_to_player(payer, *amount);
-                ctx.trigger_handler.run_trigger(
-                    TriggerType::DamageDone,
-                    RunParams {
-                        damage_target_player: Some(payer),
-                        damage_amount: Some(*amount),
-                        is_combat_damage: Some(false),
-                        ..Default::default()
-                    },
-                    false,
-                );
-            }
-            CostPart::PayLife(amount) => {
-                ctx.game.player_lose_life(payer, *amount);
-                ctx.trigger_handler.run_trigger(
-                    TriggerType::LifeLost,
-                    RunParams {
-                        player: Some(payer),
-                        life_amount: Some(*amount),
-                        ..Default::default()
-                    },
-                    false,
-                );
-            }
-            CostPart::Mana {
-                cost: mana_cost, ..
-            } => {
-                if true {
-                    let saved_pool = ctx.mana_pools[payer.index()].clone();
-                    let card_name = ctx.game.card(source).card_name.clone();
-                    let cost_str = mana_cost.to_string();
-                    let mut mana_loop_invalid_count = 0usize;
-
-                    let payable_mana_cost =
-                        crate::mana::apply_player_life_payment_keywords(ctx.game, payer, mana_cost);
-                    let mana_paid = loop {
-                        let tappable_lands: Vec<CardId> = ctx
-                            .game
-                            .cards_in_zone(ZoneType::Battlefield, payer)
-                            .iter()
-                            .copied()
-                            .filter(|&cid| {
-                                let c = ctx.game.card(cid);
-                                !c.tapped
-                                    && c.is_land()
-                                    && (crate::mana::basic_land_mana_atom(c).is_some()
-                                        || c.activated_abilities.iter().any(|ab| {
-                                            ab.is_mana_ability
-                                                && crate::cost::can_pay_ignoring_mana(
-                                                    &ab.cost, ctx.game, cid, payer,
-                                                )
-                                        }))
-                            })
-                            .collect();
-                        let mut mana_ability_options: Vec<crate::agent::ManaAbilityOption> =
-                            Vec::new();
-                        for &cid in &tappable_lands {
-                            let c = ctx.game.card(cid);
-                            for ab in &c.activated_abilities {
-                                if ab.is_mana_ability
-                                    && crate::cost::can_pay_ignoring_mana(
-                                        &ab.cost, ctx.game, cid, payer,
-                                    )
-                                {
-                                    mana_ability_options.push(crate::agent::ManaAbilityOption {
-                                        card_id: cid,
-                                        ability_index: ab.ability_index,
-                                        description: ab.ability_text.clone(),
-                                    });
-                                }
-                            }
-                        }
-                        let pool_snapshot = ctx.mana_pools[payer.index()].clone();
-                        let untappable_lands: Vec<CardId> = ctx
-                            .game
-                            .cards_in_zone(ZoneType::Battlefield, payer)
-                            .iter()
-                            .copied()
-                            .filter(|&cid| {
-                                let c = ctx.game.card(cid);
-                                if !c.tapped {
-                                    return false;
-                                }
-                                let atoms = crate::mana::land_mana_atoms(c);
-                                if !atoms.is_empty() {
-                                    atoms.iter().any(|&a| pool_snapshot.has_atom(a, 1))
-                                } else if let Some(atom) = crate::mana::basic_land_mana_atom(c) {
-                                    pool_snapshot.has_atom(atom, 1)
-                                } else {
-                                    false
-                                }
-                            })
-                            .collect();
-                        let pool_ref = ctx.mana_pools[payer.index()].clone();
-
-                        ctx.agents[payer.index()].snapshot_state(ctx.game, ctx.mana_pools);
-                        let action = ctx.agents[payer.index()].pay_mana_cost(
-                            payer,
-                            source,
-                            &card_name,
-                            &cost_str,
-                            &cost_str,
-                            &cost_str,
-                            false,
-                            &[],
-                            &mana_ability_options,
-                            &tappable_lands,
-                            &untappable_lands,
-                            &pool_ref,
-                        );
-
-                        match action {
-                            crate::agent::ManaCostAction::TapLand {
-                                card_id: land_id,
-                                mana_ability_index,
-                                express_choice,
-                            } => {
-                                if !tappable_lands.contains(&land_id) {
-                                    mana_loop_invalid_count += 1;
-                                    if mana_loop_invalid_count > 3 {
-                                        ctx.mana_pools[payer.index()] = saved_pool.clone();
-                                        break false;
-                                    }
-                                    continue;
-                                }
-                                mana_loop_invalid_count = 0;
-                                let pool_snapshot =
-                                    ctx.mana_pools[payer.index()].begin_tap_tracking();
-                                let mana_ab = {
-                                    let c = ctx.game.card(land_id);
-                                    mana_ability_index
-                                        .and_then(|idx| c.activated_abilities.get(idx))
-                                        .filter(|ab| {
-                                            ab.is_mana_ability
-                                                && crate::cost::can_pay_ignoring_mana(
-                                                    &ab.cost, ctx.game, land_id, payer,
-                                                )
-                                        })
-                                        .cloned()
-                                        .or_else(|| {
-                                            c.activated_abilities
-                                                .iter()
-                                                .find(|ab| {
-                                                    ab.is_mana_ability
-                                                        && crate::cost::can_pay_ignoring_mana(
-                                                            &ab.cost, ctx.game, land_id, payer,
-                                                        )
-                                                })
-                                                .cloned()
-                                        })
-                                };
-                                if let Some(ab) = mana_ab {
-                                    resolve_mana_ability_for_effect_payment(
-                                        ctx,
-                                        payer,
-                                        land_id,
-                                        &ab,
-                                        express_choice,
-                                    );
-                                } else if let Some(atom) =
-                                    crate::mana::basic_land_mana_atom(ctx.game.card(land_id))
-                                {
-                                    ctx.game.tap(land_id);
-                                    ctx.mana_pools[payer.index()].add(atom, 1);
-                                    ctx.trigger_handler.run_trigger(
-                                        TriggerType::TapsForMana,
-                                        RunParams {
-                                            card: Some(land_id),
-                                            player: Some(payer),
-                                            ..Default::default()
-                                        },
-                                        false,
-                                    );
-                                }
-                                let produced =
-                                    ctx.mana_pools[payer.index()].end_tap_tracking(&pool_snapshot);
-                                if !produced.is_empty() {
-                                    ctx.game.card_mut(land_id).last_mana_produced = Some(produced);
-                                }
-                            }
-                            crate::agent::ManaCostAction::UntapLand(land_id) => {
-                                if !untappable_lands.contains(&land_id) {
-                                    continue;
-                                }
-                                if ctx.game.card(land_id).is_land() && ctx.game.card(land_id).tapped
-                                {
-                                    ctx.game.untap(land_id);
-                                    if let Some(produced) =
-                                        ctx.game.card_mut(land_id).last_mana_produced.take()
-                                    {
-                                        ctx.mana_pools[payer.index()].rollback_tap(&produced);
-                                    }
-                                }
-                            }
-                            crate::agent::ManaCostAction::Pay { .. } => {
-                                let mut test_pool = ctx.mana_pools[payer.index()].clone();
-                                if let Some(test_life_to_pay) = test_pool
-                                    .try_pay_cost_with_phyrexian_life(
-                                        &payable_mana_cost,
-                                        false,
-                                        ctx.game.player(payer).life,
-                                    )
-                                {
-                                    let life_to_pay = ctx.mana_pools[payer.index()]
-                                        .try_pay_cost_with_phyrexian_life(
-                                            &payable_mana_cost,
-                                            false,
-                                            ctx.game.player(payer).life,
-                                        )
-                                        .expect("tested phyrexian payment should still be legal");
-                                    if life_to_pay != test_life_to_pay {
-                                        continue;
-                                    }
-                                    if life_to_pay > 0 {
-                                        ctx.game.player_lose_life(payer, life_to_pay);
-                                        ctx.trigger_handler.run_trigger(
-                                            TriggerType::LifeLost,
-                                            RunParams {
-                                                player: Some(payer),
-                                                life_amount: Some(life_to_pay),
-                                                ..Default::default()
-                                            },
-                                            false,
-                                        );
-                                    }
-                                    break true;
-                                }
-                                mana_loop_invalid_count += 1;
-                                if mana_loop_invalid_count > 3 {
-                                    ctx.mana_pools[payer.index()] = saved_pool.clone();
-                                    break false;
-                                }
-                            }
-                            crate::agent::ManaCostAction::Cancel => {
-                                ctx.mana_pools[payer.index()] = saved_pool.clone();
-                                break false;
-                            }
-                        }
-                    };
-
-                    if !mana_paid {
-                        return false;
-                    }
-                } else if ctx.mana_pools[payer.index()]
-                    .try_pay_cost_with_phyrexian_life(
-                        &crate::mana::apply_player_life_payment_keywords(
-                            ctx.game, payer, mana_cost,
-                        ),
-                        false,
-                        ctx.game.player(payer).life,
-                    )
-                    .map(|life_to_pay| {
-                        if life_to_pay > 0 {
-                            ctx.game.player_lose_life(payer, life_to_pay);
-                            ctx.trigger_handler.run_trigger(
-                                TriggerType::LifeLost,
-                                RunParams {
-                                    player: Some(payer),
-                                    life_amount: Some(life_to_pay),
-                                    ..Default::default()
-                                },
-                                false,
-                            );
-                        }
-                    })
-                    .is_none()
-                {
-                    return false;
-                }
-            }
-            CostPart::Mill(amount) => {
-                for _ in 0..*amount {
-                    if let Some(top) = ctx.game.zone_mut(ZoneType::Library, payer).take_top() {
-                        ctx.move_card(top, ZoneType::Graveyard, payer);
-                        ctx.trigger_handler.run_trigger(
-                            TriggerType::Milled,
-                            RunParams {
-                                card: Some(top),
-                                player: Some(payer),
-                                ..Default::default()
-                            },
-                            false,
-                        );
-                        emit_zone_trigger(
-                            &mut ctx.trigger_handler,
-                            top,
-                            ZoneType::Library,
-                            ZoneType::Graveyard,
-                        );
-                    }
-                }
-            }
-            CostPart::AddCounter {
-                amount,
-                counter_type,
-            } => {
-                ctx.game.card_mut(source).add_counter(counter_type, *amount);
-            }
-            _ => {
-                // Unsupported cost part
-                return false;
-            }
-        }
-    }
-    true
+    try_pay_effect_cost(
+        ctx,
+        sa,
+        source,
+        payer,
+        cost,
+        EffectCostPaymentMode::CumulativeUpkeep,
+    )
 }
 
 /// Mirrors Java's `DeterministicCostPlumbing.isSpellPaymentContext()`.
@@ -2360,8 +1867,8 @@ fn is_spell_payment_context(sa: &SpellAbility, game: &GameState) -> bool {
     false
 }
 
-/// Cost part kind label for UnlessCost confirm_payment prompts.
-fn unless_cost_part_kind(part: &CostPart) -> &'static str {
+/// Cost part kind label for special effect-payment confirm prompts.
+fn effect_cost_part_kind(part: &CostPart) -> &'static str {
     match part {
         CostPart::DamageYou(_) => "DamageYou",
         CostPart::PayLife(_) => "PayLife",

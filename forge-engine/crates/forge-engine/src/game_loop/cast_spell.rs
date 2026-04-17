@@ -1008,29 +1008,6 @@ impl GameLoop {
             mana_cost
         };
 
-        if x_count == 0 && x_value == 0 {
-            let dynamic_cost_max = spell_cost
-                .iter()
-                .chain(static_alt_cost.iter())
-                .flat_map(|cost| cost.parts.iter())
-                .filter_map(|part| {
-                    let amount = crate::cost::cost_part::convert_amount(part)?;
-                    if amount != crate::cost::DYNAMIC_X_SENTINEL {
-                        return None;
-                    }
-                    crate::cost::cost_part::get_max_amount_x(game, card_id, player, part, false)
-                })
-                .min()
-                .unwrap_or(0);
-            if dynamic_cost_max > 0 {
-                let name = game.card(card_id).card_name.clone();
-                agents[player.index()].snapshot_state(game, &self.mana_pools);
-                x_value = agents[player.index()]
-                    .choose_x_value(player, dynamic_cost_max as u32, Some(&name))
-                    .min(dynamic_cost_max as u32);
-            }
-        }
-
         let mana_cost = mana_cost;
 
         // Build SpellAbility chain and choose modes/targets from the pre-payment
@@ -1200,10 +1177,9 @@ impl GameLoop {
         let keywords_before = self.pool(player).collect_keyword_mana();
         let counters_before = self.pool(player).collect_counter_mana();
         let triggers_before = self.pool(player).collect_trigger_mana();
-        // Track pool colors before payment for Sunburst/Converge
-        let pool_snapshot_for_colors: Vec<u16> = self.pool(player).mana_colors();
         // Track pool size before payment for ManaExpend
         let pool_size_before = self.pool(player).total_mana();
+        let colors_spent_to_cast = std::cell::Cell::new(0u16);
 
         // Unified mana payment loop. Agents decide whether to pay manually or
         // auto-pay through their `pay_mana_cost()` implementation; the engine
@@ -1261,6 +1237,7 @@ impl GameLoop {
                         )
                     };
                     if let Some(result) = auto_result {
+                        colors_spent_to_cast.set(colors_spent_to_cast.get() | result.colors_spent);
                         let trace: Vec<ManaCostAction> = result
                             .choices
                             .iter()
@@ -1308,28 +1285,29 @@ impl GameLoop {
                 },
                 |slf, game, player| {
                     let mut test_pool = slf.pool(player).clone();
-                    if let Some(test_life_to_pay) = test_pool
-                        .try_pay_for_spell_converted_with_phyrexian_life(
+                    if let Some(test_payment) = test_pool
+                        .try_pay_for_spell_converted_with_phyrexian_life_result(
                             &total_cost,
                             &payment_ctx,
                             any_color_conversion,
                             game.player(player).life,
                         )
                     {
-                        let life_to_pay = slf
+                        let payment = slf
                             .pool_mut(player)
-                            .try_pay_for_spell_converted_with_phyrexian_life(
+                            .try_pay_for_spell_converted_with_phyrexian_life_result(
                                 &total_cost,
                                 &payment_ctx,
                                 any_color_conversion,
                                 game.player(player).life,
                             )
                             .expect("tested phyrexian payment should still be legal");
-                        if life_to_pay != test_life_to_pay {
+                        if payment.life_paid != test_payment.life_paid {
                             return false;
                         }
-                        if life_to_pay > 0 {
-                            slf.pay_life_cost(game, player, card_id, life_to_pay);
+                        colors_spent_to_cast.set(colors_spent_to_cast.get() | payment.colors_spent);
+                        if payment.life_paid > 0 {
+                            slf.pay_life_cost(game, player, card_id, payment.life_paid);
                         }
                         true
                     } else {
@@ -1370,22 +1348,8 @@ impl GameLoop {
                 });
         }
 
-        // Track colors of mana spent (Sunburst/Converge)
-        {
-            let pool_after_colors: Vec<u16> = self.pool(player).mana_colors();
-            // Colors consumed = colors in before snapshot but not in after
-            let mut colors_spent = 0u16;
-            let mut after_clone = pool_after_colors.clone();
-            for &color in &pool_snapshot_for_colors {
-                if let Some(pos) = after_clone.iter().position(|&c| c == color) {
-                    after_clone.remove(pos); // still in pool, not consumed
-                } else {
-                    colors_spent |= color; // consumed
-                }
-            }
-            game.card_mut(card_id)
-                .set_colors_spent_to_cast(colors_spent);
-        }
+        game.card_mut(card_id)
+            .set_colors_spent_to_cast(colors_spent_to_cast.get());
 
         // Fire ManaExpend triggers (Expend mechanic — cumulative per-turn tracking)
         {

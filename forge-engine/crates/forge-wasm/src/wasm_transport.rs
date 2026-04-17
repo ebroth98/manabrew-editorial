@@ -176,11 +176,9 @@ fn ai_respond(inner: &forge_agent_interface::prompt::AgentPromptInner) -> Player
             ..
         } => {
             let signature = format!("{available_player_actions:?}");
-            let repeated_same_prompt = LAST_AI_CHOOSE_ACTION_SIGNATURE.with(|cell| {
-                cell.borrow().as_deref() == Some(signature.as_str())
-            });
-            let last_choice =
-                LAST_AI_CHOOSE_ACTION_CHOICE.with(|cell| *cell.borrow());
+            let repeated_same_prompt = LAST_AI_CHOOSE_ACTION_SIGNATURE
+                .with(|cell| cell.borrow().as_deref() == Some(signature.as_str()));
+            let last_choice = LAST_AI_CHOOSE_ACTION_CHOICE.with(|cell| *cell.borrow());
             let avoid_last_choice = repeated_same_prompt
                 && !matches!(last_choice, Some(EnginePlayerAction::PassPriority));
             let action = available_player_actions

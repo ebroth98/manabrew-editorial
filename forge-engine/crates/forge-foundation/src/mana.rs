@@ -616,11 +616,19 @@ impl ManaCost {
             .shards
             .iter()
             .map(|s| match (*s, color_mask) {
-                (ManaCostShard::White, m) if m == ManaAtom::WHITE as u8 => ManaCostShard::WhitePhyrexian,
-                (ManaCostShard::Blue, m) if m == ManaAtom::BLUE as u8 => ManaCostShard::BluePhyrexian,
-                (ManaCostShard::Black, m) if m == ManaAtom::BLACK as u8 => ManaCostShard::BlackPhyrexian,
+                (ManaCostShard::White, m) if m == ManaAtom::WHITE as u8 => {
+                    ManaCostShard::WhitePhyrexian
+                }
+                (ManaCostShard::Blue, m) if m == ManaAtom::BLUE as u8 => {
+                    ManaCostShard::BluePhyrexian
+                }
+                (ManaCostShard::Black, m) if m == ManaAtom::BLACK as u8 => {
+                    ManaCostShard::BlackPhyrexian
+                }
                 (ManaCostShard::Red, m) if m == ManaAtom::RED as u8 => ManaCostShard::RedPhyrexian,
-                (ManaCostShard::Green, m) if m == ManaAtom::GREEN as u8 => ManaCostShard::GreenPhyrexian,
+                (ManaCostShard::Green, m) if m == ManaAtom::GREEN as u8 => {
+                    ManaCostShard::GreenPhyrexian
+                }
                 (other, _) => other,
             })
             .collect();

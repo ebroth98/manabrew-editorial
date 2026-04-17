@@ -13,8 +13,9 @@ use crate::parsing::keys;
 
 use super::mana_cost_being_paid::{can_pay_for_shard_with_color, ManaCostBeingPaid};
 use super::{
-    all_basic_subtype_atoms, atom_short, basic_land_mana_atom, compute_reflected_atoms,
-    fixed_produced_atoms, produced_to_atoms, tap_land_for_mana, ManaPool,
+    all_basic_subtype_atoms, atom_short, basic_land_mana_atom, chosen_colors_to_atoms,
+    compute_reflected_atoms, fixed_produced_atoms, produced_to_atoms, resolve_mana_ability_amount,
+    tap_land_for_mana, ManaPool,
 };
 
 #[derive(Debug, Clone)]
@@ -317,7 +318,7 @@ pub fn next_auto_tap_choice_with_reserved_sacrifices(
         return None;
     }
 
-    let mana_ability_map = group_sources_by_mana_color(game, player, reserved_sacrifices);
+    let mana_ability_map = group_sources_by_mana_color(game, player, reserved_sacrifices, None);
     if mana_ability_map.is_empty() {
         return None;
     }
@@ -449,7 +450,7 @@ fn auto_tap_lands_internal(
 
         // Java re-collects candidates every iteration. This ensures tapped/sacrificed
         // sources are excluded and state changes from the previous iteration are visible.
-        let mana_ability_map = group_sources_by_mana_color(game, player, reserved_sacrifices);
+        let mana_ability_map = group_sources_by_mana_color(game, player, reserved_sacrifices, None);
         if mana_ability_map.is_empty() {
             break;
         }
@@ -1293,6 +1294,7 @@ fn group_sources_by_mana_color(
     game: &GameState,
     player: PlayerId,
     reserved_sacrifices: &[CardId],
+    payment_ctx: Option<&crate::mana::ManaPaymentContext>,
 ) -> IndexMap<i32, Vec<ManaAbilityRef>> {
     let mut mana_map: IndexMap<i32, Vec<ManaAbilityRef>> = IndexMap::new();
     let mut source_order = 0usize;
@@ -1302,7 +1304,8 @@ fn group_sources_by_mana_color(
         let mut explicit_mana_added = false;
 
         for ab in &card.activated_abilities {
-            if !is_payable_mana_ability(game, player, card_id, ab, reserved_sacrifices) {
+            if !is_payable_mana_ability(game, player, card_id, ab, reserved_sacrifices, payment_ctx)
+            {
                 continue;
             }
             // Handle ManaReflected abilities (e.g. Incubation Druid)
@@ -1332,11 +1335,16 @@ fn group_sources_by_mana_color(
             let Some(produced) = ab.params.get(keys::PRODUCED) else {
                 continue;
             };
-            if produced == "Combo ColorIdentity" {
-                continue;
-            }
-
-            let atoms = produced_to_atoms(produced, &card.chosen_colors);
+            let atoms = if produced == "Combo ColorIdentity" {
+                let colors = game.player_commander_color_identity(player);
+                if colors.is_empty() {
+                    Vec::new()
+                } else {
+                    chosen_colors_to_atoms(&colors)
+                }
+            } else {
+                produced_to_atoms(produced, &card.chosen_colors)
+            };
             if atoms.is_empty() {
                 continue;
             }
@@ -1427,7 +1435,7 @@ pub fn collect_mana_payment_sources(
     for &card_id in &source_cards {
         let card = game.card(card_id);
         for ab in &card.activated_abilities {
-            if !is_payable_mana_ability(game, player, card_id, ab, reserved_sacrifices) {
+            if !is_payable_mana_ability(game, player, card_id, ab, reserved_sacrifices, None) {
                 continue;
             }
             mana_ability_options.push(ManaAbilityOption {
@@ -1454,119 +1462,106 @@ pub fn can_pay_mana_cost_with_reserved_sacrifices(
     excluded_source: CardId,
     cost: &crate::cost::Cost,
     reserved_sacrifices: &[CardId],
+    payment_ctx: Option<&crate::mana::ManaPaymentContext>,
 ) -> bool {
     let mana_cost = mana_cost_from_cost(cost);
-    let mut source_masks: Vec<u16> = Vec::new();
+    let available = crate::mana::calculate_available_mana_with_context(
+        pool,
+        game,
+        player,
+        Some(excluded_source),
+        reserved_sacrifices,
+        payment_ctx,
+    );
 
-    for _ in 0..pool.white() {
-        source_masks.push(ManaAtom::WHITE);
+    if payment_ctx.is_some() {
+        available.can_pay_for_spell(&mana_cost, payment_ctx.unwrap())
+            || available.can_pay_with_phyrexian_life(&mana_cost, game.player(player).life)
+    } else {
+        available.can_pay(&mana_cost)
+            || available.can_pay_with_phyrexian_life(&mana_cost, game.player(player).life)
     }
-    for _ in 0..pool.blue() {
-        source_masks.push(ManaAtom::BLUE);
-    }
-    for _ in 0..pool.black() {
-        source_masks.push(ManaAtom::BLACK);
-    }
-    for _ in 0..pool.red() {
-        source_masks.push(ManaAtom::RED);
-    }
-    for _ in 0..pool.green() {
-        source_masks.push(ManaAtom::GREEN);
-    }
-    for _ in 0..pool.colorless() {
-        source_masks.push(0);
+}
+
+/// Java-style action-space mana feasibility for spells with phyrexian costs.
+///
+/// This mirrors the wiring of `ComputerUtilMana.canPayManaCost(...)` in test mode:
+/// pay from floating mana first, greedily commit mana sources shard-by-shard,
+/// and only finish with life if the remaining unpaid cost is purely phyrexian.
+///
+/// This helper is intentionally for action-space / playability probing. Real
+/// payment continues to use the stricter payment path.
+pub fn can_pay_spell_mana_cost_for_action_space(
+    game: &GameState,
+    pool: &ManaPool,
+    player: PlayerId,
+    current_spell: CardId,
+    cost: &forge_foundation::ManaCost,
+    payment_ctx: &crate::mana::ManaPaymentContext,
+) -> bool {
+    let mut unpaid = ManaCostBeingPaid::from_mana_cost(cost);
+    pay_cost_from_pool(&mut unpaid, pool);
+    if unpaid.is_paid() {
+        return true;
     }
 
-    for &card_id in game.cards_in_zone(ZoneType::Battlefield, player) {
-        if card_id == excluded_source {
-            continue;
-        }
-        let card = game.card(card_id);
-        let mut source_mask = 0u16;
-        for ab in &card.activated_abilities {
-            if !ab.is_mana_ability
-                || ab
-                    .cost
-                    .parts
-                    .iter()
-                    .any(|p| matches!(p, CostPart::Mana { .. }))
-            {
-                continue;
-            }
-            if !is_payable_mana_ability(game, player, card_id, ab, reserved_sacrifices) {
-                continue;
-            }
-            if let Some(produced) = ab.params.get(keys::PRODUCED) {
-                if let Some(fixed_atoms) = fixed_produced_atoms(produced, &card.chosen_colors) {
-                    for atom in fixed_atoms {
-                        source_masks.push(atom);
-                    }
-                    source_mask = 0;
-                    break;
-                } else {
-                    for atom in produced_to_atoms(produced, &card.chosen_colors) {
-                        source_mask |= atom;
-                    }
-                }
-            }
+    let mut used_sources = std::collections::HashSet::new();
+    let mut guard = 0u32;
+    while !unpaid.is_paid() && guard < 128 {
+        guard += 1;
+
+        let mana_ability_map = group_sources_by_mana_color(game, player, &[], Some(payment_ctx));
+        if mana_ability_map.is_empty() {
+            break;
         }
 
-        if source_mask != 0 {
-            source_masks.push(source_mask);
-            continue;
+        let mut candidates = collect_sorted_candidates(game, player, &mana_ability_map);
+        candidates.retain(|candidate| {
+            !used_sources.contains(&candidate.card_id) && candidate.card_id != current_spell
+        });
+        if candidates.is_empty() {
+            break;
         }
 
-        if card.is_land() && !card.tapped {
-            let implicit_atoms = all_basic_subtype_atoms(card);
-            if !implicit_atoms.is_empty() {
-                let mut implicit_mask = 0u16;
-                for atom in implicit_atoms {
-                    implicit_mask |= atom;
-                }
-                source_masks.push(implicit_mask);
-            } else if let Some(atom) = basic_land_mana_atom(card) {
-                source_masks.push(atom);
-            }
-        }
-    }
-
-    let mut requirements = Vec::new();
-    for shard in mana_cost.shards() {
-        let color_mask = u16::from(shard.color_mask());
-        if color_mask != 0 {
-            requirements.push(color_mask);
-        }
-    }
-    let generic_count = mana_cost.generic_cost();
-    if source_masks.len() < requirements.len() + generic_count as usize {
-        return false;
-    }
-
-    requirements.sort_by_key(|&req| source_masks.iter().filter(|src| (**src & req) != 0).count());
-
-    let mut committed = std::collections::HashSet::new();
-    for requirement in requirements {
-        let mut best_index: Option<usize> = None;
-        let mut best_pop = usize::MAX;
-        let mut best_mask = u16::MAX;
-        for (i, source_mask) in source_masks.iter().copied().enumerate() {
-            if committed.contains(&i) || (source_mask & requirement) == 0 {
-                continue;
-            }
-            let pop = source_mask.count_ones() as usize;
-            if pop < best_pop || (pop == best_pop && source_mask < best_mask) {
-                best_index = Some(i);
-                best_pop = pop;
-                best_mask = source_mask;
-            }
-        }
-        let Some(best_index) = best_index else {
-            return false;
+        let Some((sa_payment, to_pay)) = choose_candidate(
+            game,
+            player,
+            Some(current_spell),
+            &candidates,
+            &unpaid,
+            false,
+            &[],
+        ) else {
+            break;
         };
-        committed.insert(best_index);
+
+        let Some(chosen_atom) = choose_atom_for_shard(&sa_payment, to_pay) else {
+            break;
+        };
+
+        if let Some(fixed_atoms) = fixed_produced_atoms(&sa_payment.mana_text, &[]) {
+            let repeats = (sa_payment.amount.max(1) as usize)
+                .checked_div(fixed_atoms.len().max(1))
+                .unwrap_or(1)
+                .max(1);
+            for _ in 0..repeats {
+                for &atom in &fixed_atoms {
+                    let _ = unpaid.try_pay_mana(atom, atom as u8);
+                }
+            }
+        } else {
+            let _ = unpaid.try_pay_mana(chosen_atom, chosen_atom as u8);
+            for _ in 1..sa_payment.amount.max(1) {
+                let _ = unpaid.try_pay_mana(chosen_atom, chosen_atom as u8);
+            }
+        }
+
+        used_sources.insert(sa_payment.card_id);
     }
 
-    source_masks.len() - committed.len() >= generic_count as usize
+    unpaid.is_paid()
+        || (unpaid.contains_only_phyrexian_mana()
+            && game.player(player).life > required_phyrexian_life(&unpaid))
 }
 
 fn get_available_mana_sources(
@@ -1585,7 +1580,7 @@ fn get_available_mana_sources(
         if card
             .activated_abilities
             .iter()
-            .any(|ab| is_payable_mana_ability(game, player, cid, ab, reserved_sacrifices))
+            .any(|ab| is_payable_mana_ability(game, player, cid, ab, reserved_sacrifices, None))
         {
             sources.push(cid);
         }
@@ -1594,7 +1589,7 @@ fn get_available_mana_sources(
     sources.retain(|&cid| {
         let card = game.card(cid);
         for ab in &card.activated_abilities {
-            if is_payable_mana_ability(game, player, cid, ab, reserved_sacrifices) {
+            if is_payable_mana_ability(game, player, cid, ab, reserved_sacrifices, None) {
                 return true;
             }
         }
@@ -1614,6 +1609,7 @@ fn is_payable_mana_ability(
     card_id: CardId,
     ab: &crate::ability::activated::ActivatedAbility,
     reserved_sacrifices: &[CardId],
+    payment_ctx: Option<&crate::mana::ManaPaymentContext>,
 ) -> bool {
     if !ab.is_mana_ability {
         return false;
@@ -1643,6 +1639,20 @@ fn is_payable_mana_ability(
     }
     if !can_pay_ignoring_mana(&ab.cost, game, card_id, player) {
         return false;
+    }
+    if let Some(ctx) = payment_ctx {
+        if let Some(raw) = ab.params.get(keys::RESTRICT_VALID) {
+            let card = game.card(card_id);
+            let resolved = if raw.contains("ChosenType") {
+                let chosen = card.chosen_type.clone().unwrap_or_default();
+                raw.replace("ChosenType", &chosen)
+            } else {
+                raw.to_string()
+            };
+            if !crate::mana::mana_meets_restriction(&resolved, ctx) {
+                return false;
+            }
+        }
     }
     can_pay_mana_ability_costs_with_reserved(
         game,
@@ -1674,6 +1684,15 @@ fn can_pay_mana_ability_costs_with_reserved(
         }
     }
     true
+}
+
+fn required_phyrexian_life(unpaid: &ManaCostBeingPaid) -> i32 {
+    unpaid
+        .get_distinct_shards()
+        .into_iter()
+        .filter(|shard| shard.is_phyrexian())
+        .map(|shard| unpaid.get_unpaid_shards(shard) * 2)
+        .sum()
 }
 
 /// Forward-ported from Java for future use. Currently unused but will be needed
@@ -1866,8 +1885,8 @@ fn autopay_source_score(game: &GameState, _player: PlayerId, ma: &ManaAbilityRef
     let mut s: i32 = 0;
 
     // Mana ability intrinsic score.
-    if ma.mana_text == "Any" || ma.mana_text == "Reflected" {
-        // Any-mana and reflected abilities are flexible → higher score.
+    if ma.mana_text == "Any" {
+        // Any-mana abilities are maximally flexible → higher score.
         s += 7;
         if card.card_name == "The Grey Havens" && ma.mana_text == "Any" {
             // Java's AutoPay prefers the active any-color Havens source before
@@ -1920,7 +1939,6 @@ fn ability_mana_text_for_score(produced: &str, chosen_colors: &[String]) -> Stri
     if produced.eq_ignore_ascii_case("Any") {
         return "Any".to_string();
     }
-
     let atoms = produced_to_atoms(produced, chosen_colors);
     if atoms.is_empty() {
         return String::new();

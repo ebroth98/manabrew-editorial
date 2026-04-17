@@ -1,6 +1,6 @@
 use forge_foundation::ZoneType;
 
-use super::{emit_zone_trigger, parse_param, resolve_defined_player, EffectContext};
+use super::{emit_zone_trigger, resolve_defined_player, resolve_numeric_svar, EffectContext};
 use crate::event::{RunParams, TriggerType};
 use crate::spellability::SpellAbility;
 
@@ -10,7 +10,7 @@ use crate::spellability::SpellAbility;
 /// Lets the activating player look at the top N cards of their library,
 /// then put any number of them into their graveyard; the rest go on top in any order.
 pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
-    let num = parse_param(&sa.ability_text, "Amount$ ").unwrap_or(1) as usize;
+    let num = resolve_numeric_svar(ctx.game, sa, "Amount", 1).max(0) as usize;
 
     let target = sa
         .params
@@ -41,11 +41,13 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     let count = num.min(lib_len);
 
     // Take top N cards off the library (last `count` elements = top of library).
-    let top_n: Vec<_> = {
+    let mut top_n: Vec<_> = {
         let zone = ctx.game.zone_mut(ZoneType::Library, target);
         let len = zone.cards.len();
         zone.cards.split_off(len - count)
     };
+    // Reverse to match Java's `getTopXCardsFromLibrary` top-to-bottom iteration order.
+    top_n.reverse();
 
     // Let UI agents pre-build card info for the revealed cards.
     ctx.agents[target.index()].on_library_peek(ctx.game, &top_n);
@@ -71,8 +73,9 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         );
     }
 
-    // Put remaining cards back on top (append to end of library vec).
-    for &id in &keep_top {
+    // `keep_top` is in top-to-bottom order, so iterate in reverse to restore
+    // the correct library order when appending to our bottom-to-top vec.
+    for &id in keep_top.iter().rev() {
         ctx.game.zone_mut(ZoneType::Library, target).cards.push(id);
     }
 

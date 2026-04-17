@@ -57,6 +57,37 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     // TokenEffect.  This is needed for triggers like Woodland Champion
     // (Mode$ ChangesZoneAll | Destination$ Battlefield).
     if !all_created_tokens.is_empty() {
+        if let Some(source_id) = sa.source {
+            if sa.params.has("RememberTokens") {
+                ctx.game
+                    .card_mut(source_id)
+                    .add_remembered_cards(all_created_tokens.iter().copied());
+            }
+            if sa.params.has("ImprintTokens") {
+                ctx.game
+                    .card_mut(source_id)
+                    .add_imprinted_cards(all_created_tokens.iter().copied());
+            }
+            if sa.params.has("RememberSource") {
+                for &token_id in &all_created_tokens {
+                    ctx.game.card_mut(token_id).add_remembered_card(source_id);
+                }
+            }
+            if let Some(defined) = sa.params.get("TokenRemembered") {
+                let remembered_cards = crate::ability::ability_utils::get_defined_cards(
+                    ctx.game,
+                    Some(source_id),
+                    defined,
+                    Some(sa.activating_player),
+                );
+                for &token_id in &all_created_tokens {
+                    ctx.game
+                        .card_mut(token_id)
+                        .add_remembered_cards(remembered_cards.iter().copied());
+                }
+            }
+        }
+
         let mut table = CardZoneTable::default();
         for &tid in &all_created_tokens {
             table.put(Some(ZoneType::None), Some(ZoneType::Battlefield), tid);

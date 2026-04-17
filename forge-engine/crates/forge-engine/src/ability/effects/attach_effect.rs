@@ -1,6 +1,8 @@
 use forge_foundation::ZoneType;
 
 use super::EffectContext;
+use crate::agent::types::GameEntity;
+use crate::player::player_controller::PlayerController;
 use crate::replacement::replacement_handler::{apply_replacements, ReplacementEvent};
 use crate::replacement::ReplacementResult;
 use crate::spellability::SpellAbility;
@@ -9,15 +11,73 @@ use crate::spellability::SpellAbility;
 ///
 /// Mirrors Java's `AttachEffect.resolve()`.
 pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
-    let target = match sa.target_chosen.target_card {
-        Some(c) => c,
-        None => return,
-    };
-
     // Source is the card being attached (the Equipment or Aura)
     let aura_id = match sa.source {
         Some(s) => s,
         None => return,
+    };
+    let chooser = sa
+        .params
+        .get("Chooser")
+        .and_then(|defined| {
+            crate::ability::ability_utils::resolve_defined_players_with_sa(
+                defined,
+                sa,
+                sa.activating_player,
+                ctx.game,
+            )
+            .into_iter()
+            .next()
+        })
+        .unwrap_or(sa.activating_player);
+
+    let mut candidates: Vec<GameEntity> = Vec::new();
+    if let Some(target_card) = sa.target_chosen.target_card {
+        candidates.push(GameEntity::Card(target_card));
+    }
+    if let Some(target_player) = sa.target_chosen.target_player {
+        candidates.push(GameEntity::Player(target_player));
+    }
+    if candidates.is_empty() {
+        if let Some(defined) = sa.defined() {
+            candidates.extend(
+                crate::ability::ability_utils::get_defined_cards(
+                    ctx.game,
+                    Some(aura_id),
+                    defined,
+                    Some(sa.activating_player),
+                )
+                .into_iter()
+                .map(GameEntity::Card),
+            );
+            candidates.extend(
+                crate::ability::ability_utils::resolve_defined_players_with_sa(
+                    defined,
+                    sa,
+                    sa.activating_player,
+                    ctx.game,
+                )
+                .into_iter()
+                .map(GameEntity::Player),
+            );
+        }
+    }
+    if candidates.is_empty() {
+        return;
+    }
+    let chosen = {
+        let agent = ctx.agents[chooser.index()].as_mut();
+        let mut controller = PlayerController::new(ctx.game, chooser, agent);
+        controller.snapshot_state(ctx.mana_pools);
+        controller.choose_single_entity_for_effect(&candidates)
+    };
+    let chosen = match chosen {
+        Some(chosen) => chosen,
+        None => return,
+    };
+    let target = match chosen {
+        GameEntity::Card(c) => c,
+        GameEntity::Player(_) => return,
     };
 
     // Both must be on the battlefield

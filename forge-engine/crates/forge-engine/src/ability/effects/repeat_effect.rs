@@ -40,7 +40,8 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         if max_repeat.is_some_and(|max| count >= max) {
             break;
         }
-        if !check_repeat_conditions(ctx, sa) {
+        let should_continue = check_repeat_conditions(ctx, sa);
+        if !should_continue {
             break;
         }
     }
