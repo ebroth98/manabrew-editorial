@@ -122,10 +122,38 @@ export default function Game() {
   const activePrompt = manualApi ? null : currentPrompt;
   const promptType = activePrompt?.type;
 
+  // Accumulating cache of every card we've ever observed across the
+  // player's visible zones. Used as a fallback so we can resolve a casting
+  // spell that the engine has temporarily removed from every live zone
+  // (between hand → in-flight → stack).
+  const knownCardsRef = useRef<Map<string, XMageCard>>(new Map());
+  useEffect(() => {
+    if (!gameView) return;
+    const cache = knownCardsRef.current;
+    const ingest = (cards: XMageCard[] | undefined) => {
+      if (!cards) return;
+      for (const c of cards) cache.set(c.id, c);
+    };
+    ingest(gameView.myHand);
+    ingest(gameView.battlefield);
+    ingest(gameView.graveyard);
+    ingest(gameView.exile);
+    ingest(gameView.myCommandZone);
+    ingest(gameView.opponentCommandZone);
+    ingest(gameView.opponentGraveyard);
+    ingest(gameView.opponentExile);
+  }, [gameView]);
+  const resolveKnownCard = useCallback(
+    (id: string) => knownCardsRef.current.get(id),
+    [],
+  );
+
   const casting = useCastingState({
     currentPrompt: activePrompt,
     hand: gameView?.myHand ?? [],
     battlefield: gameView?.battlefield ?? [],
+    stack: gameView?.stack ?? [],
+    resolveKnownCard,
     targetCard,
     targetPlayer,
     targetAny,
@@ -1022,6 +1050,7 @@ export default function Game() {
           onHandCardDragStart={handleHandCardDragStart}
           onHandCardClick={handleHandCardAction}
           onHoverCard={handleHoverCardGuarded}
+          onDismissHoverPreview={preview.dismiss}
           getHandActions={getHandActionOptions}
           onSelectHandAction={handlePreviewAction}
           onFlipCard={preview.flipCard}
@@ -1160,6 +1189,7 @@ export default function Game() {
         }
         showPreStackFlash={shouldShowPreStackFlash}
         castingCard={casting.castingCard}
+        rightPanelCollapsed={isActionPanelCollapsed}
       />
 
       {casting.showArrow && casting.castingCardId && (

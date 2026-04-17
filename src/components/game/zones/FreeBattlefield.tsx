@@ -1,4 +1,4 @@
-import React, { memo, useEffect, useMemo, useRef } from "react";
+import React, { useEffect, useMemo, useRef } from "react";
 import { cn } from "@/lib/utils";
 import { Card } from "@/components/game/Card";
 import { CardOverlayButton } from "@/components/game/CardOverlayButton";
@@ -7,134 +7,13 @@ import { CARD_W, CARD_H, CARD_GAP as GAP } from "../game.constants";
 import { CARD_RING, BATTLEFIELD_CARD } from "../game.styles";
 import { useGameThemeColors, withAlpha } from "../game.theme";
 import { useBattlefieldLayout } from "@/hooks/useBattlefieldLayout";
+import {
+  extractManaLetters,
+  getExpandedManaAbilities,
+} from "@/components/game/manaUtils";
+import { ManaAbilityTapButton } from "./ManaAbilityTapButton";
 
 const ATTACH_OFFSET_Y = 16;
-
-/** Extract all mana letters from an ability description like "Add {G}." or "Add {W} or {U}." */
-export function extractManaLetters(desc: string): string[] {
-  const matches = desc.matchAll(/\{([WUBRGC])\}/g);
-  return Array.from(matches, (m) => m[1]);
-}
-
-export function manaSymbolUrl(symbol: string): string {
-  return `https://svgs.scryfall.io/card-symbols/${encodeURIComponent(symbol)}.svg`;
-}
-
-export const ANY_COLOR_LETTERS = ["W", "U", "B", "R", "G"];
-
-/**
- * Expand mana abilities by detecting color options in descriptions.
- * - If it has multiple symbols (e.g. "{W} or {U}"), returns 2 virtual buttons.
- * - If it has NO symbols but says "any color", returns 5 virtual buttons (WUBRG).
- * - Otherwise returns the ability as-is (handles already-split abilities).
- */
-export function getExpandedManaAbilities(
-  cardId: string,
-  options: ActivatableAbilityInfo[],
-): ActivatableAbilityInfo[] {
-  const cardAbs = options.filter((a) => a.cardId === cardId);
-  if (cardAbs.length === 0) return [];
-
-  const expanded: ActivatableAbilityInfo[] = [];
-
-  for (const ab of cardAbs) {
-    const letters = extractManaLetters(ab.description);
-    const desc = ab.description.toLowerCase();
-    const isAnyColor =
-      desc.includes("any color") ||
-      desc.includes("any one color") ||
-      desc.includes("mana of any color");
-
-    if (letters.length > 1) {
-      // e.g. "Add {W} or {U}"
-      letters.forEach((letter) => {
-        expanded.push({
-          ...ab,
-          description: `Add {${letter}}`,
-        });
-      });
-    } else if (letters.length === 1) {
-      // Already has exactly one color symbol (e.g. "Add {W}").
-      // Trust the symbol and don't expand further even if "any color" is in the text.
-      // This prevents 25 buttons on cards where the engine already split the abilities.
-      expanded.push(ab);
-    } else if (isAnyColor) {
-      // No specific symbols found but wording implies any color, expand to WUBRG
-      ANY_COLOR_LETTERS.forEach((letter) => {
-        expanded.push({
-          ...ab,
-          description: `Add {${letter}}`,
-        });
-      });
-    } else {
-      expanded.push(ab);
-    }
-  }
-
-  return expanded;
-}
-
-export const MANA_COLORS: Record<string, string> = {
-  W: "rgba(248, 246, 216, 0.45)", // White
-  U: "rgba(193, 215, 233, 0.45)", // Blue
-  B: "rgba(186, 177, 171, 0.45)", // Black
-  R: "rgba(235, 159, 130, 0.45)", // Red
-  G: "rgba(196, 211, 202, 0.45)", // Green
-  C: "rgba(204, 202, 199, 0.45)", // Colorless
-};
-
-/** A button with a mana symbol for tapping a dual land for a specific color, styled to fill card sections. */
-export const ManaAbilityTapButton = memo(function ManaAbilityTapButton({
-  description,
-  onClick,
-  small = false,
-  className,
-}: {
-  description: string;
-  onClick: () => void;
-  small?: boolean;
-  className?: string;
-}) {
-  const letters = extractManaLetters(description);
-  const letter = letters[0] ?? null;
-  const bgColor = letter ? MANA_COLORS[letter] : "rgba(0, 0, 0, 0.4)";
-
-  return (
-    <button
-      className={cn(
-        "group/mana flex h-full w-full items-center justify-center transition-all hover:brightness-125",
-        className,
-      )}
-      style={{ backgroundColor: bgColor }}
-      onClick={(e) => {
-        e.stopPropagation();
-        onClick();
-      }}
-      onMouseDown={(e) => e.preventDefault()}
-      title={`Tap: ${description}`}
-    >
-      <div
-        className={cn(
-          "flex items-center justify-center rounded-full bg-black/40 shadow-lg transition-transform group-hover/mana:scale-110",
-          small ? "h-6 w-6 p-0.5" : "h-8 w-8 p-1",
-        )}
-      >
-        {letter ? (
-          <img
-            src={manaSymbolUrl(letter)}
-            alt={`{${letter}}`}
-            className="h-full w-full drop-shadow-md"
-            loading="lazy"
-          />
-        ) : (
-          <span className={cn("font-bold text-white", small ? "text-[7px]" : "text-[9px]")}>
-            TAP
-          </span>
-        )}
-      </div>
-    </button>
-  );
-});
 
 export interface PlacementGhost {
   stackObjectId: string;
@@ -510,7 +389,7 @@ export function FreeBattlefield({
           const xMax = Math.max(xMin, cw - CARD_W - Math.max(0, rightReserved));
 
           const isOccupied = (x: number, y: number) => {
-            return Object.values(positions).some((pos) => {
+            return Object.values(positions as any).some((pos: any) => {
               return (
                 x < pos.x + CARD_W + GAP / 2 &&
                 x + CARD_W + GAP / 2 > pos.x &&

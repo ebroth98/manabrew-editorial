@@ -1,11 +1,35 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
-import type { Card as XMageCard } from "@/types/openmagic";
+import type { Card as XMageCard, StackObject } from "@/types/openmagic";
 import type { AgentPrompt } from "@/stores/useGameStore";
 
 /**
  * Prompt types that are part of the spell-casting flow.
  * While any of these are active, the casting card stays visible in the stack.
  */
+/** Minimal XMageCard used when the engine's zones don't yet have the
+ * spell we're casting — enough for StackDisplay to render the card face
+ * and for the casting glow / target arrow to anchor to it. */
+function stubCard(id: string, name: string, text = ""): XMageCard {
+  return {
+    id,
+    name,
+    setCode: "",
+    cardNumber: "",
+    color: "",
+    manaCost: "",
+    types: [],
+    subtypes: [],
+    supertypes: [],
+    text,
+    isPlayable: false,
+    isSelected: false,
+    isChoosable: false,
+    controllerId: "",
+    ownerId: "",
+    zoneId: "stack",
+  };
+}
+
 const CASTING_PROMPT_TYPES = new Set([
   "chooseTargetCard",
   "chooseTargetPlayer",
@@ -24,6 +48,15 @@ interface UseCastingStateOptions {
   currentPrompt: AgentPrompt | null | undefined;
   hand: XMageCard[];
   battlefield: XMageCard[];
+  /** Current stack so we can find the casting card once the engine has
+   *  pushed it onto the stack (target prompts fire with the spell already
+   *  on the stack for many effects). */
+  stack?: StackObject[];
+  /** Optional lookup by card id that covers cards the engine has already
+   *  removed from every live zone (e.g. a spell in the "in-flight" state
+   *  between leaving the hand and landing on the stack). Populate from a
+   *  caller-side cache of every card ever observed. */
+  resolveKnownCard?: (cardId: string) => XMageCard | undefined;
   targetCard: (cardId: string | null) => void;
   targetPlayer: (playerId: string) => void;
   targetAny: (target: { kind: string; playerId?: string; cardId?: string }) => void;
@@ -33,6 +66,8 @@ export function useCastingState({
   currentPrompt,
   hand,
   battlefield,
+  stack,
+  resolveKnownCard,
   targetCard,
   targetPlayer,
   targetAny,
@@ -47,15 +82,35 @@ export function useCastingState({
     return currentPrompt?.sourceCardId ?? currentPrompt?.cardId ?? null;
   }, [promptType, currentPrompt?.sourceCardId, currentPrompt?.cardId]);
 
-  // Resolve the actual card object — check hand first, then battlefield (activated abilities)
-  const castingCard = useMemo(
-    () => castingCardId
-      ? hand.find((c) => c.id === castingCardId)
-        ?? battlefield.find((c) => c.id === castingCardId)
-        ?? null
-      : null,
-    [castingCardId, hand, battlefield],
-  );
+  // Resolve the actual card object. Order matters: the spell is usually
+  // still in hand at the very start of the cast (cost prompts), but for
+  // target prompts the engine may have already pulled it off the hand —
+  // sometimes it's on the stack, sometimes it's in "limbo" (neither in a
+  // zone nor yet pushed onto the stack). Fall through every source we have
+  // and, as a last resort, synthesize a stub from the prompt itself so
+  // the casting card always renders while a cast is in progress.
+  const promptSourceCardName = currentPrompt?.sourceCardName;
+  const castingCard = useMemo(() => {
+    if (!castingCardId) return null;
+    const fromHand = hand.find((c) => c.id === castingCardId);
+    if (fromHand) return fromHand;
+    const fromBattlefield = battlefield.find((c) => c.id === castingCardId);
+    if (fromBattlefield) return fromBattlefield;
+    if (stack) {
+      const stackEntry = stack.find((s) => s.sourceId === castingCardId);
+      if (stackEntry) {
+        return stubCard(stackEntry.sourceId, stackEntry.name, stackEntry.text);
+      }
+    }
+    // Fall back to the caller-side "known cards" cache — this resolves
+    // spells that were in the hand a moment ago but have been removed
+    // while the engine puts them in flight.
+    const cached = resolveKnownCard?.(castingCardId);
+    if (cached) return cached;
+    // Always render *something* while a cast is in progress so the player
+    // has visual confirmation of what they're targeting.
+    return stubCard(castingCardId, promptSourceCardName ?? "Casting…");
+  }, [castingCardId, hand, battlefield, stack, promptSourceCardName, resolveKnownCard]);
 
   // If the card is on the battlefield (activated ability), it should stay visible there
   const castingFromBattlefield = useMemo(

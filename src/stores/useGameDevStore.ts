@@ -29,21 +29,32 @@ export const DEV_PROMPT_ACTION_OVERRIDES = [
 export type DevPromptActionOverride =
   (typeof DEV_PROMPT_ACTION_OVERRIDES)[number];
 
+interface PixiPerfStats {
+  fps: number;
+  minFps: number;
+  maxFps: number;
+  deltaMs: number;
+}
+
 interface GameDevState {
   promptActionOverride: DevPromptActionOverride | null;
   devToolsEnabled: boolean;
+  pixiPerfStats: PixiPerfStats | null;
   setPromptActionOverride: (value: DevPromptActionOverride | null) => void;
   setDevToolsEnabled: (value: boolean) => void;
   clearPromptActionOverride: () => void;
+  setPixiPerfStats: (stats: PixiPerfStats | null) => void;
   resetDevSettings: () => void;
 }
 
 export const useGameDevStore = create<GameDevState>()(devtools((set) => ({
   promptActionOverride: null,
   devToolsEnabled: false,
+  pixiPerfStats: null,
   setPromptActionOverride: (value) => set({ promptActionOverride: value }),
   setDevToolsEnabled: (value) => set({ devToolsEnabled: value }),
   clearPromptActionOverride: () => set({ promptActionOverride: null }),
+  setPixiPerfStats: (stats) => set({ pixiPerfStats: stats }),
   resetDevSettings: () =>
     set({
       promptActionOverride: null,

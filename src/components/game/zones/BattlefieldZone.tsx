@@ -6,7 +6,8 @@ import type { BattlefieldZoneProps } from "../game.types";
 import { CARD_RING, BATTLEFIELD_CARD, ZONE_LABEL } from "../game.styles";
 import { useGameThemeColors, withAlpha } from "../game.theme";
 import type { Card as XMageCard } from "@/types/openmagic";
-import { ManaAbilityTapButton, getExpandedManaAbilities, extractManaLetters } from "./FreeBattlefield";
+import { extractManaLetters, getExpandedManaAbilities } from "@/components/game/manaUtils";
+import { ManaAbilityTapButton } from "./ManaAbilityTapButton";
 
 const ATTACH_OFFSET_Y = 16;
 

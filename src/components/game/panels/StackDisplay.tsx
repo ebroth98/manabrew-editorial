@@ -13,12 +13,21 @@ interface StackDisplayProps {
   showPreStackFlash?: boolean;
   /** Card currently being cast (waiting for targets / mana payment). */
   castingCard?: XMageCard | null;
+  /**
+   * When the right action panel is open it covers the default stack
+   * position — callers pass `false` so the stack shifts leftward.
+   */
+  rightPanelCollapsed?: boolean;
 }
 
 // Stack UI tuning (single source of truth for size/placement)
 const STACK_CARD_ASPECT = 7 / 5; // MTG card ratio: 5:7 (w:h)
+// Right inset when the action panel is open (panel is w-72 = 288px + its
+// own right-1.5 gap ≈ 6px). Add a small breathing gap so the stack cards
+// don't touch the panel edge.
+const STACK_RIGHT_WHEN_PANEL_OPEN = 288 + 6 + 8;
+const STACK_RIGHT_WHEN_PANEL_COLLAPSED = 10;
 const STACK_UI = {
-  positionClass: "absolute right-[10px] z-40",
   direction: "left" as "left" | "right",
   cardWidth: 220,
   offsetX: 15,
@@ -35,6 +44,7 @@ export function StackDisplay({
   flashToken,
   showPreStackFlash = true,
   castingCard,
+  rightPanelCollapsed = true,
 }: StackDisplayProps) {
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const setHoveredStackObjectId = useStackUIStore((s) => s.setHoveredStackObjectId);
@@ -99,10 +109,16 @@ export function StackDisplay({
 
   if (stack.length === 0 && !flashCard && !castingCard) return null;
 
+  const rightInset = rightPanelCollapsed
+    ? STACK_RIGHT_WHEN_PANEL_COLLAPSED
+    : STACK_RIGHT_WHEN_PANEL_OPEN;
+
   return (
     <div
-      className={cn("pointer-events-auto", STACK_UI.positionClass)}
-      style={{ top }}
+      className={cn(
+        "pointer-events-auto absolute z-40 transition-[right] duration-200",
+      )}
+      style={{ top, right: `${rightInset}px` }}
     >
       <div
         className="relative"

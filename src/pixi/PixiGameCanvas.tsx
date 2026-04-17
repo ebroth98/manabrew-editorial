@@ -1,0 +1,337 @@
+import { useRef, useEffect, useCallback, useState } from "react";
+import { Application } from "pixi.js";
+import { PixiGameScene } from "./PixiGameScene";
+import { adaptTheme } from "./themeAdapter";
+import { getGameThemeColors } from "@/components/game/game.theme";
+import { usePreferencesStore } from "@/stores/usePreferencesStore";
+import { ZONE_COLUMN_RESERVED_PX } from "@/components/game/game.constants";
+import type { GameCanvasCallbacks, BattlefieldState, HandState, ScreenBounds } from "./types";
+import type { ArrowDef } from "./ArrowLayer";
+import { useHandScale } from "@/hooks/useHandScale";
+import { HandCardActions } from "@/components/game/zones/HandCardActions";
+import type { HandActionOption } from "@/stores/useGameUIStore";
+import type { Card } from "@/types/openmagic";
+import { useGameDevStore } from "@/stores/useGameDevStore";
+import {
+  FPS_SAMPLE_INTERVAL_MS,
+  HAND_ACTIONS_CLEAR_DELAY_MS,
+  HAND_ACTIONS_GAP_PX,
+  Z_HAND_ACTIONS_MENU,
+} from "./constants";
+
+interface PixiGameCanvasProps {
+  battlefield: BattlefieldState;
+  hand?: HandState;
+  arrows?: ArrowDef[];
+  placementGhostName?: string | null;
+  isDropActive?: boolean;
+  callbacks: GameCanvasCallbacks;
+  bottomReserved?: number;
+  leftReserved?: number;
+  /** Keep-out rects in canvas-local coords (e.g. dynamic UI overlays). */
+  externalBlockers?: ScreenBounds[];
+  /**
+   * Fixed-size keep-out anchored to the canvas bottom-right corner. Used for
+   * the PASS / phase-pass button cluster so lands aren't placed under it.
+   */
+  bottomRightReserved?: { width: number; height: number } | null;
+  className?: string;
+  getHandActions?: (card: Card) => HandActionOption[];
+  onSelectHandAction?: (card: Card, action: HandActionOption) => void;
+}
+
+interface HandHoverState {
+  card: Card;
+  bounds: ScreenBounds;
+}
+
+export function PixiGameCanvas({
+  battlefield,
+  hand,
+  arrows,
+  placementGhostName,
+  isDropActive,
+  callbacks,
+  bottomReserved = 0,
+  leftReserved = ZONE_COLUMN_RESERVED_PX,
+  externalBlockers,
+  bottomRightReserved,
+  className,
+  getHandActions,
+  onSelectHandAction,
+}: PixiGameCanvasProps) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const appRef = useRef<Application | null>(null);
+  const [scene, setScene] = useState<PixiGameScene | null>(null);
+  const sceneRef = useRef<PixiGameScene | null>(null);
+  const callbacksRef = useRef(callbacks);
+  const [handHover, setHandHover] = useState<HandHoverState | null>(null);
+  const clearTimerRef = useRef<number | null>(null);
+
+  // Keep sceneRef in sync with scene state so cleanup closures always see
+  // the current instance without forcing effect re-runs.
+  useEffect(() => {
+    sceneRef.current = scene;
+  }, [scene]);
+
+  useEffect(() => {
+    callbacksRef.current = callbacks;
+  }, [callbacks]);
+
+  const cancelHandHoverClear = useCallback(() => {
+    if (clearTimerRef.current != null) {
+      window.clearTimeout(clearTimerRef.current);
+      clearTimerRef.current = null;
+    }
+  }, []);
+
+  const scheduleHandHoverClear = useCallback(() => {
+    cancelHandHoverClear();
+    clearTimerRef.current = window.setTimeout(() => {
+      setHandHover(null);
+      clearTimerRef.current = null;
+    }, HAND_ACTIONS_CLEAR_DELAY_MS);
+  }, [cancelHandHoverClear]);
+
+  const initApp = useCallback(async () => {
+    if (!canvasRef.current || appRef.current) return;
+
+    const app = new Application();
+    appRef.current = app;
+
+    try {
+      await app.init({
+        canvas: canvasRef.current,
+        preference: "webgl",
+        backgroundAlpha: 0,
+        antialias: true,
+        autoDensity: true,
+        // Force a generous minimum so text (PT, badges, counters, keyword
+        // chips) stays sharp at the hand's effective scale. Hand sprites
+        // render at ~1.8x base and ~3.25x when hovered (medium / large can
+        // go up to ~4.3x), so a 3x backing buffer keeps text crisp across
+        // the full range even on non-retina displays. On retina we inherit
+        // devicePixelRatio (typically 2 or 3).
+        resolution: Math.max(3, window.devicePixelRatio || 1),
+        resizeTo: canvasRef.current.parentElement ?? undefined,
+      });
+    } catch (err) {
+      console.error("[pixi] Failed to initialize application:", err);
+      appRef.current = null;
+      return;
+    }
+
+    if (!app.renderer) {
+      appRef.current = null;
+      return;
+    }
+
+    const newScene = new PixiGameScene(app, {
+      onClickCard: (...args) => callbacksRef.current.onClickCard?.(...args),
+      onHoverCard: (...args) => callbacksRef.current.onHoverCard?.(...args),
+      onClickAnyCard: (...args) =>
+        callbacksRef.current.onClickAnyCard?.(...args),
+      onFlipCard: () => callbacksRef.current.onFlipCard?.(),
+      onTapLand: (...args) => callbacksRef.current.onTapLand?.(...args),
+      onTapLands: (...args) => callbacksRef.current.onTapLands?.(...args),
+      onUntapLand: (...args) => callbacksRef.current.onUntapLand?.(...args),
+      onUntapLands: (...args) => callbacksRef.current.onUntapLands?.(...args),
+      onTapLandAbility: (...args) =>
+        callbacksRef.current.onTapLandAbility?.(...args),
+      onAttackerClick: (...args) =>
+        callbacksRef.current.onAttackerClick?.(...args),
+      onTargetPlayer: (...args) =>
+        callbacksRef.current.onTargetPlayer?.(...args),
+      onStartDrag: (...args) => callbacksRef.current.onStartDrag?.(...args),
+      onClickCard_Hand: (...args) =>
+        callbacksRef.current.onClickCard_Hand?.(...args),
+      onCastSpell: (...args) => callbacksRef.current.onCastSpell?.(...args),
+      onDismissHoverPreview: () => callbacksRef.current.onDismissHoverPreview?.(),
+      onHoverHandCard: (card, bounds) => {
+        if (card && bounds) {
+          cancelHandHoverClear();
+          setHandHover({ card, bounds });
+        } else {
+          scheduleHandHoverClear();
+        }
+      },
+    });
+
+    const themeColors = getGameThemeColors();
+    newScene.setTheme(adaptTheme(themeColors));
+
+    const parent = canvasRef.current.parentElement;
+    if (parent) {
+      newScene.resize(parent.clientWidth, parent.clientHeight);
+    }
+
+    setScene(newScene);
+  }, [cancelHandHoverClear, scheduleHandHoverClear]);
+
+  useEffect(() => {
+    initApp();
+    return () => {
+      cancelHandHoverClear();
+      sceneRef.current?.destroy();
+      sceneRef.current = null;
+      appRef.current?.destroy(true);
+      appRef.current = null;
+      setScene(null);
+    };
+  }, [initApp, cancelHandHoverClear]);
+
+  useEffect(() => {
+    const parent = canvasRef.current?.parentElement;
+    if (!parent || !scene) return;
+
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const { width, height } = entry.contentRect;
+        scene.resize(width, height);
+      }
+    });
+    observer.observe(parent);
+    return () => observer.disconnect();
+  }, [scene]);
+
+  useEffect(() => {
+    if (!scene) return;
+    const unsub = usePreferencesStore.subscribe(() => {
+      const themeColors = getGameThemeColors();
+      scene.setTheme(adaptTheme(themeColors));
+    });
+    return unsub;
+  }, [scene]);
+
+  const handSize = usePreferencesStore((s) => s.handSize);
+  const vScale = useHandScale();
+
+  useEffect(() => {
+    if (!scene) return;
+    scene.setReserved(bottomReserved, leftReserved);
+    scene.updateBattlefield(battlefield);
+  }, [scene, battlefield, bottomReserved, leftReserved]);
+
+  useEffect(() => {
+    if (!scene) return;
+    scene.setHandPreferences(handSize, vScale);
+    if (hand) scene.updateHand(hand);
+  }, [scene, hand, handSize, vScale]);
+
+  useEffect(() => {
+    if (!scene) return;
+    scene.updateArrows(arrows ?? []);
+  }, [scene, arrows]);
+
+  useEffect(() => {
+    if (!scene) return;
+    scene.showPlacementGhost(placementGhostName ?? null);
+  }, [scene, placementGhostName]);
+
+  useEffect(() => {
+    if (!scene) return;
+    scene.setDropActive(isDropActive ?? false);
+  }, [scene, isDropActive]);
+
+  useEffect(() => {
+    if (!scene) return;
+    scene.setExternalBlockers(externalBlockers ?? []);
+  }, [scene, externalBlockers]);
+
+  useEffect(() => {
+    if (!scene) return;
+    scene.setBottomRightReserved(bottomRightReserved ?? null);
+  }, [scene, bottomRightReserved]);
+
+  // Sample Pixi ticker FPS and push to the dev store for the FPS counter.
+  useEffect(() => {
+    if (!scene) return;
+    const app = scene.app;
+    const setPixiPerfStats = useGameDevStore.getState().setPixiPerfStats;
+    let frames = 0;
+    let totalDelta = 0;
+    let minFps = Infinity;
+    let maxFps = 0;
+    let lastFlush = performance.now();
+
+    const sample = () => {
+      if (scene.isDestroyed) return;
+      const instantFps = app.ticker.FPS;
+      frames += 1;
+      totalDelta += app.ticker.deltaMS;
+      if (instantFps < minFps) minFps = instantFps;
+      if (instantFps > maxFps) maxFps = instantFps;
+
+      const now = performance.now();
+      if (now - lastFlush >= FPS_SAMPLE_INTERVAL_MS) {
+        setPixiPerfStats({
+          fps: frames / ((now - lastFlush) / 1000),
+          minFps: minFps === Infinity ? 0 : minFps,
+          maxFps,
+          deltaMs: totalDelta / Math.max(1, frames),
+        });
+        frames = 0;
+        totalDelta = 0;
+        minFps = Infinity;
+        maxFps = 0;
+        lastFlush = now;
+      }
+    };
+
+    app.ticker.add(sample);
+    return () => {
+      // The Pixi app may already have been destroyed by the time this
+      // cleanup fires (e.g. on game-over → unmount). Guard defensively.
+      if (!scene.isDestroyed && app.ticker) {
+        try { app.ticker.remove(sample); } catch { /* ticker gone */ }
+      }
+      setPixiPerfStats(null);
+    };
+  }, [scene]);
+
+  const handActions =
+    handHover && getHandActions ? getHandActions(handHover.card) : [];
+  const showActionPanel =
+    handHover && handActions.length > 0 && !!onSelectHandAction;
+
+  return (
+    <div
+      className={className}
+      style={{ position: "relative", width: "100%", height: "100%" }}
+    >
+      <canvas
+        ref={canvasRef}
+        style={{ width: "100%", height: "100%", display: "block" }}
+      />
+      {showActionPanel && (
+        <div
+          style={{
+            position: "absolute",
+            left:
+              handHover.bounds.x + handHover.bounds.width + HAND_ACTIONS_GAP_PX,
+            top: handHover.bounds.y,
+            zIndex: Z_HAND_ACTIONS_MENU,
+          }}
+          onMouseEnter={() => {
+            cancelHandHoverClear();
+            scene?.holdHandHover();
+          }}
+          onMouseLeave={() => {
+            scheduleHandHoverClear();
+            scene?.releaseHandHover();
+          }}
+        >
+          <HandCardActions
+            actions={handActions}
+            onSelectAction={(action) => {
+              cancelHandHoverClear();
+              scene?.releaseHandHover();
+              setHandHover(null);
+              onSelectHandAction?.(handHover.card, action);
+            }}
+          />
+        </div>
+      )}
+    </div>
+  );
+}

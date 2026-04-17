@@ -497,11 +497,22 @@ function FighterPanel({
         };
 
   return (
-    <button
-      type="button"
+    // Not a <button>: the Clear action below is also a <button>, and HTML
+    // forbids nested interactive elements (browser flattens the structure
+    // and React warns on hydration). Use role="button" + keyboard handling
+    // to keep it accessible.
+    <div
+      role="button"
+      tabIndex={0}
       onClick={onClick}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onClick();
+        }
+      }}
       className={cn(
-        "flex-1 p-4 text-left transition-all min-h-[100px] flex flex-col justify-between",
+        "flex-1 p-4 text-left transition-all min-h-[100px] flex flex-col justify-between cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm",
         isActive
           ? `${sideColor.activeBg} ring-1 ${sideColor.activeRing}`
           : "hover:bg-muted/30"
@@ -552,6 +563,6 @@ function FighterPanel({
           {extra}
         </div>
       )}
-    </button>
+    </div>
   );
 }

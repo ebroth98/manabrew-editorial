@@ -36,6 +36,7 @@ export function useCardPreview(dismissDeps: unknown[] = []) {
 
   const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const mouseOnPreviewRef = useRef(false);
 
   const cardPreviewMode = usePreferencesStore((s) => s.cardPreviewMode);
   const cardHoverDelayMs = usePreferencesStore((s) => s.cardHoverDelayMs);
@@ -49,6 +50,7 @@ export function useCardPreview(dismissDeps: unknown[] = []) {
       clearTimeout(hideTimerRef.current);
       hideTimerRef.current = null;
     }
+    mouseOnPreviewRef.current = false;
     setHoveredCard(null);
     setAnchorRect(null);
     setPlacement("auto");
@@ -111,11 +113,16 @@ export function useCardPreview(dismissDeps: unknown[] = []) {
 
   const handleMouseLeave = useCallback(() => {
     if (isSticky) return;
-    
+
     if (hoverTimerRef.current) {
       clearTimeout(hoverTimerRef.current);
       hoverTimerRef.current = null;
     }
+
+    // If the cursor is currently sitting on the preview itself, don't
+    // schedule a hide — the preview will call this again via its own
+    // onMouseLeave when the cursor actually leaves.
+    if (mouseOnPreviewRef.current) return;
 
     if (!hideTimerRef.current) {
       hideTimerRef.current = setTimeout(() => {
@@ -129,6 +136,7 @@ export function useCardPreview(dismissDeps: unknown[] = []) {
   }, [isSticky]);
 
   const onMouseEnterPreview = useCallback(() => {
+    mouseOnPreviewRef.current = true;
     if (hideTimerRef.current) {
       clearTimeout(hideTimerRef.current);
       hideTimerRef.current = null;
@@ -136,6 +144,7 @@ export function useCardPreview(dismissDeps: unknown[] = []) {
   }, []);
 
   const onMouseLeavePreview = useCallback(() => {
+    mouseOnPreviewRef.current = false;
     handleMouseLeave();
   }, [handleMouseLeave]);
 

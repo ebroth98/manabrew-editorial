@@ -181,7 +181,7 @@ export function CardPreview({
           {/* Card image */}
           <div
             className={cn(
-              "w-full h-full rounded-xl shadow-2xl overflow-hidden bg-card transition-shadow duration-200",
+              "w-full h-full rounded-xl shadow-2xl overflow-hidden bg-black transition-shadow duration-200",
               hasActions ? "ring-2" : "ring-1 ring-black/20",
             )}
             style={hasActions ? {
@@ -200,7 +200,7 @@ export function CardPreview({
                   src={currentImageUrl}
                   alt={currentCardName}
                   title=""
-                  className="w-full h-full object-contain"
+                  className="w-full h-full object-cover"
                 />
                 {card.counters && (
                   <CounterDisplay

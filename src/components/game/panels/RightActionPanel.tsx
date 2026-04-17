@@ -114,6 +114,7 @@ export function RightActionPanel({
           />
         ) : (
           <div className="flex flex-col gap-2">
+            <PixiFpsCounter />
             <div className="flex items-center justify-between gap-3 rounded-md border border-border/70 px-3 py-2">
               <div className="flex flex-col gap-0.5">
                 <span className="text-sm font-medium">Zustand DevTools</span>
@@ -175,5 +176,45 @@ export function RightActionPanel({
         )}
       </div>
     </aside>
+  );
+}
+
+function PixiFpsCounter() {
+  const stats = useGameDevStore((s) => s.pixiPerfStats);
+
+  if (!stats) {
+    return (
+      <div className="flex items-center justify-between gap-3 rounded-md border border-border/70 px-3 py-2">
+        <div className="flex flex-col gap-0.5">
+          <span className="text-sm font-medium">Pixi FPS</span>
+          <span className="text-xs text-muted-foreground">Renderer inactive.</span>
+        </div>
+        <span className="font-mono text-xs text-muted-foreground">—</span>
+      </div>
+    );
+  }
+
+  const fps = stats.fps.toFixed(1);
+  const range = `${stats.minFps.toFixed(0)}–${stats.maxFps.toFixed(0)}`;
+  const frameMs = stats.deltaMs.toFixed(1);
+  const color =
+    stats.fps >= 55
+      ? "text-emerald-400"
+      : stats.fps >= 40
+        ? "text-amber-400"
+        : "text-rose-400";
+
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-md border border-border/70 px-3 py-2">
+      <div className="flex flex-col gap-0.5">
+        <span className="text-sm font-medium">Pixi FPS</span>
+        <span className="text-xs text-muted-foreground">
+          frame {frameMs}ms · range {range}
+        </span>
+      </div>
+      <span className={cn("font-mono text-lg font-semibold tabular-nums", color)}>
+        {fps}
+      </span>
+    </div>
   );
 }

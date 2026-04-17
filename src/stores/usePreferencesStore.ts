@@ -58,6 +58,10 @@ interface PreferencesState {
   setAppThemeColorOverride: (key: string, hsl: string) => void;
   resetAppThemeColorOverrides: () => void;
 
+  /** Use PixiJS canvas renderer for the game board (experimental) */
+  pixiEnabled: boolean;
+  setPixiEnabled: (enabled: boolean) => void;
+
   /** Game UI color overrides by dot-path key */
   gameThemeColorOverrides: Record<string, string>;
   setGameThemeColorOverride: (path: string, color: string) => void;
@@ -108,6 +112,9 @@ export const usePreferencesStore = create<PreferencesState>()(
           appThemeColorOverrides: { ...state.appThemeColorOverrides, [key]: hsl },
         })),
       resetAppThemeColorOverrides: () => set({ appThemeColorOverrides: {} }),
+
+      pixiEnabled: false,
+      setPixiEnabled: (pixiEnabled) => set({ pixiEnabled }),
 
       gameThemeColorOverrides: {},
       setGameThemeColorOverride: (path, color) =>

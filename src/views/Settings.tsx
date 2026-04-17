@@ -326,6 +326,23 @@ export default function Settings() {
           </div>
 
           <div className="space-y-2">
+            <Label>GPU Canvas Renderer (Experimental)</Label>
+            <div className="flex items-center gap-2">
+              <Button
+                variant={prefs.pixiEnabled ? "default" : "outline"}
+                size="sm"
+                onClick={() => prefs.setPixiEnabled(!prefs.pixiEnabled)}
+              >
+                {prefs.pixiEnabled ? "Enabled" : "Disabled"}
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Uses PixiJS WebGL canvas for the game board. Enables GPU-accelerated rendering
+              and prepares for future particle effects. Requires page reload to take effect.
+            </p>
+          </div>
+
+          <div className="space-y-2">
             <Label>Hand Card Size</Label>
             <div className="flex items-center gap-2">
               <Button

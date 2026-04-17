@@ -1,7 +1,9 @@
-import { Fragment } from "react";
+import { Fragment, useMemo } from "react";
 import type { Card, Player } from "@/types/openmagic";
 import type { AgentPrompt } from "@/stores/useGameStore";
 import { usePreferencesStore, type ZonePanelItem } from "@/stores/usePreferencesStore";
+import { PixiGameCanvas } from "@/pixi/PixiGameCanvas";
+import type { BattlefieldState, GameCanvasCallbacks } from "@/pixi/types";
 import type { PromptType } from "@/types/promptType";
 import { PromptType as PT } from "@/types/promptType";
 import { OpponentHalf, PlayerPanel } from "@/components/game/panels";
@@ -20,6 +22,12 @@ import {
   ResizableHandle,
 } from "@/components/ui/resizable";
 import { cn } from "@/lib/utils";
+
+// Footprint of the bottom-right action cluster (PASS, Pass-Until-End,
+// phase buttons). Matches MainActionOverlay's `w-[300px]` + its visible
+// vertical extent so the battlefield doesn't auto-place or let the user
+// drag cards underneath it.
+const PASS_BUTTON_RESERVED = { width: 312, height: 280 } as const;
 
 interface GameBoardProps {
   // Core game state
@@ -72,6 +80,7 @@ interface GameBoardProps {
   onHandCardDragStart: (card: Card, e: React.MouseEvent) => void;
   onHandCardClick: (card: Card, e?: React.MouseEvent) => void;
   onHoverCard: (card: Card | null, e?: React.MouseEvent, options?: { useAnchor?: boolean; placement?: "auto" | "top-center"; anchorOverride?: DOMRect }) => void;
+  onDismissHoverPreview?: () => void;
   getHandActions?: (card: Card) => HandActionOption[];
   onSelectHandAction?: (action: HandActionOption) => void;
   onFlipCard: () => void;
@@ -122,6 +131,7 @@ export function GameBoard({
   onHandCardDragStart,
   onHandCardClick,
   onHoverCard,
+  onDismissHoverPreview,
   getHandActions,
   onSelectHandAction,
   onFlipCard,
@@ -139,6 +149,7 @@ export function GameBoard({
 }: GameBoardProps) {
   const themeColors = useGameThemeColors();
   const handSize = usePreferencesStore((s) => s.handSize);
+  const pixiEnabled = usePreferencesStore((s) => s.pixiEnabled);
   const vScale = useHandScale();
   const handBottomReserved = Math.round(HAND_CARD_BASES[handSize].containerH * vScale);
   const hostileTargeting = currentPrompt?.hostile ?? false;
@@ -148,6 +159,62 @@ export function GameBoard({
     priorityPlayerId === me.id &&
     (step === "main1" || step === "main2") &&
     (currentPrompt?.gameView.stack?.length ?? 0) === 0;
+
+  const pixiBattlefield = useMemo((): BattlefieldState => ({
+    cards: myPermanents,
+    pendingCardIds: promptType === PT.ChooseAttackers ? pendingAttackers : promptType === PT.ChooseBlockers ? blockAssignments.map((a) => a.blockerId) : undefined,
+    attackingCardIds: currentPrompt?.attackerIds,
+    tappableLandIds: (promptType === PT.ChooseAction || promptType === PT.PayCombatCost || promptType === PT.PayManaCost) ? (currentPrompt?.tappableLandIds ?? []) : undefined,
+    untappableLandIds: (promptType === PT.ChooseAction || promptType === PT.PayCombatCost || promptType === PT.PayManaCost) ? (currentPrompt?.untappableLandIds ?? []) : undefined,
+    manaAbilityOptions: (promptType === PT.ChooseAction || promptType === PT.PayManaCost) ? (currentPrompt?.manaAbilityOptions ?? []) : undefined,
+    hostileTargeting,
+  }), [myPermanents, promptType, pendingAttackers, blockAssignments, currentPrompt, hostileTargeting]);
+
+  const pixiHand = useMemo((): import("@/pixi/types").HandState => ({
+    cards: myHand,
+    draggingCardId,
+    castingCardId,
+  }), [myHand, draggingCardId, castingCardId]);
+
+  const pixiCallbacks = useMemo((): GameCanvasCallbacks => ({
+    onClickCard: (promptType === PT.ChooseAction || promptType === PT.ChooseAttackers || promptType === PT.ChooseBlockers || promptType === PT.ChooseTargetCard || promptType === PT.ChooseTargetAny) ? onBattlefieldClick : undefined,
+    onHoverCard: (card, bounds) => {
+      if (!card) { onHoverCard(null); return; }
+      if (bounds) {
+        const syntheticEvent = {
+          clientX: bounds.x + bounds.width / 2,
+          clientY: bounds.y,
+          buttons: 0,
+          currentTarget: document.createElement("div"),
+          shiftKey: false, altKey: false, ctrlKey: false, metaKey: false,
+        } as unknown as React.MouseEvent;
+        onHoverCard(card, syntheticEvent, {
+          useAnchor: true,
+          anchorOverride: {
+            left: bounds.x, right: bounds.x + bounds.width,
+            top: bounds.y, bottom: bounds.y + bounds.height,
+            width: bounds.width, height: bounds.height,
+            x: bounds.x, y: bounds.y,
+            toJSON: () => ({}),
+          } as DOMRect,
+        });
+      } else {
+        onHoverCard(null);
+      }
+    },
+    onStartDrag: (card, screenPos) => {
+      onHandCardDragStart(card, { clientX: screenPos.x, clientY: screenPos.y, preventDefault: () => {} } as React.MouseEvent);
+    },
+    onClickCard_Hand: (card) => onHandCardClick(card),
+    onDismissHoverPreview,
+    onTapLand,
+    onTapLands,
+    onTapLandAbility,
+    onUntapLand,
+    onUntapLands,
+    onFlipCard,
+    onAttackerClick,
+  }), [promptType, onBattlefieldClick, onHoverCard, onDismissHoverPreview, onHandCardDragStart, onHandCardClick, onTapLand, onTapLands, onTapLandAbility, onUntapLand, onUntapLands, onFlipCard, onAttackerClick]);
 
   return (
     <div className="game-board-surface flex flex-col gap-1 min-h-0 flex-1 overflow-visible">
@@ -306,9 +373,25 @@ export function GameBoard({
                     commandZoneCount={myCommandZone?.length ?? 0}
                   />
                 </div>
+                {pixiEnabled && (
+                  <div className="absolute inset-0 z-10 rounded-lg overflow-hidden">
+                    <PixiGameCanvas
+                      battlefield={pixiBattlefield}
+                      hand={pixiHand}
+                      placementGhostName={placementGhost?.controllerId === me.id ? placementGhost.cardName : null}
+                      isDropActive={isOverBattlefield}
+                      callbacks={pixiCallbacks}
+                      bottomReserved={handBottomReserved}
+                      leftReserved={ZONE_COLUMN_RESERVED_PX}
+                      getHandActions={getHandActions}
+                      onSelectHandAction={(_card, action) => onSelectHandAction?.(action)}
+                      bottomRightReserved={PASS_BUTTON_RESERVED}
+                    />
+                  </div>
+                )}
                 <FreeBattlefield
                   cards={myPermanents}
-                  className="flex-1"
+                  className={cn("flex-1", pixiEnabled && "invisible")}
                   onClickCard={
                     promptType === PT.ChooseAction ||
                     promptType === PT.ChooseAttackers ||
@@ -361,7 +444,7 @@ export function GameBoard({
                   placementGhost={placementGhost?.controllerId === me.id ? placementGhost : null}
                   hostileTargeting={hostileTargeting}
                 />
-                <div ref={handContainerRef} className="absolute bottom-0 left-1/2 -translate-x-1/2 z-20 w-max max-w-full">
+                <div ref={handContainerRef} className={cn("absolute bottom-0 left-1/2 -translate-x-1/2 z-20 w-max max-w-full", pixiEnabled && "invisible pointer-events-none")}>
                   <HandDisplay
                     cards={myHand}
                     onHoverCard={onHoverCard}

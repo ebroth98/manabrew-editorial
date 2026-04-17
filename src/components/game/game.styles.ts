@@ -30,7 +30,7 @@ export const HAND_CARD_BASES = {
 /** Cards inside modal grids (e.g., LibraryPeekModal, SpellStackModal, ZoneTargetSelector) */
 export const MODAL_CARD_SIZE = "w-[100px] h-[140px]" as const;
 /** Large preview card (e.g., CardPreview floating overlay) */
-export const FLASH_CARD_SIZE = { w: 320, h: 448 } as const;
+export const FLASH_CARD_SIZE = { w: 310, h: 434 } as const;
 /** Cards inside mulligan modals */
 export const MULLIGAN_CARD_SIZE = "w-[160px] h-[222px]" as const;
 
