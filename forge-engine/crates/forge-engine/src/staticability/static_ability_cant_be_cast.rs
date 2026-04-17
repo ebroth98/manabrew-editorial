@@ -46,6 +46,11 @@ pub fn cant_be_cast_ability_in_context(
             .iter()
             .filter(|sa| sa.is_active_for(StaticMode::CantBeCast, source.zone))
         {
+            if let Some(g) = game {
+                if !st_ab.check_conditions(source, g) {
+                    continue;
+                }
+            }
             if apply_cant_be_cast_ability(st_ab, spell, card, source, activator, game) {
                 return true;
             }
@@ -165,6 +170,7 @@ pub fn apply_cant_be_cast_ability(
 /// If the spell is a trigger, it cannot be blocked by CantBeActivated.
 /// Then iterates all cards in static-ability source zones.
 pub fn cant_be_activated_ability(
+    game: &GameState,
     cards: &[Card],
     spell: &SpellAbility,
     card: &Card,
@@ -181,6 +187,9 @@ pub fn cant_be_activated_ability(
             .iter()
             .filter(|sa| sa.is_active_for(StaticMode::CantBeActivated, source.zone))
         {
+            if !st_ab.check_conditions(source, game) {
+                continue;
+            }
             if apply_cant_be_activated_ability(st_ab, spell, card, source, activator) {
                 return true;
             }

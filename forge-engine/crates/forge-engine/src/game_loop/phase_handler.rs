@@ -88,7 +88,13 @@ impl GameLoop {
                 TurnMachineState::Draw => {
                     // SkipPhase: skip draw if flag set
                     let active = game.active_player();
-                    if game.player(active).skip_next_draw {
+                    if game.player(active).skip_next_draw
+                        || crate::replacement::replacement_handler::would_phase_be_skipped(
+                            game,
+                            active,
+                            PhaseType::Draw,
+                        )
+                    {
                         game.player_clear_skip_draw(active);
                         TurnMachineState::Main1
                     } else {
@@ -260,7 +266,10 @@ impl GameLoop {
                     };
                     use crate::replacement::ReplacementResult;
                     let active = game.active_player();
-                    let mut event = ReplacementEvent::BeginPhase { player: active };
+                    let mut event = ReplacementEvent::BeginPhase {
+                        player: active,
+                        phase,
+                    };
                     let result = apply_replacements(game, &mut event);
                     if result == ReplacementResult::Skipped || result == ReplacementResult::Replaced
                     {

@@ -38,12 +38,13 @@ pub fn can_pay(
     let super::CostPart::PayLife(amount) = part else {
         return false;
     };
+    let resolved_amount = crate::cost::resolve_dynamic_amount(game, _source, player, *amount);
     if crate::staticability::static_ability_cant_gain_lose_pay_life::cant_pay_life(
         game, player, true, None,
     ) {
         return false;
     }
-    game.player(player).life >= *amount
+    game.player(player).life >= resolved_amount
 }
 
 pub fn pay_with_decision(

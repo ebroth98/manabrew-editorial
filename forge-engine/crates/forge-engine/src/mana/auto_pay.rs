@@ -4,9 +4,8 @@ use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
 
 use super::{
-    auto_tap_lands_trace, auto_tap_lands_trace_with_callbacks,
-    auto_tap_lands_with_chooser, AutoTapChoice, ManaPayCallbackFn, ManaPaymentContext, ManaPool,
-    SacrificeChooser,
+    auto_tap_lands_trace, auto_tap_lands_trace_with_callbacks, auto_tap_lands_with_chooser,
+    AutoTapChoice, ManaPayCallbackFn, ManaPaymentContext, ManaPool, SacrificeChooser,
 };
 
 pub struct AutoPayResult {
@@ -127,14 +126,8 @@ pub fn pay_mana_cost_auto_with_callback(
     any_color_conversion: bool,
     callback: ManaPayCallbackFn<'_>,
 ) -> Option<AutoPayResult> {
-    let mut choices = auto_tap_lands_trace_with_callbacks(
-        game,
-        pool,
-        player,
-        mana_cost,
-        current_spell,
-        callback,
-    );
+    let mut choices =
+        auto_tap_lands_trace_with_callbacks(game, pool, player, mana_cost, current_spell, callback);
     if commander_tax > 0 {
         let tapped_tax = auto_tap_lands_trace_with_callbacks(
             game,

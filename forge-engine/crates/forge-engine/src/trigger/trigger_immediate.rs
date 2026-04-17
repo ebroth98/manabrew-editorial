@@ -31,8 +31,12 @@ pub fn resolve_immediate_trigger(ctx: &mut EffectContext, sa: &SpellAbility) {
                     execute_svar: execute_name.to_string(),
                     controller: sa.activating_player,
                     source_card: source_id,
+                    created_turn: ctx.game.turn.turn_number,
+                    created_phase: ctx.game.turn.phase,
                     target_card: None,
-                    remembered_amount: 0, remembered_cards: Vec::new(),
+                    remembered_amount: 0,
+                    remembered_cards: Vec::new(),
+                    remembered_lki_cards: Vec::new(),
                 };
                 ctx.trigger_handler.register_delayed_trigger(delayed);
             }

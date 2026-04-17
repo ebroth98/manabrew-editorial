@@ -386,8 +386,12 @@ pub(super) fn apply_post_move(
                     execute_svar: "UneartheExileDelayedTrigger".to_string(),
                     controller,
                     source_card: card_id,
+                    created_turn: ctx.game.turn.turn_number,
+                    created_phase: ctx.game.turn.phase,
                     target_card: Some(card_id),
-                    remembered_amount: 0, remembered_cards: Vec::new(),
+                    remembered_amount: 0,
+                    remembered_cards: Vec::new(),
+                    remembered_lki_cards: Vec::new(),
                 });
         }
         if sa.param_is_true(keys::ATTACKING) {

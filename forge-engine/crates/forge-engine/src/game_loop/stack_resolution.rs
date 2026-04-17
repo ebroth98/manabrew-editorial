@@ -122,12 +122,30 @@ impl GameLoop {
             // This happens at resolution time, AFTER the trigger has been on the stack
             // and priority has passed.
             if let Some(decider) = entry.optional_trigger_decider {
-                let description = entry.optional_trigger_description.as_deref().unwrap_or("");
+                let mut description = entry
+                    .optional_trigger_description
+                    .clone()
+                    .unwrap_or_default();
+                if let Some(triggered_card_id) = entry
+                    .spell_ability
+                    .trigger_objects
+                    .get("Card")
+                    .and_then(|s| s.parse::<u32>().ok())
+                    .map(crate::ids::CardId)
+                {
+                    let triggered_name = game.card(triggered_card_id).card_name.clone();
+                    if !triggered_name.is_empty() && !description.contains(&triggered_name) {
+                        if !description.is_empty() {
+                            description.push(' ');
+                        }
+                        description.push_str(&format!("Triggered by {triggered_name}."));
+                    }
+                }
                 let source_name = entry.optional_trigger_source_name.as_deref();
                 let api = entry.spell_ability.api;
                 let accepted = agents[decider.index()].choose_optional_trigger(
                     decider,
-                    description,
+                    &description,
                     source_name,
                     api,
                 );
@@ -265,6 +283,12 @@ impl GameLoop {
                         if game.card(target_id).zone == ZoneType::Battlefield {
                             game.attach_to(card_id, target_id);
                         }
+                    } else if let Some(target_player_id) =
+                        entry.spell_ability.target_chosen.target_player
+                    {
+                        if Self::is_player_target_valid(target_player_id, game) {
+                            game.attach_to_player(card_id, target_player_id);
+                        }
                     }
                 }
 
@@ -290,8 +314,12 @@ impl GameLoop {
                             execute_svar: "DB$ Sacrifice".to_string(),
                             controller: player,
                             source_card: card_id,
+                            created_turn: game.turn.turn_number,
+                            created_phase: game.turn.phase,
                             target_card: Some(card_id),
-                            remembered_amount: 0, remembered_cards: Vec::new(),
+                            remembered_amount: 0,
+                            remembered_cards: Vec::new(),
+                            remembered_lki_cards: Vec::new(),
                         },
                     );
                 }
@@ -306,6 +334,7 @@ impl GameLoop {
                     origin,
                     ZoneType::Battlefield,
                 );
+                self.process_triggers(game, agents);
 
                 // -- Post-ETB effects for alternative costs --
 
@@ -324,8 +353,12 @@ impl GameLoop {
                             ),
                             controller: player,
                             source_card: card_id,
+                            created_turn: game.turn.turn_number,
+                            created_phase: game.turn.phase,
                             target_card: Some(card_id),
-                            remembered_amount: 0, remembered_cards: Vec::new(),
+                            remembered_amount: 0,
+                            remembered_cards: Vec::new(),
+                            remembered_lki_cards: Vec::new(),
                         },
                     );
                 }
@@ -349,8 +382,12 @@ impl GameLoop {
                             ),
                             controller: player,
                             source_card: card_id,
+                            created_turn: game.turn.turn_number,
+                            created_phase: game.turn.phase,
                             target_card: Some(card_id),
-                            remembered_amount: 0, remembered_cards: Vec::new(),
+                            remembered_amount: 0,
+                            remembered_cards: Vec::new(),
+                            remembered_lki_cards: Vec::new(),
                         },
                     );
                 }
@@ -433,8 +470,12 @@ impl GameLoop {
                             execute_svar: format!("DB$ Sacrifice | Defined$ CardUID_{}", card_id.0),
                             controller: player,
                             source_card: card_id,
+                            created_turn: game.turn.turn_number,
+                            created_phase: game.turn.phase,
                             target_card: Some(card_id),
-                            remembered_amount: 0, remembered_cards: Vec::new(),
+                            remembered_amount: 0,
+                            remembered_cards: Vec::new(),
+                            remembered_lki_cards: Vec::new(),
                         },
                     );
                 }
@@ -486,8 +527,12 @@ impl GameLoop {
                                 ),
                                 controller: player,
                                 source_card: card_id,
+                                created_turn: game.turn.turn_number,
+                                created_phase: game.turn.phase,
                                 target_card: Some(card_id),
-                                remembered_amount: 0, remembered_cards: Vec::new(),
+                                remembered_amount: 0,
+                                remembered_cards: Vec::new(),
+                                remembered_lki_cards: Vec::new(),
                             },
                         );
                         ZoneType::Exile
@@ -785,7 +830,7 @@ impl GameLoop {
             token_templates: &self.token_templates,
             token_art_variants: &self.token_art_variants,
             token_fallback: &self.token_fallback,
-                    edition_dates: &self.edition_dates,
+            edition_dates: &self.edition_dates,
             mana_pools: &mut self.mana_pools,
             parent_target_card,
             rng: &mut *self.game_rng,

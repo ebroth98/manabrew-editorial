@@ -369,6 +369,33 @@ impl ManaCostBeingPaid {
         self.try_pay_mana(mana.color, possible_uses)
     }
 
+    pub fn pay_specific_shard(
+        &mut self,
+        shard: ManaCostShard,
+        payment_color: u16,
+    ) -> Option<ManaCostShard> {
+        if !self.unpaid_shards.contains_key(&shard) {
+            return None;
+        }
+        if !can_pay_for_shard_with_color(shard, payment_color) {
+            return None;
+        }
+
+        if let Some(sc) = self.unpaid_shards.get_mut(&shard) {
+            if sc.x_count > 0 {
+                sc.x_count -= 1;
+                let color_str = color_mask_to_short(payment_color);
+                if !color_str.is_empty() {
+                    *self.x_mana_cost_paid_by_color.entry(color_str).or_insert(0) += 1;
+                }
+            }
+        }
+
+        self.decrease_shard(shard, 1);
+        self.sunburst_map |= payment_color;
+        Some(shard)
+    }
+
     /// Pay a shard via convoke (tapping a creature for a color).
     /// Mirrors Java's `ManaCostBeingPaid.payManaViaConvoke()`.
     pub fn pay_mana_via_convoke(&mut self, color: u16) -> Option<ManaCostShard> {

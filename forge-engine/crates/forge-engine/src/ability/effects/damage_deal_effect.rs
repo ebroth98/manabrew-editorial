@@ -1,6 +1,6 @@
 use forge_foundation::ZoneType;
 
-use super::{parse_param, resolve_defined_player_with_sa, EffectContext};
+use super::{parse_param, EffectContext};
 use crate::card::card_damage_map::DamageTarget;
 use crate::card::card_util;
 use crate::parsing::keys;
@@ -13,14 +13,21 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         ctx.game.ensure_pending_damage_maps();
     }
 
-    // For triggered abilities, resolve Defined$ for target
-    let target_player = sa.target_chosen.target_player.or_else(|| {
-        if let Some(defined) = sa.defined() {
-            resolve_defined_player_with_sa(defined, sa, sa.activating_player, ctx.game)
-        } else {
-            None
-        }
-    });
+    // For triggered abilities, resolve Defined$ for target. Some effects use
+    // bare `Player` to mean "each player", so collect all defined players here
+    // and fan out below instead of forcing everything through a single target.
+    let target_players: Vec<_> = if let Some(target_player) = sa.target_chosen.target_player {
+        vec![target_player]
+    } else if let Some(defined) = sa.defined() {
+        crate::ability::ability_utils::resolve_defined_players_with_sa(
+            defined,
+            sa,
+            sa.activating_player,
+            ctx.game,
+        )
+    } else {
+        Vec::new()
+    };
 
     // Check source card for Infect/Wither keywords
     let (source_has_infect_keyword, source_has_wither) = if let Some(src_id) = sa.source {
@@ -113,7 +120,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         return;
     }
 
-    if let Some(target_player) = target_player {
+    for target_player in target_players {
         let source_has_infect = if let Some(src_id) = sa.source {
             let src = ctx.game.card(src_id);
             source_has_infect_keyword
@@ -135,10 +142,10 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                     }
                 }
             } else if !crate::staticability::static_ability_cant_put_counter::any_cant_put_counter_on_player(
-                &ctx.game.cards,
-                target_player,
-                &crate::card::CounterType::Poison,
-            ) {
+                    &ctx.game.cards,
+                    target_player,
+                    &crate::card::CounterType::Poison,
+                ) {
                 ctx.game.player_add_poison(target_player, damage);
             }
         } else if use_damage_map {
@@ -181,6 +188,17 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                 },
                 false,
             );
+            ctx.trigger_handler.run_trigger(
+                crate::event::TriggerType::DamageDoneOnce,
+                crate::event::RunParams {
+                    damage_target_player: Some(target_player),
+                    damage_amount: Some(damage),
+                    is_combat_damage: Some(false),
+                    ..Default::default()
+                },
+                false,
+            );
+            ctx.trigger_handler.flush_waiting_triggers(ctx.game);
         }
     }
     let mut target_cards = sa.target_chosen.target_card.into_iter().collect::<Vec<_>>();
@@ -372,6 +390,36 @@ fn evaluate_svar_expr(ctx: &EffectContext, sa: &SpellAbility, expr: &str) -> i32
                     .unwrap_or(sac_card.base_toughness.unwrap_or(0))
             };
             return val;
+        }
+        return 0;
+    }
+    if expr == "TriggeredCard$CardPower" || expr == "TriggeredCard$CardToughness" {
+        let trigger_value_key = if expr.ends_with("CardPower") {
+            "TriggeredCardPower"
+        } else {
+            "TriggeredCardToughness"
+        };
+        if let Some(value) = sa
+            .trigger_objects
+            .get(trigger_value_key)
+            .and_then(|value| value.trim().parse::<i32>().ok())
+        {
+            return value;
+        }
+
+        let triggered_card = sa
+            .trigger_objects
+            .get("Card")
+            .and_then(|value| value.split(',').next())
+            .and_then(|part| part.trim().parse::<u32>().ok())
+            .map(crate::ids::CardId)
+            .or(sa.trigger_source);
+        if let Some(card_id) = triggered_card {
+            return if expr.ends_with("CardPower") {
+                crate::lki::resolve_lki_power(ctx.game, card_id)
+            } else {
+                crate::lki::resolve_lki_toughness(ctx.game, card_id)
+            };
         }
         return 0;
     }

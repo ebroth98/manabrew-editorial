@@ -609,6 +609,28 @@ impl ManaCost {
         }
     }
 
+    /// Convert mono-colored shards of the given color into their phyrexian variants.
+    /// Used for effects like "you may pay 2 life rather than pay {B}".
+    pub fn colored_to_phyrexian(&self, color_mask: u8) -> ManaCost {
+        let shards = self
+            .shards
+            .iter()
+            .map(|s| match (*s, color_mask) {
+                (ManaCostShard::White, m) if m == ManaAtom::WHITE as u8 => ManaCostShard::WhitePhyrexian,
+                (ManaCostShard::Blue, m) if m == ManaAtom::BLUE as u8 => ManaCostShard::BluePhyrexian,
+                (ManaCostShard::Black, m) if m == ManaAtom::BLACK as u8 => ManaCostShard::BlackPhyrexian,
+                (ManaCostShard::Red, m) if m == ManaAtom::RED as u8 => ManaCostShard::RedPhyrexian,
+                (ManaCostShard::Green, m) if m == ManaAtom::GREEN as u8 => ManaCostShard::GreenPhyrexian,
+                (other, _) => other,
+            })
+            .collect();
+        ManaCost {
+            shards,
+            generic_cost: self.generic_cost,
+            has_no_cost: self.has_no_cost,
+        }
+    }
+
     pub fn shard_count(&self, which: ManaCostShard) -> usize {
         if which == ManaCostShard::Generic {
             return self.generic_cost as usize;

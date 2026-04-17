@@ -121,8 +121,74 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         //    Mirrors Java Cost.mergeTo(cumCost, n, sa)
         let base_cost = crate::cost::parse_cost(&cum_cost_str);
         let mut merged_parts = Vec::new();
+        let mut merged_mana: Option<(
+            forge_foundation::ManaCost,
+            i32,
+            bool,
+            bool,
+            bool,
+            Option<String>,
+        )> = None;
         for _ in 0..n {
-            merged_parts.extend(base_cost.parts.clone());
+            for part in base_cost.parts.iter().cloned() {
+                match part {
+                    crate::cost::CostPart::Mana {
+                        cost,
+                        x_min,
+                        is_exiled_creature_cost,
+                        is_enchanted_creature_cost,
+                        is_cost_pay_any_number_of_times,
+                        max_waterbend,
+                    } => {
+                        if let Some((
+                            total_cost,
+                            total_x_min,
+                            total_exiled,
+                            total_enchanted,
+                            total_any_times,
+                            total_max_waterbend,
+                        )) = &mut merged_mana
+                        {
+                            *total_cost = total_cost.add(&cost);
+                            *total_x_min += x_min;
+                            *total_exiled |= is_exiled_creature_cost;
+                            *total_enchanted |= is_enchanted_creature_cost;
+                            *total_any_times |= is_cost_pay_any_number_of_times;
+                            if total_max_waterbend.is_none() {
+                                *total_max_waterbend = max_waterbend;
+                            }
+                        } else {
+                            merged_mana = Some((
+                                cost,
+                                x_min,
+                                is_exiled_creature_cost,
+                                is_enchanted_creature_cost,
+                                is_cost_pay_any_number_of_times,
+                                max_waterbend,
+                            ));
+                        }
+                    }
+                    other => merged_parts.push(other),
+                }
+            }
+        }
+        if let Some((
+            cost,
+            x_min,
+            is_exiled_creature_cost,
+            is_enchanted_creature_cost,
+            is_cost_pay_any_number_of_times,
+            max_waterbend,
+        )) = merged_mana
+        {
+            merged_parts.push(crate::cost::CostPart::Mana {
+                cost,
+                x_min,
+                is_exiled_creature_cost,
+                is_enchanted_creature_cost,
+                is_cost_pay_any_number_of_times,
+                max_waterbend,
+            });
         }
         let merged_cost = crate::cost::Cost {
             parts: merged_parts,

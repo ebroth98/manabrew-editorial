@@ -188,8 +188,7 @@ pub fn build_spell_ability_for_card_cast(
         // for targeting. Without this, the aura can target anything.
         if sa.target_restrictions.is_none() && host.type_line.has_subtype("Aura") {
             let enchant_type = host.get_keyword_cost("Enchant").unwrap_or_default();
-            let valid_tgts = crate::parsing::enchant_type_to_valid_tgts(&enchant_type);
-            let params_str = format!("ValidTgts$ {}", valid_tgts);
+            let params_str = crate::parsing::enchant_type_to_target_params(&enchant_type);
             sa.target_restrictions = TargetRestrictions::new(&Params::from_raw(&params_str));
         }
         return sa;
@@ -207,8 +206,7 @@ pub fn build_spell_ability_for_card_cast(
     // set up ValidTgts$ automatically for aura spells.
     let target_restrictions = if card.type_line.has_subtype("Aura") {
         let enchant_type = card.get_keyword_cost("Enchant").unwrap_or_default();
-        let valid_tgts = crate::parsing::enchant_type_to_valid_tgts(&enchant_type);
-        let params_str = format!("ValidTgts$ {}", valid_tgts);
+        let params_str = crate::parsing::enchant_type_to_target_params(&enchant_type);
         TargetRestrictions::new(&Params::from_raw(&params_str))
     } else {
         None

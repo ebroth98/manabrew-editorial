@@ -32,10 +32,19 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         .map_or(false, |m| m.eq_ignore_ascii_case("Random"));
 
     for target_player in get_target_players(ctx.game, sa) {
-        let hand: Vec<_> = ctx
+        let mut hand: Vec<_> = ctx
             .game
             .cards_in_zone(ZoneType::Hand, target_player)
             .to_vec();
+        if let Some(valid_filter) = sa.params.get("DiscardValid") {
+            hand.retain(|&card_id| {
+                super::matches_valid_cards(
+                    ctx.game.card(card_id),
+                    valid_filter,
+                    sa.activating_player,
+                )
+            });
+        }
 
         // AnyNumber$ True implicitly subsumes Optional — picking 0 cards is
         // the "decline" choice. Java's DiscardEffect doesn't fire a separate
@@ -76,6 +85,18 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             .params
             .get("RememberDiscarded")
             .map_or(false, |v| v.eq_ignore_ascii_case("True"));
+
+        let to_discard = if to_discard.len() > 1 {
+            let reordered = ctx.agents[target_player.index()]
+                .choose_reorder_library(target_player, &to_discard);
+            if reordered.len() == to_discard.len() {
+                reordered
+            } else {
+                to_discard
+            }
+        } else {
+            to_discard
+        };
 
         for card_id in to_discard {
             if ctx.game.card(card_id).zone == ZoneType::Hand {

@@ -25,17 +25,41 @@ impl GameLoop {
         card_name: &str,
         play_mode: crate::agent::PlayCardMode,
     ) -> Option<(CardId, String)> {
-        if play_mode != crate::agent::PlayCardMode::Normal {
+        let is_back_face_land_play = matches!(play_mode, crate::agent::PlayCardMode::BackFaceLand);
+        let can_play_back_face_land = is_back_face_land_play
+            && game
+                .card(card_id)
+                .other_part
+                .as_ref()
+                .is_some_and(|other| other.type_line.is_land());
+        if !matches!(
+            play_mode,
+            crate::agent::PlayCardMode::Normal | crate::agent::PlayCardMode::BackFaceLand
+        ) || (is_back_face_land_play && !can_play_back_face_land)
+        {
             return None;
         }
         let origin_zone = game.card(card_id).zone;
+        let play_name = if can_play_back_face_land {
+            game.card(card_id)
+                .other_part
+                .as_ref()
+                .map(|other| other.name.clone())
+                .unwrap_or_else(|| card_name.to_string())
+        } else {
+            card_name.to_string()
+        };
+
+        if can_play_back_face_land && !game.card(card_id).is_transformed {
+            game.card_mut(card_id).transform();
+        }
 
         self.move_card_with_runtime(game, card_id, ZoneType::Battlefield, player, agents);
 
         game.player_record_land_play(player);
         crate::agent::notify_all_agents(
             agents,
-            crate::agent::GameLogEvent::action(format!("Played land: {}", card_name))
+            crate::agent::GameLogEvent::action(format!("Played land: {}", play_name))
                 .with_player(player)
                 .with_card(card_id),
         );
@@ -56,8 +80,9 @@ impl GameLoop {
             },
             false,
         );
+        self.process_triggers(game, agents);
 
-        Some((card_id, card_name.to_string()))
+        Some((card_id, play_name))
     }
 
     pub(crate) fn emit_becomes_target_triggers(
@@ -297,7 +322,7 @@ impl GameLoop {
                 prepared.spell_ability,
                 prepared.static_alternative_cost_prepared,
             )
-                .map(|(card_id, card_name)| PlaySpellAbilityResult::CardPlayed { card_id, card_name })
+            .map(|(card_id, card_name)| PlaySpellAbilityResult::CardPlayed { card_id, card_name })
         }
     }
 
@@ -312,24 +337,29 @@ impl GameLoop {
         let mut static_alternative_cost_prepared = false;
         match play_mode {
             crate::agent::PlayCardMode::Normal => {}
-            crate::agent::PlayCardMode::UnlockDoor | crate::agent::PlayCardMode::ForetellExile => {
-                return None;
-            }
+            crate::agent::PlayCardMode::UnlockDoor
+            | crate::agent::PlayCardMode::ForetellExile
+            | crate::agent::PlayCardMode::BackFaceLand => return None,
             crate::agent::PlayCardMode::StaticAlternative => {
-                let entry = crate::staticability::static_ability_alternative_cost::alternative_costs(
-                    game,
-                    &game.cards,
-                    &sa,
-                    game.card(card_id),
-                    player,
-                )
-                .into_iter()
-                .find(|entry| {
-                    crate::cost::can_pay_ignoring_mana_for_spell(&entry.cost, game, card_id, player)
-                })?;
+                let entry =
+                    crate::staticability::static_ability_alternative_cost::alternative_costs(
+                        game,
+                        &game.cards,
+                        &sa,
+                        game.card(card_id),
+                        player,
+                    )
+                    .into_iter()
+                    .find(|entry| {
+                        crate::cost::can_pay_ignoring_mana_for_spell(
+                            &entry.cost,
+                            game,
+                            card_id,
+                            player,
+                        )
+                    })?;
                 crate::staticability::static_ability_alternative_cost::apply_alternative_cost_to_sa(
-                    &mut sa,
-                    &entry,
+                    &mut sa, &entry,
                 );
                 static_alternative_cost_prepared = true;
             }
@@ -397,7 +427,9 @@ impl GameLoop {
                 }
                 Some(None)
             }
-            crate::agent::PlayCardMode::Alternative(crate::spellability::AlternativeCost::Suspend) => {
+            crate::agent::PlayCardMode::Alternative(
+                crate::spellability::AlternativeCost::Suspend,
+            ) => {
                 if let Some((suspend_cost, counters)) = game.card(card_id).get_suspend_cost() {
                     if game.card(card_id).zone != ZoneType::Hand {
                         return Some(None);
@@ -452,1393 +484,1368 @@ impl GameLoop {
         let original_owner = card.owner;
 
         // Cast spell — tap lands for mana, put on stack, resolve
-            let is_creature = game.card(card_id).is_creature();
-            let is_permanent = game.card(card_id).is_permanent();
-            // ── Alternative cost mode selection (from action-space choice) ──────────
-            let is_foretell = sa.alt_cost == Some(crate::spellability::AlternativeCost::Foretell);
-            let is_flashback = sa.alt_cost == Some(crate::spellability::AlternativeCost::Flashback);
-            let is_spectacle =
-                sa.alt_cost == Some(crate::spellability::AlternativeCost::Spectacle);
-            let is_evoke = sa.alt_cost == Some(crate::spellability::AlternativeCost::Evoke);
-            let is_escape = sa.alt_cost == Some(crate::spellability::AlternativeCost::Escape);
-            let is_overload = sa.alt_cost == Some(crate::spellability::AlternativeCost::Overload);
-            let is_dash = sa.alt_cost == Some(crate::spellability::AlternativeCost::Dash);
-            let is_blitz = sa.alt_cost == Some(crate::spellability::AlternativeCost::Blitz);
-            let is_emerge = sa.alt_cost == Some(crate::spellability::AlternativeCost::Emerge);
-            let is_plot_cast = sa.alt_cost == Some(crate::spellability::AlternativeCost::Plot);
-            let is_bestow = sa.alt_cost == Some(crate::spellability::AlternativeCost::Bestow);
-            let is_warp = sa.alt_cost == Some(crate::spellability::AlternativeCost::Warp);
-            let is_morph_facedown = sa
-                .alt_cost
-                .map(|alt| alt.is_morph())
-                .unwrap_or(false);
-            let is_static_alternative = static_alternative_cost_prepared;
+        let is_creature = game.card(card_id).is_creature();
+        let is_permanent = game.card(card_id).is_permanent();
+        // ── Alternative cost mode selection (from action-space choice) ──────────
+        let is_foretell = sa.alt_cost == Some(crate::spellability::AlternativeCost::Foretell);
+        let is_flashback = sa.alt_cost == Some(crate::spellability::AlternativeCost::Flashback);
+        let is_spectacle = sa.alt_cost == Some(crate::spellability::AlternativeCost::Spectacle);
+        let is_evoke = sa.alt_cost == Some(crate::spellability::AlternativeCost::Evoke);
+        let is_escape = sa.alt_cost == Some(crate::spellability::AlternativeCost::Escape);
+        let is_overload = sa.alt_cost == Some(crate::spellability::AlternativeCost::Overload);
+        let is_dash = sa.alt_cost == Some(crate::spellability::AlternativeCost::Dash);
+        let is_blitz = sa.alt_cost == Some(crate::spellability::AlternativeCost::Blitz);
+        let is_emerge = sa.alt_cost == Some(crate::spellability::AlternativeCost::Emerge);
+        let is_plot_cast = sa.alt_cost == Some(crate::spellability::AlternativeCost::Plot);
+        let is_bestow = sa.alt_cost == Some(crate::spellability::AlternativeCost::Bestow);
+        let is_warp = sa.alt_cost == Some(crate::spellability::AlternativeCost::Warp);
+        let is_morph_facedown = sa.alt_cost.map(|alt| alt.is_morph()).unwrap_or(false);
+        let is_static_alternative = static_alternative_cost_prepared;
 
-            // Select the card's spell ability line (SP$ ...) for cast-time logic.
-            // Mirrors Java where casting operates on a concrete SpellAbility, not
-            // arbitrary non-activated lines like `S:Mode$ OptionalCost`.
-            let abilities_for_spell = game.card(card_id).abilities.clone();
-            let spell_ability_text = abilities_for_spell
-                .iter()
-                .find(|a| Params::from_raw(a).has(keys::SP))
-                .cloned()
-                .unwrap_or_default();
+        // Select the card's spell ability line (SP$ ...) for cast-time logic.
+        // Mirrors Java where casting operates on a concrete SpellAbility, not
+        // arbitrary non-activated lines like `S:Mode$ OptionalCost`.
+        let abilities_for_spell = game.card(card_id).abilities.clone();
+        let spell_ability_text = abilities_for_spell
+            .iter()
+            .find(|a| Params::from_raw(a).has(keys::SP))
+            .cloned()
+            .unwrap_or_default();
 
-            let static_alt_cost = if is_static_alternative {
-                sa.pay_costs.clone()
-            } else {
-                None
-            };
+        let static_alt_cost = if is_static_alternative {
+            sa.pay_costs.clone()
+        } else {
+            None
+        };
 
-            // Mirror Java cast-time Charm gating (CharmEffect.makeChoices):
-            // if not enough legal modes exist, casting fails before any payment.
-            if spell_ability_text.contains("SP$ Charm")
-                && !crate::ability::effects::charm_effect::can_make_choices_precast(
-                    game,
-                    player,
-                    card_id,
-                    &spell_ability_text,
-                )
-            {
-                return None;
-            }
-
-            // Parse flashback total cost once (can include non-mana parts like Sac<...>).
-            let flashback_total_cost = if is_flashback {
-                // Safe: is_flashback is only true if get_flashback_cost() returned Some
-                let fb_cost_str = game.card(card_id).get_flashback_cost().unwrap_or_default();
-                Some(parse_cost(&fb_cost_str))
-            } else {
-                None
-            };
-
-            let flashback_mana_cost = flashback_total_cost.as_ref().map(|fb_cost| {
-                fb_cost
-                    .parts
-                    .iter()
-                    .filter_map(|part| {
-                        if let CostPart::Mana { cost: mc, .. } = part {
-                            Some(mc.clone())
-                        } else {
-                            None
-                        }
-                    })
-                    .fold(forge_foundation::ManaCost::zero(), |acc, mc| acc.add(&mc))
-            });
-
-            // Determine the mana cost to use
-            // Note: All unwrap_or_default() below are safe because each is_* flag
-            // is only true if the corresponding get_*_cost() returned Some earlier.
-            let mana_cost = if is_foretell {
-                let foretell_cost_str = game.card(card_id).get_foretell_cost().unwrap_or_default();
-                game.card_mut(card_id).set_face_down(false); // reveal it
-                forge_foundation::ManaCost::parse(&foretell_cost_str)
-            } else if is_flashback {
-                flashback_mana_cost.unwrap_or_else(forge_foundation::ManaCost::zero)
-            } else if is_spectacle {
-                let spec_cost_str = game.card(card_id).get_spectacle_cost().unwrap_or_default();
-                forge_foundation::ManaCost::parse(&spec_cost_str)
-            } else if is_evoke {
-                let evoke_cost_str = game.card(card_id).get_evoke_cost().unwrap_or_default();
-                // Evoke cost may include non-mana parts (e.g. Fury:
-                // ExileFromHand<1/Card.Red+Other/red card>). Parse as a full
-                // Cost and extract only the mana portion for mana payment;
-                // the non-mana parts are paid below via pay_additional_costs.
-                Self::mana_from_cost(&crate::cost::parse_cost(&evoke_cost_str))
-            } else if is_escape {
-                let (escape_mana_str, _) = game
-                    .card(card_id)
-                    .get_escape_cost()
-                    .unwrap_or(("0".to_string(), 0));
-                forge_foundation::ManaCost::parse(&escape_mana_str)
-            } else if is_overload {
-                let overload_cost_str = game.card(card_id).get_overload_cost().unwrap_or_default();
-                forge_foundation::ManaCost::parse(&overload_cost_str)
-            } else if is_dash {
-                let dash_cost_str = game.card(card_id).get_dash_cost().unwrap_or_default();
-                forge_foundation::ManaCost::parse(&dash_cost_str)
-            } else if is_blitz {
-                let blitz_cost_str = game.card(card_id).get_blitz_cost().unwrap_or_default();
-                forge_foundation::ManaCost::parse(&blitz_cost_str)
-            } else if is_emerge {
-                let emerge_cost_str = game.card(card_id).get_emerge_cost().unwrap_or_default();
-                forge_foundation::ManaCost::parse(&emerge_cost_str)
-            } else if is_plot_cast {
-                // Plot: cast from exile for free (already paid plot cost).
-                forge_foundation::ManaCost::generic(0)
-            } else if is_static_alternative {
-                Self::mana_from_cost(static_alt_cost.as_ref()?)
-            } else if is_bestow {
-                let bestow_cost_str = game.card(card_id).get_bestow_cost().unwrap_or_default();
-                forge_foundation::ManaCost::parse(&bestow_cost_str)
-            } else if is_warp {
-                let warp_cost_str = game.card(card_id).get_warp_cost().unwrap_or_default();
-                forge_foundation::ManaCost::parse(&warp_cost_str)
-            } else if is_morph_facedown {
-                forge_foundation::ManaCost::generic(crate::spellability::MORPH_GENERIC_COST)
-            } else {
-                game.card(card_id).mana_cost.clone()
-            };
-
-            // NOTE: Static mana-cost reduction/increase is now handled centrally
-            // by cost_adjustment::adjust() called later in this function.
-            // Do not apply compute_cost_adjustment here.
-            // We still need raise_cost for its non-mana cost parts (e.g. Waterbend).
-            let cast_zone = game.card(card_id).zone;
-            let raise_cost = crate::cost::cost_adjustment::compute_raise_cost_parts(
+        // Mirror Java cast-time Charm gating (CharmEffect.makeChoices):
+        // if not enough legal modes exist, casting fails before any payment.
+        if spell_ability_text.contains("SP$ Charm")
+            && !crate::ability::effects::charm_effect::can_make_choices_precast(
                 game,
-                game.card(card_id),
                 player,
-                cast_zone,
-            );
+                card_id,
+                &spell_ability_text,
+            )
+        {
+            return None;
+        }
 
-            // ── Additional cost checks (Kicker, Buyback, Multikicker, Replicate) ──
-            // Check Kicker: offer to pay additional kicker cost
-            let kicked = if let Some(kicker_cost_str) = game.card(card_id).get_kicker_cost() {
-                let kicker_mc = forge_foundation::ManaCost::parse(&kicker_cost_str);
-                let combined = mana_cost.add(&kicker_mc);
-                let available_mana =
-                    mana::calculate_available_mana(self.pool(player), game, player);
-                if available_mana.can_pay(&combined) {
-                    let name = game.card(card_id).card_name.clone();
-                    agents[player.index()].snapshot_state(game, &self.mana_pools);
-                    agents[player.index()].choose_kicker(player, &kicker_cost_str, Some(&name))
-                } else {
-                    false
-                }
-            } else {
-                false
-            };
+        // Parse flashback total cost once (can include non-mana parts like Sac<...>).
+        let flashback_total_cost = if is_flashback {
+            // Safe: is_flashback is only true if get_flashback_cost() returned Some
+            let fb_cost_str = game.card(card_id).get_flashback_cost().unwrap_or_default();
+            Some(parse_cost(&fb_cost_str))
+        } else {
+            None
+        };
 
-            // Combine kicker cost with base cost if kicked
-            let mana_cost = if kicked {
-                // Safe: kicked is only true if get_kicker_cost() returned Some
-                let kicker_cost_str = game.card(card_id).get_kicker_cost().unwrap_or_default();
-                let kicker_mc = forge_foundation::ManaCost::parse(&kicker_cost_str);
-                mana_cost.add(&kicker_mc)
-            } else {
-                mana_cost
-            };
-
-            // Check Buyback: offer to pay additional buyback cost
-            let buyback_paid = if let Some(buyback_cost_str) = game.card(card_id).get_buyback_cost()
-            {
-                let buyback_mc = forge_foundation::ManaCost::parse(&buyback_cost_str);
-                let combined = mana_cost.add(&buyback_mc);
-                let available_mana =
-                    mana::calculate_available_mana(self.pool(player), game, player);
-                if available_mana.can_pay(&combined) {
-                    let name = game.card(card_id).card_name.clone();
-                    agents[player.index()].snapshot_state(game, &self.mana_pools);
-                    agents[player.index()].choose_buyback(player, &buyback_cost_str, Some(&name))
-                } else {
-                    false
-                }
-            } else {
-                false
-            };
-
-            // Combine buyback cost
-            let mana_cost = if buyback_paid {
-                // Safe: buyback_paid is only true if get_buyback_cost() returned Some
-                let buyback_cost_str = game.card(card_id).get_buyback_cost().unwrap_or_default();
-                let buyback_mc = forge_foundation::ManaCost::parse(&buyback_cost_str);
-                mana_cost.add(&buyback_mc)
-            } else {
-                mana_cost
-            };
-
-            // Check Multikicker: pay kicker cost any number of times
-            let kick_count = if let Some(mk_cost_str) = game.card(card_id).get_multikicker_cost() {
-                let mk_mc = forge_foundation::ManaCost::parse(&mk_cost_str);
-                let available_mana =
-                    mana::calculate_available_mana(self.pool(player), game, player);
-                // Calculate max kicks: how many times we can add mk_mc to mana_cost
-                let mut max_kicks = 0u32;
-                let mut test_cost = mana_cost.clone();
-                loop {
-                    test_cost = test_cost.add(&mk_mc);
-                    if available_mana.can_pay(&test_cost) {
-                        max_kicks += 1;
+        let flashback_mana_cost = flashback_total_cost.as_ref().map(|fb_cost| {
+            fb_cost
+                .parts
+                .iter()
+                .filter_map(|part| {
+                    if let CostPart::Mana { cost: mc, .. } = part {
+                        Some(mc.clone())
                     } else {
-                        break;
+                        None
                     }
-                    if max_kicks >= 20 {
-                        break; // Safety cap
-                    }
-                }
-                if max_kicks > 0 {
-                    let name = game.card(card_id).card_name.clone();
-                    agents[player.index()].snapshot_state(game, &self.mana_pools);
-                    agents[player.index()].choose_multikicker(
-                        player,
-                        &mk_cost_str,
-                        max_kicks,
-                        Some(&name),
-                    )
-                } else {
-                    0
-                }
-            } else {
-                0
-            };
+                })
+                .fold(forge_foundation::ManaCost::zero(), |acc, mc| acc.add(&mc))
+        });
 
-            // Combine multikicker cost
-            let mana_cost = if kick_count > 0 {
-                // Safe: kick_count is only >0 if get_multikicker_cost() returned Some
-                let mk_cost_str = game
-                    .card(card_id)
-                    .get_multikicker_cost()
-                    .unwrap_or_default();
-                let mk_mc = forge_foundation::ManaCost::parse(&mk_cost_str);
-                let mut total = mana_cost;
-                for _ in 0..kick_count {
-                    total = total.add(&mk_mc);
-                }
-                total
-            } else {
-                mana_cost
-            };
+        // Determine the mana cost to use
+        // Note: All unwrap_or_default() below are safe because each is_* flag
+        // is only true if the corresponding get_*_cost() returned Some earlier.
+        let mana_cost = if is_foretell {
+            let foretell_cost_str = game.card(card_id).get_foretell_cost().unwrap_or_default();
+            game.card_mut(card_id).set_face_down(false); // reveal it
+            forge_foundation::ManaCost::parse(&foretell_cost_str)
+        } else if is_flashback {
+            flashback_mana_cost.unwrap_or_else(forge_foundation::ManaCost::zero)
+        } else if is_spectacle {
+            let spec_cost_str = game.card(card_id).get_spectacle_cost().unwrap_or_default();
+            forge_foundation::ManaCost::parse(&spec_cost_str)
+        } else if is_evoke {
+            let evoke_cost_str = game.card(card_id).get_evoke_cost().unwrap_or_default();
+            // Evoke cost may include non-mana parts (e.g. Fury:
+            // ExileFromHand<1/Card.Red+Other/red card>). Parse as a full
+            // Cost and extract only the mana portion for mana payment;
+            // the non-mana parts are paid below via pay_additional_costs.
+            Self::mana_from_cost(&crate::cost::parse_cost(&evoke_cost_str))
+        } else if is_escape {
+            let (escape_mana_str, _) = game
+                .card(card_id)
+                .get_escape_cost()
+                .unwrap_or(("0".to_string(), 0));
+            forge_foundation::ManaCost::parse(&escape_mana_str)
+        } else if is_overload {
+            let overload_cost_str = game.card(card_id).get_overload_cost().unwrap_or_default();
+            forge_foundation::ManaCost::parse(&overload_cost_str)
+        } else if is_dash {
+            let dash_cost_str = game.card(card_id).get_dash_cost().unwrap_or_default();
+            forge_foundation::ManaCost::parse(&dash_cost_str)
+        } else if is_blitz {
+            let blitz_cost_str = game.card(card_id).get_blitz_cost().unwrap_or_default();
+            forge_foundation::ManaCost::parse(&blitz_cost_str)
+        } else if is_emerge {
+            let emerge_cost_str = game.card(card_id).get_emerge_cost().unwrap_or_default();
+            forge_foundation::ManaCost::parse(&emerge_cost_str)
+        } else if is_plot_cast {
+            // Plot: cast from exile for free (already paid plot cost).
+            forge_foundation::ManaCost::generic(0)
+        } else if is_static_alternative {
+            Self::mana_from_cost(static_alt_cost.as_ref()?)
+        } else if is_bestow {
+            let bestow_cost_str = game.card(card_id).get_bestow_cost().unwrap_or_default();
+            forge_foundation::ManaCost::parse(&bestow_cost_str)
+        } else if is_warp {
+            let warp_cost_str = game.card(card_id).get_warp_cost().unwrap_or_default();
+            forge_foundation::ManaCost::parse(&warp_cost_str)
+        } else if is_morph_facedown {
+            forge_foundation::ManaCost::generic(crate::spellability::MORPH_GENERIC_COST)
+        } else {
+            game.card(card_id).mana_cost.clone()
+        };
 
-            // Check Replicate: copy spell for each time replicate cost is paid
-            let replicate_count =
-                if let Some(rep_cost_str) = game.card(card_id).get_replicate_cost() {
-                    let rep_mc = forge_foundation::ManaCost::parse(&rep_cost_str);
-                    let available_mana =
-                        mana::calculate_available_mana(self.pool(player), game, player);
-                    let mut max_reps = 0u32;
-                    let mut test_cost = mana_cost.clone();
-                    loop {
-                        test_cost = test_cost.add(&rep_mc);
-                        if available_mana.can_pay(&test_cost) {
-                            max_reps += 1;
-                        } else {
-                            break;
-                        }
-                        if max_reps >= 20 {
-                            break;
-                        }
-                    }
-                    if max_reps > 0 {
-                        let name = game.card(card_id).card_name.clone();
-                        agents[player.index()].snapshot_state(game, &self.mana_pools);
-                        agents[player.index()].choose_replicate(
-                            player,
-                            &rep_cost_str,
-                            max_reps,
-                            Some(&name),
-                        )
-                    } else {
-                        0
-                    }
-                } else {
-                    0
-                };
+        // NOTE: Static mana-cost reduction/increase is now handled centrally
+        // by cost_adjustment::adjust() called later in this function.
+        // Do not apply compute_cost_adjustment here.
+        // We still need raise_cost for its non-mana cost parts (e.g. Waterbend).
+        let cast_zone = game.card(card_id).zone;
+        let raise_cost = crate::cost::cost_adjustment::compute_raise_cost_parts(
+            game,
+            game.card(card_id),
+            player,
+            cast_zone,
+        );
 
-            // Combine replicate cost
-            let mana_cost = if replicate_count > 0 {
-                // Safe: replicate_count is only >0 if get_replicate_cost() returned Some
-                let rep_cost_str = game.card(card_id).get_replicate_cost().unwrap_or_default();
-                let rep_mc = forge_foundation::ManaCost::parse(&rep_cost_str);
-                let mut total = mana_cost;
-                for _ in 0..replicate_count {
-                    total = total.add(&rep_mc);
-                }
-                total
-            } else {
-                mana_cost
-            };
-
-            // Check Escalate: additional cost per mode beyond the first.
-            let mana_cost = if let Some(escalate_cost_str) = game.card(card_id).get_escalate_cost()
-            {
-                let abilities = game.card(card_id).abilities.clone();
-                let ability_text = abilities.first().cloned().unwrap_or_default();
-                let ability_params = Params::from_raw(&ability_text);
-                let num_modes = ability_params
-                    .get(keys::CHOICES)
-                    .map(|c| c.split(',').count())
-                    .unwrap_or(1);
-                if num_modes > 1 {
-                    let esc_mc = forge_foundation::ManaCost::parse(&escalate_cost_str);
-                    let available_mana =
-                        mana::calculate_available_mana(self.pool(player), game, player);
-                    let mut extra_modes = 0u32;
-                    let mut test_cost = mana_cost.clone();
-                    for _ in 1..num_modes {
-                        test_cost = test_cost.add(&esc_mc);
-                        if available_mana.can_pay(&test_cost) {
-                            extra_modes += 1;
-                        } else {
-                            break;
-                        }
-                    }
-                    if extra_modes > 0 {
-                        let mut total = mana_cost.clone();
-                        for _ in 0..extra_modes {
-                            total = total.add(&esc_mc);
-                        }
-                        total
-                    } else {
-                        mana_cost
-                    }
-                } else {
-                    mana_cost
-                }
-            } else {
-                mana_cost
-            };
-
-            // Check Spree: each chosen mode has its own ModeCost$
-            let mana_cost = if game.card(card_id).has_keyword("Spree") {
-                let abilities = game.card(card_id).abilities.clone();
-                let ability_text = abilities.first().cloned().unwrap_or_default();
-                let ability_params = Params::from_raw(&ability_text);
-                if let Some(choices_str) = ability_params.get(keys::CHOICES) {
-                    let choice_names: Vec<&str> = choices_str.split(',').collect();
-                    let svars = game.card(card_id).svars.clone();
-                    // Extract ModeCost and description for each mode
-                    let mut mode_costs: Vec<forge_foundation::ManaCost> = Vec::new();
-                    let mut mode_descriptions: Vec<String> = Vec::new();
-                    for name in &choice_names {
-                        if let Some(svar_val) = svars.get(*name) {
-                            let params = Params::from_raw(svar_val);
-                            let cost = params
-                                .get(keys::MODE_COST)
-                                .map(|c| forge_foundation::ManaCost::parse(c))
-                                .unwrap_or_else(|| forge_foundation::ManaCost::generic(0));
-                            let desc = params
-                                .get_cloned(keys::SPELL_DESCRIPTION)
-                                .unwrap_or_else(|| name.to_string());
-                            mode_descriptions.push(format!("+ {} — {}", cost, desc));
-                            mode_costs.push(cost);
-                        }
-                    }
-                    // Ask player to choose modes
-                    let card_name = game.card(card_id).card_name.clone();
-                    let min_modes = ability_params
-                        .get("MinCharmNum")
-                        .and_then(|s| s.parse::<usize>().ok())
-                        .unwrap_or(1);
-                    let max_modes = mode_descriptions.len();
-                    let chosen = agents[player.index()].choose_mode(
-                        player,
-                        &mode_descriptions,
-                        min_modes,
-                        max_modes,
-                        Some(&card_name),
-                    );
-                    // Add selected ModeCosts to base cost
-                    let mut total = mana_cost.clone();
-                    for &idx in &chosen {
-                        if idx < mode_costs.len() {
-                            total = total.add(&mode_costs[idx]);
-                        }
-                    }
-                    // Store chosen modes on card for charm_effect to reuse
-                    game.card_mut(card_id).set_chosen_modes(chosen);
-                    total
-                } else {
-                    mana_cost
-                }
-            } else {
-                mana_cost
-            };
-
-            // Check Strive: additional cost per target beyond the first.
-            let mana_cost = if let Some(strive_cost_str) = game.card(card_id).get_strive_cost() {
-                let strive_mc = forge_foundation::ManaCost::parse(&strive_cost_str);
-                let available_mana =
-                    mana::calculate_available_mana(self.pool(player), game, player);
-                // Calculate max affordable extra targets
-                let mut extra_targets = 0u32;
-                let mut test_cost = mana_cost.clone();
-                for _ in 0..20 {
-                    // cap at 20 to avoid infinite loop
-                    test_cost = test_cost.add(&strive_mc);
-                    if available_mana.can_pay(&test_cost) {
-                        extra_targets += 1;
-                    } else {
-                        break;
-                    }
-                }
-                if extra_targets > 0 {
-                    let mut total = mana_cost.clone();
-                    for _ in 0..extra_targets {
-                        total = total.add(&strive_mc);
-                    }
-                    // Store max targets (1 base + extras) for resolution targeting
-                    game.card_mut(card_id)
-                        .set_strive_extra_targets(extra_targets);
-                    total
-                } else {
-                    mana_cost
-                }
-            } else {
-                mana_cost
-            };
-
-            // Check Entwine: pay extra to choose all modes of a modal spell
-            let entwine_paid = if let Some(entwine_cost_str) = game.card(card_id).get_entwine_cost()
-            {
-                let entwine_mc = forge_foundation::ManaCost::parse(&entwine_cost_str);
-                let combined = mana_cost.add(&entwine_mc);
-                let available_mana =
-                    mana::calculate_available_mana(self.pool(player), game, player);
-                if available_mana.can_pay(&combined) {
-                    let name = game.card(card_id).card_name.clone();
-                    agents[player.index()].snapshot_state(game, &self.mana_pools);
-                    agents[player.index()].choose_kicker(player, &entwine_cost_str, Some(&name))
-                } else {
-                    false
-                }
-            } else {
-                false
-            };
-
-            // Combine entwine cost
-            let mana_cost = if entwine_paid {
-                // Safe: entwine_paid is only true if get_entwine_cost() returned Some
-                let entwine_cost_str = game.card(card_id).get_entwine_cost().unwrap_or_default();
-                let entwine_mc = forge_foundation::ManaCost::parse(&entwine_cost_str);
-                mana_cost.add(&entwine_mc)
-            } else {
-                mana_cost
-            };
-
-            // Assist: another player can pay generic mana portion (multiplayer mechanic).
-            // In 1v1, the opponent is asked but AI will decline. Mirrors Java CostAdjustment.adjustCostByAssist().
-            let mana_cost = if game.card(card_id).has_keyword("Assist") {
-                let generic = mana_cost.generic_cost();
-                if generic > 0 && game.players.len() > 1 {
-                    // Find the opponent
-                    let opponent = game
-                        .players
-                        .iter()
-                        .enumerate()
-                        .find(|(i, _)| PlayerId(*i as u32) != player)
-                        .map(|(i, _)| PlayerId(i as u32));
-                    if let Some(opp) = opponent {
-                        agents[opp.index()].snapshot_state(game, &self.mana_pools);
-                        let assisted = agents[opp.index()].help_pay_assist(
-                            opp,
-                            &game.card(card_id).card_name,
-                            generic as u32,
-                        );
-                        if assisted > 0 {
-                            // Reduce generic cost by assisted amount
-                            mana_cost.reduce_generic(assisted as i32)
-                        } else {
-                            mana_cost
-                        }
-                    } else {
-                        mana_cost
-                    }
-                } else {
-                    mana_cost
-                }
-            } else {
-                mana_cost
-            };
-
-            // Detect commander cast from Command zone (for commander tax)
-            let is_commander_cast = game.player_is_commander(player, card_id)
-                && game.card(card_id).zone == ZoneType::Command;
-            let mut commander_tax = if is_commander_cast {
-                game.player_commander_tax(player, card_id)
-            } else {
-                0
-            };
-
-            // ── X mana cost handling ──────────────────────────────────
-            let original_mana_cost = mana_cost.clone();
-            let x_count = mana_cost.count_x();
-            let x_value;
-            let mana_cost = if x_count > 0 {
-                // Compute max X iteratively, mirroring Java's
-                // ComputerUtilMana.determineLeftoverMana(): try X=1,2,...
-                // until canPayManaCost fails, then return the last payable X.
-                // This correctly handles multi-color sources that inflate
-                // pool.total_mana() but can only produce one mana per activation.
-                let available_mana =
-                    mana::calculate_available_mana(self.pool(player), game, player);
-                let non_x_cost = mana_cost.without_x();
-                let max_x = {
-                    let mut x: u32 = 0;
-                    loop {
-                        let extra_generic = ((x + 1) * x_count as u32) as i32 + commander_tax;
-                        let full_cost =
-                            non_x_cost.add(&forge_foundation::ManaCost::generic(extra_generic));
-                        if !available_mana.can_pay(&full_cost) {
-                            break;
-                        }
-                        x += 1;
-                        if x >= 99 {
-                            break;
-                        }
-                    }
-                    x
-                };
+        // ── Additional cost checks (Kicker, Buyback, Multikicker, Replicate) ──
+        // Check Kicker: offer to pay additional kicker cost
+        let kicked = if let Some(kicker_cost_str) = game.card(card_id).get_kicker_cost() {
+            let kicker_mc = forge_foundation::ManaCost::parse(&kicker_cost_str);
+            let combined = mana_cost.add(&kicker_mc);
+            let available_mana = mana::calculate_available_mana(self.pool(player), game, player);
+            if available_mana.can_pay(&combined) {
                 let name = game.card(card_id).card_name.clone();
                 agents[player.index()].snapshot_state(game, &self.mana_pools);
-                let chosen_x = agents[player.index()].choose_x_value(player, max_x, Some(&name));
-                x_value = chosen_x.min(max_x);
-                non_x_cost.add(&forge_foundation::ManaCost::generic(
-                    (x_value * x_count as u32) as i32,
-                ))
+                agents[player.index()].choose_kicker(player, &kicker_cost_str, Some(&name))
             } else {
-                x_value = 0;
+                false
+            }
+        } else {
+            false
+        };
+
+        // Combine kicker cost with base cost if kicked
+        let mana_cost = if kicked {
+            // Safe: kicked is only true if get_kicker_cost() returned Some
+            let kicker_cost_str = game.card(card_id).get_kicker_cost().unwrap_or_default();
+            let kicker_mc = forge_foundation::ManaCost::parse(&kicker_cost_str);
+            mana_cost.add(&kicker_mc)
+        } else {
+            mana_cost
+        };
+
+        // Check Buyback: offer to pay additional buyback cost
+        let buyback_paid = if let Some(buyback_cost_str) = game.card(card_id).get_buyback_cost() {
+            let buyback_mc = forge_foundation::ManaCost::parse(&buyback_cost_str);
+            let combined = mana_cost.add(&buyback_mc);
+            let available_mana = mana::calculate_available_mana(self.pool(player), game, player);
+            if available_mana.can_pay(&combined) {
+                let name = game.card(card_id).card_name.clone();
+                agents[player.index()].snapshot_state(game, &self.mana_pools);
+                agents[player.index()].choose_buyback(player, &buyback_cost_str, Some(&name))
+            } else {
+                false
+            }
+        } else {
+            false
+        };
+
+        // Combine buyback cost
+        let mana_cost = if buyback_paid {
+            // Safe: buyback_paid is only true if get_buyback_cost() returned Some
+            let buyback_cost_str = game.card(card_id).get_buyback_cost().unwrap_or_default();
+            let buyback_mc = forge_foundation::ManaCost::parse(&buyback_cost_str);
+            mana_cost.add(&buyback_mc)
+        } else {
+            mana_cost
+        };
+
+        // Check Multikicker: pay kicker cost any number of times
+        let kick_count = if let Some(mk_cost_str) = game.card(card_id).get_multikicker_cost() {
+            let mk_mc = forge_foundation::ManaCost::parse(&mk_cost_str);
+            let available_mana = mana::calculate_available_mana(self.pool(player), game, player);
+            // Calculate max kicks: how many times we can add mk_mc to mana_cost
+            let mut max_kicks = 0u32;
+            let mut test_cost = mana_cost.clone();
+            loop {
+                test_cost = test_cost.add(&mk_mc);
+                if available_mana.can_pay(&test_cost) {
+                    max_kicks += 1;
+                } else {
+                    break;
+                }
+                if max_kicks >= 20 {
+                    break; // Safety cap
+                }
+            }
+            if max_kicks > 0 {
+                let name = game.card(card_id).card_name.clone();
+                agents[player.index()].snapshot_state(game, &self.mana_pools);
+                agents[player.index()].choose_multikicker(
+                    player,
+                    &mk_cost_str,
+                    max_kicks,
+                    Some(&name),
+                )
+            } else {
+                0
+            }
+        } else {
+            0
+        };
+
+        // Combine multikicker cost
+        let mana_cost = if kick_count > 0 {
+            // Safe: kick_count is only >0 if get_multikicker_cost() returned Some
+            let mk_cost_str = game
+                .card(card_id)
+                .get_multikicker_cost()
+                .unwrap_or_default();
+            let mk_mc = forge_foundation::ManaCost::parse(&mk_cost_str);
+            let mut total = mana_cost;
+            for _ in 0..kick_count {
+                total = total.add(&mk_mc);
+            }
+            total
+        } else {
+            mana_cost
+        };
+
+        // Check Replicate: copy spell for each time replicate cost is paid
+        let replicate_count = if let Some(rep_cost_str) = game.card(card_id).get_replicate_cost() {
+            let rep_mc = forge_foundation::ManaCost::parse(&rep_cost_str);
+            let available_mana = mana::calculate_available_mana(self.pool(player), game, player);
+            let mut max_reps = 0u32;
+            let mut test_cost = mana_cost.clone();
+            loop {
+                test_cost = test_cost.add(&rep_mc);
+                if available_mana.can_pay(&test_cost) {
+                    max_reps += 1;
+                } else {
+                    break;
+                }
+                if max_reps >= 20 {
+                    break;
+                }
+            }
+            if max_reps > 0 {
+                let name = game.card(card_id).card_name.clone();
+                agents[player.index()].snapshot_state(game, &self.mana_pools);
+                agents[player.index()].choose_replicate(
+                    player,
+                    &rep_cost_str,
+                    max_reps,
+                    Some(&name),
+                )
+            } else {
+                0
+            }
+        } else {
+            0
+        };
+
+        // Combine replicate cost
+        let mana_cost = if replicate_count > 0 {
+            // Safe: replicate_count is only >0 if get_replicate_cost() returned Some
+            let rep_cost_str = game.card(card_id).get_replicate_cost().unwrap_or_default();
+            let rep_mc = forge_foundation::ManaCost::parse(&rep_cost_str);
+            let mut total = mana_cost;
+            for _ in 0..replicate_count {
+                total = total.add(&rep_mc);
+            }
+            total
+        } else {
+            mana_cost
+        };
+
+        // Check Escalate: additional cost per mode beyond the first.
+        let mana_cost = if let Some(escalate_cost_str) = game.card(card_id).get_escalate_cost() {
+            let abilities = game.card(card_id).abilities.clone();
+            let ability_text = abilities.first().cloned().unwrap_or_default();
+            let ability_params = Params::from_raw(&ability_text);
+            let num_modes = ability_params
+                .get(keys::CHOICES)
+                .map(|c| c.split(',').count())
+                .unwrap_or(1);
+            if num_modes > 1 {
+                let esc_mc = forge_foundation::ManaCost::parse(&escalate_cost_str);
+                let available_mana =
+                    mana::calculate_available_mana(self.pool(player), game, player);
+                let mut extra_modes = 0u32;
+                let mut test_cost = mana_cost.clone();
+                for _ in 1..num_modes {
+                    test_cost = test_cost.add(&esc_mc);
+                    if available_mana.can_pay(&test_cost) {
+                        extra_modes += 1;
+                    } else {
+                        break;
+                    }
+                }
+                if extra_modes > 0 {
+                    let mut total = mana_cost.clone();
+                    for _ in 0..extra_modes {
+                        total = total.add(&esc_mc);
+                    }
+                    total
+                } else {
+                    mana_cost
+                }
+            } else {
                 mana_cost
-            };
-
-            let mana_cost = mana_cost;
-
-            // Build SpellAbility chain and choose modes/targets from the pre-payment
-            // game state. This matches Java/MTG casting order: announce modes and
-            // targets before paying costs, so mana payments can invalidate a chosen
-            // target later (for example, sacrificing a Food token used as a target).
-            if is_flashback {
-                game.card_mut(card_id).cast_with_flashback = true;
-            } else if is_overload {
-                sa.overloaded = true;
-            } else if is_bestow && sa.target_restrictions.is_none() {
-                sa.target_restrictions =
-                    crate::spellability::target_restrictions::TargetRestrictions::new(
-                        &Params::from_raw("ValidTgts$ Creature"),
-                    );
             }
+        } else {
+            mana_cost
+        };
 
-            if kicked || kick_count > 0 || entwine_paid {
-                sa.kicked = true;
-            }
-
-            sa.buyback_paid = buyback_paid;
-            sa.kick_count = kick_count;
-            sa.replicate_count = replicate_count;
-            sa.x_mana_cost_paid = x_value;
-            game.card_mut(card_id)
-                .svars
-                .insert("XPaid".to_string(), x_value.to_string());
-
-            if !sa.overloaded {
-                let mut targeting_game = game.clone();
-                if sa.is_spell && targeting_game.card(card_id).zone != ZoneType::Stack {
-                    // Java deterministic spell casting moves the spell to stack
-                    // before setupTargets(), so counterspells can see themselves
-                    // as legal stack targets during target selection.
-                    targeting_game.move_card(card_id, ZoneType::Stack, player);
+        // Check Spree: each chosen mode has its own ModeCost$
+        let mana_cost = if game.card(card_id).has_keyword("Spree") {
+            let abilities = game.card(card_id).abilities.clone();
+            let ability_text = abilities.first().cloned().unwrap_or_default();
+            let ability_params = Params::from_raw(&ability_text);
+            if let Some(choices_str) = ability_params.get(keys::CHOICES) {
+                let choice_names: Vec<&str> = choices_str.split(',').collect();
+                let svars = game.card(card_id).svars.clone();
+                // Extract ModeCost and description for each mode
+                let mut mode_costs: Vec<forge_foundation::ManaCost> = Vec::new();
+                let mut mode_descriptions: Vec<String> = Vec::new();
+                for name in &choice_names {
+                    if let Some(svar_val) = svars.get(*name) {
+                        let params = Params::from_raw(svar_val);
+                        let cost = params
+                            .get(keys::MODE_COST)
+                            .map(|c| forge_foundation::ManaCost::parse(c))
+                            .unwrap_or_else(|| forge_foundation::ManaCost::generic(0));
+                        let desc = params
+                            .get_cloned(keys::SPELL_DESCRIPTION)
+                            .unwrap_or_else(|| name.to_string());
+                        mode_descriptions.push(format!("+ {} — {}", cost, desc));
+                        mode_costs.push(cost);
+                    }
                 }
-                if sa.api == Some(crate::ability::api_type::ApiType::Charm)
-                    && !crate::ability::effects::charm_effect::make_choices_precast(
-                        &mut targeting_game,
-                        agents,
-                        &mut sa,
-                    )
-                {
-                    return None;
+                // Ask player to choose modes
+                let card_name = game.card(card_id).card_name.clone();
+                let min_modes = ability_params
+                    .get("MinCharmNum")
+                    .and_then(|s| s.parse::<usize>().ok())
+                    .unwrap_or(1);
+                let max_modes = mode_descriptions.len();
+                let chosen = agents[player.index()].choose_mode(
+                    player,
+                    &mode_descriptions,
+                    min_modes,
+                    max_modes,
+                    Some(&card_name),
+                );
+                // Add selected ModeCosts to base cost
+                let mut total = mana_cost.clone();
+                for &idx in &chosen {
+                    if idx < mode_costs.len() {
+                        total = total.add(&mode_costs[idx]);
+                    }
                 }
-                if !sa.setup_targets(&targeting_game, agents, &self.mana_pools) {
-                    // Parity with Java harness deterministic cast flow:
-                    // handlePlayingSpellAbilityDeterministic() moves spells to stack
-                    // before setupTargets(), and a setupTargets() failure is not rolled back.
-                    // Net effect is the spell leaves hand without resolving.
-                    self.move_card_with_runtime(game, card_id, ZoneType::Stack, player, agents);
-                    return None;
-                }
-                // Post-targeting validation: reject cast if MustTarget (Flagbearer)
-                // restriction is not satisfied. Mirrors Java's isLegalAfterTargeting()
-                // → meetsMustTargetRestriction() which prevents casting if the chosen
-                // target doesn't include the required Flagbearer.
-                let meets =
-                    crate::staticability::static_ability_must_target::meets_must_target_restriction(
-                        &targeting_game,
-                        &sa,
-                    );
-                if !meets {
-                    eprintln!(
-                        "[RUST-MUST-TARGET] Cast rejected for {} — MustTarget restriction not met",
-                        card_name
-                    );
-                    return None;
-                }
-            }
-
-            let display_total_cost = if commander_tax > 0 {
-                original_mana_cost.add(&forge_foundation::ManaCost::generic(commander_tax))
+                // Store chosen modes on card for charm_effect to reuse
+                game.card_mut(card_id).set_chosen_modes(chosen);
+                total
             } else {
-                original_mana_cost.clone()
-            };
-            let payable_base_cost = if commander_tax > 0 {
-                mana_cost.add(&forge_foundation::ManaCost::generic(commander_tax))
+                mana_cost
+            }
+        } else {
+            mana_cost
+        };
+
+        // Check Strive: additional cost per target beyond the first.
+        let mana_cost = if let Some(strive_cost_str) = game.card(card_id).get_strive_cost() {
+            let strive_mc = forge_foundation::ManaCost::parse(&strive_cost_str);
+            let available_mana = mana::calculate_available_mana(self.pool(player), game, player);
+            // Calculate max affordable extra targets
+            let mut extra_targets = 0u32;
+            let mut test_cost = mana_cost.clone();
+            for _ in 0..20 {
+                // cap at 20 to avoid infinite loop
+                test_cost = test_cost.add(&strive_mc);
+                if available_mana.can_pay(&test_cost) {
+                    extra_targets += 1;
+                } else {
+                    break;
+                }
+            }
+            if extra_targets > 0 {
+                let mut total = mana_cost.clone();
+                for _ in 0..extra_targets {
+                    total = total.add(&strive_mc);
+                }
+                // Store max targets (1 base + extras) for resolution targeting
+                game.card_mut(card_id)
+                    .set_strive_extra_targets(extra_targets);
+                total
             } else {
-                mana_cost.clone()
+                mana_cost
+            }
+        } else {
+            mana_cost
+        };
+
+        // Check Entwine: pay extra to choose all modes of a modal spell
+        let entwine_paid = if let Some(entwine_cost_str) = game.card(card_id).get_entwine_cost() {
+            let entwine_mc = forge_foundation::ManaCost::parse(&entwine_cost_str);
+            let combined = mana_cost.add(&entwine_mc);
+            let available_mana = mana::calculate_available_mana(self.pool(player), game, player);
+            if available_mana.can_pay(&combined) {
+                let name = game.card(card_id).card_name.clone();
+                agents[player.index()].snapshot_state(game, &self.mana_pools);
+                agents[player.index()].choose_kicker(player, &entwine_cost_str, Some(&name))
+            } else {
+                false
+            }
+        } else {
+            false
+        };
+
+        // Combine entwine cost
+        let mana_cost = if entwine_paid {
+            // Safe: entwine_paid is only true if get_entwine_cost() returned Some
+            let entwine_cost_str = game.card(card_id).get_entwine_cost().unwrap_or_default();
+            let entwine_mc = forge_foundation::ManaCost::parse(&entwine_cost_str);
+            mana_cost.add(&entwine_mc)
+        } else {
+            mana_cost
+        };
+
+        // Assist: another player can pay generic mana portion (multiplayer mechanic).
+        // In 1v1, the opponent is asked but AI will decline. Mirrors Java CostAdjustment.adjustCostByAssist().
+        let mana_cost = if game.card(card_id).has_keyword("Assist") {
+            let generic = mana_cost.generic_cost();
+            if generic > 0 && game.players.len() > 1 {
+                // Find the opponent
+                let opponent = game
+                    .players
+                    .iter()
+                    .enumerate()
+                    .find(|(i, _)| PlayerId(*i as u32) != player)
+                    .map(|(i, _)| PlayerId(i as u32));
+                if let Some(opp) = opponent {
+                    agents[opp.index()].snapshot_state(game, &self.mana_pools);
+                    let assisted = agents[opp.index()].help_pay_assist(
+                        opp,
+                        &game.card(card_id).card_name,
+                        generic as u32,
+                    );
+                    if assisted > 0 {
+                        // Reduce generic cost by assisted amount
+                        mana_cost.reduce_generic(assisted as i32)
+                    } else {
+                        mana_cost
+                    }
+                } else {
+                    mana_cost
+                }
+            } else {
+                mana_cost
+            }
+        } else {
+            mana_cost
+        };
+
+        // Detect commander cast from Command zone (for commander tax)
+        let is_commander_cast = game.player_is_commander(player, card_id)
+            && game.card(card_id).zone == ZoneType::Command;
+        let mut commander_tax = if is_commander_cast {
+            game.player_commander_tax(player, card_id)
+        } else {
+            0
+        };
+
+        // ── X mana cost handling ──────────────────────────────────
+        let original_mana_cost = mana_cost.clone();
+        let spell_cost = Self::parse_spell_cost(&abilities_for_spell);
+        let x_count = mana_cost.count_x();
+        let mut x_value = 0u32;
+        let mana_cost = if x_count > 0 {
+            // Compute max X iteratively, mirroring Java's
+            // ComputerUtilMana.determineLeftoverMana(): try X=1,2,...
+            // until canPayManaCost fails, then return the last payable X.
+            // This correctly handles multi-color sources that inflate
+            // pool.total_mana() but can only produce one mana per activation.
+            let available_mana = mana::calculate_available_mana(self.pool(player), game, player);
+            let non_x_cost = mana_cost.without_x();
+            let max_x = {
+                let mut x: u32 = 0;
+                loop {
+                    let extra_generic = ((x + 1) * x_count as u32) as i32 + commander_tax;
+                    let full_cost =
+                        non_x_cost.add(&forge_foundation::ManaCost::generic(extra_generic));
+                    if !available_mana.can_pay(&full_cost) {
+                        break;
+                    }
+                    x += 1;
+                    if x >= 99 {
+                        break;
+                    }
+                }
+                x
             };
-            let mut total_unpaid = ManaCostBeingPaid::from_mana_cost(&payable_base_cost);
-            if !crate::cost::cost_adjustment::adjust(
-                game,
-                agents,
-                &mut self.trigger_handler,
-                &self.mana_pools,
-                &mut total_unpaid,
-                &mut sa,
-                player,
-                None,
-                false,
-                false,
-            ) {
+            let name = game.card(card_id).card_name.clone();
+            agents[player.index()].snapshot_state(game, &self.mana_pools);
+            let chosen_x = agents[player.index()].choose_x_value(player, max_x, Some(&name));
+            x_value = chosen_x.min(max_x);
+            non_x_cost.add(&forge_foundation::ManaCost::generic(
+                (x_value * x_count as u32) as i32,
+            ))
+        } else {
+            mana_cost
+        };
+
+        if x_count == 0 && x_value == 0 {
+            let dynamic_cost_max = spell_cost
+                .iter()
+                .chain(static_alt_cost.iter())
+                .flat_map(|cost| cost.parts.iter())
+                .filter_map(|part| {
+                    let amount = crate::cost::cost_part::convert_amount(part)?;
+                    if amount != crate::cost::DYNAMIC_X_SENTINEL {
+                        return None;
+                    }
+                    crate::cost::cost_part::get_max_amount_x(game, card_id, player, part, false)
+                })
+                .min()
+                .unwrap_or(0);
+            if dynamic_cost_max > 0 {
+                let name = game.card(card_id).card_name.clone();
+                agents[player.index()].snapshot_state(game, &self.mana_pools);
+                x_value = agents[player.index()]
+                    .choose_x_value(player, dynamic_cost_max as u32, Some(&name))
+                    .min(dynamic_cost_max as u32);
+            }
+        }
+
+        let mana_cost = mana_cost;
+
+        // Build SpellAbility chain and choose modes/targets from the pre-payment
+        // game state. This matches Java/MTG casting order: announce modes and
+        // targets before paying costs, so mana payments can invalidate a chosen
+        // target later (for example, sacrificing a Food token used as a target).
+        if is_flashback {
+            game.card_mut(card_id).cast_with_flashback = true;
+        } else if is_overload {
+            sa.overloaded = true;
+        } else if is_bestow && sa.target_restrictions.is_none() {
+            sa.target_restrictions =
+                crate::spellability::target_restrictions::TargetRestrictions::new(
+                    &Params::from_raw("ValidTgts$ Creature"),
+                );
+        }
+
+        if kicked || kick_count > 0 || entwine_paid {
+            sa.kicked = true;
+        }
+
+        sa.buyback_paid = buyback_paid;
+        sa.kick_count = kick_count;
+        sa.replicate_count = replicate_count;
+        sa.x_mana_cost_paid = x_value;
+        game.card_mut(card_id)
+            .svars
+            .insert("XPaid".to_string(), x_value.to_string());
+
+        if !sa.overloaded {
+            let mut targeting_game = game.clone();
+            if sa.is_spell && targeting_game.card(card_id).zone != ZoneType::Stack {
+                // Java deterministic spell casting moves the spell to stack
+                // before setupTargets(), so counterspells can see themselves
+                // as legal stack targets during target selection.
+                targeting_game.move_card(card_id, ZoneType::Stack, player);
+            }
+            if sa.api == Some(crate::ability::api_type::ApiType::Charm)
+                && !crate::ability::effects::charm_effect::make_choices_precast(
+                    &mut targeting_game,
+                    agents,
+                    &mut sa,
+                )
+            {
                 return None;
             }
-            let total_cost = total_unpaid.to_mana_cost();
-
-            // Java CostPayment decides sacrifice/discard targets in the accept
-            // phase after cost adjustment but before payment.
-            let spell_cost = Self::parse_spell_cost(&abilities_for_spell);
-            let prechosen_spell_sacrifices = if let Some(ref sc) = spell_cost {
-                match self.prechoose_additional_cost_sacrifices(game, agents, player, sc, Some(&sa))
+            if !sa.setup_targets(&targeting_game, agents, &self.mana_pools) {
+                return None;
+            }
+            // Post-targeting validation: reject cast if MustTarget (Flagbearer)
+            // restriction is not satisfied. Mirrors Java's isLegalAfterTargeting()
+            // → meetsMustTargetRestriction() which prevents casting if the chosen
+            // target doesn't include the required Flagbearer.
+            let meets =
+                crate::staticability::static_ability_must_target::meets_must_target_restriction(
+                    &targeting_game,
+                    &sa,
+                );
+            if !meets {
+                eprintln!(
+                    "[RUST-MUST-TARGET] Cast rejected for {} — MustTarget restriction not met",
+                    card_name
+                );
+                if self.java_parity_failed_spell_setup_to_stack
+                    && game.card(card_id).zone != ZoneType::Stack
                 {
-                    Some(picks) => Some(picks),
-                    None => return None,
+                    game.move_card(card_id, ZoneType::Stack, player);
                 }
+                return None;
+            }
+        }
+
+        let display_total_cost = if commander_tax > 0 {
+            original_mana_cost.add(&forge_foundation::ManaCost::generic(commander_tax))
+        } else {
+            original_mana_cost.clone()
+        };
+        let payable_base_cost = if commander_tax > 0 {
+            mana_cost.add(&forge_foundation::ManaCost::generic(commander_tax))
+        } else {
+            mana_cost.clone()
+        };
+        let mut total_unpaid = ManaCostBeingPaid::from_mana_cost(&payable_base_cost);
+        if !crate::cost::cost_adjustment::adjust(
+            game,
+            agents,
+            &mut self.trigger_handler,
+            &self.mana_pools,
+            &mut total_unpaid,
+            &mut sa,
+            player,
+            None,
+            false,
+            false,
+        ) {
+            return None;
+        }
+        let total_cost = crate::mana::apply_player_life_payment_keywords(
+            game,
+            player,
+            &total_unpaid.to_mana_cost(),
+        );
+
+        // Java CostPayment decides sacrifice/discard targets in the accept
+        // phase after cost adjustment but before payment.
+        let prechosen_spell_sacrifices = if let Some(ref sc) = spell_cost {
+            match self.prechoose_additional_cost_sacrifices(game, agents, player, sc, Some(&sa)) {
+                Some(picks) => Some(picks),
+                None => return None,
+            }
+        } else {
+            None
+        };
+        let prechosen_spell_discards = if let Some(ref sc) = spell_cost {
+            match self.prechoose_additional_cost_discards(game, agents, player, card_id, sc) {
+                Some(picks) => Some(picks),
+                None => return None,
+            }
+        } else {
+            None
+        };
+        let prechosen_static_alt_sacrifices = if let Some(ref cost) = static_alt_cost {
+            match self.prechoose_additional_cost_sacrifices(game, agents, player, cost, Some(&sa)) {
+                Some(picks) => Some(picks),
+                None => return None,
+            }
+        } else {
+            None
+        };
+        let prechosen_static_alt_discards = if let Some(ref cost) = static_alt_cost {
+            match self.prechoose_additional_cost_discards(game, agents, player, card_id, cost) {
+                Some(picks) => Some(picks),
+                None => return None,
+            }
+        } else {
+            None
+        };
+
+        // Build mana payment context for restriction checking
+        let payment_ctx = {
+            let card = game.card(card_id);
+            let chosen_types_by_source = game
+                .cards
+                .iter()
+                .filter_map(|c| c.chosen_type.clone().map(|chosen| (c.id, chosen)))
+                .collect();
+            mana::ManaPaymentContext {
+                is_spell: true,
+                type_line: Some(card.type_line.clone()),
+                card_name: Some(card.card_name.clone()),
+                chosen_types_by_source,
+            }
+        };
+
+        // Check if mana conversion allows spending mana as any color
+        let any_color_conversion = {
+            let card = game.card(card_id);
+            crate::staticability::static_ability_mana_convert::can_spend_mana_as_any_color(
+                &game.cards,
+                player,
+                card,
+            )
+        };
+
+        // Track mana metadata before payment for post-payment effects
+        let uncounterable_before = self.pool(player).count_uncounterable();
+        let keywords_before = self.pool(player).collect_keyword_mana();
+        let counters_before = self.pool(player).collect_counter_mana();
+        let triggers_before = self.pool(player).collect_trigger_mana();
+        // Track pool colors before payment for Sunburst/Converge
+        let pool_snapshot_for_colors: Vec<u16> = self.pool(player).mana_colors();
+        // Track pool size before payment for ManaExpend
+        let pool_size_before = self.pool(player).total_mana();
+
+        // Unified mana payment loop. Agents decide whether to pay manually or
+        // auto-pay through their `pay_mana_cost()` implementation; the engine
+        // should not branch on `is_human()` here.
+        let card_name = game.card(card_id).card_name.clone();
+        if total_cost.is_zero() {
+            // Zero-cost spell payments have no mana-payment interaction.
+            // Skip the callback loop entirely so parity/UI only see real payments.
+        } else {
+            let cost_str = total_cost.to_string();
+            let cost_display_str = display_total_cost.to_string();
+            let cost_checkpoint_str = if x_count > 0 && x_value == 0 {
+                cost_display_str.clone()
             } else {
-                None
+                cost_str.clone()
             };
-            let prechosen_static_alt_sacrifices = if let Some(ref cost) = static_alt_cost {
-                match self.prechoose_additional_cost_sacrifices(
-                    game,
-                    agents,
-                    player,
-                    cost,
-                    Some(&sa),
-                ) {
-                    Some(picks) => Some(picks),
-                    None => return None,
-                }
-            } else {
-                None
+            let session = ManaPaymentSession {
+                player,
+                card_id,
+                card_name: &card_name,
+                mana_cost: &total_cost,
+                cost_str: &cost_str,
+                cost_display_str: &cost_display_str,
+                cost_checkpoint_str: &cost_checkpoint_str,
+                is_activated_ability: false,
+                reserved_sacrifices: &[],
             };
-
-            // Build mana payment context for restriction checking
-            let payment_ctx = {
-                let card = game.card(card_id);
-                mana::ManaPaymentContext {
-                    is_spell: true,
-                    type_line: Some(card.type_line.clone()),
-                    card_name: Some(card.card_name.clone()),
-                }
-            };
-
-            // Check if mana conversion allows spending mana as any color
-            let any_color_conversion = {
-                let card = game.card(card_id);
-                crate::staticability::static_ability_mana_convert::can_spend_mana_as_any_color(
-                    &game.cards,
-                    player,
-                    card,
-                )
-            };
-
-            // Track mana metadata before payment for post-payment effects
-            let uncounterable_before = self.pool(player).count_uncounterable();
-            let keywords_before = self.pool(player).collect_keyword_mana();
-            let counters_before = self.pool(player).collect_counter_mana();
-            let triggers_before = self.pool(player).collect_trigger_mana();
-            // Track pool colors before payment for Sunburst/Converge
-            let pool_snapshot_for_colors: Vec<u16> = self.pool(player).mana_colors();
-            // Track pool size before payment for ManaExpend
-            let pool_size_before = self.pool(player).total_mana();
-
-            // Unified mana payment loop. Agents decide whether to pay manually or
-            // auto-pay through their `pay_mana_cost()` implementation; the engine
-            // should not branch on `is_human()` here.
-            let card_name = game.card(card_id).card_name.clone();
-            if total_cost.is_zero() {
-                // Zero-cost spell payments have no mana-payment interaction.
-                // Skip the callback loop entirely so parity/UI only see real payments.
-            } else {
-                let cost_str = total_cost.to_string();
-                let cost_display_str = display_total_cost.to_string();
-                let cost_checkpoint_str = if x_count > 0 && x_value == 0 {
-                    cost_display_str.clone()
-                } else {
-                    cost_str.clone()
-                };
-                let session = ManaPaymentSession {
-                    player,
-                    card_id,
-                    card_name: &card_name,
-                    mana_cost: &total_cost,
-                    cost_str: &cost_str,
-                    cost_display_str: &cost_display_str,
-                    cost_checkpoint_str: &cost_checkpoint_str,
-                    is_activated_ability: false,
-                    reserved_sacrifices: &[],
-                };
-                let mana_paid = self.pay_mana_cost_session(
-                    game,
-                    agents,
-                    session,
-                    |game, player, land_id, ab, _reserved_sacrifices| {
-                        crate::cost::can_pay_ignoring_mana(&ab.cost, game, land_id, player)
-                    },
-                    |slf, game, agents, session| {
-                        let auto_result = {
-                            let game_ptr: *mut GameState = game;
-                            let trigger_handler_ptr = std::ptr::from_mut(&mut slf.trigger_handler);
-                            let mut callback = Self::make_mana_payment_callback(
-                                trigger_handler_ptr,
-                                game_ptr,
-                                agents,
-                                session.player,
+            let mana_paid = self.pay_mana_cost_session(
+                game,
+                agents,
+                session,
+                |game, player, land_id, ab, _reserved_sacrifices| {
+                    crate::cost::can_pay_ignoring_mana(&ab.cost, game, land_id, player)
+                },
+                |slf, game, agents, session| {
+                    let auto_result = {
+                        let game_ptr: *mut GameState = game;
+                        let trigger_handler_ptr = std::ptr::from_mut(&mut slf.trigger_handler);
+                        let mut callback = Self::make_mana_payment_callback(
+                            trigger_handler_ptr,
+                            game_ptr,
+                            agents,
+                            session.player,
+                        );
+                        mana::pay_mana_cost_auto_with_callback(
+                            game,
+                            slf.pool_mut(session.player),
+                            session.player,
+                            session.mana_cost,
+                            Some(session.card_id),
+                            0,
+                            &payment_ctx,
+                            any_color_conversion,
+                            &mut callback,
+                        )
+                    };
+                    if let Some(result) = auto_result {
+                        let trace: Vec<ManaCostAction> = result
+                            .choices
+                            .iter()
+                            .map(|choice| ManaCostAction::TapLand {
+                                card_id: choice.card_id,
+                                mana_ability_index: Some(choice.mana_ability_index.unwrap_or(0)),
+                                express_choice: choice
+                                    .mana_ability_index
+                                    .map(|_| choice.chosen_atom),
+                            })
+                            .collect();
+                        for &tapped_id in &result.tapped {
+                            slf.trigger_handler.run_trigger(
+                                TriggerType::Taps,
+                                RunParams {
+                                    card: Some(tapped_id),
+                                    player: Some(session.player),
+                                    ..Default::default()
+                                },
+                                false,
                             );
-                            mana::pay_mana_cost_auto_with_callback(
-                                game,
-                                slf.pool_mut(session.player),
-                                session.player,
-                                session.mana_cost,
-                                Some(session.card_id),
-                                0,
-                                &payment_ctx,
-                                any_color_conversion,
-                                &mut callback,
-                            )
-                        };
-                        if let Some(result) = auto_result {
-                            let trace: Vec<ManaCostAction> = result
-                                .choices
-                                .iter()
-                                .map(|choice| ManaCostAction::TapLand {
-                                    card_id: choice.card_id,
-                                    mana_ability_index: Some(
-                                        choice.mana_ability_index.unwrap_or(0),
-                                    ),
-                                    express_choice: choice.mana_ability_index.map(|_| choice.chosen_atom),
-                                })
-                                .collect();
-                            for &tapped_id in &result.tapped {
-                                slf.trigger_handler.run_trigger(
-                                    TriggerType::Taps,
-                                    RunParams {
-                                        card: Some(tapped_id),
-                                        player: Some(session.player),
-                                        ..Default::default()
-                                    },
-                                    false,
-                                );
-                                slf.trigger_handler.run_trigger(
-                                    TriggerType::TapsForMana,
-                                    RunParams {
-                                        card: Some(tapped_id),
-                                        player: Some(session.player),
-                                        activator: Some(session.player),
-                                        ..Default::default()
-                                    },
-                                    false,
-                                );
-                            }
-                            if result.life_paid > 0 {
-                                slf.pay_life_cost(game, session.player, result.life_paid);
-                            }
-                            Some(trace)
-                        } else {
-                            None
+                            slf.trigger_handler.run_trigger(
+                                TriggerType::TapsForMana,
+                                RunParams {
+                                    card: Some(tapped_id),
+                                    player: Some(session.player),
+                                    activator: Some(session.player),
+                                    ..Default::default()
+                                },
+                                false,
+                            );
                         }
-                    },
-                    |slf, game, player| {
-                        let mut test_pool = slf.pool(player).clone();
-                        if let Some(test_life_to_pay) = test_pool
+                        if result.life_paid > 0 {
+                            slf.pay_life_cost(
+                                game,
+                                session.player,
+                                session.card_id,
+                                result.life_paid,
+                            );
+                        }
+                        Some(trace)
+                    } else {
+                        None
+                    }
+                },
+                |slf, game, player| {
+                    let mut test_pool = slf.pool(player).clone();
+                    if let Some(test_life_to_pay) = test_pool
+                        .try_pay_for_spell_converted_with_phyrexian_life(
+                            &total_cost,
+                            &payment_ctx,
+                            any_color_conversion,
+                            game.player(player).life,
+                        )
+                    {
+                        let life_to_pay = slf
+                            .pool_mut(player)
                             .try_pay_for_spell_converted_with_phyrexian_life(
                                 &total_cost,
                                 &payment_ctx,
                                 any_color_conversion,
                                 game.player(player).life,
                             )
-                        {
-                            let life_to_pay = slf
-                                .pool_mut(player)
-                                .try_pay_for_spell_converted_with_phyrexian_life(
-                                    &total_cost,
-                                    &payment_ctx,
-                                    any_color_conversion,
-                                    game.player(player).life,
-                                )
-                                .expect("tested phyrexian payment should still be legal");
-                            if life_to_pay != test_life_to_pay {
-                                return false;
-                            }
-                            if life_to_pay > 0 {
-                                slf.pay_life_cost(game, player, life_to_pay);
-                            }
-                            true
-                        } else {
-                            false
+                            .expect("tested phyrexian payment should still be legal");
+                        if life_to_pay != test_life_to_pay {
+                            return false;
                         }
-                    },
-                );
-                if !mana_paid {
-                    if game.card(card_id).zone != original_zone {
-                        self.move_card_with_runtime(
-                            game,
-                            card_id,
-                            original_zone,
-                            original_owner,
-                            agents,
-                        );
-                    }
-                    return None;
-                }
-            }
-
-            // If uncounterable mana was consumed during payment (Cavern of Souls),
-            // add a "can't be countered" replacement effect to the spell's card.
-            let uncounterable_after = self.pool(player).count_uncounterable();
-            if uncounterable_after < uncounterable_before {
-                use crate::replacement::replacement_effect::{
-                    ReplacementEffect, ReplacementLayer, ReplacementType,
-                };
-                let params = crate::parsing::Params::from_raw("ValidCard$ Card.Self");
-                game.card_mut(card_id)
-                    .replacement_effects
-                    .push(ReplacementEffect {
-                        event: ReplacementType::Counter,
-                        layer: ReplacementLayer::CantHappen,
-                        params,
-                        active_zones: vec![], // active everywhere (including stack)
-                        suppressed: false,
-                    });
-            }
-
-            // Track colors of mana spent (Sunburst/Converge)
-            {
-                let pool_after_colors: Vec<u16> = self.pool(player).mana_colors();
-                // Colors consumed = colors in before snapshot but not in after
-                let mut colors_spent = 0u16;
-                let mut after_clone = pool_after_colors.clone();
-                for &color in &pool_snapshot_for_colors {
-                    if let Some(pos) = after_clone.iter().position(|&c| c == color) {
-                        after_clone.remove(pos); // still in pool, not consumed
+                        if life_to_pay > 0 {
+                            slf.pay_life_cost(game, player, card_id, life_to_pay);
+                        }
+                        true
                     } else {
-                        colors_spent |= color; // consumed
+                        false
                     }
-                }
-                game.card_mut(card_id)
-                    .set_colors_spent_to_cast(colors_spent);
-            }
-
-            // Fire ManaExpend triggers (Expend mechanic — cumulative per-turn tracking)
-            {
-                let pool_size_after = self.pool(player).total_mana();
-                let mana_spent = (pool_size_before - pool_size_after) as i32;
-                if mana_spent > 0 {
-                    let starting = game.player(player).mana_expended_this_turn;
-                    let total = starting + mana_spent;
-                    game.player_set_mana_expended(player, total);
-                    // Fire trigger for each cumulative amount from starting+1 to total
-                    for i in (starting + 1)..=total {
-                        self.trigger_handler.run_trigger(
-                            TriggerType::ManaExpend,
-                            RunParams {
-                                player: Some(player),
-                                mana_expend_amount: Some(i),
-                                ..Default::default()
-                            },
-                            true,
-                        );
-                    }
-                }
-            }
-
-            // If keyword mana was consumed (Generator Servant, Hall of the Bandit Lord),
-            // add those keywords to the spell's card.
-            let keywords_after = self.pool(player).collect_keyword_mana();
-            {
-                let mut applied = std::collections::HashSet::new();
-                for (kw, valid) in &keywords_before {
-                    if applied.contains(kw) {
-                        continue;
-                    }
-                    let before_count = keywords_before.iter().filter(|(k, _)| k == kw).count();
-                    let after_count = keywords_after.iter().filter(|(k, _)| k == kw).count();
-                    if after_count < before_count {
-                        let valid_ok = match valid {
-                            None => true,
-                            Some(v) => crate::mana::mana_meets_restriction(v, &payment_ctx),
-                        };
-                        if valid_ok {
-                            for keyword in kw.split('&').map(str::trim) {
-                                if !keyword.is_empty() {
-                                    game.card_mut(card_id).add_intrinsic_keyword(keyword);
-                                }
-                            }
-                        }
-                        applied.insert(kw.clone());
-                    }
-                }
-            }
-
-            // If counter mana was consumed (Guildmages' Forum, Opal Palace),
-            // mark the card to receive counters on ETB.
-            let counters_after = self.pool(player).collect_counter_mana();
-            {
-                let mut applied = std::collections::HashSet::new();
-                for (counter_spec, valid) in &counters_before {
-                    if applied.contains(counter_spec) {
-                        continue;
-                    }
-                    let before_count = counters_before
-                        .iter()
-                        .filter(|(c, _)| c == counter_spec)
-                        .count();
-                    let after_count = counters_after
-                        .iter()
-                        .filter(|(c, _)| c == counter_spec)
-                        .count();
-                    if after_count < before_count {
-                        let valid_ok = match valid {
-                            None => true,
-                            Some(v) => crate::mana::mana_meets_restriction(v, &payment_ctx),
-                        };
-                        if valid_ok && counter_spec.contains("P1P1") {
-                            let count = counter_spec
-                                .rsplit('_')
-                                .next()
-                                .and_then(|s| s.parse::<i32>().ok())
-                                .unwrap_or(1);
-                            game.card_mut(card_id).add_etb_counters_p1p1(count);
-                        }
-                        applied.insert(counter_spec.clone());
-                    }
-                }
-            }
-
-            // ── TriggersWhenSpent: fire triggers from consumed mana ──
-            {
-                let triggers_after = self.pool(player).collect_trigger_mana();
-                let mut fired = std::collections::HashSet::new();
-                for (svar_name, source_id) in &triggers_before {
-                    if fired.contains(&(svar_name.clone(), *source_id)) {
-                        continue;
-                    }
-                    // Check if this trigger mana was consumed (present before but not after)
-                    let before_count = triggers_before
-                        .iter()
-                        .filter(|(s, src)| s == svar_name && src == source_id)
-                        .count();
-                    let after_count = triggers_after
-                        .iter()
-                        .filter(|(s, src)| s == svar_name && src == source_id)
-                        .count();
-                    if after_count < before_count {
-                        // Look up the SVar on the source card and fire the trigger
-                        if let Some(trigger_svar) =
-                            game.card(*source_id).svars.get(svar_name).cloned()
-                        {
-                            let params = Params::from_raw(&trigger_svar);
-                            // Check ValidCard$ filter against the spell being cast
-                            let valid = params.get(keys::VALID_CARD).unwrap_or("Card");
-                            let card = game.card(card_id);
-                            let valid_ok = valid == "Card"
-                                || (valid.contains("Creature") && card.is_creature())
-                                || (valid.contains("Dragon")
-                                    && card.type_line.has_subtype("Dragon"))
-                                || (valid.contains("cmcGE6") && card.mana_cost.cmc() >= 6)
-                                || (valid.contains("cmcGE5") && card.mana_cost.cmc() >= 5)
-                                || (valid.contains("IsCommander") && card.is_commander);
-                            if valid_ok {
-                                if let Some(execute) = params.get(keys::EXECUTE) {
-                                    if let Some(exec_svar) =
-                                        game.card(*source_id).svars.get(execute).cloned()
-                                    {
-                                        let exec_sa = crate::spellability::build_spell_ability(
-                                            game, *source_id, &exec_svar, player,
-                                        );
-                                        crate::ability::effects::resolve_effect(
-                                            &mut crate::ability::effects::EffectContext {
-                                                game,
-                                                combat: Some(&mut self.combat),
-                                                agents,
-                                                trigger_handler: &mut self.trigger_handler,
-                                                token_templates: &self.token_templates,
-                                                token_art_variants: &self.token_art_variants,
-                                                token_fallback: &self.token_fallback,
-                    edition_dates: &self.edition_dates,
-                                                mana_pools: &mut self.mana_pools,
-                                                parent_target_card: None,
-                                                rng: &mut *self.game_rng,
-                                            },
-                                            &exec_sa,
-                                        );
-                                    }
-                                }
-                            }
-                        }
-                        fired.insert((svar_name.clone(), *source_id));
-                    }
-                }
-            }
-
-            // Pay additional costs from SP$ line (e.g. sacrifice a creature).
-            let mut waterbend_tapped: Vec<CardId> = Vec::new();
-            if let Some(ref sc) = spell_cost {
-                let has_waterbend = sc
-                    .parts
-                    .iter()
-                    .any(|p| matches!(p, crate::cost::CostPart::Waterbend { .. }));
-                let untapped_before = if has_waterbend {
-                    game.cards_in_zone(ZoneType::Battlefield, player)
-                        .iter()
-                        .copied()
-                        .filter(|&cid| {
-                            let c = game.card(cid);
-                            cid != card_id
-                                && !c.tapped
-                                && (c.is_creature() || c.type_line.is_artifact())
-                        })
-                        .collect::<Vec<_>>()
-                } else {
-                    Vec::new()
-                };
-                if !self.pay_additional_costs(
-                    game,
-                    agents,
-                    player,
-                    card_id,
-                    sc,
-                    None,
-                    sc.mandatory,
-                    Some(&sa),
-                    prechosen_spell_sacrifices.as_deref(),
-                ) {
-                    return None;
-                }
-                if has_waterbend {
-                    for cid in untapped_before
-                        .into_iter()
-                        .filter(|&cid| game.card(cid).tapped)
-                    {
-                        if !waterbend_tapped.contains(&cid) {
-                            waterbend_tapped.push(cid);
-                        }
-                    }
-                }
-            }
-            if let Some(ref cost) = static_alt_cost {
-                let has_waterbend = cost
-                    .parts
-                    .iter()
-                    .any(|p| matches!(p, crate::cost::CostPart::Waterbend { .. }));
-                let untapped_before = if has_waterbend {
-                    game.cards_in_zone(ZoneType::Battlefield, player)
-                        .iter()
-                        .copied()
-                        .filter(|&cid| {
-                            let c = game.card(cid);
-                            cid != card_id
-                                && !c.tapped
-                                && (c.is_creature() || c.type_line.is_artifact())
-                        })
-                        .collect::<Vec<_>>()
-                } else {
-                    Vec::new()
-                };
-                if !self.pay_additional_costs(
-                    game,
-                    agents,
-                    player,
-                    card_id,
-                    cost,
-                    None,
-                    cost.mandatory,
-                    Some(&sa),
-                    prechosen_static_alt_sacrifices.as_deref(),
-                ) {
-                    return None;
-                }
-                if has_waterbend {
-                    for cid in untapped_before
-                        .into_iter()
-                        .filter(|&cid| game.card(cid).tapped)
-                    {
-                        if !waterbend_tapped.contains(&cid) {
-                            waterbend_tapped.push(cid);
-                        }
-                    }
-                }
-            }
-            if let Some(ref rc) = raise_cost {
-                let has_waterbend = rc
-                    .parts
-                    .iter()
-                    .any(|p| matches!(p, crate::cost::CostPart::Waterbend { .. }));
-                let untapped_before = if has_waterbend {
-                    game.cards_in_zone(ZoneType::Battlefield, player)
-                        .iter()
-                        .copied()
-                        .filter(|&cid| {
-                            let c = game.card(cid);
-                            cid != card_id
-                                && !c.tapped
-                                && (c.is_creature() || c.type_line.is_artifact())
-                        })
-                        .collect::<Vec<_>>()
-                } else {
-                    Vec::new()
-                };
-                if !self.pay_additional_costs(
-                    game,
-                    agents,
-                    player,
-                    card_id,
-                    rc,
-                    None,
-                    rc.mandatory,
-                    Some(&sa),
-                    None,
-                ) {
-                    return None;
-                }
-                if has_waterbend {
-                    for cid in untapped_before
-                        .into_iter()
-                        .filter(|&cid| game.card(cid).tapped)
-                    {
-                        if !waterbend_tapped.contains(&cid) {
-                            waterbend_tapped.push(cid);
-                        }
-                    }
-                }
-            }
-
-            // Pay additional non-mana costs from Flashback keyword cost
-            // (e.g. Lava Dart: Flashback—Sacrifice a Mountain).
-            if let Some(ref fb_cost) = flashback_total_cost {
-                let has_waterbend = fb_cost
-                    .parts
-                    .iter()
-                    .any(|p| matches!(p, crate::cost::CostPart::Waterbend { .. }));
-                let untapped_before = if has_waterbend {
-                    game.cards_in_zone(ZoneType::Battlefield, player)
-                        .iter()
-                        .copied()
-                        .filter(|&cid| {
-                            let c = game.card(cid);
-                            cid != card_id
-                                && !c.tapped
-                                && (c.is_creature() || c.type_line.is_artifact())
-                        })
-                        .collect::<Vec<_>>()
-                } else {
-                    Vec::new()
-                };
-                if !self.pay_additional_costs(
-                    game,
-                    agents,
-                    player,
-                    card_id,
-                    fb_cost,
-                    None,
-                    fb_cost.mandatory,
-                    Some(&sa),
-                    None,
-                ) {
-                    return None;
-                }
-                if has_waterbend {
-                    for cid in untapped_before
-                        .into_iter()
-                        .filter(|&cid| game.card(cid).tapped)
-                    {
-                        if !waterbend_tapped.contains(&cid) {
-                            waterbend_tapped.push(cid);
-                        }
-                    }
-                }
-            }
-
-            // Pay Evoke additional (non-mana) costs, e.g. Fury's
-            // ExileFromHand<1/Card.Red+Other/red card>.
-            if is_evoke {
-                let evoke_cost_str = game.card(card_id).get_evoke_cost().unwrap_or_default();
-                let evoke_cost = crate::cost::parse_cost(&evoke_cost_str);
-                if !self.pay_additional_costs(
-                    game,
-                    agents,
-                    player,
-                    card_id,
-                    &evoke_cost,
-                    None,
-                    evoke_cost.mandatory,
-                    Some(&sa),
-                    None,
-                ) {
-                    return None;
-                }
-            }
-
-            // Pay Escape exile cost: exile N other graveyard cards
-            if is_escape {
-                if let Some((_, exile_count)) = game.card(card_id).get_escape_cost() {
-                    let gy_cards: Vec<CardId> = game
-                        .cards_in_zone(ZoneType::Graveyard, player)
-                        .iter()
-                        .filter(|&&cid| cid != card_id)
-                        .copied()
-                        .take(exile_count as usize)
-                        .collect();
-                    for cid in gy_cards {
-                        self.move_card_with_runtime(game, cid, ZoneType::Exile, player, agents);
-                    }
-                }
-            }
-
-            crate::cost::cost_adjustment::commit_offerings_and_emerge(
-                game,
-                agents,
-                &mut self.trigger_handler,
-                &mut sa,
-            );
-
-            // Increment commander cast count (before moving card to stack)
-            if is_commander_cast {
-                game.player_increment_commander_cast(player, card_id);
-            }
-
-            {
-                game.player_record_spell_cast(player, card_id);
-            }
-            // Track spell cast on the stack (storm count, etc.)
-            game.stack.record_spell_cast(card_id);
-
-            let cast_zone = if is_foretell {
-                Some(ZoneType::Exile)
-            } else if is_flashback || is_escape {
-                Some(ZoneType::Graveyard)
-            } else if is_plot_cast {
-                Some(ZoneType::Exile)
-            } else if is_commander_cast {
-                Some(ZoneType::Command)
-            } else {
-                // Use the card's actual zone (usually Hand, but could be
-                // Exile for Warp-from-exile casts with Normal mode).
-                Some(game.card(card_id).zone)
-            };
-
-            let entry = StackEntry {
-                id: 0,
-                spell_ability: sa,
-                is_creature_spell: is_creature,
-                is_permanent_spell: is_permanent,
-                cast_from_zone: cast_zone,
-                optional_trigger_decider: None,
-                optional_trigger_description: None,
-                optional_trigger_source_name: None,
-            };
-            let chosen_target = entry.spell_ability.target_chosen.target_card;
-            let stack_message = if is_flashback {
-                format!("Cast: {} [Flashback from Graveyard]", card_name)
-            } else {
-                format!("Cast: {}", card_name)
-            };
-            let sa_for_trigger = self.push_spell_ability_to_stack(
-                game,
-                agents,
-                player,
-                StackPushContext {
-                    source_card: card_id,
-                    entry: entry.clone(),
-                    stack_log_name: card_name.clone(),
-                    stack_message,
-                    target_card: chosen_target,
-                    event_kind: SpellAbilityLogEventKind::Stack,
-                    move_source_to_stack: true,
-                    register_source_trigger: true,
                 },
             );
-            self.emit_post_stack_spell_ability_triggers(
-                game,
-                player,
-                &sa_for_trigger,
-                PostStackTriggerContext {
-                    source_card: card_id,
-                    cast_trigger: TriggerType::SpellCast,
-                    emit_ability_activated: false,
-                    emit_waterbend: !waterbend_tapped.is_empty(),
-                    waterbend_cards: waterbend_tapped.clone(),
-                },
-            );
-
-            // Storm: create N copies where N = spells_cast_this_turn - 1.
-            if game.card(card_id).has_storm() {
-                let storm_count = game.player_storm_count(player);
-                if storm_count > 0 {
-                    crate::agent::notify_all_agents(
+            if !mana_paid {
+                if game.card(card_id).zone != original_zone {
+                    self.move_card_with_runtime(
+                        game,
+                        card_id,
+                        original_zone,
+                        original_owner,
                         agents,
-                        crate::agent::GameLogEvent::stack(format!(
-                            "Storm count: {} copies",
-                            storm_count
-                        ))
-                        .with_player(player)
-                        .with_card(card_id),
                     );
-                    for i in 0..storm_count {
-                        if crate::card::card_factory::spell_ability_cant_be_copied(
-                            &game.cards,
-                            &entry.spell_ability,
-                        ) {
-                            continue;
-                        }
-                        let mut copy = entry.clone();
-                        copy.spell_ability = crate::card::card_factory::copy_spell_ability(
-                            &entry.spell_ability,
-                            player,
-                        );
-                        if copy.spell_ability.uses_targeting() {
-                            agents[player.index()].snapshot_state(game, &self.mana_pools);
-                            agents[player.index()].notify(
-                                crate::agent::notification::GameNotification::Event(
-                                    crate::agent::GameLogEvent::stack(format!(
-                                        "Choose target for Storm copy {}/{}",
-                                        i + 1,
-                                        storm_count
-                                    ))
-                                    .with_player(player)
-                                    .with_card(card_id),
-                                ),
-                            );
-                            copy.spell_ability
-                                .setup_targets(game, agents, &self.mana_pools);
-                        }
-                        game.stack.push(copy);
-                        self.log_stack_push(
-                            &format!("{} (Storm copy)", card_name),
-                            &game.player(player).name,
-                        );
+                }
+                return None;
+            }
+        }
 
-                        // Emit SpellCopied trigger for Magecraft
-                        self.trigger_handler.run_trigger(
-                            TriggerType::SpellCopied,
-                            RunParams {
-                                spell_card: Some(card_id),
-                                spell_controller: Some(player),
-                                ..Default::default()
-                            },
-                            false,
-                        );
+        // If uncounterable mana was consumed during payment (Cavern of Souls),
+        // add a "can't be countered" replacement effect to the spell's card.
+        let uncounterable_after = self.pool(player).count_uncounterable();
+        if uncounterable_after < uncounterable_before {
+            use crate::replacement::replacement_effect::{
+                ReplacementEffect, ReplacementLayer, ReplacementType,
+            };
+            let params = crate::parsing::Params::from_raw("ValidCard$ Card.Self");
+            game.card_mut(card_id)
+                .replacement_effects
+                .push(ReplacementEffect {
+                    event: ReplacementType::Counter,
+                    layer: ReplacementLayer::CantHappen,
+                    params,
+                    active_zones: vec![], // active everywhere (including stack)
+                    suppressed: false,
+                });
+        }
+
+        // Track colors of mana spent (Sunburst/Converge)
+        {
+            let pool_after_colors: Vec<u16> = self.pool(player).mana_colors();
+            // Colors consumed = colors in before snapshot but not in after
+            let mut colors_spent = 0u16;
+            let mut after_clone = pool_after_colors.clone();
+            for &color in &pool_snapshot_for_colors {
+                if let Some(pos) = after_clone.iter().position(|&c| c == color) {
+                    after_clone.remove(pos); // still in pool, not consumed
+                } else {
+                    colors_spent |= color; // consumed
+                }
+            }
+            game.card_mut(card_id)
+                .set_colors_spent_to_cast(colors_spent);
+        }
+
+        // Fire ManaExpend triggers (Expend mechanic — cumulative per-turn tracking)
+        {
+            let pool_size_after = self.pool(player).total_mana();
+            let mana_spent = (pool_size_before - pool_size_after) as i32;
+            if mana_spent > 0 {
+                let starting = game.player(player).mana_expended_this_turn;
+                let total = starting + mana_spent;
+                game.player_set_mana_expended(player, total);
+                // Fire trigger for each cumulative amount from starting+1 to total
+                for i in (starting + 1)..=total {
+                    self.trigger_handler.run_trigger(
+                        TriggerType::ManaExpend,
+                        RunParams {
+                            player: Some(player),
+                            mana_expend_amount: Some(i),
+                            ..Default::default()
+                        },
+                        true,
+                    );
+                }
+            }
+        }
+
+        // If keyword mana was consumed (Generator Servant, Hall of the Bandit Lord),
+        // add those keywords to the spell's card.
+        let keywords_after = self.pool(player).collect_keyword_mana();
+        {
+            let mut applied = std::collections::HashSet::new();
+            for (kw, valid) in &keywords_before {
+                if applied.contains(kw) {
+                    continue;
+                }
+                let before_count = keywords_before.iter().filter(|(k, _)| k == kw).count();
+                let after_count = keywords_after.iter().filter(|(k, _)| k == kw).count();
+                if after_count < before_count {
+                    let valid_ok = match valid {
+                        None => true,
+                        Some(v) => crate::mana::mana_meets_restriction(v, &payment_ctx),
+                    };
+                    if valid_ok {
+                        for keyword in kw.split('&').map(str::trim) {
+                            if !keyword.is_empty() {
+                                game.card_mut(card_id).add_intrinsic_keyword(keyword);
+                            }
+                        }
+                    }
+                    applied.insert(kw.clone());
+                }
+            }
+        }
+
+        // If counter mana was consumed (Guildmages' Forum, Opal Palace),
+        // mark the card to receive counters on ETB.
+        let counters_after = self.pool(player).collect_counter_mana();
+        {
+            let mut applied = std::collections::HashSet::new();
+            for (counter_spec, valid) in &counters_before {
+                if applied.contains(counter_spec) {
+                    continue;
+                }
+                let before_count = counters_before
+                    .iter()
+                    .filter(|(c, _)| c == counter_spec)
+                    .count();
+                let after_count = counters_after
+                    .iter()
+                    .filter(|(c, _)| c == counter_spec)
+                    .count();
+                if after_count < before_count {
+                    let valid_ok = match valid {
+                        None => true,
+                        Some(v) => crate::mana::mana_meets_restriction(v, &payment_ctx),
+                    };
+                    if valid_ok && counter_spec.contains("P1P1") {
+                        let count = counter_spec
+                            .rsplit('_')
+                            .next()
+                            .and_then(|s| s.parse::<i32>().ok())
+                            .unwrap_or(1);
+                        game.card_mut(card_id).add_etb_counters_p1p1(count);
+                    }
+                    applied.insert(counter_spec.clone());
+                }
+            }
+        }
+
+        // ── TriggersWhenSpent: fire triggers from consumed mana ──
+        {
+            let triggers_after = self.pool(player).collect_trigger_mana();
+            let mut fired = std::collections::HashSet::new();
+            for (svar_name, source_id) in &triggers_before {
+                if fired.contains(&(svar_name.clone(), *source_id)) {
+                    continue;
+                }
+                // Check if this trigger mana was consumed (present before but not after)
+                let before_count = triggers_before
+                    .iter()
+                    .filter(|(s, src)| s == svar_name && src == source_id)
+                    .count();
+                let after_count = triggers_after
+                    .iter()
+                    .filter(|(s, src)| s == svar_name && src == source_id)
+                    .count();
+                if after_count < before_count {
+                    // Look up the SVar on the source card and fire the trigger
+                    if let Some(trigger_svar) = game.card(*source_id).svars.get(svar_name).cloned()
+                    {
+                        let params = Params::from_raw(&trigger_svar);
+                        // Check ValidCard$ filter against the spell being cast
+                        let valid = params.get(keys::VALID_CARD).unwrap_or("Card");
+                        let card = game.card(card_id);
+                        let valid_ok = valid == "Card"
+                            || (valid.contains("Creature") && card.is_creature())
+                            || (valid.contains("Dragon") && card.type_line.has_subtype("Dragon"))
+                            || (valid.contains("cmcGE6") && card.mana_cost.cmc() >= 6)
+                            || (valid.contains("cmcGE5") && card.mana_cost.cmc() >= 5)
+                            || (valid.contains("IsCommander") && card.is_commander);
+                        if valid_ok {
+                            if let Some(execute) = params.get(keys::EXECUTE) {
+                                if let Some(exec_svar) =
+                                    game.card(*source_id).svars.get(execute).cloned()
+                                {
+                                    let exec_sa = crate::spellability::build_spell_ability(
+                                        game, *source_id, &exec_svar, player,
+                                    );
+                                    crate::ability::effects::resolve_effect(
+                                        &mut crate::ability::effects::EffectContext {
+                                            game,
+                                            combat: Some(&mut self.combat),
+                                            agents,
+                                            trigger_handler: &mut self.trigger_handler,
+                                            token_templates: &self.token_templates,
+                                            token_art_variants: &self.token_art_variants,
+                                            token_fallback: &self.token_fallback,
+                                            edition_dates: &self.edition_dates,
+                                            mana_pools: &mut self.mana_pools,
+                                            parent_target_card: None,
+                                            rng: &mut *self.game_rng,
+                                        },
+                                        &exec_sa,
+                                    );
+                                }
+                            }
+                        }
+                    }
+                    fired.insert((svar_name.clone(), *source_id));
+                }
+            }
+        }
+
+        // Pay additional costs from SP$ line (e.g. sacrifice a creature).
+        let mut waterbend_tapped: Vec<CardId> = Vec::new();
+        if let Some(ref sc) = spell_cost {
+            let has_waterbend = sc
+                .parts
+                .iter()
+                .any(|p| matches!(p, crate::cost::CostPart::Waterbend { .. }));
+            let untapped_before = if has_waterbend {
+                game.cards_in_zone(ZoneType::Battlefield, player)
+                    .iter()
+                    .copied()
+                    .filter(|&cid| {
+                        let c = game.card(cid);
+                        cid != card_id
+                            && !c.tapped
+                            && (c.is_creature() || c.type_line.is_artifact())
+                    })
+                    .collect::<Vec<_>>()
+            } else {
+                Vec::new()
+            };
+            if !self.pay_additional_costs(
+                game,
+                agents,
+                player,
+                card_id,
+                sc,
+                None,
+                sc.mandatory,
+                Some(&sa),
+                prechosen_spell_sacrifices.as_deref(),
+                prechosen_spell_discards.as_deref(),
+            ) {
+                return None;
+            }
+            if has_waterbend {
+                for cid in untapped_before
+                    .into_iter()
+                    .filter(|&cid| game.card(cid).tapped)
+                {
+                    if !waterbend_tapped.contains(&cid) {
+                        waterbend_tapped.push(cid);
                     }
                 }
             }
+        }
+        if let Some(ref cost) = static_alt_cost {
+            let has_waterbend = cost
+                .parts
+                .iter()
+                .any(|p| matches!(p, crate::cost::CostPart::Waterbend { .. }));
+            let untapped_before = if has_waterbend {
+                game.cards_in_zone(ZoneType::Battlefield, player)
+                    .iter()
+                    .copied()
+                    .filter(|&cid| {
+                        let c = game.card(cid);
+                        cid != card_id
+                            && !c.tapped
+                            && (c.is_creature() || c.type_line.is_artifact())
+                    })
+                    .collect::<Vec<_>>()
+            } else {
+                Vec::new()
+            };
+            if !self.pay_additional_costs(
+                game,
+                agents,
+                player,
+                card_id,
+                cost,
+                None,
+                cost.mandatory,
+                Some(&sa),
+                prechosen_static_alt_sacrifices.as_deref(),
+                prechosen_static_alt_discards.as_deref(),
+            ) {
+                return None;
+            }
+            if has_waterbend {
+                for cid in untapped_before
+                    .into_iter()
+                    .filter(|&cid| game.card(cid).tapped)
+                {
+                    if !waterbend_tapped.contains(&cid) {
+                        waterbend_tapped.push(cid);
+                    }
+                }
+            }
+        }
+        if let Some(ref rc) = raise_cost {
+            let has_waterbend = rc
+                .parts
+                .iter()
+                .any(|p| matches!(p, crate::cost::CostPart::Waterbend { .. }));
+            let untapped_before = if has_waterbend {
+                game.cards_in_zone(ZoneType::Battlefield, player)
+                    .iter()
+                    .copied()
+                    .filter(|&cid| {
+                        let c = game.card(cid);
+                        cid != card_id
+                            && !c.tapped
+                            && (c.is_creature() || c.type_line.is_artifact())
+                    })
+                    .collect::<Vec<_>>()
+            } else {
+                Vec::new()
+            };
+            if !self.pay_additional_costs(
+                game,
+                agents,
+                player,
+                card_id,
+                rc,
+                None,
+                rc.mandatory,
+                Some(&sa),
+                None,
+                None,
+            ) {
+                return None;
+            }
+            if has_waterbend {
+                for cid in untapped_before
+                    .into_iter()
+                    .filter(|&cid| game.card(cid).tapped)
+                {
+                    if !waterbend_tapped.contains(&cid) {
+                        waterbend_tapped.push(cid);
+                    }
+                }
+            }
+        }
 
-            // Replicate: create N copies where N = replicate_count
-            if replicate_count > 0 {
+        // Pay additional non-mana costs from Flashback keyword cost
+        // (e.g. Lava Dart: Flashback—Sacrifice a Mountain).
+        if let Some(ref fb_cost) = flashback_total_cost {
+            let has_waterbend = fb_cost
+                .parts
+                .iter()
+                .any(|p| matches!(p, crate::cost::CostPart::Waterbend { .. }));
+            let untapped_before = if has_waterbend {
+                game.cards_in_zone(ZoneType::Battlefield, player)
+                    .iter()
+                    .copied()
+                    .filter(|&cid| {
+                        let c = game.card(cid);
+                        cid != card_id
+                            && !c.tapped
+                            && (c.is_creature() || c.type_line.is_artifact())
+                    })
+                    .collect::<Vec<_>>()
+            } else {
+                Vec::new()
+            };
+            if !self.pay_additional_costs(
+                game,
+                agents,
+                player,
+                card_id,
+                fb_cost,
+                None,
+                fb_cost.mandatory,
+                Some(&sa),
+                None,
+                None,
+            ) {
+                return None;
+            }
+            if has_waterbend {
+                for cid in untapped_before
+                    .into_iter()
+                    .filter(|&cid| game.card(cid).tapped)
+                {
+                    if !waterbend_tapped.contains(&cid) {
+                        waterbend_tapped.push(cid);
+                    }
+                }
+            }
+        }
+
+        // Pay Evoke additional (non-mana) costs, e.g. Fury's
+        // ExileFromHand<1/Card.Red+Other/red card>.
+        if is_evoke {
+            let evoke_cost_str = game.card(card_id).get_evoke_cost().unwrap_or_default();
+            let evoke_cost = crate::cost::parse_cost(&evoke_cost_str);
+            if !self.pay_additional_costs(
+                game,
+                agents,
+                player,
+                card_id,
+                &evoke_cost,
+                None,
+                evoke_cost.mandatory,
+                Some(&sa),
+                None,
+                None,
+            ) {
+                return None;
+            }
+        }
+
+        // Pay Escape exile cost: exile N other graveyard cards
+        if is_escape {
+            if let Some((_, exile_count)) = game.card(card_id).get_escape_cost() {
+                let gy_cards: Vec<CardId> = game
+                    .cards_in_zone(ZoneType::Graveyard, player)
+                    .iter()
+                    .filter(|&&cid| cid != card_id)
+                    .copied()
+                    .take(exile_count as usize)
+                    .collect();
+                for cid in gy_cards {
+                    self.move_card_with_runtime(game, cid, ZoneType::Exile, player, agents);
+                }
+            }
+        }
+
+        crate::cost::cost_adjustment::commit_offerings_and_emerge(
+            game,
+            agents,
+            &mut self.trigger_handler,
+            &mut sa,
+        );
+
+        // Increment commander cast count (before moving card to stack)
+        if is_commander_cast {
+            game.player_increment_commander_cast(player, card_id);
+        }
+
+        {
+            game.player_record_spell_cast(player, card_id);
+        }
+        // Track spell cast on the stack (storm count, etc.)
+        game.stack.record_spell_cast(card_id);
+
+        let cast_zone = if is_foretell {
+            Some(ZoneType::Exile)
+        } else if is_flashback || is_escape {
+            Some(ZoneType::Graveyard)
+        } else if is_plot_cast {
+            Some(ZoneType::Exile)
+        } else if is_commander_cast {
+            Some(ZoneType::Command)
+        } else {
+            // Use the card's actual zone (usually Hand, but could be
+            // Exile for Warp-from-exile casts with Normal mode).
+            Some(game.card(card_id).zone)
+        };
+
+        let entry = StackEntry {
+            id: 0,
+            spell_ability: sa,
+            is_creature_spell: is_creature,
+            is_permanent_spell: is_permanent,
+            cast_from_zone: cast_zone,
+            optional_trigger_decider: None,
+            optional_trigger_description: None,
+            optional_trigger_source_name: None,
+        };
+        let chosen_target = entry.spell_ability.target_chosen.target_card;
+        let stack_message = if is_flashback {
+            format!("Cast: {} [Flashback from Graveyard]", card_name)
+        } else {
+            format!("Cast: {}", card_name)
+        };
+        let sa_for_trigger = self.push_spell_ability_to_stack(
+            game,
+            agents,
+            player,
+            StackPushContext {
+                source_card: card_id,
+                entry: entry.clone(),
+                stack_log_name: card_name.clone(),
+                stack_message,
+                target_card: chosen_target,
+                event_kind: SpellAbilityLogEventKind::Stack,
+                move_source_to_stack: true,
+                register_source_trigger: true,
+            },
+        );
+        self.emit_post_stack_spell_ability_triggers(
+            game,
+            player,
+            &sa_for_trigger,
+            PostStackTriggerContext {
+                source_card: card_id,
+                cast_trigger: TriggerType::SpellCast,
+                emit_ability_activated: false,
+                emit_waterbend: !waterbend_tapped.is_empty(),
+                waterbend_cards: waterbend_tapped.clone(),
+            },
+        );
+
+        // Storm: create N copies where N = spells_cast_this_turn - 1.
+        if game.card(card_id).has_storm() {
+            let storm_count = game.player_storm_count(player);
+            if storm_count > 0 {
                 crate::agent::notify_all_agents(
                     agents,
                     crate::agent::GameLogEvent::stack(format!(
-                        "Replicate: {} copies",
-                        replicate_count
+                        "Storm count: {} copies",
+                        storm_count
                     ))
                     .with_player(player)
                     .with_card(card_id),
                 );
-                for i in 0..replicate_count {
+                for i in 0..storm_count {
                     if crate::card::card_factory::spell_ability_cant_be_copied(
                         &game.cards,
                         &entry.spell_ability,
@@ -1853,9 +1860,9 @@ impl GameLoop {
                         agents[player.index()].notify(
                             crate::agent::notification::GameNotification::Event(
                                 crate::agent::GameLogEvent::stack(format!(
-                                    "Choose target for Replicate copy {}/{}",
+                                    "Choose target for Storm copy {}/{}",
                                     i + 1,
-                                    replicate_count
+                                    storm_count
                                 ))
                                 .with_player(player)
                                 .with_card(card_id),
@@ -1866,7 +1873,7 @@ impl GameLoop {
                     }
                     game.stack.push(copy);
                     self.log_stack_push(
-                        &format!("{} (Replicate copy)", card_name),
+                        &format!("{} (Storm copy)", card_name),
                         &game.player(player).name,
                     );
 
@@ -1882,32 +1889,86 @@ impl GameLoop {
                     );
                 }
             }
+        }
 
-            // Cascade: exile from library until finding a cheaper nonland card
-            let cascade_count = game
-                .card(card_id)
-                .keywords
-                .iter_strings()
-                .filter(|k| k.eq_ignore_ascii_case("Cascade"))
-                .count();
-            if cascade_count > 0 {
-                // Run Cascade replacement effects before cascading.
-                let skip_cascade = {
-                    use crate::replacement::replacement_handler::{
-                        apply_replacements, ReplacementEvent,
-                    };
-                    use crate::replacement::ReplacementResult;
-                    let mut event = ReplacementEvent::Cascade { player };
-                    let result = apply_replacements(game, &mut event);
-                    result == ReplacementResult::Skipped || result == ReplacementResult::Replaced
+        // Replicate: create N copies where N = replicate_count
+        if replicate_count > 0 {
+            crate::agent::notify_all_agents(
+                agents,
+                crate::agent::GameLogEvent::stack(format!("Replicate: {} copies", replicate_count))
+                    .with_player(player)
+                    .with_card(card_id),
+            );
+            for i in 0..replicate_count {
+                if crate::card::card_factory::spell_ability_cant_be_copied(
+                    &game.cards,
+                    &entry.spell_ability,
+                ) {
+                    continue;
+                }
+                let mut copy = entry.clone();
+                copy.spell_ability =
+                    crate::card::card_factory::copy_spell_ability(&entry.spell_ability, player);
+                if copy.spell_ability.uses_targeting() {
+                    agents[player.index()].snapshot_state(game, &self.mana_pools);
+                    agents[player.index()].notify(
+                        crate::agent::notification::GameNotification::Event(
+                            crate::agent::GameLogEvent::stack(format!(
+                                "Choose target for Replicate copy {}/{}",
+                                i + 1,
+                                replicate_count
+                            ))
+                            .with_player(player)
+                            .with_card(card_id),
+                        ),
+                    );
+                    copy.spell_ability
+                        .setup_targets(game, agents, &self.mana_pools);
+                }
+                game.stack.push(copy);
+                self.log_stack_push(
+                    &format!("{} (Replicate copy)", card_name),
+                    &game.player(player).name,
+                );
+
+                // Emit SpellCopied trigger for Magecraft
+                self.trigger_handler.run_trigger(
+                    TriggerType::SpellCopied,
+                    RunParams {
+                        spell_card: Some(card_id),
+                        spell_controller: Some(player),
+                        ..Default::default()
+                    },
+                    false,
+                );
+            }
+        }
+
+        // Cascade: exile from library until finding a cheaper nonland card
+        let cascade_count = game
+            .card(card_id)
+            .keywords
+            .iter_strings()
+            .filter(|k| k.eq_ignore_ascii_case("Cascade"))
+            .count();
+        if cascade_count > 0 {
+            // Run Cascade replacement effects before cascading.
+            let skip_cascade = {
+                use crate::replacement::replacement_handler::{
+                    apply_replacements, ReplacementEvent,
                 };
-                if !skip_cascade {
-                    let caster_mv = game.card(card_id).mana_value();
-                    for _ in 0..cascade_count {
-                        self.resolve_cascade(game, agents, player, caster_mv);
-                    }
+                use crate::replacement::ReplacementResult;
+                let mut event = ReplacementEvent::Cascade { player };
+                let result = apply_replacements(game, &mut event);
+                result == ReplacementResult::Skipped || result == ReplacementResult::Replaced
+            };
+            if !skip_cascade {
+                let caster_mv = game.card(card_id).mana_value();
+                for _ in 0..cascade_count {
+                    self.resolve_cascade(game, agents, player, caster_mv);
                 }
             }
+        }
         Some((card_id, card_name))
     }
     pub(crate) fn resolve_cascade(

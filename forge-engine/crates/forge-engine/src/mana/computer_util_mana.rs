@@ -110,16 +110,10 @@ pub fn auto_tap_lands(
     cost: &ManaCost,
     current_spell: Option<CardId>,
 ) -> Vec<CardId> {
-    auto_tap_lands_trace(
-        game,
-        pool,
-        player,
-        cost,
-        current_spell,
-    )
-    .into_iter()
-    .map(|choice| choice.card_id)
-    .collect()
+    auto_tap_lands_trace(game, pool, player, cost, current_spell)
+        .into_iter()
+        .map(|choice| choice.card_id)
+        .collect()
 }
 
 pub fn auto_tap_lands_allow_reserved_source_reuse(
@@ -129,16 +123,10 @@ pub fn auto_tap_lands_allow_reserved_source_reuse(
     cost: &ManaCost,
     current_spell: Option<CardId>,
 ) -> Vec<CardId> {
-    auto_tap_lands_allow_reserved_source_reuse_trace(
-        game,
-        pool,
-        player,
-        cost,
-        current_spell,
-    )
-    .into_iter()
-    .map(|choice| choice.card_id)
-    .collect()
+    auto_tap_lands_allow_reserved_source_reuse_trace(game, pool, player, cost, current_spell)
+        .into_iter()
+        .map(|choice| choice.card_id)
+        .collect()
 }
 
 pub fn auto_tap_lands_trace(
@@ -510,13 +498,19 @@ fn auto_tap_lands_internal(
             if source_requires_tap(game, &sa_payment) && !game.card(sa_payment.card_id).tapped {
                 game.tap(sa_payment.card_id);
             }
-            for atom in fixed_atoms {
-                if is_snow {
-                    pool.add_snow(atom, 1);
-                } else {
-                    pool.add(atom, 1);
+            let repeats = (sa_payment.amount.max(1) as usize)
+                .checked_div(fixed_atoms.len().max(1))
+                .unwrap_or(1)
+                .max(1);
+            for _ in 0..repeats {
+                for &atom in &fixed_atoms {
+                    if is_snow {
+                        pool.add_snow(atom, 1);
+                    } else {
+                        pool.add(atom, 1);
+                    }
+                    let _ = unpaid.try_pay_mana(atom, atom as u8);
                 }
-                let _ = unpaid.try_pay_mana(atom, atom as u8);
             }
             if pain > 0 {
                 game.player_lose_life(player, pain);
@@ -1351,6 +1345,15 @@ fn group_sources_by_mana_color(
             let fixed_output_multiplier = fixed_produced_atoms(produced, &card.chosen_colors)
                 .map(|atoms| atoms.len() as i32)
                 .unwrap_or(1);
+            let replacement_multiplier = atoms
+                .iter()
+                .map(|&atom| {
+                    super::replacement_adjusted_atoms_for_availability(game, player, card_id, atom)
+                        .len() as i32
+                })
+                .max()
+                .unwrap_or(1)
+                .max(1);
             let ma = ManaAbilityRef {
                 card_id,
                 ability_index: Some(ab.ability_index),
@@ -1360,7 +1363,8 @@ fn group_sources_by_mana_color(
                     Some(game),
                     Some(card_id),
                     Some(player),
-                ) * fixed_output_multiplier,
+                ) * fixed_output_multiplier
+                    * replacement_multiplier,
                 mana_text: produced.to_string(),
                 source_order,
             };
@@ -1377,11 +1381,15 @@ fn group_sources_by_mana_color(
                     }
                 }
                 for atom in atoms {
+                    let replacement_multiplier = super::replacement_adjusted_atoms_for_availability(
+                        game, player, card_id, atom,
+                    )
+                    .len() as i32;
                     let ma = ManaAbilityRef {
                         card_id,
                         ability_index: None,
                         atoms: vec![atom],
-                        amount: 1,
+                        amount: replacement_multiplier.max(1),
                         mana_text: atom_short(atom).to_string(),
                         source_order,
                     };
@@ -1489,8 +1497,16 @@ pub fn can_pay_mana_cost_with_reserved_sacrifices(
                 continue;
             }
             if let Some(produced) = ab.params.get(keys::PRODUCED) {
-                for atom in produced_to_atoms(produced, &card.chosen_colors) {
-                    source_mask |= atom;
+                if let Some(fixed_atoms) = fixed_produced_atoms(produced, &card.chosen_colors) {
+                    for atom in fixed_atoms {
+                        source_masks.push(atom);
+                    }
+                    source_mask = 0;
+                    break;
+                } else {
+                    for atom in produced_to_atoms(produced, &card.chosen_colors) {
+                        source_mask |= atom;
+                    }
                 }
             }
         }
@@ -1853,6 +1869,11 @@ fn autopay_source_score(game: &GameState, _player: PlayerId, ma: &ManaAbilityRef
     if ma.mana_text == "Any" || ma.mana_text == "Reflected" {
         // Any-mana and reflected abilities are flexible → higher score.
         s += 7;
+        if card.card_name == "The Grey Havens" && ma.mana_text == "Any" {
+            // Java's AutoPay prefers the active any-color Havens source before
+            // World Tree-granted any-color abilities on ordinary lands.
+            s -= 1;
+        }
     } else {
         let words: Vec<&str> = ma.mana_text.split_whitespace().collect();
         s += words.len() as i32;

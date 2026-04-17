@@ -55,7 +55,13 @@ impl GameLoop {
     ) -> Vec<(CardId, usize)> {
         let mut result = Vec::new();
         let available_mana = mana::calculate_available_mana(self.pool(player), game, player);
-        let battlefield = game.cards_in_zone(ZoneType::Battlefield, player).to_vec();
+        let mut battlefield = game.cards_in_zone(ZoneType::Battlefield, player).to_vec();
+        for &other_player in &game.player_order {
+            if other_player == player {
+                continue;
+            }
+            battlefield.extend(game.cards_in_zone(ZoneType::Battlefield, other_player));
+        }
         let can_activate = |card_id: CardId, ab: &crate::ability::ActivatedAbility| {
             // Per-game activation cap (e.g. "GameActivationLimit$ 1").
             if let Some(limit) = ab
@@ -94,6 +100,7 @@ impl GameLoop {
             let sa_for_target_check =
                 crate::spellability::build_spell_ability(game, card_id, &ab.ability_text, player);
             if crate::staticability::static_ability_cant_be_cast::cant_be_activated_ability(
+                game,
                 &game.cards,
                 &sa_for_target_check,
                 game.card(card_id),
@@ -143,7 +150,11 @@ impl GameLoop {
             } else {
                 available_mana.clone()
             };
-            let can_pay_cost = if reserved_sacrifices.is_empty() {
+            let can_pay_cost = if reserved_sacrifices.is_empty()
+                || (needs_mana
+                    && reserved_sacrifices.len() == 1
+                    && reserved_sacrifices[0] == card_id)
+            {
                 crate::cost::can_pay_with_ability(
                     &ab.cost,
                     game,

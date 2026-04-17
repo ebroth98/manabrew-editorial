@@ -12,6 +12,28 @@ use super::mana_conversion_matrix::ManaConversionMatrix;
 use super::{mana_meets_restriction, Mana, ManaPaymentContext};
 use crate::ids::CardId;
 
+fn mana_matches_context(mana: &Mana, ctx: &ManaPaymentContext) -> bool {
+    let Some(restriction) = &mana.restriction else {
+        return true;
+    };
+
+    let effective = if restriction.contains("ChosenType") {
+        if let Some(source_card) = mana.source_card {
+            if let Some(chosen_type) = ctx.chosen_types_by_source.get(&source_card) {
+                restriction.replace("ChosenType", chosen_type)
+            } else {
+                restriction.clone()
+            }
+        } else {
+            restriction.clone()
+        }
+    } else {
+        restriction.clone()
+    };
+
+    mana_meets_restriction(&effective, ctx)
+}
+
 /// Tracks available mana for a player during a turn.
 /// Uses individual Mana objects to support source tracking, snow, and future restrictions.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -290,10 +312,7 @@ impl ManaPool {
     /// Create a clone with restricted mana filtered out based on context.
     fn filtered_for_context(&self, ctx: &ManaPaymentContext) -> ManaPool {
         let mut pool = self.clone();
-        pool.mana.retain(|m| match &m.restriction {
-            None => true,
-            Some(r) => mana_meets_restriction(r, ctx),
-        });
+        pool.mana.retain(|m| mana_matches_context(m, ctx));
         pool
     }
 
@@ -318,11 +337,9 @@ impl ManaPool {
         let mut ineligible: Vec<Mana> = Vec::new();
         let mut eligible: Vec<Mana> = Vec::new();
         for m in self.mana.drain(..) {
-            if let Some(ref r) = m.restriction {
-                if !mana_meets_restriction(r, ctx) {
-                    ineligible.push(m);
-                    continue;
-                }
+            if !mana_matches_context(&m, ctx) {
+                ineligible.push(m);
+                continue;
             }
             eligible.push(m);
         }
@@ -343,11 +360,9 @@ impl ManaPool {
         let mut ineligible: Vec<Mana> = Vec::new();
         let mut eligible: Vec<Mana> = Vec::new();
         for m in self.mana.drain(..) {
-            if let Some(ref r) = m.restriction {
-                if !mana_meets_restriction(r, ctx) {
-                    ineligible.push(m);
-                    continue;
-                }
+            if !mana_matches_context(&m, ctx) {
+                ineligible.push(m);
+                continue;
             }
             eligible.push(m);
         }
@@ -374,11 +389,9 @@ impl ManaPool {
         let mut ineligible: Vec<Mana> = Vec::new();
         let mut eligible: Vec<Mana> = Vec::new();
         for m in self.mana.drain(..) {
-            if let Some(ref r) = m.restriction {
-                if !mana_meets_restriction(r, ctx) {
-                    ineligible.push(m);
-                    continue;
-                }
+            if !mana_matches_context(&m, ctx) {
+                ineligible.push(m);
+                continue;
             }
             eligible.push(m);
         }
@@ -386,6 +399,17 @@ impl ManaPool {
         let result = self.try_pay_with_phyrexian_life(cost, any_color, player_life);
         self.mana.extend(ineligible);
         result
+    }
+
+    /// Pay a mana cost with phyrexian-life fallback and return the life paid.
+    /// Used for generic cost payments that don't need spell restriction filtering.
+    pub fn try_pay_cost_with_phyrexian_life(
+        &mut self,
+        cost: &forge_foundation::ManaCost,
+        any_color: bool,
+        player_life: i32,
+    ) -> Option<i32> {
+        self.try_pay_with_phyrexian_life(cost, any_color, player_life)
     }
 
     /// Returns true if the pool can pay `cost` plus `extra_generic` additional generic mana.
@@ -501,118 +525,103 @@ impl ManaPool {
     ) -> bool {
         let sources = match self.source_colors {
             Some(ref s) => s.as_slice(),
-            None => return self.can_pay(cost), // fallback
+            None => {
+                let mut pool = self.clone();
+                return pool
+                    .try_pay_with_phyrexian_life(cost, false, player_life)
+                    .is_some();
+            }
         };
+        use super::mana_cost_being_paid::{can_pay_for_shard_with_color, ManaCostBeingPaid};
 
-        let mut phyrexian_reqs: Vec<u16> = Vec::new();
-        let mut normal_reqs: Vec<u16> = Vec::new();
-
-        for shard in cost.shards() {
-            if shard.is_x() {
-                continue;
-            }
-            let atoms = shard.shard();
-            let color_mask = atoms
-                & (ManaAtom::WHITE
-                    | ManaAtom::BLUE
-                    | ManaAtom::BLACK
-                    | ManaAtom::RED
-                    | ManaAtom::GREEN);
-            if color_mask != 0 {
-                if shard.is_phyrexian() {
-                    phyrexian_reqs.push(color_mask);
-                } else {
-                    normal_reqs.push(color_mask);
+        fn search_sources(
+            sources: &[u16],
+            source_index: usize,
+            unpaid: ManaCostBeingPaid,
+            reserved_generic: i32,
+            player_life: i32,
+        ) -> bool {
+            if source_index >= sources.len() {
+                let mut remaining_unpaid = unpaid;
+                let mut life_needed = 0;
+                while remaining_unpaid.contains_phyrexian_mana() {
+                    if player_life < life_needed + 2 {
+                        return false;
+                    }
+                    if !remaining_unpaid.pay_phyrexian() {
+                        break;
+                    }
+                    life_needed += 2;
                 }
-            }
-        }
-        let generic_count = cost.generic_cost();
 
-        // Quick check: non-phyrexian requirements + generic must be payable
-        // (phyrexian can always fall back to life)
-        if (sources.len() as i32) < (normal_reqs.len() as i32) + generic_count {
-            return false;
-        }
-
-        let mut committed = vec![false; sources.len()];
-
-        // 1. Greedily match phyrexian shards with mana sources.
-        //    Sort by most constrained first for optimal matching.
-        phyrexian_reqs.sort_by(|a, b| {
-            let count_a = sources.iter().filter(|&&s| (s & a) != 0).count();
-            let count_b = sources.iter().filter(|&&s| (s & b) != 0).count();
-            count_a.cmp(&count_b).then_with(|| a.cmp(b))
-        });
-
-        let mut life_needed = 0i32;
-        for req in &phyrexian_reqs {
-            let mut best_idx: Option<usize> = None;
-            let mut best_pop: u32 = u32::MAX;
-            let mut best_mask: u16 = u16::MAX;
-            for (i, &src) in sources.iter().enumerate() {
-                if committed[i] {
-                    continue;
+                let remaining_cost = remaining_unpaid.to_mana_cost();
+                let has_non_generic = remaining_cost.shards().iter().any(|shard| {
+                    !shard.is_x()
+                        && !shard.is_phyrexian()
+                        && !matches!(shard, forge_foundation::ManaCostShard::Generic)
+                });
+                !has_non_generic && reserved_generic >= remaining_cost.generic_cost()
+            } else {
+                if search_sources(
+                    sources,
+                    source_index + 1,
+                    unpaid.clone(),
+                    reserved_generic + 1,
+                    player_life,
+                ) {
+                    return true;
                 }
-                if (src & req) != 0 {
-                    let pop = src.count_ones();
-                    if pop < best_pop || (pop == best_pop && src < best_mask) {
-                        best_idx = Some(i);
-                        best_pop = pop;
-                        best_mask = src;
+
+                let source_mask = sources[source_index];
+                for payment_color in [
+                    ManaAtom::WHITE,
+                    ManaAtom::BLUE,
+                    ManaAtom::BLACK,
+                    ManaAtom::RED,
+                    ManaAtom::GREEN,
+                    ManaAtom::COLORLESS,
+                ] {
+                    if payment_color != ManaAtom::COLORLESS && (source_mask & payment_color) == 0 {
+                        continue;
+                    }
+                    if payment_color == ManaAtom::COLORLESS && source_mask != 0 {
+                        continue;
+                    }
+
+                    for shard in unpaid.get_distinct_shards().into_iter().filter(|&shard| {
+                        shard != forge_foundation::ManaCostShard::Generic
+                            && can_pay_for_shard_with_color(shard, payment_color)
+                    }) {
+                        let mut next_unpaid = unpaid.clone();
+                        if next_unpaid
+                            .pay_specific_shard(shard, payment_color)
+                            .is_none()
+                        {
+                            continue;
+                        }
+                        if search_sources(
+                            sources,
+                            source_index + 1,
+                            next_unpaid,
+                            reserved_generic,
+                            player_life,
+                        ) {
+                            return true;
+                        }
                     }
                 }
-            }
-            match best_idx {
-                Some(idx) => committed[idx] = true,
-                None => life_needed += 2, // fall back to life payment
+
+                false
             }
         }
 
-        if life_needed > player_life {
-            return false;
-        }
-
-        // 2. Match non-phyrexian colored shards with remaining sources.
-        normal_reqs.sort_by(|a, b| {
-            let count_a = sources
-                .iter()
-                .enumerate()
-                .filter(|(i, s)| !committed[*i] && (*s & a) != 0)
-                .count();
-            let count_b = sources
-                .iter()
-                .enumerate()
-                .filter(|(i, s)| !committed[*i] && (*s & b) != 0)
-                .count();
-            count_a.cmp(&count_b).then_with(|| a.cmp(b))
-        });
-
-        for req in &normal_reqs {
-            let mut best_idx: Option<usize> = None;
-            let mut best_pop: u32 = u32::MAX;
-            let mut best_mask: u16 = u16::MAX;
-            for (i, &src) in sources.iter().enumerate() {
-                if committed[i] {
-                    continue;
-                }
-                if (src & req) != 0 {
-                    let pop = src.count_ones();
-                    if pop < best_pop || (pop == best_pop && src < best_mask) {
-                        best_idx = Some(i);
-                        best_pop = pop;
-                        best_mask = src;
-                    }
-                }
-            }
-            match best_idx {
-                Some(idx) => committed[idx] = true,
-                None => return false, // can't pay non-phyrexian colored shard
-            }
-        }
-
-        // 3. Check remaining sources cover generic cost
-        let remaining = committed.iter().filter(|&&c| !c).count() as i32;
-        remaining >= generic_count
+        search_sources(
+            sources,
+            0,
+            super::mana_cost_being_paid::ManaCostBeingPaid::from_mana_cost(cost),
+            0,
+            player_life,
+        )
     }
 
     /// Pay `extra_generic` additional generic mana from the pool.
@@ -905,47 +914,140 @@ impl ManaPool {
         player_life: i32,
     ) -> Option<i32> {
         use super::mana_cost_being_paid::ManaCostBeingPaid;
+        let unpaid = ManaCostBeingPaid::from_mana_cost(cost);
+        let mut best: Option<(i32, Vec<usize>)> = None;
+        self.search_phyrexian_payment(
+            0,
+            unpaid,
+            any_color,
+            player_life,
+            &mut Vec::new(),
+            &mut best,
+        );
 
-        let mut unpaid = ManaCostBeingPaid::from_mana_cost(cost);
-        let mut spent_indices: Vec<usize> = Vec::new();
-
-        for idx in 0..self.mana.len() {
-            if unpaid.is_paid() {
-                break;
-            }
-            let mana = &self.mana[idx];
-            let paid = if any_color && mana.color != ManaAtom::COLORLESS {
-                unpaid.try_pay_mana(
-                    ManaAtom::COLORS_SUPERPOSITION,
-                    ManaAtom::COLORS_SUPERPOSITION as u8,
-                )
-            } else {
-                unpaid.pay_mana(mana, mana.color as u8)
-            };
-            if paid.is_some() {
-                spent_indices.push(idx);
-            }
-        }
-
-        let mut life_to_pay = 0;
-        while unpaid.contains_phyrexian_mana() {
-            if player_life < life_to_pay + 2 {
-                return None;
-            }
-            if !unpaid.pay_phyrexian() {
-                break;
-            }
-            life_to_pay += 2;
-        }
-
-        if !unpaid.is_paid() {
-            return None;
-        }
-
+        let (life_to_pay, spent_indices) = best?;
         for idx in spent_indices.into_iter().rev() {
             self.mana.remove(idx);
         }
         Some(life_to_pay)
+    }
+
+    fn search_phyrexian_payment(
+        &self,
+        mana_index: usize,
+        unpaid: super::mana_cost_being_paid::ManaCostBeingPaid,
+        any_color: bool,
+        player_life: i32,
+        chosen_indices: &mut Vec<usize>,
+        best: &mut Option<(i32, Vec<usize>)>,
+    ) {
+        use super::mana_cost_being_paid::{can_pay_for_shard_with_color, ManaCostBeingPaid};
+        use forge_foundation::ManaCostShard;
+
+        if matches!(best, Some((0, _))) {
+            return;
+        }
+
+        if mana_index >= self.mana.len() {
+            let mut remaining_unpaid = unpaid;
+            let mut life_to_pay = 0;
+            while remaining_unpaid.contains_phyrexian_mana() {
+                if player_life < life_to_pay + 2 {
+                    return;
+                }
+                if !remaining_unpaid.pay_phyrexian() {
+                    break;
+                }
+                life_to_pay += 2;
+            }
+
+            let mut remaining_pool = ManaPool::new();
+            let mut remaining_indices: Vec<usize> = Vec::new();
+            for (idx, mana) in self.mana.iter().enumerate() {
+                if !chosen_indices.contains(&idx) {
+                    remaining_indices.push(idx);
+                    remaining_pool.mana.push(mana.clone());
+                }
+            }
+
+            let remaining_cost = remaining_unpaid.to_mana_cost();
+            let can_finish = if any_color {
+                remaining_pool.try_pay_any_color(&remaining_cost)
+            } else {
+                remaining_pool.try_pay(&remaining_cost)
+            };
+            if !can_finish {
+                return;
+            }
+
+            let mut kept = vec![false; remaining_indices.len()];
+            for leftover in remaining_pool.mana_entries() {
+                if let Some(pos) = remaining_indices.iter().enumerate().find_map(|(pos, _)| {
+                    if kept[pos] {
+                        return None;
+                    }
+                    (self.mana[remaining_indices[pos]] == *leftover).then_some(pos)
+                }) {
+                    kept[pos] = true;
+                }
+            }
+
+            let mut spent = chosen_indices.clone();
+            for (pos, &idx) in remaining_indices.iter().enumerate() {
+                if !kept[pos] {
+                    spent.push(idx);
+                }
+            }
+            spent.sort_unstable();
+
+            match best {
+                Some((best_life, _)) if *best_life <= life_to_pay => {}
+                _ => *best = Some((life_to_pay, spent)),
+            }
+            return;
+        }
+
+        self.search_phyrexian_payment(
+            mana_index + 1,
+            unpaid.clone(),
+            any_color,
+            player_life,
+            chosen_indices,
+            best,
+        );
+
+        let mana = &self.mana[mana_index];
+        let payment_color = if any_color && mana.color != ManaAtom::COLORLESS {
+            ManaAtom::COLORS_SUPERPOSITION
+        } else {
+            mana.color
+        };
+        let payable_shards: Vec<ManaCostShard> = unpaid
+            .get_distinct_shards()
+            .into_iter()
+            .filter(|&shard| shard != ManaCostShard::Generic)
+            .filter(|&shard| can_pay_for_shard_with_color(shard, payment_color))
+            .collect();
+
+        for shard in payable_shards {
+            let mut next_unpaid: ManaCostBeingPaid = unpaid.clone();
+            if next_unpaid
+                .pay_specific_shard(shard, payment_color)
+                .is_none()
+            {
+                continue;
+            }
+            chosen_indices.push(mana_index);
+            self.search_phyrexian_payment(
+                mana_index + 1,
+                next_unpaid,
+                any_color,
+                player_life,
+                chosen_indices,
+                best,
+            );
+            chosen_indices.pop();
+        }
     }
 
     /// Pay a non-spell cost with phyrexian-life fallback.
@@ -1044,5 +1146,57 @@ impl ManaPool {
             ManaAtom::COLORLESS => "C",
             _ => "C",
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use forge_foundation::ManaCost;
+
+    #[test]
+    fn phyrexian_payment_reserves_mana_for_generic_costs() {
+        let mut pool = ManaPool::new();
+        pool.add(ManaAtom::BLUE, 4);
+
+        let life_paid =
+            pool.try_pay_cost_with_phyrexian_life(&ManaCost::parse("4 BP BP BP"), false, 20);
+
+        assert_eq!(life_paid, Some(6));
+        assert_eq!(pool.total_mana(), 0);
+    }
+
+    #[test]
+    fn phyrexian_payment_uses_matching_mana_before_life_when_possible() {
+        let mut pool = ManaPool::new();
+        pool.add(ManaAtom::BLUE, 4);
+        pool.add(ManaAtom::BLACK, 1);
+
+        let life_paid =
+            pool.try_pay_cost_with_phyrexian_life(&ManaCost::parse("4 BP BP BP"), false, 20);
+
+        assert_eq!(life_paid, Some(4));
+        assert_eq!(pool.total_mana(), 0);
+    }
+
+    #[test]
+    fn phyrexian_castability_allows_generic_plus_life_with_off_color_sources() {
+        let mut pool = ManaPool::new();
+        pool.source_colors = Some(vec![ManaAtom::GREEN, ManaAtom::RED]);
+        pool.total_sources = Some(2);
+
+        assert!(pool.can_pay_with_phyrexian_life(&ManaCost::parse("1 BP BP"), 20));
+    }
+
+    #[test]
+    fn phyrexian_payment_charges_life_when_generic_uses_off_color_mana() {
+        let mut pool = ManaPool::new();
+        pool.add(ManaAtom::RED, 1);
+
+        let life_paid =
+            pool.try_pay_cost_with_phyrexian_life(&ManaCost::parse("1 BP BP"), false, 20);
+
+        assert_eq!(life_paid, Some(4));
+        assert_eq!(pool.total_mana(), 0);
     }
 }

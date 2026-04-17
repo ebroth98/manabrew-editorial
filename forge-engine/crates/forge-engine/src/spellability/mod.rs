@@ -1309,12 +1309,12 @@ pub fn choose_targets_by_kind(
         }
         TargetKind::Spell => {
             let valid = target_restrictions::get_all_candidates_spells(game);
-            let valid = if let Some(ref filter) = sa
-                .target_restrictions
-                .as_ref()
-                .and_then(|tr| tr.target_type_filter.as_ref())
-            {
-                target_restrictions::filter_spells_by_type(game, &valid, filter)
+            let valid = if let Some(ref restrictions) = sa.target_restrictions {
+                target_restrictions::filter_spells_for_target_restrictions(
+                    game,
+                    &valid,
+                    restrictions,
+                )
             } else {
                 valid
             };

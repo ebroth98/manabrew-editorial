@@ -250,5 +250,11 @@ pub(crate) fn assemble_card(
         }
     }
 
+    // Parsed triggers and any constructor-time synthetic abilities/triggers have
+    // now all been attached. Refresh the base counts so continuous-layer reset
+    // logic does not strip real printed abilities from hidden-zone cards.
+    card.base_ability_count = card.activated_abilities.len();
+    card.base_trigger_count = card.triggers.len();
+
     card
 }

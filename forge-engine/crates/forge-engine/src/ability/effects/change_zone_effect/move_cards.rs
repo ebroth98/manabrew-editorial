@@ -153,8 +153,12 @@ pub(super) fn move_cards(
                     execute_svar: eot_svar.to_string(),
                     controller,
                     source_card: sa.source.unwrap_or(cid),
+                    created_turn: ctx.game.turn.turn_number,
+                    created_phase: ctx.game.turn.phase,
                     target_card: Some(cid),
-                    remembered_amount: 0, remembered_cards: Vec::new(),
+                    remembered_amount: 0,
+                    remembered_cards: Vec::new(),
+                    remembered_lki_cards: Vec::new(),
                 });
         }
     }
@@ -180,10 +184,7 @@ pub(super) fn move_cards(
     let no_shuffle = shuffle_param == Some("False") || sa.param_is_true(keys::NO_SHUFFLE);
     let force_shuffle = sa.is_shuffle();
     let already_shuffled = pre_move_shuffle;
-    if !already_shuffled
-        && !no_shuffle
-        && (origin_zone == ZoneType::Library || force_shuffle)
-    {
+    if !already_shuffled && !no_shuffle && (origin_zone == ZoneType::Library || force_shuffle) {
         let players = if !searched_owners.is_empty() {
             searched_owners.clone()
         } else {
@@ -195,15 +196,30 @@ pub(super) fn move_cards(
             }
             if std::env::var("FORGE_LIB_DUMP").is_ok() {
                 let lib_ref = ctx.game.zone(ZoneType::Library, pid);
-                let first5: Vec<String> = lib_ref.cards.iter().rev().take(5).map(|&cid| ctx.game.card(cid).card_name.clone()).collect();
-                eprintln!("[LIB_DUMP] pre-shuffle pid={:?} len={} rng_calls={} top5={:?}", pid, lib_ref.cards.len(), ctx.rng.call_count(), first5);
+                let first5: Vec<String> = lib_ref
+                    .cards
+                    .iter()
+                    .rev()
+                    .take(5)
+                    .map(|&cid| ctx.game.card(cid).card_name.clone())
+                    .collect();
+                eprintln!(
+                    "[LIB_DUMP] pre-shuffle pid={:?} len={} rng_calls={} top5={:?}",
+                    pid,
+                    lib_ref.cards.len(),
+                    ctx.rng.call_count(),
+                    first5
+                );
             }
             let lib = ctx.game.zone_mut(ZoneType::Library, pid);
             ctx.rng.shuffle_cards(&mut lib.cards);
             if std::env::var("FORGE_LIB_DUMP").is_ok() {
                 let lib_ref = ctx.game.zone(ZoneType::Library, pid);
                 let ids: Vec<CardId> = lib_ref.cards.iter().rev().take(5).copied().collect();
-                let names: Vec<String> = ids.iter().map(|&cid| ctx.game.card(cid).card_name.clone()).collect();
+                let names: Vec<String> = ids
+                    .iter()
+                    .map(|&cid| ctx.game.card(cid).card_name.clone())
+                    .collect();
                 eprintln!("[LIB_DUMP] post-shuffle pid={:?} top5={:?}", pid, names);
             }
             ctx.trigger_handler.run_trigger(
@@ -214,6 +230,146 @@ pub(super) fn move_cards(
                 },
                 false,
             );
+
+            if dest_zone == ZoneType::Library && !force_shuffle {
+                reapply_library_position(ctx, &ordered, dest_zone, &lib_position, pid);
+            }
         }
+    }
+}
+
+fn reapply_library_position(
+    ctx: &mut EffectContext,
+    ordered: &[CardId],
+    dest_zone: ZoneType,
+    lib_position: &str,
+    owner: PlayerId,
+) {
+    if dest_zone != ZoneType::Library || ordered.is_empty() {
+        return;
+    }
+
+    let zone = ctx.game.zone_mut(ZoneType::Library, owner);
+    let moved_in_library: Vec<CardId> = ordered
+        .iter()
+        .copied()
+        .filter(|cid| zone.cards.contains(cid))
+        .collect();
+    if moved_in_library.is_empty() {
+        return;
+    }
+
+    for card_id in &moved_in_library {
+        if let Some(pos) = zone.cards.iter().position(|&c| c == *card_id) {
+            zone.cards.remove(pos);
+        }
+    }
+
+    if lib_position == "-1" || lib_position.eq_ignore_ascii_case("Bottom") {
+        for card_id in moved_in_library.iter().rev() {
+            zone.cards.insert(0, *card_id);
+        }
+    } else {
+        for card_id in moved_in_library {
+            zone.cards.push(card_id);
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::agent::{PassAgent, PlayerAgent};
+    use crate::card::Card;
+    use crate::game::GameState;
+    use crate::game_rng::GameRng;
+    use crate::ids::CardId;
+    use crate::mana::ManaPool;
+    use crate::spellability::SpellAbility;
+    use crate::trigger::TriggerHandler;
+    use forge_foundation::{CardTypeLine, ColorSet, ManaCost};
+    use std::collections::HashMap;
+
+    struct ReverseRng;
+
+    impl GameRng for ReverseRng {
+        fn shuffle_cards(&mut self, cards: &mut [CardId]) {
+            cards.reverse();
+        }
+
+        fn next_int(&mut self, _bound: i32) -> i32 {
+            0
+        }
+    }
+
+    fn card(owner: PlayerId, name: &str) -> Card {
+        Card::new(
+            CardId(0),
+            name.to_string(),
+            owner,
+            CardTypeLine::parse("Artifact Food"),
+            ManaCost::parse("2"),
+            ColorSet::COLORLESS,
+            None,
+            None,
+            vec![],
+            vec![],
+        )
+    }
+
+    #[test]
+    fn shuffle_true_does_not_reapply_library_position_after_shuffle() {
+        let player = PlayerId(0);
+        let mut game = GameState::new(&["Alice", "Bob"], 20);
+        let bottom = game.create_card(card(player, "Bottom Card"));
+        let top = game.create_card(card(player, "Top Card"));
+        let lembas = game.create_card(card(player, "Lembas"));
+
+        game.move_card(bottom, ZoneType::Library, player);
+        game.move_card(top, ZoneType::Library, player);
+        game.move_card(lembas, ZoneType::Graveyard, player);
+
+        let mut agents: Vec<Box<dyn PlayerAgent>> = vec![Box::new(PassAgent), Box::new(PassAgent)];
+        let mut trigger_handler = TriggerHandler::new();
+        let token_templates = HashMap::new();
+        let token_art_variants = HashMap::new();
+        let token_fallback = HashMap::new();
+        let edition_dates = HashMap::new();
+        let mut mana_pools = vec![ManaPool::new(), ManaPool::new()];
+        let mut rng = ReverseRng;
+        let mut ctx = EffectContext {
+            game: &mut game,
+            combat: None,
+            agents: &mut agents,
+            trigger_handler: &mut trigger_handler,
+            token_templates: &token_templates,
+            token_art_variants: &token_art_variants,
+            token_fallback: &token_fallback,
+            edition_dates: &edition_dates,
+            mana_pools: &mut mana_pools,
+            parent_target_card: None,
+            rng: &mut rng,
+        };
+        let sa = SpellAbility::new_simple(
+            Some(lembas),
+            player,
+            "DB$ ChangeZone | Origin$ Graveyard | Destination$ Library | Defined$ TriggeredNewCardLKICopy | ChangeNum$ 1 | Shuffle$ True | Mandatory$ True",
+        );
+
+        move_cards(
+            &mut ctx,
+            &sa,
+            &[lembas],
+            ZoneType::Graveyard,
+            ZoneType::Library,
+            "",
+            player,
+        );
+
+        assert_eq!(
+            ctx.game.cards_in_zone(ZoneType::Library, player),
+            &[lembas, top, bottom],
+            "Shuffle$ True should leave the moved card wherever the shuffle placed it, not force it back to the top"
+        );
     }
 }

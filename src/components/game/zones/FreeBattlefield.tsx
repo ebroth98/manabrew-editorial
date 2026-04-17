@@ -146,6 +146,7 @@ interface FreeBattlefieldProps {
   cards: XMageCard[];
   className?: string;
   onClickCard?: (card: XMageCard) => void;
+  actionableCardIds?: string[];
   onClickAnyCard?: (card: XMageCard) => void;
   onHoverCard?: (card: XMageCard | null, e?: React.MouseEvent, options?: { useAnchor?: boolean; placement?: "auto" | "top-center"; anchorOverride?: DOMRect }) => void;
   onFlipCard?: () => void;
@@ -178,6 +179,7 @@ export function FreeBattlefield({
   cards,
   className,
   onClickCard,
+  actionableCardIds,
   onClickAnyCard,
   onHoverCard,
   onFlipCard,
@@ -248,6 +250,10 @@ export function FreeBattlefield({
   }, [tappableLandIds, manaAbilityOptions]);
 
   const isDraggingAnyCard = draggingCardIds.size > 0;
+  const actionableCardIdSet = useMemo(
+    () => new Set(actionableCardIds ?? []),
+    [actionableCardIds],
+  );
 
   const onHoverCardRef = useRef(onHoverCard);
   onHoverCardRef.current = onHoverCard;
@@ -277,8 +283,9 @@ export function FreeBattlefield({
     const isAttacking = attackingCardIds?.includes(card.id);
     const isTappable = tappableLandIds?.includes(card.id);
     const isUntappable = untappableLandIds?.includes(card.id);
+    const isActionable = actionableCardIdSet.has(card.id);
     const isChoosableClick =
-      (card.isChoosable && !!onClickCard) || (isAttacking && !!onClickAnyCard);
+      ((card.isChoosable || isActionable) && !!onClickCard) || (isAttacking && !!onClickAnyCard);
     const isDragging = draggingCardIds.has(card.id);
     const isSelected = selectedCardIds.has(card.id);
     const ringColor = isSelected
@@ -355,8 +362,8 @@ export function FreeBattlefield({
             BATTLEFIELD_CARD,
             isDragging ? "cursor-grabbing" : "cursor-grab",
             isSelected && CARD_RING.selected,
-            !isSelected && card.isChoosable && onClickCard && CARD_RING.choosable,
-            !isSelected && card.isChoosable && onClickCard && "choosable-pulse",
+            !isSelected && isChoosableClick && CARD_RING.choosable,
+            !isSelected && isChoosableClick && "choosable-pulse",
             !isSelected && isPending && CARD_RING.pending,
             !isSelected && isAttacking && CARD_RING.attacking,
             !isSelected && isTappable && !isAttacking && CARD_RING.tappable,
@@ -364,7 +371,7 @@ export function FreeBattlefield({
           )}
           style={ringColor ? ({
             "--tw-ring-color": ringColor,
-            ...(card.isChoosable && onClickCard ? {
+            ...(isChoosableClick ? {
               "--choosable-ring-color": ringColor,
               "--choosable-glow-color": withAlpha(ringColor, 0.3),
             } : {}),
@@ -419,7 +426,7 @@ export function FreeBattlefield({
             variant={isPending ? "pending" : isAttacking ? "attacking" : hostileTargeting ? "choosable-hostile" : "choosable"}
             onClick={() => {
               if (justDraggedCardIds.has(card.id)) return;
-              if (card.isChoosable && onClickCard) onClickCard(card);
+              if ((card.isChoosable || isActionable) && onClickCard) onClickCard(card);
               else if (isAttacking && onClickAnyCard) onClickAnyCard(card);
             }}
             title={

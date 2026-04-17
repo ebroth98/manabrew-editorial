@@ -92,7 +92,26 @@ export function usePromptEffects({
     if (currentPrompt.type === PromptType.ChooseAction) {
       const hasPlayableCards = (currentPrompt.playableCardIds ?? []).length > 0;
       const hasActivatableAbilities = (currentPrompt.activatableAbilityIds ?? []).length > 0;
-      shouldAutoPass = !hasPlayableCards && !hasActivatableAbilities;
+      const isMyMainPhase =
+        currentPrompt.gameView.activePlayerId === currentPrompt.gameView.priorityPlayerId
+        && (currentPrompt.gameView.step === "main1" || currentPrompt.gameView.step === "main2")
+        && stackLength === 0;
+      const priorityPlayer = currentPrompt.gameView.players.find(
+        (player) => player.id === currentPrompt.gameView.priorityPlayerId,
+      );
+      const hasFloatingMana = isMyMainPhase
+        && !!priorityPlayer
+        && Object.values(priorityPlayer.manaPool ?? {}).some((amount) => amount > 0);
+      const hasManaSources = isMyMainPhase
+        && (
+          (currentPrompt.tappableLandIds ?? []).length > 0
+          || (currentPrompt.manaAbilityOptions ?? []).length > 0
+        );
+      shouldAutoPass =
+        !hasPlayableCards
+        && !hasActivatableAbilities
+        && !hasManaSources
+        && !hasFloatingMana;
     } else if (currentPrompt.type === PromptType.ChooseAttackers) {
       shouldAutoPass = (currentPrompt.availableAttackerIds ?? []).length === 0;
     } else if (currentPrompt.type === PromptType.ChooseBlockers) {

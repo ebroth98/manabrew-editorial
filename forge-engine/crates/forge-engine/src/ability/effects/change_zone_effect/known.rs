@@ -92,6 +92,13 @@ pub(super) fn resolve_known_origin(
                 .filter(|&cid| ctx.game.card(cid).zone == origin_zone)
                 .collect()
         }
+    } else if defined.eq_ignore_ascii_case("DelayTriggerRememberedLKI")
+        || defined.eq_ignore_ascii_case("RememberedLKI")
+    {
+        parse_trigger_object_cards(sa, "RememberedLKI")
+            .into_iter()
+            .filter(|&cid| ctx.game.card(cid).zone == origin_zone)
+            .collect()
     } else if let Some(uid_str) = defined.strip_prefix("CardUID_") {
         uid_str
             .parse::<u32>()
@@ -109,6 +116,8 @@ pub(super) fn resolve_known_origin(
             .collect()
     } else if defined.eq_ignore_ascii_case("ExiledWith") {
         resolve_exiled_with(ctx, sa, origin_zone)
+    } else if defined.eq_ignore_ascii_case("Imprinted") {
+        resolve_imprinted(ctx, sa, origin_zone)
     } else if defined.eq_ignore_ascii_case("Remembered") {
         resolve_remembered(ctx, sa, origin_zone)
     } else if sa.defined_player().is_some() {
@@ -167,6 +176,19 @@ fn resolve_remembered(
     ctx.game
         .card(source_id)
         .remembered_cards
+        .iter()
+        .copied()
+        .filter(|&cid| ctx.game.card(cid).zone == origin_zone)
+        .collect()
+}
+
+fn resolve_imprinted(ctx: &EffectContext, sa: &SpellAbility, origin_zone: ZoneType) -> Vec<CardId> {
+    let Some(source_id) = sa.source else {
+        return Vec::new();
+    };
+    ctx.game
+        .card(source_id)
+        .imprinted_cards
         .iter()
         .copied()
         .filter(|&cid| ctx.game.card(cid).zone == origin_zone)

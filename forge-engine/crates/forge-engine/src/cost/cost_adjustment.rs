@@ -20,6 +20,7 @@ use crate::ids::{CardId, PlayerId};
 use crate::mana::mana_cost_being_paid::ManaCostBeingPaid;
 use crate::mana::ManaPool;
 use crate::parsing::keys;
+use crate::player::player_predicates;
 use crate::spellability::SpellAbility;
 use crate::staticability::StaticMode;
 use crate::trigger::{TriggerHandler, TriggerType};
@@ -129,6 +130,24 @@ fn color_to_shard(color: Color) -> forge_foundation::mana::ManaCostShard {
     }
 }
 
+fn matches_cost_adjustment_activator(
+    game: &GameState,
+    source: &Card,
+    caster: PlayerId,
+    activator: &str,
+) -> bool {
+    match activator.to_ascii_lowercase().as_str() {
+        "you" | "player.you" => source.controller == caster,
+        "opponent" | "player.opponent" => {
+            player_predicates::is_opponent_of(game, caster, source.controller)
+        }
+        _ => {
+            eprintln!("[WARN] Unknown cost adjustment Activator: {:?}", activator);
+            false
+        }
+    }
+}
+
 // ── Public API: compute_cost_adjustment ──────────────────────────────
 
 /// Compute cost adjustments for casting `spell_card` by `caster` from `cast_zone`.
@@ -195,20 +214,8 @@ pub fn compute_cost_adjustment_with_targets(
 
             // ── checkRequirement: Activator$ ─────────────────────────
             if let Some(activator) = st_ab.params.get(keys::ACTIVATOR) {
-                match activator.to_ascii_lowercase().as_str() {
-                    "you" => {
-                        if source.controller != caster {
-                            continue;
-                        }
-                    }
-                    "opponent" => {
-                        if source.controller == caster {
-                            continue;
-                        }
-                    }
-                    _ => {
-                        eprintln!("[WARN] Unknown cost adjustment Activator: {:?}", activator);
-                    }
+                if !matches_cost_adjustment_activator(game, source, caster, activator) {
+                    continue;
                 }
             } else {
                 // Default for ReduceCost/SetCost: applies to controller only.
@@ -273,11 +280,7 @@ pub fn compute_cost_adjustment_with_targets(
             // ── checkRequirement: ValidTarget$ ───────────────────────
             if let Some(valid_target) = st_ab.params.get(keys::VALID_TARGET) {
                 let target_valid = if targets.is_empty() {
-                    // Playability: check if any valid target exists
-                    game.cards.iter().any(|c| {
-                        c.zone == ZoneType::Battlefield
-                            && matches_valid_card(valid_target, c, source)
-                    })
+                    false
                 } else {
                     targets.iter().any(|&tid| {
                         let target = game.card(tid);
@@ -454,20 +457,8 @@ pub fn compute_raise_cost_parts_with_targets(
             }
 
             if let Some(activator) = st_ab.params.get(keys::ACTIVATOR) {
-                match activator.to_ascii_lowercase().as_str() {
-                    "you" => {
-                        if source.controller != caster {
-                            continue;
-                        }
-                    }
-                    "opponent" => {
-                        if source.controller == caster {
-                            continue;
-                        }
-                    }
-                    _ => {
-                        eprintln!("[WARN] Unknown IncreaseCost Activator: {:?}", activator);
-                    }
+                if !matches_cost_adjustment_activator(game, source, caster, activator) {
+                    continue;
                 }
             } else {
                 // IncreaseCost without Activator$ → universal effect (e.g. Thalia)
@@ -516,10 +507,7 @@ pub fn compute_raise_cost_parts_with_targets(
 
             if let Some(valid_target) = st_ab.params.get(keys::VALID_TARGET) {
                 let target_valid = if targets.is_empty() {
-                    game.cards.iter().any(|c| {
-                        c.zone == ZoneType::Battlefield
-                            && matches_valid_card(valid_target, c, source)
-                    })
+                    false
                 } else {
                     targets.iter().any(|&tid| {
                         let target = game.card(tid);
@@ -860,33 +848,16 @@ pub fn adjust(
         // Only offer Convoke/Improvise when the card actually has the
         // keyword. Otherwise Rust sends a spurious `choose_convoke` callback
         // to the agent on every spell cast, which diverges from Java.
-        let source_card = game.card(card_id);
-        if source_card.has_keyword("Convoke") {
+        let has_convoke = game.card(card_id).has_keyword("Convoke");
+        let has_improvise = game.card(card_id).has_keyword("Improvise");
+        if has_convoke {
             apply_convoke_or_improvise_reduction(
-                game,
-                agents,
-                mana_pools,
-                cost,
-                sa,
-                payer,
-                false,
-                true,
-                None,
-                test,
+                game, agents, mana_pools, cost, sa, payer, false, true, None, test,
             );
         }
-        if game.card(card_id).has_keyword("Improvise") {
+        if has_improvise {
             apply_convoke_or_improvise_reduction(
-                game,
-                agents,
-                mana_pools,
-                cost,
-                sa,
-                payer,
-                true,
-                false,
-                None,
-                test,
+                game, agents, mana_pools, cost, sa, payer, true, false, None, test,
             );
         }
     }

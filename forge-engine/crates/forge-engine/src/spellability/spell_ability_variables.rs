@@ -68,6 +68,10 @@ pub struct SpellAbilityVariables {
     var_operator: Option<String>,
     /// Comparison operator 2.
     var_operator2: Option<String>,
+    /// Required Class level expression operand.
+    class_level: Option<String>,
+    /// Comparison operator for class level requirement.
+    class_level_operator: Option<String>,
     /// Whether this targets a single target only.
     targets_single_target: bool,
 }
@@ -103,6 +107,8 @@ impl Default for SpellAbilityVariables {
             var_to_check2: None,
             var_operator: None,
             var_operator2: None,
+            class_level: None,
+            class_level_operator: None,
             targets_single_target: false,
         }
     }
@@ -388,6 +394,24 @@ impl SpellAbilityVariables {
     /// Mirrors Java's `SpellAbilityVariables.setVarOperator2(String)`.
     pub fn sets_var_operator2(&mut self, val: &str) {
         self.var_operator2 = Some(val.to_string());
+    }
+
+    // ── Class level ───────────────────────────────────────────────────────
+
+    pub fn class_level(&self) -> Option<&str> {
+        self.class_level.as_deref()
+    }
+
+    pub fn set_class_level(&mut self, val: Option<String>) {
+        self.class_level = val;
+    }
+
+    pub fn class_level_operator(&self) -> Option<&str> {
+        self.class_level_operator.as_deref()
+    }
+
+    pub fn set_class_level_operator(&mut self, val: Option<String>) {
+        self.class_level_operator = val;
     }
 
     // ── Single target ─────────────────────────────────────────────────────

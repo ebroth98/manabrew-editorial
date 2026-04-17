@@ -200,7 +200,7 @@ fn parse_discard(inner: &str) -> Option<CostPart> {
 }
 
 fn parse_pay_life(inner: &str) -> Option<CostPart> {
-    let amount = inner.parse::<i32>().unwrap_or(0);
+    let amount = super::parse_i32_or_x(inner, 0);
     Some(CostPart::PayLife(amount))
 }
 

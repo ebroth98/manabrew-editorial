@@ -146,41 +146,8 @@ impl TargetRestrictions {
                 has_valid_target_in_zone(game, player, *zone, filter.as_deref(), source_card)
             }
             TargetKind::Spell => {
-                // Counterspells use ValidTgts$ to constrain the spell types
-                // they can counter (e.g. An Offer You Can't Refuse: ValidTgts$
-                // Card.nonCreature). Java's TargetRestrictions checks both the
-                // TargetType (must be Spell) and the ValidTgts filter against
-                // each stack entry's source card. We do the same so we don't
-                // mark Counter-spells as playable when the only stack entry
-                // is excluded by the filter.
-                let target_type_ok = match self.target_type_filter.as_deref() {
-                    Some(t) if !t.eq_ignore_ascii_case("Spell") => false,
-                    _ => true,
-                };
-                if !target_type_ok {
-                    return false;
-                }
-                game.stack.iter().any(|entry| {
-                    if !entry.spell_ability.is_spell {
-                        return false;
-                    }
-                    let Some(src_id) = entry.spell_ability.source else {
-                        return self.valid_tgts.is_empty();
-                    };
-                    if src_id.index() >= game.cards.len() {
-                        return false;
-                    }
-                    let card = game.card(src_id);
-                    self.valid_tgts.iter().any(|filter| {
-                        // "Card" / "Spell" with no qualifiers matches anything.
-                        if filter.eq_ignore_ascii_case("Card")
-                            || filter.eq_ignore_ascii_case("Spell")
-                        {
-                            return true;
-                        }
-                        crate::card::valid_filter::matches_valid_card(filter, card, card)
-                    })
-                })
+                !filter_spells_for_target_restrictions(game, &get_all_candidates_spells(game), self)
+                    .is_empty()
             }
         }
     }
@@ -312,34 +279,64 @@ fn resolve_target_count_expr(expr: &str, game: &GameState, sa: &SpellAbility) ->
 
 /// Check if there are valid spells on the stack matching the TargetType$ filter.
 pub fn has_valid_spell_with_filter(game: &GameState, filter: &str) -> bool {
-    // For now, we only support "Spell" filter which matches all spells
-    // In the future, we could filter by spell type (e.g., "Creature", "Instant", "Sorcery")
-    if filter.eq_ignore_ascii_case("Spell") {
-        // Look for any spell on the stack (abilities are not spells)
-        game.stack.iter().any(|entry| entry.spell_ability.is_spell)
-    } else {
-        // Unknown filter, fall back to checking if stack is not empty
-        !game.stack.is_empty()
+    !filter_spells_by_type(game, &get_all_candidates_spells(game), filter).is_empty()
+}
+
+/// Filter stack entries using the full `TargetRestrictions` for spell targets.
+pub fn filter_spells_for_target_restrictions(
+    game: &GameState,
+    candidates: &[u32],
+    restrictions: &TargetRestrictions,
+) -> Vec<u32> {
+    let mut filtered = candidates.to_vec();
+    if let Some(ref filter) = restrictions.target_type_filter {
+        filtered = filter_spells_by_type(game, &filtered, filter);
     }
+    if !restrictions.valid_tgts.is_empty() {
+        let valid_filter = restrictions.valid_tgts.join(",");
+        filtered = filter_spells_by_type(game, &filtered, &valid_filter);
+    }
+    filtered
 }
 
 /// Filter stack entries to only include spells matching the TargetType$ filter.
 pub fn filter_spells_by_type(game: &GameState, candidates: &[u32], filter: &str) -> Vec<u32> {
-    if filter.eq_ignore_ascii_case("Spell") {
-        // Only include entries that are actual spells (not abilities)
-        candidates
-            .iter()
-            .filter(|&&id| {
-                game.stack
+    let clauses: Vec<&str> = filter
+        .split(',')
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .collect();
+
+    candidates
+        .iter()
+        .filter(|&&id| {
+            let Some(entry) = game.stack.iter().find(|entry| entry.id == id) else {
+                return false;
+            };
+            if !entry.spell_ability.is_spell {
+                return false;
+            }
+            if clauses.is_empty()
+                || clauses
                     .iter()
-                    .any(|entry| entry.id == id && entry.spell_ability.is_spell)
+                    .any(|clause| clause.eq_ignore_ascii_case("Spell"))
+            {
+                return true;
+            }
+
+            let Some(source_card) = entry.spell_ability.source else {
+                return false;
+            };
+            clauses.iter().any(|clause| {
+                card_property::card_has_property(
+                    game.card(source_card),
+                    clause,
+                    entry.spell_ability.activating_player,
+                )
             })
-            .cloned()
-            .collect()
-    } else {
-        // Unknown filter, return all candidates
-        candidates.to_vec()
-    }
+        })
+        .copied()
+        .collect()
 }
 
 /// Parse a single ValidTgts value into a TargetKind.

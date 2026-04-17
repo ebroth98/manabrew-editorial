@@ -420,6 +420,8 @@ fn resolve_player_count_svar(
         game.alive_players()
     } else if kind == "Opponents" {
         vec![game.opponent_of(controller)]
+    } else if kind == "Remembered" {
+        game.card(source_id).remembered_players.clone()
     } else if kind.starts_with("PropertyYou") {
         vec![controller]
     } else if let Some(property) = kind.strip_prefix("Property") {
@@ -1495,6 +1497,37 @@ mod tests {
 
         let sa = SpellAbility::new_simple(Some(host_id), p0, "DB$ Draw | NumCards$ X");
         assert_eq!(resolve_numeric_svar(&game, &sa, "NumCards", -1), 1);
+    }
+
+    #[test]
+    fn resolves_player_count_remembered_life_lost_this_turn() {
+        let mut game = GameState::new(&["A", "B"], 20);
+        let p0 = PlayerId(0);
+        let p1 = PlayerId(1);
+
+        game.player_mut(p1).life_lost_this_turn = 11;
+
+        let mut host = Card::new(
+            CardId(0),
+            "Host".to_string(),
+            p0,
+            CardTypeLine::parse("Creature"),
+            ManaCost::parse(""),
+            ColorSet::COLORLESS,
+            Some(1),
+            Some(1),
+            vec![],
+            vec![],
+        );
+        host.svars.insert(
+            "X".to_string(),
+            "PlayerCountRemembered$LifeLostThisTurn".to_string(),
+        );
+        let host_id = game.create_card(host);
+        game.card_mut(host_id).add_remembered_player(p1);
+
+        let sa = SpellAbility::new_simple(Some(host_id), p0, "DB$ LoseLife | LifeAmount$ X");
+        assert_eq!(resolve_numeric_svar(&game, &sa, "LifeAmount", -1), 11);
     }
 
     #[test]

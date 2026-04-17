@@ -64,6 +64,8 @@ pub fn any_cant_pay_life(
 
 pub fn apply_common_ability(
     st_ab: &crate::staticability::StaticAbility,
+    source_id: crate::ids::CardId,
+    game: &GameState,
     source_controller: PlayerId,
     player: PlayerId,
     is_cost: bool,
@@ -76,7 +78,9 @@ pub fn apply_common_ability(
     matches_valid_player(
         st_ab.params.get(keys::VALID_PLAYER),
         player,
+        source_id,
         source_controller,
+        game,
     )
 }
 
@@ -104,7 +108,9 @@ fn any_common(
             if !matches_valid_player(
                 st_ab.params.get(keys::VALID_PLAYER),
                 player,
+                card.id,
                 card.controller,
+                game,
             ) {
                 continue;
             }
@@ -117,17 +123,56 @@ fn any_common(
 fn matches_valid_player(
     valid: Option<&str>,
     player: PlayerId,
+    source_id: crate::ids::CardId,
     source_controller: PlayerId,
+    game: &GameState,
 ) -> bool {
     match valid {
         None => true,
         Some(v) if v.eq_ignore_ascii_case("Player") => true,
-        Some(v) if v.eq_ignore_ascii_case("You") || v.eq_ignore_ascii_case("YouCtrl") => {
-            player == source_controller
+        Some(v) => {
+            let sa = SpellAbility::new_simple(Some(source_id), source_controller, "");
+            let property = v.strip_prefix("Player.").unwrap_or(v);
+            crate::player::player_property::player_has_property(
+                player,
+                property,
+                game,
+                source_id,
+                source_controller,
+                &sa,
+            )
         }
-        Some(v) if v.eq_ignore_ascii_case("Opponent") || v.eq_ignore_ascii_case("OppCtrl") => {
-            player != source_controller
-        }
-        _ => true,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::card::Card;
+    use crate::ids::CardId;
+    use forge_foundation::{CardTypeLine, ColorSet, ManaCost, ZoneType};
+
+    #[test]
+    fn cant_gain_life_respects_player_enchanted_by() {
+        let mut game = GameState::new(&["A", "B"], 20);
+        let p0 = PlayerId(0);
+        let p1 = PlayerId(1);
+        let aura_id = game.create_card(Card::new(
+            CardId(1),
+            "Grievous Wound".to_string(),
+            p0,
+            CardTypeLine::parse("Enchantment Aura"),
+            ManaCost::parse(""),
+            ColorSet::COLORLESS,
+            None,
+            None,
+            vec![],
+            vec!["S:Mode$ CantGainLife | ValidPlayer$ Player.EnchantedBy".to_string()],
+        ));
+        game.card_mut(aura_id).zone = ZoneType::Battlefield;
+        game.attach_to_player(aura_id, p1);
+
+        assert!(cant_gain_life(&game, p1));
+        assert!(!cant_gain_life(&game, p0));
     }
 }

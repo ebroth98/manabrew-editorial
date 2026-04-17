@@ -183,7 +183,9 @@ pub fn resolve_defined_player(
             let opp = game.opponent_of(controller);
             Some(opp)
         }
-        "DefendingPlayer" | "TriggeredDefendingPlayer" => Some(game.opponent_of(controller)),
+        "DefendingPlayer" | "TriggeredDefendingPlayer" | "TriggeredDefender" => {
+            Some(game.opponent_of(controller))
+        }
         _ => None,
     }
 }
@@ -224,6 +226,9 @@ pub fn resolve_defined_player_with_sa(
         });
     }
     match key {
+        "Remembered" => sa
+            .source
+            .and_then(|src| game.card(src).remembered_players.first().copied()),
         "TriggeredPlayer" | "Targeted" | "TargetedPlayer" => sa
             .target_chosen
             .target_player
@@ -262,6 +267,9 @@ pub fn resolve_defined_player_with_sa(
             }
         }
         "TriggeredAttackedTarget" => parse_player_object(sa, "AttackedTarget"),
+        "TriggeredDefender" => parse_player_object(sa, "Defender")
+            .or_else(|| parse_player_object(sa, "AttackedTarget"))
+            .or_else(|| parse_player_object(sa, "DefendingPlayer")),
         "TriggeredAttackingPlayer" => parse_player_object(sa, "AttackingPlayer"),
         "TriggeredActivator" => parse_player_object(sa, "Activator"),
         "TriggeredOpponentVotedDiff" => parse_player_object(sa, "OpponentVotedDiff"),
@@ -323,6 +331,11 @@ pub fn resolve_defined_players_with_sa(
             .collect();
     }
     match key {
+        "Player" | "Players" => game.alive_players(),
+        "Remembered" => sa
+            .source
+            .map(|src| game.card(src).remembered_players.clone())
+            .unwrap_or_default(),
         "TriggeredPlayer" | "Targeted" | "TargetedPlayer" => {
             let mut players = Vec::new();
             for player in sa
@@ -403,6 +416,16 @@ pub fn resolve_defined_players_with_sa(
             players
         }
         "TriggeredAttackedTarget" => parse_player_objects(sa, "AttackedTarget"),
+        "TriggeredDefender" => {
+            let mut players = parse_player_objects(sa, "Defender");
+            for pid in parse_player_objects(sa, "AttackedTarget") {
+                push_unique_player(&mut players, pid);
+            }
+            for pid in parse_player_objects(sa, "DefendingPlayer") {
+                push_unique_player(&mut players, pid);
+            }
+            players
+        }
         "TriggeredAttackedTargetAndYou" => {
             let mut players = parse_player_objects(sa, "AttackedTarget");
             push_unique_player(&mut players, controller);
@@ -538,7 +561,9 @@ pub fn resolve_defined_players(
     match defined {
         "You" => vec![controller],
         "Opponent" | "OpponentCtrl" => vec![game.opponent_of(controller)],
-        "DefendingPlayer" | "TriggeredDefendingPlayer" => vec![game.opponent_of(controller)],
+        "DefendingPlayer" | "TriggeredDefendingPlayer" | "TriggeredDefender" => {
+            vec![game.opponent_of(controller)]
+        }
         "Each" | "All" | "Player" => game.alive_players(),
         _ => {
             // Fall back to single-player resolution
@@ -837,9 +862,7 @@ pub fn matches_change_type(
     // Forge separates qualifiers with '.' for the first qualifier after the
     // type and '+' for additional qualifiers (e.g. "Card.Red+Other"). Split
     // on both so every qualifier is visited individually.
-    let parts: Vec<&str> = change_type
-        .split(|c| c == '.' || c == '+')
-        .collect();
+    let parts: Vec<&str> = change_type.split(|c| c == '.' || c == '+').collect();
     let type_part = parts[0];
 
     let type_matches = match type_part {
@@ -921,8 +944,8 @@ pub fn matches_change_type(
             // the correct zone + player to e.g. `cards_in_zone`, so we accept
             // them as no-ops here rather than treating them as subtypes and
             // failing every match.
-            "YouCtrl" | "YouControl" | "You" | "YouOwn" | "OppCtrl" | "OpponentCtrl"
-            | "OppOwn" | "OpponentOwn" | "Opponent" => {}
+            "YouCtrl" | "YouControl" | "You" | "YouOwn" | "OppCtrl" | "OpponentCtrl" | "OppOwn"
+            | "OpponentOwn" | "Opponent" => {}
             // Token / nonToken qualifiers.
             "Token" => {
                 if !card.is_token {
@@ -1014,8 +1037,7 @@ pub fn matches_change_type(
             // type, so a changeling creature passes any creature-type check.
             other => {
                 let has_sub = card.type_line.has_subtype(other);
-                let changeling_match =
-                    card.is_creature() && card.has_keyword("Changeling");
+                let changeling_match = card.is_creature() && card.has_keyword("Changeling");
                 if !has_sub && !changeling_match {
                     return false;
                 }
@@ -1276,6 +1298,10 @@ pub fn handle_paid(
 
     match property {
         "Amount" | "Count" => paid_cards.len() as i32,
+        "CardManaCost" | "ManaCost" => paid_cards
+            .iter()
+            .map(|&cid| game.card(cid).mana_value())
+            .sum(),
         "TotalPower" | "SumPower" => paid_cards
             .iter()
             .map(|&cid| {

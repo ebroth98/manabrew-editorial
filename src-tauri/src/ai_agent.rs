@@ -12,6 +12,8 @@ pub fn spawn_ai_prompt_responder(
     response_tx: mpsc::Sender<PlayerAction>,
 ) {
     thread::spawn(move || {
+        let mut last_choose_action_signature: Option<String> = None;
+        let mut last_choose_action_choice: Option<EnginePlayerAction> = None;
         while let Ok(prompt) = prompt_rx.recv() {
             let maybe_action = match prompt.inner {
                 AgentPromptInner::Mulligan { .. } => {
@@ -27,24 +29,47 @@ pub fn spawn_ai_prompt_responder(
                 AgentPromptInner::ChooseAction {
                     available_player_actions,
                     ..
-                } => available_player_actions
-                    .iter()
-                    .copied()
-                    .find(|action| matches!(action, EnginePlayerAction::CastSpell(_)))
-                    .map(|action| PlayerAction::EngineAction { action })
-                    .or_else(|| {
-                        available_player_actions
-                            .iter()
-                            .copied()
-                            .find(|action| matches!(action, EnginePlayerAction::PassPriority))
-                            .map(|action| PlayerAction::EngineAction { action })
-                    })
-                    .or_else(|| {
-                        available_player_actions
-                            .first()
-                            .copied()
-                            .map(|action| PlayerAction::EngineAction { action })
-                    }),
+                } => {
+                    let signature = format!("{available_player_actions:?}");
+                    let repeated_same_prompt =
+                        last_choose_action_signature.as_deref() == Some(signature.as_str());
+                    let avoid_last_choice =
+                        repeated_same_prompt
+                            && !matches!(
+                                last_choose_action_choice,
+                                Some(EnginePlayerAction::PassPriority)
+                            );
+                    let chosen = available_player_actions
+                        .iter()
+                        .copied()
+                        .filter(|action| {
+                            !avoid_last_choice || Some(*action) != last_choose_action_choice
+                        })
+                        .find(|action| matches!(action, EnginePlayerAction::CastSpell(_)))
+                        .or_else(|| {
+                            available_player_actions
+                                .iter()
+                                .copied()
+                                .filter(|action| {
+                                    !avoid_last_choice
+                                        || Some(*action) != last_choose_action_choice
+                                })
+                                .find(|action| matches!(action, EnginePlayerAction::PassPriority))
+                        })
+                        .or_else(|| {
+                            available_player_actions
+                                .iter()
+                                .copied()
+                                .find(|action| {
+                                    !avoid_last_choice
+                                        || Some(*action) != last_choose_action_choice
+                                })
+                        })
+                        .or_else(|| available_player_actions.first().copied());
+                    last_choose_action_signature = Some(signature);
+                    last_choose_action_choice = chosen;
+                    chosen.map(|action| PlayerAction::EngineAction { action })
+                }
                 AgentPromptInner::ChooseAttackers {
                     available_attacker_ids,
                     possible_defender_ids,

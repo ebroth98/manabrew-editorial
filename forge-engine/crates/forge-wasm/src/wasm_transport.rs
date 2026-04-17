@@ -13,6 +13,7 @@ use forge_agent_interface::agent_impl::AgentTransport;
 use forge_agent_interface::game_log_event::GameLogEntryDto;
 use forge_agent_interface::game_snapshot_event::GameSnapshotEventDto;
 use forge_agent_interface::prompt::{AgentPrompt, PlayerAction};
+use forge_engine_core::player::actions::PlayerAction as EnginePlayerAction;
 
 use js_sys::{Int32Array, SharedArrayBuffer, Uint8Array};
 use wasm_bindgen::prelude::*;
@@ -152,13 +153,14 @@ use std::cell::RefCell;
 
 thread_local! {
     static PENDING_AI_PROMPT: RefCell<Option<AgentPrompt>> = const { RefCell::new(None) };
+    static LAST_AI_CHOOSE_ACTION_SIGNATURE: RefCell<Option<String>> = const { RefCell::new(None) };
+    static LAST_AI_CHOOSE_ACTION_CHOICE: RefCell<Option<EnginePlayerAction>> = const { RefCell::new(None) };
 }
 
 /// Simple AI response logic — picks first available action.
 /// Mirrors the Tauri ai_agent.rs logic.
 fn ai_respond(inner: &forge_agent_interface::prompt::AgentPromptInner) -> PlayerAction {
     use forge_agent_interface::prompt::*;
-    use forge_engine_core::player::actions::PlayerAction as EnginePlayerAction;
 
     match inner {
         AgentPromptInner::Mulligan { .. } => PlayerAction::MulliganDecision { keep: true },
@@ -173,18 +175,39 @@ fn ai_respond(inner: &forge_agent_interface::prompt::AgentPromptInner) -> Player
             available_player_actions,
             ..
         } => {
-            // AI priority: cast spells > pass
+            let signature = format!("{available_player_actions:?}");
+            let repeated_same_prompt = LAST_AI_CHOOSE_ACTION_SIGNATURE.with(|cell| {
+                cell.borrow().as_deref() == Some(signature.as_str())
+            });
+            let last_choice =
+                LAST_AI_CHOOSE_ACTION_CHOICE.with(|cell| *cell.borrow());
+            let avoid_last_choice = repeated_same_prompt
+                && !matches!(last_choice, Some(EnginePlayerAction::PassPriority));
             let action = available_player_actions
                 .iter()
                 .copied()
+                .filter(|a| !avoid_last_choice || Some(*a) != last_choice)
                 .find(|a| matches!(a, EnginePlayerAction::CastSpell(_)))
                 .or_else(|| {
                     available_player_actions
                         .iter()
                         .copied()
+                        .filter(|a| !avoid_last_choice || Some(*a) != last_choice)
                         .find(|a| matches!(a, EnginePlayerAction::PassPriority))
                 })
+                .or_else(|| {
+                    available_player_actions
+                        .iter()
+                        .copied()
+                        .find(|a| !avoid_last_choice || Some(*a) != last_choice)
+                })
                 .or_else(|| available_player_actions.first().copied());
+            LAST_AI_CHOOSE_ACTION_SIGNATURE.with(|cell| {
+                *cell.borrow_mut() = Some(signature);
+            });
+            LAST_AI_CHOOSE_ACTION_CHOICE.with(|cell| {
+                *cell.borrow_mut() = action;
+            });
             action
                 .map(|a| PlayerAction::EngineAction { action: a })
                 .unwrap_or(PlayerAction::PlayCard {

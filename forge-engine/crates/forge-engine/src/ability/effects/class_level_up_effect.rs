@@ -5,17 +5,45 @@
 //! next tier of static abilities and triggers.
 
 use super::EffectContext;
+use crate::event::RunParams;
 use crate::spellability::SpellAbility;
+use crate::staticability::layer::apply_continuous_effects;
+use crate::trigger::TriggerType;
 
 pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     let Some(host_id) = sa.source else { return };
 
     let current_level = ctx.game.card(host_id).class_level;
+    if let Some(required) = sa
+        .restriction
+        .variables
+        .class_level_operator()
+        .zip(sa.restriction.variables.class_level())
+    {
+        let (operator, operand) = required;
+        let expr = format!("{operator}{operand}");
+        if !crate::parsing::compare::compare_expr(current_level, &expr) {
+            return;
+        }
+    }
     let new_level = current_level + 1;
 
     ctx.game.card_mut(host_id).set_class_level(new_level);
 
-    // Re-register triggers for the card at its new level
+    // Class level gates are implemented as continuous/static text changes.
+    // Rebuild those before re-registering triggers so newly unlocked
+    // ClassLevelGained / end-step abilities actually exist on the card.
+    apply_continuous_effects(ctx.game);
+    ctx.trigger_handler.unregister_active_triggers(host_id);
     ctx.trigger_handler
         .register_active_trigger(ctx.game, host_id);
+    ctx.trigger_handler.run_trigger(
+        TriggerType::ClassLevelGained,
+        RunParams {
+            card: Some(host_id),
+            class_level: Some(new_level),
+            ..Default::default()
+        },
+        false,
+    );
 }

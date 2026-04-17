@@ -309,10 +309,11 @@ pub fn player_has_property(
             |value| matches!(value, crate::event::AbilityValue::Player(pid) if *pid == player),
         );
     } else if property == "EnchantedBy" {
-        return game
-            .cards_in_zone(ZoneType::Battlefield, player)
-            .iter()
-            .any(|&cid| source.attached_to == Some(cid));
+        return source.attached_to_player == Some(player)
+            || game
+                .cards_in_zone(ZoneType::Battlefield, player)
+                .iter()
+                .any(|&cid| source.attached_to == Some(cid));
     } else if property == "EnchantedController" {
         return source
             .attached_to

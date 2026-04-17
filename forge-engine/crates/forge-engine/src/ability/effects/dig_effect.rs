@@ -4,6 +4,7 @@ use super::{
     emit_zone_trigger, matches_change_type, parse_param, parse_zone_type, resolve_defined_player,
     EffectContext,
 };
+use crate::agent::{notify_all_agents, GameLogEvent};
 use crate::parsing::keys;
 use crate::spellability::SpellAbility;
 
@@ -17,6 +18,8 @@ use crate::spellability::SpellAbility;
 pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     let dig_num = parse_param(&sa.ability_text, "DigNum$ ").unwrap_or(1) as usize;
     let optional = sa.params.has(keys::OPTIONAL);
+    let skip_reorder = sa.param_is_true("SkipReorder");
+    let rest_random_order = sa.param_is_true("RestRandomOrder");
     let change_all = sa
         .params
         .get(keys::CHANGE_NUM)
@@ -125,12 +128,24 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
 
     // Let UI agents pre-build card info for the revealed cards.
     ctx.agents[sa.activating_player.index()].on_library_peek(ctx.game, &top_n);
+    if sa.params.is_true(keys::REVEAL) {
+        for &card_id in &top_n {
+            notify_all_agents(
+                ctx.agents,
+                GameLogEvent::rule("Reveal Library cards")
+                    .with_player(dig_player)
+                    .with_card(card_id),
+            );
+        }
+    }
 
     // Ask the chooser (activating player) which cards to take.
     // Java DigEffect skips the prompt entirely when no valid cards exist,
     // so we must also skip to avoid consuming extra RNG.
     let max_take = change_num.min(valid.len());
-    let chosen = if valid.is_empty() {
+    let chosen = if change_all {
+        valid.clone()
+    } else if valid.is_empty() {
         Vec::new()
     } else {
         ctx.agents[sa.activating_player.index()].choose_dig(
@@ -141,17 +156,34 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         )
     };
 
-    let chosen: Vec<_> = chosen
+    let mut chosen: Vec<_> = chosen
         .into_iter()
         .filter(|id| valid.contains(id))
         .take(max_take)
         .collect();
+    // Java reverses moved cards before moving them so the final destination
+    // order matches the chooser's intended top-first order.
+    chosen.reverse();
 
-    let rest: Vec<_> = top_n
+    let mut rest: Vec<_> = top_n
         .iter()
         .copied()
         .filter(|id| !chosen.contains(id))
         .collect();
+
+    if !rest_random_order
+        && !skip_reorder
+        && rest.len() > 1
+        && (dest_zone2 == ZoneType::Library || dest_zone2 == ZoneType::Graveyard)
+    {
+        ctx.agents[sa.activating_player.index()].snapshot_state(ctx.game, ctx.mana_pools);
+        ctx.agents[sa.activating_player.index()].on_library_peek(ctx.game, &rest);
+        let reordered = ctx.agents[sa.activating_player.index()]
+            .choose_reorder_library(sa.activating_player, &rest);
+        if reordered.len() == rest.len() && rest.iter().all(|id| reordered.contains(id)) {
+            rest = reordered;
+        }
+    }
 
     // Move chosen cards to dest_zone1.
     for &id in &chosen {
@@ -162,6 +194,16 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             owner
         };
         ctx.move_card(id, dest_zone1, dest_owner);
+        if sa.param_is_true(keys::IMPRINT) {
+            if let Some(source_id) = sa.source {
+                ctx.game.card_mut(source_id).add_imprinted_card(id);
+            }
+        }
+        if sa.is_remember_changed() {
+            if let Some(source_id) = sa.source {
+                ctx.game.card_mut(source_id).add_remembered_card(id);
+            }
+        }
         if dest_zone1 == ZoneType::Battlefield {
             let _ = super::add_to_combat(ctx, sa, id, keys::ATTACKING);
         }

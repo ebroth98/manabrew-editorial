@@ -6,6 +6,7 @@ use crate::card::Card;
 use crate::game::GameState;
 use crate::ids::CardId;
 use crate::parsing::keys;
+use forge_foundation::PhaseType;
 
 use super::replacement_effect::{matches_valid_player, ReplacementEffect};
 use super::replacement_handler::ReplacementEvent;
@@ -22,12 +23,25 @@ pub fn can_replace(
     if effect.event != ReplacementType::BeginPhase {
         return false;
     }
-    let player = match event {
-        ReplacementEvent::BeginPhase { player } => *player,
+    let (player, phase) = match event {
+        ReplacementEvent::BeginPhase { player, phase } => (*player, *phase),
         _ => return false,
     };
     if let Some(valid) = effect.params.get(keys::VALID_PLAYER) {
         if !matches_valid_player(valid, player, source_card) {
+            return false;
+        }
+    }
+    if let Some(phases) = effect
+        .params
+        .get(keys::PHASE)
+        .or_else(|| effect.params.get(keys::ACTIVE_PHASES))
+    {
+        let matches_phase = phases
+            .split(',')
+            .filter_map(|name| PhaseType::from_script_name(name.trim()))
+            .any(|candidate| candidate == phase);
+        if !matches_phase {
             return false;
         }
     }

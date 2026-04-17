@@ -345,11 +345,7 @@ impl GameLoop {
                 }
                 ManaCostAction::Cancel => {
                     executed_actions.push(ManaCostAction::Cancel);
-                    Self::notify_mana_payment_resolved(
-                        agents,
-                        session.player,
-                        &executed_actions,
-                    );
+                    Self::notify_mana_payment_resolved(agents, session.player, &executed_actions);
                     self.mana_pools[session.player.index()] = saved_pool.clone();
                     return false;
                 }

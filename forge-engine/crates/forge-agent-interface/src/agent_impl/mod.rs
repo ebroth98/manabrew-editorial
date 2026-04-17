@@ -152,6 +152,10 @@ impl<T: AgentTransport> PromptAgent<T> {
         let card_id = card_id_str(play.card_id);
         let (mode, mode_label) = match &play.mode {
             PlayCardMode::Normal => ("normal".to_string(), "Cast normally".to_string()),
+            PlayCardMode::BackFaceLand => (
+                "backFaceLand".to_string(),
+                "Play back face as land".to_string(),
+            ),
             PlayCardMode::Alternative(alt) => {
                 let name = format!("{:?}", alt);
                 (
@@ -181,6 +185,7 @@ impl<T: AgentTransport> PromptAgent<T> {
         use forge_engine_core::spellability::AlternativeCost;
         match mode_str {
             "normal" => Some(PlayCardMode::Normal),
+            "backFaceLand" => Some(PlayCardMode::BackFaceLand),
             "staticAlternative" => Some(PlayCardMode::StaticAlternative),
             "foretellExile" => Some(PlayCardMode::ForetellExile),
             "unlockDoor" => Some(PlayCardMode::UnlockDoor),

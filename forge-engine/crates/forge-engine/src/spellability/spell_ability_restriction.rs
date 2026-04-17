@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
+use crate::parsing::compare::compare_expr;
 use crate::parsing::Params;
 
 use super::spell_ability_variables::SpellAbilityVariables;
@@ -129,6 +130,15 @@ impl SpellAbilityRestriction {
                 .set_present_defined(Some(defined.to_string()));
         }
 
+        if let Some(class_level) = params.get("ClassLevel") {
+            if class_level.len() >= 2 {
+                self.variables
+                    .set_class_level_operator(Some(class_level[..2].to_string()));
+                self.variables
+                    .set_class_level(Some(class_level[2..].to_string()));
+            }
+        }
+
         // Parse cards in hand requirement
         if let Some(count_str) = params.get("ActivateCardsInHand") {
             if let Ok(count) = count_str.parse::<i32>() {
@@ -145,6 +155,9 @@ impl SpellAbilityRestriction {
         // Check zone restriction
         let card_zone = card.zone;
         if card_zone != self.variables.zone() {
+            return false;
+        }
+        if !self.can_player_activate_host(game, card_id, player) {
             return false;
         }
 
@@ -207,6 +220,16 @@ impl SpellAbilityRestriction {
             return false;
         }
 
+        if let Some(class_level) = self.variables.class_level() {
+            let Some(operator) = self.variables.class_level_operator() else {
+                return false;
+            };
+            let operand = class_level.parse::<i32>().unwrap_or(0);
+            if !compare_expr(card.class_level, &format!("{operator}{operand}")) {
+                return false;
+            }
+        }
+
         true
     }
 
@@ -246,6 +269,9 @@ impl SpellAbilityRestriction {
     /// Mirrors Java's `SpellAbilityRestriction.checkActivatorRestrictions(Card, SpellAbility)`.
     pub fn check_activator_restrictions(&self, game: &GameState, player: PlayerId) -> bool {
         let activator = self.variables.activator();
+        if activator == "Player" {
+            return true;
+        }
         if activator == "You" {
             return true;
         }
@@ -253,6 +279,28 @@ impl SpellAbilityRestriction {
             return game.turn.active_player != player;
         }
         true
+    }
+
+    /// Whether `player` may activate an ability hosted by `card_id`.
+    /// Mirrors the common Java valid-player cases used by `Activator$`.
+    pub fn can_player_activate_host(
+        &self,
+        game: &GameState,
+        card_id: CardId,
+        player: PlayerId,
+    ) -> bool {
+        let controller = game.card(card_id).controller;
+        match self.variables.activator() {
+            "Player" => true,
+            "You" => player == controller,
+            "Opponent" => player != controller,
+            activator if activator.starts_with("Player.PlayerUID_") => activator
+                .strip_prefix("Player.PlayerUID_")
+                .and_then(|id| id.parse::<u32>().ok())
+                .map(|id| player.0 == id)
+                .unwrap_or(false),
+            _ => player == controller,
+        }
     }
 
     /// Check other restrictions (threshold, metalcraft, etc.).

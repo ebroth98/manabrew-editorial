@@ -36,6 +36,10 @@ pub struct DelayedTrigger {
     pub execute_svar: String,
     pub controller: PlayerId,
     pub source_card: CardId,
+    /// Turn number when this delayed trigger was registered.
+    pub created_turn: u32,
+    /// Phase during which this delayed trigger was registered.
+    pub created_phase: forge_foundation::PhaseType,
     /// Optional target card for the delayed trigger (e.g. the creature to bounce for Dash
     /// or sacrifice for Blitz at end of turn).
     pub target_card: Option<CardId>,
@@ -46,6 +50,8 @@ pub struct DelayedTrigger {
     /// Exposed to the executed ability via `SpellAbility::trigger_remembered`.
     #[allow(dead_code)]
     pub remembered_cards: Vec<CardId>,
+    /// Snapshot of remembered cards for delayed-trigger `RememberedLKI` lookups.
+    pub remembered_lki_cards: Vec<CardId>,
 }
 
 /// A triggered ability ready to be placed on the stack, with optional metadata.
@@ -293,6 +299,8 @@ impl TriggerHandler {
                 (is_static, idx)
             });
 
+            let event_entries_start = entries.len();
+
             // Check each active trigger plus any Java-style LTB look-back triggers.
             for (card_id, trigger_index, _) in trigger_refs {
                 let card = game.card(card_id);
@@ -347,9 +355,17 @@ impl TriggerHandler {
                         .as_ref()
                         .map(|c| !c.mandatory && !c.is_zero_cost())
                         .unwrap_or(false);
+                    let effect_optional_decider =
+                        entry.spell_ability.params.has(keys::OPTIONAL_DECIDER);
+                    let description_lower = trigger.description.to_ascii_lowercase();
+                    let description_implies_optional = description_lower.starts_with("you may")
+                        && !entry.spell_ability.params.has(keys::OPTIONAL)
+                        && !effect_optional_decider;
                     let pending = PendingTrigger {
                         entry,
-                        optional: trigger.optional || trigger_cost_optional,
+                        optional: (trigger.optional && !effect_optional_decider)
+                            || trigger_cost_optional
+                            || description_implies_optional,
                         decider: host_controller,
                         description: trigger.description.clone(),
                     };
@@ -385,10 +401,13 @@ impl TriggerHandler {
                             .as_ref()
                             .map(|c| !c.mandatory && !c.is_zero_cost())
                             .unwrap_or(false);
+                        let effect_optional_decider =
+                            extra_entry.spell_ability.params.has(keys::OPTIONAL_DECIDER);
                         entries.push((
                             PendingTrigger {
                                 entry: extra_entry,
-                                optional: trigger.optional || trigger_cost_optional,
+                                optional: (trigger.optional && !effect_optional_decider)
+                                    || trigger_cost_optional,
                                 decider: host_controller,
                                 description: trigger.description.clone(),
                             },
@@ -400,9 +419,22 @@ impl TriggerHandler {
             }
 
             // Check delayed triggers (one-shot, removed after firing).
+            //
+            // Java places same-event delayed triggers such as Evoke's sacrifice
+            // below normal ETB triggers, so the normal ETB resolves first.
+            // Since the stack is LIFO and pending triggers are pushed in list
+            // order, insert delayed matches before active matches for this event.
+            let delayed_insert_at = event_entries_start;
+            let mut delayed_insert_offset = 0usize;
             let mut fired_indices = Vec::new();
             for (idx, delayed) in self.delayed_triggers.iter().enumerate() {
                 if delayed.mode != event.mode {
+                    continue;
+                }
+                if delayed.mode == TriggerType::Phase
+                    && delayed.created_turn == game.turn.turn_number
+                    && event.params.phase == Some(delayed.created_phase)
+                {
                     continue;
                 }
                 if !delayed.trigger_mode.perform_test(
@@ -435,6 +467,17 @@ impl TriggerHandler {
                         .copied()
                         .map(crate::event::AbilityValue::Card),
                 );
+                if !delayed.remembered_lki_cards.is_empty() {
+                    sa.trigger_objects.insert(
+                        "RememberedLKI".to_string(),
+                        delayed
+                            .remembered_lki_cards
+                            .iter()
+                            .map(|card_id| card_id.0.to_string())
+                            .collect::<Vec<_>>()
+                            .join(","),
+                    );
+                }
 
                 let entry = StackEntry {
                     id: 0,
@@ -453,7 +496,11 @@ impl TriggerHandler {
                     description: String::new(),
                 };
                 let delayed_ts = game.card(delayed.source_card).zone_timestamp;
-                entries.push((pending, delayed.controller, delayed_ts));
+                entries.insert(
+                    delayed_insert_at + delayed_insert_offset,
+                    (pending, delayed.controller, delayed_ts),
+                );
+                delayed_insert_offset += 1;
                 fired_indices.push(idx);
             }
 
@@ -514,6 +561,17 @@ impl TriggerHandler {
                 sa.trigger_source = Some(delayed.source_card);
                 sa.trigger_source_zone_timestamp =
                     Some(game.card(delayed.source_card).zone_timestamp);
+                if !delayed.remembered_lki_cards.is_empty() {
+                    sa.trigger_objects.insert(
+                        "RememberedLKI".to_string(),
+                        delayed
+                            .remembered_lki_cards
+                            .iter()
+                            .map(|card_id| card_id.0.to_string())
+                            .collect::<Vec<_>>()
+                            .join(","),
+                    );
+                }
 
                 let entry = StackEntry {
                     id: 0,
@@ -943,7 +1001,7 @@ impl TriggerHandler {
         }
 
         // Common trigger phase/requirement/limit checks (Java Trigger base behavior).
-        if !trigger.phases_check(game, host_card) {
+        if !trigger.phases_check(game, host_card, params.phase) {
             return false;
         }
         if !trigger.requirements_check(game, host_card) {
@@ -1099,5 +1157,68 @@ impl TriggerHandler {
 impl Default for TriggerHandler {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::card::Card;
+    use crate::event::{RunParams, TriggerType};
+    use crate::ids::PlayerId;
+    use forge_carddb::parse_card_script;
+    use forge_foundation::PhaseType;
+
+    #[test]
+    fn maralen_style_draw_phase_trigger_is_active() {
+        let rules = parse_card_script(
+            "Name:Maralen of the Mornsong\nManaCost:1 B B\nTypes:Legendary Creature Elf Wizard\nPT:2/3\nT:Mode$ Phase | Phase$ Draw | ValidPlayer$ Player | TriggerZones$ Battlefield | Execute$ TrigDrain | TriggerDescription$ At the beginning of each player's draw step, that player loses 3 life, searches their library for a card, puts it into their hand, then shuffles.\nSVar:TrigDrain:DB$ LoseLife | Defined$ TriggeredPlayer | LifeAmount$ 3",
+        )
+        .expect("card script should parse");
+
+        let mut game = GameState::new(&["Alice", "Bob"], 20);
+        let mut maralen = Card::from_rules(&rules, PlayerId(0));
+        maralen.id = crate::ids::CardId(0);
+        maralen.zone = forge_foundation::ZoneType::Battlefield;
+        game.cards.push(maralen);
+        game.zone_mut(forge_foundation::ZoneType::Battlefield, PlayerId(0))
+            .add(crate::ids::CardId(0));
+
+        let mut handler = TriggerHandler::new();
+        handler.register_active_trigger(&game, crate::ids::CardId(0));
+
+        let active = handler.get_active_trigger(
+            &game,
+            TriggerType::Phase,
+            &RunParams {
+                phase: Some(PhaseType::Draw),
+                player: Some(PlayerId(0)),
+                ..Default::default()
+            },
+        );
+
+        assert_eq!(game.card(crate::ids::CardId(0)).triggers.len(), 1);
+        assert_eq!(active.len(), 1);
+
+        let pending = handler.run_trigger_with_game(
+            &game,
+            TriggerType::Phase,
+            RunParams {
+                phase: Some(PhaseType::Draw),
+                player: Some(PlayerId(0)),
+                ..Default::default()
+            },
+            false,
+        );
+        assert_eq!(pending.len(), 1);
+        assert_eq!(
+            pending[0]
+                .entry
+                .spell_ability
+                .trigger_objects
+                .get("TriggeredPlayer")
+                .map(String::as_str),
+            Some("0")
+        );
     }
 }

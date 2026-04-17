@@ -150,11 +150,11 @@ impl PlayerAgent for AcceptSearchAgent {
 
     fn choose_targets_for(
         &mut self,
-        _sa: &mut forge_engine_core::spellability::SpellAbility,
-        _game: &forge_engine_core::game::GameState,
-        _mana_pools: &[forge_engine_core::mana::ManaPool],
+        sa: &mut forge_engine_core::spellability::SpellAbility,
+        game: &forge_engine_core::game::GameState,
+        mana_pools: &[forge_engine_core::mana::ManaPool],
     ) -> bool {
-        false
+        forge_engine_core::spellability::choose_targets_by_kind(self, sa, game, mana_pools)
     }
 }
 

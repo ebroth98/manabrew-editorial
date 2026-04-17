@@ -2,6 +2,8 @@ import type { Card as CardType } from "@/types/openmagic";
 import { useCardImage } from "@/hooks/useCardImage";
 import { cn } from "@/lib/utils";
 import { memo, useState, useMemo, type CSSProperties } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { getCardByName } from "@/api/scryfall";
 import { CounterDisplay } from "@/components/game/CounterBadge";
 import { ManaSymbols } from "@/components/game/ManaSymbols";
 import { KeywordChips } from "@/components/game/CardKeywords";
@@ -66,7 +68,33 @@ function CardComponent({
     card.cardNumber,
     resolution,
   );
-  const imageUrl = upgradeScryfallUrl(card.imageUrl || scryfallUrl, resolution);
+  const { data: doubleFacedData } = useQuery({
+    queryKey: ["double-faced-card-inline", card.name, card.isDoubleFaced],
+    queryFn: async () => {
+      if (!card.isDoubleFaced) return null;
+      const cardData = await getCardByName(card.name);
+      if (cardData.card_faces && cardData.card_faces.length >= 2) {
+        const frontFace = cardData.card_faces[0];
+        const backFace = cardData.card_faces[1];
+        return {
+          frontImageUrl: frontFace.image_uris?.[resolution] ?? frontFace.image_uris?.normal ?? null,
+          backImageUrl: backFace.image_uris?.[resolution] ?? backFace.image_uris?.normal ?? null,
+          backName: backFace.name,
+        };
+      }
+      return null;
+    },
+    enabled: !!card.isDoubleFaced,
+    staleTime: Infinity,
+    gcTime: 1000 * 60 * 60,
+  });
+  const imageUrl = upgradeScryfallUrl(
+    showBackFace && doubleFacedData?.backImageUrl
+      ? doubleFacedData.backImageUrl
+      : (card.imageUrl || scryfallUrl),
+    resolution,
+  );
+  const displayName = showBackFace && doubleFacedData?.backName ? doubleFacedData.backName : card.name;
   const themeColors = useGameThemeColors();
 
   const creature = isCreature(card);
@@ -113,12 +141,12 @@ function CardComponent({
     >
       {imageUrl && !hasError ? (
         <>
-          <img
-            src={imageUrl}
-            alt={card.name}
-            title=""
-            className="absolute inset-0 w-full h-full object-contain rounded-lg"
-            onError={() => setHasError(true)}
+            <img
+              src={imageUrl}
+              alt={displayName}
+              title=""
+              className="absolute inset-0 w-full h-full object-contain rounded-lg"
+              onError={() => setHasError(true)}
             style={{ imageRendering: "auto" }}
           />
           {/* Status badge — only the highest-priority one shows */}
@@ -179,8 +207,8 @@ function CardComponent({
       ) : (
         <div className="absolute inset-0 p-2 flex flex-col justify-between">
           <div className="flex justify-between items-start gap-1">
-            <span className="font-bold text-xs leading-tight line-clamp-2">
-              {card.name}
+              <span className="font-bold text-xs leading-tight line-clamp-2">
+              {displayName}
             </span>
             <div className="flex flex-col items-end gap-0.5 shrink-0">
               {(card.isToken || card.isTransformed) && (

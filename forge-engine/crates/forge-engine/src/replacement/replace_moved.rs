@@ -216,7 +216,15 @@ fn execute_replace_with(
             cur
         };
 
-        let (trigger_handler_ref, token_templates_ref, token_art_ref, token_fb_ref, edition_dates_ref, mana_pools_ref, rng_ref): (
+        let (
+            trigger_handler_ref,
+            token_templates_ref,
+            token_art_ref,
+            token_fb_ref,
+            edition_dates_ref,
+            mana_pools_ref,
+            rng_ref,
+        ): (
             &mut TriggerHandler,
             &HashMap<String, Card>,
             &HashMap<(String, String), usize>,

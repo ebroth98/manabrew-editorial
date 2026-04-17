@@ -239,7 +239,9 @@ impl GameLoop {
                     let played =
                         self.with_shared_state_mutation(game, agents, |this, game, agents| {
                             let card_name = game.card(play.card_id).card_name.clone();
-                            if game.card(play.card_id).is_land() {
+                            if game.card(play.card_id).is_land()
+                                || play.mode == crate::agent::PlayCardMode::BackFaceLand
+                            {
                                 this.play_land(
                                     game,
                                     agents,
@@ -248,8 +250,9 @@ impl GameLoop {
                                     &card_name,
                                     play.mode,
                                 )
-                                .map(|(card_id, card_name)| {
-                                    PlaySpellAbilityResult::CardPlayed { card_id, card_name }
+                                .map(|(card_id, card_name)| PlaySpellAbilityResult::CardPlayed {
+                                    card_id,
+                                    card_name,
                                 })
                             } else {
                                 if let Some(result) = this.play_special_card_action(
@@ -269,12 +272,7 @@ impl GameLoop {
                                         play.card_id,
                                         play.mode,
                                     )?;
-                                    this.play_spell_ability(
-                                        game,
-                                        agents,
-                                        priority_player,
-                                        prepared,
-                                    )
+                                    this.play_spell_ability(game, agents, priority_player, prepared)
                                 }
                             }
                         });
@@ -314,6 +312,18 @@ impl GameLoop {
                             crate::agent::GameLogEvent::warning("Card play failed")
                                 .with_player(priority_player),
                         );
+                        let has_must_target_static = game.cards.iter().any(|card| {
+                            card.zone == ZoneType::Battlefield
+                                && card.static_abilities.iter().any(|st_ab| {
+                                    st_ab.mode == crate::staticability::StaticMode::MustTarget
+                                })
+                        });
+                        if self.java_parity_failed_spell_setup_to_stack
+                            && has_must_target_static
+                            && game.card(play.card_id).zone == ZoneType::Hand
+                        {
+                            game.move_card(play.card_id, ZoneType::Stack, priority_player);
+                        }
                     }
                 }
                 MainPhaseAction::ActivateMana(land_id, requested_ability_idx) => {

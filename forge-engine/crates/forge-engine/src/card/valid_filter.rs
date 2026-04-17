@@ -216,6 +216,11 @@ fn matches_type_and_qualifiers(filter: &str, card: &Card, source: &Card) -> bool
                         return false;
                     }
                 }
+                "legendary" => {
+                    if !card.type_line.is_legendary() {
+                        return false;
+                    }
+                }
                 "kicked" => {
                     if !card.kicked {
                         return false;
@@ -297,7 +302,7 @@ fn matches_type_and_qualifiers(filter: &str, card: &Card, source: &Card) -> bool
                         return false;
                     }
                 }
-                "enchantedby" | "attachedby" => {
+                "equippedby" | "enchantedby" | "attachedby" => {
                     // Check if source is attached to this card
                     if source.attached_to != Some(card.id) {
                         return false;

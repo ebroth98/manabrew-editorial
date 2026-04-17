@@ -6,6 +6,7 @@
 
 use crate::ability::activated::parse_activated_ability;
 use crate::parsing::keys;
+use crate::parsing::Params;
 use crate::staticability::parse_static_ability;
 use crate::trigger::parse_trigger;
 
@@ -14,7 +15,7 @@ use super::Card;
 impl Card {
     /// Generate intrinsic mana abilities for basic land subtypes (Plains → {W}, etc.).
     /// Mirrors Java's `CardFactoryUtil.addIntrinsicAbilities()`.
-    pub(super) fn generate_basic_land_mana_abilities(&mut self) {
+    pub(crate) fn generate_basic_land_mana_abilities(&mut self) {
         const SUBTYPE_MANA: &[(&str, &str, &str)] = &[
             ("Plains", "W", "Add {W}."),
             ("Island", "U", "Add {U}."),
@@ -95,12 +96,13 @@ impl Card {
         // Equip: K:Equip:{cost}[...]
         // Forge keyword payload can include optional suffix data; we only need
         // the activation cost + default target filter to mirror Java baseline.
-        if let Some(equip_raw) = self.get_keyword_cost("Equip") {
-            let payload = equip_raw
-                .split(":::")
-                .next()
-                .unwrap_or(equip_raw.as_str())
-                .trim();
+        for equip_raw in self
+            .keywords
+            .iter_strings()
+            .chain(self.granted_keywords.iter_strings())
+            .filter_map(|kw| crate::keyword::extract_keyword_cost_str(&kw, "Equip"))
+        {
+            let payload = equip_raw.split(":::").next().unwrap_or(equip_raw).trim();
             let mut parts = payload.split(':');
             let equip_cost = parts.next().unwrap_or(payload).trim();
             let target_filter = parts
@@ -263,6 +265,104 @@ impl Card {
             let next_idx = self.activated_abilities.len();
             if let Some(ab) = parse_activated_ability(&ab_text, next_idx) {
                 self.activated_abilities.push(ab);
+            }
+        }
+
+        // Class: K:Class:{level}:{cost}:{params} → AB$ ClassLevelUp.
+        // Mirrors Java CardFactoryUtil lines 2789-2799.
+        let class_keywords: Vec<String> = self
+            .keywords
+            .iter_strings()
+            .chain(self.granted_keywords.iter_strings())
+            .filter(|kw| kw.starts_with("Class:"))
+            .map(|kw| kw.to_string())
+            .collect();
+        for kw in class_keywords {
+            if let Some(rest) = kw.strip_prefix("Class:") {
+                let mut parts = rest.splitn(3, ':');
+                let level = parts.next().unwrap_or_default().trim();
+                let cost = parts.next().unwrap_or_default().trim();
+                let _params = parts.next().unwrap_or_default();
+
+                let Ok(level_num) = level.parse::<i32>() else {
+                    continue;
+                };
+                if cost.is_empty() {
+                    continue;
+                }
+
+                let ab_text = format!(
+                    "AB$ ClassLevelUp | Cost$ {} | ClassLevel$ EQ{} | SorcerySpeed$ True | StackDescription$ SpellDescription | SpellDescription$ Level {}",
+                    cost,
+                    level_num - 1,
+                    level_num
+                );
+                let next_idx = self.activated_abilities.len();
+                if let Some(ab) = parse_activated_ability(&ab_text, next_idx) {
+                    self.activated_abilities.push(ab);
+                }
+
+                if let Some(params) = parts.next().map(str::trim).filter(|s| !s.is_empty()) {
+                    let parsed = Params::from_raw(params);
+                    let mut desc_parts: Vec<String> = Vec::new();
+
+                    if let Some(add_trigger) = parsed.get("AddTrigger") {
+                        for svar_name in add_trigger
+                            .split(" & ")
+                            .map(str::trim)
+                            .filter(|s| !s.is_empty())
+                        {
+                            if let Some(raw) = self.svars.get(svar_name) {
+                                let svar_params = Params::from_raw(raw);
+                                if let Some(desc) = svar_params.get(keys::TRIGGER_DESCRIPTION) {
+                                    desc_parts.push(desc.to_string());
+                                }
+                            }
+                        }
+                    }
+
+                    if let Some(add_static) = parsed.get("AddStaticAbility") {
+                        for svar_name in add_static
+                            .split(" & ")
+                            .map(str::trim)
+                            .filter(|s| !s.is_empty())
+                        {
+                            if let Some(raw) = self.svars.get(svar_name) {
+                                let svar_params = Params::from_raw(raw);
+                                if let Some(desc) = svar_params.get(keys::DESCRIPTION) {
+                                    desc_parts.push(desc.to_string());
+                                }
+                            }
+                        }
+                    }
+
+                    if let Some(add_replacement) = parsed.get("AddReplacementEffect") {
+                        for svar_name in add_replacement
+                            .split(" & ")
+                            .map(str::trim)
+                            .filter(|s| !s.is_empty())
+                        {
+                            if let Some(raw) = self.svars.get(svar_name) {
+                                let svar_params = Params::from_raw(raw);
+                                if let Some(desc) = svar_params.get(keys::DESCRIPTION) {
+                                    desc_parts.push(desc.to_string());
+                                }
+                            }
+                        }
+                    }
+
+                    let mut effect = format!(
+                        "Mode$ Continuous | Affected$ Card.Self | ClassLevel$ {} | {}",
+                        level_num, params
+                    );
+                    if !desc_parts.is_empty() {
+                        effect.push_str(" | Description$ ");
+                        effect.push_str(&desc_parts.join("\r\n"));
+                    }
+                    if let Some(st) = parse_static_ability(&effect) {
+                        self.add_static_ability(st);
+                    }
+                }
             }
         }
     }

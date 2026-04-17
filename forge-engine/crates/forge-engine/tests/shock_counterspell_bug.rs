@@ -147,16 +147,21 @@ impl PlayerAgent for ShockTestAgent {
         None
     }
 
-    fn notify(&mut self, _event: forge_engine_core::agent::notification::GameNotification) {
+    fn notify(&mut self, _message: forge_engine_core::agent::notification::GameNotification) {
+        println!(
+            "[{}] {}",
+            if self.is_alice { "Alice" } else { "Bob" },
+            format!("{:?}", _message)
+        );
     }
 
     fn choose_targets_for(
         &mut self,
-        _sa: &mut forge_engine_core::spellability::SpellAbility,
-        _game: &forge_engine_core::game::GameState,
-        _mana_pools: &[forge_engine_core::mana::ManaPool],
+        sa: &mut forge_engine_core::spellability::SpellAbility,
+        game: &forge_engine_core::game::GameState,
+        mana_pools: &[forge_engine_core::mana::ManaPool],
     ) -> bool {
-        false
+        forge_engine_core::spellability::choose_targets_by_kind(self, sa, game, mana_pools)
     }
 }
 

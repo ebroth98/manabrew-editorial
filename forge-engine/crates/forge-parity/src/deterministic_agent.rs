@@ -7,6 +7,7 @@ use forge_engine_core::agent::{
     TargetChoice,
 };
 use forge_engine_core::combat::DefenderId;
+use forge_engine_core::cost::CostPart;
 use forge_engine_core::game::GameState;
 use forge_engine_core::ids::{CardId, PlayerId};
 use forge_engine_core::mana::ManaPool;
@@ -16,6 +17,7 @@ use forge_engine_core::spellability::AlternativeCost;
 use forge_engine_core::spellability::SpellAbility;
 use forge_foundation::PhaseType;
 
+use crate::auto_pay;
 use crate::choice_space;
 use crate::combat_choice_space;
 use crate::gui_repro;
@@ -104,6 +106,7 @@ pub struct DeterministicAgent {
 
 struct GameSnapshot {
     game: GameState,
+    mana_pools: Vec<ManaPool>,
     card_names: Vec<(CardId, String)>,
     card_is_land: Vec<(CardId, bool)>,
     ability_is_mana: Vec<((CardId, usize), bool)>,
@@ -303,6 +306,7 @@ impl DeterministicAgent {
     fn play_option_sort_text(play: PlayOption) -> &'static str {
         match play.mode {
             PlayCardMode::Normal => "0",
+            PlayCardMode::BackFaceLand => "0",
             PlayCardMode::Alternative(AlternativeCost::Flashback) => "Flashback",
             PlayCardMode::Alternative(AlternativeCost::Spectacle) => "Spectacle",
             PlayCardMode::Alternative(AlternativeCost::Evoke) => "Evoke",
@@ -348,6 +352,7 @@ impl DeterministicAgent {
     fn play_option_fallback(play: PlayOption) -> &'static str {
         match play.mode {
             PlayCardMode::Normal => "Normal",
+            PlayCardMode::BackFaceLand => "BackFaceLand",
             PlayCardMode::Alternative(AlternativeCost::Warp) => "Warp",
             PlayCardMode::StaticAlternative => "StaticAlternative",
             // Other modes already have unique variant strings, so fallback rarely matters.
@@ -388,6 +393,66 @@ impl DeterministicAgent {
                 self.ability_sort_text(card_id, ability_idx),
             ),
         }
+    }
+
+    fn java_action_space_allows_play(&self, play: PlayOption) -> bool {
+        let Some(ref snap) = self.last_game_snapshot else {
+            return true;
+        };
+        if !matches!(play.mode, PlayCardMode::Normal) {
+            return true;
+        }
+
+        let card = snap.game.card(play.card_id);
+        if !card.mana_cost.has_phyrexian() {
+            return true;
+        }
+
+        auto_pay::can_pay_action_space_phyrexian_cost(
+            &snap.game,
+            &snap.mana_pools[self.player_id.index()],
+            self.player_id,
+            play.card_id,
+            &card.mana_cost,
+        )
+    }
+
+    fn java_action_space_allows_ability(&self, card_id: CardId, ability_idx: usize) -> bool {
+        let Some(ref snap) = self.last_game_snapshot else {
+            return true;
+        };
+        let card = snap.game.card(card_id);
+        let Some(ability) = card
+            .activated_abilities
+            .iter()
+            .find(|ab| ab.ability_index == ability_idx)
+        else {
+            return true;
+        };
+        if !ability.cost.has_mana_cost() {
+            return true;
+        }
+
+        let reserved_sacrifices: Vec<CardId> = ability
+            .cost
+            .parts
+            .iter()
+            .filter_map(|part| match part {
+                CostPart::Sacrifice { type_filter, .. } if type_filter == "CARDNAME" => {
+                    Some(card_id)
+                }
+                _ => None,
+            })
+            .collect();
+
+        forge_engine_core::mana::can_pay_mana_cost_with_reserved_sacrifices(
+            &snap.game,
+            &snap.mana_pools[self.player_id.index()],
+            self.player_id,
+            card_id,
+            &ability.cost,
+            &reserved_sacrifices,
+        )
     }
 
     fn legal_attackers_for_blocker(&self, blocker: CardId, attackers: &[CardId]) -> Vec<CardId> {
@@ -463,6 +528,7 @@ impl PlayerAgent for DeterministicAgent {
             .collect();
         self.last_game_snapshot = Some(GameSnapshot {
             game: game.clone(),
+            mana_pools: _mana_pools.to_vec(),
             card_names,
             card_is_land,
             ability_is_mana,
@@ -540,17 +606,22 @@ impl PlayerAgent for DeterministicAgent {
             return PlayerAction::PassPriority;
         }
 
-        // Match Java harness ActionSpace: omit explicit mana abilities from the
-        // deterministic main action space.
+        // Match Java harness ActionSpace: omit explicit mana abilities and
+        // filter non-mana activated abilities through Java-style mana
+        // feasibility. This still permits legal instant-speed activations
+        // while a spell is on the stack, such as Nivmagus Elemental.
         let filtered_activatable: Vec<(CardId, usize)> = activatable
             .iter()
             .copied()
             .filter(|(card_id, ability_idx)| !self.is_mana_ability(*card_id, *ability_idx))
+            .filter(|(card_id, ability_idx)| {
+                self.java_action_space_allows_ability(*card_id, *ability_idx)
+            })
             .collect();
         let choices: Vec<ActionChoice> = playable
             .iter()
             .copied()
-            .into_iter()
+            .filter(|play| self.java_action_space_allows_play(*play))
             .map(ActionChoice::Card)
             .chain(
                 filtered_activatable

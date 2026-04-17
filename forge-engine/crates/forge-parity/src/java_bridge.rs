@@ -73,6 +73,9 @@ impl JavaBridge {
         // Cap JVM heap to prevent unbounded memory consumption on VMs.
         cmd.arg(format!("-Xmx{}", self.config.java_heap));
         cmd.arg(format!("-Xms{}", self.config.java_heap));
+        cmd.arg("-Dfile.encoding=UTF-8");
+        cmd.arg("-Dsun.stdout.encoding=UTF-8");
+        cmd.arg("-Dsun.stderr.encoding=UTF-8");
 
         // Pass preset decks directory as JVM system property (must come before -jar)
         if let Some(ref dd) = self.config.decks_dir {
@@ -311,6 +314,9 @@ impl JavaServer {
         // Cap JVM heap to prevent unbounded memory consumption on VMs.
         cmd.arg(format!("-Xmx{}", config.java_heap));
         cmd.arg(format!("-Xms{}", config.java_heap));
+        cmd.arg("-Dfile.encoding=UTF-8");
+        cmd.arg("-Dsun.stdout.encoding=UTF-8");
+        cmd.arg("-Dsun.stderr.encoding=UTF-8");
 
         // Pass preset decks directory as JVM system property (must come before -jar)
         if let Some(ref dd) = config.decks_dir {

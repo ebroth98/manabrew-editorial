@@ -76,6 +76,7 @@ interface GameBoardProps {
   onSelectHandAction?: (action: HandActionOption) => void;
   onFlipCard: () => void;
   onBattlefieldClick: (card: Card) => void;
+  actionableCardIds?: string[];
   onAttackerClick: (card: Card) => void;
   onTargetPlayer: (playerId: string) => void;
   onOpenZone: (title: string, cards: Card[], onClickCard?: (cardId: string) => void) => void;
@@ -125,6 +126,7 @@ export function GameBoard({
   onSelectHandAction,
   onFlipCard,
   onBattlefieldClick,
+  actionableCardIds,
   onAttackerClick,
   onTargetPlayer,
   onOpenZone,
@@ -140,6 +142,12 @@ export function GameBoard({
   const vScale = useHandScale();
   const handBottomReserved = Math.round(HAND_CARD_BASES[handSize].containerH * vScale);
   const hostileTargeting = currentPrompt?.hostile ?? false;
+  const showChooseActionManaSources =
+    promptType === PT.ChooseAction &&
+    activePlayerId === me.id &&
+    priorityPlayerId === me.id &&
+    (step === "main1" || step === "main2") &&
+    (currentPrompt?.gameView.stack?.length ?? 0) === 0;
 
   return (
     <div className="game-board-surface flex flex-col gap-1 min-h-0 flex-1 overflow-visible">
@@ -320,8 +328,9 @@ export function GameBoard({
                         ? blockAssignments.map((a) => a.blockerId)
                         : undefined
                   }
+                  actionableCardIds={actionableCardIds}
                   tappableLandIds={
-                    promptType === PT.ChooseAction ||
+                    showChooseActionManaSources ||
                     promptType === PT.PayCombatCost ||
                     promptType === PT.PayManaCost
                       ? (currentPrompt?.tappableLandIds ?? [])
@@ -330,14 +339,14 @@ export function GameBoard({
                   onTapLand={onTapLand}
                   onTapLands={onTapLands}
                   manaAbilityOptions={
-                    promptType === PT.ChooseAction ||
+                    showChooseActionManaSources ||
                     promptType === PT.PayManaCost
                       ? (currentPrompt?.manaAbilityOptions ?? [])
                       : undefined
                   }
                   onTapLandAbility={onTapLandAbility}
                   untappableLandIds={
-                    promptType === PT.ChooseAction ||
+                    showChooseActionManaSources ||
                     promptType === PT.PayCombatCost ||
                     promptType === PT.PayManaCost
                       ? (currentPrompt?.untappableLandIds ?? [])

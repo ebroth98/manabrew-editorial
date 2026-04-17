@@ -138,6 +138,7 @@ pub const KEYWORDS: &str = "Keywords";
 pub const ADD_KEYWORD: &str = "AddKeyword";
 pub const ADD_KEYWORDS: &str = "AddKeywords";
 pub const ADD_ABILITY: &str = "AddAbility";
+pub const ADD_TRIGGER: &str = "AddTrigger";
 pub const ADD_KWS: &str = "AddKWs";
 pub const PUMP_KEYWORDS: &str = "PumpKeywords";
 pub const GAINS: &str = "Gains";

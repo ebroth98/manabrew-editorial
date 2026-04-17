@@ -39,10 +39,10 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         original.keywords.as_string_list(),
         original.abilities.clone(),
     );
-    copy.set_triggers(original.triggers.clone());
+    copy.set_triggers(original.copiable_triggers());
     copy.set_svars_map(original.svars.clone());
     copy.set_static_abilities(original.static_abilities.clone());
-    copy.set_replacement_effects(original.replacement_effects.clone());
+    copy.set_replacement_effects(original.copiable_replacement_effects());
     copy.set_perpetual(&original, false);
     // Copies are tokens for zone-change purposes (cease to exist off battlefield).
     copy.set_is_token(true);
@@ -118,6 +118,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         ZoneType::None,
         ZoneType::Battlefield,
     );
+    ctx.trigger_handler.flush_waiting_triggers(ctx.game);
 
     // `RememberTokens$ True` — track each created token on the source card so
     // a downstream SubAbility (e.g. Ashling's `DelTrig` with

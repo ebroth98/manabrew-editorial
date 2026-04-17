@@ -86,9 +86,9 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         let players = resolve_defined_players(&repeat_players, controller, ctx.game);
 
         for pid in players {
-            // For player iteration, we don't have a card-remember mechanism per se,
-            // but the sub-ability often uses Defined$ to reference the iterated player.
-            // Build the sub-ability fresh each time.
+            ctx.game.card_mut(source_id).clear_remembered();
+            ctx.game.card_mut(source_id).add_remembered_player(pid);
+
             let sub_sa = build_spell_ability(ctx.game, source_id, &sub_text, pid);
             resolve_sub_chain(ctx, sub_sa);
 
@@ -96,6 +96,8 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                 break;
             }
         }
+
+        ctx.game.card_mut(source_id).clear_remembered();
     }
 
     if use_damage_map {

@@ -717,8 +717,13 @@ impl Trigger {
     }
 
     /// Mirrors Java Trigger.phasesCheck() for common phase/turn params.
-    pub fn phases_check(&self, game: &GameState, host_card: CardId) -> bool {
-        let phase = game.turn.phase;
+    pub fn phases_check(
+        &self,
+        game: &GameState,
+        host_card: CardId,
+        event_phase: Option<PhaseType>,
+    ) -> bool {
+        let phase = event_phase.unwrap_or(game.turn.phase);
         let host_controller = game.card(host_card).controller;
 
         if let Some(phase_text) = self.params.get(keys::PHASE) {
@@ -1367,12 +1372,12 @@ pub(crate) fn check_damage_target(
         if is_card_filter {
             false
         } else if let Some(target_player) = run_params.damage_target_player {
-            matches_valid_player(filter, target_player, host_controller)
+            matches_valid_player_with_host(filter, target_player, host_card, host_controller, game)
         } else {
             false
         }
     } else if let Some(target_player) = run_params.damage_target_player {
-        matches_valid_player(filter, target_player, host_controller)
+        matches_valid_player_with_host(filter, target_player, host_card, host_controller, game)
     } else {
         false
     }
@@ -3521,6 +3526,48 @@ pub(crate) fn matches_valid_player(
     valid_filter::matches_valid_player(filter, player, host_controller)
 }
 
+fn matches_valid_player_with_host(
+    filter: &str,
+    player: PlayerId,
+    host_card: CardId,
+    host_controller: PlayerId,
+    game: &GameState,
+) -> bool {
+    fn matches_single_player_filter(
+        filter: &str,
+        player: PlayerId,
+        host_card: CardId,
+        host_controller: PlayerId,
+        game: &GameState,
+    ) -> bool {
+        let trimmed = filter.trim();
+        if trimmed.is_empty() {
+            return true;
+        }
+        if matches!(
+            trimmed.to_ascii_lowercase().as_str(),
+            "player" | "player.ingame" | "any" | "each"
+        ) {
+            return true;
+        }
+
+        let sa = SpellAbility::new_simple(Some(host_card), host_controller, "");
+        let property = trimmed.strip_prefix("Player.").unwrap_or(trimmed);
+        crate::player::player_property::player_has_property(
+            player,
+            property,
+            game,
+            host_card,
+            host_controller,
+            &sa,
+        )
+    }
+
+    filter
+        .split(',')
+        .any(|part| matches_single_player_filter(part, player, host_card, host_controller, game))
+}
+
 /// Check if a count matches a ValidAttackersAmount filter like "GE1", "EQ3", etc.
 pub(crate) fn matches_amount(filter: &str, count: usize) -> bool {
     let (op, num_str) = if filter.len() >= 3 {
@@ -3564,7 +3611,7 @@ pub(crate) fn parse_phase(s: &str) -> Option<PhaseType> {
         "Main1" | "BeginningOfPreCombatMain" => Some(PhaseType::Main1),
         "Main2" | "BeginningOfPostCombatMain" => Some(PhaseType::Main2),
         "CombatBegin" | "BeginCombat" => Some(PhaseType::CombatBegin),
-        "CombatEnd" | "EndCombat" | "EndOfCombat" => Some(PhaseType::CombatEnd),
+        "CombatEnd" | "EndCombat" | "EndOfCombat" | "End of Combat" => Some(PhaseType::CombatEnd),
         // Forge card scripts spell the end step several ways; canonicalize
         // them all to PhaseType::EndOfTurn so delayed Phase triggers fire at
         // the right step (e.g. Ashling's "At the beginning of your next end
@@ -4327,10 +4374,10 @@ pub fn parse_trigger(raw: &str, next_id: &mut u32) -> Option<Trigger> {
     }
 
     let execute = params.get_cloned(keys::EXECUTE).unwrap_or_default();
-    let optional = params.has(keys::OPTIONAL_DECIDER);
     let description = params
         .get_cloned(keys::TRIGGER_DESCRIPTION)
         .unwrap_or_default();
+    let optional = params.has(keys::OPTIONAL_DECIDER);
     let static_trigger = params.has("Static");
 
     let id = *next_id;
@@ -4353,9 +4400,11 @@ pub fn parse_trigger(raw: &str, next_id: &mut u32) -> Option<Trigger> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::card::Card;
     use crate::event::RunParams;
     use crate::ids::{CardId, PlayerId};
     use crate::spellability::SpellAbility;
+    use forge_foundation::{CardTypeLine, ColorSet, ManaCost, ZoneType};
 
     #[test]
     fn parse_pipe_params_basic() {
@@ -5018,5 +5067,53 @@ mod tests {
             t.active_zones,
             vec![ZoneType::Battlefield, ZoneType::Graveyard]
         );
+    }
+
+    #[test]
+    fn damage_target_player_enchanted_by_matches_attached_player() {
+        let mut game = GameState::new(&["A", "B"], 20);
+        let p0 = PlayerId(0);
+        let p1 = PlayerId(1);
+        let aura_id = game.create_card(Card::new(
+            CardId(1),
+            "Grievous Wound".to_string(),
+            p0,
+            CardTypeLine::parse("Enchantment Aura"),
+            ManaCost::parse(""),
+            ColorSet::COLORLESS,
+            None,
+            None,
+            vec![],
+            vec![],
+        ));
+        game.card_mut(aura_id).zone = ZoneType::Battlefield;
+        game.attach_to_player(aura_id, p1);
+
+        assert!(check_damage_target(
+            &Some("Player.EnchantedBy".to_string()),
+            &RunParams {
+                damage_target_player: Some(p1),
+                damage_amount: Some(1),
+                is_combat_damage: Some(true),
+                ..Default::default()
+            },
+            aura_id,
+            p0,
+            &game,
+            true,
+        ));
+        assert!(!check_damage_target(
+            &Some("Player.EnchantedBy".to_string()),
+            &RunParams {
+                damage_target_player: Some(p0),
+                damage_amount: Some(1),
+                is_combat_damage: Some(true),
+                ..Default::default()
+            },
+            aura_id,
+            p0,
+            &game,
+            true,
+        ));
     }
 }

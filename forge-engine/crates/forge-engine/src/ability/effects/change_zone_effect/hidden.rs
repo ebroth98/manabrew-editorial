@@ -73,7 +73,7 @@ pub(super) fn resolve_hidden_origin(
                 })
                 .unwrap_or(1);
             let lib = ctx.game.cards_in_zone(origin_zone, controller);
-            lib.iter().take(n).copied().collect()
+            lib.iter().rev().take(n).copied().collect()
         } else if defined.starts_with("BottomOfLibrary") {
             let n = defined
                 .strip_prefix("BottomOfLibrary")
@@ -86,8 +86,17 @@ pub(super) fn resolve_hidden_origin(
                 })
                 .unwrap_or(1);
             let lib = ctx.game.cards_in_zone(origin_zone, controller);
-            let len = lib.len();
-            lib.iter().skip(len.saturating_sub(n)).copied().collect()
+            lib.iter().take(n).copied().collect()
+        } else if defined.eq_ignore_ascii_case("DelayTriggerRememberedLKI")
+            || defined.eq_ignore_ascii_case("RememberedLKI")
+        {
+            sa.trigger_objects
+                .get("RememberedLKI")
+                .into_iter()
+                .flat_map(|value| value.split(','))
+                .filter_map(|part| part.trim().parse::<u32>().ok())
+                .map(crate::ids::CardId)
+                .collect()
         } else {
             // Unknown defined type — fall through to search
             Vec::new()

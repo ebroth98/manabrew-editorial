@@ -18,9 +18,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     // trigger), sacrifice only those cards instead of every matching
     // permanent on the battlefield.
     let defined_cards: Option<Vec<CardId>> = match sa.params.get(keys::DEFINED) {
-        Some("DelayTriggerRememberedLKI")
-        | Some("DelayTriggerRemembered")
-        | Some("Remembered") => {
+        Some("DelayTriggerRememberedLKI") | Some("DelayTriggerRemembered") | Some("Remembered") => {
             let mut ids = Vec::new();
             for value in &sa.trigger_remembered {
                 if let AbilityValue::Card(cid) = value {
@@ -31,11 +29,6 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         }
         _ => None,
     };
-
-    // UnlessCost$ X | UnlessPayer$ You — offer the payer a chance to pay a
-    // cost to prevent the sacrifice entirely. The deterministic AI declines,
-    // so proceed with the sacrifice unconditionally for now.
-    let _unless_cost = sa.params.get(keys::UNLESS_COST);
 
     let player_ids = ctx.game.player_order.clone();
     let mut to_sacrifice: Vec<CardId> = Vec::new();

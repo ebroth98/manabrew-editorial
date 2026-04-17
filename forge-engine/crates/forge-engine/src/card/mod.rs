@@ -218,6 +218,9 @@ pub struct Card {
     /// Number of base activated abilities (before continuous effects add more via AddAbility$).
     /// Used by `apply_continuous_effects` to truncate granted abilities on reset.
     pub base_ability_count: usize,
+    /// Number of base triggers (before continuous effects add more via AddTrigger$).
+    /// Used by `apply_continuous_effects` to truncate granted triggers on reset.
+    pub base_trigger_count: usize,
     /// Applied card-trait mutation layers keyed by (timestamp, static_id).
     /// Mirrors Java `changedCardTraits` table.
     pub changed_card_traits:
@@ -276,6 +279,7 @@ pub struct Card {
     // Mirrors Java `Card.getAttachedTo()` / `Card.getAttachedCards()`.
     /// The permanent this card is currently attached to (for Auras/Equipment).
     pub attached_to: Option<CardId>,
+    pub attached_to_player: Option<PlayerId>,
     /// Whether this equipment was attached/moved this turn (AI memory to prevent ping-ponging).
     /// Cleared at start of each turn. Mirrors Java `AiCardMemory.MemorySet.ATTACHED_THIS_TURN`.
     pub attached_this_turn: bool,
@@ -595,6 +599,8 @@ impl Card {
             pump_trigger_count: 0,
             abilities,
             activated_abilities,
+            base_ability_count: 0,
+            base_trigger_count: 0,
             changed_card_traits: std::collections::BTreeMap::new(),
             changed_card_traits_by_text: std::collections::BTreeMap::new(),
             static_abilities,
@@ -613,6 +619,7 @@ impl Card {
             cast_with_flashback: false,
             replacement_effects,
             attached_to: None,
+            attached_to_player: None,
             attached_this_turn: false,
             attachments: Vec::new(),
             remembered_cards: Vec::new(),
@@ -700,7 +707,6 @@ impl Card {
             activations_this_game: std::collections::BTreeMap::new(),
             is_renowned: false,
             zone_timestamp: 0,
-            base_ability_count: 0,
             trait_base_activated_abilities: None,
             trait_base_triggers: None,
             trait_base_replacement_effects: None,
@@ -717,6 +723,7 @@ impl Card {
         crate::card::card_state::calculate_perpetual_adjusted_mana_cost(&mut card);
         // Record base ability count so continuous effects can truncate granted abilities.
         card.base_ability_count = card.activated_abilities.len();
+        card.base_trigger_count = card.triggers.len();
         card
     }
 
@@ -878,9 +885,25 @@ impl Card {
         if count == 0 {
             return;
         }
-        let new_len = self.triggers.len().saturating_sub(count);
+        let new_len = self
+            .triggers
+            .len()
+            .saturating_sub(count)
+            .max(self.base_trigger_count);
         self.triggers.truncate(new_len);
         self.pump_trigger_count = 0;
+    }
+
+    pub fn copiable_triggers(&self) -> Vec<Trigger> {
+        self.trait_base_triggers
+            .clone()
+            .unwrap_or_else(|| self.triggers.clone())
+    }
+
+    pub fn copiable_replacement_effects(&self) -> Vec<ReplacementEffect> {
+        self.trait_base_replacement_effects
+            .clone()
+            .unwrap_or_else(|| self.replacement_effects.clone())
     }
 
     pub fn add_static_ability(&mut self, st_ab: StaticAbility) -> bool {
@@ -2050,6 +2073,7 @@ impl Card {
 
     pub fn set_triggers(&mut self, triggers: Vec<Trigger>) {
         self.triggers = triggers;
+        self.base_trigger_count = self.triggers.len();
     }
 
     pub fn set_replacement_effects(&mut self, effects: Vec<ReplacementEffect>) {
@@ -3076,6 +3100,8 @@ impl Card {
                     parse_or_warn(parse_activated_ability(raw, i), "ActivatedAbility", raw)
                 })
                 .collect();
+            self.base_ability_count = self.activated_abilities.len();
+            self.base_trigger_count = self.triggers.len();
 
             self.is_transformed = !self.is_transformed;
 

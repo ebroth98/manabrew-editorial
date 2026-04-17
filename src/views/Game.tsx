@@ -142,9 +142,6 @@ export default function Game() {
     toggleActionPanel: s.toggleActionPanel,
   })));
 
-  /** Sentinel ability index for the synthetic "tap for mana" action on basic lands. */
-  const SYNTHETIC_MANA_INDEX = -1;
-
   /** Map an ActivatableAbilityInfo to a HandActionOption. */
   const toAbilityOption = (a: { cardId: string; abilityIndex: number; description: string; isManaAbility: boolean; cost?: string }): HandActionOption => ({
     kind: "ability" as const,
@@ -231,19 +228,9 @@ export default function Game() {
     const manaAbilities = manaAbilitiesByCardId.get(card.id) ?? [];
     const isLandTappable = tappableLandIdSet.has(card.id) && card.types?.includes("Land");
 
-    if (isLandTappable) {
-      if (manaAbilities.length > 0) {
-        abilities.unshift(...manaAbilities);
-      } else if (!abilities.some((a) => a.isManaAbility)) {
-        abilities.unshift({
-          kind: "ability",
-          cardId: card.id,
-          abilityIndex: SYNTHETIC_MANA_INDEX,
-          label: "Tap for mana",
-          isManaAbility: true,
-          cost: "{T}",
-        });
-      }
+    if (isLandTappable && manaAbilities.length > 0) {
+      // Use explicit mana abilities emitted by the engine instead of inventing a generic land tap action.
+      abilities.unshift(...manaAbilities);
     }
     return [...(castOptionsByCardId.get(card.id) ?? []), ...abilities];
   }, [promptType, castOptionsByCardId, abilitiesByCardId, manaAbilitiesByCardId, tappableLandIdSet]);
@@ -520,8 +507,6 @@ export default function Game() {
     preview.dismiss();
     if (action.kind === "cast") {
       castSpell(action.cardId, action.mode);
-    } else if (action.abilityIndex === SYNTHETIC_MANA_INDEX) {
-      tapLand(action.cardId);
     } else if (action.abilityIndex != null) {
       if (action.isManaAbility) {
         // Mana abilities use tapLand (ActivateMana) in both ChooseAction and PayManaCost.
@@ -931,6 +916,11 @@ export default function Game() {
           getHandActions={getHandActionOptions}
           onSelectHandAction={handlePreviewAction}
           onFlipCard={preview.flipCard}
+          actionableCardIds={
+            promptType === PromptType.ChooseAction
+              ? (currentPrompt?.activatableAbilityIds ?? []).map((ability) => ability.cardId)
+              : undefined
+          }
           onBattlefieldClick={(card) => {
             if (promptType === PromptType.ChooseAction && handleBattlefieldCardAction(card)) {
               return;

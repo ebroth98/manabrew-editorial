@@ -44,6 +44,7 @@ pub fn parse_mode(params: &Params) -> TriggerMode {
 pub fn set_triggering_objects(sa: &mut SpellAbility, params: &RunParams) {
     if let Some(p) = params.player {
         sa.add_triggering_object("Player", &p.0.to_string());
+        sa.add_triggering_object("TriggeredPlayer", &p.0.to_string());
     }
 }
 

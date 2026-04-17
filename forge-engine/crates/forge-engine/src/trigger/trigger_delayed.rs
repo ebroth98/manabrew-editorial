@@ -55,6 +55,14 @@ pub fn resolve_delayed_trigger(ctx: &mut EffectContext, sa: &SpellAbility) {
     } else {
         sa.activating_player
     };
+    let mut remembered_lki_cards = Vec::new();
+    if sa.params.get(keys::REMEMBER_OBJECTS).is_some_and(|value| {
+        value
+            .split(',')
+            .any(|token| token.trim() == "RememberedLKI")
+    }) {
+        remembered_lki_cards = ctx.game.card(source_id).remembered_cards.clone();
+    }
 
     // `RememberObjects$ Remembered` — snapshot the source card's current
     // remembered_cards into the delayed trigger so the executed ability sees
@@ -71,9 +79,12 @@ pub fn resolve_delayed_trigger(ctx: &mut EffectContext, sa: &SpellAbility) {
         execute_svar,
         controller,
         source_card: source_id,
+        created_turn: ctx.game.turn.turn_number,
+        created_phase: ctx.game.turn.phase,
         target_card: None,
         remembered_amount,
         remembered_cards,
+        remembered_lki_cards,
     };
     if sa.params.has("ThisTurn") {
         ctx.trigger_handler

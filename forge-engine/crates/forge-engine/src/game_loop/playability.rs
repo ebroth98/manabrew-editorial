@@ -52,6 +52,25 @@ impl GameLoop {
                         mode: crate::agent::PlayCardMode::Normal,
                     });
                 }
+            } else if card
+                .other_part
+                .as_ref()
+                .is_some_and(|other| other.type_line.is_land())
+            {
+                if crate::staticability::static_ability_cant_be_cast::cant_play_land_ability(
+                    &game.cards,
+                    card,
+                    player,
+                ) {
+                    continue;
+                }
+                let land_sa = SpellAbility::new_land(Some(card_id), player);
+                if !must_be_instant && crate::spellability::land_ability::can_play(&land_sa, game) {
+                    playable.push(crate::agent::PlayOption {
+                        card_id,
+                        mode: crate::agent::PlayCardMode::BackFaceLand,
+                    });
+                }
             } else {
                 let cast_sa =
                     crate::spellability::build_spell_ability_for_card_cast(game, card_id, player);
@@ -92,6 +111,11 @@ impl GameLoop {
                     is_spell: true,
                     type_line: Some(card.type_line.clone()),
                     card_name: Some(card.card_name.clone()),
+                    chosen_types_by_source: game
+                        .cards
+                        .iter()
+                        .filter_map(|c| c.chosen_type.clone().map(|chosen| (c.id, chosen)))
+                        .collect(),
                 };
                 let available_mana = mana::calculate_available_mana_with_context(
                     self.pool(player),
@@ -139,10 +163,12 @@ impl GameLoop {
                         cost_adj.apply(&card.mana_cost)
                     };
                     let base = base.add(&raise_mana);
+                    let payable_base =
+                        crate::mana::apply_player_life_payment_keywords(game, player, &base);
                     // Phyrexian mana: check AIPhyrexianPayment to determine
                     // if life payment is allowed for this card. Uses greedy
                     // simulation matching Java's ComputerUtilMana behavior.
-                    let has_phyrexian = base.shards().iter().any(|s| s.is_phyrexian());
+                    let has_phyrexian = payable_base.shards().iter().any(|s| s.is_phyrexian());
                     if has_phyrexian {
                         let ai_phy_param = card.abilities.iter().find_map(|ab| {
                             let params = Params::from_raw(ab);
@@ -158,10 +184,12 @@ impl GameLoop {
                             _ => true,
                         };
                         if phyrexian_life_allowed {
-                            available_mana
-                                .can_pay_with_phyrexian_life(&base, game.player(player).life)
+                            available_mana.can_pay_with_phyrexian_life(
+                                &payable_base,
+                                game.player(player).life,
+                            )
                         } else {
-                            let colored = base.phyrexian_to_colored();
+                            let colored = payable_base.phyrexian_to_colored();
                             let reduced =
                                 apply_cost_reductions(game, player, card_id, card, &colored);
                             if any_color {
@@ -171,7 +199,8 @@ impl GameLoop {
                             }
                         }
                     } else {
-                        let reduced = apply_cost_reductions(game, player, card_id, card, &base);
+                        let reduced =
+                            apply_cost_reductions(game, player, card_id, card, &payable_base);
                         if any_color {
                             available_mana.can_pay_any_color(&reduced)
                         } else {
@@ -792,5 +821,110 @@ impl GameLoop {
         }
 
         playable
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::card::Card;
+    use forge_foundation::{CardTypeLine, ColorSet, ManaCost, ZoneType};
+
+    fn card(
+        name: &str,
+        owner: PlayerId,
+        type_line: &str,
+        mana_cost: &str,
+        color: ColorSet,
+        power: Option<i32>,
+        toughness: Option<i32>,
+        abilities: Vec<&str>,
+    ) -> Card {
+        Card::new(
+            CardId(0),
+            name.to_string(),
+            owner,
+            CardTypeLine::parse(type_line),
+            ManaCost::parse(mana_cost),
+            color,
+            power,
+            toughness,
+            vec![],
+            abilities.into_iter().map(str::to_string).collect(),
+        )
+    }
+
+    #[test]
+    fn phyrexian_spell_with_generic_is_playable_from_off_color_sources_and_life() {
+        let player = PlayerId(1);
+        let opponent = PlayerId(0);
+        let mut game = GameState::new(&["Alice", "Bob"], 20);
+
+        for name in ["Forest", "Mountain"] {
+            let mut land = card(
+                name,
+                player,
+                &format!("Basic Land - {name}"),
+                "",
+                ColorSet::COLORLESS,
+                None,
+                None,
+                vec![],
+            );
+            land.zone = ZoneType::Battlefield;
+            let land_id = game.create_card(land);
+            game.zone_mut(ZoneType::Battlefield, player).add(land_id);
+        }
+
+        let mut target = card(
+            "Raging Goblin",
+            opponent,
+            "Creature - Goblin",
+            "R",
+            ColorSet::RED,
+            Some(1),
+            Some(1),
+            vec![],
+        );
+        target.zone = ZoneType::Battlefield;
+        let target_id = game.create_card(target);
+        game.zone_mut(ZoneType::Battlefield, opponent)
+            .add(target_id);
+
+        let mut dismember = card(
+            "Dismember",
+            player,
+            "Instant",
+            "1 BP BP",
+            ColorSet::BLACK,
+            None,
+            None,
+            vec!["SP$ Pump | IsCurse$ True | ValidTgts$ Creature | NumAtt$ -5 | NumDef$ -5"],
+        );
+        dismember.zone = ZoneType::Hand;
+        let dismember_id = game.create_card(dismember);
+        game.zone_mut(ZoneType::Hand, player).add(dismember_id);
+
+        let game_loop = GameLoop::new(2);
+        let sa =
+            crate::spellability::build_spell_ability_for_card_cast(&game, dismember_id, player);
+        let valid_targets = crate::card::card_util::get_valid_cards_to_target(&game, &sa);
+        assert_eq!(
+            valid_targets.len(),
+            1,
+            "Dismember should have the opposing creature as a valid target"
+        );
+        let available_mana =
+            crate::mana::calculate_available_mana(game_loop.pool(player), &game, player);
+        assert!(
+            available_mana.can_pay_with_phyrexian_life(&ManaCost::parse("1 BP BP"), 20),
+            "available off-color sources should cover generic while life covers phyrexian shards"
+        );
+        let playable = game_loop.get_playable_cards(&game, player, true);
+
+        assert!(
+            playable.iter().any(|option| option.card_id == dismember_id),
+            "Dismember should be instant-speed playable using one off-color generic source and 4 life"
+        );
     }
 }

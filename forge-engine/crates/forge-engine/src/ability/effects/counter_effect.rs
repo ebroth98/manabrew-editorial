@@ -73,7 +73,7 @@ pub fn check_for_condition_would_destroy(
 /// prompted to pay; if they accept, the spell is NOT countered.
 /// Mirrors Java's `CounterEffect.resolve()`.
 pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
-    let entry_id = match sa.target_chosen.target_stack_entry {
+    let entry_id = match counter_target_stack_entry_id(ctx, sa) {
         Some(id) => id,
         None => return, // no target chosen
     };
@@ -135,4 +135,59 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             );
         }
     }
+}
+
+fn counter_target_stack_entry_id(ctx: &EffectContext, sa: &SpellAbility) -> Option<u32> {
+    if let Some(id) = sa.target_chosen.target_stack_entry {
+        return Some(id);
+    }
+
+    let defined = sa.params.get(keys::DEFINED)?;
+    let defined_spells = crate::ability::ability_utils::resolve_defined_spell_abilities_with_sa(
+        defined, sa, ctx.game,
+    );
+    let mut candidate_sources: Vec<crate::ids::CardId> = defined_spells
+        .iter()
+        .filter_map(|defined_sa| defined_sa.source)
+        .collect();
+    if defined == "TriggeredSpellAbility" || defined == "TriggeredSourceSA" {
+        if let Some(source) = sa
+            .trigger_objects
+            .get("Source")
+            .and_then(|value| value.parse::<u32>().ok())
+            .map(crate::ids::CardId)
+        {
+            if !candidate_sources.contains(&source) {
+                candidate_sources.push(source);
+            }
+        }
+    }
+
+    for defined_sa in defined_spells {
+        if let Some(source) = defined_sa.source {
+            let stack_entries: Vec<_> = ctx.game.stack.iter().collect();
+            for entry in stack_entries.iter().rev() {
+                if entry.spell_ability.source == Some(source)
+                    && entry.spell_ability.ability_text == defined_sa.ability_text
+                {
+                    return Some(entry.id);
+                }
+            }
+            for entry in stack_entries.iter().rev() {
+                if entry.spell_ability.source == Some(source) {
+                    return Some(entry.id);
+                }
+            }
+        }
+    }
+    for source in candidate_sources {
+        let stack_entries: Vec<_> = ctx.game.stack.iter().collect();
+        for entry in stack_entries.iter().rev() {
+            if entry.spell_ability.source == Some(source) {
+                return Some(entry.id);
+            }
+        }
+    }
+
+    None
 }

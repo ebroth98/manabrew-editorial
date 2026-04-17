@@ -425,8 +425,30 @@ impl GameState {
         if amount <= 0 {
             return 0;
         }
-        self.player_mut(player).deal_damage(amount);
-        amount
+        if crate::staticability::static_ability_cant_gain_lose_pay_life::cant_lose_life(
+            self, player,
+        ) {
+            return 0;
+        }
+        let mut event = ReplacementEvent::LifeReduced {
+            player,
+            amount,
+            is_damage: true,
+        };
+        let result = apply_replacements(self, &mut event);
+        if result == ReplacementResult::Skipped || result == ReplacementResult::Replaced {
+            return 0;
+        }
+        let final_amount = if let ReplacementEvent::LifeReduced { amount, .. } = event {
+            amount
+        } else {
+            amount
+        };
+        if final_amount <= 0 {
+            return 0;
+        }
+        self.player_mut(player).deal_damage(final_amount);
+        final_amount
     }
 
     pub fn player_can_lose_life(&self, player: PlayerId) -> bool {

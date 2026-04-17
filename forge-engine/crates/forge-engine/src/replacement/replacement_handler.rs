@@ -162,7 +162,10 @@ pub enum ReplacementEvent {
     Attached { card: CardId, target: CardId },
 
     /// A phase is beginning.
-    BeginPhase { player: PlayerId },
+    BeginPhase {
+        player: PlayerId,
+        phase: forge_foundation::PhaseType,
+    },
 
     /// A turn is beginning.
     BeginTurn { player: PlayerId },
@@ -405,7 +408,7 @@ fn affected_player_for_event(event: &ReplacementEvent, game: &GameState) -> Play
         ReplacementEvent::PayLife { player, .. } => *player,
         ReplacementEvent::Scry { player, .. } => *player,
         ReplacementEvent::Attached { card, .. } => game.cards[card.index()].controller,
-        ReplacementEvent::BeginPhase { player } => *player,
+        ReplacementEvent::BeginPhase { player, .. } => *player,
         ReplacementEvent::BeginTurn { player } => *player,
         ReplacementEvent::Explore { card } => game.cards[card.index()].controller,
         ReplacementEvent::DeclareBlocker { player } => *player,
@@ -848,7 +851,11 @@ pub fn would_phase_be_skipped(game: &GameState, player: PlayerId, phase: PhaseTy
                 continue;
             }
             // Check ActivePhases$ matches the target phase
-            if let Some(phases_str) = re.params.get(keys::ACTIVE_PHASES) {
+            if let Some(phases_str) = re
+                .params
+                .get(keys::ACTIVE_PHASES)
+                .or_else(|| re.params.get(keys::PHASE))
+            {
                 let matches_phase = phases_str
                     .split(',')
                     .filter_map(|s| PhaseType::from_script_name(s.trim()))

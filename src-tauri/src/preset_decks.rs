@@ -421,7 +421,7 @@ pub fn prepare_ai_registered_player(name: impl Into<String>) -> PreparedRegister
 fn build_deck_from_entries(game: &mut GameState, owner: PlayerId, deck: &[DeckCardEntry]) {
     let db = get_card_db();
     for entry in deck {
-        match db.get_by_card_name(&entry.name) {
+        match lookup_card_rules(db, &entry.name) {
             Some(rules) => {
                 for _ in 0..entry.count {
                     let mut card = card_rules_to_instance(rules, owner);
@@ -445,7 +445,7 @@ pub fn build_custom_deck(game: &mut GameState, owner: PlayerId, identities: &[Ca
     let db = get_card_db();
     for identity in identities {
         let name = &identity.name;
-        match db.get_by_card_name(name) {
+        match lookup_card_rules(db, name) {
             Some(rules) => {
                 let mut card = card_rules_to_instance(rules, owner);
                 if !identity.set_code.is_empty() {
@@ -479,7 +479,7 @@ fn prepare_cards_from_entries(
     let db = get_card_db();
     let mut cards = Vec::new();
     for entry in deck {
-        match db.get_by_card_name(&entry.name) {
+        match lookup_card_rules(db, &entry.name) {
             Some(rules) => {
                 for _ in 0..entry.count {
                     let mut card = card_rules_to_instance(rules, PlayerId(0));
@@ -504,7 +504,7 @@ fn prepare_cards_from_identities(
     let db = get_card_db();
     let mut cards = Vec::new();
     for identity in identities {
-        match db.get_by_card_name(&identity.name) {
+        match lookup_card_rules(db, &identity.name) {
             Some(rules) => {
                 let mut card = card_rules_to_instance(rules, PlayerId(0));
                 if !identity.set_code.is_empty() {
@@ -536,6 +536,17 @@ fn register_card_name(registered: &mut RegisteredPlayer, card_name: &str, destin
         ZoneType::Sideboard => {}
         _ => {}
     }
+}
+
+fn lookup_card_rules<'a>(
+    db: &'a forge_carddb::CardDatabase,
+    raw_name: &str,
+) -> Option<&'a forge_carddb::CardRules> {
+    db.get_by_card_name(raw_name).or_else(|| {
+        raw_name
+            .split_once(" // ")
+            .and_then(|(front_face, _)| db.get_by_card_name(front_face.trim()))
+    })
 }
 
 fn fallback_deck_zone_for_card(card: &forge_engine_core::card::Card) -> ZoneType {

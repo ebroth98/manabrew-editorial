@@ -21,6 +21,7 @@ pub struct PlayOption {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum PlayCardMode {
     Normal,
+    BackFaceLand,
     Alternative(AlternativeCost),
     /// Alternative cost granted by `Mode$ AlternativeCost` static abilities.
     StaticAlternative,

@@ -1,0 +1,41 @@
+{
+  "label": "Kaalia Regression Commander",
+  "desc": "Commander parity deck focused on Kaalia attack insertion, may prompts, ETB triggers, and cheated-in attackers.",
+  "color": "text-rose-300",
+  "ai_eligible": false,
+  "order": 112,
+  "cards": [
+    { "name": "Plains", "count": 8 },
+    { "name": "Mountain", "count": 8 },
+    { "name": "Swamp", "count": 8 },
+    { "name": "Command Tower", "count": 1 },
+    { "name": "Nomad Outpost", "count": 1 },
+    { "name": "Exotic Orchard", "count": 1 },
+    { "name": "Clifftop Retreat", "count": 1 },
+    { "name": "Isolated Chapel", "count": 1 },
+    { "name": "Dragonskull Summit", "count": 1 },
+
+    { "name": "Sol Ring", "count": 2 },
+    { "name": "Arcane Signet", "count": 2 },
+    { "name": "Boros Signet", "count": 2 },
+    { "name": "Orzhov Signet", "count": 2 },
+    { "name": "Rakdos Signet", "count": 2 },
+    { "name": "Lightning Greaves", "count": 2 },
+    { "name": "Swiftfoot Boots", "count": 1 },
+
+    { "name": "Faithless Looting", "count": 2 },
+    { "name": "Thrilling Discovery", "count": 2 },
+    { "name": "Sign in Blood", "count": 2 },
+    { "name": "Night's Whisper", "count": 2 },
+
+    { "name": "Kaalia of the Vast", "count": 1 },
+    { "name": "Karmic Guide", "count": 4 },
+    { "name": "Archfiend of Despair", "count": 4 },
+    { "name": "Archon of Cruelty", "count": 4 },
+    { "name": "Angel of Despair", "count": 2 },
+    { "name": "Balefire Dragon", "count": 2 },
+
+    { "name": "Animate Dead", "count": 2 },
+    { "name": "Reanimate", "count": 2 }
+  ]
+}

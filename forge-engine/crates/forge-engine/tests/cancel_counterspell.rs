@@ -97,11 +97,11 @@ impl PlayerAgent for PassAgent {
 
     fn choose_targets_for(
         &mut self,
-        _sa: &mut forge_engine_core::spellability::SpellAbility,
-        _game: &forge_engine_core::game::GameState,
-        _mana_pools: &[forge_engine_core::mana::ManaPool],
+        sa: &mut forge_engine_core::spellability::SpellAbility,
+        game: &forge_engine_core::game::GameState,
+        mana_pools: &[forge_engine_core::mana::ManaPool],
     ) -> bool {
-        false
+        forge_engine_core::spellability::choose_targets_by_kind(self, sa, game, mana_pools)
     }
 }
 
@@ -144,6 +144,21 @@ fn make_lightning_bolt(owner: PlayerId) -> CardInstance {
         CardTypeLine::parse("Instant"),
         ManaCost::parse("R"),
         ColorSet::RED,
+        None,
+        None,
+        vec![],
+        vec![],
+    )
+}
+
+fn make_enchantment_spell(owner: PlayerId) -> CardInstance {
+    CardInstance::new(
+        CardId(0),
+        "Test Enchantment".to_string(),
+        owner,
+        CardTypeLine::parse("Enchantment"),
+        ManaCost::parse("1 W"),
+        ColorSet::WHITE,
         None,
         None,
         vec![],
@@ -405,4 +420,124 @@ fn test_cancel_counters_noncreature_spell() {
     );
 
     println!("✓ Cancel can target non-creature spells correctly");
+}
+
+#[test]
+fn test_instant_sorcery_filter_excludes_enchantment_spells() {
+    let mut game = GameState::new(&["Alice", "Bob"], 20);
+    let p1 = PlayerId(1);
+
+    let instant = game.create_card(make_lightning_bolt(p1));
+    game.move_card(instant, ZoneType::Stack, p1);
+    let mut instant_sa = SpellAbility::new_simple(Some(instant), p1, "SP$ DealDamage");
+    instant_sa.is_spell = true;
+    game.stack.push(StackEntry {
+        id: 0,
+        spell_ability: instant_sa,
+        is_creature_spell: false,
+        is_permanent_spell: false,
+        cast_from_zone: None,
+        optional_trigger_decider: None,
+        optional_trigger_description: None,
+        optional_trigger_source_name: None,
+    });
+
+    let enchantment = game.create_card(make_enchantment_spell(p1));
+    game.move_card(enchantment, ZoneType::Stack, p1);
+    let mut enchantment_sa = SpellAbility::new_simple(Some(enchantment), p1, "");
+    enchantment_sa.is_spell = true;
+    game.stack.push(StackEntry {
+        id: 0,
+        spell_ability: enchantment_sa,
+        is_creature_spell: false,
+        is_permanent_spell: true,
+        cast_from_zone: None,
+        optional_trigger_decider: None,
+        optional_trigger_description: None,
+        optional_trigger_source_name: None,
+    });
+
+    let all = target_restrictions::get_all_candidates_spells(&game);
+    assert_eq!(all.len(), 2, "Both stack entries are spells");
+
+    let filtered = target_restrictions::filter_spells_by_type(&game, &all, "Instant,Sorcery");
+    assert_eq!(
+        filtered.len(),
+        1,
+        "Only the instant should match Miscast-style targeting"
+    );
+    let matched = game
+        .stack
+        .iter()
+        .find(|entry| entry.id == filtered[0])
+        .and_then(|entry| entry.spell_ability.source)
+        .expect("filtered spell should have a source card");
+    assert_eq!(game.card(matched).card_name, "Lightning Bolt");
+}
+
+#[test]
+fn test_noncreature_spell_filter_excludes_creature_spells() {
+    let mut game = GameState::new(&["Alice", "Bob"], 20);
+    let p0 = PlayerId(0);
+    let p1 = PlayerId(1);
+
+    let bears = game.create_card(make_grizzly_bears(p1));
+    game.move_card(bears, ZoneType::Stack, p1);
+    let mut creature_sa = SpellAbility::new_simple(Some(bears), p1, "");
+    creature_sa.is_spell = true;
+    game.stack.push(StackEntry {
+        id: 0,
+        spell_ability: creature_sa,
+        is_creature_spell: true,
+        is_permanent_spell: true,
+        cast_from_zone: None,
+        optional_trigger_decider: None,
+        optional_trigger_description: None,
+        optional_trigger_source_name: None,
+    });
+
+    let bolt = game.create_card(make_lightning_bolt(p1));
+    game.move_card(bolt, ZoneType::Stack, p1);
+    let mut instant_sa = SpellAbility::new_simple(Some(bolt), p1, "SP$ DealDamage");
+    instant_sa.is_spell = true;
+    game.stack.push(StackEntry {
+        id: 0,
+        spell_ability: instant_sa,
+        is_creature_spell: false,
+        is_permanent_spell: false,
+        cast_from_zone: None,
+        optional_trigger_decider: None,
+        optional_trigger_description: None,
+        optional_trigger_source_name: None,
+    });
+
+    let restrictions = target_restrictions::TargetRestrictions {
+        valid_tgts: vec!["Card.nonCreature".to_string()],
+        target_kind: target_restrictions::TargetKind::Spell,
+        target_type_filter: Some("Spell".to_string()),
+        min_targets: "1".to_string(),
+        max_targets: "1".to_string(),
+        tgt_zone: vec![ZoneType::Battlefield],
+    };
+
+    assert!(
+        restrictions.has_candidates(&game, p0, None),
+        "An Offer-style targeting should still find the instant spell",
+    );
+
+    let all = target_restrictions::get_all_candidates_spells(&game);
+    let filtered =
+        target_restrictions::filter_spells_for_target_restrictions(&game, &all, &restrictions);
+    assert_eq!(
+        filtered.len(),
+        1,
+        "Only the noncreature spell should remain"
+    );
+    let matched = game
+        .stack
+        .iter()
+        .find(|entry| entry.id == filtered[0])
+        .and_then(|entry| entry.spell_ability.source)
+        .expect("filtered spell should have a source card");
+    assert_eq!(game.card(matched).card_name, "Lightning Bolt");
 }

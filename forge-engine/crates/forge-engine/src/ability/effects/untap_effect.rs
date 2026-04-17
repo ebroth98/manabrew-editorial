@@ -22,6 +22,9 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     let etb = sa.params.has(crate::parsing::keys::ETB);
 
     let mut targets = resolve_untap_targets(ctx, sa);
+    if targets.is_empty() {
+        targets = choose_untap_type_targets(ctx, sa, controller);
+    }
     targets.extend(card_util::get_radiance(ctx.game, sa).iter().copied());
     targets.sort_unstable_by_key(|cid| cid.0);
     targets.dedup();
@@ -49,6 +52,46 @@ fn resolve_untap_targets(ctx: &EffectContext, sa: &SpellAbility) -> Vec<CardId> 
             .unwrap_or_default(),
         _ => Vec::new(),
     }
+}
+
+fn choose_untap_type_targets(
+    ctx: &mut EffectContext,
+    sa: &SpellAbility,
+    controller: crate::ids::PlayerId,
+) -> Vec<CardId> {
+    let Some(untap_type) = sa.params.get("UntapType") else {
+        return Vec::new();
+    };
+
+    let valid_filter = if untap_type.contains('.') {
+        untap_type.to_string()
+    } else {
+        format!("{untap_type}.YouCtrl")
+    };
+    let valid: Vec<CardId> = ctx
+        .game
+        .cards_in_zone(ZoneType::Battlefield, controller)
+        .iter()
+        .copied()
+        .filter(|&card_id| {
+            super::matches_valid_cards(ctx.game.card(card_id), &valid_filter, controller)
+        })
+        .collect();
+    if valid.is_empty() {
+        return Vec::new();
+    }
+
+    let amount = sa
+        .params
+        .as_usize(crate::parsing::keys::AMOUNT)
+        .unwrap_or(valid.len());
+    let max = amount.min(valid.len());
+    let min = if sa.params.is_true("UntapUpTo") {
+        0
+    } else {
+        max
+    };
+    ctx.agents[controller.index()].choose_cards_for_effect(controller, &valid, min, max)
 }
 
 fn untap_card(

@@ -99,6 +99,17 @@ pub(super) fn resolve_multi_search(
     let budget_cmc: Option<i32> = sa.param_as_i32(keys::WITH_TOTAL_CMC);
     let budget_power: Option<i32> = sa.param_as_i32(keys::WITH_TOTAL_POWER);
 
+    if sa.param_is_true("Reorder") {
+        ctx.agents[chooser.index()].snapshot_state(ctx.game, ctx.mana_pools);
+        ctx.agents[chooser.index()].on_library_peek(ctx.game, candidates);
+        let reordered = ctx.agents[chooser.index()].choose_reorder_library(chooser, candidates);
+        if reordered.len() == candidates.len() && candidates.iter().all(|id| reordered.contains(id))
+        {
+            return reordered.into_iter().take(max).collect();
+        }
+        return candidates.iter().copied().take(max).collect();
+    }
+
     if diff_names
         || diff_cmc
         || diff_power

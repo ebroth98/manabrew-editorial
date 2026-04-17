@@ -1,0 +1,46 @@
+{
+  "label": "Ramses Regression Commander",
+  "desc": "Commander parity deck focused on Ramses kill conversion, hidden-zone flow, life payment, and life-halving combat stacks.",
+  "color": "text-sky-300",
+  "ai_eligible": false,
+  "order": 113,
+  "cards": [
+    { "name": "Island", "count": 10 },
+    { "name": "Swamp", "count": 10 },
+    { "name": "Command Tower", "count": 1 },
+    { "name": "Underground River", "count": 1 },
+    { "name": "Shipwreck Marsh", "count": 1 },
+    { "name": "Darkslick Shores", "count": 1 },
+    { "name": "Cavern of Souls", "count": 1 },
+    { "name": "Urborg, Tomb of Yawgmoth", "count": 1 },
+    { "name": "Multiversal Passage", "count": 1 },
+
+    { "name": "Sol Ring", "count": 2 },
+    { "name": "Arcane Signet", "count": 2 },
+    { "name": "Dimir Signet", "count": 2 },
+    { "name": "Lightning Greaves", "count": 2 },
+    { "name": "Brotherhood Regalia", "count": 2 },
+    { "name": "Trailblazer's Boots", "count": 2 },
+    { "name": "Quietus Spike", "count": 4 },
+
+    { "name": "Mystic Remora", "count": 2 },
+    { "name": "Warlock Class", "count": 2 },
+    { "name": "Black Market Connections", "count": 1 },
+    { "name": "Imperial Seal", "count": 1 },
+    { "name": "Tainted Pact", "count": 2 },
+    { "name": "Necropotence", "count": 2 },
+    { "name": "Ad Nauseam", "count": 2 },
+    { "name": "Miscast", "count": 2 },
+    { "name": "Mana Leak", "count": 2 },
+    { "name": "An Offer You Can't Refuse", "count": 2 },
+    { "name": "Force of Will", "count": 2 },
+    { "name": "Force of Negation", "count": 2 },
+
+    { "name": "Ramses, Assassin Lord", "count": 1 },
+    { "name": "Virtus the Veiled", "count": 4 },
+    { "name": "Bloodletter of Aclazotz", "count": 4 },
+    { "name": "Wound Reflection", "count": 2 },
+    { "name": "Archfiend of Despair", "count": 2 },
+    { "name": "K'rrik, Son of Yawgmoth", "count": 2 }
+  ]
+}

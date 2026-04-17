@@ -23,6 +23,22 @@ impl GameLoop {
         card_id: CardId,
         reserved_sacrifices: &[CardId],
     ) -> bool {
+        Self::mana_source_available_for_payment_with_reserved_and_reuse(
+            game,
+            player,
+            card_id,
+            reserved_sacrifices,
+            false,
+        )
+    }
+
+    pub(crate) fn mana_source_available_for_payment_with_reserved_and_reuse(
+        game: &GameState,
+        player: PlayerId,
+        card_id: CardId,
+        reserved_sacrifices: &[CardId],
+        allow_reserved_source_reuse: bool,
+    ) -> bool {
         let card = game.card(card_id);
         let summoning_sick = card.is_creature() && card.summoning_sick && !card.has_haste();
 
@@ -35,16 +51,17 @@ impl GameLoop {
             ab.is_mana_ability
                 && (!card.tapped || !needs_tap)
                 && (!summoning_sick || !needs_tap)
-                && Self::mana_ability_available_for_payment_with_reserved(
+                && Self::mana_ability_available_for_payment_with_reserved_and_reuse(
                     game,
                     player,
                     card_id,
                     ab,
                     reserved_sacrifices,
+                    allow_reserved_source_reuse,
                 )
         });
 
-        (card.is_land() && !card.tapped) || has_usable_mana_ability
+        has_usable_mana_ability
     }
 
     pub(crate) fn mana_ability_available_for_payment_with_reserved(
@@ -53,6 +70,24 @@ impl GameLoop {
         card_id: CardId,
         ab: &crate::ability::activated::ActivatedAbility,
         reserved_sacrifices: &[CardId],
+    ) -> bool {
+        Self::mana_ability_available_for_payment_with_reserved_and_reuse(
+            game,
+            player,
+            card_id,
+            ab,
+            reserved_sacrifices,
+            false,
+        )
+    }
+
+    pub(crate) fn mana_ability_available_for_payment_with_reserved_and_reuse(
+        game: &GameState,
+        player: PlayerId,
+        card_id: CardId,
+        ab: &crate::ability::activated::ActivatedAbility,
+        reserved_sacrifices: &[CardId],
+        allow_reserved_source_reuse: bool,
     ) -> bool {
         if !crate::cost::can_pay_ignoring_mana(&ab.cost, game, card_id, player) {
             return false;
@@ -65,7 +100,9 @@ impl GameLoop {
             } = part
             {
                 if type_filter == "CARDNAME" {
-                    if *amount > 1 || reserved_sacrifices.contains(&card_id) {
+                    if *amount > 1
+                        || (reserved_sacrifices.contains(&card_id) && !allow_reserved_source_reuse)
+                    {
                         return false;
                     }
                 } else {
@@ -75,7 +112,9 @@ impl GameLoop {
                         type_filter,
                         None,
                     );
-                    targets.retain(|cid| !reserved_sacrifices.contains(cid));
+                    if !allow_reserved_source_reuse {
+                        targets.retain(|cid| !reserved_sacrifices.contains(cid));
+                    }
                     if (targets.len() as i32) < *amount {
                         return false;
                     }
@@ -144,9 +183,8 @@ impl GameLoop {
                 if !c.tapped {
                     return false;
                 }
-                // Must be a land or a permanent with a mana ability.
-                let has_mana_ability =
-                    c.is_land() || c.activated_abilities.iter().any(|ab| ab.is_mana_ability);
+                // Only permanents with a real mana ability can be untapped to undo mana.
+                let has_mana_ability = c.activated_abilities.iter().any(|ab| ab.is_mana_ability);
                 if !has_mana_ability {
                     return false;
                 }
@@ -223,6 +261,64 @@ mod tests {
 
         assert!(GameLoop::mana_source_available_for_payment(
             &game, player, spawn
+        ));
+    }
+
+    #[test]
+    fn reserved_cardname_mana_source_can_be_reused_for_activated_cost_payment() {
+        let player = PlayerId(0);
+        let mut game = GameState::new(&["P1", "P2"], 20);
+        let spawn = game.create_card(make_card(
+            1,
+            player,
+            "Eldrazi Spawn Token",
+            "Creature Eldrazi Spawn",
+            vec!["AB$ Mana | Cost$ Sac<1/CARDNAME> | Produced$ C | Amount$ 1"],
+        ));
+
+        game.zone_mut(ZoneType::Battlefield, player).add(spawn);
+        game.card_mut(spawn).zone = ZoneType::Battlefield;
+
+        let mana_ability = game.card(spawn).activated_abilities[0].clone();
+        assert!(
+            !GameLoop::mana_ability_available_for_payment_with_reserved_and_reuse(
+                &game,
+                player,
+                spawn,
+                &mana_ability,
+                &[spawn],
+                false,
+            )
+        );
+        assert!(
+            GameLoop::mana_ability_available_for_payment_with_reserved_and_reuse(
+                &game,
+                player,
+                spawn,
+                &mana_ability,
+                &[spawn],
+                true,
+            )
+        );
+    }
+
+    #[test]
+    fn untapped_non_mana_land_is_not_available_for_payment() {
+        let player = PlayerId(0);
+        let mut game = GameState::new(&["P1", "P2"], 20);
+        let vista = game.create_card(make_card(
+            1,
+            player,
+            "Prismatic Vista",
+            "Land",
+            vec!["AB$ ChangeZone | Cost$ T PayLife<1> Sac<1/CARDNAME> | Origin$ Library | Destination$ Battlefield | ChangeType$ Land.Basic"],
+        ));
+
+        game.zone_mut(ZoneType::Battlefield, player).add(vista);
+        game.card_mut(vista).zone = ZoneType::Battlefield;
+
+        assert!(!GameLoop::mana_source_available_for_payment(
+            &game, player, vista
         ));
     }
 }

@@ -1070,9 +1070,23 @@ impl GameState {
                         && !c.type_line.is_creature() // Bestowed auras that became creatures stay
                 })
                 .filter(|c| {
-                    match c.attached_to {
-                        None => true, // Not attached to anything — orphaned
-                        Some(host_id) => {
+                    match (c.attached_to, c.attached_to_player) {
+                        (None, None) => true, // Not attached to anything — orphaned
+                        (None, Some(player_id)) => {
+                            if player_id.index() >= self.players.len() {
+                                return true;
+                            }
+                            let player = &self.players[player_id.index()];
+                            let enchant_type = c
+                                .keywords
+                                .iter_strings()
+                                .find_map(|kw| {
+                                    crate::keyword::extract_keyword_cost_str(&kw, "Enchant")
+                                })
+                                .unwrap_or_default();
+                            player.has_lost || !enchant_type.eq_ignore_ascii_case("Player")
+                        }
+                        (Some(host_id), _) => {
                             if host_id.index() >= self.cards.len() {
                                 return true; // Invalid host ID
                             }
@@ -1170,11 +1184,20 @@ impl GameState {
     /// Reset per-turn state for all cards and players of a given player.
     pub fn new_turn_for_player(&mut self, player: PlayerId) {
         self.player_new_turn(player);
-        // Reset drawn_this_turn for ALL players (mirrors Java Game.newTurn).
-        // The Drawn trigger Number$ check requires an accurate per-turn count.
+        // Reset turn-scoped player stats for ALL non-active players too.
+        // These counters are "this turn" in the global turn sense, not "that
+        // player's own turn". Without this, effects like Resplendent Angel can
+        // incorrectly carry life gained from the previous player's turn.
         for pid in &self.player_order.clone() {
             if *pid != player {
                 self.player_reset_drawn_this_turn(*pid);
+                let p = self.player_mut(*pid);
+                p.life_started_this_turn_with = p.life;
+                p.life_gained_this_turn = 0;
+                p.life_gained_by_team_this_turn = 0;
+                p.life_gained_times_this_turn = 0;
+                p.life_lost_last_turn = p.life_lost_this_turn;
+                p.life_lost_this_turn = 0;
             }
         }
 
@@ -1256,8 +1279,16 @@ impl GameState {
         // Detach from previous host if any
         self.detach(aura_id);
         self.cards[aura_id.index()].attached_to = Some(target_id);
+        self.cards[aura_id.index()].attached_to_player = None;
         self.cards[aura_id.index()].attached_this_turn = true;
         self.cards[target_id.index()].attachments.push(aura_id);
+    }
+
+    pub fn attach_to_player(&mut self, aura_id: CardId, player_id: PlayerId) {
+        self.detach(aura_id);
+        self.cards[aura_id.index()].attached_to = None;
+        self.cards[aura_id.index()].attached_to_player = Some(player_id);
+        self.cards[aura_id.index()].attached_this_turn = true;
     }
 
     /// Detach `aura_id` from whatever it is currently attached to.
@@ -1270,6 +1301,7 @@ impl GameState {
             // Bestow: when unattached, revert to a creature
             self.cards[aura_id.index()].is_bestowed = false;
         }
+        self.cards[aura_id.index()].attached_to_player = None;
     }
 
     /// Move a card from its current zone to the bottom of a player's library.

@@ -49,12 +49,16 @@ pub struct GameLoop {
     pub game_rng: Box<dyn GameRng>,
     /// Enables Java-parity snapshot rollback support (`stash_game_state` / `restore_game_state`).
     pub experimental_restore_snapshot: bool,
+    /// Java can leave a spell card in the stack zone when post-targeting legality
+    /// rejects the cast. Keep this parity-only so UI gameplay keeps failed casts in hand.
+    pub java_parity_failed_spell_setup_to_stack: bool,
     /// Last stashed snapshot used by rollback flows.
     previous_game_state: Option<GameSnapshot>,
     /// Rolling checkpoint history for UI rewind/debug.
     checkpoints: VecDeque<(u64, String, GameSnapshot)>,
     next_checkpoint_id: u64,
     reserved_sacrifice_stack: Vec<Vec<CardId>>,
+    reserved_source_reuse_stack: Vec<bool>,
 }
 
 #[derive(Debug, Clone)]
@@ -139,10 +143,12 @@ impl GameLoop {
             edition_dates: HashMap::new(),
             game_rng: Box::new(ThreadRngAdapter),
             experimental_restore_snapshot: false,
+            java_parity_failed_spell_setup_to_stack: false,
             previous_game_state: None,
             checkpoints: VecDeque::new(),
             next_checkpoint_id: 1,
             reserved_sacrifice_stack: Vec::new(),
+            reserved_source_reuse_stack: Vec::new(),
         }
     }
 
@@ -1053,6 +1059,7 @@ mod tests {
         )
         .expect("valid ETB trigger");
         card.add_trigger(etb_draw);
+        card.base_trigger_count = card.triggers.len();
         card.svars.insert(
             "TrigDraw".to_string(),
             "DB$ Draw | NumCards$ 2 | Defined$ You".to_string(),

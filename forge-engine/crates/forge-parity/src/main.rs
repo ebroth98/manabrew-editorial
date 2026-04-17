@@ -1029,21 +1029,21 @@ fn compare_snapshots(
         status,
         snapshots_compared: compared_until,
         divergence_count,
-        rust_snapshot: first_divergence.as_ref().map(|_| {
+        rust_snapshot: first_divergence.as_ref().and_then(|_| {
             let idx = diverge_rust_idx.unwrap_or_else(|| {
                 compared_until
                     .saturating_sub(1)
                     .min(rust_snapshots.len().saturating_sub(1))
             });
-            rust_snapshots[idx].clone()
+            rust_snapshots.get(idx).cloned()
         }),
-        java_snapshot: first_divergence.as_ref().map(|_| {
+        java_snapshot: first_divergence.as_ref().and_then(|_| {
             let idx = diverge_java_idx.unwrap_or_else(|| {
                 compared_until
                     .saturating_sub(1)
                     .min(java_snapshots.len().saturating_sub(1))
             });
-            java_snapshots[idx].clone()
+            java_snapshots.get(idx).cloned()
         }),
         first_divergence,
         error_message: None,

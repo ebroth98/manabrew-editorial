@@ -21,6 +21,91 @@ pub fn run(game: &mut crate::game::GameState, card_id: crate::ids::CardId) {
     game.card_mut(card_id).clear_granted_keywords();
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::agent::{PassAgent, PlayerAgent};
+    use crate::card::Card;
+    use crate::game::GameState;
+    use crate::ids::{CardId, PlayerId};
+    use crate::mana::ManaPool;
+    use crate::trigger::TriggerHandler;
+    use forge_foundation::{CardTypeLine, ColorSet, ManaCost, ZoneType};
+    use std::collections::HashMap;
+
+    fn creature(owner: PlayerId, name: &str) -> Card {
+        Card::new(
+            CardId(0),
+            name.to_string(),
+            owner,
+            CardTypeLine::parse("Creature Goblin"),
+            ManaCost::parse("R"),
+            ColorSet::RED,
+            Some(1),
+            Some(1),
+            vec![],
+            vec![],
+        )
+    }
+
+    #[test]
+    fn repeated_eot_control_gain_restores_first_controller() {
+        let p0 = PlayerId(0);
+        let p1 = PlayerId(1);
+        let mut game = GameState::new(&["Alice", "Bob"], 20);
+        let goblin = game.create_card(creature(p0, "Raging Goblin"));
+        game.move_card(goblin, ZoneType::Battlefield, p0);
+
+        let mut agents: Vec<Box<dyn PlayerAgent>> = vec![Box::new(PassAgent), Box::new(PassAgent)];
+        let mut trigger_handler = TriggerHandler::new();
+        let templates = HashMap::new();
+        let token_art_variants = HashMap::new();
+        let token_fallback = HashMap::new();
+        let edition_dates = HashMap::new();
+        let mut mana_pools = vec![ManaPool::new(), ManaPool::new()];
+        let mut rng = crate::game_rng::ThreadRngAdapter;
+
+        {
+            let mut ctx = EffectContext {
+                game: &mut game,
+                combat: None,
+                agents: &mut agents,
+                trigger_handler: &mut trigger_handler,
+                token_templates: &templates,
+                token_art_variants: &token_art_variants,
+                token_fallback: &token_fallback,
+                edition_dates: &edition_dates,
+                mana_pools: &mut mana_pools,
+                parent_target_card: None,
+                rng: &mut rng,
+            };
+
+            let mut steal = SpellAbility::new_simple(
+                Some(goblin),
+                p1,
+                "SP$ GainControl | ValidTgts$ Creature.OppCtrl | LoseControl$ EOT",
+            );
+            steal.target_chosen.target_card = Some(goblin);
+            resolve(&mut ctx, &steal);
+            assert_eq!(ctx.game.card(goblin).controller, p1);
+
+            let mut steal_back = SpellAbility::new_simple(
+                Some(goblin),
+                p0,
+                "SP$ GainControl | ValidTgts$ Creature.OppCtrl | LoseControl$ EOT",
+            );
+            steal_back.target_chosen.target_card = Some(goblin);
+            resolve(&mut ctx, &steal_back);
+            assert_eq!(ctx.game.card(goblin).controller, p0);
+        }
+
+        assert_eq!(game.card(goblin).original_controller_eot, Some(p0));
+        run(&mut game, goblin);
+        assert_eq!(game.card(goblin).controller, p0);
+        assert_eq!(game.card(goblin).original_controller_eot, None);
+    }
+}
+
 /// SP$ ControlGain — gain control of target permanent until end of turn or permanently.
 ///
 /// Mirrors Java's `ControlGainEffect.resolve()`.
@@ -70,6 +155,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         .get(keys::LOSE_CONTROL)
         .map(|v| v == "EOT")
         .unwrap_or(false)
+        && ctx.game.card(target_card).original_controller_eot.is_none()
     {
         ctx.game
             .card_mut(target_card)

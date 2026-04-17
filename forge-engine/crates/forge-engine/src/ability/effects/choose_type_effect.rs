@@ -29,7 +29,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     } else {
         match type_category.as_str() {
             "Creature" => TypeRegistry::creature_types().to_vec(),
-            "Land" => vec![
+            "Basic Land" | "Land" => vec![
                 "Plains".into(),
                 "Island".into(),
                 "Swamp".into(),

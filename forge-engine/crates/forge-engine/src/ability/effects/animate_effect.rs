@@ -295,9 +295,12 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                     execute_svar,
                     controller,
                     source_card: sa.source.unwrap_or(remembered[0]),
+                    created_turn: ctx.game.turn.turn_number,
+                    created_phase: ctx.game.turn.phase,
                     target_card: None,
                     remembered_amount: 0,
-                    remembered_cards: remembered,
+                    remembered_cards: remembered.clone(),
+                    remembered_lki_cards: remembered,
                 });
         }
     }

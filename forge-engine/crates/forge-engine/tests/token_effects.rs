@@ -58,6 +58,21 @@ fn make_soldier_token(owner: PlayerId) -> CardInstance {
     card
 }
 
+fn make_test_source(owner: PlayerId) -> CardInstance {
+    CardInstance::new(
+        CardId(0),
+        "Test Source".to_string(),
+        owner,
+        CardTypeLine::parse("Artifact"),
+        ManaCost::no_cost(),
+        ColorSet::COLORLESS,
+        None,
+        None,
+        vec![],
+        vec![],
+    )
+}
+
 fn pass_agents() -> Vec<Box<dyn PlayerAgent>> {
     vec![Box::new(PassAgent), Box::new(PassAgent)]
 }
@@ -68,7 +83,9 @@ fn push_activated_entry(
     ability_text: &str,
     target_card: Option<CardId>,
 ) {
-    let mut sa = SpellAbility::new_simple(None, controller, ability_text);
+    let source = game.create_card(make_test_source(controller));
+    game.move_card(source, ZoneType::Command, controller);
+    let mut sa = SpellAbility::new_simple(Some(source), controller, ability_text);
     sa.is_activated = true;
     sa.target_chosen.target_card = target_card;
     game.stack.push(StackEntry {

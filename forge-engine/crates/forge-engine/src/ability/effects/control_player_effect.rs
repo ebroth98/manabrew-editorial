@@ -44,9 +44,12 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                 execute_svar: "ControlPlayerCleanup".to_string(),
                 controller,
                 source_card: sa.source.unwrap_or(crate::ids::CardId(0)),
+                created_turn: ctx.game.turn.turn_number,
+                created_phase: ctx.game.turn.phase,
                 target_card: None,
                 remembered_amount: target_player.0 as i32,
                 remembered_cards: Vec::new(),
+                remembered_lki_cards: Vec::new(),
             });
     }
 }

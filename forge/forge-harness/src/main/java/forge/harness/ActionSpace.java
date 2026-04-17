@@ -250,7 +250,7 @@ public final class ActionSpace {
                 continue;
             }
 
-            int sourceMask = 0;
+            List<Integer> cardSourceMasks = new ArrayList<>();
             for (final SpellAbility manaAbility : card.getManaAbilities()) {
                 if (!manaAbility.isManaAbility()) {
                     continue;
@@ -278,11 +278,11 @@ public final class ActionSpace {
                 if (!canPayWithReservedSacrifices(manaAbility, player, reservedSacrifices)) {
                     continue;
                 }
-                sourceMask |= producedManaMask(manaAbility);
+                cardSourceMasks = mergeAlternativeManaAbility(cardSourceMasks, producedManaMasks(manaAbility));
             }
 
-            if (sourceMask != 0) {
-                sourceMasks.add(sourceMask);
+            if (!cardSourceMasks.isEmpty()) {
+                sourceMasks.addAll(cardSourceMasks);
                 continue;
             }
 
@@ -293,6 +293,27 @@ public final class ActionSpace {
                 }
             }
         }
+    }
+
+    private static List<Integer> mergeAlternativeManaAbility(
+            final List<Integer> current,
+            final List<Integer> candidate
+    ) {
+        if (candidate.isEmpty()) {
+            return current;
+        }
+        if (current.isEmpty() || candidate.size() > current.size()) {
+            return new ArrayList<>(candidate);
+        }
+        if (candidate.size() < current.size()) {
+            return current;
+        }
+
+        final List<Integer> merged = new ArrayList<>(current.size());
+        for (int i = 0; i < current.size(); i++) {
+            merged.add(current.get(i) | candidate.get(i));
+        }
+        return merged;
     }
 
     private static boolean canPayWithReservedSacrifices(
@@ -356,33 +377,50 @@ public final class ActionSpace {
         return true;
     }
 
-    private static int producedManaMask(final SpellAbility manaAbility) {
-        int mask = 0;
+    private static List<Integer> producedManaMasks(final SpellAbility manaAbility) {
+        final List<Integer> masks = new ArrayList<>();
         final AbilityManaPart manaPart = manaAbility.getManaPart();
         if (manaPart == null) {
-            return mask;
+            return masks;
         }
 
         if (manaAbility.getApi() == forge.game.ability.ApiType.ManaReflected) {
+            int mask = 0;
             for (final String colorName : forge.game.card.CardUtil.getReflectableManaColors(manaAbility)) {
                 mask |= ManaAtom.fromName(colorName);
             }
-            return mask;
+            if (mask != 0) {
+                masks.add(mask);
+            }
+            return masks;
         }
 
         final String produced = manaPart.mana(manaAbility);
+        int comboMask = 0;
         for (final String token : produced.split(" ")) {
             final String t = token.trim();
             if (t.isEmpty()) {
                 continue;
             }
+            final int tokenMask;
             if ("Any".equalsIgnoreCase(t)) {
-                mask |= ManaAtom.WHITE | ManaAtom.BLUE | ManaAtom.BLACK | ManaAtom.RED | ManaAtom.GREEN;
+                tokenMask = ManaAtom.WHITE | ManaAtom.BLUE | ManaAtom.BLACK | ManaAtom.RED | ManaAtom.GREEN;
+            } else {
+                tokenMask = ManaAtom.fromName(t);
+            }
+            if (tokenMask == 0) {
                 continue;
             }
-            mask |= ManaAtom.fromName(t);
+            if (manaPart.isComboMana()) {
+                comboMask |= tokenMask;
+            } else {
+                masks.add(tokenMask);
+            }
         }
-        return mask;
+        if (comboMask != 0) {
+            masks.add(comboMask);
+        }
+        return masks;
     }
 
     private static int implicitLandManaMask(final Card card) {

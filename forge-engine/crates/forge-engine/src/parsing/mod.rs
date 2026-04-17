@@ -233,6 +233,16 @@ pub fn enchant_type_to_valid_tgts(enchant_type: &str) -> &'static str {
     }
 }
 
+/// Build a minimal targeting params string from an Enchant keyword payload.
+/// Handles special cases like `Creature.inZoneGraveyard` used by Animate Dead.
+pub fn enchant_type_to_target_params(enchant_type: &str) -> String {
+    let lower = enchant_type.to_lowercase();
+    if lower == "creature.inzonegraveyard" {
+        return "Origin$ Graveyard | ValidTgts$ Creature".to_string();
+    }
+    format!("ValidTgts$ {}", enchant_type_to_valid_tgts(enchant_type))
+}
+
 /// Check if a card type matches an "Enchant <type>" keyword value.
 /// Used by aura SBA to verify the enchant restriction is still met.
 ///

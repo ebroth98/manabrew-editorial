@@ -4,6 +4,7 @@ use forge_engine_core::agent::{PassAgent, PlayerAgent};
 use forge_engine_core::card::CardInstance;
 use forge_engine_core::game::GameState;
 use forge_engine_core::game_loop::GameLoop;
+use forge_engine_core::game_rng::GameRng;
 use forge_engine_core::ids::{CardId, PlayerId};
 use forge_engine_core::spellability::{SpellAbility, StackEntry};
 use forge_foundation::{CardTypeLine, ColorSet, ManaCost, ZoneType};
@@ -55,9 +56,42 @@ fn make_mountain(owner: PlayerId) -> CardInstance {
     )
 }
 
+fn make_test_source(owner: PlayerId) -> CardInstance {
+    CardInstance::new(
+        CardId(0),
+        "Test Source".to_string(),
+        owner,
+        CardTypeLine::parse("Artifact"),
+        ManaCost::no_cost(),
+        ColorSet::COLORLESS,
+        None,
+        None,
+        vec![],
+        vec![],
+    )
+}
+
+fn effect_source(game: &mut GameState, controller: PlayerId) -> CardId {
+    let source = game.create_card(make_test_source(controller));
+    game.move_card(source, ZoneType::Command, controller);
+    source
+}
+
 /// Build a minimal 2-agent PassAgent slice for tests that don't care about choices.
 fn pass_agents() -> Vec<Box<dyn PlayerAgent>> {
     vec![Box::new(PassAgent), Box::new(PassAgent)]
+}
+
+struct ReverseShuffleRng;
+
+impl GameRng for ReverseShuffleRng {
+    fn shuffle_cards(&mut self, cards: &mut [CardId]) {
+        cards.reverse();
+    }
+
+    fn next_int(&mut self, _bound: i32) -> i32 {
+        0
+    }
 }
 
 /// Push a fake non-permanent spell entry for testing effect resolution.
@@ -109,7 +143,7 @@ fn test_bounce_to_hand() {
     // Clear the stack and use is_activated_ability = true
     game.stack.pop();
 
-    let mut sa = SpellAbility::new_simple(None, p0, ability);
+    let mut sa = SpellAbility::new_simple(Some(effect_source(&mut game, p0)), p0, ability);
     sa.is_activated = true;
     sa.target_chosen.target_card = Some(bears);
     let entry = StackEntry {
@@ -126,6 +160,7 @@ fn test_bounce_to_hand() {
 
     let mut agents = pass_agents();
     let mut game_loop = GameLoop::new(2);
+    game_loop.game_rng = Box::new(ReverseShuffleRng);
     game_loop.resolve_stack(&mut game, &mut agents);
 
     // Creature should now be in Bob's hand
@@ -159,8 +194,8 @@ fn test_exile_permanent() {
     let bears = game.create_card(make_grizzly_bears(p1));
     game.move_card(bears, ZoneType::Battlefield, p1);
 
-    let ability = "SP$ ChangeZone | Origin$ Battlefield | Destination$ Exile";
-    let mut sa = SpellAbility::new_simple(None, p0, ability);
+    let ability = "SP$ ChangeZone | Origin$ Battlefield | Destination$ Exile | ValidTgts$ Creature";
+    let mut sa = SpellAbility::new_simple(Some(effect_source(&mut game, p0)), p0, ability);
     sa.is_activated = true;
     sa.target_chosen.target_card = Some(bears);
     let entry = StackEntry {
@@ -205,8 +240,8 @@ fn test_reanimate() {
     game.move_card(bears, ZoneType::Graveyard, p1);
 
     // Alice reanimates it onto the battlefield
-    let ability = "SP$ ChangeZone | Origin$ Graveyard | Destination$ Battlefield";
-    let mut sa = SpellAbility::new_simple(None, p0, ability);
+    let ability = "SP$ ChangeZone | Origin$ Graveyard | Destination$ Battlefield | ValidTgts$ Creature.inZoneGraveyard";
+    let mut sa = SpellAbility::new_simple(Some(effect_source(&mut game, p0)), p0, ability);
     sa.is_activated = true;
     sa.target_chosen.target_card = Some(bears);
     let entry = StackEntry {
@@ -225,7 +260,7 @@ fn test_reanimate() {
     let mut game_loop = GameLoop::new(2);
     game_loop.resolve_stack(&mut game, &mut agents);
 
-    // The reanimated creature should be on Alice's battlefield (controller = Alice)
+    // Without explicit gain-control text, the card returns under its owner's control.
     assert_eq!(
         game.card(bears).zone,
         ZoneType::Battlefield,
@@ -236,11 +271,11 @@ fn test_reanimate() {
         0,
         "Bob's graveyard should be empty after reanimation"
     );
-    // It comes under Alice's (p0) control
+    // It returns under Bob's (owner's) control.
     assert_eq!(
-        game.zone(ZoneType::Battlefield, p0).len(),
+        game.zone(ZoneType::Battlefield, p1).len(),
         1,
-        "The reanimated creature should be on Alice's battlefield (she controls it)"
+        "The reanimated creature should be on Bob's battlefield (owner controls it)"
     );
 }
 
@@ -258,8 +293,8 @@ fn test_raise_dead() {
     game.move_card(bears, ZoneType::Graveyard, p0);
 
     // Alice casts Raise Dead targeting her own creature
-    let ability = "SP$ ChangeZone | Origin$ Graveyard | Destination$ Hand";
-    let mut sa = SpellAbility::new_simple(None, p0, ability);
+    let ability = "SP$ ChangeZone | Origin$ Graveyard | Destination$ Hand | ValidTgts$ Creature.inZoneGraveyard";
+    let mut sa = SpellAbility::new_simple(Some(effect_source(&mut game, p0)), p0, ability);
     sa.is_activated = true;
     sa.target_chosen.target_card = Some(bears);
     let entry = StackEntry {
@@ -369,7 +404,7 @@ fn test_change_zone_all_board_wipe() {
     // Exile all creatures (Cataclysm-style)
     let ability =
         "SP$ ChangeZoneAll | Origin$ Battlefield | Destination$ Exile | ValidCards$ Creature";
-    let mut sa = SpellAbility::new_simple(None, p0, ability);
+    let mut sa = SpellAbility::new_simple(Some(effect_source(&mut game, p0)), p0, ability);
     sa.is_activated = true;
     let entry = StackEntry {
         id: 0,
@@ -484,7 +519,7 @@ fn test_sacrifice_all_creatures() {
 
     // Sacrifice all creatures (Overwhelming Splendor style)
     let ability = "SP$ SacrificeAll | ValidCards$ Creature";
-    let mut sa = SpellAbility::new_simple(None, p0, ability);
+    let mut sa = SpellAbility::new_simple(Some(effect_source(&mut game, p0)), p0, ability);
     sa.is_activated = true;
     let entry = StackEntry {
         id: 0,
@@ -550,7 +585,7 @@ fn test_sacrifice_each_player() {
 
     // Innocent Blood: each player sacrifices a creature
     let ability = "SP$ Sacrifice | SacValid$ Creature | Defined$ Player";
-    let mut sa = SpellAbility::new_simple(None, p0, ability);
+    let mut sa = SpellAbility::new_simple(Some(effect_source(&mut game, p0)), p0, ability);
     sa.is_activated = true;
     let entry = StackEntry {
         id: 0,
@@ -611,9 +646,8 @@ fn test_tuck_to_library_bottom() {
     game.move_card(bears, ZoneType::Battlefield, p1);
 
     // Alice casts Condemn on Bob's attacking creature — puts it on bottom of its owner's library
-    let ability =
-        "SP$ ChangeZone | Origin$ Battlefield | Destination$ Library | LibraryPosition$ -1";
-    let mut sa = SpellAbility::new_simple(None, p0, ability);
+    let ability = "SP$ ChangeZone | Origin$ Battlefield | Destination$ Library | LibraryPosition$ -1 | ValidTgts$ Creature";
+    let mut sa = SpellAbility::new_simple(Some(effect_source(&mut game, p0)), p0, ability);
     sa.is_activated = true;
     sa.target_chosen.target_card = Some(bears);
     let entry = StackEntry {

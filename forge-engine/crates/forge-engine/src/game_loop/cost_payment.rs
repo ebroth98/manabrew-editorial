@@ -15,6 +15,13 @@ impl GameLoop {
             .unwrap_or(&[])
     }
 
+    fn current_allow_reserved_source_reuse(&self) -> bool {
+        self.reserved_source_reuse_stack
+            .last()
+            .copied()
+            .unwrap_or(false)
+    }
+
     fn emit_untap_all_cost_trigger(&mut self, player: PlayerId, card_id: CardId) {
         self.trigger_handler.run_trigger(
             TriggerType::UntapAll,
@@ -34,8 +41,53 @@ impl GameLoop {
         }
     }
 
+    fn choose_cost_card_from_zone(
+        &mut self,
+        _game: &GameState,
+        agents: &mut [Box<dyn PlayerAgent>],
+        player: PlayerId,
+        valid: &[CardId],
+        zone: ZoneType,
+    ) -> Option<CardId> {
+        match zone {
+            ZoneType::Battlefield => agents[player.index()].choose_sacrifice(player, valid, None),
+            ZoneType::Hand | ZoneType::Graveyard | ZoneType::Exile => {
+                agents[player.index()].choose_target_card_from_zone(player, zone, valid, None)
+            }
+            _ => agents[player.index()]
+                .choose_cards_for_effect(player, valid, 1, 1)
+                .into_iter()
+                .next(),
+        }
+    }
+
+    fn choose_cost_card_mixed(
+        &mut self,
+        game: &GameState,
+        agents: &mut [Box<dyn PlayerAgent>],
+        player: PlayerId,
+        valid: &[CardId],
+    ) -> Option<CardId> {
+        if let Some(first_zone) = valid.first().map(|&cid| game.card(cid).zone) {
+            if valid.iter().all(|&cid| game.card(cid).zone == first_zone) {
+                return self.choose_cost_card_from_zone(game, agents, player, valid, first_zone);
+            }
+        }
+        agents[player.index()]
+            .choose_cards_for_effect(player, valid, 1, 1)
+            .into_iter()
+            .next()
+    }
+
     /// Pay life and fire the LifeLost trigger.
-    pub(crate) fn pay_life_cost(&mut self, game: &mut GameState, player: PlayerId, amount: i32) {
+    pub(crate) fn pay_life_cost(
+        &mut self,
+        game: &mut GameState,
+        player: PlayerId,
+        source: CardId,
+        amount: i32,
+    ) {
+        let amount = crate::cost::resolve_dynamic_amount(game, source, player, amount);
         if crate::staticability::static_ability_cant_gain_lose_pay_life::cant_pay_life(
             game, player, true, None,
         ) {
@@ -287,6 +339,7 @@ impl GameLoop {
         let mut pre_picked_discards: Vec<CardId> = Vec::new();
         let mut pre_picked_sacrifices: Vec<CardId> = Vec::new();
         let mut reserved_sacrifices: Vec<CardId> = self.current_reserved_sacrifices().to_vec();
+        let allow_reserved_source_reuse = self.current_allow_reserved_source_reuse();
         for part in cost.parts.clone() {
             match &part {
                 CostPart::Discard {
@@ -343,7 +396,9 @@ impl GameLoop {
                 } if type_filter != "CARDNAME" => {
                     let mut valid =
                         cost::get_sacrifice_targets_for_cost(game, player, type_filter, sa);
-                    valid.retain(|cid| !reserved_sacrifices.contains(cid));
+                    if !allow_reserved_source_reuse {
+                        valid.retain(|cid| !reserved_sacrifices.contains(cid));
+                    }
                     let required = (*amount).max(0) as usize;
                     if valid.len() < required {
                         payment_ok = false;
@@ -382,6 +437,8 @@ impl GameLoop {
 
         self.reserved_sacrifice_stack
             .push(reserved_sacrifices.clone());
+        self.reserved_source_reuse_stack
+            .push(allow_reserved_source_reuse);
 
         // Phase 2: execute payments.
         let mut pre_sac_idx = 0usize;
@@ -414,11 +471,13 @@ impl GameLoop {
                         crate::cost::cost_part_mana::get_mana_cost_for(game, card_id, sa, &part);
                     let card_name = game.card(card_id).card_name.clone();
                     let cost_str = mana_cost.to_string();
+                    let payable_mana_cost =
+                        crate::mana::apply_player_life_payment_keywords(game, player, &mana_cost);
                     let session = ManaPaymentSession {
                         player,
                         card_id,
                         card_name: &card_name,
-                        mana_cost: &mana_cost,
+                        mana_cost: &payable_mana_cost,
                         cost_str: &cost_str,
                         cost_display_str: &cost_str,
                         cost_checkpoint_str: &cost_str,
@@ -433,12 +492,13 @@ impl GameLoop {
                         agents,
                         session,
                         |game, player, land_id, ab, reserved_sacrifices| {
-                            Self::mana_ability_available_for_payment_with_reserved(
+                            Self::mana_ability_available_for_payment_with_reserved_and_reuse(
                                 game,
                                 player,
                                 land_id,
                                 ab,
                                 reserved_sacrifices,
+                                allow_reserved_source_reuse,
                             )
                         },
                         |slf, game, agents, session| {
@@ -481,7 +541,12 @@ impl GameLoop {
                                     })
                                     .collect();
                                 if life_to_pay > 0 {
-                                    slf.pay_life_cost(game, session.player, life_to_pay);
+                                    slf.pay_life_cost(
+                                        game,
+                                        session.player,
+                                        session.card_id,
+                                        life_to_pay,
+                                    );
                                 }
                                 Some(trace)
                             } else {
@@ -492,13 +557,13 @@ impl GameLoop {
                             let mut test_pool = slf.mana_pools[player.index()].clone();
                             if let Some(test_life_to_pay) = test_pool
                                 .try_pay_with_phyrexian_life_unrestricted(
-                                    &mana_cost,
+                                    &payable_mana_cost,
                                     game.player(player).life,
                                 )
                             {
                                 let life_to_pay = slf.mana_pools[player.index()]
                                     .try_pay_with_phyrexian_life_unrestricted(
-                                        &mana_cost,
+                                        &payable_mana_cost,
                                         game.player(player).life,
                                     )
                                     .expect("tested phyrexian payment should still be legal");
@@ -506,7 +571,7 @@ impl GameLoop {
                                     return false;
                                 }
                                 if life_to_pay > 0 {
-                                    slf.pay_life_cost(game, player, life_to_pay);
+                                    slf.pay_life_cost(game, player, card_id, life_to_pay);
                                 }
                                 true
                             } else {
@@ -524,7 +589,7 @@ impl GameLoop {
                     }
                 }
                 CostPart::PayLife(amount) => {
-                    self.pay_life_cost(game, player, *amount);
+                    self.pay_life_cost(game, player, card_id, *amount);
                 }
                 CostPart::Sacrifice {
                     type_filter,
@@ -1109,6 +1174,7 @@ impl GameLoop {
             }
         }
         self.reserved_sacrifice_stack.pop();
+        self.reserved_source_reuse_stack.pop();
         if !payment_ok {
             self.restore_snapshot(game, &payment_snapshot);
             return false;
@@ -1130,11 +1196,13 @@ impl GameLoop {
         _mandatory: bool,
         sa: Option<&SpellAbility>,
         prechosen_sacrifices: Option<&[CardId]>,
+        prechosen_discards: Option<&[CardId]>,
     ) -> bool {
         let payment_snapshot = self.make_snapshot(game, true);
         game.card_mut(card_id).paid_cost_exiled_cards.clear();
         let mut payment_ok = true;
         let mut pre_sac_idx = 0usize;
+        let mut pre_discard_idx = 0usize;
         for part in spell_cost.parts.clone() {
             // Java deterministic parity does not route confirm-payment prompts
             // through RNG while paying spell costs; confirmPayment() returns true
@@ -1145,7 +1213,7 @@ impl GameLoop {
                 // Tap/Untap are not applicable to spell additional costs.
                 CostPart::Mana { .. } | CostPart::Tap | CostPart::Untap => {}
                 CostPart::PayLife(amount) => {
-                    self.pay_life_cost(game, player, *amount);
+                    self.pay_life_cost(game, player, card_id, *amount);
                 }
                 CostPart::Sacrifice {
                     type_filter,
@@ -1172,14 +1240,58 @@ impl GameLoop {
                     amount,
                 } => {
                     if type_filter != "CARDNAME" {
-                        let discarded = self.pay_discard_cost(
-                            game,
-                            agents,
-                            player,
-                            card_id,
-                            type_filter,
-                            *amount,
-                        );
+                        let discarded = if let Some(prechosen) = prechosen_discards {
+                            let mut eligible: Vec<CardId> =
+                                if type_filter == "Card" || type_filter.is_empty() {
+                                    game.cards_in_zone(ZoneType::Hand, player).to_vec()
+                                } else {
+                                    game.cards_in_zone(ZoneType::Hand, player)
+                                        .iter()
+                                        .copied()
+                                        .filter(|&cid| {
+                                            crate::ability::effects::matches_change_type(
+                                                game.card(cid),
+                                                type_filter,
+                                                &[],
+                                            )
+                                        })
+                                        .collect()
+                                };
+                            eligible.retain(|&cid| {
+                                cid != card_id || game.card(card_id).owner != player
+                            });
+                            let needed = (*amount).max(0) as usize;
+                            if pre_discard_idx + needed > prechosen.len() {
+                                payment_ok = false;
+                                break;
+                            }
+                            let chosen =
+                                prechosen[pre_discard_idx..pre_discard_idx + needed].to_vec();
+                            pre_discard_idx += needed;
+                            if !chosen.iter().all(|cid| eligible.contains(cid)) {
+                                payment_ok = false;
+                                break;
+                            }
+                            for &cid in &chosen {
+                                game.discard_card(
+                                    cid,
+                                    player,
+                                    None,
+                                    Some(agents),
+                                    &mut self.trigger_handler,
+                                );
+                            }
+                            chosen
+                        } else {
+                            self.pay_discard_cost(
+                                game,
+                                agents,
+                                player,
+                                card_id,
+                                type_filter,
+                                *amount,
+                            )
+                        };
                         if discarded.len() < (*amount).max(0) as usize {
                             payment_ok = false;
                             break;
@@ -1774,6 +1886,61 @@ impl GameLoop {
         Some(picked)
     }
 
+    pub(crate) fn prechoose_additional_cost_discards(
+        &mut self,
+        game: &GameState,
+        agents: &mut [Box<dyn PlayerAgent>],
+        player: PlayerId,
+        source: CardId,
+        spell_cost: &crate::cost::Cost,
+    ) -> Option<Vec<CardId>> {
+        let mut picked: Vec<CardId> = Vec::new();
+        let mut available_hand: Vec<CardId> = game.cards_in_zone(ZoneType::Hand, player).to_vec();
+        for part in spell_cost.parts.clone() {
+            if let CostPart::Discard {
+                type_filter,
+                amount,
+            } = part
+            {
+                if type_filter == "CARDNAME" {
+                    continue;
+                }
+                let mut eligible: Vec<CardId> = if type_filter == "Card" || type_filter.is_empty() {
+                    available_hand.clone()
+                } else {
+                    available_hand
+                        .iter()
+                        .copied()
+                        .filter(|&cid| {
+                            crate::ability::effects::matches_change_type(
+                                game.card(cid),
+                                &type_filter,
+                                &[],
+                            )
+                        })
+                        .collect()
+                };
+                eligible.retain(|&cid| cid != source || game.card(source).owner != player);
+                if eligible.len() < amount.max(0) as usize {
+                    return None;
+                }
+                let chosen =
+                    agents[player.index()].choose_discard(player, &eligible, amount as usize);
+                if chosen.len() < amount.max(0) as usize {
+                    return None;
+                }
+                for cid in chosen {
+                    if !eligible.contains(&cid) {
+                        return None;
+                    }
+                    picked.push(cid);
+                    available_hand.retain(|&hand_cid| hand_cid != cid);
+                }
+            }
+        }
+        Some(picked)
+    }
+
     /// Pay a Waterbend cost: pay `amount` generic mana, but the player can tap
     /// artifacts and/or creatures to help (each tapped pays {1}).
     /// Mirrors Java's CostWaterbend + adjustCostByWaterbend.
@@ -1865,7 +2032,9 @@ impl GameLoop {
             if valid.is_empty() {
                 break;
             }
-            if let Some(chosen) = agents[player.index()].choose_sacrifice(player, &valid, None) {
+            if let Some(chosen) =
+                self.choose_cost_card_from_zone(game, agents, player, &valid, ZoneType::Graveyard)
+            {
                 let owner = game.card(chosen).owner;
                 self.move_card_with_runtime(game, chosen, ZoneType::Exile, owner, agents);
                 self.record_paid_cost_exile(game, source, chosen);
@@ -1917,7 +2086,9 @@ impl GameLoop {
             if valid.is_empty() {
                 break;
             }
-            if let Some(chosen) = agents[player.index()].choose_sacrifice(player, &valid, None) {
+            if let Some(chosen) =
+                self.choose_cost_card_from_zone(game, agents, player, &valid, ZoneType::Graveyard)
+            {
                 chosen_owner = Some(game.card(chosen).owner);
                 let owner = game.card(chosen).owner;
                 self.move_card_with_runtime(game, chosen, ZoneType::Exile, owner, agents);
@@ -1957,10 +2128,8 @@ impl GameLoop {
             if valid.is_empty() {
                 break;
             }
-            // Mirror Java's DeterministicCostPlumbing.visit(CostExile) which
-            // uses chooseCardsForEffect (not choose_sacrifice) for the picks.
-            let picks = agents[player.index()].choose_cards_for_effect(player, &valid, 1, 1);
-            if let Some(&chosen) = picks.first() {
+            let chosen = self.choose_cost_card_from_zone(game, agents, player, &valid, from);
+            if let Some(chosen) = chosen {
                 let owner = game.card(chosen).owner;
                 self.move_card_with_runtime(game, chosen, ZoneType::Exile, owner, agents);
                 self.record_paid_cost_exile(game, source, chosen);
@@ -2152,7 +2321,7 @@ impl GameLoop {
             // Let the chooser pick between food + graveyard cards. Food means sacrifice path.
             let mut combined = foods.clone();
             combined.extend(gy.iter().copied());
-            if let Some(chosen) = agents[player.index()].choose_sacrifice(player, &combined, None) {
+            if let Some(chosen) = self.choose_cost_card_mixed(game, agents, player, &combined) {
                 if foods.contains(&chosen) {
                     let owner = game.card(chosen).owner;
                     let lki_p1p1 = *game
@@ -2200,8 +2369,14 @@ impl GameLoop {
                         if remaining.is_empty() {
                             return;
                         }
-                        let next = agents[player.index()]
-                            .choose_sacrifice(player, &remaining, None)
+                        let next = self
+                            .choose_cost_card_from_zone(
+                                game,
+                                agents,
+                                player,
+                                &remaining,
+                                ZoneType::Graveyard,
+                            )
                             .unwrap_or(remaining[0]);
                         chosen_gy.push(next);
                     }
@@ -2228,8 +2403,14 @@ impl GameLoop {
                 if remaining.is_empty() {
                     return;
                 }
-                let chosen = agents[player.index()]
-                    .choose_sacrifice(player, &remaining, None)
+                let chosen = self
+                    .choose_cost_card_from_zone(
+                        game,
+                        agents,
+                        player,
+                        &remaining,
+                        ZoneType::Graveyard,
+                    )
                     .unwrap_or(remaining[0]);
                 let owner = game.card(chosen).owner;
                 self.move_card_with_runtime(game, chosen, ZoneType::Exile, owner, agents);
@@ -2316,8 +2497,7 @@ impl GameLoop {
         } else if type_filter == "CARDNAME" || type_filter == "NICKNAME" {
             revealed.push(source);
         } else if type_filter == "SameColor" {
-            if let Some(first) = agents[player.index()].choose_sacrifice(player, &candidates, None)
-            {
+            if let Some(first) = self.choose_cost_card_mixed(game, agents, player, &candidates) {
                 let color = game.card(first).color;
                 revealed.push(first);
                 while (revealed.len() as i32) < amount {
@@ -2330,8 +2510,8 @@ impl GameLoop {
                     if valid.is_empty() {
                         break;
                     }
-                    let next = agents[player.index()]
-                        .choose_sacrifice(player, &valid, None)
+                    let next = self
+                        .choose_cost_card_mixed(game, agents, player, &valid)
                         .unwrap_or(valid[0]);
                     revealed.push(next);
                 }
@@ -2347,8 +2527,8 @@ impl GameLoop {
                     )
             });
             while (revealed.len() as i32) < amount && !candidates.is_empty() {
-                let next = agents[player.index()]
-                    .choose_sacrifice(player, &candidates, None)
+                let next = self
+                    .choose_cost_card_mixed(game, agents, player, &candidates)
                     .unwrap_or(candidates[0]);
                 revealed.push(next);
                 candidates.retain(|&cid| cid != next);
@@ -2429,7 +2609,8 @@ impl GameLoop {
             if valid.is_empty() {
                 return false;
             }
-            let Some(chosen) = agents[player.index()].choose_sacrifice(player, &valid, None) else {
+            let Some(chosen) = self.choose_cost_card_from_zone(game, agents, player, &valid, from)
+            else {
                 return false;
             };
             if same_zone {
@@ -2713,7 +2894,7 @@ impl GameLoop {
             if valid.is_empty() {
                 break;
             }
-            if let Some(chosen) = agents[player.index()].choose_sacrifice(player, &valid, None) {
+            if let Some(chosen) = self.choose_cost_card_mixed(game, agents, player, &valid) {
                 let origin = game.card(chosen).zone;
                 let owner = game.card(chosen).owner;
                 self.move_card_with_runtime(game, chosen, ZoneType::Exile, owner, agents);
@@ -3065,6 +3246,13 @@ impl GameLoop {
                 *pre_sac_idx += 1;
                 if valid.contains(&cid) {
                     Some(cid)
+                } else if game.card(cid).zone != ZoneType::Battlefield {
+                    // Java's activated-cost autopay can reserve a permanent for a
+                    // sacrifice cost, then use that same permanent's CARDNAME
+                    // mana ability to pay the mana part. At payAsDecided time the
+                    // reserved permanent is already gone; treat that prechosen
+                    // sacrifice as consumed instead of failing or choosing another.
+                    continue;
                 } else {
                     return false;
                 }

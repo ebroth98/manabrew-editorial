@@ -19,22 +19,46 @@ pub use auto_pay::{
     pay_mana_cost_auto, pay_mana_cost_auto_with_callback, pay_mana_cost_auto_with_chooser,
     AutoPayResult,
 };
+
+pub fn apply_player_life_payment_keywords(
+    game: &GameState,
+    player: PlayerId,
+    cost: &forge_foundation::ManaCost,
+) -> forge_foundation::ManaCost {
+    let mut result = cost.clone();
+    if crate::player::has_keyword(game, player, "PayLifeInsteadOf:W") {
+        result = result.colored_to_phyrexian(ManaAtom::WHITE as u8);
+    }
+    if crate::player::has_keyword(game, player, "PayLifeInsteadOf:U") {
+        result = result.colored_to_phyrexian(ManaAtom::BLUE as u8);
+    }
+    if crate::player::has_keyword(game, player, "PayLifeInsteadOf:B") {
+        result = result.colored_to_phyrexian(ManaAtom::BLACK as u8);
+    }
+    if crate::player::has_keyword(game, player, "PayLifeInsteadOf:R") {
+        result = result.colored_to_phyrexian(ManaAtom::RED as u8);
+    }
+    if crate::player::has_keyword(game, player, "PayLifeInsteadOf:G") {
+        result = result.colored_to_phyrexian(ManaAtom::GREEN as u8);
+    }
+    result
+}
 pub use computer_util_mana::{
     auto_tap_lands, auto_tap_lands_allow_reserved_source_reuse,
-    auto_tap_lands_allow_reserved_source_reuse_with_callbacks,
-    auto_tap_lands_allow_reserved_source_reuse_with_callbacks_and_reserved_sacrifices,
     auto_tap_lands_allow_reserved_source_reuse_trace,
     auto_tap_lands_allow_reserved_source_reuse_trace_with_callbacks_and_reserved_sacrifices,
+    auto_tap_lands_allow_reserved_source_reuse_with_callbacks,
+    auto_tap_lands_allow_reserved_source_reuse_with_callbacks_and_reserved_sacrifices,
     auto_tap_lands_allow_reserved_source_reuse_with_chooser, auto_tap_lands_generic,
     auto_tap_lands_trace, auto_tap_lands_trace_with_callbacks, auto_tap_lands_with_callbacks,
-    auto_tap_lands_with_chooser,
-    can_pay_mana_cost_with_reserved_sacrifices, collect_mana_payment_sources, next_auto_tap_choice,
+    auto_tap_lands_with_chooser, can_pay_mana_cost_with_reserved_sacrifices,
+    collect_mana_payment_sources, next_auto_tap_choice,
     next_auto_tap_choice_with_reserved_sacrifices, AutoTapChoice, ManaPayCallback,
     ManaPayCallbackFn, ManaPaymentSources, SacrificeChooser,
 };
 
 /// An individual mana object in the pool, tracking source and properties.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Mana {
     pub color: u16,
     pub source_card: Option<CardId>,
@@ -127,6 +151,8 @@ pub struct ManaPaymentContext {
     pub type_line: Option<forge_foundation::CardTypeLine>,
     /// Subtypes of the spell being cast.
     pub card_name: Option<String>,
+    /// Chosen creature/card types keyed by mana source card ID (e.g. Cavern of Souls).
+    pub chosen_types_by_source: std::collections::HashMap<CardId, String>,
 }
 
 /// Check if a mana with the given restriction can be spent in the given context.
@@ -374,64 +400,25 @@ pub(crate) fn compute_reflected_atoms(
     card_id: CardId,
     ab: &crate::ability::activated::ActivatedAbility,
 ) -> Vec<u16> {
-    let reflect_prop = ab.params.get(keys::REFLECT_PROPERTY).unwrap_or("Is");
-    let valid = ab.params.get(keys::VALID).unwrap_or("Card");
-    let include_colorless = ab.params.get(keys::COLOR_OR_TYPE) == Some("Type");
-    let battlefield = game.cards_in_zone(ZoneType::Battlefield, player).to_vec();
-    let mut reflected_atoms: Vec<u16> = Vec::new();
-    for other_id in &battlefield {
-        if *other_id == card_id {
-            continue;
+    let sa = crate::ability::ability_factory::build_spell_ability(
+        game,
+        card_id,
+        &ab.ability_text,
+        player,
+    );
+    let colors = crate::card::card_util::get_reflectable_mana_colors(game, &sa);
+    let mut reflected_atoms = Vec::new();
+    for (name, atom) in [
+        ("white", ManaAtom::WHITE),
+        ("blue", ManaAtom::BLUE),
+        ("black", ManaAtom::BLACK),
+        ("red", ManaAtom::RED),
+        ("green", ManaAtom::GREEN),
+        ("colorless", ManaAtom::COLORLESS),
+    ] {
+        if colors.contains(name) || colors.contains(&capitalize_color(name)) {
+            reflected_atoms.push(atom);
         }
-        let other = game.card(*other_id);
-        let matches = if valid.contains("Land") {
-            other.is_land() && other.controller == player
-        } else {
-            other.controller == player
-        };
-        if !matches {
-            continue;
-        }
-        if reflect_prop == "Produce" {
-            for other_ab in &other.activated_abilities {
-                if other_ab.is_mana_ability {
-                    if let Some(prod) = other_ab.params.get(keys::PRODUCED) {
-                        for atom in produced_to_atoms(prod, &other.chosen_colors) {
-                            if !reflected_atoms.contains(&atom) {
-                                reflected_atoms.push(atom);
-                            }
-                        }
-                    }
-                }
-            }
-            for atom in all_basic_subtype_atoms(other) {
-                if !reflected_atoms.contains(&atom) {
-                    reflected_atoms.push(atom);
-                }
-            }
-            if reflected_atoms.is_empty() {
-                if let Some(atom) = basic_land_mana_atom(other) {
-                    if !reflected_atoms.contains(&atom) {
-                        reflected_atoms.push(atom);
-                    }
-                }
-            }
-        } else {
-            for &atom in &[
-                ManaAtom::WHITE,
-                ManaAtom::BLUE,
-                ManaAtom::BLACK,
-                ManaAtom::RED,
-                ManaAtom::GREEN,
-            ] {
-                if (other.color.mask() as u16) & atom != 0 && !reflected_atoms.contains(&atom) {
-                    reflected_atoms.push(atom);
-                }
-            }
-        }
-    }
-    if include_colorless && !reflected_atoms.contains(&ManaAtom::COLORLESS) {
-        reflected_atoms.push(ManaAtom::COLORLESS);
     }
     reflected_atoms
 }
@@ -881,6 +868,34 @@ pub fn calculate_available_mana_with_context(
     )
 }
 
+pub(crate) fn replacement_adjusted_atoms_for_availability(
+    game: &GameState,
+    player: PlayerId,
+    source: CardId,
+    atom: u16,
+) -> Vec<u16> {
+    use crate::replacement::replacement_handler::{apply_replacements, ReplacementEvent};
+
+    let mut game_clone = game.clone();
+    let mut event = ReplacementEvent::ProduceMana {
+        source,
+        activator: player,
+        mana: ManaPool::atom_to_letter(atom).to_string(),
+    };
+    let result = apply_replacements(&mut game_clone, &mut event);
+    if result == crate::replacement::ReplacementResult::Updated {
+        if let ReplacementEvent::ProduceMana { mana, .. } = event {
+            let adjusted =
+                fixed_produced_atoms(&mana, &[]).unwrap_or_else(|| produced_to_atoms(&mana, &[]));
+            if !adjusted.is_empty() {
+                return adjusted;
+            }
+        }
+    }
+
+    vec![atom]
+}
+
 fn calculate_available_mana_excluding_with_reserved_impl(
     pool: &ManaPool,
     game: &GameState,
@@ -1027,16 +1042,33 @@ fn calculate_available_mana_excluding_with_reserved_impl(
                 let subtype_atoms = all_basic_subtype_atoms(card);
                 if !subtype_atoms.is_empty() {
                     let mut src_mask: u16 = 0;
+                    let mut source_units = 0usize;
                     for atom in subtype_atoms {
-                        avail_add!(available, card_is_snow, atom);
-                        src_mask |= atom;
+                        let adjusted_atoms = replacement_adjusted_atoms_for_availability(
+                            game, player, card_id, atom,
+                        );
+                        source_units = source_units.max(adjusted_atoms.len());
+                        for adjusted_atom in adjusted_atoms {
+                            avail_add!(available, card_is_snow, adjusted_atom);
+                            src_mask |= adjusted_atom;
+                        }
                     }
-                    source_count += 1;
-                    source_colors.push(src_mask);
+                    for _ in 0..source_units.max(1) {
+                        source_count += 1;
+                        source_colors.push(src_mask);
+                    }
                 } else if let Some(atom) = basic_land_mana_atom(card) {
-                    avail_add!(available, card_is_snow, atom);
-                    source_count += 1;
-                    source_colors.push(atom);
+                    let adjusted_atoms =
+                        replacement_adjusted_atoms_for_availability(game, player, card_id, atom);
+                    let mut src_mask: u16 = 0;
+                    for adjusted_atom in &adjusted_atoms {
+                        avail_add!(available, card_is_snow, *adjusted_atom);
+                        src_mask |= *adjusted_atom;
+                    }
+                    for _ in 0..adjusted_atoms.len().max(1) {
+                        source_count += 1;
+                        source_colors.push(src_mask);
+                    }
                 }
             }
             continue;
@@ -1094,31 +1126,60 @@ fn calculate_available_mana_excluding_with_reserved_impl(
                     }
                 } else {
                     let amount = resolve_mana_ability_amount(game, card_id, player, ab);
-                    if let Some(fixed_atoms) = fixed_produced_atoms(produced, &card.chosen_colors)
-                    {
+                    let mut counted_variable_source_units = false;
+                    if let Some(fixed_atoms) = fixed_produced_atoms(produced, &card.chosen_colors) {
                         for atom in fixed_atoms {
-                            avail_add!(available, card_is_snow, atom);
-                            src_mask |= atom;
-                            source_count += 1;
-                            source_colors.push(atom);
+                            for _ in 0..amount {
+                                let adjusted_atoms = replacement_adjusted_atoms_for_availability(
+                                    game, player, card_id, atom,
+                                );
+                                for adjusted_atom in adjusted_atoms {
+                                    avail_add!(available, card_is_snow, adjusted_atom);
+                                    src_mask |= adjusted_atom;
+                                    source_count += 1;
+                                    source_colors.push(adjusted_atom);
+                                }
+                            }
                             added_any = true;
                             counted_fixed_output = true;
                         }
                     } else {
+                        let mut source_units = 0usize;
                         for atom in produced_to_atoms(produced, &card.chosen_colors) {
                             if !added_atoms.contains(&atom) {
-                                avail_add!(available, card_is_snow, atom);
+                                for _ in 0..amount {
+                                    let adjusted_atoms =
+                                        replacement_adjusted_atoms_for_availability(
+                                            game, player, card_id, atom,
+                                        );
+                                    source_units =
+                                        source_units.max(adjusted_atoms.len() * amount as usize);
+                                    for adjusted_atom in adjusted_atoms {
+                                        avail_add!(available, card_is_snow, adjusted_atom);
+                                        src_mask |= adjusted_atom;
+                                    }
+                                }
                                 added_atoms.push(atom);
-                                src_mask |= atom;
                                 added_any = true;
                             }
+                        }
+                        if source_units > 1 && added_any {
+                            for _ in 0..(source_units as i32 - 1) {
+                                source_count += 1;
+                                source_colors.push(src_mask);
+                            }
+                            counted_variable_source_units = true;
                         }
                     }
                     // Amount > 1 (e.g. Sol Ring: Amount$ 2) — one activation produces
                     // multiple mana, so push extra source entries so
                     // can_pay_source_matching's source-count budget matches the real
                     // mana count and this source can satisfy multiple generic shards.
-                    if amount > 1 && added_any {
+                    if amount > 1
+                        && added_any
+                        && !counted_fixed_output
+                        && !counted_variable_source_units
+                    {
                         for _ in 0..(amount - 1) {
                             source_count += 1;
                             source_colors.push(src_mask);
@@ -1393,5 +1454,29 @@ mod tests {
         );
 
         assert_eq!(produced.as_deref(), Some("U"));
+    }
+
+    #[test]
+    fn restricted_mana_can_use_source_chosen_type_for_creature_spells() {
+        let mut pool = ManaPool::new();
+        let source = CardId(7);
+        let mut mana = Mana::simple(ManaAtom::BLACK);
+        mana.source_card = Some(source);
+        mana.restriction = Some("Spell.Creature+ChosenType".to_string());
+        pool.add_mana(mana);
+
+        let mut chosen_types_by_source = std::collections::HashMap::new();
+        chosen_types_by_source.insert(source, "Assassin".to_string());
+
+        let ctx = ManaPaymentContext {
+            is_spell: true,
+            type_line: Some(CardTypeLine::parse("Creature Zombie Assassin")),
+            card_name: Some("Unstoppable Slasher".to_string()),
+            chosen_types_by_source,
+        };
+
+        assert!(pool.can_pay_for_spell(&ManaCost::parse("B"), &ctx));
+        assert!(pool.try_pay_for_spell(&ManaCost::parse("B"), &ctx));
+        assert_eq!(pool.total_mana(), 0);
     }
 }

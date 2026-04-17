@@ -68,6 +68,8 @@ enum EffectKind {
     GrantAbility(String),
     /// Add a type/subtype to the card (`AddType$`). Mirrors Java layer 4.
     AddType(String),
+    /// Grant a triggered ability (from AddTrigger$). The string is the raw trigger text.
+    GrantTrigger(String),
 }
 
 // ── Public API ───────────────────────────────────────────────────────────────
@@ -88,8 +90,12 @@ pub fn apply_continuous_effects(game: &mut GameState) {
     for card in game.cards.iter_mut() {
         // Remove abilities granted by continuous effects (AddAbility$).
         // The base_ability_count tracks how many abilities the card originally had.
-        if card.base_ability_count > 0 && card.activated_abilities.len() > card.base_ability_count {
+        if card.activated_abilities.len() > card.base_ability_count {
             card.activated_abilities.truncate(card.base_ability_count);
+        }
+        let intrinsic_trigger_count = card.base_trigger_count + card.pump_trigger_count;
+        if card.triggers.len() > intrinsic_trigger_count {
+            card.triggers.truncate(intrinsic_trigger_count);
         }
         card.static_power_modifier = 0;
         card.static_toughness_modifier = 0;
@@ -258,6 +264,15 @@ pub fn apply_continuous_effects(game: &mut GameState) {
                         });
                     }
 
+                    let source = game.card(*source_id);
+                    for added_type in resolve_added_types(source, sa) {
+                        pending.push(PendingEffect {
+                            layer: Layer::Type,
+                            target,
+                            kind: EffectKind::AddType(added_type),
+                        });
+                    }
+
                     if sa.params.has(keys::SET_POWER) || sa.params.has(keys::SET_TOUGHNESS)
                     {
                         let sp = resolve_set_pt_param(game, &sa, *source_id, keys::SET_POWER);
@@ -311,6 +326,34 @@ pub fn apply_continuous_effects(game: &mut GameState) {
                                 layer: Layer::Ability,
                                 target,
                                 kind: EffectKind::GrantAbility(ab_text),
+                            });
+                        }
+                    }
+
+                    if let Some(add_trigger) = sa.params.get(keys::ADD_TRIGGER) {
+                        let source = game.card(*source_id);
+                        for svar_name in add_trigger
+                            .split(" & ")
+                            .map(str::trim)
+                            .filter(|s| !s.is_empty())
+                        {
+                            if let Some(trig_text) = source.svars.get(svar_name).cloned() {
+                                pending.push(PendingEffect {
+                                    layer: Layer::Ability,
+                                    target,
+                                    kind: EffectKind::GrantTrigger(trig_text),
+                                });
+                            }
+                        }
+                    }
+
+                    let source = game.card(*source_id);
+                    for subtype in resolve_added_basic_land_types(source, sa) {
+                        if let Some(ab_text) = basic_land_mana_ability_text(&subtype) {
+                            pending.push(PendingEffect {
+                                layer: Layer::Ability,
+                                target,
+                                kind: EffectKind::GrantAbility(ab_text.to_string()),
                             });
                         }
                     }
@@ -468,6 +511,27 @@ pub fn apply_continuous_effects(game: &mut GameState) {
                         .push(ab);
                 }
             }
+            EffectKind::GrantTrigger(trig_text) => {
+                let next_id = game.cards[effect.target.index()]
+                    .triggers
+                    .iter()
+                    .map(|t| t.id)
+                    .max()
+                    .unwrap_or(0)
+                    .saturating_add(1);
+                let mut next_id_mut = next_id;
+                if let Some(trig) = crate::trigger::parse_trigger(&trig_text, &mut next_id_mut) {
+                    game.cards[effect.target.index()].triggers.push(trig);
+                }
+            }
+        }
+    }
+
+    // Rebuild intrinsic basic-land mana abilities after type-changing continuous
+    // effects have been applied (e.g. Urborg making lands into Swamps).
+    for card in game.cards.iter_mut() {
+        if card.zone == ZoneType::Battlefield {
+            card.generate_basic_land_mana_abilities();
         }
     }
 }
@@ -719,6 +783,54 @@ fn resolve_set_pt_param(
     None
 }
 
+fn basic_land_mana_ability_text(subtype: &str) -> Option<&'static str> {
+    match subtype {
+        "Plains" => Some("AB$ Mana | Cost$ T | Produced$ W | SpellDescription$ Add {W}."),
+        "Island" => Some("AB$ Mana | Cost$ T | Produced$ U | SpellDescription$ Add {U}."),
+        "Swamp" => Some("AB$ Mana | Cost$ T | Produced$ B | SpellDescription$ Add {B}."),
+        "Mountain" => Some("AB$ Mana | Cost$ T | Produced$ R | SpellDescription$ Add {R}."),
+        "Forest" => Some("AB$ Mana | Cost$ T | Produced$ G | SpellDescription$ Add {G}."),
+        _ => None,
+    }
+}
+
+fn resolve_added_basic_land_types(source: &crate::card::Card, sa: &StaticAbility) -> Vec<String> {
+    resolve_added_types(source, sa)
+        .into_iter()
+        .filter(|added| basic_land_mana_ability_text(added).is_some())
+        .collect()
+}
+
+fn resolve_added_types(source: &crate::card::Card, sa: &StaticAbility) -> Vec<String> {
+    let Some(add_type) = sa.params.get(keys::ADD_TYPE) else {
+        return Vec::new();
+    };
+    let mut resolved = Vec::new();
+    for raw in add_type.split('&').map(str::trim).filter(|s| !s.is_empty()) {
+        match raw {
+            "ChosenType" => {
+                if let Some(chosen) = source.chosen_type.as_ref() {
+                    resolved.push(chosen.clone());
+                }
+            }
+            "ChosenType2" => {
+                if let Some(chosen) = source.chosen_type2.as_ref() {
+                    resolved.push(chosen.clone());
+                }
+            }
+            "AllBasicLandType" => {
+                resolved.extend(
+                    ["Plains", "Island", "Swamp", "Mountain", "Forest"]
+                        .into_iter()
+                        .map(str::to_string),
+                );
+            }
+            other => resolved.push(other.to_string()),
+        }
+    }
+    resolved
+}
+
 // ── Tests ────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -767,6 +879,30 @@ mod tests {
             CardTypeLine::parse("Enchantment"),
             ManaCost::parse("2 W"),
             ColorSet::WHITE,
+            None,
+            None,
+            vec![],
+            abilities,
+        );
+        let id = game.create_card(card);
+        game.move_card(id, ZoneType::Battlefield, owner);
+        id
+    }
+
+    fn add_land(
+        game: &mut GameState,
+        owner: PlayerId,
+        name: &str,
+        type_line: &str,
+        abilities: Vec<String>,
+    ) -> CardId {
+        let card = Card::new(
+            CardId(0),
+            name.to_string(),
+            owner,
+            CardTypeLine::parse(type_line),
+            ManaCost::no_cost(),
+            ColorSet::COLORLESS,
             None,
             None,
             vec![],
@@ -1012,6 +1148,45 @@ mod tests {
             !game.card(creature).cant_attack_static,
             "Flag should clear after enchantment leaves"
         );
+    }
+
+    #[test]
+    fn lands_gain_swamp_mana_ability_from_urborg_style_effect() {
+        let mut game = new_game();
+        let alice = PlayerId(0);
+
+        let urborg = add_land(
+            &mut game,
+            alice,
+            "Urborg, Tomb of Yawgmoth",
+            "Legendary Land",
+            vec!["S$ Mode$ Continuous | Affected$ Land | AddType$ Swamp | Description$ Each land is a Swamp in addition to its other land types.".to_string()],
+        );
+        let black_gate = add_land(
+            &mut game,
+            alice,
+            "The Black Gate",
+            "Legendary Land Gate",
+            vec![],
+        );
+
+        apply_continuous_effects(&mut game);
+
+        for land_id in [urborg, black_gate] {
+            let land = game.card(land_id);
+            assert!(
+                land.type_line.has_subtype("Swamp"),
+                "{} should gain the Swamp subtype",
+                land.card_name
+            );
+            assert!(
+                land.activated_abilities
+                    .iter()
+                    .any(|ab| { ab.is_mana_ability && ab.params.get(keys::PRODUCED) == Some("B") }),
+                "{} should gain an intrinsic black mana ability from Swamp",
+                land.card_name
+            );
+        }
     }
 
     // ── ETB Tapped ────────────────────────────────────────────────────────

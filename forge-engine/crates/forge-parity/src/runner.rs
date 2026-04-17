@@ -416,9 +416,12 @@ impl PlayerAgent for CapturingAgent {
             select_prompt.callback_arg_display(fmt.as_ref()),
             is_optional.callback_arg_display(fmt.as_ref()),
         ];
-        let result =
-            self.inner
-                .choose_single_card_for_zone_change(player, valid, select_prompt, is_optional);
+        let result = self.inner.choose_single_card_for_zone_change(
+            player,
+            valid,
+            select_prompt,
+            is_optional,
+        );
         let outcome = match (result, self.fmt_ctx()) {
             (Some(cid), Some(ctx)) => ctx.card(cid),
             (Some(cid), None) => format!("{cid:?}"),
@@ -434,7 +437,6 @@ impl PlayerAgent for CapturingAgent {
         );
         result
     }
-
 }
 
 pub struct RunConfig {
@@ -636,6 +638,7 @@ pub fn run_with_data(config: &RunConfig, data: &LoadedData) -> Result<GameTrace,
     }
 
     let mut game_loop = GameLoop::new(2);
+    game_loop.java_parity_failed_spell_setup_to_stack = true;
 
     // Register token templates
     for (script_name, template) in &data.token_templates {

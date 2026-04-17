@@ -68,7 +68,7 @@ public final class SnapshotExtractor {
         List<String> stack = new ArrayList<>();
         for (SpellAbilityStackInstance si : game.getStack()) {
             if (si.getSourceCard() != null) {
-                stack.add(si.getSourceCard().getName());
+                stack.add(normalizeCardName(si.getSourceCard().getName()));
             } else {
                 stack.add(si.getStackDescription());
             }
@@ -94,7 +94,7 @@ public final class SnapshotExtractor {
 
         // Battlefield — full card snapshots sorted alphabetically
         List<Card> bfCards = new ArrayList<>(p.getCardsIn(ZoneType.Battlefield));
-        bfCards.sort(Comparator.<Card, String>comparing(Card::getName)
+        bfCards.sort(Comparator.<Card, String>comparing(c -> normalizeCardName(c.getName()))
                 .thenComparingInt(c -> c.isCreature() ? c.getNetPower() : 0)
                 .thenComparingInt(c -> c.isCreature() ? c.getNetToughness() : 0)
                 .thenComparing(c -> {
@@ -119,21 +119,21 @@ public final class SnapshotExtractor {
 
         // Graveyard — sorted names
         List<String> graveyard = p.getCardsIn(ZoneType.Graveyard).stream()
-                .map(Card::getName)
+                .map(c -> normalizeCardName(c.getName()))
                 .sorted()
                 .collect(Collectors.toList());
         ps.put("graveyard", graveyard);
 
         // Hand — sorted names
         List<String> hand = p.getCardsIn(ZoneType.Hand).stream()
-                .map(Card::getName)
+                .map(c -> normalizeCardName(c.getName()))
                 .sorted()
                 .collect(Collectors.toList());
         ps.put("hand", hand);
 
         // Exile — sorted names
         List<String> exile = p.getCardsIn(ZoneType.Exile).stream()
-                .map(Card::getName)
+                .map(c -> normalizeCardName(c.getName()))
                 .sorted()
                 .collect(Collectors.toList());
         ps.put("exile", exile);
@@ -147,7 +147,7 @@ public final class SnapshotExtractor {
         int libTopCount = 0;
         for (Card libCard : p.getCardsIn(ZoneType.Library)) {
             if (libTopCount >= 10) break;
-            libraryTop.add(libCard.getName());
+            libraryTop.add(normalizeCardName(libCard.getName()));
             libTopCount++;
         }
         ps.put("library_top", libraryTop);
@@ -158,7 +158,7 @@ public final class SnapshotExtractor {
     private static Map<String, Object> snapshotCard(Game game, Card c) {
         Map<String, Object> cs = new LinkedHashMap<>();
 
-        cs.put("name", c.getName());
+        cs.put("name", normalizeCardName(c.getName()));
         cs.put("tapped", c.isTapped());
         cs.put("power", c.isCreature() ? c.getNetPower() : null);
         cs.put("toughness", c.isCreature() ? c.getNetToughness() : null);
@@ -178,6 +178,13 @@ public final class SnapshotExtractor {
         cs.put("controller", playerIndex(game, c.getController()));
 
         return cs;
+    }
+
+    private static String normalizeCardName(String name) {
+        if (name != null && name.startsWith("Troll of Khazad-d") && name.endsWith("m")) {
+            return "Troll of Khazad-d\u00fbm";
+        }
+        return name;
     }
 
     /**
