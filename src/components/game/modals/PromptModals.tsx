@@ -1,6 +1,4 @@
 import {
-  MulliganModal,
-  MulliganBottomModal,
   ChooseModeModal,
   ChooseOptionalTriggerModal,
   ChooseColorModal,
@@ -14,7 +12,6 @@ import {
   SpecifyManaComboModal,
   PromptModalController,
 } from "@/components/game/modals";
-import type { Card as XMageCard } from "@/types/openmagic";
 import type { AgentPrompt } from "@/stores/useGameStore";
 import type { PromptType } from "@/types/promptType";
 import { PromptType as PT } from "@/types/promptType";
@@ -22,11 +19,6 @@ import { PromptType as PT } from "@/types/promptType";
 interface PromptModalsProps {
   promptType?: PromptType;
   currentPrompt: AgentPrompt | null;
-  isWaitingForResponse: boolean;
-  myHand: XMageCard[];
-  // Mulligan callbacks
-  onMulliganDecision: (keep: boolean) => void;
-  onMulliganPutBackDecision: (cardIds: string[]) => void;
   // Decision callbacks
   onModeDecision: (indices: number[]) => void;
   onRevealCardsAcknowledged: () => void;
@@ -47,10 +39,6 @@ interface PromptModalsProps {
 export function PromptModals({
   promptType,
   currentPrompt,
-  isWaitingForResponse,
-  myHand,
-  onMulliganDecision,
-  onMulliganPutBackDecision,
   onModeDecision,
   onRevealCardsAcknowledged,
   onPayCostToPreventEffectDecision,
@@ -67,9 +55,11 @@ export function PromptModals({
   onAssistDecision,
 }: PromptModalsProps) {
   const isActivePromptModal =
-    (promptType === PT.Mulligan && currentPrompt != null) ||
     (promptType === PT.RevealCards && currentPrompt?.cards != null && currentPrompt?.message != null) ||
-    (promptType === PT.MulliganPutBack && currentPrompt?.cards != null && currentPrompt?.count != null) ||
+    // Mulligan + MulliganPutBack render in the same bottom-right slot
+    // as Pass Priority (see `PromptActionController`), and the real
+    // in-game hand drives card selection via `HandDisplayCool`'s
+    // selection mode — they intentionally do NOT open a modal here.
     (promptType === PT.ChooseMode && currentPrompt?.options != null) ||
     (promptType === PT.ChooseOptionalTrigger && currentPrompt?.description != null) ||
     (promptType === PT.PayCostToPreventEffect && currentPrompt?.description != null) ||
@@ -93,29 +83,11 @@ export function PromptModals({
       isActive={isActivePromptModal}
       promptStateKey={currentPrompt}
     >
-      {promptType === PT.Mulligan && currentPrompt && (
-        <MulliganModal
-          handCards={myHand}
-          mulliganCount={currentPrompt.mulliganCount ?? 0}
-          onKeep={() => onMulliganDecision(true)}
-          onMulligan={() => onMulliganDecision(false)}
-          isWaitingForResponse={isWaitingForResponse}
-        />
-      )}
-
       {promptType === PT.RevealCards && currentPrompt?.cards && currentPrompt?.message != null && (
         <RevealCardsModal
           cards={currentPrompt.cards}
           message={currentPrompt.message}
           onConfirm={onRevealCardsAcknowledged}
-        />
-      )}
-
-      {promptType === PT.MulliganPutBack && currentPrompt?.cards && currentPrompt?.count != null && (
-        <MulliganBottomModal
-          handCards={currentPrompt.cards}
-          count={currentPrompt.count}
-          onConfirm={onMulliganPutBackDecision}
         />
       )}
 

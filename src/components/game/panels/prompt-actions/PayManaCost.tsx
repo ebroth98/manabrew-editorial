@@ -1,4 +1,4 @@
-import { Ban, WandSparkles } from "lucide-react";
+import { Ban, Check, WandSparkles } from "lucide-react";
 import { TextWithMana } from "@/components/game/TextWithMana";
 import { ManaPool } from "@/components/game/panels/ManaPool";
 import { PROMPT_BUTTON_COLUMN } from "@/components/game/game.styles";
@@ -11,13 +11,23 @@ export function PayManaCost({
   buttonLayout,
   isWaitingForResponse,
   payManaCostInfo,
+  onPayManaCost,
   onAutoManaCost,
   onCancelManaCost,
 }: PayManaCostProps) {
   const promptActionColors = usePromptActionColors();
-  const primaryLabel = "Auto";
-  const primaryAction = onAutoManaCost;
-  const primaryIcon = <WandSparkles className="h-3.5 w-3.5" />;
+  // If the player has already tapped enough mana by hand, the primary
+  // button commits that payment directly — swap the wand for a check
+  // mark so the state is obvious. Otherwise it's the classic auto-tap
+  // button that asks the engine to finish the job.
+  const canConfirmFromPool = payManaCostInfo?.canConfirmFromPool ?? false;
+  const primaryLabel = canConfirmFromPool ? "Confirm" : "Auto";
+  const primaryAction = canConfirmFromPool ? onPayManaCost : onAutoManaCost;
+  const primaryIcon = canConfirmFromPool ? (
+    <Check className="h-3.5 w-3.5" strokeWidth={3} />
+  ) : (
+    <WandSparkles className="h-3.5 w-3.5" />
+  );
   const buttonGroupClass =
     buttonLayout === "modern"
       ? "flex flex-row flex-wrap items-center justify-center gap-3"

@@ -30,11 +30,6 @@ interface GameModalsProps {
   abilityPickerState: AbilityPickerState | null;
   onSelectAbility: (ability: HandActionOption) => void;
   onCancelAbilityPicker: () => void;
-  // Mulligan callbacks
-  onMulliganDecision: (keep: boolean) => void;
-  onMulliganPutBackDecision: (cardIds: string[]) => void;
-  isWaitingForResponse: boolean;
-  myHand: XMageCard[];
   // Decision callbacks
   onModeDecision: (indices: number[]) => void;
   onRevealCardsAcknowledged: () => void;
@@ -92,10 +87,6 @@ export function GameModals({
   abilityPickerState,
   onSelectAbility,
   onCancelAbilityPicker,
-  onMulliganDecision,
-  onMulliganPutBackDecision,
-  isWaitingForResponse,
-  myHand,
   onModeDecision,
   onRevealCardsAcknowledged,
   onPayCostToPreventEffectDecision,
@@ -130,10 +121,6 @@ export function GameModals({
       <PromptModals
         promptType={promptType}
         currentPrompt={currentPrompt}
-        isWaitingForResponse={isWaitingForResponse}
-        myHand={myHand}
-        onMulliganDecision={onMulliganDecision}
-        onMulliganPutBackDecision={onMulliganPutBackDecision}
         onModeDecision={onModeDecision}
         onRevealCardsAcknowledged={onRevealCardsAcknowledged}
         onPayCostToPreventEffectDecision={onPayCostToPreventEffectDecision}

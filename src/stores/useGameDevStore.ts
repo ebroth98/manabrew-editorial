@@ -12,6 +12,8 @@ export const PROMPT_ACTION_VIEW_KEYS = [
   "passingUntilEot",
   "autoPassing",
   "noAction",
+  "mulligan",
+  "mulliganPutBack",
 ] as const;
 
 export type PromptActionViewKey =

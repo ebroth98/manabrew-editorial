@@ -1,5 +1,15 @@
 // Types for Scryfall API
 
+/** Scryfall image size variants returned from `/cards/*` endpoints. */
+export interface ScryfallImageUris {
+  small: string;
+  normal: string;
+  large: string;
+  png: string;
+  art_crop: string;
+  border_crop: string;
+}
+
 export interface ScryfallCard {
   id: string; // UUID
   oracle_id: string;

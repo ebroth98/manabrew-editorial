@@ -1,7 +1,7 @@
 import { useRef, useEffect, useCallback, useState } from "react";
 import { Application } from "pixi.js";
 import { installPixiPatches } from "./pixiPatches";
-import { PixiGameScene } from "./PixiGameScene";
+import { PixiGameScene, type PixiSceneOptions } from "./PixiGameScene";
 
 // Runtime workarounds for Pixi v8 bugs — must run before any `Application`
 // is constructed.
@@ -60,6 +60,13 @@ interface PixiGameCanvasProps {
   className?: string;
   getHandActions?: (card: Card) => HandActionOption[];
   onSelectHandAction?: (card: Card, action: HandActionOption) => void;
+  /**
+   * Construction-time feature flags — `mirrored`, `showHand`, `allowDrag`.
+   * The scene reads them once in its constructor, so remounting the
+   * canvas is required if the caller ever needs to flip them (nothing in
+   * the app does so today).
+   */
+  sceneOptions?: PixiSceneOptions;
 }
 
 interface HandHoverState {
@@ -82,12 +89,18 @@ export function PixiGameCanvas({
   className,
   getHandActions,
   onSelectHandAction,
+  sceneOptions,
 }: PixiGameCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const appRef = useRef<Application | null>(null);
   const [scene, setScene] = useState<PixiGameScene | null>(null);
   const sceneRef = useRef<PixiGameScene | null>(null);
   const callbacksRef = useRef(callbacks);
+  // Scene construction options are read once when the scene is built.
+  // Store them in a ref so the init callback's dependency list stays
+  // stable (the `initApp` useCallback would otherwise rebuild the scene
+  // whenever the caller re-renders with a new object literal).
+  const sceneOptionsRef = useRef(sceneOptions);
   const [handHover, setHandHover] = useState<HandHoverState | null>(null);
   const clearTimerRef = useRef<number | null>(null);
 
@@ -151,6 +164,8 @@ export function PixiGameCanvas({
     }
 
     const newScene = new PixiGameScene(app, {
+      // scene callbacks follow — the construction-time options are the
+      // third argument below.
       onClickCard: (...args) => callbacksRef.current.onClickCard?.(...args),
       onHoverCard: (...args) => callbacksRef.current.onHoverCard?.(...args),
       onClickAnyCard: (...args) =>
@@ -179,7 +194,7 @@ export function PixiGameCanvas({
           scheduleHandHoverClear();
         }
       },
-    });
+    }, sceneOptionsRef.current);
 
     const themeColors = getGameThemeColors();
     newScene.setTheme(adaptTheme(themeColors));
@@ -228,7 +243,13 @@ export function PixiGameCanvas({
   }, [scene]);
 
   const handSize = usePreferencesStore((s) => s.handSize);
+  const battlefieldCardScale = usePreferencesStore((s) => s.battlefieldCardScale);
   const vScale = useHandScale();
+
+  useEffect(() => {
+    if (!scene) return;
+    scene.setBattlefieldCardScale(battlefieldCardScale);
+  }, [scene, battlefieldCardScale]);
 
   useEffect(() => {
     if (!scene) return;

@@ -76,11 +76,17 @@ export const PROMPT_HINT = "text-xs text-muted-foreground" as const;
 
 // ── Card badge / banner ──────────────────────────────────────────────────
 
-/** Container for top-center card banner badges (Exerted, Morph, Bestow, Token, Transformed) */
-export const CARD_BANNER_CONTAINER = "absolute top-0 left-0 right-0 flex justify-center z-20 pointer-events-none" as const;
+/**
+ * Container for card status badges (Exerted, Morph, Bestow, Token,
+ * Transformed, Plotted, Madness, Warped). Sits just below the MTG title
+ * line so the top-right mana cost pip cluster is never obscured — the
+ * Pixi `CardSprite` mirrors this offset with `BADGE_TITLE_BAND_FRAC`.
+ */
+export const CARD_BANNER_CONTAINER = "absolute top-[10%] left-0 right-0 flex justify-center z-20 pointer-events-none" as const;
 
-/** Base text style for card banner badges */
-export const CARD_BANNER_TEXT = "text-[8px] font-bold px-1.5 py-0.5 rounded-b leading-none" as const;
+/** Base text style for card banner badges — kept compact so the badge
+ *  stays comfortably narrower than the card width at every hover scale. */
+export const CARD_BANNER_TEXT = "text-[7px] font-bold px-1 py-[1px] rounded leading-none" as const;
 
 /** Attack confirm button */
 export const BUTTON_ATTACK = "flex items-center gap-1" as const;

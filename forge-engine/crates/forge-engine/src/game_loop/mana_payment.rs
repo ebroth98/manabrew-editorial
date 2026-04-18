@@ -167,6 +167,16 @@ where
                         mana_ability_index: Some(mana_ability_index.unwrap_or(0)),
                         express_choice,
                     });
+                    // Snapshot BEFORE the ability produces mana so we can
+                    // capture everything this tap adds to the pool —
+                    // base production, aura-granted mana, doublers, and
+                    // TapsForMana trigger payloads — in a single diff.
+                    // Without this, the untap path below only knows about
+                    // the land's native atoms and leaves the aura-added
+                    // mana orphaned in the pool.
+                    let player_idx = session.player.index();
+                    let pool_snapshot =
+                        mana_pools[player_idx].begin_tap_tracking();
                     resolve_mana_ability(
                         game,
                         agents,
@@ -176,6 +186,11 @@ where
                         &ab,
                         express_choice,
                     );
+                    let produced =
+                        mana_pools[player_idx].end_tap_tracking(&pool_snapshot);
+                    if !produced.is_empty() {
+                        game.card_mut(land_id).last_mana_produced = Some(produced);
+                    }
                 } else if let Some(atom) = basic_land_mana_atom(game.card(land_id)) {
                     let _ = atom;
                     executed_actions.push(ManaCostAction::TapLand {
@@ -183,34 +198,50 @@ where
                         mana_ability_index: Some(0),
                         express_choice: None,
                     });
+                    let player_idx = session.player.index();
+                    let pool_snapshot =
+                        mana_pools[player_idx].begin_tap_tracking();
                     game.tap(land_id);
-                    mana_pools[session.player.index()].add(atom, 1);
+                    mana_pools[player_idx].add(atom, 1);
                     on_basic_land_tap(game, session.player, land_id);
+                    let produced =
+                        mana_pools[player_idx].end_tap_tracking(&pool_snapshot);
+                    if !produced.is_empty() {
+                        game.card_mut(land_id).last_mana_produced = Some(produced);
+                    }
                 }
             }
             ManaCostAction::UntapLand(land_id) => {
                 if !untappable_lands.contains(&land_id) {
                     continue;
                 }
-                let atoms = {
-                    let c = game.card(land_id);
-                    if c.is_land() && c.tapped {
-                        let a = mana::land_mana_atoms(c);
-                        if a.is_empty() {
-                            basic_land_mana_atom(c).into_iter().collect::<Vec<_>>()
+                // Prefer the full set of mana this tap produced (stored
+                // as `last_mana_produced` above) so aura-triggered extra
+                // mana is rolled back alongside the land's native atoms.
+                // Falls back to the land's declared atoms only when the
+                // tap wasn't tracked — e.g. engine-internal auto-tap
+                // paths that bypass this session.
+                let tracked = game.card_mut(land_id).last_mana_produced.take();
+                let atoms = match tracked {
+                    Some(p) if !p.is_empty() => p,
+                    _ => {
+                        let c = game.card(land_id);
+                        if c.is_land() && c.tapped {
+                            let a = mana::land_mana_atoms(c);
+                            if a.is_empty() {
+                                basic_land_mana_atom(c).into_iter().collect::<Vec<_>>()
+                            } else {
+                                a
+                            }
                         } else {
-                            a
+                            vec![]
                         }
-                    } else {
-                        vec![]
                     }
                 };
                 if !atoms.is_empty() {
                     executed_actions.push(ManaCostAction::UntapLand(land_id));
                     game.untap(land_id);
-                    for atom in atoms {
-                        mana_pools[session.player.index()].remove(atom, 1);
-                    }
+                    mana_pools[session.player.index()].rollback_tap(&atoms);
                 }
             }
             ManaCostAction::Pay { auto } => {

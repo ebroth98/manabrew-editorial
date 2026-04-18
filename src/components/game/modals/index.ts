@@ -12,8 +12,6 @@ export { VAssignCombatDamageModal } from './VAssignCombatDamageModal';
 export { LibraryPeekModal, type LibraryPeekMode } from './LibraryPeekModal';
 export { Modal } from './Modal';
 export { PromptModalController } from './PromptModalController';
-export { MulliganBottomModal } from './MulliganBottomModal';
-export { MulliganModal } from './MulliganModal';
 export { PayCombatCostModal } from './PayCombatCostModal';
 export { ReorderLibraryModal } from './ReorderLibraryModal';
 export { SpecifyManaComboModal } from './SpecifyManaComboModal';

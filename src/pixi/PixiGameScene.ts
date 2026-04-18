@@ -29,6 +29,15 @@ import {
 } from "@/components/game/game.constants";
 import { MarqueeHandler } from "./MarqueeHandler";
 import { DragHandler } from "./DragHandler";
+import {
+  computeGridLayout,
+  cellAt,
+  cellFromPoint,
+  cellsByDistance,
+  cellKey,
+  type GridCell,
+  type GridLayoutInfo,
+} from "./GridLayout";
 import { computeHandLayout, SIZE_PARAMS } from "./HandLayout";
 import { ArrowLayer, type ArrowDef } from "./ArrowLayer";
 import { HAND_CARD_BASES } from "@/components/game/game.styles";
@@ -44,6 +53,7 @@ import {
 import { manaColorFor } from "./manaColors";
 import {
   ATTACH_OFFSET_Y,
+  BATTLEFIELD_CARD_SCALE_DEFAULT,
   BATTLEFIELD_HOVER_HOLD_MS,
   BATTLEFIELD_LERP,
   BG_ALPHA_DROP,
@@ -58,11 +68,13 @@ import {
   GAP,
   GHOST_FILL_ALPHA,
   GHOST_STROKE_ALPHA,
+  GRID_SKELETON_FILL_ALPHA,
+  GRID_SKELETON_HOVER_ALPHA,
+  GRID_SKELETON_STACK_ALPHA,
+  GRID_SKELETON_STACK_FILL_ALPHA,
+  GRID_SKELETON_STROKE_ALPHA,
   HAND_HOVER_HOLD_MS,
   HAND_LERP,
-  HAND_MAX_SCALE,
-  HAND_MIN_SCALE,
-  HAND_REF_WIDTH,
   HOVER_SCALE,
   HOVER_SCALE_LERP,
   ICON_BG_ALPHA,
@@ -90,8 +102,10 @@ import {
   SNAP_PX,
   SNAP_ROT,
   SNAP_SCALE,
+  STACK_SEED_TTL_MS,
   TABLE_RADIUS,
   WHITE,
+  Z_GRID_SKELETON,
   Z_HAND_CONTAINER,
   Z_HAND_HOVERED,
   Z_OVERLAY_OFFSET,
@@ -167,47 +181,37 @@ export interface BlockingRect {
   height: number;
 }
 
-const rectsOverlap = (a: Point, b: Point): boolean =>
-  a.x < b.x + CARD_W + GAP / 2 &&
-  a.x + CARD_W + GAP / 2 > b.x &&
-  a.y < b.y + CARD_H + GAP / 2 &&
-  a.y + CARD_H + GAP / 2 > b.y;
 
-const cardIntersectsRect = (pos: Point, rect: BlockingRect): boolean =>
-  pos.x < rect.x + rect.width &&
-  pos.x + CARD_W > rect.x &&
-  pos.y < rect.y + rect.height &&
-  pos.y + CARD_H > rect.y;
-
-const findFreeSlot = (
-  occupied: Point[],
-  blockers: BlockingRect[],
-  xMin: number,
-  cols: number,
-  yForSlot: (slot: number) => number,
-  maxSlots: number,
-): Point => {
-  for (let slot = 0; slot < maxSlots; slot++) {
-    const pos: Point = {
-      x: xMin + (slot % cols) * (CARD_W + GAP) + GAP,
-      y: yForSlot(slot),
-    };
-    if (occupied.some((o) => rectsOverlap(pos, o))) continue;
-    if (blockers.some((b) => cardIntersectsRect(pos, b))) continue;
-    return pos;
-  }
-  return { x: xMin + GAP, y: yForSlot(0) };
-};
+/**
+ * Optional feature flags controlling which subsystems this scene runs.
+ * Opponent-side canvases opt out of the hand, drag, marquee, and stacking
+ * behaviors entirely; a mirrored scene also flips the auto-placement
+ * anchors so lands appear at the top and non-lands fill downward.
+ */
+export interface PixiSceneOptions {
+  /** When true, tapped cards rotate counter-clockwise, lands auto-place
+   *  at the top of the zone, and non-lands fill from the bottom upward.
+   *  Matches the React BattlefieldZone's `landsAtTop` mode used for every
+   *  opponent's half of the board. */
+  mirrored?: boolean;
+  /** Render the hand fan at the bottom of the zone. Default true. */
+  showHand?: boolean;
+  /** Enable free drag, grid snapping, stacking, and marquee selection on
+   *  battlefield sprites. Default true. */
+  allowDrag?: boolean;
+}
 
 export class PixiGameScene {
   app: Application;
+  private mirrored: boolean;
+  private showHand: boolean;
+  private allowDrag: boolean;
   private root: Container;
   private myBattlefieldContainer: Container;
   private backgroundGfx: Graphics;
   private entries = new Map<string, SpriteEntry>();
   private callbacks: GameCanvasCallbacks;
   private theme: PixiThemeColors | null = null;
-  private bottomReserved = 0;
   private leftReserved = ZONE_COLUMN_RESERVED_PX;
   private hoveredCardId: string | null = null;
   private battlefieldHoverClearTimer: number | null = null;
@@ -226,7 +230,27 @@ export class PixiGameScene {
   private selectedCardIds = new Set<string>();
   private marquee: MarqueeHandler;
   private dragHandler: DragHandler;
-  private customPositions = new Map<string, Point>();
+  /** User-assigned grid slot per top-level battlefield card. Survives re-renders
+   *  so a card stays put once the user drops it on a cell. Pruned when the
+   *  card leaves the battlefield. */
+  private userSlots = new Map<string, { col: number; row: number }>();
+  /** UI-only parent mapping: child id → parent id. Merged with engine
+   *  attachments (`card.attachedTo`) when computing the effective tree. */
+  private uiParent = new Map<string, string>();
+  /** Latest grid layout — cached per frame so drag/stack hit-tests and the
+   *  skeleton overlay share the same cell geometry. */
+  private gridInfo: GridLayoutInfo | null = null;
+  /** Cell-center target coords per top-level card id, derived from the
+   *  grid each `updateBattlefield` call. Dragged sprites override this via
+   *  `entry.targetX/Y`. */
+  private gridTargets = new Map<string, Point>();
+  /** While a drag is in progress, the cell the dragged card is pointing at
+   *  (for the skeleton highlight). Null when not dragging or out of range. */
+  private hoveredCell: GridCell | null = null;
+  /** Card id the dragged sprite would stack onto if released now. */
+  private stackTargetId: string | null = null;
+  private gridSkeletonGfx: Graphics;
+  private cardScale = BATTLEFIELD_CARD_SCALE_DEFAULT;
   private lastState: BattlefieldState | null = null;
   private emptyText: Text;
   private selectionBadge: Text;
@@ -259,10 +283,28 @@ export class PixiGameScene {
   private cursorListener: ((e: MouseEvent) => void) | null = null;
   private placementGhostGfx: Graphics | null = null;
   private placementGhostText: Text | null = null;
+  /**
+   * Last observed DOM position of each stack card (canvas-local center +
+   * rendered size), refreshed every tick and retained for STACK_SEED_TTL_MS
+   * after the card leaves the stack so a newly-spawned battlefield sprite
+   * for a just-resolved spell can animate from its stack position instead
+   * of from the hand.
+   */
+  private stackCardSeeds = new Map<
+    string,
+    { x: number; y: number; scale: number; ts: number }
+  >();
 
-  constructor(app: Application, callbacks: GameCanvasCallbacks) {
+  constructor(
+    app: Application,
+    callbacks: GameCanvasCallbacks,
+    options: PixiSceneOptions = {},
+  ) {
     this.app = app;
     this.callbacks = callbacks;
+    this.mirrored = options.mirrored ?? false;
+    this.showHand = options.showHand ?? true;
+    this.allowDrag = options.allowDrag ?? true;
 
     this.root = new Container();
     app.stage.addChild(this.root);
@@ -287,6 +329,13 @@ export class PixiGameScene {
     this.root.addChild(this.marquee.graphics);
 
     this.dragHandler = new DragHandler();
+    this.dragHandler.setCardScale(this.cardScale);
+
+    this.gridSkeletonGfx = new Graphics();
+    this.gridSkeletonGfx.eventMode = "none";
+    this.gridSkeletonGfx.visible = false;
+    this.gridSkeletonGfx.zIndex = Z_GRID_SKELETON;
+    this.myBattlefieldContainer.addChild(this.gridSkeletonGfx);
 
     this.selectionBadge = new Text({ text: "", style: SELECTION_BADGE_STYLE });
     this.selectionBadge.visible = false;
@@ -360,7 +409,10 @@ export class PixiGameScene {
    *  ghost position). Used by overlay arrows for permanent-spell casts. */
   getPlacementGhostCenter(): ScreenPos {
     const slot = this.findFirstFreeBattlefieldSlot();
-    return { x: slot.x + CARD_W / 2, y: slot.y + CARD_H / 2 };
+    return {
+      x: slot.x + (CARD_W * this.cardScale) / 2,
+      y: slot.y + (CARD_H * this.cardScale) / 2,
+    };
   }
 
   setTheme(theme: PixiThemeColors): void {
@@ -372,8 +424,11 @@ export class PixiGameScene {
 
   setReserved(bottom: number, left: number): void {
     if (this.destroyed) return;
-    this.bottomReserved = bottom;
     this.leftReserved = left;
+    // The drag handler still uses `bottom` to clamp free-drag Y so cards
+    // can't overlap the hand fan while the pointer is inside the hand strip;
+    // the grid itself ignores this because the hand blocker rect already
+    // marks those cells unusable.
     this.dragHandler.setReserved(left, 0, bottom);
   }
 
@@ -419,6 +474,21 @@ export class PixiGameScene {
     if (this.destroyed) return;
     this.handSize = size;
     this.vScale = scale;
+  }
+
+  /**
+   * Resize all battlefield cards (and the grid cells they snap to). Accepts
+   * a uniform multiplier; the caller is responsible for clamping to a sane
+   * range. Triggers a relayout so existing sprites reflow into the resized
+   * grid immediately.
+   */
+  setBattlefieldCardScale(scale: number): void {
+    if (this.destroyed) return;
+    if (!Number.isFinite(scale) || scale <= 0) return;
+    if (scale === this.cardScale) return;
+    this.cardScale = scale;
+    this.dragHandler.setCardScale(scale);
+    if (this.lastState) this.updateBattlefield(this.lastState);
   }
 
   resize(width: number, height: number): void {
@@ -506,42 +576,69 @@ export class PixiGameScene {
     if (this.destroyed || !state || !Array.isArray(state.cards)) return;
     this.lastState = state;
     const cardMap = new Map<string, Card>(state.cards.map((c) => [c.id, c]));
-    const attachedIds = new Set<string>();
-    for (const c of state.cards) {
-      if (c.attachedTo && cardMap.has(c.attachedTo)) attachedIds.add(c.id);
-    }
-    const topLevelCards = state.cards.filter((c) => !attachedIds.has(c.id));
     const currentIds = new Set(state.cards.map((c) => c.id));
 
+    // Effective parent map: engine (`card.attachedTo`) wins, UI fallback only
+    // if the engine didn't assert a parent for the child. Drops UI parents
+    // whose child or parent already left the battlefield.
+    const effectiveParent = new Map<string, string>();
+    for (const c of state.cards) {
+      if (c.attachedTo && cardMap.has(c.attachedTo)) {
+        effectiveParent.set(c.id, c.attachedTo);
+      }
+    }
+    for (const [childId, parentId] of [...this.uiParent]) {
+      if (!currentIds.has(childId) || !currentIds.has(parentId)) {
+        this.uiParent.delete(childId);
+        continue;
+      }
+      if (childId === parentId) {
+        this.uiParent.delete(childId);
+        continue;
+      }
+      if (!effectiveParent.has(childId)) {
+        effectiveParent.set(childId, parentId);
+      }
+    }
+    const effectiveChildren = new Map<string, string[]>();
+    for (const [childId, parentId] of effectiveParent) {
+      const list = effectiveChildren.get(parentId) ?? [];
+      list.push(childId);
+      effectiveChildren.set(parentId, list);
+    }
+    const topLevelCards = state.cards.filter((c) => !effectiveParent.has(c.id));
+
     this.pruneRemovedBattlefieldEntries(currentIds);
+    // Drop user slots for cards that left the battlefield or became attached.
+    for (const id of [...this.userSlots.keys()]) {
+      if (!currentIds.has(id) || effectiveParent.has(id)) {
+        this.userSlots.delete(id);
+      }
+    }
     const positions = this.computeBattlefieldGrid(topLevelCards);
+    this.gridTargets = positions;
 
     for (const card of topLevelCards) {
-      const gridPos = positions.get(card.id) ?? { x: 0, y: 0 };
-      // customPositions are stored as sprite *centers* (matching
-      // sprite.x/y and dragHandler coords), but gridPos is top-left and
-      // placeBattlefieldCard expects a top-left that it then offsets by
-      // CARD_W/2 + CARD_H/2 to get the center. Convert the center back to
-      // top-left so both paths line up — without this, a dragged card
-      // jumps by half a card on the next battlefield state update.
-      const customCenter = this.customPositions.get(card.id);
-      const pos = customCenter
-        ? { x: customCenter.x - CARD_W / 2, y: customCenter.y - CARD_H / 2 }
-        : gridPos;
-      const attachments = (card.attachmentIds ?? [])
+      const center = positions.get(card.id) ?? {
+        x: this.zoneCenterX(),
+        y: this.zoneCenterY(),
+      };
+      const childIds = effectiveChildren.get(card.id) ?? [];
+      const attachments = childIds
         .map((id) => cardMap.get(id))
         .filter((c): c is Card => c !== undefined);
       const totalOffset = attachments.length * ATTACH_OFFSET_Y;
+      const topLeftY = center.y - (CARD_H * this.cardScale) / 2;
 
       for (let i = 0; i < attachments.length; i++) {
         const att = attachments[i]!;
         this.placeBattlefieldCard(
           att,
-          pos.x + CARD_W / 2,
-          pos.y +
+          center.x,
+          topLeftY +
             totalOffset -
             (attachments.length - i) * ATTACH_OFFSET_Y +
-            CARD_H / 2,
+            (CARD_H * this.cardScale) / 2,
           i + 1,
           state,
         );
@@ -549,8 +646,8 @@ export class PixiGameScene {
 
       this.placeBattlefieldCard(
         card,
-        pos.x + CARD_W / 2,
-        pos.y + totalOffset + CARD_H / 2,
+        center.x,
+        topLeftY + totalOffset + (CARD_H * this.cardScale) / 2,
         attachments.length + 1,
         state,
       );
@@ -561,6 +658,9 @@ export class PixiGameScene {
 
   updateHand(state: HandState): void {
     if (this.destroyed || !state || !Array.isArray(state.cards)) return;
+    // Opponent canvases never show a hand fan — just silently absorb the
+    // state update so callers don't need to guard against the mode.
+    if (!this.showHand) return;
     this.lastHandState = state;
     this.pruneRemovedHandSprites(new Set(state.cards.map((c) => c.id)));
     this.dragHandler.setHandExclusion(this.collectHandBlockers()[0] ?? null);
@@ -695,6 +795,65 @@ export class PixiGameScene {
   // Placement ghost
   // ═══════════════════════════════════════════════════════════════
 
+  /**
+   * Draw the grid skeleton that appears under the dragging sprite. Each
+   * unblocked cell gets a faint outline; the cell under the cursor brightens
+   * up; if the cursor is over another card's cell (stack target) it uses a
+   * filled accent so the user can see the attach will happen.
+   */
+  private drawGridSkeleton(draggingIds: Set<string>): void {
+    const gfx = this.gridSkeletonGfx;
+    gfx.clear();
+    if (!this.gridInfo || draggingIds.size === 0) {
+      gfx.visible = false;
+      return;
+    }
+    const grid = this.gridInfo;
+    const color = this.theme?.activeAction.active ?? FALLBACK_ORANGE;
+    const occupied = new Map<string, string>();
+    for (const [id, pos] of this.gridTargets) {
+      if (draggingIds.has(id)) continue;
+      const c = cellFromPoint(grid, pos.x, pos.y);
+      if (c) occupied.set(cellKey(c.col, c.row), id);
+    }
+    const hoveredKey = this.hoveredCell
+      ? cellKey(this.hoveredCell.col, this.hoveredCell.row)
+      : null;
+    const stackKey =
+      this.stackTargetId !== null
+        ? (() => {
+            const pos = this.gridTargets.get(this.stackTargetId!);
+            if (!pos) return null;
+            const c = cellFromPoint(grid, pos.x, pos.y);
+            return c ? cellKey(c.col, c.row) : null;
+          })()
+        : null;
+
+    for (const cell of grid.cells) {
+      if (cell.blocked) continue;
+      const key = cellKey(cell.col, cell.row);
+      const isStack = key === stackKey;
+      const isHover = key === hoveredKey && !isStack;
+      const isOccupied = occupied.has(key) && !isStack;
+      const strokeAlpha = isStack
+        ? GRID_SKELETON_STACK_ALPHA
+        : isHover
+          ? GRID_SKELETON_HOVER_ALPHA
+          : GRID_SKELETON_STROKE_ALPHA;
+      const fillAlpha = isStack
+        ? GRID_SKELETON_STACK_FILL_ALPHA
+        : isHover
+          ? GRID_SKELETON_FILL_ALPHA * 4
+          : isOccupied
+            ? 0
+            : GRID_SKELETON_FILL_ALPHA;
+      gfx.roundRect(cell.x, cell.y, grid.cardW, grid.cardH, CARD_RADIUS);
+      if (fillAlpha > 0) gfx.fill({ color, alpha: fillAlpha });
+      gfx.stroke({ color, width: isStack || isHover ? 2 : 1, alpha: strokeAlpha });
+    }
+    gfx.visible = true;
+  }
+
   private drawPlacementGhost(cardName: string | null): void {
     const { gfx, text } = this.ensurePlacementGhostLayers();
     if (!cardName) {
@@ -704,18 +863,14 @@ export class PixiGameScene {
     }
 
     const slot = this.findFirstFreeBattlefieldSlot();
-    const cx = slot.x + CARD_W / 2;
-    const cy = slot.y + CARD_H / 2;
+    const w = CARD_W * this.cardScale;
+    const h = CARD_H * this.cardScale;
+    const cx = slot.x + w / 2;
+    const cy = slot.y + h / 2;
     const color = this.theme?.activeAction.active ?? FALLBACK_ORANGE;
 
     gfx.clear();
-    gfx.roundRect(
-      cx - CARD_W / 2,
-      cy - CARD_H / 2,
-      CARD_W,
-      CARD_H,
-      CARD_RADIUS,
-    );
+    gfx.roundRect(cx - w / 2, cy - h / 2, w, h, CARD_RADIUS);
     gfx.stroke({ color, width: 2, alpha: GHOST_STROKE_ALPHA });
     gfx.fill({ color, alpha: GHOST_FILL_ALPHA });
     gfx.visible = true;
@@ -748,57 +903,123 @@ export class PixiGameScene {
   // Battlefield layout
   // ═══════════════════════════════════════════════════════════════
 
+  /**
+   * Build the battlefield grid layout and assign each top-level card a
+   * cell center. Honors user-dragged slots first, then auto-places any
+   * remaining cards by picking the nearest free cell to a preferred anchor
+   * (center for non-lands, bottom-center for lands).
+   */
   private computeBattlefieldGrid(cards: Card[]): Map<string, Point> {
     const positions = new Map<string, Point>();
     const zone = this.getPlayZone();
-    const xMin = zone.x + Math.max(0, this.leftReserved);
-    const usableW = zone.width - Math.max(0, this.leftReserved);
-    const cols = Math.max(1, Math.floor((usableW + GAP) / (CARD_W + GAP)));
-    // Lands sit just above the hand strip (bottom of play zone). Non-lands
-    // start at the top of the play zone. Both use zone-relative coords so
-    // the layout stays inside "my half" when the canvas is full-viewport.
-    const landRowBaseY = Math.max(
-      zone.y,
-      zone.y + zone.height - CARD_H - this.bottomReserved - GAP,
+    const handBlocker = this.collectHandBlockers();
+    const blockers = [...this.collectOverlayBlockers(), ...handBlocker];
+    const grid = computeGridLayout(
+      zone,
+      this.leftReserved,
+      blockers,
+      this.cardScale,
     );
-    const nonLandBaseY = zone.y + GAP;
-    const occupied: Point[] = [];
-    const blockers = this.collectOverlayBlockers();
+    this.gridInfo = grid;
 
-    const landY = (slot: number): number =>
-      landRowBaseY - Math.floor(slot / cols) * (CARD_H + GAP);
-    const nonLandY = (slot: number): number =>
-      nonLandBaseY + Math.floor(slot / cols) * (CARD_H + GAP);
+    const occupied = new Set<string>();
+    const unplaced: Card[] = [];
 
+    // Pass 1: honor user-dragged slots. A slot pointing at a temporarily
+    // blocked cell (e.g. the stack panel just appeared) is kept in the map
+    // so the card can snap back when the blocker clears — the card is
+    // pushed through pass 2 and auto-placed at the nearest free cell for
+    // now. Only drop the slot if the cell has gone out of grid bounds
+    // (the grid itself was resized smaller).
     for (const c of cards) {
+      const slot = this.userSlots.get(c.id);
+      if (!slot) {
+        unplaced.push(c);
+        continue;
+      }
+      const cell = cellAt(grid, slot.col, slot.row);
+      if (!cell) {
+        this.userSlots.delete(c.id);
+        unplaced.push(c);
+        continue;
+      }
+      if (cell.blocked || occupied.has(cellKey(cell.col, cell.row))) {
+        unplaced.push(c);
+        continue;
+      }
+      positions.set(c.id, { x: cell.cx, y: cell.cy });
+      occupied.add(cellKey(cell.col, cell.row));
+    }
+
+    // Pass 2: auto-place remaining cards, biased toward the anchor for
+    // their card class. Matches the React BattlefieldZone layout:
+    //   - player half: lands bottom, non-lands top ("landsAtTop" false).
+    //   - opponent half (mirrored): lands top, non-lands bottom — so the
+    //     two boards face each other across the middle of the screen.
+    const centerX = zone.x + zone.width / 2;
+    const topAnchorY = zone.y + grid.cellH / 2;
+    const bottomAnchorY = zone.y + zone.height - grid.cellH / 2;
+    const nonLandAnchorY = this.mirrored ? bottomAnchorY : topAnchorY;
+    const landAnchorY = this.mirrored ? topAnchorY : bottomAnchorY;
+    for (const c of unplaced) {
       const isLand = c.types.includes("Land");
-      const yFn = isLand ? landY : nonLandY;
+      const anchorX = centerX;
+      const anchorY = isLand ? landAnchorY : nonLandAnchorY;
       const max = isLand ? MAX_LAND_SLOTS : MAX_GRID_SLOTS;
-      const pos = findFreeSlot(occupied, blockers, xMin, cols, yFn, max);
+      const sorted = cellsByDistance(grid, anchorX, anchorY);
+      let picked: GridCell | null = null;
+      for (let i = 0; i < sorted.length && i < max; i++) {
+        const cell = sorted[i]!;
+        if (cell.blocked) continue;
+        if (occupied.has(cellKey(cell.col, cell.row))) continue;
+        picked = cell;
+        break;
+      }
+      // Fallback: grid fully occupied or blocked — drop at anchor.
+      const pos = picked
+        ? { x: picked.cx, y: picked.cy }
+        : { x: anchorX, y: anchorY };
       positions.set(c.id, pos);
-      occupied.push(pos);
+      if (picked) occupied.add(cellKey(picked.col, picked.row));
     }
 
     return positions;
   }
 
+  /**
+   * Canvas-local top-left of the cell where a newly-played permanent would
+   * land. Used by the placement-ghost overlay — prefers the grid center.
+   */
   private findFirstFreeBattlefieldSlot(): Point {
     const zone = this.getPlayZone();
-    const xMin = zone.x + Math.max(0, this.leftReserved);
-    const usableW = zone.width - Math.max(0, this.leftReserved);
-    const cols = Math.max(1, Math.floor((usableW + GAP) / (CARD_W + GAP)));
-    const occupied: Point[] = [...this.entries.values()].map((e) => ({
-      x: e.targetX - CARD_W / 2,
-      y: e.targetY - CARD_H / 2,
-    }));
-    return findFreeSlot(
-      occupied,
-      this.collectOverlayBlockers(),
-      xMin,
-      cols,
-      (slot) => zone.y + GAP + Math.floor(slot / cols) * (CARD_H + GAP),
-      MAX_GRID_SLOTS,
+    const grid = this.gridInfo ?? computeGridLayout(
+      zone,
+      this.leftReserved,
+      [...this.collectOverlayBlockers(), ...this.collectHandBlockers()],
+      this.cardScale,
     );
+    const occupied = new Set<string>();
+    for (const id of this.gridTargets.keys()) {
+      const pos = this.gridTargets.get(id);
+      if (!pos) continue;
+      const cell = cellFromPoint(grid, pos.x, pos.y);
+      if (cell) occupied.add(cellKey(cell.col, cell.row));
+    }
+    // Only permanent spells trigger a placement ghost, and lands are
+    // played directly without ever hitting the stack — so the ghost is
+    // always for a non-land. Anchor matches auto-placement: top-center
+    // for player half, bottom-center for mirrored opponent half.
+    const anchorX = zone.x + zone.width / 2;
+    const anchorY = this.mirrored
+      ? zone.y + zone.height - grid.cellH / 2
+      : zone.y + grid.cellH / 2;
+    const sorted = cellsByDistance(grid, anchorX, anchorY);
+    for (const cell of sorted) {
+      if (cell.blocked) continue;
+      if (occupied.has(cellKey(cell.col, cell.row))) continue;
+      return { x: cell.x, y: cell.y };
+    }
+    return { x: anchorX - grid.cardW / 2, y: anchorY - grid.cardH / 2 };
   }
 
   /**
@@ -865,6 +1086,10 @@ export class PixiGameScene {
     entry.targetY = centerY;
     entry.targetZIndex = zIndex;
     entry.sprite.updateCard(card);
+    // Mirrored scenes (opponent half) rotate tapped cards counter-clockwise
+    // so the tapped state reads correctly when viewed from across the
+    // table — matches how the React BattlefieldZone presents the opponent.
+    if (this.mirrored && card.tapped) entry.sprite.rotation = -Math.PI / 2;
     this.applyBattlefieldRing(entry.sprite, state);
     this.rebuildBattlefieldOverlay(entry, state);
   }
@@ -875,16 +1100,29 @@ export class PixiGameScene {
     this.wireBattlefieldCardEvents(sprite);
     this.myBattlefieldContainer.addChild(sprite);
 
-    // If this card was just in the hand, seed the new battlefield sprite's
-    // position and scale from the hand sprite so it visually "falls" from
-    // where it was in the fan instead of popping from (0, 0) and lerping
-    // in from the top-left. Tick's existing position + scale lerps then
-    // ease it into the final battlefield slot.
+    // Seed the new battlefield sprite's position + scale so its entering
+    // animation starts from where the player last saw the card:
+    // 1. Live hand sprite (land / instant-speed play) → its own position.
+    // 2. Recent stack position (spell just resolved from the stack) → the
+    //    last-known stack card rect, captured each tick from the DOM.
+    // 3. Otherwise → hand fan center at the bottom of the play zone.
+    // Without (2) the card appears to leap out of the hand even when it
+    // visibly just resolved off the top of the stack.
     const handSprite = this.handSprites.get(card.id);
+    const stackSeed = this.stackCardSeeds.get(card.id);
     if (handSprite) {
       sprite.x = handSprite.x;
       sprite.y = handSprite.y;
       sprite.scale.set(handSprite.scale.x, handSprite.scale.y);
+    } else if (stackSeed) {
+      sprite.x = stackSeed.x;
+      sprite.y = stackSeed.y;
+      sprite.scale.set(stackSeed.scale);
+    } else {
+      const seed = this.computeHandOriginSeed();
+      sprite.x = seed.x;
+      sprite.y = seed.y;
+      sprite.scale.set(seed.scale);
     }
 
     this.entries.set(card.id, {
@@ -994,6 +1232,14 @@ export class PixiGameScene {
     sprite: CardSprite,
     state: BattlefieldState,
   ): void {
+    // Selected cards always wear the selection ring. Without this guard
+    // any subsequent updateBattlefield (triggered by hover → React
+    // re-render → prop change) overwrites the marquee selection glow
+    // even though `selectedCardIds` is still populated.
+    if (this.selectedCardIds.has(sprite.card.id)) {
+      sprite.setRing(this.theme?.cardRing ?? FALLBACK_ORANGE);
+      return;
+    }
     if (!this.theme) {
       sprite.setRing(null);
       return;
@@ -1321,6 +1567,9 @@ export class PixiGameScene {
     e: FederatedPointerEvent,
   ): void {
     if (this.destroyed) return;
+    // Opponent / read-only canvases never start a drag — the pointertap
+    // handler on the sprite still fires and drives click-to-target.
+    if (!this.allowDrag) return;
     this.callbacks.onHoverCard?.(null);
     const local = this.root.toLocal(e.global);
     this.selectedCardIds = this.dragHandler.start(
@@ -1337,6 +1586,8 @@ export class PixiGameScene {
 
   private onBackgroundDown(e: FederatedPointerEvent): void {
     if (this.destroyed) return;
+    // Marquee / multi-select is a drag-mode behavior only.
+    if (!this.allowDrag) return;
     const local = this.root.toLocal(e.global);
     if (!e.shiftKey) {
       this.selectedCardIds.clear();
@@ -1361,6 +1612,14 @@ export class PixiGameScene {
     // (not at pointerdown) so a simple click that never moves doesn't also
     // dismiss the preview.
     this.callbacks.onDismissHoverPreview?.();
+    // The hovered cell anchors multi-card drops, so we specifically need
+    // the *primary* card's current cursor position — not just whichever
+    // dragged card happens to be first in iteration order. Without this
+    // a multi-card drag reads the wrong source cell and the delta
+    // applied in `commitCellDrop` lands the group off by a few cells.
+    const primaryId = this.dragHandler.primaryDraggingCardId;
+    let primaryPos: Point | null = null;
+    const draggingIds = this.dragHandler.draggingCardIds;
     for (const [id, pos] of newPositions) {
       const entry = this.entries.get(id);
       if (!entry) continue;
@@ -1376,8 +1635,25 @@ export class PixiGameScene {
         entry.overlay.x = pos.x;
         entry.overlay.y = pos.y;
       }
-      this.customPositions.set(id, pos);
+      if (id === primaryId || (!primaryPos && !primaryId)) primaryPos = pos;
+      // Keep attached children (auras, equipment, UI stacks) stuck to the
+      // parent as it moves — otherwise the pile visually tears apart and
+      // the children stay where the parent used to be.
+      this.followAttachmentsDuringDrag(id, pos);
     }
+
+    // Resolve the cell under the drag cursor + whether the dragged card
+    // would stack onto another permanent. Drives the skeleton overlay.
+    if (primaryPos && this.gridInfo) {
+      this.hoveredCell = cellFromPoint(this.gridInfo, primaryPos.x, primaryPos.y);
+      this.stackTargetId = this.hoveredCell
+        ? this.findStackTargetAt(this.hoveredCell, draggingIds)
+        : null;
+    } else {
+      this.hoveredCell = null;
+      this.stackTargetId = null;
+    }
+    this.drawGridSkeleton(draggingIds);
   }
 
   private onGlobalUp(): void {
@@ -1392,13 +1668,213 @@ export class PixiGameScene {
       return;
     }
 
+    // `end()` clears drag state, so snapshot ids before calling it — the
+    // returned `positions` map is always empty in the handler's contract.
+    const draggedIds = [...this.dragHandler.draggingCardIds];
+    const primaryId = this.dragHandler.primaryDraggingCardId;
     const result = this.dragHandler.end();
+    // Always hide the skeleton when the gesture ends — even on a plain
+    // click-without-drag `end()` returns `wasDrag: false` and we still
+    // need to clear any stale overlay state.
+    const stackTargetId = this.stackTargetId;
+    const hoveredCell = this.hoveredCell;
+    this.stackTargetId = null;
+    this.hoveredCell = null;
+    this.gridSkeletonGfx.visible = false;
+    this.gridSkeletonGfx.clear();
+
     if (!result?.wasDrag) return;
-    for (const [id, pos] of this.customPositions) {
-      const entry = this.entries.get(id);
-      if (!entry) continue;
-      entry.targetX = pos.x;
-      entry.targetY = pos.y;
+    // Collect the single "primary" cell/stack target from the first dragged
+    // card — multi-drag just shifts siblings into adjacent cells around it.
+    if (stackTargetId && draggedIds.length > 0) {
+      this.commitStackDrop(draggedIds, stackTargetId);
+    } else if (hoveredCell) {
+      this.commitCellDrop(draggedIds, hoveredCell, primaryId);
+    }
+
+    if (this.lastState) this.updateBattlefield(this.lastState);
+  }
+
+  /**
+   * Children of `parentId` — both engine-defined attachments
+   * (`card.attachmentIds`) and UI-level stacks stored in `uiParent`.
+   * Order matches `updateBattlefield` so the attachment-offset staircase
+   * during drag matches the steady-state layout.
+   */
+  private getEffectiveChildren(parentId: string): string[] {
+    const parent = this.lastState?.cards.find((c) => c.id === parentId);
+    const result: string[] = [];
+    const seen = new Set<string>();
+    if (parent?.attachmentIds) {
+      for (const id of parent.attachmentIds) {
+        if (seen.has(id)) continue;
+        seen.add(id);
+        result.push(id);
+      }
+    }
+    for (const [childId, pId] of this.uiParent) {
+      if (pId !== parentId) continue;
+      if (seen.has(childId)) continue;
+      seen.add(childId);
+      result.push(childId);
+    }
+    return result;
+  }
+
+  /**
+   * While dragging `parentId`, reposition its attached children so they
+   * track the parent 1:1. Mirrors the stack geometry used in
+   * `updateBattlefield`: children peek above the parent with an
+   * ATTACH_OFFSET_Y staircase. Sprite + overlay positions are snapped
+   * directly (not lerped) to keep up with the cursor.
+   */
+  private followAttachmentsDuringDrag(parentId: string, parentCenter: Point): void {
+    const children = this.getEffectiveChildren(parentId);
+    if (children.length === 0) return;
+    const cardH = CARD_H * this.cardScale;
+    const totalOffset = children.length * ATTACH_OFFSET_Y;
+    const topLeftY = parentCenter.y - totalOffset - cardH / 2;
+    // Parent itself is shifted down by totalOffset so the child staircase
+    // can peek above it — match that offset for the sprite in hand here.
+    const parentEntry = this.entries.get(parentId);
+    if (parentEntry) {
+      const parentCy = topLeftY + totalOffset + cardH / 2;
+      parentEntry.targetY = parentCy;
+      parentEntry.sprite.y = parentCy;
+      if (parentEntry.overlay?.visible) parentEntry.overlay.y = parentCy;
+    }
+    for (let i = 0; i < children.length; i++) {
+      const childId = children[i]!;
+      const child = this.entries.get(childId);
+      if (!child) continue;
+      const cy =
+        topLeftY +
+        totalOffset -
+        (children.length - i) * ATTACH_OFFSET_Y +
+        cardH / 2;
+      child.targetX = parentCenter.x;
+      child.targetY = cy;
+      child.sprite.x = parentCenter.x;
+      child.sprite.y = cy;
+      if (child.overlay?.visible) {
+        child.overlay.x = parentCenter.x;
+        child.overlay.y = cy;
+      }
+    }
+  }
+
+  /**
+   * Find a top-level battlefield card occupying `cell` whose id isn't in
+   * `exclude`. Used during drag to detect a stack target under the cursor.
+   */
+  private findStackTargetAt(
+    cell: GridCell,
+    exclude: Set<string>,
+  ): string | null {
+    if (!this.gridInfo) return null;
+    for (const [id, pos] of this.gridTargets) {
+      if (exclude.has(id)) continue;
+      const c = cellFromPoint(this.gridInfo, pos.x, pos.y);
+      if (c && c.col === cell.col && c.row === cell.row) return id;
+    }
+    return null;
+  }
+
+  /**
+   * Snap one or more dragged cards onto the grid. Translates every card
+   * in the selection by the same (col, row) delta the user applied to
+   * the primary card (the card they actually grabbed), so multi-card
+   * selections preserve their relative layout. If a translated cell is
+   * blocked / occupied / out-of-bounds for a given card, that card
+   * falls back to the nearest free cell near its intended destination
+   * (spiral search). Cards for which we can't find any free cell keep
+   * their existing slot. Clears any prior UI attachments on the dragged
+   * cards so they visually detach from previous stacks.
+   */
+  private commitCellDrop(
+    draggedIds: string[],
+    target: GridCell,
+    primaryId: string | null,
+  ): void {
+    if (!this.gridInfo || draggedIds.length === 0) return;
+    const grid = this.gridInfo;
+
+    // Snapshot the source cell of every dragged card. Used both to drive
+    // the delta translation and to free those cells from the reserved
+    // set (so another dragged card can occupy them if the layout shifts).
+    const sourceCell = new Map<string, GridCell>();
+    for (const id of draggedIds) {
+      const pos = this.gridTargets.get(id);
+      if (!pos) continue;
+      const cell = cellFromPoint(grid, pos.x, pos.y);
+      if (cell) sourceCell.set(id, cell);
+    }
+
+    // Delta from the primary's current cell to the target cell the user
+    // hovered. Every other dragged card translates by the same offset.
+    const primary = primaryId && sourceCell.has(primaryId) ? primaryId : draggedIds[0]!;
+    const primarySrc = sourceCell.get(primary);
+    const dCol = primarySrc ? target.col - primarySrc.col : 0;
+    const dRow = primarySrc ? target.row - primarySrc.row : 0;
+
+    // Reserve cells held by non-dragged cards. We *don't* reserve the
+    // dragged cards' source cells because the translation may reassign
+    // them to other dragged cards.
+    const draggedSet = new Set(draggedIds);
+    const reserved = new Set<string>();
+    for (const [id, pos] of this.gridTargets) {
+      if (draggedSet.has(id)) continue;
+      const c = cellFromPoint(grid, pos.x, pos.y);
+      if (c) reserved.add(cellKey(c.col, c.row));
+    }
+
+    for (const id of draggedIds) {
+      this.uiParent.delete(id);
+      const src = sourceCell.get(id);
+      const wantCol = (src?.col ?? target.col) + dCol;
+      const wantRow = (src?.row ?? target.row) + dRow;
+
+      // Try the translated cell first; if it's blocked / occupied /
+      // out-of-bounds, spiral out from it for the nearest free cell.
+      let placed: GridCell | null = null;
+      const wantCell = cellAt(grid, wantCol, wantRow);
+      if (
+        wantCell &&
+        !wantCell.blocked &&
+        !reserved.has(cellKey(wantCell.col, wantCell.row))
+      ) {
+        placed = wantCell;
+      } else {
+        const anchorX = wantCell?.cx ?? target.cx + dCol * grid.cellW;
+        const anchorY = wantCell?.cy ?? target.cy + dRow * grid.cellH;
+        for (const cell of cellsByDistance(grid, anchorX, anchorY)) {
+          if (cell.blocked) continue;
+          if (reserved.has(cellKey(cell.col, cell.row))) continue;
+          placed = cell;
+          break;
+        }
+      }
+
+      if (placed) {
+        reserved.add(cellKey(placed.col, placed.row));
+        this.userSlots.set(id, { col: placed.col, row: placed.row });
+      }
+    }
+  }
+
+  /**
+   * Attach each dragged card to `targetId` in the UI-only stack map and
+   * drop any user slots they held — the parent's slot controls their
+   * rendered position once stacked.
+   */
+  private commitStackDrop(draggedIds: string[], targetId: string): void {
+    for (const id of draggedIds) {
+      if (id === targetId) continue;
+      // Avoid trivial cycles — if the target is already attached under the
+      // dragged card, drop that relationship first.
+      if (this.uiParent.get(targetId) === id) this.uiParent.delete(targetId);
+      this.uiParent.set(id, targetId);
+      this.userSlots.delete(id);
     }
   }
 
@@ -1448,17 +1924,38 @@ export class PixiGameScene {
     }
   }
 
+  /**
+   * Seed position + uniform scale for a brand-new battlefield sprite that
+   * has no live hand sprite to mirror. Anchors the drop animation at the
+   * hand-fan center (or the zone's far edge for mirrored / hand-less
+   * opponent canvases) so cards always appear to arrive from off-board.
+   * Scale matches the current hand so the size lerp covers the same
+   * distance as the position lerp.
+   */
+  private computeHandOriginSeed(): { x: number; y: number; scale: number } {
+    const zone = this.getPlayZone();
+    const dims = this.computeHandDimensions();
+    // Opponent (mirrored / showHand=false) sends cards in from the TOP
+    // edge of their zone since their "hand" lives off the screen above.
+    const y = this.mirrored || !this.showHand
+      ? zone.y + dims.cardH / 2
+      : zone.y + zone.height - dims.cardH / 2;
+    return {
+      x: zone.x + zone.width / 2,
+      y,
+      scale: dims.cardW / CARD_W,
+    };
+  }
+
   private computeHandDimensions() {
     const base = HAND_CARD_BASES[this.handSize];
     const params = SIZE_PARAMS[this.handSize];
-    // Scale to the play zone so hand sizing tracks my-half width, not the
-    // full canvas (which may now span the entire viewport).
-    const zone = this.getPlayZone();
-    const canvasScale = Math.min(
-      HAND_MAX_SCALE,
-      Math.max(HAND_MIN_SCALE, zone.width / HAND_REF_WIDTH),
-    );
-    const scale = Math.min(this.vScale, canvasScale);
+    // `vScale` comes from the `useHandScale` hook which is also what the
+    // React hand (used during mulligan) multiplies by. Using it directly
+    // — without the earlier canvas-width clamp — keeps the Pixi hand
+    // visually identical to the React hand, so the player's cards don't
+    // change size when transitioning out of the mulligan flow.
+    const scale = this.vScale;
     return {
       cardW: Math.round(base.cardW * scale),
       cardH: Math.round(base.cardH * scale),
@@ -1610,8 +2107,38 @@ export class PixiGameScene {
       const sprite = this.handSprites.get(id);
       if (sprite) this.animateHandSprite(sprite, target);
     }
+    this.captureStackSeeds();
     this.resolveAndDrawArrows();
   };
+
+  /**
+   * Scan the DOM for live stack cards and refresh their last-known
+   * canvas-local center + rendered scale. Entries older than the TTL are
+   * evicted so we don't seed a new battlefield sprite from a stale
+   * position if the same card comes back through the stack much later.
+   */
+  private captureStackSeeds(): void {
+    const canvasRect = this.app.canvas.getBoundingClientRect();
+    const now = performance.now();
+    const els = document.querySelectorAll<HTMLElement>(
+      "[data-stack-object-id][data-card-id]",
+    );
+    for (const el of els) {
+      const cardId = el.dataset["cardId"];
+      if (!cardId) continue;
+      const r = el.getBoundingClientRect();
+      if (r.width === 0 && r.height === 0) continue;
+      this.stackCardSeeds.set(cardId, {
+        x: r.left + r.width / 2 - canvasRect.left,
+        y: r.top + r.height / 2 - canvasRect.top,
+        scale: r.width / CARD_W,
+        ts: now,
+      });
+    }
+    for (const [id, seed] of this.stackCardSeeds) {
+      if (now - seed.ts > STACK_SEED_TTL_MS) this.stackCardSeeds.delete(id);
+    }
+  }
 
   /**
    * Resolve each arrow spec's endpoints to canvas-local coordinates using
@@ -1740,7 +2267,7 @@ export class PixiGameScene {
     s.zIndex = entry.targetZIndex;
 
     const isHovered = this.hoveredCardId === s.card.id;
-    const targetScale = isHovered ? HOVER_SCALE : 1;
+    const targetScale = this.cardScale * (isHovered ? HOVER_SCALE : 1);
     const nextScale = lerp(
       s.scale.x,
       targetScale,

@@ -58,6 +58,32 @@ export async function getTokenBySetAndNumber(setCode: string, collectorNumber: s
 }
 
 /**
+ * Search Scryfall for a token print by name. Always restricts the query
+ * to `type:token` so we don't accidentally return the legendary creature
+ * with the same name (e.g. "Goblin" would otherwise hit Goblin cards
+ * from the base set before the actual Goblin token print).
+ *
+ * Returns the first matching print, preferring the newest release, or
+ * null when no token with that exact name exists on Scryfall. Used as
+ * the fallback image resolver when the engine didn't supply a
+ * `set_code` + `collector_number` pair for a token (e.g. because the
+ * token's edition file has no `[tokens]` section).
+ */
+export async function getTokenByName(name: string): Promise<ScryfallCard | null> {
+  const query = `!"${name}" type:token`;
+  const url = `${SCRYFALL_API}/cards/search?q=${encodeURIComponent(query)}&unique=prints&order=released&dir=desc`;
+  try {
+    const data = await scryfallFetch<{ data?: ScryfallCard[] }>(
+      url,
+      `No token print found for name: ${name}`,
+    );
+    return data.data?.[0] ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Batch-fetch cards by name using POST /cards/collection (up to 75 per request).
  * Returns a map keyed by lowercased card name → ScryfallCard.
  */

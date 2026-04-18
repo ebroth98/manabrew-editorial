@@ -8,6 +8,8 @@ import { PayManaCost } from "./prompt-actions/PayManaCost";
 import { PromptRequired } from "./prompt-actions/PromptRequired";
 import { NoAction } from "./prompt-actions/NoAction";
 import { PromptLabel } from "./prompt-actions/PromptLabel";
+import { Mulligan } from "./prompt-actions/Mulligan";
+import { MulliganPutBack } from "./prompt-actions/MulliganPutBack";
 import { PromptType } from "@/types/promptType";
 import type { PromptButtonLayout } from "./PromptActionButton";
 import {
@@ -23,8 +25,8 @@ const PROMPT_TO_VIEW_KEY: Record<string, PromptActionViewKey> = {
   [PromptType.ChooseTargetSpell]: "chooseTargetSpell",
   [PromptType.PayManaCost]: "payManaCost",
 
-  [PromptType.Mulligan]: "promptRequired",
-  [PromptType.MulliganPutBack]: "promptRequired",
+  [PromptType.Mulligan]: "mulligan",
+  [PromptType.MulliganPutBack]: "mulliganPutBack",
   [PromptType.ChooseTargetPlayer]: "promptLabel",
   [PromptType.ChooseTargetCard]: "promptLabel",
   [PromptType.ChooseTargetAny]: "promptLabel",
@@ -89,6 +91,14 @@ interface PromptActionControllerProps {
   onPayManaCost?: () => void;
   onAutoManaCost?: () => void;
   onCancelManaCost?: () => void;
+  // Mulligan
+  mulliganCount?: number;
+  onMulliganKeep?: () => void;
+  onMulliganDraw?: () => void;
+  // Mulligan put-back
+  mulliganPutBackCount?: number;
+  mulliganSelectedCount?: number;
+  onMulliganPutBackConfirm?: () => void;
 }
 
 export function PromptActionController({
@@ -112,6 +122,12 @@ export function PromptActionController({
   onPayManaCost,
   onAutoManaCost,
   onCancelManaCost,
+  mulliganCount = 0,
+  onMulliganKeep,
+  onMulliganDraw,
+  mulliganPutBackCount = 0,
+  mulliganSelectedCount = 0,
+  onMulliganPutBackConfirm,
 }: PromptActionControllerProps) {
   const promptActionOverride = useGameDevStore((s) => s.promptActionOverride);
   const promptModalHidden = useGameUIStore((s) => s.promptModalHidden);
@@ -194,6 +210,22 @@ export function PromptActionController({
       return <PromptLabel buttonLayout={buttonLayout} label={(promptType && labels[promptType]) || "Waiting..."} />;
     },
     noAction: () => <NoAction buttonLayout={buttonLayout} label="No Action" />,
+    mulligan: () => (
+      <Mulligan
+        isWaitingForResponse={isWaitingForResponse}
+        mulliganCount={mulliganCount}
+        onKeep={onMulliganKeep ?? (() => {})}
+        onMulligan={onMulliganDraw ?? (() => {})}
+      />
+    ),
+    mulliganPutBack: () => (
+      <MulliganPutBack
+        isWaitingForResponse={isWaitingForResponse}
+        count={mulliganPutBackCount}
+        selectedCount={mulliganSelectedCount}
+        onConfirm={onMulliganPutBackConfirm ?? (() => {})}
+      />
+    ),
   };
 
   const runtimeViewKey: PromptActionViewKey = isPassingUntilEot

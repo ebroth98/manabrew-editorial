@@ -14,6 +14,24 @@ export const TABLE_RADIUS = 8;
 export const MAX_LAND_SLOTS = 100;
 export const MAX_GRID_SLOTS = 200;
 
+// ── Battlefield card scale ─────────────────────────────────────────────────
+// Multiplier applied to battlefield sprites (and their grid cell footprint).
+// 1.0 is the legacy size; default is slightly bigger. User-adjustable via
+// the Settings page.
+export const BATTLEFIELD_CARD_SCALE_DEFAULT = 1.15;
+export const BATTLEFIELD_CARD_SCALE_MIN = 0.8;
+export const BATTLEFIELD_CARD_SCALE_MAX = 1.8;
+
+// ── Grid skeleton ──────────────────────────────────────────────────────────
+export const GRID_SKELETON_STROKE_ALPHA = 0.25;
+export const GRID_SKELETON_HOVER_ALPHA = 0.9;
+export const GRID_SKELETON_STACK_ALPHA = 0.85;
+export const GRID_SKELETON_FILL_ALPHA = 0.04;
+export const GRID_SKELETON_STACK_FILL_ALPHA = 0.22;
+// Grid skeleton sits under all battlefield cards (whose targetZIndex is
+// >= 1) so dragged sprites remain fully visible on top of it.
+export const Z_GRID_SKELETON = -1;
+
 // ── Hand scaling ───────────────────────────────────────────────────────────
 // Hand scales to the canvas width, not the window — the canvas is narrower
 // than the window (zone columns + right panel), so window-based sizing
@@ -30,6 +48,9 @@ export const HAND_HOVER_HOLD_MS = 150;
 export const BATTLEFIELD_HOVER_HOLD_MS = 60;
 // React-side debounce for the hand action-menu portal.
 export const HAND_ACTIONS_CLEAR_DELAY_MS = 180;
+// Window during which a just-resolved spell's last-known stack position
+// is still used to seed its battlefield sprite's entering animation.
+export const STACK_SEED_TTL_MS = 1000;
 // Gap between the hovered hand card and its action menu.
 export const HAND_ACTIONS_GAP_PX = 15;
 // How often we flush FPS samples to the dev store.

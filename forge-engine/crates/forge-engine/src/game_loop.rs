@@ -1,5 +1,7 @@
 use std::collections::{HashMap, VecDeque};
 use std::hash::{DefaultHasher, Hasher};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 
 use forge_foundation::{PhaseType, ZoneType};
 
@@ -59,6 +61,13 @@ pub struct GameLoop {
     next_checkpoint_id: u64,
     reserved_sacrifice_stack: Vec<Vec<CardId>>,
     reserved_source_reuse_stack: Vec<bool>,
+    /// Cooperative shutdown signal. When the host (e.g. Tauri's
+    /// `GameManager::end_game`) flips this flag we short-circuit the
+    /// outer `run()` loop and bail out. Prevents the engine from
+    /// continuing to tick after the user has conceded or returned to
+    /// the main menu — the previous behavior kept the game running
+    /// silently and drove a visible log/prompt loop on the frontend.
+    pub abort_signal: Option<Arc<AtomicBool>>,
 }
 
 #[derive(Debug, Clone)]
@@ -149,7 +158,23 @@ impl GameLoop {
             next_checkpoint_id: 1,
             reserved_sacrifice_stack: Vec::new(),
             reserved_source_reuse_stack: Vec::new(),
+            abort_signal: None,
         }
+    }
+
+    /// Install a cooperative abort signal. When the host flips the flag
+    /// the outer `run()` loop exits before the next turn so the game
+    /// thread can wind down cleanly instead of continuing to drive
+    /// prompts at a frontend that has already unmounted.
+    pub fn set_abort_signal(&mut self, signal: Arc<AtomicBool>) {
+        self.abort_signal = Some(signal);
+    }
+
+    fn is_aborted(&self) -> bool {
+        self.abort_signal
+            .as_ref()
+            .map(|s| s.load(Ordering::Relaxed))
+            .unwrap_or(false)
     }
 
     /// Register a token template by its script filename stem (e.g. "r_1_1_goblin").
@@ -488,6 +513,13 @@ impl GameLoop {
             .run_trigger(TriggerType::NewGame, RunParams::default(), true);
 
         while !game.game_over && game.turn.turn_number <= max_turns {
+            if self.is_aborted() {
+                // Host requested a shutdown (user conceded / returned to
+                // menu). Mark the game as over without picking a winner
+                // so the agent thread can fall through and drop.
+                game.game_over = true;
+                break;
+            }
             self.run_turn(game, agents, rng);
         }
 

@@ -18,8 +18,16 @@ import type { PixiGameScene } from "./PixiGameScene";
 interface PixiArrowsCanvasProps {
   arrowSpecs?: ArrowSpec[];
   castingArrow?: CastingArrowSpec | null;
-  /** Ref to the main `PixiGameScene` so we can read live sprite positions. */
+  /** Ref to the main `PixiGameScene` (the player's own canvas). Drives
+   *  the placement-ghost lookup and is the first scene searched for
+   *  card endpoints. */
   mainSceneRef: React.MutableRefObject<PixiGameScene | null>;
+  /** Per-opponent scene refs keyed by player id. The arrow layer
+   *  iterates these after the main scene so opponent permanents
+   *  resolve to live sprite positions instead of falling back to DOM
+   *  queries. Consumed as a live Map so newly-mounted opponents are
+   *  picked up without re-subscribing. */
+  opponentSceneRefs?: Map<string, React.MutableRefObject<PixiGameScene | null>>;
   className?: string;
 }
 
@@ -41,8 +49,15 @@ export function PixiArrowsCanvas({
   arrowSpecs,
   castingArrow,
   mainSceneRef,
+  opponentSceneRefs,
   className,
 }: PixiArrowsCanvasProps) {
+  // Keep a stable ref to the opponent scenes Map so the ticker closure
+  // reads the latest live scenes without re-registering on every render.
+  const opponentSceneRefsRef = useRef(opponentSceneRefs);
+  useEffect(() => {
+    opponentSceneRefsRef.current = opponentSceneRefs;
+  }, [opponentSceneRefs]);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const appRef = useRef<Application | null>(null);
   const arrowLayerRef = useRef<ArrowLayer | null>(null);
@@ -90,11 +105,19 @@ export function PixiArrowsCanvas({
 
     app.ticker.add((ticker: Ticker) => {
       if (!arrowLayerRef.current || !canvasRef.current) return;
+      const opponentScenes: PixiGameScene[] = [];
+      const map = opponentSceneRefsRef.current;
+      if (map) {
+        for (const ref of map.values()) {
+          if (ref.current) opponentScenes.push(ref.current);
+        }
+      }
       const resolved = resolveArrows(
         canvasRef.current,
         arrowSpecsRef.current,
         castingArrowRef.current,
         mainSceneRef.current,
+        opponentScenes,
         cursorViewportRef.current,
       );
       arrowLayerRef.current.update(resolved, ticker.deltaMS);
@@ -161,11 +184,18 @@ function resolveArrows(
   specs: ArrowSpec[],
   casting: CastingArrowSpec | null,
   mainScene: PixiGameScene | null,
+  opponentScenes: PixiGameScene[],
   cursorViewport: { x: number; y: number },
 ): ArrowDef[] {
   if (specs.length === 0 && !casting) return [];
   const canvasRect = canvas.getBoundingClientRect();
-  const mainCanvasRect = mainScene?.canvasElement.getBoundingClientRect() ?? null;
+  const scenesWithRect: Array<{ scene: PixiGameScene; rect: DOMRect }> = [];
+  if (mainScene) {
+    scenesWithRect.push({ scene: mainScene, rect: mainScene.canvasElement.getBoundingClientRect() });
+  }
+  for (const s of opponentScenes) {
+    scenesWithRect.push({ scene: s, rect: s.canvasElement.getBoundingClientRect() });
+  }
 
   const toLocal = (viewport: { x: number; y: number }): ScreenPos => ({
     x: viewport.x - canvasRect.left,
@@ -175,12 +205,18 @@ function resolveArrows(
   const resolveEndpoint = (ep: ArrowEndpoint): ScreenPos | null => {
     switch (ep.kind) {
       case "card": {
-        const spr = mainScene?.getCardSpritePosition(ep.id);
-        if (spr && mainCanvasRect) {
-          return {
-            x: spr.x + mainCanvasRect.left - canvasRect.left,
-            y: spr.y + mainCanvasRect.top - canvasRect.top,
-          };
+        // Probe each live scene (player first, then opponents) for the
+        // sprite before falling through to a DOM query. Each scene
+        // reports canvas-local coords that we translate into the
+        // arrow-canvas' own viewport.
+        for (const { scene, rect } of scenesWithRect) {
+          const spr = scene.getCardSpritePosition(ep.id);
+          if (spr) {
+            return {
+              x: spr.x + rect.left - canvasRect.left,
+              y: spr.y + rect.top - canvasRect.top,
+            };
+          }
         }
         return domCenter(`[data-card-id="${CSS.escape(ep.id)}"]`, toLocal);
       }
@@ -189,11 +225,13 @@ function resolveArrows(
       case "stack":
         return domCenter(`[data-stack-object-id="${CSS.escape(ep.id)}"]`, toLocal);
       case "placement-ghost": {
-        if (!mainScene || !mainCanvasRect) return null;
+        if (!mainScene) return null;
+        const rect = scenesWithRect[0]?.rect;
+        if (!rect) return null;
         const c = mainScene.getPlacementGhostCenter();
         return {
-          x: c.x + mainCanvasRect.left - canvasRect.left,
-          y: c.y + mainCanvasRect.top - canvasRect.top,
+          x: c.x + rect.left - canvasRect.left,
+          y: c.y + rect.top - canvasRect.top,
         };
       }
     }

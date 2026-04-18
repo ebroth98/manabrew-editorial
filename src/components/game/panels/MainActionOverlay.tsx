@@ -38,6 +38,12 @@ export function MainActionOverlay({
   onPayManaCost,
   onAutoManaCost,
   onCancelManaCost,
+  mulliganCount,
+  onMulliganKeep,
+  onMulliganDraw,
+  mulliganPutBackCount,
+  mulliganSelectedCount,
+  onMulliganPutBackConfirm,
 }: MainActionOverlayProps) {
   if (promptType === PromptType.GameOver) return null;
   const buttonLayout = "modern" as const;
@@ -81,6 +87,12 @@ export function MainActionOverlay({
               onPayManaCost={onPayManaCost}
               onAutoManaCost={onAutoManaCost}
               onCancelManaCost={onCancelManaCost}
+              mulliganCount={mulliganCount}
+              onMulliganKeep={onMulliganKeep}
+              onMulliganDraw={onMulliganDraw}
+              mulliganPutBackCount={mulliganPutBackCount}
+              mulliganSelectedCount={mulliganSelectedCount}
+              onMulliganPutBackConfirm={onMulliganPutBackConfirm}
             />
           </div>
         </div>

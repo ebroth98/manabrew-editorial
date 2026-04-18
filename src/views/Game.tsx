@@ -25,6 +25,7 @@ import { useHandScale } from "@/hooks/useHandScale";
 import { useFlashQueue } from "@/hooks/useFlashQueue";
 import { useHandDrag } from "@/hooks/useHandDrag";
 import { useCardPreview } from "@/hooks/useCardPreview";
+import { useMulliganSelection } from "@/hooks/useMulliganSelection";
 import { HoverCardPreview } from "@/components/game/HoverCardPreview";
 import { usePromptEffects } from "@/hooks/usePromptEffects";
 import { useCombatState } from "@/hooks/useCombatState";
@@ -129,8 +130,81 @@ export default function Game() {
   // full-board PixiArrowsCanvas to read sprite positions across canvases.
   const pixiSceneRef = useRef<PixiGameScene | null>(null);
 
+  // Per-opponent Pixi scene refs — one `MutableRefObject` per player id.
+  // Each opponent's PixiGameCanvas writes its live scene into its ref so
+  // the arrow layer can read opponent sprite positions without a DOM
+  // fallback. The dispenser lazily creates the ref object the first time
+  // a given opponent asks for it so the identity is stable across
+  // re-renders (React requires refs not to flicker between invocations).
+  const opponentSceneRefsRef = useRef<
+    Map<string, React.MutableRefObject<PixiGameScene | null>>
+  >(new Map());
+  const getOpponentPixiSceneRef = useCallback(
+    (playerId: string): React.MutableRefObject<PixiGameScene | null> => {
+      let ref = opponentSceneRefsRef.current.get(playerId);
+      if (!ref) {
+        ref = { current: null };
+        opponentSceneRefsRef.current.set(playerId, ref);
+      }
+      return ref;
+    },
+    [],
+  );
+
+  // Rect of the StackDisplay panel in canvas-local coords, or null when the
+  // stack isn't rendered. Fed to the Pixi scene as an external blocker so
+  // battlefield cards beneath it relocate to a free grid cell (keeping them
+  // reachable for targeting). A rAF loop keeps up with the CSS `right` /
+  // `left` transitions the stack animates on hover and action-panel toggles.
+  const [stackBlockerRect, setStackBlockerRect] = useState<
+    { x: number; y: number; width: number; height: number } | null
+  >(null);
+  useEffect(() => {
+    if (!pixiEnabled) {
+      setStackBlockerRect(null);
+      return;
+    }
+    let raf = 0;
+    let lastKey = "";
+    const tick = () => {
+      raf = requestAnimationFrame(tick);
+      const scene = pixiSceneRef.current;
+      const panel = document.querySelector<HTMLElement>("[data-stack-panel]");
+      if (!scene || !panel) {
+        if (lastKey !== "") {
+          lastKey = "";
+          setStackBlockerRect(null);
+        }
+        return;
+      }
+      const canvasRect = scene.canvasElement.getBoundingClientRect();
+      const panelRect = panel.getBoundingClientRect();
+      const rect = {
+        x: Math.round(panelRect.left - canvasRect.left),
+        y: Math.round(panelRect.top - canvasRect.top),
+        width: Math.round(panelRect.width),
+        height: Math.round(panelRect.height),
+      };
+      const key = `${rect.x},${rect.y},${rect.width},${rect.height}`;
+      if (key === lastKey) return;
+      lastKey = key;
+      setStackBlockerRect(rect);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [pixiEnabled]);
+
   const activePrompt = manualApi ? null : currentPrompt;
   const promptType = activePrompt?.type;
+
+  // When the engine asks the player to pick cards to put on the bottom
+  // of the library we drive that decision from the real in-game hand
+  // instead of a separate modal. The hook bundles the selection state,
+  // toggle, reset-on-prompt-change, and the put-back dispatch.
+  const mulliganPutBack = useMulliganSelection(
+    activePrompt,
+    mulliganPutBackDecision,
+  );
 
   // Accumulating cache of every card we've ever observed across the
   // player's visible zones. Used as a fallback so we can resolve a casting
@@ -1070,6 +1144,7 @@ export default function Game() {
       ) : (
         <PixiArrowsCanvas
           mainSceneRef={pixiSceneRef}
+          opponentSceneRefs={opponentSceneRefsRef.current}
           arrowSpecs={arrowSpecs}
           castingArrow={
             casting.showArrow && casting.castingCardId
@@ -1085,6 +1160,15 @@ export default function Game() {
       <div className="flex gap-1 min-h-0 flex-1 overflow-visible">
         <GameBoard
           pixiSceneRef={pixiSceneRef}
+          pixiExternalBlockers={stackBlockerRect ? [stackBlockerRect] : []}
+          getOpponentPixiSceneRef={getOpponentPixiSceneRef}
+          handSelectionMode={mulliganPutBack.active}
+          handSelectedIds={mulliganPutBack.selected}
+          onHandCardToggle={mulliganPutBack.toggle}
+          mulliganActive={
+            promptType === PromptType.Mulligan ||
+            promptType === PromptType.MulliganPutBack
+          }
           me={me}
           opponents={displayOpponents}
           myPermanents={myPermanents}
@@ -1237,9 +1321,19 @@ export default function Game() {
                 }
               : null
           }
-          onPayManaCost={payManaCost}
+          // Wrapped in an arrow so the MouseEvent the button forwards
+          // doesn't clobber the `auto` default (truthy event ⇒ auto=true,
+          // which would route to the wand path even when the player
+          // meant to commit the already-tapped pool).
+          onPayManaCost={() => payManaCost(false)}
           onAutoManaCost={autoManaCost}
           onCancelManaCost={cancelManaCost}
+          mulliganCount={activePrompt?.mulliganCount ?? 0}
+          onMulliganKeep={() => mulliganDecision(true)}
+          onMulliganDraw={() => mulliganDecision(false)}
+          mulliganPutBackCount={mulliganPutBack.count}
+          mulliganSelectedCount={mulliganPutBack.selected.size}
+          onMulliganPutBackConfirm={mulliganPutBack.confirm}
         />
       )}
 
@@ -1303,10 +1397,6 @@ export default function Game() {
           closeAbilityPicker();
         }}
         onCancelAbilityPicker={closeAbilityPicker}
-        onMulliganDecision={mulliganDecision}
-        onMulliganPutBackDecision={mulliganPutBackDecision}
-        isWaitingForResponse={isWaitingForResponse}
-        myHand={gameView.myHand}
         onModeDecision={modeDecision}
         onRevealCardsAcknowledged={revealCardsAcknowledged}
         onPayCostToPreventEffectDecision={payCostToPreventEffectDecision}

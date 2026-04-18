@@ -45,6 +45,11 @@ interface PreferencesState {
   handSize: HandSize;
   setHandSize: (size: HandSize) => void;
 
+  /** Multiplier applied to battlefield card sprites (and the grid cells
+   *  they snap into). 1.0 is the legacy size. */
+  battlefieldCardScale: number;
+  setBattlefieldCardScale: (scale: number) => void;
+
   /** Card preview trigger mode */
   cardPreviewMode: CardPreviewMode;
   setCardPreviewMode: (mode: CardPreviewMode) => void;
@@ -99,6 +104,10 @@ export const usePreferencesStore = create<PreferencesState>()(
 
       handSize: 'medium',
       setHandSize: (handSize) => set({ handSize }),
+
+      battlefieldCardScale: 1.15,
+      setBattlefieldCardScale: (battlefieldCardScale) =>
+        set({ battlefieldCardScale: Math.max(0.8, Math.min(1.8, battlefieldCardScale)) }),
 
       cardPreviewMode: 'hover',
       setCardPreviewMode: (cardPreviewMode) => set({ cardPreviewMode }),

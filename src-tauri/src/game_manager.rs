@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -46,6 +47,11 @@ pub struct GameSession {
     pub thread_handle: Option<thread::JoinHandle<()>>,
     pub is_multiplayer: bool,
     pub is_host: bool,
+    /// Cooperative abort flag shared with the game thread's `GameLoop`.
+    /// Flipping it causes `run()` to exit before the next turn so the
+    /// engine stops driving prompts at a frontend that has already
+    /// closed the game.
+    pub abort_signal: Arc<AtomicBool>,
 }
 
 impl GameManager {
@@ -91,6 +97,8 @@ impl GameManager {
         let (snapshot_tx, snapshot_rx) = mpsc::channel::<GameSnapshotEventDto>();
 
         let response_tx_clone = response_tx.clone();
+        let abort_signal = Arc::new(AtomicBool::new(false));
+        let abort_signal_for_thread = abort_signal.clone();
 
         spawn_engine_prompt_forwarder(app.clone(), self.latest_prompt.clone(), prompt_rx);
         spawn_notify_forwarder(app.clone(), notify_rx, None);
@@ -113,6 +121,7 @@ impl GameManager {
                     response_rx,
                     notify_tx,
                     snapshot_tx,
+                    abort_signal_for_thread,
                 );
             }));
             match result {
@@ -137,6 +146,7 @@ impl GameManager {
             thread_handle: Some(handle),
             is_multiplayer: false,
             is_host: true,
+            abort_signal,
         });
 
         Ok(game_id)
@@ -166,13 +176,34 @@ impl GameManager {
                 *lp = Some(prompt.clone());
             }
             let _ = app.emit("game:prompt", &prompt);
-            // Unblock the game thread with a no-op
-            let session_guard = self.session.lock().map_err(|e| e.to_string())?;
-            if let Some(session) = session_guard.as_ref() {
+
+            // Fully tear the session down — same sequence as `end_game` so
+            // the game thread actually exits instead of continuing to ask
+            // the (now conceded) player for decisions. Without this the
+            // agent blocks on `recv_action()` after we unblock it with a
+            // no-op PassPriority, and the next prompt the engine raises
+            // (opponent upkeep, triggers, etc.) keeps the thread hot in
+            // a wait → fire → wait loop that also drives the frontend's
+            // log spam since prompts still land on the `game:prompt`
+            // channel.
+            let session_opt = {
+                let mut session_guard = self.session.lock().map_err(|e| e.to_string())?;
+                session_guard.take()
+            };
+            if let Some(session) = session_opt {
+                // Raise the cooperative abort flag the GameLoop checks
+                // between turns so the engine bails instead of looping
+                // silently after the concede.
+                session.abort_signal.store(true, Ordering::Relaxed);
                 let _ = session.response_tx.send(PlayerAction::PlayCard {
                     card_id: None,
                     mode: None,
                 });
+                drop(session.response_tx);
+                drop(session.remote_response_txs);
+            }
+            if let Ok(mut lp) = self.latest_prompt.lock() {
+                *lp = None;
             }
             return Ok(());
         }
@@ -192,9 +223,15 @@ impl GameManager {
     pub fn end_game(&self) -> Result<(), String> {
         let mut session_guard = self.session.lock().map_err(|e| e.to_string())?;
         if let Some(session) = session_guard.take() {
-            drop(session.response_tx); // signals game thread to stop
-            drop(session.remote_response_txs); // drop remote channels too
-                                               // Don't join here — let the thread wind down on its own so end_game returns fast
+            // Flip the cooperative abort flag first — the game loop
+            // checks it between turns and will exit cleanly. Dropping the
+            // response channels without this used to leave the engine
+            // looping silently (the transport fell back to a no-op pass
+            // priority on a disconnect, which never ended the game).
+            session.abort_signal.store(true, Ordering::Relaxed);
+            drop(session.response_tx);
+            drop(session.remote_response_txs);
+            // Don't join — the thread winds down on its own so end_game returns fast.
         }
         // Clear latest prompt so the next game doesn't see stale state
         if let Ok(mut lp) = self.latest_prompt.lock() {
@@ -296,6 +333,8 @@ impl GameManager {
         let player_name_strs = player_names.clone();
         let selected_deck_lists = deck_lists.clone();
         let selected_commander_names = commander_names.clone();
+        let abort_signal = Arc::new(AtomicBool::new(false));
+        let abort_signal_for_thread = abort_signal.clone();
         let handle = thread::spawn(move || {
             eprintln!(
                 "[game_thread] Starting multiplayer game: {} with {} players",
@@ -315,6 +354,7 @@ impl GameManager {
                     engine_snapshot_tx,
                     game_remote_prompt_tx,
                     remote_response_rxs,
+                    abort_signal_for_thread,
                 );
             }));
             match result {
@@ -339,6 +379,7 @@ impl GameManager {
             thread_handle: Some(handle),
             is_multiplayer: true,
             is_host: local_is_host,
+            abort_signal,
         });
 
         Ok(game_id)
@@ -403,6 +444,7 @@ fn run_game(
     response_rx: mpsc::Receiver<PlayerAction>,
     notify_tx: mpsc::Sender<GameLogEntryDto>,
     snapshot_tx: mpsc::Sender<GameSnapshotEventDto>,
+    abort_signal: Arc<AtomicBool>,
 ) {
     let mut players = Vec::with_capacity(2);
     let mut human = if deck_list.len() == 1 && is_preset_id(&deck_list[0].name) {
@@ -454,6 +496,7 @@ fn run_game(
 
     let mut agents: Vec<Box<dyn PlayerAgent>> = vec![Box::new(human), Box::new(ai)];
     let mut game_loop = GameLoop::new(2);
+    game_loop.set_abort_signal(abort_signal);
     if std::env::var("FORGE_ENGINE_GAME_LOG").is_err() {
         game_loop.game_log.set_enabled(true);
     }
@@ -503,6 +546,7 @@ fn run_multiplayer_game(
     engine_snapshot_tx: mpsc::Sender<GameSnapshotEventDto>,
     remote_prompt_tx: mpsc::Sender<(usize, AgentPrompt)>,
     remote_response_rxs: Vec<(usize, mpsc::Receiver<PlayerAction>)>,
+    abort_signal: Arc<AtomicBool>,
 ) {
     let num_players = player_names.len();
     let mut prepared_players = Vec::with_capacity(num_players);
@@ -560,16 +604,27 @@ fn run_multiplayer_game(
     }
 
     let mut game_loop = GameLoop::new(num_players);
+    game_loop.set_abort_signal(abort_signal);
     if std::env::var("FORGE_ENGINE_GAME_LOG").is_err() {
         game_loop.game_log.set_enabled(true);
     }
     game_loop.experimental_restore_snapshot =
         std::env::var("FORGE_ENGINE_RESTORE_SNAPSHOT").is_ok();
 
+    // Register token templates with their Scryfall set code + collector
+    // number so the frontend can fetch the correct token art. Mirrors the
+    // single-player path — without this, tokens arrive with empty
+    // set_code/card_number and the UI falls back to a generic name lookup
+    // that returns the wrong image (or nothing) for common token names.
     let p0 = PlayerId(0);
     let token_db = get_token_db();
+    let token_image_map = get_token_image_map();
     for (script_name, rules) in token_db.iter() {
-        let template = card_rules_to_instance(rules, p0);
+        let mut template = card_rules_to_instance(rules, p0);
+        if let Some(info) = token_image_map.get(script_name) {
+            template.set_code = Some(info.set_code.clone());
+            template.card_number = Some(info.collector_number.clone());
+        }
         game_loop.register_token(script_name.clone(), template);
     }
 

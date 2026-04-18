@@ -6,6 +6,10 @@ const JUST_DRAGGED_CLEAR_MS = 300;
 
 interface DragState {
   cardIds: string[];
+  /** The card the user actually grabbed — used to anchor multi-card
+   *  moves so every card in the selection translates by the same
+   *  (col, row) delta rather than reassembling around the cursor. */
+  primaryCardId: string;
   startPositions: Map<string, ScreenPos>;
   startMouseX: number;
   startMouseY: number;
@@ -18,13 +22,6 @@ interface HandExclusion {
   topY: number;
 }
 
-interface ExtraBlockerRect {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-}
-
 export class DragHandler {
   private drag: DragState | null = null;
   private containerWidth = 0;
@@ -32,14 +29,13 @@ export class DragHandler {
   private leftReserved = 0;
   private rightReserved = 0;
   private bottomReserved = 0;
+  private cardScale = 1;
   /**
    * Horizontal band occupied by the hand fan. When set, dragging is only
    * clamped vertically where the card's x overlaps this band — outside it,
    * cards can travel all the way to the bottom of the canvas.
    */
   private handExclusion: HandExclusion | null = null;
-  /** Additional keep-out rects (UI overlays) that the drag must avoid. */
-  private extraBlockers: ExtraBlockerRect[] = [];
   justDraggedCardIds = new Set<string>();
   private justDraggedTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -60,8 +56,18 @@ export class DragHandler {
       : null;
   }
 
-  setExtraBlockers(rects: ExtraBlockerRect[]): void {
-    this.extraBlockers = rects;
+  /**
+   * No-op retained for API compatibility. Overlay keep-out rects are now
+   * enforced via the grid cell-blocked mask (so the card snaps to a legal
+   * cell on drop) instead of mid-drag Y clamps, which used to make any gap
+   * between two stacked blockers unreachable during a drag.
+   */
+  setExtraBlockers(_rects: ReadonlyArray<{ x: number; y: number; width: number; height: number }>): void {
+    // intentional no-op
+  }
+
+  setCardScale(scale: number): void {
+    this.cardScale = Math.max(0.1, scale);
   }
 
   get isDragging(): boolean {
@@ -102,6 +108,7 @@ export class DragHandler {
 
     this.drag = {
       cardIds: dragCards,
+      primaryCardId: cardId,
       startPositions,
       startMouseX: mouseX,
       startMouseY: mouseY,
@@ -109,6 +116,12 @@ export class DragHandler {
     };
 
     return selection;
+  }
+
+  /** The card id the current drag was initiated on, or null when no
+   *  drag is in progress. Used to anchor multi-card snap-to-grid. */
+  get primaryDraggingCardId(): string | null {
+    return this.drag?.primaryCardId ?? null;
   }
 
   move(mouseX: number, mouseY: number): Map<string, ScreenPos> | null {
@@ -124,12 +137,14 @@ export class DragHandler {
       this.drag.hasMoved = true;
     }
 
-    const xMin = Math.max(0, this.leftReserved) + CARD_W / 2;
-    const xMax = Math.max(xMin, this.containerWidth - CARD_W / 2 - this.rightReserved);
-    const yMin = CARD_H / 2;
+    const halfW = (CARD_W * this.cardScale) / 2;
+    const halfH = (CARD_H * this.cardScale) / 2;
+    const xMin = Math.max(0, this.leftReserved) + halfW;
+    const xMax = Math.max(xMin, this.containerWidth - halfW - this.rightReserved);
+    const yMin = halfH;
     const yMaxFloor = this.handExclusion
-      ? this.containerHeight - CARD_H / 2
-      : Math.max(yMin, this.containerHeight - CARD_H / 2 - this.bottomReserved);
+      ? this.containerHeight - halfH
+      : Math.max(yMin, this.containerHeight - halfH - this.bottomReserved);
 
     const positions = new Map<string, ScreenPos>();
     for (const [id, start] of this.drag.startPositions) {
@@ -137,26 +152,23 @@ export class DragHandler {
       let yMax = yMaxFloor;
 
       if (this.handExclusion) {
-        const cardLeft = x - CARD_W / 2;
-        const cardRight = x + CARD_W / 2;
+        const cardLeft = x - halfW;
+        const cardRight = x + halfW;
         const overlapsHand =
           cardLeft < this.handExclusion.xEnd && cardRight > this.handExclusion.xStart;
         if (overlapsHand) {
-          yMax = Math.max(yMin, this.handExclusion.topY - CARD_H / 2);
+          yMax = Math.max(yMin, this.handExclusion.topY - halfH);
         }
       }
 
-      // Extra keep-out rects (e.g. the PASS button cluster at bottom-right).
-      // If the card's horizontal span overlaps a blocker, clamp yMax so the
-      // card stays above it.
-      for (const rect of this.extraBlockers) {
-        const cardLeft = x - CARD_W / 2;
-        const cardRight = x + CARD_W / 2;
-        const overlapsX = cardLeft < rect.x + rect.width && cardRight > rect.x;
-        if (overlapsX) {
-          yMax = Math.min(yMax, Math.max(yMin, rect.y - CARD_H / 2));
-        }
-      }
+      // Extra keep-out rects (stack panel, PASS cluster, etc.) are honored
+      // by the grid's cell-blocked mask — the drop snaps the card into the
+      // nearest unblocked cell. Clamping drag-Y against blocker tops here
+      // used to push cards above any blocker they visually overlapped,
+      // which made the gap between two stacked blockers (e.g. the stack
+      // panel above the PASS cluster) impossible to reach. Leaving the
+      // mid-drag Y free lets the user park the card anywhere in that gap
+      // and the grid snap handles the legal placement on release.
 
       const y = Math.max(yMin, Math.min(yMax, start.y + dy));
       positions.set(id, { x, y });

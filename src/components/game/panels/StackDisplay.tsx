@@ -115,6 +115,7 @@ export function StackDisplay({
 
   return (
     <div
+      data-stack-panel
       className={cn(
         "pointer-events-auto absolute z-40 transition-[right] duration-200",
       )}
@@ -146,6 +147,7 @@ export function StackDisplay({
             <div
               key={obj.id}
               data-stack-object-id={obj.id}
+              data-card-id={obj.sourceId}
               className={cn(
                 "absolute left-0 will-change-transform",
                 hasPositionChange

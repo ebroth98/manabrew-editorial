@@ -373,6 +373,49 @@ export default function Settings() {
           </div>
 
           <div className="space-y-2">
+            <Label>
+              Battlefield Card Size ({Math.round(prefs.battlefieldCardScale * 100)}%)
+            </Label>
+            <input
+              type="range"
+              min={80}
+              max={180}
+              step={5}
+              value={Math.round(prefs.battlefieldCardScale * 100)}
+              onChange={(e) =>
+                prefs.setBattlefieldCardScale(Number(e.target.value) / 100)
+              }
+              className="w-full"
+            />
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => prefs.setBattlefieldCardScale(1.0)}
+              >
+                100%
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => prefs.setBattlefieldCardScale(1.15)}
+              >
+                Default
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => prefs.setBattlefieldCardScale(1.4)}
+              >
+                Large
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Controls the size of cards (and the grid they snap into) on the battlefield.
+            </p>
+          </div>
+
+          <div className="space-y-2">
             <Label>Card Preview Trigger</Label>
             <div className="flex items-center gap-2">
               <Button

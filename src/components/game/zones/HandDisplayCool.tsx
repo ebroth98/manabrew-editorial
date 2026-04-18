@@ -6,61 +6,18 @@ import { useHandScale } from "@/hooks/useHandScale";
 import type { HandDisplayProps } from "../game.types";
 import { HAND_CARD_BASES } from "../game.styles";
 import { HandCardActions } from "./HandCardActions";
+import {
+  HAND_FAN_SIZE_PARAMS as SIZE_PARAMS,
+  HOVER_SCALE,
+  computeHandFanLayout as computeLayout,
+} from "./HandFanLayout";
 
-const ARC_RADIUS = 900;
-const MAX_ARC_DEG = 30;
-const HOVER_SCALE = 1.8;
-
-/** Base layout params at 1920px reference, keyed by size preference. */
-const SIZE_PARAMS = {
-  small: {
-    hoverLift: 40,
-    neighborPush: 30,
-    maxSpread: 56,
-    minSpread: 24,
-    spreadWidth: 560,
-  },
-  medium: {
-    hoverLift: 70,
-    neighborPush: 48,
-    maxSpread: 90,
-    minSpread: 38,
-    spreadWidth: 900,
-  },
-  large: {
-    hoverLift: 90,
-    neighborPush: 62,
-    maxSpread: 118,
-    minSpread: 50,
-    spreadWidth: 1180,
-  },
-} as const;
-
-function computeLayout(
-  count: number,
-  cardW: number,
-  maxSpread: number,
-  minSpread: number,
-  spreadWidth: number,
-) {
-  if (count === 0) return [];
-  if (count === 1) return [{ x: 0, drop: 0, rot: 0 }];
-
-  const spread = Math.max(
-    minSpread,
-    Math.min(maxSpread, Math.floor((spreadWidth - cardW) / (count - 1))),
-  );
-  const totalWidth = (count - 1) * spread;
-  const arcDeg = Math.min(MAX_ARC_DEG, count * 2.5);
-
-  return Array.from({ length: count }, (_, i) => {
-    const t = count === 1 ? 0 : (i / (count - 1)) * 2 - 1;
-    const x = -totalWidth / 2 + i * spread;
-    const rot = t * (arcDeg / 2);
-    const drop = (1 - Math.cos((t * Math.PI) / 2)) * (ARC_RADIUS * 0.015);
-    return { x, drop, rot };
-  });
-}
+/**
+ * Vertical offset (pre-scale) applied to mulligan-selected cards so
+ * they peel down below the arc. Scaled by `vScale` at render time so
+ * the drop tracks the user's configured hand size.
+ */
+const MULLIGAN_SELECTED_DROP_PX = 24;
 
 export function HandDisplayCool({
   cards,
@@ -73,6 +30,9 @@ export function HandDisplayCool({
   castingCardId,
   getActions,
   onSelectAction,
+  selectionMode,
+  selectedIds,
+  onCardToggle,
 }: HandDisplayProps) {
   const handSize = usePreferencesStore((s) => s.handSize);
   const vScale = useHandScale();
@@ -289,6 +249,8 @@ export function HandDisplayCool({
         {cards.map((card, idx) => {
           const pos = positions[idx];
           const isHov = hoveredId === card.id;
+          const isSelected =
+            !!selectionMode && (selectedIds?.has(card.id) ?? false);
 
           let pushX = 0;
           if (hovIdx >= 0 && idx !== hovIdx) {
@@ -297,8 +259,11 @@ export function HandDisplayCool({
             pushX = sign * Math.max(0, neighborPush - dist * 6);
           }
 
-          const isCasting = castingCardId != null && card.id === castingCardId;
-          const isTugging = tugId === card.id;
+          const isCasting =
+            !selectionMode &&
+            castingCardId != null &&
+            card.id === castingCardId;
+          const isTugging = !selectionMode && tugId === card.id;
 
           // Use actual width/height changes instead of CSS scale() so the
           // browser re-rasterises the image at the target size rather than
@@ -308,14 +273,29 @@ export function HandDisplayCool({
           const curW = isHov ? hovW : cardW;
           const curH = isHov ? hovH : cardH;
 
+          // Selected mulligan cards drop below the arc and straighten out
+          // so it's obvious they're "going away". The offset scales with
+          // vScale so it tracks the chosen hand size.
+          const selectionDrop = isSelected
+            ? Math.round(MULLIGAN_SELECTED_DROP_PX * vScale)
+            : 0;
           const tx = Math.round(pos.x + pushX + (isTugging ? tugOffset.x : 0));
           const translateY = Math.round(
-            (isHov ? -hoverLift : pos.drop) + (isTugging ? tugOffset.y : 0),
+            (isHov ? -hoverLift : pos.drop) +
+              (isTugging ? tugOffset.y : 0) +
+              selectionDrop,
           );
-          const rot = isHov ? 0 : pos.rot;
-          const z = isTugging ? 100 : isHov ? 100 : idx + 1;
+          const rot = isHov || isSelected ? 0 : pos.rot;
+          const z = isTugging
+            ? 100
+            : isHov
+              ? 100
+              : isSelected
+                ? 5
+                : idx + 1;
 
-          const actions = isHov && getActions ? getActions(card) : [];
+          const actions =
+            !selectionMode && isHov && getActions ? getActions(card) : [];
 
           return (
             <div
@@ -323,8 +303,11 @@ export function HandDisplayCool({
               data-card-id={card.id}
               className={cn(
                 "absolute isolate pointer-events-none",
-                card.isPlayable && "cursor-grab",
-                (card.id === draggingCardId || isCasting) && "opacity-0",
+                !selectionMode && card.isPlayable && "cursor-grab",
+                selectionMode && "cursor-pointer",
+                !selectionMode &&
+                  (card.id === draggingCardId || isCasting) &&
+                  "opacity-0",
               )}
               style={{
                 left: "50%",
@@ -343,6 +326,10 @@ export function HandDisplayCool({
                 className="pointer-events-auto relative w-full h-full"
                 onMouseDown={(e) => {
                   e.preventDefault();
+                  if (selectionMode) {
+                    onCardToggle?.(card.id);
+                    return;
+                  }
                   if (card.isPlayable && onStartDrag) {
                     onStartDrag?.(card, e);
                   } else if (card.isPlayable) {
@@ -356,10 +343,13 @@ export function HandDisplayCool({
                   card={card}
                   className={cn(
                     "shadow-md !bg-card",
-                    isHov && "shadow-xl shadow-black/40",
-                    card.isPlayable &&
+                    isHov && !isSelected && "shadow-xl shadow-black/40",
+                    !selectionMode &&
+                      card.isPlayable &&
                       cn("playable-card", isHov && "is-hovered"),
                     rejectedId === card.id && "animate-reject-flash",
+                    isSelected &&
+                      "ring-2 ring-red-500/80 shadow-[0_12px_28px_rgba(220,38,38,0.35)] opacity-85",
                   )}
                   style={{
                     width: curW,
@@ -371,7 +361,13 @@ export function HandDisplayCool({
                   resolution="large"
                 />
 
-                {isHov && actions.length > 0 && onSelectAction && (
+                {isSelected && (
+                  <div className="absolute left-1/2 -bottom-3 -translate-x-1/2 whitespace-nowrap rounded-full bg-red-600/95 text-white text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 shadow-lg pointer-events-none">
+                    → Library bottom
+                  </div>
+                )}
+
+                {!selectionMode && isHov && actions.length > 0 && onSelectAction && (
                   <div
                     data-hover-bridge="true"
                     style={{

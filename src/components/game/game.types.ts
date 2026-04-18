@@ -4,6 +4,7 @@ import type { GameSnapshotEntry } from "@/types/gameSnapshot";
 import type { PromptType } from "@/types/promptType";
 import type { PlacementGhost } from "@/components/game/zones/FreeBattlefield";
 import type { HandActionOption } from "@/stores/useGameUIStore";
+import type { PixiGameScene } from "@/pixi/PixiGameScene";
 
 export type PromptActionType = PromptType;
 
@@ -42,6 +43,10 @@ export interface OpponentHalfProps {
   hostileTargeting?: boolean;
   manaAbilityOptions?: ActivatableAbilityInfo[];
   onTapLandAbility?: (cardId: string, abilityIndex: number, color?: string) => void;
+  /** Populated by the opponent's Pixi canvas so the full-board arrow
+   *  layer can resolve sprite positions for opponent permanents
+   *  without round-tripping through DOM queries. */
+  pixiSceneRef?: React.MutableRefObject<PixiGameScene | null>;
 }
 
 export interface BattlefieldZoneProps {
@@ -85,6 +90,17 @@ export interface HandDisplayProps {
   castingCardId?: string | null;
   getActions?: (card: XMageCard) => HandActionOption[];
   onSelectAction?: (action: HandActionOption) => void;
+  /**
+   * Optional selection overlay — used by the mulligan flows to drive the
+   * hand without spawning a separate modal. When `selectionMode` is on:
+   *   - Clicking a card invokes `onCardToggle` instead of drag/cast.
+   *   - Cards in `selectedIds` drop below the arc, un-tilt, and wear a
+   *     red ring + "→ Library bottom" pill.
+   *   - The normal drag / cast / tug-reject paths are disabled.
+   */
+  selectionMode?: boolean;
+  selectedIds?: Set<string>;
+  onCardToggle?: (cardId: string) => void;
 }
 
 export interface RightActionPanelProps {
@@ -130,4 +146,12 @@ export interface MainActionOverlayProps {
   onPayManaCost: () => void;
   onAutoManaCost: () => void;
   onCancelManaCost: () => void;
+  // Mulligan (live inside the prompt slot with Pass Priority so the
+  // player never leaves the board for a keep/mulligan decision).
+  mulliganCount?: number;
+  onMulliganKeep?: () => void;
+  onMulliganDraw?: () => void;
+  mulliganPutBackCount?: number;
+  mulliganSelectedCount?: number;
+  onMulliganPutBackConfirm?: () => void;
 }

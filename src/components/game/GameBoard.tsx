@@ -3,7 +3,7 @@ import type { Card, Player } from "@/types/openmagic";
 import type { AgentPrompt } from "@/stores/useGameStore";
 import { usePreferencesStore, type ZonePanelItem } from "@/stores/usePreferencesStore";
 import { PixiGameCanvas } from "@/pixi/PixiGameCanvas";
-import type { BattlefieldState, GameCanvasCallbacks } from "@/pixi/types";
+import type { BattlefieldState, GameCanvasCallbacks, ScreenBounds } from "@/pixi/types";
 import type { PixiGameScene } from "@/pixi/PixiGameScene";
 import type { PromptType } from "@/types/promptType";
 import { PromptType as PT } from "@/types/promptType";
@@ -100,6 +100,29 @@ interface GameBoardProps {
   /** Out-ref populated with the live Pixi scene so Game.tsx can share it
    *  with the full-board PixiArrowsCanvas. */
   pixiSceneRef?: React.MutableRefObject<PixiGameScene | null>;
+
+  /** Canvas-local keep-out rects (e.g. the StackDisplay panel when it is
+   *  mounted) so battlefield cards beneath them move into a free cell. */
+  pixiExternalBlockers?: ScreenBounds[];
+
+  /** Per-opponent Pixi scene refs, keyed by player id. Each opponent's
+   *  canvas writes into its ref once the scene is live, so the full-board
+   *  arrow layer can resolve opponent sprite positions without DOM
+   *  fallbacks. Provided by `Game.tsx` which maintains the ref bag. */
+  getOpponentPixiSceneRef?: (playerId: string) => React.MutableRefObject<PixiGameScene | null>;
+
+  /** Mulligan-bottom selection overlay applied to the in-game hand so
+   *  the player picks cards to send to the bottom of the library
+   *  directly from the real hand fan instead of a separate modal. */
+  handSelectionMode?: boolean;
+  handSelectedIds?: Set<string>;
+  onHandCardToggle?: (cardId: string) => void;
+
+  /** True while the mulligan flow owns the hand (keep/mulligan prompt or
+   *  put-back prompt). Hides the Pixi hand so only the React fan shows
+   *  — prevents the "two hands stacked on top of each other" look the
+   *  player would otherwise see. */
+  mulliganActive?: boolean;
 }
 
 export function GameBoard({
@@ -152,6 +175,12 @@ export function GameBoard({
   onUntapLand,
   onUntapLands,
   pixiSceneRef,
+  pixiExternalBlockers,
+  getOpponentPixiSceneRef,
+  handSelectionMode,
+  handSelectedIds,
+  onHandCardToggle,
+  mulliganActive,
 }: GameBoardProps) {
   const themeColors = useGameThemeColors();
   const handSize = usePreferencesStore((s) => s.handSize);
@@ -254,6 +283,7 @@ export function GameBoard({
               hostileTargeting={hostileTargeting}
               manaAbilityOptions={currentPrompt?.manaAbilityOptions}
               onTapLandAbility={onTapLandAbility}
+              pixiSceneRef={getOpponentPixiSceneRef?.(opponents[0]!.id)}
             />
           ) : (
             <ResizablePanelGroup orientation="horizontal">
@@ -287,6 +317,7 @@ export function GameBoard({
                       hostileTargeting={hostileTargeting}
                       manaAbilityOptions={currentPrompt?.manaAbilityOptions}
                       onTapLandAbility={onTapLandAbility}
+                      pixiSceneRef={getOpponentPixiSceneRef?.(op.id)}
                     />
                   </ResizablePanel>
                 </Fragment>
@@ -383,7 +414,7 @@ export function GameBoard({
                   <div className="absolute inset-0 z-10 rounded-lg overflow-hidden">
                     <PixiGameCanvas
                       battlefield={pixiBattlefield}
-                      hand={pixiHand}
+                      hand={mulliganActive ? undefined : pixiHand}
                       sceneRef={pixiSceneRef}
                       placementGhostName={placementGhost?.controllerId === me.id ? placementGhost.cardName : null}
                       isDropActive={isOverBattlefield}
@@ -393,6 +424,7 @@ export function GameBoard({
                       getHandActions={getHandActions}
                       onSelectHandAction={(_card, action) => onSelectHandAction?.(action)}
                       bottomRightReserved={PASS_BUTTON_RESERVED}
+                      externalBlockers={pixiExternalBlockers}
                     />
                   </div>
                 )}
@@ -451,7 +483,18 @@ export function GameBoard({
                   placementGhost={placementGhost?.controllerId === me.id ? placementGhost : null}
                   hostileTargeting={hostileTargeting}
                 />
-                <div ref={handContainerRef} className={cn("absolute bottom-0 left-1/2 -translate-x-1/2 z-20 w-max max-w-full", pixiEnabled && "invisible pointer-events-none")}>
+                <div
+                  ref={handContainerRef}
+                  className={cn(
+                    "absolute bottom-0 left-1/2 -translate-x-1/2 z-20 w-max max-w-full",
+                    // Pixi normally owns the hand and hides the React
+                    // fan, but during the mulligan flow we swap: Pixi
+                    // skips the hand entirely (above) and the React fan
+                    // takes over so click-to-toggle / the keep prompt
+                    // have a single surface.
+                    pixiEnabled && !mulliganActive && "invisible pointer-events-none",
+                  )}
+                >
                   <HandDisplay
                     cards={myHand}
                     onHoverCard={onHoverCard}
@@ -463,6 +506,9 @@ export function GameBoard({
                     castingCardId={castingCardId}
                     getActions={getHandActions}
                     onSelectAction={onSelectHandAction}
+                    selectionMode={handSelectionMode}
+                    selectedIds={handSelectedIds}
+                    onCardToggle={onHandCardToggle}
                   />
                 </div>
               </div>

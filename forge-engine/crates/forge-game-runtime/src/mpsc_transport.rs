@@ -83,18 +83,30 @@ impl AgentTransport for MpscTransport {
     }
 
     fn recv_action(&self) -> PlayerAction {
+        // When the response channel is disconnected — typically because
+        // `GameManager::end_game()` (or the concede branch of `respond`)
+        // dropped it to tear the session down — the previous fallback of
+        // `PlayerAction::PlayCard { card_id: None }` quietly passed
+        // priority and let the game loop keep running forever on auto-
+        // pilot, which manifested on the UI side as the concede/return-
+        // to-menu "infinite prompt" loop. Treating a disconnect as a
+        // concede lets the engine mark the player as having lost,
+        // collapse the game, and exit cleanly.
+        //
+        // A recv_timeout timeout (separate from disconnection) still
+        // falls back to a no-op so long-idle games don't get forcibly
+        // conceded just because nobody clicked anything for a while.
         if let Some(timeout) = self.response_timeout {
-            self.response_rx
-                .recv_timeout(timeout)
-                .unwrap_or(PlayerAction::PlayCard {
+            match self.response_rx.recv_timeout(timeout) {
+                Ok(action) => action,
+                Err(std::sync::mpsc::RecvTimeoutError::Timeout) => PlayerAction::PlayCard {
                     card_id: None,
                     mode: None,
-                })
+                },
+                Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => PlayerAction::Concede,
+            }
         } else {
-            self.response_rx.recv().unwrap_or(PlayerAction::PlayCard {
-                card_id: None,
-                mode: None,
-            })
+            self.response_rx.recv().unwrap_or(PlayerAction::Concede)
         }
     }
 

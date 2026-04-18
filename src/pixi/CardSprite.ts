@@ -18,7 +18,7 @@ const PT_STYLE = new TextStyle({
 
 const BADGE_STYLE = new TextStyle({
   fontFamily: "system-ui, -apple-system, sans-serif",
-  fontSize: 7,
+  fontSize: 6,
   fontWeight: "bold",
   fill: "#ffffff",
 });
@@ -65,6 +65,10 @@ const COUNTER_HEIGHT = 16;
 const COUNTER_RADIUS = 8;
 const KEYWORD_ROW_H = 12;
 const MAX_VISIBLE_KEYWORDS = 4;
+// Fraction of the card height occupied by the title line (card name +
+// mana cost). Badges sit just below this band so the mana cost stays
+// unobstructed regardless of hover scale.
+const BADGE_TITLE_BAND_FRAC = 0.1;
 
 const BADGE_COLORS: Record<string, number> = {
   EXERTED: 0xf97316,
@@ -319,16 +323,22 @@ export class CardSprite extends Container {
     this.badgeContainer.visible = true;
     this.badgeText.text = rule.label;
 
-    const bw = this.badgeText.width + 8;
-    const bh = this.badgeText.height + 4;
+    const bw = this.badgeText.width + 5;
+    const bh = this.badgeText.height + 2;
     this.badgeBg.clear();
     this.badgeBg.roundRect(0, 0, bw, bh, CHIP_RADIUS);
     this.badgeBg.fill({ color: BADGE_COLORS[rule.colorKey]!, alpha: 0.9 });
 
-    this.badgeText.x = 4;
-    this.badgeText.y = 2;
+    this.badgeText.x = 2.5;
+    this.badgeText.y = 1;
+    // Sit the badge just below the MTG title line instead of on top of it.
+    // A top-centered badge would otherwise cover the mana cost pip cluster
+    // (top-right of the card frame) when the hand hover scales the card up,
+    // and the mana cost is the piece of information the player most needs
+    // to read at a glance.
+    const titleBandY = Math.round(CARD_H * BADGE_TITLE_BAND_FRAC);
     this.badgeContainer.x = (CARD_W - bw) / 2;
-    this.badgeContainer.y = 3;
+    this.badgeContainer.y = titleBandY;
   }
 
   private updateCounters(): void {
@@ -376,7 +386,10 @@ export class CardSprite extends Container {
     const hiddenCount = keywords.length - visible.length;
 
     let offsetX = 3;
-    let offsetY = 3;
+    // Start the keyword chip strip just under the MTG title line — matches
+    // the badge band (BADGE_TITLE_BAND_FRAC) so card name + mana cost in
+    // the top-right stay readable at every hover scale.
+    let offsetY = Math.round(CARD_H * BADGE_TITLE_BAND_FRAC);
     const rowH = KEYWORD_ROW_H;
 
     const addChip = (text: string) => {
