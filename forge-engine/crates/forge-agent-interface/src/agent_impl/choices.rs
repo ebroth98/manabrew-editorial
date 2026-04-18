@@ -85,6 +85,7 @@ pub(super) fn choose_optional_trigger<T: AgentTransport>(
     agent.send_prompt(AgentPromptInner::ChooseOptionalTrigger {
         game_view: agent.view(),
         description: description.to_string(),
+        cards: Vec::new(),
         source_card_name: card_name.map(String::from),
         prompt_kind: Some("optional_trigger".to_string()),
         option_labels: Some(vec!["Decline".to_string(), "Accept".to_string()]),
@@ -115,6 +116,7 @@ pub(super) fn confirm_action<T: AgentTransport>(
     agent.send_prompt(AgentPromptInner::ChooseOptionalTrigger {
         game_view: agent.view(),
         description: message.to_string(),
+        cards: Vec::new(),
         source_card_name: card_name.map(String::from),
         prompt_kind: Some("confirm_action".to_string()),
         option_labels: Some(option_labels),
@@ -138,6 +140,7 @@ pub(super) fn confirm_payment<T: AgentTransport>(
     agent.send_prompt(AgentPromptInner::ChooseOptionalTrigger {
         game_view: agent.view(),
         description: message.to_string(),
+        cards: Vec::new(),
         source_card_name: card_name.map(String::from),
         prompt_kind: Some("confirm_payment".to_string()),
         option_labels: Some(vec!["Decline".to_string(), "Accept".to_string()]),
@@ -146,6 +149,53 @@ pub(super) fn confirm_payment<T: AgentTransport>(
     });
     match agent.recv_action() {
         PlayerAction::OptionalTriggerDecision { accept } => accept,
+        _ => false,
+    }
+}
+
+pub(super) fn reveal_cards<T: AgentTransport>(
+    agent: &mut PromptAgent<T>,
+    game: &forge_engine_core::game::GameState,
+    cards: &[CardId],
+    zone: forge_foundation::ZoneType,
+    owner: PlayerId,
+    message_prefix: Option<&str>,
+) {
+    if cards.is_empty() {
+        return;
+    }
+    let cards = cards
+        .iter()
+        .map(|&id| crate::game_view_dto::card_to_dto(game, id, &[], &[], &zone.to_string()))
+        .collect();
+    let message = message_prefix.unwrap_or("Look at these cards").to_string();
+    agent.send_prompt(AgentPromptInner::RevealCards {
+        game_view: agent.view(),
+        cards,
+        zone: zone.to_string(),
+        owner_player_id: crate::ids_codec::player_id_str(owner),
+        message,
+    });
+    let _ = agent.recv_action();
+}
+
+pub(super) fn pay_cost_to_prevent_effect<T: AgentTransport>(
+    agent: &mut PromptAgent<T>,
+    _player: PlayerId,
+    cost_kind: &str,
+    message: &str,
+    card_name: Option<&str>,
+    api: Option<forge_engine_core::ability::api_type::ApiType>,
+) -> bool {
+    agent.send_prompt(AgentPromptInner::PayCostToPreventEffect {
+        game_view: agent.view(),
+        description: message.to_string(),
+        cost_kind: cost_kind.to_string(),
+        source_card_name: card_name.map(String::from),
+        api: api.map(|a| a.name().to_string()),
+    });
+    match agent.recv_action() {
+        PlayerAction::PayCostToPreventEffectDecision { accept } => accept,
         _ => false,
     }
 }
@@ -165,6 +215,7 @@ pub(super) fn choose_binary<T: AgentTransport>(
     agent.send_prompt(AgentPromptInner::ChooseOptionalTrigger {
         game_view: agent.view(),
         description: question.to_string(),
+        cards: Vec::new(),
         source_card_name: card_name.map(String::from),
         prompt_kind: Some("choose_binary".to_string()),
         option_labels: Some(vec![right.to_string(), left.to_string()]),

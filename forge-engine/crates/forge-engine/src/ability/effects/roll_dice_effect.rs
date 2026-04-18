@@ -37,7 +37,7 @@ pub fn make_formated_description(game: &GameState, sa: &SpellAbility) -> String 
             if parts.len() == 2 {
                 let threshold = parts[0].trim();
                 let svar_name = parts[1].trim();
-                if let Some(svar_text) = game.card(source_id).svars.get(svar_name) {
+                if let Some(svar_text) = game.card(source_id).get_s_var(svar_name) {
                     let params = crate::parsing::Params::from_raw(svar_text);
                     let effect_desc = params
                         .get_cloned(crate::parsing::keys::SPELL_DESCRIPTION)
@@ -1870,7 +1870,12 @@ fn resolve_result_sub_ability(
                 .unwrap_or(false)
         };
         if matches {
-            if let Some(sub_text) = ctx.game.card(source_id).svars.get(svar_name).cloned() {
+            if let Some(sub_text) = ctx
+                .game
+                .card(source_id)
+                .get_s_var(svar_name)
+                .map(str::to_string)
+            {
                 let mut sub_sa = build_spell_ability(ctx.game, source_id, &sub_text, player);
                 sub_sa.activating_player = player;
                 resolve_sub_chain(ctx, sub_sa);

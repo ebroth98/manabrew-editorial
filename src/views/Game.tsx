@@ -79,6 +79,7 @@ export default function Game() {
     tapLand, untapLand, activateAbility,
     scryDecision, surveilDecision, digDecision, discardDecision,
     targetSpell, modeDecision, optionalTriggerDecision,
+    revealCardsAcknowledged, payCostToPreventEffectDecision,
     colorDecision, chooseCardsDecision, typeDecision, numberDecision,
     cardNameDecision, respond, payCombatCost, declineCombatCost,
     payManaCost, autoManaCost, cancelManaCost, delveDecision, convokeDecision,
@@ -94,6 +95,8 @@ export default function Game() {
     scryDecision: s.scryDecision, surveilDecision: s.surveilDecision,
     digDecision: s.digDecision, discardDecision: s.discardDecision,
     targetSpell: s.targetSpell, modeDecision: s.modeDecision,
+    revealCardsAcknowledged: s.revealCardsAcknowledged,
+    payCostToPreventEffectDecision: s.payCostToPreventEffectDecision,
     optionalTriggerDecision: s.optionalTriggerDecision,
     colorDecision: s.colorDecision, chooseCardsDecision: s.chooseCardsDecision,
     typeDecision: s.typeDecision, numberDecision: s.numberDecision,
@@ -1241,6 +1244,8 @@ export default function Game() {
         isWaitingForResponse={isWaitingForResponse}
         myHand={gameView.myHand}
         onModeDecision={modeDecision}
+        onRevealCardsAcknowledged={revealCardsAcknowledged}
+        onPayCostToPreventEffectDecision={payCostToPreventEffectDecision}
         onOptionalTriggerDecision={optionalTriggerDecision}
         onPhyrexianDecision={(payLife) => respond({ type: "phyrexianDecision", payLife })}
         onKickerDecision={(kicked) => respond({ type: "kickerDecision", kicked })}

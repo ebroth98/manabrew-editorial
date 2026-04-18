@@ -37,6 +37,8 @@ interface GameModalsProps {
   myHand: XMageCard[];
   // Decision callbacks
   onModeDecision: (indices: number[]) => void;
+  onRevealCardsAcknowledged: () => void;
+  onPayCostToPreventEffectDecision: (accept: boolean) => void;
   onOptionalTriggerDecision: (accept: boolean) => void;
   onPhyrexianDecision: (payLife: boolean) => void;
   onKickerDecision: (kicked: boolean) => void;
@@ -95,6 +97,8 @@ export function GameModals({
   isWaitingForResponse,
   myHand,
   onModeDecision,
+  onRevealCardsAcknowledged,
+  onPayCostToPreventEffectDecision,
   onOptionalTriggerDecision,
   onPhyrexianDecision,
   onKickerDecision,
@@ -131,6 +135,8 @@ export function GameModals({
         onMulliganDecision={onMulliganDecision}
         onMulliganPutBackDecision={onMulliganPutBackDecision}
         onModeDecision={onModeDecision}
+        onRevealCardsAcknowledged={onRevealCardsAcknowledged}
+        onPayCostToPreventEffectDecision={onPayCostToPreventEffectDecision}
         onOptionalTriggerDecision={onOptionalTriggerDecision}
         onColorDecision={onColorDecision}
         onTypeDecision={onTypeDecision}

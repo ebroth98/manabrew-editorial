@@ -623,8 +623,8 @@ fn resolve_svar_for_cost(game: &GameState, source: &Card, name: &str, caster: Pl
     }
 
     // Look up in source card's SVars
-    let expr = match source.svars.get(name) {
-        Some(e) => e.as_str(),
+    let expr = match source.get_s_var(name) {
+        Some(e) => e,
         None => return 0,
     };
 

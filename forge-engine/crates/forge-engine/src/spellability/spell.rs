@@ -39,6 +39,10 @@ pub fn can_play(sa: &SpellAbility, game: &GameState) -> bool {
         return false;
     }
 
+    if !sa.can_cast_timing(game) {
+        return false;
+    }
+
     // Delegate to general restriction check
     check_restrictions(sa, game)
 }
@@ -67,6 +71,10 @@ pub fn can_play_from_host(sa: &SpellAbility, game: &GameState) -> Option<CardId>
 
     // Split second check
     if super::has_split_second_on_stack(game) && !sa.is_mana_ability {
+        return None;
+    }
+
+    if !sa.can_cast_timing(game) {
         return None;
     }
 

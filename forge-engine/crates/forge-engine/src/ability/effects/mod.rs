@@ -826,7 +826,7 @@ fn check_condition(game: &GameState, sa: &SpellAbility) -> bool {
         let Some(source_id) = sa.source else {
             return false;
         };
-        let Some(expr) = game.card(source_id).svars.get(cond) else {
+        let Some(expr) = game.card(source_id).get_s_var(cond) else {
             return false;
         };
 
@@ -1128,7 +1128,11 @@ pub fn resolve_effect_chain_with_parent(
         resolve_effect(ctx, sa_ref);
         parent_target_card = sa_ref.target_chosen.target_card.or(parent_target_card);
         parent_target_player = sa_ref.target_chosen.target_player.or(parent_target_player);
-        current = sa.sub_ability.map(|b| *b);
+        current = if sub_ability_handled_internally(sa_ref) {
+            None
+        } else {
+            sa.sub_ability.map(|b| *b)
+        };
         is_first = false;
         if ctx.game.game_over {
             break;
@@ -1138,6 +1142,10 @@ pub fn resolve_effect_chain_with_parent(
 
 pub fn resolve_effect_chain(ctx: &mut EffectContext, initial: SpellAbility) {
     resolve_effect_chain_with_parent(ctx, initial, None, None);
+}
+
+pub(crate) fn sub_ability_handled_internally(sa: &SpellAbility) -> bool {
+    sa.params.has(keys::UNLESS_COST)
 }
 
 fn resolve_mana_ability_for_effect_payment(
@@ -1202,7 +1210,12 @@ fn resolve_mana_ability_for_effect_payment(
     }
 
     if let Some(sub_svar_name) = ab.params.get(keys::SUB_ABILITY) {
-        if let Some(sub_text) = ctx.game.card(card_id).svars.get(sub_svar_name).cloned() {
+        if let Some(sub_text) = ctx
+            .game
+            .card(card_id)
+            .get_s_var(sub_svar_name)
+            .map(str::to_string)
+        {
             let sub_sa =
                 crate::spellability::build_spell_ability(ctx.game, card_id, &sub_text, player);
             resolve_effect(ctx, &sub_sa);
@@ -1740,9 +1753,34 @@ fn resolve_effect_with_unless_cost(ctx: &mut EffectContext, sa: &SpellAbility, u
         ) {
             continue;
         }
+        let cost_kind = cost.to_simple_string();
+        let prompt = format!(
+            "Pay {} to prevent {}?",
+            if cost_kind.is_empty() {
+                "this cost".to_string()
+            } else {
+                cost_kind.clone()
+            },
+            sa.source
+                .map(|cid| ctx.game.card(cid).card_name.clone())
+                .unwrap_or_else(|| "this effect".to_string())
+        );
+        let card_name = sa.source.map(|cid| ctx.game.card(cid).card_name.as_str());
+        ctx.agents[payer.index()].snapshot_state(ctx.game, ctx.mana_pools);
+        if !ctx.agents[payer.index()].pay_cost_to_prevent_effect(
+            payer,
+            if cost_kind.is_empty() {
+                "UnlessCost"
+            } else {
+                cost_kind.as_str()
+            },
+            &prompt,
+            card_name,
+            sa.api,
+        ) {
+            continue;
+        }
         let paid = try_pay_unless_cost(ctx, sa, source, payer, &cost);
-        // Mirrors Java's payCostToPreventEffect callback after payment attempt.
-        ctx.agents[payer.index()].pay_cost_to_prevent_effect(payer, paid);
         if paid {
             already_paid = true;
         }

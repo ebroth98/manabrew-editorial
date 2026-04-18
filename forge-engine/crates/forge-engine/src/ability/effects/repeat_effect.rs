@@ -16,7 +16,12 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     let Some(sub_svar_name) = sa.params.get_cloned(keys::REPEAT_SUB_ABILITY) else {
         return;
     };
-    let Some(sub_text) = ctx.game.card(source_id).svars.get(&sub_svar_name).cloned() else {
+    let Some(sub_text) = ctx
+        .game
+        .card(source_id)
+        .get_s_var(&sub_svar_name)
+        .map(str::to_string)
+    else {
         return;
     };
 
@@ -133,7 +138,11 @@ fn resolve_sub_chain(ctx: &mut EffectContext, initial: SpellAbility) {
     let mut cur_opt: Option<SpellAbility> = Some(initial);
     while let Some(cur_sa) = cur_opt {
         super::resolve_effect(ctx, &cur_sa);
-        cur_opt = cur_sa.sub_ability.map(|b| *b);
+        cur_opt = if super::sub_ability_handled_internally(&cur_sa) {
+            None
+        } else {
+            cur_sa.sub_ability.map(|b| *b)
+        };
         if ctx.game.game_over {
             break;
         }

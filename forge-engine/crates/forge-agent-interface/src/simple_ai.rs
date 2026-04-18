@@ -153,8 +153,12 @@ pub fn choose_simple_ai_action(
         } => Some(PlayerAction::ModeDecision {
             chosen_indices: (0..min_choices.min(options.len())).collect(),
         }),
+        AgentPromptInner::RevealCards { .. } => Some(PlayerAction::RevealCardsAcknowledged),
         AgentPromptInner::ChooseOptionalTrigger { .. } => {
             Some(PlayerAction::OptionalTriggerDecision { accept: true })
+        }
+        AgentPromptInner::PayCostToPreventEffect { .. } => {
+            Some(PlayerAction::PayCostToPreventEffectDecision { accept: true })
         }
         AgentPromptInner::ChoosePhyrexian { .. } => {
             Some(PlayerAction::PhyrexianDecision { pay_life: false })

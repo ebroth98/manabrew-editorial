@@ -117,7 +117,6 @@ public final class ActionSpace {
         for (final Card c : candidates) {
             for (final SpellAbility sa : c.getAllPossibleAbilities(player, true)) {
                 sa.setActivatingPlayer(player);
-                final boolean canPlay = sa.canPlay(true);
                 final boolean hasManaCost = sa.getPayCosts() != null && sa.getPayCosts().hasManaCost();
                 final Set<Card> reservedSacrifices = getFixedReservedSacrifices(sa);
                 final boolean canPayMana = !hasManaCost
@@ -125,9 +124,6 @@ public final class ActionSpace {
                         ? ComputerUtilMana.canPayManaCost(sa, player, 0, false)
                         : canPayManaCostWithReservedSacrifices(sa, player, reservedSacrifices));
                 final boolean validTargets = hasValidTargets(sa);
-                if (!canPlay) {
-                    continue;
-                }
                 // SpellAbility.canPlay() uses Cost.canPay(), and CostPartMana.canPay()
                 // is permissive in engine core. Add an explicit mana-feasibility check.
                 if (!canPayMana) {

@@ -36,6 +36,8 @@ export interface AgentPrompt {
   cardIds?: string[];
   /** Card DTOs for the revealed library cards */
   cards?: Card[];
+  /** revealCards: owner of the hidden zone being shown */
+  ownerPlayerId?: string;
   /** dig: maximum number of cards the player may take */
   numToTake?: number;
   /** dig: whether taking 0 cards is allowed */
@@ -52,6 +54,8 @@ export interface AgentPrompt {
   maxChoices?: number;
   /** chooseOptionalTrigger: trigger description text */
   description?: string;
+  /** revealCards: display message */
+  message?: string;
   /** chooseOptionalTrigger: context tag (optional_trigger | confirm_action) */
   promptKind?: string;
   /** chooseOptionalTrigger: optional labels for decline/accept buttons */
@@ -60,6 +64,8 @@ export interface AgentPrompt {
   mode?: string;
   /** chooseOptionalTrigger/confirmAction: optional API metadata */
   api?: string;
+  /** payCostToPreventEffect: stable cost kind identifier */
+  costKind?: string;
   /** choosePhyrexian: the phyrexian shard string (e.g. "W/P") */
   phyrexianColor?: string;
   /** chooseKicker: the kicker cost string */
@@ -218,6 +224,8 @@ export interface GameState {
   discardDecision: (discardedCardIds: string[]) => void;
   targetSpell: (spellId: string | null) => void;
   modeDecision: (chosenIndices: number[]) => void;
+  revealCardsAcknowledged: () => void;
+  payCostToPreventEffectDecision: (accept: boolean) => void;
   optionalTriggerDecision: (accept: boolean) => void;
   colorDecision: (color: string | null) => void;
   chooseCardsDecision: (chosenCardIds: string[]) => void;

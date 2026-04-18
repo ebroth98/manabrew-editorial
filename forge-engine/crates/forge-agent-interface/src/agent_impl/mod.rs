@@ -662,6 +662,18 @@ impl<T: AgentTransport> PlayerAgent for PromptAgent<T> {
         library::on_library_peek(self, game, cards)
     }
 
+    fn reveal_cards(
+        &mut self,
+        game: &GameState,
+        _player: PlayerId,
+        cards: &[CardId],
+        zone: ZoneType,
+        owner: PlayerId,
+        message_prefix: Option<&str>,
+    ) {
+        choices::reveal_cards(self, game, cards, zone, owner, message_prefix)
+    }
+
     fn choose_scry(&mut self, player: PlayerId, cards: &[CardId]) -> Vec<CardId> {
         library::choose_scry(self, player, cards)
     }
@@ -738,6 +750,17 @@ impl<T: AgentTransport> PlayerAgent for PromptAgent<T> {
         api: Option<forge_engine_core::ability::api_type::ApiType>,
     ) -> bool {
         choices::confirm_payment(self, player, cost_kind, message, card_name, api)
+    }
+
+    fn pay_cost_to_prevent_effect(
+        &mut self,
+        player: PlayerId,
+        cost_kind: &str,
+        message: &str,
+        card_name: Option<&str>,
+        api: Option<forge_engine_core::ability::api_type::ApiType>,
+    ) -> bool {
+        choices::pay_cost_to_prevent_effect(self, player, cost_kind, message, card_name, api)
     }
 
     fn choose_binary(

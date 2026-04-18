@@ -23,7 +23,11 @@ pub fn resolve_immediate_trigger(ctx: &mut EffectContext, sa: &SpellAbility) {
     // normal trigger processing, matching Java's registerDelayedTrigger flow.
     if let Some(execute_name) = sa.params.get(keys::EXECUTE) {
         if let Some(source_id) = sa.source {
-            let svar_text = ctx.game.card(source_id).svars.get(execute_name).cloned();
+            let svar_text = ctx
+                .game
+                .card(source_id)
+                .get_s_var(execute_name)
+                .map(str::to_string);
             if svar_text.is_some() {
                 let delayed = DelayedTrigger {
                     mode: TriggerType::Immediate,

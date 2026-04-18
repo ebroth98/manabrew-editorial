@@ -1201,10 +1201,10 @@ impl GameState {
 
         let all_card_ids: Vec<CardId> = (0..self.cards.len()).map(|i| CardId(i as u32)).collect();
         for cid in all_card_ids {
+            if self.cards[cid.index()].zone == ZoneType::Battlefield {
+                self.cards[cid.index()].started_turn_tapped = self.cards[cid.index()].tapped;
+            }
             if self.cards[cid.index()].controller == player {
-                if self.cards[cid.index()].zone == ZoneType::Battlefield {
-                    self.cards[cid.index()].started_turn_tapped = self.cards[cid.index()].tapped;
-                }
                 self.cards[cid.index()].new_turn();
             }
         }

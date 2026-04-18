@@ -12,16 +12,13 @@ jobs:
   # ── TypeScript type-check ──────────────────────────────────────────
   typescript:
     name: TypeScript
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     steps:
       - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
         with:
-          node-version: 20
-          cache: npm
+          clean: true
 
-      - run: npm ci
+      - run: yarn
 
       - name: Type-check
         run: npx tsc -p tsconfig.app.json --noEmit
@@ -29,29 +26,14 @@ jobs:
   # ── WASM + card bundler ────────────────────────────────────────────
   wasm:
     name: WASM build
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     steps:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
+          clean: true
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: npm
-
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: wasm32-unknown-unknown
-
-      - uses: Swatinem/rust-cache@v2
-        with:
-          shared-key: wasm
-
-      - name: Install wasm-pack
-        run: cargo install wasm-pack --locked
-
-      - run: npm ci
+      - run: yarn
 
       - name: Build WASM + bundle cards
         run: npm run build:wasm
@@ -59,17 +41,12 @@ jobs:
   # ── Rust workspace (engine, CLI, agent-interface) ──────────────────
   rust-engine:
     name: Rust engine
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     steps:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
-
-      - uses: dtolnay/rust-toolchain@stable
-
-      - uses: Swatinem/rust-cache@v2
-        with:
-          shared-key: engine
+          clean: true
 
       - name: Check engine crates
         run: >
@@ -85,17 +62,12 @@ jobs:
   # ── Rust server ────────────────────────────────────────────────────
   rust-server:
     name: Rust server
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     steps:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
-
-      - uses: dtolnay/rust-toolchain@stable
-
-      - uses: Swatinem/rust-cache@v2
-        with:
-          shared-key: server
+          clean: true
 
       - name: Check forge-server
         run: cargo check -p forge-server
@@ -103,17 +75,12 @@ jobs:
   # ── Rust parity dashboard ─────────────────────────────────────────
   rust-parity:
     name: Rust parity dashboard
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     steps:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
-
-      - uses: dtolnay/rust-toolchain@stable
-
-      - uses: Swatinem/rust-cache@v2
-        with:
-          shared-key: parity
+          clean: true
 
       - name: Check forge-parity (with serve feature)
         run: cargo check -p forge-parity --features serve
@@ -121,30 +88,15 @@ jobs:
   # ── Full web build (wasm + tsc + vite) ─────────────────────────────
   web-build:
     name: Web build (full)
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     needs: [typescript, wasm]
     steps:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
+          clean: true
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: npm
-
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: wasm32-unknown-unknown
-
-      - uses: Swatinem/rust-cache@v2
-        with:
-          shared-key: wasm
-
-      - name: Install wasm-pack
-        run: cargo install wasm-pack --locked
-
-      - run: npm ci
+      - run: yarn
 
       - name: Build web (wasm + tsc + vite)
         run: npm run build:web
@@ -152,7 +104,7 @@ jobs:
   # ── JSON lint (preset decks) ───────────────────────────────────────
   json-lint:
     name: JSON lint
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     steps:
       - uses: actions/checkout@v4
 

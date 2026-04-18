@@ -406,8 +406,12 @@ pub struct CardFilter {
     pub creatures_only: bool,
     /// Only match cards controlled by the ability source's controller.
     pub controller_only: bool,
+    /// Only match cards owned by the ability source's controller.
+    pub owner_only: bool,
     /// Exclude the source card itself (`Other` qualifier).
     pub other_only: bool,
+    /// Only match commanders.
+    pub commander_only: bool,
     /// Only match cards with this subtype (e.g. `"Goblin"`, `"Warrior"`).
     pub subtype: Option<String>,
     /// Only match non-land permanents.
@@ -463,7 +467,9 @@ impl CardFilter {
             "nonLand" | "NonLand" => f.nonland_only = true,
             "Land" => f.land_only = true,
             "YouControl" | "YouCtrl" => f.controller_only = true,
+            "YouOwn" => f.owner_only = true,
             "Other" => f.other_only = true,
+            "IsCommander" => f.commander_only = true,
             // Color qualifiers (e.g. "Creature.White+YouCtrl" for Honor of the Pure).
             "White" => f.required_color = Some(ColorSet::WHITE),
             "Blue" => f.required_color = Some(ColorSet::BLUE),
@@ -498,7 +504,13 @@ impl CardFilter {
         if self.controller_only && card.controller != source.controller {
             return false;
         }
+        if self.owner_only && card.owner != source.controller {
+            return false;
+        }
         if self.other_only && card.id == source.id {
+            return false;
+        }
+        if self.commander_only && !card.is_commander {
             return false;
         }
         if let Some(ref sub) = self.subtype {

@@ -639,6 +639,7 @@ impl GameLoop {
                         game.cards[i].clear_damage();
                     }
                     game.cards[i].reset_turn_modifiers();
+                    game.cards[i].cant_have_keywords.clear();
                     game.cards[i].clear_pump_keywords();
                     game.cards[i].clear_pump_triggers();
                     game.cards[i].clear_deathtouch_damage();

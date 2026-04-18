@@ -44,7 +44,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             sa,
         ),
         "Calculate" => {
-            if let Some(svar_expr) = ctx.game.card(source_id).svars.get(&expression) {
+            if let Some(svar_expr) = ctx.game.card(source_id).get_s_var(&expression) {
                 crate::svar::resolve_count_svar_for_sa(
                     svar_expr,
                     ctx.game,

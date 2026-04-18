@@ -38,6 +38,11 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         .get(keys::DESTINATION_ZONE)
         .and_then(|s| parse_zone_type(s))
         .unwrap_or(ZoneType::Hand);
+    let lib_position1: i32 = sa
+        .params
+        .get(keys::LIBRARY_POSITION)
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(-1);
     let dest_zone2 = sa
         .params
         .get(keys::DESTINATION_ZONE_2)
@@ -156,6 +161,19 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             owner
         };
         ctx.move_card(id, dest_zone1, dest_owner);
+        if dest_zone1 == ZoneType::Library {
+            let zone = ctx.game.zone_mut(ZoneType::Library, dest_owner);
+            match lib_position1 {
+                pos if pos < 0 => zone.reorder(id, 0),
+                0 => {}
+                pos => {
+                    let len = zone.cards.len();
+                    let from_top = pos as usize;
+                    let index = len.saturating_sub(from_top + 1);
+                    zone.reorder(id, index);
+                }
+            }
+        }
         emit_zone_trigger(ctx.trigger_handler, id, ZoneType::Library, dest_zone1);
     }
 

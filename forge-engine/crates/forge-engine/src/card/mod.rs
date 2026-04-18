@@ -197,6 +197,10 @@ pub struct Card {
     /// Keywords granted by continuous static effects (Layer 6).
     /// Reset and recomputed each time [`layer::apply_continuous_effects`] runs.
     pub granted_keywords: crate::keyword::keyword_collection::KeywordCollection,
+    /// SVars supplied by granted text (e.g. AddTrigger$/AddAbility$).
+    /// Reset and recomputed each time [`layer::apply_continuous_effects`] runs.
+    #[serde(default)]
+    pub granted_svars: BTreeMap<String, String>,
     /// Subtypes added by continuous static effects (Layer 4, `AddType$`).
     /// Reset and recomputed each time [`layer::apply_continuous_effects`] runs.
     /// The listed strings are also pushed onto `type_line.subtypes` so normal
@@ -594,6 +598,7 @@ impl Card {
                 &keywords,
             ),
             granted_keywords: crate::keyword::keyword_collection::KeywordCollection::new(),
+            granted_svars: BTreeMap::new(),
             static_added_subtypes: Vec::new(),
             pump_keywords: crate::keyword::keyword_collection::KeywordCollection::new(),
             pump_trigger_count: 0,
@@ -926,6 +931,13 @@ impl Card {
         crate::card::card_state::has_s_var(self, key)
     }
 
+    pub fn get_s_var(&self, key: &str) -> Option<&str> {
+        self.svars
+            .get(key)
+            .or_else(|| self.granted_svars.get(key))
+            .map(String::as_str)
+    }
+
     pub fn remove_s_var(&mut self, key: &str) {
         crate::card::card_state::remove_s_var(self, key);
     }
@@ -1007,6 +1019,12 @@ impl Card {
     /// then falls back to string matching on granted/pump keywords.
     /// Mirrors Java's `Card.hasKeyword(Keyword)`.
     pub fn has_keyword_enum(&self, kw: Kw) -> bool {
+        if self
+            .cant_have_keywords
+            .contains(&kw.display_name().to_ascii_lowercase())
+        {
+            return false;
+        }
         self.keywords.contains_keyword(kw)
             || self.granted_keywords.contains_keyword(kw)
             || self.pump_keywords.contains_keyword(kw)

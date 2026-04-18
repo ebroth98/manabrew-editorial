@@ -462,8 +462,8 @@ pub fn has_candidates_in_chain(
 
     if let Some(sub_svar_name) = params.get(keys::SUB_ABILITY) {
         if let Some(card_id) = source {
-            if let Some(sub_text) = game.card(card_id).svars.get(sub_svar_name) {
-                let sub_text = sub_text.clone();
+            if let Some(sub_text) = game.card(card_id).get_s_var(sub_svar_name) {
+                let sub_text = sub_text.to_string();
                 return has_candidates_in_chain(game, player, &sub_text, source);
             }
         }

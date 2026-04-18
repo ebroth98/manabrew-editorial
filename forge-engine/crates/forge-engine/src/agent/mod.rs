@@ -35,6 +35,20 @@ pub trait PlayerAgent {
     /// Default implementation is a no-op.
     fn on_library_peek(&mut self, _game: &GameState, _cards: &[CardId]) {}
 
+    /// Java-parity reveal hook.
+    /// Mirrors `PlayerController.reveal(...)` for UI agents that need to show
+    /// hidden-zone cards before a later decision prompt resolves.
+    fn reveal_cards(
+        &mut self,
+        _game: &GameState,
+        _player: PlayerId,
+        _cards: &[CardId],
+        _zone: forge_foundation::ZoneType,
+        _owner: PlayerId,
+        _message_prefix: Option<&str>,
+    ) {
+    }
+
     /// Choose whether to keep the current opening hand or mulligan.
     /// `mulligan_count` is the number of mulligans already taken this game.
     /// Returns true to keep, false to mulligan.
@@ -511,8 +525,17 @@ pub trait PlayerAgent {
         true
     }
 
-    fn pay_cost_to_prevent_effect(&mut self, _player: PlayerId, paid: bool) -> bool {
-        paid
+    /// Java-parity unless-cost controller callback.
+    /// Mirrors `PlayerController.payCostToPreventEffect(...)`.
+    fn pay_cost_to_prevent_effect(
+        &mut self,
+        player: PlayerId,
+        cost_kind: &str,
+        message: &str,
+        card_name: Option<&str>,
+        api: Option<crate::ability::api_type::ApiType>,
+    ) -> bool {
+        self.confirm_payment(player, cost_kind, message, card_name, api)
     }
 
     /// Java-parity binary choice hook.
@@ -615,6 +638,21 @@ pub trait PlayerAgent {
     /// Default: pick the first valid color.
     fn choose_color(&mut self, _player: PlayerId, valid_colors: &[String]) -> Option<String> {
         valid_colors.first().cloned()
+    }
+
+    /// Choose one or more colors.
+    /// Mirrors Java controller `chooseColors(...)`.
+    /// Default: choose the first `min` legal colors.
+    fn choose_colors(
+        &mut self,
+        _player: PlayerId,
+        valid_colors: &[String],
+        min: usize,
+        max: usize,
+    ) -> Vec<String> {
+        let hi = max.min(valid_colors.len());
+        let lo = min.min(hi);
+        valid_colors.iter().take(lo).cloned().collect()
     }
 
     /// Choose cards for an effect (ChooseCardEffect, CloneEffect, etc.).

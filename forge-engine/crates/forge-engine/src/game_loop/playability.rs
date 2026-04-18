@@ -34,6 +34,20 @@ impl GameLoop {
                     &card.abilities,
                 )
         };
+        let can_may_play_from_static = |card_id: CardId| {
+            let card = game.card(card_id);
+            game.cards_in_zone(ZoneType::Battlefield, player)
+                .iter()
+                .chain(game.cards_in_zone(ZoneType::Command, player).iter())
+                .any(|&source_id| {
+                    let source = game.card(source_id);
+                    source.static_abilities.iter().any(|sa| {
+                        crate::staticability::static_ability_continuous::can_play(
+                            sa, source, card, game,
+                        )
+                    })
+                })
+        };
 
         for &card_id in hand {
             let card = game.card(card_id);
@@ -106,9 +120,9 @@ impl GameLoop {
                 // NonStackingEffect is an AI hint in Java (AiController), not a game rule.
                 // Do NOT filter here — let the agent decide whether to cast duplicates.
 
-                // Java filters any targeted spell with no legal targets out of the action space.
                 if let Some(ref tr) = cast_sa.target_restrictions {
-                    if !tr.has_candidates(game, player, Some(card_id)) {
+                    let min_targets = tr.get_min_targets(game, &cast_sa);
+                    if min_targets > 0 && !tr.has_candidates(game, player, Some(card_id)) {
                         continue;
                     }
                 }
@@ -602,7 +616,7 @@ impl GameLoop {
                         let source = game.card(source_id);
                         source.static_abilities.iter().any(|sa| {
                             crate::staticability::static_ability_continuous::can_play(
-                                sa, card, game,
+                                sa, source, card, game,
                             )
                         })
                     });
@@ -729,6 +743,65 @@ impl GameLoop {
         let exile: Vec<CardId> = game.cards_in_zone(ZoneType::Exile, player).to_vec();
         for card_id in exile {
             let card = game.card(card_id);
+            let can_may_play = can_may_play_from_static(card_id);
+            if can_may_play {
+                if card.is_land() {
+                    let land_sa = SpellAbility::new_land(Some(card_id), player);
+                    if !must_be_instant
+                        && crate::spellability::land_ability::can_play(&land_sa, game)
+                    {
+                        playable.push(crate::agent::PlayOption {
+                            card_id,
+                            mode: crate::agent::PlayCardMode::Normal,
+                        });
+                    }
+                    continue;
+                }
+
+                if must_be_instant && !has_flash_permission(card_id) {
+                    continue;
+                }
+                let cast_sa =
+                    crate::spellability::build_spell_ability_for_card_cast(game, card_id, player);
+                if crate::staticability::static_ability_cant_be_cast::cant_be_cast_ability_in_context(
+                    &game.cards,
+                    &cast_sa,
+                    card,
+                    player,
+                    Some(game),
+                ) {
+                    continue;
+                }
+                if !crate::spellability::spell::can_play(&cast_sa, game) {
+                    continue;
+                }
+                if let Some(ref tr) = cast_sa.target_restrictions {
+                    let min_targets = tr.get_min_targets(game, &cast_sa);
+                    if min_targets > 0 && !tr.has_candidates(game, player, Some(card_id)) {
+                        continue;
+                    }
+                }
+                let available_mana = mana::calculate_available_mana_for_casting_excluding(
+                    self.pool(player),
+                    game,
+                    player,
+                    Some(card_id),
+                );
+                let cost_adj = crate::cost::cost_adjustment::compute_cost_adjustment(
+                    game,
+                    card,
+                    player,
+                    ZoneType::Exile,
+                );
+                let adjusted = cost_adj.apply(&card.mana_cost);
+                if available_mana.can_pay(&adjusted) {
+                    playable.push(crate::agent::PlayOption {
+                        card_id,
+                        mode: crate::agent::PlayCardMode::Normal,
+                    });
+                }
+                continue;
+            }
             if card.face_down {
                 if let Some(foretell_cost_str) = card.get_foretell_cost() {
                     if must_be_instant && !has_flash_permission(card_id) {

@@ -34,8 +34,10 @@ export const PromptType = {
   ChooseTargetSpell: "chooseTargetSpell",
 
   // Modal choices
+  RevealCards: "revealCards",
   ChooseMode: "chooseMode",
   ChooseOptionalTrigger: "chooseOptionalTrigger",
+  PayCostToPreventEffect: "payCostToPreventEffect",
   ChooseColor: "chooseColor",
   ChooseType: "chooseType",
   ChooseNumber: "chooseNumber",

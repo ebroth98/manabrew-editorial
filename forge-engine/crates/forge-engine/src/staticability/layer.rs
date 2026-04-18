@@ -31,6 +31,8 @@
 //! 7c. Modify P/T → [`Layer::ModifyPT`]
 //! 7d. Counters (handled intrinsically by `Card::power()`)
 
+use std::collections::BTreeMap;
+
 use forge_foundation::ZoneType;
 
 use crate::game::GameState;
@@ -65,11 +67,17 @@ enum EffectKind {
     },
     GrantKeyword(String),
     /// Grant an activated ability (from AddAbility$). The string is the ability text.
-    GrantAbility(String),
+    GrantAbility {
+        text: String,
+        svars: BTreeMap<String, String>,
+    },
     /// Add a type/subtype to the card (`AddType$`). Mirrors Java layer 4.
     AddType(String),
     /// Grant a triggered ability (from AddTrigger$). The string is the raw trigger text.
-    GrantTrigger(String),
+    GrantTrigger {
+        text: String,
+        svars: BTreeMap<String, String>,
+    },
 }
 
 // ── Public API ───────────────────────────────────────────────────────────────
@@ -105,6 +113,7 @@ pub fn apply_continuous_effects(game: &mut GameState) {
             card.static_set_toughness = None;
         }
         card.granted_keywords.clear();
+        card.granted_svars.clear();
         // Remove any subtypes previously added by AddType$ statics so this
         // cycle starts from the intrinsic type line.
         if !card.static_added_subtypes.is_empty() {
@@ -325,7 +334,10 @@ pub fn apply_continuous_effects(game: &mut GameState) {
                             pending.push(PendingEffect {
                                 layer: Layer::Ability,
                                 target,
-                                kind: EffectKind::GrantAbility(ab_text),
+                                kind: EffectKind::GrantAbility {
+                                    text: ab_text,
+                                    svars: source.svars.clone(),
+                                },
                             });
                         }
                     }
@@ -341,7 +353,10 @@ pub fn apply_continuous_effects(game: &mut GameState) {
                                 pending.push(PendingEffect {
                                     layer: Layer::Ability,
                                     target,
-                                    kind: EffectKind::GrantTrigger(trig_text),
+                                    kind: EffectKind::GrantTrigger {
+                                        text: trig_text,
+                                        svars: source.svars.clone(),
+                                    },
                                 });
                             }
                         }
@@ -353,7 +368,10 @@ pub fn apply_continuous_effects(game: &mut GameState) {
                             pending.push(PendingEffect {
                                 layer: Layer::Ability,
                                 target,
-                                kind: EffectKind::GrantAbility(ab_text.to_string()),
+                                kind: EffectKind::GrantAbility {
+                                    text: ab_text.to_string(),
+                                    svars: BTreeMap::new(),
+                                },
                             });
                         }
                     }
@@ -499,19 +517,25 @@ pub fn apply_continuous_effects(game: &mut GameState) {
                     card.static_added_subtypes.push(t);
                 }
             }
-            EffectKind::GrantAbility(ab_text) => {
+            EffectKind::GrantAbility { text, svars } => {
                 // Parse the ability text and add it to the target's activated abilities.
                 // This grants abilities like "{T}: Add one mana of any color."
+                game.cards[effect.target.index()]
+                    .granted_svars
+                    .extend(svars);
                 let next_idx = game.cards[effect.target.index()].activated_abilities.len();
                 if let Some(ab) =
-                    crate::ability::activated::parse_activated_ability(&ab_text, next_idx)
+                    crate::ability::activated::parse_activated_ability(&text, next_idx)
                 {
                     game.cards[effect.target.index()]
                         .activated_abilities
                         .push(ab);
                 }
             }
-            EffectKind::GrantTrigger(trig_text) => {
+            EffectKind::GrantTrigger { text, svars } => {
+                game.cards[effect.target.index()]
+                    .granted_svars
+                    .extend(svars);
                 let next_id = game.cards[effect.target.index()]
                     .triggers
                     .iter()
@@ -520,7 +544,7 @@ pub fn apply_continuous_effects(game: &mut GameState) {
                     .unwrap_or(0)
                     .saturating_add(1);
                 let mut next_id_mut = next_id;
-                if let Some(trig) = crate::trigger::parse_trigger(&trig_text, &mut next_id_mut) {
+                if let Some(trig) = crate::trigger::parse_trigger(&text, &mut next_id_mut) {
                     game.cards[effect.target.index()].triggers.push(trig);
                 }
             }

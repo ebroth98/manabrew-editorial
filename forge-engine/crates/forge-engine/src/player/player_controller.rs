@@ -97,6 +97,8 @@ impl<'a, A: PlayerAgent + ?Sized> PlayerController<'a, A> {
         owner: PlayerId,
         message_prefix: Option<&str>,
     ) {
+        self.agent
+            .reveal_cards(self.game, self.player, cards, zone, owner, message_prefix);
         let mut message = String::new();
         if let Some(prefix) = message_prefix {
             message.push_str(prefix);
@@ -328,6 +330,17 @@ impl<'a, A: PlayerAgent + ?Sized> PlayerController<'a, A> {
     ) -> bool {
         self.agent
             .confirm_payment(self.player, cost_kind, message, card_name, api)
+    }
+
+    pub fn pay_cost_to_prevent_effect(
+        &mut self,
+        cost_kind: &str,
+        message: &str,
+        card_name: Option<&str>,
+        api: Option<crate::ability::api_type::ApiType>,
+    ) -> bool {
+        self.agent
+            .pay_cost_to_prevent_effect(self.player, cost_kind, message, card_name, api)
     }
 
     pub fn confirm_bid_action(

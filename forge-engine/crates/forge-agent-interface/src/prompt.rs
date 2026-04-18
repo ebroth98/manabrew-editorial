@@ -20,6 +20,13 @@ pub enum DisplayEvent {
         active_player_name: String,
         turn_number: u32,
     },
+    #[serde(rename_all = "camelCase")]
+    RevealCards {
+        cards: Vec<CardDto>,
+        zone: String,
+        owner_player_id: String,
+        message: String,
+    },
 }
 
 /// Sent from game thread to frontend: what the human player must decide,
@@ -156,6 +163,15 @@ pub enum AgentPromptInner {
         #[serde(rename = "gameView")]
         game_view: GameViewDto,
     },
+    RevealCards {
+        #[serde(rename = "gameView")]
+        game_view: GameViewDto,
+        cards: Vec<CardDto>,
+        zone: String,
+        #[serde(rename = "ownerPlayerId")]
+        owner_player_id: String,
+        message: String,
+    },
     /// Scry N: player sees `card_ids` (top N of library) and picks which go to bottom.
     Scry {
         #[serde(rename = "gameView")]
@@ -215,6 +231,9 @@ pub enum AgentPromptInner {
         game_view: GameViewDto,
         /// Description of the trigger.
         description: String,
+        /// Optional card DTOs to show alongside the prompt (e.g. looked-at cards).
+        #[serde(default)]
+        cards: Vec<CardDto>,
         /// Name of the source card (for displaying card image in modals).
         #[serde(rename = "sourceCardName")]
         source_card_name: Option<String>,
@@ -227,6 +246,16 @@ pub enum AgentPromptInner {
         /// Optional confirm mode metadata from engine.
         mode: Option<String>,
         /// Optional API metadata from engine.
+        api: Option<String>,
+    },
+    PayCostToPreventEffect {
+        #[serde(rename = "gameView")]
+        game_view: GameViewDto,
+        description: String,
+        #[serde(rename = "costKind")]
+        cost_kind: String,
+        #[serde(rename = "sourceCardName")]
+        source_card_name: Option<String>,
         api: Option<String>,
     },
     /// Choose N modes for a modal spell (SP$ Charm).
@@ -545,6 +574,7 @@ impl AgentPromptInner {
             | AgentPromptInner::ChooseTargetCardFromZone { game_view, .. }
             | AgentPromptInner::GameOver { game_view }
             | AgentPromptInner::StateUpdate { game_view }
+            | AgentPromptInner::RevealCards { game_view, .. }
             | AgentPromptInner::Scry { game_view, .. }
             | AgentPromptInner::Surveil { game_view, .. }
             | AgentPromptInner::Dig { game_view, .. }
@@ -552,6 +582,7 @@ impl AgentPromptInner {
             | AgentPromptInner::ChooseTargetSpell { game_view, .. }
             | AgentPromptInner::ChooseMode { game_view, .. }
             | AgentPromptInner::ChooseOptionalTrigger { game_view, .. }
+            | AgentPromptInner::PayCostToPreventEffect { game_view, .. }
             | AgentPromptInner::ChoosePhyrexian { game_view, .. }
             | AgentPromptInner::ChooseKicker { game_view, .. }
             | AgentPromptInner::ChooseBuyback { game_view, .. }
@@ -691,6 +722,10 @@ pub enum PlayerAction {
     },
     /// Response to ChooseOptionalTrigger: whether the player accepts.
     OptionalTriggerDecision {
+        accept: bool,
+    },
+    RevealCardsAcknowledged,
+    PayCostToPreventEffectDecision {
         accept: bool,
     },
     /// Response to ChooseMode prompt: indices (0-based) of chosen modes.

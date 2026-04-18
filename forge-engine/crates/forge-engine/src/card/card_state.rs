@@ -51,6 +51,12 @@ pub fn add_color(card: &mut Card, color: ColorSet) {
 }
 
 pub fn has_keyword(card: &Card, keyword: &str) -> bool {
+    if card
+        .cant_have_keywords
+        .contains(&keyword.to_ascii_lowercase())
+    {
+        return false;
+    }
     card.keywords.contains_string_ignore_case(keyword)
         || card.granted_keywords.contains_string_ignore_case(keyword)
         || card.pump_keywords.contains_string_ignore_case(keyword)
@@ -187,7 +193,7 @@ pub fn has_replacement_effect(card: &Card) -> bool {
 }
 
 pub fn has_s_var(card: &Card, key: &str) -> bool {
-    card.svars.contains_key(key)
+    card.svars.contains_key(key) || card.granted_svars.contains_key(key)
 }
 
 pub fn remove_s_var(card: &mut Card, key: &str) {

@@ -339,7 +339,7 @@ fn resolve_damage_amount(ctx: &EffectContext, sa: &SpellAbility) -> i32 {
     // Check if var_name is "X" — use x_mana_cost_paid
     if var_name == "X" {
         if let Some(source_id) = sa.source {
-            if let Some(svar_expr) = ctx.game.card(source_id).svars.get("X") {
+            if let Some(svar_expr) = ctx.game.card(source_id).get_s_var("X") {
                 return evaluate_svar_expr(ctx, sa, svar_expr);
             }
         }
@@ -347,7 +347,11 @@ fn resolve_damage_amount(ctx: &EffectContext, sa: &SpellAbility) -> i32 {
     }
 
     if let Some(source_id) = sa.source {
-        let svar_val = ctx.game.card(source_id).svars.get(var_name).cloned();
+        let svar_val = ctx
+            .game
+            .card(source_id)
+            .get_s_var(var_name)
+            .map(str::to_string);
         if let Some(expr) = svar_val {
             return evaluate_svar_expr(ctx, sa, &expr);
         }

@@ -10,6 +10,7 @@ import {
   DamageOrderModal,
   VAssignCombatDamageModal,
   ReorderLibraryModal,
+  RevealCardsModal,
   SpecifyManaComboModal,
   PromptModalController,
 } from "@/components/game/modals";
@@ -28,6 +29,8 @@ interface PromptModalsProps {
   onMulliganPutBackDecision: (cardIds: string[]) => void;
   // Decision callbacks
   onModeDecision: (indices: number[]) => void;
+  onRevealCardsAcknowledged: () => void;
+  onPayCostToPreventEffectDecision: (accept: boolean) => void;
   onOptionalTriggerDecision: (accept: boolean) => void;
   onColorDecision: (color: string) => void;
   onTypeDecision: (chosenType: string | null) => void;
@@ -49,6 +52,8 @@ export function PromptModals({
   onMulliganDecision,
   onMulliganPutBackDecision,
   onModeDecision,
+  onRevealCardsAcknowledged,
+  onPayCostToPreventEffectDecision,
   onOptionalTriggerDecision,
   onColorDecision,
   onTypeDecision,
@@ -63,9 +68,11 @@ export function PromptModals({
 }: PromptModalsProps) {
   const isActivePromptModal =
     (promptType === PT.Mulligan && currentPrompt != null) ||
+    (promptType === PT.RevealCards && currentPrompt?.cards != null && currentPrompt?.message != null) ||
     (promptType === PT.MulliganPutBack && currentPrompt?.cards != null && currentPrompt?.count != null) ||
     (promptType === PT.ChooseMode && currentPrompt?.options != null) ||
     (promptType === PT.ChooseOptionalTrigger && currentPrompt?.description != null) ||
+    (promptType === PT.PayCostToPreventEffect && currentPrompt?.description != null) ||
     (promptType === PT.ChooseColor && currentPrompt?.validColors != null) ||
     (promptType === PT.ChooseType && currentPrompt?.validTypes != null) ||
     (promptType === PT.ChooseNumber && currentPrompt?.min != null && currentPrompt?.max != null) ||
@@ -96,6 +103,14 @@ export function PromptModals({
         />
       )}
 
+      {promptType === PT.RevealCards && currentPrompt?.cards && currentPrompt?.message != null && (
+        <RevealCardsModal
+          cards={currentPrompt.cards}
+          message={currentPrompt.message}
+          onConfirm={onRevealCardsAcknowledged}
+        />
+      )}
+
       {promptType === PT.MulliganPutBack && currentPrompt?.cards && currentPrompt?.count != null && (
         <MulliganBottomModal
           handCards={currentPrompt.cards}
@@ -118,11 +133,24 @@ export function PromptModals({
         <ChooseOptionalTriggerModal
           description={currentPrompt.description}
           cardName={currentPrompt.sourceCardName}
+          cards={currentPrompt.cards}
           promptKind={currentPrompt.promptKind}
           optionLabels={currentPrompt.optionLabels}
           mode={currentPrompt.mode}
           api={currentPrompt.api}
           onConfirm={onOptionalTriggerDecision}
+        />
+      )}
+
+      {promptType === PT.PayCostToPreventEffect && currentPrompt?.description != null && (
+        <ChooseOptionalTriggerModal
+          description={currentPrompt.description}
+          cardName={currentPrompt.sourceCardName}
+          promptKind="confirm_payment"
+          optionLabels={["Decline", "Accept"]}
+          mode={currentPrompt.costKind}
+          api={currentPrompt.api}
+          onConfirm={onPayCostToPreventEffectDecision}
         />
       )}
 

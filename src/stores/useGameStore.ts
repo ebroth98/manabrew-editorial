@@ -376,6 +376,14 @@ export const useGameStore = create<GameState>()(devtools((set, get) => ({
     get().respond({ type: 'modeDecision', chosenIndices });
   },
 
+  revealCardsAcknowledged: () => {
+    get().respond({ type: 'revealCardsAcknowledged' });
+  },
+
+  payCostToPreventEffectDecision: (accept) => {
+    get().respond({ type: 'payCostToPreventEffectDecision', accept });
+  },
+
   optionalTriggerDecision: (accept) => {
     get().respond({ type: 'optionalTriggerDecision', accept });
   },

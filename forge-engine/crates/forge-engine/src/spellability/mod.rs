@@ -934,32 +934,56 @@ impl SpellAbility {
     /// Check if this ability can be cast at the current timing.
     /// Mirrors Java's `SpellAbility.canCastTiming(Game)`.
     pub fn can_cast_timing(&self, game: &GameState) -> bool {
-        // Instant speed abilities can always be cast when the player has priority
-        if self.restriction.variables.instant_speed() {
+        let can_cast_sorcery = game.turn.phase.is_main()
+            && game.stack.is_empty()
+            && game.turn.active_player == self.activating_player;
+
+        // Non-spell, non-activated abilities do not have default timing checks here.
+        if !self.is_spell && !self.is_activated {
             return true;
         }
-        // Sorcery speed requires main phase, empty stack, active player
-        if self.is_spell || self.restriction.variables.sorcery_speed() {
-            let is_main = game.turn.phase.is_main();
-            let stack_empty = game.stack.is_empty();
-            let is_active = game.turn.active_player == self.activating_player;
-            return is_main && stack_empty && is_active;
+
+        if can_cast_sorcery || self.with_flash(game) {
+            return true;
         }
-        // Activated abilities can be used at instant speed by default
+
+        // Spells are sorcery-speed by default unless an explicit timing permission applies.
+        if self.is_spell {
+            return false;
+        }
+
+        // Activated abilities are instant-speed by default except for explicit
+        // sorcery-speed restrictions and planeswalker abilities.
+        if self.is_activated {
+            return !self.params.is_true("PwAbility")
+                && !self.restriction.variables.sorcery_speed();
+        }
+
         true
     }
 
     /// Check if this spell has flash.
     /// Mirrors Java's `SpellAbility.withFlash(Game)`.
     pub fn with_flash(&self, game: &GameState) -> bool {
+        if self.restriction.variables.instant_speed() {
+            return true;
+        }
         if self.params.is_true("Flash") {
             return true;
         }
         if let Some(card_id) = self.source {
             let card = game.card(card_id);
-            if card.has_keyword("Flash") {
+            if ((self.is_spell || self.is_land_ability) && card.type_line.is_instant())
+                || card.has_keyword("Flash")
+            {
                 return true;
             }
+            return crate::staticability::static_ability_cast_with_flash::any_with_flash(
+                &game.cards,
+                card,
+                self.activating_player,
+                &card.abilities,
+            );
         }
         false
     }

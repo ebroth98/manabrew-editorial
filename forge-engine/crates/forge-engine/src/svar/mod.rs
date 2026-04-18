@@ -222,7 +222,7 @@ fn resolve_svar_expression(
     if let Some(value) = resolve_direct_player_expr(expr.trim(), game, source_id, controller, sa) {
         return value;
     }
-    if let Some(svar_expr) = game.card(source_id).svars.get(expr.trim()) {
+    if let Some(svar_expr) = game.card(source_id).get_s_var(expr.trim()) {
         if svar_expr.starts_with("Count$") {
             return resolve_count_svar_for_sa(svar_expr, game, source_id, controller, sa);
         }
@@ -664,7 +664,7 @@ pub fn resolve_numeric_svar(
     if val_str == "X" {
         // First check if there's an SVar named "X" on the source card
         if let Some(source_id) = sa.source {
-            if let Some(svar_expr) = game.card(source_id).svars.get("X") {
+            if let Some(svar_expr) = game.card(source_id).get_s_var("X") {
                 if svar_expr.starts_with("Count$") {
                     return sign
                         * resolve_count_svar_for_sa(
@@ -796,7 +796,7 @@ pub fn resolve_numeric_svar(
 
     // It's an SVar reference — look it up on the source card
     if let Some(source_id) = sa.source {
-        if let Some(svar_expr) = game.card(source_id).svars.get(val_str.trim()) {
+        if let Some(svar_expr) = game.card(source_id).get_s_var(val_str.trim()) {
             // `Remembered$Property` — Java parity for AbilityUtils' "Remembered$"
             // shortcut (e.g. Cavalier of Flame's `Y:Remembered$Amount`).
             if let Some(property) = svar_expr.strip_prefix("Remembered$") {
@@ -1273,7 +1273,7 @@ pub fn resolve_count_svar_for_sa(
             let cond_parts: Vec<&str> = parts[1].splitn(3, '.').collect();
             if cond_parts.len() == 3 {
                 // Resolve the referenced SVar
-                let svar_val = if let Some(svar_expr) = game.card(source_id).svars.get(svar_name) {
+                let svar_val = if let Some(svar_expr) = game.card(source_id).get_s_var(svar_name) {
                     if svar_expr.starts_with("Count$") {
                         resolve_count_svar_for_sa(svar_expr, game, source_id, controller, sa)
                     } else {
@@ -1839,7 +1839,7 @@ mod tests {
         assert_eq!(resolve_numeric_svar(&game, &sa, "NumCards", 0), 1);
         assert_eq!(
             super::resolve_svar_expression(
-                game.card(host_id).svars.get("C").unwrap(),
+                game.card(host_id).get_s_var("C").unwrap(),
                 &game,
                 host_id,
                 p0,
@@ -1849,7 +1849,7 @@ mod tests {
         );
         assert_eq!(
             super::resolve_svar_expression(
-                game.card(host_id).svars.get("D").unwrap(),
+                game.card(host_id).get_s_var("D").unwrap(),
                 &game,
                 host_id,
                 p0,
@@ -1859,7 +1859,7 @@ mod tests {
         );
         assert_eq!(
             super::resolve_svar_expression(
-                game.card(host_id).svars.get("E").unwrap(),
+                game.card(host_id).get_s_var("E").unwrap(),
                 &game,
                 host_id,
                 p0,
@@ -1869,7 +1869,7 @@ mod tests {
         );
         assert_eq!(
             super::resolve_svar_expression(
-                game.card(host_id).svars.get("F").unwrap(),
+                game.card(host_id).get_s_var("F").unwrap(),
                 &game,
                 host_id,
                 p0,
@@ -1907,7 +1907,7 @@ mod tests {
 
         assert_eq!(
             super::resolve_svar_expression(
-                game.card(host_id).svars.get("Sum").unwrap(),
+                game.card(host_id).get_s_var("Sum").unwrap(),
                 &game,
                 host_id,
                 p0,
@@ -1917,7 +1917,7 @@ mod tests {
         );
         assert_eq!(
             super::resolve_svar_expression(
-                game.card(host_id).svars.get("Max").unwrap(),
+                game.card(host_id).get_s_var("Max").unwrap(),
                 &game,
                 host_id,
                 p0,

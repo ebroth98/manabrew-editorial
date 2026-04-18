@@ -178,6 +178,12 @@ impl ParityFormat for i32 {
     }
 }
 
+impl ParityFormat for () {
+    fn parity_fmt(&self, _ctx: &FmtCtx<'_>) -> String {
+        "()".to_string()
+    }
+}
+
 // ── Game entity types ───────────────────────────────────────────────────────
 
 impl ParityFormat for GameEntity {

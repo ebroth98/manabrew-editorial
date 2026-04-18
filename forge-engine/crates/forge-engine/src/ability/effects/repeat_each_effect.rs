@@ -37,7 +37,12 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     };
 
     // Look up the sub-ability text from the source card's SVars
-    let sub_text = match ctx.game.card(source_id).svars.get(&sub_svar_name).cloned() {
+    let sub_text = match ctx
+        .game
+        .card(source_id)
+        .get_s_var(&sub_svar_name)
+        .map(str::to_string)
+    {
         Some(text) => text,
         None => return,
     };

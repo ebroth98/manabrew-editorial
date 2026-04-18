@@ -308,7 +308,7 @@ fn build_spell_ability_of_type(
 
     // Recursively build sub-ability chain from SVars
     let sub_ability = if let Some(sub_svar_name) = params.get(keys::SUB_ABILITY) {
-        if let Some(sub_text) = host.svars.get(sub_svar_name).cloned() {
+        if let Some(sub_text) = host.get_s_var(sub_svar_name).map(str::to_string) {
             Some(Box::new(build_spell_ability_from_host_card(
                 host, &sub_text, player,
             )))

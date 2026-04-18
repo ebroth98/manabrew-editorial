@@ -56,6 +56,36 @@ pub fn choose_color(valid_colors: &[String], rng: &mut JavaRandom) -> Option<Str
     chosen
 }
 
+/// Mirrors DeterministicController.chooseColors.
+pub fn choose_colors(
+    valid_colors: &[String],
+    min: usize,
+    max: usize,
+    rng: &mut JavaRandom,
+) -> Vec<String> {
+    if valid_colors.is_empty() {
+        rng_log("choose_colors", Some(0), format!("[] [{min}-{max}]"), rng);
+        return Vec::new();
+    }
+    let mut pool = valid_colors.to_vec();
+    let count = pick_count(min, max, pool.len(), rng);
+    let mut chosen = Vec::new();
+    for _ in 0..count {
+        if pool.is_empty() {
+            break;
+        }
+        let idx = choice_space::pick_index(pool.len(), rng);
+        chosen.push(pool.remove(idx));
+    }
+    rng_log(
+        "choose_colors",
+        Some(valid_colors.len()),
+        format!("{chosen:?} [{min}-{max}]"),
+        rng,
+    );
+    chosen
+}
+
 /// Mirrors DeterministicController.chooseSomeType.
 pub fn choose_type(valid_types: &[String], rng: &mut JavaRandom) -> Option<String> {
     if valid_types.is_empty() {

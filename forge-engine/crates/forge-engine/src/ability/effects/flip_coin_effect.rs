@@ -38,7 +38,12 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             "TailsSubAbility"
         };
         if let Some(sub_svar) = sa.params.get(sub_key) {
-            if let Some(sub_text) = ctx.game.card(source_id).svars.get(sub_svar).cloned() {
+            if let Some(sub_text) = ctx
+                .game
+                .card(source_id)
+                .get_s_var(sub_svar)
+                .map(str::to_string)
+            {
                 let sub_sa = build_spell_ability(ctx.game, source_id, &sub_text, controller);
                 resolve_sub_chain(ctx, sub_sa);
             }
@@ -62,7 +67,12 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             "LoseSubAbility"
         };
         if let Some(sub_svar) = sa.params.get(sub_key) {
-            if let Some(sub_text) = ctx.game.card(source_id).svars.get(sub_svar).cloned() {
+            if let Some(sub_text) = ctx
+                .game
+                .card(source_id)
+                .get_s_var(sub_svar)
+                .map(str::to_string)
+            {
                 let sub_sa = build_spell_ability(ctx.game, source_id, &sub_text, controller);
                 resolve_sub_chain(ctx, sub_sa);
             }

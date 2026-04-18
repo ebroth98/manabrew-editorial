@@ -14,11 +14,10 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         return;
     };
 
-    let (host_name, host_svars, host_remembered_cards, host_remembered_players) = {
+    let (host_name, host_remembered_cards, host_remembered_players) = {
         let host = ctx.game.card(source_id);
         (
             host.card_name.clone(),
-            host.svars.clone(),
             host.remembered_cards.clone(),
             host.remembered_players.clone(),
         )
@@ -48,7 +47,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
 
     let parsed_static_abilities = static_refs
         .iter()
-        .filter_map(|svar_name| host_svars.get(svar_name))
+        .filter_map(|svar_name| ctx.game.card(source_id).get_s_var(svar_name))
         .filter_map(|raw| parse_static_ability(&format!("S$ {}", raw)))
         .collect::<Vec<_>>();
 
@@ -145,6 +144,12 @@ fn apply_remembered(
             // Copy the host card's remembered state.
             "Remembered" => {
                 effect.add_remembered_cards(host_remembered_cards.iter().copied());
+                effect.add_remembered_players(host_remembered_players.iter().copied());
+            }
+            "RememberedCard" => {
+                effect.add_remembered_cards(host_remembered_cards.iter().copied());
+            }
+            "RememberedPlayer" => {
                 effect.add_remembered_players(host_remembered_players.iter().copied());
             }
             // Remember targeted card (or parent targeted card for sub-abilities).

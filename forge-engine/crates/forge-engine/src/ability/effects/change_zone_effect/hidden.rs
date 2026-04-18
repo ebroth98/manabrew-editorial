@@ -109,6 +109,18 @@ pub(super) fn resolve_hidden_origin(
             .filter(|&cid| ctx.game.card(cid).zone == origin_zone)
             .collect();
         if !valid.is_empty() {
+            let mut ordered = valid;
+            if sa.param_is_true("Reorder") && ordered.len() > 1 {
+                ctx.agents[controller.index()].snapshot_state(ctx.game, ctx.mana_pools);
+                ctx.agents[controller.index()].on_library_peek(ctx.game, &ordered);
+                let reordered =
+                    ctx.agents[controller.index()].choose_reorder_library(controller, &ordered);
+                if reordered.len() == ordered.len()
+                    && ordered.iter().all(|id| reordered.contains(id))
+                {
+                    ordered = reordered;
+                }
+            }
             // For Defined card moves, suppress the post-move library shuffle.
             // Java's changeHiddenOriginResolve checks `!defined` before shuffling
             // (line 1509), so Defined moves never trigger a search shuffle.
@@ -120,7 +132,7 @@ pub(super) fn resolve_hidden_origin(
             move_cards(
                 ctx,
                 &sa_no_shuffle,
-                &valid,
+                &ordered,
                 origin_zone,
                 dest_zone,
                 &lib_position,
@@ -288,7 +300,7 @@ pub(super) fn resolve_hidden_origin(
         offer_panglacial_cast(ctx, sa, controller, &mut zone_cards);
     }
 
-    let cards_to_move = if let Some(each_spec) = change_type.strip_prefix("EACH ") {
+    let mut cards_to_move = if let Some(each_spec) = change_type.strip_prefix("EACH ") {
         resolve_each_search(
             ctx,
             sa,
@@ -307,6 +319,16 @@ pub(super) fn resolve_hidden_origin(
             Vec::new()
         } else if sa.is_at_random() {
             resolve_random_selection(ctx, &candidates, change_num)
+        } else if sa.param_is_true("Reorder")
+            && !is_optional
+            && origin_zone == ZoneType::Library
+            && dest_zone == ZoneType::Library
+            && candidates.len() == change_num
+        {
+            // When the full candidate set must be moved and then reordered,
+            // there is no meaningful hidden-zone selection step. Go straight
+            // to the reorder callback for the final ordered set.
+            candidates
         } else if change_num == 1 {
             resolve_single_search(ctx, sa, &candidates, effective_chooser, is_optional)
         } else {
@@ -320,6 +342,18 @@ pub(super) fn resolve_hidden_origin(
             )
         }
     };
+
+    if sa.param_is_true("Reorder") && cards_to_move.len() > 1 {
+        ctx.agents[effective_chooser.index()].snapshot_state(ctx.game, ctx.mana_pools);
+        ctx.agents[effective_chooser.index()].on_library_peek(ctx.game, &cards_to_move);
+        let reordered = ctx.agents[effective_chooser.index()]
+            .choose_reorder_library(effective_chooser, &cards_to_move);
+        if reordered.len() == cards_to_move.len()
+            && cards_to_move.iter().all(|id| reordered.contains(id))
+        {
+            cards_to_move = reordered;
+        }
+    }
 
     // Exactly$ — must find exactly ChangeNum or fail
     if sa.param_is_true(keys::EXACTLY) && cards_to_move.len() != change_num {

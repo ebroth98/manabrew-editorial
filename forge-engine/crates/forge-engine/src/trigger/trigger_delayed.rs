@@ -20,8 +20,8 @@ pub fn resolve_delayed_trigger(ctx: &mut EffectContext, sa: &SpellAbility) {
     };
 
     let execute_svar = if let Some(exec) = sa.params.get(keys::EXECUTE) {
-        if let Some(svar_text) = ctx.game.card(source_id).svars.get(exec) {
-            svar_text.clone()
+        if let Some(svar_text) = ctx.game.card(source_id).get_s_var(exec) {
+            svar_text.to_string()
         } else {
             exec.to_string()
         }
@@ -44,7 +44,7 @@ pub fn resolve_delayed_trigger(ctx: &mut EffectContext, sa: &SpellAbility) {
             .sum::<i32>();
     }
     if let Some(svar_name) = sa.params.get(keys::REMEMBER_SVAR_AMOUNT) {
-        if let Some(expr) = ctx.game.card(source_id).svars.get(svar_name) {
+        if let Some(expr) = ctx.game.card(source_id).get_s_var(svar_name) {
             remembered_amount += evaluate_svar(expr, sa);
         }
     }

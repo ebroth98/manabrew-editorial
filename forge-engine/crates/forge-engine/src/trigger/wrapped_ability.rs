@@ -180,7 +180,7 @@ impl WrappedAbility {
     pub fn get_s_var(&self, game: &GameState, name: &str) -> Option<String> {
         self.wrapped
             .source
-            .and_then(|cid| game.card(cid).svars.get(name).cloned())
+            .and_then(|cid| game.card(cid).get_s_var(name).map(str::to_string))
     }
 
     /// Mirrors Java's `WrappedAbility.getSVarInt(String)`.

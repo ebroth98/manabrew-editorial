@@ -25,7 +25,7 @@ pub fn resolve(st_ab: &StaticAbility, source: &Card, game: &GameState) {
     let _ = run(st_ab, source, game);
 }
 
-pub fn can_play(st_ab: &StaticAbility, card: &Card, _game: &GameState) -> bool {
+pub fn can_play(st_ab: &StaticAbility, source: &Card, card: &Card, _game: &GameState) -> bool {
     if !matches!(st_ab.params.get("MayPlay"), Some(v) if v.eq_ignore_ascii_case("True")) {
         return false;
     }
@@ -42,7 +42,11 @@ pub fn can_play(st_ab: &StaticAbility, card: &Card, _game: &GameState) -> bool {
     } else if card.zone != forge_foundation::ZoneType::Hand {
         return false;
     }
-    crate::card::valid_filter::matches_valid_card_opt(st_ab.params.get(keys::AFFECTED), card, card)
+    crate::card::valid_filter::matches_valid_card_opt(
+        st_ab.params.get(keys::AFFECTED),
+        card,
+        source,
+    )
 }
 
 pub fn run(st_ab: &StaticAbility, source: &Card, game: &GameState) -> bool {

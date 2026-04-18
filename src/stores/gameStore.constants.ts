@@ -7,6 +7,7 @@ import { PromptType } from '@/types/promptType';
 export const HANDLED_PROMPT_TYPES = new Set<PromptType>([
   PromptType.StateUpdate,
   PromptType.GameOver,
+  PromptType.RevealCards,
   PromptType.Mulligan,
   PromptType.MulliganPutBack,
   PromptType.ChooseAction,
@@ -19,6 +20,7 @@ export const HANDLED_PROMPT_TYPES = new Set<PromptType>([
   PromptType.ChooseTargetSpell,
   PromptType.ChooseMode,
   PromptType.ChooseOptionalTrigger,
+  PromptType.PayCostToPreventEffect,
   PromptType.ChoosePhyrexian,
   PromptType.ChooseKicker,
   PromptType.ChooseBuyback,

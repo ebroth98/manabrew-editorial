@@ -968,13 +968,9 @@ impl GameLoop {
             self.combat.save_lki(blocker_id);
         }
 
-        // Java parity: always advance into COMBAT_FIRST_STRIKE_DAMAGE; the
-        // step may simply do nothing / grant no priority.
-        let has_attackers = self.combat.has_attackers();
-        let has_first_strikers = self.combat.has_first_strikers(game);
         self.set_phase(game, agents, PhaseType::CombatFirstStrikeDamage);
-
-        if has_first_strikers && has_attackers {
+        self.combat.remove_absent_combatants(&game.cards);
+        if self.combat.has_attackers() {
             // LKI: Snapshot battlefield state before first strike damage.
             // Mirrors Java's Game.copyLastState() called before damage resolution.
             game.copy_last_state();
@@ -1025,8 +1021,8 @@ impl GameLoop {
             }
         }
 
-        // Java parity: always advance into COMBAT_DAMAGE; the step may be skipped.
         self.set_phase(game, agents, PhaseType::CombatDamage);
+        self.combat.remove_absent_combatants(&game.cards);
         if self.combat.has_attackers() {
             // Run AssignDealDamage replacement effects for each attacker.
             {

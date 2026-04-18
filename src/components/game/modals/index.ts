@@ -5,6 +5,7 @@ export { ChooseColorModal } from './ChooseColorModal';
 export { ChooseModeModal } from './ChooseModeModal';
 export { ChooseNumberModal } from './ChooseNumberModal';
 export { ChooseOptionalTriggerModal } from './ChooseOptionalTriggerModal';
+export { RevealCardsModal } from './RevealCardsModal';
 export { ChooseTypeModal } from './ChooseTypeModal';
 export { DamageOrderModal } from './DamageOrderModal';
 export { VAssignCombatDamageModal } from './VAssignCombatDamageModal';

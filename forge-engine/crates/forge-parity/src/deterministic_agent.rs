@@ -1068,6 +1068,21 @@ impl PlayerAgent for DeterministicAgent {
         accept
     }
 
+    fn pay_cost_to_prevent_effect(
+        &mut self,
+        _player: PlayerId,
+        _cost_kind: &str,
+        _message: &str,
+        _card_name: Option<&str>,
+        _api: Option<forge_engine_core::ability::api_type::ApiType>,
+    ) -> bool {
+        // Java DeterministicController.payCostToPreventEffect does not spend a
+        // separate boolean RNG decision here. It enters deterministic cost
+        // payment directly, and any RNG comes from the payment parts
+        // themselves (for example, choosing a sacrifice).
+        true
+    }
+
     fn choose_binary(
         &mut self,
         _player: PlayerId,
@@ -1201,6 +1216,17 @@ impl PlayerAgent for DeterministicAgent {
 
     fn choose_color(&mut self, _player: PlayerId, valid_colors: &[String]) -> Option<String> {
         gui_repro::choose_color(valid_colors, &mut self.rng.borrow_mut())
+    }
+
+    fn choose_colors(
+        &mut self,
+        _player: PlayerId,
+        valid_colors: &[String],
+        min: usize,
+        max: usize,
+    ) -> Vec<String> {
+        let sorted = parity_order::sort_color_names_like_java(valid_colors);
+        gui_repro::choose_colors(&sorted, min, max, &mut self.rng.borrow_mut())
     }
 
     fn choose_type(
@@ -1476,5 +1502,16 @@ impl PlayerAgent for DeterministicAgent {
         }
         let picked = choice_space::pick_index(sorted.len(), &mut self.rng.borrow_mut());
         sorted[picked].0
+    }
+
+    fn reveal_cards(
+        &mut self,
+        _game: &GameState,
+        _player: PlayerId,
+        _cards: &[CardId],
+        _zone: forge_foundation::ZoneType,
+        _owner: PlayerId,
+        _message_prefix: Option<&str>,
+    ) {
     }
 }

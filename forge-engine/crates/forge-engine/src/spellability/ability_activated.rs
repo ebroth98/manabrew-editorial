@@ -102,7 +102,7 @@ pub fn is_suppressed(sa: &SpellAbility, game: &GameState) -> bool {
         }
         for &cid in game.cards_in_zone(ZoneType::Battlefield, pid) {
             let perm = game.card(cid);
-            if let Some(named) = perm.svars.get("ChosenName") {
+            if let Some(named) = perm.get_s_var("ChosenName") {
                 if named.eq_ignore_ascii_case(card_name)
                     && perm.has_keyword("Suppress activated abilities")
                 {

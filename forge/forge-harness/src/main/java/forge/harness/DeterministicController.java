@@ -1521,10 +1521,7 @@ public class DeterministicController extends PlayerController {
             onCallback("choose_colors", "0", String.valueOf(min), String.valueOf(max));
             return ColorSet.fromMask(0);
         }
-        final List<Byte> colors = new ArrayList<>();
-        for (final Color color : options) {
-            colors.add(color.getColorMask());
-        }
+        final List<Byte> colors = ParityOrder.sortColors(options);
         final int count = ChoiceSpace.pickCount(min, max, colors.size(), rng);
         int mask = 0;
         for (int i = 0; i < count && !colors.isEmpty(); i++) {

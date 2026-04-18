@@ -97,10 +97,14 @@ pub(super) fn choose_reorder_library<T: AgentTransport>(
 ) -> Vec<CardId> {
     let card_ids = PromptAgent::<T>::card_ids(cards);
     let peeked = std::mem::take(&mut agent.peeked_library_cards);
+    let prompt_cards: Vec<CardDto> = peeked
+        .into_iter()
+        .filter(|dto| card_ids.contains(&dto.id))
+        .collect();
     agent.send_prompt(AgentPromptInner::ReorderLibrary {
         game_view: agent.view(),
         card_ids,
-        cards: peeked,
+        cards: prompt_cards,
         source_card_name: None,
     });
     match agent.recv_action() {

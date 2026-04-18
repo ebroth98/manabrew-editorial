@@ -96,7 +96,7 @@ pub fn resolve_dynamic_amount(
         return paid_x;
     }
 
-    if let Some(x_expr) = source_card.svars.get("X") {
+    if let Some(x_expr) = source_card.get_s_var("X") {
         if x_expr == "Count$xPaid" || x_expr == "Count$XPaid" {
             return source_card
                 .svars

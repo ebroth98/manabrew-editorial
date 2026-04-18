@@ -26,10 +26,25 @@ pub(super) fn matches_with_context(
     clause: &str,
 ) -> bool {
     let card = ctx.game.card(card_id);
-    if !matches_change_type(card, clause, &[]) {
+    let normalized_clause = clause
+        .split('.')
+        .filter(|part| !part.eq_ignore_ascii_case("IsRemembered"))
+        .collect::<Vec<_>>()
+        .join(".");
+    if !matches_change_type(card, &normalized_clause, &[]) {
         return false;
     }
+    let source = sa.source.map(|sid| ctx.game.card(sid));
     for qualifier in clause.split('.').skip(1) {
+        if qualifier.eq_ignore_ascii_case("IsRemembered") {
+            let Some(source) = source else {
+                return false;
+            };
+            if !source.remembered_cards.contains(&card_id) {
+                return false;
+            }
+            continue;
+        }
         if let Some(raw_max) = qualifier.strip_prefix("cmcLE") {
             let max_cmc = if let Ok(v) = raw_max.parse::<i32>() {
                 v

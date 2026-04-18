@@ -101,7 +101,7 @@
   },
   {
     "name": "nehebCommander",
-    "args": "--variant Commander --commander 'Neheb, the Worthy' --commander 'Neheb, the Worthy' --deck1 neheb_minotaur_commander --deck2 neheb_minotaur_commander --seed 42 --max-turns 40 --games 5"
+    "args": "--variant Commander --commander 'Neheb, the Worthy' --commander 'Neheb, the Worthy' --deck1 neheb_minotaur_commander --deck2 neheb_minotaur_commander --seed 42 --max-turns 40 --games 10"
   },
   {
     "name": "jund",
@@ -125,6 +125,6 @@
   },
   {
     "name": "ramsesCommander",
-    "args": "--variant Commander --commander 'Ramses, Assassin Lord' --commander 'Ramses, Assassin Lord' --deck1 ramses_commander --deck2 ramses_commander --seed 42 --max-turns 40 --games 1"
+    "args": "--variant Commander --commander 'Ramses, Assassin Lord' --commander 'Ramses, Assassin Lord' --deck1 ramses_commander --deck2 ramses_commander --seed 42 --max-turns 40 --games 2"
   }
 ]

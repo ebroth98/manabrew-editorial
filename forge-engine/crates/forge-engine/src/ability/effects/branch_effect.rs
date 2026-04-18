@@ -18,7 +18,12 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     let Some(source_id) = sa.source else {
         return;
     };
-    let Some(sub_text) = ctx.game.card(source_id).svars.get(sub_svar_name).cloned() else {
+    let Some(sub_text) = ctx
+        .game
+        .card(source_id)
+        .get_s_var(sub_svar_name)
+        .map(str::to_string)
+    else {
         return;
     };
 
@@ -60,7 +65,7 @@ fn evaluate_branch_condition(ctx: &EffectContext, sa: &SpellAbility) -> bool {
     let Some(source_id) = sa.source else {
         return false;
     };
-    let Some(expr) = ctx.game.card(source_id).svars.get(condition_svar) else {
+    let Some(expr) = ctx.game.card(source_id).get_s_var(condition_svar) else {
         return false;
     };
 

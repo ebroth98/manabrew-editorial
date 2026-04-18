@@ -5,12 +5,6 @@ use crate::spellability::SpellAbility;
 /// `SP$ ChooseColor` — player(s) choose a color.
 ///
 /// Mirrors Java's `ChooseColorEffect.java`.
-///
-/// # Params
-/// - `Defined$` — which player(s) choose (default: controller/"You")
-/// - `Choices` — comma-separated valid colors (default: all 5)
-///
-/// Stores the chosen color(s) on the source card's `chosen_colors`.
 pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     let source_id = match sa.source {
         Some(id) => id,
@@ -18,8 +12,6 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     };
 
     let controller = sa.activating_player;
-
-    // Determine which player(s) choose
     let defined = sa
         .params
         .get(keys::DEFINED)
@@ -27,8 +19,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         .unwrap_or_else(|| "You".to_string());
     let players = resolve_defined_players(&defined, controller, ctx.game);
 
-    // Valid colors
-    let valid_colors: Vec<String> = if let Some(choices) = sa.params.get(keys::CHOICES) {
+    let mut valid_colors: Vec<String> = if let Some(choices) = sa.params.get(keys::CHOICES) {
         choices
             .split(',')
             .map(|s| s.trim().to_string())
@@ -44,29 +35,44 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         ]
     };
 
-    // Java parity: `Exclude$` removes listed colors from the choice pool
-    // before prompting (e.g. Cliffgate excludes red).
-    let mut valid_colors = valid_colors;
     if let Some(exclude) = sa.params.get("Exclude") {
-        let excluded: Vec<String> = exclude
-            .split(',')
-            .map(|s| s.trim().to_string())
-            .filter(|s| !s.is_empty())
-            .collect();
-        valid_colors.retain(|c| !excluded.iter().any(|e| e.eq_ignore_ascii_case(c)));
+        for excluded in exclude.split(',').map(|s| s.trim()) {
+            valid_colors.retain(|c| !c.eq_ignore_ascii_case(excluded));
+        }
     }
 
     if valid_colors.is_empty() {
         return;
     }
 
-    // Clear previous choices on source card
+    let count_min = if sa.params.has("UpTo") {
+        0
+    } else if sa.params.has("TwoColors") {
+        2
+    } else {
+        1
+    };
+    let count_max = if sa.params.has("TwoColors") {
+        2
+    } else if sa.params.has("OrColors") {
+        valid_colors.len()
+    } else {
+        1
+    };
+
     ctx.game.card_mut(source_id).clear_chosen_colors();
 
     for player in players {
         ctx.agents[player.index()].snapshot_state(ctx.game, ctx.mana_pools);
-        if let Some(chosen) = ctx.agents[player.index()].choose_color(player, &valid_colors) {
-            ctx.game.card_mut(source_id).add_chosen_color(chosen);
+        let chosen =
+            ctx.agents[player.index()].choose_colors(player, &valid_colors, count_min, count_max);
+        if chosen.is_empty() {
+            return;
+        }
+        let card = ctx.game.card_mut(source_id);
+        card.clear_chosen_colors();
+        for color in chosen {
+            card.add_chosen_color(color);
         }
     }
 }

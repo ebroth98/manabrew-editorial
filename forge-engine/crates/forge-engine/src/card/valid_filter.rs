@@ -630,19 +630,7 @@ pub fn check_svar_condition(game: &GameState, params: &Params, source: &Card) ->
         return true;
     };
 
-    // Resolve the SVar value — first check card SVars, then try direct parse.
-    let raw_value = source
-        .svars
-        .get(check_name)
-        .map(|s| s.as_str())
-        .unwrap_or("0");
-    let value = if raw_value.starts_with("Count$") {
-        crate::svar::resolve_count_svar(raw_value, game, source.id, source.controller)
-    } else {
-        raw_value.parse::<i32>().unwrap_or(0)
-    };
-
-    compare_expr(value, compare)
+    compare_svar(game, source, check_name, compare)
 }
 
 /// Check a named `Check*SVar` / `*SVarCompare` pair.
@@ -661,18 +649,27 @@ pub fn check_named_svar_condition(
     };
     let compare = params.get(compare_key).unwrap_or("GE1");
 
-    let raw_value = source
-        .svars
-        .get(check_name)
-        .map(|s| s.as_str())
-        .unwrap_or("0");
-    let value = if raw_value.starts_with("Count$") {
+    compare_svar(game, source, check_name, compare)
+}
+
+fn compare_svar(game: &GameState, source: &Card, check_name: &str, compare: &str) -> bool {
+    let value = resolve_svar_requirement_value(source, check_name, game);
+    let (operator, operand_expr) = compare.split_at(compare.len().min(2));
+    let operand = if operand_expr.is_empty() {
+        1
+    } else {
+        resolve_svar_requirement_value(source, operand_expr, game)
+    };
+    compare_expr(value, &format!("{operator}{operand}"))
+}
+
+fn resolve_svar_requirement_value(source: &Card, expr: &str, game: &GameState) -> i32 {
+    let raw_value = source.get_s_var(expr).unwrap_or(expr).trim();
+    if raw_value.starts_with("Count$") {
         crate::svar::resolve_count_svar(raw_value, game, source.id, source.controller)
     } else {
         raw_value.parse::<i32>().unwrap_or(0)
-    };
-
-    compare_expr(value, compare)
+    }
 }
 
 /// Check the `Condition$` parameter for game-state conditions.

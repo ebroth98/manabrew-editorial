@@ -973,7 +973,7 @@ impl Trigger {
             return None;
         }
         let host = game.card(host_card);
-        let ability_text = host.svars.get(&self.execute)?;
+        let ability_text = host.get_s_var(&self.execute)?;
         Some(build_spell_ability(
             game,
             host_card,
@@ -1004,12 +1004,16 @@ impl Trigger {
         trigger_index: usize,
         params: &RunParams,
     ) -> SpellAbility {
-        let svar_text = game
-            .card(host_card)
-            .svars
-            .get(&self.execute)
-            .cloned()
-            .unwrap_or_default();
+        let host = game.card(host_card);
+        let svar_text = host.get_s_var(&self.execute).map(str::to_string).unwrap_or_else(|| {
+            panic!(
+                "Trigger::build_triggered_spell_ability missing/empty Execute SVar: host={} execute={} trigger_index={} description={}",
+                host.card_name,
+                self.execute,
+                trigger_index,
+                self.description
+            )
+        });
         let mut sa = build_spell_ability(game, host_card, &svar_text, host_controller);
         sa.is_trigger = true;
         sa.trigger_source = Some(host_card);

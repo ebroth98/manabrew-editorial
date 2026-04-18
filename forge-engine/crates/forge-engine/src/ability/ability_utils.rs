@@ -1079,7 +1079,7 @@ pub fn x_count(game: &GameState, card_id: CardId, expr: &str, sa: &SpellAbility)
 
     // Handle SVar$ indirection
     if let Some(svar_name) = stripped.strip_prefix("SVar$") {
-        if let Some(svar_val) = game.card(card_id).svars.get(svar_name.trim()) {
+        if let Some(svar_val) = game.card(card_id).get_s_var(svar_name.trim()) {
             let val = svar_val.clone();
             return x_count(game, card_id, &val, sa);
         }
@@ -1435,7 +1435,7 @@ pub fn calculate_unless_cost(
 
     // Handle SVar reference — look up the SVar, calculate its amount
     if let Some(source_id) = sa.source {
-        if let Some(svar_val) = game.card(source_id).svars.get(unless_cost.trim()) {
+        if let Some(svar_val) = game.card(source_id).get_s_var(unless_cost.trim()) {
             if !svar_val.is_empty() && unless_cost != "X" {
                 let amount = crate::svar::resolve_count_svar_for_sa(
                     svar_val,

@@ -181,6 +181,26 @@ impl CapturingAgent {
 }
 
 macro_rules! parity_agent_callback {
+    ($(fn $name:ident (&mut self $(, $arg:ident : $ty:ty )* ) -> $ret:ty => $kind:expr, format_with $format:expr;)+) => {
+        $(
+            fn $name(&mut self $(, $arg: $ty)*) -> $ret {
+                self.save_snapshot($kind);
+                let fmt = self.fmt_ctx();
+                let cb_args: Vec<String> = vec![$($arg.callback_arg_display(fmt.as_ref())),*];
+                let result = self.inner.$name($($arg),*);
+                let outcome = $format(&result, self.fmt_ctx());
+                self.parity_observer.on_callback(
+                    $kind,
+                    &outcome,
+                    self.player_id.0,
+                    self.current_turn,
+                    &self.current_phase,
+                    cb_args,
+                );
+                result
+            }
+        )+
+    };
     ($(fn $name:ident (&mut self $(, $arg:ident : $ty:ty )* ) -> $ret:ty => $kind:expr, defer_if $pat:pat => $pending:ident;)+) => {
         $(
             fn $name(&mut self $(, $arg: $ty)*) -> $ret {
@@ -328,6 +348,24 @@ impl PlayerAgent for CapturingAgent {
     }
 
     parity_agent_callback! {
+        fn choose_single_card_for_zone_change(&mut self, player: PlayerId, valid: &[CardId], select_prompt: &str, is_optional: bool) -> Option<CardId> => "choose_single_card_for_zone_change", format_with |result: &Option<CardId>, fmt: Option<FmtCtx<'_>>| {
+            match (result, fmt) {
+                (Some(cid), Some(ctx)) => ctx.card(*cid),
+                (Some(cid), None) => format!("{cid:?}"),
+                (None, _) => "null".to_string(),
+            }
+        };
+    }
+
+    parity_agent_callback! {
+        fn reveal_cards(&mut self, game: &GameState, player: PlayerId, cards: &[CardId], zone: ZoneType, owner: PlayerId, message_prefix: Option<&str>) -> () => "reveal_cards";
+    }
+
+    parity_agent_callback! {
+        fn pay_mana_cost(&mut self, player: PlayerId, card_id: CardId, card_name: &str, mana_cost: &str, mana_cost_display: &str, mana_cost_checkpoint: &str, allow_reserved_source_reuse: bool, reserved_sacrifices: &[CardId], mana_ability_options: &[forge_engine_core::agent::ManaAbilityOption], tappable_lands: &[CardId], untappable_lands: &[CardId], mana_pool: &forge_engine_core::mana::ManaPool) -> ManaCostAction => "pay_mana_cost", defer_if ManaCostAction::Pay { auto: true } => pending_pay_mana_cost_args;
+    }
+
+    parity_agent_callback! {
         fn choose_targets_for(&mut self, sa: &mut forge_engine_core::spellability::SpellAbility, game: &GameState, mana_pools: &[forge_engine_core::mana::ManaPool]) -> bool => "choose_targets_for";
         fn mulligan_decision(&mut self, player: PlayerId, hand: &[CardId], mulligan_count: u32) -> bool => "mulligan_decision";
         fn choose_cards_to_bottom(&mut self, player: PlayerId, hand: &[CardId], count: usize) -> Vec<CardId> => "choose_cards_to_bottom";
@@ -366,10 +404,11 @@ impl PlayerAgent for CapturingAgent {
         fn choose_land_or_spell(&mut self, player: PlayerId) -> Option<bool> => "choose_land_or_spell";
         fn confirm_action(&mut self, player: PlayerId, mode: Option<&str>, message: &str, options: &[String], card_name: Option<&str>, api: Option<forge_engine_core::ability::api_type::ApiType>) -> bool => "confirm_action";
         fn confirm_payment(&mut self, player: PlayerId, cost_kind: &str, message: &str, card_name: Option<&str>, api: Option<forge_engine_core::ability::api_type::ApiType>) -> bool => "confirm_payment";
-        fn pay_cost_to_prevent_effect(&mut self, player: PlayerId, paid: bool) -> bool => "pay_cost_to_prevent_effect";
+        fn pay_cost_to_prevent_effect(&mut self, player: PlayerId, cost_kind: &str, message: &str, card_name: Option<&str>, api: Option<forge_engine_core::ability::api_type::ApiType>) -> bool => "pay_cost_to_prevent_effect";
         fn confirm_replacement_effect(&mut self, player: PlayerId, question: &str, effect_description: &str, card_name: Option<&str>) -> bool => "confirm_replacement_effect";
         fn choose_binary(&mut self, player: PlayerId, question: &str, kind: BinaryChoiceKind, default_choice: Option<bool>, card_name: Option<&str>, api: Option<forge_engine_core::ability::api_type::ApiType>) -> bool => "choose_binary";
         fn choose_color(&mut self, player: PlayerId, valid_colors: &[String]) -> Option<String> => "choose_color";
+        fn choose_colors(&mut self, player: PlayerId, valid_colors: &[String], min: usize, max: usize) -> Vec<String> => "choose_colors";
         fn choose_card_name(&mut self, player: PlayerId, valid_names: &[String]) -> Option<String> => "choose_card_name";
         fn choose_number(&mut self, player: PlayerId, min: i32, max: i32) -> Option<i32> => "choose_number";
         fn choose_number_from_list(&mut self, player: PlayerId, choices: &[i32], message: &str, card_name: Option<&str>) -> Option<i32> => "choose_number_from_list";
@@ -393,49 +432,6 @@ impl PlayerAgent for CapturingAgent {
         fn choose_replicate(&mut self, player: PlayerId, cost: &str, max_replicates: u32, card_name: Option<&str>) -> u32 => "choose_replicate";
         fn choose_alternative_cost(&mut self, player: PlayerId, options: &[String], card_name: Option<&str>) -> usize => "choose_alternative_cost";
         fn choose_single_replacement_effect(&mut self, player: PlayerId, descriptions: &[String]) -> usize => "choose_single_replacement_effect";
-    }
-
-    parity_agent_callback! {
-        fn pay_mana_cost(&mut self, player: PlayerId, card_id: CardId, card_name: &str, mana_cost: &str, mana_cost_display: &str, mana_cost_checkpoint: &str, allow_reserved_source_reuse: bool, reserved_sacrifices: &[CardId], mana_ability_options: &[forge_engine_core::agent::ManaAbilityOption], tappable_lands: &[CardId], untappable_lands: &[CardId], mana_pool: &forge_engine_core::mana::ManaPool) -> ManaCostAction => "pay_mana_cost", defer_if ManaCostAction::Pay { auto: true } => pending_pay_mana_cost_args;
-    }
-
-    fn choose_single_card_for_zone_change(
-        &mut self,
-        player: PlayerId,
-        valid: &[CardId],
-        select_prompt: &str,
-        is_optional: bool,
-    ) -> Option<CardId> {
-        // Java emits the raw card label (or "null") — no `Some(..)` wrapper —
-        // so we can't go through the macro which uses the generic Option impl.
-        self.save_snapshot("choose_single_card_for_zone_change");
-        let fmt = self.fmt_ctx();
-        let cb_args: Vec<String> = vec![
-            player.callback_arg_display(fmt.as_ref()),
-            valid.callback_arg_display(fmt.as_ref()),
-            select_prompt.callback_arg_display(fmt.as_ref()),
-            is_optional.callback_arg_display(fmt.as_ref()),
-        ];
-        let result = self.inner.choose_single_card_for_zone_change(
-            player,
-            valid,
-            select_prompt,
-            is_optional,
-        );
-        let outcome = match (result, self.fmt_ctx()) {
-            (Some(cid), Some(ctx)) => ctx.card(cid),
-            (Some(cid), None) => format!("{cid:?}"),
-            (None, _) => "null".to_string(),
-        };
-        self.parity_observer.on_callback(
-            "choose_single_card_for_zone_change",
-            &outcome,
-            self.player_id.0,
-            self.current_turn,
-            &self.current_phase,
-            cb_args,
-        );
-        result
     }
 }
 

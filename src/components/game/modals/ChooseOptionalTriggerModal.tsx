@@ -4,11 +4,15 @@ import { useEffect, useRef, useCallback } from "react";
 import { useModalKeyboard } from "@/hooks/useModalKeyboard";
 import { useCardImage } from "@/hooks/useCardImage";
 import { CardImageThumbnail } from "@/components/game/CardImageThumbnail";
+import { Card } from "@/components/game/Card";
 import { MODAL_CARD_IMAGE } from "../game.styles";
+import type { Card as GameCard } from "@/types/openmagic";
 
 interface ChooseOptionalTriggerModalProps {
   /** Human-readable description of the triggered ability. */
   description: string;
+  /** Optional cards to show as part of the prompt context. */
+  cards?: GameCard[];
   /** Name of the source card (for displaying card image). */
   cardName?: string;
   /** Prompt context (optional_trigger, confirm_action, confirm_payment, choose_binary). */
@@ -24,6 +28,7 @@ interface ChooseOptionalTriggerModalProps {
 
 export function ChooseOptionalTriggerModal({
   description,
+  cards,
   cardName,
   promptKind,
   optionLabels,
@@ -67,7 +72,7 @@ export function ChooseOptionalTriggerModal({
   );
 
   return (
-    <Modal maxWidth="max-w-md" maxHeight="">
+    <Modal maxWidth={cards && cards.length > 0 ? "max-w-4xl" : "max-w-md"} maxHeight="">
       <div
         ref={dialogRef}
         tabIndex={-1}
@@ -96,6 +101,19 @@ export function ChooseOptionalTriggerModal({
           )}
           <p className="text-sm leading-relaxed self-center">{description || "A triggered ability would trigger. Do you want it to?"}</p>
         </div>
+
+        {cards && cards.length > 0 && (
+          <div className="px-4 pb-4">
+            <p className="text-xs text-muted-foreground mb-2">Look at these cards first:</p>
+            <div className="flex flex-wrap gap-3 justify-center">
+              {cards.map((card) => (
+                <div key={card.id} className="shrink-0">
+                  <Card card={card} />
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         <Modal.Footer>
           <Button

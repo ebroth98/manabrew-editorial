@@ -1,5 +1,7 @@
 package forge.harness;
 
+import forge.card.ColorSet;
+import forge.card.MagicColor.Color;
 import forge.game.GameEntity;
 import forge.game.card.Card;
 import forge.game.replacement.ReplacementEffect;
@@ -123,6 +125,17 @@ public final class ParityOrder {
     public static List<ReplacementEffect> sortReplacementEffects(final List<ReplacementEffect> effects) {
         final List<ReplacementEffect> out = new ArrayList<>(effects);
         out.sort(Comparator.comparing(ParityOrder::replacementSortKey));
+        return out;
+    }
+
+    public static List<Byte> sortColors(final ColorSet colors) {
+        final List<Byte> out = new ArrayList<>();
+        if (colors == null || colors.isColorless()) {
+            return out;
+        }
+        for (final Color color : colors) {
+            out.add(color.getColorMask());
+        }
         return out;
     }
 

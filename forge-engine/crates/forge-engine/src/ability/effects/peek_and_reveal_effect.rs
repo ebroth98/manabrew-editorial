@@ -43,6 +43,14 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
 
     if !no_peek && !peeked.is_empty() {
         ctx.agents[controller.index()].on_library_peek(ctx.game, &peeked);
+        ctx.agents[controller.index()].reveal_cards(
+            ctx.game,
+            controller,
+            &peeked,
+            ZoneType::Library,
+            controller,
+            sa.source.map(|cid| ctx.game.card(cid).card_name.as_str()),
+        );
     }
 
     if remember_revealed || remember_peeked {

@@ -312,8 +312,12 @@ fn ai_respond(inner: &forge_agent_interface::prompt::AgentPromptInner) -> Player
         } => PlayerAction::ModeDecision {
             chosen_indices: (0..*min_choices.min(&options.len())).collect(),
         },
+        AgentPromptInner::RevealCards { .. } => PlayerAction::RevealCardsAcknowledged,
         AgentPromptInner::ChooseOptionalTrigger { .. } => {
             PlayerAction::OptionalTriggerDecision { accept: true }
+        }
+        AgentPromptInner::PayCostToPreventEffect { .. } => {
+            PlayerAction::PayCostToPreventEffectDecision { accept: true }
         }
         AgentPromptInner::ChoosePhyrexian { .. } => {
             PlayerAction::PhyrexianDecision { pay_life: false }

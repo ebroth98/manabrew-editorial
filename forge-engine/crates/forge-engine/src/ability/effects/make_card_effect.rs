@@ -33,8 +33,8 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     let names: Vec<String> = if let Some(name) = sa.params.get(keys::NAME) {
         if name == "ChosenName" {
             // Use named card from source
-            if let Some(chosen) = ctx.game.card(source).svars.get("ChosenName") {
-                vec![chosen.clone()]
+            if let Some(chosen) = ctx.game.card(source).get_s_var("ChosenName") {
+                vec![chosen.to_string()]
             } else {
                 vec![]
             }

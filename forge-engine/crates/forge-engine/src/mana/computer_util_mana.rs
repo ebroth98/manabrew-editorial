@@ -1882,40 +1882,36 @@ fn sort_sources_for_autopay(
 /// - +13 per combat role (attack/block) for creatures
 fn autopay_source_score(game: &GameState, _player: PlayerId, ma: &ManaAbilityRef) -> i32 {
     let card = game.card(ma.card_id);
-    let mut s: i32 = 0;
-
-    // Mana ability intrinsic score.
-    if ma.mana_text == "Any" {
-        // Any-mana abilities are maximally flexible → higher score.
-        s += 7;
-        if card.card_name == "The Grey Havens" && ma.mana_text == "Any" {
-            // Java's AutoPay prefers the active any-color Havens source before
-            // World Tree-granted any-color abilities on ordinary lands.
-            s -= 1;
-        }
-    } else {
-        let words: Vec<&str> = ma.mana_text.split_whitespace().collect();
-        s += words.len() as i32;
-        if !ma.mana_text.contains('C') {
-            s += 1;
-        }
-    }
-
-    // Cost complexity.
     if let Some(ab_idx) = ma.ability_index {
         if let Some(ab) = card.activated_abilities.get(ab_idx) {
-            s += ab.cost.parts.len() as i32;
+            let resolved = if ma.atoms.len() >= 5
+                && !ma.atoms.contains(&ManaAtom::COLORLESS)
+                && !ma.atoms.contains(&ManaAtom::GENERIC)
+            {
+                "Any".to_string()
+            } else {
+                ma.atoms
+                    .iter()
+                    .copied()
+                    .filter(|&atom| atom != ManaAtom::GENERIC)
+                    .map(atom_short)
+                    .collect::<Vec<_>>()
+                    .join(" ")
+            };
+            let mut s = score_mana_ability(game, ma.card_id, ab, Some(&resolved));
+            if card.is_creature() {
+                s += 13;
+                s += 13;
+            }
+            return s;
         }
-    } else {
-        // Implicit land tap: 1 cost part (tap).
-        s += 1;
     }
 
-    // Creatures are more valuable and should be preserved.
-    // Java always adds +26 for any creature, regardless of tap state.
+    let mut s =
+        score_implicit_land_mana_ability(ma.atoms.first().copied().unwrap_or(ManaAtom::COLORLESS));
     if card.is_creature() {
-        s += 13; // attack role
-        s += 13; // block role
+        s += 13;
+        s += 13;
     }
 
     s
