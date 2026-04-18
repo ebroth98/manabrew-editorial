@@ -1,31 +1,46 @@
-use super::trigger::TriggerMode;
-use crate::{
-    event::RunParams,
-    game::GameState,
-    ids::{CardId, PlayerId},
-    parsing::Params,
-    spellability::SpellAbility,
-};
+use serde::{Deserialize, Serialize};
 
-pub fn perform_test(
-    mode: &TriggerMode,
-    _params: &RunParams,
-    _game: &GameState,
-    _host_card: CardId,
-    _host_controller: PlayerId,
-) -> bool {
-    let TriggerMode::NewGame = mode else {
-        panic!("Expected NewGame mode");
-    };
-    true
+use crate::event::{RunParams, TriggerType};
+use crate::game::GameState;
+use crate::parsing::Params;
+use crate::spellability::SpellAbility;
+
+use super::trigger::TriggerBehavior;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TriggerNewGame;
+
+impl TriggerNewGame {
+    pub fn parse(_params: &Params) -> Box<dyn TriggerBehavior> {
+        Box::new(Self)
+    }
 }
 
-pub fn parse_mode(_params: &Params) -> TriggerMode {
-    TriggerMode::NewGame
-}
+#[typetag::serde]
+impl TriggerBehavior for TriggerNewGame {
+    fn trigger_type(&self) -> TriggerType {
+        TriggerType::NewGame
+    }
 
-pub fn set_triggering_objects(_sa: &mut SpellAbility, _params: &RunParams) {}
+    fn perform_test(
+        &self,
+        _trigger: &super::trigger::Trigger,
+        _params: &RunParams,
+        _game: &GameState,
+    ) -> bool {
+        true
+    }
 
-pub fn get_important_stack_objects(_sa: &SpellAbility) -> String {
-    String::new()
+    fn set_triggering_objects(
+        &self,
+        _trigger: &super::trigger::Trigger,
+        _sa: &mut SpellAbility,
+        _params: &RunParams,
+        _game: &GameState,
+    ) {
+    }
+
+    fn get_important_stack_objects(&self, _trigger: &super::trigger::Trigger, _sa: &SpellAbility) -> String {
+        String::new()
+    }
 }

@@ -1,56 +1,81 @@
-use super::trigger::{check_card_filter, TriggerMode};
-use crate::{
-    event::RunParams,
-    game::GameState,
-    ids::{CardId, PlayerId},
-    spellability::SpellAbility,
-};
+use serde::{Deserialize, Serialize};
 
-pub fn perform_test(
-    mode: &TriggerMode,
-    params: &RunParams,
-    game: &GameState,
-    host_card: CardId,
-    host_controller: PlayerId,
-) -> bool {
-    let TriggerMode::CrewedSaddled {
-        valid_card,
-        valid_crew,
-    } = mode
-    else {
-        panic!("Expected CrewedSaddled mode");
-    };
+use crate::event::{RunParams, TriggerType};
+use crate::game::GameState;
+use crate::parsing::{keys, Params};
+use crate::spellability::SpellAbility;
 
-    if !check_card_filter(valid_card, params.card, host_card, host_controller, game) {
-        return false;
-    }
-    let Some(crews) = params.crew_cards.as_ref() else {
-        return false;
-    };
-    crews
-        .iter()
-        .any(|&cid| check_card_filter(valid_crew, Some(cid), host_card, host_controller, game))
+use super::trigger::{check_card_filter, TriggerBehavior};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TriggerCrewedSaddled {
+    pub valid_card: Option<String>,
+    pub valid_crew: Option<String>,
 }
 
-pub fn set_triggering_objects(sa: &mut SpellAbility, params: &RunParams) {
-    if let Some(card) = params.card {
-        sa.add_triggering_object("Card", &card.0.to_string());
+impl TriggerCrewedSaddled {
+    pub fn parse(params: &Params) -> Box<dyn TriggerBehavior> {
+        Box::new(Self {
+            valid_card: params.get_cloned(keys::VALID_CARD),
+            valid_crew: params
+                .get("ValidCrew")
+                .or_else(|| params.get("ValidSaddled"))
+                .map(|s| s.to_string()),
+        })
     }
-    if let Some(crew) = params.crew_cards.as_ref() {
-        let csv = crew
+}
+
+#[typetag::serde]
+impl TriggerBehavior for TriggerCrewedSaddled {
+    fn trigger_type(&self) -> TriggerType {
+        TriggerType::Crewed
+    }
+
+    fn perform_test(
+        &self,
+        trigger: &super::trigger::Trigger,
+        params: &RunParams,
+        game: &GameState,
+    ) -> bool {
+        let host_card = trigger.base.card_trait_base.get_host_card().id;
+        let host_controller = trigger.base.card_trait_base.get_host_card().controller;
+        if !check_card_filter(&self.valid_card, params.card, host_card, host_controller, game) {
+            return false;
+        }
+        let Some(crews) = params.crew_cards.as_ref() else {
+            return false;
+        };
+        crews
             .iter()
-            .map(|c| c.0.to_string())
-            .collect::<Vec<_>>()
-            .join(",");
-        sa.add_triggering_object("Crew", &csv);
+            .any(|&cid| check_card_filter(&self.valid_crew, Some(cid), host_card, host_controller, game))
     }
-}
 
-pub fn get_important_stack_objects(sa: &SpellAbility) -> String {
-    // Java uses two spaces between Card and Crew sections
-    format!(
-        "Card: {}  Crew: {}",
-        sa.get_triggering_object("Card").unwrap_or(""),
-        sa.get_triggering_object("Crew").unwrap_or("")
-    )
+    fn set_triggering_objects(
+        &self,
+        _trigger: &super::trigger::Trigger,
+        sa: &mut SpellAbility,
+        params: &RunParams,
+        _game: &GameState,
+    ) {
+        if let Some(card) = params.card {
+            sa.set_triggering_object("Card", &card.0.to_string());
+        }
+        if let Some(crew) = params.crew_cards.as_ref() {
+            let csv = crew
+                .iter()
+                .map(|c| c.0.to_string())
+                .collect::<Vec<_>>()
+                .join(",");
+            sa.set_triggering_object("Crew", &csv);
+        }
+    }
+
+    fn get_important_stack_objects(&self, _trigger: &super::trigger::Trigger, sa: &SpellAbility) -> String {
+        // Java uses two spaces between Card and Crew sections
+        format!(
+            "Card: {}  Crew: {}",
+            sa.get_triggering_object("Card").unwrap_or(""),
+            sa.get_triggering_object("Crew").unwrap_or("")
+        )
+    }
 }

@@ -211,7 +211,7 @@ fn get_players(
     let use_targets = sa.uses_targeting() && (!defined_first || !sa.params.has(defined_param));
 
     if use_targets {
-        let mut result: Vec<_> = sa.target_chosen.target_player.into_iter().collect();
+        let mut result = sa.target_chosen.all_target_players();
         sort_in_turn_order(game, sa, &mut result);
         result
     } else {

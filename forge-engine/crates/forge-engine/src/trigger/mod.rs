@@ -56,7 +56,6 @@ pub mod trigger_damage_done_once;
 pub mod trigger_damage_done_once_by_controller;
 pub mod trigger_damage_prevented_once;
 pub mod trigger_day_time_changes;
-pub mod trigger_delayed;
 pub mod trigger_destroyed;
 pub mod trigger_devoured;
 pub mod trigger_discarded;
@@ -143,7 +142,6 @@ pub mod wrapped_ability;
 
 pub use self::trigger::*;
 pub use handler::*;
-pub use trigger_delayed::*;
 pub use trigger_immediate::*;
 pub use trigger_runtime::*;
 pub use trigger_type::*;

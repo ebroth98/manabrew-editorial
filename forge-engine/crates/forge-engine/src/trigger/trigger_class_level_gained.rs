@@ -1,46 +1,68 @@
-use super::trigger::{check_card_filter, TriggerMode};
-use crate::{
-    event::RunParams,
-    game::GameState,
-    ids::{CardId, PlayerId},
-    spellability::SpellAbility,
-};
+use serde::{Deserialize, Serialize};
 
-pub fn perform_test(
-    mode: &TriggerMode,
-    params: &RunParams,
-    game: &GameState,
-    host_card: CardId,
-    host_controller: PlayerId,
-) -> bool {
-    let TriggerMode::ClassLevelGained {
-        valid_card,
-        class_level,
-    } = mode
-    else {
-        panic!("Expected ClassLevelGained mode");
-    };
-    if !check_card_filter(valid_card, params.card, host_card, host_controller, game) {
-        return false;
-    }
-    if let Some(expected) = class_level {
-        return params.class_level == Some(*expected);
-    }
-    true
+use crate::event::{RunParams, TriggerType};
+use crate::game::GameState;
+use crate::spellability::SpellAbility;
+
+use super::trigger::{check_card_filter, TriggerBehavior};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TriggerClassLevelGained {
+    pub valid_card: Option<String>,
+    pub class_level: Option<i32>,
 }
 
-pub fn set_triggering_objects(sa: &mut SpellAbility, params: &RunParams) {
-    if let Some(level) = params.class_level {
-        sa.add_triggering_object("ClassLevel", &level.to_string());
+impl TriggerClassLevelGained {
+    pub fn parse(valid_card: Option<String>, class_level: Option<i32>) -> Box<dyn TriggerBehavior> {
+        Box::new(Self {
+            valid_card,
+            class_level,
+        })
     }
 }
 
-pub fn get_important_stack_objects(sa: &SpellAbility) -> String {
-    format!(
-        "Class Level: {}",
-        sa.trigger_objects
-            .get("ClassLevel")
-            .cloned()
-            .unwrap_or_default()
-    )
+#[typetag::serde]
+impl TriggerBehavior for TriggerClassLevelGained {
+    fn trigger_type(&self) -> TriggerType {
+        TriggerType::ClassLevelGained
+    }
+
+    fn perform_test(
+        &self,
+        trigger: &super::trigger::Trigger,
+        params: &RunParams,
+        game: &GameState,
+    ) -> bool {
+        let host_card = trigger.base.card_trait_base.get_host_card().id;
+        let host_controller = trigger.base.card_trait_base.get_host_card().controller;
+        if !check_card_filter(&self.valid_card, params.card, host_card, host_controller, game) {
+            return false;
+        }
+        if let Some(expected) = self.class_level {
+            return params.class_level == Some(expected);
+        }
+        true
+    }
+
+    fn set_triggering_objects(
+        &self,
+        _trigger: &super::trigger::Trigger,
+        sa: &mut SpellAbility,
+        params: &RunParams,
+        _game: &GameState,
+    ) {
+        if let Some(level) = params.class_level {
+            sa.set_triggering_object("ClassLevel", &level.to_string());
+        }
+    }
+
+    fn get_important_stack_objects(&self, _trigger: &super::trigger::Trigger, sa: &SpellAbility) -> String {
+        format!(
+            "Class Level: {}",
+            sa.trigger_objects
+                .get("ClassLevel")
+                .cloned()
+                .unwrap_or_default()
+        )
+    }
 }

@@ -42,4 +42,14 @@ impl ActivationTable {
         let key = Self::key_for(sa);
         self.data.get(&key).map_or(0, Vec::len)
     }
+
+    /// Return activators recorded for this spell ability.
+    pub fn get_activators(&self, sa: &SpellAbility) -> Vec<PlayerId> {
+        let key = Self::key_for(sa);
+        self.data.get(&key).cloned().unwrap_or_default()
+    }
+
+    pub fn clear(&mut self) {
+        self.data.clear();
+    }
 }

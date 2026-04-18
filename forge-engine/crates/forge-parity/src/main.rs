@@ -43,6 +43,7 @@ use std::sync::Mutex;
 
 use clap::Parser;
 use rayon::prelude::*;
+use rayon::ThreadPoolBuilder;
 
 use forge_parity::card_pool::CardPool;
 use forge_parity::comparator;
@@ -60,6 +61,8 @@ use forge_parity::report;
 use forge_parity::runner::{self, LoadedData, RunConfig, DEFAULT_DECKS_DIR};
 use forge_parity::utils::decks::available_presets;
 use serde::Deserialize;
+
+const PARITY_THREAD_STACK_SIZE: usize = 64 * 1024 * 1024;
 
 #[derive(Debug, Clone, Deserialize)]
 struct ParityIgnoreEntry {
@@ -762,7 +765,11 @@ fn run_single_matchup_server(
     // Run Rust and Java engines concurrently:
     // Rust on a scoped thread, Java on the current thread (needs &mut server).
     let (rust_result, java_result) = std::thread::scope(|s| {
-        let rust_handle = s.spawn(|| runner::run_with_data(config, data));
+        let rust_handle = std::thread::Builder::new()
+            .name("parity-rust".to_string())
+            .stack_size(PARITY_THREAD_STACK_SIZE)
+            .spawn_scoped(s, || runner::run_with_data(config, data))
+            .expect("Failed to spawn Rust parity thread");
 
         // Java runs on this thread since it needs exclusive &mut server
         let java_result = server.run_matchup(
@@ -808,7 +815,11 @@ fn run_single_matchup_pool(
     pool: &ServerPool,
 ) -> MatchupResult {
     let (rust_result, java_result) = std::thread::scope(|s| {
-        let rust_handle = s.spawn(|| runner::run_with_data(config, data));
+        let rust_handle = std::thread::Builder::new()
+            .name("parity-rust".to_string())
+            .stack_size(PARITY_THREAD_STACK_SIZE)
+            .spawn_scoped(s, || runner::run_with_data(config, data))
+            .expect("Failed to spawn Rust parity thread");
         let java_result = pool.run_matchup(
             &config.deck1,
             &config.deck2,
@@ -852,9 +863,16 @@ fn run_single_matchup_oneshot(
 ) -> MatchupResult {
     // Run Rust and Java engines concurrently
     let (rust_result, java_result) = std::thread::scope(|s| {
-        let rust_handle = s.spawn(|| runner::run_with_data(config, data));
+        let rust_handle = std::thread::Builder::new()
+            .name("parity-rust".to_string())
+            .stack_size(PARITY_THREAD_STACK_SIZE)
+            .spawn_scoped(s, || runner::run_with_data(config, data))
+            .expect("Failed to spawn Rust parity thread");
 
-        let java_handle = s.spawn(|| {
+        let java_handle = std::thread::Builder::new()
+            .name("parity-java".to_string())
+            .stack_size(PARITY_THREAD_STACK_SIZE)
+            .spawn_scoped(s, || {
             let bridge_config = JavaBridgeConfig {
                 jar_path: jar_path.clone(),
                 seed: config.seed,
@@ -871,7 +889,8 @@ fn run_single_matchup_oneshot(
             };
             let bridge = JavaBridge::new(bridge_config);
             bridge.run()
-        });
+        })
+        .expect("Failed to spawn Java parity thread");
 
         (
             rust_handle.join().expect("Rust engine thread panicked"),
@@ -1333,6 +1352,11 @@ fn run_matrix_mode(cli: &Cli) {
 
     // Load data once
     let data = load_data_or_exit(cli);
+    let matrix_pool = ThreadPoolBuilder::new()
+        .thread_name(|idx| format!("parity-matrix-{idx}"))
+        .stack_size(PARITY_THREAD_STACK_SIZE)
+        .build()
+        .expect("Failed to build matrix thread pool");
 
     // Build flat list of (d1, d2, seed) jobs for parallel execution
     let all_jobs: Vec<(&str, &str, u64)> = pairs
@@ -1421,26 +1445,28 @@ fn run_matrix_mode(cli: &Cli) {
 
     // Phase 1: Run ALL Rust games in parallel (typically finishes in seconds)
     let rust_completed = AtomicUsize::new(0);
-    let rust_phase: Vec<(RunConfig, Result<forge_parity::protocol::GameTrace, String>)> = jobs
-        .par_iter()
-        .map(|&(d1, d2, seed)| {
-            let config = build_config(cli, d1, d2, seed);
-            let result = runner::run_with_data(&config, &data);
-            if cli.is_verbose() {
-                let n = rust_completed.fetch_add(1, Ordering::Relaxed) + 1;
-                eprintln!(
-                    "[parity] [Rust {}/{}] {} vs {} seed={} ... {}",
-                    n,
-                    total,
-                    d1,
-                    d2,
-                    seed,
-                    if result.is_ok() { "OK" } else { "ERROR" }
-                );
-            }
-            (config, result)
-        })
-        .collect();
+    let rust_phase: Vec<(RunConfig, Result<forge_parity::protocol::GameTrace, String>)> =
+        matrix_pool.install(|| {
+            jobs.par_iter()
+                .map(|&(d1, d2, seed)| {
+                    let config = build_config(cli, d1, d2, seed);
+                    let result = runner::run_with_data(&config, &data);
+                    if cli.is_verbose() {
+                        let n = rust_completed.fetch_add(1, Ordering::Relaxed) + 1;
+                        eprintln!(
+                            "[parity] [Rust {}/{}] {} vs {} seed={} ... {}",
+                            n,
+                            total,
+                            d1,
+                            d2,
+                            seed,
+                            if result.is_ok() { "OK" } else { "ERROR" }
+                        );
+                    }
+                    (config, result)
+                })
+                .collect()
+        });
 
     if cli.is_verbose() {
         eprintln!("[parity] Phase 1 complete: all Rust games finished");
@@ -1450,93 +1476,95 @@ fn run_matrix_mode(cli: &Cli) {
     // Uses cached Java output when available, falling back to live Java.
     let cache_hits = AtomicUsize::new(0);
     let cache_misses = AtomicUsize::new(0);
-    let mut results: Vec<MatchupResult> = rust_phase
-        .par_iter()
-        .map(|(config, rust_result)| {
-            let result = match rust_result {
-                Ok(trace) => {
-                    // Check Java cache first
-                    if let Some(ref cache) = java_cache {
-                        if let Some(cached_java) = cache.get(
-                            &config.deck1,
-                            &config.deck2,
-                            config.seed,
-                            config.max_turns,
-                            config.prefer_actions,
-                        ) {
-                            cache_hits.fetch_add(1, Ordering::Relaxed);
-                            let mut result = compare_snapshots(config, &trace, &cached_java);
-                            result.covered_cards = trace.covered_cards.clone();
-                            return result;
+    let mut results: Vec<MatchupResult> = matrix_pool.install(|| {
+        rust_phase
+            .par_iter()
+            .map(|(config, rust_result)| {
+                let result = match rust_result {
+                    Ok(trace) => {
+                        // Check Java cache first
+                        if let Some(ref cache) = java_cache {
+                            if let Some(cached_java) = cache.get(
+                                &config.deck1,
+                                &config.deck2,
+                                config.seed,
+                                config.max_turns,
+                                config.prefer_actions,
+                            ) {
+                                cache_hits.fetch_add(1, Ordering::Relaxed);
+                                let mut result = compare_snapshots(config, &trace, &cached_java);
+                                result.covered_cards = trace.covered_cards.clone();
+                                return result;
+                            }
+                            cache_misses.fetch_add(1, Ordering::Relaxed);
                         }
-                        cache_misses.fetch_add(1, Ordering::Relaxed);
-                    }
 
-                    // Cache miss — run Java live and cache the result
-                    if let Some(ref pool) = pool {
-                        run_java_compare_and_cache(config, trace, pool, &java_cache)
-                    } else if let Some(ref jar_path) = cli.java_jar {
-                        run_java_streaming_compare_oneshot(config, trace, jar_path)
-                    } else {
-                        build_rust_only_result(config, trace)
+                        // Cache miss — run Java live and cache the result
+                        if let Some(ref pool) = pool {
+                            run_java_compare_and_cache(config, trace, pool, &java_cache)
+                        } else if let Some(ref jar_path) = cli.java_jar {
+                            run_java_streaming_compare_oneshot(config, trace, jar_path)
+                        } else {
+                            build_rust_only_result(config, trace)
+                        }
+                    }
+                    Err(e) => MatchupResult::error(config, format!("Rust engine error: {}", e)),
+                };
+
+                if cli.is_verbose() {
+                    let n = completed.fetch_add(1, Ordering::Relaxed) + 1;
+                    match result.status {
+                        MatchupStatus::Pass => {
+                            eprintln!(
+                                "[parity] [{}/{}] {} vs {} seed={} ... PASS ({} snapshots)",
+                                n,
+                                total,
+                                config.deck1,
+                                config.deck2,
+                                config.seed,
+                                result.snapshots_compared
+                            );
+                        }
+                        MatchupStatus::Skipped => {
+                            eprintln!(
+                                "[parity] [{}/{}] {} vs {} seed={} ... SKIPPED: {}",
+                                n,
+                                total,
+                                config.deck1,
+                                config.deck2,
+                                config.seed,
+                                result.skip_reason.as_deref().unwrap_or("ignored")
+                            );
+                        }
+                        MatchupStatus::Fail => {
+                            eprintln!(
+                                "[parity] [{}/{}] {} vs {} seed={} ... FAIL ({} divergences)",
+                                n,
+                                total,
+                                config.deck1,
+                                config.deck2,
+                                config.seed,
+                                result.divergence_count
+                            );
+                        }
+                        MatchupStatus::Error => {
+                            eprintln!(
+                                "[parity] [{}/{}] {} vs {} seed={} ... ERROR: {}",
+                                n,
+                                total,
+                                config.deck1,
+                                config.deck2,
+                                config.seed,
+                                result.error_message.as_deref().unwrap_or("unknown")
+                            );
+                        }
                     }
                 }
-                Err(e) => MatchupResult::error(config, format!("Rust engine error: {}", e)),
-            };
 
-            if cli.is_verbose() {
-                let n = completed.fetch_add(1, Ordering::Relaxed) + 1;
-                match result.status {
-                    MatchupStatus::Pass => {
-                        eprintln!(
-                            "[parity] [{}/{}] {} vs {} seed={} ... PASS ({} snapshots)",
-                            n,
-                            total,
-                            config.deck1,
-                            config.deck2,
-                            config.seed,
-                            result.snapshots_compared
-                        );
-                    }
-                    MatchupStatus::Skipped => {
-                        eprintln!(
-                            "[parity] [{}/{}] {} vs {} seed={} ... SKIPPED: {}",
-                            n,
-                            total,
-                            config.deck1,
-                            config.deck2,
-                            config.seed,
-                            result.skip_reason.as_deref().unwrap_or("ignored")
-                        );
-                    }
-                    MatchupStatus::Fail => {
-                        eprintln!(
-                            "[parity] [{}/{}] {} vs {} seed={} ... FAIL ({} divergences)",
-                            n,
-                            total,
-                            config.deck1,
-                            config.deck2,
-                            config.seed,
-                            result.divergence_count
-                        );
-                    }
-                    MatchupStatus::Error => {
-                        eprintln!(
-                            "[parity] [{}/{}] {} vs {} seed={} ... ERROR: {}",
-                            n,
-                            total,
-                            config.deck1,
-                            config.deck2,
-                            config.seed,
-                            result.error_message.as_deref().unwrap_or("unknown")
-                        );
-                    }
-                }
-            }
-
-            result
-        })
-        .collect();
+                result
+            })
+            .collect()
+    });
     results.extend(skipped_results);
     results.sort_by(|a, b| {
         a.deck1

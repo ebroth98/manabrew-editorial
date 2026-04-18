@@ -1,41 +1,62 @@
-use super::trigger::{check_player_filter, TriggerMode};
-use crate::{
-    event::RunParams,
-    game::GameState,
-    ids::{CardId, PlayerId},
-    spellability::SpellAbility,
-};
+use serde::{Deserialize, Serialize};
 
-pub fn perform_test(
-    mode: &TriggerMode,
-    params: &RunParams,
-    _game: &GameState,
-    host_card: CardId,
-    host_controller: PlayerId,
-) -> bool {
-    let TriggerMode::ChaosEnsues { valid_player } = mode else {
-        panic!("Expected ChaosEnsues mode");
-    };
+use crate::event::{RunParams, TriggerType};
+use crate::game::GameState;
+use crate::spellability::SpellAbility;
 
-    if !check_player_filter(valid_player, params.player, host_controller) {
-        return false;
+use super::trigger::{check_player_filter, TriggerBehavior};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TriggerChaosEnsues {
+    pub valid_player: Option<String>,
+}
+
+impl TriggerChaosEnsues {
+    pub fn parse(valid_player: Option<String>) -> Box<dyn TriggerBehavior> {
+        Box::new(Self { valid_player })
+    }
+}
+
+#[typetag::serde]
+impl TriggerBehavior for TriggerChaosEnsues {
+    fn trigger_type(&self) -> TriggerType {
+        TriggerType::ChaosEnsues
     }
 
-    if let Some(affected) = params.card {
-        if affected != host_card {
+    fn perform_test(
+        &self,
+        trigger: &super::trigger::Trigger,
+        params: &RunParams,
+        _game: &GameState,
+    ) -> bool {
+        let host_card = trigger.base.card_trait_base.get_host_card().id;
+        let host_controller = trigger.base.card_trait_base.get_host_card().controller;
+        if !check_player_filter(&self.valid_player, params.player, host_controller) {
             return false;
+        }
+
+        if let Some(affected) = params.card {
+            if affected != host_card {
+                return false;
+            }
+        }
+
+        true
+    }
+
+    fn set_triggering_objects(
+        &self,
+        _trigger: &super::trigger::Trigger,
+        sa: &mut SpellAbility,
+        params: &RunParams,
+        _game: &GameState,
+    ) {
+        if let Some(p) = params.player {
+            sa.set_triggering_object("Player", &p.0.to_string());
         }
     }
 
-    true
-}
-
-pub fn set_triggering_objects(sa: &mut SpellAbility, params: &RunParams) {
-    if let Some(p) = params.player {
-        sa.add_triggering_object("Player", &p.0.to_string());
+    fn get_important_stack_objects(&self, _trigger: &super::trigger::Trigger, _sa: &SpellAbility) -> String {
+        String::new()
     }
-}
-
-pub fn get_important_stack_objects(_sa: &SpellAbility) -> String {
-    String::new()
 }

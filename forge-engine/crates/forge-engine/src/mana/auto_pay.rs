@@ -13,6 +13,7 @@ pub struct AutoPayResult {
     pub choices: Vec<AutoTapChoice>,
     pub life_paid: i32,
     pub colors_spent: u16,
+    pub paying_mana: Vec<u16>,
 }
 
 /// Deterministic auto-pay entrypoint used by parity AI paths.
@@ -112,6 +113,7 @@ pub fn pay_mana_cost_auto_with_chooser(
         choices,
         life_paid: payment.life_paid,
         colors_spent: payment.colors_spent,
+        paying_mana: payment.paying_mana,
     })
 }
 
@@ -159,5 +161,6 @@ pub fn pay_mana_cost_auto_with_callback(
         choices,
         life_paid: payment.life_paid,
         colors_spent: payment.colors_spent,
+        paying_mana: payment.paying_mana,
     })
 }

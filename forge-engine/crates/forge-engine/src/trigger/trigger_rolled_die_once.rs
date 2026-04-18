@@ -1,33 +1,51 @@
-use crate::{
-    event::RunParams,
-    game::GameState,
-    ids::{CardId, PlayerId},
-    spellability::SpellAbility,
-};
+use serde::{Deserialize, Serialize};
 
-use super::trigger::{check_player_filter, matches_amount, TriggerMode};
+use crate::event::{RunParams, TriggerType};
+use crate::game::GameState;
+use crate::parsing::{keys, Params};
+use crate::spellability::SpellAbility;
 
-pub fn perform_test(
-    mode: &TriggerMode,
-    params: &RunParams,
-    _game: &GameState,
-    _host_card: CardId,
-    host_controller: PlayerId,
-) -> bool {
-    if let TriggerMode::RolledDieOnce {
-        valid_player,
-        valid_result,
-        valid_sides,
-        rolled_to_visit_attractions,
-    } = mode
-    {
-        if !check_player_filter(valid_player, params.player, host_controller) {
+use super::trigger::{check_player_filter, matches_amount, TriggerBehavior};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TriggerRolledDieOnce {
+    pub valid_player: Option<String>,
+    pub valid_result: Option<String>,
+    pub valid_sides: Option<String>,
+    pub rolled_to_visit_attractions: bool,
+}
+
+impl TriggerRolledDieOnce {
+    pub fn parse(params: &Params) -> Box<dyn TriggerBehavior> {
+        Box::new(Self {
+            valid_player: params.get_cloned(keys::VALID_PLAYER),
+            valid_result: params.get_cloned(keys::VALID_RESULT),
+            valid_sides: params.get_cloned(keys::VALID_SIDES),
+            rolled_to_visit_attractions: params.has("RolledToVisitAttractions"),
+        })
+    }
+}
+
+#[typetag::serde]
+impl TriggerBehavior for TriggerRolledDieOnce {
+    fn trigger_type(&self) -> TriggerType {
+        TriggerType::RolledDieOnce
+    }
+
+    fn perform_test(
+        &self,
+        trigger: &super::trigger::Trigger,
+        params: &RunParams,
+        _game: &GameState,
+    ) -> bool {
+        let host_controller = trigger.base.card_trait_base.get_host_card().controller;
+        if !check_player_filter(&self.valid_player, params.player, host_controller) {
             return false;
         }
-        if *rolled_to_visit_attractions && params.rolled_to_visit_attractions != Some(true) {
+        if self.rolled_to_visit_attractions && params.rolled_to_visit_attractions != Some(true) {
             return false;
         }
-        if let Some(filter) = valid_result {
+        if let Some(filter) = self.valid_result.as_ref() {
             let Some(result) = params.die_result else {
                 return false;
             };
@@ -35,7 +53,7 @@ pub fn perform_test(
                 return false;
             }
         }
-        if let Some(filter) = valid_sides {
+        if let Some(filter) = self.valid_sides.as_ref() {
             let Some(sides) = params.die_sides else {
                 return false;
             };
@@ -43,59 +61,35 @@ pub fn perform_test(
                 return false;
             }
         }
-        return true;
+        true
     }
-    panic!("Expected RolledDieOnce mode");
-}
 
-pub fn set_triggering_objects(sa: &mut SpellAbility, params: &RunParams) {
-    if let Some(result) = params.die_result {
-        sa.add_triggering_object("Result", &result.to_string());
+    fn set_triggering_objects(
+        &self,
+        _trigger: &super::trigger::Trigger,
+        sa: &mut SpellAbility,
+        params: &RunParams,
+        _game: &GameState,
+    ) {
+        if let Some(result) = params.die_result {
+            sa.set_triggering_object("Result", &result.to_string());
+        }
+        if let Some(p) = params.player {
+            sa.set_triggering_object("Player", &p.0.to_string());
+        }
     }
-    if let Some(p) = params.player {
-        sa.add_triggering_object("Player", &p.0.to_string());
-    }
-}
 
-pub fn get_important_stack_objects(sa: &SpellAbility) -> String {
-    format!(
-        "Player: {}, Result: {}",
-        sa.trigger_objects
-            .get("Player")
-            .map(|s| s.as_str())
-            .unwrap_or(""),
-        sa.trigger_objects
-            .get("Result")
-            .map(|s| s.as_str())
-            .unwrap_or("")
-    )
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::event::RunParams;
-    use crate::trigger::TriggerMode;
-
-    #[test]
-    fn rolled_die_once_respects_attraction_flag() {
-        let mode = TriggerMode::RolledDieOnce {
-            valid_player: None,
-            valid_result: None,
-            valid_sides: None,
-            rolled_to_visit_attractions: true,
-        };
-        let params = RunParams {
-            player: Some(PlayerId(0)),
-            rolled_to_visit_attractions: Some(true),
-            ..Default::default()
-        };
-        assert!(perform_test(
-            &mode,
-            &params,
-            &GameState::new(&["A"], 20),
-            CardId(0),
-            PlayerId(0)
-        ));
+    fn get_important_stack_objects(&self, _trigger: &super::trigger::Trigger, sa: &SpellAbility) -> String {
+        format!(
+            "Player: {}, Result: {}",
+            sa.trigger_objects
+                .get("Player")
+                .map(|s| s.as_str())
+                .unwrap_or(""),
+            sa.trigger_objects
+                .get("Result")
+                .map(|s| s.as_str())
+                .unwrap_or("")
+        )
     }
 }

@@ -160,7 +160,7 @@ impl WrappedAbility {
             let source = self.wrapped.source.unwrap_or(crate::ids::CardId(0));
             let player = self.wrapped.activating_player;
             let base = trigger.replace_ability_text(&trigger.description, game, source, player);
-            let important = trigger.mode.get_important_stack_objects(&self.wrapped);
+            let important = trigger.mode.get_important_stack_objects(trigger, &self.wrapped);
             let mut sb = base;
             if !important.is_empty() {
                 sb.push_str(" [");

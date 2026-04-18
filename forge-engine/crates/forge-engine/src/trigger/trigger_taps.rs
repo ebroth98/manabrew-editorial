@@ -1,49 +1,53 @@
+use serde::{Deserialize, Serialize};
+
+use crate::event::{RunParams, TriggerType};
+use crate::game::GameState;
 use crate::parsing::{keys, Params};
-use crate::{
-    event::RunParams,
-    game::GameState,
-    ids::{CardId, PlayerId},
-    spellability::SpellAbility,
-};
+use crate::spellability::SpellAbility;
 
-use super::trigger::{check_card_filter, check_player_filter, TriggerMode};
+use super::trigger::{check_card_filter, check_player_filter, Trigger, TriggerBehavior};
 
-pub fn parse_mode(params: &Params) -> TriggerMode {
-    let valid_card = params.get_cloned(keys::VALID_CARD);
-    let valid_cause = params.get_cloned(keys::VALID_CAUSE);
-    let valid_player = params.get_cloned(keys::VALID_PLAYER);
-    let attacker = params
-        .get(keys::ATTACKER)
-        .map(|v| v.eq_ignore_ascii_case("true"));
-    let require_first_time = params.has("FirstTime");
-    TriggerMode::Taps {
-        valid_card,
-        valid_cause,
-        valid_player,
-        attacker,
-        require_first_time,
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TriggerTaps {
+    pub valid_card: Option<String>,
+    pub valid_cause: Option<String>,
+    pub valid_player: Option<String>,
+    pub attacker: Option<bool>,
+    pub require_first_time: bool,
+}
+
+impl TriggerTaps {
+    pub fn parse(params: &Params) -> Box<dyn TriggerBehavior> {
+        Box::new(Self {
+            valid_card: params.get_cloned(keys::VALID_CARD),
+            valid_cause: params.get_cloned(keys::VALID_CAUSE),
+            valid_player: params.get_cloned(keys::VALID_PLAYER),
+            attacker: params
+                .get(keys::ATTACKER)
+                .map(|v| v.eq_ignore_ascii_case("true")),
+            require_first_time: params.has("FirstTime"),
+        })
     }
 }
 
-pub fn perform_test(
-    mode: &TriggerMode,
-    params: &RunParams,
-    game: &GameState,
-    host_card: CardId,
-    host_controller: PlayerId,
-) -> bool {
-    if let TriggerMode::Taps {
-        valid_card,
-        valid_cause,
-        valid_player,
-        attacker,
-        require_first_time,
-    } = mode
-    {
-        if !check_card_filter(valid_card, params.card, host_card, host_controller, game) {
+#[typetag::serde]
+impl TriggerBehavior for TriggerTaps {
+    fn trigger_type(&self) -> TriggerType {
+        TriggerType::Taps
+    }
+
+    fn perform_test(
+        &self,
+        trigger: &Trigger,
+        params: &RunParams,
+        game: &GameState,
+    ) -> bool {
+        let host_card = trigger.base.card_trait_base.get_host_card().id;
+        let host_controller = trigger.base.card_trait_base.get_host_card().controller;
+        if !check_card_filter(&self.valid_card, params.card, host_card, host_controller, game) {
             return false;
         }
-        if let Some(filter) = valid_cause {
+        if let Some(filter) = self.valid_cause.as_ref() {
             let Some(cause_sa) = params.cause.as_ref() else {
                 return false;
             };
@@ -60,34 +64,39 @@ pub fn perform_test(
                 return false;
             }
         }
-        if !check_player_filter(valid_player, params.player, host_controller) {
+        if !check_player_filter(&self.valid_player, params.player, host_controller) {
             return false;
         }
-        if let Some(expected_attacker) = attacker {
-            if params.attacker.is_some() != *expected_attacker {
+        if let Some(expected_attacker) = self.attacker {
+            if params.attacker.is_some() != expected_attacker {
                 return false;
             }
         }
-        if *require_first_time && params.first_time != Some(true) {
+        if self.require_first_time && params.first_time != Some(true) {
             return false;
         }
-        return true;
+        true
     }
-    panic!("Expected Taps mode");
-}
 
-pub fn set_triggering_objects(sa: &mut SpellAbility, params: &RunParams) {
-    if let Some(card) = params.card {
-        sa.add_triggering_object("Card", &card.0.to_string());
+    fn set_triggering_objects(
+        &self,
+        _trigger: &Trigger,
+        sa: &mut SpellAbility,
+        params: &RunParams,
+        _game: &GameState,
+    ) {
+        if let Some(card) = params.card {
+            sa.set_triggering_object("Card", &card.0.to_string());
+        }
     }
-}
 
-pub fn get_important_stack_objects(sa: &SpellAbility) -> String {
-    format!(
-        "Tapped: {}",
-        sa.trigger_objects
-            .get("Card")
-            .map(|s| s.as_str())
-            .unwrap_or("")
-    )
+    fn get_important_stack_objects(&self, _trigger: &Trigger, sa: &SpellAbility) -> String {
+        format!(
+            "Tapped: {}",
+            sa.trigger_objects
+                .get("Card")
+                .map(|s| s.as_str())
+                .unwrap_or("")
+        )
+    }
 }

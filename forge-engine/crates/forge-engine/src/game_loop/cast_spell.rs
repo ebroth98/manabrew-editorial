@@ -162,6 +162,15 @@ impl GameLoop {
         player: PlayerId,
         stack_push: StackPushContext,
     ) -> SpellAbility {
+        if std::env::var("FORGE_STACK_TRACE").is_ok() {
+            eprintln!(
+                "[stack-trace] PUSH player={:?} source={} depth_before={} msg={}",
+                player,
+                game.card(stack_push.source_card).card_name,
+                game.stack.len(),
+                stack_push.stack_message
+            );
+        }
         game.stack.push(stack_push.entry.clone());
         self.log_stack_push(&stack_push.stack_log_name, &game.player(player).name);
         let mut event = if stack_push.event_kind == SpellAbilityLogEventKind::Stack {
@@ -190,6 +199,20 @@ impl GameLoop {
                 .register_active_trigger(game, stack_push.source_card);
         }
 
+        if std::env::var("FORGE_STACK_TRACE").is_ok() {
+            let names: Vec<String> = game
+                .stack
+                .iter()
+                .map(|entry| {
+                    entry
+                        .spell_ability
+                        .source
+                        .map(|cid| game.card(cid).card_name.clone())
+                        .unwrap_or_else(|| "<effect>".to_string())
+                })
+                .collect();
+            eprintln!("[stack-trace] STACK after push depth={} {:?}", game.stack.len(), names);
+        }
         if let Some(top) = game.stack.iter_mut().last() {
             top.spell_ability.apply_paying_mana_effects();
             top.spell_ability.clone()
@@ -1180,6 +1203,7 @@ impl GameLoop {
         // Track pool size before payment for ManaExpend
         let pool_size_before = self.pool(player).total_mana();
         let colors_spent_to_cast = std::cell::Cell::new(0u16);
+        let paying_mana_to_cast = std::cell::RefCell::new(Vec::new());
 
         // Unified mana payment loop. Agents decide whether to pay manually or
         // auto-pay through their `pay_mana_cost()` implementation; the engine
@@ -1238,6 +1262,9 @@ impl GameLoop {
                     };
                     if let Some(result) = auto_result {
                         colors_spent_to_cast.set(colors_spent_to_cast.get() | result.colors_spent);
+                        paying_mana_to_cast
+                            .borrow_mut()
+                            .extend(result.paying_mana.iter().copied());
                         let trace: Vec<ManaCostAction> = result
                             .choices
                             .iter()
@@ -1306,6 +1333,9 @@ impl GameLoop {
                             return false;
                         }
                         colors_spent_to_cast.set(colors_spent_to_cast.get() | payment.colors_spent);
+                        paying_mana_to_cast
+                            .borrow_mut()
+                            .extend(payment.paying_mana.iter().copied());
                         if payment.life_paid > 0 {
                             slf.pay_life_cost(game, player, card_id, payment.life_paid);
                         }
@@ -1350,6 +1380,8 @@ impl GameLoop {
 
         game.card_mut(card_id)
             .set_colors_spent_to_cast(colors_spent_to_cast.get());
+        game.card_mut(card_id)
+            .set_paying_mana_to_cast(paying_mana_to_cast.into_inner());
 
         // Fire ManaExpend triggers (Expend mechanic — cumulative per-turn tracking)
         {
@@ -1834,6 +1866,12 @@ impl GameLoop {
                         );
                         copy.spell_ability
                             .setup_targets(game, agents, &self.mana_pools);
+                        crate::ability::effects::emit_targeting_triggers_for_sa(
+                            &mut self.trigger_handler,
+                            game,
+                            card_id,
+                            &copy.spell_ability,
+                        );
                     }
                     game.stack.push(copy);
                     self.log_stack_push(
@@ -1888,6 +1926,12 @@ impl GameLoop {
                     );
                     copy.spell_ability
                         .setup_targets(game, agents, &self.mana_pools);
+                    crate::ability::effects::emit_targeting_triggers_for_sa(
+                        &mut self.trigger_handler,
+                        game,
+                        card_id,
+                        &copy.spell_ability,
+                    );
                 }
                 game.stack.push(copy);
                 self.log_stack_push(

@@ -1434,7 +1434,7 @@ mod tests {
         let host_id = game.create_card(host);
 
         let mut sa = SpellAbility::new_simple(Some(host_id), p0, "DB$ GainLife | LifeAmount$ X");
-        sa.add_triggering_object("AttackedTarget", &p1.0.to_string());
+        sa.set_triggering_object("AttackedTarget", &p1.0.to_string());
 
         assert_eq!(resolve_numeric_svar(&game, &sa, "LifeAmount", 0), 14);
     }
@@ -1499,7 +1499,7 @@ mod tests {
             p0,
             "DB$ LoseLife | Defined$ TriggeredTarget | LifeAmount$ X",
         );
-        sa.add_triggering_object("TargetPlayer", &p1.0.to_string());
+        sa.set_triggering_object("TargetPlayer", &p1.0.to_string());
 
         assert_eq!(resolve_numeric_svar(&game, &sa, "LifeAmount", 0), 5);
     }
@@ -1649,7 +1649,7 @@ mod tests {
         triggered_sa.x_mana_cost_paid = 4;
 
         let mut sa = SpellAbility::new_simple(Some(host_id), p0, "DB$ GainLife | LifeAmount$ X");
-        sa.add_triggering_spell_ability("SpellAbility", triggered_sa);
+        sa.set_triggering_spell_ability("SpellAbility", triggered_sa);
 
         assert_eq!(resolve_numeric_svar(&game, &sa, "LifeAmount", 0), 5);
     }
@@ -1903,7 +1903,7 @@ mod tests {
         let host_id = game.create_card(host);
 
         let mut sa = SpellAbility::new_simple(Some(host_id), p0, "DB$ Draw | NumCards$ Sum");
-        sa.add_triggering_object("Result", "4,11,7");
+        sa.set_triggering_object("Result", "4,11,7");
 
         assert_eq!(
             super::resolve_svar_expression(

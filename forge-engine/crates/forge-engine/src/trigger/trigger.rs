@@ -1,695 +1,237 @@
+use std::fmt;
+use std::hash::{Hash, Hasher};
+
+use dyn_clone::DynClone;
 use forge_foundation::{PhaseType, ZoneType};
 use serde::{Deserialize, Serialize};
 
+use crate::ability::AbilityKey;
 use crate::card::valid_filter;
+use crate::core::HasSVars;
 use crate::event::{AbilityValue, RunParams, TriggerType};
 use crate::game::GameState;
+use crate::game_loop::trigger_replacement_base::TriggerReplacementBase;
 use crate::ids::{CardId, PlayerId};
 use crate::parsing::{keys, Params};
+use crate::player::PlayerCollection;
 use crate::spellability::{build_spell_ability, SpellAbility};
 
-/// Mirrors Java's abstract Trigger class.
-/// In Java, each TriggerType has a subclass (TriggerChangesZone, TriggerPhase, etc.)
-/// with a performTest() override. In Rust, TriggerMode enum dispatch replaces this.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Trigger {
     pub id: u32,
-    pub mode: TriggerMode,
-    /// Raw parsed parameters — mirrors Java's mapParams: Map<String,String>.
+    #[serde(skip, default)]
+    pub base: TriggerReplacementBase,
+    /// Cheap discriminant for pattern-matching (replaces `matches!(t.mode, TriggerMode::X { .. })`).
+    #[serde(default)]
+    pub kind: TriggerType,
+    pub mode: Box<dyn TriggerBehavior>,
     pub params: Params,
-    /// Zones where host card must be for trigger to be active.
-    /// Default: [Battlefield].
-    pub active_zones: Vec<ZoneType>,
-    /// SVar name to execute — mirrors Java's Execute$ → overridingAbility.
     pub execute: String,
-    /// Whether trigger is optional (has OptionalDecider$).
     pub optional: bool,
-    /// Trigger description text.
     pub description: String,
-    /// Whether this trigger is intrinsic to the card.
-    pub intrinsic: bool,
-    /// Java parity: `Static$ True` triggers are matched before normal triggers.
     pub static_trigger: bool,
-    /// Java parity: remembers objects captured by the trigger.
     #[serde(default)]
     pub trigger_remembered: Vec<AbilityValue>,
+    #[serde(default)]
+    pub valid_phases: Option<Vec<PhaseType>>,
+    #[serde(default)]
+    pub spawning_ability: Option<SpellAbility>,
 }
 
-/// Replaces Java's Trigger subclass hierarchy.
-/// Each variant holds the parsed parameters specific to that trigger type,
-/// and perform_test() dispatches to variant-specific matching logic.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum TriggerMode {
-    ChangesZone {
-        origin: Option<ZoneType>,
-        destination: Option<ZoneType>,
-        valid_card: Option<String>,
-        excluded_origins: Option<Vec<ZoneType>>,
-        excluded_destinations: Option<Vec<ZoneType>>,
-        valid_cause: Option<String>,
-        check_on_triggered_card: Option<String>,
-        fizzle: Option<bool>,
-        not_this_ability: bool,
-        condition_you_cast_this_turn: Option<String>,
-    },
-    Phase {
-        phase: Option<PhaseType>,
-        valid_player: Option<String>,
-    },
-    SpellCast {
-        valid_card: Option<String>,
-        valid_activating_player: Option<String>,
-    },
-    AbilityCast {
-        valid_card: Option<String>,
-        valid_activating_player: Option<String>,
-    },
-    SpellAbilityCast {
-        valid_card: Option<String>,
-        valid_activating_player: Option<String>,
-    },
-    Attacks {
-        valid_card: Option<String>,
-        /// If true, only triggers when the creature attacks alone (Exalted).
-        alone: bool,
-    },
-    /// A creature fought another creature.
-    Fight {
-        valid_card: Option<String>,
-    },
-    /// One or more creatures fought (batch event).
-    FightOnce {
-        valid_card: Option<String>,
-    },
-    DamageDone {
-        valid_source: Option<String>,
-        valid_target: Option<String>,
-        combat_damage_only: bool,
-    },
-    /// A spell was countered (SP$ Counter).
-    Countered {
-        valid_card: Option<String>,
-        valid_cause: Option<String>,
-        valid_sa: Option<String>,
-    },
-    // ── New trigger modes (issue #19) ──
-    /// A creature blocks an attacker.
-    Blocks {
-        valid_card: Option<String>,
-        valid_blocked: Option<String>,
-    },
-    /// An attacker is blocked.
-    AttackerBlocked {
-        valid_card: Option<String>,
-    },
-    /// An attacker is not blocked.
-    AttackerUnblocked {
-        valid_card: Option<String>,
-    },
-    /// A player gained life.
-    LifeGained {
-        valid_player: Option<String>,
-        valid_source: Option<String>,
-        first_time_only: bool,
-        spell_only: bool,
-    },
-    /// A player lost life.
-    LifeLost {
-        valid_player: Option<String>,
-        first_time_only: bool,
-    },
-    /// A counter was added to a permanent.
-    CounterAdded {
-        valid_card: Option<String>,
-        counter_type: Option<String>,
-    },
-    /// A counter was removed from a permanent.
-    CounterRemoved {
-        valid_card: Option<String>,
-        counter_type: Option<String>,
-    },
-    /// A permanent was sacrificed.
-    Sacrificed {
-        valid_card: Option<String>,
-        valid_player: Option<String>,
-    },
-    /// A creature adapted.
-    Adapt {
-        valid_card: Option<String>,
-    },
-    /// A creature became renowned.
-    BecomeRenowned {
-        valid_card: Option<String>,
-    },
-    /// A creature evolved.
-    Evolved {
-        valid_card: Option<String>,
-    },
-    /// A card was discarded.
-    Discarded {
-        valid_card: Option<String>,
-        valid_player: Option<String>,
-        valid_cause: Option<String>,
-    },
-    /// A scheme was abandoned.
-    Abandoned {
-        valid_card: Option<String>,
-    },
-    /// A card was drawn.
-    Drawn {
-        valid_card: Option<String>,
-        valid_player: Option<String>,
-        /// `Number$ N` — only fires when this is exactly the Nth card drawn this turn.
-        number: Option<i32>,
-    },
-    /// Echo upkeep check.
-    PayEcho {
-        valid_card: Option<String>,
-        paid: Option<bool>,
-    },
-    /// A class level was gained.
-    ClassLevelGained {
-        valid_card: Option<String>,
-        class_level: Option<i32>,
-    },
-    /// A card was milled.
-    Milled {
-        valid_card: Option<String>,
-        valid_player: Option<String>,
-    },
-    /// Cards were milled in one event.
-    MilledAll {
-        valid_card: Option<String>,
-    },
-    /// Cards were milled once for a player.
-    MilledOnce {
-        valid_card: Option<String>,
-        valid_player: Option<String>,
-    },
-    /// A permanent was tapped.
-    Taps {
-        valid_card: Option<String>,
-        valid_cause: Option<String>,
-        valid_player: Option<String>,
-        attacker: Option<bool>,
-        require_first_time: bool,
-    },
-    /// A permanent was untapped.
-    Untaps {
-        valid_card: Option<String>,
-    },
-    /// A DFC was transformed.
-    Transformed {
-        valid_card: Option<String>,
-    },
-    /// A face-down creature was turned face up (Morph/Megamorph).
-    TurnFaceUp {
-        valid_card: Option<String>,
-    },
-    /// An aura/equipment was attached.
-    Attached {
-        valid_card: Option<String>,
-    },
-    /// An aura/equipment was unattached.
-    Unattached {
-        valid_card: Option<String>,
-    },
-    /// A land was played.
-    LandPlayed {
-        valid_card: Option<String>,
-    },
-    /// A permanent became the target of a spell or ability.
-    BecomesTarget {
-        valid_source: Option<String>,
-        valid_target: Option<String>,
-        require_first_time: bool,
-        require_valiant: bool,
-    },
-    /// A permanent was tapped for mana.
-    TapsForMana {
-        valid_card: Option<String>,
-        activator: Option<String>,
-        produced: Option<String>,
-    },
-    /// An activated ability was activated.
-    AbilityActivated {
-        valid_card: Option<String>,
-        valid_activating_player: Option<String>,
-    },
-    /// A creature explored.
-    Explored {
-        valid_card: Option<String>,
-        valid_explored: Option<String>,
-    },
-    /// A creature became monstrous.
-    BecomeMonstrous {
-        valid_card: Option<String>,
-    },
-    /// A player became the monarch.
-    BecomeMonarch {
-        valid_player: Option<String>,
-    },
-    /// A player paid life.
-    PayLife {
-        valid_player: Option<String>,
-    },
-    /// Manifest Dread event.
-    ManifestDread {
-        valid_player: Option<String>,
-    },
-    /// A player lost the game.
-    LosesGame {
-        valid_player: Option<String>,
-    },
-    /// A player discovered.
-    Discover {
-        valid_player: Option<String>,
-    },
-    /// A gift was given.
-    GiveGift {
-        valid_player: Option<String>,
-    },
-    /// Cards were conjured in batch.
-    ConjureAll {
-        valid_player: Option<String>,
-        valid_card: Option<String>,
-    },
-    /// Elementalbend trigger.
-    Elementalbend {
-        valid_player: Option<String>,
-    },
-    /// A planar die roll event.
-    PlanarDice {
-        valid_player: Option<String>,
-        result: Option<String>,
-    },
-    /// A player investigated.
-    Investigated {
-        valid_player: Option<String>,
-        first_time_only: bool,
-    },
-    /// A player proliferated.
-    Proliferate {
-        valid_player: Option<String>,
-    },
-    /// A player completed a dungeon.
-    CompletedDungeon {
-        valid_player: Option<String>,
-    },
-    /// A player committed a crime.
-    CommitCrime {
-        valid_player: Option<String>,
-    },
-    /// The Ring tempted a player.
-    RingTemptsYou {
-        valid_player: Option<String>,
-        valid_card: Option<String>,
-    },
-    /// A new game started.
-    NewGame,
-    /// Day/night state changed.
-    DayTimeChanges,
-    /// A card became plotted.
-    BecomesPlotted {
-        valid_card: Option<String>,
-    },
-    /// A card specialized.
-    Specializes {
-        valid_card: Option<String>,
-    },
-    /// A card trained.
-    Trains {
-        valid_card: Option<String>,
-    },
-    /// A card devoured creatures.
-    Devoured {
-        valid_card: Option<String>,
-    },
-    /// A player visited an attraction.
-    VisitAttraction {
-        valid_player: Option<String>,
-        valid_card: Option<String>,
-    },
-    /// A room was entered.
-    EnteredRoom {
-        valid_card: Option<String>,
-        valid_room: Option<String>,
-    },
-    /// Cards were sought in batch.
-    SeekAll {
-        valid_player: Option<String>,
-    },
-    /// A card became crewed.
-    BecomesCrewed {
-        valid_card: Option<String>,
-        valid_crew: Option<String>,
-        first_time_crewed: bool,
-        valid_crew_amount: Option<String>,
-    },
-    /// A card was championed.
-    Championed {
-        valid_card: Option<String>,
-        valid_source: Option<String>,
-    },
-    /// A clash happened.
-    Clashed {
-        valid_player: Option<String>,
-        won: Option<bool>,
-    },
-    /// A card was mentored by a source.
-    Mentored {
-        valid_card: Option<String>,
-        valid_source: Option<String>,
-    },
-    /// A room/door became fully unlocked.
-    FullyUnlock {
-        valid_card: Option<String>,
-        valid_player: Option<String>,
-    },
-    /// A spell ability resolved.
-    AbilityResolves {
-        valid_spell_ability: Option<String>,
-        valid_source: Option<String>,
-    },
-    /// A spell ability triggered another trigger.
-    AbilityTriggered {
-        valid_mode: Option<String>,
-        valid_destination: Option<String>,
-        valid_spell_ability: Option<String>,
-        valid_source: Option<String>,
-        valid_cause: Option<String>,
-        triggered_own_ability: bool,
-    },
-    /// A door was unlocked.
-    UnlockDoor {
-        valid_card: Option<String>,
-        valid_player: Option<String>,
-        this_door: bool,
-    },
-    /// Cards phased out (batch event).
-    PhaseOutAll {
-        valid_cards: Option<String>,
-    },
-    /// Vote trigger.
-    Vote,
-    /// Cumulative upkeep was paid (or not).
-    PayCumulativeUpkeep {
-        valid_card: Option<String>,
-        paid: Option<bool>,
-    },
-    /// Damage was dealt to a player/creature for the first time this turn.
-    DamageDealtOnce {
-        valid_source: Option<String>,
-        valid_target: Option<String>,
-        combat_damage_only: bool,
-    },
-    /// A permanent was destroyed.
-    Destroyed {
-        valid_card: Option<String>,
-        valid_causer: Option<String>,
-    },
-    /// A card was exiled.
-    Exiled {
-        valid_card: Option<String>,
-    },
-    /// A token was created.
-    TokenCreated {
-        valid_card: Option<String>,
-        valid_player: Option<String>,
-    },
-    /// A spell was copied (Storm, Replicate, etc.) — for Magecraft triggers.
-    SpellCopied {
-        valid_card: Option<String>,
-        valid_activating_player: Option<String>,
-    },
-    SpellCopy {
-        valid_card: Option<String>,
-        valid_activating_player: Option<String>,
-    },
-    SpellAbilityCopy {
-        valid_card: Option<String>,
-        valid_activating_player: Option<String>,
-    },
-    SpellCastOrCopy {
-        valid_card: Option<String>,
-        valid_activating_player: Option<String>,
-    },
-    // ── New trigger modes (issue #54) ──
-    AttackersDeclared {
-        valid_player: Option<String>,
-        valid_attackers: Option<String>,
-        valid_attackers_amount: Option<String>,
-        attacked_target: Option<String>,
-        /// Mirrors Java's TriggerType enum: both `AttackersDeclared` and
-        /// `AttackersDeclaredOneTarget` use the same `TriggerAttackersDeclared`
-        /// class but are registered as separate event types. When true, this
-        /// trigger only matches `TriggerType::AttackersDeclaredOneTarget` events.
-        one_target: bool,
-    },
-    BlockersDeclared,
-    ChangesZoneAll {
-        origin: Option<ZoneType>,
-        destination: Option<ZoneType>,
-        valid_card: Option<String>,
-        valid_cause: Option<String>,
-        first_time_only: bool,
-        valid_amount: Option<String>,
-    },
-    ChangesController {
-        valid_card: Option<String>,
-    },
-    TurnBegin {
-        valid_player: Option<String>,
-    },
-    DamageDoneOnce {
-        valid_source: Option<String>,
-        valid_target: Option<String>,
-        combat_damage_only: bool,
-    },
-    DamageDoneOnceByController {
-        valid_source: Option<String>,
-        valid_target: Option<String>,
-        combat_damage_only: bool,
-    },
-    SpellCastAll {
-        valid_card: Option<String>,
-        valid_activating_player: Option<String>,
-    },
-    LifeLostAll {
-        valid_player: Option<String>,
-    },
-    CounterAddedOnce {
-        valid_card: Option<String>,
-        counter_type: Option<String>,
-        valid_source: Option<String>,
-    },
-    CounterAddedAll {
-        counter_type: Option<String>,
-        valid: Option<String>,
-    },
-    CounterPlayerAddedAll {
-        valid_source: Option<String>,
-        valid_object: Option<String>,
-        valid_object_to_source: Option<String>,
-    },
-    CounterTypeAddedAll {
-        valid_object: Option<String>,
-        first_time_only: bool,
-    },
-    DiscardedAll {
-        valid_card: Option<String>,
-        valid_player: Option<String>,
-    },
-    SacrificedOnce {
-        valid_card: Option<String>,
-        valid_player: Option<String>,
-    },
-    Cycled {
-        valid_card: Option<String>,
-        valid_player: Option<String>,
-    },
-    PhasedIn {
-        valid_card: Option<String>,
-    },
-    PhasedOut {
-        valid_card: Option<String>,
-    },
-    Always,
-    Immediate,
-    Surveil {
-        valid_player: Option<String>,
-    },
-    Scry {
-        valid_player: Option<String>,
-    },
-    Foretell {
-        valid_card: Option<String>,
-    },
-    SearchedLibrary {
-        valid_player: Option<String>,
-    },
-    Shuffled {
-        valid_player: Option<String>,
-    },
-    ManaAdded {
-        valid_source: Option<String>,
-        valid_sa: Option<String>,
-        player: Option<String>,
-        produced: Option<String>,
-    },
-    TokenCreatedOnce {
-        valid_card: Option<String>,
-        only_first: Option<String>,
-    },
-    TapAll {
-        valid_card: Option<String>,
-    },
-    UntapAll {
-        valid_card: Option<String>,
-    },
-    BecomesTargetOnce {
-        valid_card: Option<String>,
-    },
-    AttackerBlockedByCreature {
-        valid_card: Option<String>,
-        valid_blocked: Option<String>,
-    },
-    AttackerBlockedOnce {
-        valid_card: Option<String>,
-    },
-    AttackerUnblockedOnce {
-        valid_card: Option<String>,
-    },
-    SpellCastOnce {
-        valid_card: Option<String>,
-        valid_activating_player: Option<String>,
-    },
-    SpellCastOfType {
-        valid_card: Option<String>,
-        valid_activating_player: Option<String>,
-    },
-    DamageAll {
-        valid_source: Option<String>,
-        valid_target: Option<String>,
-    },
-    DamagePreventedOnce {
-        valid_card: Option<String>,
-    },
-    ExcessDamage {
-        valid_source: Option<String>,
-        valid_target: Option<String>,
-    },
-    ExcessDamageAll {
-        valid_target: Option<String>,
-        combat_damage_only: bool,
-    },
-    CounterRemovedOnce {
-        valid_card: Option<String>,
-        counter_type: Option<String>,
-    },
-    /// A creature was exerted (Mirrors Java TriggerExerted).
-    Exerted {
-        valid_card: Option<String>,
-    },
-    /// A player collected evidence.
-    CollectEvidence {
-        valid_player: Option<String>,
-    },
-    /// A player foraged.
-    Forage {
-        valid_player: Option<String>,
-    },
-    /// A creature enlisted another creature.
-    Enlisted {
-        valid_card: Option<String>,
-        valid_enlisted: Option<String>,
-    },
-    /// A player flipped a coin.
-    FlippedCoin {
-        valid_player: Option<String>,
-        valid_result: Option<String>,
-    },
-    /// A player rolled a die.
-    RolledDie {
-        valid_player: Option<String>,
-        valid_result: Option<String>,
-        valid_sides: Option<String>,
-        number: Option<i32>,
-        natural: bool,
-        rolled_to_visit_attractions: bool,
-    },
-    /// A player completed a die-roll action.
-    RolledDieOnce {
-        valid_player: Option<String>,
-        valid_result: Option<String>,
-        valid_sides: Option<String>,
-        rolled_to_visit_attractions: bool,
-    },
-    /// Mana was expended (Expend N mechanic). Fires when cumulative mana spent reaches Amount.
-    ManaExpend {
-        valid_player: Option<String>,
-        amount: i32,
-    },
-    /// A creature was exploited (Exploit keyword).
-    Exploited {
-        valid_card: Option<String>,
-        valid_source: Option<String>,
-    },
-    /// A creature mutated onto another (IKO).
-    Mutates {
-        valid_card: Option<String>,
-    },
-    /// A scheme was set in motion (Archenemy).
-    SetInMotion {
-        valid_card: Option<String>,
-    },
-    /// A Case enchantment was solved.
-    CaseSolved {
-        valid_card: Option<String>,
-        valid_player: Option<String>,
-    },
-    /// A player claimed a prize from an attraction.
-    ClaimPrize {
-        valid_player: Option<String>,
-        valid_card: Option<String>,
-    },
-    /// A player took the initiative.
-    TakesInitiative {
-        valid_player: Option<String>,
-    },
-    /// A player planeswalked from a plane.
-    PlaneswalkedFrom {
-        valid_card: Option<String>,
-    },
-    /// A player planeswalked to a plane.
-    PlaneswalkedTo {
-        valid_card: Option<String>,
-    },
-    /// A contraption was cranked.
-    CrankContraption {
-        valid_card: Option<String>,
-        valid_player: Option<String>,
-    },
-    /// Chaos ensues (Planechase).
-    ChaosEnsues {
-        valid_player: Option<String>,
-    },
-    /// A permanent became saddled.
-    BecomesSaddled {
-        valid_saddled: Option<String>,
-        first_time_saddled: bool,
-    },
-    /// A permanent was crewed/saddled/stationed.
-    CrewedSaddled {
-        valid_card: Option<String>,
-        valid_crew: Option<String>,
-    },
+impl PartialEq for Trigger {
+    fn eq(&self, other: &Self) -> bool {
+        self.id == other.id
+    }
 }
+
+impl Eq for Trigger {}
+
+impl Hash for Trigger {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        "Trigger".hash(state);
+        self.id.hash(state);
+    }
+}
+
+impl fmt::Display for Trigger {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.to_string_with_active(false))
+    }
+}
+
+#[typetag::serde(tag = "type")]
+pub trait TriggerBehavior: fmt::Debug + DynClone + Send + Sync {
+    fn trigger_type(&self) -> TriggerType;
+    /// Java's `Trigger.performTest()`. The `trigger` parameter provides access
+    /// to the parent `Trigger`'s params, base, and host card — equivalent of
+    /// Java's `this` in the trigger subclass.
+    fn perform_test(
+        &self,
+        trigger: &Trigger,
+        run_params: &RunParams,
+        game: &GameState,
+    ) -> bool;
+    fn set_triggering_objects(
+        &self,
+        trigger: &Trigger,
+        sa: &mut SpellAbility,
+        params: &RunParams,
+        game: &GameState,
+    );
+    fn get_important_stack_objects(&self, trigger: &Trigger, sa: &SpellAbility) -> String;
+    fn origin_zone(&self) -> Option<ZoneType> {
+        None
+    }
+    fn destination_zone(&self) -> Option<ZoneType> {
+        None
+    }
+    fn drawn_number(&self) -> Option<i32> {
+        None
+    }
+}
+
+dyn_clone::clone_trait_object!(TriggerBehavior);
+
 
 impl Trigger {
+    pub fn get_id(&self) -> u32 {
+        self.id
+    }
+
+    pub fn set_id(&mut self, id: u32) {
+        self.id = id;
+        self.base.card_trait_base.set_id(id as i32);
+    }
+
+    /// Returns the host card's ID. Mirrors Java's `getHostCard().getId()`.
+    pub fn host_card_id(&self) -> CardId {
+        self.base.card_trait_base.get_host_card().id
+    }
+
+    /// Returns the host card's current controller from live game state.
+    /// Use this instead of the stored host card's controller, which may be stale.
+    pub fn host_controller(&self, game: &GameState) -> PlayerId {
+        game.card(self.host_card_id()).controller
+    }
+
+    pub fn get_mode(&self) -> &dyn TriggerBehavior {
+        &*self.mode
+    }
+
+    pub fn origin_zone(&self) -> Option<ZoneType> {
+        self.params
+            .get(keys::ORIGIN)
+            .and_then(|s| s.split(',').next())
+            .and_then(|s| parse_zone(s.trim()))
+    }
+
+    pub fn destination_zone(&self) -> Option<ZoneType> {
+        self.params
+            .get(keys::DESTINATION)
+            .and_then(|s| s.split(',').next())
+            .and_then(|s| parse_zone(s.trim()))
+    }
+
+    pub fn set_mode(&mut self, mode: Box<dyn TriggerBehavior>) {
+        self.kind = mode.trigger_type();
+        self.mode = mode;
+    }
+
+    pub fn get_trigger_remembered(&self) -> &[AbilityValue] {
+        &self.trigger_remembered
+    }
+
+    pub fn bind_host_card(&mut self, host_card: crate::card::Card) {
+        self.base.set_host_card(host_card);
+    }
+
+    pub fn get_active_zone(&self) -> &[ZoneType] {
+        self.base.get_active_zone().unwrap_or(&[])
+    }
+
+    pub fn set_active_zone(&mut self, zones: Vec<ZoneType>) {
+        self.base.set_active_zone(zones);
+    }
+
+    pub fn is_intrinsic(&self) -> bool {
+        self.base.card_trait_base.is_intrinsic()
+    }
+
+    pub fn set_intrinsic(&mut self, intrinsic: bool) {
+        self.base.card_trait_base.set_intrinsic(intrinsic);
+    }
+
+    pub fn get_overriding_ability(&self) -> Option<&SpellAbility> {
+        self.base.get_overriding_ability()
+    }
+
+    pub fn set_overriding_ability(&mut self, mut overriding_ability: SpellAbility) {
+        overriding_ability.is_trigger = true;
+        overriding_ability.source_trigger_id = Some(self.id);
+        self.base.set_overriding_ability(overriding_ability);
+    }
+
+    pub fn get_spawning_ability(&self) -> Option<&SpellAbility> {
+        self.spawning_ability.as_ref()
+    }
+
+    pub fn set_spawning_ability(&mut self, ability: SpellAbility) {
+        self.spawning_ability = Some(ability);
+    }
+
+    pub fn set_trigger_phases(&mut self, phases: Vec<PhaseType>) {
+        self.valid_phases = Some(phases);
+    }
+
     /// Java parity shim for Trigger.resetIDs().
     pub fn reset_i_ds(next_id: &mut u32) {
         *next_id = 50_000;
+    }
+
+    pub fn to_string_with_active(&self, active: bool) -> String {
+        if !self.params.has(keys::TRIGGER_DESCRIPTION) || self.base.card_trait_base.is_suppressed() {
+            return String::new();
+        }
+
+        let mut desc = self
+            .params
+            .get(keys::TRIGGER_DESCRIPTION)
+            .unwrap_or_default()
+            .to_string();
+
+        if !desc.contains("ABILITY") {
+            let host_name = self
+                .base
+                .card_trait_base
+                .get_host_card()
+                .card_name
+                .clone();
+            desc = desc.replace("CARDNAME", &host_name);
+            desc = desc.replace("NICKNAME", &host_name);
+            if desc.contains("ORIGINALHOST") {
+                let original_host = self
+                    .get_overriding_ability()
+                    .and_then(|sa| sa.original_host)
+                    .map(|id| id.0.to_string())
+                    .unwrap_or_default();
+                desc = desc.replace("ORIGINALHOST", &original_host);
+            }
+        }
+
+        if desc.contains("EFFECTSOURCE") {
+            let replacement = if active {
+                self.base.card_trait_base.get_host_card().id.0.to_string()
+            } else {
+                self.base.card_trait_base.get_host_card().card_name.clone()
+            };
+            desc = desc.replace("EFFECTSOURCE", &replacement);
+        }
+
+        if !self.trigger_remembered.is_empty() {
+            desc.push_str(&format!(" ({:?})", self.trigger_remembered));
+        }
+
+        desc
     }
 
     /// Minimal `ABILITY` replacement parity used by stack text paths.
@@ -700,20 +242,110 @@ impl Trigger {
         host_card: CardId,
         activating_player: PlayerId,
     ) -> String {
+        self.replace_ability_text_for_stack(desc, None, false, game, host_card, activating_player)
+    }
+
+    pub fn replace_ability_text_with_ability(
+        &self,
+        desc: &str,
+        sa: Option<SpellAbility>,
+        game: &GameState,
+        host_card: CardId,
+        activating_player: PlayerId,
+    ) -> String {
+        self.replace_ability_text_for_stack(desc, sa, false, game, host_card, activating_player)
+    }
+
+    pub fn replace_ability_text_for_stack(
+        &self,
+        desc: &str,
+        mut sa: Option<SpellAbility>,
+        for_stack: bool,
+        game: &GameState,
+        host_card: CardId,
+        activating_player: PlayerId,
+    ) -> String {
         if !desc.contains("ABILITY") {
             return desc.to_string();
         }
-        let ability_desc = self
-            .ensure_ability(game, host_card, activating_player)
-            .map(|sa| {
-                if sa.description.is_empty() {
-                    sa.ability_text
-                } else {
-                    sa.description
+
+        if sa.is_none() {
+            sa = self
+                .ensure_ability(game, host_card, activating_player)
+                .or_else(|| self.get_overriding_ability().cloned());
+        }
+
+        let Some(mut sa) = sa else {
+            return desc.to_string();
+        };
+
+        let mut sa_desc = String::new();
+        let mut dig_more = true;
+
+        if sa.is_wrapper() {
+            let wrapped = sa.get_wrapped_ability().clone();
+            sa = wrapped;
+
+            if sa.api == Some(crate::ability::api_type::ApiType::Charm) {
+                sa_desc = sa.stack_description.clone();
+                dig_more = false;
+            }
+        }
+
+        if dig_more {
+            let mut trig_sa = Some(sa.clone());
+            while let Some(current) = trig_sa {
+                match current.api {
+                    Some(crate::ability::api_type::ApiType::Charm) => {
+                        let source_id = current.source.unwrap_or(host_card);
+                        let choices = current.params.get("Choices").unwrap_or("");
+                        sa_desc = crate::ability::effects::charm_effect::make_formated_description(
+                            game,
+                            source_id,
+                            choices,
+                        );
+                        break;
+                    }
+                    Some(crate::ability::api_type::ApiType::ImmediateTrigger)
+                    | Some(crate::ability::api_type::ApiType::DelayedTrigger) => {
+                        trig_sa = current.get_additional_ability("Execute").cloned();
+                    }
+                    _ => {
+                        trig_sa = current.get_sub_ability().cloned();
+                    }
                 }
-            })
-            .unwrap_or_else(|| "<take no action>".to_string());
-        desc.replace("ABILITY", ability_desc.trim())
+            }
+        }
+
+        if sa_desc.is_empty() {
+            sa_desc = sa.to_string();
+        }
+
+        sa_desc = sa_desc.trim().to_string();
+        if !sa_desc.is_empty() {
+            let host_name = game.card(host_card).card_name.clone();
+            if !sa_desc.starts_with(&host_name) {
+                let mut chars = sa_desc.chars();
+                if let Some(first) = chars.next() {
+                    sa_desc = first.to_lowercase().collect::<String>() + chars.as_str();
+                }
+            }
+            if sa_desc.contains("ORIGINALHOST") {
+                let original_host = sa
+                    .original_host
+                    .map(|id| game.card(id).card_name.clone())
+                    .unwrap_or_default();
+                sa_desc = sa_desc.replace("ORIGINALHOST", &original_host);
+            }
+        } else {
+            sa_desc = "<take no action>".to_string();
+        }
+
+        let mut result = desc.replace("ABILITY", &sa_desc);
+        let translated_name = game.card(host_card).card_name.clone();
+        result = result.replace("CARDNAME", &translated_name);
+        result = result.replace("NICKNAME", &translated_name);
+        result
     }
 
     /// Mirrors Java Trigger.phasesCheck() for common phase/turn params.
@@ -726,17 +358,8 @@ impl Trigger {
         let phase = event_phase.unwrap_or(game.turn.phase);
         let host_controller = game.card(host_card).controller;
 
-        if let Some(phase_text) = self.params.get(keys::PHASE) {
-            let mut any_match = false;
-            for token in phase_text.split(',').map(|s| s.trim()) {
-                if let Some(parsed) = parse_phase(token) {
-                    if parsed == phase {
-                        any_match = true;
-                        break;
-                    }
-                }
-            }
-            if !any_match {
+        if let Some(valid_phases) = self.valid_phases.as_ref() {
+            if !valid_phases.contains(&phase) {
                 return false;
             }
             if let Some(phase_count) = self.params.get("PhaseCount") {
@@ -817,7 +440,14 @@ impl Trigger {
             }
         }
         let host = game.card(host_card);
-        if !valid_filter::check_is_present(game, &self.params, host) {
+        if !self
+            .base
+            .card_trait_base
+            .meets_common_requirements(game, &self.params)
+        {
+            return false;
+        }
+        if !valid_filter::check_is_present(game, &self.params, host, host) {
             return false;
         }
         self.check_resolved_limit(game, host_card)
@@ -830,7 +460,10 @@ impl Trigger {
             .get("ResolvedLimit")
             .and_then(|v| v.parse::<u32>().ok())
         {
-            return game.card(host_card).ability_resolved_this_turn < limit;
+            return (game
+                .card(host_card)
+                .get_ability_resolved_this_turn_activators(self.get_overriding_ability())
+                .len() as u32) < limit;
         }
         true
     }
@@ -842,7 +475,7 @@ impl Trigger {
             .get("ActivationLimit")
             .and_then(|v| v.parse::<u32>().ok())
         {
-            if game.card(host_card).ability_activated_this_turn >= limit {
+            if self.get_activations_this_turn(game, host_card) >= limit {
                 return false;
             }
         }
@@ -851,17 +484,30 @@ impl Trigger {
             .get(keys::GAME_ACTIVATION_LIMIT)
             .and_then(|v| v.parse::<u32>().ok())
         {
-            let used = game
-                .card(host_card)
-                .activations_this_game
-                .values()
-                .copied()
-                .sum::<u32>();
+            let used = self.get_activations_this_game(game, host_card);
             if used >= limit {
                 return false;
             }
         }
         true
+    }
+
+    pub fn get_activations_this_turn(&self, game: &GameState, host_card: CardId) -> u32 {
+        if self.get_overriding_ability().is_some() {
+            return game
+                .card(host_card)
+                .get_ability_activated_this_turn(self.get_overriding_ability());
+        }
+        0
+    }
+
+    pub fn get_activations_this_game(&self, game: &GameState, host_card: CardId) -> u32 {
+        if self.get_overriding_ability().is_some() {
+            return game
+                .card(host_card)
+                .get_ability_activated_this_game(self.get_overriding_ability());
+        }
+        0
     }
 
     /// Mirrors Java Trigger.meetsRequirementsOnTriggeredObjects() subset.
@@ -871,32 +517,52 @@ impl Trigger {
         run_params: &RunParams,
         host_card: CardId,
     ) -> bool {
-        let Some(condition) = self.params.get(keys::CONDITION) else {
+        let condition = self.params.get(keys::CONDITION);
+
+        if self
+            .base
+            .card_trait_base
+            .is_keyword(crate::keyword::keyword_instance::Keyword::Evolve)
+            || condition == Some("Evolve")
+        {
+            let Some(moved) = run_params.card else {
+                return false;
+            };
+            let moved_card = game.card(moved);
+            let host = game.card(host_card);
+            if !moved_card.is_creature() || !host.is_creature() {
+                return false;
+            }
+            if moved_card.power() <= host.power() && moved_card.toughness() <= host.toughness() {
+                return false;
+            }
+        }
+
+        let Some(condition) = condition else {
             return true;
         };
+
         match condition {
-            "Evolve" => {
-                let Some(moved) = run_params.card else {
+            "LifePaid" => {
+                if let Some(sa) = run_params.spell_ability.as_ref() {
+                    sa.get_amount_life_paid() > 0
+                } else {
+                    true
+                }
+            }
+            "NoOpponentHasMoreLifeThanAttacked" => {
+                let attacked = run_params
+                    .get_player(AbilityKey::Attacked)
+                    .or_else(|| run_params.get_player(AbilityKey::Defender));
+                let Some(attacked_player) = attacked else {
                     return false;
                 };
-                let moved_card = game.card(moved);
-                let host = game.card(host_card);
-                moved_card.is_creature()
-                    && host.is_creature()
-                    && (moved_card.power() > host.power()
-                        || moved_card.toughness() > host.toughness())
+                let life = game.player(attacked_player).life;
+                !PlayerCollection::opponents_of(game, game.card(host_card).controller)
+                    .into_iter()
+                    .filter(|opp| *opp != attacked_player)
+                    .any(|opp| game.player(opp).life > life)
             }
-            "LifePaid" => run_params
-                .spell_ability
-                .as_ref()
-                .map(|sa| {
-                    sa.params
-                        .get("LifeAmount")
-                        .and_then(|v| v.parse::<i32>().ok())
-                        .unwrap_or(0)
-                        > 0
-                })
-                .unwrap_or(false),
             "Sacrificed" => run_params
                 .spell_ability
                 .as_ref()
@@ -907,7 +573,28 @@ impl Trigger {
                         .unwrap_or_default()
                         .is_empty()
                 })
-                .unwrap_or(false),
+                .unwrap_or(true),
+            "AttackedPlayerWithMostLife" => {
+                let attacked = run_params
+                    .get_player(AbilityKey::Attacked)
+                    .or_else(|| run_params.get_player(AbilityKey::Defender));
+                let Some(attacked_player) = attacked else {
+                    return false;
+                };
+                let attacked_life = game.player(attacked_player).life;
+                game.alive_players()
+                    .into_iter()
+                    .all(|pid| game.player(pid).life <= attacked_life)
+            }
+            "AttackerHasUnattackedOpp" => {
+                let Some(attacking_player) = run_params.attacking_player else {
+                    return false;
+                };
+                let attacked_this_combat = &game.player(attacking_player).attacked_players_this_combat;
+                !PlayerCollection::opponents_of(game, attacking_player)
+                    .into_iter()
+                    .all(|opp| attacked_this_combat.contains(&opp))
+            }
             _ => true,
         }
     }
@@ -930,8 +617,8 @@ impl Trigger {
         activating_player: PlayerId,
     ) -> bool {
         if !matches!(
-            self.mode,
-            TriggerMode::TapsForMana { .. } | TriggerMode::ManaAdded { .. }
+            self.kind,
+            TriggerType::TapsForMana | TriggerType::ManaAdded
         ) {
             return false;
         }
@@ -954,12 +641,54 @@ impl Trigger {
             out.id = *next_id;
             *next_id = next_id.saturating_add(1);
         }
+        out.base.card_trait_base.set_id(out.id as i32);
         out
+    }
+
+    pub fn copy_to_host(
+        &self,
+        new_host: crate::card::Card,
+        lki: bool,
+        keep_text_changes: bool,
+        spell_ability: Option<SpellAbility>,
+        next_id: &mut u32,
+    ) -> Self {
+        let mut copy = self.clone();
+        self.base
+            .card_trait_base
+            .copy_helper_with_text(
+                &mut copy.base.card_trait_base,
+                new_host.clone(),
+                lki || keep_text_changes,
+            );
+
+        if let Some(spell_ability) = spell_ability {
+            copy.set_overriding_ability(spell_ability);
+        } else if let Some(overriding_ability) = self.get_overriding_ability() {
+            copy.set_overriding_ability(overriding_ability.copy_with_host_lki(
+                new_host.clone(),
+                lki,
+            ));
+        }
+
+        if !lki {
+            copy.set_id(*next_id);
+            *next_id = next_id.saturating_add(1);
+        }
+
+        if let Some(valid_phases) = self.valid_phases.clone() {
+            copy.set_trigger_phases(valid_phases);
+        }
+        copy.base.valid_host_zones = self.base.valid_host_zones.clone();
+        copy
     }
 
     /// Tracks trigger activation on the host card.
     pub fn trigger_run(&self, game: &mut GameState, host_card: CardId) {
-        game.card_mut(host_card).add_ability_activated();
+        if self.get_overriding_ability().is_some() {
+            game.card_mut(host_card)
+                .add_ability_activated_for(self.get_overriding_ability());
+        }
     }
 
     /// Ensures trigger execute ability can be built from host SVar.
@@ -969,17 +698,65 @@ impl Trigger {
         host_card: CardId,
         activating_player: PlayerId,
     ) -> Option<SpellAbility> {
+        if let Some(overriding_ability) = self.get_overriding_ability() {
+            return Some(overriding_ability.clone());
+        }
+        let holder: &dyn HasSVars = if self.is_intrinsic() {
+            if let Some(state) = self.base.card_trait_base.get_card_state() {
+                state
+            } else {
+                game.card(host_card)
+            }
+        } else {
+            game.card(host_card)
+        };
         if self.execute.is_empty() {
             return None;
         }
-        let host = game.card(host_card);
-        let ability_text = host.get_s_var(&self.execute)?;
-        Some(build_spell_ability(
-            game,
-            host_card,
-            ability_text,
-            activating_player,
-        ))
+        if self.is_intrinsic() {
+            if let Some(state) = self.base.card_trait_base.get_card_state() {
+                if let Some(sa) = state.get_ability_for_trigger(self.execute.clone()) {
+                    return Some(sa);
+                }
+            }
+        }
+        let ability_text = holder.get_svar(&self.execute)?;
+        Some(build_spell_ability(game, host_card, ability_text, activating_player))
+    }
+
+    pub fn ensure_ability_mut(
+        &mut self,
+        game: &GameState,
+        host_card: CardId,
+        activating_player: PlayerId,
+    ) -> Option<&mut SpellAbility> {
+        if self.get_overriding_ability().is_none() {
+            let ability = self.ensure_ability(game, host_card, activating_player)?;
+            self.set_overriding_ability(ability);
+        }
+        self.base.overriding_ability.as_mut()
+    }
+
+    pub fn is_chapter(&self) -> bool {
+        self.params.has("Chapter")
+    }
+
+    pub fn get_chapter(&self) -> Option<i32> {
+        self.params.get("Chapter").and_then(|chapter| chapter.parse().ok())
+    }
+
+    pub fn is_last_chapter(&self) -> bool {
+        self.is_chapter()
+            && self
+                .base
+                .card_trait_base
+                .get_card_state()
+                .is_some_and(|state| self.get_chapter() == Some(state.get_final_chapter_nr()))
+    }
+
+    pub fn while_keyword_check(&self, _param: &str, _run_params: &RunParams) -> bool {
+        // TODO: JacoRefactor
+        false
     }
 
     pub fn set_triggering_objects(
@@ -993,7 +770,7 @@ impl Trigger {
         add_ability_trigger_metadata(sa, self, params, game, host_card, host_controller);
         add_common_trigger_objects(sa, params);
         self.mode
-            .set_triggering_objects(sa, params, game, host_card, host_controller);
+            .set_triggering_objects(self, sa, params, game);
     }
 
     pub fn build_triggered_spell_ability(
@@ -1072,12 +849,8 @@ impl Trigger {
     }
 }
 
-fn trigger_mode_name(mode: &TriggerMode) -> String {
-    let dbg = format!("{mode:?}");
-    dbg.split(|c: char| c == '{' || c.is_whitespace())
-        .next()
-        .unwrap_or("Unknown")
-        .to_string()
+fn trigger_mode_name(trigger: &Trigger) -> &'static str {
+    trigger.kind.name()
 }
 
 fn destination_names(params: &RunParams) -> Option<String> {
@@ -1104,33 +877,17 @@ fn destination_names(params: &RunParams) -> Option<String> {
 fn cause_cards_for_ability_triggered(
     trigger: &Trigger,
     params: &RunParams,
-    game: &GameState,
-    host_card: CardId,
-    host_controller: PlayerId,
+    _game: &GameState,
+    _host_card: CardId,
+    _host_controller: PlayerId,
 ) -> Vec<CardId> {
-    match &trigger.mode {
-        TriggerMode::ChangesZone { .. } => params.card.into_iter().collect(),
-        TriggerMode::ChangesZoneAll { .. } => params.cards.clone().unwrap_or_default(),
-        TriggerMode::Attacks { .. } => params.attacker.into_iter().collect(),
-        TriggerMode::AttackersDeclared {
-            valid_attackers, ..
-        } => params
-            .attacker_ids
-            .clone()
-            .unwrap_or_default()
-            .into_iter()
-            .filter(|&attacker| {
-                valid_attackers.as_ref().is_none_or(|filter| {
-                    crate::trigger::matches_valid_card(
-                        filter,
-                        attacker,
-                        host_card,
-                        host_controller,
-                        game,
-                    )
-                })
-            })
-            .collect(),
+    match trigger.kind {
+        TriggerType::ChangesZone => params.card.into_iter().collect(),
+        TriggerType::ChangesZoneAll => params.cards.clone().unwrap_or_default(),
+        TriggerType::Attacks => params.attacker.into_iter().collect(),
+        TriggerType::AttackersDeclared | TriggerType::AttackersDeclaredOneTarget => {
+            params.attacker_ids.clone().unwrap_or_default()
+        }
         _ => params
             .cards
             .clone()
@@ -1147,9 +904,9 @@ fn add_ability_trigger_metadata(
     host_card: CardId,
     host_controller: PlayerId,
 ) {
-    sa.add_triggering_object("AbilityTriggeredMode", &trigger_mode_name(&trigger.mode));
+    sa.set_triggering_object("AbilityTriggeredMode", trigger_mode_name(trigger));
     if let Some(destinations) = destination_names(params) {
-        sa.add_triggering_object("AbilityTriggeredDestinations", &destinations);
+        sa.set_triggering_object("AbilityTriggeredDestinations", &destinations);
     }
     let cause_cards =
         cause_cards_for_ability_triggered(trigger, params, game, host_card, host_controller);
@@ -1159,57 +916,57 @@ fn add_ability_trigger_metadata(
             .map(|cid| cid.0.to_string())
             .collect::<Vec<_>>()
             .join(",");
-        sa.add_triggering_object("AbilityTriggeredCauseCards", &csv);
+        sa.set_triggering_object("AbilityTriggeredCauseCards", &csv);
     }
 }
 
 fn add_common_trigger_objects(sa: &mut SpellAbility, params: &RunParams) {
     if let Some(card_id) = params.card {
-        sa.add_triggering_object("Card", &card_id.0.to_string());
-        sa.add_triggering_object("NewCard", &card_id.0.to_string());
+        sa.set_triggering_object("Card", &card_id.0.to_string());
+        sa.set_triggering_object("NewCard", &card_id.0.to_string());
     }
     if let Some(card_id) = params.card_lki {
-        sa.add_triggering_object("CardLKI", &card_id.0.to_string());
+        sa.set_triggering_object("CardLKI", &card_id.0.to_string());
     }
     if let Some(player_id) = params.activator.or(params.cause_player) {
-        sa.add_triggering_object("Activator", &player_id.0.to_string());
+        sa.set_triggering_object("Activator", &player_id.0.to_string());
     }
     if let Some(player_id) = params.player {
-        sa.add_triggering_object("Player", &player_id.0.to_string());
+        sa.set_triggering_object("Player", &player_id.0.to_string());
     }
     if let Some(player_id) = params.attacking_player {
-        sa.add_triggering_object("AttackingPlayer", &player_id.0.to_string());
+        sa.set_triggering_object("AttackingPlayer", &player_id.0.to_string());
     }
     if let Some(player_id) = params.defending_player {
-        sa.add_triggering_object("DefendingPlayer", &player_id.0.to_string());
+        sa.set_triggering_object("DefendingPlayer", &player_id.0.to_string());
     }
     if let Some(card_id) = params.causer.or(params.cause_card) {
-        sa.add_triggering_object("Causer", &card_id.0.to_string());
+        sa.set_triggering_object("Causer", &card_id.0.to_string());
     }
     if let Some(card_id) = params.source_card.or(params.spell_card) {
-        sa.add_triggering_object("Source", &card_id.0.to_string());
+        sa.set_triggering_object("Source", &card_id.0.to_string());
     }
     if let Some(card_id) = params.attacker {
-        sa.add_triggering_object("Attacker", &card_id.0.to_string());
+        sa.set_triggering_object("Attacker", &card_id.0.to_string());
     }
     if let Some(card_id) = params.blocker {
-        sa.add_triggering_object("Blocker", &card_id.0.to_string());
+        sa.set_triggering_object("Blocker", &card_id.0.to_string());
     }
     if let Some(card_id) = params.attacked_card {
-        sa.add_triggering_object("Attacked", &card_id.0.to_string());
+        sa.set_triggering_object("Attacked", &card_id.0.to_string());
     }
     if let Some(player_id) = params.attacked_player {
-        sa.add_triggering_object("AttackedTarget", &player_id.0.to_string());
+        sa.set_triggering_object("AttackedTarget", &player_id.0.to_string());
     }
     if let Some(card_id) = params.target_card {
         let value = card_id.0.to_string();
-        sa.add_triggering_object("Target", &value);
-        sa.add_triggering_object("TargetCard", &value);
+        sa.set_triggering_object("Target", &value);
+        sa.set_triggering_object("TargetCard", &value);
     }
     if let Some(player_id) = params.target_player {
         let value = player_id.0.to_string();
-        sa.add_triggering_object("Target", &value);
-        sa.add_triggering_object("TargetPlayer", &value);
+        sa.set_triggering_object("Target", &value);
+        sa.set_triggering_object("TargetPlayer", &value);
     }
     // Java DamageDone triggers expose the damaged entity as AbilityKey.Target.
     // Mirror that here so TriggeredTarget resolves against trigger objects
@@ -1217,19 +974,19 @@ fn add_common_trigger_objects(sa: &mut SpellAbility, params: &RunParams) {
     if params.target_player.is_none() {
         if let Some(player_id) = params.damage_target_player {
             let value = player_id.0.to_string();
-            sa.add_triggering_object("Target", &value);
-            sa.add_triggering_object("TargetPlayer", &value);
+            sa.set_triggering_object("Target", &value);
+            sa.set_triggering_object("TargetPlayer", &value);
         }
     }
     if params.target_card.is_none() {
         if let Some(card_id) = params.damage_target_card {
             let value = card_id.0.to_string();
-            sa.add_triggering_object("Target", &value);
-            sa.add_triggering_object("TargetCard", &value);
+            sa.set_triggering_object("Target", &value);
+            sa.set_triggering_object("TargetCard", &value);
         }
     }
     if let Some(card_id) = params.explored {
-        sa.add_triggering_object("Explored", &card_id.0.to_string());
+        sa.set_triggering_object("Explored", &card_id.0.to_string());
     }
     if let Some(cards) = params.cards.as_deref() {
         let csv = cards
@@ -1238,7 +995,7 @@ fn add_common_trigger_objects(sa: &mut SpellAbility, params: &RunParams) {
             .collect::<Vec<_>>()
             .join(",");
         if !csv.is_empty() {
-            sa.add_triggering_object("Cards", &csv);
+            sa.set_triggering_object("Cards", &csv);
         }
     }
     if let Some(cards) = params.attacker_ids.as_deref() {
@@ -1248,32 +1005,32 @@ fn add_common_trigger_objects(sa: &mut SpellAbility, params: &RunParams) {
             .collect::<Vec<_>>()
             .join(",");
         if !csv.is_empty() {
-            sa.add_triggering_object("Attackers", &csv);
+            sa.set_triggering_object("Attackers", &csv);
         }
     }
     if let Some(value) = params.life_amount {
-        sa.add_triggering_object("LifeAmount", &value.to_string());
+        sa.set_triggering_object("LifeAmount", &value.to_string());
     }
     if let Some(value) = params.natural_result {
-        sa.add_triggering_object("NaturalResult", &value.to_string());
+        sa.set_triggering_object("NaturalResult", &value.to_string());
     }
     if let Some(value) = params.card_state_name.as_deref() {
-        sa.add_triggering_object("CardState", value);
+        sa.set_triggering_object("CardState", value);
     }
     if let Some(value) = params.room_name.as_deref() {
-        sa.add_triggering_object("RoomName", value);
+        sa.set_triggering_object("RoomName", value);
     }
     if let Some(value) = params.spell_ability.as_ref() {
-        sa.add_triggering_spell_ability("SpellAbility", value.clone());
+        sa.set_triggering_spell_ability("SpellAbility", value.clone());
     }
     if let Some(value) = params.source_sa.as_ref() {
-        sa.add_triggering_spell_ability("SourceSA", value.clone());
+        sa.set_triggering_spell_ability("SourceSA", value.clone());
     }
     if let Some(value) = params.ability_mana.as_ref() {
-        sa.add_triggering_spell_ability("AbilityMana", value.clone());
+        sa.set_triggering_spell_ability("AbilityMana", value.clone());
     }
     if let Some(value) = params.cause.as_ref() {
-        sa.add_triggering_spell_ability("Cause", value.clone());
+        sa.set_triggering_spell_ability("Cause", value.clone());
     }
     if let Some(results) = params.die_results.as_deref() {
         let csv = results
@@ -1282,16 +1039,16 @@ fn add_common_trigger_objects(sa: &mut SpellAbility, params: &RunParams) {
             .collect::<Vec<_>>()
             .join(",");
         if !csv.is_empty() {
-            sa.add_triggering_object("Result", &csv);
+            sa.set_triggering_object("Result", &csv);
         }
     } else if let Some(value) = params.die_result {
-        sa.add_triggering_object("Result", &value.to_string());
+        sa.set_triggering_object("Result", &value.to_string());
     }
     if let Some(value) = params.die_sides {
-        sa.add_triggering_object("Sides", &value.to_string());
+        sa.set_triggering_object("Sides", &value.to_string());
     }
     if let Some(value) = params.number {
-        sa.add_triggering_object("Number", &value.to_string());
+        sa.set_triggering_object("Number", &value.to_string());
     }
 }
 
@@ -1396,2101 +1153,6 @@ pub(crate) fn check_zone_filter(expected: &Option<ZoneType>, actual: Option<Zone
     }
 }
 
-impl TriggerMode {
-    /// Mirrors Java's Trigger.performTest() — each subclass overrides.
-    /// In Rust, enum match replaces virtual dispatch.
-    pub fn perform_test(
-        &self,
-        run_params: &RunParams,
-        game: &GameState,
-        host_card: CardId,
-        host_controller: PlayerId,
-        current_trigger_id: Option<u32>,
-    ) -> bool {
-        match self {
-            TriggerMode::Attacks { .. } => {
-                return super::trigger_attacks::perform_test(
-                    self,
-                    run_params,
-                    game,
-                    host_card,
-                    host_controller,
-                )
-            }
-            TriggerMode::AttackerBlocked { .. } => {
-                return super::trigger_attacker_blocked::perform_test(
-                    self,
-                    run_params,
-                    game,
-                    host_card,
-                    host_controller,
-                )
-            }
-            TriggerMode::AttackerUnblocked { .. } => {
-                return super::trigger_attacker_unblocked::perform_test(
-                    self,
-                    run_params,
-                    game,
-                    host_card,
-                    host_controller,
-                )
-            }
-            TriggerMode::AttackerBlockedByCreature { .. } => {
-                return super::trigger_attacker_blocked_by_creature::perform_test(
-                    self,
-                    run_params,
-                    game,
-                    host_card,
-                    host_controller,
-                )
-            }
-            TriggerMode::AttackerBlockedOnce { .. } => {
-                return super::trigger_attacker_blocked_once::perform_test(
-                    self,
-                    run_params,
-                    game,
-                    host_card,
-                    host_controller,
-                )
-            }
-            TriggerMode::AttackerUnblockedOnce { .. } => {
-                return super::trigger_attacker_unblocked_once::perform_test(
-                    self,
-                    run_params,
-                    game,
-                    host_card,
-                    host_controller,
-                )
-            }
-            TriggerMode::Blocks { .. } => {
-                return super::trigger_blocks::perform_test(
-                    self,
-                    run_params,
-                    game,
-                    host_card,
-                    host_controller,
-                )
-            }
-            TriggerMode::Phase { .. } => {
-                return super::trigger_phase::perform_test(
-                    self,
-                    run_params,
-                    game,
-                    host_card,
-                    host_controller,
-                )
-            }
-            TriggerMode::ChangesZone { .. } => {
-                return super::trigger_changes_zone::perform_test(
-                    self,
-                    run_params,
-                    game,
-                    host_card,
-                    host_controller,
-                    current_trigger_id,
-                )
-            }
-            TriggerMode::ChangesZoneAll { .. } => {
-                return super::trigger_changes_zone_all::perform_test(
-                    self,
-                    run_params,
-                    game,
-                    host_card,
-                    host_controller,
-                )
-            }
-            TriggerMode::Drawn { .. } => {
-                return super::trigger_drawn::perform_test(
-                    self,
-                    run_params,
-                    game,
-                    host_card,
-                    host_controller,
-                )
-            }
-            TriggerMode::LifeGained { .. } => {
-                return super::trigger_life_gained::perform_test(
-                    self,
-                    run_params,
-                    game,
-                    host_card,
-                    host_controller,
-                )
-            }
-            TriggerMode::LifeLost { .. } => {
-                return super::trigger_life_lost::perform_test(
-                    self,
-                    run_params,
-                    game,
-                    host_card,
-                    host_controller,
-                )
-            }
-            TriggerMode::LifeLostAll { .. } => {
-                return super::trigger_life_lost_all::perform_test(
-                    self,
-                    run_params,
-                    game,
-                    host_card,
-                    host_controller,
-                )
-            }
-            TriggerMode::CounterAdded { .. } => {
-                return super::trigger_counter_added::perform_test(
-                    self,
-                    run_params,
-                    game,
-                    host_card,
-                    host_controller,
-                )
-            }
-            TriggerMode::CounterAddedOnce { .. } => {
-                return super::trigger_counter_added_once::perform_test(
-                    self,
-                    run_params,
-                    game,
-                    host_card,
-                    host_controller,
-                )
-            }
-            TriggerMode::CounterRemoved { .. } => {
-                return super::trigger_counter_removed::perform_test(
-                    self,
-                    run_params,
-                    game,
-                    host_card,
-                    host_controller,
-                )
-            }
-            TriggerMode::CounterRemovedOnce { .. } => {
-                return super::trigger_counter_removed_once::perform_test(
-                    self,
-                    run_params,
-                    game,
-                    host_card,
-                    host_controller,
-                )
-            }
-            TriggerMode::Countered { .. } => {
-                return super::trigger_countered::perform_test(
-                    self,
-                    run_params,
-                    game,
-                    host_card,
-                    host_controller,
-                )
-            }
-            TriggerMode::Fight { .. } => {
-                return super::trigger_fight::perform_test(
-                    self,
-                    run_params,
-                    game,
-                    host_card,
-                    host_controller,
-                )
-            }
-            TriggerMode::FightOnce { .. } => {
-                return super::trigger_fight_once::perform_test(
-                    self,
-                    run_params,
-                    game,
-                    host_card,
-                    host_controller,
-                )
-            }
-            TriggerMode::DamageDealtOnce { .. } => {
-                return super::trigger_damage_dealt_once::perform_test(
-                    self,
-                    run_params,
-                    game,
-                    host_card,
-                    host_controller,
-                )
-            }
-            TriggerMode::AttackersDeclared { .. } => {
-                return super::trigger_attackers_declared::perform_test(
-                    self,
-                    run_params,
-                    game,
-                    host_card,
-                    host_controller,
-                )
-            }
-            TriggerMode::BlockersDeclared => {
-                return super::trigger_blockers_declared::perform_test(
-                    self,
-                    run_params,
-                    game,
-                    host_card,
-                    host_controller,
-                )
-            }
-            TriggerMode::Sacrificed { .. } => {
-                return super::trigger_sacrificed::perform_test(
-                    self,
-                    run_params,
-                    game,
-                    host_card,
-                    host_controller,
-                )
-            }
-            TriggerMode::SacrificedOnce { .. } => {
-                return super::trigger_sacrificed_once::perform_test(
-                    self,
-                    run_params,
-                    game,
-                    host_card,
-                    host_controller,
-                )
-            }
-            TriggerMode::BecomesTarget { .. } => {
-                return super::trigger_becomes_target::perform_test(
-                    self,
-                    run_params,
-                    game,
-                    host_card,
-                    host_controller,
-                )
-            }
-            TriggerMode::Taps { .. } => {
-                return super::trigger_taps::perform_test(
-                    self,
-                    run_params,
-                    game,
-                    host_card,
-                    host_controller,
-                )
-            }
-            TriggerMode::Untaps { .. } => {
-                return super::trigger_untaps::perform_test(
-                    self,
-                    run_params,
-                    game,
-                    host_card,
-                    host_controller,
-                )
-            }
-            TriggerMode::TapsForMana { .. } => {
-                return super::trigger_taps_for_mana::perform_test(
-                    self,
-                    run_params,
-                    game,
-                    host_card,
-                    host_controller,
-                )
-            }
-            TriggerMode::TapAll { .. } => {
-                return super::trigger_tap_all::perform_test(
-                    self,
-                    run_params,
-                    game,
-                    host_card,
-                    host_controller,
-                )
-            }
-            TriggerMode::UntapAll { .. } => {
-                return super::trigger_untap_all::perform_test(
-                    self,
-                    run_params,
-                    game,
-                    host_card,
-                    host_controller,
-                )
-            }
-            TriggerMode::LandPlayed { .. } => {
-                return super::trigger_land_played::perform_test(
-                    self,
-                    run_params,
-                    game,
-                    host_card,
-                    host_controller,
-                )
-            }
-            TriggerMode::Destroyed { .. } => {
-                return super::trigger_destroyed::perform_test(
-                    self,
-                    run_params,
-                    game,
-                    host_card,
-                    host_controller,
-                )
-            }
-            TriggerMode::Exiled { .. } => {
-                return super::trigger_exiled::perform_test(
-                    self,
-                    run_params,
-                    game,
-                    host_card,
-                    host_controller,
-                )
-            }
-            TriggerMode::Explored { .. } => {
-                return super::trigger_explores::perform_test(
-                    self,
-                    run_params,
-                    game,
-                    host_card,
-                    host_controller,
-                )
-            }
-            TriggerMode::Transformed { .. } => {
-                return super::trigger_transformed::perform_test(
-                    self,
-                    run_params,
-                    game,
-                    host_card,
-                    host_controller,
-                )
-            }
-            TriggerMode::TurnFaceUp { .. } => {
-                return super::trigger_turn_face_up::perform_test(
-                    self,
-                    run_params,
-                    game,
-                    host_card,
-                    host_controller,
-                )
-            }
-            TriggerMode::TokenCreated { .. } => {
-                return super::trigger_token_created::perform_test(
-                    self,
-                    run_params,
-                    game,
-                    host_card,
-                    host_controller,
-                )
-            }
-            TriggerMode::TokenCreatedOnce { .. } => {
-                return super::trigger_token_created_once::perform_test(
-                    self,
-                    run_params,
-                    game,
-                    host_card,
-                    host_controller,
-                )
-            }
-            TriggerMode::TurnBegin { .. } => {
-                return super::trigger_turn_begin::perform_test(
-                    self,
-                    run_params,
-                    game,
-                    host_card,
-                    host_controller,
-                )
-            }
-            TriggerMode::BecomeMonarch { .. } => {
-                return super::trigger_become_monarch::perform_test(
-                    self,
-                    run_params,
-                    game,
-                    host_card,
-                    host_controller,
-                )
-            }
-            TriggerMode::Surveil { .. } => {
-                return super::trigger_surveil::perform_test(
-                    self,
-                    run_params,
-                    game,
-                    host_card,
-                    host_controller,
-                )
-            }
-            TriggerMode::Scry { .. } => {
-                return super::trigger_scry::perform_test(
-                    self,
-                    run_params,
-                    game,
-                    host_card,
-                    host_controller,
-                )
-            }
-            TriggerMode::ManaAdded { .. } => {
-                return super::trigger_mana_added::perform_test(
-                    self,
-                    run_params,
-                    game,
-                    host_card,
-                    host_controller,
-                )
-            }
-            TriggerMode::ManaExpend { .. } => {
-                return super::trigger_mana_expend::perform_test(
-                    self,
-                    run_params,
-                    game,
-                    host_card,
-                    host_controller,
-                )
-            }
-            TriggerMode::Mutates { .. } => {
-                return super::trigger_mutates::perform_test(
-                    self,
-                    run_params,
-                    game,
-                    host_card,
-                    host_controller,
-                )
-            }
-            TriggerMode::SetInMotion { .. } => {
-                return super::trigger_set_in_motion::perform_test(
-                    self,
-                    run_params,
-                    game,
-                    host_card,
-                    host_controller,
-                )
-            }
-            TriggerMode::CaseSolved { .. } => {
-                return super::trigger_case_solved::perform_test(
-                    self,
-                    run_params,
-                    game,
-                    host_card,
-                    host_controller,
-                )
-            }
-            TriggerMode::ClaimPrize { .. } => {
-                return super::trigger_claim_prize::perform_test(
-                    self,
-                    run_params,
-                    game,
-                    host_card,
-                    host_controller,
-                )
-            }
-            TriggerMode::TakesInitiative { .. } => {
-                return super::trigger_takes_initiative::perform_test(
-                    self,
-                    run_params,
-                    game,
-                    host_card,
-                    host_controller,
-                )
-            }
-            TriggerMode::Discarded { .. } => {
-                return super::trigger_discarded::perform_test(
-                    self,
-                    run_params,
-                    game,
-                    host_card,
-                    host_controller,
-                )
-            }
-            TriggerMode::PayCumulativeUpkeep { .. } => {
-                return super::trigger_pay_cumulative_upkeep::perform_test(
-                    self,
-                    run_params,
-                    game,
-                    host_card,
-                    host_controller,
-                )
-            }
-            TriggerMode::ChaosEnsues { .. } => {
-                return super::trigger_chaos_ensues::perform_test(
-                    self,
-                    run_params,
-                    game,
-                    host_card,
-                    host_controller,
-                )
-            }
-            TriggerMode::BecomesSaddled { .. } => {
-                return super::trigger_becomes_saddled::perform_test(
-                    self,
-                    run_params,
-                    game,
-                    host_card,
-                    host_controller,
-                )
-            }
-            TriggerMode::PlaneswalkedFrom { .. } => {
-                return super::trigger_planeswalked_from::perform_test(
-                    self,
-                    run_params,
-                    game,
-                    host_card,
-                    host_controller,
-                )
-            }
-            TriggerMode::PlaneswalkedTo { .. } => {
-                return super::trigger_planeswalked_to::perform_test(
-                    self,
-                    run_params,
-                    game,
-                    host_card,
-                    host_controller,
-                )
-            }
-            TriggerMode::CrankContraption { .. } => {
-                return super::trigger_crank_contraption::perform_test(
-                    self,
-                    run_params,
-                    game,
-                    host_card,
-                    host_controller,
-                )
-            }
-            TriggerMode::Adapt { .. } => {
-                return super::trigger_adapt::perform_test(
-                    self,
-                    run_params,
-                    game,
-                    host_card,
-                    host_controller,
-                )
-            }
-            TriggerMode::BecomeRenowned { .. } => {
-                return super::trigger_become_renowned::perform_test(
-                    self,
-                    run_params,
-                    game,
-                    host_card,
-                    host_controller,
-                )
-            }
-            TriggerMode::Evolved { .. } => {
-                return super::trigger_evolved::perform_test(
-                    self,
-                    run_params,
-                    game,
-                    host_card,
-                    host_controller,
-                )
-            }
-            TriggerMode::Investigated { .. } => {
-                return super::trigger_investigated::perform_test(
-                    self,
-                    run_params,
-                    game,
-                    host_card,
-                    host_controller,
-                )
-            }
-            TriggerMode::Proliferate { .. } => {
-                return super::trigger_proliferate::perform_test(
-                    self,
-                    run_params,
-                    game,
-                    host_card,
-                    host_controller,
-                )
-            }
-            TriggerMode::CompletedDungeon { .. } => {
-                return super::trigger_completed_dungeon::perform_test(
-                    self,
-                    run_params,
-                    game,
-                    host_card,
-                    host_controller,
-                )
-            }
-            TriggerMode::CommitCrime { .. } => {
-                return super::trigger_commit_crime::perform_test(
-                    self,
-                    run_params,
-                    game,
-                    host_card,
-                    host_controller,
-                )
-            }
-            TriggerMode::RingTemptsYou { .. } => {
-                return super::trigger_ring_tempts_you::perform_test(
-                    self,
-                    run_params,
-                    game,
-                    host_card,
-                    host_controller,
-                )
-            }
-            TriggerMode::PayLife { .. } => {
-                return super::trigger_pay_life::perform_test(
-                    self,
-                    run_params,
-                    game,
-                    host_card,
-                    host_controller,
-                )
-            }
-            TriggerMode::PayEcho { .. } => {
-                return super::trigger_pay_echo::perform_test(
-                    self,
-                    run_params,
-                    game,
-                    host_card,
-                    host_controller,
-                )
-            }
-            TriggerMode::ClassLevelGained { .. } => {
-                return super::trigger_class_level_gained::perform_test(
-                    self,
-                    run_params,
-                    game,
-                    host_card,
-                    host_controller,
-                )
-            }
-            TriggerMode::BecomesPlotted { .. } => {
-                return super::trigger_becomes_plotted::perform_test(
-                    self,
-                    run_params,
-                    game,
-                    host_card,
-                    host_controller,
-                )
-            }
-            TriggerMode::NewGame => {
-                return super::trigger_new_game::perform_test(
-                    self,
-                    run_params,
-                    game,
-                    host_card,
-                    host_controller,
-                )
-            }
-            TriggerMode::DayTimeChanges => {
-                return super::trigger_day_time_changes::perform_test(
-                    self,
-                    run_params,
-                    game,
-                    host_card,
-                    host_controller,
-                )
-            }
-            TriggerMode::LosesGame { .. } => {
-                return super::trigger_loses_game::perform_test(
-                    self,
-                    run_params,
-                    game,
-                    host_card,
-                    host_controller,
-                )
-            }
-            TriggerMode::Discover { .. } => {
-                return super::trigger_discover::perform_test(
-                    self,
-                    run_params,
-                    game,
-                    host_card,
-                    host_controller,
-                )
-            }
-            TriggerMode::Elementalbend { .. } => {
-                return super::trigger_elementalbend::perform_test(
-                    self,
-                    run_params,
-                    game,
-                    host_card,
-                    host_controller,
-                )
-            }
-            TriggerMode::PlanarDice { .. } => {
-                return super::trigger_planar_dice::perform_test(
-                    self,
-                    run_params,
-                    game,
-                    host_card,
-                    host_controller,
-                )
-            }
-            TriggerMode::PhaseOutAll { .. } => {
-                return super::trigger_phase_out_all::perform_test(
-                    self,
-                    run_params,
-                    game,
-                    host_card,
-                    host_controller,
-                )
-            }
-            TriggerMode::Vote => {
-                return super::trigger_vote::perform_test(
-                    self,
-                    run_params,
-                    game,
-                    host_card,
-                    host_controller,
-                )
-            }
-            TriggerMode::GiveGift { .. } => {
-                return super::trigger_give_gift::perform_test(
-                    self,
-                    run_params,
-                    game,
-                    host_card,
-                    host_controller,
-                )
-            }
-            TriggerMode::VisitAttraction { .. } => {
-                return super::trigger_visit_attraction::perform_test(
-                    self,
-                    run_params,
-                    game,
-                    host_card,
-                    host_controller,
-                )
-            }
-            TriggerMode::EnteredRoom { .. } => {
-                return super::trigger_entered_room::perform_test(
-                    self,
-                    run_params,
-                    game,
-                    host_card,
-                    host_controller,
-                )
-            }
-            TriggerMode::MilledAll { .. } => {
-                return super::trigger_milled_all::perform_test(
-                    self,
-                    run_params,
-                    game,
-                    host_card,
-                    host_controller,
-                )
-            }
-            TriggerMode::MilledOnce { .. } => {
-                return super::trigger_milled_once::perform_test(
-                    self,
-                    run_params,
-                    game,
-                    host_card,
-                    host_controller,
-                )
-            }
-            TriggerMode::Abandoned { .. } => {
-                return super::trigger_abandoned::perform_test(
-                    self,
-                    run_params,
-                    game,
-                    host_card,
-                    host_controller,
-                )
-            }
-            TriggerMode::ManifestDread { .. } => {
-                return super::trigger_manifest_dread::perform_test(
-                    self,
-                    run_params,
-                    game,
-                    host_card,
-                    host_controller,
-                )
-            }
-            TriggerMode::Specializes { .. } => {
-                return super::trigger_specializes::perform_test(
-                    self,
-                    run_params,
-                    game,
-                    host_card,
-                    host_controller,
-                )
-            }
-            TriggerMode::Trains { .. } => {
-                return super::trigger_trains::perform_test(
-                    self,
-                    run_params,
-                    game,
-                    host_card,
-                    host_controller,
-                )
-            }
-            TriggerMode::Devoured { .. } => {
-                return super::trigger_devoured::perform_test(
-                    self,
-                    run_params,
-                    game,
-                    host_card,
-                    host_controller,
-                )
-            }
-            TriggerMode::ConjureAll { .. } => {
-                return super::trigger_conjure_all::perform_test(
-                    self,
-                    run_params,
-                    game,
-                    host_card,
-                    host_controller,
-                )
-            }
-            TriggerMode::SeekAll { .. } => {
-                return super::trigger_seek_all::perform_test(
-                    self,
-                    run_params,
-                    game,
-                    host_card,
-                    host_controller,
-                )
-            }
-            TriggerMode::BecomesCrewed { .. } => {
-                return super::trigger_becomes_crewed::perform_test(
-                    self,
-                    run_params,
-                    game,
-                    host_card,
-                    host_controller,
-                )
-            }
-            TriggerMode::Championed { .. } => {
-                return super::trigger_championed::perform_test(
-                    self,
-                    run_params,
-                    game,
-                    host_card,
-                    host_controller,
-                )
-            }
-            TriggerMode::Clashed { .. } => {
-                return super::trigger_clashed::perform_test(
-                    self,
-                    run_params,
-                    game,
-                    host_card,
-                    host_controller,
-                )
-            }
-            TriggerMode::Mentored { .. } => {
-                return super::trigger_mentored::perform_test(
-                    self,
-                    run_params,
-                    game,
-                    host_card,
-                    host_controller,
-                )
-            }
-            TriggerMode::FullyUnlock { .. } => {
-                return super::trigger_fully_unlock::perform_test(
-                    self,
-                    run_params,
-                    game,
-                    host_card,
-                    host_controller,
-                )
-            }
-            TriggerMode::AbilityResolves { .. } => {
-                return super::trigger_ability_resolves::perform_test(
-                    self,
-                    run_params,
-                    game,
-                    host_card,
-                    host_controller,
-                )
-            }
-            TriggerMode::AbilityTriggered { .. } => {
-                return super::trigger_ability_triggered::perform_test(
-                    self,
-                    run_params,
-                    game,
-                    host_card,
-                    host_controller,
-                )
-            }
-            TriggerMode::UnlockDoor { .. } => {
-                return super::trigger_unlock_door::perform_test(
-                    self,
-                    run_params,
-                    game,
-                    host_card,
-                    host_controller,
-                )
-            }
-            TriggerMode::CounterAddedAll { .. } => {
-                return super::trigger_counter_added_all::perform_test(
-                    self,
-                    run_params,
-                    game,
-                    host_card,
-                    host_controller,
-                )
-            }
-            TriggerMode::CounterPlayerAddedAll { .. } => {
-                return super::trigger_counter_player_added_all::perform_test(
-                    self,
-                    run_params,
-                    game,
-                    host_card,
-                    host_controller,
-                )
-            }
-            TriggerMode::CounterTypeAddedAll { .. } => {
-                return super::trigger_counter_type_added_all::perform_test(
-                    self,
-                    run_params,
-                    game,
-                    host_card,
-                    host_controller,
-                )
-            }
-            TriggerMode::DamageDoneOnceByController { .. } => {
-                return super::trigger_damage_done_once_by_controller::perform_test(
-                    self,
-                    run_params,
-                    game,
-                    host_card,
-                    host_controller,
-                )
-            }
-            TriggerMode::ExcessDamageAll { .. } => {
-                return super::trigger_excess_damage_all::perform_test(
-                    self,
-                    run_params,
-                    game,
-                    host_card,
-                    host_controller,
-                )
-            }
-            TriggerMode::CrewedSaddled { .. } => {
-                return super::trigger_crewed_saddled::perform_test(
-                    self,
-                    run_params,
-                    game,
-                    host_card,
-                    host_controller,
-                )
-            }
-            TriggerMode::SpellCast { .. }
-            | TriggerMode::AbilityCast { .. }
-            | TriggerMode::SpellAbilityCast { .. }
-            | TriggerMode::SpellCastAll { .. }
-            | TriggerMode::SpellCastOnce { .. }
-            | TriggerMode::SpellCastOfType { .. }
-            | TriggerMode::SpellCopied { .. }
-            | TriggerMode::SpellCopy { .. }
-            | TriggerMode::SpellAbilityCopy { .. }
-            | TriggerMode::SpellCastOrCopy { .. } => {
-                return super::trigger_spell_ability_cast_or_copy::perform_test(
-                    self,
-                    run_params,
-                    game,
-                    host_card,
-                    host_controller,
-                )
-            }
-            TriggerMode::DamageDone { .. } => super::trigger_damage_done::perform_test(
-                self,
-                run_params,
-                game,
-                host_card,
-                host_controller,
-            ),
-            TriggerMode::DamageDoneOnce { .. } => super::trigger_damage_done_once::perform_test(
-                self,
-                run_params,
-                game,
-                host_card,
-                host_controller,
-            ),
-            TriggerMode::DamageAll { .. } => super::trigger_damage_all::perform_test(
-                self,
-                run_params,
-                game,
-                host_card,
-                host_controller,
-            ),
-            TriggerMode::ExcessDamage { .. } => super::trigger_excess_damage::perform_test(
-                self,
-                run_params,
-                game,
-                host_card,
-                host_controller,
-            ),
-            TriggerMode::Milled { .. } => super::trigger_milled::perform_test(
-                self,
-                run_params,
-                game,
-                host_card,
-                host_controller,
-            ),
-            TriggerMode::DiscardedAll { .. } => super::trigger_discarded_all::perform_test(
-                self,
-                run_params,
-                game,
-                host_card,
-                host_controller,
-            ),
-            TriggerMode::Cycled { .. } => super::trigger_cycled::perform_test(
-                self,
-                run_params,
-                game,
-                host_card,
-                host_controller,
-            ),
-            TriggerMode::FlippedCoin { .. } => super::trigger_flipped_coin::perform_test(
-                self,
-                run_params,
-                game,
-                host_card,
-                host_controller,
-            ),
-            TriggerMode::RolledDie { .. } => super::trigger_rolled_die::perform_test(
-                self,
-                run_params,
-                game,
-                host_card,
-                host_controller,
-            ),
-            TriggerMode::RolledDieOnce { .. } => super::trigger_rolled_die_once::perform_test(
-                self,
-                run_params,
-                game,
-                host_card,
-                host_controller,
-            ),
-            TriggerMode::AbilityActivated { .. } => super::trigger_ability_activated::perform_test(
-                self,
-                run_params,
-                game,
-                host_card,
-                host_controller,
-            ),
-            TriggerMode::Attached { .. } => super::trigger_attached::perform_test(
-                self,
-                run_params,
-                game,
-                host_card,
-                host_controller,
-            ),
-            TriggerMode::Unattached { .. } => super::trigger_unattach::perform_test(
-                self,
-                run_params,
-                game,
-                host_card,
-                host_controller,
-            ),
-            TriggerMode::ChangesController { .. } => {
-                super::trigger_changes_controller::perform_test(
-                    self,
-                    run_params,
-                    game,
-                    host_card,
-                    host_controller,
-                )
-            }
-            TriggerMode::PhasedIn { .. } => super::trigger_phase_in::perform_test(
-                self,
-                run_params,
-                game,
-                host_card,
-                host_controller,
-            ),
-            TriggerMode::PhasedOut { .. } => super::trigger_phase_out::perform_test(
-                self,
-                run_params,
-                game,
-                host_card,
-                host_controller,
-            ),
-            TriggerMode::Foretell { .. } => super::trigger_foretell::perform_test(
-                self,
-                run_params,
-                game,
-                host_card,
-                host_controller,
-            ),
-            TriggerMode::BecomesTargetOnce { .. } => {
-                super::trigger_becomes_target_once::perform_test(
-                    self,
-                    run_params,
-                    game,
-                    host_card,
-                    host_controller,
-                )
-            }
-            TriggerMode::BecomeMonstrous { .. } => super::trigger_become_monstrous::perform_test(
-                self,
-                run_params,
-                game,
-                host_card,
-                host_controller,
-            ),
-            TriggerMode::DamagePreventedOnce { .. } => {
-                super::trigger_damage_prevented_once::perform_test(
-                    self,
-                    run_params,
-                    game,
-                    host_card,
-                    host_controller,
-                )
-            }
-            TriggerMode::Exerted { .. } => super::trigger_exerted::perform_test(
-                self,
-                run_params,
-                game,
-                host_card,
-                host_controller,
-            ),
-            TriggerMode::SearchedLibrary { .. } => super::trigger_searched_library::perform_test(
-                self,
-                run_params,
-                game,
-                host_card,
-                host_controller,
-            ),
-            TriggerMode::Shuffled { .. } => super::trigger_shuffled::perform_test(
-                self,
-                run_params,
-                game,
-                host_card,
-                host_controller,
-            ),
-            TriggerMode::CollectEvidence { .. } => super::trigger_collect_evidence::perform_test(
-                self,
-                run_params,
-                game,
-                host_card,
-                host_controller,
-            ),
-            TriggerMode::Forage { .. } => super::trigger_forage::perform_test(
-                self,
-                run_params,
-                game,
-                host_card,
-                host_controller,
-            ),
-            TriggerMode::Exploited { .. } => super::trigger_exploited::perform_test(
-                self,
-                run_params,
-                game,
-                host_card,
-                host_controller,
-            ),
-            TriggerMode::Always => super::trigger_always::perform_test(
-                self,
-                run_params,
-                game,
-                host_card,
-                host_controller,
-            ),
-            TriggerMode::Immediate => super::trigger_immediate::perform_test(),
-            TriggerMode::Enlisted {
-                valid_card,
-                valid_enlisted,
-            } => {
-                // Mirrors Java TriggerEnlisted.performTest():
-                // ValidCard$ checks the enlisting creature, ValidEnlisted$ checks the enlisted one.
-                check_card_filter(
-                    valid_card,
-                    run_params.card,
-                    host_card,
-                    host_controller,
-                    game,
-                ) && check_card_filter(
-                    valid_enlisted,
-                    run_params.enlisted,
-                    host_card,
-                    host_controller,
-                    game,
-                )
-            }
-            _ => unreachable!("missing TriggerMode::perform_test dispatch for {:?}", self),
-        }
-    }
-
-    pub fn trigger_type(&self) -> TriggerType {
-        match self {
-            TriggerMode::ChangesZone { .. } => TriggerType::ChangesZone,
-            TriggerMode::Phase { .. } => TriggerType::Phase,
-            TriggerMode::SpellCast { .. } => TriggerType::SpellCast,
-            TriggerMode::AbilityCast { .. } => TriggerType::AbilityCast,
-            TriggerMode::SpellAbilityCast { .. } => TriggerType::SpellAbilityCast,
-            TriggerMode::Attacks { .. } => TriggerType::Attacks,
-            TriggerMode::Fight { .. } => TriggerType::Fight,
-            TriggerMode::FightOnce { .. } => TriggerType::FightOnce,
-            TriggerMode::DamageDone { .. } => TriggerType::DamageDone,
-            TriggerMode::Countered { .. } => TriggerType::Countered,
-            TriggerMode::Blocks { .. } => TriggerType::Blocks,
-            TriggerMode::AttackerBlocked { .. } => TriggerType::AttackerBlocked,
-            TriggerMode::AttackerUnblocked { .. } => TriggerType::AttackerUnblocked,
-            TriggerMode::LifeGained { .. } => TriggerType::LifeGained,
-            TriggerMode::LifeLost { .. } => TriggerType::LifeLost,
-            TriggerMode::PayLife { .. } => TriggerType::PayLife,
-            TriggerMode::LosesGame { .. } => TriggerType::LosesGame,
-            TriggerMode::Discover { .. } => TriggerType::Discover,
-            TriggerMode::Elementalbend { .. } => TriggerType::Elementalbend,
-            TriggerMode::Clashed { .. } => TriggerType::Clashed,
-            TriggerMode::ManifestDread { .. } => TriggerType::ManifestDread,
-            TriggerMode::ConjureAll { .. } => TriggerType::ConjureAll,
-            TriggerMode::SeekAll { .. } => TriggerType::SeekAll,
-            TriggerMode::CounterAdded { .. } => TriggerType::CounterAdded,
-            TriggerMode::CounterRemoved { .. } => TriggerType::CounterRemoved,
-            TriggerMode::Sacrificed { .. } => TriggerType::Sacrificed,
-            TriggerMode::Discarded { .. } => TriggerType::Discarded,
-            TriggerMode::Abandoned { .. } => TriggerType::Abandoned,
-            TriggerMode::Adapt { .. } => TriggerType::Adapt,
-            TriggerMode::BecomeRenowned { .. } => TriggerType::BecomeRenowned,
-            TriggerMode::Evolved { .. } => TriggerType::Evolved,
-            TriggerMode::Drawn { .. } => TriggerType::Drawn,
-            TriggerMode::Milled { .. } => TriggerType::Milled,
-            TriggerMode::MilledAll { .. } => TriggerType::MilledAll,
-            TriggerMode::MilledOnce { .. } => TriggerType::MilledOnce,
-            TriggerMode::PayEcho { .. } => TriggerType::PayEcho,
-            TriggerMode::ClassLevelGained { .. } => TriggerType::ClassLevelGained,
-            TriggerMode::Taps { .. } => TriggerType::Taps,
-            TriggerMode::Untaps { .. } => TriggerType::Untaps,
-            TriggerMode::Transformed { .. } => TriggerType::Transformed,
-            TriggerMode::TurnFaceUp { .. } => TriggerType::TurnFaceUp,
-            TriggerMode::Attached { .. } => TriggerType::Attached,
-            TriggerMode::Unattached { .. } => TriggerType::Unattached,
-            TriggerMode::LandPlayed { .. } => TriggerType::LandPlayed,
-            TriggerMode::BecomesTarget { .. } => TriggerType::BecomesTarget,
-            TriggerMode::BecomesCrewed { .. } => TriggerType::BecomesCrewed,
-            TriggerMode::Championed { .. } => TriggerType::Championed,
-            TriggerMode::Mentored { .. } => TriggerType::Mentored,
-            TriggerMode::TapsForMana { .. } => TriggerType::TapsForMana,
-            TriggerMode::AbilityActivated { .. } => TriggerType::AbilityActivated,
-            TriggerMode::Explored { .. } => TriggerType::Explored,
-            TriggerMode::BecomeMonstrous { .. } => TriggerType::BecomeMonstrous,
-            TriggerMode::BecomeMonarch { .. } => TriggerType::BecomeMonarch,
-            TriggerMode::Investigated { .. } => TriggerType::Investigated,
-            TriggerMode::Proliferate { .. } => TriggerType::Proliferate,
-            TriggerMode::CompletedDungeon { .. } => TriggerType::CompletedDungeon,
-            TriggerMode::CommitCrime { .. } => TriggerType::CommitCrime,
-            TriggerMode::RingTemptsYou { .. } => TriggerType::RingTemptsYou,
-            TriggerMode::PlanarDice { .. } => TriggerType::PlanarDice,
-            TriggerMode::NewGame => TriggerType::NewGame,
-            TriggerMode::DayTimeChanges => TriggerType::DayTimeChanges,
-            TriggerMode::BecomesPlotted { .. } => TriggerType::BecomesPlotted,
-            TriggerMode::Specializes { .. } => TriggerType::Specializes,
-            TriggerMode::Trains { .. } => TriggerType::Trains,
-            TriggerMode::Devoured { .. } => TriggerType::Devoured,
-            TriggerMode::FullyUnlock { .. } => TriggerType::FullyUnlock,
-            TriggerMode::AbilityResolves { .. } => TriggerType::AbilityResolves,
-            TriggerMode::AbilityTriggered { .. } => TriggerType::AbilityTriggered,
-            TriggerMode::UnlockDoor { .. } => TriggerType::UnlockDoor,
-            TriggerMode::CounterAddedAll { .. } => TriggerType::CounterAddedAll,
-            TriggerMode::CounterPlayerAddedAll { .. } => TriggerType::CounterPlayerAddedAll,
-            TriggerMode::CounterTypeAddedAll { .. } => TriggerType::CounterTypeAddedAll,
-            TriggerMode::CrewedSaddled { .. } => TriggerType::Crewed,
-            TriggerMode::DamageDoneOnceByController { .. } => {
-                TriggerType::DamageDoneOnceByController
-            }
-            TriggerMode::ExcessDamageAll { .. } => TriggerType::ExcessDamageAll,
-            TriggerMode::PhaseOutAll { .. } => TriggerType::PhaseOutAll,
-            TriggerMode::Vote => TriggerType::Vote,
-            TriggerMode::GiveGift { .. } => TriggerType::GiveGift,
-            TriggerMode::VisitAttraction { .. } => TriggerType::VisitAttraction,
-            TriggerMode::EnteredRoom { .. } => TriggerType::EnteredRoom,
-            TriggerMode::PayCumulativeUpkeep { .. } => TriggerType::PayCumulativeUpkeep,
-            TriggerMode::DamageDealtOnce { .. } => TriggerType::DamageDealtOnce,
-            TriggerMode::Destroyed { .. } => TriggerType::Destroyed,
-            TriggerMode::Exiled { .. } => TriggerType::Exiled,
-            TriggerMode::TokenCreated { .. } => TriggerType::TokenCreated,
-            TriggerMode::SpellCopied { .. } => TriggerType::SpellCopied,
-            TriggerMode::SpellCopy { .. } => TriggerType::SpellCopy,
-            TriggerMode::SpellAbilityCopy { .. } => TriggerType::SpellAbilityCopy,
-            TriggerMode::SpellCastOrCopy { .. } => TriggerType::SpellCastOrCopy,
-            TriggerMode::AttackersDeclared {
-                one_target: true, ..
-            } => TriggerType::AttackersDeclaredOneTarget,
-            TriggerMode::AttackersDeclared {
-                one_target: false, ..
-            } => TriggerType::AttackersDeclared,
-            TriggerMode::BlockersDeclared => TriggerType::BlockersDeclared,
-            TriggerMode::ChangesController { .. } => TriggerType::ChangesController,
-            TriggerMode::TurnBegin { .. } => TriggerType::TurnBegin,
-            TriggerMode::Cycled { .. } => TriggerType::Cycled,
-            TriggerMode::PhasedIn { .. } => TriggerType::PhasedIn,
-            TriggerMode::PhasedOut { .. } => TriggerType::PhasedOut,
-            TriggerMode::Always => TriggerType::Always,
-            TriggerMode::Immediate => TriggerType::Immediate,
-            TriggerMode::Surveil { .. } => TriggerType::Surveil,
-            TriggerMode::Scry { .. } => TriggerType::Scry,
-            TriggerMode::Foretell { .. } => TriggerType::Foretell,
-            TriggerMode::SearchedLibrary { .. } => TriggerType::SearchedLibrary,
-            TriggerMode::Shuffled { .. } => TriggerType::Shuffled,
-            TriggerMode::ManaAdded { .. } => TriggerType::ManaAdded,
-            TriggerMode::DamageDoneOnce { .. } => TriggerType::DamageDoneOnce,
-            TriggerMode::DamageAll { .. } => TriggerType::DamageAll,
-            TriggerMode::ExcessDamage { .. } => TriggerType::ExcessDamage,
-            TriggerMode::DamagePreventedOnce { .. } => TriggerType::DamagePreventedOnce,
-            TriggerMode::SpellCastAll { .. } => TriggerType::SpellCastAll,
-            TriggerMode::SpellCastOnce { .. } => TriggerType::SpellCastOnce,
-            TriggerMode::SpellCastOfType { .. } => TriggerType::SpellCastOfType,
-            TriggerMode::LifeLostAll { .. } => TriggerType::LifeLostAll,
-            TriggerMode::CounterAddedOnce { .. } => TriggerType::CounterAddedOnce,
-            TriggerMode::CounterRemovedOnce { .. } => TriggerType::CounterRemovedOnce,
-            TriggerMode::Exerted { .. } => TriggerType::Exerted,
-            TriggerMode::CollectEvidence { .. } => TriggerType::CollectEvidence,
-            TriggerMode::Forage { .. } => TriggerType::Forage,
-            TriggerMode::Enlisted { .. } => TriggerType::Enlisted,
-            TriggerMode::FlippedCoin { .. } => TriggerType::FlippedCoin,
-            TriggerMode::RolledDie { .. } => TriggerType::RolledDie,
-            TriggerMode::RolledDieOnce { .. } => TriggerType::RolledDieOnce,
-            TriggerMode::DiscardedAll { .. } => TriggerType::DiscardedAll,
-            TriggerMode::SacrificedOnce { .. } => TriggerType::SacrificedOnce,
-            TriggerMode::ChangesZoneAll { .. } => TriggerType::ChangesZoneAll,
-            TriggerMode::TapAll { .. } => TriggerType::TapAll,
-            TriggerMode::UntapAll { .. } => TriggerType::UntapAll,
-            TriggerMode::BecomesTargetOnce { .. } => TriggerType::BecomesTargetOnce,
-            TriggerMode::TokenCreatedOnce { .. } => TriggerType::TokenCreatedOnce,
-            TriggerMode::AttackerBlockedOnce { .. } => TriggerType::AttackerBlockedOnce,
-            TriggerMode::AttackerBlockedByCreature { .. } => TriggerType::AttackerBlockedByCreature,
-            TriggerMode::AttackerUnblockedOnce { .. } => TriggerType::AttackerUnblockedOnce,
-            TriggerMode::ManaExpend { .. } => TriggerType::ManaExpend,
-            TriggerMode::Exploited { .. } => TriggerType::Exploited,
-            TriggerMode::Mutates { .. } => TriggerType::Mutates,
-            TriggerMode::SetInMotion { .. } => TriggerType::SetInMotion,
-            TriggerMode::CaseSolved { .. } => TriggerType::CaseSolved,
-            TriggerMode::ClaimPrize { .. } => TriggerType::ClaimPrize,
-            TriggerMode::TakesInitiative { .. } => TriggerType::TakeInitiative,
-            TriggerMode::PlaneswalkedFrom { .. } => TriggerType::Planeswalk,
-            TriggerMode::PlaneswalkedTo { .. } => TriggerType::Planeswalk,
-            TriggerMode::CrankContraption { .. } => TriggerType::CrankAdvanced,
-            TriggerMode::ChaosEnsues { .. } => TriggerType::ChaosEnsues,
-            TriggerMode::BecomesSaddled { .. } => TriggerType::BecomesSaddled,
-        }
-    }
-
-    pub fn set_triggering_objects(
-        &self,
-        sa: &mut SpellAbility,
-        params: &RunParams,
-        game: &GameState,
-        host_card: CardId,
-        host_controller: PlayerId,
-    ) {
-        match self {
-            TriggerMode::Abandoned { .. } => {
-                super::trigger_abandoned::set_triggering_objects(sa, params)
-            }
-            TriggerMode::AbilityResolves { .. } => {
-                super::trigger_ability_resolves::set_triggering_objects(sa, params)
-            }
-            TriggerMode::AbilityTriggered { .. } => {
-                super::trigger_ability_triggered::set_triggering_objects(sa, params)
-            }
-            TriggerMode::Adapt { .. } => super::trigger_adapt::set_triggering_objects(sa, params),
-            TriggerMode::Always => super::trigger_always::set_triggering_objects(sa, params),
-            TriggerMode::Attached { .. } => {
-                super::trigger_attached::set_triggering_objects(sa, params)
-            }
-            TriggerMode::AttackerBlocked { .. } => {
-                super::trigger_attacker_blocked::set_triggering_objects(sa, params)
-            }
-            TriggerMode::AttackerBlockedByCreature { .. } => {
-                super::trigger_attacker_blocked_by_creature::set_triggering_objects(sa, params)
-            }
-            TriggerMode::AttackerBlockedOnce { .. } => {
-                super::trigger_attacker_blocked_once::set_triggering_objects(sa, params)
-            }
-            TriggerMode::AttackerUnblocked { .. } => {
-                super::trigger_attacker_unblocked::set_triggering_objects(sa, params)
-            }
-            TriggerMode::AttackerUnblockedOnce { .. } => {
-                super::trigger_attacker_unblocked_once::set_triggering_objects(sa, params)
-            }
-            TriggerMode::AttackersDeclared { .. } => {
-                super::trigger_attackers_declared::set_triggering_objects(sa, params)
-            }
-            TriggerMode::Attacks { .. } => {
-                super::trigger_attacks::set_triggering_objects(sa, params)
-            }
-            TriggerMode::BecomeMonarch { .. } => {
-                super::trigger_become_monarch::set_triggering_objects(sa, params)
-            }
-            TriggerMode::BecomeMonstrous { .. } => {
-                super::trigger_become_monstrous::set_triggering_objects(sa, params)
-            }
-            TriggerMode::BecomeRenowned { .. } => {
-                super::trigger_become_renowned::set_triggering_objects(sa, params)
-            }
-            TriggerMode::BecomesCrewed { .. } => {
-                super::trigger_becomes_crewed::set_triggering_objects(sa, params)
-            }
-            TriggerMode::BecomesPlotted { .. } => {
-                super::trigger_becomes_plotted::set_triggering_objects(sa, params)
-            }
-            TriggerMode::BecomesSaddled { .. } => {
-                super::trigger_becomes_saddled::set_triggering_objects(sa, params)
-            }
-            TriggerMode::BecomesTarget { .. } => {
-                super::trigger_becomes_target::set_triggering_objects(sa, params)
-            }
-            TriggerMode::BecomesTargetOnce { .. } => {
-                super::trigger_becomes_target_once::set_triggering_objects(sa, params)
-            }
-            TriggerMode::BlockersDeclared { .. } => {
-                super::trigger_blockers_declared::set_triggering_objects(sa, params)
-            }
-            TriggerMode::Blocks { .. } => super::trigger_blocks::set_triggering_objects(sa, params),
-            TriggerMode::CaseSolved { .. } => {
-                super::trigger_case_solved::set_triggering_objects(sa, params)
-            }
-            TriggerMode::Championed { .. } => {
-                super::trigger_championed::set_triggering_objects(sa, params)
-            }
-            TriggerMode::ChangesController { .. } => {
-                super::trigger_changes_controller::set_triggering_objects(sa, params)
-            }
-            TriggerMode::ChangesZone { .. } => {
-                super::trigger_changes_zone::set_triggering_objects(sa, params)
-            }
-            TriggerMode::ChangesZoneAll { .. } => {
-                super::trigger_changes_zone_all::set_triggering_objects(sa, params)
-            }
-            TriggerMode::ChaosEnsues { .. } => {
-                super::trigger_chaos_ensues::set_triggering_objects(sa, params)
-            }
-            TriggerMode::ClaimPrize { .. } => {
-                super::trigger_claim_prize::set_triggering_objects(sa, params)
-            }
-            TriggerMode::Clashed { .. } => {
-                super::trigger_clashed::set_triggering_objects(sa, params)
-            }
-            TriggerMode::ClassLevelGained { .. } => {
-                super::trigger_class_level_gained::set_triggering_objects(sa, params)
-            }
-            TriggerMode::CollectEvidence { .. } => {
-                super::trigger_collect_evidence::set_triggering_objects(sa, params)
-            }
-            TriggerMode::CommitCrime { .. } => {
-                super::trigger_commit_crime::set_triggering_objects(sa, params)
-            }
-            TriggerMode::CompletedDungeon { .. } => {
-                super::trigger_completed_dungeon::set_triggering_objects(sa, params)
-            }
-            TriggerMode::ConjureAll { .. } => {
-                super::trigger_conjure_all::set_triggering_objects(sa, params)
-            }
-            TriggerMode::CounterAdded { .. } => {
-                super::trigger_counter_added::set_triggering_objects(sa, params)
-            }
-            TriggerMode::CounterAddedAll { .. } => {
-                super::trigger_counter_added_all::set_triggering_objects(sa, params)
-            }
-            TriggerMode::CounterAddedOnce { .. } => {
-                super::trigger_counter_added_once::set_triggering_objects(sa, params)
-            }
-            TriggerMode::CounterPlayerAddedAll { .. } => {
-                super::trigger_counter_player_added_all::set_triggering_objects(sa, params)
-            }
-            TriggerMode::CounterRemoved { .. } => {
-                super::trigger_counter_removed::set_triggering_objects(sa, params)
-            }
-            TriggerMode::CounterRemovedOnce { .. } => {
-                super::trigger_counter_removed_once::set_triggering_objects(sa, params)
-            }
-            TriggerMode::CounterTypeAddedAll { .. } => {
-                super::trigger_counter_type_added_all::set_triggering_objects(sa, params)
-            }
-            TriggerMode::Countered { .. } => {
-                super::trigger_countered::set_triggering_objects(sa, params)
-            }
-            TriggerMode::CrankContraption { .. } => {
-                super::trigger_crank_contraption::set_triggering_objects(sa, params)
-            }
-            TriggerMode::CrewedSaddled { .. } => {
-                super::trigger_crewed_saddled::set_triggering_objects(sa, params)
-            }
-            TriggerMode::Cycled { .. } => super::trigger_cycled::set_triggering_objects(sa, params),
-            TriggerMode::DamageAll { .. } => {
-                super::trigger_damage_all::set_triggering_objects(sa, params)
-            }
-            TriggerMode::DamageDealtOnce { .. } => {
-                super::trigger_damage_dealt_once::set_triggering_objects(sa, params)
-            }
-            TriggerMode::DamageDone { .. } => {
-                super::trigger_damage_done::set_triggering_objects(sa, params)
-            }
-            TriggerMode::DamageDoneOnce { .. } => {
-                super::trigger_damage_done_once::set_triggering_objects(sa, params)
-            }
-            TriggerMode::DamageDoneOnceByController { .. } => {
-                super::trigger_damage_done_once_by_controller::set_triggering_objects(sa, params)
-            }
-            TriggerMode::DamagePreventedOnce { .. } => {
-                super::trigger_damage_prevented_once::set_triggering_objects(sa, params)
-            }
-            TriggerMode::DayTimeChanges => {
-                super::trigger_day_time_changes::set_triggering_objects(sa, params)
-            }
-            TriggerMode::Destroyed { .. } => {
-                super::trigger_destroyed::set_triggering_objects(sa, params)
-            }
-            TriggerMode::Devoured { .. } => {
-                super::trigger_devoured::set_triggering_objects(sa, params)
-            }
-            TriggerMode::Discarded { .. } => {
-                super::trigger_discarded::set_triggering_objects(sa, params)
-            }
-            TriggerMode::DiscardedAll { .. } => {
-                super::trigger_discarded_all::set_triggering_objects(sa, params)
-            }
-            TriggerMode::Discover { .. } => {
-                super::trigger_discover::set_triggering_objects(sa, params)
-            }
-            TriggerMode::Drawn { .. } => super::trigger_drawn::set_triggering_objects(sa, params),
-            TriggerMode::Elementalbend { .. } => {
-                super::trigger_elementalbend::set_triggering_objects(sa, params)
-            }
-            TriggerMode::Enlisted { .. } => {
-                super::trigger_enlisted::set_triggering_objects(sa, params)
-            }
-            TriggerMode::EnteredRoom { .. } => {
-                super::trigger_entered_room::set_triggering_objects(sa, params)
-            }
-            TriggerMode::Evolved { .. } => {
-                super::trigger_evolved::set_triggering_objects(sa, params)
-            }
-            TriggerMode::ExcessDamage { .. } => {
-                super::trigger_excess_damage::set_triggering_objects(sa, params)
-            }
-            TriggerMode::ExcessDamageAll { .. } => {
-                super::trigger_excess_damage_all::set_triggering_objects(sa, params)
-            }
-            TriggerMode::Exerted { .. } => {
-                super::trigger_exerted::set_triggering_objects(sa, params)
-            }
-            TriggerMode::Exiled { .. } => super::trigger_exiled::set_triggering_objects(sa, params),
-            TriggerMode::Exploited { .. } => {
-                super::trigger_exploited::set_triggering_objects(sa, params)
-            }
-            TriggerMode::Explored { .. } => {
-                super::trigger_explores::set_triggering_objects(sa, params)
-            }
-            TriggerMode::Fight { .. } => super::trigger_fight::set_triggering_objects(sa, params),
-            TriggerMode::FightOnce { .. } => {
-                super::trigger_fight_once::set_triggering_objects(sa, params)
-            }
-            TriggerMode::FlippedCoin { .. } => {
-                super::trigger_flipped_coin::set_triggering_objects(sa, params)
-            }
-            TriggerMode::Forage { .. } => super::trigger_forage::set_triggering_objects(sa, params),
-            TriggerMode::Foretell { .. } => {
-                super::trigger_foretell::set_triggering_objects(sa, params)
-            }
-            TriggerMode::FullyUnlock { .. } => {
-                super::trigger_fully_unlock::set_triggering_objects(sa, params)
-            }
-            TriggerMode::GiveGift { .. } => {
-                super::trigger_give_gift::set_triggering_objects(sa, params)
-            }
-            TriggerMode::Investigated { .. } => {
-                super::trigger_investigated::set_triggering_objects(sa, params)
-            }
-            TriggerMode::LandPlayed { .. } => {
-                super::trigger_land_played::set_triggering_objects(sa, params)
-            }
-            TriggerMode::LifeGained { .. } => {
-                super::trigger_life_gained::set_triggering_objects(sa, params)
-            }
-            TriggerMode::LifeLost { .. } => {
-                super::trigger_life_lost::set_triggering_objects(sa, params)
-            }
-            TriggerMode::LifeLostAll { .. } => {
-                super::trigger_life_lost_all::set_triggering_objects(sa, params)
-            }
-            TriggerMode::LosesGame { .. } => {
-                super::trigger_loses_game::set_triggering_objects(sa, params)
-            }
-            TriggerMode::ManaAdded { .. } => {
-                super::trigger_mana_added::set_triggering_objects(sa, params)
-            }
-            TriggerMode::ManaExpend { .. } => {
-                super::trigger_mana_expend::set_triggering_objects(sa, params)
-            }
-            TriggerMode::ManifestDread { .. } => {
-                super::trigger_manifest_dread::set_triggering_objects(sa, params)
-            }
-            TriggerMode::Mentored { .. } => {
-                super::trigger_mentored::set_triggering_objects(sa, params)
-            }
-            TriggerMode::Milled { .. } => super::trigger_milled::set_triggering_objects(sa, params),
-            TriggerMode::MilledAll { .. } => {
-                super::trigger_milled_all::set_triggering_objects(sa, params)
-            }
-            TriggerMode::MilledOnce { .. } => {
-                super::trigger_milled_once::set_triggering_objects(sa, params)
-            }
-            TriggerMode::Mutates { .. } => {
-                super::trigger_mutates::set_triggering_objects(sa, params)
-            }
-            TriggerMode::NewGame => super::trigger_new_game::set_triggering_objects(sa, params),
-            TriggerMode::PayCumulativeUpkeep { .. } => {
-                super::trigger_pay_cumulative_upkeep::set_triggering_objects(sa, params)
-            }
-            TriggerMode::PayEcho { .. } => {
-                super::trigger_pay_echo::set_triggering_objects(sa, params)
-            }
-            TriggerMode::PayLife { .. } => {
-                super::trigger_pay_life::set_triggering_objects(sa, params)
-            }
-            TriggerMode::Phase { .. } => super::trigger_phase::set_triggering_objects(sa, params),
-            TriggerMode::PhasedIn { .. } => {
-                super::trigger_phase_in::set_triggering_objects(sa, params)
-            }
-            TriggerMode::PhasedOut { .. } => {
-                super::trigger_phase_out::set_triggering_objects(sa, params)
-            }
-            TriggerMode::PhaseOutAll { .. } => {
-                super::trigger_phase_out_all::set_triggering_objects(sa, params)
-            }
-            TriggerMode::PlanarDice { .. } => {
-                super::trigger_planar_dice::set_triggering_objects(sa, params)
-            }
-            TriggerMode::PlaneswalkedFrom { .. } => {
-                super::trigger_planeswalked_from::set_triggering_objects(sa, params)
-            }
-            TriggerMode::PlaneswalkedTo { .. } => {
-                super::trigger_planeswalked_to::set_triggering_objects(sa, params)
-            }
-            TriggerMode::Proliferate { .. } => {
-                super::trigger_proliferate::set_triggering_objects(sa, params)
-            }
-            TriggerMode::RingTemptsYou { .. } => {
-                super::trigger_ring_tempts_you::set_triggering_objects(sa, params)
-            }
-            TriggerMode::RolledDie { .. } => {
-                super::trigger_rolled_die::set_triggering_objects(sa, params)
-            }
-            TriggerMode::RolledDieOnce { .. } => {
-                super::trigger_rolled_die_once::set_triggering_objects(sa, params)
-            }
-            TriggerMode::Sacrificed { .. } => {
-                super::trigger_sacrificed::set_triggering_objects(sa, params)
-            }
-            TriggerMode::SacrificedOnce { .. } => {
-                super::trigger_sacrificed_once::set_triggering_objects(sa, params)
-            }
-            TriggerMode::Scry { .. } => super::trigger_scry::set_triggering_objects(sa, params),
-            TriggerMode::SearchedLibrary { .. } => {
-                super::trigger_searched_library::set_triggering_objects(sa, params)
-            }
-            TriggerMode::SeekAll { .. } => {
-                super::trigger_seek_all::set_triggering_objects(sa, params)
-            }
-            TriggerMode::SetInMotion { .. } => {
-                super::trigger_set_in_motion::set_triggering_objects(sa, params)
-            }
-            TriggerMode::Shuffled { .. } => {
-                super::trigger_shuffled::set_triggering_objects(sa, params)
-            }
-            TriggerMode::Specializes { .. } => {
-                super::trigger_specializes::set_triggering_objects(sa, params)
-            }
-            TriggerMode::SpellCastOrCopy { .. }
-            | TriggerMode::SpellCast { .. }
-            | TriggerMode::SpellCastAll { .. }
-            | TriggerMode::SpellCastOnce { .. }
-            | TriggerMode::SpellCastOfType { .. }
-            | TriggerMode::AbilityCast { .. }
-            | TriggerMode::SpellAbilityCast { .. }
-            | TriggerMode::SpellCopied { .. }
-            | TriggerMode::SpellCopy { .. }
-            | TriggerMode::SpellAbilityCopy { .. } => {
-                super::trigger_spell_ability_cast_or_copy::set_triggering_objects(sa, params)
-            }
-            TriggerMode::Surveil { .. } => {
-                super::trigger_surveil::set_triggering_objects(sa, params)
-            }
-            TriggerMode::TakesInitiative { .. } => {
-                super::trigger_takes_initiative::set_triggering_objects(sa, params)
-            }
-            TriggerMode::TapAll { .. } => {
-                super::trigger_tap_all::set_triggering_objects(sa, params)
-            }
-            TriggerMode::Taps { .. } => super::trigger_taps::set_triggering_objects(sa, params),
-            TriggerMode::TapsForMana { .. } => {
-                super::trigger_taps_for_mana::set_triggering_objects(sa, params)
-            }
-            TriggerMode::TokenCreated { .. } => {
-                super::trigger_token_created::set_triggering_objects(sa, params)
-            }
-            TriggerMode::TokenCreatedOnce { .. } => {
-                super::trigger_token_created_once::set_triggering_objects(sa, params)
-            }
-            TriggerMode::Trains { .. } => super::trigger_trains::set_triggering_objects(sa, params),
-            TriggerMode::Transformed { .. } => {
-                super::trigger_transformed::set_triggering_objects(sa, params)
-            }
-            TriggerMode::TurnBegin { .. } => {
-                super::trigger_turn_begin::set_triggering_objects(sa, params)
-            }
-            TriggerMode::TurnFaceUp { .. } => {
-                super::trigger_turn_face_up::set_triggering_objects(sa, params)
-            }
-            TriggerMode::Unattached { .. } => {
-                super::trigger_unattach::set_triggering_objects(sa, params)
-            }
-            TriggerMode::UnlockDoor { .. } => {
-                super::trigger_unlock_door::set_triggering_objects(sa, params)
-            }
-            TriggerMode::UntapAll { .. } => {
-                super::trigger_untap_all::set_triggering_objects(sa, params)
-            }
-            TriggerMode::Untaps { .. } => super::trigger_untaps::set_triggering_objects(sa, params),
-            TriggerMode::VisitAttraction { .. } => {
-                super::trigger_visit_attraction::set_triggering_objects(sa, params)
-            }
-            TriggerMode::Vote => {
-                super::trigger_vote::set_triggering_objects(
-                    sa,
-                    params,
-                    host_card,
-                    host_controller,
-                    game,
-                );
-            }
-            _ => {}
-        }
-    }
-
-    pub fn get_important_stack_objects(&self, sa: &SpellAbility) -> String {
-        match self {
-            TriggerMode::Abandoned { .. } => {
-                super::trigger_abandoned::get_important_stack_objects(sa)
-            }
-            TriggerMode::AbilityResolves { .. } => {
-                super::trigger_ability_resolves::get_important_stack_objects(sa)
-            }
-            TriggerMode::AbilityTriggered { .. } => {
-                super::trigger_ability_triggered::get_important_stack_objects(sa)
-            }
-            TriggerMode::Adapt { .. } => super::trigger_adapt::get_important_stack_objects(sa),
-            TriggerMode::Always => super::trigger_always::get_important_stack_objects(sa),
-            TriggerMode::Attached { .. } => {
-                super::trigger_attached::get_important_stack_objects(sa)
-            }
-            TriggerMode::AttackerBlocked { .. } => {
-                super::trigger_attacker_blocked::get_important_stack_objects(sa)
-            }
-            TriggerMode::AttackerBlockedByCreature { .. } => {
-                super::trigger_attacker_blocked_by_creature::get_important_stack_objects(sa)
-            }
-            TriggerMode::AttackerBlockedOnce { .. } => {
-                super::trigger_attacker_blocked_once::get_important_stack_objects(sa)
-            }
-            TriggerMode::AttackerUnblocked { .. } => {
-                super::trigger_attacker_unblocked::get_important_stack_objects(sa)
-            }
-            TriggerMode::AttackerUnblockedOnce { .. } => {
-                super::trigger_attacker_unblocked_once::get_important_stack_objects(sa)
-            }
-            TriggerMode::AttackersDeclared { .. } => {
-                super::trigger_attackers_declared::get_important_stack_objects(sa)
-            }
-            TriggerMode::Attacks { .. } => super::trigger_attacks::get_important_stack_objects(sa),
-            TriggerMode::BecomeMonarch { .. } => {
-                super::trigger_become_monarch::get_important_stack_objects(sa)
-            }
-            TriggerMode::BecomeMonstrous { .. } => {
-                super::trigger_become_monstrous::get_important_stack_objects(sa)
-            }
-            TriggerMode::BecomeRenowned { .. } => {
-                super::trigger_become_renowned::get_important_stack_objects(sa)
-            }
-            TriggerMode::BecomesCrewed { .. } => {
-                super::trigger_becomes_crewed::get_important_stack_objects(sa)
-            }
-            TriggerMode::BecomesPlotted { .. } => {
-                super::trigger_becomes_plotted::get_important_stack_objects(sa)
-            }
-            TriggerMode::BecomesSaddled { .. } => {
-                super::trigger_becomes_saddled::get_important_stack_objects(sa)
-            }
-            TriggerMode::BecomesTarget { .. } => {
-                super::trigger_becomes_target::get_important_stack_objects(sa)
-            }
-            TriggerMode::BecomesTargetOnce { .. } => {
-                super::trigger_becomes_target_once::get_important_stack_objects(sa)
-            }
-            TriggerMode::BlockersDeclared { .. } => {
-                super::trigger_blockers_declared::get_important_stack_objects(sa)
-            }
-            TriggerMode::Blocks { .. } => super::trigger_blocks::get_important_stack_objects(sa),
-            TriggerMode::CaseSolved { .. } => {
-                super::trigger_case_solved::get_important_stack_objects(sa)
-            }
-            TriggerMode::Championed { .. } => {
-                super::trigger_championed::get_important_stack_objects(sa)
-            }
-            TriggerMode::ChangesController { .. } => {
-                super::trigger_changes_controller::get_important_stack_objects(sa)
-            }
-            TriggerMode::ChangesZone { .. } => {
-                super::trigger_changes_zone::get_important_stack_objects(sa)
-            }
-            TriggerMode::ChangesZoneAll { .. } => {
-                super::trigger_changes_zone_all::get_important_stack_objects(sa)
-            }
-            TriggerMode::ChaosEnsues { .. } => {
-                super::trigger_chaos_ensues::get_important_stack_objects(sa)
-            }
-            TriggerMode::ClaimPrize { .. } => {
-                super::trigger_claim_prize::get_important_stack_objects(sa)
-            }
-            TriggerMode::Clashed { .. } => super::trigger_clashed::get_important_stack_objects(sa),
-            TriggerMode::ClassLevelGained { .. } => {
-                super::trigger_class_level_gained::get_important_stack_objects(sa)
-            }
-            TriggerMode::CollectEvidence { .. } => {
-                super::trigger_collect_evidence::get_important_stack_objects(sa)
-            }
-            TriggerMode::CommitCrime { .. } => {
-                super::trigger_commit_crime::get_important_stack_objects(sa)
-            }
-            TriggerMode::CompletedDungeon { .. } => {
-                super::trigger_completed_dungeon::get_important_stack_objects(sa)
-            }
-            TriggerMode::ConjureAll { .. } => {
-                super::trigger_conjure_all::get_important_stack_objects(sa)
-            }
-            TriggerMode::CounterAdded { .. } => {
-                super::trigger_counter_added::get_important_stack_objects(sa)
-            }
-            TriggerMode::CounterAddedAll { .. } => {
-                super::trigger_counter_added_all::get_important_stack_objects(sa)
-            }
-            TriggerMode::CounterAddedOnce { .. } => {
-                super::trigger_counter_added_once::get_important_stack_objects(sa)
-            }
-            TriggerMode::CounterPlayerAddedAll { .. } => {
-                super::trigger_counter_player_added_all::get_important_stack_objects(sa)
-            }
-            TriggerMode::CounterRemoved { .. } => {
-                super::trigger_counter_removed::get_important_stack_objects(sa)
-            }
-            TriggerMode::CounterRemovedOnce { .. } => {
-                super::trigger_counter_removed_once::get_important_stack_objects(sa)
-            }
-            TriggerMode::CounterTypeAddedAll { .. } => {
-                super::trigger_counter_type_added_all::get_important_stack_objects(sa)
-            }
-            TriggerMode::Countered { .. } => {
-                super::trigger_countered::get_important_stack_objects(sa)
-            }
-            TriggerMode::CrankContraption { .. } => {
-                super::trigger_crank_contraption::get_important_stack_objects(sa)
-            }
-            TriggerMode::CrewedSaddled { .. } => {
-                super::trigger_crewed_saddled::get_important_stack_objects(sa)
-            }
-            TriggerMode::Cycled { .. } => super::trigger_cycled::get_important_stack_objects(sa),
-            TriggerMode::DamageAll { .. } => {
-                super::trigger_damage_all::get_important_stack_objects(sa)
-            }
-            TriggerMode::DamageDealtOnce { .. } => {
-                super::trigger_damage_dealt_once::get_important_stack_objects(sa)
-            }
-            TriggerMode::DamageDone { .. } => {
-                super::trigger_damage_done::get_important_stack_objects(sa)
-            }
-            TriggerMode::DamageDoneOnce { .. } => {
-                super::trigger_damage_done_once::get_important_stack_objects(sa)
-            }
-            TriggerMode::DamageDoneOnceByController { .. } => {
-                super::trigger_damage_done_once_by_controller::get_important_stack_objects(sa)
-            }
-            TriggerMode::DamagePreventedOnce { .. } => {
-                super::trigger_damage_prevented_once::get_important_stack_objects(sa)
-            }
-            TriggerMode::DayTimeChanges => {
-                super::trigger_day_time_changes::get_important_stack_objects(sa)
-            }
-            TriggerMode::Destroyed { .. } => {
-                super::trigger_destroyed::get_important_stack_objects(sa)
-            }
-            TriggerMode::Devoured { .. } => {
-                super::trigger_devoured::get_important_stack_objects(sa)
-            }
-            TriggerMode::Discarded { .. } => {
-                super::trigger_discarded::get_important_stack_objects(sa)
-            }
-            TriggerMode::DiscardedAll { .. } => {
-                super::trigger_discarded_all::get_important_stack_objects(sa)
-            }
-            TriggerMode::Discover { .. } => {
-                super::trigger_discover::get_important_stack_objects(sa)
-            }
-            TriggerMode::Drawn { .. } => super::trigger_drawn::get_important_stack_objects(sa),
-            TriggerMode::Elementalbend { .. } => {
-                super::trigger_elementalbend::get_important_stack_objects(sa)
-            }
-            TriggerMode::Enlisted { .. } => {
-                super::trigger_enlisted::get_important_stack_objects(sa)
-            }
-            TriggerMode::EnteredRoom { .. } => {
-                super::trigger_entered_room::get_important_stack_objects(sa)
-            }
-            TriggerMode::Evolved { .. } => super::trigger_evolved::get_important_stack_objects(sa),
-            TriggerMode::ExcessDamage { .. } => {
-                super::trigger_excess_damage::get_important_stack_objects(sa)
-            }
-            TriggerMode::ExcessDamageAll { .. } => {
-                super::trigger_excess_damage_all::get_important_stack_objects(sa)
-            }
-            TriggerMode::Exerted { .. } => super::trigger_exerted::get_important_stack_objects(sa),
-            TriggerMode::Exiled { .. } => super::trigger_exiled::get_important_stack_objects(sa),
-            TriggerMode::Exploited { .. } => {
-                super::trigger_exploited::get_important_stack_objects(sa)
-            }
-            TriggerMode::Explored { .. } => {
-                super::trigger_explores::get_important_stack_objects(sa)
-            }
-            TriggerMode::Fight { .. } => super::trigger_fight::get_important_stack_objects(sa),
-            TriggerMode::FightOnce { .. } => {
-                super::trigger_fight_once::get_important_stack_objects(sa)
-            }
-            TriggerMode::FlippedCoin { .. } => {
-                super::trigger_flipped_coin::get_important_stack_objects(sa)
-            }
-            TriggerMode::Forage { .. } => super::trigger_forage::get_important_stack_objects(sa),
-            TriggerMode::Foretell { .. } => {
-                super::trigger_foretell::get_important_stack_objects(sa)
-            }
-            TriggerMode::FullyUnlock { .. } => {
-                super::trigger_fully_unlock::get_important_stack_objects(sa)
-            }
-            TriggerMode::GiveGift { .. } => {
-                super::trigger_give_gift::get_important_stack_objects(sa)
-            }
-            TriggerMode::Investigated { .. } => {
-                super::trigger_investigated::get_important_stack_objects(sa)
-            }
-            TriggerMode::LandPlayed { .. } => {
-                super::trigger_land_played::get_important_stack_objects(sa)
-            }
-            TriggerMode::LifeGained { .. } => {
-                super::trigger_life_gained::get_important_stack_objects(sa)
-            }
-            TriggerMode::LifeLost { .. } => {
-                super::trigger_life_lost::get_important_stack_objects(sa)
-            }
-            TriggerMode::LifeLostAll { .. } => {
-                super::trigger_life_lost_all::get_important_stack_objects(sa)
-            }
-            TriggerMode::LosesGame { .. } => {
-                super::trigger_loses_game::get_important_stack_objects(sa)
-            }
-            TriggerMode::ManaAdded { .. } => {
-                super::trigger_mana_added::get_important_stack_objects(sa)
-            }
-            TriggerMode::ManaExpend { .. } => {
-                super::trigger_mana_expend::get_important_stack_objects(sa)
-            }
-            TriggerMode::ManifestDread { .. } => {
-                super::trigger_manifest_dread::get_important_stack_objects(sa)
-            }
-            TriggerMode::Mentored { .. } => {
-                super::trigger_mentored::get_important_stack_objects(sa)
-            }
-            TriggerMode::Milled { .. } => super::trigger_milled::get_important_stack_objects(sa),
-            TriggerMode::MilledAll { .. } => {
-                super::trigger_milled_all::get_important_stack_objects(sa)
-            }
-            TriggerMode::MilledOnce { .. } => {
-                super::trigger_milled_once::get_important_stack_objects(sa)
-            }
-            TriggerMode::Mutates { .. } => super::trigger_mutates::get_important_stack_objects(sa),
-            TriggerMode::NewGame => super::trigger_new_game::get_important_stack_objects(sa),
-            TriggerMode::PayCumulativeUpkeep { .. } => {
-                super::trigger_pay_cumulative_upkeep::get_important_stack_objects(sa)
-            }
-            TriggerMode::PayEcho { .. } => super::trigger_pay_echo::get_important_stack_objects(sa),
-            TriggerMode::PayLife { .. } => super::trigger_pay_life::get_important_stack_objects(sa),
-            TriggerMode::Phase { .. } => super::trigger_phase::get_important_stack_objects(sa),
-            TriggerMode::PhasedIn { .. } => {
-                super::trigger_phase_in::get_important_stack_objects(sa)
-            }
-            TriggerMode::PhasedOut { .. } => {
-                super::trigger_phase_out::get_important_stack_objects(sa)
-            }
-            TriggerMode::PhaseOutAll { .. } => {
-                super::trigger_phase_out_all::get_important_stack_objects(sa)
-            }
-            TriggerMode::PlanarDice { .. } => {
-                super::trigger_planar_dice::get_important_stack_objects(sa)
-            }
-            TriggerMode::PlaneswalkedFrom { .. } => {
-                super::trigger_planeswalked_from::get_important_stack_objects(sa)
-            }
-            TriggerMode::PlaneswalkedTo { .. } => {
-                super::trigger_planeswalked_to::get_important_stack_objects(sa)
-            }
-            TriggerMode::Proliferate { .. } => {
-                super::trigger_proliferate::get_important_stack_objects(sa)
-            }
-            TriggerMode::RingTemptsYou { .. } => {
-                super::trigger_ring_tempts_you::get_important_stack_objects(sa)
-            }
-            TriggerMode::RolledDie { .. } => {
-                super::trigger_rolled_die::get_important_stack_objects(sa)
-            }
-            TriggerMode::RolledDieOnce { .. } => {
-                super::trigger_rolled_die_once::get_important_stack_objects(sa)
-            }
-            TriggerMode::Sacrificed { .. } => {
-                super::trigger_sacrificed::get_important_stack_objects(sa)
-            }
-            TriggerMode::SacrificedOnce { .. } => {
-                super::trigger_sacrificed_once::get_important_stack_objects(sa)
-            }
-            TriggerMode::Scry { .. } => super::trigger_scry::get_important_stack_objects(sa),
-            TriggerMode::SearchedLibrary { .. } => {
-                super::trigger_searched_library::get_important_stack_objects(sa)
-            }
-            TriggerMode::SeekAll { .. } => super::trigger_seek_all::get_important_stack_objects(sa),
-            TriggerMode::SetInMotion { .. } => {
-                super::trigger_set_in_motion::get_important_stack_objects(sa)
-            }
-            TriggerMode::Shuffled { .. } => {
-                super::trigger_shuffled::get_important_stack_objects(sa)
-            }
-            TriggerMode::Specializes { .. } => {
-                super::trigger_specializes::get_important_stack_objects(sa)
-            }
-            TriggerMode::SpellCastOrCopy { .. }
-            | TriggerMode::SpellCast { .. }
-            | TriggerMode::SpellCastAll { .. }
-            | TriggerMode::SpellCastOnce { .. }
-            | TriggerMode::SpellCastOfType { .. }
-            | TriggerMode::AbilityCast { .. }
-            | TriggerMode::SpellAbilityCast { .. }
-            | TriggerMode::SpellCopied { .. }
-            | TriggerMode::SpellCopy { .. }
-            | TriggerMode::SpellAbilityCopy { .. } => {
-                super::trigger_spell_ability_cast_or_copy::get_important_stack_objects(sa)
-            }
-            TriggerMode::Surveil { .. } => super::trigger_surveil::get_important_stack_objects(sa),
-            TriggerMode::TakesInitiative { .. } => {
-                super::trigger_takes_initiative::get_important_stack_objects(sa)
-            }
-            TriggerMode::TapAll { .. } => super::trigger_tap_all::get_important_stack_objects(sa),
-            TriggerMode::Taps { .. } => super::trigger_taps::get_important_stack_objects(sa),
-            TriggerMode::TapsForMana { .. } => {
-                super::trigger_taps_for_mana::get_important_stack_objects(sa)
-            }
-            TriggerMode::TokenCreated { .. } => {
-                super::trigger_token_created::get_important_stack_objects(sa)
-            }
-            TriggerMode::TokenCreatedOnce { .. } => {
-                super::trigger_token_created_once::get_important_stack_objects(sa)
-            }
-            TriggerMode::Trains { .. } => super::trigger_trains::get_important_stack_objects(sa),
-            TriggerMode::Transformed { .. } => {
-                super::trigger_transformed::get_important_stack_objects(sa)
-            }
-            TriggerMode::TurnBegin { .. } => {
-                super::trigger_turn_begin::get_important_stack_objects(sa)
-            }
-            TriggerMode::TurnFaceUp { .. } => {
-                super::trigger_turn_face_up::get_important_stack_objects(sa)
-            }
-            TriggerMode::Unattached { .. } => {
-                super::trigger_unattach::get_important_stack_objects(sa)
-            }
-            TriggerMode::UnlockDoor { .. } => {
-                super::trigger_unlock_door::get_important_stack_objects(sa)
-            }
-            TriggerMode::UntapAll { .. } => {
-                super::trigger_untap_all::get_important_stack_objects(sa)
-            }
-            TriggerMode::Untaps { .. } => super::trigger_untaps::get_important_stack_objects(sa),
-            TriggerMode::VisitAttraction { .. } => {
-                super::trigger_visit_attraction::get_important_stack_objects(sa)
-            }
-            TriggerMode::Vote => super::trigger_vote::get_important_stack_objects(sa),
-            _ => String::new(),
-        }
-    }
-}
 
 pub(crate) fn matches_valid_sa(filter: &str, sa: &crate::spellability::SpellAbility) -> bool {
     let f = filter.trim();
@@ -3634,210 +1296,82 @@ pub fn parse_trigger(raw: &str, next_id: &mut u32) -> Option<Trigger> {
     let params = Params::from_raw(raw);
 
     let mode_str = params.get(keys::MODE)?;
-    let mode = match mode_str {
-        "ChangesZone" => crate::trigger::trigger_changes_zone::parse_mode(&params),
-        "Phase" => crate::trigger::trigger_phase::parse_mode(&params),
+    let mode: Box<dyn TriggerBehavior> = match mode_str {
+        "ChangesZone" => crate::trigger::trigger_changes_zone::TriggerChangesZone::parse(&params),
+        "Phase" => crate::trigger::trigger_phase::TriggerPhase::parse(&params),
         "SpellCast" | "AbilityCast" | "SpellAbilityCast" => {
-            crate::trigger::trigger_spell_ability_cast_or_copy::parse_mode(mode_str, &params)
+            crate::trigger::trigger_spell_ability_cast_or_copy::TriggerSpellAbilityCastOrCopy::parse(mode_str, &params)
         }
-        "Attacks" => crate::trigger::trigger_attacks::parse_mode(&params),
-        "Fight" => {
-            let valid_card = params.get_cloned(keys::VALID_CARD);
-            TriggerMode::Fight { valid_card }
-        }
-        "FightOnce" => {
-            let valid_card = params.get_cloned(keys::VALID_CARD);
-            TriggerMode::FightOnce { valid_card }
-        }
-        "DamageDone" => {
-            let valid_source = params.get_cloned(keys::VALID_SOURCE);
-            let valid_target = params.get_cloned(keys::VALID_TARGET);
-            let combat_damage_only = params.is_true(keys::COMBAT_DAMAGE);
-            TriggerMode::DamageDone {
-                valid_source,
-                valid_target,
-                combat_damage_only,
-            }
-        }
+        "Attacks" => crate::trigger::trigger_attacks::TriggerAttacks::parse(&params),
+        "Fight" => crate::trigger::trigger_fight::TriggerFight::parse(&params),
+        "FightOnce" => crate::trigger::trigger_fight_once::TriggerFightOnce::parse(&params),
+        "DamageDone" => crate::trigger::trigger_damage_done::TriggerDamageDone::parse(&params),
         "Countered" => {
             let valid_card = params.get_cloned(keys::VALID_CARD);
             let valid_cause = params.get_cloned(keys::VALID_CAUSE);
             let valid_sa = params.get_cloned(keys::VALID_SA);
-            TriggerMode::Countered {
-                valid_card,
-                valid_cause,
-                valid_sa,
-            }
+            crate::trigger::trigger_countered::TriggerCountered::parse(valid_card, valid_cause, valid_sa)
         }
-        // ── New trigger modes (issue #19) ──
-        "Blocks" => crate::trigger::trigger_blocks::parse_mode(&params),
-        "AttackerBlocked" => {
-            let valid_card = params.get_cloned(keys::VALID_CARD);
-            TriggerMode::AttackerBlocked { valid_card }
-        }
-        "AttackerUnblocked" => {
-            let valid_card = params.get_cloned(keys::VALID_CARD);
-            TriggerMode::AttackerUnblocked { valid_card }
-        }
-        "LifeGained" => crate::trigger::trigger_life_gained::parse_mode(&params),
-        "LifeLost" => crate::trigger::trigger_life_lost::parse_mode(&params),
-        "CounterAdded" => crate::trigger::trigger_counter_added::parse_mode(&params),
-        "CounterRemoved" => crate::trigger::trigger_counter_removed::parse_mode(&params),
-        "Sacrificed" => crate::trigger::trigger_sacrificed::parse_mode(&params),
-        "Drawn" => crate::trigger::trigger_drawn::parse_mode(&params),
-        "Milled" => {
-            let valid_card = params.get_cloned(keys::VALID_CARD);
-            let valid_player = params.get_cloned(keys::VALID_PLAYER);
-            TriggerMode::Milled {
-                valid_card,
-                valid_player,
-            }
-        }
-        "Taps" => crate::trigger::trigger_taps::parse_mode(&params),
-        "Untaps" => crate::trigger::trigger_untaps::parse_mode(&params),
-        "Transformed" => crate::trigger::trigger_transformed::parse_mode(&params),
-        "TurnFaceUp" => crate::trigger::trigger_turn_face_up::parse_mode(&params),
-        "Attached" => {
-            let valid_card = params.get_cloned(keys::VALID_CARD);
-            TriggerMode::Attached { valid_card }
-        }
-        "Unattached" => {
-            let valid_card = params.get_cloned(keys::VALID_CARD);
-            TriggerMode::Unattached { valid_card }
-        }
-        "LandPlayed" => crate::trigger::trigger_land_played::parse_mode(&params),
-        "BecomesTarget" => crate::trigger::trigger_becomes_target::parse_mode(&params),
-        "TapsForMana" => crate::trigger::trigger_taps_for_mana::parse_mode(&params),
-        "AbilityActivated" => crate::trigger::trigger_ability_activated::parse_mode(&params),
-        "Explored" | "Explores" => crate::trigger::trigger_explores::parse_mode(&params),
-        "BecomeMonstrous" => {
-            let valid_card = params.get_cloned(keys::VALID_CARD);
-            TriggerMode::BecomeMonstrous { valid_card }
-        }
-        "BecomeMonarch" => crate::trigger::trigger_become_monarch::parse_mode(&params),
-        "DamageDealtOnce" => crate::trigger::trigger_damage_dealt_once::parse_mode(&params),
-        "Destroyed" => crate::trigger::trigger_destroyed::parse_mode(&params),
-        "Exiled" => crate::trigger::trigger_exiled::parse_mode(&params),
+        "Blocks" => crate::trigger::trigger_blocks::TriggerBlocks::parse(&params),
+        "AttackerBlocked" => crate::trigger::trigger_attacker_blocked::TriggerAttackerBlocked::parse(&params),
+        "AttackerUnblocked" => crate::trigger::trigger_attacker_unblocked::TriggerAttackerUnblocked::parse(&params),
+        "LifeGained" => crate::trigger::trigger_life_gained::TriggerLifeGained::parse(&params),
+        "LifeLost" => crate::trigger::trigger_life_lost::TriggerLifeLost::parse(&params),
+        "CounterAdded" => crate::trigger::trigger_counter_added::TriggerCounterAdded::parse(&params),
+        "CounterRemoved" => crate::trigger::trigger_counter_removed::TriggerCounterRemoved::parse(&params),
+        "Sacrificed" => crate::trigger::trigger_sacrificed::TriggerSacrificed::parse(&params),
+        "Drawn" => crate::trigger::trigger_drawn::TriggerDrawn::parse(&params),
+        "Milled" => crate::trigger::trigger_milled::TriggerMilled::parse(&params),
+        "Taps" => crate::trigger::trigger_taps::TriggerTaps::parse(&params),
+        "Untaps" => crate::trigger::trigger_untaps::TriggerUntaps::parse(&params),
+        "Transformed" => crate::trigger::trigger_transformed::TriggerTransformed::parse(&params),
+        "TurnFaceUp" => crate::trigger::trigger_turn_face_up::TriggerTurnFaceUp::parse(&params),
+        "Attached" => crate::trigger::trigger_attached::TriggerAttached::parse(&params),
+        "Unattached" => crate::trigger::trigger_unattach::TriggerUnattach::parse(&params),
+        "LandPlayed" => crate::trigger::trigger_land_played::TriggerLandPlayed::parse(&params),
+        "BecomesTarget" => crate::trigger::trigger_becomes_target::TriggerBecomesTarget::parse(&params),
+        "TapsForMana" => crate::trigger::trigger_taps_for_mana::TriggerTapsForMana::parse(&params),
+        "AbilityActivated" => crate::trigger::trigger_ability_activated::TriggerAbilityActivated::parse(&params),
+        "Explored" | "Explores" => crate::trigger::trigger_explores::TriggerExplores::parse(&params),
+        "BecomeMonstrous" => crate::trigger::trigger_become_monstrous::TriggerBecomeMonstrous::parse(&params),
+        "BecomeMonarch" => crate::trigger::trigger_become_monarch::TriggerBecomeMonarch::parse(&params),
+        "DamageDealtOnce" => crate::trigger::trigger_damage_dealt_once::TriggerDamageDealtOnce::parse(&params),
+        "Destroyed" => crate::trigger::trigger_destroyed::TriggerDestroyed::parse(&params),
+        "Exiled" => crate::trigger::trigger_exiled::TriggerExiled::parse(&params),
         "CollectEvidence" => {
             let valid_player = params.get_cloned(keys::VALID_PLAYER);
-            TriggerMode::CollectEvidence { valid_player }
+            crate::trigger::trigger_collect_evidence::TriggerCollectEvidence::parse(valid_player)
         }
-        "Forage" => {
-            let valid_player = params.get_cloned(keys::VALID_PLAYER);
-            TriggerMode::Forage { valid_player }
-        }
-        "Enlisted" => {
-            let valid_card = params.get_cloned(keys::VALID_CARD);
-            let valid_enlisted = params.get_cloned(keys::VALID_ENLISTED);
-            TriggerMode::Enlisted {
-                valid_card,
-                valid_enlisted,
-            }
-        }
-        "FlippedCoin" => {
-            let valid_player = params.get_cloned(keys::VALID_PLAYER);
-            let valid_result = params.get_cloned(keys::VALID_RESULT);
-            TriggerMode::FlippedCoin {
-                valid_player,
-                valid_result,
-            }
-        }
-        "RolledDie" => {
-            let valid_player = params.get_cloned(keys::VALID_PLAYER);
-            let valid_result = params.get_cloned(keys::VALID_RESULT);
-            let valid_sides = params.get_cloned(keys::VALID_SIDES);
-            let number = params.get("Number").and_then(|n| n.parse::<i32>().ok());
-            let natural = params.is_true("Natural");
-            let rolled_to_visit_attractions = params.has("RolledToVisitAttractions");
-            TriggerMode::RolledDie {
-                valid_player,
-                valid_result,
-                valid_sides,
-                number,
-                natural,
-                rolled_to_visit_attractions,
-            }
-        }
-        "RolledDieOnce" => {
-            let valid_player = params.get_cloned(keys::VALID_PLAYER);
-            let valid_result = params.get_cloned(keys::VALID_RESULT);
-            let valid_sides = params.get_cloned(keys::VALID_SIDES);
-            let rolled_to_visit_attractions = params.has("RolledToVisitAttractions");
-            TriggerMode::RolledDieOnce {
-                valid_player,
-                valid_result,
-                valid_sides,
-                rolled_to_visit_attractions,
-            }
-        }
-        "TokenCreated" => crate::trigger::trigger_token_created::parse_mode(&params),
+        "Forage" => crate::trigger::trigger_forage::TriggerForage::parse(&params),
+        "Enlisted" => crate::trigger::trigger_enlisted::TriggerEnlisted::parse(&params),
+        "FlippedCoin" => crate::trigger::trigger_flipped_coin::TriggerFlippedCoin::parse(&params),
+        "RolledDie" => crate::trigger::trigger_rolled_die::TriggerRolledDie::parse(&params),
+        "RolledDieOnce" => crate::trigger::trigger_rolled_die_once::TriggerRolledDieOnce::parse(&params),
+        "TokenCreated" => crate::trigger::trigger_token_created::TriggerTokenCreated::parse(&params),
         "SpellCastOrCopy" | "SpellCopied" | "SpellAbilityCopy" | "SpellCopy" => {
-            crate::trigger::trigger_spell_ability_cast_or_copy::parse_mode(mode_str, &params)
+            crate::trigger::trigger_spell_ability_cast_or_copy::TriggerSpellAbilityCastOrCopy::parse(mode_str, &params)
         }
-        // ── New trigger modes (issue #54) ──
         "AttackersDeclared" | "AttackersDeclaredOneTarget" => {
-            let valid_player = params
-                .get(keys::ATTACKING_PLAYER)
-                .or_else(|| params.get(keys::VALID_PLAYER))
-                .map(|s| s.to_string());
-            let valid_attackers = params.get_cloned(keys::VALID_ATTACKERS);
-            let valid_attackers_amount = params.get_cloned(keys::VALID_ATTACKERS_AMOUNT);
-            let attacked_target = params.get_cloned("AttackedTarget");
-            let one_target = mode_str == "AttackersDeclaredOneTarget";
-            TriggerMode::AttackersDeclared {
-                valid_player,
-                valid_attackers,
-                valid_attackers_amount,
-                attacked_target,
-                one_target,
-            }
+            crate::trigger::trigger_attackers_declared::TriggerAttackersDeclared::parse(mode_str, &params)
         }
-        "BlockersDeclared" => crate::trigger::trigger_blockers_declared::parse_mode(&params),
-        "ChangesZoneAll" => crate::trigger::trigger_changes_zone_all::parse_mode(&params),
+        "BlockersDeclared" => crate::trigger::trigger_blockers_declared::TriggerBlockersDeclared::parse(&params),
+        "ChangesZoneAll" => crate::trigger::trigger_changes_zone_all::TriggerChangesZoneAll::parse(&params),
         "ChangesController" => {
             let valid_card = params.get_cloned(keys::VALID_CARD);
-            TriggerMode::ChangesController { valid_card }
+            crate::trigger::trigger_changes_controller::TriggerChangesController::parse(valid_card)
         }
-        "TurnBegin" | "NewTurn" => {
-            let valid_player = params.get_cloned(keys::VALID_PLAYER);
-            TriggerMode::TurnBegin { valid_player }
-        }
-        "DamageDoneOnce" => {
-            let valid_source = params.get_cloned(keys::VALID_SOURCE);
-            let valid_target = params.get_cloned(keys::VALID_TARGET);
-            let combat_damage_only = params.is_true(keys::COMBAT_DAMAGE);
-            TriggerMode::DamageDoneOnce {
-                valid_source,
-                valid_target,
-                combat_damage_only,
-            }
-        }
-        "DamageDoneOnceByController" => {
-            let valid_source = params.get_cloned(keys::VALID_SOURCE);
-            let valid_target = params.get_cloned(keys::VALID_TARGET);
-            let combat_damage_only = params.is_true(keys::COMBAT_DAMAGE);
-            TriggerMode::DamageDoneOnceByController {
-                valid_source,
-                valid_target,
-                combat_damage_only,
-            }
-        }
+        "TurnBegin" | "NewTurn" => crate::trigger::trigger_turn_begin::TriggerTurnBegin::parse(&params),
+        "DamageDoneOnce" => crate::trigger::trigger_damage_done_once::TriggerDamageDoneOnce::parse(&params),
+        "DamageDoneOnceByController" => crate::trigger::trigger_damage_done_once_by_controller::TriggerDamageDoneOnceByController::parse(&params),
         "SpellCastAll" => {
-            crate::trigger::trigger_spell_ability_cast_or_copy::parse_mode(mode_str, &params)
+            crate::trigger::trigger_spell_ability_cast_or_copy::TriggerSpellAbilityCastOrCopy::parse(mode_str, &params)
         }
-        "LifeLostAll" => {
-            let valid_player = params.get_cloned(keys::VALID_PLAYER);
-            TriggerMode::LifeLostAll { valid_player }
-        }
+        "LifeLostAll" => crate::trigger::trigger_life_lost_all::TriggerLifeLostAll::parse(&params),
         "CounterAddedOnce" => {
             let valid_card = params.get_cloned(keys::VALID_CARD);
             let counter_type = params.get_cloned(keys::COUNTER_TYPE);
             let valid_source = params.get_cloned(keys::VALID_SOURCE);
-            TriggerMode::CounterAddedOnce {
-                valid_card,
-                counter_type,
-                valid_source,
-            }
+            crate::trigger::trigger_counter_added_once::TriggerCounterAddedOnce::parse(valid_card, counter_type, valid_source)
         }
         "CounterAddedAll" => {
             let counter_type = params.get_cloned(keys::COUNTER_TYPE);
@@ -3845,511 +1379,151 @@ pub fn parse_trigger(raw: &str, next_id: &mut u32) -> Option<Trigger> {
                 .get(keys::VALID)
                 .or_else(|| params.get(keys::VALID_CARD))
                 .map(|s| s.to_string());
-            TriggerMode::CounterAddedAll {
-                counter_type,
-                valid,
-            }
+            crate::trigger::trigger_counter_added_all::TriggerCounterAddedAll::parse(counter_type, valid)
         }
         "CounterPlayerAddedAll" => {
             let valid_source = params.get_cloned("ValidSource");
             let valid_object = params.get_cloned("ValidObject");
             let valid_object_to_source = params.get_cloned("ValidObjectToSource");
-            TriggerMode::CounterPlayerAddedAll {
-                valid_source,
-                valid_object,
-                valid_object_to_source,
-            }
+            crate::trigger::trigger_counter_player_added_all::TriggerCounterPlayerAddedAll::parse(valid_source, valid_object, valid_object_to_source)
         }
         "CounterTypeAddedAll" => {
             let valid_object = params.get_cloned("ValidObject");
             let first_time_only = params.has("FirstTime");
-            TriggerMode::CounterTypeAddedAll {
-                valid_object,
-                first_time_only,
-            }
+            crate::trigger::trigger_counter_type_added_all::TriggerCounterTypeAddedAll::parse(valid_object, first_time_only)
         }
-        "DiscardedAll" => {
-            let valid_card = params.get_cloned(keys::VALID_CARD);
-            let valid_player = params.get_cloned(keys::VALID_PLAYER);
-            TriggerMode::DiscardedAll {
-                valid_card,
-                valid_player,
-            }
-        }
-        "Discarded" => {
-            let valid_card = params.get_cloned(keys::VALID_CARD);
-            let valid_player = params.get_cloned(keys::VALID_PLAYER);
-            let valid_cause = params.get_cloned(keys::VALID_CAUSE);
-            TriggerMode::Discarded {
-                valid_card,
-                valid_player,
-                valid_cause,
-            }
-        }
-        "SacrificedOnce" => {
-            let valid_card = params.get_cloned(keys::VALID_CARD);
-            let valid_player = params.get_cloned(keys::VALID_PLAYER);
-            TriggerMode::SacrificedOnce {
-                valid_card,
-                valid_player,
-            }
-        }
-        "Cycled" | "Cycling" => {
-            let valid_card = params.get_cloned(keys::VALID_CARD);
-            let valid_player = params.get_cloned(keys::VALID_PLAYER);
-            TriggerMode::Cycled {
-                valid_card,
-                valid_player,
-            }
-        }
-        "PhasedIn" | "PhaseIn" => {
-            let valid_card = params.get_cloned(keys::VALID_CARD);
-            TriggerMode::PhasedIn { valid_card }
-        }
-        "PhasedOut" | "PhaseOut" => {
-            let valid_card = params.get_cloned(keys::VALID_CARD);
-            TriggerMode::PhasedOut { valid_card }
-        }
-        "Always" => TriggerMode::Always,
-        "Immediate" => TriggerMode::Immediate,
-        "Surveil" => {
-            let valid_player = params.get_cloned(keys::VALID_PLAYER);
-            TriggerMode::Surveil { valid_player }
-        }
-        "Scry" => {
-            let valid_player = params.get_cloned(keys::VALID_PLAYER);
-            TriggerMode::Scry { valid_player }
-        }
-        "Foretell" | "Foretold" => {
-            let valid_card = params.get_cloned(keys::VALID_CARD);
-            TriggerMode::Foretell { valid_card }
-        }
-        "SearchedLibrary" => {
-            let valid_player = params.get_cloned(keys::VALID_PLAYER);
-            TriggerMode::SearchedLibrary { valid_player }
-        }
-        "Shuffled" => {
-            let valid_player = params.get_cloned(keys::VALID_PLAYER);
-            TriggerMode::Shuffled { valid_player }
-        }
-        "ManaAdded" => {
-            let valid_source = params.get_cloned("ValidSource");
-            let valid_sa = params.get_cloned(keys::VALID_SA);
-            let player = params.get_cloned(keys::PLAYER);
-            let produced = params.get_cloned(keys::PRODUCED);
-            TriggerMode::ManaAdded {
-                valid_source,
-                valid_sa,
-                player,
-                produced,
-            }
-        }
-        "TokenCreatedOnce" => {
-            let valid_card = params
-                .get("ValidToken")
-                .or_else(|| params.get(keys::VALID_CARD))
-                .map(|s| s.to_string());
-            let only_first = params.get_cloned("OnlyFirst");
-            TriggerMode::TokenCreatedOnce {
-                valid_card,
-                only_first,
-            }
-        }
-        "TapAll" => {
-            let valid_card = params.get_cloned(keys::VALID_CARD);
-            TriggerMode::TapAll { valid_card }
-        }
-        "UntapAll" => {
-            let valid_card = params.get_cloned(keys::VALID_CARD);
-            TriggerMode::UntapAll { valid_card }
-        }
-        "BecomesTargetOnce" => {
-            let valid_card = params.get_cloned(keys::VALID_CARD);
-            TriggerMode::BecomesTargetOnce { valid_card }
-        }
-        "AttackerBlockedByCreature" => {
-            let valid_card = params.get_cloned(keys::VALID_CARD);
-            let valid_blocked = params.get_cloned(keys::VALID_BLOCKED);
-            TriggerMode::AttackerBlockedByCreature {
-                valid_card,
-                valid_blocked,
-            }
-        }
-        "AttackerBlockedOnce" => {
-            let valid_card = params.get_cloned(keys::VALID_CARD);
-            TriggerMode::AttackerBlockedOnce { valid_card }
-        }
-        "AttackerUnblockedOnce" => {
-            let valid_card = params.get_cloned(keys::VALID_CARD);
-            TriggerMode::AttackerUnblockedOnce { valid_card }
-        }
+        "DiscardedAll" => crate::trigger::trigger_discarded_all::TriggerDiscardedAll::parse(&params),
+        "Discarded" => crate::trigger::trigger_discarded::TriggerDiscarded::parse(&params),
+        "SacrificedOnce" => crate::trigger::trigger_sacrificed_once::TriggerSacrificedOnce::parse(&params),
+        "Cycled" | "Cycling" => crate::trigger::trigger_cycled::TriggerCycled::parse(&params),
+        "PhasedIn" | "PhaseIn" => crate::trigger::trigger_phase_in::TriggerPhaseIn::parse(&params),
+        "PhasedOut" | "PhaseOut" => crate::trigger::trigger_phase_out::TriggerPhaseOut::parse(&params),
+        "Always" => crate::trigger::trigger_always::TriggerAlways::parse(&params),
+        "Immediate" => crate::trigger::trigger_immediate::TriggerImmediate::parse(&params),
+        "Surveil" => crate::trigger::trigger_surveil::TriggerSurveil::parse(&params),
+        "Scry" => crate::trigger::trigger_scry::TriggerScry::parse(&params),
+        "Foretell" | "Foretold" => crate::trigger::trigger_foretell::TriggerForetell::parse(&params),
+        "SearchedLibrary" => crate::trigger::trigger_searched_library::TriggerSearchedLibrary::parse(&params),
+        "Shuffled" => crate::trigger::trigger_shuffled::TriggerShuffled::parse(&params),
+        "ManaAdded" => crate::trigger::trigger_mana_added::TriggerManaAdded::parse(&params),
+        "TokenCreatedOnce" => crate::trigger::trigger_token_created_once::TriggerTokenCreatedOnce::parse(&params),
+        "TapAll" => crate::trigger::trigger_tap_all::TriggerTapAll::parse(&params),
+        "UntapAll" => crate::trigger::trigger_untap_all::TriggerUntapAll::parse(&params),
+        "BecomesTargetOnce" => crate::trigger::trigger_becomes_target_once::TriggerBecomesTargetOnce::parse(&params),
+        "AttackerBlockedByCreature" => crate::trigger::trigger_attacker_blocked_by_creature::TriggerAttackerBlockedByCreature::parse(&params),
+        "AttackerBlockedOnce" => crate::trigger::trigger_attacker_blocked_once::TriggerAttackerBlockedOnce::parse(&params),
+        "AttackerUnblockedOnce" => crate::trigger::trigger_attacker_unblocked_once::TriggerAttackerUnblockedOnce::parse(&params),
         "SpellCastOnce" | "SpellCastOfType" => {
-            crate::trigger::trigger_spell_ability_cast_or_copy::parse_mode(mode_str, &params)
+            crate::trigger::trigger_spell_ability_cast_or_copy::TriggerSpellAbilityCastOrCopy::parse(mode_str, &params)
         }
-        "DamageAll" => {
-            let valid_source = params.get_cloned(keys::VALID_SOURCE);
-            let valid_target = params.get_cloned(keys::VALID_TARGET);
-            TriggerMode::DamageAll {
-                valid_source,
-                valid_target,
-            }
-        }
-        "DamagePreventedOnce" => {
-            let valid_card = params.get_cloned(keys::VALID_CARD);
-            TriggerMode::DamagePreventedOnce { valid_card }
-        }
-        "ExcessDamage" => {
-            let valid_source = params.get_cloned(keys::VALID_SOURCE);
-            let valid_target = params.get_cloned(keys::VALID_TARGET);
-            TriggerMode::ExcessDamage {
-                valid_source,
-                valid_target,
-            }
-        }
-        "ExcessDamageAll" => {
-            let valid_target = params.get_cloned(keys::VALID_TARGET);
-            let combat_damage_only = params.is_true(keys::COMBAT_DAMAGE);
-            TriggerMode::ExcessDamageAll {
-                valid_target,
-                combat_damage_only,
-            }
-        }
+        "DamageAll" => crate::trigger::trigger_damage_all::TriggerDamageAll::parse(&params),
+        "DamagePreventedOnce" => crate::trigger::trigger_damage_prevented_once::TriggerDamagePreventedOnce::parse(&params),
+        "ExcessDamage" => crate::trigger::trigger_excess_damage::TriggerExcessDamage::parse(&params),
+        "ExcessDamageAll" => crate::trigger::trigger_excess_damage_all::TriggerExcessDamageAll::parse(&params),
         "CounterRemovedOnce" => {
             let valid_card = params.get_cloned(keys::VALID_CARD);
             let counter_type = params.get_cloned(keys::COUNTER_TYPE);
-            TriggerMode::CounterRemovedOnce {
-                valid_card,
-                counter_type,
-            }
+            crate::trigger::trigger_counter_removed_once::TriggerCounterRemovedOnce::parse(valid_card, counter_type)
         }
-        "Exerted" => {
-            let valid_card = params.get_cloned(keys::VALID_CARD);
-            TriggerMode::Exerted { valid_card }
-        }
-        "ManaExpend" => {
-            let valid_player = params.get_cloned(keys::PLAYER);
-            let amount = params.as_i32(keys::AMOUNT).unwrap_or(1);
-            TriggerMode::ManaExpend {
-                valid_player,
-                amount,
-            }
-        }
-        "Mutates" => {
-            let valid_card = params.get_cloned(keys::VALID_CARD);
-            TriggerMode::Mutates { valid_card }
-        }
-        "SetInMotion" => {
-            let valid_card = params.get_cloned(keys::VALID_CARD);
-            TriggerMode::SetInMotion { valid_card }
-        }
+        "Exerted" => crate::trigger::trigger_exerted::TriggerExerted::parse(&params),
+        "ManaExpend" => crate::trigger::trigger_mana_expend::TriggerManaExpend::parse(&params),
+        "Mutates" => crate::trigger::trigger_mutates::TriggerMutates::parse(&params),
+        "SetInMotion" => crate::trigger::trigger_set_in_motion::TriggerSetInMotion::parse(&params),
         "CaseSolved" => {
             let valid_card = params.get_cloned(keys::VALID_CARD);
             let valid_player = params.get_cloned(keys::VALID_PLAYER);
-            TriggerMode::CaseSolved {
-                valid_card,
-                valid_player,
-            }
+            crate::trigger::trigger_case_solved::TriggerCaseSolved::parse(valid_card, valid_player)
         }
         "ClaimPrize" => {
             let valid_player = params.get_cloned(keys::VALID_PLAYER);
             let valid_card = params.get_cloned(keys::VALID_CARD);
-            TriggerMode::ClaimPrize {
-                valid_player,
-                valid_card,
-            }
+            crate::trigger::trigger_claim_prize::TriggerClaimPrize::parse(valid_player, valid_card)
         }
-        "TakesInitiative" | "TakeInitiative" => {
-            let valid_player = params.get_cloned(keys::VALID_PLAYER);
-            TriggerMode::TakesInitiative { valid_player }
-        }
-        "Adapt" => {
-            let valid_card = params.get_cloned(keys::VALID_CARD);
-            TriggerMode::Adapt { valid_card }
-        }
-        "BecomeRenowned" => {
-            let valid_card = params.get_cloned(keys::VALID_CARD);
-            TriggerMode::BecomeRenowned { valid_card }
-        }
-        "Evolved" => {
-            let valid_card = params.get_cloned(keys::VALID_CARD);
-            TriggerMode::Evolved { valid_card }
-        }
-        "BecomesPlotted" => {
-            let valid_card = params.get_cloned(keys::VALID_CARD);
-            TriggerMode::BecomesPlotted { valid_card }
-        }
-        "Investigated" => {
-            let valid_player = params.get_cloned(keys::VALID_PLAYER);
-            let first_time_only = params.has("FirstTime");
-            TriggerMode::Investigated {
-                valid_player,
-                first_time_only,
-            }
-        }
-        "Proliferate" => {
-            let valid_player = params.get_cloned(keys::VALID_PLAYER);
-            TriggerMode::Proliferate { valid_player }
-        }
+        "TakesInitiative" | "TakeInitiative" => crate::trigger::trigger_takes_initiative::TriggerTakesInitiative::parse(&params),
+        "Adapt" => crate::trigger::trigger_adapt::TriggerAdapt::parse(&params),
+        "BecomeRenowned" => crate::trigger::trigger_become_renowned::TriggerBecomeRenowned::parse(&params),
+        "Evolved" => crate::trigger::trigger_evolved::TriggerEvolved::parse(&params),
+        "BecomesPlotted" => crate::trigger::trigger_becomes_plotted::TriggerBecomesPlotted::parse(&params),
+        "Investigated" => crate::trigger::trigger_investigated::TriggerInvestigated::parse(&params),
+        "Proliferate" => crate::trigger::trigger_proliferate::TriggerProliferate::parse(&params),
         "CompletedDungeon" | "DungeonCompleted" => {
             let valid_player = params.get_cloned(keys::VALID_PLAYER);
-            TriggerMode::CompletedDungeon { valid_player }
+            crate::trigger::trigger_completed_dungeon::TriggerCompletedDungeon::parse(valid_player)
         }
         "CommitCrime" => {
             let valid_player = params.get_cloned(keys::VALID_PLAYER);
-            TriggerMode::CommitCrime { valid_player }
+            crate::trigger::trigger_commit_crime::TriggerCommitCrime::parse(valid_player)
         }
-        "GiveGift" => {
-            let valid_player = params.get_cloned(keys::VALID_PLAYER);
-            TriggerMode::GiveGift { valid_player }
-        }
-        "RingTemptsYou" => {
-            let valid_player = params.get_cloned(keys::VALID_PLAYER);
-            let valid_card = params.get_cloned(keys::VALID_CARD);
-            TriggerMode::RingTemptsYou {
-                valid_player,
-                valid_card,
-            }
-        }
-        "PayLife" => {
-            let valid_player = params.get_cloned(keys::VALID_PLAYER);
-            TriggerMode::PayLife { valid_player }
-        }
-        "PayEcho" => {
-            let valid_card = params.get_cloned(keys::VALID_CARD);
-            let paid = params.get("Paid").map(|v| v.eq_ignore_ascii_case("true"));
-            TriggerMode::PayEcho { valid_card, paid }
-        }
+        "GiveGift" => crate::trigger::trigger_give_gift::TriggerGiveGift::parse(&params),
+        "RingTemptsYou" => crate::trigger::trigger_ring_tempts_you::TriggerRingTemptsYou::parse(&params),
+        "PayLife" => crate::trigger::trigger_pay_life::TriggerPayLife::parse(&params),
+        "PayEcho" => crate::trigger::trigger_pay_echo::TriggerPayEcho::parse(&params),
         "ClassLevelGained" => {
             let valid_card = params.get_cloned(keys::VALID_CARD);
             let class_level = params.as_i32("ClassLevel");
-            TriggerMode::ClassLevelGained {
-                valid_card,
-                class_level,
-            }
+            crate::trigger::trigger_class_level_gained::TriggerClassLevelGained::parse(valid_card, class_level)
         }
-        "NewGame" => crate::trigger::trigger_new_game::parse_mode(&params),
-        "DayTimeChanges" => TriggerMode::DayTimeChanges,
-        "LosesGame" => {
-            let valid_player = params.get_cloned(keys::VALID_PLAYER);
-            TriggerMode::LosesGame { valid_player }
-        }
-        "Discover" => {
-            let valid_player = params.get_cloned(keys::VALID_PLAYER);
-            TriggerMode::Discover { valid_player }
-        }
+        "NewGame" => crate::trigger::trigger_new_game::TriggerNewGame::parse(&params),
+        "DayTimeChanges" => crate::trigger::trigger_day_time_changes::TriggerDayTimeChanges::parse(&params),
+        "LosesGame" => crate::trigger::trigger_loses_game::TriggerLosesGame::parse(&params),
+        "Discover" => crate::trigger::trigger_discover::TriggerDiscover::parse(&params),
         "Elementalbend" | "ElementalBend" | "Airbend" | "Earthbend" | "Firebend" | "Waterbend" => {
-            let valid_player = params.get_cloned(keys::VALID_PLAYER);
-            TriggerMode::Elementalbend { valid_player }
+            crate::trigger::trigger_elementalbend::TriggerElementalbend::parse(&params)
         }
-        "PlanarDice" => {
-            let valid_player = params.get_cloned(keys::VALID_PLAYER);
-            let result = params.get_cloned("Result");
-            TriggerMode::PlanarDice {
-                valid_player,
-                result,
-            }
-        }
-        "PhaseOutAll" => {
-            let valid_cards = params
-                .get(keys::VALID_CARDS)
-                .or_else(|| params.get(keys::VALID_CARD))
-                .map(|s| s.to_string());
-            TriggerMode::PhaseOutAll { valid_cards }
-        }
-        "VisitAttraction" => {
-            let valid_player = params.get_cloned(keys::VALID_PLAYER);
-            let valid_card = params.get_cloned(keys::VALID_CARD);
-            TriggerMode::VisitAttraction {
-                valid_player,
-                valid_card,
-            }
-        }
-        "EnteredRoom" | "RoomEntered" => {
-            let valid_card = params.get_cloned(keys::VALID_CARD);
-            let valid_room = params.get_cloned("ValidRoom");
-            TriggerMode::EnteredRoom {
-                valid_card,
-                valid_room,
-            }
-        }
-        "MilledAll" => {
-            let valid_card = params.get_cloned(keys::VALID_CARD);
-            TriggerMode::MilledAll { valid_card }
-        }
-        "MilledOnce" => {
-            let valid_card = params.get_cloned(keys::VALID_CARD);
-            let valid_player = params.get_cloned(keys::VALID_PLAYER);
-            TriggerMode::MilledOnce {
-                valid_card,
-                valid_player,
-            }
-        }
-        "Abandoned" => crate::trigger::trigger_abandoned::parse_mode(&params),
-        "ManifestDread" => {
-            let valid_player = params.get_cloned(keys::VALID_PLAYER);
-            TriggerMode::ManifestDread { valid_player }
-        }
-        "Specializes" => {
-            let valid_card = params.get_cloned(keys::VALID_CARD);
-            TriggerMode::Specializes { valid_card }
-        }
-        "Trains" => {
-            let valid_card = params.get_cloned(keys::VALID_CARD);
-            TriggerMode::Trains { valid_card }
-        }
-        "Devoured" => {
-            let valid_card = params
-                .get("ValidDevoured")
-                .or_else(|| params.get(keys::VALID_CARD))
-                .map(|s| s.to_string());
-            TriggerMode::Devoured { valid_card }
-        }
+        "PlanarDice" => crate::trigger::trigger_planar_dice::TriggerPlanarDice::parse(&params),
+        "PhaseOutAll" => crate::trigger::trigger_phase_out_all::TriggerPhaseOutAll::parse(&params),
+        "VisitAttraction" => crate::trigger::trigger_visit_attraction::TriggerVisitAttraction::parse(&params),
+        "EnteredRoom" | "RoomEntered" => crate::trigger::trigger_entered_room::TriggerEnteredRoom::parse(&params),
+        "MilledAll" => crate::trigger::trigger_milled_all::TriggerMilledAll::parse(&params),
+        "MilledOnce" => crate::trigger::trigger_milled_once::TriggerMilledOnce::parse(&params),
+        "Abandoned" => crate::trigger::trigger_abandoned::TriggerAbandoned::parse(&params),
+        "ManifestDread" => crate::trigger::trigger_manifest_dread::TriggerManifestDread::parse(&params),
+        "Specializes" => crate::trigger::trigger_specializes::TriggerSpecializes::parse(&params),
+        "Trains" => crate::trigger::trigger_trains::TriggerTrains::parse(&params),
+        "Devoured" => crate::trigger::trigger_devoured::TriggerDevoured::parse(&params),
         "ConjureAll" => {
             let valid_player = params.get_cloned(keys::VALID_PLAYER);
             let valid_card = params.get_cloned(keys::VALID_CARD);
-            TriggerMode::ConjureAll {
-                valid_player,
-                valid_card,
-            }
+            crate::trigger::trigger_conjure_all::TriggerConjureAll::parse(valid_player, valid_card)
         }
-        "SeekAll" => {
-            let valid_player = params.get_cloned(keys::VALID_PLAYER);
-            TriggerMode::SeekAll { valid_player }
-        }
-        "BecomesCrewed" => {
-            let valid_card = params.get_cloned(keys::VALID_CARD);
-            let valid_crew = params.get_cloned("ValidCrew");
-            let first_time_crewed = params.has("FirstTimeCrewed");
-            let valid_crew_amount = params.get_cloned("ValidCrewAmount");
-            TriggerMode::BecomesCrewed {
-                valid_card,
-                valid_crew,
-                first_time_crewed,
-                valid_crew_amount,
-            }
-        }
+        "SeekAll" => crate::trigger::trigger_seek_all::TriggerSeekAll::parse(&params),
+        "BecomesCrewed" => crate::trigger::trigger_becomes_crewed::TriggerBecomesCrewed::parse(&params),
         "Championed" => {
             let valid_card = params
                 .get("ValidCard")
                 .or_else(|| params.get("ValidChampioned"))
                 .map(|s| s.to_string());
             let valid_source = params.get("ValidSource").map(|s| s.to_string());
-            TriggerMode::Championed {
-                valid_card,
-                valid_source,
-            }
+            crate::trigger::trigger_championed::TriggerChampioned::parse(valid_card, valid_source)
         }
         "Clashed" => {
             let valid_player = params.get_cloned(keys::VALID_PLAYER);
             let won = params.get("Won").map(|v| v.eq_ignore_ascii_case("True"));
-            TriggerMode::Clashed { valid_player, won }
+            crate::trigger::trigger_clashed::TriggerClashed::parse(valid_player, won)
         }
-        "Mentored" => {
-            let valid_card = params.get_cloned(keys::VALID_CARD);
-            let valid_source = params.get_cloned("ValidSource");
-            TriggerMode::Mentored {
-                valid_card,
-                valid_source,
-            }
-        }
-        "FullyUnlock" => crate::trigger::trigger_fully_unlock::parse_mode(&params),
-        "AbilityResolves" => {
-            let valid_spell_ability = params.get_cloned("ValidSpellAbility");
-            let valid_source = params.get_cloned("ValidSource");
-            TriggerMode::AbilityResolves {
-                valid_spell_ability,
-                valid_source,
-            }
-        }
-        "AbilityTriggered" => {
-            let valid_mode = params.get_cloned("ValidMode");
-            let valid_destination = params.get_cloned("ValidDestination");
-            let valid_spell_ability = params.get_cloned("ValidSpellAbility");
-            let valid_source = params.get_cloned("ValidSource");
-            let valid_cause = params.get_cloned("ValidCause");
-            let triggered_own_ability = params.has("TriggeredOwnAbility");
-            TriggerMode::AbilityTriggered {
-                valid_mode,
-                valid_destination,
-                valid_spell_ability,
-                valid_source,
-                valid_cause,
-                triggered_own_ability,
-            }
-        }
-        "UnlockDoor" => crate::trigger::trigger_unlock_door::parse_mode(&params),
-        "Vote" => crate::trigger::trigger_vote::parse_mode(&params),
-        "PlaneswalkedFrom" => {
-            let valid_card = params
-                .get(keys::VALID_CARDS)
-                .or_else(|| params.get(keys::VALID_CARD))
-                .map(|s| s.to_string());
-            TriggerMode::PlaneswalkedFrom { valid_card }
-        }
-        "PlaneswalkedTo" => {
-            let valid_card = params
-                .get(keys::VALID_CARDS)
-                .or_else(|| params.get(keys::VALID_CARD))
-                .map(|s| s.to_string());
-            TriggerMode::PlaneswalkedTo { valid_card }
-        }
-        "Planeswalk" => {
-            let valid_card = params
-                .get(keys::VALID_CARDS)
-                .or_else(|| params.get(keys::VALID_CARD))
-                .map(|s| s.to_string());
-            TriggerMode::PlaneswalkedTo { valid_card }
-        }
-        "CrankContraption" | "CrankAdvanced" => {
-            let valid_card = params.get_cloned(keys::VALID_CARD);
-            let valid_player = params.get_cloned(keys::VALID_PLAYER);
-            TriggerMode::CrankContraption {
-                valid_card,
-                valid_player,
-            }
-        }
-        "PayCumulativeUpkeep" => {
-            let valid_card = params.get_cloned(keys::VALID_CARD);
-            let paid = params.get("Paid").map(|v| v.eq_ignore_ascii_case("true"));
-            TriggerMode::PayCumulativeUpkeep { valid_card, paid }
-        }
+        "Mentored" => crate::trigger::trigger_mentored::TriggerMentored::parse(&params),
+        "FullyUnlock" => crate::trigger::trigger_fully_unlock::TriggerFullyUnlock::parse(&params),
+        "AbilityResolves" => crate::trigger::trigger_ability_resolves::TriggerAbilityResolves::parse(&params),
+        "AbilityTriggered" => crate::trigger::trigger_ability_triggered::TriggerAbilityTriggered::parse(&params),
+        "UnlockDoor" => crate::trigger::trigger_unlock_door::TriggerUnlockDoor::parse(&params),
+        "Vote" => crate::trigger::trigger_vote::TriggerVote::parse(&params),
+        "PlaneswalkedFrom" => crate::trigger::trigger_planeswalked_from::TriggerPlaneswalkedFrom::parse(&params),
+        "PlaneswalkedTo" | "Planeswalk" => crate::trigger::trigger_planeswalked_to::TriggerPlaneswalkedTo::parse(&params),
+        "CrankContraption" | "CrankAdvanced" => crate::trigger::trigger_crank_contraption::TriggerCrankContraption::parse(&params),
+        "PayCumulativeUpkeep" => crate::trigger::trigger_pay_cumulative_upkeep::TriggerPayCumulativeUpkeep::parse(&params),
         "ChaosEnsues" => {
             let valid_player = params.get_cloned(keys::VALID_PLAYER);
-            TriggerMode::ChaosEnsues { valid_player }
+            crate::trigger::trigger_chaos_ensues::TriggerChaosEnsues::parse(valid_player)
         }
-        "BecomesSaddled" => {
-            let valid_saddled = params.get_cloned("ValidSaddled");
-            let first_time_saddled = params.has("FirstTimeSaddled");
-            TriggerMode::BecomesSaddled {
-                valid_saddled,
-                first_time_saddled,
-            }
-        }
-        "Crewed" | "Saddled" | "Stationed" => {
-            let valid_card = params.get_cloned(keys::VALID_CARD);
-            let valid_crew = params
-                .get("ValidCrew")
-                .or_else(|| params.get("ValidSaddled"))
-                .map(|s| s.to_string());
-            TriggerMode::CrewedSaddled {
-                valid_card,
-                valid_crew,
-            }
-        }
-        "Unattach" => {
-            let valid_card = params.get_cloned(keys::VALID_CARD);
-            TriggerMode::Unattached { valid_card }
-        }
-        "Exploited" => {
-            let valid_card = params.get_cloned(keys::VALID_CARD);
-            let valid_source = params.get_cloned(keys::VALID_SOURCE);
-            TriggerMode::Exploited {
-                valid_card,
-                valid_source,
-            }
-        }
+        "BecomesSaddled" => crate::trigger::trigger_becomes_saddled::TriggerBecomesSaddled::parse(&params),
+        "Crewed" | "Saddled" | "Stationed" => crate::trigger::trigger_crewed_saddled::TriggerCrewedSaddled::parse(&params),
+        "Unattach" => crate::trigger::trigger_unattach::TriggerUnattach::parse(&params),
+        "Exploited" => crate::trigger::trigger_exploited::TriggerExploited::parse(&params),
         _ => return None,
     };
+
+    let optional = params.has(keys::OPTIONAL_DECIDER);
+    let static_trigger = params.has("Static");
 
     // Parse active zones (default: Battlefield)
     let mut active_zones = params
@@ -4365,8 +1539,8 @@ pub fn parse_trigger(raw: &str, next_id: &mut u32) -> Option<Trigger> {
     // the stack entry. In Rust, add Stack to active zones so the trigger is
     // registered when the card is being cast.
     if matches!(
-        mode,
-        TriggerMode::SpellCast { .. } | TriggerMode::SpellCastOrCopy { .. }
+        mode.trigger_type(),
+        TriggerType::SpellCast | TriggerType::SpellCastOrCopy
     ) {
         let valid_card_is_self = params
             .get(keys::VALID_CARD)
@@ -4377,27 +1551,68 @@ pub fn parse_trigger(raw: &str, next_id: &mut u32) -> Option<Trigger> {
         }
     }
 
+    if !params.has(keys::TRIGGER_ZONES) && mode.trigger_type() == TriggerType::ChangesZone {
+        if let Some(valid_card) = params.get(keys::VALID_CARD) {
+            let leaves_battlefield = params
+                .get(keys::ORIGIN)
+                .map(|origin| origin.split(',').any(|z| z.trim() == "Battlefield"))
+                .unwrap_or(false);
+            if leaves_battlefield && !static_trigger {
+                active_zones = vec![ZoneType::Battlefield];
+            }
+
+            let self_trigger = valid_card.contains("Self");
+            let any_origin = params
+                .get(keys::ORIGIN)
+                .map(|origin| origin.eq_ignore_ascii_case("Any"))
+                .unwrap_or(true);
+            if self_trigger && any_origin {
+                if let Some(destinations) = params.get(keys::DESTINATION) {
+                    let zones = destinations
+                        .split(',')
+                        .filter_map(|z| parse_zone(z.trim()))
+                        .collect::<Vec<_>>();
+                    if !zones.is_empty() {
+                        active_zones = zones;
+                    }
+                }
+            }
+        }
+    }
+
     let execute = params.get_cloned(keys::EXECUTE).unwrap_or_default();
     let description = params
         .get_cloned(keys::TRIGGER_DESCRIPTION)
         .unwrap_or_default();
-    let optional = params.has(keys::OPTIONAL_DECIDER);
-    let static_trigger = params.has("Static");
+    let valid_phases = params.get(keys::PHASE).map(|phase_text| {
+        phase_text
+            .split(',')
+            .filter_map(|token| parse_phase(token.trim()))
+            .collect::<Vec<_>>()
+    });
 
     let id = *next_id;
     *next_id += 1;
 
+    let mut base = TriggerReplacementBase::default();
+    base.card_trait_base.set_id(id as i32);
+    base.card_trait_base.set_intrinsic(true);
+    base.valid_host_zones = Some(active_zones);
+
+    let kind = mode.trigger_type();
     Some(Trigger {
         id,
+        base,
+        kind,
         mode,
         params,
-        active_zones,
         execute,
         optional,
         description,
-        intrinsic: true,
         static_trigger,
         trigger_remembered: Vec::new(),
+        valid_phases,
+        spawning_ability: None,
     })
 }
 
@@ -4430,694 +1645,6 @@ mod tests {
 
         assert_eq!(trigger.id, 0);
         assert_eq!(trigger.execute, "TrigDraw");
-        assert!(matches!(
-            trigger.mode,
-            TriggerMode::ChangesZone {
-                origin: None,
-                destination: Some(ZoneType::Battlefield),
-                ..
-            }
-        ));
-        assert_eq!(trigger.active_zones, vec![ZoneType::Battlefield]);
-    }
-
-    #[test]
-    fn parse_trigger_spell_cast() {
-        let mut next_id = 0;
-        let trigger = parse_trigger(
-            "Mode$ SpellCast | ValidCard$ Instant,Sorcery | ValidActivatingPlayer$ You | Execute$ TrigDmg | TriggerDescription$ Whenever you cast an instant or sorcery spell, deal 2 damage.",
-            &mut next_id,
-        ).unwrap();
-
-        assert!(matches!(trigger.mode, TriggerMode::SpellCast { .. }));
-        assert_eq!(trigger.execute, "TrigDmg");
-    }
-
-    #[test]
-    fn parse_trigger_ability_cast_is_distinct_mode() {
-        let mut next_id = 0;
-        let trigger = parse_trigger(
-            "Mode$ AbilityCast | ValidCard$ Card.Self | Execute$ TrigAbility",
-            &mut next_id,
-        )
-        .unwrap();
-        assert!(matches!(trigger.mode, TriggerMode::AbilityCast { .. }));
-    }
-
-    #[test]
-    fn parse_trigger_spell_ability_cast_is_distinct_mode() {
-        let mut next_id = 0;
-        let trigger = parse_trigger(
-            "Mode$ SpellAbilityCast | ValidCard$ Instant | Execute$ TrigSpellAbility",
-            &mut next_id,
-        )
-        .unwrap();
-        assert!(matches!(trigger.mode, TriggerMode::SpellAbilityCast { .. }));
-    }
-
-    #[test]
-    fn parse_trigger_spell_copy_family_modes_are_distinct() {
-        let mut next_id = 0;
-        let t_spell_copy = parse_trigger(
-            "Mode$ SpellCopy | ValidCard$ Instant | Execute$ TrigCopy",
-            &mut next_id,
-        )
-        .unwrap();
-        let t_sa_copy = parse_trigger(
-            "Mode$ SpellAbilityCopy | ValidCard$ Instant | Execute$ TrigSACopy",
-            &mut next_id,
-        )
-        .unwrap();
-        let t_cast_or_copy = parse_trigger(
-            "Mode$ SpellCastOrCopy | ValidCard$ Instant | Execute$ TrigBoth",
-            &mut next_id,
-        )
-        .unwrap();
-        assert!(matches!(t_spell_copy.mode, TriggerMode::SpellCopy { .. }));
-        assert!(matches!(
-            t_sa_copy.mode,
-            TriggerMode::SpellAbilityCopy { .. }
-        ));
-        assert!(matches!(
-            t_cast_or_copy.mode,
-            TriggerMode::SpellCastOrCopy { .. }
-        ));
-    }
-
-    #[test]
-    fn parse_trigger_phase() {
-        let mut next_id = 0;
-        let trigger = parse_trigger(
-            "Mode$ Phase | Phase$ Upkeep | ValidPlayer$ You | Execute$ TrigUpkeep | TriggerDescription$ At the beginning of your upkeep.",
-            &mut next_id,
-        ).unwrap();
-
-        assert!(matches!(
-            trigger.mode,
-            TriggerMode::Phase {
-                phase: Some(PhaseType::Upkeep),
-                ..
-            }
-        ));
-    }
-
-    #[test]
-    fn parse_trigger_other_creature_etb() {
-        let mut next_id = 0;
-        let trigger = parse_trigger(
-            "Mode$ ChangesZone | Destination$ Battlefield | ValidCard$ Creature.Other | Execute$ TrigGain | TriggerDescription$ Whenever another creature enters the battlefield, gain 1 life.",
-            &mut next_id,
-        ).unwrap();
-
-        assert!(matches!(
-            trigger.mode,
-            TriggerMode::ChangesZone {
-                origin: None,
-                destination: Some(ZoneType::Battlefield),
-                ..
-            }
-        ));
-
-        if let TriggerMode::ChangesZone { valid_card, .. } = &trigger.mode {
-            assert_eq!(valid_card.as_deref(), Some("Creature.Other"));
-        }
-    }
-
-    // ── Tests for new trigger types (issue #19) ──
-
-    #[test]
-    fn parse_trigger_attacks() {
-        let mut id = 0;
-        let t = parse_trigger(
-            "Mode$ Attacks | ValidCard$ Creature.Self | Execute$ TrigAtk | TriggerDescription$ When this creature attacks.",
-            &mut id,
-        ).unwrap();
-        assert!(matches!(t.mode, TriggerMode::Attacks { .. }));
-        if let TriggerMode::Attacks { valid_card, alone } = &t.mode {
-            assert_eq!(valid_card.as_deref(), Some("Creature.Self"));
-            assert!(!alone);
-        }
-    }
-
-    #[test]
-    fn parse_trigger_fight() {
-        let mut id = 0;
-        let t = parse_trigger(
-            "Mode$ Fight | ValidCard$ Creature.Self | Execute$ TrigFight",
-            &mut id,
-        )
-        .unwrap();
-        assert!(matches!(t.mode, TriggerMode::Fight { .. }));
-        if let TriggerMode::Fight { valid_card } = &t.mode {
-            assert_eq!(valid_card.as_deref(), Some("Creature.Self"));
-        }
-    }
-
-    #[test]
-    fn parse_trigger_fight_once() {
-        let mut id = 0;
-        let t = parse_trigger(
-            "Mode$ FightOnce | ValidCard$ Creature.YouCtrl | Execute$ TrigFight",
-            &mut id,
-        )
-        .unwrap();
-        assert!(matches!(t.mode, TriggerMode::FightOnce { .. }));
-        if let TriggerMode::FightOnce { valid_card } = &t.mode {
-            assert_eq!(valid_card.as_deref(), Some("Creature.YouCtrl"));
-        }
-    }
-
-    #[test]
-    fn parse_trigger_damage_done() {
-        let mut id = 0;
-        let t = parse_trigger(
-            "Mode$ DamageDone | ValidSource$ Creature.Self | CombatDamage$ True | Execute$ TrigDmg",
-            &mut id,
-        )
-        .unwrap();
-        if let TriggerMode::DamageDone {
-            valid_source,
-            combat_damage_only,
-            ..
-        } = &t.mode
-        {
-            assert_eq!(valid_source.as_deref(), Some("Creature.Self"));
-            assert!(*combat_damage_only);
-        } else {
-            panic!("Expected DamageDone mode");
-        }
-    }
-
-    #[test]
-    fn damage_done_player_populates_target_trigger_objects() {
-        let mut sa = SpellAbility::new_simple(None, PlayerId(0), "");
-        add_common_trigger_objects(
-            &mut sa,
-            &RunParams {
-                damage_source: Some(CardId(1)),
-                damage_target_player: Some(PlayerId(1)),
-                ..Default::default()
-            },
-        );
-
-        assert_eq!(
-            sa.trigger_objects.get("Target").map(String::as_str),
-            Some("1")
-        );
-        assert_eq!(
-            sa.trigger_objects.get("TargetPlayer").map(String::as_str),
-            Some("1")
-        );
-    }
-
-    #[test]
-    fn damage_done_card_populates_target_trigger_objects() {
-        let mut sa = SpellAbility::new_simple(None, PlayerId(0), "");
-        add_common_trigger_objects(
-            &mut sa,
-            &RunParams {
-                damage_source: Some(CardId(1)),
-                damage_target_card: Some(CardId(7)),
-                ..Default::default()
-            },
-        );
-
-        assert_eq!(
-            sa.trigger_objects.get("Target").map(String::as_str),
-            Some("7")
-        );
-        assert_eq!(
-            sa.trigger_objects.get("TargetCard").map(String::as_str),
-            Some("7")
-        );
-    }
-
-    #[test]
-    fn parse_trigger_blocks() {
-        let mut id = 0;
-        let t = parse_trigger(
-            "Mode$ Blocks | ValidCard$ Creature.Self | ValidBlocked$ Creature | Execute$ TrigBlock",
-            &mut id,
-        )
-        .unwrap();
-        if let TriggerMode::Blocks {
-            valid_card,
-            valid_blocked,
-        } = &t.mode
-        {
-            assert_eq!(valid_card.as_deref(), Some("Creature.Self"));
-            assert_eq!(valid_blocked.as_deref(), Some("Creature"));
-        } else {
-            panic!("Expected Blocks mode");
-        }
-    }
-
-    #[test]
-    fn parse_trigger_attacker_blocked() {
-        let mut id = 0;
-        let t = parse_trigger(
-            "Mode$ AttackerBlocked | ValidCard$ Creature.Self | Execute$ TrigBlocked",
-            &mut id,
-        )
-        .unwrap();
-        assert!(matches!(t.mode, TriggerMode::AttackerBlocked { .. }));
-    }
-
-    #[test]
-    fn parse_trigger_attacker_unblocked() {
-        let mut id = 0;
-        let t = parse_trigger(
-            "Mode$ AttackerUnblocked | ValidCard$ Creature.Self | Execute$ TrigUnblocked",
-            &mut id,
-        )
-        .unwrap();
-        assert!(matches!(t.mode, TriggerMode::AttackerUnblocked { .. }));
-    }
-
-    #[test]
-    fn parse_trigger_life_gained() {
-        let mut id = 0;
-        let t = parse_trigger(
-            "Mode$ LifeGained | ValidPlayer$ You | Execute$ TrigGain | TriggerDescription$ Whenever you gain life.",
-            &mut id,
-        ).unwrap();
-        if let TriggerMode::LifeGained { valid_player, .. } = &t.mode {
-            assert_eq!(valid_player.as_deref(), Some("You"));
-        } else {
-            panic!("Expected LifeGained mode");
-        }
-    }
-
-    #[test]
-    fn parse_trigger_life_lost() {
-        let mut id = 0;
-        let t = parse_trigger(
-            "Mode$ LifeLost | ValidPlayer$ Opponent | Execute$ TrigLost",
-            &mut id,
-        )
-        .unwrap();
-        if let TriggerMode::LifeLost { valid_player, .. } = &t.mode {
-            assert_eq!(valid_player.as_deref(), Some("Opponent"));
-        } else {
-            panic!("Expected LifeLost mode");
-        }
-    }
-
-    #[test]
-    fn parse_trigger_counter_added() {
-        let mut id = 0;
-        let t = parse_trigger(
-            "Mode$ CounterAdded | ValidCard$ Card.Self | CounterType$ P1P1 | Execute$ TrigCounter",
-            &mut id,
-        )
-        .unwrap();
-        if let TriggerMode::CounterAdded {
-            valid_card,
-            counter_type,
-        } = &t.mode
-        {
-            assert_eq!(valid_card.as_deref(), Some("Card.Self"));
-            assert_eq!(counter_type.as_deref(), Some("P1P1"));
-        } else {
-            panic!("Expected CounterAdded mode");
-        }
-    }
-
-    #[test]
-    fn parse_trigger_counter_removed() {
-        let mut id = 0;
-        let t = parse_trigger(
-            "Mode$ CounterRemoved | ValidCard$ Creature | CounterType$ M1M1 | Execute$ TrigRemove",
-            &mut id,
-        )
-        .unwrap();
-        if let TriggerMode::CounterRemoved {
-            valid_card,
-            counter_type,
-        } = &t.mode
-        {
-            assert_eq!(valid_card.as_deref(), Some("Creature"));
-            assert_eq!(counter_type.as_deref(), Some("M1M1"));
-        } else {
-            panic!("Expected CounterRemoved mode");
-        }
-    }
-
-    #[test]
-    fn parse_trigger_sacrificed() {
-        let mut id = 0;
-        let t = parse_trigger(
-            "Mode$ Sacrificed | ValidCard$ Creature | ValidPlayer$ You | Execute$ TrigSac",
-            &mut id,
-        )
-        .unwrap();
-        if let TriggerMode::Sacrificed {
-            valid_card,
-            valid_player,
-        } = &t.mode
-        {
-            assert_eq!(valid_card.as_deref(), Some("Creature"));
-            assert_eq!(valid_player.as_deref(), Some("You"));
-        } else {
-            panic!("Expected Sacrificed mode");
-        }
-    }
-
-    #[test]
-    fn parse_trigger_drawn() {
-        let mut id = 0;
-        let t = parse_trigger(
-            "Mode$ Drawn | ValidPlayer$ You | Execute$ TrigDraw | TriggerDescription$ Whenever you draw a card.",
-            &mut id,
-        ).unwrap();
-        if let TriggerMode::Drawn { valid_player, .. } = &t.mode {
-            assert_eq!(valid_player.as_deref(), Some("You"));
-        } else {
-            panic!("Expected Drawn mode");
-        }
-    }
-
-    #[test]
-    fn parse_trigger_milled() {
-        let mut id = 0;
-        let t = parse_trigger(
-            "Mode$ Milled | ValidCard$ Card | ValidPlayer$ Opponent | Execute$ TrigMill",
-            &mut id,
-        )
-        .unwrap();
-        if let TriggerMode::Milled {
-            valid_card,
-            valid_player,
-        } = &t.mode
-        {
-            assert_eq!(valid_card.as_deref(), Some("Card"));
-            assert_eq!(valid_player.as_deref(), Some("Opponent"));
-        } else {
-            panic!("Expected Milled mode");
-        }
-    }
-
-    #[test]
-    fn parse_trigger_taps() {
-        let mut id = 0;
-        let t = parse_trigger(
-            "Mode$ Taps | ValidCard$ Creature | Execute$ TrigTap",
-            &mut id,
-        )
-        .unwrap();
-        assert!(matches!(t.mode, TriggerMode::Taps { .. }));
-    }
-
-    #[test]
-    fn parse_trigger_untaps() {
-        let mut id = 0;
-        let t = parse_trigger(
-            "Mode$ Untaps | ValidCard$ Creature.Self | Execute$ TrigUntap",
-            &mut id,
-        )
-        .unwrap();
-        assert!(matches!(t.mode, TriggerMode::Untaps { .. }));
-    }
-
-    #[test]
-    fn parse_trigger_transformed() {
-        let mut id = 0;
-        let t = parse_trigger(
-            "Mode$ Transformed | ValidCard$ Card.Self | Execute$ TrigTransform",
-            &mut id,
-        )
-        .unwrap();
-        assert!(matches!(t.mode, TriggerMode::Transformed { .. }));
-    }
-
-    #[test]
-    fn parse_trigger_attached() {
-        let mut id = 0;
-        let t = parse_trigger(
-            "Mode$ Attached | ValidCard$ Card.Self | Execute$ TrigAttach",
-            &mut id,
-        )
-        .unwrap();
-        assert!(matches!(t.mode, TriggerMode::Attached { .. }));
-    }
-
-    #[test]
-    fn parse_trigger_unattached() {
-        let mut id = 0;
-        let t = parse_trigger(
-            "Mode$ Unattached | ValidCard$ Card.Self | Execute$ TrigDetach",
-            &mut id,
-        )
-        .unwrap();
-        assert!(matches!(t.mode, TriggerMode::Unattached { .. }));
-    }
-
-    #[test]
-    fn parse_trigger_land_played() {
-        let mut id = 0;
-        let t = parse_trigger(
-            "Mode$ LandPlayed | ValidCard$ Land.YouCtrl | Execute$ TrigLandfall | TriggerDescription$ Landfall.",
-            &mut id,
-        ).unwrap();
-        if let TriggerMode::LandPlayed { valid_card } = &t.mode {
-            assert_eq!(valid_card.as_deref(), Some("Land.YouCtrl"));
-        } else {
-            panic!("Expected LandPlayed mode");
-        }
-    }
-
-    #[test]
-    fn parse_trigger_becomes_target() {
-        let mut id = 0;
-        let t = parse_trigger(
-            "Mode$ BecomesTarget | ValidSource$ Spell | ValidTarget$ Creature.Self | Execute$ TrigTarget",
-            &mut id,
-        )
-        .unwrap();
-        assert!(matches!(t.mode, TriggerMode::BecomesTarget { .. }));
-    }
-
-    #[test]
-    fn parse_trigger_taps_for_mana() {
-        let mut id = 0;
-        let t = parse_trigger(
-            "Mode$ TapsForMana | ValidCard$ Land | Execute$ TrigMana | TriggerDescription$ Whenever a land is tapped for mana.",
-            &mut id,
-        ).unwrap();
-        if let TriggerMode::TapsForMana { valid_card, .. } = &t.mode {
-            assert_eq!(valid_card.as_deref(), Some("Land"));
-        } else {
-            panic!("Expected TapsForMana mode");
-        }
-    }
-
-    #[test]
-    fn parse_trigger_ability_activated() {
-        let mut id = 0;
-        let t = parse_trigger(
-            "Mode$ AbilityActivated | ValidCard$ Creature | ValidActivatingPlayer$ You | Execute$ TrigAct",
-            &mut id,
-        ).unwrap();
-        if let TriggerMode::AbilityActivated {
-            valid_card,
-            valid_activating_player,
-        } = &t.mode
-        {
-            assert_eq!(valid_card.as_deref(), Some("Creature"));
-            assert_eq!(valid_activating_player.as_deref(), Some("You"));
-        } else {
-            panic!("Expected AbilityActivated mode");
-        }
-    }
-
-    #[test]
-    fn parse_trigger_explored() {
-        let mut id = 0;
-        let t = parse_trigger(
-            "Mode$ Explores | ValidCard$ Creature.Self | ValidExplored$ Land | Execute$ TrigExplore",
-            &mut id,
-        )
-        .unwrap();
-        if let TriggerMode::Explored {
-            valid_card,
-            valid_explored,
-        } = &t.mode
-        {
-            assert_eq!(valid_card.as_deref(), Some("Creature.Self"));
-            assert_eq!(valid_explored.as_deref(), Some("Land"));
-        } else {
-            panic!("Expected Explored mode");
-        }
-    }
-
-    #[test]
-    fn parse_trigger_become_monarch() {
-        let mut id = 0;
-        let t = parse_trigger(
-            "Mode$ BecomeMonarch | ValidPlayer$ You | Execute$ TrigMonarch",
-            &mut id,
-        )
-        .unwrap();
-        if let TriggerMode::BecomeMonarch { valid_player } = &t.mode {
-            assert_eq!(valid_player.as_deref(), Some("You"));
-        } else {
-            panic!("Expected BecomeMonarch mode");
-        }
-    }
-
-    #[test]
-    fn parse_trigger_damage_dealt_once() {
-        let mut id = 0;
-        let t = parse_trigger(
-            "Mode$ DamageDealtOnce | ValidSource$ Creature.Self | CombatDamage$ True | Execute$ TrigOnce",
-            &mut id,
-        ).unwrap();
-        if let TriggerMode::DamageDealtOnce {
-            valid_source,
-            combat_damage_only,
-            ..
-        } = &t.mode
-        {
-            assert_eq!(valid_source.as_deref(), Some("Creature.Self"));
-            assert!(*combat_damage_only);
-        } else {
-            panic!("Expected DamageDealtOnce mode");
-        }
-    }
-
-    #[test]
-    fn parse_trigger_destroyed() {
-        let mut id = 0;
-        let t = parse_trigger(
-            "Mode$ Destroyed | ValidCard$ Creature | ValidCauser$ Card.Self | Execute$ TrigDestroy",
-            &mut id,
-        )
-        .unwrap();
-        if let TriggerMode::Destroyed {
-            valid_card,
-            valid_causer,
-        } = &t.mode
-        {
-            assert_eq!(valid_card.as_deref(), Some("Creature"));
-            assert_eq!(valid_causer.as_deref(), Some("Card.Self"));
-        } else {
-            panic!("Expected Destroyed mode");
-        }
-    }
-
-    #[test]
-    fn parse_trigger_static_flag() {
-        let mut id = 0;
-        let t = parse_trigger(
-            "Mode$ TurnFaceUp | ValidCard$ Card.Self | Static$ True | Execute$ TrigStatic",
-            &mut id,
-        )
-        .unwrap();
-        assert!(t.is_static());
-    }
-
-    #[test]
-    fn parse_trigger_exiled() {
-        let mut id = 0;
-        let t = parse_trigger(
-            "Mode$ Exiled | ValidCard$ Card | Execute$ TrigExile",
-            &mut id,
-        )
-        .unwrap();
-        assert!(matches!(t.mode, TriggerMode::Exiled { .. }));
-    }
-
-    #[test]
-    fn parse_trigger_token_created() {
-        let mut id = 0;
-        let t = parse_trigger(
-            "Mode$ TokenCreated | ValidCard$ Creature | Execute$ TrigToken",
-            &mut id,
-        )
-        .unwrap();
-        assert!(matches!(t.mode, TriggerMode::TokenCreated { .. }));
-    }
-
-    #[test]
-    fn parse_trigger_optional_decider() {
-        let mut id = 0;
-        let t = parse_trigger(
-            "Mode$ ChangesZone | Destination$ Battlefield | ValidCard$ Creature.Other | OptionalDecider$ You | Execute$ TrigMay | TriggerDescription$ May draw.",
-            &mut id,
-        ).unwrap();
-        assert!(t.optional);
-        assert_eq!(t.description, "May draw.");
-    }
-
-    #[test]
-    fn parse_trigger_countered() {
-        let mut id = 0;
-        let t = parse_trigger(
-            "Mode$ Countered | ValidCard$ Card | Execute$ TrigCountered",
-            &mut id,
-        )
-        .unwrap();
-        assert!(matches!(t.mode, TriggerMode::Countered { .. }));
-    }
-
-    #[test]
-    fn parse_trigger_custom_zones() {
-        let mut id = 0;
-        let t = parse_trigger(
-            "Mode$ Drawn | ValidPlayer$ You | Execute$ TrigDraw | TriggerZones$ Battlefield,Graveyard",
-            &mut id,
-        ).unwrap();
-        assert_eq!(
-            t.active_zones,
-            vec![ZoneType::Battlefield, ZoneType::Graveyard]
-        );
-    }
-
-    #[test]
-    fn damage_target_player_enchanted_by_matches_attached_player() {
-        let mut game = GameState::new(&["A", "B"], 20);
-        let p0 = PlayerId(0);
-        let p1 = PlayerId(1);
-        let aura_id = game.create_card(Card::new(
-            CardId(1),
-            "Grievous Wound".to_string(),
-            p0,
-            CardTypeLine::parse("Enchantment Aura"),
-            ManaCost::parse(""),
-            ColorSet::COLORLESS,
-            None,
-            None,
-            vec![],
-            vec![],
-        ));
-        game.card_mut(aura_id).zone = ZoneType::Battlefield;
-        game.attach_to_player(aura_id, p1);
-
-        assert!(check_damage_target(
-            &Some("Player.EnchantedBy".to_string()),
-            &RunParams {
-                damage_target_player: Some(p1),
-                damage_amount: Some(1),
-                is_combat_damage: Some(true),
-                ..Default::default()
-            },
-            aura_id,
-            p0,
-            &game,
-            true,
-        ));
-        assert!(!check_damage_target(
-            &Some("Player.EnchantedBy".to_string()),
-            &RunParams {
-                damage_target_player: Some(p0),
-                damage_amount: Some(1),
-                is_combat_damage: Some(true),
-                ..Default::default()
-            },
-            aura_id,
-            p0,
-            &game,
-            true,
-        ));
+        assert_eq!(trigger.kind, TriggerType::ChangesZone);
     }
 }

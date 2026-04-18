@@ -1,60 +1,83 @@
-use super::trigger::{check_card_filter, check_player_filter, matches_valid_card, TriggerMode};
-use crate::{
-    event::RunParams,
-    game::GameState,
-    ids::{CardId, PlayerId},
-    spellability::SpellAbility,
-};
+use serde::{Deserialize, Serialize};
 
-pub fn perform_test(
-    mode: &TriggerMode,
-    params: &RunParams,
-    game: &GameState,
-    host_card: CardId,
-    host_controller: PlayerId,
-) -> bool {
-    let TriggerMode::Discarded {
-        valid_card,
-        valid_player,
-        valid_cause,
-    } = mode
-    else {
-        panic!("Expected Discarded mode");
-    };
+use crate::event::{RunParams, TriggerType};
+use crate::game::GameState;
+use crate::parsing::{keys, Params};
+use crate::spellability::SpellAbility;
 
-    if !check_card_filter(valid_card, params.card, host_card, host_controller, game) {
-        return false;
+use super::trigger::{check_card_filter, check_player_filter, matches_valid_card, TriggerBehavior};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TriggerDiscarded {
+    pub valid_card: Option<String>,
+    pub valid_player: Option<String>,
+    pub valid_cause: Option<String>,
+}
+
+impl TriggerDiscarded {
+    pub fn parse(params: &Params) -> Box<dyn TriggerBehavior> {
+        Box::new(Self {
+            valid_card: params.get_cloned(keys::VALID_CARD),
+            valid_player: params.get_cloned(keys::VALID_PLAYER),
+            valid_cause: params.get_cloned(keys::VALID_CAUSE),
+        })
     }
-    if !check_player_filter(valid_player, params.player, host_controller) {
-        return false;
+}
+
+#[typetag::serde]
+impl TriggerBehavior for TriggerDiscarded {
+    fn trigger_type(&self) -> TriggerType {
+        TriggerType::Discarded
     }
-    if let Some(filter) = valid_cause {
-        let Some(cause_sa) = params.cause.as_ref() else {
-            return false;
-        };
-        let Some(cause_card) = cause_sa.source else {
-            return false;
-        };
-        if !matches_valid_card(filter, cause_card, host_card, host_controller, game) {
+
+    fn perform_test(
+        &self,
+        trigger: &super::trigger::Trigger,
+        params: &RunParams,
+        game: &GameState,
+    ) -> bool {
+        let host_card = trigger.base.card_trait_base.get_host_card().id;
+        let host_controller = trigger.base.card_trait_base.get_host_card().controller;
+        if !check_card_filter(&self.valid_card, params.card, host_card, host_controller, game) {
             return false;
         }
+        if !check_player_filter(&self.valid_player, params.player, host_controller) {
+            return false;
+        }
+        if let Some(filter) = self.valid_cause.as_ref() {
+            let Some(cause_sa) = params.cause.as_ref() else {
+                return false;
+            };
+            let Some(cause_card) = cause_sa.source else {
+                return false;
+            };
+            if !matches_valid_card(filter, cause_card, host_card, host_controller, game) {
+                return false;
+            }
+        }
+        true
     }
-    true
-}
 
-pub fn set_triggering_objects(sa: &mut SpellAbility, params: &RunParams) {
-    // Java: sa.setTriggeringObjectsFrom(runParams, AbilityKey.Card, AbilityKey.Cause);
-    if let Some(card) = params.card {
-        sa.add_triggering_object("Card", &card.0.to_string());
+    fn set_triggering_objects(
+        &self,
+        _trigger: &super::trigger::Trigger,
+        sa: &mut SpellAbility,
+        params: &RunParams,
+        _game: &GameState,
+    ) {
+        // Java: sa.setTriggeringObjectsFrom(runParams, AbilityKey.Card, AbilityKey.Cause);
+        if let Some(card) = params.card {
+            sa.set_triggering_object("Card", &card.0.to_string());
+        }
+        // TODO: AbilityKey.Cause is a SpellAbility in Java, cannot be stored as String easily
     }
-    // TODO: AbilityKey.Cause is a SpellAbility in Java, cannot be stored as String easily
-}
 
-pub fn get_important_stack_objects(sa: &SpellAbility) -> String {
-    // Java: "Discarded: " + Card + ", Cause: " + Cause
-    format!(
-        "Discarded: {}, Cause: {}",
-        sa.get_triggering_object("Card").unwrap_or_default(),
-        sa.get_triggering_object("Cause").unwrap_or_default()
-    )
+    fn get_important_stack_objects(&self, _trigger: &super::trigger::Trigger, sa: &SpellAbility) -> String {
+        // Java: "Discarded: " + Card + ", Cause: " + Cause
+        format!(
+            "Discarded: {}, Cause: {}",
+            sa.get_triggering_object("Card").unwrap_or_default(),
+            sa.get_triggering_object("Cause").unwrap_or_default()
+        )
+    }
 }

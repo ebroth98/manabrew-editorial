@@ -1,41 +1,65 @@
-use crate::{
-    event::RunParams,
-    game::GameState,
-    ids::{CardId, PlayerId},
-    spellability::SpellAbility,
-};
+use serde::{Deserialize, Serialize};
 
-use super::trigger::{check_card_filter, TriggerMode};
+use crate::event::{RunParams, TriggerType};
+use crate::game::GameState;
+use crate::parsing::{keys, Params};
+use crate::spellability::SpellAbility;
 
-pub fn perform_test(
-    mode: &TriggerMode,
-    params: &RunParams,
-    game: &GameState,
-    host_card: CardId,
-    host_controller: PlayerId,
-) -> bool {
-    if let TriggerMode::DamagePreventedOnce { valid_card } = mode {
-        return check_card_filter(valid_card, params.card, host_card, host_controller, game);
-    }
-    panic!("Expected DamagePreventedOnce mode");
+use super::trigger::{check_card_filter, TriggerBehavior};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TriggerDamagePreventedOnce {
+    pub valid_card: Option<String>,
 }
 
-pub fn set_triggering_objects(sa: &mut SpellAbility, params: &RunParams) {
-    if let Some(card) = params.damage_target_card {
-        sa.add_triggering_object("Target", &card.0.to_string());
-    } else if let Some(player) = params.damage_target_player {
-        sa.add_triggering_object("Target", &player.0.to_string());
-    }
-    if let Some(amount) = params.damage_amount {
-        sa.add_triggering_object("DamageAmount", &amount.to_string());
+impl TriggerDamagePreventedOnce {
+    pub fn parse(params: &Params) -> Box<dyn TriggerBehavior> {
+        Box::new(Self {
+            valid_card: params.get_cloned(keys::VALID_CARD),
+        })
     }
 }
 
-pub fn get_important_stack_objects(sa: &SpellAbility) -> String {
-    // Java: "Damage Target: " + Target + ", Amount: " + DamageAmount
-    format!(
-        "Damage Target: {}, Amount: {}",
-        sa.get_triggering_object("Target").unwrap_or(""),
-        sa.get_triggering_object("DamageAmount").unwrap_or("")
-    )
+#[typetag::serde]
+impl TriggerBehavior for TriggerDamagePreventedOnce {
+    fn trigger_type(&self) -> TriggerType {
+        TriggerType::DamagePreventedOnce
+    }
+
+    fn perform_test(
+        &self,
+        trigger: &super::trigger::Trigger,
+        params: &RunParams,
+        game: &GameState,
+    ) -> bool {
+        let host_card = trigger.base.card_trait_base.get_host_card().id;
+        let host_controller = trigger.base.card_trait_base.get_host_card().controller;
+        check_card_filter(&self.valid_card, params.card, host_card, host_controller, game)
+    }
+
+    fn set_triggering_objects(
+        &self,
+        _trigger: &super::trigger::Trigger,
+        sa: &mut SpellAbility,
+        params: &RunParams,
+        _game: &GameState,
+    ) {
+        if let Some(card) = params.damage_target_card {
+            sa.set_triggering_object("Target", &card.0.to_string());
+        } else if let Some(player) = params.damage_target_player {
+            sa.set_triggering_object("Target", &player.0.to_string());
+        }
+        if let Some(amount) = params.damage_amount {
+            sa.set_triggering_object("DamageAmount", &amount.to_string());
+        }
+    }
+
+    fn get_important_stack_objects(&self, _trigger: &super::trigger::Trigger, sa: &SpellAbility) -> String {
+        // Java: "Damage Target: " + Target + ", Amount: " + DamageAmount
+        format!(
+            "Damage Target: {}, Amount: {}",
+            sa.get_triggering_object("Target").unwrap_or(""),
+            sa.get_triggering_object("DamageAmount").unwrap_or("")
+        )
+    }
 }

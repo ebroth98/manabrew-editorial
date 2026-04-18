@@ -251,6 +251,10 @@ impl GameState {
         // Reset state on zone change
         match dest_zone {
             ZoneType::Battlefield => {
+                // A permanent enters under the destination player's control.
+                // This must be updated before ETB-trigger registration so
+                // triggered abilities inherit the correct controller.
+                self.cards[card_id.index()].controller = dest_owner;
                 self.cards[card_id.index()].enter_battlefield();
                 if replacement_marked_etb_tapped {
                     self.cards[card_id.index()].set_tapped(true);

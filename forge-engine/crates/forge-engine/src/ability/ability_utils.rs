@@ -238,13 +238,17 @@ pub fn resolve_defined_player_with_sa(
             .and_then(|src| game.card(src).remembered_players.first().copied()),
         "TriggeredPlayer" | "Targeted" | "TargetedPlayer" => sa
             .target_chosen
-            .target_player
+            .all_target_players()
+            .into_iter()
+            .next()
             .or_else(|| parse_player_object(sa, "Player")),
-        "ParentTarget" => sa.target_chosen.target_player,
-        "ThisTargetedPlayer" => sa.target_chosen.target_player,
+        "ParentTarget" => sa.target_chosen.all_target_players().into_iter().next(),
+        "ThisTargetedPlayer" => sa.target_chosen.all_target_players().into_iter().next(),
         "TargetedOrController" => sa
             .target_chosen
-            .target_player
+            .all_target_players()
+            .into_iter()
+            .next()
             .or_else(|| targeted_controller_players(sa, game).into_iter().next()),
         "TriggeredTarget" | "TriggeredTargets" => {
             if let Some(player) = parse_player_object(sa, "TargetPlayer") {
@@ -346,20 +350,18 @@ pub fn resolve_defined_players_with_sa(
             .unwrap_or_default(),
         "TriggeredPlayer" | "Targeted" | "TargetedPlayer" => {
             let mut players = Vec::new();
-            for player in sa
-                .target_chosen
-                .target_player
-                .into_iter()
-                .chain(parse_player_objects(sa, "Player"))
-            {
+            for player in sa.target_chosen.all_target_players() {
+                push_unique_player(&mut players, player);
+            }
+            for player in parse_player_objects(sa, "Player") {
                 push_unique_player(&mut players, player);
             }
             players
         }
-        "ParentTarget" => sa.target_chosen.target_player.into_iter().collect(),
-        "ThisTargetedPlayer" => sa.target_chosen.target_player.into_iter().collect(),
+        "ParentTarget" => sa.target_chosen.all_target_players(),
+        "ThisTargetedPlayer" => sa.target_chosen.all_target_players(),
         "TargetedOrController" => {
-            let mut players: Vec<_> = sa.target_chosen.target_player.into_iter().collect();
+            let mut players = sa.target_chosen.all_target_players();
             for player in targeted_controller_players(sa, game) {
                 push_unique_player(&mut players, player);
             }
@@ -900,6 +902,12 @@ pub fn matches_change_type(
 
     for &qualifier in &parts[1..] {
         match qualifier {
+            q if q.starts_with("named") => {
+                let expected = q[5..].replace(';', ",").replace('_', " ");
+                if !card.card_name.eq_ignore_ascii_case(&expected) {
+                    return false;
+                }
+            }
             fc::BASIC => {
                 if !card.type_line.is_basic() {
                     return false;

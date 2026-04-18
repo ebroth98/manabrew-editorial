@@ -9,7 +9,7 @@ use crate::ids::{CardId, PlayerId};
 use crate::parsing::compare::compare_expr;
 use crate::parsing::keys;
 use crate::spellability::{build_spell_ability, StackEntry};
-use crate::trigger::{parse_trigger, Trigger, TriggerMode};
+use crate::trigger::{parse_trigger, Trigger};
 
 /// An active trigger reference — (card_id, trigger_index) pair.
 /// In Java this is a direct Trigger object reference. In Rust,
@@ -32,7 +32,8 @@ struct TriggerWaiting {
 #[derive(Debug, Clone)]
 pub struct DelayedTrigger {
     pub mode: TriggerType,
-    pub trigger_mode: TriggerMode,
+    pub trigger_mode: Box<dyn crate::trigger::TriggerBehavior>,
+    pub params: crate::parsing::Params,
     pub execute_svar: String,
     pub controller: PlayerId,
     pub source_card: CardId,
@@ -52,6 +53,29 @@ pub struct DelayedTrigger {
     pub remembered_cards: Vec<CardId>,
     /// Snapshot of remembered cards for delayed-trigger `RememberedLKI` lookups.
     pub remembered_lki_cards: Vec<CardId>,
+}
+
+impl DelayedTrigger {
+    /// Build a temporary `Trigger` wrapper for calling `TriggerBehavior` trait methods
+    /// that require a `&Trigger` reference (Java's `this`).
+    pub fn as_trigger(&self, game: &crate::game::GameState) -> crate::trigger::Trigger {
+        let mut base = crate::game_loop::trigger_replacement_base::TriggerReplacementBase::default();
+        base.set_host_card(game.card(self.source_card).clone());
+        crate::trigger::Trigger {
+            id: u32::MAX, // Sentinel — delayed triggers have no real Trigger id
+            base,
+            kind: self.mode,
+            mode: dyn_clone::clone_box(&*self.trigger_mode),
+            params: self.params.clone(),
+            execute: self.execute_svar.clone(),
+            optional: false,
+            description: String::new(),
+            static_trigger: false,
+            trigger_remembered: Vec::new(),
+            valid_phases: None,
+            spawning_ability: None,
+        }
+    }
 }
 
 /// A triggered ability ready to be placed on the stack, with optional metadata.
@@ -200,13 +224,10 @@ impl TriggerHandler {
             if at.trigger_index >= card.triggers.len() {
                 return false;
             }
-            matches!(
-                &card.triggers[at.trigger_index].mode,
-                crate::trigger::TriggerMode::Drawn {
-                    number: Some(_),
-                    ..
-                }
-            )
+            {
+                let t = &card.triggers[at.trigger_index];
+                t.kind == TriggerType::Drawn && t.mode.drawn_number().is_some()
+            }
         })
     }
 
@@ -437,12 +458,11 @@ impl TriggerHandler {
                 {
                     continue;
                 }
+                let tmp_trigger = delayed.as_trigger(game);
                 if !delayed.trigger_mode.perform_test(
+                    &tmp_trigger,
                     &event.params,
                     game,
-                    delayed.source_card,
-                    delayed.controller,
-                    None,
                 ) {
                     continue;
                 }
@@ -732,14 +752,14 @@ impl TriggerHandler {
             return;
         }
         let trigger = &card.triggers[trigger_index];
-        if !trigger.active_zones.contains(&card.zone) {
+        if !trigger.get_active_zone().contains(&card.zone) {
             return;
         }
         // NOTE: Do NOT call phases_check here.  Phase-gated triggers (e.g.
         // "At the beginning of your upkeep") must be registered as active
         // regardless of the current phase; the phase filter is evaluated at
         // match time inside can_run_trigger.
-        if matches!(trigger.mode, TriggerMode::Always)
+        if trigger.kind == TriggerType::Always
             && game.stack.has_state_trigger_id(trigger.id)
         {
             return;
@@ -749,6 +769,20 @@ impl TriggerHandler {
             .iter()
             .any(|at| at.card_id == card_id && at.trigger_index == trigger_index);
         if !already_registered {
+            if std::env::var("FORGE_TRIGGER_TRACE").is_ok() {
+                if let Some(trigger) = game.card(card_id).triggers.get(trigger_index) {
+                    if trigger.kind == TriggerType::BecomesTarget {
+                        eprintln!(
+                            "[trigger-trace] REGISTER active BecomesTarget trigger host={}#{:?} idx={} desc={} zones={:?}",
+                            game.card(card_id).card_name,
+                            card_id,
+                            trigger_index,
+                            trigger.description,
+                            trigger.get_active_zone()
+                        );
+                    }
+                }
+            }
             self.active_triggers.push(ActiveTrigger {
                 card_id,
                 trigger_index,
@@ -763,17 +797,17 @@ impl TriggerHandler {
 
     fn looks_back_in_time(&self, trigger: &Trigger) -> bool {
         if matches!(
-            trigger.mode,
-            TriggerMode::Exploited { .. }
-                | TriggerMode::Destroyed { .. }
-                | TriggerMode::Sacrificed { .. }
-                | TriggerMode::SacrificedOnce { .. }
+            trigger.kind,
+            TriggerType::Exploited
+                | TriggerType::Destroyed
+                | TriggerType::Sacrificed
+                | TriggerType::SacrificedOnce
         ) {
             return true;
         }
         if matches!(
-            trigger.mode,
-            TriggerMode::ChangesZone { .. } | TriggerMode::ChangesZoneAll { .. }
+            trigger.kind,
+            TriggerType::ChangesZone | TriggerType::ChangesZoneAll
         ) {
             let origin = trigger.params.get(keys::ORIGIN).unwrap_or("");
             let destination = trigger.params.get(keys::DESTINATION).unwrap_or("");
@@ -863,10 +897,9 @@ impl TriggerHandler {
         let trigger = &game.card(host_card).triggers[trigger_index];
 
         // Only applies to ChangesZone triggers
-        let _trigger_is_changes_zone = match &trigger.mode {
-            TriggerMode::ChangesZone { .. } => true,
-            _ => return false,
-        };
+        if trigger.kind != TriggerType::ChangesZone {
+            return false;
+        }
 
         // The card changing zones (the "cause")
         let cause_card_id = match params.card {
@@ -1034,7 +1067,7 @@ impl TriggerHandler {
             ZoneType::Battlefield
         } else if *mode == TriggerType::ChangesZone
             && params.origin == Some(ZoneType::Battlefield)
-            && trigger.active_zones.contains(&ZoneType::Battlefield)
+            && trigger.get_active_zone().contains(&ZoneType::Battlefield)
             && card.zone != ZoneType::Battlefield
             && self.looks_back_in_time(trigger)
         {
@@ -1045,7 +1078,7 @@ impl TriggerHandler {
             ZoneType::Battlefield
         } else if (*mode == TriggerType::DamageDone || *mode == TriggerType::DamageDoneOnce)
             && params.damage_target_card == Some(host_card)
-            && trigger.active_zones.contains(&ZoneType::Battlefield)
+            && trigger.get_active_zone().contains(&ZoneType::Battlefield)
             && card.zone != ZoneType::Battlefield
         {
             // LKI for DamageDone/DamageDoneOnce triggers targeting self (e.g.
@@ -1055,7 +1088,7 @@ impl TriggerHandler {
             ZoneType::Battlefield
         } else if *mode == TriggerType::Exploited
             && params.card == Some(host_card)
-            && trigger.active_zones.contains(&ZoneType::Battlefield)
+            && trigger.get_active_zone().contains(&ZoneType::Battlefield)
             && card.zone != ZoneType::Battlefield
         {
             // LKI for Exploited triggers: the exploiting creature sacrificed
@@ -1063,7 +1096,7 @@ impl TriggerHandler {
             ZoneType::Battlefield
         } else if *mode == TriggerType::Sacrificed
             && params.card == Some(host_card)
-            && trigger.active_zones.contains(&ZoneType::Battlefield)
+            && trigger.get_active_zone().contains(&ZoneType::Battlefield)
             && card.zone != ZoneType::Battlefield
         {
             // LKI for Sacrificed triggers: the creature was on the battlefield
@@ -1072,15 +1105,12 @@ impl TriggerHandler {
         } else {
             card.zone
         };
-        if !trigger.active_zones.contains(&zone_for_active_check) {
+        if !trigger.get_active_zone().contains(&zone_for_active_check) {
             return false;
         }
 
         // performTest
-        if !trigger
-            .mode
-            .perform_test(params, game, host_card, host_controller, Some(trigger.id))
-        {
+        if !trigger.mode.perform_test(trigger, params, game) {
             return false;
         }
         if !trigger.meets_requirements_on_triggered_objects(game, params, host_card) {
@@ -1101,7 +1131,7 @@ impl TriggerHandler {
 
         // Mirrors Java Trigger.requirementsCheck() -> meetsCommonRequirements():
         // apply common IsPresent$/PresentCompare$/PresentPlayer$/PresentZone$ checks.
-        if !valid_filter::check_is_present(game, &trigger.params, card) {
+        if !valid_filter::check_is_present(game, &trigger.params, card, card) {
             return false;
         }
         true

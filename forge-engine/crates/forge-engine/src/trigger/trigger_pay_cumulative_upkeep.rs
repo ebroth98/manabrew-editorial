@@ -1,46 +1,72 @@
-use super::trigger::{check_card_filter, TriggerMode};
-use crate::{
-    event::RunParams,
-    game::GameState,
-    ids::{CardId, PlayerId},
-    spellability::SpellAbility,
-};
+use serde::{Deserialize, Serialize};
 
-pub fn perform_test(
-    mode: &TriggerMode,
-    params: &RunParams,
-    game: &GameState,
-    host_card: CardId,
-    host_controller: PlayerId,
-) -> bool {
-    let TriggerMode::PayCumulativeUpkeep { valid_card, paid } = mode else {
-        panic!("Expected PayCumulativeUpkeep mode");
-    };
+use crate::event::{RunParams, TriggerType};
+use crate::game::GameState;
+use crate::parsing::{keys, Params};
+use crate::spellability::SpellAbility;
 
-    if let Some(expected_paid) = paid {
-        if params.cumulative_upkeep_paid != Some(*expected_paid) {
-            return false;
+use super::trigger::{check_card_filter, TriggerBehavior};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TriggerPayCumulativeUpkeep {
+    pub valid_card: Option<String>,
+    pub paid: Option<bool>,
+}
+
+impl TriggerPayCumulativeUpkeep {
+    pub fn parse(params: &Params) -> Box<dyn TriggerBehavior> {
+        Box::new(Self {
+            valid_card: params.get_cloned(keys::VALID_CARD),
+            paid: params.get("Paid").map(|v| v.eq_ignore_ascii_case("true")),
+        })
+    }
+}
+
+#[typetag::serde]
+impl TriggerBehavior for TriggerPayCumulativeUpkeep {
+    fn trigger_type(&self) -> TriggerType {
+        TriggerType::PayCumulativeUpkeep
+    }
+
+    fn perform_test(
+        &self,
+        trigger: &super::trigger::Trigger,
+        params: &RunParams,
+        game: &GameState,
+    ) -> bool {
+        let host_card = trigger.base.card_trait_base.get_host_card().id;
+        let host_controller = trigger.base.card_trait_base.get_host_card().controller;
+        if let Some(expected_paid) = self.paid {
+            if params.cumulative_upkeep_paid != Some(expected_paid) {
+                return false;
+            }
+        }
+
+        check_card_filter(&self.valid_card, params.card, host_card, host_controller, game)
+    }
+
+    fn set_triggering_objects(
+        &self,
+        _trigger: &super::trigger::Trigger,
+        sa: &mut SpellAbility,
+        params: &RunParams,
+        _game: &GameState,
+    ) {
+        if let Some(card) = params.card {
+            sa.set_triggering_object("Card", &card.0.to_string());
+        }
+        if let Some(mana) = params.produced.as_ref() {
+            sa.set_triggering_object("PayingMana", mana);
         }
     }
 
-    check_card_filter(valid_card, params.card, host_card, host_controller, game)
-}
-
-pub fn set_triggering_objects(sa: &mut SpellAbility, params: &RunParams) {
-    if let Some(card) = params.card {
-        sa.add_triggering_object("Card", &card.0.to_string());
+    fn get_important_stack_objects(&self, _trigger: &super::trigger::Trigger, sa: &SpellAbility) -> String {
+        format!(
+            "Mana: {}",
+            sa.trigger_objects
+                .get("PayingMana")
+                .map(|s| s.as_str())
+                .unwrap_or("")
+        )
     }
-    if let Some(mana) = params.produced.as_ref() {
-        sa.add_triggering_object("PayingMana", mana);
-    }
-}
-
-pub fn get_important_stack_objects(sa: &SpellAbility) -> String {
-    format!(
-        "Mana: {}",
-        sa.trigger_objects
-            .get("PayingMana")
-            .map(|s| s.as_str())
-            .unwrap_or("")
-    )
 }

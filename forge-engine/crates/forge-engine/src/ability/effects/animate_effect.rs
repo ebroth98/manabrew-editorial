@@ -327,10 +327,11 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             ctx.trigger_handler
                 .register_delayed_trigger(crate::trigger::handler::DelayedTrigger {
                     mode: crate::event::TriggerType::Phase,
-                    trigger_mode: crate::trigger::TriggerMode::Phase {
+                    trigger_mode: Box::new(crate::trigger::trigger_phase::TriggerPhase {
                         phase: Some(forge_foundation::PhaseType::EndOfTurn),
                         valid_player: None,
-                    },
+                    }) as Box<dyn crate::trigger::TriggerBehavior>,
+                    params: crate::parsing::Params::default(),
                     execute_svar,
                     controller,
                     source_card: sa.source.unwrap_or(remembered[0]),

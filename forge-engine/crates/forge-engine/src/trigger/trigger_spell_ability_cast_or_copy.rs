@@ -1,157 +1,110 @@
-use crate::{
-    event::RunParams,
-    game::GameState,
-    ids::{CardId, PlayerId},
-    parsing::{keys, Params},
-    spellability::SpellAbility,
-};
+use serde::{Deserialize, Serialize};
 
-use super::trigger::{check_card_filter, check_player_filter, TriggerMode};
+use crate::event::{RunParams, TriggerType};
+use crate::game::GameState;
+use crate::parsing::{keys, Params};
+use crate::spellability::SpellAbility;
 
-pub fn perform_test(
-    mode: &TriggerMode,
-    params: &RunParams,
-    game: &GameState,
-    host_card: CardId,
-    host_controller: PlayerId,
-) -> bool {
-    match mode {
-        TriggerMode::SpellCast {
+use super::trigger::{check_card_filter, check_player_filter, Trigger, TriggerBehavior};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TriggerSpellAbilityCastOrCopy {
+    pub trigger_type: TriggerType,
+    pub valid_card: Option<String>,
+    pub valid_activating_player: Option<String>,
+}
+
+impl TriggerSpellAbilityCastOrCopy {
+    pub fn parse(mode_str: &str, params: &Params) -> Box<dyn TriggerBehavior> {
+        let valid_card = params.get_cloned(keys::VALID_CARD);
+        let valid_activating_player = params.get_cloned(keys::VALID_ACTIVATING_PLAYER);
+        let trigger_type = match mode_str {
+            "SpellCast" => TriggerType::SpellCast,
+            "AbilityCast" => TriggerType::AbilityCast,
+            "SpellAbilityCast" => TriggerType::SpellAbilityCast,
+            "SpellCastOrCopy" => TriggerType::SpellCastOrCopy,
+            "SpellCopied" => TriggerType::SpellCopied,
+            "SpellAbilityCopy" => TriggerType::SpellAbilityCopy,
+            "SpellCopy" => TriggerType::SpellCopy,
+            "SpellCastAll" => TriggerType::SpellCastAll,
+            "SpellCastOnce" => TriggerType::SpellCastOnce,
+            "SpellCastOfType" => TriggerType::SpellCastOfType,
+            _ => panic!("Unsupported spell/ability cast-or-copy mode: {mode_str}"),
+        };
+        Box::new(Self {
+            trigger_type,
             valid_card,
             valid_activating_player,
-        }
-        | TriggerMode::AbilityCast {
-            valid_card,
-            valid_activating_player,
-        }
-        | TriggerMode::SpellAbilityCast {
-            valid_card,
-            valid_activating_player,
-        }
-        | TriggerMode::SpellCastAll {
-            valid_card,
-            valid_activating_player,
-        }
-        | TriggerMode::SpellCastOnce {
-            valid_card,
-            valid_activating_player,
-        }
-        | TriggerMode::SpellCastOfType {
-            valid_card,
-            valid_activating_player,
-        }
-        | TriggerMode::SpellCopied {
-            valid_card,
-            valid_activating_player,
-        }
-        | TriggerMode::SpellCopy {
-            valid_card,
-            valid_activating_player,
-        }
-        | TriggerMode::SpellAbilityCopy {
-            valid_card,
-            valid_activating_player,
-        }
-        | TriggerMode::SpellCastOrCopy {
-            valid_card,
-            valid_activating_player,
-        } => {
-            check_card_filter(
-                valid_card,
-                params.spell_card,
-                host_card,
-                host_controller,
-                game,
-            ) && check_player_filter(
-                valid_activating_player,
-                params.spell_controller,
-                host_controller,
-            )
-        }
-        _ => panic!("Expected spell/ability cast-or-copy mode"),
+        })
     }
 }
 
-pub fn parse_mode(mode_name: &str, params: &Params) -> TriggerMode {
-    let valid_card = params.get_cloned(keys::VALID_CARD);
-    let valid_activating_player = params.get_cloned(keys::VALID_ACTIVATING_PLAYER);
-    match mode_name {
-        "SpellCast" => TriggerMode::SpellCast {
-            valid_card,
-            valid_activating_player,
-        },
-        "AbilityCast" => TriggerMode::AbilityCast {
-            valid_card,
-            valid_activating_player,
-        },
-        "SpellAbilityCast" => TriggerMode::SpellAbilityCast {
-            valid_card,
-            valid_activating_player,
-        },
-        "SpellCastOrCopy" => TriggerMode::SpellCastOrCopy {
-            valid_card,
-            valid_activating_player,
-        },
-        "SpellCopied" => TriggerMode::SpellCopied {
-            valid_card,
-            valid_activating_player,
-        },
-        "SpellAbilityCopy" => TriggerMode::SpellAbilityCopy {
-            valid_card,
-            valid_activating_player,
-        },
-        "SpellCopy" => TriggerMode::SpellCopy {
-            valid_card,
-            valid_activating_player,
-        },
-        "SpellCastAll" => TriggerMode::SpellCastAll {
-            valid_card,
-            valid_activating_player,
-        },
-        "SpellCastOnce" => TriggerMode::SpellCastOnce {
-            valid_card,
-            valid_activating_player,
-        },
-        "SpellCastOfType" => TriggerMode::SpellCastOfType {
-            valid_card,
-            valid_activating_player,
-        },
-        _ => panic!("Unsupported spell/ability cast-or-copy mode: {mode_name}"),
+#[typetag::serde]
+impl TriggerBehavior for TriggerSpellAbilityCastOrCopy {
+    fn trigger_type(&self) -> TriggerType {
+        self.trigger_type.clone()
     }
-}
 
-pub fn set_triggering_objects(sa: &mut SpellAbility, params: &RunParams) {
-    // Java: sa.setTriggeringObject(AbilityKey.Card, cause.getHostCard())
-    if let Some(card) = params.spell_card {
-        sa.add_triggering_object("Card", &card.0.to_string());
+    fn perform_test(
+        &self,
+        trigger: &Trigger,
+        params: &RunParams,
+        game: &GameState,
+    ) -> bool {
+        let host_card = trigger.base.card_trait_base.get_host_card().id;
+        let host_controller = trigger.base.card_trait_base.get_host_card().controller;
+        check_card_filter(
+            &self.valid_card,
+            params.spell_card,
+            host_card,
+            host_controller,
+            game,
+        ) && check_player_filter(
+            &self.valid_activating_player,
+            params.spell_controller,
+            host_controller,
+        )
     }
-    // TODO: port SpellAbility triggering object (AbilityKey.SpellAbility = cause)
-    // TODO: port SpellAbilityTargets triggering object (from cause.getAllTargetChoices)
-    if let Some(amount) = params.life_amount {
-        sa.add_triggering_object("LifeAmount", &amount.to_string());
-    }
-    if let Some(lki) = params.card_lki {
-        sa.add_triggering_object("CardLKI", &lki.0.to_string());
-    }
-    if let Some(p) = params.activator {
-        sa.add_triggering_object("Activator", &p.0.to_string());
-    }
-    // TODO: port CurrentStormCount triggering object - not yet in RunParams
-    // TODO: port CurrentCastSpells triggering object - not yet in RunParams
-}
 
-pub fn get_important_stack_objects(sa: &SpellAbility) -> String {
-    // Java: "Card: {card}, Activator: {activator}, SpellAbility: {sa}"
-    // TODO: include SpellAbility in output once SpellAbility triggering object is ported
-    format!(
-        "Card: {}, Activator: {}, SpellAbility: ",
-        sa.trigger_objects
-            .get("Card")
-            .map(|s| s.as_str())
-            .unwrap_or(""),
-        sa.trigger_objects
-            .get("Activator")
-            .map(|s| s.as_str())
-            .unwrap_or("")
-    )
+    fn set_triggering_objects(
+        &self,
+        _trigger: &Trigger,
+        sa: &mut SpellAbility,
+        params: &RunParams,
+        _game: &GameState,
+    ) {
+        // Java: sa.setTriggeringObject(AbilityKey.Card, cause.getHostCard())
+        if let Some(card) = params.spell_card {
+            sa.set_triggering_object("Card", &card.0.to_string());
+        }
+        // TODO: port SpellAbility triggering object (AbilityKey.SpellAbility = cause)
+        // TODO: port SpellAbilityTargets triggering object (from cause.getAllTargetChoices)
+        if let Some(amount) = params.life_amount {
+            sa.set_triggering_object("LifeAmount", &amount.to_string());
+        }
+        if let Some(lki) = params.card_lki {
+            sa.set_triggering_object("CardLKI", &lki.0.to_string());
+        }
+        if let Some(p) = params.activator {
+            sa.set_triggering_object("Activator", &p.0.to_string());
+        }
+        // TODO: port CurrentStormCount triggering object - not yet in RunParams
+        // TODO: port CurrentCastSpells triggering object - not yet in RunParams
+    }
+
+    fn get_important_stack_objects(&self, _trigger: &Trigger, sa: &SpellAbility) -> String {
+        // Java: "Card: {card}, Activator: {activator}, SpellAbility: {sa}"
+        // TODO: include SpellAbility in output once SpellAbility triggering object is ported
+        format!(
+            "Card: {}, Activator: {}, SpellAbility: ",
+            sa.trigger_objects
+                .get("Card")
+                .map(|s| s.as_str())
+                .unwrap_or(""),
+            sa.trigger_objects
+                .get("Activator")
+                .map(|s| s.as_str())
+                .unwrap_or("")
+        )
+    }
 }

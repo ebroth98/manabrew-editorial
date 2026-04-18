@@ -464,6 +464,28 @@ impl GameLoop {
             //    before chooseSpellAbilityToPlay()).
             self.priority_round(game, agents, is_main_phase);
 
+            if std::env::var("FORGE_STACK_TRACE").is_ok() {
+                let names: Vec<String> = game
+                    .stack
+                    .iter()
+                    .map(|entry| {
+                        entry
+                            .spell_ability
+                            .source
+                            .map(|cid| game.card(cid).card_name.clone())
+                            .unwrap_or_else(|| "<effect>".to_string())
+                    })
+                    .collect();
+                eprintln!(
+                    "[stack-trace] AFTER priority_round phase={:?} active={:?} priority={:?} depth={} {:?}",
+                    game.turn.phase,
+                    game.active_player(),
+                    game.turn.priority_player,
+                    game.stack.len(),
+                    names
+                );
+            }
+
             if game.game_over {
                 return;
             }

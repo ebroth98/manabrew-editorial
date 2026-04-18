@@ -1,26 +1,46 @@
-use super::trigger::TriggerMode;
-use crate::{
-    event::RunParams,
-    game::GameState,
-    ids::{CardId, PlayerId},
-    spellability::SpellAbility,
-};
+use serde::{Deserialize, Serialize};
 
-pub fn perform_test(
-    mode: &TriggerMode,
-    _params: &RunParams,
-    _game: &GameState,
-    _host_card: CardId,
-    _host_controller: PlayerId,
-) -> bool {
-    let TriggerMode::DayTimeChanges = mode else {
-        panic!("Expected DayTimeChanges mode");
-    };
-    true
+use crate::event::{RunParams, TriggerType};
+use crate::game::GameState;
+use crate::parsing::Params;
+use crate::spellability::SpellAbility;
+
+use super::trigger::TriggerBehavior;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TriggerDayTimeChanges;
+
+impl TriggerDayTimeChanges {
+    pub fn parse(_params: &Params) -> Box<dyn TriggerBehavior> {
+        Box::new(Self)
+    }
 }
 
-pub fn set_triggering_objects(_sa: &mut SpellAbility, _params: &RunParams) {}
+#[typetag::serde]
+impl TriggerBehavior for TriggerDayTimeChanges {
+    fn trigger_type(&self) -> TriggerType {
+        TriggerType::DayTimeChanges
+    }
 
-pub fn get_important_stack_objects(_sa: &SpellAbility) -> String {
-    String::new()
+    fn perform_test(
+        &self,
+        _trigger: &super::trigger::Trigger,
+        _params: &RunParams,
+        _game: &GameState,
+    ) -> bool {
+        true
+    }
+
+    fn set_triggering_objects(
+        &self,
+        _trigger: &super::trigger::Trigger,
+        _sa: &mut SpellAbility,
+        _params: &RunParams,
+        _game: &GameState,
+    ) {
+    }
+
+    fn get_important_stack_objects(&self, _trigger: &super::trigger::Trigger, _sa: &SpellAbility) -> String {
+        String::new()
+    }
 }

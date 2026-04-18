@@ -1,55 +1,78 @@
-use super::trigger::{check_card_filter, TriggerMode};
+use serde::{Deserialize, Serialize};
+
+use super::trigger::{check_card_filter, TriggerBehavior};
 use crate::{
-    event::RunParams,
+    event::{RunParams, TriggerType},
     game::GameState,
-    ids::{CardId, PlayerId},
+    parsing::Params,
     spellability::SpellAbility,
 };
 
-pub fn perform_test(
-    mode: &TriggerMode,
-    params: &RunParams,
-    game: &GameState,
-    host_card: CardId,
-    host_controller: PlayerId,
-) -> bool {
-    let TriggerMode::BecomesSaddled {
-        valid_saddled,
-        first_time_saddled,
-    } = mode
-    else {
-        panic!("Expected BecomesSaddled mode");
-    };
-
-    if !check_card_filter(valid_saddled, params.card, host_card, host_controller, game) {
-        return false;
-    }
-
-    if *first_time_saddled && params.first_time != Some(true) {
-        return false;
-    }
-
-    true
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TriggerBecomesSaddled {
+    pub valid_saddled: Option<String>,
+    pub first_time_saddled: bool,
 }
 
-pub fn set_triggering_objects(sa: &mut SpellAbility, params: &RunParams) {
-    if let Some(card) = params.card {
-        sa.add_triggering_object("Card", &card.0.to_string());
-    }
-    if let Some(crew) = params.crew_cards.as_ref() {
-        let csv = crew
-            .iter()
-            .map(|c| c.0.to_string())
-            .collect::<Vec<_>>()
-            .join(",");
-        sa.add_triggering_object("Crew", &csv);
+impl TriggerBecomesSaddled {
+    pub fn parse(params: &Params) -> Box<dyn TriggerBehavior> {
+        Box::new(Self {
+            valid_saddled: params.get_cloned("ValidSaddled"),
+            first_time_saddled: params.has("FirstTimeSaddled"),
+        })
     }
 }
 
-pub fn get_important_stack_objects(sa: &SpellAbility) -> String {
-    format!(
-        "Saddled: {}  SaddledBy: {}",
-        sa.get_triggering_object("Card").unwrap_or(""),
-        sa.get_triggering_object("Crew").unwrap_or("")
-    )
+#[typetag::serde]
+impl TriggerBehavior for TriggerBecomesSaddled {
+    fn trigger_type(&self) -> TriggerType {
+        TriggerType::BecomesSaddled
+    }
+
+    fn perform_test(
+        &self,
+        trigger: &super::trigger::Trigger,
+        params: &RunParams,
+        game: &GameState,
+    ) -> bool {
+        let host_card = trigger.base.card_trait_base.get_host_card().id;
+        let host_controller = trigger.base.card_trait_base.get_host_card().controller;
+        if !check_card_filter(&self.valid_saddled, params.card, host_card, host_controller, game) {
+            return false;
+        }
+
+        if self.first_time_saddled && params.first_time != Some(true) {
+            return false;
+        }
+
+        true
+    }
+
+    fn set_triggering_objects(
+        &self,
+        _trigger: &super::trigger::Trigger,
+        sa: &mut SpellAbility,
+        params: &RunParams,
+        _game: &GameState,
+    ) {
+        if let Some(card) = params.card {
+            sa.set_triggering_object("Card", &card.0.to_string());
+        }
+        if let Some(crew) = params.crew_cards.as_ref() {
+            let csv = crew
+                .iter()
+                .map(|c| c.0.to_string())
+                .collect::<Vec<_>>()
+                .join(",");
+            sa.set_triggering_object("Crew", &csv);
+        }
+    }
+
+    fn get_important_stack_objects(&self, _trigger: &super::trigger::Trigger, sa: &SpellAbility) -> String {
+        format!(
+            "Saddled: {}  SaddledBy: {}",
+            sa.get_triggering_object("Card").unwrap_or(""),
+            sa.get_triggering_object("Crew").unwrap_or("")
+        )
+    }
 }

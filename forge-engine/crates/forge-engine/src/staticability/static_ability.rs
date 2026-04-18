@@ -321,6 +321,7 @@ impl StaticAbility {
             game,
             &self.params,
             source,
+            source,
             "CheckSecondSVar",
             "SecondSVarCompare",
         ) {
@@ -330,6 +331,7 @@ impl StaticAbility {
             game,
             &self.params,
             source,
+            source,
             "CheckThirdSVar",
             "ThirdSVarCompare",
         ) {
@@ -338,6 +340,7 @@ impl StaticAbility {
         if !crate::card::valid_filter::check_named_svar_condition(
             game,
             &self.params,
+            source,
             source,
             "CheckFourthSVar",
             "FourthSVarCompare",

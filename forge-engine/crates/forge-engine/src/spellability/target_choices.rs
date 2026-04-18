@@ -14,6 +14,8 @@ use crate::ids::{CardId, PlayerId};
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct TargetChoices {
     pub target_player: Option<PlayerId>,
+    #[serde(default)]
+    pub additional_target_players: Vec<PlayerId>,
     pub target_card: Option<CardId>,
     /// Zone timestamp captured when `target_card` was chosen.
     /// Used to preserve object identity across zone changes (CR 400.7).
@@ -28,6 +30,20 @@ pub struct TargetChoices {
 }
 
 impl TargetChoices {
+    /// Collect all targeted players for this node.
+    pub fn all_target_players(&self) -> Vec<PlayerId> {
+        let mut players = Vec::new();
+        if let Some(player) = self.target_player {
+            players.push(player);
+        }
+        for &player in &self.additional_target_players {
+            if !players.contains(&player) {
+                players.push(player);
+            }
+        }
+        players
+    }
+
     /// Collect all targeted cards for this node.
     pub fn all_target_cards(&self) -> Vec<CardId> {
         let mut cards = Vec::new();
@@ -51,7 +67,13 @@ impl TargetChoices {
             self.target_card_zone_timestamp = None;
         }
         if let Some(player) = target_player {
-            self.target_player = Some(player);
+            if self.target_player.is_none() {
+                self.target_player = Some(player);
+            } else if self.target_player != Some(player)
+                && !self.additional_target_players.contains(&player)
+            {
+                self.additional_target_players.push(player);
+            }
         }
     }
 
@@ -71,6 +93,7 @@ impl TargetChoices {
         self.target_card = None;
         self.target_card_zone_timestamp = None;
         self.target_player = None;
+        self.additional_target_players.clear();
         self.target_stack_entry = None;
         self.divided_map.clear();
     }

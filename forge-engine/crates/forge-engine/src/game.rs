@@ -108,6 +108,7 @@ pub struct GameState {
 
     // Day/Night cycle (Innistrad DFC mechanic)
     pub is_night: bool,
+    pub day_night_started: bool,
 
     // Turn/phase state
     pub turn: TurnState,
@@ -238,6 +239,7 @@ impl GameState {
             stack: MagicStack::new(),
             cost_payment_stack: CostPaymentStack::new(),
             is_night: false,
+            day_night_started: false,
             turn: TurnState::new(player_order[0], player_order.len() as u32),
             player_order,
             game_over: false,
@@ -267,6 +269,10 @@ impl GameState {
         let id = CardId(self.next_card_id);
         self.next_card_id += 1;
         card.id = id;
+        let bound_host = card.clone();
+        for trigger in &mut card.triggers {
+            trigger.bind_host_card(bound_host.clone());
+        }
         self.cards.push(card);
         id
     }
@@ -301,6 +307,14 @@ impl GameState {
 
     pub fn active_player(&self) -> PlayerId {
         self.turn.active_player
+    }
+
+    pub fn is_day(&self) -> bool {
+        self.day_night_started && !self.is_night
+    }
+
+    pub fn is_neither_day_nor_night(&self) -> bool {
+        !self.day_night_started
     }
 
     pub fn next_player(&self, player: PlayerId) -> PlayerId {

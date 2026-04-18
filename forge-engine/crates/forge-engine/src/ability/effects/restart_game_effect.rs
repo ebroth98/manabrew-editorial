@@ -75,6 +75,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
 
     // Reset global game state
     ctx.game.is_night = false;
+    ctx.game.day_night_started = false;
 
     // Set active player to the activator (Karn's controller restarts)
     let _ = activator;

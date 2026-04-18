@@ -366,6 +366,7 @@ impl_slice_len!(
     SpellAbility,
     ManaPool,
     (CardId, usize),
+    forge_engine_core::card::CounterType,
     forge_engine_core::agent::ManaAbilityOption
 );
 

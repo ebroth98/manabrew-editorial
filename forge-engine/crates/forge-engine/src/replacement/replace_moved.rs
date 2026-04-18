@@ -285,8 +285,8 @@ fn set_replacing_objects_for_moved(
     let card_csv = card.0.to_string();
     let mut current = Some(sa);
     while let Some(node) = current {
-        node.add_triggering_object("Card", &card_csv);
-        node.add_triggering_object("ReplacedCard", &card_csv);
+        node.set_triggering_object("Card", &card_csv);
+        node.set_triggering_object("ReplacedCard", &card_csv);
         current = node.get_sub_ability_mut();
     }
 }

@@ -52,6 +52,7 @@ fn matches_single_property(card: &Card, property: &str, source_controller: Playe
         fc::OTHER => true, // "Other" means "not self" — handled at call site
         // Type-based filters
         fc::BASIC => card.type_line.is_basic(),
+        "Legendary" => card.type_line.is_legendary(),
         fc::NON_LAND => !card.type_line.is_land(),
         fc::NON_CREATURE => !card.is_creature(),
         fc::NON_ARTIFACT => !card.type_line.is_artifact(),
@@ -159,6 +160,7 @@ fn matches_single_property(card: &Card, property: &str, source_controller: Playe
                     match color_name {
                         "colorless" => !card.color.is_colorless(),
                         "basic" => !card.type_line.is_basic(),
+                        "legendary" => !card.type_line.is_legendary(),
                         "land" => !card.type_line.is_land(),
                         "creature" => !card.is_creature(),
                         "artifact" => !card.type_line.is_artifact(),

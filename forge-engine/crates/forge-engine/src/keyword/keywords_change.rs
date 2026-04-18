@@ -96,7 +96,7 @@ impl KeywordsChange {
                 let mut next_id = card.triggers.len() as u32;
                 if let Some(trigger) = crate::trigger::trigger::parse_trigger(kw_str, &mut next_id)
                 {
-                    card.triggers.push(trigger);
+                    card.add_trigger(trigger);
                 }
             }
         }

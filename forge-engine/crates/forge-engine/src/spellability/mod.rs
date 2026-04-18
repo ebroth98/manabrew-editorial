@@ -20,6 +20,7 @@ pub mod target_restrictions;
 pub mod trait_spell_ability;
 
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicU32, Ordering};
 
 use serde::{Deserialize, Serialize};
 
@@ -45,6 +46,12 @@ pub use spell_ability_variables::SpellAbilityVariables;
 pub use target_choices::TargetChoices;
 pub use target_restrictions::{TargetKind, TargetRestrictions};
 
+static NEXT_SPELL_ABILITY_ID: AtomicU32 = AtomicU32::new(1);
+
+fn next_spell_ability_id() -> u32 {
+    NEXT_SPELL_ABILITY_ID.fetch_add(1, Ordering::Relaxed)
+}
+
 // ── SpellAbility (mirrors Java's SpellAbility.java) ──────────────────
 
 /// A spell or ability with its own targeting, costs, and sub-ability chain.
@@ -52,6 +59,8 @@ pub use target_restrictions::{TargetKind, TargetRestrictions};
 /// `target_restrictions`, `target_chosen`, `sub_ability`, `api`, etc.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SpellAbility {
+    #[serde(default)]
+    pub id: u32,
     /// Effect API type (e.g. DealDamage, Destroy, Draw).
     /// Mirrors Java's `ApiType api` field.
     pub api: Option<ApiType>,
@@ -83,12 +92,18 @@ pub struct SpellAbility {
     /// Linked sub-ability chain. Mirrors Java's `subAbility` field
     /// (AbilitySub extends SpellAbility).
     pub sub_ability: Option<Box<SpellAbility>>,
+    /// Java parity: payload carried by `WrappedAbility`.
+    #[serde(default)]
+    pub wrapped_ability: Option<Box<SpellAbility>>,
     /// Whether this is a spell (not an ability).
     pub is_spell: bool,
     /// Whether this is a triggered ability.
     pub is_trigger: bool,
     /// Whether this is an activated ability.
     pub is_activated: bool,
+    /// Java parity: whether this ability is intrinsic to its host.
+    #[serde(default)]
+    pub intrinsic: bool,
     /// Card that owns the trigger (for intervening-if recheck).
     pub trigger_source: Option<CardId>,
     /// Zone timestamp of the trigger source when this triggered ability was created.
@@ -113,6 +128,9 @@ pub struct SpellAbility {
     pub overloaded: bool,
     /// Whether this spell is a copy (created by Storm, Replicate, etc.).
     pub is_copy: bool,
+    /// Java parity: life paid while activating or casting this ability.
+    #[serde(default)]
+    pub paid_life_amount: i32,
     /// Number of times the kicker/multikicker cost was paid.
     pub kick_count: u32,
     /// Number of times the replicate cost was paid.
@@ -136,6 +154,12 @@ pub struct SpellAbility {
     /// Mirrors Java's `SpellAbility.paidHash`.
     #[serde(default)]
     pub paid_hash: HashMap<String, Vec<String>>,
+    /// Java parity: mana atoms used to pay this spell or ability.
+    #[serde(default)]
+    pub paying_mana: Vec<u16>,
+    /// Java parity: paid abilities list.
+    #[serde(default)]
+    pub paid_abilities: Vec<SpellAbility>,
     /// Mana-producing part of this ability (for mana abilities).
     /// Mirrors Java's `SpellAbility.manaPart`.
     pub mana_part: Option<AbilityManaPart>,
@@ -182,6 +206,12 @@ pub struct SpellAbility {
     /// Java parity: non-scalar trigger objects that carry spell/ability context.
     #[serde(default)]
     pub trigger_spell_abilities: HashMap<String, SpellAbility>,
+    /// Java parity: additional ability lists used by mode/charm-style abilities.
+    #[serde(default)]
+    pub additional_ability_lists: HashMap<String, Vec<SpellAbility>>,
+    /// Java parity: replacing-objects payload.
+    #[serde(default)]
+    pub replacing_objects: HashMap<String, String>,
     /// Java parity: trigger remembered objects copied from the originating trigger.
     #[serde(default)]
     pub trigger_remembered: Vec<AbilityValue>,
@@ -200,6 +230,9 @@ pub struct SpellAbility {
     /// Pips to reduce from cost.
     #[serde(default)]
     pub pips_to_reduce: Vec<String>,
+    /// Java parity: whether copied effects may choose new targets.
+    #[serde(default)]
+    pub may_choose_new_targets: bool,
     /// Last known state for LKI tracking.
     #[serde(default)]
     pub last_state: HashMap<String, String>,
@@ -212,6 +245,24 @@ pub struct SpellAbility {
     /// Java parity: accumulated prevented-damage map for `DamageResolve`.
     #[serde(skip)]
     pub prevent_map: Option<CardDamageMap>,
+}
+
+/// Mirrors Java's `SpellAbility.toString()`.
+/// Walks the sub-ability chain, concatenating descriptions.
+impl std::fmt::Display for SpellAbility {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut node = Some(self);
+        let mut first = true;
+        while let Some(current) = node {
+            if !first {
+                write!(f, " ")?;
+            }
+            first = false;
+            write!(f, "{}", current.description)?;
+            node = current.sub_ability.as_deref();
+        }
+        Ok(())
+    }
 }
 
 impl SpellAbility {
@@ -245,6 +296,28 @@ impl SpellAbility {
     /// Get the sub-ability mutably.
     pub fn get_sub_ability_mut(&mut self) -> Option<&mut SpellAbility> {
         self.sub_ability.as_deref_mut()
+    }
+
+    /// Mirrors Java's `SpellAbility.isWrapper()`.
+    pub fn is_wrapper(&self) -> bool {
+        self.wrapped_ability.is_some()
+    }
+
+    /// Mirrors Java's `WrappedAbility.getWrappedAbility()`.
+    pub fn get_wrapped_ability(&self) -> &SpellAbility {
+        self.wrapped_ability
+            .as_deref()
+            .expect("SpellAbility.get_wrapped_ability called on non-wrapper")
+    }
+
+    pub fn get_wrapped_ability_mut(&mut self) -> &mut SpellAbility {
+        self.wrapped_ability
+            .as_deref_mut()
+            .expect("SpellAbility.get_wrapped_ability_mut called on non-wrapper")
+    }
+
+    pub fn set_wrapped_ability(&mut self, wrapped: SpellAbility) {
+        self.wrapped_ability = Some(Box::new(wrapped));
     }
 
     /// Clear the chosen targets. Mirrors Java's `clearTargets()`.
@@ -308,6 +381,7 @@ impl SpellAbility {
         let cost = params.get(keys::COST).map(parse_cost);
 
         SpellAbility {
+            id: next_spell_ability_id(),
             api,
             source,
             original_host: None,
@@ -319,9 +393,11 @@ impl SpellAbility {
             target_chosen: TargetChoices::default(),
             pay_costs: cost,
             sub_ability: None,
+            wrapped_ability: None,
             is_spell: false,
             is_trigger: false,
             is_activated: false,
+            intrinsic: false,
             trigger_source: None,
             trigger_source_zone_timestamp: None,
             source_zone_timestamp: None,
@@ -332,6 +408,7 @@ impl SpellAbility {
             buyback_paid: false,
             overloaded: false,
             is_copy: false,
+            paid_life_amount: 0,
             kick_count: 0,
             replicate_count: 0,
             optional_generic_cost_paid: false,
@@ -340,6 +417,8 @@ impl SpellAbility {
             discarded_cost_cards: Vec::new(),
             optional_costs: Vec::new(),
             paid_hash: HashMap::new(),
+            paying_mana: Vec::new(),
+            paid_abilities: Vec::new(),
             mana_part: None,
             express_mana_choice: None,
             convoke_tapped: Vec::new(),
@@ -353,12 +432,15 @@ impl SpellAbility {
             is_land_ability: false,
             trigger_objects: HashMap::new(),
             trigger_spell_abilities: HashMap::new(),
+            additional_ability_lists: HashMap::new(),
+            replacing_objects: HashMap::new(),
             trigger_remembered: Vec::new(),
             restriction: SpellAbilityRestriction::default(),
             condition: SpellAbilityCondition::default(),
             rollback_effects: Vec::new(),
             optional_keyword_amounts: HashMap::new(),
             pips_to_reduce: Vec::new(),
+            may_choose_new_targets: false,
             last_state: HashMap::new(),
             change_zone_table: None,
             damage_map: None,
@@ -605,7 +687,19 @@ impl SpellAbility {
     /// Check if an additional ability with the given key exists.
     /// Mirrors Java's `SpellAbility.hasAdditionalAbility(String)`.
     pub fn has_additional_ability(&self, key: &str) -> bool {
-        self.params.get(key).is_some()
+        self.trigger_spell_abilities.contains_key(key)
+    }
+
+    /// Get an additional ability by key.
+    /// Mirrors Java's `SpellAbility.getAdditionalAbility(String)`.
+    pub fn get_additional_ability(&self, key: &str) -> Option<&SpellAbility> {
+        self.trigger_spell_abilities.get(key)
+    }
+
+    /// Set an additional ability by key.
+    /// Mirrors Java's `SpellAbility.setAdditionalAbility(String, SpellAbility)`.
+    pub fn set_additional_ability(&mut self, key: &str, ability: SpellAbility) {
+        self.trigger_spell_abilities.insert(key.to_string(), ability);
     }
 
     /// Append a sub-ability to the end of the chain.
@@ -632,6 +726,129 @@ impl SpellAbility {
     /// Mirrors Java's `SpellAbility.copy()`.
     pub fn copy(&self) -> Self {
         self.clone()
+    }
+
+    pub fn copy_for_player(&self, activ: PlayerId) -> Self {
+        let mut clone = self.clone();
+        clone.activating_player = activ;
+        clone
+    }
+
+    pub fn copy_with_host_lki(&self, host: crate::card::Card, lki: bool) -> Self {
+        self.copy_with_host_activating_lki_keep_text_changes(
+            host,
+            self.activating_player,
+            lki,
+            false,
+        )
+    }
+
+    pub fn copy_with_host_lki_keep_text_changes(
+        &self,
+        host: crate::card::Card,
+        lki: bool,
+        keep_text_changes: bool,
+    ) -> Self {
+        self.copy_with_host_activating_lki_keep_text_changes(
+            host,
+            self.activating_player,
+            lki,
+            keep_text_changes,
+        )
+    }
+
+    pub fn copy_with_host_activating_lki(
+        &self,
+        host: crate::card::Card,
+        activ: PlayerId,
+        lki: bool,
+    ) -> Self {
+        self.copy_with_host_activating_lki_keep_text_changes(host, activ, lki, false)
+    }
+
+    pub fn copy_with_host_activating_lki_keep_text_changes(
+        &self,
+        host: crate::card::Card,
+        activ: PlayerId,
+        lki: bool,
+        keep_text_changes: bool,
+    ) -> Self {
+        let mut clone = self.clone();
+        clone.id = if lki { self.id } else { next_spell_ability_id() };
+
+        clone.source = Some(host.id);
+        clone.may_choose_new_targets = false;
+        clone.trigger_objects = self.trigger_objects.clone();
+        if !lki {
+            clone.replacing_objects = HashMap::new();
+        }
+
+        clone.pay_costs = self.pay_costs.clone();
+        if self.mana_part.is_some() {
+            clone.mana_part = self.mana_part.clone();
+        }
+
+        clone.optional_keyword_amounts = self.optional_keyword_amounts.clone();
+        clone.damage_map = self.damage_map.clone();
+        clone.prevent_map = self.prevent_map.clone();
+        clone.change_zone_table = self.change_zone_table.clone();
+        clone.paying_mana = self.paying_mana.clone();
+        clone.paid_abilities = Vec::new();
+        clone.paid_hash = self.paid_hash.clone();
+
+        if self.uses_targeting() {
+            clone.target_chosen = self.target_chosen.clone();
+        }
+
+        clone.trigger_spell_abilities = HashMap::new();
+        clone.additional_ability_lists = HashMap::new();
+
+        if let Some(sub_ability) = &self.sub_ability {
+            clone.sub_ability = Some(Box::new(
+                sub_ability.copy_with_host_activating_lki_keep_text_changes(
+                    host.clone(),
+                    activ,
+                    lki,
+                    keep_text_changes,
+                ),
+            ));
+        }
+
+        for (name, ability) in &self.trigger_spell_abilities {
+            clone.trigger_spell_abilities.insert(
+                name.clone(),
+                ability.copy_with_host_activating_lki_keep_text_changes(
+                    host.clone(),
+                    activ,
+                    lki,
+                    keep_text_changes,
+                ),
+            );
+        }
+
+        for (name, abilities) in &self.additional_ability_lists {
+            clone.additional_ability_lists.insert(
+                name.clone(),
+                abilities
+                    .iter()
+                    .map(|ability| {
+                        ability.copy_with_host_activating_lki_keep_text_changes(
+                            host.clone(),
+                            activ,
+                            lki,
+                            keep_text_changes,
+                        )
+                    })
+                    .collect(),
+            );
+        }
+
+        clone.restriction = self.restriction.clone();
+        clone.condition = self.condition.clone();
+        clone.activating_player = activ;
+
+        let _ = keep_text_changes;
+        clone
     }
 
     /// Clone with no mana cost.
@@ -719,11 +936,7 @@ impl SpellAbility {
         if let Some(ref tr) = self.target_restrictions {
             let max = tr.get_max_targets(game, self);
             let current = self.target_chosen.all_target_cards().len() as i32
-                + if self.target_chosen.target_player.is_some() {
-                    1
-                } else {
-                    0
-                };
+                + self.target_chosen.all_target_players().len() as i32;
             current < max
         } else {
             false
@@ -894,7 +1107,7 @@ impl SpellAbility {
 
     /// Apply text replacement.
     /// Mirrors Java's `SpellAbility.changeText(String, String)`.
-    pub fn change_text(&mut self, original: &str, replacement: &str) {
+    pub fn apply_text_change(&mut self, original: &str, replacement: &str) {
         if original == replacement {
             return;
         }
@@ -903,12 +1116,107 @@ impl SpellAbility {
         if let Some(ref mut tr) = self.target_restrictions {
             tr.apply_target_text_changes(&[(original, replacement)]);
         }
+
+        if let Some(sub_ability) = self.sub_ability.as_deref_mut() {
+            sub_ability.apply_text_change(original, replacement);
+        }
+
+        for ability in self.trigger_spell_abilities.values_mut() {
+            ability.apply_text_change(original, replacement);
+        }
     }
 
     /// Apply intrinsic text replacement.
     /// Mirrors Java's `SpellAbility.changeTextIntrinsic(String, String)`.
-    pub fn change_text_intrinsic(&mut self, original: &str, replacement: &str) {
-        self.change_text(original, replacement);
+    pub fn apply_text_change_intrinsic(&mut self, original: &str, replacement: &str) {
+        self.apply_text_change(original, replacement);
+    }
+
+    /// Apply a batch of text replacements to this ability and linked abilities.
+    pub fn apply_text_changes(&mut self, pairs: &[(String, String)]) {
+        for (original, replacement) in pairs {
+            self.apply_text_change(original, replacement);
+        }
+    }
+
+    /// Apply intrinsic text changes to this ability and linked abilities.
+    pub fn apply_text_changes_intrinsic(
+        &mut self,
+        color_map: &HashMap<String, String>,
+        type_map: &HashMap<String, String>,
+    ) {
+        for (original, replacement) in color_map.iter().chain(type_map.iter()) {
+            self.apply_text_change_intrinsic(original, replacement);
+        }
+    }
+
+    /// Java parity hook for `SpellAbility.setHostCard(Card)`.
+    pub fn set_host_card(&mut self, card: crate::card::Card) {
+        self.source = Some(card.id);
+        if self.original_host.is_none() {
+            self.original_host = Some(card.id);
+        }
+
+        if let Some(sub_ability) = self.sub_ability.as_deref_mut() {
+            sub_ability.set_host_card(card.clone());
+        }
+
+        for ability in self.trigger_spell_abilities.values_mut() {
+            ability.set_host_card(card.clone());
+        }
+    }
+
+    /// Java parity hook for `SpellAbility.setKeyword(KeywordInterface)`.
+    pub fn set_keyword(&mut self, keyword: crate::keyword::keyword_interface::KeywordInterface) {
+        if let Some(sub_ability) = self.sub_ability.as_deref_mut() {
+            sub_ability.set_keyword(keyword.clone());
+        }
+
+        for ability in self.trigger_spell_abilities.values_mut() {
+            ability.set_keyword(keyword.clone());
+        }
+    }
+
+    /// Java parity hook for `SpellAbility.setCardState(CardState)`.
+    pub fn set_card_state(&mut self, state: crate::card::card_state::CardState) {
+        if let Some(sub_ability) = self.sub_ability.as_deref_mut() {
+            sub_ability.set_card_state(state.clone());
+        }
+
+        for ability in self.trigger_spell_abilities.values_mut() {
+            ability.set_card_state(state.clone());
+        }
+    }
+
+    /// Java parity hook for `SpellAbility.setIntrinsic(boolean)`.
+    pub fn set_intrinsic(&mut self, intrinsic: bool) {
+        self.intrinsic = intrinsic;
+
+        if let Some(sub_ability) = self.sub_ability.as_deref_mut() {
+            if sub_ability.is_intrinsic() != intrinsic {
+                sub_ability.set_intrinsic(intrinsic);
+            }
+        }
+
+        for ability in self.trigger_spell_abilities.values_mut() {
+            if ability.is_intrinsic() != intrinsic {
+                ability.set_intrinsic(intrinsic);
+            }
+        }
+    }
+
+    pub fn is_intrinsic(&self) -> bool {
+        self.intrinsic
+    }
+
+    /// Mirrors Java's `SpellAbility.getAmountLifePaid()`.
+    pub fn get_amount_life_paid(&self) -> i32 {
+        self.paid_life_amount
+    }
+
+    /// Mirrors Java's `SpellAbility.setAmountLifePaid(int)`.
+    pub fn set_amount_life_paid(&mut self, value: i32) {
+        self.paid_life_amount = value;
     }
 
     // ── AI scoring ────────────────────────────────────────────────────────
@@ -1032,15 +1340,16 @@ impl SpellAbility {
 
     // ── Trigger object management ─────────────────────────────────────────
 
-    /// Add a triggering object to the map.
-    /// Mirrors Java's `SpellAbility.addTriggeringObject(String, Object)`.
-    pub fn add_triggering_object(&mut self, key: &str, value: &str) {
+    /// Set a triggering object in the map.
+    /// Mirrors Java's `SpellAbility.setTriggeringObject(AbilityKey, Object)`.
+    pub fn set_triggering_object(&mut self, key: &str, value: &str) {
         self.trigger_objects
             .insert(key.to_string(), value.to_string());
     }
 
-    /// Add a triggering spell ability to the map.
-    pub fn add_triggering_spell_ability(&mut self, key: &str, value: SpellAbility) {
+    /// Set a triggering spell ability in the map.
+    /// Mirrors Java's `SpellAbility.setTriggeringObject(AbilityKey, Object)` for SpellAbility values.
+    pub fn set_triggering_spell_ability(&mut self, key: &str, value: SpellAbility) {
         self.trigger_spell_abilities.insert(key.to_string(), value);
     }
 
@@ -1152,6 +1461,7 @@ impl SpellAbility {
     }
 }
 
+
 // build_spell_ability now lives in ability::ability_factory.
 // Re-export here for backward compatibility.
 pub use crate::ability::ability_factory::build_spell_ability;
@@ -1219,8 +1529,26 @@ pub fn choose_targets_by_kind(
                 .into_iter()
                 .filter(|&pid| !is_opponent_only || pid != player)
                 .collect();
-            sa.target_chosen.target_player =
-                agent.choose_target_player(player, &valid_players, Some(&*sa));
+            if max_targets > 1 {
+                let mut chosen = Vec::new();
+                while (chosen.len() as i32) < max_targets {
+                    let Some(pid) = agent.choose_target_player(player, &valid_players, Some(&*sa))
+                    else {
+                        break;
+                    };
+                    if !chosen.contains(&pid) {
+                        chosen.push(pid);
+                    }
+                    if chosen.len() == valid_players.len() {
+                        break;
+                    }
+                }
+                sa.target_chosen.target_player = chosen.first().copied();
+                sa.target_chosen.additional_target_players = chosen.into_iter().skip(1).collect();
+            } else {
+                sa.target_chosen.target_player =
+                    agent.choose_target_player(player, &valid_players, Some(&*sa));
+            }
         }
         TargetKind::Any => {
             let valid_players: Vec<PlayerId> =

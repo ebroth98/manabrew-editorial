@@ -1,41 +1,47 @@
+use serde::{Deserialize, Serialize};
+
+use crate::event::{RunParams, TriggerType};
+use crate::game::GameState;
 use crate::parsing::{keys, Params};
-use crate::{
-    event::RunParams,
-    game::GameState,
-    ids::{CardId, PlayerId},
-    spellability::SpellAbility,
-};
+use crate::spellability::SpellAbility;
 
-use super::trigger::{check_card_filter, TriggerMode};
+use super::trigger::{check_card_filter, Trigger, TriggerBehavior};
 
-pub fn parse_mode(params: &Params) -> TriggerMode {
-    let valid_card = params.get_cloned(keys::VALID_CARD);
-    let activator = params.get_cloned(keys::VALID_ACTIVATOR);
-    let produced = params.get_cloned(keys::PRODUCED);
-    TriggerMode::TapsForMana {
-        valid_card,
-        activator,
-        produced,
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TriggerTapsForMana {
+    pub valid_card: Option<String>,
+    pub activator: Option<String>,
+    pub produced: Option<String>,
+}
+
+impl TriggerTapsForMana {
+    pub fn parse(params: &Params) -> Box<dyn TriggerBehavior> {
+        Box::new(Self {
+            valid_card: params.get_cloned(keys::VALID_CARD),
+            activator: params.get_cloned(keys::VALID_ACTIVATOR),
+            produced: params.get_cloned(keys::PRODUCED),
+        })
     }
 }
 
-pub fn perform_test(
-    mode: &TriggerMode,
-    params: &RunParams,
-    game: &GameState,
-    host_card: CardId,
-    host_controller: PlayerId,
-) -> bool {
-    if let TriggerMode::TapsForMana {
-        valid_card,
-        activator,
-        produced,
-    } = mode
-    {
-        if !check_card_filter(valid_card, params.card, host_card, host_controller, game) {
+#[typetag::serde]
+impl TriggerBehavior for TriggerTapsForMana {
+    fn trigger_type(&self) -> TriggerType {
+        TriggerType::TapsForMana
+    }
+
+    fn perform_test(
+        &self,
+        trigger: &Trigger,
+        params: &RunParams,
+        game: &GameState,
+    ) -> bool {
+        let host_card = trigger.base.card_trait_base.get_host_card().id;
+        let host_controller = trigger.base.card_trait_base.get_host_card().controller;
+        if !check_card_filter(&self.valid_card, params.card, host_card, host_controller, game) {
             return false;
         }
-        if let Some(filter) = activator {
+        if let Some(filter) = self.activator.as_ref() {
             let Some(player) = params.activator.or(params.player) else {
                 return false;
             };
@@ -43,7 +49,7 @@ pub fn perform_test(
                 return false;
             }
         }
-        if let Some(expected) = produced {
+        if let Some(expected) = self.produced.as_ref() {
             let Some(actual) = params.produced.as_ref() else {
                 return false;
             };
@@ -51,33 +57,38 @@ pub fn perform_test(
                 return false;
             }
         }
-        return true;
+        true
     }
-    panic!("Expected TapsForMana mode");
-}
 
-pub fn set_triggering_objects(sa: &mut SpellAbility, params: &RunParams) {
-    if let Some(card) = params.card {
-        sa.add_triggering_object("Card", &card.0.to_string());
+    fn set_triggering_objects(
+        &self,
+        _trigger: &Trigger,
+        sa: &mut SpellAbility,
+        params: &RunParams,
+        _game: &GameState,
+    ) {
+        if let Some(card) = params.card {
+            sa.set_triggering_object("Card", &card.0.to_string());
+        }
+        if let Some(produced) = params.produced.as_ref() {
+            sa.set_triggering_object("Produced", produced);
+        }
+        if let Some(p) = params.activator {
+            sa.set_triggering_object("Activator", &p.0.to_string());
+        }
     }
-    if let Some(produced) = params.produced.as_ref() {
-        sa.add_triggering_object("Produced", produced);
-    }
-    if let Some(p) = params.activator {
-        sa.add_triggering_object("Activator", &p.0.to_string());
-    }
-}
 
-pub fn get_important_stack_objects(sa: &SpellAbility) -> String {
-    format!(
-        "TappedForMana: {} Produced: {}",
-        sa.trigger_objects
-            .get("Card")
-            .map(|s| s.as_str())
-            .unwrap_or(""),
-        sa.trigger_objects
-            .get("Produced")
-            .map(|s| s.as_str())
-            .unwrap_or("")
-    )
+    fn get_important_stack_objects(&self, _trigger: &Trigger, sa: &SpellAbility) -> String {
+        format!(
+            "TappedForMana: {} Produced: {}",
+            sa.trigger_objects
+                .get("Card")
+                .map(|s| s.as_str())
+                .unwrap_or(""),
+            sa.trigger_objects
+                .get("Produced")
+                .map(|s| s.as_str())
+                .unwrap_or("")
+        )
+    }
 }

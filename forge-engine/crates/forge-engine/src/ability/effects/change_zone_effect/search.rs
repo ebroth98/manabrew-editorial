@@ -4,7 +4,7 @@
 
 use forge_foundation::ZoneType;
 
-use super::super::{resolve_defined_player_with_sa, EffectContext};
+use super::super::{resolve_defined_players_with_sa, EffectContext};
 use super::helpers::{get_land_subtypes, matches_with_context};
 use crate::ids::{CardId, PlayerId};
 use crate::parsing::keys;
@@ -33,20 +33,16 @@ pub(super) fn resolve_each_search(
         if candidates.is_empty() {
             continue;
         }
-        // Always delegate to agent — Java does not optimize for fungible candidates,
-        // and ChoiceSpace.pickOne only skips RNG for size == 1.
-        let chosen = if candidates.len() == 1 {
-            Some(candidates[0])
-        } else {
-            ctx.agents[chooser.index()].snapshot_state(ctx.game, ctx.mana_pools);
-            ctx.agents[chooser.index()].on_library_peek(ctx.game, &candidates);
-            ctx.agents[chooser.index()].choose_single_card_for_zone_change(
-                chooser,
-                &candidates,
-                sa.select_prompt().unwrap_or("Select card for zone change"),
-                false,
-            )
-        };
+        // Java always routes through chooseSingleCardForZoneChange, even for
+        // a single candidate, so do not short-circuit here.
+        ctx.agents[chooser.index()].snapshot_state(ctx.game, ctx.mana_pools);
+        ctx.agents[chooser.index()].on_library_peek(ctx.game, &candidates);
+        let chosen = ctx.agents[chooser.index()].choose_single_card_for_zone_change(
+            chooser,
+            &candidates,
+            sa.select_prompt().unwrap_or("Select card for zone change"),
+            false,
+        );
         if let Some(id) = chosen {
             out.push(id);
             zone_cards.retain(|&cid| cid != id);
@@ -62,12 +58,12 @@ pub(super) fn resolve_single_search(
     chooser: PlayerId,
     is_optional: bool,
 ) -> Vec<CardId> {
-    if candidates.len() == 1 && !is_optional {
-        return vec![candidates[0]];
+    if candidates.is_empty() {
+        return Vec::new();
     }
     ctx.agents[chooser.index()].snapshot_state(ctx.game, ctx.mana_pools);
     ctx.agents[chooser.index()].on_library_peek(ctx.game, candidates);
-    ctx.agents[chooser.index()]
+    let chosen = ctx.agents[chooser.index()]
         .choose_single_card_for_zone_change(
             chooser,
             candidates,
@@ -75,7 +71,26 @@ pub(super) fn resolve_single_search(
             is_optional,
         )
         .into_iter()
-        .collect()
+        .collect::<Vec<_>>();
+    if !chosen.is_empty() {
+        return chosen;
+    }
+
+    // Java's one-at-a-time search path asks for a follow-up confirmation when
+    // the chooser returns null but legal cards still exist.
+    if !sa.param_is_true("SkipCancelPrompt") {
+        let source_name = sa.source.map(|cid| ctx.game.card(cid).card_name.as_str());
+        ctx.agents[chooser.index()].snapshot_state(ctx.game, ctx.mana_pools);
+        let _ = ctx.agents[chooser.index()].confirm_action(
+            chooser,
+            Some("ChangeZoneGeneral"),
+            "Cancel search and select up to 1 cards?",
+            &[],
+            source_name,
+            Some(crate::ability::api_type::ApiType::ChangeZone),
+        );
+    }
+    Vec::new()
 }
 
 /// Multi-card search with DifferentNames/CMC/Power, ShareLandType, and budget constraints.
@@ -230,16 +245,13 @@ pub(super) fn resolve_random_selection(
     pool
 }
 
-/// DefinedPlayer$ choice: each player chooses a card from their zone.
-pub(super) fn resolve_defined_player_choice(
-    ctx: &mut EffectContext,
+pub(super) fn resolve_defined_players_for_hidden_origin(
+    ctx: &EffectContext,
     sa: &SpellAbility,
-    origin_zone: ZoneType,
-    change_type: &str,
-) -> Vec<CardId> {
+) -> Vec<PlayerId> {
     let controller = sa.activating_player;
     let def = sa.defined_player().unwrap_or("");
-    let players: Vec<PlayerId> = if def.eq_ignore_ascii_case("Player") {
+    if def.eq_ignore_ascii_case("Player") {
         (0..ctx.game.players.len())
             .map(|i| PlayerId(i as u32))
             .collect()
@@ -248,37 +260,59 @@ pub(super) fn resolve_defined_player_choice(
     } else if def.eq_ignore_ascii_case("Opponent") {
         vec![ctx.game.opponent_of(controller)]
     } else {
-        resolve_defined_player_with_sa(def, sa, controller, ctx.game)
-            .map(|pid| vec![pid])
-            .unwrap_or_else(|| vec![controller])
-    };
+        let players = resolve_defined_players_with_sa(def, sa, controller, ctx.game);
+        if players.is_empty() {
+            vec![controller]
+        } else {
+            players
+        }
+    }
+}
 
+pub(super) fn resolve_defined_player_cards(
+    ctx: &mut EffectContext,
+    sa: &SpellAbility,
+    origin_zone: ZoneType,
+    change_type: &str,
+    pid: PlayerId,
+) -> Vec<CardId> {
+    let candidates: Vec<_> = ctx
+        .game
+        .cards_in_zone(origin_zone, pid)
+        .to_vec()
+        .into_iter()
+        .filter(|&cid| matches_with_context(ctx, sa, cid, change_type))
+        .collect();
+    if candidates.is_empty() {
+        return Vec::new();
+    }
+    if candidates.len() == 1 {
+        return vec![candidates[0]];
+    }
+    ctx.agents[pid.index()].snapshot_state(ctx.game, ctx.mana_pools);
+    ctx.agents[pid.index()].on_library_peek(ctx.game, &candidates);
+    ctx.agents[pid.index()]
+        .choose_single_card_for_zone_change(pid, &candidates, "Select card for zone change", false)
+        .into_iter()
+        .collect()
+}
+
+/// DefinedPlayer$ choice: each player chooses a card from their zone.
+pub(super) fn resolve_defined_player_choice(
+    ctx: &mut EffectContext,
+    sa: &SpellAbility,
+    origin_zone: ZoneType,
+    change_type: &str,
+) -> Vec<CardId> {
     let mut collected = Vec::new();
-    for pid in players {
-        let candidates: Vec<_> = ctx
-            .game
-            .cards_in_zone(origin_zone, pid)
-            .to_vec()
-            .into_iter()
-            .filter(|&cid| matches_with_context(ctx, sa, cid, change_type))
-            .collect();
-        if candidates.is_empty() {
-            continue;
-        }
-        if candidates.len() == 1 {
-            collected.push(candidates[0]);
-            continue;
-        }
-        ctx.agents[pid.index()].snapshot_state(ctx.game, ctx.mana_pools);
-        ctx.agents[pid.index()].on_library_peek(ctx.game, &candidates);
-        if let Some(chosen) = ctx.agents[pid.index()].choose_single_card_for_zone_change(
+    for pid in resolve_defined_players_for_hidden_origin(ctx, sa) {
+        collected.extend(resolve_defined_player_cards(
+            ctx,
+            sa,
+            origin_zone,
+            change_type,
             pid,
-            &candidates,
-            "Select card for zone change",
-            false,
-        ) {
-            collected.push(chosen);
-        }
+        ));
     }
     collected
 }

@@ -149,7 +149,8 @@ pub(super) fn move_cards(
             ctx.trigger_handler
                 .register_delayed_trigger(crate::trigger::handler::DelayedTrigger {
                     mode: TriggerType::Phase,
-                    trigger_mode: crate::trigger::TriggerMode::Always,
+                    trigger_mode: Box::new(crate::trigger::trigger_always::TriggerAlways) as Box<dyn crate::trigger::TriggerBehavior>,
+                    params: crate::parsing::Params::default(),
                     execute_svar: eot_svar.to_string(),
                     controller,
                     source_card: sa.source.unwrap_or(cid),

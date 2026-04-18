@@ -51,10 +51,10 @@ impl StackEntry {
         self.spell_ability.update_target(old, new);
     }
 
-    /// Add a triggering object to this stack entry's spell ability.
-    /// Mirrors Java's `SpellAbilityStackInstance.addTriggeringObject(String, Object)`.
-    pub fn add_triggering_object(&mut self, key: &str, value: &str) {
-        self.spell_ability.add_triggering_object(key, value);
+    /// Set a triggering object on this stack entry's spell ability.
+    /// Mirrors Java's `SpellAbilityStackInstance.setTriggeringObject(String, Object)`.
+    pub fn set_triggering_object(&mut self, key: &str, value: &str) {
+        self.spell_ability.set_triggering_object(key, value);
     }
 
     /// Update a triggering object in this stack entry's spell ability.

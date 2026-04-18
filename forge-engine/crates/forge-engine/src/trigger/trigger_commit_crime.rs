@@ -1,36 +1,57 @@
-use super::trigger::{check_player_filter, TriggerMode};
-use crate::{
-    event::RunParams,
-    game::GameState,
-    ids::{CardId, PlayerId},
-    spellability::SpellAbility,
-};
+use serde::{Deserialize, Serialize};
 
-pub fn perform_test(
-    mode: &TriggerMode,
-    params: &RunParams,
-    _game: &GameState,
-    _host_card: CardId,
-    host_controller: PlayerId,
-) -> bool {
-    let TriggerMode::CommitCrime { valid_player } = mode else {
-        panic!("Expected CommitCrime mode");
-    };
-    check_player_filter(valid_player, params.player, host_controller)
+use crate::event::{RunParams, TriggerType};
+use crate::game::GameState;
+use crate::spellability::SpellAbility;
+
+use super::trigger::{check_player_filter, TriggerBehavior};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TriggerCommitCrime {
+    pub valid_player: Option<String>,
 }
 
-pub fn set_triggering_objects(sa: &mut SpellAbility, params: &RunParams) {
-    if let Some(p) = params.player {
-        sa.add_triggering_object("Player", &p.0.to_string());
+impl TriggerCommitCrime {
+    pub fn parse(valid_player: Option<String>) -> Box<dyn TriggerBehavior> {
+        Box::new(Self { valid_player })
     }
 }
 
-pub fn get_important_stack_objects(sa: &SpellAbility) -> String {
-    format!(
-        "Player: {}",
-        sa.trigger_objects
-            .get("Player")
-            .cloned()
-            .unwrap_or_default()
-    )
+#[typetag::serde]
+impl TriggerBehavior for TriggerCommitCrime {
+    fn trigger_type(&self) -> TriggerType {
+        TriggerType::CommitCrime
+    }
+
+    fn perform_test(
+        &self,
+        trigger: &super::trigger::Trigger,
+        params: &RunParams,
+        _game: &GameState,
+    ) -> bool {
+        let host_controller = trigger.base.card_trait_base.get_host_card().controller;
+        check_player_filter(&self.valid_player, params.player, host_controller)
+    }
+
+    fn set_triggering_objects(
+        &self,
+        _trigger: &super::trigger::Trigger,
+        sa: &mut SpellAbility,
+        params: &RunParams,
+        _game: &GameState,
+    ) {
+        if let Some(p) = params.player {
+            sa.set_triggering_object("Player", &p.0.to_string());
+        }
+    }
+
+    fn get_important_stack_objects(&self, _trigger: &super::trigger::Trigger, sa: &SpellAbility) -> String {
+        format!(
+            "Player: {}",
+            sa.trigger_objects
+                .get("Player")
+                .cloned()
+                .unwrap_or_default()
+        )
+    }
 }

@@ -710,10 +710,20 @@ pub(crate) fn emit_targeting_triggers(
     card_id: CardId,
     trigger_sa: &SpellAbility,
 ) {
+    emit_targeting_triggers_for_sa(ctx.trigger_handler, ctx.game, card_id, trigger_sa);
+}
+
+pub(crate) fn emit_targeting_triggers_for_sa(
+    trigger_handler: &mut crate::trigger::handler::TriggerHandler,
+    game: &mut GameState,
+    card_id: CardId,
+    trigger_sa: &SpellAbility,
+) {
     let controller = trigger_sa.activating_player;
-    if let Some(target_id) = trigger_sa.target_chosen.target_card {
-        let first_time = !ctx.game.card(target_id).has_become_target_this_turn();
-        ctx.game.card_mut(target_id).add_target_from_this_turn();
+
+    for target_id in trigger_sa.target_chosen.all_target_cards() {
+        let first_time = !game.card(target_id).has_become_target_this_turn();
+        game.card_mut(target_id).add_target_from_this_turn();
         let params = RunParams {
             card: Some(target_id),
             target_card: Some(target_id),
@@ -724,11 +734,11 @@ pub(crate) fn emit_targeting_triggers(
             first_time: Some(first_time),
             ..Default::default()
         };
-        ctx.trigger_handler
-            .run_trigger(TriggerType::BecomesTarget, params.clone(), false);
-        ctx.trigger_handler
-            .run_trigger(TriggerType::BecomesTargetOnce, params, false);
-    } else if let Some(target_player) = trigger_sa.target_chosen.target_player {
+        trigger_handler.run_trigger(TriggerType::BecomesTarget, params.clone(), false);
+        trigger_handler.run_trigger(TriggerType::BecomesTargetOnce, params, false);
+    }
+
+    for target_player in trigger_sa.target_chosen.all_target_players() {
         let params = RunParams {
             player: Some(target_player),
             target_player: Some(target_player),
@@ -737,10 +747,8 @@ pub(crate) fn emit_targeting_triggers(
             source_sa: Some(trigger_sa.clone()),
             ..Default::default()
         };
-        ctx.trigger_handler
-            .run_trigger(TriggerType::BecomesTarget, params.clone(), false);
-        ctx.trigger_handler
-            .run_trigger(TriggerType::BecomesTargetOnce, params, false);
+        trigger_handler.run_trigger(TriggerType::BecomesTarget, params.clone(), false);
+        trigger_handler.run_trigger(TriggerType::BecomesTargetOnce, params, false);
     }
 }
 

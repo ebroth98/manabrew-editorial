@@ -10,7 +10,23 @@ use crate::spellability::SpellAbility;
 
 pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     let counter_type_str = sa.params.get(keys::COUNTER_TYPE).unwrap_or("P1P1");
-    let counter_type = parse_counter_type(counter_type_str);
+    let controller = sa.activating_player;
+    let counter_type_options: Vec<_> = counter_type_str
+        .split(',')
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(parse_counter_type)
+        .collect();
+    let Some(counter_type) = ({
+        ctx.agents[controller.index()].snapshot_state(ctx.game, ctx.mana_pools);
+        ctx.agents[controller.index()].choose_counter_type(
+            controller,
+            &counter_type_options,
+            "Select counter type",
+        )
+    }) else {
+        return;
+    };
     // Support SVar references for CounterNum (e.g. Count$Kicked.4.0 for kicker cards)
     let mut count = parse_param(&sa.ability_text, "CounterNum$ ")
         .unwrap_or_else(|| resolve_numeric_svar(ctx.game, sa, "CounterNum", 1));
@@ -22,14 +38,14 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     }
 
     // Resolve the controller of this ability (for Defined$ You etc.)
-    let controller = sa
+    let source_controller = sa
         .source
         .map(|id| ctx.game.card(id).controller)
         .unwrap_or_else(|| ctx.game.player_order[0]);
     // Check for Defined$ — if targeting a player (e.g. Defined$ You for energy),
     // handle player-level counters like ENERGY instead of card counters.
     if let Some(defined) = sa.params.get(keys::DEFINED) {
-        if let Some(target_player) = resolve_defined_player(defined, controller, ctx.game) {
+        if let Some(target_player) = resolve_defined_player(defined, source_controller, ctx.game) {
             match counter_type_str.to_uppercase().as_str() {
                 "ENERGY" => {
                     ctx.game.player_add_energy(target_player, count);
@@ -107,7 +123,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         .get("Bloodthirst")
         .map(|s| s.eq_ignore_ascii_case("True"))
         .unwrap_or(false);
-    if is_bloodthirst && !ctx.game.player_has_bloodthirst(controller) {
+    if is_bloodthirst && !ctx.game.player_has_bloodthirst(source_controller) {
         return;
     }
 

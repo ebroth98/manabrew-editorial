@@ -1,28 +1,48 @@
+use serde::{Deserialize, Serialize};
+
 use crate::{
-    event::RunParams,
+    event::{RunParams, TriggerType},
     game::GameState,
-    ids::{CardId, PlayerId},
+    parsing::Params,
     spellability::SpellAbility,
 };
 
-use super::trigger::TriggerMode;
+use super::trigger::TriggerBehavior;
 
-pub fn perform_test(
-    mode: &TriggerMode,
-    params: &RunParams,
-    game: &GameState,
-    host_card: CardId,
-    host_controller: PlayerId,
-) -> bool {
-    let _ = (params, game, host_card, host_controller);
-    if let TriggerMode::Always = mode {
-        return true;
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TriggerAlways;
+
+impl TriggerAlways {
+    pub fn parse(_params: &Params) -> Box<dyn TriggerBehavior> {
+        Box::new(Self)
     }
-    panic!("Expected Always mode");
 }
 
-pub fn set_triggering_objects(_sa: &mut SpellAbility, _params: &RunParams) {}
+#[typetag::serde]
+impl TriggerBehavior for TriggerAlways {
+    fn trigger_type(&self) -> TriggerType {
+        TriggerType::Always
+    }
 
-pub fn get_important_stack_objects(_sa: &SpellAbility) -> String {
-    String::new()
+    fn perform_test(
+        &self,
+        _trigger: &super::trigger::Trigger,
+        _params: &RunParams,
+        _game: &GameState,
+    ) -> bool {
+        true
+    }
+
+    fn set_triggering_objects(
+        &self,
+        _trigger: &super::trigger::Trigger,
+        _sa: &mut SpellAbility,
+        _params: &RunParams,
+        _game: &GameState,
+    ) {
+    }
+
+    fn get_important_stack_objects(&self, _trigger: &super::trigger::Trigger, _sa: &SpellAbility) -> String {
+        String::new()
+    }
 }

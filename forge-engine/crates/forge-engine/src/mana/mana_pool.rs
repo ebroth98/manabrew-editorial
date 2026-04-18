@@ -12,10 +12,11 @@ use super::mana_conversion_matrix::ManaConversionMatrix;
 use super::{mana_meets_restriction, Mana, ManaPaymentContext};
 use crate::ids::CardId;
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ManaPaymentOutcome {
     pub life_paid: i32,
     pub colors_spent: u16,
+    pub paying_mana: Vec<u16>,
 }
 
 fn mana_matches_context(mana: &Mana, ctx: &ManaPaymentContext) -> bool {
@@ -46,6 +47,10 @@ fn mana_matches_context(mana: &Mana, ctx: &ManaPaymentContext) -> bool {
 pub struct ManaPool {
     #[serde(skip)]
     mana: Vec<Mana>,
+    #[serde(skip)]
+    last_payment_atoms: Vec<u16>,
+    #[serde(skip)]
+    record_payment_atoms: bool,
     /// When set, caps total producible mana for playability checks.
     /// Used by `calculate_available_mana` to prevent multi-color sources
     /// (dual lands, Command Tower) from being counted as multiple mana.
@@ -66,6 +71,14 @@ pub struct ManaPool {
 impl ManaPool {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    pub fn clear_last_payment_atoms(&mut self) {
+        self.last_payment_atoms.clear();
+    }
+
+    pub fn last_payment_atoms(&self) -> &[u16] {
+        &self.last_payment_atoms
     }
 
     // ── ManaConversionMatrix delegation (Java inheritance parity) ────
@@ -206,14 +219,18 @@ impl ManaPool {
     /// Remove `amount` of a given mana atom from the pool, saturating at 0.
     pub fn remove(&mut self, atom: u16, amount: i32) {
         let mut remaining = amount;
-        self.mana.retain(|m| {
-            if remaining > 0 && m.color == atom {
+        let mut idx = 0usize;
+        while remaining > 0 && idx < self.mana.len() {
+            if self.mana[idx].color == atom {
+                if self.record_payment_atoms {
+                    self.last_payment_atoms.push(atom);
+                }
+                self.mana.remove(idx);
                 remaining -= 1;
-                false
             } else {
-                true
+                idx += 1;
             }
-        });
+        }
     }
 
     /// Returns true if the pool contains at least `amount` of the given atom.
@@ -659,6 +676,8 @@ impl ManaPool {
 
     /// Try to pay a mana cost, deducting from the pool. Returns true if successful.
     pub fn try_pay(&mut self, cost: &forge_foundation::ManaCost) -> bool {
+        self.last_payment_atoms.clear();
+        self.record_payment_atoms = true;
         // First, pay colored shards
         for shard in cost.shards() {
             if shard.is_x() {
@@ -670,9 +689,13 @@ impl ManaPool {
             // Snow shard ({S}) — pay with any snow mana
             if shard.is_snow() {
                 if let Some(idx) = self.mana.iter().position(|m| m.is_snow) {
+                    if self.record_payment_atoms {
+                        self.last_payment_atoms.push(self.mana[idx].color);
+                    }
                     self.mana.remove(idx);
                     continue;
                 } else {
+                    self.record_payment_atoms = false;
                     return false;
                 }
             }
@@ -689,6 +712,7 @@ impl ManaPool {
                 if !self.pay_color(color_atoms) {
                     // Try paying 2 generic instead
                     if self.total_mana() < 2 {
+                        self.record_payment_atoms = false;
                         return false;
                     }
                     self.pay_generic(2);
@@ -711,6 +735,7 @@ impl ManaPool {
                     }
                 }
                 if !paid {
+                    self.record_payment_atoms = false;
                     return false;
                 }
             } else if shard.is_colorless() && !shard.is_multi_color() {
@@ -718,6 +743,7 @@ impl ManaPool {
                 if self.colorless() > 0 {
                     self.remove(ManaAtom::COLORLESS, 1);
                 } else {
+                    self.record_payment_atoms = false;
                     return false;
                 }
             } else if shard.is_phyrexian() {
@@ -736,17 +762,21 @@ impl ManaPool {
         let generic = cost.generic_cost();
         if generic > 0 {
             if self.total_mana() < generic {
+                self.record_payment_atoms = false;
                 return false;
             }
             self.pay_generic(generic);
         }
 
+        self.record_payment_atoms = false;
         true
     }
 
     /// Try to pay a mana cost with any-color conversion active.
     /// All colored mana can pay for any colored shard.
     pub fn try_pay_any_color(&mut self, cost: &forge_foundation::ManaCost) -> bool {
+        self.last_payment_atoms.clear();
+        self.record_payment_atoms = true;
         for shard in cost.shards() {
             if shard.is_x() {
                 continue;
@@ -754,9 +784,13 @@ impl ManaPool {
             let atoms = shard.shard();
             if shard.is_snow() {
                 if let Some(idx) = self.mana.iter().position(|m| m.is_snow) {
+                    if self.record_payment_atoms {
+                        self.last_payment_atoms.push(self.mana[idx].color);
+                    }
                     self.mana.remove(idx);
                     continue;
                 } else {
+                    self.record_payment_atoms = false;
                     return false;
                 }
             }
@@ -765,6 +799,7 @@ impl ManaPool {
                 if self.colorless() > 0 {
                     self.remove(ManaAtom::COLORLESS, 1);
                 } else {
+                    self.record_payment_atoms = false;
                     return false;
                 }
             } else if shard.is_phyrexian() {
@@ -779,6 +814,7 @@ impl ManaPool {
             } else if shard.is_mono_color() || shard.is_multi_color() || shard.is_or_2_generic() {
                 // With any-color conversion, any colored mana can pay any colored shard
                 if !self.pay_any_colored() {
+                    self.record_payment_atoms = false;
                     return false;
                 }
             }
@@ -786,10 +822,12 @@ impl ManaPool {
         let generic = cost.generic_cost();
         if generic > 0 {
             if self.total_mana() < generic {
+                self.record_payment_atoms = false;
                 return false;
             }
             self.pay_generic(generic);
         }
+        self.record_payment_atoms = false;
         true
     }
 
@@ -947,6 +985,8 @@ impl ManaPool {
         player_life: i32,
     ) -> Option<ManaPaymentOutcome> {
         use super::mana_cost_being_paid::ManaCostBeingPaid;
+        self.last_payment_atoms.clear();
+        self.record_payment_atoms = true;
         let unpaid = ManaCostBeingPaid::from_mana_cost(cost);
         let mut best: Option<(i32, Vec<usize>)> = None;
         self.search_phyrexian_payment(
@@ -958,17 +998,25 @@ impl ManaPool {
             &mut best,
         );
 
-        let (life_to_pay, spent_indices) = best?;
+        let Some((life_to_pay, spent_indices)) = best else {
+            self.record_payment_atoms = false;
+            return None;
+        };
         let mut colors_spent = 0u16;
+        let mut paying_mana = Vec::new();
         for &idx in &spent_indices {
             colors_spent |= self.mana[idx].color;
+            paying_mana.push(self.mana[idx].color);
         }
         for idx in spent_indices.into_iter().rev() {
             self.mana.remove(idx);
         }
+        self.last_payment_atoms = paying_mana.clone();
+        self.record_payment_atoms = false;
         Some(ManaPaymentOutcome {
             life_paid: life_to_pay,
             colors_spent,
+            paying_mana,
         })
     }
 

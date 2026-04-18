@@ -80,10 +80,10 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                 if let Some(original) = original_defender {
                     match original {
                         crate::combat::DefenderId::Player(pid) => {
-                            entry.add_triggering_object("OriginalDefender", &pid.0.to_string());
+                            entry.set_triggering_object("OriginalDefender", &pid.0.to_string());
                         }
                         crate::combat::DefenderId::Permanent(cid) => {
-                            entry.add_triggering_object("OriginalDefender", &cid.0.to_string());
+                            entry.set_triggering_object("OriginalDefender", &cid.0.to_string());
                         }
                     }
                 }

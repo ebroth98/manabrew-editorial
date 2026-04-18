@@ -36,6 +36,28 @@ impl GameLoop {
             return;
         }
 
+        if std::env::var("FORGE_STACK_TRACE").is_ok() {
+            let names: Vec<String> = game
+                .stack
+                .iter()
+                .map(|entry| {
+                    entry
+                        .spell_ability
+                        .source
+                        .map(|cid| game.card(cid).card_name.clone())
+                        .unwrap_or_else(|| "<effect>".to_string())
+                })
+                .collect();
+            eprintln!(
+                "[stack-trace] RESOLVE start phase={:?} active={:?} priority={:?} depth={} {:?}",
+                game.turn.phase,
+                game.active_player(),
+                game.turn.priority_player,
+                game.stack.len(),
+                names
+            );
+        }
+
         // LKI: Snapshot battlefield state before resolution.
         // Mirrors Java MagicStack line 623: game.copyLastState() before resolving.
         game.copy_last_state();
@@ -47,6 +69,13 @@ impl GameLoop {
             .and_then(|cid| game.cards.get(cid.index()).map(|c| c.card_name.clone()))
             .unwrap_or_else(|| "Ability".to_string());
         self.log_stack_resolved_item(&stack_item_name);
+        if std::env::var("FORGE_STACK_TRACE").is_ok() {
+            eprintln!(
+                "[stack-trace] POP resolving={} remaining_depth={}",
+                stack_item_name,
+                game.stack.len()
+            );
+        }
 
         // Storm/copy spells: resolve effect only, no card movement (copies have no physical card)
         if entry.spell_ability.is_copy {
@@ -308,18 +337,11 @@ impl GameLoop {
                     self.trigger_handler.register_delayed_trigger(
                         crate::trigger::handler::DelayedTrigger {
                             mode: TriggerType::ChangesZone,
-                            trigger_mode: crate::trigger::TriggerMode::ChangesZone {
-                                origin: None,
-                                destination: Some(ZoneType::Battlefield),
-                                valid_card: Some("Card.Self".to_string()),
-                                excluded_origins: None,
-                                excluded_destinations: None,
-                                valid_cause: None,
-                                check_on_triggered_card: None,
-                                fizzle: None,
-                                not_this_ability: false,
-                                condition_you_cast_this_turn: None,
-                            },
+                            trigger_mode: Box::new(crate::trigger::trigger_changes_zone::TriggerChangesZone)
+                                as Box<dyn crate::trigger::TriggerBehavior>,
+                            params: crate::parsing::Params::from_raw(
+                                "Mode$ ChangesZone | Destination$ Battlefield | ValidCard$ Card.Self"
+                            ),
                             execute_svar: "DB$ Sacrifice".to_string(),
                             controller: player,
                             source_card: card_id,
@@ -343,7 +365,6 @@ impl GameLoop {
                     origin,
                     ZoneType::Battlefield,
                 );
-                self.process_triggers(game, agents);
 
                 // -- Post-ETB effects for alternative costs --
 
@@ -353,10 +374,11 @@ impl GameLoop {
                     self.trigger_handler.register_delayed_trigger(
                         crate::trigger::handler::DelayedTrigger {
                             mode: TriggerType::Phase,
-                            trigger_mode: crate::trigger::TriggerMode::Phase {
+                            trigger_mode: Box::new(crate::trigger::trigger_phase::TriggerPhase {
                                 phase: Some(forge_foundation::PhaseType::EndOfTurn),
                                 valid_player: None,
-                            },
+                            }) as Box<dyn crate::trigger::TriggerBehavior>,
+                            params: crate::parsing::Params::default(),
                             execute_svar: format!(
                                 "DB$ ChangeZone | Origin$ Battlefield | Destination$ Hand | Defined$ CardUID_{}", card_id.0
                             ),
@@ -382,10 +404,11 @@ impl GameLoop {
                     self.trigger_handler.register_delayed_trigger(
                         crate::trigger::handler::DelayedTrigger {
                             mode: TriggerType::Phase,
-                            trigger_mode: crate::trigger::TriggerMode::Phase {
+                            trigger_mode: Box::new(crate::trigger::trigger_phase::TriggerPhase {
                                 phase: Some(forge_foundation::PhaseType::EndOfTurn),
                                 valid_player: None,
-                            },
+                            }) as Box<dyn crate::trigger::TriggerBehavior>,
+                            params: crate::parsing::Params::default(),
                             execute_svar: format!(
                                 "DB$ ChangeZone | Origin$ Battlefield | Destination$ Exile | Defined$ CardUID_{}", card_id.0
                             ),
@@ -442,26 +465,26 @@ impl GameLoop {
                     let trig_id = game.card(card_id).triggers.len() as u32;
                     let dies_trigger = crate::trigger::Trigger {
                         id: trig_id,
-                        mode: crate::trigger::TriggerMode::ChangesZone {
-                            origin: Some(ZoneType::Battlefield),
-                            destination: Some(ZoneType::Graveyard),
-                            valid_card: Some("Card.Self".to_string()),
-                            excluded_origins: None,
-                            excluded_destinations: None,
-                            valid_cause: None,
-                            check_on_triggered_card: None,
-                            fizzle: None,
-                            not_this_ability: false,
-                            condition_you_cast_this_turn: None,
+                        base: {
+                            let mut base =
+                                crate::game_loop::trigger_replacement_base::TriggerReplacementBase::default();
+                            base.card_trait_base.set_id(trig_id as i32);
+                            base.card_trait_base.set_intrinsic(false);
+                            base.valid_host_zones = Some(vec![ZoneType::Battlefield]);
+                            base
                         },
-                        params: crate::parsing::Params::default(),
-                        active_zones: vec![ZoneType::Battlefield],
+                        kind: crate::event::TriggerType::ChangesZone,
+                        mode: Box::new(crate::trigger::trigger_changes_zone::TriggerChangesZone),
+                        params: crate::parsing::Params::from_raw(
+                            "Mode$ ChangesZone | Origin$ Battlefield | Destination$ Graveyard | ValidCard$ Card.Self"
+                        ),
                         execute: "BlitzDiesDraw".to_string(),
                         optional: false,
                         description: "When this creature dies, draw a card.".to_string(),
-                        intrinsic: false,
                         static_trigger: false,
                         trigger_remembered: Vec::new(),
+                        valid_phases: None,
+                        spawning_ability: None,
                     };
                     game.card_mut(card_id).add_trigger(dies_trigger);
                     game.card_mut(card_id)
@@ -472,10 +495,11 @@ impl GameLoop {
                     self.trigger_handler.register_delayed_trigger(
                         crate::trigger::handler::DelayedTrigger {
                             mode: TriggerType::Phase,
-                            trigger_mode: crate::trigger::TriggerMode::Phase {
+                            trigger_mode: Box::new(crate::trigger::trigger_phase::TriggerPhase {
                                 phase: Some(forge_foundation::PhaseType::EndOfTurn),
                                 valid_player: None,
-                            },
+                            }) as Box<dyn crate::trigger::TriggerBehavior>,
+                            params: crate::parsing::Params::default(),
                             execute_svar: format!("DB$ Sacrifice | Defined$ CardUID_{}", card_id.0),
                             controller: player,
                             source_card: card_id,
@@ -526,10 +550,11 @@ impl GameLoop {
                         self.trigger_handler.register_delayed_trigger(
                             crate::trigger::handler::DelayedTrigger {
                                 mode: TriggerType::Phase,
-                                trigger_mode: crate::trigger::TriggerMode::Phase {
+                                trigger_mode: Box::new(crate::trigger::trigger_phase::TriggerPhase {
                                     phase: Some(forge_foundation::PhaseType::Upkeep),
                                     valid_player: Some("You".to_string()),
-                                },
+                                }) as Box<dyn crate::trigger::TriggerBehavior>,
+                                params: crate::parsing::Params::default(),
                                 execute_svar: format!(
                                     "DB$ Play | Defined$ CardUID_{} | WithoutManaCost$ True",
                                     card_id.0

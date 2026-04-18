@@ -12,6 +12,11 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         .params
         .as_usize(crate::parsing::keys::NUM_CARDS)
         .unwrap_or(1);
+    let mode = sa
+        .params
+        .get(crate::parsing::keys::MODE)
+        .map(|s| s.as_ref())
+        .unwrap_or("TgtChoose");
 
     // AnyNumber$ True — the discarder may pick 0..=hand.len cards (e.g.
     // Cavalier of Flame, Careful Study). Routed through a distinct agent
@@ -50,7 +55,13 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         // the "decline" choice. Java's DiscardEffect doesn't fire a separate
         // confirm_action in that case; mirror that to keep callback counts
         // in parity.
-        if sa.params.has(crate::parsing::keys::OPTIONAL) && !any_number {
+        let chooser_style_optional = matches!(
+            mode,
+            "TgtChoose" | "YouChoose" | "RevealYouChoose" | "RevealTgtChoose"
+        );
+
+        if sa.params.has(crate::parsing::keys::OPTIONAL) && !any_number && !chooser_style_optional
+        {
             let source_name = sa.source.map(|cid| ctx.game.card(cid).card_name.as_str());
             let accepted = ctx.agents[target_player.index()].confirm_action(
                 target_player,
@@ -73,6 +84,13 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                 &hand,
                 0,
                 hand.len(),
+            )
+        } else if sa.params.has(crate::parsing::keys::OPTIONAL) && chooser_style_optional {
+            ctx.agents[target_player.index()].choose_discard_any_number(
+                target_player,
+                &hand,
+                0,
+                num.min(hand.len()),
             )
         } else {
             ctx.agents[target_player.index()].choose_discard(target_player, &hand, num)

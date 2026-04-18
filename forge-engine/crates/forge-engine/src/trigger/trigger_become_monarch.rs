@@ -1,40 +1,59 @@
+use serde::{Deserialize, Serialize};
+
 use crate::parsing::{keys, Params};
 use crate::{
-    event::RunParams,
+    event::{RunParams, TriggerType},
     game::GameState,
-    ids::{CardId, PlayerId},
     spellability::SpellAbility,
 };
 
-use super::trigger::{check_player_filter, TriggerMode};
+use super::trigger::{check_player_filter, TriggerBehavior};
 
-pub fn parse_mode(params: &Params) -> TriggerMode {
-    let valid_player = params.get_cloned(keys::VALID_PLAYER);
-    TriggerMode::BecomeMonarch { valid_player }
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TriggerBecomeMonarch {
+    pub valid_player: Option<String>,
 }
 
-pub fn perform_test(
-    mode: &TriggerMode,
-    params: &RunParams,
-    _game: &GameState,
-    _host_card: CardId,
-    host_controller: PlayerId,
-) -> bool {
-    if let TriggerMode::BecomeMonarch { valid_player } = mode {
-        return check_player_filter(valid_player, params.player, host_controller);
-    }
-    panic!("Expected BecomeMonarch mode");
-}
-
-pub fn set_triggering_objects(sa: &mut SpellAbility, params: &RunParams) {
-    if let Some(p) = params.player {
-        sa.add_triggering_object("Player", &p.0.to_string());
+impl TriggerBecomeMonarch {
+    pub fn parse(params: &Params) -> Box<dyn TriggerBehavior> {
+        Box::new(Self {
+            valid_player: params.get_cloned(keys::VALID_PLAYER),
+        })
     }
 }
 
-pub fn get_important_stack_objects(sa: &SpellAbility) -> String {
-    format!(
-        "Player: {}, ",
-        sa.get_triggering_object("Player").unwrap_or("")
-    )
+#[typetag::serde]
+impl TriggerBehavior for TriggerBecomeMonarch {
+    fn trigger_type(&self) -> TriggerType {
+        TriggerType::BecomeMonarch
+    }
+
+    fn perform_test(
+        &self,
+        trigger: &super::trigger::Trigger,
+        params: &RunParams,
+        _game: &GameState,
+    ) -> bool {
+        let host_controller = trigger.base.card_trait_base.get_host_card().controller;
+        check_player_filter(&self.valid_player, params.player, host_controller)
+    }
+
+    fn set_triggering_objects(
+        &self,
+        _trigger: &super::trigger::Trigger,
+        sa: &mut SpellAbility,
+        params: &RunParams,
+        _game: &GameState,
+    ) {
+        if let Some(p) = params.player {
+            sa.set_triggering_object("Player", &p.0.to_string());
+        }
+    }
+
+    fn get_important_stack_objects(&self, _trigger: &super::trigger::Trigger, sa: &SpellAbility) -> String {
+        format!(
+            "Player: {}, ",
+            sa.get_triggering_object("Player").unwrap_or("")
+        )
+    }
 }

@@ -509,6 +509,32 @@ pub fn apply_continuous_effects(game: &mut GameState) {
             EffectKind::GrantKeyword(kw) => {
                 let card = &mut game.cards[effect.target.index()];
                 card.granted_keywords.add(&kw);
+                if let Some(cost_str) = crate::keyword::extract_keyword_cost_str(&kw, "Ward") {
+                    let next_id = card
+                        .triggers
+                        .iter()
+                        .map(|t| t.id)
+                        .max()
+                        .unwrap_or(0)
+                        .saturating_add(1);
+                    let mut next_id_mut = next_id;
+                    let execute = format!("TrigWardGranted{}", next_id);
+                    let raw = format!(
+                        "Mode$ BecomesTarget | ValidSource$ SpellAbility.OppCtrl | ValidTarget$ Card.Self | Secondary$ True | Execute$ {} | TriggerZones$ Battlefield | TriggerDescription$ Ward",
+                        execute
+                    );
+                    if let Some(mut trig) = crate::trigger::parse_trigger(&raw, &mut next_id_mut) {
+                        trig.execute = execute.clone();
+                        card.add_trigger(trig);
+                    }
+                    card.granted_svars
+                        .insert(
+                            execute,
+                            format!(
+                                "DB$ Counter | Defined$ TriggeredSourceSA | UnlessCost$ {cost_str}"
+                            ),
+                        );
+                }
             }
             EffectKind::AddType(t) => {
                 let card = &mut game.cards[effect.target.index()];
@@ -545,7 +571,7 @@ pub fn apply_continuous_effects(game: &mut GameState) {
                     .saturating_add(1);
                 let mut next_id_mut = next_id;
                 if let Some(trig) = crate::trigger::parse_trigger(&text, &mut next_id_mut) {
-                    game.cards[effect.target.index()].triggers.push(trig);
+                    game.cards[effect.target.index()].add_trigger(trig);
                 }
             }
         }

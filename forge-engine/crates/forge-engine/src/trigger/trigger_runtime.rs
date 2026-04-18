@@ -65,6 +65,14 @@ pub fn process_pending_triggers(
         {
             continue;
         }
+        if let Some(source_id) = pt.entry.spell_ability.source {
+            crate::ability::effects::emit_targeting_triggers_for_sa(
+                trigger_handler,
+                game,
+                source_id,
+                &pt.entry.spell_ability,
+            );
+        }
 
         if pt.optional {
             pt.entry.optional_trigger_decider = Some(pt.decider);
@@ -95,7 +103,7 @@ pub fn process_pending_triggers(
                     game.cards
                         .get(source_id.index())
                         .and_then(|c| c.triggers.get(idx))
-                        .map(|t| trigger_mode_name(&t.mode))
+                        .map(|t| trigger_mode_name(t))
                 })
             })
             .unwrap_or_else(|| "DelayedOrUnknown".to_string());
@@ -202,12 +210,8 @@ pub fn process_pending_triggers(
     push_logs
 }
 
-fn trigger_mode_name(mode: &crate::trigger::TriggerMode) -> String {
-    let dbg = format!("{:?}", mode);
-    dbg.split(|c: char| c == '{' || c.is_whitespace())
-        .next()
-        .unwrap_or("Unknown")
-        .to_string()
+fn trigger_mode_name(trigger: &crate::trigger::Trigger) -> String {
+    trigger.kind.name().to_string()
 }
 
 fn parse_zone_name(name: &str) -> Option<ZoneType> {

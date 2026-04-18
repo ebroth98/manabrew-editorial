@@ -89,7 +89,9 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     // Put bottom cards at index 0 (true bottom), order as returned by agent.
     let zone = ctx.game.zone_mut(ZoneType::Library, target);
     // Insert bottom cards at the front (index 0 = bottom in our representation).
-    for &id in bottom.iter().rev() {
+    // Java moves `toBottom` cards one-by-one in the order returned by the
+    // controller; each subsequent move becomes the new bottom card.
+    for &id in &bottom {
         zone.cards.insert(0, id);
     }
     // Put remaining top cards back on top (append to end).

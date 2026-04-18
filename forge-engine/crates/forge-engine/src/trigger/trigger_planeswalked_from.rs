@@ -1,48 +1,75 @@
-use super::trigger::{check_card_filter, TriggerMode};
-use crate::{
-    event::RunParams,
-    game::GameState,
-    ids::{CardId, PlayerId},
-    spellability::SpellAbility,
-};
+use serde::{Deserialize, Serialize};
 
-pub fn perform_test(
-    mode: &TriggerMode,
-    params: &RunParams,
-    game: &GameState,
-    host_card: CardId,
-    host_controller: PlayerId,
-) -> bool {
-    let TriggerMode::PlaneswalkedFrom { valid_card } = mode else {
-        panic!("Expected PlaneswalkedFrom mode");
-    };
+use crate::event::{RunParams, TriggerType};
+use crate::game::GameState;
+use crate::parsing::{keys, Params};
+use crate::spellability::SpellAbility;
 
-    let Some(cards) = params.cards.as_ref() else {
-        return valid_card.is_none();
-    };
+use super::trigger::{check_card_filter, TriggerBehavior};
 
-    cards
-        .iter()
-        .any(|&cid| check_card_filter(valid_card, Some(cid), host_card, host_controller, game))
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TriggerPlaneswalkedFrom {
+    pub valid_card: Option<String>,
 }
 
-pub fn set_triggering_objects(sa: &mut SpellAbility, params: &RunParams) {
-    if let Some(cards) = params.cards.as_ref() {
-        let csv = cards
-            .iter()
-            .map(|c| c.0.to_string())
-            .collect::<Vec<_>>()
-            .join(",");
-        sa.add_triggering_object("Cards", &csv);
+impl TriggerPlaneswalkedFrom {
+    pub fn parse(params: &Params) -> Box<dyn TriggerBehavior> {
+        Box::new(Self {
+            valid_card: params
+                .get(keys::VALID_CARDS)
+                .or_else(|| params.get(keys::VALID_CARD))
+                .map(|s| s.to_string()),
+        })
     }
 }
 
-pub fn get_important_stack_objects(sa: &SpellAbility) -> String {
-    format!(
-        "PlaneswalkedFrom: {}",
-        sa.trigger_objects
-            .get("Cards")
-            .map(|s| s.as_str())
-            .unwrap_or("")
-    )
+#[typetag::serde]
+impl TriggerBehavior for TriggerPlaneswalkedFrom {
+    fn trigger_type(&self) -> TriggerType {
+        TriggerType::Planeswalk
+    }
+
+    fn perform_test(
+        &self,
+        trigger: &super::trigger::Trigger,
+        params: &RunParams,
+        game: &GameState,
+    ) -> bool {
+        let host_card = trigger.base.card_trait_base.get_host_card().id;
+        let host_controller = trigger.base.card_trait_base.get_host_card().controller;
+        let Some(cards) = params.cards.as_ref() else {
+            return self.valid_card.is_none();
+        };
+
+        cards
+            .iter()
+            .any(|&cid| check_card_filter(&self.valid_card, Some(cid), host_card, host_controller, game))
+    }
+
+    fn set_triggering_objects(
+        &self,
+        _trigger: &super::trigger::Trigger,
+        sa: &mut SpellAbility,
+        params: &RunParams,
+        _game: &GameState,
+    ) {
+        if let Some(cards) = params.cards.as_ref() {
+            let csv = cards
+                .iter()
+                .map(|c| c.0.to_string())
+                .collect::<Vec<_>>()
+                .join(",");
+            sa.set_triggering_object("Cards", &csv);
+        }
+    }
+
+    fn get_important_stack_objects(&self, _trigger: &super::trigger::Trigger, sa: &SpellAbility) -> String {
+        format!(
+            "PlaneswalkedFrom: {}",
+            sa.trigger_objects
+                .get("Cards")
+                .map(|s| s.as_str())
+                .unwrap_or("")
+        )
+    }
 }

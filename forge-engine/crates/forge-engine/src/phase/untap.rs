@@ -51,8 +51,10 @@ pub fn do_day_time(game: &mut GameState, previous_player: Option<PlayerId>) {
     let spells_cast = game.player(previous).spells_cast_this_turn;
 
     if !game.is_night && spells_cast == 0 {
+        game.day_night_started = true;
         game.is_night = true; // transition to night
     } else if game.is_night && spells_cast > 1 {
+        game.day_night_started = true;
         game.is_night = false; // transition to day
     }
 }

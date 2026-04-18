@@ -1,48 +1,71 @@
-use super::trigger::{check_card_filter, TriggerMode};
-use crate::{
-    event::RunParams,
-    game::GameState,
-    ids::{CardId, PlayerId},
-    spellability::SpellAbility,
-};
+use serde::{Deserialize, Serialize};
 
-pub fn perform_test(
-    mode: &TriggerMode,
-    params: &RunParams,
-    game: &GameState,
-    host_card: CardId,
-    host_controller: PlayerId,
-) -> bool {
-    let TriggerMode::EnteredRoom {
-        valid_card,
-        valid_room,
-    } = mode
-    else {
-        panic!("Expected EnteredRoom mode");
-    };
-    if !check_card_filter(valid_card, params.card, host_card, host_controller, game) {
-        return false;
+use crate::event::{RunParams, TriggerType};
+use crate::game::GameState;
+use crate::parsing::{keys, Params};
+use crate::spellability::SpellAbility;
+
+use super::trigger::{check_card_filter, TriggerBehavior};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TriggerEnteredRoom {
+    pub valid_card: Option<String>,
+    pub valid_room: Option<String>,
+}
+
+impl TriggerEnteredRoom {
+    pub fn parse(params: &Params) -> Box<dyn TriggerBehavior> {
+        Box::new(Self {
+            valid_card: params.get_cloned(keys::VALID_CARD),
+            valid_room: params.get_cloned("ValidRoom"),
+        })
     }
-    if let Some(filter) = valid_room {
-        let Some(room) = params.room_name.as_ref() else {
+}
+
+#[typetag::serde]
+impl TriggerBehavior for TriggerEnteredRoom {
+    fn trigger_type(&self) -> TriggerType {
+        TriggerType::EnteredRoom
+    }
+
+    fn perform_test(
+        &self,
+        trigger: &super::trigger::Trigger,
+        params: &RunParams,
+        game: &GameState,
+    ) -> bool {
+        let host_card = trigger.base.card_trait_base.get_host_card().id;
+        let host_controller = trigger.base.card_trait_base.get_host_card().controller;
+        if !check_card_filter(&self.valid_card, params.card, host_card, host_controller, game) {
             return false;
-        };
-        return filter
-            .split(',')
-            .map(|s| s.trim())
-            .any(|t| t.eq_ignore_ascii_case(room));
+        }
+        if let Some(filter) = self.valid_room.as_ref() {
+            let Some(room) = params.room_name.as_ref() else {
+                return false;
+            };
+            return filter
+                .split(',')
+                .map(|s| s.trim())
+                .any(|t| t.eq_ignore_ascii_case(room));
+        }
+        true
     }
-    true
-}
 
-pub fn set_triggering_objects(sa: &mut SpellAbility, params: &RunParams) {
-    if let Some(name) = params.room_name.as_ref() {
-        sa.add_triggering_object("RoomName", name);
+    fn set_triggering_objects(
+        &self,
+        _trigger: &super::trigger::Trigger,
+        sa: &mut SpellAbility,
+        params: &RunParams,
+        _game: &GameState,
+    ) {
+        if let Some(name) = params.room_name.as_ref() {
+            sa.set_triggering_object("RoomName", name);
+        }
     }
-}
 
-pub fn get_important_stack_objects(sa: &SpellAbility) -> String {
-    sa.get_triggering_object("RoomName")
-        .map(|r| format!("Room: {}", r))
-        .unwrap_or_default()
+    fn get_important_stack_objects(&self, _trigger: &super::trigger::Trigger, sa: &SpellAbility) -> String {
+        sa.get_triggering_object("RoomName")
+            .map(|r| format!("Room: {}", r))
+            .unwrap_or_default()
+    }
 }

@@ -3,6 +3,9 @@ use std::hash::{DefaultHasher, Hasher};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
+#[path = "game_loop/trigger_replacement_base.rs"]
+pub mod trigger_replacement_base;
+
 use forge_foundation::{PhaseType, ZoneType};
 
 use crate::ability::effects::{self, EffectContext};
@@ -569,10 +572,10 @@ impl GameLoop {
             });
         }
 
-        // Rebuild active triggers at start of turn
-        self.trigger_handler.reset_active_triggers(game);
         // Recompute continuous static effects for the new turn.
         apply_continuous_effects(game);
+        // Rebuild active triggers after statics so granted triggers are included.
+        self.trigger_handler.reset_active_triggers(game);
 
         self.run_turn_state_machine(game, agents);
     }

@@ -14,9 +14,18 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         .to_string();
 
     match value.as_str() {
-        "Day" => ctx.game.is_night = false,
-        "Night" => ctx.game.is_night = true,
-        "Switch" => ctx.game.is_night = !ctx.game.is_night,
+        "Day" => {
+            ctx.game.day_night_started = true;
+            ctx.game.is_night = false;
+        }
+        "Night" => {
+            ctx.game.day_night_started = true;
+            ctx.game.is_night = true;
+        }
+        "Switch" => {
+            ctx.game.day_night_started = true;
+            ctx.game.is_night = !ctx.game.is_night;
+        }
         _ => {}
     }
 

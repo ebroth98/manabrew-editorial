@@ -1,53 +1,79 @@
+use serde::{Deserialize, Serialize};
+
 use crate::{
-    event::RunParams,
+    event::{RunParams, TriggerType},
     game::GameState,
-    ids::{CardId, PlayerId},
+    parsing::{keys, Params},
     spellability::SpellAbility,
 };
 
-use super::trigger::{check_card_filter, TriggerMode};
+use super::trigger::{check_card_filter, TriggerBehavior};
 
-pub fn perform_test(
-    mode: &TriggerMode,
-    params: &RunParams,
-    game: &GameState,
-    host_card: CardId,
-    host_controller: PlayerId,
-) -> bool {
-    if let TriggerMode::AttackerUnblockedOnce { valid_card } = mode {
-        return check_card_filter(valid_card, params.card, host_card, host_controller, game);
-    }
-    panic!("Expected AttackerUnblockedOnce mode");
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TriggerAttackerUnblockedOnce {
+    pub valid_card: Option<String>,
 }
 
-pub fn set_triggering_objects(sa: &mut SpellAbility, params: &RunParams) {
-    // Java: sa.setTriggeringObjectsFrom(runParams, AbilityKey.AttackingPlayer, AbilityKey.Defenders);
-    if let Some(p) = params.attacking_player {
-        sa.add_triggering_object("AttackingPlayer", &p.0.to_string());
-    }
-    // Defenders combines both player and card defender IDs
-    {
-        let mut parts = Vec::new();
-        if let Some(players) = params.defenders_player_ids.as_ref() {
-            for p in players {
-                parts.push(p.0.to_string());
-            }
-        }
-        if let Some(cards) = params.defenders_card_ids.as_ref() {
-            for c in cards {
-                parts.push(c.0.to_string());
-            }
-        }
-        if !parts.is_empty() {
-            sa.add_triggering_object("Defenders", &parts.join(","));
-        }
+impl TriggerAttackerUnblockedOnce {
+    pub fn parse(params: &Params) -> Box<dyn TriggerBehavior> {
+        Box::new(Self {
+            valid_card: params.get_cloned(keys::VALID_CARD),
+        })
     }
 }
 
-pub fn get_important_stack_objects(sa: &SpellAbility) -> String {
-    format!(
-        "AttackingPlayer: {}, Defenders: {}",
-        sa.get_triggering_object("AttackingPlayer").unwrap_or(""),
-        sa.get_triggering_object("Defenders").unwrap_or("")
-    )
+#[typetag::serde]
+impl TriggerBehavior for TriggerAttackerUnblockedOnce {
+    fn trigger_type(&self) -> TriggerType {
+        TriggerType::AttackerUnblockedOnce
+    }
+
+    fn perform_test(
+        &self,
+        trigger: &super::trigger::Trigger,
+        params: &RunParams,
+        game: &GameState,
+    ) -> bool {
+        let host_card = trigger.base.card_trait_base.get_host_card().id;
+        let host_controller = trigger.base.card_trait_base.get_host_card().controller;
+        check_card_filter(&self.valid_card, params.card, host_card, host_controller, game)
+    }
+
+    fn set_triggering_objects(
+        &self,
+        _trigger: &super::trigger::Trigger,
+        sa: &mut SpellAbility,
+        params: &RunParams,
+        _game: &GameState,
+    ) {
+        // Java: sa.setTriggeringObjectsFrom(runParams, AbilityKey.AttackingPlayer, AbilityKey.Defenders);
+        if let Some(p) = params.attacking_player {
+            sa.set_triggering_object("AttackingPlayer", &p.0.to_string());
+        }
+        // Defenders combines both player and card defender IDs
+        {
+            let mut parts = Vec::new();
+            if let Some(players) = params.defenders_player_ids.as_ref() {
+                for p in players {
+                    parts.push(p.0.to_string());
+                }
+            }
+            if let Some(cards) = params.defenders_card_ids.as_ref() {
+                for c in cards {
+                    parts.push(c.0.to_string());
+                }
+            }
+            if !parts.is_empty() {
+                sa.set_triggering_object("Defenders", &parts.join(","));
+            }
+        }
+    }
+
+    fn get_important_stack_objects(&self, _trigger: &super::trigger::Trigger, sa: &SpellAbility) -> String {
+        format!(
+            "AttackingPlayer: {}, Defenders: {}",
+            sa.get_triggering_object("AttackingPlayer").unwrap_or(""),
+            sa.get_triggering_object("Defenders").unwrap_or("")
+        )
+    }
 }

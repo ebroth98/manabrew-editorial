@@ -6,6 +6,7 @@ use forge_engine_core::agent::{
     BinaryChoiceKind, GameEntity, ManaCostAction, PlayCardMode, PlayOption, PlayerAgent,
     TargetChoice,
 };
+use forge_engine_core::card::Card;
 use forge_engine_core::combat::DefenderId;
 use forge_engine_core::game::GameState;
 use forge_engine_core::ids::{CardId, PlayerId};
@@ -103,11 +104,13 @@ pub struct DeterministicAgent {
 }
 
 struct GameSnapshot {
-    game: GameState,
-    mana_pools: Vec<ManaPool>,
+    cards: Vec<Card>,
     card_names: Vec<(CardId, String)>,
     card_is_land: Vec<(CardId, bool)>,
+    card_owner_controller: Vec<(CardId, (u32, u32))>,
     ability_is_mana: Vec<((CardId, usize), bool)>,
+    ability_texts: Vec<((CardId, usize), String)>,
+    phase: PhaseType,
 }
 
 #[derive(Clone, Copy)]
@@ -118,6 +121,60 @@ enum ActionChoice {
 
 #[allow(private_interfaces)]
 impl DeterministicAgent {
+    fn shallow_snapshot_card(card: &Card) -> Card {
+        let mut out = Card::new(
+            card.id,
+            card.card_name.clone(),
+            card.owner,
+            card.type_line.clone(),
+            card.mana_cost.clone(),
+            card.color,
+            card.base_power,
+            card.base_toughness,
+            vec![],
+            vec![],
+        );
+        out.controller = card.controller;
+        out.zone = card.zone;
+        out.tapped = card.tapped;
+        out.phased_out = card.phased_out;
+        out.cant_attack_static = card.cant_attack_static;
+        out.cant_block_static = card.cant_block_static;
+        out.detained = card.detained;
+        out.summoning_sick = card.summoning_sick;
+        out.damage = card.damage;
+        out.static_power_modifier = card.static_power_modifier;
+        out.static_toughness_modifier = card.static_toughness_modifier;
+        out.static_set_power = card.static_set_power;
+        out.static_set_toughness = card.static_set_toughness;
+        out.power_modifier = card.power_modifier;
+        out.toughness_modifier = card.toughness_modifier;
+        out.perpetual_power_modifier = card.perpetual_power_modifier;
+        out.perpetual_toughness_modifier = card.perpetual_toughness_modifier;
+        out.counters = card.counters.clone();
+        out.keywords = card.keywords.clone();
+        out.granted_keywords = card.granted_keywords.clone();
+        out.pump_keywords = card.pump_keywords.clone();
+        out.static_abilities = card.static_abilities.clone();
+        out.replacement_effects = card.replacement_effects.clone();
+        out
+    }
+
+    fn shallow_cards(game: &GameState) -> Vec<Card> {
+        game.cards.iter().map(Self::shallow_snapshot_card).collect()
+    }
+
+    fn shallow_replacement_game(game: &GameState) -> GameState {
+        let player_names: Vec<String> = game.players.iter().map(|p| p.name.clone()).collect();
+        let player_name_refs: Vec<&str> = player_names.iter().map(String::as_str).collect();
+        let starting_life = game.players.first().map(|p| p.life).unwrap_or(20);
+        let mut sim = GameState::new(&player_name_refs, starting_life);
+        sim.players = game.players.clone();
+        sim.cards = Self::shallow_cards(game);
+        sim.turn = game.turn.clone();
+        sim
+    }
+
     pub fn new(
         player_id: PlayerId,
         verbose: VerboseMode,
@@ -189,15 +246,17 @@ impl DeterministicAgent {
     /// for Room unlock actions.
     fn unlock_door_ability_index(&self, card_id: CardId) -> usize {
         if let Some(ref snap) = self.last_game_snapshot {
-            let card = snap.game.card(card_id);
-            for ab in &card.activated_abilities {
-                if ab
-                    .params
+            for ((cid, ability_idx), text) in &snap.ability_texts {
+                if *cid != card_id {
+                    continue;
+                }
+                let params = forge_engine_core::parsing::Params::from_raw(text);
+                if params
                     .get(forge_engine_core::parsing::keys::AB)
                     .map(|v| v.eq_ignore_ascii_case("UnlockDoor"))
                     .unwrap_or(false)
                 {
-                    return ab.ability_index;
+                    return *ability_idx;
                 }
             }
         }
@@ -206,13 +265,10 @@ impl DeterministicAgent {
 
     fn ability_sort_text(&self, card_id: CardId, ability_idx: usize) -> String {
         if let Some(ref snap) = self.last_game_snapshot {
-            let card = snap.game.card(card_id);
-            if let Some(ab) = card
-                .activated_abilities
-                .iter()
-                .find(|ab| ab.ability_index == ability_idx)
-            {
-                return ab.ability_text.clone();
+            for ((cid, idx), text) in &snap.ability_texts {
+                if *cid == card_id && *idx == ability_idx {
+                    return text.clone();
+                }
             }
         }
         String::new()
@@ -220,8 +276,12 @@ impl DeterministicAgent {
 
     fn target_owner_controller_key(&self, id: CardId) -> (u32, u32) {
         if let Some(ref snap) = self.last_game_snapshot {
-            let card = snap.game.card(id);
-            (card.owner.0, card.controller.0)
+            for (cid, owner_controller) in &snap.card_owner_controller {
+                if *cid == id {
+                    return *owner_controller;
+                }
+            }
+            (u32::MAX, u32::MAX)
         } else {
             (u32::MAX, u32::MAX)
         }
@@ -238,7 +298,7 @@ impl DeterministicAgent {
         if amount <= 0 {
             return 0;
         }
-        let mut sim = game.clone();
+        let mut sim = Self::shallow_replacement_game(game);
         let mut event = ReplacementEvent::DamageToCard {
             target,
             amount,
@@ -393,6 +453,94 @@ impl DeterministicAgent {
         }
     }
 
+    fn snapshot_card<'a>(&self, snap: &'a GameSnapshot, id: CardId) -> Option<&'a Card> {
+        snap.cards.iter().find(|c| c.id == id)
+    }
+
+    fn snapshot_can_creature_block(
+        &self,
+        snap: &GameSnapshot,
+        blocker_id: CardId,
+        attacker_id: CardId,
+    ) -> bool {
+        let Some(attacker) = self.snapshot_card(snap, attacker_id) else {
+            return false;
+        };
+        let Some(blocker) = self.snapshot_card(snap, blocker_id) else {
+            return false;
+        };
+
+        if !blocker.can_block() {
+            return false;
+        }
+        if attacker.has_flying() && !blocker.has_flying() && !blocker.has_reach() {
+            return false;
+        }
+        if attacker.has_fear() && !blocker.type_line.is_artifact() && !blocker.color.has_black() {
+            return false;
+        }
+        if attacker.has_intimidate()
+            && !blocker.type_line.is_artifact()
+            && !blocker.color.shares_color_with(attacker.color)
+        {
+            return false;
+        }
+        if attacker.has_shadow() != blocker.has_shadow() {
+            return false;
+        }
+        if attacker.has_horsemanship() && !blocker.has_horsemanship() {
+            return false;
+        }
+        if attacker.has_skulk() && blocker.power() > attacker.power() {
+            return false;
+        }
+        if attacker.is_protected_from(blocker) {
+            return false;
+        }
+
+        for source in snap.cards.iter().filter(|c| {
+            c.zone == forge_foundation::ZoneType::Battlefield
+                || c.zone == forge_foundation::ZoneType::Command
+        }) {
+            for sa in &source.static_abilities {
+                if sa.mode != forge_engine_core::staticability::StaticMode::CantBlockBy {
+                    continue;
+                }
+
+                if let Some(valid_attacker) =
+                    sa.params.get(forge_engine_core::parsing::keys::VALID_ATTACKER)
+                {
+                    if !forge_engine_core::card::valid_filter::matches_valid_card(
+                        valid_attacker,
+                        attacker,
+                        source,
+                    ) {
+                        continue;
+                    }
+                }
+
+                if let Some(valid_blocker) =
+                    sa.params.get(forge_engine_core::parsing::keys::VALID_BLOCKER)
+                {
+                    let blocker_matches = valid_blocker.split(',').any(|v| {
+                        forge_engine_core::card::valid_filter::matches_valid_card(
+                            v.trim(),
+                            blocker,
+                            source,
+                        )
+                    });
+                    if !blocker_matches {
+                        continue;
+                    }
+                }
+
+                return false;
+            }
+        }
+
+        true
+    }
+
     fn legal_attackers_for_blocker(&self, blocker: CardId, attackers: &[CardId]) -> Vec<CardId> {
         let Some(ref snap) = self.last_game_snapshot else {
             return attackers.to_vec();
@@ -400,9 +548,7 @@ impl DeterministicAgent {
         attackers
             .iter()
             .copied()
-            .filter(|&attacker| {
-                forge_engine_core::combat::can_creature_block(&snap.game, blocker, attacker)
-            })
+            .filter(|&attacker| self.snapshot_can_creature_block(snap, blocker, attacker))
             .collect()
     }
 
@@ -426,7 +572,7 @@ impl DeterministicAgent {
                     "{:?}",
                     self.last_game_snapshot
                         .as_ref()
-                        .map(|s| &s.game.turn.phase)
+                        .map(|s| &s.phase)
                         .unwrap_or(&PhaseType::Untap)
                 ),
                 Vec::new(),
@@ -464,12 +610,33 @@ impl PlayerAgent for DeterministicAgent {
                     .map(move |ab| ((c.id, ab.ability_index), ab.is_mana_ability))
             })
             .collect();
+        let ability_texts: Vec<((CardId, usize), String)> = game
+            .cards
+            .iter()
+            .flat_map(|c| {
+                c.activated_abilities
+                    .iter()
+                    .map(move |ab| ((c.id, ab.ability_index), ab.ability_text.clone()))
+            })
+            .collect();
+        let card_owner_controller: Vec<(CardId, (u32, u32))> = game
+            .cards
+            .iter()
+            .map(|c| (c.id, (c.owner.0, c.controller.0)))
+            .collect();
+        let cards: Vec<Card> = game
+            .cards
+            .iter()
+            .map(Self::shallow_snapshot_card)
+            .collect();
         self.last_game_snapshot = Some(GameSnapshot {
-            game: game.clone(),
-            mana_pools: _mana_pools.to_vec(),
+            cards,
             card_names,
             card_is_land,
+            card_owner_controller,
             ability_is_mana,
+            ability_texts,
+            phase: game.turn.phase,
         });
     }
 
@@ -483,7 +650,7 @@ impl PlayerAgent for DeterministicAgent {
         if let Some(tr) = sa.target_restrictions.as_ref() {
             let min_targets = tr.get_min_targets(game, sa);
             let current_targets = sa.target_chosen.all_target_cards().len() as i32
-                + i32::from(sa.target_chosen.target_player.is_some())
+                + sa.target_chosen.all_target_players().len() as i32
                 + i32::from(sa.target_chosen.target_stack_entry.is_some());
             if current_targets == 0 && min_targets <= 0 {
                 return true;
@@ -494,7 +661,7 @@ impl PlayerAgent for DeterministicAgent {
 
         // Log the actual targets chosen for parity debugging.
         let mut target_names = Vec::new();
-        if let Some(pid) = sa.target_chosen.target_player {
+        for pid in sa.target_chosen.all_target_players() {
             target_names.push(format!("Player({})", pid.0));
         }
         if let Some(cid) = sa.target_chosen.target_card {
@@ -1242,6 +1409,19 @@ impl PlayerAgent for DeterministicAgent {
         gui_repro::choose_card_name(valid_names, &mut self.rng.borrow_mut())
     }
 
+    fn choose_counter_type(
+        &mut self,
+        _player: PlayerId,
+        options: &[forge_engine_core::card::CounterType],
+        _prompt: &str,
+    ) -> Option<forge_engine_core::card::CounterType> {
+        if options.is_empty() {
+            return None;
+        }
+        let idx = choice_space::pick_index(options.len(), &mut self.rng.borrow_mut());
+        Some(options[idx].clone())
+    }
+
     fn choose_number(&mut self, _player: PlayerId, min: i32, max: i32) -> Option<i32> {
         Some(gui_repro::choose_number(
             min,
@@ -1398,16 +1578,21 @@ impl PlayerAgent for DeterministicAgent {
     fn choose_single_entity_for_effect(
         &mut self,
         _player: PlayerId,
-        valid: &[CardId],
+        valid: &[GameEntity],
         _is_optional: bool,
-    ) -> Option<CardId> {
+    ) -> Option<GameEntity> {
         if valid.is_empty() {
             return None;
         }
-        let sorted = choice_space::sort_native(valid, |a, b| {
-            self.card_name(*a)
-                .cmp(&self.card_name(*b))
-                .then_with(|| self.parity_map.id(*a).cmp(&self.parity_map.id(*b)))
+        let mut sorted = valid.to_vec();
+        sorted.sort_by(|a, b| {
+            let key = |e: &GameEntity| -> (u8, String, u32) {
+                match e {
+                    GameEntity::Player(pid) => (0, format!("P{}", pid.0), 0),
+                    GameEntity::Card(cid) => (1, self.card_name(*cid), self.parity_map.id(*cid)),
+                }
+            };
+            key(a).cmp(&key(b))
         });
         choice_space::pick_one(&sorted, &mut self.rng.borrow_mut())
     }

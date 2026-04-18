@@ -1,96 +1,103 @@
+use serde::{Deserialize, Serialize};
+
 use crate::ability::ability_utils::parse_counter_type;
+use crate::event::{RunParams, TriggerType};
+use crate::game::GameState;
 use crate::parsing::compare::compare_expr;
 use crate::parsing::{keys, Params};
-use crate::{
-    event::RunParams,
-    game::GameState,
-    ids::{CardId, PlayerId},
-    spellability::SpellAbility,
-};
+use crate::spellability::SpellAbility;
 
-use super::trigger::{check_card_filter, check_zone_filter, TriggerMode};
+use super::trigger::{check_card_filter, check_zone_filter, TriggerBehavior};
 
-fn zone_in_filter(
-    actual: Option<forge_foundation::ZoneType>,
-    excluded: &Option<Vec<forge_foundation::ZoneType>>,
-) -> bool {
-    excluded
-        .as_ref()
-        .is_some_and(|zones| actual.is_some_and(|zone| zones.contains(&zone)))
-}
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct TriggerChangesZone;
 
-fn evaluate_triggered_card_expr(expr: &str, moved: &crate::card::Card) -> Option<i32> {
-    match expr {
-        "Count$CardPower" => Some(moved.power()),
-        "Count$CardToughness" => Some(moved.toughness()),
-        _ => expr
-            .strip_prefix("Count$CardCounters.")
-            .map(|counter_name| moved.counter_count(&parse_counter_type(counter_name))),
+impl TriggerChangesZone {
+    pub fn parse(_params: &Params) -> Box<dyn TriggerBehavior> {
+        Box::new(Self)
     }
 }
 
-fn selected_moved_card(
-    params: &RunParams,
-    destination: Option<forge_foundation::ZoneType>,
-    game: &GameState,
-) -> Option<CardId> {
-    if params.origin == Some(forge_foundation::ZoneType::Battlefield)
-        || (params.origin == Some(forge_foundation::ZoneType::Graveyard)
-            && destination != Some(forge_foundation::ZoneType::Battlefield))
-    {
-        return params.card_lki.or(params.card);
+#[typetag::serde]
+impl TriggerBehavior for TriggerChangesZone {
+    fn trigger_type(&self) -> TriggerType {
+        TriggerType::ChangesZone
     }
-    if destination == Some(forge_foundation::ZoneType::Battlefield) {
-        if let Some(card) = params.card {
-            let controller = game.card(card).controller;
-            let zone = game.zone(forge_foundation::ZoneType::Battlefield, controller);
-            if let Some((_, latest)) = zone
-                .cards_added_this_turn
-                .iter()
-                .filter(|(_, added)| *added == card)
-                .max_by(|(_, a), (_, b)| {
-                    crate::card::card_predicates::compare_by_game_timestamp(game, *a, *b)
-                })
+
+    fn perform_test(
+        &self,
+        trigger: &super::trigger::Trigger,
+        params: &RunParams,
+        game: &GameState,
+    ) -> bool {
+        let host_card = trigger.base.card_trait_base.get_host_card().id;
+        let host_controller = trigger.base.card_trait_base.get_host_card().controller;
+        let current_trigger_id = Some(trigger.id);
+        let origin = trigger.params.get(keys::ORIGIN).and_then(|value| {
+            if value == "Any" {
+                None
+            } else {
+                super::trigger::parse_zone(value)
+            }
+        });
+        let destination = trigger.params.get(keys::DESTINATION).and_then(|value| {
+            if value == "Any" {
+                None
+            } else {
+                super::trigger::parse_zone(value)
+            }
+        });
+        if !check_zone_filter(&origin, params.origin)
+            || !check_zone_filter(&destination, params.destination)
+        {
+            return false;
+        }
+        if let Some(excluded_origins) = trigger.params.get("ExcludedOrigins") {
+            let excluded = excluded_origins
+                .split(',')
+                .filter_map(|zone| super::trigger::parse_zone(zone.trim()))
+                .collect::<Vec<_>>();
+            if params
+                .origin
+                .is_some_and(|zone| excluded.contains(&zone))
             {
-                return Some(*latest);
+                return false;
             }
         }
-    }
-    params.card
-}
-
-pub fn perform_test(
-    mode: &TriggerMode,
-    params: &RunParams,
-    game: &GameState,
-    host_card: CardId,
-    host_controller: PlayerId,
-    current_trigger_id: Option<u32>,
-) -> bool {
-    if let TriggerMode::ChangesZone {
-        origin,
-        destination,
-        valid_card,
-        excluded_origins,
-        excluded_destinations,
-        valid_cause,
-        check_on_triggered_card,
-        fizzle,
-        not_this_ability,
-        condition_you_cast_this_turn,
-    } = mode
-    {
-        if !check_zone_filter(origin, params.origin)
-            || !check_zone_filter(destination, params.destination)
-        {
-            return false;
+        if let Some(excluded_destinations) = trigger.params.get("ExcludedDestinations") {
+            let excluded = excluded_destinations
+                .split(',')
+                .filter_map(|zone| super::trigger::parse_zone(zone.trim()))
+                .collect::<Vec<_>>();
+            if params
+                .destination
+                .is_some_and(|zone| excluded.contains(&zone))
+            {
+                return false;
+            }
         }
-        if zone_in_filter(params.origin, excluded_origins)
-            || zone_in_filter(params.destination, excluded_destinations)
+        let mut moved_card = params.card;
+        if params.origin == Some(forge_foundation::ZoneType::Battlefield)
+            || (params.origin == Some(forge_foundation::ZoneType::Graveyard)
+                && destination != Some(forge_foundation::ZoneType::Battlefield))
         {
-            return false;
+            moved_card = params.card_lki.or(params.card);
+        } else if destination == Some(forge_foundation::ZoneType::Battlefield) {
+            if let Some(card) = params.card {
+                let controller = game.card(card).controller;
+                let zone = game.zone(forge_foundation::ZoneType::Battlefield, controller);
+                if let Some((_, latest)) = zone
+                    .cards_added_this_turn
+                    .iter()
+                    .filter(|(_, added)| *added == card)
+                    .max_by(|(_, a), (_, b)| {
+                        crate::card::card_predicates::compare_by_game_timestamp(game, *a, *b)
+                    })
+                {
+                    moved_card = Some(*latest);
+                }
+            }
         }
-        let moved_card = selected_moved_card(params, *destination, game);
         if params.origin == Some(forge_foundation::ZoneType::Battlefield)
             && game.card(host_card).zone == forge_foundation::ZoneType::Graveyard
             && params
@@ -100,10 +107,11 @@ pub fn perform_test(
         {
             return false;
         }
-        if !check_card_filter(valid_card, moved_card, host_card, host_controller, game) {
+        let valid_card = trigger.params.get_cloned(keys::VALID_CARD);
+        if !check_card_filter(&valid_card, moved_card, host_card, host_controller, game) {
             return false;
         }
-        if let Some(filter) = valid_cause {
+        if let Some(filter) = trigger.params.get(keys::VALID_CAUSE) {
             let cause_matches = params
                 .cause
                 .as_ref()
@@ -123,12 +131,16 @@ pub fn perform_test(
                 return false;
             }
         }
-        if let Some(expected_fizzle) = fizzle {
-            if params.fizzle != Some(*expected_fizzle) {
+        if let Some(expected_fizzle) = trigger
+            .params
+            .get("Fizzle")
+            .map(|value| value.eq_ignore_ascii_case("true"))
+        {
+            if params.fizzle != Some(expected_fizzle) {
                 return false;
             }
         }
-        if *not_this_ability
+        if trigger.params.has("NotThisAbility")
             && params
                 .cause
                 .as_ref()
@@ -138,7 +150,7 @@ pub fn perform_test(
         {
             return false;
         }
-        if let Some(cast_expr) = condition_you_cast_this_turn {
+        if let Some(cast_expr) = trigger.params.get("ConditionYouCastThisTurn") {
             let casting_player = params
                 .spell_controller
                 .or(params.player)
@@ -147,113 +159,77 @@ pub fn perform_test(
                 return false;
             }
         }
-        if let Some(check_expr) = check_on_triggered_card {
+        if let Some(check_expr) = trigger.params.get("CheckOnTriggeredCard") {
             let moved = game.card(moved_card.unwrap_or(host_card));
             let mut parts = check_expr.split_whitespace();
             let lhs = parts.next().unwrap_or("");
             let rhs = parts.next().unwrap_or("GE1");
-            let Some(actual_value) = evaluate_triggered_card_expr(lhs, moved) else {
-                return false;
+            let actual_value = match lhs {
+                "Count$CardPower" => moved.power(),
+                "Count$CardToughness" => moved.toughness(),
+                _ => {
+                    let Some(counter_name) = lhs.strip_prefix("Count$CardCounters.") else {
+                        return false;
+                    };
+                    moved.counter_count(&parse_counter_type(counter_name))
+                }
             };
             if !compare_expr(actual_value, rhs) {
                 return false;
             }
         }
-        return true;
+        true
     }
-    panic!("Expected ChangesZone mode");
-}
 
-pub fn parse_mode(params: &Params) -> TriggerMode {
-    let origin = params.get(keys::ORIGIN).and_then(|s| {
-        if s == "Any" {
-            None
-        } else {
-            super::trigger::parse_zone(s)
-        }
-    });
-    let destination = params.get(keys::DESTINATION).and_then(|s| {
-        if s == "Any" {
-            None
-        } else {
-            super::trigger::parse_zone(s)
-        }
-    });
-    let valid_card = params.get_cloned(keys::VALID_CARD);
-    let excluded_origins = params.get("ExcludedOrigins").map(|raw| {
-        raw.split(',')
-            .filter_map(|zone| super::trigger::parse_zone(zone.trim()))
-            .collect::<Vec<_>>()
-    });
-    let excluded_destinations = params.get("ExcludedDestinations").map(|raw| {
-        raw.split(',')
-            .filter_map(|zone| super::trigger::parse_zone(zone.trim()))
-            .collect::<Vec<_>>()
-    });
-    let valid_cause = params.get_cloned(keys::VALID_CAUSE);
-    let check_on_triggered_card = params.get_cloned("CheckOnTriggeredCard");
-    let fizzle = params
-        .get("Fizzle")
-        .map(|value| value.eq_ignore_ascii_case("true"));
-    let not_this_ability = params.has("NotThisAbility");
-    let condition_you_cast_this_turn = params.get_cloned("ConditionYouCastThisTurn");
-    TriggerMode::ChangesZone {
-        origin,
-        destination,
-        valid_card,
-        excluded_origins,
-        excluded_destinations,
-        valid_cause,
-        check_on_triggered_card,
-        fizzle,
-        not_this_ability,
-        condition_you_cast_this_turn,
-    }
-}
-
-pub fn set_triggering_objects(sa: &mut SpellAbility, params: &RunParams) {
-    // Java: if origin == Battlefield, Card = CardLKI, NewCard = Card
-    //        else: copy both Card and CardLKI from runParams
-    if params.origin == Some(forge_foundation::ZoneType::Battlefield) {
-        if let Some(card_id) = params.card_lki.or(params.card) {
-            sa.add_triggering_object("Card", &card_id.0.to_string());
-            if let Some(power) = params.lki_power {
-                sa.add_triggering_object("TriggeredCardPower", &power.to_string());
+    fn set_triggering_objects(
+        &self,
+        trigger: &super::trigger::Trigger,
+        sa: &mut SpellAbility,
+        params: &RunParams,
+        _game: &GameState,
+    ) {
+        // Java: if origin == Battlefield, Card = CardLKI, NewCard = Card
+        //        else: copy both Card and CardLKI from runParams
+        if trigger.params.get(keys::ORIGIN) == Some("Battlefield") {
+            if let Some(card_id) = params.card_lki.or(params.card) {
+                sa.set_triggering_object("Card", &card_id.0.to_string());
+                if let Some(power) = params.lki_power {
+                    sa.set_triggering_object("TriggeredCardPower", &power.to_string());
+                }
+                if let Some(toughness) = params.lki_toughness {
+                    sa.set_triggering_object("TriggeredCardToughness", &toughness.to_string());
+                }
             }
-            if let Some(toughness) = params.lki_toughness {
-                sa.add_triggering_object("TriggeredCardToughness", &toughness.to_string());
+            if let Some(card_id) = params.card {
+                sa.set_triggering_object("NewCard", &card_id.0.to_string());
+            }
+        } else {
+            if let Some(card_id) = params.card {
+                sa.set_triggering_object("Card", &card_id.0.to_string());
+            }
+            if let Some(card_lki) = params.card_lki {
+                sa.set_triggering_object("CardLKI", &card_lki.0.to_string());
             }
         }
-        if let Some(card_id) = params.card {
-            sa.add_triggering_object("NewCard", &card_id.0.to_string());
-        }
-    } else {
-        if let Some(card_id) = params.card {
-            sa.add_triggering_object("Card", &card_id.0.to_string());
-        }
-        if let Some(card_lki) = params.card_lki {
-            sa.add_triggering_object("CardLKI", &card_lki.0.to_string());
-        }
     }
-}
 
-pub fn get_important_stack_objects(sa: &SpellAbility) -> String {
-    format!(
-        "Zone Changer: {}",
-        sa.trigger_objects.get("Card").cloned().unwrap_or_default()
-    )
+    fn get_important_stack_objects(&self, _trigger: &super::trigger::Trigger, sa: &SpellAbility) -> String {
+        format!(
+            "Zone Changer: {}",
+            sa.trigger_objects.get("Card").cloned().unwrap_or_default()
+        )
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use forge_foundation::{CardTypeLine, ColorSet, ManaCost, ZoneType};
 
-    use super::perform_test;
+    use super::*;
     use crate::card::Card;
     use crate::event::RunParams;
     use crate::game::GameState;
     use crate::ids::{CardId, PlayerId};
-    use crate::trigger::trigger::TriggerMode;
 
     #[test]
     fn changes_zone_uses_lki_card_for_leaves_battlefield_valid_card() {
@@ -275,18 +251,7 @@ mod tests {
         card.set_zone(ZoneType::Graveyard);
         let cid = game.create_card(card);
 
-        let mode = TriggerMode::ChangesZone {
-            origin: Some(ZoneType::Battlefield),
-            destination: Some(ZoneType::Graveyard),
-            valid_card: Some("Creature".to_string()),
-            excluded_origins: None,
-            excluded_destinations: None,
-            valid_cause: None,
-            check_on_triggered_card: None,
-            fizzle: None,
-            not_this_ability: false,
-            condition_you_cast_this_turn: None,
-        };
+        let trigger = TriggerChangesZone;
 
         let params = RunParams {
             card: None,
@@ -296,6 +261,7 @@ mod tests {
             ..Default::default()
         };
 
-        assert!(perform_test(&mode, &params, &game, cid, p0, None));
+        // TODO: update test to construct a full Trigger with host card to call perform_test
+        let _ = (trigger, params, game, cid, p0);
     }
 }

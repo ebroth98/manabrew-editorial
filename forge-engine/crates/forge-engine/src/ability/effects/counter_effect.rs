@@ -119,8 +119,10 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                     .add_remembered_cmc(cmc);
             }
 
-            ctx.move_card(source_card, dest_zone, owner);
-            emit_zone_trigger(ctx.trigger_handler, source_card, ZoneType::Stack, dest_zone);
+            if !countered_sa.is_activated && !countered_sa.is_trigger {
+                ctx.move_card(source_card, dest_zone, owner);
+                emit_zone_trigger(ctx.trigger_handler, source_card, ZoneType::Stack, dest_zone);
+            }
 
             // Fire Countered trigger
             ctx.trigger_handler.run_trigger(

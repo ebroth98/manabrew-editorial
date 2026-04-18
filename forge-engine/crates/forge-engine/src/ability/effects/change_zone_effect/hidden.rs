@@ -12,7 +12,7 @@ use super::helpers::{
 };
 use super::move_cards::move_cards;
 use super::search::{
-    resolve_defined_player_choice, resolve_each_search, resolve_multi_search,
+    resolve_defined_players_for_hidden_origin, resolve_each_search, resolve_multi_search,
     resolve_random_selection, resolve_single_search,
 };
 use crate::agent::GameEntity;
@@ -146,63 +146,6 @@ pub(super) fn resolve_hidden_origin(
         return;
     }
 
-    // DefinedPlayer$ for hidden-origin
-    if sa.defined_player().is_some()
-        && !defined.eq_ignore_ascii_case("You")
-        && !defined.eq_ignore_ascii_case("Opponent")
-    {
-        // Optional$ True: ask the affected player before searching.
-        // Mirrors Java's confirm_action prompt for optional searches.
-        if is_optional {
-            let def = sa.defined_player().unwrap_or("");
-            let affected_player = crate::ability::ability_utils::resolve_defined_player_with_sa(
-                def, sa, controller, ctx.game,
-            )
-            .unwrap_or(controller);
-            let source_name = sa.source.map(|cid| ctx.game.card(cid).card_name.as_str());
-            ctx.agents[affected_player.index()].snapshot_state(ctx.game, ctx.mana_pools);
-            let accepted = ctx.agents[affected_player.index()].confirm_action(
-                affected_player,
-                None,
-                "Do you want to search your library?",
-                &[],
-                source_name,
-                Some(crate::ability::api_type::ApiType::ChangeZone),
-            );
-            if !accepted {
-                // Java: declining an optional search with DefinedPlayer$ does NOT
-                // shuffle — the `continue` in changeHiddenOriginResolve skips
-                // the post-search shuffle logic entirely.
-                return;
-            }
-        }
-        let cards = resolve_defined_player_choice(ctx, sa, origin_zone, &change_type);
-        move_cards(
-            ctx,
-            sa,
-            &cards,
-            origin_zone,
-            dest_zone,
-            &lib_position,
-            controller,
-        );
-        return;
-    }
-
-    let search_player = if sa.defined_player().is_none() {
-        sa.target_chosen.target_player.unwrap_or_else(|| {
-            if defined.eq_ignore_ascii_case("Opponent") {
-                ctx.game.opponent_of(controller)
-            } else {
-                controller
-            }
-        })
-    } else if defined.eq_ignore_ascii_case("Opponent") {
-        ctx.game.opponent_of(controller)
-    } else {
-        controller
-    };
-
     let chooser = if let Some(chooser_def) = sa.chooser() {
         let chooser_players = crate::ability::ability_utils::resolve_defined_players_with_sa(
             chooser_def,
@@ -219,17 +162,126 @@ pub(super) fn resolve_hidden_origin(
                 .map(GameEntity::Player)
                 .collect();
             ctx.agents[controller.index()].snapshot_state(ctx.game, ctx.mana_pools);
-            let chosen = ctx.agents[controller.index()].choose_entities_for_effect(
-                controller,
-                &chooser_entities,
-                1,
-                1,
-            );
-            match chosen.first().copied() {
+            match ctx.agents[controller.index()]
+                .choose_single_entity_for_effect(controller, &chooser_entities, false)
+            {
                 Some(GameEntity::Player(pid)) => pid,
                 _ => chooser_players[0],
             }
         }
+    } else {
+        controller
+    };
+
+    // DefinedPlayer$ for hidden-origin
+    if sa.defined_player().is_some()
+        && !defined.eq_ignore_ascii_case("You")
+        && !defined.eq_ignore_ascii_case("Opponent")
+    {
+        for affected_player in resolve_defined_players_for_hidden_origin(ctx, sa) {
+            let effective_chooser = if origin_zone == ZoneType::Library {
+                find_opposition_agent(ctx, controller).unwrap_or(chooser)
+            } else {
+                chooser
+            };
+
+            if is_optional {
+                let source_name = sa.source.map(|cid| ctx.game.card(cid).card_name.as_str());
+                let origin_label = origin_zone.to_string().to_lowercase();
+                let message = format!(
+                    "Search {}'s {}?",
+                    ctx.game.player(affected_player).name,
+                    origin_label
+                );
+                ctx.agents[effective_chooser.index()].snapshot_state(ctx.game, ctx.mana_pools);
+                let accepted = ctx.agents[effective_chooser.index()].confirm_action(
+                    effective_chooser,
+                    Some("ChangeZoneGeneral"),
+                    &message,
+                    &[],
+                    source_name,
+                    Some(crate::ability::api_type::ApiType::ChangeZone),
+                );
+                if !accepted {
+                    continue;
+                }
+            }
+
+            let mut zone_cards = ctx.game.cards_in_zone(origin_zone, affected_player).to_vec();
+            if origin_zone == ZoneType::Library {
+                if let Some(max) = find_search_limit(ctx, affected_player, controller) {
+                    zone_cards.truncate(max);
+                }
+            }
+
+            let mut cards_to_move = if let Some(each_spec) = change_type.strip_prefix("EACH ") {
+                resolve_each_search(
+                    ctx,
+                    sa,
+                    each_spec,
+                    &mut zone_cards,
+                    effective_chooser,
+                    is_optional,
+                )
+            } else {
+                let candidates: Vec<_> = zone_cards
+                    .iter()
+                    .copied()
+                    .filter(|&cid| matches_with_context(ctx, sa, cid, &change_type))
+                    .collect();
+                if candidates.is_empty() {
+                    Vec::new()
+                } else if sa.is_at_random() {
+                    resolve_random_selection(ctx, &candidates, change_num)
+                } else if change_num == 1 {
+                    resolve_single_search(ctx, sa, &candidates, effective_chooser, is_optional)
+                } else {
+                    resolve_multi_search(
+                        ctx,
+                        sa,
+                        &candidates,
+                        effective_chooser,
+                        change_num,
+                        is_optional,
+                    )
+                }
+            };
+
+            if sa.param_is_true("Reorder") && cards_to_move.len() > 1 {
+                ctx.agents[effective_chooser.index()].snapshot_state(ctx.game, ctx.mana_pools);
+                ctx.agents[effective_chooser.index()].on_library_peek(ctx.game, &cards_to_move);
+                let reordered = ctx.agents[effective_chooser.index()]
+                    .choose_reorder_library(effective_chooser, &cards_to_move);
+                if reordered.len() == cards_to_move.len()
+                    && cards_to_move.iter().all(|id| reordered.contains(id))
+                {
+                    cards_to_move = reordered;
+                }
+            }
+
+            move_cards(
+                ctx,
+                sa,
+                &cards_to_move,
+                origin_zone,
+                dest_zone,
+                &lib_position,
+                affected_player,
+            );
+        }
+        return;
+    }
+
+    let search_player = if sa.defined_player().is_none() {
+        sa.target_chosen.target_player.unwrap_or_else(|| {
+            if defined.eq_ignore_ascii_case("Opponent") {
+                ctx.game.opponent_of(controller)
+            } else {
+                controller
+            }
+        })
+    } else if defined.eq_ignore_ascii_case("Opponent") {
+        ctx.game.opponent_of(controller)
     } else {
         controller
     };

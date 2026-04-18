@@ -29,6 +29,7 @@ impl GameLoop {
         // Recompute continuous effects before evaluating attack/block legality.
         // CantAttack / CantBlock flags are set here.
         apply_continuous_effects(game);
+        self.trigger_handler.reset_active_triggers(game);
 
         // LKI: Snapshot battlefield state before combat declarations.
         // Mirrors Java's Game.copyLastState() called before declare attackers.
@@ -643,6 +644,7 @@ impl GameLoop {
         // declared attackers.  This allows effects like Watchdog's
         // "Affected$ Creature.attackingYou | AddPower$ -1" to apply correctly.
         apply_continuous_effects(game);
+        self.trigger_handler.reset_active_triggers(game);
         // Unfreeze the stack now that attackers are declared.
         game.stack.unfreeze_stack();
         // Java parity: PhaseHandler sets givePriorityToPlayer = inCombat() after
@@ -996,20 +998,6 @@ impl GameLoop {
             // Flush triggers before SBA so that triggers from creatures about
             // to die (e.g. enrage) are matched while still on the battlefield.
             self.trigger_handler.flush_waiting_triggers(game);
-
-            // SBA between damage steps
-            loop {
-                if !super::check_sba(game, &mut self.trigger_handler, agents) {
-                    break;
-                }
-            }
-            self.combat.remove_absent_combatants(&game.cards);
-            if game.game_over {
-                self.set_phase(game, agents, PhaseType::CombatEnd);
-                self.combat.clear_with_cards(&mut game.cards);
-                game.turn.combat_block_assignments.clear();
-                return;
-            }
             // Java parity: skip priority when no first-strike damage assigned.
             if fs_damage_assigned {
                 self.step_with_priority(game, agents, false);
@@ -1068,14 +1056,6 @@ impl GameLoop {
             // Flush triggers before SBA so that triggers from creatures about
             // to die (e.g. enrage) are matched while still on the battlefield.
             self.trigger_handler.flush_waiting_triggers(game);
-
-            // SBA after combat
-            loop {
-                if !super::check_sba(game, &mut self.trigger_handler, agents) {
-                    break;
-                }
-            }
-            self.combat.remove_absent_combatants(&game.cards);
             if damage_assigned {
                 self.step_with_priority(game, agents, false);
             }
@@ -1107,6 +1087,7 @@ impl GameLoop {
         // get -1/-0") are cleared.  Without this, static_power_modifier lingers
         // until the next apply_continuous_effects call, causing snapshot drift.
         apply_continuous_effects(game);
+        self.trigger_handler.reset_active_triggers(game);
     }
 
     fn choose_assign_as_unblocked(

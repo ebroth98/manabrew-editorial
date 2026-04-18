@@ -6,6 +6,24 @@ use forge_foundation::ZoneType;
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct PlayerCollection(pub Vec<PlayerId>);
 
+impl IntoIterator for PlayerCollection {
+    type Item = PlayerId;
+    type IntoIter = std::vec::IntoIter<PlayerId>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.into_iter()
+    }
+}
+
+impl<'a> IntoIterator for &'a PlayerCollection {
+    type Item = &'a PlayerId;
+    type IntoIter = std::slice::Iter<'a, PlayerId>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.iter()
+    }
+}
+
 impl PlayerCollection {
     pub fn new(players: Vec<PlayerId>) -> Self {
         Self(players)

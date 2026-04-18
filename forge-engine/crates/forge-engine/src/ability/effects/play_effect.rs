@@ -1,7 +1,7 @@
 use forge_foundation::ZoneType;
 
 use super::EffectContext;
-use crate::agent::GameLogEvent;
+use crate::agent::{GameEntity, GameLogEvent};
 use crate::event::{RunParams, TriggerType};
 use crate::ids::CardId;
 use crate::parsing::keys;
@@ -30,13 +30,14 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     // ── Step 1: Choose card — mirrors Java PlayEffect.java line 234 ──
     // chooseSingleEntityForEffect(tgtCards, sa, ..., !singleOption && optional, ...)
     // For single-card + optional: isOptional=false (auto-pick), then confirmAction below.
-    let tgt_cards = vec![card_id];
+    let tgt_cards = vec![GameEntity::Card(card_id)];
     let chosen = ctx.agents[controller.index()].choose_single_entity_for_effect(
         controller, &tgt_cards, false, // !singleOption && optional = false for single card
     );
     let card_id = match chosen {
-        Some(cid) => cid,
+        Some(GameEntity::Card(cid)) => cid,
         None => return,
+        Some(GameEntity::Player(_)) => return,
     };
 
     // ── Step 2: Optional confirm — mirrors Java PlayEffect.java line 250 ──

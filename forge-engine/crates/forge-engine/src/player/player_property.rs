@@ -173,6 +173,10 @@ pub fn player_has_property(
         return player != controller;
     } else if property == "CardOwner" {
         return player == source.owner;
+    } else if property == "withMostLife" || property == "Player.withMostLife" {
+        return player_state.life == highest_life(game);
+    } else if property == "withLeastLife" || property == "Player.withLeastLife" {
+        return player_state.life == lowest_life(game);
     } else if property == "descended" {
         return game.player_has_descended(player);
     } else if property == "committedCrimeThisTurn" {

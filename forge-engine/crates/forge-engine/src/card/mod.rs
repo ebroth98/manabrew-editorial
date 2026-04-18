@@ -30,6 +30,8 @@ pub mod token_create_table;
 pub mod trait_card_trait_changes;
 pub mod valid_filter;
 pub use counter_type::CounterType;
+use crate::card::activation_table::ActivationTable;
+use crate::core::HasSVars;
 
 /// Type alias for the Keyword enum, used by keyword helper methods.
 use crate::keyword::keyword_instance::Keyword as Kw;
@@ -445,6 +447,9 @@ pub struct Card {
     /// Bitmask of colors of mana spent to cast this spell (for Sunburst/Converge).
     /// Uses ManaAtom bit flags (W=1, U=2, B=4, R=8, G=16).
     pub colors_spent_to_cast: u16,
+    /// Exact mana atoms spent to cast this spell, in payment order.
+    /// Mirrors Java's castSA.getPayingMana() use sites such as Adamant.
+    pub paying_mana_to_cast: Vec<u16>,
     /// Pre-selected charm/mode indices (for Spree — modes chosen before payment).
     /// If `Some`, charm_effect should use these instead of asking the player again.
     pub chosen_modes: Option<Vec<usize>>,
@@ -482,6 +487,15 @@ pub struct Card {
     pub ability_activated_this_turn: u32,
     /// Ability resolution counts this turn.
     pub ability_resolved_this_turn: u32,
+    /// Java parity: per-ability activation tracking this turn.
+    #[serde(skip)]
+    pub number_turn_activations: ActivationTable,
+    /// Java parity: per-ability activation tracking this game.
+    #[serde(skip)]
+    pub number_game_activations: ActivationTable,
+    /// Java parity: per-ability resolution tracking this turn.
+    #[serde(skip)]
+    pub number_ability_resolved: ActivationTable,
     /// Planeswalker activation count this turn.
     pub planeswalker_abilities_activated: u32,
     /// Chosen mode count tracking turn marker.
@@ -688,6 +702,7 @@ impl Card {
             must_block_cards: Vec::new(),
             etb_counters_p1p1: 0,
             colors_spent_to_cast: 0,
+            paying_mana_to_cast: Vec::new(),
             chosen_modes: None,
             strive_extra_targets: 0,
             became_target_this_turn: false,
@@ -706,6 +721,9 @@ impl Card {
             ignore_legend_rule_flag: false,
             ability_activated_this_turn: 0,
             ability_resolved_this_turn: 0,
+            number_turn_activations: ActivationTable::default(),
+            number_game_activations: ActivationTable::default(),
+            number_ability_resolved: ActivationTable::default(),
             planeswalker_abilities_activated: 0,
             chosen_modes_turn: None,
             enlisted_this_combat: false,
@@ -1972,6 +1990,10 @@ impl Card {
         self.colors_spent_to_cast = colors;
     }
 
+    pub fn set_paying_mana_to_cast(&mut self, paying_mana: Vec<u16>) {
+        self.paying_mana_to_cast = paying_mana;
+    }
+
     pub fn set_promised_gift(&mut self, player: Option<PlayerId>) {
         self.promised_gift = player;
     }
@@ -2999,13 +3021,8 @@ impl Card {
     }
     pub fn has_etb_trigger(&self) -> bool {
         self.triggers.iter().any(|t| {
-            matches!(
-                t.mode,
-                crate::trigger::TriggerMode::ChangesZone {
-                    destination: Some(ZoneType::Battlefield),
-                    ..
-                }
-            )
+            t.kind == crate::event::TriggerType::ChangesZone
+                && t.destination_zone() == Some(ZoneType::Battlefield)
         })
     }
     pub fn has_etb_replacement(&self) -> bool {
@@ -3026,11 +3043,63 @@ impl Card {
     pub fn add_ability_activated(&mut self) {
         self.ability_activated_this_turn += 1;
     }
+    pub fn add_ability_activated_for(&mut self, ability: Option<&crate::spellability::SpellAbility>) {
+        if let Some(ability) = ability {
+            self.number_turn_activations.add(ability);
+            self.number_game_activations.add(ability);
+            if ability.params.is_true("PwAbility") {
+                self.add_planeswalker_ability_activated();
+            }
+        }
+        self.add_ability_activated();
+    }
     pub fn add_ability_resolved(&mut self) {
         self.ability_resolved_this_turn += 1;
     }
+    pub fn add_ability_resolved_for(
+        &mut self,
+        ability: Option<&crate::spellability::SpellAbility>,
+    ) {
+        if let Some(ability) = ability {
+            self.number_ability_resolved.add(ability);
+        }
+        self.add_ability_resolved();
+    }
+    pub fn get_ability_activated_this_turn(
+        &self,
+        ability: Option<&crate::spellability::SpellAbility>,
+    ) -> u32 {
+        ability
+            .map(|ability| self.number_turn_activations.get(ability) as u32)
+            .unwrap_or(0)
+    }
+    pub fn get_ability_activated_this_game(
+        &self,
+        ability: Option<&crate::spellability::SpellAbility>,
+    ) -> u32 {
+        ability
+            .map(|ability| self.number_game_activations.get(ability) as u32)
+            .unwrap_or(0)
+    }
+    pub fn get_ability_resolved_this_turn(
+        &self,
+        ability: Option<&crate::spellability::SpellAbility>,
+    ) -> u32 {
+        ability
+            .map(|ability| self.number_ability_resolved.get(ability) as u32)
+            .unwrap_or(0)
+    }
+    pub fn get_ability_resolved_this_turn_activators(
+        &self,
+        ability: Option<&crate::spellability::SpellAbility>,
+    ) -> Vec<crate::ids::PlayerId> {
+        ability
+            .map(|ability| self.number_ability_resolved.get_activators(ability))
+            .unwrap_or_default()
+    }
     pub fn reset_ability_resolved_this_turn(&mut self) {
         self.ability_resolved_this_turn = 0;
+        self.number_ability_resolved.clear();
     }
     pub fn add_chosen_modes(&mut self, modes: Vec<usize>, turn: u32) {
         self.chosen_modes = Some(modes);
@@ -3048,6 +3117,7 @@ impl Card {
     }
     pub fn reset_activations_per_turn(&mut self) {
         self.ability_activated_this_turn = 0;
+        self.number_turn_activations.clear();
         self.planeswalker_abilities_activated = 0;
     }
     pub fn add_can_block_additional(&mut self, n: i32) {
@@ -3329,6 +3399,28 @@ impl Card {
 
     pub fn remove_changed_state(&mut self) {
         self.clear_changed_card_traits();
+    }
+}
+
+impl HasSVars for Card {
+    fn get_svar(&self, name: &str) -> Option<&str> {
+        self.get_s_var(name)
+    }
+
+    fn set_svar(&mut self, name: String, value: String) {
+        self.set_s_var(name, value);
+    }
+
+    fn set_svars(&mut self, new_svars: std::collections::HashMap<String, String>) {
+        self.svars = new_svars.into_iter().collect();
+    }
+
+    fn get_svars(&self) -> &std::collections::HashMap<String, String> {
+        panic!("Card::get_svars is not supported yet; use get_s_var/has_s_var parity accessors");
+    }
+
+    fn remove_svar(&mut self, var: &str) {
+        self.remove_s_var(var);
     }
 }
 

@@ -584,14 +584,16 @@ impl Card {
             // The opponent is prompted via confirm_action to pay the Ward cost;
             // if they decline, the spell is countered.
             if let Some(cost_str) = crate::keyword::extract_keyword_cost_str(&kw, "Ward") {
-                let raw = "Mode$ BecomesTarget | ValidCard$ Card.Self | Execute$ TrigWard | TriggerZones$ Battlefield | TriggerDescription$ Ward";
+                let raw = "Mode$ BecomesTarget | ValidSource$ SpellAbility.OppCtrl | ValidTarget$ Card.Self | Secondary$ True | TriggerZones$ Battlefield | TriggerDescription$ Ward";
                 if let Some(mut trig) = parse_trigger(raw, &mut next_id) {
                     trig.execute = "TrigWard".to_string();
                     self.add_trigger(trig);
                 }
                 self.svars
                     .entry("TrigWard".to_string())
-                    .or_insert_with(|| format!("DB$ Counter | UnlessCost$ {cost_str}"));
+                    .or_insert_with(|| {
+                        format!("DB$ Counter | Defined$ TriggeredSourceSA | UnlessCost$ {cost_str}")
+                    });
             }
 
             // Exalted — whenever a creature you control attacks alone, it gets +1/+1 until EOT.

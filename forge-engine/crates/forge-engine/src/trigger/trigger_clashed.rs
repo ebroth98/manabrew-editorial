@@ -1,34 +1,56 @@
-use super::trigger::{check_player_filter, TriggerMode};
-use crate::{
-    event::RunParams,
-    game::GameState,
-    ids::{CardId, PlayerId},
-    spellability::SpellAbility,
-};
+use serde::{Deserialize, Serialize};
 
-pub fn perform_test(
-    mode: &TriggerMode,
-    params: &RunParams,
-    _game: &GameState,
-    _host_card: CardId,
-    host_controller: PlayerId,
-) -> bool {
-    let TriggerMode::Clashed { valid_player, won } = mode else {
-        panic!("Expected Clashed mode");
-    };
-    if !check_player_filter(valid_player, params.player, host_controller) {
-        return false;
-    }
-    if let Some(expected) = won {
-        return params.clash_won == Some(*expected);
-    }
-    true
+use crate::event::{RunParams, TriggerType};
+use crate::game::GameState;
+use crate::spellability::SpellAbility;
+
+use super::trigger::{check_player_filter, TriggerBehavior};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TriggerClashed {
+    pub valid_player: Option<String>,
+    pub won: Option<bool>,
 }
 
-pub fn set_triggering_objects(_sa: &mut SpellAbility, _params: &RunParams) {
-    // Clash has no triggered variables
+impl TriggerClashed {
+    pub fn parse(valid_player: Option<String>, won: Option<bool>) -> Box<dyn TriggerBehavior> {
+        Box::new(Self { valid_player, won })
+    }
 }
 
-pub fn get_important_stack_objects(_sa: &SpellAbility) -> String {
-    String::new()
+#[typetag::serde]
+impl TriggerBehavior for TriggerClashed {
+    fn trigger_type(&self) -> TriggerType {
+        TriggerType::Clashed
+    }
+
+    fn perform_test(
+        &self,
+        trigger: &super::trigger::Trigger,
+        params: &RunParams,
+        _game: &GameState,
+    ) -> bool {
+        let host_controller = trigger.base.card_trait_base.get_host_card().controller;
+        if !check_player_filter(&self.valid_player, params.player, host_controller) {
+            return false;
+        }
+        if let Some(expected) = self.won {
+            return params.clash_won == Some(expected);
+        }
+        true
+    }
+
+    fn set_triggering_objects(
+        &self,
+        _trigger: &super::trigger::Trigger,
+        _sa: &mut SpellAbility,
+        _params: &RunParams,
+        _game: &GameState,
+    ) {
+        // Clash has no triggered variables
+    }
+
+    fn get_important_stack_objects(&self, _trigger: &super::trigger::Trigger, _sa: &SpellAbility) -> String {
+        String::new()
+    }
 }

@@ -1,77 +1,86 @@
-use super::trigger::TriggerMode;
-use crate::{
-    event::RunParams,
-    game::GameState,
-    ids::{CardId, PlayerId},
-    parsing::Params,
-    spellability::SpellAbility,
-};
+use serde::{Deserialize, Serialize};
 
-pub fn perform_test(
-    mode: &TriggerMode,
-    _params: &RunParams,
-    _game: &GameState,
-    _host_card: CardId,
-    _host_controller: PlayerId,
-) -> bool {
-    let TriggerMode::Vote = mode else {
-        panic!("Expected Vote mode");
-    };
-    true
+use crate::event::{RunParams, TriggerType};
+use crate::game::GameState;
+use crate::parsing::Params;
+use crate::spellability::SpellAbility;
+
+use super::trigger::{Trigger, TriggerBehavior};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TriggerVote {}
+
+impl TriggerVote {
+    pub fn parse(_params: &Params) -> Box<dyn TriggerBehavior> {
+        Box::new(Self {})
+    }
 }
 
-pub fn parse_mode(_params: &Params) -> TriggerMode {
-    TriggerMode::Vote
-}
+#[typetag::serde]
+impl TriggerBehavior for TriggerVote {
+    fn trigger_type(&self) -> TriggerType {
+        TriggerType::Vote
+    }
 
-pub fn set_triggering_objects(
-    sa: &mut SpellAbility,
-    params: &RunParams,
-    _host_card: CardId,
-    host_controller: PlayerId,
-    game: &GameState,
-) {
-    let Some(all_votes) = params.all_votes.as_ref() else {
-        return;
-    };
+    fn perform_test(
+        &self,
+        _trigger: &Trigger,
+        _params: &RunParams,
+        _game: &GameState,
+    ) -> bool {
+        true
+    }
 
-    let mut same = Vec::new();
-    let mut diff = Vec::new();
-    for (_, voters) in all_votes {
-        let host_voted_here = voters.contains(&host_controller);
-        for &player in voters {
-            if player == host_controller || game.opponent_of(host_controller) != player {
-                continue;
+    fn set_triggering_objects(
+        &self,
+        trigger: &Trigger,
+        sa: &mut SpellAbility,
+        params: &RunParams,
+        game: &GameState,
+    ) {
+        let host_controller = trigger.base.card_trait_base.get_host_card().controller;
+        let Some(all_votes) = params.all_votes.as_ref() else {
+            return;
+        };
+
+        let mut same = Vec::new();
+        let mut diff = Vec::new();
+        for (_, voters) in all_votes {
+            let host_voted_here = voters.contains(&host_controller);
+            for &player in voters {
+                if player == host_controller || game.opponent_of(host_controller) != player {
+                    continue;
+                }
+                let bucket = if host_voted_here {
+                    &mut same
+                } else {
+                    &mut diff
+                };
+                if !bucket.contains(&player) {
+                    bucket.push(player);
+                }
             }
-            let bucket = if host_voted_here {
-                &mut same
-            } else {
-                &mut diff
-            };
-            if !bucket.contains(&player) {
-                bucket.push(player);
-            }
+        }
+
+        if !same.is_empty() {
+            let csv = same
+                .iter()
+                .map(|player_id| player_id.0.to_string())
+                .collect::<Vec<_>>()
+                .join(",");
+            sa.set_triggering_object("OpponentVotedSame", &csv);
+        }
+        if !diff.is_empty() {
+            let csv = diff
+                .iter()
+                .map(|player_id| player_id.0.to_string())
+                .collect::<Vec<_>>()
+                .join(",");
+            sa.set_triggering_object("OpponentVotedDiff", &csv);
         }
     }
 
-    if !same.is_empty() {
-        let csv = same
-            .iter()
-            .map(|player_id| player_id.0.to_string())
-            .collect::<Vec<_>>()
-            .join(",");
-        sa.add_triggering_object("OpponentVotedSame", &csv);
+    fn get_important_stack_objects(&self, _trigger: &Trigger, _sa: &SpellAbility) -> String {
+        String::new()
     }
-    if !diff.is_empty() {
-        let csv = diff
-            .iter()
-            .map(|player_id| player_id.0.to_string())
-            .collect::<Vec<_>>()
-            .join(",");
-        sa.add_triggering_object("OpponentVotedDiff", &csv);
-    }
-}
-
-pub fn get_important_stack_objects(_sa: &SpellAbility) -> String {
-    String::new()
 }

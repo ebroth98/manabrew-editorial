@@ -250,12 +250,12 @@ pub fn compute_cost_adjustment_with_targets(
             }
 
             // ── checkRequirement: IsPresent$ / PresentZone$ ──────────
-            if !valid_filter::check_is_present(game, &st_ab.params, source) {
+            if !valid_filter::check_is_present(game, &st_ab.params, source, source) {
                 continue;
             }
 
             // ── checkRequirement: CheckSVar$ / SVarCompare$ ──────────
-            if !valid_filter::check_svar_condition(game, &st_ab.params, source) {
+            if !valid_filter::check_svar_condition(game, &st_ab.params, source, source) {
                 continue;
             }
 
@@ -483,11 +483,11 @@ pub fn compute_raise_cost_parts_with_targets(
                 }
             }
 
-            if !valid_filter::check_is_present(game, &st_ab.params, source) {
+            if !valid_filter::check_is_present(game, &st_ab.params, source, source) {
                 continue;
             }
 
-            if !valid_filter::check_svar_condition(game, &st_ab.params, source) {
+            if !valid_filter::check_svar_condition(game, &st_ab.params, source, source) {
                 continue;
             }
 

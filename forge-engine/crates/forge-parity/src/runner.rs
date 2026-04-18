@@ -13,6 +13,7 @@ use forge_engine_core::combat::DefenderId;
 use forge_engine_core::game::GameState;
 use forge_engine_core::game_loop::GameLoop;
 use forge_engine_core::ids::{CardId, PlayerId};
+use forge_engine_core::spellability::{MagicStack, SpellAbility, StackEntry};
 use forge_foundation::ZoneType;
 use rand::rngs::StdRng;
 use rand::SeedableRng;
@@ -99,6 +100,84 @@ struct CapturingAgent {
 }
 
 impl CapturingAgent {
+    fn shallow_snapshot_card(card: &forge_engine_core::card::Card) -> forge_engine_core::card::Card {
+        let mut out = forge_engine_core::card::Card::new(
+            card.id,
+            card.card_name.clone(),
+            card.owner,
+            card.type_line.clone(),
+            card.mana_cost.clone(),
+            card.color,
+            card.base_power,
+            card.base_toughness,
+            vec![],
+            vec![],
+        );
+        out.full_name = card.full_name.clone();
+        out.face_down = card.face_down;
+        out.controller = card.controller;
+        out.zone = card.zone;
+        out.tapped = card.tapped;
+        out.phased_out = card.phased_out;
+        out.cant_attack_static = card.cant_attack_static;
+        out.cant_block_static = card.cant_block_static;
+        out.detained = card.detained;
+        out.summoning_sick = card.summoning_sick;
+        out.damage = card.damage;
+        out.static_power_modifier = card.static_power_modifier;
+        out.static_toughness_modifier = card.static_toughness_modifier;
+        out.static_set_power = card.static_set_power;
+        out.static_set_toughness = card.static_set_toughness;
+        out.power_modifier = card.power_modifier;
+        out.toughness_modifier = card.toughness_modifier;
+        out.perpetual_power_modifier = card.perpetual_power_modifier;
+        out.perpetual_toughness_modifier = card.perpetual_toughness_modifier;
+        out.counters = card.counters.clone();
+        out.keywords = card.keywords.clone();
+        out.granted_keywords = card.granted_keywords.clone();
+        out.pump_keywords = card.pump_keywords.clone();
+        out
+    }
+
+    fn shallow_stack_entry(entry: &StackEntry) -> StackEntry {
+        let mut spell_ability = SpellAbility::new_simple(
+            entry.spell_ability.source,
+            entry.spell_ability.activating_player,
+            &entry.spell_ability.ability_text,
+        );
+        spell_ability.id = entry.spell_ability.id;
+        StackEntry {
+            id: entry.id,
+            spell_ability,
+            is_creature_spell: entry.is_creature_spell,
+            is_permanent_spell: entry.is_permanent_spell,
+            cast_from_zone: entry.cast_from_zone,
+            optional_trigger_decider: entry.optional_trigger_decider,
+            optional_trigger_description: entry.optional_trigger_description.clone(),
+            optional_trigger_source_name: entry.optional_trigger_source_name.clone(),
+        }
+    }
+
+    fn shallow_game_state(game: &GameState) -> GameState {
+        let player_names: Vec<String> = game.players.iter().map(|p| p.name.clone()).collect();
+        let player_name_refs: Vec<&str> = player_names.iter().map(String::as_str).collect();
+        let starting_life = game.players.first().map(|p| p.life).unwrap_or(20);
+        let mut sim = GameState::new(&player_name_refs, starting_life);
+        sim.players = game.players.clone();
+        sim.cards = game.cards.iter().map(Self::shallow_snapshot_card).collect();
+        sim.zones = game.zones.clone();
+        let mut stack = MagicStack::new();
+        for entry in game.stack.iter() {
+            stack.push(Self::shallow_stack_entry(entry));
+        }
+        sim.stack = stack;
+        sim.turn = game.turn.clone();
+        sim.player_order = game.player_order.clone();
+        sim.game_over = game.game_over;
+        sim.winner = game.winner;
+        sim
+    }
+
     fn new(
         player_id: PlayerId,
         verbose: VerboseMode,
@@ -344,7 +423,7 @@ impl PlayerAgent for CapturingAgent {
         mana_pools: &[forge_engine_core::mana::ManaPool],
     ) {
         self.inner.snapshot_state(game, mana_pools);
-        self.last_game_state = Some(game.clone());
+        self.last_game_state = Some(Self::shallow_game_state(game));
     }
 
     parity_agent_callback! {
@@ -353,6 +432,13 @@ impl PlayerAgent for CapturingAgent {
                 (Some(cid), Some(ctx)) => ctx.card(*cid),
                 (Some(cid), None) => format!("{cid:?}"),
                 (None, _) => "null".to_string(),
+            }
+        };
+        fn choose_counter_type(&mut self, player: PlayerId, options: &[forge_engine_core::card::CounterType], prompt: &str) -> Option<forge_engine_core::card::CounterType> => "choose_counter_type", format_with |result: &Option<forge_engine_core::card::CounterType>, _fmt: Option<FmtCtx<'_>>| {
+            match result {
+                Some(forge_engine_core::card::CounterType::Named(name)) => name.clone(),
+                Some(other) => format!("{other:?}").to_uppercase(),
+                None => "null".to_string(),
             }
         };
     }
@@ -392,12 +478,11 @@ impl PlayerAgent for CapturingAgent {
         fn choose_discard_any_number(&mut self, player: PlayerId, hand: &[CardId], min: usize, max: usize) -> Vec<CardId> => "choose_discard";
         fn choose_random_discard(&mut self, player: PlayerId, hand: &[CardId], num: usize) -> Vec<CardId> => "choose_random_discard";
         fn choose_cards_for_effect(&mut self, player: PlayerId, valid: &[CardId], min: usize, max: usize) -> Vec<CardId> => "choose_cards_for_effect";
-        fn choose_entities_for_effect(&mut self, player: PlayerId, candidates: &[GameEntity], min: usize, max: usize) -> Vec<GameEntity> => "choose_entities_for_effect";
         fn choose_cards_for_zone_change(&mut self, player: PlayerId, valid: &[CardId], min: usize, max: usize, select_prompt: &str) -> Vec<CardId> => "choose_cards_for_zone_change";
         fn choose_target_spell(&mut self, player: PlayerId, valid: &[u32]) -> Option<u32> => "choose_target_spell";
         fn choose_mode(&mut self, player: PlayerId, descriptions: &[String], min: usize, max: usize, card_name: Option<&str>) -> Vec<usize> => "choose_mode";
         fn choose_spell_abilities_for_effect(&mut self, player: PlayerId, abilities: &[forge_engine_core::spellability::SpellAbility], num: usize) -> Vec<usize> => "choose_spell_abilities_for_effect";
-        fn choose_single_entity_for_effect(&mut self, player: PlayerId, valid: &[CardId], is_optional: bool) -> Option<CardId> => "choose_single_entity_for_effect";
+        fn choose_single_entity_for_effect(&mut self, player: PlayerId, valid: &[GameEntity], is_optional: bool) -> Option<GameEntity> => "choose_single_entity_for_effect";
         fn get_ability_to_play(&mut self, player: PlayerId, abilities: &[forge_engine_core::spellability::SpellAbility]) -> Option<usize> => "get_ability_to_play";
         fn choose_x_value(&mut self, player: PlayerId, max_x: u32, card_name: Option<&str>) -> u32 => "choose_x_value";
         fn choose_optional_trigger(&mut self, player: PlayerId, description: &str, card_name: Option<&str>, api: Option<forge_engine_core::ability::api_type::ApiType>) -> bool => "choose_optional_trigger";
@@ -432,7 +517,9 @@ impl PlayerAgent for CapturingAgent {
         fn choose_replicate(&mut self, player: PlayerId, cost: &str, max_replicates: u32, card_name: Option<&str>) -> u32 => "choose_replicate";
         fn choose_alternative_cost(&mut self, player: PlayerId, options: &[String], card_name: Option<&str>) -> usize => "choose_alternative_cost";
         fn choose_single_replacement_effect(&mut self, player: PlayerId, descriptions: &[String]) -> usize => "choose_single_replacement_effect";
+        fn choose_entities_for_effect(&mut self, player: PlayerId, candidates: &[GameEntity], min: usize, ax: usize) -> Vec<GameEntity> => "choose_entities_for_effect";
     }
+
 }
 
 pub struct RunConfig {

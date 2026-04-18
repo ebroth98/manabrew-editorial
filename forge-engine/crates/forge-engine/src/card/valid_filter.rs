@@ -28,14 +28,165 @@
 //! - Attachment: EnchantedBy
 
 use forge_foundation::color::Color;
+use forge_foundation::mana::ManaAtom;
 use forge_foundation::ZoneType;
 
 use crate::card::Card;
+use crate::core::HasSVars;
 use crate::game::GameState;
-use crate::ids::PlayerId;
+use crate::ids::{CardId, PlayerId};
 use crate::parsing::compare::compare_expr;
 use crate::parsing::keys;
 use crate::parsing::Params;
+
+fn requirement_controller(game: &GameState, source: &Card) -> PlayerId {
+    let mut controller = source.controller;
+
+    // Java parity: during trigger resolution, use the resolving trigger's
+    // activating player rather than the host card's current controller.
+    if !game.stack.is_empty()
+        && game.stack.is_resolving()
+        && game.stack.cur_resolving_card() == Some(source.id)
+    {
+        if let Some(entry) = game.stack.peek() {
+            if entry.spell_ability.is_trigger {
+                controller = entry.spell_ability.activating_player;
+            }
+        }
+    }
+
+    controller
+}
+
+fn requirement_amount(
+    source: &Card,
+    svar_source: &dyn HasSVars,
+    expr: &str,
+    game: &GameState,
+) -> i32 {
+    let raw_value = svar_source
+        .get_svar(expr)
+        .or_else(|| source.get_s_var(expr))
+        .unwrap_or(expr)
+        .trim();
+
+    if let Ok(n) = raw_value.parse::<i32>() {
+        return n;
+    }
+    if let Some(stripped) = raw_value.strip_prefix('+') {
+        if let Ok(n) = stripped.parse::<i32>() {
+            return n;
+        }
+    }
+    if let Some(stripped) = raw_value.strip_prefix('-') {
+        return -requirement_amount(source, svar_source, stripped.trim(), game);
+    }
+
+    if raw_value.starts_with("Count$") {
+        return crate::svar::resolve_count_svar(raw_value, game, source.id, source.controller);
+    }
+
+    let mut sa = crate::spellability::SpellAbility::new_simple(
+        Some(source.id),
+        requirement_controller(game, source),
+        &format!("DB$ Internal | Amount$ {raw_value}"),
+    );
+    sa.params.put("Amount".to_string(), raw_value.to_string());
+    let resolved = crate::svar::resolve_numeric_svar(game, &sa, "Amount", i32::MIN);
+    if resolved != i32::MIN {
+        return resolved;
+    }
+
+    0
+}
+
+fn compare_requirement_amount(
+    source: &Card,
+    svar_source: &dyn HasSVars,
+    compare: &str,
+    game: &GameState,
+    left: i32,
+) -> bool {
+    let operator = compare.get(..compare.len().min(2)).unwrap_or("GE");
+    let operand_expr = compare.get(compare.len().min(2)..).unwrap_or("1");
+    let operand = requirement_amount(source, svar_source, operand_expr, game);
+    compare_expr(left, &format!("{operator}{operand}"))
+}
+
+fn check_named_boolean_param(params: &Params, key: &str, actual: bool) -> bool {
+    let Some(value) = params.get(key) else {
+        return true;
+    };
+    value.eq_ignore_ascii_case("True") == actual
+}
+
+fn player_life_for_requirement(game: &GameState, source: &Card, who: &str) -> i32 {
+    let controller = requirement_controller(game, source);
+    match who {
+        "You" => game.player(controller).life,
+        "OpponentSmallest" => game
+            .alive_players()
+            .into_iter()
+            .filter(|&pid| pid != controller)
+            .map(|pid| game.player(pid).life)
+            .min()
+            .unwrap_or(1),
+        "OpponentGreatest" => game
+            .alive_players()
+            .into_iter()
+            .filter(|&pid| pid != controller)
+            .map(|pid| game.player(pid).life)
+            .max()
+            .unwrap_or(1),
+        "ActivePlayer" => game.player(game.active_player()).life,
+        _ => 1,
+    }
+}
+
+fn collect_present_cards(
+    game: &GameState,
+    source: &Card,
+    defined: Option<&str>,
+    present_player: &str,
+    present_zone: ZoneType,
+) -> Vec<CardId> {
+    if let Some(defined) = defined {
+        return crate::ability::ability_utils::get_defined_cards(
+            game,
+            Some(source.id),
+            defined,
+            Some(requirement_controller(game, source)),
+        );
+    }
+
+    let controller = requirement_controller(game, source);
+    let mut cards = Vec::new();
+
+    if present_player.eq_ignore_ascii_case("You") || present_player.eq_ignore_ascii_case("Any") {
+        cards.extend(game.cards_in_zone(present_zone, controller).iter().copied());
+    }
+    if present_player.eq_ignore_ascii_case("Opponent") || present_player.eq_ignore_ascii_case("Any")
+    {
+        for pid in game.alive_players() {
+            if pid != controller {
+                cards.extend(game.cards_in_zone(present_zone, pid).iter().copied());
+            }
+        }
+    }
+
+    cards
+}
+
+fn paying_color_count(paying_mana_to_cast: &[u16], color_mask: u16) -> usize {
+    paying_mana_to_cast
+        .iter()
+        .filter(|&&atom| atom == color_mask)
+        .count()
+}
+
+fn has_all_spent_colors(colors_spent_to_cast: u16, colors: u16) -> bool {
+    colors != 0 && (colors_spent_to_cast & colors) == colors
+}
 
 /// Check if a card matches a filter expression like "Creature.YouCtrl".
 /// Returns true if `valid` is empty or the card satisfies all parts.
@@ -439,6 +590,30 @@ pub fn matches_valid_player_opt(
     }
 }
 
+/// Mirrors Java's `CardTraitBase.matchesValid(Object, String[], Card, Player)`.
+///
+/// Java uses polymorphic dispatch via `GameObject.isValid()` — both Card and
+/// Player implement it. In Rust, we take both as Options and try card first,
+/// then player, mirroring the `instanceof` chain in Java.
+///
+/// This eliminates the need for callers to guess whether a filter string can
+/// match a player (the old `filter_can_match_player` heuristic).
+pub fn matches_valid(
+    filter: &str,
+    card: Option<&Card>,
+    player: Option<PlayerId>,
+    source: &Card,
+    source_controller: PlayerId,
+) -> bool {
+    if let Some(card) = card {
+        matches_valid_card(filter, card, source)
+    } else if let Some(player) = player {
+        matches_valid_player(filter, player, source_controller)
+    } else {
+        false
+    }
+}
+
 fn matches_single_valid_player(
     filter: &str,
     player: PlayerId,
@@ -588,7 +763,12 @@ fn check_toughness_condition(rest: &str, card: &Card) -> bool {
 /// the specified player(s), then compares the count against `PresentCompare$`.
 ///
 /// Mirrors Java's `meetsCommonRequirements()` IsPresent block.
-pub fn check_is_present(game: &GameState, params: &Params, source: &Card) -> bool {
+pub fn check_is_present(
+    game: &GameState,
+    params: &Params,
+    source: &Card,
+    svar_source: &dyn HasSVars,
+) -> bool {
     let Some(is_present) = params.get(keys::IS_PRESENT) else {
         return true; // no IsPresent param — passes
     };
@@ -599,38 +779,40 @@ pub fn check_is_present(game: &GameState, params: &Params, source: &Card) -> boo
         .get(keys::PRESENT_ZONE)
         .and_then(parse_zone_name)
         .unwrap_or(ZoneType::Battlefield);
+    let present_defined = params.get("PresentDefined");
 
-    let candidate_players: Vec<PlayerId> = match present_player {
-        p if p.eq_ignore_ascii_case("You") => vec![source.controller],
-        p if p.eq_ignore_ascii_case("Opponent") => vec![game.opponent_of(source.controller)],
-        _ => game.players.iter().map(|p| p.id).collect(),
-    };
+    let count = collect_present_cards(game, source, present_defined, present_player, present_zone)
+        .into_iter()
+        .filter(|&cid| matches_valid_card(is_present, game.card(cid), source))
+        .count() as i32;
 
-    let mut count = 0i32;
-    for pid in candidate_players {
-        for &cid in game.cards_in_zone(present_zone, pid) {
-            if matches_valid_card(is_present, game.card(cid), source) {
-                count += 1;
-            }
-        }
-    }
-
-    compare_expr(count, present_compare)
+    compare_requirement_amount(source, svar_source, present_compare, game, count)
 }
 
 /// Check the `CheckSVar$` / `SVarCompare$` parameter group.
 ///
 /// Resolves the named SVar on the source card and compares its value.
 /// Mirrors Java's `meetsCommonRequirements()` CheckSVar block.
-pub fn check_svar_condition(game: &GameState, params: &Params, source: &Card) -> bool {
+pub fn check_svar_condition(
+    game: &GameState,
+    params: &Params,
+    source: &Card,
+    svar_source: &dyn HasSVars,
+) -> bool {
     let Some(check_name) = params.get(keys::CHECK_SVAR) else {
         return true;
     };
-    let Some(compare) = params.get(keys::SVAR_COMPARE) else {
-        return true;
-    };
+    let compare = params.get(keys::SVAR_COMPARE).unwrap_or("GE1");
 
-    compare_svar(game, source, check_name, compare)
+    compare_svar(game, source, svar_source, check_name, compare)
+        && check_named_svar_condition(
+            game,
+            params,
+            source,
+            svar_source,
+            "CheckSecondSVar",
+            "SecondSVarCompare",
+        )
 }
 
 /// Check a named `Check*SVar` / `*SVarCompare` pair.
@@ -641,6 +823,7 @@ pub fn check_named_svar_condition(
     game: &GameState,
     params: &Params,
     source: &Card,
+    svar_source: &dyn HasSVars,
     check_key: &str,
     compare_key: &str,
 ) -> bool {
@@ -649,27 +832,27 @@ pub fn check_named_svar_condition(
     };
     let compare = params.get(compare_key).unwrap_or("GE1");
 
-    compare_svar(game, source, check_name, compare)
+    compare_svar(game, source, svar_source, check_name, compare)
 }
 
-fn compare_svar(game: &GameState, source: &Card, check_name: &str, compare: &str) -> bool {
-    let value = resolve_svar_requirement_value(source, check_name, game);
-    let (operator, operand_expr) = compare.split_at(compare.len().min(2));
-    let operand = if operand_expr.is_empty() {
-        1
-    } else {
-        resolve_svar_requirement_value(source, operand_expr, game)
-    };
-    compare_expr(value, &format!("{operator}{operand}"))
+fn compare_svar(
+    game: &GameState,
+    source: &Card,
+    svar_source: &dyn HasSVars,
+    check_name: &str,
+    compare: &str,
+) -> bool {
+    let value = requirement_amount(source, svar_source, check_name, game);
+    compare_requirement_amount(source, svar_source, compare, game, value)
 }
 
-fn resolve_svar_requirement_value(source: &Card, expr: &str, game: &GameState) -> i32 {
-    let raw_value = source.get_s_var(expr).unwrap_or(expr).trim();
-    if raw_value.starts_with("Count$") {
-        crate::svar::resolve_count_svar(raw_value, game, source.id, source.controller)
-    } else {
-        raw_value.parse::<i32>().unwrap_or(0)
-    }
+fn resolve_svar_requirement_value(
+    source: &Card,
+    svar_source: &dyn HasSVars,
+    expr: &str,
+    game: &GameState,
+) -> i32 {
+    requirement_amount(source, svar_source, expr, game)
 }
 
 /// Check the `Condition$` parameter for game-state conditions.
@@ -680,19 +863,20 @@ pub fn check_condition(game: &GameState, params: &Params, source: &Card) -> bool
     let Some(condition) = params.get(keys::CONDITION) else {
         return true;
     };
+    let controller = requirement_controller(game, source);
     match condition {
-        "PlayerTurn" => game.active_player() == source.controller,
-        "NotPlayerTurn" => game.active_player() != source.controller,
-        "Threshold" => game.player_has_threshold(source.controller),
-        "Hellbent" => game.player_has_hellbent(source.controller),
-        "Metalcraft" => game.player_has_metalcraft(source.controller),
-        "Delirium" => game.player_has_delirium(source.controller),
-        "Ferocious" => game.player_has_ferocious(source.controller),
-        "Desert" => game.player_has_desert(source.controller),
-        "Blessing" => game.player_has_blessing(source.controller),
-        "Monarch" => game.monarch == Some(source.controller),
+        "PlayerTurn" => game.active_player() == controller,
+        "NotPlayerTurn" => game.active_player() != controller,
+        "Threshold" => game.player_has_threshold(controller),
+        "Hellbent" => game.player_has_hellbent(controller),
+        "Metalcraft" => game.player_has_metalcraft(controller),
+        "Delirium" => game.player_has_delirium(controller),
+        "Ferocious" => game.player_has_ferocious(controller),
+        "Desert" => game.player_has_desert(controller),
+        "Blessing" => game.player_has_blessing(controller),
+        "Monarch" => game.monarch == Some(controller),
         "Night" => game.is_night,
-        "FatefulHour" => game.player(source.controller).life <= 5,
+        "FatefulHour" => game.player(controller).life <= 5,
         _ => true, // unknown condition — permissive fallback
     }
 }
@@ -704,20 +888,182 @@ pub fn check_condition(game: &GameState, params: &Params, source: &Card) -> bool
 ///
 /// Mirrors Java's `CardTraitBase.meetsCommonRequirements()`.
 pub fn meets_common_requirements(game: &GameState, params: &Params, source: &Card) -> bool {
-    check_is_present(game, params, source)
-        && check_svar_condition(game, params, source)
-        && check_condition(game, params, source)
+    meets_common_requirements_with_svars(game, params, source, source)
+}
+
+pub fn meets_common_requirements_with_svars(
+    game: &GameState,
+    params: &Params,
+    source: &Card,
+    svar_source: &dyn HasSVars,
+) -> bool {
+    let controller = requirement_controller(game, source);
+
+    if !check_named_boolean_param(params, "Metalcraft", game.player_has_metalcraft(controller)) {
+        return false;
+    }
+    if !check_named_boolean_param(params, "Delirium", game.player_has_delirium(controller)) {
+        return false;
+    }
+    if !check_named_boolean_param(params, "Threshold", game.player_has_threshold(controller)) {
+        return false;
+    }
+    if !check_named_boolean_param(params, "Hellbent", game.player_has_hellbent(controller)) {
+        return false;
+    }
+    if !check_named_boolean_param(params, "Bloodthirst", game.player_has_bloodthirst(controller)) {
+        return false;
+    }
+    if !check_named_boolean_param(params, "FatefulHour", game.player(controller).life <= 5) {
+        return false;
+    }
+    if !check_named_boolean_param(params, "Monarch", game.monarch == Some(controller)) {
+        return false;
+    }
+    if let Some(revolt) = params.get("Revolt") {
+        if revolt.eq_ignore_ascii_case("True") != game.player_has_revolt(controller) {
+            return false;
+        } else if revolt.eq_ignore_ascii_case("None")
+            && game.alive_players().into_iter().any(|pid| game.player_has_revolt(pid))
+        {
+            return false;
+        }
+    }
+    if !check_named_boolean_param(params, "Desert", game.player_has_desert(controller)) {
+        return false;
+    }
+    if !check_named_boolean_param(params, "Blessing", game.player_has_blessing(controller)) {
+        return false;
+    }
+
+    if let Some(day_time) = params.get("DayTime") {
+        if day_time.eq_ignore_ascii_case("Day") {
+            if !game.is_day() {
+                return false;
+            }
+        } else if day_time.eq_ignore_ascii_case("Night") {
+            if !game.is_night {
+                return false;
+            }
+        } else if day_time.eq_ignore_ascii_case("Neither") {
+            if !game.is_neither_day_nor_night() {
+                return false;
+            }
+        }
+    }
+
+    if let Some(adamant) = params.get("Adamant") {
+        let color_mask = ManaAtom::from_name(&adamant.to_ascii_lowercase());
+        if adamant.eq_ignore_ascii_case("Any") {
+            let has_three = [
+                ManaAtom::WHITE,
+                ManaAtom::BLUE,
+                ManaAtom::BLACK,
+                ManaAtom::RED,
+                ManaAtom::GREEN,
+            ]
+            .into_iter()
+            .any(|mask| paying_color_count(&source.paying_mana_to_cast, mask) >= 3);
+            if !has_three {
+                return false;
+            }
+        } else if paying_color_count(&source.paying_mana_to_cast, color_mask) < 3 {
+            return false;
+        }
+    }
+
+    if let Some(life_total) = params.get("LifeTotal") {
+        let compare = params.get("LifeAmount").unwrap_or("GE1");
+        let life = player_life_for_requirement(game, source, life_total);
+        if !compare_requirement_amount(source, svar_source, compare, game, life) {
+            return false;
+        }
+    }
+
+    if !check_is_present(game, params, source, svar_source) {
+        return false;
+    }
+
+    if let Some(is_present) = params.get("IsPresent2") {
+        let present_compare = params.get("PresentCompare2").unwrap_or("GE1");
+        let present_player = params.get("PresentPlayer2").unwrap_or("Any");
+        let present_zone = params
+            .get("PresentZone2")
+            .and_then(parse_zone_name)
+            .unwrap_or(ZoneType::Battlefield);
+        let count = collect_present_cards(game, source, None, present_player, present_zone)
+            .into_iter()
+            .filter(|&cid| matches_valid_card(is_present, game.card(cid), source))
+            .count() as i32;
+        if !compare_requirement_amount(source, svar_source, present_compare, game, count) {
+            return false;
+        }
+    }
+
+    if let Some(defined_players) = params.get("CheckDefinedPlayer") {
+        let players = crate::ability::ability_utils::get_defined_players(
+            game,
+            Some(source.id),
+            defined_players,
+            Some(controller),
+        );
+        let compare = params.get("DefinedPlayerCompare").unwrap_or("GE1");
+        if !compare_requirement_amount(source, svar_source, compare, game, players.len() as i32) {
+            return false;
+        }
+    }
+
+    if !check_svar_condition(game, params, source, svar_source) {
+        return false;
+    }
+
+    if let Some(mana_spent) = params.get("ManaSpent") {
+        let colors = ManaAtom::from_name(&mana_spent.to_ascii_lowercase());
+        if !has_all_spent_colors(source.colors_spent_to_cast, colors) {
+            return false;
+        }
+    }
+    if let Some(mana_not_spent) = params.get("ManaNotSpent") {
+        let colors = ManaAtom::from_name(&mana_not_spent.to_ascii_lowercase());
+        if has_all_spent_colors(source.colors_spent_to_cast, colors) {
+            return false;
+        }
+    }
+
+    if params.has("WerewolfTransformCondition")
+        && !game.stack.get_spells_cast_last_turn().is_empty()
+    {
+        return false;
+    }
+    if params.has("WerewolfUntransformCondition") {
+        let cast_last_turn = game.stack.get_spells_cast_last_turn();
+        let mut condition_met = false;
+        for pid in game.alive_players() {
+            let count = cast_last_turn
+                .iter()
+                .filter(|&&cid| game.card(cid).controller == pid)
+                .count();
+            if count > 1 {
+                condition_met = true;
+                break;
+            }
+        }
+        if !condition_met {
+            return false;
+        }
+    }
+
+    if let Some(class_level) = params.get("ClassLevel") {
+        let min = class_level.parse::<i32>().unwrap_or(0);
+        if source.class_level < min {
+            return false;
+        }
+    }
+
+    check_condition(game, params, source)
 }
 
 /// Parse a zone name string into ZoneType.
 fn parse_zone_name(name: &str) -> Option<ZoneType> {
-    match name.to_ascii_lowercase().as_str() {
-        "battlefield" => Some(ZoneType::Battlefield),
-        "graveyard" => Some(ZoneType::Graveyard),
-        "hand" => Some(ZoneType::Hand),
-        "library" => Some(ZoneType::Library),
-        "exile" => Some(ZoneType::Exile),
-        "command" => Some(ZoneType::Command),
-        _ => None,
-    }
+    ZoneType::from_str_compat(name)
 }

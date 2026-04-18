@@ -534,6 +534,12 @@ impl GameLoop {
         if !sa.setup_targets(game, agents, &self.mana_pools) {
             return false;
         }
+        crate::ability::effects::emit_targeting_triggers_for_sa(
+            &mut self.trigger_handler,
+            game,
+            card_id,
+            &sa,
+        );
 
         // PowerUp: reduce cost by card's mana cost if it entered the battlefield this turn
         let adjusted_cost = if ab.params.is_true(keys::POWER_UP)

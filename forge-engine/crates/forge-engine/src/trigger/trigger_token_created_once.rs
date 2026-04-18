@@ -1,36 +1,58 @@
-use crate::ability::AbilityKey;
-use crate::{
-    event::{AbilityValue, RunParams},
-    game::GameState,
-    ids::{CardId, PlayerId},
-};
+use serde::{Deserialize, Serialize};
 
-use super::trigger::{check_card_filter, TriggerMode};
+use crate::ability::AbilityKey;
 use crate::card::valid_filter::matches_valid_player;
+use crate::event::{AbilityValue, RunParams, TriggerType};
+use crate::game::GameState;
+use crate::parsing::{keys, Params};
 use crate::spellability::SpellAbility;
 
-pub fn perform_test(
-    mode: &TriggerMode,
-    params: &RunParams,
-    game: &GameState,
-    host_card: CardId,
-    host_controller: PlayerId,
-) -> bool {
-    if let TriggerMode::TokenCreatedOnce {
-        valid_card,
-        only_first,
-    } = mode
-    {
+use super::trigger::{check_card_filter, Trigger, TriggerBehavior};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TriggerTokenCreatedOnce {
+    pub valid_card: Option<String>,
+    pub only_first: Option<String>,
+}
+
+impl TriggerTokenCreatedOnce {
+    pub fn parse(params: &Params) -> Box<dyn TriggerBehavior> {
+        let valid_card = params
+            .get("ValidToken")
+            .or_else(|| params.get(keys::VALID_CARD))
+            .map(|s| s.to_string());
+        let only_first = params.get_cloned("OnlyFirst");
+        Box::new(Self {
+            valid_card,
+            only_first,
+        })
+    }
+}
+
+#[typetag::serde]
+impl TriggerBehavior for TriggerTokenCreatedOnce {
+    fn trigger_type(&self) -> TriggerType {
+        TriggerType::TokenCreatedOnce
+    }
+
+    fn perform_test(
+        &self,
+        trigger: &Trigger,
+        params: &RunParams,
+        game: &GameState,
+    ) -> bool {
+        let host_card = trigger.base.card_trait_base.get_host_card().id;
+        let host_controller = trigger.base.card_trait_base.get_host_card().controller;
         let Some(AbilityValue::Cards(cards)) = params.get_value(AbilityKey::Cards) else {
             return false;
         };
         let any_match = cards.iter().any(|&card_id| {
-            check_card_filter(valid_card, Some(card_id), host_card, host_controller, game)
+            check_card_filter(&self.valid_card, Some(card_id), host_card, host_controller, game)
         });
         if !any_match {
             return false;
         }
-        if let Some(filter) = only_first {
+        if let Some(filter) = self.only_first.as_ref() {
             let Some(AbilityValue::Players(players)) = params.get_value(AbilityKey::FirstTime)
             else {
                 return false;
@@ -43,23 +65,28 @@ pub fn perform_test(
                 return false;
             }
         }
-        return true;
+        true
     }
-    panic!("Expected TokenCreatedOnce mode");
-}
 
-pub fn set_triggering_objects(sa: &mut SpellAbility, params: &RunParams) {
-    // TODO: port ValidToken filtering from Java (IterableUtil.filter with CardPredicates.restriction)
-    if let Some(cards) = params.cards.as_ref() {
-        let csv = cards
-            .iter()
-            .map(|c| c.0.to_string())
-            .collect::<Vec<_>>()
-            .join(",");
-        sa.add_triggering_object("Cards", &csv);
+    fn set_triggering_objects(
+        &self,
+        _trigger: &Trigger,
+        sa: &mut SpellAbility,
+        params: &RunParams,
+        _game: &GameState,
+    ) {
+        // TODO: port ValidToken filtering from Java (IterableUtil.filter with CardPredicates.restriction)
+        if let Some(cards) = params.cards.as_ref() {
+            let csv = cards
+                .iter()
+                .map(|c| c.0.to_string())
+                .collect::<Vec<_>>()
+                .join(",");
+            sa.set_triggering_object("Cards", &csv);
+        }
     }
-}
 
-pub fn get_important_stack_objects(_sa: &SpellAbility) -> String {
-    String::new()
+    fn get_important_stack_objects(&self, _trigger: &Trigger, _sa: &SpellAbility) -> String {
+        String::new()
+    }
 }

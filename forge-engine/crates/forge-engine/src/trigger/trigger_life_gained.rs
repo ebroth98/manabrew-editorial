@@ -1,44 +1,49 @@
+use serde::{Deserialize, Serialize};
+
+use crate::event::{RunParams, TriggerType};
+use crate::game::GameState;
 use crate::parsing::{keys, Params};
-use crate::{
-    event::RunParams,
-    game::GameState,
-    ids::{CardId, PlayerId},
-    spellability::SpellAbility,
-};
+use crate::spellability::SpellAbility;
 
-use super::trigger::{check_player_filter, TriggerMode};
+use super::trigger::{check_player_filter, Trigger, TriggerBehavior};
 
-pub fn parse_mode(params: &Params) -> TriggerMode {
-    let valid_player = params.get_cloned(keys::VALID_PLAYER);
-    let valid_source = params.get_cloned(keys::VALID_SOURCE);
-    let first_time_only = params.has("FirstTime");
-    let spell_only = params.has("Spell");
-    TriggerMode::LifeGained {
-        valid_player,
-        valid_source,
-        first_time_only,
-        spell_only,
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TriggerLifeGained {
+    pub valid_player: Option<String>,
+    pub valid_source: Option<String>,
+    pub first_time_only: bool,
+    pub spell_only: bool,
+}
+
+impl TriggerLifeGained {
+    pub fn parse(params: &Params) -> Box<dyn TriggerBehavior> {
+        Box::new(Self {
+            valid_player: params.get_cloned(keys::VALID_PLAYER),
+            valid_source: params.get_cloned(keys::VALID_SOURCE),
+            first_time_only: params.has("FirstTime"),
+            spell_only: params.has("Spell"),
+        })
     }
 }
 
-pub fn perform_test(
-    mode: &TriggerMode,
-    params: &RunParams,
-    game: &GameState,
-    host_card: CardId,
-    host_controller: PlayerId,
-) -> bool {
-    if let TriggerMode::LifeGained {
-        valid_player,
-        valid_source,
-        first_time_only,
-        spell_only,
-    } = mode
-    {
-        if !check_player_filter(valid_player, params.player, host_controller) {
+#[typetag::serde]
+impl TriggerBehavior for TriggerLifeGained {
+    fn trigger_type(&self) -> TriggerType {
+        TriggerType::LifeGained
+    }
+
+    fn perform_test(
+        &self,
+        trigger: &Trigger,
+        params: &RunParams,
+        game: &GameState,
+    ) -> bool {
+        let host_card = trigger.base.card_trait_base.get_host_card().id;
+        let host_controller = trigger.base.card_trait_base.get_host_card().controller;
+        if !check_player_filter(&self.valid_player, params.player, host_controller) {
             return false;
         }
-        if let Some(filter) = valid_source {
+        if let Some(filter) = self.valid_source.as_ref() {
             let source_matches = params
                 .source_card
                 .or(params.spell_card)
@@ -55,10 +60,10 @@ pub fn perform_test(
                 return false;
             }
         }
-        if *first_time_only && params.first_time != Some(true) {
+        if self.first_time_only && params.first_time != Some(true) {
             return false;
         }
-        if *spell_only
+        if self.spell_only
             && !params
                 .source_sa
                 .as_ref()
@@ -67,25 +72,30 @@ pub fn perform_test(
         {
             return false;
         }
-        return true;
+        true
     }
-    panic!("Expected LifeGained mode");
-}
 
-pub fn set_triggering_objects(sa: &mut SpellAbility, params: &RunParams) {
-    if let Some(amount) = params.life_amount {
-        sa.add_triggering_object("LifeAmount", &amount.to_string());
+    fn set_triggering_objects(
+        &self,
+        _trigger: &Trigger,
+        sa: &mut SpellAbility,
+        params: &RunParams,
+        _game: &GameState,
+    ) {
+        if let Some(amount) = params.life_amount {
+            sa.set_triggering_object("LifeAmount", &amount.to_string());
+        }
+        if let Some(p) = params.player {
+            sa.set_triggering_object("Player", &p.0.to_string());
+        }
     }
-    if let Some(p) = params.player {
-        sa.add_triggering_object("Player", &p.0.to_string());
-    }
-}
 
-pub fn get_important_stack_objects(sa: &SpellAbility) -> String {
-    // Java: "Player: " + Player + ", GainedAmount: " + LifeAmount
-    format!(
-        "Player: {}, GainedAmount: {}",
-        sa.get_triggering_object("Player").unwrap_or_default(),
-        sa.get_triggering_object("LifeAmount").unwrap_or_default()
-    )
+    fn get_important_stack_objects(&self, _trigger: &Trigger, sa: &SpellAbility) -> String {
+        // Java: "Player: " + Player + ", GainedAmount: " + LifeAmount
+        format!(
+            "Player: {}, GainedAmount: {}",
+            sa.get_triggering_object("Player").unwrap_or_default(),
+            sa.get_triggering_object("LifeAmount").unwrap_or_default()
+        )
+    }
 }

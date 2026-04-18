@@ -1,66 +1,48 @@
-use crate::ability::effects::EffectContext;
+use serde::{Deserialize, Serialize};
+
 use crate::event::{RunParams, TriggerType};
-use crate::parsing::keys;
+use crate::game::GameState;
+use crate::parsing::Params;
 use crate::spellability::SpellAbility;
-use crate::trigger::{DelayedTrigger, TriggerMode};
 
-/// Trigger-module owned implementation of ImmediateTrigger resolution.
-/// Mirrors Java's `ImmediateTriggerEffect.resolve()` which registers
-/// a delayed trigger that fires as soon as possible through normal
-/// trigger processing.
-pub fn resolve_immediate_trigger(ctx: &mut EffectContext, sa: &SpellAbility) {
-    if let Some(remember_def) = sa.params.get(keys::REMEMBER_OBJECTS) {
-        if let Some(source_id) = sa.source {
-            if remember_def.eq_ignore_ascii_case("Targeted") {
-                if let Some(target) = sa.target_chosen.target_card {
-                    ctx.game.card_mut(source_id).add_remembered_card(target);
-                }
-            }
-        }
-    }
+use super::trigger::{Trigger, TriggerBehavior};
 
-    // Execute$ — register a delayed trigger that fires immediately through
-    // normal trigger processing, matching Java's registerDelayedTrigger flow.
-    if let Some(execute_name) = sa.params.get(keys::EXECUTE) {
-        if let Some(source_id) = sa.source {
-            let svar_text = ctx
-                .game
-                .card(source_id)
-                .get_s_var(execute_name)
-                .map(str::to_string);
-            if svar_text.is_some() {
-                let delayed = DelayedTrigger {
-                    mode: TriggerType::Immediate,
-                    trigger_mode: TriggerMode::Immediate,
-                    execute_svar: execute_name.to_string(),
-                    controller: sa.activating_player,
-                    source_card: source_id,
-                    created_turn: ctx.game.turn.turn_number,
-                    created_phase: ctx.game.turn.phase,
-                    target_card: None,
-                    remembered_amount: 0,
-                    remembered_cards: Vec::new(),
-                    remembered_lki_cards: Vec::new(),
-                };
-                ctx.trigger_handler.register_delayed_trigger(delayed);
-            }
-        }
+/// Mirrors Java's `TriggerImmediate extends Trigger`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TriggerImmediate;
+
+impl TriggerImmediate {
+    pub fn parse(_params: &Params) -> Box<dyn TriggerBehavior> {
+        Box::new(Self)
     }
 }
 
-/// Java TriggerImmediate parity hook.
-pub fn perform_test() -> bool {
-    true
-}
+#[typetag::serde]
+impl TriggerBehavior for TriggerImmediate {
+    fn trigger_type(&self) -> TriggerType {
+        TriggerType::Immediate
+    }
 
-/// Mirrors Java's TriggerImmediate.setTriggeringObjects().
-/// Empty implementation — matches Java.
-pub fn set_triggering_objects(_sa: &mut SpellAbility, _params: &RunParams) {
-    // Empty - matches Java
-}
+    fn perform_test(
+        &self,
+        _trigger: &Trigger,
+        _params: &RunParams,
+        _game: &GameState,
+    ) -> bool {
+        // TODO: We're missing stuff in replacement to make this work
+        true
+    }
 
-/// Mirrors Java's TriggerImmediate.getImportantStackObjects().
-/// Returns empty string — matches Java.
-pub fn get_important_stack_objects(_sa: &SpellAbility) -> String {
-    String::new()
+    fn set_triggering_objects(
+        &self,
+        _trigger: &Trigger,
+        _sa: &mut SpellAbility,
+        _params: &RunParams,
+        _game: &GameState,
+    ) {
+    }
+
+    fn get_important_stack_objects(&self, _trigger: &Trigger, _sa: &SpellAbility) -> String {
+        String::new()
+    }
 }

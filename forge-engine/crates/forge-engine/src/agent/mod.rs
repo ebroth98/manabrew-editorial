@@ -1,4 +1,5 @@
 use crate::agent::notification::GameNotification;
+use crate::card::CounterType;
 use crate::combat::DefenderId;
 use crate::cost::payment_decision::PaymentDecision;
 use crate::cost::CostPart;
@@ -400,9 +401,9 @@ pub trait PlayerAgent {
     fn choose_single_entity_for_effect(
         &mut self,
         _player: PlayerId,
-        valid: &[CardId],
+        valid: &[GameEntity],
         _is_optional: bool,
-    ) -> Option<CardId> {
+    ) -> Option<GameEntity> {
         valid.first().copied()
     }
 
@@ -723,6 +724,18 @@ pub trait PlayerAgent {
         valid_types: &[String],
     ) -> Option<String> {
         valid_types.first().cloned()
+    }
+
+    /// Choose a counter type.
+    /// Mirrors Java's `PlayerController.chooseCounterType`.
+    /// Default: pick the first valid option.
+    fn choose_counter_type(
+        &mut self,
+        _player: PlayerId,
+        options: &[CounterType],
+        _prompt: &str,
+    ) -> Option<CounterType> {
+        options.first().cloned()
     }
 
     /// Choose a card name (for NameCard effect).

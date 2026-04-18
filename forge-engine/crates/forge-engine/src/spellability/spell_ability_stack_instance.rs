@@ -88,10 +88,10 @@ pub fn update_target(entry: &mut StackEntry, old: CardId, new: CardId) {
     entry.update_target(old, new);
 }
 
-/// Add a triggering object to a stack entry.
-/// Delegates to `StackEntry::add_triggering_object()`.
-pub fn add_triggering_object(entry: &mut StackEntry, key: &str, value: &str) {
-    entry.add_triggering_object(key, value);
+/// Set a triggering object on a stack entry.
+/// Delegates to `StackEntry::set_triggering_object()`.
+pub fn set_triggering_object(entry: &mut StackEntry, key: &str, value: &str) {
+    entry.set_triggering_object(key, value);
 }
 
 /// Update a triggering object on a stack entry.

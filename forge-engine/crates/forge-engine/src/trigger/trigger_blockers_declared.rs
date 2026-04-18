@@ -1,53 +1,67 @@
+use serde::{Deserialize, Serialize};
+
 use crate::{
-    event::RunParams,
+    event::{RunParams, TriggerType},
     game::GameState,
-    ids::{CardId, PlayerId},
     parsing::Params,
     spellability::SpellAbility,
 };
 
-use super::trigger::TriggerMode;
+use super::trigger::TriggerBehavior;
 
-pub fn perform_test(
-    mode: &TriggerMode,
-    params: &RunParams,
-    game: &GameState,
-    host_card: CardId,
-    host_controller: PlayerId,
-) -> bool {
-    let _ = (params, game, host_card, host_controller);
-    if let TriggerMode::BlockersDeclared = mode {
-        return true;
-    }
-    panic!("Expected BlockersDeclared mode");
-}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TriggerBlockersDeclared;
 
-pub fn parse_mode(_params: &Params) -> TriggerMode {
-    TriggerMode::BlockersDeclared
-}
-
-pub fn set_triggering_objects(sa: &mut SpellAbility, params: &RunParams) {
-    if let Some(blockers) = params.blocker_ids.as_ref() {
-        let csv = blockers
-            .iter()
-            .map(|c| c.0.to_string())
-            .collect::<Vec<_>>()
-            .join(",");
-        sa.add_triggering_object("Blockers", &csv);
-    }
-    if let Some(attackers) = params.attacker_ids.as_ref() {
-        let csv = attackers
-            .iter()
-            .map(|c| c.0.to_string())
-            .collect::<Vec<_>>()
-            .join(",");
-        sa.add_triggering_object("Attackers", &csv);
+impl TriggerBlockersDeclared {
+    pub fn parse(_params: &Params) -> Box<dyn TriggerBehavior> {
+        Box::new(Self)
     }
 }
 
-pub fn get_important_stack_objects(sa: &SpellAbility) -> String {
-    format!(
-        "Blockers: {}",
-        sa.get_triggering_object("Blockers").unwrap_or("")
-    )
+#[typetag::serde]
+impl TriggerBehavior for TriggerBlockersDeclared {
+    fn trigger_type(&self) -> TriggerType {
+        TriggerType::BlockersDeclared
+    }
+
+    fn perform_test(
+        &self,
+        _trigger: &super::trigger::Trigger,
+        _params: &RunParams,
+        _game: &GameState,
+    ) -> bool {
+        true
+    }
+
+    fn set_triggering_objects(
+        &self,
+        _trigger: &super::trigger::Trigger,
+        sa: &mut SpellAbility,
+        params: &RunParams,
+        _game: &GameState,
+    ) {
+        if let Some(blockers) = params.blocker_ids.as_ref() {
+            let csv = blockers
+                .iter()
+                .map(|c| c.0.to_string())
+                .collect::<Vec<_>>()
+                .join(",");
+            sa.set_triggering_object("Blockers", &csv);
+        }
+        if let Some(attackers) = params.attacker_ids.as_ref() {
+            let csv = attackers
+                .iter()
+                .map(|c| c.0.to_string())
+                .collect::<Vec<_>>()
+                .join(",");
+            sa.set_triggering_object("Attackers", &csv);
+        }
+    }
+
+    fn get_important_stack_objects(&self, _trigger: &super::trigger::Trigger, sa: &SpellAbility) -> String {
+        format!(
+            "Blockers: {}",
+            sa.get_triggering_object("Blockers").unwrap_or("")
+        )
+    }
 }
