@@ -96,17 +96,19 @@ export function useCastingState({
     if (fromHand) return fromHand;
     const fromBattlefield = battlefield.find((c) => c.id === castingCardId);
     if (fromBattlefield) return fromBattlefield;
+    // Prefer the caller-side "known cards" cache BEFORE the stack stub —
+    // StackObject carries only name+text (no setCode / cardNumber), so a
+    // stub would force a name-only Scryfall lookup and return a different
+    // printing's art than the one originally in hand. The cache keeps the
+    // exact card we've already been rendering.
+    const cached = resolveKnownCard?.(castingCardId);
+    if (cached) return cached;
     if (stack) {
       const stackEntry = stack.find((s) => s.sourceId === castingCardId);
       if (stackEntry) {
         return stubCard(stackEntry.sourceId, stackEntry.name, stackEntry.text);
       }
     }
-    // Fall back to the caller-side "known cards" cache — this resolves
-    // spells that were in the hand a moment ago but have been removed
-    // while the engine puts them in flight.
-    const cached = resolveKnownCard?.(castingCardId);
-    if (cached) return cached;
     // Always render *something* while a cast is in progress so the player
     // has visual confirmation of what they're targeting.
     return stubCard(castingCardId, promptSourceCardName ?? "Casting…");

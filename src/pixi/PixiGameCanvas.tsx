@@ -1,12 +1,22 @@
 import { useRef, useEffect, useCallback, useState } from "react";
 import { Application } from "pixi.js";
+import { installPixiPatches } from "./pixiPatches";
 import { PixiGameScene } from "./PixiGameScene";
+
+// Runtime workarounds for Pixi v8 bugs — must run before any `Application`
+// is constructed.
+installPixiPatches();
 import { adaptTheme } from "./themeAdapter";
 import { getGameThemeColors } from "@/components/game/game.theme";
 import { usePreferencesStore } from "@/stores/usePreferencesStore";
 import { ZONE_COLUMN_RESERVED_PX } from "@/components/game/game.constants";
-import type { GameCanvasCallbacks, BattlefieldState, HandState, ScreenBounds } from "./types";
-import type { ArrowDef } from "./ArrowLayer";
+import type {
+  GameCanvasCallbacks,
+  BattlefieldState,
+  HandState,
+  ScreenBounds,
+  PlayZoneRect,
+} from "./types";
 import { useHandScale } from "@/hooks/useHandScale";
 import { HandCardActions } from "@/components/game/zones/HandCardActions";
 import type { HandActionOption } from "@/stores/useGameUIStore";
@@ -22,7 +32,19 @@ import {
 interface PixiGameCanvasProps {
   battlefield: BattlefieldState;
   hand?: HandState;
-  arrows?: ArrowDef[];
+  /**
+   * Optional out-ref that's populated with the live `PixiGameScene` so a
+   * sibling component (e.g. the full-board arrows overlay canvas) can read
+   * sprite positions for arrow resolution.
+   */
+  sceneRef?: React.MutableRefObject<PixiGameScene | null>;
+  /**
+   * Sub-rectangle of the canvas where battlefield sprites + hand should
+   * render. When omitted the full canvas is used. Pass the "my half"
+   * bounding rect (relative to the canvas) to keep gameplay inside that
+   * area while the canvas itself spans the entire game board.
+   */
+  playZone?: PlayZoneRect | null;
   placementGhostName?: string | null;
   isDropActive?: boolean;
   callbacks: GameCanvasCallbacks;
@@ -48,7 +70,8 @@ interface HandHoverState {
 export function PixiGameCanvas({
   battlefield,
   hand,
-  arrows,
+  playZone,
+  sceneRef: externalSceneRef,
   placementGhostName,
   isDropActive,
   callbacks,
@@ -72,7 +95,8 @@ export function PixiGameCanvas({
   // the current instance without forcing effect re-runs.
   useEffect(() => {
     sceneRef.current = scene;
-  }, [scene]);
+    if (externalSceneRef) externalSceneRef.current = scene;
+  }, [scene, externalSceneRef]);
 
   useEffect(() => {
     callbacksRef.current = callbacks;
@@ -220,8 +244,8 @@ export function PixiGameCanvas({
 
   useEffect(() => {
     if (!scene) return;
-    scene.updateArrows(arrows ?? []);
-  }, [scene, arrows]);
+    scene.setPlayZone(playZone ?? null);
+  }, [scene, playZone]);
 
   useEffect(() => {
     if (!scene) return;

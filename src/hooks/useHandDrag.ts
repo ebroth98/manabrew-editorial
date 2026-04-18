@@ -22,8 +22,10 @@ export function useHandDrag({
   function startHandCardDrag(card: Card, e: React.MouseEvent) {
     if (!card.isPlayable) return;
     dismissHover();
-    setDraggingHandCard(card);
-    setGhostPos({ x: e.clientX, y: e.clientY });
+    // Don't enter drag state yet — the card should stay in the hand until
+    // the user has actually dragged past the dead-zone. Otherwise a simple
+    // click to cast briefly hides the hand sprite + pops a floating ghost,
+    // which reads as "the card is leaving the hand before I've released".
 
     const startX = e.clientX;
     const startY = e.clientY;
@@ -34,6 +36,8 @@ export function useHandDrag({
         const dy = me.clientY - startY;
         if (dx * dx + dy * dy < 25) return; // 5px dead zone for taps
         moved = true;
+        // Transitioning into drag now that we've crossed the threshold.
+        setDraggingHandCard(card);
       }
       // Hard-disable hover preview during drag; hover timers can be re-armed by
       // underlying mouseenter events while the cursor crosses cards.

@@ -10,12 +10,53 @@ export interface ScreenBounds {
   height: number;
 }
 
+/** Sub-rectangle of the canvas used for auto-placement + hand layout.
+ *  The canvas itself can be larger (covering both halves of the board so
+ *  arrows span everything) while gameplay sprites stay inside this rect. */
+export type PlayZoneRect = ScreenBounds;
+
 export interface ScreenPos {
   x: number;
   y: number;
 }
 
 export type HoverPlacement = "auto" | "top-center";
+
+/**
+ * Arrow endpoint referenced by game-entity identity so the Pixi scene can
+ * resolve the current position from its own sprite maps (canvas-local) or
+ * fall back to DOM query (player panels, stack cards).
+ */
+export type ArrowEndpoint =
+  | { kind: "card"; id: string }
+  | { kind: "player"; id: string }
+  | { kind: "stack"; id: string }
+  | { kind: "placement-ghost" };
+
+export type ArrowType =
+  | "attack"
+  | "block"
+  | "hostile-target"
+  | "friendly-target"
+  | "placement";
+
+export interface ArrowSpec {
+  from: ArrowEndpoint;
+  to: ArrowEndpoint;
+  type: ArrowType;
+}
+
+/**
+ * Cursor-following arrow shown during target selection. Source is a
+ * React-rendered element with `data-casting-card={id}` (StackDisplay).
+ * Target is either a specific card/player (locked target) or the cursor.
+ */
+export interface CastingArrowSpec {
+  castingCardId: string;
+  /** When set, the arrow locks onto this card or player id. */
+  targetId?: string | null;
+  hostile: boolean;
+}
 
 export interface GameCanvasCallbacks {
   onClickCard?: (card: Card) => void;

@@ -15,7 +15,10 @@ import { StackDisplay } from "@/components/game/panels/StackDisplay";
 import { CastingArrow } from "@/components/game/CastingArrow";
 import { useCastingState } from "@/hooks/useCastingState";
 import { ArrowOverlay } from "@/components/game/ArrowOverlay";
+import { PixiArrowsCanvas } from "@/pixi/PixiArrowsCanvas";
+import type { PixiGameScene } from "@/pixi/PixiGameScene";
 import { useGameArrows } from "@/components/game/useGameArrows";
+import { buildArrowSpecs } from "@/components/game/arrowSpecs";
 import { PlayModePicker } from "@/components/game/PlayModePicker";
 import { HAND_CARD_BASES } from "@/components/game/game.styles";
 import { useHandScale } from "@/hooks/useHandScale";
@@ -114,6 +117,7 @@ export default function Game() {
   const zonePanelSide = usePreferencesStore((s) => s.zonePanelSide);
   const zonePanelOrder = usePreferencesStore((s) => s.zonePanelOrder);
   const handSize = usePreferencesStore((s) => s.handSize);
+  const pixiEnabled = usePreferencesStore((s) => s.pixiEnabled);
   const vScale = useHandScale();
   const ghostCardW = Math.round(HAND_CARD_BASES[handSize].cardW * vScale);
   const ghostCardH = Math.round(HAND_CARD_BASES[handSize].cardH * vScale);
@@ -121,6 +125,9 @@ export default function Game() {
   const location = useLocation();
   const devExtraOpponents = ((location.state as { devExtraOpponents?: number } | null)?.devExtraOpponents ?? 0);
   const containerRef = useRef<HTMLDivElement>(null);
+  // Ref populated by PixiGameCanvas once its scene is live. Used by the
+  // full-board PixiArrowsCanvas to read sprite positions across canvases.
+  const pixiSceneRef = useRef<PixiGameScene | null>(null);
 
   const activePrompt = manualApi ? null : currentPrompt;
   const promptType = activePrompt?.type;
@@ -745,6 +752,33 @@ export default function Game() {
     stack: gameView?.stack ?? [],
   });
 
+  const hoveredStackObjectIdForSpecs = useStackUIStore((s) => s.hoveredStackObjectId);
+  const arrowSpecs = useMemo(
+    () =>
+      buildArrowSpecs({
+        promptType,
+        attackerIds,
+        blockAssignments,
+        combatAssignments,
+        pendingAttackers,
+        myPlayerId: me?.id ?? "",
+        opponentPlayerId: opponent?.id ?? "",
+        stack: gameView?.stack ?? [],
+        activeStackObjectId: hoveredStackObjectIdForSpecs,
+      }),
+    [
+      promptType,
+      attackerIds,
+      blockAssignments,
+      combatAssignments,
+      pendingAttackers,
+      me?.id,
+      opponent?.id,
+      gameView?.stack,
+      hoveredStackObjectIdForSpecs,
+    ],
+  );
+
   const hoveredStackObjectId = useStackUIStore((s) => s.hoveredStackObjectId);
   const placementGhost = useMemo((): PlacementGhost | null => {
     const stack = gameView?.stack;
@@ -903,7 +937,15 @@ export default function Game() {
   );
 
   const resolveStackCard = (stackItem: StackObject): XMageCard =>
+    // `visibleCardsById` covers cards still in a live zone. For spells
+    // that have left the hand but haven't resolved yet, fall through to
+    // `knownCardsRef` — it preserves the full card (with setCode +
+    // cardNumber) so StackDisplay's image fetch stays locked to the exact
+    // printing we were already showing. Without this, the stub below
+    // forces a name-only Scryfall lookup and the artwork can flip to a
+    // different printing mid-render.
     visibleCardsById.get(stackItem.sourceId) ??
+    knownCardsRef.current.get(stackItem.sourceId) ??
     stackCardsBySourceId.get(stackItem.sourceId) ?? {
       id: stackItem.sourceId,
       name: stackItem.name,
@@ -1020,9 +1062,29 @@ export default function Game() {
         } as React.CSSProperties
       }
     >
-      <ArrowOverlay arrows={arrows} />
+      {/* Arrow rendering: SVG when off-Pixi, dedicated full-board Pixi
+          canvas when on. The overlay canvas is transparent and has
+          pointer-events:none so it never blocks the DOM behind it. */}
+      {!pixiEnabled ? (
+        <ArrowOverlay arrows={arrows} />
+      ) : (
+        <PixiArrowsCanvas
+          mainSceneRef={pixiSceneRef}
+          arrowSpecs={arrowSpecs}
+          castingArrow={
+            casting.showArrow && casting.castingCardId
+              ? {
+                  castingCardId: casting.castingCardId,
+                  targetId: casting.targetId,
+                  hostile: casting.arrowHostile,
+                }
+              : null
+          }
+        />
+      )}
       <div className="flex gap-1 min-h-0 flex-1 overflow-visible">
         <GameBoard
+          pixiSceneRef={pixiSceneRef}
           me={me}
           opponents={displayOpponents}
           myPermanents={myPermanents}
@@ -1198,7 +1260,9 @@ export default function Game() {
         rightPanelCollapsed={isActionPanelCollapsed}
       />
 
-      {casting.showArrow && casting.castingCardId && (
+      {/* React SVG casting arrow — only used off-Pixi. In Pixi mode the
+          scene draws it via `castingArrow` passed into GameBoard below. */}
+      {!pixiEnabled && casting.showArrow && casting.castingCardId && (
         <CastingArrow castingCardId={casting.castingCardId} targetId={casting.targetId} hostile={casting.arrowHostile} />
       )}
 

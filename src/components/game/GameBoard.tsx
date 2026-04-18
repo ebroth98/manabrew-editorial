@@ -4,6 +4,7 @@ import type { AgentPrompt } from "@/stores/useGameStore";
 import { usePreferencesStore, type ZonePanelItem } from "@/stores/usePreferencesStore";
 import { PixiGameCanvas } from "@/pixi/PixiGameCanvas";
 import type { BattlefieldState, GameCanvasCallbacks } from "@/pixi/types";
+import type { PixiGameScene } from "@/pixi/PixiGameScene";
 import type { PromptType } from "@/types/promptType";
 import { PromptType as PT } from "@/types/promptType";
 import { OpponentHalf, PlayerPanel } from "@/components/game/panels";
@@ -95,6 +96,10 @@ interface GameBoardProps {
   onTapLandAbility?: (cardId: string, abilityIndex: number, color?: string) => void;
   onUntapLand?: (card: Card) => void;
   onUntapLands?: (cardIds: string[]) => void;
+
+  /** Out-ref populated with the live Pixi scene so Game.tsx can share it
+   *  with the full-board PixiArrowsCanvas. */
+  pixiSceneRef?: React.MutableRefObject<PixiGameScene | null>;
 }
 
 export function GameBoard({
@@ -146,6 +151,7 @@ export function GameBoard({
   onTapLandAbility,
   onUntapLand,
   onUntapLands,
+  pixiSceneRef,
 }: GameBoardProps) {
   const themeColors = useGameThemeColors();
   const handSize = usePreferencesStore((s) => s.handSize);
@@ -378,6 +384,7 @@ export function GameBoard({
                     <PixiGameCanvas
                       battlefield={pixiBattlefield}
                       hand={pixiHand}
+                      sceneRef={pixiSceneRef}
                       placementGhostName={placementGhost?.controllerId === me.id ? placementGhost.cardName : null}
                       isDropActive={isOverBattlefield}
                       callbacks={pixiCallbacks}

@@ -13,6 +13,7 @@ const DEFAULT_MARQUEE_FILL_ALPHA = 0.1;
 export class MarqueeHandler {
   private gfx: Graphics;
   private active = false;
+  private destroyed = false;
   private startX = 0;
   private startY = 0;
   private currentX = 0;
@@ -42,6 +43,7 @@ export class MarqueeHandler {
   }
 
   start(x: number, y: number, shift: boolean): void {
+    if (this.destroyed) return;
     this.active = true;
     this.startX = x;
     this.startY = y;
@@ -53,7 +55,7 @@ export class MarqueeHandler {
   }
 
   move(x: number, y: number): void {
-    if (!this.active) return;
+    if (this.destroyed || !this.active) return;
     this.currentX = x;
     this.currentY = y;
     this.redraw();
@@ -109,6 +111,7 @@ export class MarqueeHandler {
   }
 
   private redraw(): void {
+    if (this.destroyed) return;
     const r = this.getRect();
     this.gfx.clear();
     this.gfx.roundRect(r.x, r.y, r.width, r.height, MARQUEE_CORNER_RADIUS);
@@ -121,6 +124,9 @@ export class MarqueeHandler {
   }
 
   destroy(): void {
+    if (this.destroyed) return;
+    this.destroyed = true;
+    this.active = false;
     this.gfx.destroy({ children: true });
   }
 }

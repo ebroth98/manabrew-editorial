@@ -9,10 +9,14 @@ import {
 } from "pixi.js";
 import type { Card } from "@/types/openmagic";
 import type {
+  ArrowSpec,
+  ArrowEndpoint,
+  CastingArrowSpec,
   GameCanvasCallbacks,
   BattlefieldState,
   HandState,
   HandSize,
+  PlayZoneRect,
   ScreenPos,
   ScreenBounds,
 } from "./types";
@@ -128,6 +132,24 @@ interface ActionKind {
 }
 
 // ───── Pure helpers ─────
+/**
+ * Destroy a Pixi display object without cascading into children. Pixi v8
+ * hits a `TexturePool.returnTexture` crash when destroying certain Text
+ * objects (the pool's internal key-to-pool map sometimes lacks the slot
+ * for a given key, and `push` is called on undefined). Dropping our own
+ * reference is enough — the display object detaches from its parent via
+ * its own destroy, and the leaked Text children get garbage-collected
+ * once the Pixi Application is disposed. Wrapped in try/catch so a Pixi
+ * internal bug never crashes the React tree during game teardown.
+ */
+const safeDestroy = (obj: { destroy: (...args: never[]) => void }): void => {
+  try {
+    obj.destroy();
+  } catch (err) {
+    console.warn("[pixi] display-object destroy threw:", err);
+  }
+};
+
 const lerp = (
   current: number,
   target: number,
@@ -219,6 +241,22 @@ export class PixiGameScene {
   private handSize: HandSize = "medium";
   private vScale = 1;
   private arrowLayer: ArrowLayer;
+  /** Current arrow specs. Resolved to canvas-local ArrowDefs every tick so
+   *  arrows follow animating sprites (hand lift, battlefield re-layout). */
+  private arrowSpecs: ArrowSpec[] = [];
+  /**
+   * Sub-rectangle of the canvas where battlefield + hand sprites live. The
+   * canvas itself may be larger (covering the full board so arrows span
+   * both halves). When null, the full canvas is used.
+   */
+  private playZone: PlayZoneRect | null = null;
+  /** Casting arrow (cursor-follow during target prompts). */
+  private castingArrow: CastingArrowSpec | null = null;
+  /** Latest viewport cursor position (window coords). Used for the casting
+   *  arrow's free endpoint when no target is locked. */
+  private cursorViewportX = 0;
+  private cursorViewportY = 0;
+  private cursorListener: ((e: MouseEvent) => void) | null = null;
   private placementGhostGfx: Graphics | null = null;
   private placementGhostText: Text | null = null;
 
@@ -276,6 +314,14 @@ export class PixiGameScene {
     app.stage.eventMode = "static";
 
     app.ticker.add(this.tick, this);
+    // Window-level cursor tracking — Pixi's stage events only fire when the
+    // cursor is over the canvas, but the casting arrow needs to follow the
+    // cursor even while it's over the StackDisplay portal or other UI.
+    this.cursorListener = (e: MouseEvent) => {
+      this.cursorViewportX = e.clientX;
+      this.cursorViewportY = e.clientY;
+    };
+    window.addEventListener("mousemove", this.cursorListener);
     prewarmManaSymbols();
   }
 
@@ -286,6 +332,35 @@ export class PixiGameScene {
   /** True once `destroy()` has run. Effects that fire late must bail. */
   get isDestroyed(): boolean {
     return this.destroyed;
+  }
+
+  /** DOM canvas element — used by the full-board arrows overlay to
+   *  translate sprite coordinates across canvases. */
+  get canvasElement(): HTMLCanvasElement {
+    return this.app.canvas as HTMLCanvasElement;
+  }
+
+  /**
+   * Returns a sprite's current animated position (canvas-local) if it
+   * exists in the battlefield or hand, else null. Falls back to the
+   * animation *target* for the hand so arrows don't lag a lifting sprite.
+   */
+  getCardSpritePosition(cardId: string): ScreenPos | null {
+    const entry = this.entries.get(cardId);
+    if (entry) return { x: entry.targetX, y: entry.targetY };
+    const handSprite = this.handSprites.get(cardId);
+    if (!handSprite) return null;
+    const target = this.handTargets.get(cardId);
+    return target
+      ? { x: target.x, y: target.y }
+      : { x: handSprite.x, y: handSprite.y };
+  }
+
+  /** Canvas-local center of the next free battlefield slot (placement
+   *  ghost position). Used by overlay arrows for permanent-spell casts. */
+  getPlacementGhostCenter(): ScreenPos {
+    const slot = this.findFirstFreeBattlefieldSlot();
+    return { x: slot.x + CARD_W / 2, y: slot.y + CARD_H / 2 };
   }
 
   setTheme(theme: PixiThemeColors): void {
@@ -350,18 +425,71 @@ export class PixiGameScene {
     if (this.destroyed) return;
     this.app.renderer.resize(width, height);
     this.drawTableBackground();
-    this.emptyText.x = width / 2;
-    this.emptyText.y = height / 2;
-    this.dragHandler.setContainerSize(width, height);
+    this.emptyText.x = this.zoneCenterX();
+    this.emptyText.y = this.zoneCenterY();
+    // dragHandler clamps into the play-zone rect when one is set; otherwise
+    // the full canvas.
+    const zone = this.getPlayZone();
+    this.dragHandler.setContainerSize(zone.width, zone.height);
     // Bottom-right reserved rect is anchored to canvas size — re-resolve
     // so the keep-out follows the resize.
     this.syncDragBlockers();
     if (this.lastHandState) this.updateHand(this.lastHandState);
   }
 
-  updateArrows(arrows: ArrowDef[]): void {
+  /**
+   * Set the current arrow specs. They'll be resolved to canvas-local
+   * coordinates every tick so arrows track any sprite that's animating
+   * (drag, hand lift, layout re-flow). Pass `[]` to clear.
+   */
+  setArrowSpecs(specs: ArrowSpec[]): void {
     if (this.destroyed) return;
-    this.arrowLayer.update(arrows);
+    this.arrowSpecs = specs;
+  }
+
+  /**
+   * Set (or clear) the casting arrow that tracks the cursor during target
+   * prompts. Pixi takes over the role of the React `CastingArrow` SVG
+   * portal when this is enabled.
+   */
+  setCastingArrow(spec: CastingArrowSpec | null): void {
+    if (this.destroyed) return;
+    this.castingArrow = spec;
+  }
+
+  /**
+   * Constrain battlefield + hand layout to a sub-rect of the canvas. When
+   * unset, the full canvas is used (legacy behavior). Pass the rect of the
+   * "my half" zone when the canvas is promoted to cover the entire board.
+   */
+  setPlayZone(rect: PlayZoneRect | null): void {
+    if (this.destroyed) return;
+    this.playZone = rect;
+    // Existing sprites may need to re-flow now that the reference rect has
+    // moved — refresh battlefield + hand layouts immediately.
+    this.drawTableBackground();
+    if (this.lastState) this.updateBattlefield(this.lastState);
+    if (this.lastHandState) this.updateHand(this.lastHandState);
+    this.emptyText.x = this.zoneCenterX();
+    this.emptyText.y = this.zoneCenterY();
+  }
+
+  /** Current play-zone rectangle in canvas-local coords. Falls back to the
+   *  full renderer size when no explicit zone was set. */
+  private getPlayZone(): PlayZoneRect {
+    if (this.playZone) return this.playZone;
+    const { width, height } = this.app.renderer;
+    return { x: 0, y: 0, width, height };
+  }
+
+  private zoneCenterX(): number {
+    const z = this.getPlayZone();
+    return z.x + z.width / 2;
+  }
+
+  private zoneCenterY(): number {
+    const z = this.getPlayZone();
+    return z.y + z.height / 2;
   }
 
   setDropActive(active: boolean): void {
@@ -450,8 +578,11 @@ export class PixiGameScene {
       dims.neighborPush,
     );
 
-    const centerX = this.app.renderer.width / 2;
-    const bottomY = this.app.renderer.height;
+    // Hand is centered horizontally in the play zone and anchored to its
+    // bottom edge, so it stays in "my half" even when the canvas is larger.
+    const zone = this.getPlayZone();
+    const centerX = zone.x + zone.width / 2;
+    const bottomY = zone.y + zone.height;
 
     for (let i = 0; i < state.cards.length; i++) {
       const card = state.cards[i]!;
@@ -496,19 +627,32 @@ export class PixiGameScene {
     this.destroyed = true;
     this.cancelHandHoverHoldTimer();
     this.cancelBattlefieldHoverClear();
-    this.app.ticker.remove(this.tick, this);
-    this.marquee.destroy();
-    this.dragHandler.destroy();
-    this.arrowLayer.destroy();
-    for (const sprite of this.handSprites.values())
-      sprite.destroy({ children: true });
-    this.handSprites.clear();
-    for (const entry of this.entries.values()) {
-      entry.sprite.destroy({ children: true });
-      entry.overlay?.destroy({ children: true });
+    if (this.cursorListener) {
+      window.removeEventListener("mousemove", this.cursorListener);
+      this.cursorListener = null;
     }
+    // Unregister everything *non-display-tree*: stop animation + pointer
+    // event routing BEFORE the display is torn down so no late tick or
+    // pointermove can target half-destroyed Graphics / Text objects.
+    this.app.ticker.remove(this.tick, this);
+    this.app.stage.off("pointermove");
+    this.app.stage.off("pointerup");
+    this.app.stage.off("pointerupoutside");
+    try {
+      this.marquee.destroy();
+      this.dragHandler.destroy();
+      this.arrowLayer.destroy();
+    } catch (err) {
+      console.warn("[pixi] handler teardown threw:", err);
+    }
+    this.handSprites.clear();
     this.entries.clear();
-    this.root.destroy({ children: true });
+    // Leave the Pixi display tree to `app.destroy(true)` (called right
+    // after scene.destroy in PixiGameCanvas). Our previous attempt to
+    // `root.destroy({ children: true })` cascaded into a Pixi v8
+    // TexturePool.returnTexture crash on the selection-badge / empty-text
+    // objects — pool state gets confused for Text assets shared across the
+    // renderer. Letting the app destroy the stage in one pass avoids it.
   }
 
   // ═══════════════════════════════════════════════════════════════
@@ -516,26 +660,34 @@ export class PixiGameScene {
   // ═══════════════════════════════════════════════════════════════
 
   private drawTableBackground(): void {
-    const { width, height } = this.app.renderer;
+    // Background fills only the play zone so the rest of the canvas stays
+    // transparent for arrows + overlays spanning the full viewport.
+    const zone = this.getPlayZone();
     this.backgroundGfx.clear();
-    this.backgroundGfx.roundRect(0, 0, width, height, TABLE_RADIUS);
+    this.backgroundGfx.roundRect(zone.x, zone.y, zone.width, zone.height, TABLE_RADIUS);
     this.backgroundGfx.fill({ color: BG_COLOR, alpha: BG_ALPHA_IDLE });
   }
 
   private drawDropTargetBackground(active: boolean): void {
-    const { width, height } = this.app.renderer;
+    const zone = this.getPlayZone();
     this.backgroundGfx.clear();
-    this.backgroundGfx.roundRect(0, 0, width, height, TABLE_RADIUS);
+    this.backgroundGfx.roundRect(zone.x, zone.y, zone.width, zone.height, TABLE_RADIUS);
     this.backgroundGfx.fill({ color: BG_COLOR, alpha: BG_ALPHA_DROP });
     if (!active || !this.theme) return;
     const tint = this.theme.activeAction.active;
-    this.backgroundGfx.roundRect(2, 2, width - 4, height - 4, TABLE_RADIUS);
+    this.backgroundGfx.roundRect(
+      zone.x + 2,
+      zone.y + 2,
+      zone.width - 4,
+      zone.height - 4,
+      TABLE_RADIUS,
+    );
     this.backgroundGfx.stroke({
       color: tint,
       width: 2,
       alpha: DROP_STROKE_ALPHA,
     });
-    this.backgroundGfx.roundRect(0, 0, width, height, TABLE_RADIUS);
+    this.backgroundGfx.roundRect(zone.x, zone.y, zone.width, zone.height, TABLE_RADIUS);
     this.backgroundGfx.fill({ color: tint, alpha: DROP_TINT_ALPHA });
   }
 
@@ -598,22 +750,25 @@ export class PixiGameScene {
 
   private computeBattlefieldGrid(cards: Card[]): Map<string, Point> {
     const positions = new Map<string, Point>();
-    const { width, height } = this.app.renderer;
-    const xMin = Math.max(0, this.leftReserved);
-    const usableW = width - xMin;
+    const zone = this.getPlayZone();
+    const xMin = zone.x + Math.max(0, this.leftReserved);
+    const usableW = zone.width - Math.max(0, this.leftReserved);
     const cols = Math.max(1, Math.floor((usableW + GAP) / (CARD_W + GAP)));
-    // Land baseline matches React: sits above the `bottomReserved` strip so
-    // newly-played lands land in the same row the React renderer uses.
-    // Drag and the drag-target corners use the hand rect for a more forgiving
-    // clamp, but auto-placement should stay visually identical to React.
-    const landRowBaseY = Math.max(0, height - CARD_H - this.bottomReserved - GAP);
+    // Lands sit just above the hand strip (bottom of play zone). Non-lands
+    // start at the top of the play zone. Both use zone-relative coords so
+    // the layout stays inside "my half" when the canvas is full-viewport.
+    const landRowBaseY = Math.max(
+      zone.y,
+      zone.y + zone.height - CARD_H - this.bottomReserved - GAP,
+    );
+    const nonLandBaseY = zone.y + GAP;
     const occupied: Point[] = [];
     const blockers = this.collectOverlayBlockers();
 
     const landY = (slot: number): number =>
       landRowBaseY - Math.floor(slot / cols) * (CARD_H + GAP);
     const nonLandY = (slot: number): number =>
-      Math.floor(slot / cols) * (CARD_H + GAP) + GAP;
+      nonLandBaseY + Math.floor(slot / cols) * (CARD_H + GAP);
 
     for (const c of cards) {
       const isLand = c.types.includes("Land");
@@ -628,9 +783,9 @@ export class PixiGameScene {
   }
 
   private findFirstFreeBattlefieldSlot(): Point {
-    const { width } = this.app.renderer;
-    const xMin = Math.max(0, this.leftReserved);
-    const usableW = width - xMin;
+    const zone = this.getPlayZone();
+    const xMin = zone.x + Math.max(0, this.leftReserved);
+    const usableW = zone.width - Math.max(0, this.leftReserved);
     const cols = Math.max(1, Math.floor((usableW + GAP) / (CARD_W + GAP)));
     const occupied: Point[] = [...this.entries.values()].map((e) => ({
       x: e.targetX - CARD_W / 2,
@@ -641,7 +796,7 @@ export class PixiGameScene {
       this.collectOverlayBlockers(),
       xMin,
       cols,
-      (slot) => Math.floor(slot / cols) * (CARD_H + GAP) + GAP,
+      (slot) => zone.y + GAP + Math.floor(slot / cols) * (CARD_H + GAP),
       MAX_GRID_SLOTS,
     );
   }
@@ -669,12 +824,12 @@ export class PixiGameScene {
     const totalSpread = count <= 1 ? 0 : (count - 1) * spread;
     const handW = totalSpread + dims.cardW;
     const handH = dims.cardH;
-    const { width, height } = this.app.renderer;
+    const zone = this.getPlayZone();
 
     return [
       {
-        x: width / 2 - handW / 2 - GAP,
-        y: height - handH - GAP,
+        x: zone.x + zone.width / 2 - handW / 2 - GAP,
+        y: zone.y + zone.height - handH - GAP,
         width: handW + GAP * 2,
         height: handH + GAP,
       },
@@ -691,8 +846,8 @@ export class PixiGameScene {
       if (currentIds.has(id)) continue;
       this.myBattlefieldContainer.removeChild(entry.sprite);
       if (entry.overlay) this.myBattlefieldContainer.removeChild(entry.overlay);
-      entry.sprite.destroy({ children: true });
-      entry.overlay?.destroy({ children: true });
+      safeDestroy(entry.sprite);
+      if (entry.overlay) safeDestroy(entry.overlay);
       this.entries.delete(id);
     }
   }
@@ -719,10 +874,26 @@ export class PixiGameScene {
     const sprite = new CardSprite(card);
     this.wireBattlefieldCardEvents(sprite);
     this.myBattlefieldContainer.addChild(sprite);
+
+    // If this card was just in the hand, seed the new battlefield sprite's
+    // position and scale from the hand sprite so it visually "falls" from
+    // where it was in the fan instead of popping from (0, 0) and lerping
+    // in from the top-left. Tick's existing position + scale lerps then
+    // ease it into the final battlefield slot.
+    const handSprite = this.handSprites.get(card.id);
+    if (handSprite) {
+      sprite.x = handSprite.x;
+      sprite.y = handSprite.y;
+      sprite.scale.set(handSprite.scale.x, handSprite.scale.y);
+    }
+
     this.entries.set(card.id, {
       sprite,
-      targetX: 0,
-      targetY: 0,
+      // Start target identical to initial position; `placeBattlefieldCard`
+      // overwrites immediately with the real grid slot so the tick knows
+      // where to ease toward.
+      targetX: sprite.x,
+      targetY: sprite.y,
       targetZIndex: 1,
       overlay: null,
     });
@@ -782,6 +953,7 @@ export class PixiGameScene {
   }
 
   private onBattlefieldCardTap(card: Card): void {
+    if (this.destroyed) return;
     const state = this.lastState;
     if (!state) {
       this.callbacks.onClickCard?.(card);
@@ -1148,6 +1320,7 @@ export class PixiGameScene {
     sprite: CardSprite,
     e: FederatedPointerEvent,
   ): void {
+    if (this.destroyed) return;
     this.callbacks.onHoverCard?.(null);
     const local = this.root.toLocal(e.global);
     this.selectedCardIds = this.dragHandler.start(
@@ -1163,6 +1336,7 @@ export class PixiGameScene {
   }
 
   private onBackgroundDown(e: FederatedPointerEvent): void {
+    if (this.destroyed) return;
     const local = this.root.toLocal(e.global);
     if (!e.shiftKey) {
       this.selectedCardIds.clear();
@@ -1173,6 +1347,7 @@ export class PixiGameScene {
   }
 
   private onGlobalMove(e: FederatedPointerEvent): void {
+    if (this.destroyed) return;
     const local = this.root.toLocal(e.global);
     if (this.marquee.isActive) {
       this.marquee.move(local.x, local.y);
@@ -1206,6 +1381,7 @@ export class PixiGameScene {
   }
 
   private onGlobalUp(): void {
+    if (this.destroyed) return;
     if (this.marquee.isActive) {
       this.selectedCardIds = this.marquee.end(
         this.snapshotCurrentPositions(),
@@ -1241,9 +1417,10 @@ export class PixiGameScene {
     }
     this.selectionBadge.text = `${this.selectedCardIds.size} selected`;
     this.selectionBadge.visible = true;
+    const zone = this.getPlayZone();
     this.selectionBadge.x =
-      this.app.renderer.width - this.selectionBadge.width - 8;
-    this.selectionBadge.y = 6;
+      zone.x + zone.width - this.selectionBadge.width - 8;
+    this.selectionBadge.y = zone.y + 6;
   }
 
   private refreshSelectionRings(): void {
@@ -1265,7 +1442,7 @@ export class PixiGameScene {
     for (const [id, sprite] of this.handSprites) {
       if (currentIds.has(id)) continue;
       this.handContainer.removeChild(sprite);
-      sprite.destroy({ children: true });
+      safeDestroy(sprite);
       this.handSprites.delete(id);
       this.handTargets.delete(id);
     }
@@ -1274,9 +1451,12 @@ export class PixiGameScene {
   private computeHandDimensions() {
     const base = HAND_CARD_BASES[this.handSize];
     const params = SIZE_PARAMS[this.handSize];
+    // Scale to the play zone so hand sizing tracks my-half width, not the
+    // full canvas (which may now span the entire viewport).
+    const zone = this.getPlayZone();
     const canvasScale = Math.min(
       HAND_MAX_SCALE,
-      Math.max(HAND_MIN_SCALE, this.app.renderer.width / HAND_REF_WIDTH),
+      Math.max(HAND_MIN_SCALE, zone.width / HAND_REF_WIDTH),
     );
     const scale = Math.min(this.vScale, canvasScale);
     return {
@@ -1430,7 +1610,128 @@ export class PixiGameScene {
       const sprite = this.handSprites.get(id);
       if (sprite) this.animateHandSprite(sprite, target);
     }
+    this.resolveAndDrawArrows();
   };
+
+  /**
+   * Resolve each arrow spec's endpoints to canvas-local coordinates using
+   * the scene's live sprite maps, falling back to DOM queries for entities
+   * that don't live in the canvas (player panels, React-rendered stack).
+   * Runs every tick so arrows follow animating sprites.
+   */
+  private resolveAndDrawArrows(): void {
+    const hasAny = this.arrowSpecs.length > 0 || this.castingArrow !== null;
+    if (!hasAny) {
+      if (this.arrowLayer) this.arrowLayer.update([], this.app.ticker.deltaMS);
+      return;
+    }
+    // Cache the canvas rect once so each DOM query doesn't re-trigger layout.
+    const canvasRect = this.app.canvas.getBoundingClientRect();
+    const resolved: ArrowDef[] = [];
+    for (const spec of this.arrowSpecs) {
+      const from = this.resolveArrowEndpoint(spec.from, canvasRect);
+      const to = this.resolveArrowEndpoint(spec.to, canvasRect);
+      if (!from || !to) continue;
+      resolved.push({
+        fromX: from.x,
+        fromY: from.y,
+        toX: to.x,
+        toY: to.y,
+        type: spec.type,
+      });
+    }
+    const casting = this.resolveCastingArrow(canvasRect);
+    if (casting) resolved.push(casting);
+    this.arrowLayer.update(resolved, this.app.ticker.deltaMS);
+  }
+
+  private resolveCastingArrow(canvasRect: DOMRect): ArrowDef | null {
+    const spec = this.castingArrow;
+    if (!spec) return null;
+
+    const from = this.domCenterCanvasLocal(
+      `[data-casting-card="${CSS.escape(spec.castingCardId)}"]`,
+      canvasRect,
+    );
+    if (!from) return null;
+
+    // Locked target → try card first, then player (matches React fallback).
+    let to: ScreenPos | null = null;
+    if (spec.targetId) {
+      to =
+        this.resolveArrowEndpoint({ kind: "card", id: spec.targetId }, canvasRect) ??
+        this.resolveArrowEndpoint({ kind: "player", id: spec.targetId }, canvasRect);
+    } else {
+      // Free endpoint — follow the cursor, translated to canvas-local.
+      to = {
+        x: this.cursorViewportX - canvasRect.left,
+        y: this.cursorViewportY - canvasRect.top,
+      };
+    }
+    if (!to) return null;
+
+    return {
+      fromX: from.x,
+      fromY: from.y,
+      toX: to.x,
+      toY: to.y,
+      type: spec.hostile ? "hostile-target" : "friendly-target",
+    };
+  }
+
+  private resolveArrowEndpoint(
+    ep: ArrowEndpoint,
+    canvasRect: DOMRect,
+  ): ScreenPos | null {
+    switch (ep.kind) {
+      case "card": {
+        const entry = this.entries.get(ep.id);
+        if (entry) return { x: entry.targetX, y: entry.targetY };
+        const handSprite = this.handSprites.get(ep.id);
+        if (handSprite) {
+          const target = this.handTargets.get(ep.id);
+          // Prefer the target position so arrows point at where the sprite
+          // is heading during animations — prevents the arrow from lagging
+          // behind a lifting hand card.
+          return target
+            ? { x: target.x, y: target.y }
+            : { x: handSprite.x, y: handSprite.y };
+        }
+        return this.domCenterCanvasLocal(
+          `[data-card-id="${CSS.escape(ep.id)}"]`,
+          canvasRect,
+        );
+      }
+      case "player":
+        return this.domCenterCanvasLocal(
+          `[data-player-id="${CSS.escape(ep.id)}"]`,
+          canvasRect,
+        );
+      case "stack":
+        return this.domCenterCanvasLocal(
+          `[data-stack-object-id="${CSS.escape(ep.id)}"]`,
+          canvasRect,
+        );
+      case "placement-ghost": {
+        const slot = this.findFirstFreeBattlefieldSlot();
+        return { x: slot.x + CARD_W / 2, y: slot.y + CARD_H / 2 };
+      }
+    }
+  }
+
+  private domCenterCanvasLocal(
+    selector: string,
+    canvasRect: DOMRect,
+  ): ScreenPos | null {
+    const el = document.querySelector(selector);
+    if (!el) return null;
+    const r = (el as HTMLElement).getBoundingClientRect();
+    if (r.width === 0 && r.height === 0) return null;
+    return {
+      x: r.left + r.width / 2 - canvasRect.left,
+      y: r.top + r.height / 2 - canvasRect.top,
+    };
+  }
 
   private animateBattlefieldSprite(entry: SpriteEntry): void {
     const s = entry.sprite;
