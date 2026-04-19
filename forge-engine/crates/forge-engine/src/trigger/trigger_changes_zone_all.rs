@@ -1,7 +1,8 @@
 use serde::{Deserialize, Serialize};
 
 use crate::ability::AbilityKey;
-use crate::event::{AbilityValue, RunParams, TriggerType};
+use crate::event::{AbilityValue, RunParams};
+use crate::trigger::TriggerType;
 use crate::game::GameState;
 use crate::ids::CardId;
 use crate::parsing::compare::compare_expr;

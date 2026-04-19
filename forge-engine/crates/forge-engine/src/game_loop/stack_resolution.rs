@@ -474,7 +474,7 @@ impl GameLoop {
                             base.valid_host_zones = Some(vec![ZoneType::Battlefield]);
                             base
                         },
-                        kind: crate::event::TriggerType::ChangesZone,
+                        kind: crate::trigger::TriggerType::ChangesZone,
                         mode: Box::new(crate::trigger::trigger_changes_zone::TriggerChangesZone),
                         params: crate::parsing::Params::from_raw(
                             "Mode$ ChangesZone | Origin$ Battlefield | Destination$ Graveyard | ValidCard$ Card.Self"

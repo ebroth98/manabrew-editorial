@@ -66,7 +66,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         if to_tap {
             if ctx.game.tap(cid) {
                 ctx.trigger_handler.run_trigger(
-                    crate::event::TriggerType::Taps,
+                    crate::trigger::TriggerType::Taps,
                     crate::event::RunParams {
                         card: Some(cid),
                         player: Some(controller),
@@ -77,7 +77,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             }
         } else if ctx.game.untap(cid) {
             ctx.trigger_handler.run_trigger(
-                crate::event::TriggerType::Untaps,
+                crate::trigger::TriggerType::Untaps,
                 crate::event::RunParams {
                     card: Some(cid),
                     player: Some(controller),

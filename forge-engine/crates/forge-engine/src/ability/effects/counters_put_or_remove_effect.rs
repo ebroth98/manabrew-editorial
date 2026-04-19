@@ -73,7 +73,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             .card_mut(target_id)
             .add_counter(&counter_type, amount);
         ctx.trigger_handler.run_trigger(
-            crate::event::TriggerType::CounterAdded,
+            crate::trigger::TriggerType::CounterAdded,
             crate::event::RunParams {
                 card: Some(target_id),
                 counter_type: Some(format!("{:?}", counter_type)),
@@ -88,7 +88,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             .card_mut(target_id)
             .remove_counter(&counter_type, amount);
         ctx.trigger_handler.run_trigger(
-            crate::event::TriggerType::CounterRemoved,
+            crate::trigger::TriggerType::CounterRemoved,
             crate::event::RunParams {
                 card: Some(target_id),
                 counter_type: Some(format!("{:?}", counter_type)),

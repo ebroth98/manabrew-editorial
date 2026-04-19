@@ -1295,7 +1295,7 @@ fn calculate_available_mana_excluding_with_reserved_impl(
                 continue;
             }
             for trigger in &aura.triggers {
-                if trigger.kind == crate::event::TriggerType::TapsForMana {
+                if trigger.kind == crate::trigger::TriggerType::TapsForMana {
                     // This aura produces extra mana when the host is tapped.
                     // Determine what color from the Execute$ SVar.
                     if let Some(svar_text) = aura.svars.get(&trigger.execute) {

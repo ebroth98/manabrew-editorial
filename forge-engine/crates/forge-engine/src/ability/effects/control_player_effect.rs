@@ -39,7 +39,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         // Java uses addUntil on the cleanup step — we use a delayed trigger
         ctx.trigger_handler
             .register_delayed_trigger(crate::trigger::handler::DelayedTrigger {
-                mode: crate::event::TriggerType::Phase,
+                mode: crate::trigger::TriggerType::Phase,
                 trigger_mode: Box::new(crate::trigger::trigger_always::TriggerAlways)
                     as Box<dyn crate::trigger::TriggerBehavior>,
                 params: crate::parsing::Params::default(),

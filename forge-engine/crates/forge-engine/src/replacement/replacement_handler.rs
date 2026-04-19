@@ -14,6 +14,7 @@ use forge_foundation::{PhaseType, ZoneType};
 
 use crate::card::Card;
 use crate::card::CounterType;
+use crate::card_trait_base::CardTrait;
 use crate::game::GameState;
 use crate::game_rng::GameRng;
 use crate::ids::{CardId, PlayerId};
@@ -866,7 +867,7 @@ pub fn would_phase_be_skipped(game: &GameState, player: PlayerId, phase: PhaseTy
             }
             // Check ValidPlayer$ matches the player
             if let Some(vp) = re.params.get(keys::VALID_PLAYER) {
-                if !super::replacement_effect::matches_valid_player(re, vp, player, card) {
+                if !re.matches_valid_player(vp, player, card) {
                     continue;
                 }
             }
@@ -894,7 +895,7 @@ pub fn would_extra_turn_be_skipped(game: &GameState, player: PlayerId) -> bool {
             }
             // Check ValidPlayer$ matches the player
             if let Some(vp) = re.params.get(keys::VALID_PLAYER) {
-                if !super::replacement_effect::matches_valid_player(re, vp, player, card) {
+                if !re.matches_valid_player(vp, player, card) {
                     continue;
                 }
             }

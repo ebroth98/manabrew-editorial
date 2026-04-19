@@ -2,7 +2,8 @@ use forge_foundation::ZoneType;
 
 use super::{emit_zone_trigger_with_lki_counters, EffectContext};
 use crate::card::card_util;
-use crate::event::{RunParams, TriggerType};
+use crate::event::{RunParams};
+use crate::trigger::TriggerType;
 use crate::spellability::SpellAbility;
 
 pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {

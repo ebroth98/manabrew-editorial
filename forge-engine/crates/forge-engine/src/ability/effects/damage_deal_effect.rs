@@ -104,7 +104,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             }
             if !use_damage_map {
                 ctx.trigger_handler.run_trigger(
-                    crate::event::TriggerType::DamageDone,
+                    crate::trigger::TriggerType::DamageDone,
                     crate::event::RunParams {
                         damage_source: sa.source,
                         damage_target_card: Some(cid),
@@ -178,7 +178,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         // Fire DamageDone trigger
         if !use_damage_map {
             ctx.trigger_handler.run_trigger(
-                crate::event::TriggerType::DamageDone,
+                crate::trigger::TriggerType::DamageDone,
                 crate::event::RunParams {
                     damage_source: sa.source,
                     damage_target_player: Some(target_player),
@@ -189,7 +189,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                 false,
             );
             ctx.trigger_handler.run_trigger(
-                crate::event::TriggerType::DamageDoneOnce,
+                crate::trigger::TriggerType::DamageDoneOnce,
                 crate::event::RunParams {
                     damage_target_player: Some(target_player),
                     damage_amount: Some(damage),
@@ -276,7 +276,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             // Fire DamageDone trigger
             if !use_damage_map {
                 ctx.trigger_handler.run_trigger(
-                    crate::event::TriggerType::DamageDone,
+                    crate::trigger::TriggerType::DamageDone,
                     crate::event::RunParams {
                         damage_source: sa.source,
                         damage_target_card: Some(target_card),
@@ -292,7 +292,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                 // dealt damage" triggers using DamageDoneOnce (e.g. Raptor
                 // Hatchling Enrage) would never fire for spell damage.
                 ctx.trigger_handler.run_trigger(
-                    crate::event::TriggerType::DamageDoneOnce,
+                    crate::trigger::TriggerType::DamageDoneOnce,
                     crate::event::RunParams {
                         damage_target_card: Some(target_card),
                         damage_amount: Some(damage),

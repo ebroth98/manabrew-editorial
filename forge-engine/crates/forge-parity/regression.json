@@ -1,39 +1,7 @@
 [
   {
-    "name": "3-seed matrix (7 decks)",
-    "args": "--matrix --seeds 42,100,999 --decks red_burn,green_stompy,white_aggro,black_control,trigger_expanded,comprehensive_test,staticability_test --max-turns 10"
-  },
-  {
-    "name": "staticability",
-    "args": "--deck1 staticability_test --deck2 staticability_test --max-turns 40 --seed 42 --games 20"
-  },
-  {
-    "name": "tokens",
-    "args": "--deck1 token_swarm --deck2 token_swarm --max-turns 40 --seed 42 --games 3"
-  },
-  {
     "name": "payments",
     "args": "--deck1 confirm_payment_test --deck2 confirm_payment_test --max-turns 40 --seed 42 --games 20"
-  },
-  {
-    "name": "keyword_advanced",
-    "args": "--deck1 keyword_advanced  --deck2 keyword_advanced --max-turns 40 --games 10 --seed 42"
-  },
-  {
-    "name": "keyword_advanced2",
-    "args": "--deck1 keyword_advanced2  --deck2 keyword_advanced2 --max-turns 40 --games 10 --seed 42"
-  },
-  {
-    "name": "phyrexian_mana",
-    "args": "--deck1 phyrexian_test --deck2 phyrexian_test --seed 42 --max-turns 10 --games 12"
-  },
-  {
-    "name": "counterspell_targeting",
-    "args": "--deck1 trigger_test --deck2 blue_control --seed 1930 --max-turns 8 --games 1"
-  },
-  {
-    "name": "poison_infect",
-    "args": "--deck1 poison_test --deck2 comprehensive_test --seed 1521 --max-turns 15 --games 1"
   },
   {
     "name": "realMonoBlackSacrice2",
@@ -78,5 +46,37 @@
   {
     "name": "ramsesCommander",
     "args": "--variant Commander --commander 'Ramses, Assassin Lord' --commander 'Ramses, Assassin Lord' --deck1 ramses_commander --deck2 ramses_commander --seed 42 --max-turns 40 --games 2"
+  },
+  {
+    "name": "3-seed matrix (7 decks)",
+    "args": "--matrix --seeds 42,100,999 --decks red_burn,green_stompy,white_aggro,black_control,trigger_expanded,comprehensive_test,staticability_test --max-turns 10"
+  },
+  {
+    "name": "staticability",
+    "args": "--deck1 staticability_test --deck2 staticability_test --max-turns 40 --seed 42 --games 20"
+  },
+  {
+    "name": "tokens",
+    "args": "--deck1 token_swarm --deck2 token_swarm --max-turns 40 --seed 42 --games 3"
+  },
+  {
+    "name": "keyword_advanced",
+    "args": "--deck1 keyword_advanced  --deck2 keyword_advanced --max-turns 40 --games 10 --seed 42"
+  },
+  {
+    "name": "keyword_advanced2",
+    "args": "--deck1 keyword_advanced2  --deck2 keyword_advanced2 --max-turns 40 --games 10 --seed 42"
+  },
+  {
+    "name": "phyrexian_mana",
+    "args": "--deck1 phyrexian_test --deck2 phyrexian_test --seed 42 --max-turns 10 --games 12"
+  },
+  {
+    "name": "counterspell_targeting",
+    "args": "--deck1 trigger_test --deck2 blue_control --seed 1930 --max-turns 8 --games 1"
+  },
+  {
+    "name": "poison_infect",
+    "args": "--deck1 poison_test --deck2 comprehensive_test --seed 1521 --max-turns 15 --games 1"
   }
 ]

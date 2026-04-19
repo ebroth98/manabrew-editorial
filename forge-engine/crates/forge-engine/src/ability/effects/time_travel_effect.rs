@@ -61,7 +61,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             if add {
                 ctx.game.card_mut(cid).add_counter(&CounterType::Time, 1);
                 ctx.trigger_handler.run_trigger(
-                    crate::event::TriggerType::CounterAdded,
+                    crate::trigger::TriggerType::CounterAdded,
                     crate::event::RunParams {
                         card: Some(cid),
                         counter_type: Some("Time".to_string()),
@@ -74,7 +74,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             } else {
                 ctx.game.card_mut(cid).remove_counter(&CounterType::Time, 1);
                 ctx.trigger_handler.run_trigger(
-                    crate::event::TriggerType::CounterRemoved,
+                    crate::trigger::TriggerType::CounterRemoved,
                     crate::event::RunParams {
                         card: Some(cid),
                         counter_type: Some("Time".to_string()),

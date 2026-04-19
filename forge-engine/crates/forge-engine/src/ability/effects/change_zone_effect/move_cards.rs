@@ -6,7 +6,8 @@ use forge_foundation::ZoneType;
 
 use super::super::{emit_zone_trigger, EffectContext};
 use super::helpers::{apply_post_move, apply_pre_move, resolve_dest_owner};
-use crate::event::{RunParams, TriggerType};
+use crate::event::{RunParams};
+use crate::trigger::TriggerType;
 use crate::ids::{CardId, PlayerId};
 use crate::parsing::keys;
 use crate::spellability::SpellAbility;

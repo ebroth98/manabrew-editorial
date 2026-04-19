@@ -2,7 +2,8 @@ use forge_foundation::ZoneType;
 
 use crate::agent::PlayerAgent;
 use crate::card::CounterType;
-use crate::event::{RunParams, TriggerType};
+use crate::event::{RunParams};
+use crate::trigger::TriggerType;
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
 use crate::replacement::replacement_handler::{

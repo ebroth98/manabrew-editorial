@@ -5,7 +5,8 @@
 
 use forge_foundation::ZoneType;
 
-use crate::event::{RunParams, TriggerType};
+use crate::event::{RunParams};
+use crate::trigger::TriggerType;
 use crate::ids::CardId;
 use crate::trigger::handler::TriggerHandler;
 

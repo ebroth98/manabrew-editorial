@@ -3,7 +3,8 @@ use std::collections::{HashMap, HashSet};
 
 use crate::agent::GameLogEvent;
 use crate::cost::{parse_cost, Cost, CostPart};
-use crate::event::{RunParams, TriggerType};
+use crate::event::{RunParams};
+use crate::trigger::TriggerType;
 use crate::game::GameState;
 use crate::game_rng::GameRng;
 use crate::ids::PlayerId;

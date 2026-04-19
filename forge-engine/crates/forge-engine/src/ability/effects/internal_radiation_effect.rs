@@ -8,7 +8,8 @@
 use forge_foundation::ZoneType;
 
 use super::EffectContext;
-use crate::event::{RunParams, TriggerType};
+use crate::event::{RunParams};
+use crate::trigger::TriggerType;
 use crate::spellability::SpellAbility;
 
 pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {

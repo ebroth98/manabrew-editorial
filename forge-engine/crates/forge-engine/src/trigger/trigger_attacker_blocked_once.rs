@@ -3,7 +3,8 @@ use serde::{Deserialize, Serialize};
 use crate::{
     ability::AbilityKey,
     card_trait_base::{CardTrait, MatchValidTarget},
-    event::{RunParams, TriggerType},
+    event::RunParams,
+    trigger::TriggerType,
     game::GameState,
     parsing::{keys, Params},
     spellability::SpellAbility,

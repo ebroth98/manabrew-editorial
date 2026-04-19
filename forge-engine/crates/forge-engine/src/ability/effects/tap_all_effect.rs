@@ -38,7 +38,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             ctx.game.tap(card_id);
             // Fire Taps trigger per card
             ctx.trigger_handler.run_trigger(
-                crate::event::TriggerType::Taps,
+                crate::trigger::TriggerType::Taps,
                 crate::event::RunParams {
                     card: Some(card_id),
                     ..Default::default()

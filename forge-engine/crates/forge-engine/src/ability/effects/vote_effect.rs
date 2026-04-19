@@ -8,7 +8,8 @@
 use std::collections::HashMap;
 
 use super::EffectContext;
-use crate::event::{RunParams, TriggerType};
+use crate::event::{RunParams};
+use crate::trigger::TriggerType;
 use crate::ids::PlayerId;
 use crate::parsing::keys;
 use crate::spellability::SpellAbility;

@@ -1,7 +1,8 @@
 use serde::{Deserialize, Serialize};
 
 use crate::card::card_damage_map::DamageTarget;
-use crate::event::{RunParams, TriggerType};
+use crate::event::{RunParams};
+use crate::trigger::TriggerType;
 use crate::game::GameState;
 use crate::ids::CardId;
 use crate::parsing::{keys, Params};

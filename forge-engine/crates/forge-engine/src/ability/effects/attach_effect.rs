@@ -109,7 +109,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
 
     // Fire Attached trigger
     ctx.trigger_handler.run_trigger(
-        crate::event::TriggerType::Attached,
+        crate::trigger::TriggerType::Attached,
         crate::event::RunParams {
             card: Some(aura_id),
             ..Default::default()

@@ -25,19 +25,15 @@ pub enum ReplacementLayer {
 }
 
 impl ReplacementLayer {
-    /// Alias for `from_layer_str`. Mirrors Java `ReplacementLayer.smartValueOf()`.
+    /// Case-insensitive `Layer$` value parser. Mirrors Java
+    /// `ReplacementLayer.smartValueOf()`. Returns `None` if unrecognised.
     pub fn smart_value_of(value: &str) -> Option<Self> {
-        Self::from_layer_str(value)
-    }
-
-    /// Parse a `Layer$` value string. Returns `None` if unrecognised.
-    pub fn from_layer_str(s: &str) -> Option<Self> {
-        match s.trim() {
-            "CantHappen" => Some(Self::CantHappen),
-            "Control" => Some(Self::Control),
-            "Copy" => Some(Self::Copy),
-            "Transform" => Some(Self::Transform),
-            "Other" => Some(Self::Other),
+        match value.trim().to_ascii_lowercase().as_str() {
+            "canthappen" => Some(Self::CantHappen),
+            "control" => Some(Self::Control),
+            "copy" => Some(Self::Copy),
+            "transform" => Some(Self::Transform),
+            "other" => Some(Self::Other),
             _ => None,
         }
     }

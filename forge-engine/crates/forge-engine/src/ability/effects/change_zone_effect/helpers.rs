@@ -10,7 +10,8 @@ use super::super::{
     resolve_defined_players, EffectContext,
 };
 use crate::card::Card;
-use crate::event::{RunParams, TriggerType};
+use crate::event::{RunParams};
+use crate::trigger::TriggerType;
 use crate::ids::{CardId, PlayerId};
 use crate::parsing::keys;
 use crate::spellability::SpellAbility;

@@ -1,7 +1,8 @@
 use forge_foundation::ZoneType;
 
 use super::{emit_zone_trigger_with_lki_counters, matches_change_type, EffectContext};
-use crate::event::{AbilityValue, RunParams, TriggerType};
+use crate::event::{AbilityValue, RunParams};
+use crate::trigger::TriggerType;
 use crate::ids::CardId;
 use crate::parsing::keys;
 use crate::spellability::SpellAbility;

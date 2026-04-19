@@ -1,7 +1,8 @@
 use forge_foundation::ZoneType;
 
 use crate::card::{valid_filter, Card};
-use crate::event::{RunParams, TriggerType};
+use crate::event::{RunParams};
+use crate::trigger::TriggerType;
 use crate::game::GameState;
 use crate::ids::CardId;
 use crate::parsing::keys;

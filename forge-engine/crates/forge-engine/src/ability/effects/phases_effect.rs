@@ -1,7 +1,8 @@
 use forge_foundation::ZoneType;
 
 use super::EffectContext;
-use crate::event::{RunParams, TriggerType};
+use crate::event::{RunParams};
+use crate::trigger::TriggerType;
 use crate::spellability::SpellAbility;
 
 /// Resolve `SP$ Phases` — phase permanents in or out.

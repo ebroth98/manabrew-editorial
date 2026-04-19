@@ -78,7 +78,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             );
 
             ctx.trigger_handler.run_trigger(
-                crate::event::TriggerType::DamageDone,
+                crate::trigger::TriggerType::DamageDone,
                 crate::event::RunParams {
                     damage_source: Some(card_id),
                     damage_target_player: Some(target_player),

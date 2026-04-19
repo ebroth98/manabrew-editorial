@@ -12,7 +12,8 @@ use forge_foundation::ZoneType;
 
 use super::EffectContext;
 use crate::agent::GameLogEvent;
-use crate::event::{RunParams, TriggerType};
+use crate::event::{RunParams};
+use crate::trigger::TriggerType;
 use crate::ids::{CardId, PlayerId};
 use crate::spellability::{build_spell_ability, SpellAbility, StackEntry};
 

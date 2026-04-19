@@ -3,7 +3,8 @@ use serde::{Deserialize, Serialize};
 use super::trigger::TriggerBehavior;
 use crate::ability::AbilityKey;
 use crate::{
-    event::{AbilityValue, RunParams, TriggerType},
+    event::{AbilityValue, RunParams},
+    trigger::TriggerType,
     game::GameState,
     ids::CardId,
     parsing::Params,

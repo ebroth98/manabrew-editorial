@@ -1,7 +1,8 @@
 use forge_foundation::ZoneType;
 
 use super::{parse_counter_type, EffectContext};
-use crate::event::{RunParams, TriggerType};
+use crate::event::{RunParams};
+use crate::trigger::TriggerType;
 use crate::ids::CardId;
 use crate::replacement::replacement_handler::{apply_replacements, ReplacementEvent};
 use crate::replacement::ReplacementResult;

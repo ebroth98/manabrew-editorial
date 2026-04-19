@@ -2,7 +2,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::parsing::{keys, Params};
 use crate::{
-    event::{RunParams, TriggerType},
+    event::RunParams,
+    trigger::TriggerType,
     game::GameState,
     spellability::SpellAbility,
 };

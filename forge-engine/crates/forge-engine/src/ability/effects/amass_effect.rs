@@ -11,7 +11,8 @@ use forge_foundation::{CardTypeLine, ColorSet, ManaCost, ZoneType};
 
 use super::{emit_zone_trigger, parse_counter_type, EffectContext};
 use crate::card::Card;
-use crate::event::{RunParams, TriggerType};
+use crate::event::{RunParams};
+use crate::trigger::TriggerType;
 use crate::ids::CardId;
 use crate::spellability::SpellAbility;
 use crate::staticability::parse_static_ability;

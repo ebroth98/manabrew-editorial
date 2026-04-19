@@ -3,7 +3,8 @@
 //! target plane cards and fires them.
 
 use super::EffectContext;
-use crate::event::{RunParams, TriggerType};
+use crate::event::{RunParams};
+use crate::trigger::TriggerType;
 use crate::ids::CardId;
 use crate::spellability::SpellAbility;
 

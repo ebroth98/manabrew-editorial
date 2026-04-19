@@ -4,7 +4,8 @@ use super::{
     matches_valid_cards, parse_counter_type, parse_param, resolve_numeric_svar, EffectContext,
 };
 use crate::card::CounterType;
-use crate::event::{RunParams, TriggerType};
+use crate::event::{RunParams};
+use crate::trigger::TriggerType;
 use crate::ids::CardId;
 use crate::spellability::SpellAbility;
 

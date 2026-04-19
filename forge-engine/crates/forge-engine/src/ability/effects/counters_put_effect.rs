@@ -3,7 +3,8 @@ use forge_foundation::ZoneType;
 use super::{
     parse_counter_type, parse_param, resolve_defined_player, resolve_numeric_svar, EffectContext,
 };
-use crate::event::{RunParams, TriggerType};
+use crate::event::{RunParams};
+use crate::trigger::TriggerType;
 use crate::parsing::keys;
 use crate::replacement::replacement_handler::{apply_replacements_with_agents, ReplacementEvent};
 use crate::spellability::SpellAbility;

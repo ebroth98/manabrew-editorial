@@ -2,7 +2,8 @@ use std::collections::HashSet;
 
 use serde::{Deserialize, Serialize};
 
-use crate::event::{RunParams, TriggerType};
+use crate::event::{RunParams};
+use crate::trigger::TriggerType;
 use crate::game::GameState;
 use crate::ids::CardId;
 use crate::parsing::{keys, Params};

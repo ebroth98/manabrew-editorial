@@ -2,7 +2,8 @@
 //! Ported from Java's AbandonEffect: sets player as lost.
 
 use super::EffectContext;
-use crate::event::{RunParams, TriggerType};
+use crate::event::{RunParams};
+use crate::trigger::TriggerType;
 use crate::parsing::keys;
 use crate::spellability::SpellAbility;
 use forge_foundation::ZoneType;

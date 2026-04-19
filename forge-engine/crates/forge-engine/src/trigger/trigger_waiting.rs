@@ -1,4 +1,5 @@
-use crate::event::{RunParams, TriggerType};
+use crate::event::{RunParams};
+use crate::trigger::TriggerType;
 use crate::ids::PlayerId;
 use crate::trigger::Trigger;
 

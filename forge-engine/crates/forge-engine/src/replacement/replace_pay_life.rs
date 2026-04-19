@@ -8,7 +8,8 @@ use crate::ids::CardId;
 use crate::parsing::compare::compare_expr;
 use crate::parsing::keys;
 
-use super::replacement_effect::{matches_valid_player, ReplacementEffect};
+use super::replacement_effect::ReplacementEffect;
+use crate::card_trait_base::CardTrait;
 use super::replacement_handler::{
     execute_replace_with_numeric_update, resolve_replace_value, ReplacementEvent,
 };
@@ -30,7 +31,7 @@ pub fn can_replace(
         _ => return false,
     };
     if let Some(valid) = effect.params.get(keys::VALID_PLAYER) {
-        if !matches_valid_player(effect, valid, player, source_card) {
+        if !effect.matches_valid_player(valid, player, source_card) {
             return false;
         }
     }

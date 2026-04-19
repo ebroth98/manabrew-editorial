@@ -15,10 +15,9 @@ use forge_foundation::{PhaseType, ZoneType};
 use serde::{Deserialize, Serialize};
 
 use crate::card::Card;
-use crate::card_trait_base::{CardTrait, CardTraitBase, MatchValidTarget};
+use crate::card_trait_base::{CardTrait, CardTraitBase};
 use crate::game::GameState;
 use crate::game_loop::trigger_replacement_base::TriggerReplacementBase;
-use crate::ids::PlayerId;
 use crate::parsing::{keys, Params};
 pub use crate::player::GameLossReason;
 
@@ -191,34 +190,12 @@ impl ReplacementEffect {
 }
 
 // ── Helper filter functions ───────────────────────────────────────────────────
-
-/// Check if a card matches a `ValidCard$` expression, dispatched through the
-/// effect's `CardTrait` so Java's `matchesValid` chain (self-type override,
-/// `Invert*` handling once the base is populated) is honoured.
-///
-/// Mirrors Java `ReplacementEffect.matchesValid(o, valids, source)` inherited
-/// from `CardTraitBase.matchesValid(Object, String[], Card)`.
-pub fn matches_valid_card(
-    effect: &ReplacementEffect,
-    expr: &str,
-    card: &Card,
-    source: &Card,
-) -> bool {
-    let parts: Vec<&str> = expr.split(',').collect();
-    effect.matches_valid(&MatchValidTarget::Card(card), &parts, Some(source))
-}
-
-/// Check if a player matches a `ValidPlayer$` expression, dispatched through
-/// the effect's `CardTrait`.
-pub fn matches_valid_player(
-    effect: &ReplacementEffect,
-    expr: &str,
-    player: PlayerId,
-    source: &Card,
-) -> bool {
-    let parts: Vec<&str> = expr.split(',').collect();
-    effect.matches_valid(&MatchValidTarget::Player(player), &parts, Some(source))
-}
+//
+// `matches_valid_card` / `matches_valid_player` used to live here as free
+// functions. They are now default methods on `CardTrait` (see
+// `card_trait_base.rs`) so every subclass — `Trigger`, `ReplacementEffect`,
+// and future `StaticAbility`/`SpellAbility` — gets the same API without
+// per-module wrappers.
 
 /// Check if a zone name string matches `zone`.
 pub fn zone_matches(expr: &str, zone: ZoneType) -> bool {
@@ -265,14 +242,14 @@ pub fn parse_replacement_effect(raw: &str) -> Option<ReplacementEffect> {
     let params = Params::from_raw(body);
 
     let event = match params.get(keys::EVENT) {
-        Some(s) => ReplacementType::from_event_str(s),
+        Some(s) => ReplacementType::smart_value_of(s),
         None => return None,
     };
 
     // Parse the layer (defaults to Other if not specified).
     let layer = params
         .get(keys::LAYER)
-        .and_then(|s| ReplacementLayer::from_layer_str(s))
+        .and_then(ReplacementLayer::smart_value_of)
         .unwrap_or(ReplacementLayer::Other);
 
     // Parse ActiveZones$ (comma- or space-separated list of zone names).
@@ -285,7 +262,7 @@ pub fn parse_replacement_effect(raw: &str) -> Option<ReplacementEffect> {
 }
 
 /// Parse a comma- or space-separated zone list string into `ZoneType` values.
-fn parse_zone_list(s: &str) -> Vec<ZoneType> {
+pub(super) fn parse_zone_list(s: &str) -> Vec<ZoneType> {
     s.split(|c: char| c == ',' || c == ' ')
         .filter_map(|tok| match tok.trim() {
             "Battlefield" => Some(ZoneType::Battlefield),

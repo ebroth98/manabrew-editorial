@@ -1,5 +1,6 @@
 use super::{resolve_defined_player, EffectContext};
-use crate::event::{RunParams, TriggerType};
+use crate::event::{RunParams};
+use crate::trigger::TriggerType;
 use crate::spellability::SpellAbility;
 
 /// Resolve `SP$ LifeExchange` — exchange life totals between two players.

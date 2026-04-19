@@ -1,5 +1,6 @@
 use super::{parse_param, resolve_defined_players, EffectContext};
-use crate::event::{RunParams, TriggerType};
+use crate::event::{RunParams};
+use crate::trigger::TriggerType;
 use crate::spellability::SpellAbility;
 
 /// Resolve `SP$ LifeSet` — set a player's life total to a specific value.

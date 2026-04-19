@@ -4,7 +4,8 @@ use forge_foundation::ZoneType;
 use rand::seq::SliceRandom;
 
 use crate::card::CardInstance;
-use crate::event::{RunParams, TriggerType};
+use crate::event::{RunParams};
+use crate::trigger::TriggerType;
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
 use crate::player::player_factory_util::{add_trigger_ability, new_player_effect_card};

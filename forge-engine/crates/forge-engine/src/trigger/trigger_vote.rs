@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 
-use crate::event::{RunParams, TriggerType};
+use crate::event::{RunParams};
+use crate::trigger::TriggerType;
 use crate::game::GameState;
 use crate::parsing::Params;
 use crate::spellability::SpellAbility;

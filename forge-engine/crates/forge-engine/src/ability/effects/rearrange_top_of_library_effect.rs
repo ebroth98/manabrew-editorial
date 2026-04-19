@@ -1,7 +1,8 @@
 use forge_foundation::ZoneType;
 
 use super::{parse_param, resolve_defined_player, EffectContext};
-use crate::event::{RunParams, TriggerType};
+use crate::event::{RunParams};
+use crate::trigger::TriggerType;
 use crate::spellability::SpellAbility;
 
 /// Mirrors the `RearrangeTopOfLibrary` API used by cards like Ponder.

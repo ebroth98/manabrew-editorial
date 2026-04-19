@@ -1,7 +1,8 @@
 use forge_foundation::ZoneType;
 
 use super::{emit_zone_trigger, EffectContext};
-use crate::event::{RunParams, TriggerType};
+use crate::event::{RunParams};
+use crate::trigger::TriggerType;
 use crate::spellability::SpellAbility;
 
 /// `DB$ Connive` — target creature connives N times.

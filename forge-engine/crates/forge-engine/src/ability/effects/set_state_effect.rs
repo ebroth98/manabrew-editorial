@@ -63,7 +63,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
 
             // Fire Transformed trigger
             ctx.trigger_handler.run_trigger(
-                crate::event::TriggerType::Transformed,
+                crate::trigger::TriggerType::Transformed,
                 crate::event::RunParams {
                     card: Some(source_id),
                     ..Default::default()
@@ -106,7 +106,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
 
                 // Fire TurnFaceUp trigger
                 ctx.trigger_handler.run_trigger(
-                    crate::event::TriggerType::TurnFaceUp,
+                    crate::trigger::TriggerType::TurnFaceUp,
                     crate::event::RunParams {
                         card: Some(source_id),
                         ..Default::default()

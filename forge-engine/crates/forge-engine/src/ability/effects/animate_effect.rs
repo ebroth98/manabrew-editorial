@@ -326,7 +326,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         if !remembered.is_empty() {
             ctx.trigger_handler
                 .register_delayed_trigger(crate::trigger::handler::DelayedTrigger {
-                    mode: crate::event::TriggerType::Phase,
+                    mode: crate::trigger::TriggerType::Phase,
                     trigger_mode: Box::new(crate::trigger::trigger_phase::TriggerPhase {
                         phase: Some(forge_foundation::PhaseType::EndOfTurn),
                         valid_player: None,

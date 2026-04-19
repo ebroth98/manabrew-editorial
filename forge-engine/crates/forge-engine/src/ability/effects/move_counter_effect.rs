@@ -1,7 +1,8 @@
 use forge_foundation::ZoneType;
 
 use super::{parse_counter_type, resolve_numeric_svar, EffectContext};
-use crate::event::{RunParams, TriggerType};
+use crate::event::{RunParams};
+use crate::trigger::TriggerType;
 use crate::spellability::SpellAbility;
 
 /// `SP$ MoveCounter` — move counters from one permanent to another.

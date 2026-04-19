@@ -144,7 +144,7 @@ pub fn run(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
             );
 
             ctx.trigger_handler.run_trigger(
-                crate::event::TriggerType::TokenCreated,
+                crate::trigger::TriggerType::TokenCreated,
                 crate::event::RunParams {
                     card: Some(token_id),
                     player: Some(controller),

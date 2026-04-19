@@ -6,7 +6,8 @@ use forge_foundation::ZoneType;
 use serde::{Deserialize, Serialize};
 
 use crate::ability::ability_utils;
-use crate::event::{RunParams, TriggerType, ZoneChangeRecord};
+use crate::event::{RunParams, ZoneChangeRecord};
+use crate::trigger::TriggerType;
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
 use crate::spellability::SpellAbility;

@@ -4,7 +4,8 @@ use forge_foundation::ZoneType;
 
 use crate::agent::{notify_all_agents, GameLogEvent, PlayerAgent};
 use crate::card::valid_filter;
-use crate::event::{RunParams, TriggerType};
+use crate::event::{RunParams};
+use crate::trigger::TriggerType;
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
 use crate::mana::ManaPool;
@@ -1418,7 +1419,8 @@ impl Default for TriggerHandler {
 mod tests {
     use super::*;
     use crate::card::Card;
-    use crate::event::{RunParams, TriggerType};
+    use crate::event::{RunParams};
+use crate::trigger::TriggerType;
     use crate::ids::PlayerId;
     use forge_carddb::parse_card_script;
     use forge_foundation::PhaseType;

@@ -37,7 +37,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             ctx.game.untap(card_id);
             // Fire Untaps trigger per card
             ctx.trigger_handler.run_trigger(
-                crate::event::TriggerType::Untaps,
+                crate::trigger::TriggerType::Untaps,
                 crate::event::RunParams {
                     card: Some(card_id),
                     ..Default::default()

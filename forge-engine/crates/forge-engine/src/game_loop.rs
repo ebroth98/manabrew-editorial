@@ -13,7 +13,8 @@ use crate::agent::{CombatCostAction, MainPhaseAction, ManaCostAction, PlayerAgen
 use crate::card::Card;
 use crate::combat::{self, CombatState};
 use crate::cost::{self, parse_cost, CostPart};
-use crate::event::{RunParams, TriggerType};
+use crate::event::{RunParams};
+use crate::trigger::TriggerType;
 use crate::game::GameState;
 use crate::game_log::GameLog;
 use crate::game_log_entry_type::GameLogEntryType;

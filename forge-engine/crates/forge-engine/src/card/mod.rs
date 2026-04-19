@@ -3034,7 +3034,7 @@ impl Card {
     }
     pub fn has_etb_trigger(&self) -> bool {
         self.triggers.iter().any(|t| {
-            t.kind == crate::event::TriggerType::ChangesZone
+            t.kind == crate::trigger::TriggerType::ChangesZone
                 && t.destination_zone() == Some(ZoneType::Battlefield)
         })
     }

@@ -671,6 +671,22 @@ pub trait CardTrait {
         let host = self.base().get_host_card().clone();
         self.matches_valid_param(param, target, Some(&host))
     }
+
+    /// Ergonomic comma-separated-expression wrapper over `matches_valid` for
+    /// card targets. Mirrors Java's `matchesValid(Object, String[], Card)`
+    /// call pattern where `valids` is often a single comma-separated string
+    /// (e.g. `"Creature.YouCtrl,Artifact"`).
+    fn matches_valid_card(&self, expr: &str, card: &Card, source: &Card) -> bool {
+        let parts: Vec<&str> = expr.split(',').collect();
+        self.matches_valid(&MatchValidTarget::Card(card), &parts, Some(source))
+    }
+
+    /// Ergonomic comma-separated-expression wrapper over `matches_valid` for
+    /// player targets.
+    fn matches_valid_player(&self, expr: &str, player: PlayerId, source: &Card) -> bool {
+        let parts: Vec<&str> = expr.split(',').collect();
+        self.matches_valid(&MatchValidTarget::Player(player), &parts, Some(source))
+    }
 }
 
 impl CardTrait for CardTraitBase {

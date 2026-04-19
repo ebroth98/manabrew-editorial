@@ -126,7 +126,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             // Fire DamageDone trigger per card
             if !use_damage_map {
                 ctx.trigger_handler.run_trigger(
-                    crate::event::TriggerType::DamageDone,
+                    crate::trigger::TriggerType::DamageDone,
                     crate::event::RunParams {
                         damage_source: source,
                         damage_target_card: Some(card_id),
@@ -188,7 +188,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             // Fire DamageDone trigger per player
             if !use_damage_map {
                 ctx.trigger_handler.run_trigger(
-                    crate::event::TriggerType::DamageDone,
+                    crate::trigger::TriggerType::DamageDone,
                     crate::event::RunParams {
                         damage_source: source,
                         damage_target_player: Some(pid),

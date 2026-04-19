@@ -1,7 +1,8 @@
 use serde::{Deserialize, Serialize};
 
 use crate::ability::ability_utils::parse_counter_type;
-use crate::event::{RunParams, TriggerType};
+use crate::event::{RunParams};
+use crate::trigger::TriggerType;
 use crate::game::GameState;
 use crate::parsing::compare::compare_expr;
 use crate::parsing::{keys, Params};

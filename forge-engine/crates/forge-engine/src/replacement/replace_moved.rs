@@ -17,7 +17,8 @@ use crate::parsing::keys;
 use crate::spellability::build_spell_ability;
 use crate::trigger::TriggerHandler;
 
-use super::replacement_effect::{matches_valid_card, zone_matches, ReplacementEffect};
+use super::replacement_effect::{zone_matches, ReplacementEffect};
+use crate::card_trait_base::CardTrait;
 use super::replacement_handler::{ReplacementEvent, ReplacementRuntime};
 use super::replacement_result::ReplacementResult;
 use super::replacement_type::ReplacementType;
@@ -66,7 +67,7 @@ pub fn can_replace(
     }
     let moving_card = &game.cards[moving_id.index()];
     if let Some(valid) = effect.params.get(keys::VALID_CARD) {
-        if !matches_valid_card(effect, valid, moving_card, source_card) {
+        if !effect.matches_valid_card(valid, moving_card, source_card) {
             return false;
         }
     }
@@ -77,7 +78,7 @@ pub fn can_replace(
         }
     }
     if let Some(valid_lki) = effect.params.get("ValidLKI") {
-        if !matches_valid_card(effect, valid_lki, moving_card, source_card) {
+        if !effect.matches_valid_card(valid_lki, moving_card, source_card) {
             return false;
         }
     }
