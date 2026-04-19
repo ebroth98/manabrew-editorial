@@ -15,13 +15,9 @@ use crate::parsing::keys;
 use crate::spellability::SpellAbility;
 
 fn parse_trigger_object_cards(sa: &SpellAbility, key: &str) -> Vec<CardId> {
-    sa.trigger_objects
-        .get(key)
-        .into_iter()
-        .flat_map(|value| value.split(','))
-        .filter_map(|part| part.trim().parse::<u32>().ok())
-        .map(CardId)
-        .collect()
+    crate::ability::ability_key::from_string(key)
+        .map(|ability_key| sa.get_triggering_cards(ability_key))
+        .unwrap_or_default()
 }
 
 /// Resolve zone changes from known/visible zones or targeted cards.

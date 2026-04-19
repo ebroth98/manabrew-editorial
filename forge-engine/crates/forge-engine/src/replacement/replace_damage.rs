@@ -14,16 +14,22 @@ use super::replacement_handler::{execute_replace_with_numeric_update, resolve_re
 use super::replacement_result::ReplacementResult;
 use super::replacement_type::ReplacementType;
 
-fn matches_valid_card_list(expr: &str, card: &Card, source_card: &Card) -> bool {
-    expr.split(',')
-        .map(str::trim)
-        .any(|part| crate::card::valid_filter::matches_valid_card(part, card, source_card))
+fn matches_valid_card_list(
+    effect: &ReplacementEffect,
+    expr: &str,
+    card: &Card,
+    source_card: &Card,
+) -> bool {
+    super::replacement_effect::matches_valid_card(effect, expr, card, source_card)
 }
 
-fn matches_valid_player_list(expr: &str, player: crate::ids::PlayerId, source_card: &Card) -> bool {
-    expr.split(',').map(str::trim).any(|part| {
-        crate::card::valid_filter::matches_valid_player(part, player, source_card.controller)
-    })
+fn matches_valid_player_list(
+    effect: &ReplacementEffect,
+    expr: &str,
+    player: crate::ids::PlayerId,
+    source_card: &Card,
+) -> bool {
+    super::replacement_effect::matches_valid_player(effect, expr, player, source_card)
 }
 
 /// Mirrors Java `ReplaceDamage.canReplace()`.
@@ -58,15 +64,15 @@ pub fn can_replace(
         let Some(source_id) = damage_source else {
             return false;
         };
-        if !matches_valid_card_list(valid_source, game.card(source_id), source_card) {
+        if !matches_valid_card_list(effect, valid_source, game.card(source_id), source_card) {
             return false;
         }
     }
     if let Some(valid_target) = effect.params.get(keys::VALID_TARGET) {
         let target_matches = if let Some(target) = target_player {
-            matches_valid_player_list(valid_target, target, source_card)
+            matches_valid_player_list(effect, valid_target, target, source_card)
         } else if let Some(target) = target_card {
-            matches_valid_card_list(valid_target, game.card(target), source_card)
+            matches_valid_card_list(effect, valid_target, game.card(target), source_card)
         } else {
             false
         };

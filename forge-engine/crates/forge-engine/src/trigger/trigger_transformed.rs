@@ -5,7 +5,7 @@ use crate::game::GameState;
 use crate::parsing::{keys, Params};
 use crate::spellability::SpellAbility;
 
-use super::trigger::{check_card_filter, Trigger, TriggerBehavior};
+use super::trigger::{Trigger, TriggerBehavior};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TriggerTransformed {
@@ -26,15 +26,10 @@ impl TriggerBehavior for TriggerTransformed {
         TriggerType::Transformed
     }
 
-    fn perform_test(
-        &self,
-        trigger: &Trigger,
-        params: &RunParams,
-        game: &GameState,
-    ) -> bool {
+    fn perform_test(&self, trigger: &Trigger, params: &RunParams, game: &GameState) -> bool {
         let host_card = trigger.base.card_trait_base.get_host_card().id;
         let host_controller = trigger.base.card_trait_base.get_host_card().controller;
-        check_card_filter(&self.valid_card, params.card, host_card, host_controller, game)
+        trigger.matches_optional_valid_card_filter(&self.valid_card, params.card, game)
     }
 
     fn set_triggering_objects(
@@ -45,7 +40,7 @@ impl TriggerBehavior for TriggerTransformed {
         _game: &GameState,
     ) {
         if let Some(card) = params.card {
-            sa.set_triggering_object("Card", &card.0.to_string());
+            sa.set_triggering_object(crate::ability::AbilityKey::Card, &card.0.to_string());
         }
     }
 
@@ -53,7 +48,7 @@ impl TriggerBehavior for TriggerTransformed {
         format!(
             "Transformed: {}",
             sa.trigger_objects
-                .get("Card")
+                .get(&crate::ability::AbilityKey::Card)
                 .map(|s| s.as_str())
                 .unwrap_or("")
         )

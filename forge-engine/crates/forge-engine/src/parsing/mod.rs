@@ -65,20 +65,23 @@ impl Params {
 
     /// Get a parameter value by key.
     /// Mirrors Java's `CardTraitBase.getParam(String)`.
-    pub fn get(&self, key: &str) -> Option<&str> {
-        self.0.get(key).map(|s| s.as_str())
+    pub fn get<K: ToString>(&self, key: K) -> Option<&str> {
+        self.0.get(&key.to_string()).map(|s| s.as_str())
     }
 
     /// Get a parameter value or a default.
     /// Mirrors Java's `CardTraitBase.getParamOrDefault(String, String)`.
-    pub fn get_or_default<'a>(&'a self, key: &str, default: &'a str) -> &'a str {
-        self.0.get(key).map(|s| s.as_str()).unwrap_or(default)
+    pub fn get_or_default<'a, K: ToString>(&'a self, key: K, default: &'a str) -> &'a str {
+        self.0
+            .get(&key.to_string())
+            .map(|s| s.as_str())
+            .unwrap_or(default)
     }
 
     /// Check if a parameter key exists.
     /// Mirrors Java's `CardTraitBase.hasParam(String)`.
-    pub fn has(&self, key: &str) -> bool {
-        self.0.contains_key(key)
+    pub fn has<K: ToString>(&self, key: K) -> bool {
+        self.0.contains_key(&key.to_string())
     }
 
     /// Set a parameter value.
@@ -89,8 +92,8 @@ impl Params {
 
     /// Remove a parameter and return its value.
     /// Mirrors Java's `CardTraitBase.removeParam(String)`.
-    pub fn remove(&mut self, key: &str) -> Option<String> {
-        self.0.remove(key)
+    pub fn remove<K: ToString>(&mut self, key: K) -> Option<String> {
+        self.0.remove(&key.to_string())
     }
 
     /// Check if the map is empty.
@@ -102,20 +105,25 @@ impl Params {
 
     /// Check if a boolean param is set to "True" (case-insensitive).
     /// Mirrors the common Java pattern `"True".equals(getParam(key))`.
-    pub fn is_true(&self, key: &str) -> bool {
+    pub fn is_true<K: ToString>(&self, key: K) -> bool {
+        let key = key.to_string();
         self.0
-            .get(key)
+            .get(&key)
             .map_or(false, |v| v.eq_ignore_ascii_case("True"))
     }
 
     /// Parse a parameter as i32, returning None if absent or non-numeric.
-    pub fn as_i32(&self, key: &str) -> Option<i32> {
-        self.0.get(key).and_then(|v| v.trim().parse().ok())
+    pub fn as_i32<K: ToString>(&self, key: K) -> Option<i32> {
+        self.0
+            .get(&key.to_string())
+            .and_then(|v| v.trim().parse().ok())
     }
 
     /// Parse a parameter as usize, returning None if absent or non-numeric.
-    pub fn as_usize(&self, key: &str) -> Option<usize> {
-        self.0.get(key).and_then(|v| v.trim().parse().ok())
+    pub fn as_usize<K: ToString>(&self, key: K) -> Option<usize> {
+        self.0
+            .get(&key.to_string())
+            .and_then(|v| v.trim().parse().ok())
     }
 
     /// Get a parameter value, cloning it into an owned String.

@@ -92,7 +92,7 @@ pub(super) fn resolve_hidden_origin(
             || defined.eq_ignore_ascii_case("RememberedLKI")
         {
             sa.trigger_objects
-                .get("RememberedLKI")
+                .get(&crate::ability::AbilityKey::RememberedLKI)
                 .into_iter()
                 .flat_map(|value| value.split(','))
                 .filter_map(|part| part.trim().parse::<u32>().ok())
@@ -162,9 +162,11 @@ pub(super) fn resolve_hidden_origin(
                 .map(GameEntity::Player)
                 .collect();
             ctx.agents[controller.index()].snapshot_state(ctx.game, ctx.mana_pools);
-            match ctx.agents[controller.index()]
-                .choose_single_entity_for_effect(controller, &chooser_entities, false)
-            {
+            match ctx.agents[controller.index()].choose_single_entity_for_effect(
+                controller,
+                &chooser_entities,
+                false,
+            ) {
                 Some(GameEntity::Player(pid)) => pid,
                 _ => chooser_players[0],
             }
@@ -207,7 +209,10 @@ pub(super) fn resolve_hidden_origin(
                 }
             }
 
-            let mut zone_cards = ctx.game.cards_in_zone(origin_zone, affected_player).to_vec();
+            let mut zone_cards = ctx
+                .game
+                .cards_in_zone(origin_zone, affected_player)
+                .to_vec();
             if origin_zone == ZoneType::Library {
                 if let Some(max) = find_search_limit(ctx, affected_player, controller) {
                     zone_cards.truncate(max);

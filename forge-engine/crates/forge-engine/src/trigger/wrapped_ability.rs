@@ -48,7 +48,7 @@ impl WrappedAbility {
     }
 
     pub fn has_triggering_object(&self, key: &str) -> bool {
-        self.wrapped.trigger_objects.contains_key(key)
+        self.wrapped.has_triggering_object(key)
     }
 
     pub fn reset_triggering_objects(&mut self) {
@@ -135,13 +135,16 @@ impl WrappedAbility {
     /// Mirrors Java's `WrappedAbility.setTriggeringObjects(Map)`.
     /// Replaces all triggering objects wholesale.
     pub fn set_triggering_objects(&mut self, objects: HashMap<String, String>) {
-        self.wrapped.trigger_objects = objects;
+        self.wrapped.trigger_objects.clear();
+        for (key, value) in objects {
+            self.wrapped.set_triggering_object(&key, value);
+        }
     }
 
     /// Mirrors Java's `WrappedAbility.setTriggeringObject(AbilityKey, Object)`.
     /// Sets a single triggering object by key.
     pub fn set_triggering_object(&mut self, key: &str, value: String) {
-        self.wrapped.trigger_objects.insert(key.to_string(), value);
+        self.wrapped.set_triggering_object(key, value);
     }
 
     /// Mirrors Java's `WrappedAbility.getTriggeringObject(AbilityKey)`.
@@ -160,7 +163,9 @@ impl WrappedAbility {
             let source = self.wrapped.source.unwrap_or(crate::ids::CardId(0));
             let player = self.wrapped.activating_player;
             let base = trigger.replace_ability_text(&trigger.description, game, source, player);
-            let important = trigger.mode.get_important_stack_objects(trigger, &self.wrapped);
+            let important = trigger
+                .mode
+                .get_important_stack_objects(trigger, &self.wrapped);
             let mut sb = base;
             if !important.is_empty() {
                 sb.push_str(" [");

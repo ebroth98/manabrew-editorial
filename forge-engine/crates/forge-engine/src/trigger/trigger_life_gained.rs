@@ -5,7 +5,7 @@ use crate::game::GameState;
 use crate::parsing::{keys, Params};
 use crate::spellability::SpellAbility;
 
-use super::trigger::{check_player_filter, Trigger, TriggerBehavior};
+use super::trigger::{Trigger, TriggerBehavior};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TriggerLifeGained {
@@ -32,30 +32,15 @@ impl TriggerBehavior for TriggerLifeGained {
         TriggerType::LifeGained
     }
 
-    fn perform_test(
-        &self,
-        trigger: &Trigger,
-        params: &RunParams,
-        game: &GameState,
-    ) -> bool {
-        let host_card = trigger.base.card_trait_base.get_host_card().id;
-        let host_controller = trigger.base.card_trait_base.get_host_card().controller;
-        if !check_player_filter(&self.valid_player, params.player, host_controller) {
+    fn perform_test(&self, trigger: &Trigger, params: &RunParams, game: &GameState) -> bool {
+        if !trigger.matches_optional_valid_player_filter(&self.valid_player, params.player) {
             return false;
         }
         if let Some(filter) = self.valid_source.as_ref() {
             let source_matches = params
                 .source_card
                 .or(params.spell_card)
-                .is_some_and(|source| {
-                    super::trigger::matches_valid_card(
-                        filter,
-                        source,
-                        host_card,
-                        host_controller,
-                        game,
-                    )
-                });
+                .is_some_and(|source| trigger.matches_valid_card_filter(filter, source, game));
             if !source_matches {
                 return false;
             }
@@ -83,10 +68,10 @@ impl TriggerBehavior for TriggerLifeGained {
         _game: &GameState,
     ) {
         if let Some(amount) = params.life_amount {
-            sa.set_triggering_object("LifeAmount", &amount.to_string());
+            sa.set_triggering_object(crate::ability::AbilityKey::LifeAmount, &amount.to_string());
         }
         if let Some(p) = params.player {
-            sa.set_triggering_object("Player", &p.0.to_string());
+            sa.set_triggering_object(crate::ability::AbilityKey::Player, &p.0.to_string());
         }
     }
 
@@ -94,8 +79,10 @@ impl TriggerBehavior for TriggerLifeGained {
         // Java: "Player: " + Player + ", GainedAmount: " + LifeAmount
         format!(
             "Player: {}, GainedAmount: {}",
-            sa.get_triggering_object("Player").unwrap_or_default(),
-            sa.get_triggering_object("LifeAmount").unwrap_or_default()
+            sa.get_triggering_object(crate::ability::AbilityKey::Player)
+                .unwrap_or_default(),
+            sa.get_triggering_object(crate::ability::AbilityKey::LifeAmount)
+                .unwrap_or_default()
         )
     }
 }

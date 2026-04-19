@@ -873,24 +873,24 @@ fn run_single_matchup_oneshot(
             .name("parity-java".to_string())
             .stack_size(PARITY_THREAD_STACK_SIZE)
             .spawn_scoped(s, || {
-            let bridge_config = JavaBridgeConfig {
-                jar_path: jar_path.clone(),
-                seed: config.seed,
-                max_turns: config.max_turns,
-                deck1: config.deck1.clone(),
-                deck2: config.deck2.clone(),
-                forge_home: None,
-                decks_dir: config.decks_dir.clone(),
-                verbose: config.verbose.is_any(),
-                prefer_actions: config.prefer_actions,
-                deep: config.deep,
-                java_heap: config.java_heap.clone(),
-                verbose_turns: config.verbose.to_java_arg(),
-            };
-            let bridge = JavaBridge::new(bridge_config);
-            bridge.run()
-        })
-        .expect("Failed to spawn Java parity thread");
+                let bridge_config = JavaBridgeConfig {
+                    jar_path: jar_path.clone(),
+                    seed: config.seed,
+                    max_turns: config.max_turns,
+                    deck1: config.deck1.clone(),
+                    deck2: config.deck2.clone(),
+                    forge_home: None,
+                    decks_dir: config.decks_dir.clone(),
+                    verbose: config.verbose.is_any(),
+                    prefer_actions: config.prefer_actions,
+                    deep: config.deep,
+                    java_heap: config.java_heap.clone(),
+                    verbose_turns: config.verbose.to_java_arg(),
+                };
+                let bridge = JavaBridge::new(bridge_config);
+                bridge.run()
+            })
+            .expect("Failed to spawn Java parity thread");
 
         (
             rust_handle.join().expect("Rust engine thread panicked"),

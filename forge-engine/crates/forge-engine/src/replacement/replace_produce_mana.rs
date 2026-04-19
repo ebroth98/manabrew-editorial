@@ -31,7 +31,7 @@ pub fn can_replace(
     let producing_card = &game.cards[source_id.index()];
     if let Some(valid) = effect.params.get(keys::VALID_CARD) {
         if valid != "Permanent" && valid != "Card" {
-            if !matches_valid_card(valid, producing_card, source_card) {
+            if !matches_valid_card(effect, valid, producing_card, source_card) {
                 return false;
             }
         }
@@ -41,7 +41,7 @@ pub fn can_replace(
         .get(keys::VALID_ACTIVATOR)
         .or(effect.params.get(keys::VALID_PLAYER))
     {
-        if !matches_valid_player(valid_player, activator, source_card) {
+        if !matches_valid_player(effect, valid_player, activator, source_card) {
             return false;
         }
     }

@@ -4,7 +4,7 @@ use crate::event::{RunParams, TriggerType};
 use crate::game::GameState;
 use crate::spellability::SpellAbility;
 
-use super::trigger::{check_card_filter, TriggerBehavior};
+use super::trigger::TriggerBehavior;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TriggerClassLevelGained {
@@ -35,7 +35,7 @@ impl TriggerBehavior for TriggerClassLevelGained {
     ) -> bool {
         let host_card = trigger.base.card_trait_base.get_host_card().id;
         let host_controller = trigger.base.card_trait_base.get_host_card().controller;
-        if !check_card_filter(&self.valid_card, params.card, host_card, host_controller, game) {
+        if !trigger.matches_optional_valid_card_filter(&self.valid_card, params.card, game) {
             return false;
         }
         if let Some(expected) = self.class_level {
@@ -52,15 +52,19 @@ impl TriggerBehavior for TriggerClassLevelGained {
         _game: &GameState,
     ) {
         if let Some(level) = params.class_level {
-            sa.set_triggering_object("ClassLevel", &level.to_string());
+            sa.set_triggering_object(crate::ability::AbilityKey::ClassLevel, &level.to_string());
         }
     }
 
-    fn get_important_stack_objects(&self, _trigger: &super::trigger::Trigger, sa: &SpellAbility) -> String {
+    fn get_important_stack_objects(
+        &self,
+        _trigger: &super::trigger::Trigger,
+        sa: &SpellAbility,
+    ) -> String {
         format!(
             "Class Level: {}",
             sa.trigger_objects
-                .get("ClassLevel")
+                .get(&crate::ability::AbilityKey::ClassLevel)
                 .cloned()
                 .unwrap_or_default()
         )

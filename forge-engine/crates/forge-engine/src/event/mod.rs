@@ -6,6 +6,7 @@ use crate::ability::AbilityKey;
 use crate::card::card_damage_map::CardDamageMap;
 use crate::card::card_zone_table::CardZoneTable;
 use crate::ids::{CardId, PlayerId};
+use strum_macros::Display;
 
 /// Event types — mirrors Java TriggerType enum (subset).
 /// Expanded to 25 core trigger types (issue #19).
@@ -507,7 +508,7 @@ pub struct ZoneChangeRecord {
     pub card: CardId,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Display)]
 pub enum AbilityValue {
     Card(CardId),
     Player(PlayerId),
@@ -523,6 +524,29 @@ pub enum AbilityValue {
     Bool(bool),
     Zone(ZoneType),
     Phase(PhaseType),
+}
+
+impl Default for AbilityValue {
+    fn default() -> Self {
+        AbilityValue::String(String::new())
+    }
+}
+
+impl AbilityValue {
+    pub fn as_str(&self) -> &str {
+        match self {
+            AbilityValue::String(value) => value.as_str(),
+            _ => "",
+        }
+    }
+}
+
+impl std::ops::Deref for AbilityValue {
+    type Target = str;
+
+    fn deref(&self) -> &Self::Target {
+        self.as_str()
+    }
 }
 
 impl From<CardId> for AbilityValue {
@@ -588,6 +612,12 @@ impl From<String> for AbilityValue {
 impl From<&str> for AbilityValue {
     fn from(value: &str) -> Self {
         AbilityValue::String(value.to_string())
+    }
+}
+
+impl From<&String> for AbilityValue {
+    fn from(value: &String) -> Self {
+        AbilityValue::String(value.clone())
     }
 }
 
@@ -777,7 +807,150 @@ pub struct RunParams {
 }
 
 impl RunParams {
-    /// Java-style `Map<AbilityKey, Object>` view over trigger payloads.
+    pub fn add_common_trigger_objects(&self, sa: &mut crate::spellability::SpellAbility) {
+        if let Some(card_id) = self.card {
+            sa.set_triggering_object(crate::ability::AbilityKey::Card, &card_id.0.to_string());
+            sa.set_triggering_object(crate::ability::AbilityKey::NewCard, &card_id.0.to_string());
+        }
+        if let Some(card_id) = self.card_lki {
+            sa.set_triggering_object(crate::ability::AbilityKey::CardLKI, &card_id.0.to_string());
+        }
+        if let Some(player_id) = self.activator.or(self.cause_player) {
+            sa.set_triggering_object(
+                crate::ability::AbilityKey::Activator,
+                &player_id.0.to_string(),
+            );
+        }
+        if let Some(player_id) = self.player {
+            sa.set_triggering_object(crate::ability::AbilityKey::Player, &player_id.0.to_string());
+        }
+        if let Some(player_id) = self.attacking_player {
+            sa.set_triggering_object(
+                crate::ability::AbilityKey::AttackingPlayer,
+                &player_id.0.to_string(),
+            );
+        }
+        if let Some(player_id) = self.defending_player {
+            sa.set_triggering_object(
+                crate::ability::AbilityKey::DefendingPlayer,
+                &player_id.0.to_string(),
+            );
+        }
+        if let Some(card_id) = self.causer.or(self.cause_card) {
+            sa.set_triggering_object(crate::ability::AbilityKey::Causer, &card_id.0.to_string());
+        }
+        if let Some(card_id) = self.source_card.or(self.spell_card) {
+            sa.set_triggering_object(crate::ability::AbilityKey::Source, &card_id.0.to_string());
+        }
+        if let Some(card_id) = self.attacker {
+            sa.set_triggering_object(crate::ability::AbilityKey::Attacker, &card_id.0.to_string());
+        }
+        if let Some(card_id) = self.blocker {
+            sa.set_triggering_object(crate::ability::AbilityKey::Blocker, &card_id.0.to_string());
+        }
+        if let Some(card_id) = self.attacked_card {
+            sa.set_triggering_object(crate::ability::AbilityKey::Attacked, &card_id.0.to_string());
+        }
+        if let Some(player_id) = self.attacked_player {
+            sa.set_triggering_object(
+                crate::ability::AbilityKey::AttackedTarget,
+                &player_id.0.to_string(),
+            );
+        }
+        if let Some(card_id) = self.target_card {
+            let value = card_id.0.to_string();
+            sa.set_triggering_object(crate::ability::AbilityKey::Target, &value);
+            sa.set_triggering_object(crate::ability::AbilityKey::TargetCard, &value);
+        }
+        if let Some(player_id) = self.target_player {
+            let value = player_id.0.to_string();
+            sa.set_triggering_object(crate::ability::AbilityKey::Target, &value);
+            sa.set_triggering_object(crate::ability::AbilityKey::TargetPlayer, &value);
+        }
+        if self.target_player.is_none() {
+            if let Some(player_id) = self.damage_target_player {
+                let value = player_id.0.to_string();
+                sa.set_triggering_object(crate::ability::AbilityKey::Target, &value);
+                sa.set_triggering_object(crate::ability::AbilityKey::TargetPlayer, &value);
+            }
+        }
+        if self.target_card.is_none() {
+            if let Some(card_id) = self.damage_target_card {
+                let value = card_id.0.to_string();
+                sa.set_triggering_object(crate::ability::AbilityKey::Target, &value);
+                sa.set_triggering_object(crate::ability::AbilityKey::TargetCard, &value);
+            }
+        }
+        if let Some(card_id) = self.explored {
+            sa.set_triggering_object(crate::ability::AbilityKey::Explored, &card_id.0.to_string());
+        }
+        if let Some(cards) = self.cards.as_deref() {
+            let csv = cards
+                .iter()
+                .map(|card_id| card_id.0.to_string())
+                .collect::<Vec<_>>()
+                .join(",");
+            if !csv.is_empty() {
+                sa.set_triggering_object(crate::ability::AbilityKey::Cards, &csv);
+            }
+        }
+        if let Some(cards) = self.attacker_ids.as_deref() {
+            let csv = cards
+                .iter()
+                .map(|card_id| card_id.0.to_string())
+                .collect::<Vec<_>>()
+                .join(",");
+            if !csv.is_empty() {
+                sa.set_triggering_object(crate::ability::AbilityKey::Attackers, &csv);
+            }
+        }
+        if let Some(value) = self.life_amount {
+            sa.set_triggering_object(crate::ability::AbilityKey::LifeAmount, &value.to_string());
+        }
+        if let Some(value) = self.natural_result {
+            sa.set_triggering_object(
+                crate::ability::AbilityKey::NaturalResult,
+                &value.to_string(),
+            );
+        }
+        if let Some(value) = self.card_state_name.as_deref() {
+            sa.set_triggering_object(crate::ability::AbilityKey::CardState, value);
+        }
+        if let Some(value) = self.room_name.as_deref() {
+            sa.set_triggering_object(crate::ability::AbilityKey::RoomName, value);
+        }
+        if let Some(value) = self.spell_ability.as_ref() {
+            sa.set_triggering_spell_ability("SpellAbility", value.clone());
+        }
+        if let Some(value) = self.source_sa.as_ref() {
+            sa.set_triggering_spell_ability("SourceSA", value.clone());
+        }
+        if let Some(value) = self.ability_mana.as_ref() {
+            sa.set_triggering_spell_ability("AbilityMana", value.clone());
+        }
+        if let Some(value) = self.cause.as_ref() {
+            sa.set_triggering_spell_ability("Cause", value.clone());
+        }
+        if let Some(results) = self.die_results.as_deref() {
+            let csv = results
+                .iter()
+                .map(i32::to_string)
+                .collect::<Vec<_>>()
+                .join(",");
+            if !csv.is_empty() {
+                sa.set_triggering_object(crate::ability::AbilityKey::Result, &csv);
+            }
+        } else if let Some(value) = self.die_result {
+            sa.set_triggering_object(crate::ability::AbilityKey::Result, &value.to_string());
+        }
+        if let Some(value) = self.die_sides {
+            sa.set_triggering_object(crate::ability::AbilityKey::Sides, &value.to_string());
+        }
+        if let Some(value) = self.number {
+            sa.set_triggering_object(crate::ability::AbilityKey::Number, &value.to_string());
+        }
+    }
+
     pub fn get_value(&self, key: AbilityKey) -> Option<AbilityValue> {
         use AbilityKey::*;
         match key {

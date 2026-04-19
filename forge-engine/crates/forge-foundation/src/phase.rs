@@ -105,6 +105,9 @@ impl PhaseType {
 
     pub fn from_script_name(s: &str) -> Option<Self> {
         let s = s.trim();
+        if s.eq_ignore_ascii_case("EndStep") || s.eq_ignore_ascii_case("EndOfTurnStep") {
+            return Some(PhaseType::EndOfTurn);
+        }
         for &phase in &Self::TURN_ORDER {
             if phase.script_name().eq_ignore_ascii_case(s)
                 || format!("{:?}", phase).eq_ignore_ascii_case(s)

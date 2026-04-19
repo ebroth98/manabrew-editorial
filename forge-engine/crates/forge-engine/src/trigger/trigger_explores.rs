@@ -5,7 +5,7 @@ use crate::game::GameState;
 use crate::parsing::{keys, Params};
 use crate::spellability::SpellAbility;
 
-use super::trigger::{check_card_filter, Trigger, TriggerBehavior};
+use super::trigger::{Trigger, TriggerBehavior};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TriggerExplores {
@@ -28,20 +28,11 @@ impl TriggerBehavior for TriggerExplores {
         TriggerType::Explored
     }
 
-    fn perform_test(
-        &self,
-        trigger: &Trigger,
-        params: &RunParams,
-        game: &GameState,
-    ) -> bool {
-        let host_card = trigger.base.card_trait_base.get_host_card().id;
-        let host_controller = trigger.base.card_trait_base.get_host_card().controller;
-        check_card_filter(&self.valid_card, params.card, host_card, host_controller, game)
-            && check_card_filter(
+    fn perform_test(&self, trigger: &Trigger, params: &RunParams, game: &GameState) -> bool {
+        trigger.matches_optional_valid_card_filter(&self.valid_card, params.card, game)
+            && trigger.matches_optional_valid_card_filter(
                 &self.valid_explored,
                 params.explored,
-                host_card,
-                host_controller,
                 game,
             )
     }
@@ -56,10 +47,13 @@ impl TriggerBehavior for TriggerExplores {
         // Java: sa.setTriggeringObject(AbilityKey.Explorer, runParams.get(AbilityKey.Card));
         //       if (runParams.containsKey(AbilityKey.Explored)) sa.setTriggeringObjectsFrom(runParams, AbilityKey.Explored);
         if let Some(card_id) = params.card {
-            sa.set_triggering_object("Explorer", &card_id.0.to_string());
+            sa.set_triggering_object(crate::ability::AbilityKey::Explorer, &card_id.0.to_string());
         }
         if let Some(explored) = params.explored {
-            sa.set_triggering_object("Explored", &explored.0.to_string());
+            sa.set_triggering_object(
+                crate::ability::AbilityKey::Explored,
+                &explored.0.to_string(),
+            );
         }
     }
 
@@ -67,9 +61,10 @@ impl TriggerBehavior for TriggerExplores {
         // Java: "Explorer: " + Explorer + optional ", Explored: " + Explored
         let mut sb = format!(
             "Explorer: {}",
-            sa.get_triggering_object("Explorer").unwrap_or_default()
+            sa.get_triggering_object(crate::ability::AbilityKey::Explorer)
+                .unwrap_or_default()
         );
-        if let Some(explored) = sa.get_triggering_object("Explored") {
+        if let Some(explored) = sa.get_triggering_object(crate::ability::AbilityKey::Explored) {
             sb.push_str(&format!(", Explored: {}", explored));
         }
         sb

@@ -516,8 +516,9 @@ impl DeterministicAgent {
                     continue;
                 }
 
-                if let Some(valid_attacker) =
-                    sa.params.get(forge_engine_core::parsing::keys::VALID_ATTACKER)
+                if let Some(valid_attacker) = sa
+                    .params
+                    .get(forge_engine_core::parsing::keys::VALID_ATTACKER)
                 {
                     if !forge_engine_core::card::valid_filter::matches_valid_card(
                         valid_attacker,
@@ -528,8 +529,9 @@ impl DeterministicAgent {
                     }
                 }
 
-                if let Some(valid_blocker) =
-                    sa.params.get(forge_engine_core::parsing::keys::VALID_BLOCKER)
+                if let Some(valid_blocker) = sa
+                    .params
+                    .get(forge_engine_core::parsing::keys::VALID_BLOCKER)
                 {
                     let blocker_matches = valid_blocker.split(',').any(|v| {
                         forge_engine_core::card::valid_filter::matches_valid_card(
@@ -633,11 +635,7 @@ impl PlayerAgent for DeterministicAgent {
             .iter()
             .map(|c| (c.id, (c.owner.0, c.controller.0)))
             .collect();
-        let cards: Vec<Card> = game
-            .cards
-            .iter()
-            .map(Self::shallow_snapshot_card)
-            .collect();
+        let cards: Vec<Card> = game.cards.iter().map(Self::shallow_snapshot_card).collect();
         self.last_game_snapshot = Some(GameSnapshot {
             cards,
             card_names,

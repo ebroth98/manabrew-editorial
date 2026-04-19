@@ -2,9 +2,12 @@
 //!
 //! Mirrors Java's `AbilityKey.java`.
 //! These keys are used for trigger run-parameter maps and ability context passing.
+use serde::Deserialize;
+use serde::Serialize;
+use std::str::FromStr;
+use strum_macros::{Display, EnumString};
 
-/// Keys for ability parameter maps, mirroring Java's `AbilityKey` enum.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize, Serialize, EnumString, Display)]
 pub enum AbilityKey {
     AbilityMana,
     Activator,
@@ -106,7 +109,9 @@ pub enum AbilityKey {
     Player,
     PreventedAmount,
     Produced,
+    ReplacedCard,
     Regeneration,
+    RememberedLKI,
     ReplacementEffect,
     ReplacementResult,
     ReplacementResultMap,
@@ -125,163 +130,19 @@ pub enum AbilityKey {
     StackSa,
     SurveilNum,
     Target,
+    TargetCard,
+    TargetPlayer,
     Targets,
     Token,
     TokenNum,
+    TriggeredCardPower,
+    TriggeredCardToughness,
+    TriggeredPlayer,
     Valiant,
     Won,
     // Internal keys shared across different replacements
     InternalTriggerTable,
     SimultaneousETB,
-}
-
-impl AbilityKey {
-    /// Return the string representation, matching Java's `toString()`.
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            AbilityKey::AbilityMana => "AbilityMana",
-            AbilityKey::Activator => "Activator",
-            AbilityKey::Affected => "Affected",
-            AbilityKey::AllVotes => "AllVotes",
-            AbilityKey::Amount => "Amount",
-            AbilityKey::AttachSource => "AttachSource",
-            AbilityKey::AttachTarget => "AttachTarget",
-            AbilityKey::Attacked => "Attacked",
-            AbilityKey::Attacker => "Attacker",
-            AbilityKey::Attackers => "Attackers",
-            AbilityKey::AttackingPlayer => "AttackingPlayer",
-            AbilityKey::AttackedTarget => "AttackedTarget",
-            AbilityKey::Blocker => "Blocker",
-            AbilityKey::Blockers => "Blockers",
-            AbilityKey::CanReveal => "CanReveal",
-            AbilityKey::Card => "Card",
-            AbilityKey::CardState => "CardState",
-            AbilityKey::Cards => "Cards",
-            AbilityKey::CardsFiltered => "CardsFiltered",
-            AbilityKey::CardLKI => "CardLKI",
-            AbilityKey::Cause => "Cause",
-            AbilityKey::Causer => "Causer",
-            AbilityKey::Championed => "Championed",
-            AbilityKey::ClassLevel => "ClassLevel",
-            AbilityKey::CostStack => "CostStack",
-            AbilityKey::CounterAmount => "CounterAmount",
-            AbilityKey::CounteredSA => "CounteredSA",
-            AbilityKey::CounterNum => "CounterNum",
-            AbilityKey::CounterMap => "CounterMap",
-            AbilityKey::CounterTable => "CounterTable",
-            AbilityKey::CounterType => "CounterType",
-            AbilityKey::Crew => "Crew",
-            AbilityKey::CumulativeUpkeepPaid => "CumulativeUpkeepPaid",
-            AbilityKey::CurrentCastSpells => "CurrentCastSpells",
-            AbilityKey::CurrentStormCount => "CurrentStormCount",
-            AbilityKey::Cycling => "Cycling",
-            AbilityKey::DamageAmount => "DamageAmount",
-            AbilityKey::DamageMap => "DamageMap",
-            AbilityKey::DamageSource => "DamageSource",
-            AbilityKey::DamageSources => "DamageSources",
-            AbilityKey::DamageTarget => "DamageTarget",
-            AbilityKey::DamageTargets => "DamageTargets",
-            AbilityKey::Defender => "Defender",
-            AbilityKey::Defenders => "Defenders",
-            AbilityKey::DefendingPlayer => "DefendingPlayer",
-            AbilityKey::Destination => "Destination",
-            AbilityKey::Devoured => "Devoured",
-            AbilityKey::DicePTExchanges => "DicePTExchanges",
-            AbilityKey::Discard => "Discard",
-            AbilityKey::DiscardedBefore => "DiscardedBefore",
-            AbilityKey::DividedShieldAmount => "DividedShieldAmount",
-            AbilityKey::EchoPaid => "EchoPaid",
-            AbilityKey::EffectOnly => "EffectOnly",
-            AbilityKey::Enlisted => "Enlisted",
-            AbilityKey::Exploited => "Exploited",
-            AbilityKey::Explored => "Explored",
-            AbilityKey::Explorer => "Explorer",
-            AbilityKey::ExtraTurn => "ExtraTurn",
-            AbilityKey::ETB => "ETB",
-            AbilityKey::Fighter => "Fighter",
-            AbilityKey::Fighters => "Fighters",
-            AbilityKey::FirstTime => "FirstTime",
-            AbilityKey::Fizzle => "Fizzle",
-            AbilityKey::FoundSearchingLibrary => "FoundSearchingLibrary",
-            AbilityKey::Ignore => "Ignore",
-            AbilityKey::IgnoreChosen => "IgnoreChosen",
-            AbilityKey::IsCombat => "IsCombat",
-            AbilityKey::IsCombatDamage => "IsCombatDamage",
-            AbilityKey::IsDamage => "IsDamage",
-            AbilityKey::IndividualCostPaymentInstance => "IndividualCostPaymentInstance",
-            AbilityKey::LastStateBattlefield => "LastStateBattlefield",
-            AbilityKey::LastStateGraveyard => "LastStateGraveyard",
-            AbilityKey::LifeAmount => "LifeAmount",
-            AbilityKey::LifeGained => "LifeGained",
-            AbilityKey::LoseReason => "LoseReason",
-            AbilityKey::Map => "Map",
-            AbilityKey::Mana => "Mana",
-            AbilityKey::MergedCards => "MergedCards",
-            AbilityKey::Mode => "Mode",
-            AbilityKey::MonstrosityAmount => "MonstrosityAmount",
-            AbilityKey::NaturalResult => "NaturalResult",
-            AbilityKey::NewCard => "NewCard",
-            AbilityKey::NewCounterAmount => "NewCounterAmount",
-            AbilityKey::NoPreventDamage => "NoPreventDamage",
-            AbilityKey::Num => "Num",
-            AbilityKey::Number => "Number",
-            AbilityKey::Object => "Object",
-            AbilityKey::Objects => "Objects",
-            AbilityKey::OpponentVotedDiff => "OpponentVotedDiff",
-            AbilityKey::OpponentVotedSame => "OpponentVotedSame",
-            AbilityKey::OtherAttackers => "OtherAttackers",
-            AbilityKey::Origin => "Origin",
-            AbilityKey::OriginalController => "OriginalController",
-            AbilityKey::OriginalDefender => "OriginalDefender",
-            AbilityKey::OriginalParams => "OriginalParams",
-            AbilityKey::PayingMana => "PayingMana",
-            AbilityKey::Phase => "Phase",
-            AbilityKey::Player => "Player",
-            AbilityKey::PreventedAmount => "PreventedAmount",
-            AbilityKey::Produced => "Produced",
-            AbilityKey::Regeneration => "Regeneration",
-            AbilityKey::ReplacementEffect => "ReplacementEffect",
-            AbilityKey::ReplacementResult => "ReplacementResult",
-            AbilityKey::ReplacementResultMap => "ReplacementResultMap",
-            AbilityKey::Result => "Result",
-            AbilityKey::RolledToVisitAttractions => "RolledToVisitAttractions",
-            AbilityKey::RoomName => "RoomName",
-            AbilityKey::Scheme => "Scheme",
-            AbilityKey::ScryBottom => "ScryBottom",
-            AbilityKey::ScryNum => "ScryNum",
-            AbilityKey::Sides => "Sides",
-            AbilityKey::Source => "Source",
-            AbilityKey::Sources => "Sources",
-            AbilityKey::SourceSA => "SourceSA",
-            AbilityKey::SpellAbility => "SpellAbility",
-            AbilityKey::SpellAbilityTargets => "SpellAbilityTargets",
-            AbilityKey::StackSa => "StackSa",
-            AbilityKey::SurveilNum => "SurveilNum",
-            AbilityKey::Target => "Target",
-            AbilityKey::Targets => "Targets",
-            AbilityKey::Token => "Token",
-            AbilityKey::TokenNum => "TokenNum",
-            AbilityKey::Valiant => "Valiant",
-            AbilityKey::Won => "Won",
-            AbilityKey::InternalTriggerTable => "InternalTriggerTable",
-            AbilityKey::SimultaneousETB => "SimultaneousETB",
-        }
-    }
-
-    /// Parse from a string, case-insensitive. Returns `None` if not found.
-    pub fn from_str(s: &str) -> Option<AbilityKey> {
-        // Linear scan matching Java's `fromString` — acceptable for enum size.
-        ALL_ABILITY_KEYS
-            .iter()
-            .find(|k| k.as_str().eq_ignore_ascii_case(s))
-            .copied()
-    }
-}
-
-impl std::fmt::Display for AbilityKey {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(self.as_str())
-    }
 }
 
 /// All variants for iteration.
@@ -386,7 +247,9 @@ const ALL_ABILITY_KEYS: &[AbilityKey] = &[
     AbilityKey::Player,
     AbilityKey::PreventedAmount,
     AbilityKey::Produced,
+    AbilityKey::ReplacedCard,
     AbilityKey::Regeneration,
+    AbilityKey::RememberedLKI,
     AbilityKey::ReplacementEffect,
     AbilityKey::ReplacementResult,
     AbilityKey::ReplacementResultMap,
@@ -405,9 +268,14 @@ const ALL_ABILITY_KEYS: &[AbilityKey] = &[
     AbilityKey::StackSa,
     AbilityKey::SurveilNum,
     AbilityKey::Target,
+    AbilityKey::TargetCard,
+    AbilityKey::TargetPlayer,
     AbilityKey::Targets,
     AbilityKey::Token,
     AbilityKey::TokenNum,
+    AbilityKey::TriggeredCardPower,
+    AbilityKey::TriggeredCardToughness,
+    AbilityKey::TriggeredPlayer,
     AbilityKey::Valiant,
     AbilityKey::Won,
     AbilityKey::InternalTriggerTable,
@@ -418,40 +286,19 @@ pub fn all_ability_keys() -> &'static [AbilityKey] {
     ALL_ABILITY_KEYS
 }
 
-/// Parse an AbilityKey from a string.
-/// Mirrors Java's `AbilityKey.fromString(String)`.
-///
-/// This is an alias for `AbilityKey::from_str` but provided as a free function
-/// for structural parity with the Java codebase.
 pub fn from_string(s: &str) -> Option<AbilityKey> {
-    AbilityKey::from_str(s)
+    AbilityKey::from_str(s).ok()
 }
 
-/// Add card-zone-table params to a run-params map.
-/// Mirrors Java's `AbilityKey.addCardZoneTableParams(Map, SpellAbility)`.
-///
-/// For effects that use `ChangeZoneTable$`, this populates the trigger's
-/// run-params with the zone-change table reference. The actual triggering
-/// is handled by `CardZoneTable::trigger_changes_zone_all`.
-///
-/// This function stores a serialized representation of the table for
-/// use in trigger parameter resolution.
 pub fn add_card_zone_table_params(
     trigger_params: &mut std::collections::HashMap<String, String>,
     change_zone_table: &crate::card::card_zone_table::CardZoneTable,
 ) {
-    // Store a marker indicating a CardZoneTable is present.
-    // The actual data is accessed via the CardZoneTable's own methods
-    // during trigger resolution (trigger_changes_zone_all).
-    //
-    // In Java, this maps AbilityKey.InternalTriggerTable -> the table object.
-    // In Rust, the table is passed directly to the trigger handler.
     trigger_params.insert(
-        AbilityKey::InternalTriggerTable.as_str().to_string(),
+        AbilityKey::InternalTriggerTable.to_string(),
         "Present".to_string(),
     );
 
-    // Store the debug representation for logging
     trigger_params.insert(
         "ChangeZoneTable".to_string(),
         format!("{:?}", change_zone_table),

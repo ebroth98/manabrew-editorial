@@ -644,33 +644,25 @@ fn resolve_attack_defenders(
 
     if attacking_param.eq_ignore_ascii_case("TriggeredDefender") {
         let mut defenders = Vec::new();
-        if let Some(value) = sa.trigger_objects.get("Defender") {
-            if let Ok(pid) = value.trim().parse::<u32>() {
-                defenders.push(DefenderId::Player(PlayerId(pid)));
+        if let Some(pid) = sa.get_triggering_player(crate::ability::AbilityKey::Defender) {
+            defenders.push(DefenderId::Player(pid));
+        }
+        if defenders.is_empty() {
+            if let Some(pid) = sa.get_triggering_player(crate::ability::AbilityKey::DefendingPlayer)
+            {
+                defenders.push(DefenderId::Player(pid));
             }
         }
         if defenders.is_empty() {
-            if let Some(value) = sa.trigger_objects.get("DefendingPlayer") {
-                if let Ok(pid) = value.trim().parse::<u32>() {
-                    defenders.push(DefenderId::Player(PlayerId(pid)));
-                }
-            }
-        }
-        if defenders.is_empty() {
-            if let Some(value) = sa.trigger_objects.get("AttackedTarget") {
-                if let Ok(pid) = value.trim().parse::<u32>() {
-                    defenders.push(DefenderId::Player(PlayerId(pid)));
-                }
+            if let Some(pid) = sa.get_triggering_player(crate::ability::AbilityKey::AttackedTarget)
+            {
+                defenders.push(DefenderId::Player(pid));
             }
         }
         if defenders.is_empty() {
             defenders.extend(
-                sa.trigger_objects
-                    .get("Attacked")
+                sa.get_triggering_cards(crate::ability::AbilityKey::Attacked)
                     .into_iter()
-                    .flat_map(|value| value.split(','))
-                    .filter_map(|part| part.trim().parse::<u32>().ok())
-                    .map(CardId)
                     .map(DefenderId::Permanent),
             );
         }
@@ -692,7 +684,7 @@ fn resolve_attack_defenders(
     if defenders.is_empty() {
         defenders.extend(
             sa.trigger_objects
-                .get("Attacked")
+                .get(&crate::ability::AbilityKey::Attacked)
                 .into_iter()
                 .flat_map(|value| value.split(','))
                 .filter_map(|part| part.trim().parse::<u32>().ok())

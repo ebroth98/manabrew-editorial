@@ -5,7 +5,7 @@ use crate::game::GameState;
 use crate::parsing::{keys, Params};
 use crate::spellability::SpellAbility;
 
-use super::trigger::{check_card_filter, check_player_filter, Trigger, TriggerBehavior};
+use super::trigger::{Trigger, TriggerBehavior};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TriggerSpellAbilityCastOrCopy {
@@ -45,25 +45,12 @@ impl TriggerBehavior for TriggerSpellAbilityCastOrCopy {
         self.trigger_type.clone()
     }
 
-    fn perform_test(
-        &self,
-        trigger: &Trigger,
-        params: &RunParams,
-        game: &GameState,
-    ) -> bool {
-        let host_card = trigger.base.card_trait_base.get_host_card().id;
-        let host_controller = trigger.base.card_trait_base.get_host_card().controller;
-        check_card_filter(
-            &self.valid_card,
-            params.spell_card,
-            host_card,
-            host_controller,
-            game,
-        ) && check_player_filter(
-            &self.valid_activating_player,
-            params.spell_controller,
-            host_controller,
-        )
+    fn perform_test(&self, trigger: &Trigger, params: &RunParams, game: &GameState) -> bool {
+        trigger.matches_optional_valid_card_filter(&self.valid_card, params.spell_card, game)
+            && trigger.matches_optional_valid_player_filter(
+                &self.valid_activating_player,
+                params.spell_controller,
+            )
     }
 
     fn set_triggering_objects(
@@ -75,18 +62,18 @@ impl TriggerBehavior for TriggerSpellAbilityCastOrCopy {
     ) {
         // Java: sa.setTriggeringObject(AbilityKey.Card, cause.getHostCard())
         if let Some(card) = params.spell_card {
-            sa.set_triggering_object("Card", &card.0.to_string());
+            sa.set_triggering_object(crate::ability::AbilityKey::Card, &card.0.to_string());
         }
         // TODO: port SpellAbility triggering object (AbilityKey.SpellAbility = cause)
         // TODO: port SpellAbilityTargets triggering object (from cause.getAllTargetChoices)
         if let Some(amount) = params.life_amount {
-            sa.set_triggering_object("LifeAmount", &amount.to_string());
+            sa.set_triggering_object(crate::ability::AbilityKey::LifeAmount, &amount.to_string());
         }
         if let Some(lki) = params.card_lki {
-            sa.set_triggering_object("CardLKI", &lki.0.to_string());
+            sa.set_triggering_object(crate::ability::AbilityKey::CardLKI, &lki.0.to_string());
         }
         if let Some(p) = params.activator {
-            sa.set_triggering_object("Activator", &p.0.to_string());
+            sa.set_triggering_object(crate::ability::AbilityKey::Activator, &p.0.to_string());
         }
         // TODO: port CurrentStormCount triggering object - not yet in RunParams
         // TODO: port CurrentCastSpells triggering object - not yet in RunParams
@@ -98,11 +85,11 @@ impl TriggerBehavior for TriggerSpellAbilityCastOrCopy {
         format!(
             "Card: {}, Activator: {}, SpellAbility: ",
             sa.trigger_objects
-                .get("Card")
+                .get(&crate::ability::AbilityKey::Card)
                 .map(|s| s.as_str())
                 .unwrap_or(""),
             sa.trigger_objects
-                .get("Activator")
+                .get(&crate::ability::AbilityKey::Activator)
                 .map(|s| s.as_str())
                 .unwrap_or("")
         )

@@ -3,33 +3,37 @@ use serde::{Deserialize, Serialize};
 use crate::{
     event::{RunParams, TriggerType},
     game::GameState,
-    ids::{CardId, PlayerId},
+    parsing::compare::compare_expr,
     parsing::{keys, Params},
     spellability::SpellAbility,
 };
 
-use super::trigger::{check_player_filter, matches_amount, matches_valid_card, TriggerBehavior};
+use super::trigger::TriggerBehavior;
 
 fn attacked_target_matches(
+    trigger: &super::trigger::Trigger,
     filter: &str,
     params: &RunParams,
-    host_card: CardId,
-    host_controller: PlayerId,
     game: &GameState,
 ) -> bool {
-    params.attacked_card.is_some_and(|card_id| {
-        super::trigger::matches_valid_card(filter, card_id, host_card, host_controller, game)
-    }) || params.attacked_player.is_some_and(|player_id| {
-        super::trigger::matches_valid_player(filter, player_id, host_controller)
-    }) || params.defenders_card_ids.as_ref().is_some_and(|cards| {
-        cards.iter().copied().any(|card_id| {
-            super::trigger::matches_valid_card(filter, card_id, host_card, host_controller, game)
+    params
+        .attacked_card
+        .is_some_and(|card_id| trigger.matches_valid_card_filter(filter, card_id, game))
+        || params
+            .attacked_player
+            .is_some_and(|player_id| trigger.matches_valid_player_filter(filter, player_id, game))
+        || params.defenders_card_ids.as_ref().is_some_and(|cards| {
+            cards
+                .iter()
+                .copied()
+                .any(|card_id| trigger.matches_valid_card_filter(filter, card_id, game))
         })
-    }) || params.defenders_player_ids.as_ref().is_some_and(|players| {
-        players.iter().copied().any(|player_id| {
-            super::trigger::matches_valid_player(filter, player_id, host_controller)
+        || params.defenders_player_ids.as_ref().is_some_and(|players| {
+            players
+                .iter()
+                .copied()
+                .any(|player_id| trigger.matches_valid_player_filter(filter, player_id, game))
         })
-    })
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -72,17 +76,14 @@ impl TriggerBehavior for TriggerAttackersDeclared {
         params: &RunParams,
         game: &GameState,
     ) -> bool {
-        let host_card = trigger.base.card_trait_base.get_host_card().id;
-        let host_controller = trigger.base.card_trait_base.get_host_card().controller;
-        if !check_player_filter(
+        if !trigger.matches_optional_valid_player_filter(
             &self.valid_player,
             params.attacking_player.or(params.player),
-            host_controller,
         ) {
             return false;
         }
         if let Some(filter) = &self.attacked_target {
-            if !attacked_target_matches(filter, params, host_card, host_controller, game) {
+            if !attacked_target_matches(trigger, filter, params, game) {
                 return false;
             }
         }
@@ -98,15 +99,13 @@ impl TriggerBehavior for TriggerAttackersDeclared {
         let matching_count = if let Some(filter) = &self.valid_attackers {
             attacker_ids
                 .iter()
-                .filter(|&&attacker| {
-                    matches_valid_card(filter, attacker, host_card, host_controller, game)
-                })
+                .filter(|&&attacker| trigger.matches_valid_card_filter(filter, attacker, game))
                 .count()
         } else {
             attacker_ids.len()
         };
         if let Some(amount_filter) = &self.valid_attackers_amount {
-            return matches_amount(amount_filter, matching_count);
+            return compare_expr(matching_count as i32, amount_filter);
         }
         matching_count > 0
     }
@@ -125,7 +124,7 @@ impl TriggerBehavior for TriggerAttackersDeclared {
                 .map(|c| c.0.to_string())
                 .collect::<Vec<_>>()
                 .join(",");
-            sa.set_triggering_object("Attackers", &csv);
+            sa.set_triggering_object(crate::ability::AbilityKey::Attackers, &csv);
         }
         // Java: sa.setTriggeringObject(AbilityKey.AttackedTarget, attackedTarget);
         // Combine defender players and defender cards into a single CSV
@@ -151,19 +150,30 @@ impl TriggerBehavior for TriggerAttackersDeclared {
                 }
             }
             if !parts.is_empty() {
-                sa.set_triggering_object("AttackedTarget", &parts.join(","));
+                sa.set_triggering_object(
+                    crate::ability::AbilityKey::AttackedTarget,
+                    &parts.join(","),
+                );
             }
         }
         // Java: sa.setTriggeringObjectsFrom(runParams, AbilityKey.AttackingPlayer);
         if let Some(p) = params.attacking_player {
-            sa.set_triggering_object("AttackingPlayer", &p.0.to_string());
+            sa.set_triggering_object(
+                crate::ability::AbilityKey::AttackingPlayer,
+                &p.0.to_string(),
+            );
         }
     }
 
-    fn get_important_stack_objects(&self, _trigger: &super::trigger::Trigger, sa: &SpellAbility) -> String {
+    fn get_important_stack_objects(
+        &self,
+        _trigger: &super::trigger::Trigger,
+        sa: &SpellAbility,
+    ) -> String {
         format!(
             "Number Attackers: {}",
-            sa.get_triggering_object("Attackers").unwrap_or("")
+            sa.get_triggering_object(crate::ability::AbilityKey::Attackers)
+                .unwrap_or("")
         )
     }
 }

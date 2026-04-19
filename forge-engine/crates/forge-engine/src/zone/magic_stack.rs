@@ -53,13 +53,21 @@ impl StackEntry {
 
     /// Set a triggering object on this stack entry's spell ability.
     /// Mirrors Java's `SpellAbilityStackInstance.setTriggeringObject(String, Object)`.
-    pub fn set_triggering_object(&mut self, key: &str, value: &str) {
+    pub fn set_triggering_object<K: crate::spellability::TriggerKeyInput>(
+        &mut self,
+        key: K,
+        value: &str,
+    ) {
         self.spell_ability.set_triggering_object(key, value);
     }
 
     /// Update a triggering object in this stack entry's spell ability.
     /// Mirrors Java's `SpellAbilityStackInstance.updateTriggeringObject(String, Object)`.
-    pub fn update_triggering_object(&mut self, key: &str, value: &str) {
+    pub fn update_triggering_object<K: crate::spellability::TriggerKeyInput>(
+        &mut self,
+        key: K,
+        value: &str,
+    ) {
         self.spell_ability.update_triggering_object(key, value);
     }
 }

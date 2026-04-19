@@ -40,7 +40,11 @@ impl TriggerBehavior for TriggerDayTimeChanges {
     ) {
     }
 
-    fn get_important_stack_objects(&self, _trigger: &super::trigger::Trigger, _sa: &SpellAbility) -> String {
+    fn get_important_stack_objects(
+        &self,
+        _trigger: &super::trigger::Trigger,
+        _sa: &SpellAbility,
+    ) -> String {
         String::new()
     }
 }

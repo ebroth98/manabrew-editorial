@@ -5,7 +5,7 @@ use crate::game::GameState;
 use crate::parsing::{keys, Params};
 use crate::spellability::SpellAbility;
 
-use super::trigger::{check_card_filter, TriggerBehavior};
+use super::trigger::TriggerBehavior;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TriggerPhaseOutAll {
@@ -41,9 +41,9 @@ impl TriggerBehavior for TriggerPhaseOutAll {
             return self.valid_cards.is_none();
         };
 
-        cards
-            .iter()
-            .any(|&cid| check_card_filter(&self.valid_cards, Some(cid), host_card, host_controller, game))
+        cards.iter().any(|&cid| {
+            trigger.matches_optional_valid_card_filter(&self.valid_cards, Some(cid), game)
+        })
     }
 
     fn set_triggering_objects(
@@ -60,15 +60,19 @@ impl TriggerBehavior for TriggerPhaseOutAll {
                 .map(|c| c.0.to_string())
                 .collect::<Vec<_>>()
                 .join(",");
-            sa.set_triggering_object("Cards", &csv);
+            sa.set_triggering_object(crate::ability::AbilityKey::Cards, &csv);
         }
     }
 
-    fn get_important_stack_objects(&self, _trigger: &super::trigger::Trigger, sa: &SpellAbility) -> String {
+    fn get_important_stack_objects(
+        &self,
+        _trigger: &super::trigger::Trigger,
+        sa: &SpellAbility,
+    ) -> String {
         format!(
             "PhasedOut: {}",
             sa.trigger_objects
-                .get("Cards")
+                .get(&crate::ability::AbilityKey::Cards)
                 .map(|s| s.as_str())
                 .unwrap_or("")
         )

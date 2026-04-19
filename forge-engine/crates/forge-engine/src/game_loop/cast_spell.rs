@@ -211,7 +211,11 @@ impl GameLoop {
                         .unwrap_or_else(|| "<effect>".to_string())
                 })
                 .collect();
-            eprintln!("[stack-trace] STACK after push depth={} {:?}", game.stack.len(), names);
+            eprintln!(
+                "[stack-trace] STACK after push depth={} {:?}",
+                game.stack.len(),
+                names
+            );
         }
         if let Some(top) = game.stack.iter_mut().last() {
             top.spell_ability.apply_paying_mana_effects();
@@ -1381,13 +1385,12 @@ impl GameLoop {
             let params = crate::parsing::Params::from_raw("ValidCard$ Card.Self");
             game.card_mut(card_id)
                 .replacement_effects
-                .push(ReplacementEffect {
-                    event: ReplacementType::Counter,
-                    layer: ReplacementLayer::CantHappen,
+                .push(ReplacementEffect::new(
+                    ReplacementType::Counter,
+                    ReplacementLayer::CantHappen,
                     params,
-                    active_zones: vec![], // active everywhere (including stack)
-                    suppressed: false,
-                });
+                    vec![], // active everywhere (including stack)
+                ));
         }
 
         game.card_mut(card_id)

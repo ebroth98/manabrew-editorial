@@ -4,7 +4,7 @@ use crate::event::{RunParams, TriggerType};
 use crate::game::GameState;
 use crate::spellability::SpellAbility;
 
-use super::trigger::{check_player_filter, TriggerBehavior};
+use super::trigger::TriggerBehavior;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TriggerClashed {
@@ -31,7 +31,7 @@ impl TriggerBehavior for TriggerClashed {
         _game: &GameState,
     ) -> bool {
         let host_controller = trigger.base.card_trait_base.get_host_card().controller;
-        if !check_player_filter(&self.valid_player, params.player, host_controller) {
+        if !trigger.matches_optional_valid_player_filter(&self.valid_player, params.player) {
             return false;
         }
         if let Some(expected) = self.won {
@@ -50,7 +50,11 @@ impl TriggerBehavior for TriggerClashed {
         // Clash has no triggered variables
     }
 
-    fn get_important_stack_objects(&self, _trigger: &super::trigger::Trigger, _sa: &SpellAbility) -> String {
+    fn get_important_stack_objects(
+        &self,
+        _trigger: &super::trigger::Trigger,
+        _sa: &SpellAbility,
+    ) -> String {
         String::new()
     }
 }

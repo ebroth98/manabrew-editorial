@@ -7,7 +7,7 @@ use crate::{
     spellability::SpellAbility,
 };
 
-use super::trigger::{check_card_filter, TriggerBehavior};
+use super::trigger::TriggerBehavior;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TriggerAttacks {
@@ -36,18 +36,10 @@ impl TriggerBehavior for TriggerAttacks {
         params: &RunParams,
         game: &GameState,
     ) -> bool {
-        let host_card = trigger.base.card_trait_base.get_host_card().id;
-        let host_controller = trigger.base.card_trait_base.get_host_card().controller;
         if self.alone && params.num_attackers.unwrap_or(0) != 1 {
             return false;
         }
-        check_card_filter(
-            &self.valid_card,
-            params.attacker,
-            host_card,
-            host_controller,
-            game,
-        )
+        trigger.matches_optional_valid_card_filter(&self.valid_card, params.attacker, game)
     }
 
     fn set_triggering_objects(
@@ -59,13 +51,16 @@ impl TriggerBehavior for TriggerAttacks {
     ) {
         // Java: sa.setTriggeringObject(AbilityKey.Defender, runParams.get(AbilityKey.Attacked));
         if let Some(p) = params.attacked_player {
-            sa.set_triggering_object("Defender", &p.0.to_string());
+            sa.set_triggering_object(crate::ability::AbilityKey::Defender, &p.0.to_string());
         } else if let Some(c) = params.attacked_card {
-            sa.set_triggering_object("Defender", &c.0.to_string());
+            sa.set_triggering_object(crate::ability::AbilityKey::Defender, &c.0.to_string());
         }
         // Java: sa.setTriggeringObjectsFrom(runParams, AbilityKey.Attacker, AbilityKey.Defenders, AbilityKey.DefendingPlayer);
         if let Some(attacker) = params.attacker {
-            sa.set_triggering_object("Attacker", &attacker.0.to_string());
+            sa.set_triggering_object(
+                crate::ability::AbilityKey::Attacker,
+                &attacker.0.to_string(),
+            );
         }
         // Defenders combines both player and card defender IDs
         {
@@ -81,18 +76,26 @@ impl TriggerBehavior for TriggerAttacks {
                 }
             }
             if !parts.is_empty() {
-                sa.set_triggering_object("Defenders", &parts.join(","));
+                sa.set_triggering_object(crate::ability::AbilityKey::Defenders, &parts.join(","));
             }
         }
         if let Some(p) = params.defending_player {
-            sa.set_triggering_object("DefendingPlayer", &p.0.to_string());
+            sa.set_triggering_object(
+                crate::ability::AbilityKey::DefendingPlayer,
+                &p.0.to_string(),
+            );
         }
     }
 
-    fn get_important_stack_objects(&self, _trigger: &super::trigger::Trigger, sa: &SpellAbility) -> String {
+    fn get_important_stack_objects(
+        &self,
+        _trigger: &super::trigger::Trigger,
+        sa: &SpellAbility,
+    ) -> String {
         format!(
             "Attacker: {}",
-            sa.get_triggering_object("Attacker").unwrap_or("")
+            sa.get_triggering_object(crate::ability::AbilityKey::Attacker)
+                .unwrap_or("")
         )
     }
 }

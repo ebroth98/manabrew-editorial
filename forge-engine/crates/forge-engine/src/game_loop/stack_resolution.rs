@@ -158,7 +158,7 @@ impl GameLoop {
                 if let Some(triggered_card_id) = entry
                     .spell_ability
                     .trigger_objects
-                    .get("Card")
+                    .get(&crate::ability::AbilityKey::Card)
                     .and_then(|s| s.parse::<u32>().ok())
                     .map(crate::ids::CardId)
                 {
@@ -334,25 +334,26 @@ impl GameLoop {
                 // This mirrors Forge Java semantics where Evoke uses a ChangesZone trigger
                 // and allows normal ETB abilities to trigger before the sacrifice resolves.
                 if alt_cost == Some(crate::spellability::AlternativeCost::Evoke) {
-                    self.trigger_handler.register_delayed_trigger(
-                        crate::trigger::handler::DelayedTrigger {
-                            mode: TriggerType::ChangesZone,
-                            trigger_mode: Box::new(crate::trigger::trigger_changes_zone::TriggerChangesZone)
-                                as Box<dyn crate::trigger::TriggerBehavior>,
-                            params: crate::parsing::Params::from_raw(
-                                "Mode$ ChangesZone | Destination$ Battlefield | ValidCard$ Card.Self"
-                            ),
-                            execute_svar: "DB$ Sacrifice".to_string(),
-                            controller: player,
-                            source_card: card_id,
-                            created_turn: game.turn.turn_number,
-                            created_phase: game.turn.phase,
-                            target_card: Some(card_id),
-                            remembered_amount: 0,
-                            remembered_cards: Vec::new(),
-                            remembered_lki_cards: Vec::new(),
-                        },
-                    );
+                    self.trigger_handler
+                        .register_delayed_trigger(crate::trigger::handler::DelayedTrigger {
+                        mode: TriggerType::ChangesZone,
+                        trigger_mode: Box::new(
+                            crate::trigger::trigger_changes_zone::TriggerChangesZone,
+                        )
+                            as Box<dyn crate::trigger::TriggerBehavior>,
+                        params: crate::parsing::Params::from_raw(
+                            "Mode$ ChangesZone | Destination$ Battlefield | ValidCard$ Card.Self",
+                        ),
+                        execute_svar: "DB$ Sacrifice".to_string(),
+                        controller: player,
+                        source_card: card_id,
+                        created_turn: game.turn.turn_number,
+                        created_phase: game.turn.phase,
+                        target_card: Some(card_id),
+                        remembered_amount: 0,
+                        remembered_cards: Vec::new(),
+                        remembered_lki_cards: Vec::new(),
+                    });
                 }
 
                 // Register triggers for the new permanent
@@ -498,7 +499,8 @@ impl GameLoop {
                             trigger_mode: Box::new(crate::trigger::trigger_phase::TriggerPhase {
                                 phase: Some(forge_foundation::PhaseType::EndOfTurn),
                                 valid_player: None,
-                            }) as Box<dyn crate::trigger::TriggerBehavior>,
+                            })
+                                as Box<dyn crate::trigger::TriggerBehavior>,
                             params: crate::parsing::Params::default(),
                             execute_svar: format!("DB$ Sacrifice | Defined$ CardUID_{}", card_id.0),
                             controller: player,
@@ -550,10 +552,13 @@ impl GameLoop {
                         self.trigger_handler.register_delayed_trigger(
                             crate::trigger::handler::DelayedTrigger {
                                 mode: TriggerType::Phase,
-                                trigger_mode: Box::new(crate::trigger::trigger_phase::TriggerPhase {
-                                    phase: Some(forge_foundation::PhaseType::Upkeep),
-                                    valid_player: Some("You".to_string()),
-                                }) as Box<dyn crate::trigger::TriggerBehavior>,
+                                trigger_mode: Box::new(
+                                    crate::trigger::trigger_phase::TriggerPhase {
+                                        phase: Some(forge_foundation::PhaseType::Upkeep),
+                                        valid_player: Some("You".to_string()),
+                                    },
+                                )
+                                    as Box<dyn crate::trigger::TriggerBehavior>,
                                 params: crate::parsing::Params::default(),
                                 execute_svar: format!(
                                     "DB$ Play | Defined$ CardUID_{} | WithoutManaCost$ True",

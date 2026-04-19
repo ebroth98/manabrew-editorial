@@ -173,8 +173,14 @@ fn lim_duls_vault_can_repeat_five_times_for_five_life() {
         .filter(|event| matches!(event, CallbackEvent::Reveal(_)))
         .count();
 
-    assert_eq!(pay_events, 6, "Expected one pay prompt per look, including the final decline");
-    assert_eq!(reveal_events, 6, "Expected one reveal callback per look across five repeats");
+    assert_eq!(
+        pay_events, 6,
+        "Expected one pay prompt per look, including the final decline"
+    );
+    assert_eq!(
+        reveal_events, 6,
+        "Expected one reveal callback per look across five repeats"
+    );
     assert!(
         matches!(events.last(), Some(CallbackEvent::Reorder(ids)) if ids.len() == 5),
         "Final callback should still be a five-card reorder after repeated life payments: {:?}",

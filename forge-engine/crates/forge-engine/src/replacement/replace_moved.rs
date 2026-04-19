@@ -66,7 +66,7 @@ pub fn can_replace(
     }
     let moving_card = &game.cards[moving_id.index()];
     if let Some(valid) = effect.params.get(keys::VALID_CARD) {
-        if !matches_valid_card(valid, moving_card, source_card) {
+        if !matches_valid_card(effect, valid, moving_card, source_card) {
             return false;
         }
     }
@@ -77,7 +77,7 @@ pub fn can_replace(
         }
     }
     if let Some(valid_lki) = effect.params.get("ValidLKI") {
-        if !matches_valid_card(valid_lki, moving_card, source_card) {
+        if !matches_valid_card(effect, valid_lki, moving_card, source_card) {
             return false;
         }
     }
@@ -285,8 +285,8 @@ fn set_replacing_objects_for_moved(
     let card_csv = card.0.to_string();
     let mut current = Some(sa);
     while let Some(node) = current {
-        node.set_triggering_object("Card", &card_csv);
-        node.set_triggering_object("ReplacedCard", &card_csv);
+        node.set_triggering_object(crate::ability::AbilityKey::Card, &card_csv);
+        node.set_triggering_object(crate::ability::AbilityKey::ReplacedCard, &card_csv);
         current = node.get_sub_ability_mut();
     }
 }

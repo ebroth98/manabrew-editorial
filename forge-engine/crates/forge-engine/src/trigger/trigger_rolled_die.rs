@@ -2,10 +2,11 @@ use serde::{Deserialize, Serialize};
 
 use crate::event::{RunParams, TriggerType};
 use crate::game::GameState;
+use crate::parsing::compare::compare_expr;
 use crate::parsing::{keys, Params};
 use crate::spellability::SpellAbility;
 
-use super::trigger::{check_player_filter, matches_amount, TriggerBehavior};
+use super::trigger::TriggerBehavior;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TriggerRolledDie {
@@ -43,7 +44,7 @@ impl TriggerBehavior for TriggerRolledDie {
         _game: &GameState,
     ) -> bool {
         let host_controller = trigger.base.card_trait_base.get_host_card().controller;
-        if !check_player_filter(&self.valid_player, params.player, host_controller) {
+        if !trigger.matches_optional_valid_player_filter(&self.valid_player, params.player) {
             return false;
         }
         if self.rolled_to_visit_attractions && params.rolled_to_visit_attractions != Some(true) {
@@ -66,7 +67,7 @@ impl TriggerBehavior for TriggerRolledDie {
             let Some(sides) = params.die_sides else {
                 return false;
             };
-            if !matches_amount(filter, sides as usize) {
+            if !compare_expr(sides, filter) {
                 return false;
             }
         }
@@ -86,22 +87,26 @@ impl TriggerBehavior for TriggerRolledDie {
         _game: &GameState,
     ) {
         if let Some(result) = params.die_result {
-            sa.set_triggering_object("Result", &result.to_string());
+            sa.set_triggering_object(crate::ability::AbilityKey::Result, &result.to_string());
         }
         if let Some(p) = params.player {
-            sa.set_triggering_object("Player", &p.0.to_string());
+            sa.set_triggering_object(crate::ability::AbilityKey::Player, &p.0.to_string());
         }
     }
 
-    fn get_important_stack_objects(&self, _trigger: &super::trigger::Trigger, sa: &SpellAbility) -> String {
+    fn get_important_stack_objects(
+        &self,
+        _trigger: &super::trigger::Trigger,
+        sa: &SpellAbility,
+    ) -> String {
         format!(
             "Player: {}, Result: {}",
             sa.trigger_objects
-                .get("Player")
+                .get(&crate::ability::AbilityKey::Player)
                 .map(|s| s.as_str())
                 .unwrap_or(""),
             sa.trigger_objects
-                .get("Result")
+                .get(&crate::ability::AbilityKey::Result)
                 .map(|s| s.as_str())
                 .unwrap_or("")
         )
@@ -126,7 +131,7 @@ fn matches_die_filter(filter: &str, result: i32, sides: Option<i32>) -> bool {
             }
             continue;
         }
-        if entry.len() >= 3 && matches_amount(entry, result.max(0) as usize) {
+        if entry.len() >= 3 && compare_expr(result.max(0), entry) {
             return true;
         }
     }

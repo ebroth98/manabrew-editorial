@@ -689,8 +689,7 @@ impl GameLoop {
             },
             false,
         );
-        let _ = crate::trigger::trigger_runtime::process_pending_triggers(
-            &mut self.trigger_handler,
+        let _ = self.trigger_handler.process_pending_triggers(
             &self.mana_pools,
             game,
             agents,
@@ -707,8 +706,7 @@ impl GameLoop {
             },
             false,
         );
-        let _ = crate::trigger::trigger_runtime::process_pending_triggers(
-            &mut self.trigger_handler,
+        let _ = self.trigger_handler.process_pending_triggers(
             &self.mana_pools,
             game,
             agents,

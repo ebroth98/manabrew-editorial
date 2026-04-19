@@ -73,17 +73,27 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                 if entry.spell_ability.source != Some(card_id) {
                     continue;
                 }
-                if !entry.spell_ability.trigger_objects.contains_key("Attacker") {
+                if !entry
+                    .spell_ability
+                    .trigger_objects
+                    .contains_key(&crate::ability::AbilityKey::Attacker)
+                {
                     continue;
                 }
 
                 if let Some(original) = original_defender {
                     match original {
                         crate::combat::DefenderId::Player(pid) => {
-                            entry.set_triggering_object("OriginalDefender", &pid.0.to_string());
+                            entry.set_triggering_object(
+                                crate::ability::AbilityKey::OriginalDefender,
+                                &pid.0.to_string(),
+                            );
                         }
                         crate::combat::DefenderId::Permanent(cid) => {
-                            entry.set_triggering_object("OriginalDefender", &cid.0.to_string());
+                            entry.set_triggering_object(
+                                crate::ability::AbilityKey::OriginalDefender,
+                                &cid.0.to_string(),
+                            );
                         }
                     }
                 }

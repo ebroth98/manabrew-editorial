@@ -4,10 +4,11 @@ use crate::ability::AbilityKey;
 use crate::event::{AbilityValue, RunParams, TriggerType};
 use crate::game::GameState;
 use crate::ids::CardId;
+use crate::parsing::compare::compare_expr;
 use crate::parsing::{keys, Params};
 use crate::spellability::SpellAbility;
 
-use super::trigger::{check_card_filter, matches_amount, matches_valid_card, TriggerBehavior};
+use super::trigger::TriggerBehavior;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TriggerChangesZoneAll {
@@ -25,14 +26,14 @@ impl TriggerChangesZoneAll {
             if s == "Any" {
                 None
             } else {
-                super::trigger::parse_zone(s)
+                forge_foundation::ZoneType::from_str_compat(s)
             }
         });
         let destination = params.get(keys::DESTINATION).and_then(|s| {
             if s == "Any" {
                 None
             } else {
-                super::trigger::parse_zone(s)
+                forge_foundation::ZoneType::from_str_compat(s)
             }
         });
         let valid_card = params
@@ -80,7 +81,7 @@ impl TriggerBehavior for TriggerChangesZoneAll {
             }) else {
                 return false;
             };
-            if !matches_valid_card(filter, cause_card, host_card, host_controller, game) {
+            if !trigger.matches_valid_card_filter(filter, cause_card, game) {
                 return false;
             }
         }
@@ -102,13 +103,14 @@ impl TriggerBehavior for TriggerChangesZoneAll {
             zone_changes
                 .iter()
                 .filter(|zc| self.origin.is_none_or(|expected| zc.origin == expected))
-                .filter(|zc| self.destination.is_none_or(|expected| zc.destination == expected))
+                .filter(|zc| {
+                    self.destination
+                        .is_none_or(|expected| zc.destination == expected)
+                })
                 .filter_map(|zc| {
-                    if check_card_filter(
+                    if trigger.matches_optional_valid_card_filter(
                         &self.valid_card,
                         Some(zc.card),
-                        host_card,
-                        host_controller,
                         game,
                     ) {
                         Some(zc.card)
@@ -154,11 +156,9 @@ impl TriggerBehavior for TriggerChangesZoneAll {
                         .filter(|(_, seen_card)| !matching.contains(seen_card))
                         .filter(|(seen_origin, seen_card)| {
                             self.origin.is_none_or(|expected| *seen_origin == expected)
-                                && check_card_filter(
+                                && trigger.matches_optional_valid_card_filter(
                                     &self.valid_card,
                                     Some(*seen_card),
-                                    host_card,
-                                    host_controller,
                                     game,
                                 )
                         })
@@ -171,7 +171,7 @@ impl TriggerBehavior for TriggerChangesZoneAll {
         }
 
         if let Some(amount_filter) = &self.valid_amount {
-            return matches_amount(amount_filter, matching.len());
+            return compare_expr(matching.len() as i32, amount_filter);
         }
 
         true
@@ -192,8 +192,8 @@ impl TriggerBehavior for TriggerChangesZoneAll {
                 .map(|c| c.0.to_string())
                 .collect::<Vec<_>>()
                 .join(",");
-            sa.set_triggering_object("Cards", &csv);
-            sa.set_triggering_object("Amount", &cards.len().to_string());
+            sa.set_triggering_object(crate::ability::AbilityKey::Cards, &csv);
+            sa.set_triggering_object(crate::ability::AbilityKey::Amount, &cards.len().to_string());
             // Also set trigger_remembered_amount so TriggerCount$Amount SVars
             // (e.g. Woodland Champion's CounterNum$ X where X = TriggerCount$Amount)
             // resolve to the correct count instead of defaulting to 1.
@@ -212,11 +212,15 @@ impl TriggerBehavior for TriggerChangesZoneAll {
         self.destination
     }
 
-    fn get_important_stack_objects(&self, _trigger: &super::trigger::Trigger, sa: &SpellAbility) -> String {
+    fn get_important_stack_objects(
+        &self,
+        _trigger: &super::trigger::Trigger,
+        sa: &SpellAbility,
+    ) -> String {
         format!(
             "Amount: {}",
             sa.trigger_objects
-                .get("Amount")
+                .get(&crate::ability::AbilityKey::Amount)
                 .cloned()
                 .unwrap_or_default()
         )

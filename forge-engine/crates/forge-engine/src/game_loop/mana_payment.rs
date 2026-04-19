@@ -175,8 +175,7 @@ where
                     // the land's native atoms and leaves the aura-added
                     // mana orphaned in the pool.
                     let player_idx = session.player.index();
-                    let pool_snapshot =
-                        mana_pools[player_idx].begin_tap_tracking();
+                    let pool_snapshot = mana_pools[player_idx].begin_tap_tracking();
                     resolve_mana_ability(
                         game,
                         agents,
@@ -186,8 +185,7 @@ where
                         &ab,
                         express_choice,
                     );
-                    let produced =
-                        mana_pools[player_idx].end_tap_tracking(&pool_snapshot);
+                    let produced = mana_pools[player_idx].end_tap_tracking(&pool_snapshot);
                     if !produced.is_empty() {
                         game.card_mut(land_id).last_mana_produced = Some(produced);
                     }
@@ -199,13 +197,11 @@ where
                         express_choice: None,
                     });
                     let player_idx = session.player.index();
-                    let pool_snapshot =
-                        mana_pools[player_idx].begin_tap_tracking();
+                    let pool_snapshot = mana_pools[player_idx].begin_tap_tracking();
                     game.tap(land_id);
                     mana_pools[player_idx].add(atom, 1);
                     on_basic_land_tap(game, session.player, land_id);
-                    let produced =
-                        mana_pools[player_idx].end_tap_tracking(&pool_snapshot);
+                    let produced = mana_pools[player_idx].end_tap_tracking(&pool_snapshot);
                     if !produced.is_empty() {
                         game.card_mut(land_id).last_mana_produced = Some(produced);
                     }

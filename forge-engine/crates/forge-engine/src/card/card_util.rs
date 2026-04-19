@@ -332,7 +332,7 @@ fn get_reflectable_mana_colors_inner(
         }
         "Produced" => {
             if let Some(produced_colors) =
-                ab_mana.trigger_objects.get("Produced").map(String::as_str)
+                ab_mana.get_triggering_object(crate::ability::AbilityKey::Produced)
             {
                 for color in Color::ALL {
                     if produced_colors.contains(color.short_name()) {

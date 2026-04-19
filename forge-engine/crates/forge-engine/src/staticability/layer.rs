@@ -527,13 +527,12 @@ pub fn apply_continuous_effects(game: &mut GameState) {
                         trig.execute = execute.clone();
                         card.add_trigger(trig);
                     }
-                    card.granted_svars
-                        .insert(
-                            execute,
-                            format!(
-                                "DB$ Counter | Defined$ TriggeredSourceSA | UnlessCost$ {cost_str}"
-                            ),
-                        );
+                    card.granted_svars.insert(
+                        execute,
+                        format!(
+                            "DB$ Counter | Defined$ TriggeredSourceSA | UnlessCost$ {cost_str}"
+                        ),
+                    );
                 }
             }
             EffectKind::AddType(t) => {

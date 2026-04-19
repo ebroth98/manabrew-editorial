@@ -5,7 +5,7 @@ use crate::game::GameState;
 use crate::parsing::{keys, Params};
 use crate::spellability::SpellAbility;
 
-use super::trigger::{check_card_filter, check_player_filter, TriggerBehavior};
+use super::trigger::TriggerBehavior;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TriggerCycled {
@@ -36,8 +36,8 @@ impl TriggerBehavior for TriggerCycled {
     ) -> bool {
         let host_card = trigger.base.card_trait_base.get_host_card().id;
         let host_controller = trigger.base.card_trait_base.get_host_card().controller;
-        check_card_filter(&self.valid_card, params.card, host_card, host_controller, game)
-            && check_player_filter(&self.valid_player, params.player, host_controller)
+        trigger.matches_optional_valid_card_filter(&self.valid_card, params.card, game)
+            && trigger.matches_optional_valid_player_filter(&self.valid_player, params.player)
     }
 
     fn set_triggering_objects(
@@ -49,16 +49,21 @@ impl TriggerBehavior for TriggerCycled {
     ) {
         // Java: sa.setTriggeringObjectsFrom(runParams, AbilityKey.Card, AbilityKey.Cause)
         if let Some(card) = params.card {
-            sa.set_triggering_object("Card", &card.0.to_string());
+            sa.set_triggering_object(crate::ability::AbilityKey::Card, &card.0.to_string());
         }
         // TODO: Java also sets Cause (SpellAbility) from runParams.
         // Skipping Cause for now since SpellAbility is complex and stored as object in Java.
     }
 
-    fn get_important_stack_objects(&self, _trigger: &super::trigger::Trigger, sa: &SpellAbility) -> String {
+    fn get_important_stack_objects(
+        &self,
+        _trigger: &super::trigger::Trigger,
+        sa: &SpellAbility,
+    ) -> String {
         format!(
             "Cycled: {}",
-            sa.trigger_objects.get("Card").cloned().unwrap_or_default()
+            sa.get_triggering_object(crate::ability::AbilityKey::Card)
+                .unwrap_or_default()
         )
     }
 }

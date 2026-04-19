@@ -397,7 +397,8 @@ pub(super) fn apply_post_move(
             ctx.trigger_handler
                 .register_delayed_trigger(crate::trigger::handler::DelayedTrigger {
                     mode: TriggerType::Phase,
-                    trigger_mode: Box::new(crate::trigger::trigger_always::TriggerAlways) as Box<dyn crate::trigger::TriggerBehavior>,
+                    trigger_mode: Box::new(crate::trigger::trigger_always::TriggerAlways)
+                        as Box<dyn crate::trigger::TriggerBehavior>,
                     params: crate::parsing::Params::default(),
                     execute_svar: "UneartheExileDelayedTrigger".to_string(),
                     controller,

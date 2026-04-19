@@ -7,7 +7,7 @@ use crate::{
     spellability::SpellAbility,
 };
 
-use super::trigger::{check_card_filter, TriggerBehavior};
+use super::trigger::TriggerBehavior;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TriggerBecomesTargetOnce {
@@ -36,7 +36,7 @@ impl TriggerBehavior for TriggerBecomesTargetOnce {
     ) -> bool {
         let host_card = trigger.base.card_trait_base.get_host_card().id;
         let host_controller = trigger.base.card_trait_base.get_host_card().controller;
-        check_card_filter(&self.valid_card, params.card, host_card, host_controller, game)
+        trigger.matches_optional_valid_card_filter(&self.valid_card, params.card, game)
     }
 
     fn set_triggering_objects(
@@ -51,24 +51,33 @@ impl TriggerBehavior for TriggerBecomesTargetOnce {
         // Java: sa.setTriggeringObject(AbilityKey.Source, ((SpellAbility) runParams.get(AbilityKey.SourceSA)).getHostCard());
         if let Some(ref source_sa) = params.source_sa {
             if let Some(source_card) = source_sa.source {
-                sa.set_triggering_object("Source", &source_card.0.to_string());
+                sa.set_triggering_object(
+                    crate::ability::AbilityKey::Source,
+                    &source_card.0.to_string(),
+                );
             }
         } else if let Some(source) = params.source_card {
-            sa.set_triggering_object("Source", &source.0.to_string());
+            sa.set_triggering_object(crate::ability::AbilityKey::Source, &source.0.to_string());
         }
         // Targets from the batch targeting event
         if let Some(card) = params.target_card.or(params.card) {
-            sa.set_triggering_object("Targets", &card.0.to_string());
+            sa.set_triggering_object(crate::ability::AbilityKey::Targets, &card.0.to_string());
         } else if let Some(p) = params.target_player {
-            sa.set_triggering_object("Targets", &p.0.to_string());
+            sa.set_triggering_object(crate::ability::AbilityKey::Targets, &p.0.to_string());
         }
     }
 
-    fn get_important_stack_objects(&self, _trigger: &super::trigger::Trigger, sa: &SpellAbility) -> String {
+    fn get_important_stack_objects(
+        &self,
+        _trigger: &super::trigger::Trigger,
+        sa: &SpellAbility,
+    ) -> String {
         format!(
             "Source: {}, Targets: {}",
-            sa.get_triggering_object("Source").unwrap_or(""),
-            sa.get_triggering_object("Targets").unwrap_or("")
+            sa.get_triggering_object(crate::ability::AbilityKey::Source)
+                .unwrap_or(""),
+            sa.get_triggering_object(crate::ability::AbilityKey::Targets)
+                .unwrap_or("")
         )
     }
 }

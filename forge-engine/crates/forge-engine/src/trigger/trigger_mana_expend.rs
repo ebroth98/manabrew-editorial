@@ -5,7 +5,7 @@ use crate::game::GameState;
 use crate::parsing::{keys, Params};
 use crate::spellability::SpellAbility;
 
-use super::trigger::{check_player_filter, Trigger, TriggerBehavior};
+use super::trigger::{Trigger, TriggerBehavior};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TriggerManaExpend {
@@ -28,14 +28,9 @@ impl TriggerBehavior for TriggerManaExpend {
         TriggerType::ManaExpend
     }
 
-    fn perform_test(
-        &self,
-        trigger: &Trigger,
-        params: &RunParams,
-        _game: &GameState,
-    ) -> bool {
+    fn perform_test(&self, trigger: &Trigger, params: &RunParams, _game: &GameState) -> bool {
         let host_controller = trigger.base.card_trait_base.get_host_card().controller;
-        check_player_filter(&self.valid_player, params.player, host_controller)
+        trigger.matches_optional_valid_player_filter(&self.valid_player, params.player)
             && params.mana_expend_amount == Some(self.amount)
     }
 
@@ -47,10 +42,10 @@ impl TriggerBehavior for TriggerManaExpend {
         _game: &GameState,
     ) {
         if let Some(amount) = params.mana_expend_amount {
-            sa.set_triggering_object("Amount", &amount.to_string());
+            sa.set_triggering_object(crate::ability::AbilityKey::Amount, &amount.to_string());
         }
         if let Some(p) = params.player {
-            sa.set_triggering_object("Player", &p.0.to_string());
+            sa.set_triggering_object(crate::ability::AbilityKey::Player, &p.0.to_string());
         }
     }
 
@@ -58,11 +53,11 @@ impl TriggerBehavior for TriggerManaExpend {
         format!(
             "{} expended {} mana",
             sa.trigger_objects
-                .get("Player")
+                .get(&crate::ability::AbilityKey::Player)
                 .map(|s| s.as_str())
                 .unwrap_or(""),
             sa.trigger_objects
-                .get("Amount")
+                .get(&crate::ability::AbilityKey::Amount)
                 .map(|s| s.as_str())
                 .unwrap_or("")
         )

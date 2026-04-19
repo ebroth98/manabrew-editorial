@@ -7,31 +7,13 @@
 
 use forge_foundation::{ColorSet, ZoneType};
 
+use crate::ability::AbilityKey;
 use crate::card::filter_constants as fc;
 use crate::card::{Card, CounterType};
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
 use crate::spellability::SpellAbility;
 
-fn parse_card_objects(sa: &SpellAbility, key: &str) -> Vec<CardId> {
-    sa.trigger_objects
-        .get(key)
-        .into_iter()
-        .flat_map(|value| value.split(','))
-        .filter_map(|part| part.trim().parse::<u32>().ok())
-        .map(CardId)
-        .collect()
-}
-
-fn parse_player_objects(sa: &SpellAbility, key: &str) -> Vec<PlayerId> {
-    sa.trigger_objects
-        .get(key)
-        .into_iter()
-        .flat_map(|value| value.split(','))
-        .filter_map(|part| part.trim().parse::<u32>().ok())
-        .map(PlayerId)
-        .collect()
-}
 
 fn push_unique_player(players: &mut Vec<PlayerId>, player: PlayerId) {
     if !players.contains(&player) {
@@ -229,22 +211,26 @@ pub fn resolve_defined_player_with_sa(
     controller: PlayerId,
     game: &GameState,
 ) -> Option<PlayerId> {
-    fn parse_player_object(sa: &SpellAbility, key: &str) -> Option<PlayerId> {
-        parse_player_objects(sa, key).into_iter().next()
+    fn parse_player_object(sa: &SpellAbility, key: AbilityKey) -> Option<PlayerId> {
+        sa.get_triggering_players(key).into_iter().next()
     }
 
-    fn triggered_controller(sa: &SpellAbility, game: &GameState, key: &str) -> Option<PlayerId> {
+    fn triggered_controller(
+        sa: &SpellAbility,
+        game: &GameState,
+        key: AbilityKey,
+    ) -> Option<PlayerId> {
         // Try card parsing first — trigger object values are typically CardIds,
         // and parse_player_object would misinterpret a CardId as a PlayerId.
-        parse_card_objects(sa, key)
+        sa.get_triggering_cards(key)
             .into_iter()
             .next()
             .map(|cid| game.card(cid).controller)
             .or_else(|| parse_player_object(sa, key))
     }
 
-    fn triggered_owner(sa: &SpellAbility, game: &GameState, key: &str) -> Option<PlayerId> {
-        parse_card_objects(sa, key)
+    fn triggered_owner(sa: &SpellAbility, game: &GameState, key: AbilityKey) -> Option<PlayerId> {
+        sa.get_triggering_cards(key)
             .into_iter()
             .next()
             .map(|cid| game.card(cid).owner)
@@ -265,7 +251,7 @@ pub fn resolve_defined_player_with_sa(
             .all_target_players()
             .into_iter()
             .next()
-            .or_else(|| parse_player_object(sa, "Player")),
+            .or_else(|| parse_player_object(sa, AbilityKey::Player)),
         "ParentTarget" => sa.target_chosen.all_target_players().into_iter().next(),
         "ThisTargetedPlayer" => sa.target_chosen.all_target_players().into_iter().next(),
         "TargetedOrController" => sa
@@ -275,50 +261,55 @@ pub fn resolve_defined_player_with_sa(
             .next()
             .or_else(|| targeted_controller_players(sa, game).into_iter().next()),
         "TriggeredTarget" | "TriggeredTargets" => {
-            if let Some(player) = parse_player_object(sa, "TargetPlayer") {
+            if let Some(player) = parse_player_object(sa, AbilityKey::TargetPlayer) {
                 Some(player)
-            } else if let Some(card) = parse_card_objects(sa, "TargetCard").into_iter().next() {
+            } else if let Some(card) = sa.get_triggering_cards(AbilityKey::TargetCard)
+                .into_iter()
+                .next()
+            {
                 Some(game.card(card).controller)
             } else {
                 // "Target" is ambiguous — it holds either a CardId or a PlayerId.
                 // Try cards first to avoid misinterpreting a CardId as a PlayerId.
-                parse_card_objects(sa, "Target")
+                sa.get_triggering_cards(AbilityKey::Target)
                     .into_iter()
                     .next()
                     .map(|cid| game.card(cid).controller)
-                    .or_else(|| parse_player_object(sa, "Target"))
+                    .or_else(|| parse_player_object(sa, AbilityKey::Target))
             }
         }
         "TriggeredTargetController" | "TriggeredTargetsController" => {
-            if let Some(card) = parse_card_objects(sa, "TargetCard").into_iter().next() {
+            if let Some(card) = sa.get_triggering_cards(AbilityKey::TargetCard)
+                .into_iter()
+                .next()
+            {
                 Some(game.card(card).controller)
-            } else if let Some(player) = parse_player_object(sa, "TargetPlayer") {
+            } else if let Some(player) = parse_player_object(sa, AbilityKey::TargetPlayer) {
                 Some(player)
             } else {
-                parse_card_objects(sa, "Target")
+                sa.get_triggering_cards(AbilityKey::Target)
                     .into_iter()
                     .next()
                     .map(|cid| game.card(cid).controller)
-                    .or_else(|| parse_player_object(sa, "Target"))
+                    .or_else(|| parse_player_object(sa, AbilityKey::Target))
             }
         }
-        "TriggeredAttackedTarget" => parse_player_object(sa, "AttackedTarget"),
-        "TriggeredDefender" => parse_player_object(sa, "Defender")
-            .or_else(|| parse_player_object(sa, "AttackedTarget"))
-            .or_else(|| parse_player_object(sa, "DefendingPlayer")),
-        "TriggeredAttackingPlayer" => parse_player_object(sa, "AttackingPlayer"),
-        "TriggeredActivator" => parse_player_object(sa, "Activator"),
-        "TriggeredOpponentVotedDiff" => parse_player_object(sa, "OpponentVotedDiff"),
-        "TriggeredOpponentVotedSame" => parse_player_object(sa, "OpponentVotedSame"),
-        "TriggeredCardController" => triggered_controller(sa, game, "Card"),
-        "TriggeredCardOwner" => triggered_owner(sa, game, "Card"),
-        "ReplacedCardController" => triggered_controller(sa, game, "ReplacedCard")
-            .or_else(|| triggered_controller(sa, game, "Card")),
-        "ReplacedCardOwner" => {
-            triggered_owner(sa, game, "ReplacedCard").or_else(|| triggered_owner(sa, game, "Card"))
-        }
-        "TriggeredSourceController" => triggered_controller(sa, game, "Source"),
-        "TriggeredPlayerController" => triggered_controller(sa, game, "Player"),
+        "TriggeredAttackedTarget" => parse_player_object(sa, AbilityKey::AttackedTarget),
+        "TriggeredDefender" => parse_player_object(sa, AbilityKey::Defender)
+            .or_else(|| parse_player_object(sa, AbilityKey::AttackedTarget))
+            .or_else(|| parse_player_object(sa, AbilityKey::DefendingPlayer)),
+        "TriggeredAttackingPlayer" => parse_player_object(sa, AbilityKey::AttackingPlayer),
+        "TriggeredActivator" => parse_player_object(sa, AbilityKey::Activator),
+        "TriggeredOpponentVotedDiff" => parse_player_object(sa, AbilityKey::OpponentVotedDiff),
+        "TriggeredOpponentVotedSame" => parse_player_object(sa, AbilityKey::OpponentVotedSame),
+        "TriggeredCardController" => triggered_controller(sa, game, AbilityKey::Card),
+        "TriggeredCardOwner" => triggered_owner(sa, game, AbilityKey::Card),
+        "ReplacedCardController" => triggered_controller(sa, game, AbilityKey::ReplacedCard)
+            .or_else(|| triggered_controller(sa, game, AbilityKey::Card)),
+        "ReplacedCardOwner" => triggered_owner(sa, game, AbilityKey::ReplacedCard)
+            .or_else(|| triggered_owner(sa, game, AbilityKey::Card)),
+        "TriggeredSourceController" => triggered_controller(sa, game, AbilityKey::Source),
+        "TriggeredPlayerController" => triggered_controller(sa, game, AbilityKey::Player),
         "DefendingPlayer" | "TriggeredDefendingPlayer" => sa
             .target_chosen
             .target_player
@@ -377,7 +368,7 @@ pub fn resolve_defined_players_with_sa(
             for player in sa.target_chosen.all_target_players() {
                 push_unique_player(&mut players, player);
             }
-            for player in parse_player_objects(sa, "Player") {
+            for player in sa.get_triggering_players(AbilityKey::Player) {
                 push_unique_player(&mut players, player);
             }
             players
@@ -397,8 +388,8 @@ pub fn resolve_defined_players_with_sa(
         "TargetedOwner" | "ThisTargetedOwner" => targeted_owner_players(sa, game),
         "TriggeredTarget" | "TriggeredTargets" => {
             let mut players = Vec::new();
-            let target_players = parse_player_objects(sa, "TargetPlayer");
-            let target_cards = parse_card_objects(sa, "TargetCard");
+            let target_players = sa.get_triggering_players(AbilityKey::TargetPlayer);
+            let target_cards = sa.get_triggering_cards(AbilityKey::TargetCard);
             if !target_players.is_empty() {
                 for player in target_players {
                     push_unique_player(&mut players, player);
@@ -410,13 +401,13 @@ pub fn resolve_defined_players_with_sa(
             } else {
                 // "Target" is ambiguous — it holds either a CardId or a PlayerId.
                 // Try cards first; only fall back to players if no cards matched.
-                let target_cards_fallback = parse_card_objects(sa, "Target");
+                let target_cards_fallback = sa.get_triggering_cards(AbilityKey::Target);
                 if !target_cards_fallback.is_empty() {
                     for cid in target_cards_fallback {
                         push_unique_player(&mut players, game.card(cid).controller);
                     }
                 } else {
-                    for player in parse_player_objects(sa, "Target") {
+                    for player in sa.get_triggering_players(AbilityKey::Target) {
                         push_unique_player(&mut players, player);
                     }
                 }
@@ -425,8 +416,8 @@ pub fn resolve_defined_players_with_sa(
         }
         "TriggeredTargetController" | "TriggeredTargetsController" => {
             let mut players = Vec::new();
-            let target_players = parse_player_objects(sa, "TargetPlayer");
-            let target_cards = parse_card_objects(sa, "TargetCard");
+            let target_players = sa.get_triggering_players(AbilityKey::TargetPlayer);
+            let target_cards = sa.get_triggering_cards(AbilityKey::TargetCard);
             if !target_cards.is_empty() {
                 for cid in target_cards {
                     push_unique_player(&mut players, game.card(cid).controller);
@@ -437,51 +428,51 @@ pub fn resolve_defined_players_with_sa(
                 }
             } else {
                 // "Target" is ambiguous — try cards first, then players.
-                let target_cards_fallback = parse_card_objects(sa, "Target");
+                let target_cards_fallback = sa.get_triggering_cards(AbilityKey::Target);
                 if !target_cards_fallback.is_empty() {
                     for cid in target_cards_fallback {
                         push_unique_player(&mut players, game.card(cid).controller);
                     }
                 } else {
-                    for player in parse_player_objects(sa, "Target") {
+                    for player in sa.get_triggering_players(AbilityKey::Target) {
                         push_unique_player(&mut players, player);
                     }
                 }
             }
             players
         }
-        "TriggeredAttackedTarget" => parse_player_objects(sa, "AttackedTarget"),
+        "TriggeredAttackedTarget" => sa.get_triggering_players(AbilityKey::AttackedTarget),
         "TriggeredDefender" => {
-            let mut players = parse_player_objects(sa, "Defender");
-            for pid in parse_player_objects(sa, "AttackedTarget") {
+            let mut players = sa.get_triggering_players(AbilityKey::Defender);
+            for pid in sa.get_triggering_players(AbilityKey::AttackedTarget) {
                 push_unique_player(&mut players, pid);
             }
-            for pid in parse_player_objects(sa, "DefendingPlayer") {
+            for pid in sa.get_triggering_players(AbilityKey::DefendingPlayer) {
                 push_unique_player(&mut players, pid);
             }
             players
         }
         "TriggeredAttackedTargetAndYou" => {
-            let mut players = parse_player_objects(sa, "AttackedTarget");
+            let mut players = sa.get_triggering_players(AbilityKey::AttackedTarget);
             push_unique_player(&mut players, controller);
             players
         }
-        "TriggeredAttackingPlayer" => parse_player_objects(sa, "AttackingPlayer"),
-        "TriggeredActivator" => parse_player_objects(sa, "Activator"),
-        "TriggeredOpponentVotedDiff" => parse_player_objects(sa, "OpponentVotedDiff"),
-        "TriggeredOpponentVotedSame" => parse_player_objects(sa, "OpponentVotedSame"),
-        "TriggeredCardController" => parse_card_objects(sa, "Card")
+        "TriggeredAttackingPlayer" => sa.get_triggering_players(AbilityKey::AttackingPlayer),
+        "TriggeredActivator" => sa.get_triggering_players(AbilityKey::Activator),
+        "TriggeredOpponentVotedDiff" => sa.get_triggering_players(AbilityKey::OpponentVotedDiff),
+        "TriggeredOpponentVotedSame" => sa.get_triggering_players(AbilityKey::OpponentVotedSame),
+        "TriggeredCardController" => sa.get_triggering_cards(AbilityKey::Card)
             .into_iter()
             .map(|cid| game.card(cid).controller)
             .collect(),
-        "TriggeredCardOwner" => parse_card_objects(sa, "Card")
+        "TriggeredCardOwner" => sa.get_triggering_cards(AbilityKey::Card)
             .into_iter()
             .map(|cid| game.card(cid).owner)
             .collect(),
         "ReplacedCardController" => {
-            let replaced = parse_card_objects(sa, "ReplacedCard");
+            let replaced = sa.get_triggering_cards(AbilityKey::ReplacedCard);
             let cards = if replaced.is_empty() {
-                parse_card_objects(sa, "Card")
+                sa.get_triggering_cards(AbilityKey::Card)
             } else {
                 replaced
             };
@@ -491,21 +482,21 @@ pub fn resolve_defined_players_with_sa(
                 .collect()
         }
         "ReplacedCardOwner" => {
-            let replaced = parse_card_objects(sa, "ReplacedCard");
+            let replaced = sa.get_triggering_cards(AbilityKey::ReplacedCard);
             let cards = if replaced.is_empty() {
-                parse_card_objects(sa, "Card")
+                sa.get_triggering_cards(AbilityKey::Card)
             } else {
                 replaced
             };
             cards.into_iter().map(|cid| game.card(cid).owner).collect()
         }
-        "TriggeredSourceController" => parse_card_objects(sa, "Source")
+        "TriggeredSourceController" => sa.get_triggering_cards(AbilityKey::Source)
             .into_iter()
             .map(|cid| game.card(cid).controller)
             .collect(),
         "TriggeredPlayerController" => {
-            let mut players = parse_player_objects(sa, "Player");
-            for cid in parse_card_objects(sa, "Player") {
+            let mut players = sa.get_triggering_players(AbilityKey::Player);
+            for cid in sa.get_triggering_cards(AbilityKey::Player) {
                 push_unique_player(&mut players, game.card(cid).controller);
             }
             players
@@ -1525,14 +1516,10 @@ pub fn filter_list_by_type(
     let (effective_source, effective_filter) = if filter_type.starts_with("Triggered") {
         // Look up the triggered card object
         let trigger_card = sa
-            .trigger_objects
-            .get("Card")
-            .or_else(|| sa.trigger_objects.get("Object"))
-            .or_else(|| sa.trigger_objects.get("Attacker"))
-            .or_else(|| sa.trigger_objects.get("Blocker"))
-            .and_then(|val| val.split(',').next())
-            .and_then(|part| part.trim().parse::<u32>().ok())
-            .map(CardId);
+            .get_triggering_card(AbilityKey::Card)
+            .or_else(|| sa.get_triggering_card(AbilityKey::Object))
+            .or_else(|| sa.get_triggering_card(AbilityKey::Attacker))
+            .or_else(|| sa.get_triggering_card(AbilityKey::Blocker));
 
         match trigger_card {
             Some(cid) => {

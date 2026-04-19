@@ -1,10 +1,11 @@
 use serde::{Deserialize, Serialize};
 
-use super::trigger::{check_card_filter, matches_valid_sa, TriggerBehavior};
+use super::trigger::TriggerBehavior;
 use crate::ability::AbilityKey;
 use crate::{
     event::{AbilityValue, RunParams, TriggerType},
     game::GameState,
+    ids::CardId,
     parsing::Params,
     spellability::SpellAbility,
 };
@@ -36,6 +37,90 @@ impl TriggerAbilityTriggered {
     }
 }
 
+fn destination_names(params: &RunParams) -> Option<String> {
+    if let Some(destinations) = params.destinations.as_ref() {
+        return Some(destinations.clone());
+    }
+    if let Some(zone_changes) = params.zone_changes.as_ref() {
+        let mut ordered = Vec::new();
+        for change in zone_changes {
+            let name = format!("{:?}", change.destination);
+            if !ordered.contains(&name) {
+                ordered.push(name);
+            }
+        }
+        if !ordered.is_empty() {
+            return Some(ordered.join(","));
+        }
+    }
+    params
+        .destination
+        .map(|destination| format!("{destination:?}"))
+}
+
+fn cause_cards_for_trigger(
+    trigger: &super::trigger::Trigger,
+    params: &RunParams,
+    game: &GameState,
+) -> Vec<CardId> {
+    match trigger.kind {
+        TriggerType::ChangesZone => params.card.into_iter().collect(),
+        TriggerType::ChangesZoneAll => params
+            .change_zone_table
+            .as_ref()
+            .map(|table| table.all_cards())
+            .or_else(|| params.cards.clone())
+            .unwrap_or_default(),
+        TriggerType::Attacks => params.attacker.into_iter().collect(),
+        TriggerType::AttackersDeclared | TriggerType::AttackersDeclaredOneTarget => {
+            let attackers = params.attacker_ids.clone().unwrap_or_default();
+            if let Some(valid_attackers) = trigger.params.get("ValidAttackers") {
+                attackers
+                    .into_iter()
+                    .filter(|&card_id| {
+                        trigger.matches_valid_card_filter(valid_attackers, card_id, game)
+                    })
+                    .collect()
+            } else {
+                attackers
+            }
+        }
+        _ => params
+            .cards
+            .clone()
+            .or_else(|| params.card.map(|card| vec![card]))
+            .unwrap_or_default(),
+    }
+}
+
+pub(crate) fn build_run_params(
+    trigger: &super::trigger::Trigger,
+    spell_ability: &SpellAbility,
+    params: &RunParams,
+    game: &GameState,
+) -> RunParams {
+    let destinations = destination_names(params);
+    let cause_cards = cause_cards_for_trigger(trigger, params, game);
+
+    RunParams {
+        spell_ability: Some(spell_ability.clone()),
+        source_sa: Some(spell_ability.clone()),
+        cause_card: spell_ability.source,
+        cards: if cause_cards.is_empty() {
+            None
+        } else {
+            Some(cause_cards)
+        },
+        mode: Some(trigger.kind.name().to_string()),
+        destination: destinations
+            .as_deref()
+            .and_then(|csv| csv.split(',').next())
+            .and_then(forge_foundation::ZoneType::from_str_compat),
+        destinations,
+        ..Default::default()
+    }
+}
+
 #[typetag::serde]
 impl TriggerBehavior for TriggerAbilityTriggered {
     fn trigger_type(&self) -> TriggerType {
@@ -48,9 +133,8 @@ impl TriggerBehavior for TriggerAbilityTriggered {
         params: &RunParams,
         game: &GameState,
     ) -> bool {
-        let host_card = trigger.base.card_trait_base.get_host_card().id;
-        let host_controller = trigger.base.card_trait_base.get_host_card().controller;
-        let Some(AbilityValue::SpellAbility(sa)) = params.get_value(AbilityKey::SpellAbility) else {
+        let Some(AbilityValue::SpellAbility(sa)) = params.get_value(AbilityKey::SpellAbility)
+        else {
             return false;
         };
         let Some(source) = sa.source else {
@@ -71,7 +155,8 @@ impl TriggerBehavior for TriggerAbilityTriggered {
                 params.get_value(AbilityKey::Destination)
             {
                 destinations
-            } else if let Some(AbilityValue::Zone(dest)) = params.get_value(AbilityKey::Destination) {
+            } else if let Some(AbilityValue::Zone(dest)) = params.get_value(AbilityKey::Destination)
+            {
                 format!("{dest:?}")
             } else {
                 return false;
@@ -84,12 +169,12 @@ impl TriggerBehavior for TriggerAbilityTriggered {
         }
 
         if let Some(filter) = &self.valid_spell_ability {
-            if !matches_valid_sa(filter, &sa) {
+            if !trigger.matches_valid_sa_filter(filter, &sa) {
                 return false;
             }
         }
 
-        if !check_card_filter(&self.valid_source, Some(source), host_card, host_controller, game) {
+        if !trigger.matches_optional_valid_card_filter(&self.valid_source, Some(source), game) {
             return false;
         }
 
@@ -104,13 +189,7 @@ impl TriggerBehavior for TriggerAbilityTriggered {
                 return false;
             }
             if !causes.iter().any(|&c| {
-                check_card_filter(
-                    &Some(filter.clone()),
-                    Some(c),
-                    host_card,
-                    host_controller,
-                    game,
-                )
+                trigger.matches_optional_valid_card_filter(&Some(filter.clone()), Some(c), game)
             }) {
                 return false;
             }
@@ -134,10 +213,10 @@ impl TriggerBehavior for TriggerAbilityTriggered {
         // The source is the host card of the triggered SpellAbility
         if let Some(ref triggered_sa) = params.spell_ability {
             if let Some(source) = triggered_sa.source {
-                sa.set_triggering_object("Source", &source.0.to_string());
+                sa.set_triggering_object(crate::ability::AbilityKey::Source, &source.0.to_string());
             }
         } else if let Some(card) = params.source_card {
-            sa.set_triggering_object("Source", &card.0.to_string());
+            sa.set_triggering_object(crate::ability::AbilityKey::Source, &card.0.to_string());
         }
         // Java: sa.setTriggeringObjectsFrom(runParams, AbilityKey.SpellAbility, AbilityKey.Cause);
         // SpellAbility and Cause are complex objects; store what we can
@@ -147,16 +226,21 @@ impl TriggerBehavior for TriggerAbilityTriggered {
                 .map(|c| c.0.to_string())
                 .collect::<Vec<_>>()
                 .join(",");
-            sa.set_triggering_object("Cause", &csv);
+            sa.set_triggering_object(crate::ability::AbilityKey::Cause, &csv);
         } else if let Some(cause_card) = params.cause_card {
-            sa.set_triggering_object("Cause", &cause_card.0.to_string());
+            sa.set_triggering_object(crate::ability::AbilityKey::Cause, &cause_card.0.to_string());
         }
     }
 
-    fn get_important_stack_objects(&self, _trigger: &super::trigger::Trigger, sa: &SpellAbility) -> String {
+    fn get_important_stack_objects(
+        &self,
+        _trigger: &super::trigger::Trigger,
+        sa: &SpellAbility,
+    ) -> String {
         format!(
             "SpellAbility: {}",
-            sa.get_triggering_object("SpellAbility").unwrap_or("")
+            sa.get_triggering_object(crate::ability::AbilityKey::SpellAbility)
+                .unwrap_or("")
         )
     }
 }

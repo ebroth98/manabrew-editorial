@@ -22,12 +22,7 @@ impl TriggerBehavior for TriggerVote {
         TriggerType::Vote
     }
 
-    fn perform_test(
-        &self,
-        _trigger: &Trigger,
-        _params: &RunParams,
-        _game: &GameState,
-    ) -> bool {
+    fn perform_test(&self, _trigger: &Trigger, _params: &RunParams, _game: &GameState) -> bool {
         true
     }
 
@@ -68,7 +63,7 @@ impl TriggerBehavior for TriggerVote {
                 .map(|player_id| player_id.0.to_string())
                 .collect::<Vec<_>>()
                 .join(",");
-            sa.set_triggering_object("OpponentVotedSame", &csv);
+            sa.set_triggering_object(crate::ability::AbilityKey::OpponentVotedSame, &csv);
         }
         if !diff.is_empty() {
             let csv = diff
@@ -76,7 +71,7 @@ impl TriggerBehavior for TriggerVote {
                 .map(|player_id| player_id.0.to_string())
                 .collect::<Vec<_>>()
                 .join(",");
-            sa.set_triggering_object("OpponentVotedDiff", &csv);
+            sa.set_triggering_object(crate::ability::AbilityKey::OpponentVotedDiff, &csv);
         }
     }
 

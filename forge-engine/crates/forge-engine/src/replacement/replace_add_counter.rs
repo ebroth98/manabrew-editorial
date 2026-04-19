@@ -71,7 +71,7 @@ pub fn can_replace(
     }
     let target_card = &game.cards[target.index()];
     if let Some(valid) = effect.params.get(keys::VALID_CARD) {
-        if !matches_valid_card(valid, target_card, source_card) {
+        if !matches_valid_card(effect, valid, target_card, source_card) {
             return false;
         }
     }

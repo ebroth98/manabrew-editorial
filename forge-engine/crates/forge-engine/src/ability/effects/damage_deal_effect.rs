@@ -403,20 +403,15 @@ fn evaluate_svar_expr(ctx: &EffectContext, sa: &SpellAbility, expr: &str) -> i32
         } else {
             "TriggeredCardToughness"
         };
-        if let Some(value) = sa
-            .trigger_objects
-            .get(trigger_value_key)
+        if let Some(value) = crate::ability::ability_key::from_string(trigger_value_key)
+            .and_then(|key| sa.get_triggering_value(key))
             .and_then(|value| value.trim().parse::<i32>().ok())
         {
             return value;
         }
 
         let triggered_card = sa
-            .trigger_objects
-            .get("Card")
-            .and_then(|value| value.split(',').next())
-            .and_then(|part| part.trim().parse::<u32>().ok())
-            .map(crate::ids::CardId)
+            .get_triggering_card(crate::ability::AbilityKey::Card)
             .or(sa.trigger_source);
         if let Some(card_id) = triggered_card {
             return if expr.ends_with("CardPower") {

@@ -35,7 +35,7 @@ pub fn can_replace(
         return false;
     }
     if let Some(valid) = effect.params.get(keys::VALID_PLAYER) {
-        if !matches_valid_player(valid, player, source_card) {
+        if !matches_valid_player(effect, valid, player, source_card) {
             return false;
         }
     }

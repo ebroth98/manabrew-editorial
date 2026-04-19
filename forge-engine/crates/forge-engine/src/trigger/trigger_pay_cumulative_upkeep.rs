@@ -5,7 +5,7 @@ use crate::game::GameState;
 use crate::parsing::{keys, Params};
 use crate::spellability::SpellAbility;
 
-use super::trigger::{check_card_filter, TriggerBehavior};
+use super::trigger::TriggerBehavior;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TriggerPayCumulativeUpkeep {
@@ -42,7 +42,7 @@ impl TriggerBehavior for TriggerPayCumulativeUpkeep {
             }
         }
 
-        check_card_filter(&self.valid_card, params.card, host_card, host_controller, game)
+        trigger.matches_optional_valid_card_filter(&self.valid_card, params.card, game)
     }
 
     fn set_triggering_objects(
@@ -53,18 +53,22 @@ impl TriggerBehavior for TriggerPayCumulativeUpkeep {
         _game: &GameState,
     ) {
         if let Some(card) = params.card {
-            sa.set_triggering_object("Card", &card.0.to_string());
+            sa.set_triggering_object(crate::ability::AbilityKey::Card, &card.0.to_string());
         }
         if let Some(mana) = params.produced.as_ref() {
-            sa.set_triggering_object("PayingMana", mana);
+            sa.set_triggering_object(crate::ability::AbilityKey::PayingMana, mana);
         }
     }
 
-    fn get_important_stack_objects(&self, _trigger: &super::trigger::Trigger, sa: &SpellAbility) -> String {
+    fn get_important_stack_objects(
+        &self,
+        _trigger: &super::trigger::Trigger,
+        sa: &SpellAbility,
+    ) -> String {
         format!(
             "Mana: {}",
             sa.trigger_objects
-                .get("PayingMana")
+                .get(&crate::ability::AbilityKey::PayingMana)
                 .map(|s| s.as_str())
                 .unwrap_or("")
         )

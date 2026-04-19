@@ -60,8 +60,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             "TgtChoose" | "YouChoose" | "RevealYouChoose" | "RevealTgtChoose"
         );
 
-        if sa.params.has(crate::parsing::keys::OPTIONAL) && !any_number && !chooser_style_optional
-        {
+        if sa.params.has(crate::parsing::keys::OPTIONAL) && !any_number && !chooser_style_optional {
             let source_name = sa.source.map(|cid| ctx.game.card(cid).card_name.as_str());
             let accepted = ctx.agents[target_player.index()].confirm_action(
                 target_player,

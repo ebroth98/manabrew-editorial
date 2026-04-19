@@ -100,7 +100,9 @@ struct CapturingAgent {
 }
 
 impl CapturingAgent {
-    fn shallow_snapshot_card(card: &forge_engine_core::card::Card) -> forge_engine_core::card::Card {
+    fn shallow_snapshot_card(
+        card: &forge_engine_core::card::Card,
+    ) -> forge_engine_core::card::Card {
         let mut out = forge_engine_core::card::Card::new(
             card.id,
             card.card_name.clone(),
@@ -519,7 +521,6 @@ impl PlayerAgent for CapturingAgent {
         fn choose_single_replacement_effect(&mut self, player: PlayerId, descriptions: &[String]) -> usize => "choose_single_replacement_effect";
         fn choose_entities_for_effect(&mut self, player: PlayerId, candidates: &[GameEntity], min: usize, ax: usize) -> Vec<GameEntity> => "choose_entities_for_effect";
     }
-
 }
 
 pub struct RunConfig {

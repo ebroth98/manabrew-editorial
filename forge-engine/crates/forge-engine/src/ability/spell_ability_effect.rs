@@ -5,6 +5,7 @@
 //! in Rust we keep the trait for interface parity and provide the utility
 //! methods as free functions that take `(&GameState, &SpellAbility)`.
 
+use crate::ability::AbilityKey;
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
 use crate::player::player_factory_util::add_replacement_effect;
@@ -235,14 +236,6 @@ fn get_players(
 /// Handles SA-specific defined values like "Targeted", "ParentTarget",
 /// "TriggeredCard", etc., in addition to the base AbilityUtils definitions.
 fn resolve_defined_cards_for_sa(game: &GameState, sa: &SpellAbility, defined: &str) -> Vec<CardId> {
-    fn parse_card_ids(csv: Option<&String>) -> Vec<CardId> {
-        csv.into_iter()
-            .flat_map(|value| value.split(','))
-            .filter_map(|part| part.trim().parse::<u32>().ok())
-            .map(CardId)
-            .collect()
-    }
-
     match defined {
         "Self" | "CARDNAME" => {
             if sa.is_trigger {
@@ -259,7 +252,7 @@ fn resolve_defined_cards_for_sa(game: &GameState, sa: &SpellAbility, defined: &s
         }
         "Targeted" => sa.target_chosen.target_card.into_iter().collect(),
         "TriggeredCard" | "TriggeredCardLKICopy" => {
-            let cards = parse_card_ids(sa.trigger_objects.get("Card"));
+            let cards = sa.get_triggering_cards(AbilityKey::Card);
             if cards.is_empty() {
                 sa.trigger_source.into_iter().collect()
             } else {
@@ -267,26 +260,26 @@ fn resolve_defined_cards_for_sa(game: &GameState, sa: &SpellAbility, defined: &s
             }
         }
         "ReplacedCard" => {
-            let cards = parse_card_ids(sa.trigger_objects.get("ReplacedCard"));
+            let cards = sa.get_triggering_cards(AbilityKey::ReplacedCard);
             if cards.is_empty() {
-                parse_card_ids(sa.trigger_objects.get("Card"))
+                sa.get_triggering_cards(AbilityKey::Card)
             } else {
                 cards
             }
         }
         "TriggeredNewCard" | "TriggeredNewCardLKICopy" => {
-            let cards = parse_card_ids(sa.trigger_objects.get("NewCard"));
+            let cards = sa.get_triggering_cards(AbilityKey::NewCard);
             if cards.is_empty() {
                 sa.trigger_source.into_iter().collect()
             } else {
                 cards
             }
         }
-        "TriggeredAttackers" => parse_card_ids(sa.trigger_objects.get("Attackers")),
-        "TriggeredAttacker" => parse_card_ids(sa.trigger_objects.get("Attacker")),
-        "TriggeredBlocker" => parse_card_ids(sa.trigger_objects.get("Blocker")),
-        "Explorer" => parse_card_ids(sa.trigger_objects.get("Explorer")),
-        "Explored" => parse_card_ids(sa.trigger_objects.get("Explored")),
+        "TriggeredAttackers" => sa.get_triggering_cards(AbilityKey::Attackers),
+        "TriggeredAttacker" => sa.get_triggering_cards(AbilityKey::Attacker),
+        "TriggeredBlocker" => sa.get_triggering_cards(AbilityKey::Blocker),
+        "Explorer" => sa.get_triggering_cards(AbilityKey::Explorer),
+        "Explored" => sa.get_triggering_cards(AbilityKey::Explored),
         _ => ability_utils::get_defined_cards(game, sa.source, defined, Some(sa.activating_player)),
     }
 }

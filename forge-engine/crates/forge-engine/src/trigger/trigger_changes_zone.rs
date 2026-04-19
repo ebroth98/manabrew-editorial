@@ -7,7 +7,7 @@ use crate::parsing::compare::compare_expr;
 use crate::parsing::{keys, Params};
 use crate::spellability::SpellAbility;
 
-use super::trigger::{check_card_filter, check_zone_filter, TriggerBehavior};
+use super::trigger::TriggerBehavior;
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct TriggerChangesZone;
@@ -37,37 +37,34 @@ impl TriggerBehavior for TriggerChangesZone {
             if value == "Any" {
                 None
             } else {
-                super::trigger::parse_zone(value)
+                forge_foundation::ZoneType::from_str_compat(value)
             }
         });
         let destination = trigger.params.get(keys::DESTINATION).and_then(|value| {
             if value == "Any" {
                 None
             } else {
-                super::trigger::parse_zone(value)
+                forge_foundation::ZoneType::from_str_compat(value)
             }
         });
-        if !check_zone_filter(&origin, params.origin)
-            || !check_zone_filter(&destination, params.destination)
+        if !super::trigger::Trigger::matches_zone_filter(&origin, params.origin)
+            || !super::trigger::Trigger::matches_zone_filter(&destination, params.destination)
         {
             return false;
         }
         if let Some(excluded_origins) = trigger.params.get("ExcludedOrigins") {
             let excluded = excluded_origins
                 .split(',')
-                .filter_map(|zone| super::trigger::parse_zone(zone.trim()))
+                .filter_map(|zone| forge_foundation::ZoneType::from_str_compat(zone.trim()))
                 .collect::<Vec<_>>();
-            if params
-                .origin
-                .is_some_and(|zone| excluded.contains(&zone))
-            {
+            if params.origin.is_some_and(|zone| excluded.contains(&zone)) {
                 return false;
             }
         }
         if let Some(excluded_destinations) = trigger.params.get("ExcludedDestinations") {
             let excluded = excluded_destinations
                 .split(',')
-                .filter_map(|zone| super::trigger::parse_zone(zone.trim()))
+                .filter_map(|zone| forge_foundation::ZoneType::from_str_compat(zone.trim()))
                 .collect::<Vec<_>>();
             if params
                 .destination
@@ -108,7 +105,7 @@ impl TriggerBehavior for TriggerChangesZone {
             return false;
         }
         let valid_card = trigger.params.get_cloned(keys::VALID_CARD);
-        if !check_card_filter(&valid_card, moved_card, host_card, host_controller, game) {
+        if !trigger.matches_optional_valid_card_filter(&valid_card, moved_card, game) {
             return false;
         }
         if let Some(filter) = trigger.params.get(keys::VALID_CAUSE) {
@@ -119,13 +116,7 @@ impl TriggerBehavior for TriggerChangesZone {
                 .or(params.cause_card)
                 .or(params.causer)
                 .is_some_and(|cause_card| {
-                    super::trigger::matches_valid_card(
-                        filter,
-                        cause_card,
-                        host_card,
-                        host_controller,
-                        game,
-                    )
+                    trigger.matches_valid_card_filter(filter, cause_card, game)
                 });
             if !cause_matches {
                 return false;
@@ -192,31 +183,42 @@ impl TriggerBehavior for TriggerChangesZone {
         //        else: copy both Card and CardLKI from runParams
         if trigger.params.get(keys::ORIGIN) == Some("Battlefield") {
             if let Some(card_id) = params.card_lki.or(params.card) {
-                sa.set_triggering_object("Card", &card_id.0.to_string());
+                sa.set_triggering_object(crate::ability::AbilityKey::Card, card_id);
                 if let Some(power) = params.lki_power {
-                    sa.set_triggering_object("TriggeredCardPower", &power.to_string());
+                    sa.set_triggering_object(
+                        crate::ability::AbilityKey::TriggeredCardPower,
+                        &power.to_string(),
+                    );
                 }
                 if let Some(toughness) = params.lki_toughness {
-                    sa.set_triggering_object("TriggeredCardToughness", &toughness.to_string());
+                    sa.set_triggering_object(
+                        crate::ability::AbilityKey::TriggeredCardToughness,
+                        &toughness.to_string(),
+                    );
                 }
             }
             if let Some(card_id) = params.card {
-                sa.set_triggering_object("NewCard", &card_id.0.to_string());
+                sa.set_triggering_object(crate::ability::AbilityKey::NewCard, card_id);
             }
         } else {
             if let Some(card_id) = params.card {
-                sa.set_triggering_object("Card", &card_id.0.to_string());
+                sa.set_triggering_object(crate::ability::AbilityKey::Card, card_id);
             }
             if let Some(card_lki) = params.card_lki {
-                sa.set_triggering_object("CardLKI", &card_lki.0.to_string());
+                sa.set_triggering_object(crate::ability::AbilityKey::CardLKI, card_lki);
             }
         }
     }
 
-    fn get_important_stack_objects(&self, _trigger: &super::trigger::Trigger, sa: &SpellAbility) -> String {
+    fn get_important_stack_objects(
+        &self,
+        _trigger: &super::trigger::Trigger,
+        sa: &SpellAbility,
+    ) -> String {
         format!(
             "Zone Changer: {}",
-            sa.trigger_objects.get("Card").cloned().unwrap_or_default()
+            sa.get_triggering_object(crate::ability::AbilityKey::Card)
+                .unwrap_or_default()
         )
     }
 }

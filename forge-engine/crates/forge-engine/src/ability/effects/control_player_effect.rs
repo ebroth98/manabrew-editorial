@@ -40,7 +40,8 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         ctx.trigger_handler
             .register_delayed_trigger(crate::trigger::handler::DelayedTrigger {
                 mode: crate::event::TriggerType::Phase,
-                trigger_mode: Box::new(crate::trigger::trigger_always::TriggerAlways) as Box<dyn crate::trigger::TriggerBehavior>,
+                trigger_mode: Box::new(crate::trigger::trigger_always::TriggerAlways)
+                    as Box<dyn crate::trigger::TriggerBehavior>,
                 params: crate::parsing::Params::default(),
                 execute_svar: "ControlPlayerCleanup".to_string(),
                 controller,

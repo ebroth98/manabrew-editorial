@@ -5,7 +5,7 @@ use crate::game::GameState;
 use crate::parsing::{keys, Params};
 use crate::spellability::SpellAbility;
 
-use super::trigger::{check_card_filter, check_damage_target, TriggerBehavior};
+use super::trigger::TriggerBehavior;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TriggerDamageDone {
@@ -36,25 +36,11 @@ impl TriggerBehavior for TriggerDamageDone {
         params: &RunParams,
         game: &GameState,
     ) -> bool {
-        let host_card = trigger.base.card_trait_base.get_host_card().id;
-        let host_controller = trigger.base.card_trait_base.get_host_card().controller;
         if self.combat_damage_only && params.is_combat_damage != Some(true) {
             return false;
         }
-        check_card_filter(
-            &self.valid_source,
-            params.damage_source,
-            host_card,
-            host_controller,
-            game,
-        ) && check_damage_target(
-            &self.valid_target,
-            params,
-            host_card,
-            host_controller,
-            game,
-            true,
-        )
+        trigger.matches_optional_valid_card_filter(&self.valid_source, params.damage_source, game)
+            && trigger.matches_damage_target_filter(&self.valid_target, params, game, true)
     }
 
     fn set_triggering_objects(
@@ -67,30 +53,42 @@ impl TriggerBehavior for TriggerDamageDone {
         // Java: sa.setTriggeringObject(AbilityKey.Source, CardCopyService.getLKICopy(DamageSource))
         // TODO: Java uses CardCopyService.getLKICopy for the source. We just use the ID directly.
         if let Some(src) = params.damage_source {
-            sa.set_triggering_object("Source", &src.0.to_string());
+            sa.set_triggering_object(crate::ability::AbilityKey::Source, src);
         }
         if let Some(card) = params.damage_target_card {
-            sa.set_triggering_object("Target", &card.0.to_string());
+            sa.set_triggering_object(crate::ability::AbilityKey::Target, card);
+            sa.set_triggering_object(crate::ability::AbilityKey::TargetCard, card);
         } else if let Some(player) = params.damage_target_player {
-            sa.set_triggering_object("Target", &player.0.to_string());
+            sa.set_triggering_object(crate::ability::AbilityKey::Target, player);
+            sa.set_triggering_object(crate::ability::AbilityKey::TargetPlayer, player);
         }
         // TODO: Java also sets Cause (SpellAbility) from runParams.
         // Skipping Cause for now since SpellAbility is complex and stored as object in Java.
         if let Some(amount) = params.damage_amount {
-            sa.set_triggering_object("DamageAmount", &amount.to_string());
+            sa.set_triggering_object(
+                crate::ability::AbilityKey::DamageAmount,
+                &amount.to_string(),
+            );
         }
         if let Some(p) = params.defending_player {
-            sa.set_triggering_object("DefendingPlayer", &p.0.to_string());
+            sa.set_triggering_object(crate::ability::AbilityKey::DefendingPlayer, p);
         }
     }
 
-    fn get_important_stack_objects(&self, _trigger: &super::trigger::Trigger, sa: &SpellAbility) -> String {
+    fn get_important_stack_objects(
+        &self,
+        _trigger: &super::trigger::Trigger,
+        sa: &SpellAbility,
+    ) -> String {
         // Java: "Damage Source: " + Source + ", Damaged: " + Target + ", Amount: " + DamageAmount
         format!(
             "Damage Source: {}, Damaged: {}, Amount: {}",
-            sa.get_triggering_object("Source").unwrap_or(""),
-            sa.get_triggering_object("Target").unwrap_or(""),
-            sa.get_triggering_object("DamageAmount").unwrap_or("")
+            sa.get_triggering_object(crate::ability::AbilityKey::Source)
+                .unwrap_or(""),
+            sa.get_triggering_object(crate::ability::AbilityKey::Target)
+                .unwrap_or(""),
+            sa.get_triggering_object(crate::ability::AbilityKey::DamageAmount)
+                .unwrap_or("")
         )
     }
 }

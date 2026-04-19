@@ -4,7 +4,7 @@ use crate::event::{RunParams, TriggerType};
 use crate::game::GameState;
 use crate::spellability::SpellAbility;
 
-use super::trigger::{check_player_filter, TriggerBehavior};
+use super::trigger::TriggerBehavior;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TriggerCommitCrime {
@@ -30,7 +30,7 @@ impl TriggerBehavior for TriggerCommitCrime {
         _game: &GameState,
     ) -> bool {
         let host_controller = trigger.base.card_trait_base.get_host_card().controller;
-        check_player_filter(&self.valid_player, params.player, host_controller)
+        trigger.matches_optional_valid_player_filter(&self.valid_player, params.player)
     }
 
     fn set_triggering_objects(
@@ -41,15 +41,19 @@ impl TriggerBehavior for TriggerCommitCrime {
         _game: &GameState,
     ) {
         if let Some(p) = params.player {
-            sa.set_triggering_object("Player", &p.0.to_string());
+            sa.set_triggering_object(crate::ability::AbilityKey::Player, &p.0.to_string());
         }
     }
 
-    fn get_important_stack_objects(&self, _trigger: &super::trigger::Trigger, sa: &SpellAbility) -> String {
+    fn get_important_stack_objects(
+        &self,
+        _trigger: &super::trigger::Trigger,
+        sa: &SpellAbility,
+    ) -> String {
         format!(
             "Player: {}",
             sa.trigger_objects
-                .get("Player")
+                .get(&crate::ability::AbilityKey::Player)
                 .cloned()
                 .unwrap_or_default()
         )

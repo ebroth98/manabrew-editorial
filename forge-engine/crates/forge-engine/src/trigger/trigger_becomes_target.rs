@@ -47,7 +47,6 @@ impl TriggerBehavior for TriggerBecomesTarget {
         params: &RunParams,
         game: &GameState,
     ) -> bool {
-        let host_card = trigger.base.card_trait_base.get_host_card().id;
         let host_controller = trigger.base.card_trait_base.get_host_card().controller;
         if let Some(filter) = self.valid_source.as_ref() {
             let source_matches = if let Some(source_sa) = params.source_sa.as_ref() {
@@ -67,23 +66,11 @@ impl TriggerBehavior for TriggerBecomesTarget {
                     }
                 } else {
                     source_sa.source.is_some_and(|source_card| {
-                        super::trigger::matches_valid_card(
-                            filter,
-                            source_card,
-                            host_card,
-                            host_controller,
-                            game,
-                        )
+                        trigger.matches_valid_card_filter(filter, source_card, game)
                     })
                 }
             } else if let Some(source_card) = params.cause_card {
-                super::trigger::matches_valid_card(
-                    filter,
-                    source_card,
-                    host_card,
-                    host_controller,
-                    game,
-                )
+                trigger.matches_valid_card_filter(filter, source_card, game)
             } else {
                 false
             };
@@ -95,7 +82,7 @@ impl TriggerBehavior for TriggerBecomesTarget {
         if let Some(filter) = self.valid_target.as_ref() {
             let target_card = params.target_card.or(params.card);
             let target_player = params.target_player.or(params.player);
-            let host = game.card(host_card);
+            let host = game.card(trigger.host_card_id());
             if !valid_filter::matches_valid(
                 filter,
                 target_card.map(|id| game.card(id)),
@@ -125,22 +112,31 @@ impl TriggerBehavior for TriggerBecomesTarget {
     ) {
         if let Some(ref source_sa) = params.source_sa {
             if let Some(source_card) = source_sa.source {
-                sa.set_triggering_object("Source", &source_card.0.to_string());
+                sa.set_triggering_object(
+                    crate::ability::AbilityKey::Source,
+                    &source_card.0.to_string(),
+                );
             }
             sa.set_triggering_spell_ability("SourceSA", source_sa.clone());
         }
         if let Some(card) = params.target_card.or(params.card) {
-            sa.set_triggering_object("Target", &card.0.to_string());
+            sa.set_triggering_object(crate::ability::AbilityKey::Target, &card.0.to_string());
         } else if let Some(p) = params.target_player {
-            sa.set_triggering_object("Target", &p.0.to_string());
+            sa.set_triggering_object(crate::ability::AbilityKey::Target, &p.0.to_string());
         }
     }
 
-    fn get_important_stack_objects(&self, _trigger: &super::trigger::Trigger, sa: &SpellAbility) -> String {
+    fn get_important_stack_objects(
+        &self,
+        _trigger: &super::trigger::Trigger,
+        sa: &SpellAbility,
+    ) -> String {
         format!(
             "Source: {}, Target: {}",
-            sa.get_triggering_object("Source").unwrap_or(""),
-            sa.get_triggering_object("Target").unwrap_or("")
+            sa.get_triggering_object(crate::ability::AbilityKey::Source)
+                .unwrap_or(""),
+            sa.get_triggering_object(crate::ability::AbilityKey::Target)
+                .unwrap_or("")
         )
     }
 }

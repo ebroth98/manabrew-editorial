@@ -6,7 +6,7 @@ use crate::ids::CardId;
 use crate::parsing::{keys, Params};
 use crate::spellability::SpellAbility;
 
-use super::trigger::{check_card_filter, Trigger, TriggerBehavior};
+use super::trigger::{Trigger, TriggerBehavior};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TriggerExcessDamageAll {
@@ -29,14 +29,7 @@ impl TriggerBehavior for TriggerExcessDamageAll {
         TriggerType::ExcessDamageAll
     }
 
-    fn perform_test(
-        &self,
-        trigger: &Trigger,
-        params: &RunParams,
-        game: &GameState,
-    ) -> bool {
-        let host_card = trigger.base.card_trait_base.get_host_card().id;
-        let host_controller = trigger.base.card_trait_base.get_host_card().controller;
+    fn perform_test(&self, trigger: &Trigger, params: &RunParams, game: &GameState) -> bool {
         if self.combat_damage_only && params.is_combat_damage != Some(true) {
             return false;
         }
@@ -45,15 +38,9 @@ impl TriggerBehavior for TriggerExcessDamageAll {
         if targets.is_empty() {
             return false;
         }
-        if let Some(filter) = self.valid_target.as_ref() {
+        if self.valid_target.is_some() {
             return targets.iter().any(|&cid| {
-                check_card_filter(
-                    &Some(filter.clone()),
-                    Some(cid),
-                    host_card,
-                    host_controller,
-                    game,
-                )
+                trigger.matches_optional_valid_card_filter(&self.valid_target, Some(cid), game)
             });
         }
         true
@@ -74,7 +61,7 @@ impl TriggerBehavior for TriggerExcessDamageAll {
                 .map(|c| c.0.to_string())
                 .collect::<Vec<_>>()
                 .join(",");
-            sa.set_triggering_object("Targets", &csv);
+            sa.set_triggering_object(crate::ability::AbilityKey::Targets, &csv);
         }
     }
 
@@ -82,7 +69,8 @@ impl TriggerBehavior for TriggerExcessDamageAll {
         // Java: "Damaged: " + Targets
         format!(
             "Damaged: {}",
-            sa.get_triggering_object("Targets").unwrap_or_default()
+            sa.get_triggering_object(crate::ability::AbilityKey::Targets)
+                .unwrap_or_default()
         )
     }
 }

@@ -208,7 +208,6 @@ fn mode_specific_matches(
     }
 }
 
-
 fn matches_valid_card(valid: &str, card: &Card, source: &Card) -> bool {
     valid_filter::matches_valid_card(valid, card, source)
 }

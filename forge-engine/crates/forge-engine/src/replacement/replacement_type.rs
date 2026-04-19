@@ -173,13 +173,7 @@ impl ReplacementType {
             })
             .unwrap_or_default();
 
-        ReplacementEffect {
-            event: event.clone(),
-            layer,
-            params: params.clone(),
-            active_zones,
-            suppressed: false,
-        }
+        ReplacementEffect::new(event.clone(), layer, params.clone(), active_zones)
     }
 
     /// Parse an `Event$` value string into a `ReplacementType`.

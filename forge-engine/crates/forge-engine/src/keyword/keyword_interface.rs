@@ -6,12 +6,12 @@
 use std::collections::HashMap;
 
 use crate::card::trait_card_trait_changes::CardTraitChanges;
+use crate::core::HasSVars;
 use crate::ids::CardId;
 use crate::replacement::ReplacementEffect;
 use crate::spellability::SpellAbility;
 use crate::staticability::StaticAbility;
 use crate::trigger::Trigger;
-use crate::core::HasSVars;
 
 use super::keyword_instance::Keyword;
 

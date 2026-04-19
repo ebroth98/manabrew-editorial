@@ -6,7 +6,8 @@ use forge_foundation::{PhaseType, ZoneType};
 use serde::{Deserialize, Serialize};
 
 use crate::ability::AbilityKey;
-use crate::card::valid_filter;
+use crate::card::{valid_filter, Card};
+use crate::card_trait_base::{CardTrait, CardTraitBase, MatchValidTarget};
 use crate::core::HasSVars;
 use crate::event::{AbilityValue, RunParams, TriggerType};
 use crate::game::GameState;
@@ -65,12 +66,7 @@ pub trait TriggerBehavior: fmt::Debug + DynClone + Send + Sync {
     /// Java's `Trigger.performTest()`. The `trigger` parameter provides access
     /// to the parent `Trigger`'s params, base, and host card — equivalent of
     /// Java's `this` in the trigger subclass.
-    fn perform_test(
-        &self,
-        trigger: &Trigger,
-        run_params: &RunParams,
-        game: &GameState,
-    ) -> bool;
+    fn perform_test(&self, trigger: &Trigger, run_params: &RunParams, game: &GameState) -> bool;
     fn set_triggering_objects(
         &self,
         trigger: &Trigger,
@@ -91,7 +87,6 @@ pub trait TriggerBehavior: fmt::Debug + DynClone + Send + Sync {
 }
 
 dyn_clone::clone_trait_object!(TriggerBehavior);
-
 
 impl Trigger {
     pub fn get_id(&self) -> u32 {
@@ -122,14 +117,14 @@ impl Trigger {
         self.params
             .get(keys::ORIGIN)
             .and_then(|s| s.split(',').next())
-            .and_then(|s| parse_zone(s.trim()))
+            .and_then(|s| ZoneType::from_str_compat(s.trim()))
     }
 
     pub fn destination_zone(&self) -> Option<ZoneType> {
         self.params
             .get(keys::DESTINATION)
             .and_then(|s| s.split(',').next())
-            .and_then(|s| parse_zone(s.trim()))
+            .and_then(|s| ZoneType::from_str_compat(s.trim()))
     }
 
     pub fn set_mode(&mut self, mode: Box<dyn TriggerBehavior>) {
@@ -178,7 +173,26 @@ impl Trigger {
     pub fn set_spawning_ability(&mut self, ability: SpellAbility) {
         self.spawning_ability = Some(ability);
     }
+}
 
+/// Mirrors Java's `Trigger extends CardTraitBase` override of `matchesValid`:
+/// when `this instanceof Trigger` and a spawning ability is present, the
+/// source player resolves to the spawning ability's activating player rather
+/// than the source card's controller.
+impl CardTrait for Trigger {
+    fn base(&self) -> &CardTraitBase {
+        &self.base.card_trait_base
+    }
+
+    fn resolve_source_player(&self, src_card: &Card) -> PlayerId {
+        self.spawning_ability
+            .as_ref()
+            .map(|sa| sa.activating_player)
+            .unwrap_or(src_card.controller)
+    }
+}
+
+impl Trigger {
     pub fn set_trigger_phases(&mut self, phases: Vec<PhaseType>) {
         self.valid_phases = Some(phases);
     }
@@ -189,7 +203,8 @@ impl Trigger {
     }
 
     pub fn to_string_with_active(&self, active: bool) -> String {
-        if !self.params.has(keys::TRIGGER_DESCRIPTION) || self.base.card_trait_base.is_suppressed() {
+        if !self.params.has(keys::TRIGGER_DESCRIPTION) || self.base.card_trait_base.is_suppressed()
+        {
             return String::new();
         }
 
@@ -200,12 +215,7 @@ impl Trigger {
             .to_string();
 
         if !desc.contains("ABILITY") {
-            let host_name = self
-                .base
-                .card_trait_base
-                .get_host_card()
-                .card_name
-                .clone();
+            let host_name = self.base.card_trait_base.get_host_card().card_name.clone();
             desc = desc.replace("CARDNAME", &host_name);
             desc = desc.replace("NICKNAME", &host_name);
             if desc.contains("ORIGINALHOST") {
@@ -300,9 +310,7 @@ impl Trigger {
                         let source_id = current.source.unwrap_or(host_card);
                         let choices = current.params.get("Choices").unwrap_or("");
                         sa_desc = crate::ability::effects::charm_effect::make_formated_description(
-                            game,
-                            source_id,
-                            choices,
+                            game, source_id, choices,
                         );
                         break;
                     }
@@ -463,7 +471,8 @@ impl Trigger {
             return (game
                 .card(host_card)
                 .get_ability_resolved_this_turn_activators(self.get_overriding_ability())
-                .len() as u32) < limit;
+                .len() as u32)
+                < limit;
         }
         true
     }
@@ -499,6 +508,221 @@ impl Trigger {
                 .get_ability_activated_this_turn(self.get_overriding_ability());
         }
         0
+    }
+
+    /// Polymorphic `Valid...` check for optional card payloads.
+    /// Mirrors Java's `matchesValidParam` flow by routing through `CardTrait`.
+    pub fn matches_optional_valid_card_filter(
+        &self,
+        filter: &Option<String>,
+        card_id: Option<CardId>,
+        game: &GameState,
+    ) -> bool {
+        match (filter.as_deref(), card_id) {
+            (None, _) => true,
+            (Some(_), None) => false,
+            (Some(raw), Some(card_id)) => {
+                let parts: Vec<&str> = raw
+                    .split(',')
+                    .map(str::trim)
+                    .filter(|s| !s.is_empty())
+                    .collect();
+                self.matches_valid_host(&MatchValidTarget::Card(game.card(card_id)), &parts)
+            }
+        }
+    }
+
+    /// Polymorphic `Valid...` check for optional player payloads.
+    /// Mirrors Java's `matchesValidParam` flow by routing through `CardTrait`.
+    pub fn matches_optional_valid_player_filter(
+        &self,
+        filter: &Option<String>,
+        player_id: Option<PlayerId>,
+    ) -> bool {
+        match (filter.as_deref(), player_id) {
+            (None, _) => true,
+            (Some(_), None) => false,
+            (Some(raw), Some(player_id)) => {
+                let parts: Vec<&str> = raw
+                    .split(',')
+                    .map(str::trim)
+                    .filter(|s| !s.is_empty())
+                    .collect();
+                self.matches_valid_host(&MatchValidTarget::Player(player_id), &parts)
+            }
+        }
+    }
+
+    /// Matches a required card against a `Valid...` card filter from this trigger's host context.
+    pub fn matches_valid_card_filter(
+        &self,
+        filter: &str,
+        card_id: CardId,
+        game: &GameState,
+    ) -> bool {
+        let parts: Vec<&str> = filter
+            .split(',')
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .collect();
+        self.matches_valid_host(&MatchValidTarget::Card(game.card(card_id)), &parts)
+    }
+
+    /// Matches a required player against a `Valid...` player filter from this trigger's host context.
+    pub fn matches_valid_player_filter(
+        &self,
+        filter: &str,
+        player: PlayerId,
+        _game: &GameState,
+    ) -> bool {
+        let parts: Vec<&str> = filter
+            .split(',')
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .collect();
+        self.matches_valid_host(&MatchValidTarget::Player(player), &parts)
+    }
+
+    /// Matches a required player against a `Valid...` player filter from an explicit source controller.
+    pub fn matches_valid_player_filter_with_controller(
+        &self,
+        filter: &str,
+        player: PlayerId,
+        source_controller: PlayerId,
+    ) -> bool {
+        valid_filter::matches_valid_player(filter, player, source_controller)
+    }
+
+    /// Matches an optional counter-type filter.
+    pub fn matches_counter_type_filter(expected: &Option<String>, actual: &Option<String>) -> bool {
+        if let Some(expected) = expected {
+            if let Some(actual) = actual {
+                actual.eq_ignore_ascii_case(expected)
+            } else {
+                false
+            }
+        } else {
+            true
+        }
+    }
+
+    /// Matches zone filters (origin and/or destination).
+    pub fn matches_zone_filter(expected: &Option<ZoneType>, actual: Option<ZoneType>) -> bool {
+        if let Some(expected) = expected {
+            actual == Some(*expected)
+        } else {
+            true
+        }
+    }
+
+    /// Matches spell-ability filter tokens.
+    pub fn matches_valid_sa_filter(
+        &self,
+        filter: &str,
+        sa: &crate::spellability::SpellAbility,
+    ) -> bool {
+        let f = filter.trim();
+        if f.is_empty() {
+            return true;
+        }
+        if f.eq_ignore_ascii_case("Spell") {
+            return sa.is_spell;
+        }
+        if f.eq_ignore_ascii_case("Ability") {
+            return !sa.is_spell;
+        }
+        true
+    }
+
+    fn matches_valid_player_with_host(
+        &self,
+        filter: &str,
+        player: PlayerId,
+        game: &GameState,
+    ) -> bool {
+        let host_controller = self.host_controller(game);
+        fn matches_single_player_filter(
+            filter: &str,
+            player: PlayerId,
+            host_controller: PlayerId,
+            game: &GameState,
+        ) -> bool {
+            let token = filter.trim();
+            if token.is_empty() {
+                return true;
+            }
+            if token.eq_ignore_ascii_case("You") || token.eq_ignore_ascii_case("YouCtrl") {
+                return player == host_controller;
+            }
+            if token.eq_ignore_ascii_case("Opponent")
+                || token.eq_ignore_ascii_case("OppCtrl")
+                || token.eq_ignore_ascii_case("OpponentCtrl")
+            {
+                return player != host_controller;
+            }
+            if token.eq_ignore_ascii_case("DefendingPlayer")
+                || token.eq_ignore_ascii_case("AttackingPlayer")
+            {
+                return player == game.turn.active_player;
+            }
+            if token.eq_ignore_ascii_case("Any")
+                || token.eq_ignore_ascii_case("Each")
+                || token.eq_ignore_ascii_case("Player")
+                || token.eq_ignore_ascii_case("Player.InGame")
+            {
+                return true;
+            }
+            if token.eq_ignore_ascii_case("Active") {
+                return player == game.turn.active_player;
+            }
+            if token.eq_ignore_ascii_case("NonActive") {
+                return player != game.turn.active_player;
+            }
+            true
+        }
+
+        if filter.contains(',') {
+            filter
+                .split(',')
+                .any(|part| matches_single_player_filter(part, player, host_controller, game))
+        } else {
+            matches_single_player_filter(filter, player, host_controller, game)
+        }
+    }
+
+    /// Matches a damage target filter for either player or card targets.
+    pub fn matches_damage_target_filter(
+        &self,
+        filter: &Option<String>,
+        run_params: &RunParams,
+        game: &GameState,
+        strict_card_filter: bool,
+    ) -> bool {
+        let filter = match filter {
+            Some(f) => f,
+            None => return true,
+        };
+        if let Some(target_card) = run_params.damage_target_card {
+            self.matches_valid_card_filter(filter, target_card, game)
+        } else if strict_card_filter {
+            let is_card_filter = filter.starts_with("Card.")
+                || filter.starts_with("Creature.")
+                || filter.starts_with("Permanent.")
+                || filter.starts_with("Artifact.")
+                || filter.starts_with("Enchantment.")
+                || filter.starts_with("Planeswalker.");
+            if is_card_filter {
+                false
+            } else if let Some(target_player) = run_params.damage_target_player {
+                self.matches_valid_player_with_host(filter, target_player, game)
+            } else {
+                false
+            }
+        } else if let Some(target_player) = run_params.damage_target_player {
+            self.matches_valid_player_with_host(filter, target_player, game)
+        } else {
+            false
+        }
     }
 
     pub fn get_activations_this_game(&self, game: &GameState, host_card: CardId) -> u32 {
@@ -590,7 +814,8 @@ impl Trigger {
                 let Some(attacking_player) = run_params.attacking_player else {
                     return false;
                 };
-                let attacked_this_combat = &game.player(attacking_player).attacked_players_this_combat;
+                let attacked_this_combat =
+                    &game.player(attacking_player).attacked_players_this_combat;
                 !PlayerCollection::opponents_of(game, attacking_player)
                     .into_iter()
                     .all(|opp| attacked_this_combat.contains(&opp))
@@ -616,10 +841,7 @@ impl Trigger {
         host_card: CardId,
         activating_player: PlayerId,
     ) -> bool {
-        if !matches!(
-            self.kind,
-            TriggerType::TapsForMana | TriggerType::ManaAdded
-        ) {
+        if !matches!(self.kind, TriggerType::TapsForMana | TriggerType::ManaAdded) {
             return false;
         }
         self.ensure_ability(game, host_card, activating_player)
@@ -654,21 +876,18 @@ impl Trigger {
         next_id: &mut u32,
     ) -> Self {
         let mut copy = self.clone();
-        self.base
-            .card_trait_base
-            .copy_helper_with_text(
-                &mut copy.base.card_trait_base,
-                new_host.clone(),
-                lki || keep_text_changes,
-            );
+        self.base.card_trait_base.copy_helper_with_text(
+            &mut copy.base.card_trait_base,
+            new_host.clone(),
+            lki || keep_text_changes,
+        );
 
         if let Some(spell_ability) = spell_ability {
             copy.set_overriding_ability(spell_ability);
         } else if let Some(overriding_ability) = self.get_overriding_ability() {
-            copy.set_overriding_ability(overriding_ability.copy_with_host_lki(
-                new_host.clone(),
-                lki,
-            ));
+            copy.set_overriding_ability(
+                overriding_ability.copy_with_host_lki(new_host.clone(), lki),
+            );
         }
 
         if !lki {
@@ -721,7 +940,12 @@ impl Trigger {
             }
         }
         let ability_text = holder.get_svar(&self.execute)?;
-        Some(build_spell_ability(game, host_card, ability_text, activating_player))
+        Some(build_spell_ability(
+            game,
+            host_card,
+            ability_text,
+            activating_player,
+        ))
     }
 
     pub fn ensure_ability_mut(
@@ -742,7 +966,9 @@ impl Trigger {
     }
 
     pub fn get_chapter(&self) -> Option<i32> {
-        self.params.get("Chapter").and_then(|chapter| chapter.parse().ok())
+        self.params
+            .get("Chapter")
+            .and_then(|chapter| chapter.parse().ok())
     }
 
     pub fn is_last_chapter(&self) -> bool {
@@ -764,13 +990,11 @@ impl Trigger {
         sa: &mut SpellAbility,
         params: &RunParams,
         game: &GameState,
-        host_card: CardId,
-        host_controller: PlayerId,
+        _host_card: CardId,
+        _host_controller: PlayerId,
     ) {
-        add_ability_trigger_metadata(sa, self, params, game, host_card, host_controller);
-        add_common_trigger_objects(sa, params);
-        self.mode
-            .set_triggering_objects(self, sa, params, game);
+        params.add_common_trigger_objects(sa);
+        self.mode.set_triggering_objects(self, sa, params, game);
     }
 
     pub fn build_triggered_spell_ability(
@@ -846,447 +1070,6 @@ impl Trigger {
                 sa.trigger_remembered_amount = lki_p1p1;
             }
         }
-    }
-}
-
-fn trigger_mode_name(trigger: &Trigger) -> &'static str {
-    trigger.kind.name()
-}
-
-fn destination_names(params: &RunParams) -> Option<String> {
-    if let Some(destinations) = params.destinations.as_ref() {
-        return Some(destinations.clone());
-    }
-    if let Some(zone_changes) = params.zone_changes.as_ref() {
-        let mut ordered = Vec::new();
-        for change in zone_changes {
-            let name = format!("{:?}", change.destination);
-            if !ordered.contains(&name) {
-                ordered.push(name);
-            }
-        }
-        if !ordered.is_empty() {
-            return Some(ordered.join(","));
-        }
-    }
-    params
-        .destination
-        .map(|destination| format!("{destination:?}"))
-}
-
-fn cause_cards_for_ability_triggered(
-    trigger: &Trigger,
-    params: &RunParams,
-    _game: &GameState,
-    _host_card: CardId,
-    _host_controller: PlayerId,
-) -> Vec<CardId> {
-    match trigger.kind {
-        TriggerType::ChangesZone => params.card.into_iter().collect(),
-        TriggerType::ChangesZoneAll => params.cards.clone().unwrap_or_default(),
-        TriggerType::Attacks => params.attacker.into_iter().collect(),
-        TriggerType::AttackersDeclared | TriggerType::AttackersDeclaredOneTarget => {
-            params.attacker_ids.clone().unwrap_or_default()
-        }
-        _ => params
-            .cards
-            .clone()
-            .or_else(|| params.card.map(|card| vec![card]))
-            .unwrap_or_default(),
-    }
-}
-
-fn add_ability_trigger_metadata(
-    sa: &mut SpellAbility,
-    trigger: &Trigger,
-    params: &RunParams,
-    game: &GameState,
-    host_card: CardId,
-    host_controller: PlayerId,
-) {
-    sa.set_triggering_object("AbilityTriggeredMode", trigger_mode_name(trigger));
-    if let Some(destinations) = destination_names(params) {
-        sa.set_triggering_object("AbilityTriggeredDestinations", &destinations);
-    }
-    let cause_cards =
-        cause_cards_for_ability_triggered(trigger, params, game, host_card, host_controller);
-    if !cause_cards.is_empty() {
-        let csv = cause_cards
-            .iter()
-            .map(|cid| cid.0.to_string())
-            .collect::<Vec<_>>()
-            .join(",");
-        sa.set_triggering_object("AbilityTriggeredCauseCards", &csv);
-    }
-}
-
-fn add_common_trigger_objects(sa: &mut SpellAbility, params: &RunParams) {
-    if let Some(card_id) = params.card {
-        sa.set_triggering_object("Card", &card_id.0.to_string());
-        sa.set_triggering_object("NewCard", &card_id.0.to_string());
-    }
-    if let Some(card_id) = params.card_lki {
-        sa.set_triggering_object("CardLKI", &card_id.0.to_string());
-    }
-    if let Some(player_id) = params.activator.or(params.cause_player) {
-        sa.set_triggering_object("Activator", &player_id.0.to_string());
-    }
-    if let Some(player_id) = params.player {
-        sa.set_triggering_object("Player", &player_id.0.to_string());
-    }
-    if let Some(player_id) = params.attacking_player {
-        sa.set_triggering_object("AttackingPlayer", &player_id.0.to_string());
-    }
-    if let Some(player_id) = params.defending_player {
-        sa.set_triggering_object("DefendingPlayer", &player_id.0.to_string());
-    }
-    if let Some(card_id) = params.causer.or(params.cause_card) {
-        sa.set_triggering_object("Causer", &card_id.0.to_string());
-    }
-    if let Some(card_id) = params.source_card.or(params.spell_card) {
-        sa.set_triggering_object("Source", &card_id.0.to_string());
-    }
-    if let Some(card_id) = params.attacker {
-        sa.set_triggering_object("Attacker", &card_id.0.to_string());
-    }
-    if let Some(card_id) = params.blocker {
-        sa.set_triggering_object("Blocker", &card_id.0.to_string());
-    }
-    if let Some(card_id) = params.attacked_card {
-        sa.set_triggering_object("Attacked", &card_id.0.to_string());
-    }
-    if let Some(player_id) = params.attacked_player {
-        sa.set_triggering_object("AttackedTarget", &player_id.0.to_string());
-    }
-    if let Some(card_id) = params.target_card {
-        let value = card_id.0.to_string();
-        sa.set_triggering_object("Target", &value);
-        sa.set_triggering_object("TargetCard", &value);
-    }
-    if let Some(player_id) = params.target_player {
-        let value = player_id.0.to_string();
-        sa.set_triggering_object("Target", &value);
-        sa.set_triggering_object("TargetPlayer", &value);
-    }
-    // Java DamageDone triggers expose the damaged entity as AbilityKey.Target.
-    // Mirror that here so TriggeredTarget resolves against trigger objects
-    // instead of depending on target_chosen fallback behavior.
-    if params.target_player.is_none() {
-        if let Some(player_id) = params.damage_target_player {
-            let value = player_id.0.to_string();
-            sa.set_triggering_object("Target", &value);
-            sa.set_triggering_object("TargetPlayer", &value);
-        }
-    }
-    if params.target_card.is_none() {
-        if let Some(card_id) = params.damage_target_card {
-            let value = card_id.0.to_string();
-            sa.set_triggering_object("Target", &value);
-            sa.set_triggering_object("TargetCard", &value);
-        }
-    }
-    if let Some(card_id) = params.explored {
-        sa.set_triggering_object("Explored", &card_id.0.to_string());
-    }
-    if let Some(cards) = params.cards.as_deref() {
-        let csv = cards
-            .iter()
-            .map(|card_id| card_id.0.to_string())
-            .collect::<Vec<_>>()
-            .join(",");
-        if !csv.is_empty() {
-            sa.set_triggering_object("Cards", &csv);
-        }
-    }
-    if let Some(cards) = params.attacker_ids.as_deref() {
-        let csv = cards
-            .iter()
-            .map(|card_id| card_id.0.to_string())
-            .collect::<Vec<_>>()
-            .join(",");
-        if !csv.is_empty() {
-            sa.set_triggering_object("Attackers", &csv);
-        }
-    }
-    if let Some(value) = params.life_amount {
-        sa.set_triggering_object("LifeAmount", &value.to_string());
-    }
-    if let Some(value) = params.natural_result {
-        sa.set_triggering_object("NaturalResult", &value.to_string());
-    }
-    if let Some(value) = params.card_state_name.as_deref() {
-        sa.set_triggering_object("CardState", value);
-    }
-    if let Some(value) = params.room_name.as_deref() {
-        sa.set_triggering_object("RoomName", value);
-    }
-    if let Some(value) = params.spell_ability.as_ref() {
-        sa.set_triggering_spell_ability("SpellAbility", value.clone());
-    }
-    if let Some(value) = params.source_sa.as_ref() {
-        sa.set_triggering_spell_ability("SourceSA", value.clone());
-    }
-    if let Some(value) = params.ability_mana.as_ref() {
-        sa.set_triggering_spell_ability("AbilityMana", value.clone());
-    }
-    if let Some(value) = params.cause.as_ref() {
-        sa.set_triggering_spell_ability("Cause", value.clone());
-    }
-    if let Some(results) = params.die_results.as_deref() {
-        let csv = results
-            .iter()
-            .map(i32::to_string)
-            .collect::<Vec<_>>()
-            .join(",");
-        if !csv.is_empty() {
-            sa.set_triggering_object("Result", &csv);
-        }
-    } else if let Some(value) = params.die_result {
-        sa.set_triggering_object("Result", &value.to_string());
-    }
-    if let Some(value) = params.die_sides {
-        sa.set_triggering_object("Sides", &value.to_string());
-    }
-    if let Some(value) = params.number {
-        sa.set_triggering_object("Number", &value.to_string());
-    }
-}
-
-/// Check an optional ValidCard$ filter against a card from RunParams.
-/// Returns false if the filter exists but the card doesn't match.
-pub(crate) fn check_card_filter(
-    filter: &Option<String>,
-    card_id: Option<CardId>,
-    host_card: CardId,
-    host_controller: PlayerId,
-    game: &GameState,
-) -> bool {
-    if let Some(filter) = filter {
-        if let Some(cid) = card_id {
-            matches_valid_card(filter, cid, host_card, host_controller, game)
-        } else {
-            false
-        }
-    } else {
-        true
-    }
-}
-
-/// Check an optional ValidPlayer$ filter against a player from RunParams.
-/// Returns false if the filter exists but the player doesn't match.
-pub(crate) fn check_player_filter(
-    filter: &Option<String>,
-    player_id: Option<PlayerId>,
-    host_controller: PlayerId,
-) -> bool {
-    if let Some(filter) = filter {
-        if let Some(pid) = player_id {
-            matches_valid_player(filter, pid, host_controller)
-        } else {
-            false
-        }
-    } else {
-        true
-    }
-}
-
-/// Check an optional CounterType$ filter against a counter type from RunParams.
-pub(crate) fn check_counter_type_filter(
-    expected: &Option<String>,
-    actual: &Option<String>,
-) -> bool {
-    if let Some(expected) = expected {
-        if let Some(actual) = actual {
-            actual.eq_ignore_ascii_case(expected)
-        } else {
-            false
-        }
-    } else {
-        true
-    }
-}
-
-/// Check a damage target filter that can match either a card or player target.
-/// `strict_card_filter` controls whether card-specific filters (Card., Creature., etc.)
-/// reject player targets.
-pub(crate) fn check_damage_target(
-    filter: &Option<String>,
-    run_params: &RunParams,
-    host_card: CardId,
-    host_controller: PlayerId,
-    game: &GameState,
-    strict_card_filter: bool,
-) -> bool {
-    let filter = match filter {
-        Some(f) => f,
-        None => return true,
-    };
-    if let Some(target_card) = run_params.damage_target_card {
-        matches_valid_card(filter, target_card, host_card, host_controller, game)
-    } else if strict_card_filter {
-        let is_card_filter = filter.starts_with("Card.")
-            || filter.starts_with("Creature.")
-            || filter.starts_with("Permanent.")
-            || filter.starts_with("Artifact.")
-            || filter.starts_with("Enchantment.")
-            || filter.starts_with("Planeswalker.");
-        if is_card_filter {
-            false
-        } else if let Some(target_player) = run_params.damage_target_player {
-            matches_valid_player_with_host(filter, target_player, host_card, host_controller, game)
-        } else {
-            false
-        }
-    } else if let Some(target_player) = run_params.damage_target_player {
-        matches_valid_player_with_host(filter, target_player, host_card, host_controller, game)
-    } else {
-        false
-    }
-}
-
-/// Check zone matches (origin and/or destination).
-pub(crate) fn check_zone_filter(expected: &Option<ZoneType>, actual: Option<ZoneType>) -> bool {
-    if let Some(expected) = expected {
-        actual == Some(*expected)
-    } else {
-        true
-    }
-}
-
-
-pub(crate) fn matches_valid_sa(filter: &str, sa: &crate::spellability::SpellAbility) -> bool {
-    let f = filter.trim();
-    if f.is_empty() {
-        return true;
-    }
-    if f.eq_ignore_ascii_case("Spell") {
-        return sa.is_spell;
-    }
-    if f.eq_ignore_ascii_case("Ability") {
-        return !sa.is_spell;
-    }
-    true
-}
-
-/// Matches a card against a ValidCard$ filter string.
-/// Handles: Card.Self, Creature.Other, Creature.YouCtrl, Creature,
-/// Instant,Sorcery (comma = OR), type filters.
-pub(crate) fn matches_valid_card(
-    filter: &str,
-    card_id: CardId,
-    host_card: CardId,
-    _host_controller: PlayerId,
-    game: &GameState,
-) -> bool {
-    let card = game.card(card_id);
-    let host = game.card(host_card);
-    valid_filter::matches_valid_card(filter, card, host)
-}
-
-/// Matches a player against a ValidPlayer$ filter string.
-pub(crate) fn matches_valid_player(
-    filter: &str,
-    player: PlayerId,
-    host_controller: PlayerId,
-) -> bool {
-    valid_filter::matches_valid_player(filter, player, host_controller)
-}
-
-fn matches_valid_player_with_host(
-    filter: &str,
-    player: PlayerId,
-    host_card: CardId,
-    host_controller: PlayerId,
-    game: &GameState,
-) -> bool {
-    fn matches_single_player_filter(
-        filter: &str,
-        player: PlayerId,
-        host_card: CardId,
-        host_controller: PlayerId,
-        game: &GameState,
-    ) -> bool {
-        let trimmed = filter.trim();
-        if trimmed.is_empty() {
-            return true;
-        }
-        if matches!(
-            trimmed.to_ascii_lowercase().as_str(),
-            "player" | "player.ingame" | "any" | "each"
-        ) {
-            return true;
-        }
-
-        let sa = SpellAbility::new_simple(Some(host_card), host_controller, "");
-        let property = trimmed.strip_prefix("Player.").unwrap_or(trimmed);
-        crate::player::player_property::player_has_property(
-            player,
-            property,
-            game,
-            host_card,
-            host_controller,
-            &sa,
-        )
-    }
-
-    filter
-        .split(',')
-        .any(|part| matches_single_player_filter(part, player, host_card, host_controller, game))
-}
-
-/// Check if a count matches a ValidAttackersAmount filter like "GE1", "EQ3", etc.
-pub(crate) fn matches_amount(filter: &str, count: usize) -> bool {
-    let (op, num_str) = if filter.len() >= 3 {
-        (&filter[..2], &filter[2..])
-    } else {
-        return count > 0; // fallback
-    };
-    let n: usize = num_str.parse().unwrap_or(0);
-    match op {
-        "GE" => count >= n,
-        "GT" => count > n,
-        "LE" => count <= n,
-        "LT" => count < n,
-        "EQ" => count == n,
-        "NE" => count != n,
-        _ => count > 0,
-    }
-}
-
-/// Parse a zone name to ZoneType.
-pub(crate) fn parse_zone(s: &str) -> Option<ZoneType> {
-    match s {
-        "Battlefield" => Some(ZoneType::Battlefield),
-        "Graveyard" => Some(ZoneType::Graveyard),
-        "Hand" => Some(ZoneType::Hand),
-        "Library" => Some(ZoneType::Library),
-        "Exile" => Some(ZoneType::Exile),
-        "Stack" => Some(ZoneType::Stack),
-        "Command" => Some(ZoneType::Command),
-        "Any" => None, // None means "any zone"
-        _ => None,
-    }
-}
-
-/// Parse a phase name to PhaseType.
-pub(crate) fn parse_phase(s: &str) -> Option<PhaseType> {
-    match s {
-        "Untap" => Some(PhaseType::Untap),
-        "Upkeep" => Some(PhaseType::Upkeep),
-        "Draw" => Some(PhaseType::Draw),
-        "Main1" | "BeginningOfPreCombatMain" => Some(PhaseType::Main1),
-        "Main2" | "BeginningOfPostCombatMain" => Some(PhaseType::Main2),
-        "CombatBegin" | "BeginCombat" => Some(PhaseType::CombatBegin),
-        "CombatEnd" | "EndCombat" | "EndOfCombat" | "End of Combat" => Some(PhaseType::CombatEnd),
-        // Forge card scripts spell the end step several ways; canonicalize
-        // them all to PhaseType::EndOfTurn so delayed Phase triggers fire at
-        // the right step (e.g. Ashling's "At the beginning of your next end
-        // step, sacrifice that token...").
-        "EndOfTurn" | "End" | "End of Turn" | "EndStep" | "EndOfTurnStep" => {
-            Some(PhaseType::EndOfTurn)
-        }
-        "Cleanup" => Some(PhaseType::Cleanup),
-        _ => None,
     }
 }
 
@@ -1530,7 +1313,7 @@ pub fn parse_trigger(raw: &str, next_id: &mut u32) -> Option<Trigger> {
         .get(keys::TRIGGER_ZONES)
         .map(|s| {
             s.split(',')
-                .filter_map(|z| parse_zone(z.trim()))
+                .filter_map(|z| ZoneType::from_str_compat(z.trim()))
                 .collect::<Vec<_>>()
         })
         .unwrap_or_else(|| vec![ZoneType::Battlefield]);
@@ -1570,7 +1353,7 @@ pub fn parse_trigger(raw: &str, next_id: &mut u32) -> Option<Trigger> {
                 if let Some(destinations) = params.get(keys::DESTINATION) {
                     let zones = destinations
                         .split(',')
-                        .filter_map(|z| parse_zone(z.trim()))
+                        .filter_map(|z| ZoneType::from_str_compat(z.trim()))
                         .collect::<Vec<_>>();
                     if !zones.is_empty() {
                         active_zones = zones;
@@ -1587,7 +1370,7 @@ pub fn parse_trigger(raw: &str, next_id: &mut u32) -> Option<Trigger> {
     let valid_phases = params.get(keys::PHASE).map(|phase_text| {
         phase_text
             .split(',')
-            .filter_map(|token| parse_phase(token.trim()))
+            .filter_map(|token| PhaseType::from_script_name(token.trim()))
             .collect::<Vec<_>>()
     });
 

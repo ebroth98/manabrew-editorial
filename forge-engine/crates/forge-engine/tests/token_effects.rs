@@ -1,10 +1,15 @@
 /// Integration tests for Token Creation and Copy Effects (Issue #14).
 use forge_engine_core::agent::{PassAgent, PlayerAgent};
+use forge_engine_core::ability::AbilityKey;
 use forge_engine_core::card::CardInstance;
 use forge_engine_core::game::GameState;
 use forge_engine_core::game_loop::GameLoop;
 use forge_engine_core::ids::{CardId, PlayerId};
+use forge_engine_core::mana::ManaPool;
+use forge_engine_core::player::actions::PlayerAction;
 use forge_engine_core::spellability::{SpellAbility, StackEntry};
+use forge_engine_core::trigger::parse_trigger;
+use forge_carddb::parse_card_script;
 use forge_foundation::{CardTypeLine, ColorSet, ManaCost, ZoneType};
 
 // ── Helpers ──────────────────────────────────────────────────────────
@@ -73,8 +78,130 @@ fn make_test_source(owner: PlayerId) -> CardInstance {
     )
 }
 
+fn make_etb_life_creature(owner: PlayerId) -> CardInstance {
+    let mut card = CardInstance::new(
+        CardId(0),
+        "Life Test".to_string(),
+        owner,
+        CardTypeLine::parse("Creature Elemental"),
+        ManaCost::parse("2 G"),
+        ColorSet::GREEN,
+        Some(3),
+        Some(3),
+        vec![],
+        vec![],
+    );
+    let mut next_trigger_id = 0;
+    let trigger = parse_trigger(
+        "Mode$ ChangesZone | Origin$ Any | Destination$ Battlefield | ValidCard$ Card.Self | Execute$ TrigGain | TriggerDescription$ When CARDNAME enters the battlefield, you gain 3 life.",
+        &mut next_trigger_id,
+    )
+    .expect("trigger should parse");
+    card.set_triggers(vec![trigger]);
+    card.svars.insert(
+        "TrigGain".to_string(),
+        "DB$ GainLife | Defined$ You | LifeAmount$ 3".to_string(),
+    );
+    card
+}
+
 fn pass_agents() -> Vec<Box<dyn PlayerAgent>> {
     vec![Box::new(PassAgent), Box::new(PassAgent)]
+}
+
+struct DiscardOneAgent;
+
+impl PlayerAgent for DiscardOneAgent {
+    fn mulligan_decision(&mut self, _player: PlayerId, _hand: &[CardId], _mulligan_count: u32) -> bool {
+        true
+    }
+
+    fn choose_action(
+        &mut self,
+        _player: PlayerId,
+        _playable: &[forge_engine_core::agent::PlayOption],
+        _tappable_lands: &[CardId],
+        _untappable_lands: &[CardId],
+        _activatable: &[(CardId, usize)],
+    ) -> PlayerAction {
+        PlayerAction::PassPriority
+    }
+
+    fn choose_attackers(
+        &mut self,
+        _player: PlayerId,
+        _available: &[CardId],
+        _possible_defenders: &[forge_engine_core::combat::DefenderId],
+    ) -> Vec<(CardId, forge_engine_core::combat::DefenderId)> {
+        vec![]
+    }
+
+    fn choose_blockers(
+        &mut self,
+        _player: PlayerId,
+        _attackers: &[CardId],
+        _available_blockers: &[CardId],
+        _max_blockers: Option<usize>,
+    ) -> Vec<(CardId, CardId)> {
+        vec![]
+    }
+
+    fn choose_discard_any_number(
+        &mut self,
+        _player: PlayerId,
+        hand: &[CardId],
+        _min: usize,
+        max: usize,
+    ) -> Vec<CardId> {
+        hand.iter().copied().take(max.min(1)).collect()
+    }
+
+    fn choose_targets_for(
+        &mut self,
+        sa: &mut SpellAbility,
+        game: &GameState,
+        mana_pools: &[ManaPool],
+    ) -> bool {
+        forge_engine_core::spellability::choose_targets_by_kind(self, sa, game, mana_pools)
+    }
+
+    fn choose_target_player(
+        &mut self,
+        _player: PlayerId,
+        valid: &[PlayerId],
+        _sa: Option<&SpellAbility>,
+    ) -> Option<PlayerId> {
+        valid.first().copied()
+    }
+
+    fn choose_target_card(
+        &mut self,
+        _player: PlayerId,
+        valid: &[CardId],
+        _sa: Option<&SpellAbility>,
+    ) -> Option<CardId> {
+        valid.first().copied()
+    }
+
+    fn choose_target_any(
+        &mut self,
+        _player: PlayerId,
+        valid_players: &[PlayerId],
+        valid_cards: &[CardId],
+        _sa: Option<&SpellAbility>,
+    ) -> forge_engine_core::agent::TargetChoice {
+        if let Some(&player) = valid_players.first() {
+            forge_engine_core::agent::TargetChoice::Player(player)
+        } else if let Some(&card) = valid_cards.first() {
+            forge_engine_core::agent::TargetChoice::Card(card)
+        } else {
+            forge_engine_core::agent::TargetChoice::None
+        }
+    }
+
+    fn choose_land_or_spell(&mut self, _player: PlayerId) -> Option<bool> {
+        None
+    }
 }
 
 fn push_activated_entry(
@@ -88,6 +215,56 @@ fn push_activated_entry(
     let mut sa = SpellAbility::new_simple(Some(source), controller, ability_text);
     sa.is_activated = true;
     sa.target_chosen.target_card = target_card;
+    game.stack.push(StackEntry {
+        id: 0,
+        spell_ability: sa,
+        is_creature_spell: false,
+        is_permanent_spell: false,
+        cast_from_zone: None,
+        optional_trigger_decider: None,
+        optional_trigger_description: None,
+        optional_trigger_source_name: None,
+    });
+}
+
+fn push_triggered_copy_entry(
+    game: &mut GameState,
+    controller: PlayerId,
+    ability_text: &str,
+    triggered_card: CardId,
+) {
+    let source = game.create_card(make_test_source(controller));
+    game.move_card(source, ZoneType::Command, controller);
+    let mut sa = SpellAbility::new_simple(Some(source), controller, ability_text);
+    sa.is_trigger = true;
+    sa.set_triggering_object(AbilityKey::Card, triggered_card);
+    game.stack.push(StackEntry {
+        id: 0,
+        spell_ability: sa,
+        is_creature_spell: false,
+        is_permanent_spell: false,
+        cast_from_zone: None,
+        optional_trigger_decider: None,
+        optional_trigger_description: None,
+        optional_trigger_source_name: None,
+    });
+}
+
+fn push_triggered_copy_entry_with_svars(
+    game: &mut GameState,
+    controller: PlayerId,
+    ability_text: &str,
+    triggered_card: CardId,
+    svars: &[(&str, &str)],
+) {
+    let source = game.create_card(make_test_source(controller));
+    game.move_card(source, ZoneType::Command, controller);
+    for (key, value) in svars {
+        game.card_mut(source).set_s_var(*key, *value);
+    }
+    let mut sa = SpellAbility::new_simple(Some(source), controller, ability_text);
+    sa.is_trigger = true;
+    sa.set_triggering_object(AbilityKey::Card, triggered_card);
     game.stack.push(StackEntry {
         id: 0,
         spell_ability: sa,
@@ -353,5 +530,140 @@ fn test_copy_ceases_to_exist_on_leaving() {
         game.zone(ZoneType::Graveyard, p0).len(),
         0,
         "Copy should NOT be in graveyard"
+    );
+}
+
+#[test]
+fn test_copy_permanent_triggers_copied_etb() {
+    let mut game = GameState::new(&["Alice", "Bob"], 20);
+    let p0 = PlayerId(0);
+    let p1 = PlayerId(1);
+
+    let creature = game.create_card(make_etb_life_creature(p1));
+    game.move_card(creature, ZoneType::Battlefield, p1);
+    assert_eq!(game.player(p0).life, 20);
+
+    let ability = "SP$ CopyPermanent";
+    push_activated_entry(&mut game, p0, ability, Some(creature));
+
+    let mut agents = pass_agents();
+    let mut game_loop = GameLoop::new(2);
+    game_loop.resolve_stack(&mut game, &mut agents);
+    game_loop.step_with_priority(&mut game, &mut agents, true);
+
+    assert_eq!(
+        game.player(p0).life,
+        23,
+        "Copied permanent should fire its own ETB trigger"
+    );
+}
+
+#[test]
+fn test_copy_permanent_triggered_card_lki_copy_keeps_etb() {
+    let mut game = GameState::new(&["Alice", "Bob"], 20);
+    let p0 = PlayerId(0);
+    let p1 = PlayerId(1);
+
+    let creature = game.create_card(make_etb_life_creature(p1));
+    game.move_card(creature, ZoneType::Battlefield, p1);
+    game.move_card(creature, ZoneType::Graveyard, p1);
+
+    let ability = "SP$ CopyPermanent | Defined$ TriggeredCardLKICopy";
+    push_triggered_copy_entry(&mut game, p0, ability, creature);
+
+    let mut agents = pass_agents();
+    let mut game_loop = GameLoop::new(2);
+    game_loop.resolve_stack(&mut game, &mut agents);
+    game_loop.step_with_priority(&mut game, &mut agents, true);
+
+    assert_eq!(
+        game.player(p0).life,
+        23,
+        "TriggeredCardLKICopy should preserve ETB triggers on the copied token"
+    );
+}
+
+#[test]
+fn test_copy_permanent_triggered_card_lki_copy_keeps_cavalier_etb() {
+    let rules = parse_card_script(
+        "Name:Cavalier of Flame\nManaCost:2 R R R\nTypes:Creature Elemental Knight\nPT:6/5\nA:AB$ PumpAll | Cost$ 1 R | ValidCards$ Creature.YouCtrl | NumAtt$ +1 | KW$ Haste | SpellDescription$ Creatures you control get +1/+0 and gain haste until end of turn.\nT:Mode$ ChangesZone | ValidCard$ Card.Self | Origin$ Any | Destination$ Battlefield | Execute$ TrigDiscard | TriggerDescription$ When CARDNAME enters, discard any number of cards, then draw that many cards.\nSVar:TrigDiscard:DB$ Discard | AnyNumber$ True | Optional$ True | Mode$ TgtChoose | RememberDiscarded$ True | SubAbility$ DBDraw\nSVar:DBDraw:DB$ Draw | Defined$ You | NumCards$ Y | SubAbility$ DBCleanup\nSVar:DBCleanup:DB$ Cleanup | ClearRemembered$ True\nSVar:Y:Remembered$Amount\nT:Mode$ ChangesZone | Origin$ Battlefield | Destination$ Graveyard | ValidCard$ Card.Self | Execute$ TrigDamageAll | TriggerDescription$ When CARDNAME dies, it deals X damage to each opponent and each planeswalker they control, where X is the number of land cards in your graveyard.\nSVar:TrigDamageAll:DB$ DamageAll | ValidPlayers$ Player.Opponent | ValidCards$ Planeswalker.OppCtrl | NumDmg$ X | SpellDescription$ CARDNAME deals X damage to each opponent and each planeswalker they control, where X is the number of land cards in your graveyard.\nSVar:X:Count$ValidGraveyard Land.YouOwn",
+    )
+    .expect("card script should parse");
+
+    let mut game = GameState::new(&["Alice", "Bob"], 20);
+    let p0 = PlayerId(0);
+    let p1 = PlayerId(1);
+
+    let cavalier = game.create_card(CardInstance::from_rules(&rules, p1));
+    game.move_card(cavalier, ZoneType::Battlefield, p1);
+    game.move_card(cavalier, ZoneType::Graveyard, p1);
+
+    let hand_card = game.create_card(make_grizzly_bears(p0));
+    game.move_card(hand_card, ZoneType::Hand, p0);
+    let draw_card = game.create_card(make_soldier_token(p0));
+    game.move_card(draw_card, ZoneType::Library, p0);
+
+    let ability = "SP$ CopyPermanent | Defined$ TriggeredCardLKICopy";
+    push_triggered_copy_entry(&mut game, p0, ability, cavalier);
+
+    let mut agents: Vec<Box<dyn PlayerAgent>> =
+        vec![Box::new(DiscardOneAgent), Box::new(PassAgent)];
+    let mut game_loop = GameLoop::new(2);
+    game_loop.resolve_stack(&mut game, &mut agents);
+    game_loop.step_with_priority(&mut game, &mut agents, true);
+
+    assert!(
+        game.zone(ZoneType::Graveyard, p0).cards.contains(&hand_card),
+        "Copied Cavalier ETB should discard a card"
+    );
+}
+
+#[test]
+fn test_copy_permanent_with_ashling_wrapper_keeps_cavalier_etb() {
+    let rules = parse_card_script(
+        "Name:Cavalier of Flame\nManaCost:2 R R R\nTypes:Creature Elemental Knight\nPT:6/5\nA:AB$ PumpAll | Cost$ 1 R | ValidCards$ Creature.YouCtrl | NumAtt$ +1 | KW$ Haste | SpellDescription$ Creatures you control get +1/+0 and gain haste until end of turn.\nT:Mode$ ChangesZone | ValidCard$ Card.Self | Origin$ Any | Destination$ Battlefield | Execute$ TrigDiscard | TriggerDescription$ When CARDNAME enters, discard any number of cards, then draw that many cards.\nSVar:TrigDiscard:DB$ Discard | AnyNumber$ True | Optional$ True | Mode$ TgtChoose | RememberDiscarded$ True | SubAbility$ DBDraw\nSVar:DBDraw:DB$ Draw | Defined$ You | NumCards$ Y | SubAbility$ DBCleanup\nSVar:DBCleanup:DB$ Cleanup | ClearRemembered$ True\nSVar:Y:Remembered$Amount\nT:Mode$ ChangesZone | Origin$ Battlefield | Destination$ Graveyard | ValidCard$ Card.Self | Execute$ TrigDamageAll | TriggerDescription$ When CARDNAME dies, it deals X damage to each opponent and each planeswalker they control, where X is the number of land cards in your graveyard.\nSVar:TrigDamageAll:DB$ DamageAll | ValidPlayers$ Player.Opponent | ValidCards$ Planeswalker.OppCtrl | NumDmg$ X | SpellDescription$ CARDNAME deals X damage to each opponent and each planeswalker they control, where X is the number of land cards in your graveyard.\nSVar:X:Count$ValidGraveyard Land.YouOwn",
+    )
+    .expect("card script should parse");
+
+    let mut game = GameState::new(&["Alice", "Bob"], 20);
+    let p0 = PlayerId(0);
+    let p1 = PlayerId(1);
+
+    let cavalier = game.create_card(CardInstance::from_rules(&rules, p1));
+    game.move_card(cavalier, ZoneType::Battlefield, p1);
+    game.move_card(cavalier, ZoneType::Graveyard, p1);
+
+    let hand_card = game.create_card(make_grizzly_bears(p0));
+    game.move_card(hand_card, ZoneType::Hand, p0);
+    let draw_card = game.create_card(make_soldier_token(p0));
+    game.move_card(draw_card, ZoneType::Library, p0);
+
+    push_triggered_copy_entry_with_svars(
+        &mut game,
+        p0,
+        "DB$ CopyPermanent | Defined$ TriggeredCardLKICopy | PumpKeywords$ Haste | RememberTokens$ True | SubAbility$ DelTrig",
+        cavalier,
+        &[
+            (
+                "DelTrig",
+                "DB$ DelayedTrigger | Mode$ Phase | Phase$ End of Turn | ValidPlayer$ You | Execute$ TrigSac | RememberObjects$ Remembered | TriggerDescription$ At the beginning of your next end step, sacrifice that token unless you pay {W}{U}{B}{R}{G}. | SubAbility$ DBCleanup",
+            ),
+            (
+                "TrigSac",
+                "DB$ SacrificeAll | Defined$ DelayTriggerRememberedLKI | UnlessCost$ W U B R G | UnlessPayer$ You",
+            ),
+            ("DBCleanup", "DB$ Cleanup | ClearRemembered$ True"),
+        ],
+    );
+
+    let mut agents: Vec<Box<dyn PlayerAgent>> =
+        vec![Box::new(DiscardOneAgent), Box::new(PassAgent)];
+    let mut game_loop = GameLoop::new(2);
+    game_loop.resolve_stack(&mut game, &mut agents);
+    game_loop.step_with_priority(&mut game, &mut agents, true);
+
+    assert!(
+        game.zone(ZoneType::Graveyard, p0).cards.contains(&hand_card),
+        "Ashling-style CopyPermanent wrapper should still allow copied Cavalier ETB to resolve"
     );
 }

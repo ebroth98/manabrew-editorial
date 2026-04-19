@@ -7,7 +7,7 @@ use crate::{
     spellability::SpellAbility,
 };
 
-use super::trigger::{check_card_filter, TriggerBehavior};
+use super::trigger::TriggerBehavior;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TriggerAttackerBlockedByCreature {
@@ -36,14 +36,10 @@ impl TriggerBehavior for TriggerAttackerBlockedByCreature {
         params: &RunParams,
         game: &GameState,
     ) -> bool {
-        let host_card = trigger.base.card_trait_base.get_host_card().id;
-        let host_controller = trigger.base.card_trait_base.get_host_card().controller;
-        check_card_filter(&self.valid_card, params.blocker, host_card, host_controller, game)
-            && check_card_filter(
+        trigger.matches_optional_valid_card_filter(&self.valid_card, params.blocker, game)
+            && trigger.matches_optional_valid_card_filter(
                 &self.valid_blocked,
                 params.blocked_attacker,
-                host_card,
-                host_controller,
                 game,
             )
     }
@@ -56,18 +52,27 @@ impl TriggerBehavior for TriggerAttackerBlockedByCreature {
         _game: &GameState,
     ) {
         if let Some(attacker) = params.attacker {
-            sa.set_triggering_object("Attacker", &attacker.0.to_string());
+            sa.set_triggering_object(
+                crate::ability::AbilityKey::Attacker,
+                &attacker.0.to_string(),
+            );
         }
         if let Some(blocker) = params.blocker {
-            sa.set_triggering_object("Blocker", &blocker.0.to_string());
+            sa.set_triggering_object(crate::ability::AbilityKey::Blocker, &blocker.0.to_string());
         }
     }
 
-    fn get_important_stack_objects(&self, _trigger: &super::trigger::Trigger, sa: &SpellAbility) -> String {
+    fn get_important_stack_objects(
+        &self,
+        _trigger: &super::trigger::Trigger,
+        sa: &SpellAbility,
+    ) -> String {
         format!(
             "Attacker: {}, Blocker: {}",
-            sa.get_triggering_object("Attacker").unwrap_or(""),
-            sa.get_triggering_object("Blocker").unwrap_or("")
+            sa.get_triggering_object(crate::ability::AbilityKey::Attacker)
+                .unwrap_or(""),
+            sa.get_triggering_object(crate::ability::AbilityKey::Blocker)
+                .unwrap_or("")
         )
     }
 }

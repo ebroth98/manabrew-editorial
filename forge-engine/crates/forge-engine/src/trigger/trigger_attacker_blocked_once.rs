@@ -1,13 +1,15 @@
 use serde::{Deserialize, Serialize};
 
 use crate::{
+    ability::AbilityKey,
+    card_trait_base::{CardTrait, MatchValidTarget},
     event::{RunParams, TriggerType},
     game::GameState,
     parsing::{keys, Params},
     spellability::SpellAbility,
 };
 
-use super::trigger::{check_card_filter, TriggerBehavior};
+use super::trigger::TriggerBehavior;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TriggerAttackerBlockedOnce {
@@ -34,9 +36,16 @@ impl TriggerBehavior for TriggerAttackerBlockedOnce {
         params: &RunParams,
         game: &GameState,
     ) -> bool {
-        let host_card = trigger.base.card_trait_base.get_host_card().id;
-        let host_controller = trigger.base.card_trait_base.get_host_card().controller;
-        check_card_filter(&self.valid_card, params.card, host_card, host_controller, game)
+        let Some(attacker_ids) = params.attacker_ids.as_ref() else {
+            return false;
+        };
+
+        let attackers: Vec<_> = attacker_ids
+            .iter()
+            .map(|&attacker_id| MatchValidTarget::Card(game.card(attacker_id)))
+            .collect();
+
+        trigger.matches_valid_param_host("ValidCard", &MatchValidTarget::Iter(&attackers))
     }
 
     fn set_triggering_objects(
@@ -47,19 +56,19 @@ impl TriggerBehavior for TriggerAttackerBlockedOnce {
         _game: &GameState,
     ) {
         if let Some(attackers) = params.attacker_ids.as_ref() {
-            let csv = attackers
-                .iter()
-                .map(|c| c.0.to_string())
-                .collect::<Vec<_>>()
-                .join(",");
-            sa.set_triggering_object("Attackers", &csv);
+            sa.set_triggering_object(AbilityKey::Attackers, attackers.clone());
         }
     }
 
-    fn get_important_stack_objects(&self, _trigger: &super::trigger::Trigger, sa: &SpellAbility) -> String {
+    fn get_important_stack_objects(
+        &self,
+        _trigger: &super::trigger::Trigger,
+        sa: &SpellAbility,
+    ) -> String {
         format!(
             "Attackers: {}",
-            sa.get_triggering_object("Attackers").unwrap_or("")
+            sa.get_triggering_object(AbilityKey::Attackers)
+                .unwrap_or("")
         )
     }
 }

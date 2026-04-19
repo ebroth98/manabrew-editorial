@@ -330,7 +330,8 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                     trigger_mode: Box::new(crate::trigger::trigger_phase::TriggerPhase {
                         phase: Some(forge_foundation::PhaseType::EndOfTurn),
                         valid_player: None,
-                    }) as Box<dyn crate::trigger::TriggerBehavior>,
+                    })
+                        as Box<dyn crate::trigger::TriggerBehavior>,
                     params: crate::parsing::Params::default(),
                     execute_svar,
                     controller,

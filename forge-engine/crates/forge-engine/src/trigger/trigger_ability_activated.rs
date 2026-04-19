@@ -5,7 +5,7 @@ use crate::game::GameState;
 use crate::parsing::{keys, Params};
 use crate::spellability::SpellAbility;
 
-use super::trigger::{check_card_filter, check_player_filter, TriggerBehavior};
+use super::trigger::TriggerBehavior;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TriggerAbilityActivated {
@@ -36,8 +36,9 @@ impl TriggerBehavior for TriggerAbilityActivated {
     ) -> bool {
         let host_card = trigger.base.card_trait_base.get_host_card().id;
         let host_controller = trigger.base.card_trait_base.get_host_card().controller;
-        check_card_filter(&self.valid_card, params.card, host_card, host_controller, game)
-            && check_player_filter(&self.valid_activating_player, params.player, host_controller)
+        trigger.matches_optional_valid_card_filter(&self.valid_card, params.card, game)
+            && trigger
+                .matches_optional_valid_player_filter(&self.valid_activating_player, params.player)
     }
 
     fn set_triggering_objects(
@@ -49,7 +50,11 @@ impl TriggerBehavior for TriggerAbilityActivated {
     ) {
     }
 
-    fn get_important_stack_objects(&self, _trigger: &super::trigger::Trigger, _sa: &SpellAbility) -> String {
+    fn get_important_stack_objects(
+        &self,
+        _trigger: &super::trigger::Trigger,
+        _sa: &SpellAbility,
+    ) -> String {
         String::new()
     }
 }

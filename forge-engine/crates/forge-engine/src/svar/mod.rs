@@ -20,22 +20,19 @@ use crate::parsing::compare::compare_expr;
 use crate::spellability::SpellAbility;
 
 fn parse_trigger_card_object(sa: &SpellAbility, key: &str) -> Option<CardId> {
-    sa.trigger_objects
-        .get(key)
-        .and_then(|value| value.split(',').next())
-        .and_then(|part| part.trim().parse::<u32>().ok())
-        .map(CardId)
+    crate::ability::ability_key::from_string(key)
+        .and_then(|ability_key| sa.get_triggering_card(ability_key))
 }
 
 fn parse_trigger_int_object(sa: &SpellAbility, key: &str) -> Option<i32> {
-    sa.trigger_objects
-        .get(key)
+    crate::ability::ability_key::from_string(key)
+        .and_then(|ability_key| sa.get_triggering_value(ability_key))
         .and_then(|value| value.trim().parse::<i32>().ok())
 }
 
 fn parse_trigger_int_values(sa: &SpellAbility, key: &str) -> Vec<i32> {
-    sa.trigger_objects
-        .get(key)
+    crate::ability::ability_key::from_string(key)
+        .and_then(|ability_key| sa.get_triggering_value(ability_key))
         .map(|raw| {
             raw.split(',')
                 .filter_map(|part| part.trim().parse::<i32>().ok())
@@ -968,7 +965,7 @@ pub fn evaluate_svar(expr: &str, sa: &SpellAbility) -> i32 {
 
 fn trigger_result_values(sa: &SpellAbility) -> Vec<i32> {
     sa.trigger_objects
-        .get("Result")
+        .get(&crate::ability::AbilityKey::Result)
         .map(|raw| {
             raw.split(',')
                 .filter_map(|part| part.trim().parse::<i32>().ok())
@@ -1459,7 +1456,7 @@ mod tests {
         let host_id = game.create_card(host);
 
         let mut sa = SpellAbility::new_simple(Some(host_id), p0, "DB$ GainLife | LifeAmount$ X");
-        sa.set_triggering_object("AttackedTarget", &p1.0.to_string());
+        sa.set_triggering_object(crate::ability::AbilityKey::AttackedTarget, p1);
 
         assert_eq!(resolve_numeric_svar(&game, &sa, "LifeAmount", 0), 14);
     }
@@ -1524,7 +1521,7 @@ mod tests {
             p0,
             "DB$ LoseLife | Defined$ TriggeredTarget | LifeAmount$ X",
         );
-        sa.set_triggering_object("TargetPlayer", &p1.0.to_string());
+        sa.set_triggering_object(crate::ability::AbilityKey::TargetPlayer, p1);
 
         assert_eq!(resolve_numeric_svar(&game, &sa, "LifeAmount", 0), 5);
     }
@@ -1928,7 +1925,7 @@ mod tests {
         let host_id = game.create_card(host);
 
         let mut sa = SpellAbility::new_simple(Some(host_id), p0, "DB$ Draw | NumCards$ Sum");
-        sa.set_triggering_object("Result", "4,11,7");
+        sa.set_triggering_object(crate::ability::AbilityKey::Result, "4,11,7");
 
         assert_eq!(
             super::resolve_svar_expression(

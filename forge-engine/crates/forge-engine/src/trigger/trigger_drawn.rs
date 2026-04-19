@@ -5,7 +5,7 @@ use crate::game::GameState;
 use crate::parsing::{keys, Params};
 use crate::spellability::SpellAbility;
 
-use super::trigger::{check_card_filter, check_player_filter, TriggerBehavior};
+use super::trigger::TriggerBehavior;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TriggerDrawn {
@@ -47,8 +47,8 @@ impl TriggerBehavior for TriggerDrawn {
                 return false;
             }
         }
-        check_card_filter(&self.valid_card, params.card, host_card, host_controller, game)
-            && check_player_filter(&self.valid_player, params.player, host_controller)
+        trigger.matches_optional_valid_card_filter(&self.valid_card, params.card, game)
+            && trigger.matches_optional_valid_player_filter(&self.valid_player, params.player)
     }
 
     fn set_triggering_objects(
@@ -59,10 +59,10 @@ impl TriggerBehavior for TriggerDrawn {
         _game: &GameState,
     ) {
         if let Some(card) = params.card {
-            sa.set_triggering_object("Card", &card.0.to_string());
+            sa.set_triggering_object(crate::ability::AbilityKey::Card, &card.0.to_string());
         }
         if let Some(p) = params.player {
-            sa.set_triggering_object("Player", &p.0.to_string());
+            sa.set_triggering_object(crate::ability::AbilityKey::Player, &p.0.to_string());
         }
     }
 
@@ -70,10 +70,15 @@ impl TriggerBehavior for TriggerDrawn {
         self.number
     }
 
-    fn get_important_stack_objects(&self, _trigger: &super::trigger::Trigger, sa: &SpellAbility) -> String {
+    fn get_important_stack_objects(
+        &self,
+        _trigger: &super::trigger::Trigger,
+        sa: &SpellAbility,
+    ) -> String {
         format!(
             "Player: {}",
-            sa.get_triggering_object("Player").unwrap_or_default()
+            sa.get_triggering_object(crate::ability::AbilityKey::Player)
+                .unwrap_or_default()
         )
     }
 }

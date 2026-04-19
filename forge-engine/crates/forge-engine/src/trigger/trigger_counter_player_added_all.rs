@@ -4,7 +4,7 @@ use crate::event::{RunParams, TriggerType};
 use crate::game::GameState;
 use crate::spellability::SpellAbility;
 
-use super::trigger::{matches_valid_card, matches_valid_player, TriggerBehavior};
+use super::trigger::TriggerBehavior;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TriggerCounterPlayerAddedAll {
@@ -39,13 +39,11 @@ impl TriggerBehavior for TriggerCounterPlayerAddedAll {
         params: &RunParams,
         game: &GameState,
     ) -> bool {
-        let host_card = trigger.base.card_trait_base.get_host_card().id;
-        let host_controller = trigger.base.card_trait_base.get_host_card().controller;
         if let Some(filter) = &self.valid_source {
             let source_ok = if let Some(cid) = params.source_card.or(params.card) {
-                matches_valid_card(filter, cid, host_card, host_controller, game)
+                trigger.matches_valid_card_filter(filter, cid, game)
             } else if let Some(pid) = params.source_player {
-                matches_valid_player(filter, pid, host_controller)
+                trigger.matches_valid_player_filter(filter, pid, game)
             } else {
                 false
             };
@@ -56,9 +54,9 @@ impl TriggerBehavior for TriggerCounterPlayerAddedAll {
 
         if let Some(filter) = &self.valid_object {
             let object_ok = if let Some(cid) = params.object_card {
-                matches_valid_card(filter, cid, host_card, host_controller, game)
+                trigger.matches_valid_card_filter(filter, cid, game)
             } else if let Some(pid) = params.object_player {
-                matches_valid_player(filter, pid, host_controller)
+                trigger.matches_valid_player_filter(filter, pid, game)
             } else {
                 false
             };
@@ -72,7 +70,7 @@ impl TriggerBehavior for TriggerCounterPlayerAddedAll {
                 return false;
             };
             let object_ok = if let Some(pid) = params.object_player {
-                matches_valid_player(filter, pid, source_player)
+                trigger.matches_valid_player_filter_with_controller(filter, pid, source_player)
             } else if let Some(cid) = params.object_card {
                 let card_controller = game.card(cid).controller;
                 if filter.contains("YouCtrl") {
@@ -80,7 +78,7 @@ impl TriggerBehavior for TriggerCounterPlayerAddedAll {
                 } else if filter.contains("OppCtrl") {
                     card_controller != source_player
                 } else {
-                    matches_valid_card(filter, cid, host_card, host_controller, game)
+                    trigger.matches_valid_card_filter(filter, cid, game)
                 }
             } else {
                 false
@@ -103,31 +101,35 @@ impl TriggerBehavior for TriggerCounterPlayerAddedAll {
         // Java: sa.setTriggeringObjectsFrom(runParams, AbilityKey.Source, AbilityKey.Object, AbilityKey.CounterMap)
         // Java also sets Amount = sum of CounterMap values
         if let Some(source) = params.source_player {
-            sa.set_triggering_object("Source", &source.0.to_string());
+            sa.set_triggering_object(crate::ability::AbilityKey::Source, &source.0.to_string());
         } else if let Some(source) = params.source_card {
-            sa.set_triggering_object("Source", &source.0.to_string());
+            sa.set_triggering_object(crate::ability::AbilityKey::Source, &source.0.to_string());
         }
         if let Some(obj) = params.object_card {
-            sa.set_triggering_object("Object", &obj.0.to_string());
+            sa.set_triggering_object(crate::ability::AbilityKey::Object, &obj.0.to_string());
         } else if let Some(p) = params.object_player {
-            sa.set_triggering_object("Object", &p.0.to_string());
+            sa.set_triggering_object(crate::ability::AbilityKey::Object, &p.0.to_string());
         }
         // TODO: Java also sets CounterMap from runParams and computes Amount as sum of CounterMap values.
         // CounterMap is a Map<CounterType, Integer> in Java. Using counter_amount as approximation.
         if let Some(amount) = params.counter_amount {
-            sa.set_triggering_object("Amount", &amount.to_string());
+            sa.set_triggering_object(crate::ability::AbilityKey::Amount, &amount.to_string());
         }
     }
 
-    fn get_important_stack_objects(&self, _trigger: &super::trigger::Trigger, sa: &SpellAbility) -> String {
+    fn get_important_stack_objects(
+        &self,
+        _trigger: &super::trigger::Trigger,
+        sa: &SpellAbility,
+    ) -> String {
         format!(
             "AddedOnce: {}: {}",
             sa.trigger_objects
-                .get("Source")
+                .get(&crate::ability::AbilityKey::Source)
                 .cloned()
                 .unwrap_or_default(),
             sa.trigger_objects
-                .get("Object")
+                .get(&crate::ability::AbilityKey::Object)
                 .cloned()
                 .unwrap_or_default()
         )

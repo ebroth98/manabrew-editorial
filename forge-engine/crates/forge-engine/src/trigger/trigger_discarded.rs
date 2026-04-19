@@ -5,7 +5,7 @@ use crate::game::GameState;
 use crate::parsing::{keys, Params};
 use crate::spellability::SpellAbility;
 
-use super::trigger::{check_card_filter, check_player_filter, matches_valid_card, TriggerBehavior};
+use super::trigger::TriggerBehavior;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TriggerDiscarded {
@@ -36,12 +36,10 @@ impl TriggerBehavior for TriggerDiscarded {
         params: &RunParams,
         game: &GameState,
     ) -> bool {
-        let host_card = trigger.base.card_trait_base.get_host_card().id;
-        let host_controller = trigger.base.card_trait_base.get_host_card().controller;
-        if !check_card_filter(&self.valid_card, params.card, host_card, host_controller, game) {
+        if !trigger.matches_optional_valid_card_filter(&self.valid_card, params.card, game) {
             return false;
         }
-        if !check_player_filter(&self.valid_player, params.player, host_controller) {
+        if !trigger.matches_optional_valid_player_filter(&self.valid_player, params.player) {
             return false;
         }
         if let Some(filter) = self.valid_cause.as_ref() {
@@ -51,7 +49,7 @@ impl TriggerBehavior for TriggerDiscarded {
             let Some(cause_card) = cause_sa.source else {
                 return false;
             };
-            if !matches_valid_card(filter, cause_card, host_card, host_controller, game) {
+            if !trigger.matches_valid_card_filter(filter, cause_card, game) {
                 return false;
             }
         }
@@ -67,17 +65,23 @@ impl TriggerBehavior for TriggerDiscarded {
     ) {
         // Java: sa.setTriggeringObjectsFrom(runParams, AbilityKey.Card, AbilityKey.Cause);
         if let Some(card) = params.card {
-            sa.set_triggering_object("Card", &card.0.to_string());
+            sa.set_triggering_object(crate::ability::AbilityKey::Card, &card.0.to_string());
         }
         // TODO: AbilityKey.Cause is a SpellAbility in Java, cannot be stored as String easily
     }
 
-    fn get_important_stack_objects(&self, _trigger: &super::trigger::Trigger, sa: &SpellAbility) -> String {
+    fn get_important_stack_objects(
+        &self,
+        _trigger: &super::trigger::Trigger,
+        sa: &SpellAbility,
+    ) -> String {
         // Java: "Discarded: " + Card + ", Cause: " + Cause
         format!(
             "Discarded: {}, Cause: {}",
-            sa.get_triggering_object("Card").unwrap_or_default(),
-            sa.get_triggering_object("Cause").unwrap_or_default()
+            sa.get_triggering_object(crate::ability::AbilityKey::Card)
+                .unwrap_or_default(),
+            sa.get_triggering_object(crate::ability::AbilityKey::Cause)
+                .unwrap_or_default()
         )
     }
 }

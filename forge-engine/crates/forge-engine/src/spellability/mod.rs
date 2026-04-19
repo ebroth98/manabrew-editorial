@@ -25,6 +25,7 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use serde::{Deserialize, Serialize};
 
 use crate::ability::api_type::ApiType;
+use crate::ability::AbilityKey;
 use crate::agent::PlayerAgent;
 use crate::card::card_damage_map::CardDamageMap;
 use crate::card::card_zone_table::CardZoneTable;
@@ -50,6 +51,34 @@ static NEXT_SPELL_ABILITY_ID: AtomicU32 = AtomicU32::new(1);
 
 fn next_spell_ability_id() -> u32 {
     NEXT_SPELL_ABILITY_ID.fetch_add(1, Ordering::Relaxed)
+}
+
+pub trait TriggerKeyInput {
+    fn into_ability_key(self) -> Option<AbilityKey>;
+}
+
+impl TriggerKeyInput for AbilityKey {
+    fn into_ability_key(self) -> Option<AbilityKey> {
+        Some(self)
+    }
+}
+
+impl TriggerKeyInput for &str {
+    fn into_ability_key(self) -> Option<AbilityKey> {
+        crate::ability::ability_key::from_string(self)
+    }
+}
+
+impl TriggerKeyInput for String {
+    fn into_ability_key(self) -> Option<AbilityKey> {
+        crate::ability::ability_key::from_string(&self)
+    }
+}
+
+impl TriggerKeyInput for &String {
+    fn into_ability_key(self) -> Option<AbilityKey> {
+        crate::ability::ability_key::from_string(self)
+    }
 }
 
 // ── SpellAbility (mirrors Java's SpellAbility.java) ──────────────────
@@ -207,16 +236,16 @@ pub struct SpellAbility {
     pub is_land_ability: bool,
     /// Trigger objects map for tracking trigger context.
     #[serde(default)]
-    pub trigger_objects: HashMap<String, String>,
+    pub trigger_objects: HashMap<AbilityKey, AbilityValue>,
     /// Java parity: non-scalar trigger objects that carry spell/ability context.
     #[serde(default)]
-    pub trigger_spell_abilities: HashMap<String, SpellAbility>,
+    pub trigger_spell_abilities: HashMap<AbilityKey, SpellAbility>,
     /// Java parity: additional ability lists used by mode/charm-style abilities.
     #[serde(default)]
     pub additional_ability_lists: HashMap<String, Vec<SpellAbility>>,
     /// Java parity: replacing-objects payload.
     #[serde(default)]
-    pub replacing_objects: HashMap<String, String>,
+    pub replacing_objects: HashMap<AbilityKey, AbilityValue>,
     /// Java parity: trigger remembered objects copied from the originating trigger.
     #[serde(default)]
     pub trigger_remembered: Vec<AbilityValue>,
@@ -625,14 +654,62 @@ impl SpellAbility {
 
     /// Check if a triggering object is set.
     /// Mirrors Java's `SpellAbility.hasTriggeringObject(String)`.
-    pub fn has_triggering_object(&self, key: &str) -> bool {
-        self.trigger_objects.contains_key(key)
+    pub fn has_triggering_object<K: TriggerKeyInput>(&self, key: K) -> bool {
+        key.into_ability_key()
+            .map(|parsed| self.trigger_objects.contains_key(&parsed))
+            .unwrap_or(false)
+    }
+
+    /// Get a triggering object value by key.
+    pub fn get_triggering_value(&self, key: AbilityKey) -> Option<&AbilityValue> {
+        self.trigger_objects.get(&key)
+    }
+
+    /// Get a triggering card by key.
+    pub fn get_triggering_card(&self, key: AbilityKey) -> Option<CardId> {
+        match self.get_triggering_value(key) {
+            Some(AbilityValue::Card(card)) => Some(*card),
+            Some(AbilityValue::Cards(cards)) => cards.first().copied(),
+            _ => None,
+        }
+    }
+
+    /// Get a triggering player by key.
+    pub fn get_triggering_player(&self, key: AbilityKey) -> Option<PlayerId> {
+        match self.get_triggering_value(key) {
+            Some(AbilityValue::Player(player)) => Some(*player),
+            Some(AbilityValue::Players(players)) => players.first().copied(),
+            _ => None,
+        }
+    }
+
+    /// Get triggering cards by key.
+    pub fn get_triggering_cards(&self, key: AbilityKey) -> Vec<CardId> {
+        match self.get_triggering_value(key) {
+            Some(AbilityValue::Card(card)) => vec![*card],
+            Some(AbilityValue::Cards(cards)) => cards.clone(),
+            _ => Vec::new(),
+        }
+    }
+
+    /// Get triggering players by key.
+    pub fn get_triggering_players(&self, key: AbilityKey) -> Vec<PlayerId> {
+        match self.get_triggering_value(key) {
+            Some(AbilityValue::Player(player)) => vec![*player],
+            Some(AbilityValue::Players(players)) => players.clone(),
+            _ => Vec::new(),
+        }
     }
 
     /// Get a triggering object by key.
     /// Mirrors Java's `SpellAbility.getTriggeringObject(String)`.
-    pub fn get_triggering_object(&self, key: &str) -> Option<&str> {
-        self.trigger_objects.get(key).map(|s| s.as_str())
+    pub fn get_triggering_object<K: TriggerKeyInput>(&self, key: K) -> Option<&str> {
+        key.into_ability_key()
+            .and_then(|parsed| self.get_triggering_value(parsed))
+            .and_then(|value| match value {
+                AbilityValue::String(raw) => Some(raw.as_str()),
+                _ => None,
+            })
     }
 
     /// Clear all triggering objects.
@@ -692,20 +769,25 @@ impl SpellAbility {
 
     /// Check if an additional ability with the given key exists.
     /// Mirrors Java's `SpellAbility.hasAdditionalAbility(String)`.
-    pub fn has_additional_ability(&self, key: &str) -> bool {
-        self.trigger_spell_abilities.contains_key(key)
+    pub fn has_additional_ability<K: TriggerKeyInput>(&self, key: K) -> bool {
+        key.into_ability_key()
+            .map(|parsed| self.trigger_spell_abilities.contains_key(&parsed))
+            .unwrap_or(false)
     }
 
     /// Get an additional ability by key.
     /// Mirrors Java's `SpellAbility.getAdditionalAbility(String)`.
-    pub fn get_additional_ability(&self, key: &str) -> Option<&SpellAbility> {
-        self.trigger_spell_abilities.get(key)
+    pub fn get_additional_ability<K: TriggerKeyInput>(&self, key: K) -> Option<&SpellAbility> {
+        key.into_ability_key()
+            .and_then(|parsed| self.trigger_spell_abilities.get(&parsed))
     }
 
     /// Set an additional ability by key.
     /// Mirrors Java's `SpellAbility.setAdditionalAbility(String, SpellAbility)`.
-    pub fn set_additional_ability(&mut self, key: &str, ability: SpellAbility) {
-        self.trigger_spell_abilities.insert(key.to_string(), ability);
+    pub fn set_additional_ability<K: TriggerKeyInput>(&mut self, key: K, ability: SpellAbility) {
+        if let Some(parsed) = key.into_ability_key() {
+            self.trigger_spell_abilities.insert(parsed, ability);
+        }
     }
 
     /// Append a sub-ability to the end of the chain.
@@ -780,7 +862,11 @@ impl SpellAbility {
         keep_text_changes: bool,
     ) -> Self {
         let mut clone = self.clone();
-        clone.id = if lki { self.id } else { next_spell_ability_id() };
+        clone.id = if lki {
+            self.id
+        } else {
+            next_spell_ability_id()
+        };
 
         clone.source = Some(host.id);
         clone.may_choose_new_targets = false;
@@ -1348,27 +1434,50 @@ impl SpellAbility {
 
     /// Set a triggering object in the map.
     /// Mirrors Java's `SpellAbility.setTriggeringObject(AbilityKey, Object)`.
-    pub fn set_triggering_object(&mut self, key: &str, value: &str) {
-        self.trigger_objects
-            .insert(key.to_string(), value.to_string());
+    pub fn set_triggering_object<K: TriggerKeyInput, V: Into<AbilityValue>>(
+        &mut self,
+        key: K,
+        value: V,
+    ) {
+        if let Some(parsed) = key.into_ability_key() {
+            self.trigger_objects.insert(parsed, value.into());
+        }
+    }
+
+    /// Typed trigger value setter.
+    pub fn set_triggering_value<V: Into<AbilityValue>>(&mut self, key: AbilityKey, value: V) {
+        self.trigger_objects.insert(key, value.into());
     }
 
     /// Set a triggering spell ability in the map.
     /// Mirrors Java's `SpellAbility.setTriggeringObject(AbilityKey, Object)` for SpellAbility values.
-    pub fn set_triggering_spell_ability(&mut self, key: &str, value: SpellAbility) {
-        self.trigger_spell_abilities.insert(key.to_string(), value);
+    pub fn set_triggering_spell_ability<K: TriggerKeyInput>(
+        &mut self,
+        key: K,
+        value: SpellAbility,
+    ) {
+        if let Some(parsed) = key.into_ability_key() {
+            self.trigger_spell_abilities.insert(parsed, value);
+        }
     }
 
     /// Get a triggering spell ability from the map.
-    pub fn get_triggering_spell_ability(&self, key: &str) -> Option<&SpellAbility> {
-        self.trigger_spell_abilities.get(key)
+    pub fn get_triggering_spell_ability<K: TriggerKeyInput>(
+        &self,
+        key: K,
+    ) -> Option<&SpellAbility> {
+        key.into_ability_key()
+            .and_then(|parsed| self.trigger_spell_abilities.get(&parsed))
     }
 
     /// Update an existing triggering object.
     /// Mirrors Java's `SpellAbility.updateTriggeringObject(String, Object)`.
-    pub fn update_triggering_object(&mut self, key: &str, value: &str) {
-        self.trigger_objects
-            .insert(key.to_string(), value.to_string());
+    pub fn update_triggering_object<K: TriggerKeyInput, V: Into<AbilityValue>>(
+        &mut self,
+        key: K,
+        value: V,
+    ) {
+        self.set_triggering_object(key, value);
     }
 
     // ── Target management ─────────────────────────────────────────────────
@@ -1466,7 +1575,6 @@ impl SpellAbility {
         self.params.put("Operator2".to_string(), value.to_string());
     }
 }
-
 
 // build_spell_ability now lives in ability::ability_factory.
 // Re-export here for backward compatibility.

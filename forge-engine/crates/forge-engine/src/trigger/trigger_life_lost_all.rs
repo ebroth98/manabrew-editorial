@@ -5,7 +5,7 @@ use crate::game::GameState;
 use crate::parsing::{keys, Params};
 use crate::spellability::SpellAbility;
 
-use super::trigger::{check_player_filter, Trigger, TriggerBehavior};
+use super::trigger::{Trigger, TriggerBehavior};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TriggerLifeLostAll {
@@ -26,14 +26,9 @@ impl TriggerBehavior for TriggerLifeLostAll {
         TriggerType::LifeLostAll
     }
 
-    fn perform_test(
-        &self,
-        trigger: &Trigger,
-        params: &RunParams,
-        _game: &GameState,
-    ) -> bool {
+    fn perform_test(&self, trigger: &Trigger, params: &RunParams, _game: &GameState) -> bool {
         let host_controller = trigger.base.card_trait_base.get_host_card().controller;
-        check_player_filter(&self.valid_player, params.player, host_controller)
+        trigger.matches_optional_valid_player_filter(&self.valid_player, params.player)
     }
 
     fn set_triggering_objects(
@@ -47,7 +42,7 @@ impl TriggerBehavior for TriggerLifeLostAll {
         // TODO: Java stores a Map<Player, Integer> — Rust can't store a map in trigger_objects HashMap<String,String>.
         //       Simplified: store Player from params. Map filtering with ValidPlayer/ValidAmountEach skipped.
         if let Some(p) = params.player {
-            sa.set_triggering_object("Player", &p.0.to_string());
+            sa.set_triggering_object(crate::ability::AbilityKey::Player, &p.0.to_string());
         }
     }
 
@@ -56,7 +51,8 @@ impl TriggerBehavior for TriggerLifeLostAll {
         // Simplified: show Player only since we don't have the map
         format!(
             "Player: {}",
-            sa.get_triggering_object("Player").unwrap_or_default()
+            sa.get_triggering_object(crate::ability::AbilityKey::Player)
+                .unwrap_or_default()
         )
     }
 }

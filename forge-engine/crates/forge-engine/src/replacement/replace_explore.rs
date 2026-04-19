@@ -34,7 +34,7 @@ pub fn can_replace(
         .get(keys::VALID_EXPLORER)
         .or(effect.params.get(keys::VALID_CARD))
     {
-        if !matches_valid_card(valid, target_card, source_card) {
+        if !matches_valid_card(effect, valid, target_card, source_card) {
             return false;
         }
     }

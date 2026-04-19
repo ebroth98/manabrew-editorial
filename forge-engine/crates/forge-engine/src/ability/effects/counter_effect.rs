@@ -155,7 +155,7 @@ fn counter_target_stack_entry_id(ctx: &EffectContext, sa: &SpellAbility) -> Opti
     if defined == "TriggeredSpellAbility" || defined == "TriggeredSourceSA" {
         if let Some(source) = sa
             .trigger_objects
-            .get("Source")
+            .get(&crate::ability::AbilityKey::Source)
             .and_then(|value| value.parse::<u32>().ok())
             .map(crate::ids::CardId)
         {

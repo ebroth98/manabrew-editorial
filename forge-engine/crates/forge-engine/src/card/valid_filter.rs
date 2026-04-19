@@ -942,7 +942,11 @@ pub fn meets_common_requirements_with_svars(
     if !check_named_boolean_param(params, "Hellbent", game.player_has_hellbent(controller)) {
         return false;
     }
-    if !check_named_boolean_param(params, "Bloodthirst", game.player_has_bloodthirst(controller)) {
+    if !check_named_boolean_param(
+        params,
+        "Bloodthirst",
+        game.player_has_bloodthirst(controller),
+    ) {
         return false;
     }
     if !check_named_boolean_param(params, "FatefulHour", game.player(controller).life <= 5) {
@@ -955,7 +959,10 @@ pub fn meets_common_requirements_with_svars(
         if revolt.eq_ignore_ascii_case("True") != game.player_has_revolt(controller) {
             return false;
         } else if revolt.eq_ignore_ascii_case("None")
-            && game.alive_players().into_iter().any(|pid| game.player_has_revolt(pid))
+            && game
+                .alive_players()
+                .into_iter()
+                .any(|pid| game.player_has_revolt(pid))
         {
             return false;
         }

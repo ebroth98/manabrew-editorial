@@ -5,7 +5,7 @@ use crate::game::GameState;
 use crate::parsing::{keys, Params};
 use crate::spellability::SpellAbility;
 
-use super::trigger::{check_card_filter, TriggerBehavior};
+use super::trigger::TriggerBehavior;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TriggerPayEcho {
@@ -36,7 +36,7 @@ impl TriggerBehavior for TriggerPayEcho {
     ) -> bool {
         let host_card = trigger.base.card_trait_base.get_host_card().id;
         let host_controller = trigger.base.card_trait_base.get_host_card().controller;
-        if !check_card_filter(&self.valid_card, params.card, host_card, host_controller, game) {
+        if !trigger.matches_optional_valid_card_filter(&self.valid_card, params.card, game) {
             return false;
         }
         if let Some(expected) = self.paid {
@@ -53,11 +53,15 @@ impl TriggerBehavior for TriggerPayEcho {
         _game: &GameState,
     ) {
         if let Some(card) = params.card {
-            sa.set_triggering_object("Card", &card.0.to_string());
+            sa.set_triggering_object(crate::ability::AbilityKey::Card, &card.0.to_string());
         }
     }
 
-    fn get_important_stack_objects(&self, _trigger: &super::trigger::Trigger, _sa: &SpellAbility) -> String {
+    fn get_important_stack_objects(
+        &self,
+        _trigger: &super::trigger::Trigger,
+        _sa: &SpellAbility,
+    ) -> String {
         String::new()
     }
 }

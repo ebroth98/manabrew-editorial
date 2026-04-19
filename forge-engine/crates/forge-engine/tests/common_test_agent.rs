@@ -34,7 +34,10 @@ impl RecordingAgent {
     }
 
     fn card_names(game: &GameState, cards: &[CardId]) -> Vec<String> {
-        cards.iter().map(|&cid| game.card(cid).card_name.clone()).collect()
+        cards
+            .iter()
+            .map(|&cid| game.card(cid).card_name.clone())
+            .collect()
     }
 }
 
@@ -147,10 +150,9 @@ impl PlayerAgent for RecordingAgent {
     }
 
     fn choose_reorder_library(&mut self, _: PlayerId, cards: &[CardId]) -> Vec<CardId> {
-        self.state
-            .borrow_mut()
-            .events
-            .push(CallbackEvent::Reorder(cards.iter().map(|c| format!("{}", c.0)).collect()));
+        self.state.borrow_mut().events.push(CallbackEvent::Reorder(
+            cards.iter().map(|c| format!("{}", c.0)).collect(),
+        ));
         cards.to_vec()
     }
 
@@ -161,9 +163,12 @@ impl PlayerAgent for RecordingAgent {
         _: &str,
         _: bool,
     ) -> Option<CardId> {
-        self.state.borrow_mut().events.push(CallbackEvent::ChooseSingle(
-            valid.iter().map(|c| format!("{}", c.0)).collect(),
-        ));
+        self.state
+            .borrow_mut()
+            .events
+            .push(CallbackEvent::ChooseSingle(
+                valid.iter().map(|c| format!("{}", c.0)).collect(),
+            ));
         valid.first().copied()
     }
 

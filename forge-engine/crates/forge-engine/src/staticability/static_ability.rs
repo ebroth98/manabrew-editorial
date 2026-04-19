@@ -10,11 +10,15 @@
 //! S$ Mode$ CantAttack | Affected$ Creature.YouControl | Description$ Creatures you control can't attack.
 //! ```
 
+use std::collections::HashMap;
+
 use forge_foundation::ColorSet;
 use forge_foundation::ZoneType;
 use serde::{Deserialize, Serialize};
 
 use crate::card::Card;
+use crate::card_trait_base::{CardTrait, CardTraitBase};
+use crate::core::HasSVars;
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
 use crate::parsing::keys;
@@ -179,6 +183,8 @@ pub enum Layer {
 /// types can be added without changing this struct.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StaticAbility {
+    #[serde(default)]
+    pub base: Box<CardTraitBase>,
     pub mode: StaticMode,
     /// Parsed key→value parameters from the pipe-separated script line.
     /// Keys do NOT include the trailing `$`.
@@ -186,9 +192,25 @@ pub struct StaticAbility {
     pub ignore_effect_cards: Vec<CardId>,
     pub ignore_effect_players: Vec<PlayerId>,
     pub may_play_turn: i32,
+    /// Mirrors `CardTraitBase.sVars` in Java. Populated by the card factory
+    /// with the host card's SVar map so that `$`-expressions evaluated under
+    /// the ability resolve against the card's SVars (not the ability's
+    /// mapParams).
+    #[serde(default)]
+    pub svars: HashMap<String, String>,
 }
 
 impl StaticAbility {
+    fn sync_trait_base_params(&mut self) {
+        let map = self
+            .params
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect();
+        self.base.set_map_params(map);
+        self.base.set_svars(self.svars.clone());
+    }
+
     /// Return the CR 613 layer this `Continuous` ability belongs to.
     ///
     /// Returns `None` for non-`Continuous` abilities or continuous abilities
@@ -714,13 +736,48 @@ pub fn parse_static_ability(raw: &str) -> Option<StaticAbility> {
         None => return None,
     };
 
-    Some(StaticAbility {
+    let mut st_ab = StaticAbility {
+        base: Box::new(CardTraitBase::default()),
         mode,
         params,
         ignore_effect_cards: Vec::new(),
         ignore_effect_players: Vec::new(),
         may_play_turn: 0,
-    })
+        svars: HashMap::new(),
+    };
+    st_ab.sync_trait_base_params();
+    Some(st_ab)
+}
+
+impl HasSVars for StaticAbility {
+    fn get_svar(&self, name: &str) -> Option<&str> {
+        self.svars.get(name).map(String::as_str)
+    }
+
+    fn set_svar(&mut self, name: String, value: String) {
+        self.svars.insert(name.clone(), value.clone());
+        self.base.set_svar(name, value);
+    }
+
+    fn set_svars(&mut self, new_svars: HashMap<String, String>) {
+        self.svars = new_svars.clone();
+        self.base.set_svars(new_svars);
+    }
+
+    fn get_svars(&self) -> &HashMap<String, String> {
+        &self.svars
+    }
+
+    fn remove_svar(&mut self, var: &str) {
+        self.svars.remove(var);
+        self.base.remove_svar(var);
+    }
+}
+
+impl CardTrait for StaticAbility {
+    fn base(&self) -> &CardTraitBase {
+        &self.base
+    }
 }
 
 // ── Tests ────────────────────────────────────────────────────────────────────

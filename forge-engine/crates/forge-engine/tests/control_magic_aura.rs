@@ -134,6 +134,7 @@ fn make_control_magic(owner: PlayerId) -> CardInstance {
         ignore_effect_cards: Vec::new(),
         ignore_effect_players: Vec::new(),
         may_play_turn: 0,
+        svars: std::collections::HashMap::new(),
     };
 
     card.static_abilities.push(sa);

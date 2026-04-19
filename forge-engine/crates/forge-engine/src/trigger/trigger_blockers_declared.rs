@@ -46,7 +46,7 @@ impl TriggerBehavior for TriggerBlockersDeclared {
                 .map(|c| c.0.to_string())
                 .collect::<Vec<_>>()
                 .join(",");
-            sa.set_triggering_object("Blockers", &csv);
+            sa.set_triggering_object(crate::ability::AbilityKey::Blockers, &csv);
         }
         if let Some(attackers) = params.attacker_ids.as_ref() {
             let csv = attackers
@@ -54,14 +54,19 @@ impl TriggerBehavior for TriggerBlockersDeclared {
                 .map(|c| c.0.to_string())
                 .collect::<Vec<_>>()
                 .join(",");
-            sa.set_triggering_object("Attackers", &csv);
+            sa.set_triggering_object(crate::ability::AbilityKey::Attackers, &csv);
         }
     }
 
-    fn get_important_stack_objects(&self, _trigger: &super::trigger::Trigger, sa: &SpellAbility) -> String {
+    fn get_important_stack_objects(
+        &self,
+        _trigger: &super::trigger::Trigger,
+        sa: &SpellAbility,
+    ) -> String {
         format!(
             "Blockers: {}",
-            sa.get_triggering_object("Blockers").unwrap_or("")
+            sa.get_triggering_object(crate::ability::AbilityKey::Blockers)
+                .unwrap_or("")
         )
     }
 }

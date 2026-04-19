@@ -1,13 +1,12 @@
 use serde::{Deserialize, Serialize};
 
 use crate::ability::AbilityKey;
-use crate::card::valid_filter::matches_valid_player;
 use crate::event::{AbilityValue, RunParams, TriggerType};
 use crate::game::GameState;
 use crate::parsing::{keys, Params};
 use crate::spellability::SpellAbility;
 
-use super::trigger::{check_card_filter, Trigger, TriggerBehavior};
+use super::trigger::{Trigger, TriggerBehavior};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TriggerTokenCreatedOnce {
@@ -35,19 +34,12 @@ impl TriggerBehavior for TriggerTokenCreatedOnce {
         TriggerType::TokenCreatedOnce
     }
 
-    fn perform_test(
-        &self,
-        trigger: &Trigger,
-        params: &RunParams,
-        game: &GameState,
-    ) -> bool {
-        let host_card = trigger.base.card_trait_base.get_host_card().id;
-        let host_controller = trigger.base.card_trait_base.get_host_card().controller;
+    fn perform_test(&self, trigger: &Trigger, params: &RunParams, game: &GameState) -> bool {
         let Some(AbilityValue::Cards(cards)) = params.get_value(AbilityKey::Cards) else {
             return false;
         };
         let any_match = cards.iter().any(|&card_id| {
-            check_card_filter(&self.valid_card, Some(card_id), host_card, host_controller, game)
+            trigger.matches_optional_valid_card_filter(&self.valid_card, Some(card_id), game)
         });
         if !any_match {
             return false;
@@ -60,7 +52,7 @@ impl TriggerBehavior for TriggerTokenCreatedOnce {
             if !players
                 .iter()
                 .copied()
-                .any(|pid| matches_valid_player(filter, pid, host_controller))
+                .any(|pid| trigger.matches_valid_player_filter(filter, pid, game))
             {
                 return false;
             }
@@ -82,7 +74,7 @@ impl TriggerBehavior for TriggerTokenCreatedOnce {
                 .map(|c| c.0.to_string())
                 .collect::<Vec<_>>()
                 .join(",");
-            sa.set_triggering_object("Cards", &csv);
+            sa.set_triggering_object(crate::ability::AbilityKey::Cards, &csv);
         }
     }
 

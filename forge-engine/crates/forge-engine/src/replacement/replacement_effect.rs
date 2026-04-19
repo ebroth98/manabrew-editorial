@@ -14,8 +14,10 @@
 use forge_foundation::{PhaseType, ZoneType};
 use serde::{Deserialize, Serialize};
 
-use crate::card::{valid_filter, Card};
+use crate::card::Card;
+use crate::card_trait_base::{CardTrait, CardTraitBase, MatchValidTarget};
 use crate::game::GameState;
+use crate::game_loop::trigger_replacement_base::TriggerReplacementBase;
 use crate::ids::PlayerId;
 use crate::parsing::{keys, Params};
 pub use crate::player::GameLossReason;
@@ -35,6 +37,20 @@ pub use super::replacement_type::ReplacementType;
 /// Reference: Java `ReplacementEffect.java` in `forge/game/replacement/`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ReplacementEffect {
+    /// Shared trait base (host card, sVars, text-changes, map params).
+    /// Mirrors Java `ReplacementEffect extends TriggerReplacementBase extends CardTraitBase`.
+    /// Currently default-initialized by the parser; card factory population is
+    /// a follow-up parity task so that `matches_valid_param` picks up
+    /// `Invert*` entries from `map_params`.
+    ///
+    /// Boxed because `CardState` holds five inline `Option<ReplacementEffect>`
+    /// fields (`loyalty_rep`, `defense_rep`, `saga_rep`, `adventure_rep`,
+    /// `omen_rep`) and `TriggerReplacementBase → CardTraitBase` contains an
+    /// `Option<CardState>`, which would otherwise form an infinite-sized
+    /// type. `Trigger` does not need this because `CardState` only owns
+    /// triggers via `Vec` (heap indirection already).
+    #[serde(skip, default)]
+    pub base: Box<TriggerReplacementBase>,
     /// The event type this effect intercepts.
     pub event: ReplacementType,
     /// The CR 616 layer this effect belongs to.
@@ -44,13 +60,47 @@ pub struct ReplacementEffect {
     pub params: Params,
     /// Zones where this effect is active. Empty = active everywhere.
     /// Parsed from `ActiveZones$` parameter.
+    /// TODO(java-parity): collapse into `base.valid_host_zones`.
     pub active_zones: Vec<ZoneType>,
     /// Temporary suppression flag used by effects like commander replacement.
     #[serde(default)]
     pub suppressed: bool,
 }
 
+impl CardTrait for ReplacementEffect {
+    fn base(&self) -> &CardTraitBase {
+        &self.base.card_trait_base
+    }
+}
+
 impl ReplacementEffect {
+    pub fn new(
+        event: ReplacementType,
+        layer: ReplacementLayer,
+        params: Params,
+        active_zones: Vec<ZoneType>,
+    ) -> Self {
+        let mut effect = Self {
+            base: Box::new(TriggerReplacementBase::default()),
+            event,
+            layer,
+            params,
+            active_zones,
+            suppressed: false,
+        };
+        effect.sync_trait_base_params();
+        effect
+    }
+
+    fn sync_trait_base_params(&mut self) {
+        let map = self
+            .params
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect();
+        self.base.card_trait_base.set_map_params(map);
+    }
+
     /// Returns `true` if this effect is active while the source card is in `zone`.
     ///
     /// An empty `active_zones` list means the effect is always active (mirrors
@@ -142,25 +192,32 @@ impl ReplacementEffect {
 
 // ── Helper filter functions ───────────────────────────────────────────────────
 
-/// Check if a card matches a `ValidCard$` expression.
+/// Check if a card matches a `ValidCard$` expression, dispatched through the
+/// effect's `CardTrait` so Java's `matchesValid` chain (self-type override,
+/// `Invert*` handling once the base is populated) is honoured.
 ///
-/// Supported tokens (mirrors Java `Card.isValid()` / `CardFilter`):
-/// - `Card.Self`  — matches only the source card itself
-/// - `Creature`   — matches creature permanents
-/// - `Permanent`  — matches all permanents (no restriction)
-/// - `Card`       — matches all cards (no restriction)
-pub fn matches_valid_card(expr: &str, card: &Card, source: &Card) -> bool {
-    valid_filter::matches_valid_card(expr, card, source)
+/// Mirrors Java `ReplacementEffect.matchesValid(o, valids, source)` inherited
+/// from `CardTraitBase.matchesValid(Object, String[], Card)`.
+pub fn matches_valid_card(
+    effect: &ReplacementEffect,
+    expr: &str,
+    card: &Card,
+    source: &Card,
+) -> bool {
+    let parts: Vec<&str> = expr.split(',').collect();
+    effect.matches_valid(&MatchValidTarget::Card(card), &parts, Some(source))
 }
 
-/// Check if a player matches a `ValidPlayer$` expression.
-///
-/// - `You`              — the source card's controller
-/// - `Opponent`         — not the source card's controller
-/// - `Player.inGame`    — any player
-/// - `Player` / empty   — any player (permissive default)
-pub fn matches_valid_player(expr: &str, player: PlayerId, source: &Card) -> bool {
-    valid_filter::matches_valid_player(expr, player, source.controller)
+/// Check if a player matches a `ValidPlayer$` expression, dispatched through
+/// the effect's `CardTrait`.
+pub fn matches_valid_player(
+    effect: &ReplacementEffect,
+    expr: &str,
+    player: PlayerId,
+    source: &Card,
+) -> bool {
+    let parts: Vec<&str> = expr.split(',').collect();
+    effect.matches_valid(&MatchValidTarget::Player(player), &parts, Some(source))
 }
 
 /// Check if a zone name string matches `zone`.
@@ -224,13 +281,7 @@ pub fn parse_replacement_effect(raw: &str) -> Option<ReplacementEffect> {
         .map(|s| parse_zone_list(s))
         .unwrap_or_default();
 
-    Some(ReplacementEffect {
-        event,
-        layer,
-        params,
-        active_zones,
-        suppressed: false,
-    })
+    Some(ReplacementEffect::new(event, layer, params, active_zones))
 }
 
 /// Parse a comma- or space-separated zone list string into `ZoneType` values.

@@ -5,7 +5,7 @@ use crate::game::GameState;
 use crate::parsing::{keys, Params};
 use crate::spellability::SpellAbility;
 
-use super::trigger::{check_card_filter, check_player_filter, Trigger, TriggerBehavior};
+use super::trigger::{Trigger, TriggerBehavior};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TriggerUnlockDoor {
@@ -30,18 +30,13 @@ impl TriggerBehavior for TriggerUnlockDoor {
         TriggerType::UnlockDoor
     }
 
-    fn perform_test(
-        &self,
-        trigger: &Trigger,
-        params: &RunParams,
-        game: &GameState,
-    ) -> bool {
+    fn perform_test(&self, trigger: &Trigger, params: &RunParams, game: &GameState) -> bool {
         let host_card = trigger.base.card_trait_base.get_host_card().id;
         let host_controller = trigger.base.card_trait_base.get_host_card().controller;
-        if !check_card_filter(&self.valid_card, params.card, host_card, host_controller, game) {
+        if !trigger.matches_optional_valid_card_filter(&self.valid_card, params.card, game) {
             return false;
         }
-        if !check_player_filter(&self.valid_player, params.player, host_controller) {
+        if !trigger.matches_optional_valid_player_filter(&self.valid_player, params.player) {
             return false;
         }
         if self.this_door && params.card != Some(host_card) {
@@ -58,10 +53,10 @@ impl TriggerBehavior for TriggerUnlockDoor {
         _game: &GameState,
     ) {
         if let Some(card) = params.card {
-            sa.set_triggering_object("Card", &card.0.to_string());
+            sa.set_triggering_object(crate::ability::AbilityKey::Card, &card.0.to_string());
         }
         if let Some(p) = params.player {
-            sa.set_triggering_object("Player", &p.0.to_string());
+            sa.set_triggering_object(crate::ability::AbilityKey::Player, &p.0.to_string());
         }
     }
 
@@ -69,11 +64,11 @@ impl TriggerBehavior for TriggerUnlockDoor {
         format!(
             "Player: {}, Card: {}",
             sa.trigger_objects
-                .get("Player")
+                .get(&crate::ability::AbilityKey::Player)
                 .map(|s| s.as_str())
                 .unwrap_or(""),
             sa.trigger_objects
-                .get("Card")
+                .get(&crate::ability::AbilityKey::Card)
                 .map(|s| s.as_str())
                 .unwrap_or("")
         )

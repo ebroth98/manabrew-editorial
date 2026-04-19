@@ -5,7 +5,7 @@ use crate::game::GameState;
 use crate::parsing::{keys, Params};
 use crate::spellability::SpellAbility;
 
-use super::trigger::{check_card_filter, TriggerBehavior};
+use super::trigger::TriggerBehavior;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TriggerDamagePreventedOnce {
@@ -34,7 +34,7 @@ impl TriggerBehavior for TriggerDamagePreventedOnce {
     ) -> bool {
         let host_card = trigger.base.card_trait_base.get_host_card().id;
         let host_controller = trigger.base.card_trait_base.get_host_card().controller;
-        check_card_filter(&self.valid_card, params.card, host_card, host_controller, game)
+        trigger.matches_optional_valid_card_filter(&self.valid_card, params.card, game)
     }
 
     fn set_triggering_objects(
@@ -45,21 +45,30 @@ impl TriggerBehavior for TriggerDamagePreventedOnce {
         _game: &GameState,
     ) {
         if let Some(card) = params.damage_target_card {
-            sa.set_triggering_object("Target", &card.0.to_string());
+            sa.set_triggering_object(crate::ability::AbilityKey::Target, &card.0.to_string());
         } else if let Some(player) = params.damage_target_player {
-            sa.set_triggering_object("Target", &player.0.to_string());
+            sa.set_triggering_object(crate::ability::AbilityKey::Target, &player.0.to_string());
         }
         if let Some(amount) = params.damage_amount {
-            sa.set_triggering_object("DamageAmount", &amount.to_string());
+            sa.set_triggering_object(
+                crate::ability::AbilityKey::DamageAmount,
+                &amount.to_string(),
+            );
         }
     }
 
-    fn get_important_stack_objects(&self, _trigger: &super::trigger::Trigger, sa: &SpellAbility) -> String {
+    fn get_important_stack_objects(
+        &self,
+        _trigger: &super::trigger::Trigger,
+        sa: &SpellAbility,
+    ) -> String {
         // Java: "Damage Target: " + Target + ", Amount: " + DamageAmount
         format!(
             "Damage Target: {}, Amount: {}",
-            sa.get_triggering_object("Target").unwrap_or(""),
-            sa.get_triggering_object("DamageAmount").unwrap_or("")
+            sa.get_triggering_object(crate::ability::AbilityKey::Target)
+                .unwrap_or(""),
+            sa.get_triggering_object(crate::ability::AbilityKey::DamageAmount)
+                .unwrap_or("")
         )
     }
 }

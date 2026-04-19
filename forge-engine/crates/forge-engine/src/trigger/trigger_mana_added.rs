@@ -5,7 +5,7 @@ use crate::game::GameState;
 use crate::parsing::{keys, Params};
 use crate::spellability::SpellAbility;
 
-use super::trigger::{check_card_filter, check_player_filter, matches_valid_sa, Trigger, TriggerBehavior};
+use super::trigger::{Trigger, TriggerBehavior};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TriggerManaAdded {
@@ -32,26 +32,19 @@ impl TriggerBehavior for TriggerManaAdded {
         TriggerType::ManaAdded
     }
 
-    fn perform_test(
-        &self,
-        trigger: &Trigger,
-        params: &RunParams,
-        game: &GameState,
-    ) -> bool {
-        let host_card = trigger.base.card_trait_base.get_host_card().id;
-        let host_controller = trigger.base.card_trait_base.get_host_card().controller;
-        if !check_card_filter(&self.valid_source, params.card, host_card, host_controller, game) {
+    fn perform_test(&self, trigger: &Trigger, params: &RunParams, game: &GameState) -> bool {
+        if !trigger.matches_optional_valid_card_filter(&self.valid_source, params.card, game) {
             return false;
         }
         if let Some(filter) = self.valid_sa.as_ref() {
             let Some(sa) = params.ability_mana.as_ref() else {
                 return false;
             };
-            if !matches_valid_sa(filter, sa) {
+            if !trigger.matches_valid_sa_filter(filter, sa) {
                 return false;
             }
         }
-        if !check_player_filter(&self.player, params.player, host_controller) {
+        if !trigger.matches_optional_valid_player_filter(&self.player, params.player) {
             return false;
         }
         if let Some(expected) = self.produced.as_ref() {
@@ -73,13 +66,13 @@ impl TriggerBehavior for TriggerManaAdded {
         _game: &GameState,
     ) {
         if let Some(card) = params.card {
-            sa.set_triggering_object("Card", &card.0.to_string());
+            sa.set_triggering_object(crate::ability::AbilityKey::Card, &card.0.to_string());
         }
         if let Some(p) = params.player {
-            sa.set_triggering_object("Player", &p.0.to_string());
+            sa.set_triggering_object(crate::ability::AbilityKey::Player, &p.0.to_string());
         }
         if let Some(produced) = params.produced.as_ref() {
-            sa.set_triggering_object("Produced", produced);
+            sa.set_triggering_object(crate::ability::AbilityKey::Produced, produced);
         }
     }
 
@@ -87,7 +80,7 @@ impl TriggerBehavior for TriggerManaAdded {
         format!(
             "Produced: {}",
             sa.trigger_objects
-                .get("Produced")
+                .get(&crate::ability::AbilityKey::Produced)
                 .map(|s| s.as_str())
                 .unwrap_or("")
         )

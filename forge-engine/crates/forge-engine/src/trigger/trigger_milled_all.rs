@@ -5,7 +5,7 @@ use crate::game::GameState;
 use crate::parsing::{keys, Params};
 use crate::spellability::SpellAbility;
 
-use super::trigger::{check_card_filter, TriggerBehavior};
+use super::trigger::TriggerBehavior;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TriggerMilledAll {
@@ -37,9 +37,9 @@ impl TriggerBehavior for TriggerMilledAll {
         let Some(cards) = params.cards.as_ref() else {
             return self.valid_card.is_none();
         };
-        cards
-            .iter()
-            .any(|&cid| check_card_filter(&self.valid_card, Some(cid), host_card, host_controller, game))
+        cards.iter().any(|&cid| {
+            trigger.matches_optional_valid_card_filter(&self.valid_card, Some(cid), game)
+        })
     }
 
     fn set_triggering_objects(
@@ -56,16 +56,20 @@ impl TriggerBehavior for TriggerMilledAll {
                 .map(|c| c.0.to_string())
                 .collect::<Vec<_>>()
                 .join(",");
-            sa.set_triggering_object("Cards", &csv);
-            sa.set_triggering_object("Amount", &cards.len().to_string());
+            sa.set_triggering_object(crate::ability::AbilityKey::Cards, &csv);
+            sa.set_triggering_object(crate::ability::AbilityKey::Amount, &cards.len().to_string());
         }
     }
 
-    fn get_important_stack_objects(&self, _trigger: &super::trigger::Trigger, sa: &SpellAbility) -> String {
+    fn get_important_stack_objects(
+        &self,
+        _trigger: &super::trigger::Trigger,
+        sa: &SpellAbility,
+    ) -> String {
         format!(
             "Amount: {}",
             sa.trigger_objects
-                .get("Amount")
+                .get(&crate::ability::AbilityKey::Amount)
                 .map(|s| s.as_str())
                 .unwrap_or("")
         )

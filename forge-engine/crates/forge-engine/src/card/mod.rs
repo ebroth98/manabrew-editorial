@@ -29,9 +29,9 @@ pub mod token;
 pub mod token_create_table;
 pub mod trait_card_trait_changes;
 pub mod valid_filter;
-pub use counter_type::CounterType;
 use crate::card::activation_table::ActivationTable;
 use crate::core::HasSVars;
+pub use counter_type::CounterType;
 
 /// Type alias for the Keyword enum, used by keyword helper methods.
 use crate::keyword::keyword_instance::Keyword as Kw;
@@ -3056,7 +3056,10 @@ impl Card {
     pub fn add_ability_activated(&mut self) {
         self.ability_activated_this_turn += 1;
     }
-    pub fn add_ability_activated_for(&mut self, ability: Option<&crate::spellability::SpellAbility>) {
+    pub fn add_ability_activated_for(
+        &mut self,
+        ability: Option<&crate::spellability::SpellAbility>,
+    ) {
         if let Some(ability) = ability {
             self.number_turn_activations.add(ability);
             self.number_game_activations.add(ability);

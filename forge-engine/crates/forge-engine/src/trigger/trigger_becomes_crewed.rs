@@ -1,9 +1,10 @@
 use serde::{Deserialize, Serialize};
 
-use super::trigger::{check_card_filter, matches_amount, TriggerBehavior};
+use super::trigger::TriggerBehavior;
 use crate::{
     event::{RunParams, TriggerType},
     game::GameState,
+    parsing::compare::compare_expr,
     parsing::Params,
     spellability::SpellAbility,
 };
@@ -41,23 +42,22 @@ impl TriggerBehavior for TriggerBecomesCrewed {
     ) -> bool {
         let host_card = trigger.base.card_trait_base.get_host_card().id;
         let host_controller = trigger.base.card_trait_base.get_host_card().controller;
-        if !check_card_filter(&self.valid_card, params.card, host_card, host_controller, game) {
+        if !trigger.matches_optional_valid_card_filter(&self.valid_card, params.card, game) {
             return false;
         }
         let Some(crews) = params.crew_cards.as_ref() else {
             return false;
         };
-        if !crews
-            .iter()
-            .any(|&cid| check_card_filter(&self.valid_crew, Some(cid), host_card, host_controller, game))
-        {
+        if !crews.iter().any(|&cid| {
+            trigger.matches_optional_valid_card_filter(&self.valid_crew, Some(cid), game)
+        }) {
             return false;
         }
         if self.first_time_crewed && params.first_time != Some(true) {
             return false;
         }
         if let Some(amount_filter) = &self.valid_crew_amount {
-            if !matches_amount(amount_filter, crews.len()) {
+            if !compare_expr(crews.len() as i32, amount_filter) {
                 return false;
             }
         }
@@ -72,7 +72,7 @@ impl TriggerBehavior for TriggerBecomesCrewed {
         _game: &GameState,
     ) {
         if let Some(card) = params.card {
-            sa.set_triggering_object("Card", &card.0.to_string());
+            sa.set_triggering_object(crate::ability::AbilityKey::Card, &card.0.to_string());
         }
         if let Some(crew) = params.crew_cards.as_ref() {
             let csv = crew
@@ -80,15 +80,21 @@ impl TriggerBehavior for TriggerBecomesCrewed {
                 .map(|c| c.0.to_string())
                 .collect::<Vec<_>>()
                 .join(",");
-            sa.set_triggering_object("Crew", &csv);
+            sa.set_triggering_object(crate::ability::AbilityKey::Crew, &csv);
         }
     }
 
-    fn get_important_stack_objects(&self, _trigger: &super::trigger::Trigger, sa: &SpellAbility) -> String {
+    fn get_important_stack_objects(
+        &self,
+        _trigger: &super::trigger::Trigger,
+        sa: &SpellAbility,
+    ) -> String {
         format!(
             "Vehicle: {}  Crew: {}",
-            sa.get_triggering_object("Card").unwrap_or(""),
-            sa.get_triggering_object("Crew").unwrap_or("")
+            sa.get_triggering_object(crate::ability::AbilityKey::Card)
+                .unwrap_or(""),
+            sa.get_triggering_object(crate::ability::AbilityKey::Crew)
+                .unwrap_or("")
         )
     }
 }

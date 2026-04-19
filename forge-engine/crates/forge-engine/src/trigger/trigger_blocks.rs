@@ -5,7 +5,7 @@ use crate::game::GameState;
 use crate::parsing::{keys, Params};
 use crate::spellability::SpellAbility;
 
-use super::trigger::{check_card_filter, TriggerBehavior};
+use super::trigger::TriggerBehavior;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TriggerBlocks {
@@ -34,14 +34,10 @@ impl TriggerBehavior for TriggerBlocks {
         params: &RunParams,
         game: &GameState,
     ) -> bool {
-        let host_card = trigger.base.card_trait_base.get_host_card().id;
-        let host_controller = trigger.base.card_trait_base.get_host_card().controller;
-        check_card_filter(&self.valid_card, params.blocker, host_card, host_controller, game)
-            && check_card_filter(
+        trigger.matches_optional_valid_card_filter(&self.valid_card, params.blocker, game)
+            && trigger.matches_optional_valid_card_filter(
                 &self.valid_blocked,
                 params.blocked_attacker,
-                host_card,
-                host_controller,
                 game,
             )
     }
@@ -54,7 +50,7 @@ impl TriggerBehavior for TriggerBlocks {
         _game: &GameState,
     ) {
         if let Some(blocker) = params.blocker {
-            sa.set_triggering_object("Blocker", &blocker.0.to_string());
+            sa.set_triggering_object(crate::ability::AbilityKey::Blocker, &blocker.0.to_string());
         }
         if let Some(attackers) = params.attacker_ids.as_ref() {
             let csv = attackers
@@ -62,14 +58,19 @@ impl TriggerBehavior for TriggerBlocks {
                 .map(|c| c.0.to_string())
                 .collect::<Vec<_>>()
                 .join(",");
-            sa.set_triggering_object("Attackers", &csv);
+            sa.set_triggering_object(crate::ability::AbilityKey::Attackers, &csv);
         }
     }
 
-    fn get_important_stack_objects(&self, _trigger: &super::trigger::Trigger, sa: &SpellAbility) -> String {
+    fn get_important_stack_objects(
+        &self,
+        _trigger: &super::trigger::Trigger,
+        sa: &SpellAbility,
+    ) -> String {
         format!(
             "Blocker: {}",
-            sa.get_triggering_object("Blocker").unwrap_or("")
+            sa.get_triggering_object(crate::ability::AbilityKey::Blocker)
+                .unwrap_or("")
         )
     }
 }

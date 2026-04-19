@@ -28,13 +28,13 @@ pub fn can_replace(
     };
     let attach_card = &game.cards[card.index()];
     if let Some(valid) = effect.params.get(keys::VALID_CARD) {
-        if !matches_valid_card(valid, attach_card, source_card) {
+        if !matches_valid_card(effect, valid, attach_card, source_card) {
             return false;
         }
     }
     let target_card = &game.cards[target.index()];
     if let Some(valid_target) = effect.params.get(keys::VALID_TARGET) {
-        if !matches_valid_card(valid_target, target_card, source_card) {
+        if !matches_valid_card(effect, valid_target, target_card, source_card) {
             return false;
         }
     }

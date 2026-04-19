@@ -5,7 +5,7 @@ use crate::game::GameState;
 use crate::parsing::{keys, Params};
 use crate::spellability::SpellAbility;
 
-use super::trigger::{check_card_filter, Trigger, TriggerBehavior};
+use super::trigger::{Trigger, TriggerBehavior};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TriggerTapsForMana {
@@ -30,22 +30,15 @@ impl TriggerBehavior for TriggerTapsForMana {
         TriggerType::TapsForMana
     }
 
-    fn perform_test(
-        &self,
-        trigger: &Trigger,
-        params: &RunParams,
-        game: &GameState,
-    ) -> bool {
-        let host_card = trigger.base.card_trait_base.get_host_card().id;
-        let host_controller = trigger.base.card_trait_base.get_host_card().controller;
-        if !check_card_filter(&self.valid_card, params.card, host_card, host_controller, game) {
+    fn perform_test(&self, trigger: &Trigger, params: &RunParams, game: &GameState) -> bool {
+        if !trigger.matches_optional_valid_card_filter(&self.valid_card, params.card, game) {
             return false;
         }
         if let Some(filter) = self.activator.as_ref() {
             let Some(player) = params.activator.or(params.player) else {
                 return false;
             };
-            if !super::trigger::matches_valid_player(filter, player, host_controller) {
+            if !trigger.matches_valid_player_filter(filter, player, game) {
                 return false;
             }
         }
@@ -68,13 +61,13 @@ impl TriggerBehavior for TriggerTapsForMana {
         _game: &GameState,
     ) {
         if let Some(card) = params.card {
-            sa.set_triggering_object("Card", &card.0.to_string());
+            sa.set_triggering_object(crate::ability::AbilityKey::Card, &card.0.to_string());
         }
         if let Some(produced) = params.produced.as_ref() {
-            sa.set_triggering_object("Produced", produced);
+            sa.set_triggering_object(crate::ability::AbilityKey::Produced, produced);
         }
         if let Some(p) = params.activator {
-            sa.set_triggering_object("Activator", &p.0.to_string());
+            sa.set_triggering_object(crate::ability::AbilityKey::Activator, &p.0.to_string());
         }
     }
 
@@ -82,11 +75,11 @@ impl TriggerBehavior for TriggerTapsForMana {
         format!(
             "TappedForMana: {} Produced: {}",
             sa.trigger_objects
-                .get("Card")
+                .get(&crate::ability::AbilityKey::Card)
                 .map(|s| s.as_str())
                 .unwrap_or(""),
             sa.trigger_objects
-                .get("Produced")
+                .get(&crate::ability::AbilityKey::Produced)
                 .map(|s| s.as_str())
                 .unwrap_or("")
         )

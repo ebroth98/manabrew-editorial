@@ -108,6 +108,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     }
 
     let copy_id = ctx.game.create_card(copy);
+    rebind_copied_traits(ctx.game, copy_id);
     ctx.game
         .move_card(copy_id, ZoneType::Battlefield, sa.activating_player);
     ctx.trigger_handler
@@ -134,6 +135,29 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     }
 }
 
+fn rebind_copied_traits(game: &mut crate::game::GameState, copy_id: CardId) {
+    {
+        // Rebuild activated/spell abilities after create_card assigns the real
+        // CardId so copied abilities don't keep the placeholder id from
+        // Card::new(CardId(0), ...).
+        let copy = game.card_mut(copy_id);
+        copy.update_spell_abilities();
+    }
+
+    let bound_host = game.card(copy_id).clone();
+    let copy = game.card_mut(copy_id);
+
+    for trigger in &mut copy.triggers {
+        trigger.bind_host_card(bound_host.clone());
+    }
+    for static_ability in &mut copy.static_abilities {
+        static_ability.base.set_host_card(bound_host.clone());
+    }
+    for replacement_effect in &mut copy.replacement_effects {
+        replacement_effect.base.set_host_card(bound_host.clone());
+    }
+}
+
 fn resolve_original(sa: &SpellAbility) -> Option<CardId> {
     // Check Defined$ parameter first.
     if let Some(defined) = sa.params.get(keys::DEFINED) {
@@ -143,10 +167,8 @@ fn resolve_original(sa: &SpellAbility) -> Option<CardId> {
             "TriggeredCard" | "TriggeredCardLKICopy" | "TriggeredSacrificedCard" => {
                 // The triggering object for a Sacrificed/ChangesZone trigger
                 // is stored under the "Card" key; read it back as a CardId.
-                if let Some(id_str) = sa.trigger_objects.get("Card") {
-                    if let Ok(id) = id_str.parse::<u32>() {
-                        return Some(CardId(id));
-                    }
+                if let Some(card) = sa.get_triggering_card(crate::ability::AbilityKey::Card) {
+                    return Some(card);
                 }
                 return None;
             }

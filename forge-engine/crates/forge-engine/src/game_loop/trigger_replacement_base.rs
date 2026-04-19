@@ -2,8 +2,8 @@ use std::collections::HashMap;
 
 use forge_foundation::ZoneType;
 
-use crate::card::Card;
 use crate::card::card_state::CardState;
+use crate::card::Card;
 use crate::card_trait_base::CardTraitBase;
 use crate::core::Identifiable;
 use crate::keyword::keyword_interface::KeywordInterface;
@@ -60,7 +60,10 @@ impl TriggerReplacementBase {
     pub fn zones_check(&self, host_card_zone: Option<ZoneType>) -> bool {
         !self.card_trait_base.get_host_card().phased_out
             && (self.valid_host_zones.is_none()
-                || self.valid_host_zones.as_ref().is_some_and(|zones| zones.is_empty())
+                || self
+                    .valid_host_zones
+                    .as_ref()
+                    .is_some_and(|zones| zones.is_empty())
                 || (host_card_zone.is_some()
                     && self
                         .valid_host_zones
