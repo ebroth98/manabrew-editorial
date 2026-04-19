@@ -600,6 +600,20 @@ export class PixiGameScene {
         effectiveParent.set(childId, parentId);
       }
     }
+    // Overflow pass: when there are more top-level cards than free grid
+    // cells, UI-attach the extras to nearby keepers so they render as
+    // manual-style stacks (parent underneath, stacked cards offset with the
+    // attachment staircase) rather than piling on the same point.
+    const tentativeTopLevel = state.cards.filter((c) => !effectiveParent.has(c.id));
+    this.applyOverflowStacking(tentativeTopLevel);
+    for (const [childId, parentId] of [...this.uiParent]) {
+      if (!currentIds.has(childId) || !currentIds.has(parentId)) continue;
+      if (childId === parentId) continue;
+      if (!effectiveParent.has(childId)) {
+        effectiveParent.set(childId, parentId);
+      }
+    }
+
     const effectiveChildren = new Map<string, string[]>();
     for (const [childId, parentId] of effectiveParent) {
       const list = effectiveChildren.get(parentId) ?? [];
@@ -904,6 +918,83 @@ export class PixiGameScene {
   // ═══════════════════════════════════════════════════════════════
 
   /**
+   * When there are more top-level cards than free grid cells, pick the
+   * lowest-priority cards (no user slot first, then latest in state order)
+   * and mark them as `uiParent` children of nearby keepers. Makes overflow
+   * render identically to manually-stacked cards instead of piling up at
+   * a single anchor point.
+   */
+  private applyOverflowStacking(topLevelCandidates: Card[]): void {
+    if (topLevelCandidates.length === 0) return;
+    const zone = this.getPlayZone();
+    const blockers = [
+      ...this.collectOverlayBlockers(),
+      ...this.collectHandBlockers(),
+    ];
+    const grid = computeGridLayout(
+      zone,
+      this.leftReserved,
+      blockers,
+      this.cardScale,
+    );
+    let freeCellCount = 0;
+    for (const cell of grid.cells) {
+      if (!cell.blocked) freeCellCount++;
+    }
+    if (topLevelCandidates.length <= freeCellCount) return;
+
+    // Reparent the lowest-priority cards: no user slot first, then latest
+    // by state order. Stable sort keeps state order within each bucket.
+    const prioritized = topLevelCandidates.map((card, i) => ({ card, i }));
+    prioritized.sort((a, b) => {
+      const aHas = this.userSlots.has(a.card.id) ? 1 : 0;
+      const bHas = this.userSlots.has(b.card.id) ? 1 : 0;
+      if (aHas !== bHas) return aHas - bHas;
+      return a.i - b.i;
+    });
+    const overflowCount = topLevelCandidates.length - freeCellCount;
+    const overflow = prioritized.slice(-overflowCount).map((p) => p.card);
+    const overflowIds = new Set(overflow.map((c) => c.id));
+    const keepers = topLevelCandidates.filter((c) => !overflowIds.has(c.id));
+    if (keepers.length === 0) return;
+
+    const centerX = zone.x + zone.width / 2;
+    const topAnchorY = zone.y + grid.cellH / 2;
+    const bottomAnchorY = zone.y + zone.height - grid.cellH / 2;
+    const nonLandAnchorY = this.mirrored ? bottomAnchorY : topAnchorY;
+    const landAnchorY = this.mirrored ? topAnchorY : bottomAnchorY;
+
+    const keeperPos = (id: string, fallbackY: number): Point => {
+      const slot = this.userSlots.get(id);
+      if (slot) {
+        const cell = cellAt(grid, slot.col, slot.row);
+        if (cell) return { x: cell.cx, y: cell.cy };
+      }
+      return { x: centerX, y: fallbackY };
+    };
+
+    for (const oc of overflow) {
+      const isLand = oc.types.includes("Land");
+      const anchorY = isLand ? landAnchorY : nonLandAnchorY;
+      let bestId: string | null = null;
+      let bestDist = Infinity;
+      for (const k of keepers) {
+        if (k.id === oc.id) continue;
+        const kp = keeperPos(k.id, anchorY);
+        const d = (kp.x - centerX) ** 2 + (kp.y - anchorY) ** 2;
+        if (d < bestDist) {
+          bestDist = d;
+          bestId = k.id;
+        }
+      }
+      if (bestId) {
+        this.uiParent.set(oc.id, bestId);
+        this.userSlots.delete(oc.id);
+      }
+    }
+  }
+
+  /**
    * Build the battlefield grid layout and assign each top-level card a
    * cell center. Honors user-dragged slots first, then auto-places any
    * remaining cards by picking the nearest free cell to a preferred anchor
@@ -975,12 +1066,19 @@ export class PixiGameScene {
         picked = cell;
         break;
       }
-      // Fallback: grid fully occupied or blocked — drop at anchor.
-      const pos = picked
-        ? { x: picked.cx, y: picked.cy }
-        : { x: anchorX, y: anchorY };
-      positions.set(c.id, pos);
-      if (picked) occupied.add(cellKey(picked.col, picked.row));
+      if (picked) {
+        positions.set(c.id, { x: picked.cx, y: picked.cy });
+        occupied.add(cellKey(picked.col, picked.row));
+        // Persist the auto-assigned cell so subsequent layouts honor it
+        // via Pass 1 — prevents existing cards from shuffling when a new
+        // permanent enters the battlefield.
+        this.userSlots.set(c.id, { col: picked.col, row: picked.row });
+      } else {
+        // Fallback: `applyOverflowStacking` should have reparented the
+        // overflow already, so we rarely hit this. Drop at the anchor so
+        // the card is at least visible until the next layout pass.
+        positions.set(c.id, { x: anchorX, y: anchorY });
+      }
     }
 
     return positions;
