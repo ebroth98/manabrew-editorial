@@ -407,15 +407,24 @@ impl DeterministicAgent {
     /// `sa.toUnsuppressedString()` as the 5th sort key field.
     /// When variant is the same (e.g., Normal and Warp both return "0"),
     /// this ensures a deterministic ordering.
-    fn play_option_fallback(play: PlayOption) -> &'static str {
-        match play.mode {
+    fn play_option_fallback(play: PlayOption) -> String {
+        // Disambiguate multi-cost alt entries (e.g. intrinsic vs granted
+        // Evoke) so the stable sort places them in a predictable order that
+        // matches Java's SA text ordering.
+        let idx_suffix = if play.alt_cost_index > 0 {
+            format!(":{:03}", play.alt_cost_index)
+        } else {
+            String::new()
+        };
+        let base = match play.mode {
             PlayCardMode::Normal => "0",
             PlayCardMode::BackFaceLand => "1",
             PlayCardMode::Alternative(AlternativeCost::Warp) => "Warp",
             PlayCardMode::StaticAlternative => "StaticAlternative",
             // Other modes already have unique variant strings, so fallback rarely matters.
             _ => "",
-        }
+        };
+        format!("{base}{idx_suffix}")
     }
 
     fn action_sort_key(&self, choice: &ActionChoice) -> String {
@@ -1136,12 +1145,24 @@ impl PlayerAgent for DeterministicAgent {
 
     fn choose_target_card_from_zone(
         &mut self,
-        player: PlayerId,
+        _player: PlayerId,
         _zone: forge_foundation::ZoneType,
         valid: &[CardId],
-        sa: Option<&forge_engine_core::spellability::SpellAbility>,
+        _sa: Option<&forge_engine_core::spellability::SpellAbility>,
     ) -> Option<CardId> {
-        self.choose_target_card(player, valid, sa)
+        if valid.is_empty() {
+            return None;
+        }
+        let sorted = choice_space::sort_native(valid, |a, b| {
+            self.card_name(*a)
+                .cmp(&self.card_name(*b))
+                .then_with(|| {
+                    self.target_owner_controller_key(*a)
+                        .cmp(&self.target_owner_controller_key(*b))
+                })
+                .then_with(|| self.parity_map.id(*a).cmp(&self.parity_map.id(*b)))
+        });
+        choice_space::pick_one(&sorted, &mut self.rng.borrow_mut())
     }
 
     fn choose_target_any(
@@ -1290,7 +1311,12 @@ impl PlayerAgent for DeterministicAgent {
                 .cmp(&self.card_name(*b))
                 .then_with(|| self.parity_map.id(*a).cmp(&self.parity_map.id(*b)))
         });
-        choice_space::pick_one(&sorted, &mut self.rng.borrow_mut())
+        // Match Java `choosePermanentsToSacrifice` which calls
+        // `ChoiceSpace.pickManyCards(sorted, min=1, max=1, rng)`. The RNG
+        // trajectory must match, so walk the same `pick_count` + `pick_index`
+        // + `pick_many_unique` sequence even though we only return one card.
+        let picked = gui_repro::pick_many_unique(&sorted, 1, 1, &mut self.rng.borrow_mut());
+        picked.into_iter().next()
     }
 
     fn choose_discard(&mut self, _player: PlayerId, hand: &[CardId], num: usize) -> Vec<CardId> {
@@ -1382,7 +1408,8 @@ impl PlayerAgent for DeterministicAgent {
     }
 
     fn choose_color(&mut self, _player: PlayerId, valid_colors: &[String]) -> Option<String> {
-        gui_repro::choose_color(valid_colors, &mut self.rng.borrow_mut())
+        let sorted = parity_order::sort_color_names_like_java(valid_colors);
+        gui_repro::choose_color(&sorted, &mut self.rng.borrow_mut())
     }
 
     fn choose_colors(
@@ -1584,12 +1611,15 @@ impl PlayerAgent for DeterministicAgent {
         if valid.is_empty() {
             return None;
         }
-        let mut sorted = valid.to_vec();
-        sorted.sort_by(|a, b| {
-            let key = |e: &GameEntity| -> (u8, String, u32) {
-                match e {
-                    GameEntity::Player(pid) => (0, format!("P{}", pid.0), 0),
-                    GameEntity::Card(cid) => (1, self.card_name(*cid), self.parity_map.id(*cid)),
+        // Sort to match Java's deterministic ordering for the harness picker:
+        // players first (by player_id), then cards by (name, parity_id).
+        // Mirrors how `chooseSingleEntityForEffect` iterates a Java
+        // `FCollectionView` whose insertion order Java's harness preserves.
+        let sorted = choice_space::sort_native(valid, |a, b| {
+            let key = |entity: &GameEntity| -> (u8, String, u32) {
+                match entity {
+                    GameEntity::Player(p) => (0, format!("P{}", p.0), 0),
+                    GameEntity::Card(c) => (1, self.card_name(*c), self.parity_map.id(*c)),
                 }
             };
             key(a).cmp(&key(b))

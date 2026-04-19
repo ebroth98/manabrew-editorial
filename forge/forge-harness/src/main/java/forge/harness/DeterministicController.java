@@ -34,7 +34,6 @@ import forge.game.replacement.ReplacementEffect;
 import forge.game.spellability.*;
 import forge.card.ICardFace;
 import forge.game.keyword.KeywordInterface;
-import forge.game.keyword.Keyword;
 import forge.game.staticability.StaticAbility;
 import forge.game.trigger.WrappedAbility;
 import forge.game.zone.PlayerZone;
@@ -1671,9 +1670,15 @@ public class DeterministicController extends PlayerController {
         } else if (sa != null
                 && sa.isSpell()
                 && sa.getHostCard() != null
-                && sa.getHostCard().hasKeyword(Keyword.AFFINITY)
                 && payableCost != null
                 && !payableCost.isNoCost()) {
+            // Mirror the GUI flow: InputPayMana calls setManaCostBeingPaid with the
+            // reduced cost before handing payment to the controller. The deterministic
+            // harness skips that setup, so we must run CostAdjustment.adjust here for
+            // every spell — not just Affinity — otherwise self-reducing statics
+            // (Sunderflock's GreatestCardManaCost, Animar counters, ...) are ignored
+            // at payment time and the AI cancels casts that canPayManaCost said it
+            // could afford.
             final ManaCostBeingPaid adjusted = new ManaCostBeingPaid(payableCost);
             final Player payer = sa.getActivatingPlayer() != null ? sa.getActivatingPlayer() : player;
             if (CostAdjustment.adjust(adjusted, sa, payer, null, true, effect)) {

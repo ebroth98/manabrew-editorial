@@ -21,7 +21,8 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         .max(0) as usize;
     let remember_revealed = sa
         .params
-        .get("RememberRevealed")
+        .get("RememberPeeked")
+        .or(sa.params.get("RememberRevealed"))
         .map_or(false, |v| v.eq_ignore_ascii_case("True"));
     let remember_peeked = sa
         .params

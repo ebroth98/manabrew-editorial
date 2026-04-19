@@ -41,6 +41,10 @@ pub struct AutoTapChoice {
     pub card_id: CardId,
     pub mana_ability_index: Option<usize>,
     pub chosen_atom: u16,
+    /// True when the mana ability has multiple color options and the caller
+    /// must record an explicit express choice in the trace. Mirrors Java
+    /// `AbilityManaPart.getExpressChoice()` being non-null.
+    pub needs_express_choice: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -347,6 +351,7 @@ pub fn next_auto_tap_choice_with_reserved_sacrifices(
         card_id: sa_payment.card_id,
         mana_ability_index: sa_payment.ability_index,
         chosen_atom,
+        needs_express_choice: sa_payment.atoms.len() > 1,
     })
 }
 
@@ -520,16 +525,28 @@ fn auto_tap_lands_internal(
                 card_id: sa_payment.card_id,
                 mana_ability_index: sa_payment.ability_index,
                 chosen_atom,
+                needs_express_choice: false,
             });
         } else {
-            if let Some(ref mut cb) = callback {
-                let chosen_colors = game.card(sa_payment.card_id).chosen_colors.clone();
-                let valid_colors =
-                    super::produced_to_color_names(&sa_payment.mana_text, &chosen_colors);
-                if valid_colors.len() > 1 {
+            // Sources with more than one possible color require a color
+            // choice at resolution (Java fires `chooseColor` once per pick).
+            // `sa_payment.atoms` already accounts for Combo ColorIdentity
+            // because `group_sources_by_mana_color` resolves it against the
+            // commander identity when the produced string is
+            // `Combo ColorIdentity`.
+            let needs_express = sa_payment.atoms.len() > 1;
+            let amount = sa_payment.amount.max(1) as usize;
+            if needs_express {
+                if let Some(ref mut cb) = callback {
                     if let Some(color_name) = super::mana_atom_to_color_name(chosen_atom) {
                         let forced = [color_name.to_string()];
-                        cb(ManaPayCallback::ChooseColor(&forced));
+                        // Multi-amount combo sources (e.g. Flamebraider:
+                        // `Produced$ Combo Any | Amount$ 2`) resolve one
+                        // `chooseColor` per output mana in Java's ManaEffect,
+                        // so fire the callback once per unit.
+                        for _ in 0..amount {
+                            cb(ManaPayCallback::ChooseColor(&forced));
+                        }
                     }
                 }
             }
@@ -547,6 +564,7 @@ fn auto_tap_lands_internal(
                 card_id: sa_payment.card_id,
                 mana_ability_index: sa_payment.ability_index,
                 chosen_atom,
+                needs_express_choice: needs_express,
             });
 
             let _ = unpaid.try_pay_mana(chosen_atom, chosen_atom as u8);
@@ -603,8 +621,18 @@ fn collect_sorted_candidates(
     // Deduplicate by (card_id, ability_index) — same ability may appear under multiple color keys.
     let mut seen = std::collections::HashSet::new();
     out.retain(|ma| seen.insert((ma.card_id, ma.ability_index, ma.source_order)));
-    // Sort by score (lands before creatures), matching Java's Comparator.comparingInt(score).
-    out.sort_by_key(|ma| autopay_source_score(game, player, ma) * 1000 + ma.source_order as i32);
+    // Sort by score, then by zone_timestamp (battlefield entry order) to match
+    // Java's card iteration which uses timestamp order, not CardId order.
+    out.sort_by(|a, b| {
+        let score_a = autopay_source_score(game, player, a);
+        let score_b = autopay_source_score(game, player, b);
+        (score_a * 1000).cmp(&(score_b * 1000)).then_with(|| {
+            let ts_a = game.card(a.card_id).zone_timestamp;
+            let ts_b = game.card(b.card_id).zone_timestamp;
+            ts_a.cmp(&ts_b)
+                .then_with(|| a.source_order.cmp(&b.source_order))
+        })
+    });
     out
 }
 
@@ -657,11 +685,34 @@ fn shard_priority(unpaid: &ManaCostBeingPaid, candidates: &[ManaAbilityRef]) -> 
             colored.push(shard);
         }
     }
-    colored.sort_by_key(|&shard| count_candidates_for_shard(candidates, shard));
+    // Sort colored shards by fewest available candidates (most constrained first).
+    // Secondary tiebreak: descending ManaAtom value. This matches Java's observed
+    // HashMap iteration order where higher-atom shards (Red=8) come before lower
+    // (Blue=2) when candidate counts are equal.
+    colored.sort_by(|&a, &b| {
+        let count_a = count_candidates_for_shard(candidates, a);
+        let count_b = count_candidates_for_shard(candidates, b);
+        count_a
+            .cmp(&count_b)
+            .then_with(|| shard_atom_value(b).cmp(&shard_atom_value(a)))
+    });
     if let Some(g) = generic {
         colored.push(g);
     }
     colored
+}
+
+/// Map a ManaCostShard to its primary ManaAtom bitmask value for tiebreaking.
+fn shard_atom_value(shard: ManaCostShard) -> u16 {
+    match shard {
+        ManaCostShard::White | ManaCostShard::WhitePhyrexian => ManaAtom::WHITE,
+        ManaCostShard::Blue | ManaCostShard::BluePhyrexian => ManaAtom::BLUE,
+        ManaCostShard::Black | ManaCostShard::BlackPhyrexian => ManaAtom::BLACK,
+        ManaCostShard::Red | ManaCostShard::RedPhyrexian => ManaAtom::RED,
+        ManaCostShard::Green | ManaCostShard::GreenPhyrexian => ManaAtom::GREEN,
+        ManaCostShard::Colorless => ManaAtom::COLORLESS,
+        _ => 0,
+    }
 }
 
 /// Count how many candidates can pay a given shard.
@@ -1323,7 +1374,13 @@ fn group_sources_by_mana_color(
                             Some(card_id),
                             Some(player),
                         ),
-                        mana_text: "Reflected".to_string(),
+                        // Java's manaPart.mana() for ManaReflected returns origProduced
+                        // (typically "1"), NOT "Any"/"Reflected". Match for scoring parity.
+                        mana_text: ab
+                            .params
+                            .get(keys::PRODUCED)
+                            .map(|s| s.to_string())
+                            .unwrap_or_else(|| "1".to_string()),
                         source_order,
                     };
                     source_order += 1;
@@ -1335,6 +1392,16 @@ fn group_sources_by_mana_color(
             let Some(produced) = ab.params.get(keys::PRODUCED) else {
                 continue;
             };
+            // Combo ColorIdentity (e.g. Arcane Signet): atoms come from the
+            // commander's color identity, not the produced string literal.
+            // Must be handled here so auto-pay can see these sources — the
+            // availability check in `mana::mod.rs` already honours the same
+            // rule for playability.
+            // Special <kind> (e.g. Bloom Tender's "Special EachColorAmong_Valid Permanent.YouCtrl"):
+            // atoms are computed by inspecting permanents at availability time and the
+            // ability produces one mana per distinct color (so the fixed multiplier
+            // matches the atom count — keeps the auto-pay budget aligned with reality).
+            let mut special_atom_multiplier: Option<i32> = None;
             let atoms = if produced == "Combo ColorIdentity" {
                 let colors = game.player_commander_color_identity(player);
                 if colors.is_empty() {
@@ -1342,6 +1409,13 @@ fn group_sources_by_mana_color(
                 } else {
                     chosen_colors_to_atoms(&colors)
                 }
+            } else if let Some(special) = produced.strip_prefix("Special ") {
+                let special_atoms =
+                    crate::ability::effects::mana_effect::available_special_mana_atoms(
+                        game, card_id, player, special,
+                    );
+                special_atom_multiplier = Some(special_atoms.len().max(1) as i32);
+                special_atoms
             } else {
                 produced_to_atoms(produced, &card.chosen_colors)
             };
@@ -1350,8 +1424,10 @@ fn group_sources_by_mana_color(
             }
 
             explicit_mana_added = true;
-            let fixed_output_multiplier = fixed_produced_atoms(produced, &card.chosen_colors)
-                .map(|atoms| atoms.len() as i32)
+            let fixed_output_multiplier = special_atom_multiplier
+                .or_else(|| {
+                    fixed_produced_atoms(produced, &card.chosen_colors).map(|a| a.len() as i32)
+                })
                 .unwrap_or(1);
             let replacement_multiplier = atoms
                 .iter()
@@ -1464,23 +1540,143 @@ pub fn can_pay_mana_cost_with_reserved_sacrifices(
     reserved_sacrifices: &[CardId],
     payment_ctx: Option<&crate::mana::ManaPaymentContext>,
 ) -> bool {
+    // Mirrors Java harness ActionSpace.canPayManaCostWithReservedSacrifices:
+    // builds source_masks (one mask per mana-ability activation) and does a
+    // constrained bipartite match against the cost's colored requirements.
+    //
+    // Do NOT use calculate_available_mana_with_context here — that applies
+    // replacement effects like Nyxbloom Ancient's tripling, which inflates
+    // the source_colors list and makes impossible costs like The World Tree's
+    // {WWUUBBRRGG} appear payable when only 3 mana lands are untapped.
     let mana_cost = mana_cost_from_cost(cost);
-    let available = crate::mana::calculate_available_mana_with_context(
-        pool,
-        game,
-        player,
-        Some(excluded_source),
-        reserved_sacrifices,
-        payment_ctx,
-    );
+    let mut source_masks: Vec<u16> = Vec::new();
 
-    if payment_ctx.is_some() {
-        available.can_pay_for_spell(&mana_cost, payment_ctx.unwrap())
-            || available.can_pay_with_phyrexian_life(&mana_cost, game.player(player).life)
-    } else {
-        available.can_pay(&mana_cost)
-            || available.can_pay_with_phyrexian_life(&mana_cost, game.player(player).life)
+    for _ in 0..pool.white() {
+        source_masks.push(ManaAtom::WHITE);
     }
+    for _ in 0..pool.blue() {
+        source_masks.push(ManaAtom::BLUE);
+    }
+    for _ in 0..pool.black() {
+        source_masks.push(ManaAtom::BLACK);
+    }
+    for _ in 0..pool.red() {
+        source_masks.push(ManaAtom::RED);
+    }
+    for _ in 0..pool.green() {
+        source_masks.push(ManaAtom::GREEN);
+    }
+    for _ in 0..pool.colorless() {
+        source_masks.push(0);
+    }
+
+    for &card_id in game.cards_in_zone(ZoneType::Battlefield, player) {
+        if card_id == excluded_source {
+            continue;
+        }
+        let card = game.card(card_id);
+        let mut source_mask = 0u16;
+        for ab in &card.activated_abilities {
+            if !ab.is_mana_ability
+                || ab
+                    .cost
+                    .parts
+                    .iter()
+                    .any(|p| matches!(p, CostPart::Mana { .. }))
+            {
+                continue;
+            }
+            if !is_payable_mana_ability(
+                game,
+                player,
+                card_id,
+                ab,
+                reserved_sacrifices,
+                payment_ctx,
+            ) {
+                continue;
+            }
+            if let Some(produced) = ab.params.get(keys::PRODUCED) {
+                if produced == "Combo ColorIdentity" {
+                    let colors = game.player_commander_color_identity(player);
+                    if !colors.is_empty() {
+                        let mut combo = 0u16;
+                        for atom in chosen_colors_to_atoms(&colors) {
+                            combo |= atom;
+                        }
+                        source_mask |= combo;
+                    }
+                } else if let Some(fixed_atoms) = fixed_produced_atoms(produced, &card.chosen_colors)
+                {
+                    for atom in fixed_atoms {
+                        source_masks.push(atom);
+                    }
+                    source_mask = 0;
+                    break;
+                } else {
+                    for atom in produced_to_atoms(produced, &card.chosen_colors) {
+                        source_mask |= atom;
+                    }
+                }
+            }
+        }
+
+        if source_mask != 0 {
+            source_masks.push(source_mask);
+            continue;
+        }
+
+        if card.is_land() && !card.tapped {
+            let implicit_atoms = all_basic_subtype_atoms(card);
+            if !implicit_atoms.is_empty() {
+                let mut implicit_mask = 0u16;
+                for atom in implicit_atoms {
+                    implicit_mask |= atom;
+                }
+                source_masks.push(implicit_mask);
+            } else if let Some(atom) = basic_land_mana_atom(card) {
+                source_masks.push(atom);
+            }
+        }
+    }
+
+    let mut requirements = Vec::new();
+    for shard in mana_cost.shards() {
+        let color_mask = u16::from(shard.color_mask());
+        if color_mask != 0 {
+            requirements.push(color_mask);
+        }
+    }
+    let generic_count = mana_cost.generic_cost();
+    if source_masks.len() < requirements.len() + generic_count as usize {
+        return false;
+    }
+
+    requirements.sort_by_key(|&req| source_masks.iter().filter(|src| (**src & req) != 0).count());
+
+    let mut committed = std::collections::HashSet::new();
+    for requirement in requirements {
+        let mut best_index: Option<usize> = None;
+        let mut best_pop = usize::MAX;
+        let mut best_mask = u16::MAX;
+        for (i, source_mask) in source_masks.iter().copied().enumerate() {
+            if committed.contains(&i) || (source_mask & requirement) == 0 {
+                continue;
+            }
+            let pop = source_mask.count_ones() as usize;
+            if pop < best_pop || (pop == best_pop && source_mask < best_mask) {
+                best_index = Some(i);
+                best_pop = pop;
+                best_mask = source_mask;
+            }
+        }
+        let Some(best_index) = best_index else {
+            return false;
+        };
+        committed.insert(best_index);
+    }
+
+    source_masks.len() - committed.len() >= generic_count as usize
 }
 
 /// Java-style action-space mana feasibility for spells with phyrexian costs.
@@ -1805,7 +2001,27 @@ fn score_mana_ability(
     let mut score = 0;
     let card = game.card(card_id);
 
-    if let Some(produced) = produced_override.or_else(|| ab.params.get(keys::PRODUCED)) {
+    // Java parity: AutoPay.ManaAbilityCandidate.score() consults two distinct
+    // properties of the mana ability:
+    //   1. `isAnyMana()` — `getOrigProduced().contains("Any")`. This is a
+    //      substring check on the raw `Produced$` param, so values like
+    //      `Combo Any` and `Any` both qualify as any-color, scoring +7.
+    //   2. Otherwise: the resolved mana text from `manaPart.mana(sa)`. For
+    //      `ManaReflected` abilities (Exotic Orchard, City of Brass) which
+    //      have NO `Produced$` param, `getOrigProduced()` defaults to "1",
+    //      so Java scores these with the default "1" instead of the resolved
+    //      reflectable colors — yielding a low intrinsic score (+2) that
+    //      keeps Orchard ahead of multi-color combo sources like Arcane Signet.
+    let orig_produced = ab.params.get(keys::PRODUCED);
+    let is_any_mana = orig_produced.is_some_and(|p| p.contains("Any"));
+    if is_any_mana {
+        score += 7;
+    } else if orig_produced.is_none() {
+        // No `Produced$` param (e.g. ManaReflected). Java's `mana(sa)` returns
+        // the orig_produced default of "1", scoring as a single colorless-ish
+        // shard: length 1 + 1 (no 'C') = 2.
+        score += 2;
+    } else if let Some(produced) = produced_override.or(orig_produced) {
         let mana_text = ability_mana_text_for_score(produced, &card.chosen_colors);
         if mana_text == "Any" {
             score += 7;
@@ -1834,24 +2050,11 @@ fn score_mana_ability(
         score += 1;
     }
 
-    // Java parity: SpellAbility.calculateScoreForManaAbility() adds +50 for
-    // non-undoable abilities (those with side-effect SubAbilities like DealDamage).
-    // Also adds +2 for any SubAbility presence. This heavily de-prioritizes pain
-    // lands (e.g. Yavimaya Coast's colored mana ability with DealDamage sub).
-    if let Some(sub_name) = ab.params.get(keys::SUB_ABILITY) {
-        score += 2;
-        // Check if the SubAbility is non-undoable (damage, discard, etc.)
-        if let Some(sub_text) = card.svars.get(sub_name) {
-            let sub_params = crate::parsing::Params::from_raw(sub_text);
-            let sub_type = sub_params.get(crate::parsing::keys::DB).unwrap_or("");
-            if matches!(
-                sub_type,
-                "DealDamage" | "LoseLife" | "Discard" | "Destroy" | "Sacrifice" | "Mill"
-            ) {
-                score += 50; // non-undoable: only use as last resort
-            }
-        }
-    }
+    // Note: Java's SpellAbility.calculateScoreForManaAbility() adds +50 for
+    // non-undoable abilities and +2 for SubAbility presence, but the parity
+    // harness's AutoPay.ManaAbilityCandidate.score() (the scorer this matches)
+    // intentionally omits both. Mirroring that omission keeps Rust auto-pay
+    // from over-penalising pain lands relative to the harness baseline.
 
     score
 }

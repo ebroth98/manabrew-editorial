@@ -354,9 +354,11 @@ impl GameLoop {
         game: &GameState,
         player: PlayerId,
         card_id: CardId,
-        play_mode: crate::agent::PlayCardMode,
+        play: crate::agent::PlayOption,
     ) -> Option<PreparedSpellAbility> {
+        let play_mode = play.mode;
         let mut sa = crate::spellability::build_spell_ability_for_card_cast(game, card_id, player);
+        sa.alt_cost_index = play.alt_cost_index;
         let mut static_alternative_cost_prepared = false;
         match play_mode {
             crate::agent::PlayCardMode::Normal => {}
@@ -590,7 +592,15 @@ impl GameLoop {
             let spec_cost_str = game.card(card_id).get_spectacle_cost().unwrap_or_default();
             forge_foundation::ManaCost::parse(&spec_cost_str)
         } else if is_evoke {
-            let evoke_cost_str = game.card(card_id).get_evoke_cost().unwrap_or_default();
+            // Select the specific Evoke cost chosen at action-space enumeration
+            // (intrinsic vs granted by Ashling-style AddKeyword static). Without
+            // this, cast_spell would always pay the first payable cost.
+            let evoke_costs = game.card(card_id).get_all_evoke_costs();
+            let evoke_cost_str = evoke_costs
+                .get(sa.alt_cost_index as usize)
+                .cloned()
+                .or_else(|| evoke_costs.first().cloned())
+                .unwrap_or_default();
             // Evoke cost may include non-mana parts (e.g. Fury:
             // ExileFromHand<1/Card.Red+Other/red card>). Parse as a full
             // Cost and extract only the mana portion for mana payment;
@@ -1271,9 +1281,11 @@ impl GameLoop {
                             .map(|choice| ManaCostAction::TapLand {
                                 card_id: choice.card_id,
                                 mana_ability_index: Some(choice.mana_ability_index.unwrap_or(0)),
-                                express_choice: choice
-                                    .mana_ability_index
-                                    .map(|_| choice.chosen_atom),
+                                express_choice: if choice.needs_express_choice {
+                                    Some(choice.chosen_atom)
+                                } else {
+                                    None
+                                },
                             })
                             .collect();
                         for &tapped_id in &result.tapped {
@@ -1716,9 +1728,15 @@ impl GameLoop {
         }
 
         // Pay Evoke additional (non-mana) costs, e.g. Fury's
-        // ExileFromHand<1/Card.Red+Other/red card>.
+        // ExileFromHand<1/Card.Red+Other/red card>. Use the indexed cost so the
+        // non-mana part matches the same Evoke chosen for mana payment.
         if is_evoke {
-            let evoke_cost_str = game.card(card_id).get_evoke_cost().unwrap_or_default();
+            let evoke_costs = game.card(card_id).get_all_evoke_costs();
+            let evoke_cost_str = evoke_costs
+                .get(sa.alt_cost_index as usize)
+                .cloned()
+                .or_else(|| evoke_costs.first().cloned())
+                .unwrap_or_default();
             let evoke_cost = crate::cost::parse_cost(&evoke_cost_str);
             if !self.pay_additional_costs(
                 game,

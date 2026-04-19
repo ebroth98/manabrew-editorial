@@ -120,6 +120,11 @@ pub struct SpellAbility {
     pub trigger_index: Option<usize>,
     /// Alternative cost used to cast this spell (Flashback, Spectacle, Evoke, Dash, etc.).
     pub alt_cost: Option<AlternativeCost>,
+    /// Index within the card's list of same-kind alternative costs. Zero for
+    /// all cases except multi-cost Evoke (intrinsic + granted by Ashling-style
+    /// static AddKeyword): 0 = first payable Evoke, 1 = second, …
+    #[serde(default)]
+    pub alt_cost_index: u8,
     /// Whether the kicker cost was paid.
     pub kicked: bool,
     /// Whether buyback was paid (spell returns to hand on resolve).
@@ -404,6 +409,7 @@ impl SpellAbility {
             source_trigger_id: None,
             trigger_index: None,
             alt_cost: None,
+            alt_cost_index: 0,
             kicked: false,
             buyback_paid: false,
             overloaded: false,

@@ -428,6 +428,9 @@ pub(crate) fn compute_reflected_atoms(
         player,
     );
     let colors = crate::card::card_util::get_reflectable_mana_colors(game, &sa);
+    // Java parity: harness AutoPay sorts reflectable colours into canonical
+    // WUBRG(C) order before deriving atoms (see AutoPay.producedAtoms). Mirror
+    // that order here so generic-shard `produced.get(0)` matches on both sides.
     let mut reflected_atoms = Vec::new();
     for (name, atom) in [
         ("white", ManaAtom::WHITE),
@@ -673,15 +676,24 @@ pub fn determine_mana_production(
             let chosen_colors = game.card(card_id).chosen_colors.clone();
             let colors = produced_to_color_names(produced, &chosen_colors);
             if colors.len() > 1 {
-                let chosen = express_choice
+                let chosen = if let Some(forced) = express_choice
                     .and_then(mana_atom_to_color_name)
-                    .and_then(|forced| {
+                    .and_then(|forced_name| {
                         colors
                             .iter()
-                            .find(|valid| valid.eq_ignore_ascii_case(forced))
+                            .find(|valid| valid.eq_ignore_ascii_case(forced_name))
                             .cloned()
                     })
-                    .or_else(|| agents[player.index()].choose_color(player, &colors));
+                {
+                    // Java calls chooseColor even when expressChoice is set,
+                    // presenting the forced color as a single-option choice.
+                    // Consume the RNG pick for parity.
+                    let single = vec![forced.clone()];
+                    let _ = agents[player.index()].choose_color(player, &single);
+                    Some(forced)
+                } else {
+                    agents[player.index()].choose_color(player, &colors)
+                };
                 if let Some(chosen) = chosen {
                     if let Some(atom) = color_name_to_mana_atom(&chosen) {
                         mana_string = Some(ManaPool::atom_to_letter(atom).to_string());
@@ -757,13 +769,15 @@ pub fn determine_mana_production(
 
     // Apply ProduceMana replacement effects (mana doublers like Mirari's Wake)
     if let Some(ref mut ms) = mana_string {
-        use crate::replacement::replacement_handler::{apply_replacements, ReplacementEvent};
+        use crate::replacement::replacement_handler::{
+            apply_replacements_with_agents, ReplacementEvent,
+        };
         let mut event = ReplacementEvent::ProduceMana {
             source: card_id,
             activator: player,
             mana: ms.clone(),
         };
-        let result = apply_replacements(game, &mut event);
+        let result = apply_replacements_with_agents(game, agents, &mut event);
         if result == crate::replacement::ReplacementResult::Updated {
             if let ReplacementEvent::ProduceMana { mana: new_mana, .. } = event {
                 *ms = new_mana;
@@ -1141,6 +1155,31 @@ fn calculate_available_mana_excluding_with_reserved_impl(
                                 avail_add!(available, card_is_snow, atom);
                                 added_atoms.push(atom);
                                 src_mask |= atom;
+                            }
+                        }
+                        added_any = true;
+                    }
+                } else if let Some(special) = produced.strip_prefix("Special ") {
+                    // Special mana (e.g. Bloom Tender's "EachColorAmong_Valid Permanent.YouCtrl"):
+                    // one mana per distinct color among matching permanents. Both colors and
+                    // amount-per-activation come from the same atom set.
+                    let special_atoms =
+                        crate::ability::effects::mana_effect::available_special_mana_atoms(
+                            game, card_id, player, special,
+                        );
+                    if !special_atoms.is_empty() {
+                        for &atom in &special_atoms {
+                            if !added_atoms.contains(&atom) {
+                                let adjusted_atoms = replacement_adjusted_atoms_for_availability(
+                                    game, player, card_id, atom,
+                                );
+                                for adjusted_atom in adjusted_atoms {
+                                    avail_add!(available, card_is_snow, adjusted_atom);
+                                    src_mask |= adjusted_atom;
+                                    source_count += 1;
+                                    source_colors.push(adjusted_atom);
+                                }
+                                added_atoms.push(atom);
                             }
                         }
                         added_any = true;

@@ -797,6 +797,26 @@ pub fn resolve_numeric_svar(
     // It's an SVar reference — look it up on the source card
     if let Some(source_id) = sa.source {
         if let Some(svar_expr) = game.card(source_id).get_s_var(val_str.trim()) {
+            // `Sacrificed$CardPower` / `Sacrificed$CardToughness` — LKI of the
+            // creature sacrificed during cost payment (e.g. Life's Legacy uses
+            // `NumCards$ XPower` where `XPower:Sacrificed$CardPower`). Mirrors
+            // Java `AbilityUtils.handlePaid` reading from `SacrificedCards`.
+            if svar_expr == "Sacrificed$CardPower" || svar_expr == "Sacrificed$CardToughness" {
+                if let Some(sac_id) = game.last_sacrificed_card {
+                    let sac_card = game.card(sac_id);
+                    let val = if svar_expr.ends_with("Power") {
+                        sac_card
+                            .lki_power
+                            .unwrap_or(sac_card.base_power.unwrap_or(0))
+                    } else {
+                        sac_card
+                            .lki_toughness
+                            .unwrap_or(sac_card.base_toughness.unwrap_or(0))
+                    };
+                    return sign * val;
+                }
+                return 0;
+            }
             // `Remembered$Property` — Java parity for AbilityUtils' "Remembered$"
             // shortcut (e.g. Cavalier of Flame's `Y:Remembered$Amount`).
             if let Some(property) = svar_expr.strip_prefix("Remembered$") {
@@ -1364,9 +1384,14 @@ fn valid_card_matches_with_source(
                 }
             } else if sub_qual.eq_ignore_ascii_case("ChosenType") {
                 // Card must have the source card's chosen creature type as a subtype.
+                // Changeling means all creature types — always matches.
                 // Mirrors Java CardTraitBase.isValid() ChosenType qualifier.
                 match chosen_type {
-                    Some(ct) if card.type_line.has_subtype(ct) => {}
+                    Some(ct)
+                        if card.type_line.has_subtype(ct)
+                            || card.has_keyword("Changeling") =>
+                    {
+                    }
                     _ => return false,
                 }
             } else if sub_qual.starts_with("counters_") {

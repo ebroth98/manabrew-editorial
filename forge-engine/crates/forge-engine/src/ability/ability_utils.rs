@@ -97,7 +97,7 @@ pub fn get_defined_cards(
     game: &GameState,
     host_card: Option<CardId>,
     defined: &str,
-    _activating_player: Option<PlayerId>,
+    activating_player: Option<PlayerId>,
 ) -> Vec<CardId> {
     match defined {
         "Self" | "CARDNAME" => host_card.into_iter().collect(),
@@ -121,6 +121,30 @@ pub fn get_defined_cards(
             } else {
                 Vec::new()
             }
+        }
+        _ if defined.starts_with("ValidGraveyard") => {
+            // "ValidGraveyard <filter>" — return graveyard cards matching filter.
+            // Mirrors Java's AbilityUtils.getDefinedCards() for graveyard-based defined sets.
+            let filter = defined
+                .strip_prefix("ValidGraveyard")
+                .unwrap_or("")
+                .trim();
+            let player = activating_player.unwrap_or_else(|| {
+                host_card
+                    .map(|c| game.card(c).controller)
+                    .unwrap_or(PlayerId(0))
+            });
+            game.cards_in_zone(ZoneType::Graveyard, player)
+                .iter()
+                .copied()
+                .filter(|&cid| {
+                    if filter.is_empty() {
+                        return true;
+                    }
+                    let card = game.card(cid);
+                    matches_valid_cards(card, filter, player)
+                })
+                .collect()
         }
         _ => Vec::new(),
     }
@@ -1052,7 +1076,23 @@ pub fn matches_change_type(
             // CardPredicates does the same — `Card.Elemental` filters by
             // the Elemental subtype. Changeling creatures are every creature
             // type, so a changeling creature passes any creature-type check.
+            // Generic `non<Subtype>` is handled here so Sunderflock's
+            // `Creature.nonElemental` bounce filter rejects Elementals without
+            // needing an explicit arm per subtype.
             other => {
+                if let Some(stripped) = other.strip_prefix("non") {
+                    let is_creature_type = !stripped.is_empty();
+                    if !is_creature_type {
+                        return false;
+                    }
+                    let has_sub = card.type_line.has_subtype(stripped);
+                    let changeling_match =
+                        card.is_creature() && card.has_keyword("Changeling");
+                    if has_sub || changeling_match {
+                        return false;
+                    }
+                    continue;
+                }
                 let has_sub = card.type_line.has_subtype(other);
                 let changeling_match = card.is_creature() && card.has_keyword("Changeling");
                 if !has_sub && !changeling_match {

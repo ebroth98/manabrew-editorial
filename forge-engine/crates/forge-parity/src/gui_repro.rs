@@ -41,19 +41,33 @@ pub fn pick_int_in_range(min: i32, max: i32, rng: &mut JavaRandom) -> i32 {
 }
 
 /// Mirrors DeterministicController.chooseColor / chooseColorAllowColorless.
+///
+/// Parity note: Java's `chooseColor` only emits a `pick_index` RNG log plus
+/// the top-level `choose_color` callback. Do not add an extra `rng_log` here,
+/// or the nested trace will contain a duplicate `choose_color[N]` line that
+/// Java never produces.
 pub fn choose_color(valid_colors: &[String], rng: &mut JavaRandom) -> Option<String> {
     if valid_colors.is_empty() {
         return None;
     }
     let idx = choice_space::pick_index(valid_colors.len(), rng);
-    let chosen = valid_colors.get(idx).cloned();
-    rng_log(
-        "choose_color",
-        Some(valid_colors.len()),
-        format!("{chosen:?}"),
-        rng,
-    );
-    chosen
+    valid_colors.get(idx).cloned()
+}
+
+/// Mirrors DeterministicController.chooseCounterType.
+///
+/// Java implementation: `ChoiceSpace.pickOne(options, rng)` followed by an
+/// `onCallback("choose_counter_type", ..., String.valueOf(options.size()))`.
+/// `pickOne` consumes RNG even when there is one option (logs `pick_one[1]`),
+/// so Rust must call `choice_space::pick_one` to keep entropy aligned.
+pub fn choose_counter_type(valid_types: &[String], rng: &mut JavaRandom) -> Option<String> {
+    if valid_types.is_empty() {
+        return None;
+    }
+    // Use indices so we can leverage `pick_one` directly without cloning strings.
+    let indices: Vec<usize> = (0..valid_types.len()).collect();
+    let idx = choice_space::pick_one(&indices, rng)?;
+    valid_types.get(idx).cloned()
 }
 
 /// Mirrors DeterministicController.chooseColors.
@@ -87,6 +101,10 @@ pub fn choose_colors(
 }
 
 /// Mirrors DeterministicController.chooseSomeType.
+///
+/// Parity note: Java's `chooseSomeType` only emits a `pick_index` inner log
+/// followed by the top-level `choose_type` callback. Do not add an extra
+/// `rng_log` here, or the nested trace duplicates the outer callback line.
 pub fn choose_type(valid_types: &[String], rng: &mut JavaRandom) -> Option<String> {
     if valid_types.is_empty() {
         return None;
@@ -94,14 +112,7 @@ pub fn choose_type(valid_types: &[String], rng: &mut JavaRandom) -> Option<Strin
     let mut sorted = valid_types.to_vec();
     sorted.sort();
     let idx = choice_space::pick_index(sorted.len(), rng);
-    let chosen = sorted.get(idx).cloned();
-    rng_log(
-        "choose_type",
-        Some(sorted.len()),
-        format!("{chosen:?}"),
-        rng,
-    );
-    chosen
+    sorted.get(idx).cloned()
 }
 
 /// Mirrors DeterministicController.chooseCardName(List<ICardFace>, ...).
@@ -171,7 +182,7 @@ pub fn pick_many_unique<T: Copy>(
     let len = options.len();
     let picked = out.len();
     rng_log(
-        &format!("pick_many_unique [{min}-{max}]"),
+        &format!("pick_many_unique [{min} to {max}]"),
         Some(len),
         format!("picked {picked}"),
         rng,

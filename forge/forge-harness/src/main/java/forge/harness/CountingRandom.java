@@ -12,9 +12,15 @@ import java.util.concurrent.atomic.AtomicInteger;
  */
 public final class CountingRandom extends Random {
     private final AtomicInteger callCount = new AtomicInteger(0);
+    private final String label;
 
     public CountingRandom(long seed) {
+        this(seed, "?");
+    }
+
+    public CountingRandom(long seed, String label) {
         super(seed);
+        this.label = label;
     }
 
     @Override
@@ -22,7 +28,22 @@ public final class CountingRandom extends Random {
         int n = callCount.incrementAndGet();
         int result = super.nextInt(bound);
         if (Boolean.getBoolean("forge.parity.rng.trace")) {
-            System.err.printf("[rng-java #%d] nextInt(%d) = %d%n", n, bound, result);
+            System.err.printf("[rng-java #%d (%s)] nextInt(%d) = %d%n", n, label, bound, result);
+        }
+        String btBounds = System.getProperty("forge.parity.rng.bt.bounds");
+        if (btBounds != null && "game".equals(label)) {
+            for (String part : btBounds.split(",")) {
+                if (part.trim().isEmpty()) continue;
+                if (Integer.parseInt(part.trim()) == bound) {
+                    StackTraceElement[] stack = new Throwable().getStackTrace();
+                    System.err.printf("[rng-java-bt #%d (%s) bound=%d]%n", n, label, bound);
+                    int limit = Math.min(stack.length, 20);
+                    for (int i = 0; i < limit; i++) {
+                        System.err.printf("    at %s%n", stack[i]);
+                    }
+                    break;
+                }
+            }
         }
         return result;
     }
@@ -32,7 +53,15 @@ public final class CountingRandom extends Random {
         int n = callCount.incrementAndGet();
         int result = super.nextInt();
         if (Boolean.getBoolean("forge.parity.rng.trace")) {
-            System.err.printf("[rng-java #%d] nextInt() = %d%n", n, result);
+            System.err.printf("[rng-java #%d (%s)] nextInt() = %d%n", n, label, result);
+        }
+        if (Boolean.getBoolean("forge.parity.rng.bt.unbounded") && "game".equals(label)) {
+            StackTraceElement[] stack = new Throwable().getStackTrace();
+            System.err.printf("[rng-java-bt #%d (%s) unbounded]%n", n, label);
+            int limit = Math.min(stack.length, 20);
+            for (int i = 0; i < limit; i++) {
+                System.err.printf("    at %s%n", stack[i]);
+            }
         }
         return result;
     }

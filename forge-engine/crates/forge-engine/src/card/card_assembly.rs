@@ -148,6 +148,10 @@ pub(crate) fn assemble_card(
     // Set the full combined name for split/room cards (e.g. "A // B").
     // card_name stays as the front face; full_name is used for hand/graveyard/lookup.
     card.full_name = full_name;
+    // Preserve rules-level color identity (CR 903.4: includes mana symbols in
+    // oracle text, e.g. Ashling, the Limitless mentions {W}{U}{B}{R}{G} so its
+    // identity is five-colour even though its mana cost is just {2}{R}).
+    card.color_identity = rules.color_identity;
     card.attraction_lights = face.attraction_lights.clone();
 
     // Append parsed triggers to keyword-generated ones.

@@ -266,7 +266,7 @@ pub fn resolve_special_mana(
         let filter = special
             .strip_prefix("EachColorAmong_Valid ")
             .unwrap_or("Permanent.YouCtrl");
-        return each_color_among_valid(ctx, source_id, player, filter);
+        return each_color_among_valid(ctx.game, source_id, player, filter);
     }
 
     if special == "EachColorAmong_ExiledWith" {
@@ -398,8 +398,8 @@ pub fn resolve_special_mana(
 }
 
 /// Collect one mana per unique color among permanents matching the valid filter.
-fn each_color_among_valid(
-    ctx: &EffectContext,
+pub fn each_color_among_valid(
+    game: &crate::game::GameState,
     source_id: crate::ids::CardId,
     controller: crate::ids::PlayerId,
     filter: &str,
@@ -408,7 +408,7 @@ fn each_color_among_valid(
 
     let mut colors = Vec::new();
 
-    for card in ctx.game.cards.iter() {
+    for card in game.cards.iter() {
         if card.zone != ZoneType::Battlefield {
             continue;
         }
@@ -424,6 +424,35 @@ fn each_color_among_valid(
     }
 
     colors
+}
+
+/// Compute the mana atoms a `Produced$ Special <kind>` ability can produce
+/// for availability/playability checks (read-only over `GameState`).
+///
+/// Mirrors Java's `AbilityManaPart.isSpecialMana()` dispatch combined with
+/// `ManaEffect.handleSpecialMana` color enumeration: callers use the returned
+/// atoms both as the unique colors that can be paid and as the per-activation
+/// mana count (e.g. Bloom Tender produces N mana for N distinct colors).
+pub fn available_special_mana_atoms(
+    game: &crate::game::GameState,
+    source_id: crate::ids::CardId,
+    controller: crate::ids::PlayerId,
+    special: &str,
+) -> Vec<u16> {
+    let mut atoms = Vec::new();
+
+    if special.starts_with("EachColorAmong_Valid") {
+        let filter = special
+            .strip_prefix("EachColorAmong_Valid ")
+            .unwrap_or("Permanent.YouCtrl");
+        for letter in each_color_among_valid(game, source_id, controller, filter) {
+            if let Some(atom) = crate::mana::mana_atom_from_produced(&letter) {
+                atoms.push(atom);
+            }
+        }
+    }
+
+    atoms
 }
 
 /// Simple valid filter matching for special mana (e.g. "Permanent.YouCtrl+MonoColor").

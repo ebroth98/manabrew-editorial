@@ -1465,7 +1465,16 @@ fn should_confirm_effect_cost_part(mode: EffectCostPaymentMode, part: &CostPart)
                 CostPart::Mill(_) => true,
                 CostPart::AddMana { .. } => true,
                 CostPart::Discard { type_filter, .. } => type_filter.eq_ignore_ascii_case("Hand"),
-                CostPart::Sacrifice { .. } => true,
+                // Java parity: DeterministicCostPlumbing.visit(CostSacrifice) sets
+                //   shouldAsk = (payCostFromSource && !mandatory) || "OriginalHost"
+                // payCostFromSource ↔ type_filter == "CARDNAME". Arbitrary type
+                // filters (e.g. Permanent.nonLand for Rottenmouth Viper's
+                // UnlessCost) skip the confirm prompt and go straight to the
+                // sacrifice picker.
+                CostPart::Sacrifice { type_filter, .. } => {
+                    type_filter.eq_ignore_ascii_case("CARDNAME")
+                        || type_filter.eq_ignore_ascii_case("OriginalHost")
+                }
                 _ => false,
             }
         }
@@ -1855,7 +1864,16 @@ fn resolve_unless_payers(sa: &SpellAbility, game: &GameState) -> Vec<PlayerId> {
             vec![game.opponent_of(sa.activating_player)]
         }
     } else {
-        helpers::resolve_defined_players(pays, sa.activating_player, game)
+        // Use sa-aware resolution so "Remembered" / "TriggeredPlayer" / etc.
+        // work — e.g. Rottenmouth Viper's "UnlessPayer$ Remembered" has to
+        // resolve via host.remembered_players (set by ChooseGenericEffect's
+        // TempRemember$ Chooser), not fall back to the controller.
+        crate::ability::ability_utils::resolve_defined_players_with_sa(
+            pays,
+            sa,
+            sa.activating_player,
+            game,
+        )
     }
 }
 

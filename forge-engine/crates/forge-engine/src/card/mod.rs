@@ -65,6 +65,10 @@ use crate::staticability::{parse_static_ability, StaticAbility};
 use crate::trigger::Trigger;
 
 /// Build the full `"Plotted:{turn}"` keyword string.
+fn colorless_color_set() -> ColorSet {
+    ColorSet::COLORLESS
+}
+
 pub fn make_plotted_keyword(turn: u32) -> String {
     format!("{}{}", KEYWORD_PLOTTED_PREFIX, turn)
 }
@@ -129,6 +133,13 @@ pub struct Card {
 
     // Color (can be modified)
     pub color: ColorSet,
+
+    /// Immutable color identity from the card's rules (CR 903.4): mana cost
+    /// colors plus any mana symbols found in the oracle text (outside reminder
+    /// text). Used for commander color-identity checks and Combo ColorIdentity
+    /// mana productions. Mirrors Java `CardRules.getColorIdentity()`.
+    #[serde(default = "colorless_color_set")]
+    pub color_identity: ColorSet,
 
     // Power/Toughness (base values, can be modified)
     pub base_power: Option<i32>,
@@ -568,6 +579,7 @@ impl Card {
             .collect();
 
         let full_name = card_name.clone();
+        let color_identity = color;
         let mut card = Card {
             id,
             card_name,
@@ -578,6 +590,7 @@ impl Card {
             type_line,
             mana_cost,
             color,
+            color_identity,
             base_power,
             base_toughness,
             power_modifier: 0,

@@ -398,6 +398,12 @@ pub trait PlayerAgent {
         (0..num.min(abilities.len())).collect()
     }
 
+    /// Choose exactly one entity (Card or Player) from a candidate list.
+    /// Mirrors Java's `chooseSingleEntityForEffect(FCollectionView<? extends GameEntity>, ...)`.
+    /// Distinct from `choose_entities_for_effect` because Java emits a single
+    /// `pick_one[N]` callback (instead of `pick_count` + `pick_index` +
+    /// `pick_many_unique`), so callers that semantically pick one entity must
+    /// route through this method to keep deterministic-parity logs aligned.
     fn choose_single_entity_for_effect(
         &mut self,
         _player: PlayerId,

@@ -64,7 +64,8 @@ impl GameLoop {
                     playable.push(crate::agent::PlayOption {
                         card_id,
                         mode: crate::agent::PlayCardMode::Normal,
-                    });
+                    alt_cost_index: 0,
+                                        });
                     if card
                         .other_part
                         .as_ref()
@@ -73,7 +74,8 @@ impl GameLoop {
                         playable.push(crate::agent::PlayOption {
                             card_id,
                             mode: crate::agent::PlayCardMode::BackFaceLand,
-                        });
+                        alt_cost_index: 0,
+                                                });
                     }
                 }
             } else if card
@@ -93,7 +95,8 @@ impl GameLoop {
                     playable.push(crate::agent::PlayOption {
                         card_id,
                         mode: crate::agent::PlayCardMode::BackFaceLand,
-                    });
+                    alt_cost_index: 0,
+                                        });
                 }
             } else {
                 let cast_sa =
@@ -248,20 +251,30 @@ impl GameLoop {
                     false
                 };
 
-                // Evoke: alt cost for creatures. The evoke cost string may be a
-                // full Cost (mana + non-mana, e.g. Fury's "ExileFromHand<1/...>"),
-                // so parse it as a Cost and check both the mana and non-mana parts.
-                let evoke_full_cost = card.get_evoke_cost().map(|s| crate::cost::parse_cost(&s));
-                let evoke_ok = if let Some(ref evoke_cost) = evoke_full_cost {
-                    let evoke_mana = Self::mana_from_cost(evoke_cost);
-                    let adjusted = cost_adj.apply(&evoke_mana).add(&raise_mana);
-                    available_mana.can_pay(&adjusted)
-                        && crate::cost::can_pay_ignoring_mana_for_spell(
-                            evoke_cost, game, card_id, player,
-                        )
-                } else {
-                    false
-                };
+                // Evoke: alt cost for creatures. A card may have multiple Evoke
+                // costs simultaneously — e.g. Mulldrifter (intrinsic Evoke {2}{U})
+                // in P0's hand while Ashling, the Limitless grants Evoke {4} via
+                // its `AddKeyword$ Evoke:4` static. Each is a separate alternative
+                // cost in MTG, so enumerate them as separate playable entries to
+                // match Java's count.
+                // Keep the ORIGINAL index (position in `get_all_evoke_costs()`)
+                // alongside the cost string, so each payable Evoke can be tied
+                // to the exact keyword instance cast_spell uses at payment time.
+                let evoke_payable: Vec<(usize, String)> = card
+                    .get_all_evoke_costs()
+                    .into_iter()
+                    .enumerate()
+                    .filter(|(_, cost_str)| {
+                        let evoke_cost = crate::cost::parse_cost(cost_str);
+                        let evoke_mana = Self::mana_from_cost(&evoke_cost);
+                        let adjusted = cost_adj.apply(&evoke_mana).add(&raise_mana);
+                        available_mana.can_pay(&adjusted)
+                            && crate::cost::can_pay_ignoring_mana_for_spell(
+                                &evoke_cost, game, card_id, player,
+                            )
+                    })
+                    .collect();
+                let evoke_ok = !evoke_payable.is_empty();
 
                 // Dash: alt cost
                 let dash_ok = if let Some(dash_cost_str) = card.get_dash_cost() {
@@ -499,7 +512,8 @@ impl GameLoop {
                             playable.push(crate::agent::PlayOption {
                                 card_id,
                                 mode: crate::agent::PlayCardMode::Normal,
-                            });
+                            alt_cost_index: 0,
+                                                        });
                         }
                         if spectacle_ok {
                             playable.push(crate::agent::PlayOption {
@@ -507,14 +521,36 @@ impl GameLoop {
                                 mode: crate::agent::PlayCardMode::Alternative(
                                     crate::spellability::AlternativeCost::Spectacle,
                                 ),
+                            alt_cost_index: 0,
                             });
                         }
-                        if evoke_ok {
+                        // Push one Evoke entry per payable Evoke cost. PlayOption
+                        // currently carries only an `Alternative(Evoke)` discriminant
+                        // (no per-entry cost), but downstream cost selection will
+                        // resolve the right cost at cast time. Java enumerates each
+                        // Evoke cost separately for ActionSpace; matching that count
+                        // is what keeps the deterministic agent's RNG aligned.
+                        // `alt_cost_index` disambiguates multiple Evoke costs on
+                        // the same card: intrinsic `Evoke {2}{U}` at index 0
+                        // versus Ashling's granted `Evoke {4}` at index 1.
+                        // cast_spell.rs uses the index to look up the correct
+                        // cost in `get_all_evoke_costs()`.
+                        //
+                        // Java's ActionSpace sorts SAs by
+                        // `sa.toUnsuppressedString()` which reflects the Evoke
+                        // cost text, so the two Evoke variants interleave by
+                        // cost-string order. Mirror that here by sorting payable
+                        // entries by the cost string, but preserve the original
+                        // index so cast-time lookup still hits the right one.
+                        let mut ordered: Vec<(usize, String)> = evoke_payable.clone();
+                        ordered.sort_by(|a, b| a.1.cmp(&b.1));
+                        for (idx, _cost) in ordered {
                             playable.push(crate::agent::PlayOption {
                                 card_id,
                                 mode: crate::agent::PlayCardMode::Alternative(
                                     crate::spellability::AlternativeCost::Evoke,
                                 ),
+                                alt_cost_index: idx as u8,
                             });
                         }
                         if dash_ok {
@@ -523,6 +559,7 @@ impl GameLoop {
                                 mode: crate::agent::PlayCardMode::Alternative(
                                     crate::spellability::AlternativeCost::Dash,
                                 ),
+                            alt_cost_index: 0,
                             });
                         }
                         if blitz_ok {
@@ -531,6 +568,7 @@ impl GameLoop {
                                 mode: crate::agent::PlayCardMode::Alternative(
                                     crate::spellability::AlternativeCost::Blitz,
                                 ),
+                            alt_cost_index: 0,
                             });
                         }
                         if overload_ok {
@@ -539,13 +577,15 @@ impl GameLoop {
                                 mode: crate::agent::PlayCardMode::Alternative(
                                     crate::spellability::AlternativeCost::Overload,
                                 ),
+                            alt_cost_index: 0,
                             });
                         }
                         if static_alt_ok {
                             playable.push(crate::agent::PlayOption {
                                 card_id,
                                 mode: crate::agent::PlayCardMode::StaticAlternative,
-                            });
+                            alt_cost_index: 0,
+                                                        });
                         }
                         if emerge_ok {
                             playable.push(crate::agent::PlayOption {
@@ -553,6 +593,7 @@ impl GameLoop {
                                 mode: crate::agent::PlayCardMode::Alternative(
                                     crate::spellability::AlternativeCost::Emerge,
                                 ),
+                            alt_cost_index: 0,
                             });
                         }
                         if suspend_ok {
@@ -561,13 +602,15 @@ impl GameLoop {
                                 mode: crate::agent::PlayCardMode::Alternative(
                                     crate::spellability::AlternativeCost::Suspend,
                                 ),
+                            alt_cost_index: 0,
                             });
                         }
                         if foretell_exile_ok {
                             playable.push(crate::agent::PlayOption {
                                 card_id,
                                 mode: crate::agent::PlayCardMode::ForetellExile,
-                            });
+                            alt_cost_index: 0,
+                                                        });
                         }
                         if morph_ok {
                             playable.push(crate::agent::PlayOption {
@@ -575,6 +618,7 @@ impl GameLoop {
                                 mode: crate::agent::PlayCardMode::Alternative(
                                     crate::spellability::AlternativeCost::Morph,
                                 ),
+                            alt_cost_index: 0,
                             });
                         }
                         if bestow_ok {
@@ -583,6 +627,7 @@ impl GameLoop {
                                 mode: crate::agent::PlayCardMode::Alternative(
                                     crate::spellability::AlternativeCost::Bestow,
                                 ),
+                            alt_cost_index: 0,
                             });
                         }
                         if warp_ok {
@@ -591,6 +636,7 @@ impl GameLoop {
                                 mode: crate::agent::PlayCardMode::Alternative(
                                     crate::spellability::AlternativeCost::Warp,
                                 ),
+                            alt_cost_index: 0,
                             });
                         }
                     }
@@ -629,7 +675,8 @@ impl GameLoop {
                     playable.push(crate::agent::PlayOption {
                         card_id,
                         mode: crate::agent::PlayCardMode::Normal,
-                    });
+                    alt_cost_index: 0,
+                                        });
                 }
             }
         }
@@ -676,7 +723,8 @@ impl GameLoop {
                         playable.push(crate::agent::PlayOption {
                             card_id,
                             mode: crate::agent::PlayCardMode::UnlockDoor,
-                        });
+                        alt_cost_index: 0,
+                                                });
                     }
                 }
             }
@@ -727,6 +775,7 @@ impl GameLoop {
                     mode: crate::agent::PlayCardMode::Alternative(
                         crate::spellability::AlternativeCost::Flashback,
                     ),
+                alt_cost_index: 0,
                 });
             }
             if escape_ok {
@@ -735,6 +784,7 @@ impl GameLoop {
                     mode: crate::agent::PlayCardMode::Alternative(
                         crate::spellability::AlternativeCost::Escape,
                     ),
+                alt_cost_index: 0,
                 });
             }
         }
@@ -753,7 +803,8 @@ impl GameLoop {
                         playable.push(crate::agent::PlayOption {
                             card_id,
                             mode: crate::agent::PlayCardMode::Normal,
-                        });
+                        alt_cost_index: 0,
+                                                });
                     }
                     continue;
                 }
@@ -798,7 +849,8 @@ impl GameLoop {
                     playable.push(crate::agent::PlayOption {
                         card_id,
                         mode: crate::agent::PlayCardMode::Normal,
-                    });
+                    alt_cost_index: 0,
+                                        });
                 }
                 continue;
             }
@@ -827,6 +879,7 @@ impl GameLoop {
                             mode: crate::agent::PlayCardMode::Alternative(
                                 crate::spellability::AlternativeCost::Foretell,
                             ),
+                        alt_cost_index: 0,
                         });
                     }
                 }
@@ -848,6 +901,7 @@ impl GameLoop {
                     mode: crate::agent::PlayCardMode::Alternative(
                         crate::spellability::AlternativeCost::Plot,
                     ),
+                alt_cost_index: 0,
                 });
             } else if card.has_keyword(crate::card::KEYWORD_WARP_EXILED) {
                 // Warp: exiled card can be cast for its normal mana cost
@@ -871,7 +925,8 @@ impl GameLoop {
                     playable.push(crate::agent::PlayOption {
                         card_id,
                         mode: crate::agent::PlayCardMode::Normal,
-                    });
+                    alt_cost_index: 0,
+                                        });
                 }
             }
         }
@@ -902,7 +957,8 @@ impl GameLoop {
                     playable.push(crate::agent::PlayOption {
                         card_id,
                         mode: crate::agent::PlayCardMode::Normal,
-                    });
+                    alt_cost_index: 0,
+                                        });
                 }
             }
         }

@@ -268,7 +268,7 @@ impl GameLoop {
                                         game,
                                         priority_player,
                                         play.card_id,
-                                        play.mode,
+                                        play,
                                     )?;
                                     this.play_spell_ability(game, agents, priority_player, prepared)
                                 }

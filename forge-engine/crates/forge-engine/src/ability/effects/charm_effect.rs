@@ -109,7 +109,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         ctx.game.card_mut(source_id).chosen_modes = None;
         None
     };
-    let chosen_indices: Vec<usize> = if let Some(pre) = pre_selected {
+    let mut chosen_indices: Vec<usize> = if let Some(pre) = pre_selected {
         // Spree: modes already chosen before payment
         pre
     } else if entwine_paid || (has_entwine && sa.kicked) {
@@ -129,6 +129,12 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             .filter_map(|i| valid_mode_indices.get(i).copied())
             .collect()
     };
+
+    // Java `CharmEffect.chainAbilities` sorts chosen modes by their declared
+    // `CharmOrder` (1-based `Choices$` list index) before resolving, so Destroy
+    // always runs before GainLife even if the player picked GainLife first.
+    // Mirror that here — agent pick order must not leak into target prompts.
+    chosen_indices.sort();
 
     // Resolve each chosen mode in declaration order
     for idx in chosen_indices {
@@ -234,7 +240,7 @@ pub fn make_choices_precast(
         game.card_mut(source_id).chosen_modes = None;
         None
     };
-    let chosen_indices: Vec<usize> = if let Some(pre) = pre_selected {
+    let mut chosen_indices: Vec<usize> = if let Some(pre) = pre_selected {
         pre
     } else if sa.params.has(keys::ENTWINE) || (has_entwine && sa.kicked) {
         valid_mode_indices.clone()
@@ -256,6 +262,12 @@ pub fn make_choices_precast(
     if chosen_indices.len() < min_charm_num {
         return false;
     }
+
+    // Mirror Java's `CharmEffect.chainAbilities`: resolve modes in the order
+    // they were declared (CharmOrder), not in the order the player picked
+    // them. Otherwise mode target prompts fire in agent-pick order and
+    // cascade RNG divergences vs Java.
+    chosen_indices.sort();
 
     sa.sub_ability = None;
     let parent_trigger_remembered = sa.trigger_remembered_amount;

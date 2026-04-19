@@ -230,9 +230,15 @@ impl<'a, A: PlayerAgent + ?Sized> PlayerController<'a, A> {
         &mut self,
         candidates: &[GameEntity],
     ) -> Option<GameEntity> {
-        self.choose_entities_for_effect(candidates, 1, 1)
-            .into_iter()
-            .next()
+        // Route through the trait's single-entity method so the deterministic
+        // parity agent emits `choose_single_entity_for_effect` (with `pick_one[N]`)
+        // rather than the multi-entity `choose_entities_for_effect`
+        // (`pick_count` + `pick_index` + `pick_many_unique`). Both pick the same
+        // candidate for size-1 lists, but the callback log lines and RNG
+        // consumption differ — the single-entity variant matches Java's
+        // `chooseSingleEntityForEffect` behaviour.
+        self.agent
+            .choose_single_entity_for_effect(self.player, candidates, false)
     }
 
     pub fn choose_cards_for_effect(

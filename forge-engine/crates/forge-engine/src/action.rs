@@ -938,13 +938,9 @@ impl GameState {
                             handler.flush_waiting_triggers(self);
                         }
                         self.move_card_without_replacement(cid, final_dest, owner);
-                        // Force-register LTB triggers for this card so that
-                        // subsequent deaths in the same SBA batch can see it.
-                        // Mirrors Java where triggerChangesZoneAll re-registers
-                        // LTB triggers from lastStateBattlefield.
-                        if let Some(handler) = trigger_handler.as_deref_mut() {
-                            handler.force_register_ltb_trigger(self, cid);
-                        }
+                        // Same-SBA-batch LTB lookback is derived per-event from
+                        // `pre_sba_battlefield` in `TriggerHandler::ltb_trigger_refs_for_event`.
+                        // No global registration needed.
                         any_changes = true;
                     } else {
                         // Indestructible — destruction was replaced; creature stays.

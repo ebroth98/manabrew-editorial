@@ -534,16 +534,37 @@ impl TriggerHandler {
     }
 
     fn build_waiting_trigger(&self, mode: TriggerType, params: RunParams) -> TriggerWaiting {
-        let trigger_refs = if mode == TriggerType::Drawn {
-            Some(
-                self.active_triggers
-                    .iter()
-                    .filter_map(|active| {
-                        let trigger = (active.card_id, active.trigger_index);
-                        Some(trigger)
-                    })
-                    .collect(),
-            )
+        // Snapshot active triggers for events whose matching must reflect the
+        // state AT event time, not at flush time. Java evaluates SpellCast
+        // triggers immediately against triggers active on the battlefield —
+        // a spell's own `TriggerZones$ Battlefield` trigger cannot fire for
+        // its own cast because the card is still on the stack when the event
+        // dispatches. Rust flushes later, so without a snapshot the newly
+        // battlefield-registered self-trigger would incorrectly match.
+        let snapshot_active = matches!(
+            mode,
+            TriggerType::Drawn
+                | TriggerType::SpellCast
+                | TriggerType::SpellAbilityCast
+                | TriggerType::SpellCastAll
+                | TriggerType::SpellCastOnce
+                | TriggerType::SpellCastOfType
+                | TriggerType::SpellCopied
+                | TriggerType::SpellCopy
+                | TriggerType::SpellAbilityCopy
+                | TriggerType::SpellCastOrCopy
+                | TriggerType::AbilityCast
+        );
+        let trigger_refs = if snapshot_active {
+            let snap: Vec<(CardId, usize)> = self
+                .active_triggers
+                .iter()
+                .map(|active| (active.card_id, active.trigger_index))
+                .collect();
+            // Debug print removed — fix validated via downstream parity
+            // state comparison rather than by-hand trace inspection.
+            let _ = &snap;
+            Some(snap)
         } else {
             None
         };
@@ -715,31 +736,6 @@ impl TriggerHandler {
         }
     }
 
-    /// Force-register LTB triggers for a card that has already left the
-    /// battlefield (e.g. during SBA batch processing).  Unlike
-    /// `register_active_ltb_trigger`, this bypasses the zone check so that
-    /// triggers from cards already in the graveyard can still see other
-    /// creatures that die in the same SBA batch.
-    /// Mirrors Java's behaviour where `triggerChangesZoneAll` re-registers
-    /// LTB triggers from `lastStateBattlefield` before processing events.
-    pub fn force_register_ltb_trigger(&mut self, game: &GameState, card_id: CardId) {
-        let card = game.card(card_id);
-        for (trig_idx, trigger) in card.triggers.iter().enumerate() {
-            if self.looks_back_in_time(trigger) {
-                let already_registered = self
-                    .active_triggers
-                    .iter()
-                    .any(|at| at.card_id == card_id && at.trigger_index == trig_idx);
-                if !already_registered {
-                    self.active_triggers.push(ActiveTrigger {
-                        card_id,
-                        trigger_index: trig_idx,
-                    });
-                }
-            }
-        }
-    }
-
     /// Java parity wrapper for TriggerHandler.registerOneTrigger(...).
     pub fn register_one_trigger(
         &mut self,
@@ -839,7 +835,8 @@ impl TriggerHandler {
                 let Some(card_id) = event.params.card_lki.or(event.params.card) else {
                     return Vec::new();
                 };
-                game.card(card_id)
+                let mut refs: Vec<(CardId, usize)> = game
+                    .card(card_id)
                     .triggers
                     .iter()
                     .enumerate()
@@ -847,7 +844,34 @@ impl TriggerHandler {
                         self.looks_back_in_time(trigger)
                             .then_some((card_id, trigger_index))
                     })
-                    .collect()
+                    .collect();
+
+                // Same-SBA-batch LTB lookback: cards that were on the battlefield
+                // when this SBA batch started but are no longer there can still
+                // observe deaths happening in the same batch (e.g. Blood Artist
+                // seeing Savannah Lions die simultaneously). Mirrors Java's
+                // triggerChangesZoneAll which re-registers LTB triggers from
+                // lastStateBattlefield. Scoping via pre_sba_battlefield prevents
+                // stale hosts from earlier batches firing for later deaths.
+                if event.params.origin == Some(forge_foundation::ZoneType::Battlefield) {
+                    for &ltb_id in &game.pre_sba_battlefield {
+                        if ltb_id == card_id {
+                            continue;
+                        }
+                        let ltb_card = game.card(ltb_id);
+                        if ltb_card.zone == forge_foundation::ZoneType::Battlefield {
+                            // Still alive; active_triggers already covers it.
+                            continue;
+                        }
+                        for (trigger_index, trigger) in ltb_card.triggers.iter().enumerate() {
+                            if self.looks_back_in_time(trigger) {
+                                refs.push((ltb_id, trigger_index));
+                            }
+                        }
+                    }
+                }
+
+                refs
             }
             TriggerType::ChangesZoneAll => event
                 .params
@@ -1070,11 +1094,13 @@ impl TriggerHandler {
             && trigger.get_active_zone().contains(&ZoneType::Battlefield)
             && card.zone != ZoneType::Battlefield
             && self.looks_back_in_time(trigger)
+            && game.pre_sba_battlefield.contains(&host_card)
         {
             // LKI active-zone check for LTB triggers seeing OTHER creatures die
             // in the same SBA batch (e.g. Blood Artist seeing Savannah Lions die).
-            // The trigger's host card already left the battlefield but was
-            // force-registered as an LTB trigger.
+            // Scoped via pre_sba_battlefield so that hosts that left earlier
+            // batches do not fire for later deaths. Mirrors Java's
+            // lastStateBattlefield boundary.
             ZoneType::Battlefield
         } else if (*mode == TriggerType::DamageDone || *mode == TriggerType::DamageDoneOnce)
             && params.damage_target_card == Some(host_card)

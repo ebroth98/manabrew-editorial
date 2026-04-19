@@ -219,6 +219,7 @@ pub const BRANCH_CONDITION_SVAR: &str = "BranchConditionSVar";
 pub const ADDS_KEYWORDS: &str = "AddsKeywords";
 pub const ADDS_KEYWORDS_VALID: &str = "AddsKeywordsValid";
 pub const CUMULATIVE_UPKEEP: &str = "CumulativeUpkeep";
+pub const REST_RANDOM_ORDER: &str = "RestRandomOrder";
 pub const RESTRICT_VALID: &str = "RestrictValid";
 pub const RESTRICT_FROM_ZONE: &str = "RestrictFromZone";
 pub const RESTRICTION: &str = "Restriction";

@@ -269,16 +269,23 @@ impl ParityFormat for ManaCostAction {
                 mana_ability_index,
                 express_choice,
             } => {
+                let card_ref = ctx.game.card(*card_id);
                 let card = ctx.card(*card_id);
-                let mut out = format!("TapLand {{ card: {card}");
-                if let Some(idx) = mana_ability_index {
-                    write!(out, ", mana_ability_index: {idx}").unwrap();
-                }
-                if let Some(ec) = express_choice {
-                    write!(out, ", express_choice: {}", fmt_mana_atom(*ec)).unwrap();
-                }
-                out.push_str(" }");
-                out
+                // Match Java `AutoPay.describeStep()`: "TapLand" only for lands,
+                // "ActivateManaAbility" for non-land mana sources (signets etc.).
+                let action = if card_ref.is_land() {
+                    "TapLand"
+                } else {
+                    "ActivateManaAbility"
+                };
+                let idx = mana_ability_index.map(|i| i as i32).unwrap_or(-1);
+                let express = match express_choice {
+                    Some(ec) => fmt_mana_atom(*ec).to_string(),
+                    None => "null".to_string(),
+                };
+                format!(
+                    "{action} {{ card: {card}, mana_ability_index: {idx}, express_choice: {express} }}"
+                )
             }
             ManaCostAction::UntapLand(cid) => format!("UntapLand({})", ctx.card(*cid)),
             ManaCostAction::Pay { auto } => {

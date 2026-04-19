@@ -334,14 +334,14 @@ public final class Main {
         rules.setSimTimeout(120);
 
         // Reset global state for cross-game isolation in multi-game batches
-        CountingRandom gameRng = new CountingRandom(seed);
+        CountingRandom gameRng = new CountingRandom(seed, "game");
         forge.util.MyRandom.setRandom(gameRng);
         ParityReset.resetAllIdCounters();
 
         // Create a shared Random for agent decisions, seeded identically to
         // the Rust side's JavaRandom(seed). Both players share this instance
         // so RNG consumption order matches the Rust agents exactly.
-        CountingRandom agentRng = new CountingRandom(seed);
+        CountingRandom agentRng = new CountingRandom(seed, "agent");
 
         List<RegisteredPlayer> players = new ArrayList<>();
 

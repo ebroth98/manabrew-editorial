@@ -53,6 +53,7 @@ pub fn create_permanent_spell(
         source_trigger_id: None,
         trigger_index: None,
         alt_cost: None,
+        alt_cost_index: 0,
         kicked: false,
         buyback_paid: false,
         overloaded: false,

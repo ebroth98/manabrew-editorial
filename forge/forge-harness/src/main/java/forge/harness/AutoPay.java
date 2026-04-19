@@ -424,9 +424,17 @@ final class AutoPay {
         }
         // ManaReflected abilities report origProduced="1" which doesn't map to
         // any color atom.  Use getReflectableManaColors to determine which colors
-        // the reflected ability can actually produce.
+        // the reflected ability can actually produce.  The set returned by
+        // getReflectableManaColors is a HashSet, so iteration order depends on
+        // JVM bucket layout — iterate the canonical WUBRG(C) order instead so
+        // that downstream auto-pay choices (notably preferredColorForShard's
+        // first-atom pick for generic shards) are deterministic and match Rust.
         if (manaAbility.getApi() == ApiType.ManaReflected) {
-            for (final String colorName : CardUtil.getReflectableManaColors(manaAbility)) {
+            final java.util.Set<String> reflectable = CardUtil.getReflectableManaColors(manaAbility);
+            for (final String colorName : MagicColor.Constant.COLORS_AND_COLORLESS) {
+                if (!reflectable.contains(colorName)) {
+                    continue;
+                }
                 final byte atom = MagicColor.fromName(colorName);
                 if (atom != 0) {
                     addDistinct(out, atom);

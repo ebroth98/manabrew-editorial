@@ -94,6 +94,7 @@ pub fn pay_mana_cost_auto_with_chooser(
             card_id,
             mana_ability_index: None,
             chosen_atom: 0,
+            needs_express_choice: false,
         })
         .collect();
 

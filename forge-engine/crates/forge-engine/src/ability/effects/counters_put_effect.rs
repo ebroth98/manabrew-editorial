@@ -10,22 +10,37 @@ use crate::spellability::SpellAbility;
 
 pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     let counter_type_str = sa.params.get(keys::COUNTER_TYPE).unwrap_or("P1P1");
-    let controller = sa.activating_player;
-    let counter_type_options: Vec<_> = counter_type_str
-        .split(',')
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-        .map(parse_counter_type)
-        .collect();
-    let Some(counter_type) = ({
-        ctx.agents[controller.index()].snapshot_state(ctx.game, ctx.mana_pools);
-        ctx.agents[controller.index()].choose_counter_type(
-            controller,
-            &counter_type_options,
+    // Mirror Java CountersPutEffect.java:625-636 — when none of the multi-type
+    // dispatch params are present, route the type through the player controller's
+    // chooseCounterType prompt (Java's chooseTypeFromList → pc.chooseCounterType).
+    // pickOne consumes RNG even for a single option, so calling the agent here
+    // keeps deterministic-parity entropy aligned with Java for fixed-type cards
+    // like Rottenmouth Viper (CounterType$ BLIGHT).
+    let counter_type = if matches_choose_from_list_path(sa) {
+        let placer_controller = sa
+            .source
+            .map(|id| ctx.game.card(id).controller)
+            .unwrap_or_else(|| ctx.game.player_order[0]);
+        let options: Vec<crate::card::CounterType> = counter_type_str
+            .split(',')
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(parse_counter_type)
+            .collect();
+        if options.is_empty() {
+            return;
+        }
+        ctx.agents[placer_controller.index()].snapshot_state(ctx.game, ctx.mana_pools);
+        match ctx.agents[placer_controller.index()].choose_counter_type(
+            placer_controller,
+            &options,
             "Select counter type",
-        )
-    }) else {
-        return;
+        ) {
+            Some(chosen) => chosen,
+            None => return,
+        }
+    } else {
+        parse_counter_type(counter_type_str)
     };
     // Support SVar references for CounterNum (e.g. Count$Kicked.4.0 for kicker cards)
     let mut count = parse_param(&sa.ability_text, "CounterNum$ ")
@@ -198,6 +213,30 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             false,
         );
     }
+}
+
+/// True when CountersPutEffect.java:625-636 would route the CounterType
+/// through `chooseTypeFromList` (i.e. `pc.chooseCounterType`). Any of these
+/// params steers Java into a different dispatch branch above line 624 or
+/// resolves the type without prompting (UniqueType / CounterTypePerDefined
+/// also call chooseTypeFromList but inside resolvePerType, not here).
+fn matches_choose_from_list_path(sa: &SpellAbility) -> bool {
+    const SKIP_PARAMS: &[&str] = &[
+        "EachExistingCounter",
+        "EachFromSource",
+        "UniqueType",
+        "CounterTypePerDefined",
+        "CounterTypes",
+        "ChooseDifferent",
+        "PutOnEachOther",
+        "PutOnDefined",
+        "TriggeredCounterMap",
+        "SharedKeywords",
+    ];
+    if !sa.params.has(keys::COUNTER_TYPE) {
+        return false;
+    }
+    !SKIP_PARAMS.iter().any(|k| sa.params.has(k))
 }
 
 #[cfg(test)]

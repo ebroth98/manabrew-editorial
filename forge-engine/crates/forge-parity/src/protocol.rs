@@ -228,13 +228,19 @@ pub trait ParityLog {
             self.choice(),
         );
         let opts = self.options();
-        if opts.is_empty() {
-            header
-        } else {
-            let mut lines = vec![header];
-            for entry in opts {
-                lines.push(format!("        {}", entry.format()));
+        let cb_args = self.callback_args();
+        let mut lines = vec![header];
+        if !cb_args.is_empty() {
+            for (i, arg) in cb_args.iter().enumerate() {
+                lines.push(format!("        [arg{i}] {arg}"));
             }
+        }
+        for entry in opts {
+            lines.push(format!("        {}", entry.format()));
+        }
+        if lines.len() == 1 {
+            lines.into_iter().next().unwrap()
+        } else {
             lines.join("\n")
         }
     }

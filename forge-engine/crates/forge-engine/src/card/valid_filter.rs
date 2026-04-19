@@ -209,8 +209,10 @@ pub fn matches_valid_card(valid: &str, card: &Card, source: &Card) -> bool {
         return true;
     }
 
-    // Comma-separated = OR conditions (only if no dots, to avoid splitting "Type.Qualifier,Other")
-    if valid.contains(',') && !valid.contains('.') {
+    // Comma-separated = OR conditions.
+    // Each comma-delimited part is a separate filter; the card matches if ANY part matches.
+    // Parts may contain dots (e.g. "Card.Self,Elemental.Other+YouCtrl").
+    if valid.contains(',') {
         return valid
             .split(',')
             .any(|part| matches_single_valid_card(part.trim(), card, source));
@@ -464,6 +466,23 @@ fn matches_type_and_qualifiers(filter: &str, card: &Card, source: &Card) -> bool
                         return false;
                     }
                 }
+                "wascast" => {
+                    // Mirrors Java CardProperty.java:1923-1926 — card must have been
+                    // cast (not put onto the battlefield by some other means).
+                    if !card.was_cast() {
+                        return false;
+                    }
+                }
+                "wascastbyyou" => {
+                    // Mirrors Java CardProperty.java:1923-1929: wasCast AND the
+                    // spell's activating player equals source's controller.
+                    // Rust doesn't track castSA.activatingPlayer separately; the
+                    // card's controller at ETB time equals the caster for normal
+                    // casts, which covers Sunderflock-style triggers.
+                    if !card.was_cast() || card.controller != source.controller {
+                        return false;
+                    }
+                }
                 _ => {
                     // Check counters_GE/GT/LT/LE/EQ patterns like "counters_GE3_P1P1"
                     if sub.starts_with("counters_") {
@@ -525,6 +544,18 @@ fn matches_type_and_qualifiers(filter: &str, card: &Card, source: &Card) -> bool
                             }
                         };
                         if should_negate {
+                            return false;
+                        }
+                    } else if sub_lower == "chosentype" {
+                        // "ChosenType" — card must have the source card's chosen
+                        // creature type. Changeling counts as all creature types.
+                        // Mirrors Java CardTraitBase.isValid() ChosenType path.
+                        let matches = if let Some(ref ct) = source.chosen_type {
+                            card.type_line.has_subtype(ct) || card.has_keyword("Changeling")
+                        } else {
+                            false
+                        };
+                        if !matches {
                             return false;
                         }
                     } else if !sub.is_empty() {

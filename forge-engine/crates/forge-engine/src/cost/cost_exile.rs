@@ -159,6 +159,20 @@ pub fn can_pay(
             type_filter,
         } => {
             let base_filter = super::normalize_exile_base_filter(type_filter);
+            // TriggeredNewCard refers to the card that just moved to the new
+            // zone (e.g. Greenwarden's death trigger exiles Greenwarden from
+            // the graveyard). Resolve to the ability's source card directly.
+            if base_filter.contains("TriggeredNewCard") {
+                let src = game.card(source);
+                let is_eligible = src.zone == forge_foundation::ZoneType::Graveyard
+                    && !crate::staticability::static_ability_cant_exile::cant_exile(
+                        &static_source_cards,
+                        src,
+                        ability,
+                        true,
+                    );
+                return if is_eligible { *amount <= 1 } else { false };
+            }
             let count = game
                 .players
                 .iter()

@@ -409,7 +409,7 @@ pub struct CardFilter {
     pub creatures_only: bool,
     /// Only match cards controlled by the ability source's controller.
     pub controller_only: bool,
-    /// Only match cards owned by the ability source's controller.
+    /// Only match cards owned by the ability source's controller (`YouOwn`).
     pub owner_only: bool,
     /// Exclude the source card itself (`Other` qualifier).
     pub other_only: bool,

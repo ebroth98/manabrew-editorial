@@ -89,6 +89,12 @@ impl JavaBridge {
         if std::env::var("FORGE_RNG_TRACE").is_ok() {
             cmd.arg("-Dforge.parity.rng.trace=true");
         }
+        if let Ok(bounds) = std::env::var("FORGE_RNG_BT_BOUNDS") {
+            cmd.arg(format!("-Dforge.parity.rng.bt.bounds={}", bounds));
+        }
+        if std::env::var("FORGE_RNG_BT_UNBOUNDED").is_ok() {
+            cmd.arg("-Dforge.parity.rng.bt.unbounded=true");
+        }
         if std::env::var("FORGE_LIB_DUMP").is_ok() {
             cmd.env("FORGE_LIB_DUMP", "1");
         }
@@ -332,6 +338,12 @@ impl JavaServer {
         // Forward RNG trace flag to Java engine
         if std::env::var("FORGE_RNG_TRACE").is_ok() {
             cmd.arg("-Dforge.parity.rng.trace=true");
+        }
+        if let Ok(bounds) = std::env::var("FORGE_RNG_BT_BOUNDS") {
+            cmd.arg(format!("-Dforge.parity.rng.bt.bounds={}", bounds));
+        }
+        if std::env::var("FORGE_RNG_BT_UNBOUNDED").is_ok() {
+            cmd.arg("-Dforge.parity.rng.bt.unbounded=true");
         }
         if std::env::var("FORGE_LIB_DUMP").is_ok() {
             cmd.env("FORGE_LIB_DUMP", "1");

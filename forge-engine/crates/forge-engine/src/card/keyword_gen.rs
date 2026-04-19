@@ -578,11 +578,13 @@ impl Card {
                 }
             }
 
-            // Ward:{cost} — when this permanent becomes the target of a spell or ability
-            // an opponent controls, counter that spell/ability unless its controller pays {cost}.
-            // Mirrors Java CardFactoryUtil lines 2055-2069.
-            // The opponent is prompted via confirm_action to pay the Ward cost;
-            // if they decline, the spell is countered.
+            // Ward:{cost} — when this permanent becomes the target of a spell or
+            // ability an opponent controls, counter that spell/ability unless its
+            // controller pays {cost}. Mirrors Java CardFactoryUtil lines 2055-2069
+            // exactly: `ValidSource$ SpellAbility.OppCtrl` is the controller-of-source
+            // filter that excludes friendly targeting (e.g. equipping your own Ward
+            // creature with Lightning Greaves should not fire Ward), and
+            // `ValidTarget$ Card.Self` requires this card to be the target.
             if let Some(cost_str) = crate::keyword::extract_keyword_cost_str(&kw, "Ward") {
                 let raw = "Mode$ BecomesTarget | ValidSource$ SpellAbility.OppCtrl | ValidTarget$ Card.Self | Secondary$ True | TriggerZones$ Battlefield | TriggerDescription$ Ward";
                 if let Some(mut trig) = parse_trigger(raw, &mut next_id) {

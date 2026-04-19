@@ -51,9 +51,6 @@ impl GameLoop {
     ) -> Option<CardId> {
         match zone {
             ZoneType::Battlefield => agents[player.index()].choose_sacrifice(player, valid, None),
-            ZoneType::Hand | ZoneType::Graveyard | ZoneType::Exile => {
-                agents[player.index()].choose_target_card_from_zone(player, zone, valid, None)
-            }
             _ => agents[player.index()]
                 .choose_cards_for_effect(player, valid, 1, 1)
                 .into_iter()
@@ -535,9 +532,11 @@ impl GameLoop {
                                         mana_ability_index: Some(
                                             choice.mana_ability_index.unwrap_or(0),
                                         ),
-                                        express_choice: choice
-                                            .mana_ability_index
-                                            .map(|_| choice.chosen_atom),
+                                        express_choice: if choice.needs_express_choice {
+                                            Some(choice.chosen_atom)
+                                        } else {
+                                            None
+                                        },
                                     })
                                     .collect();
                                 if life_to_pay > 0 {
@@ -1824,22 +1823,15 @@ impl GameLoop {
                     if valid.len() < amount.max(0) as usize {
                         return None;
                     }
-                    // Java parity: DeterministicCostDecision.visit(CostSacrifice) calls
-                    // confirm(cost, shouldAsk=true) → confirmPayment() before choosing.
-                    // Spells auto-accept (isSpellPaymentContext), but activated abilities
-                    // ask the agent, consuming RNG.
-                    let is_spell_context = sa
-                        .map(|s| {
-                            s.is_spell
-                                || s.source
-                                    .map(|cid| {
-                                        let card = game.card(cid);
-                                        card.type_line.is_instant() || card.type_line.is_sorcery()
-                                    })
-                                    .unwrap_or(false)
-                        })
-                        .unwrap_or(false);
-                    if !is_spell_context {
+                    // Java parity: DeterministicCostPlumbing.visit(CostSacrifice) sets
+                    //   shouldAsk = (cost.payCostFromSource() && !isMandatory())
+                    //               || "OriginalHost".equals(cost.getType())
+                    // The CARDNAME (payCostFromSource) branch is handled above with
+                    // `continue`. So at this point shouldAsk is true only for the
+                    // explicit OriginalHost type — for arbitrary type filters (e.g.
+                    // Permanent.nonLand from Rottenmouth Viper's UnlessCost), Java
+                    // skips the confirm prompt and goes straight to the picker.
+                    if type_filter == "OriginalHost" {
                         let card_name =
                             sa.and_then(|s| s.source.map(|cid| game.card(cid).card_name.as_str()));
                         let confirmed = agents[player.index()].confirm_payment(
@@ -2012,6 +2004,33 @@ impl GameLoop {
         amount: i32,
     ) {
         let base_filter = crate::cost::normalize_exile_base_filter(type_filter);
+        // TriggeredNewCard → the source card (it just entered the new zone,
+        // e.g. Greenwarden's graveyard instance for its death trigger).
+        if base_filter.contains("TriggeredNewCard") {
+            let src = game.card(source);
+            if src.zone != ZoneType::Graveyard || !can_exile_for_cost(game, source) {
+                return;
+            }
+            // Java uses chooseCardsForEffect here (pick_count+pick_index+
+            // pick_many_unique) — match the RNG pattern even with 1 option.
+            let valid = vec![source];
+            let chosen = agents[player.index()]
+                .choose_cards_for_effect(player, &valid, 1, 1)
+                .into_iter()
+                .next();
+            if let Some(chosen) = chosen {
+                let owner = game.card(chosen).owner;
+                self.move_card_with_runtime(game, chosen, ZoneType::Exile, owner, agents);
+                self.record_paid_cost_exile(game, source, chosen);
+                crate::ability::effects::emit_zone_trigger(
+                    &mut self.trigger_handler,
+                    chosen,
+                    ZoneType::Graveyard,
+                    ZoneType::Exile,
+                );
+            }
+            return;
+        }
         for _ in 0..amount {
             let valid: Vec<CardId> = game
                 .players

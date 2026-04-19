@@ -30,6 +30,50 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         _ => None,
     };
 
+    // UnlessCost$ X | UnlessPayer$ You — offer the payer a chance to pay a
+    // cost to prevent the sacrifice entirely. Java's deterministic AI pays
+    // unless-costs when able (auto-tapping lands for mana).
+    if let Some(unless_cost_str) = sa.params.get(keys::UNLESS_COST) {
+        let source = sa.source.unwrap_or(CardId(0));
+        let cost = crate::cost::parse_cost(unless_cost_str);
+        let payers = super::helpers::resolve_defined_players(
+            sa.params.get(keys::UNLESS_PAYER).unwrap_or("You"),
+            sa.activating_player,
+            ctx.game,
+        );
+        for payer in payers {
+            if ctx.game.player(payer).has_lost {
+                continue;
+            }
+            let available = crate::mana::calculate_available_mana(
+                &ctx.mana_pools[payer.index()],
+                ctx.game,
+                payer,
+            );
+            if crate::cost::can_pay_with_ability(
+                &cost,
+                ctx.game,
+                &available,
+                source,
+                payer,
+                Some(sa),
+            ) {
+                let paid = super::try_pay_unless_cost(ctx, sa, source, payer, &cost);
+                let card_name = sa.source.map(|cid| ctx.game.card(cid).card_name.clone());
+                ctx.agents[payer.index()].pay_cost_to_prevent_effect(
+                    payer,
+                    "UnlessCost",
+                    if paid { "true" } else { "false" },
+                    card_name.as_deref(),
+                    sa.api,
+                );
+                if paid {
+                    return; // Cost paid — sacrifice prevented
+                }
+            }
+        }
+    }
+
     let player_ids = ctx.game.player_order.clone();
     let mut to_sacrifice: Vec<CardId> = Vec::new();
     if let Some(defined_ids) = defined_cards {

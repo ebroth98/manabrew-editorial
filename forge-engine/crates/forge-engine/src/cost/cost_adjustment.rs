@@ -154,13 +154,20 @@ fn matches_cost_adjustment_activator(
 ///
 /// Scans all battlefield permanents for ReduceCost / IncreaseCost / SetCost static abilities.
 /// Mirrors Java's `CostAdjustment.adjust(ManaCostBeingPaid, ...)` scanning loop.
+///
+/// Includes the spell card's own static abilities (e.g. Sunderflock's self-reduce) —
+/// suitable for **playability** checks that need to know "could this spell be cast
+/// in principle". For actual mana payment, use [`compute_cost_adjustment_for_payment`]
+/// which excludes the spell card to mirror Java's split behaviour where
+/// `ComputerUtilMana.canPayManaCost` and `CostAdjustment.adjust` disagree on
+/// self-reducing statics for cards in hand.
 pub fn compute_cost_adjustment(
     game: &GameState,
     spell_card: &Card,
     caster: PlayerId,
     cast_zone: ZoneType,
 ) -> CostAdjustment {
-    compute_cost_adjustment_with_targets(game, spell_card, caster, cast_zone, &[])
+    compute_cost_adjustment_inner(game, spell_card, caster, cast_zone, &[], true)
 }
 
 /// Like `compute_cost_adjustment`, but also checks ValidTarget$ against chosen targets.
@@ -171,13 +178,38 @@ pub fn compute_cost_adjustment_with_targets(
     cast_zone: ZoneType,
     targets: &[CardId],
 ) -> CostAdjustment {
+    compute_cost_adjustment_inner(game, spell_card, caster, cast_zone, targets, true)
+}
+
+/// Payment-time variant. Includes the spell card itself so self-reducing
+/// statics (Sunderflock's `Count$Valid Elemental.YouCtrl$GreatestCardManaCost`,
+/// Animar's P1P1 counters, ...) apply at payment, matching Java's flow where
+/// `InputPayMana` seeds `sa.setManaCostBeingPaid(reduced)` before handing
+/// control to the payer (and the deterministic harness now mirrors that by
+/// calling `CostAdjustment.adjust(ManaCostBeingPaid, ...)` itself).
+pub fn compute_cost_adjustment_for_payment(
+    game: &GameState,
+    spell_card: &Card,
+    caster: PlayerId,
+    cast_zone: ZoneType,
+    targets: &[CardId],
+) -> CostAdjustment {
+    compute_cost_adjustment_inner(game, spell_card, caster, cast_zone, targets, true)
+}
+
+fn compute_cost_adjustment_inner(
+    game: &GameState,
+    spell_card: &Card,
+    caster: PlayerId,
+    cast_zone: ZoneType,
+    targets: &[CardId],
+    include_spell_self: bool,
+) -> CostAdjustment {
     let mut adj = CostAdjustment::default();
 
-    for source in game
-        .cards
-        .iter()
-        .filter(|c| c.zone == ZoneType::Battlefield || c.id == spell_card.id)
-    {
+    for source in game.cards.iter().filter(|c| {
+        c.zone == ZoneType::Battlefield || (include_spell_self && c.id == spell_card.id)
+    }) {
         for st_ab in source.static_abilities.iter() {
             let is_reduce;
             let is_set_cost;
@@ -218,14 +250,11 @@ pub fn compute_cost_adjustment_with_targets(
                     continue;
                 }
             } else {
-                // Default for ReduceCost/SetCost: applies to controller only.
-                // Default for IncreaseCost: applies to ALL players (e.g. Thalia,
-                // Guardian of Thraben — "Noncreature spells cost {1} more to cast").
-                if !is_reduce && !is_set_cost {
-                    // IncreaseCost without Activator$ → universal effect
-                } else if source.controller != caster {
-                    continue;
-                }
+                // No Activator$ parameter: applies to ALL players.
+                // Java's matchesValidParam("Activator", ...) returns true when
+                // the parameter is absent, making the effect universal.
+                // Examples: Urza's Incubator (ReduceCost for all),
+                // Thalia (IncreaseCost for all).
             }
 
             // ── checkRequirement: ValidCard$ ─────────────────────────
@@ -329,22 +358,16 @@ pub fn compute_cost_adjustment_with_targets(
                 continue;
             }
 
-            // ── applyReduceCostAbility: Amount$ (with Relative$ SVar resolution) ──
-            let amount: i32 = if st_ab
-                .params
-                .get("Relative")
-                .map(|v| v.eq_ignore_ascii_case("True"))
-                .unwrap_or(false)
-            {
-                // Relative: Amount$ is an SVar name on the source card
-                let amount_str = st_ab.params.get(keys::AMOUNT).unwrap_or("1");
-                resolve_svar_for_cost(game, source, amount_str, caster)
+            // ── applyReduceCostAbility: Amount$ (mirrors Java
+            // `AbilityUtils.calculateAmount(hostCard, amount, staticAbility)`).
+            // `Amount$ N` — literal integer; `Amount$ X` where `X` is an SVar
+            // like `Count$CardCounters.P1P1` resolves against the host card
+            // (e.g. Animar, Soul of Elements cost reduction by counters).
+            let amount_str = st_ab.params.get(keys::AMOUNT).unwrap_or("1");
+            let amount: i32 = if let Ok(n) = amount_str.parse::<i32>() {
+                n
             } else {
-                st_ab
-                    .params
-                    .get(keys::AMOUNT)
-                    .and_then(|a| a.parse().ok())
-                    .unwrap_or(1)
+                resolve_svar_for_cost(game, source, amount_str, caster)
             };
 
             // ── applyReduceCostAbility: MinMana$ ─────────────────────
@@ -633,6 +656,14 @@ fn resolve_svar_for_cost(game: &GameState, source: &Card, name: &str, caster: Pl
 
 /// Evaluate a `Count$...` expression.
 fn evaluate_count_expr(game: &GameState, source: &Card, expr: &str, caster: PlayerId) -> i32 {
+    // Count$CardCounters.TYPE — count of a specific counter kind on the host.
+    // Used by cards like Animar, Soul of Elements whose cost reduction scales
+    // with its own +1/+1 counters.
+    if let Some(counter_name) = expr.strip_prefix("Count$CardCounters.") {
+        let counter_type = crate::ability::ability_utils::parse_counter_type(counter_name);
+        return source.counter_count(&counter_type);
+    }
+
     // Count$ThisTurnCast_Card.YouCtrl — spells cast this turn by controller
     if let Some(rest) = expr.strip_prefix("Count$ThisTurnCast_") {
         if rest.contains("YouCtrl") || rest.contains("YouOwn") {
@@ -645,6 +676,34 @@ fn evaluate_count_expr(game: &GameState, source: &Card, expr: &str, caster: Play
     // Count$YourLifeTotal
     if expr == "Count$YourLifeTotal" {
         return game.player(source.controller).life;
+    }
+
+    // Count$Valid <filter>$<aggregator>
+    //
+    // Java's `AbilityUtils.calculateAmount` recognises this pattern as
+    // "evaluate aggregator over the set of cards on the battlefield matching
+    // <filter>". Sunderflock uses `Count$Valid Elemental.YouCtrl$GreatestCardManaCost`
+    // to scale its ReduceCost by the largest Elemental CMC the controller owns.
+    // Currently supported aggregators: `Amount` (count) and `GreatestCardManaCost`
+    // (max CMC). Add more here as parity tests surface them.
+    if let Some(rest) = expr.strip_prefix("Count$Valid ") {
+        if let Some((filter, aggregator)) = rest.split_once('$') {
+            let matches: Vec<&Card> = game
+                .cards
+                .iter()
+                .filter(|c| c.zone == ZoneType::Battlefield)
+                .filter(|c| valid_filter::matches_valid_card(filter, c, source))
+                .collect();
+            return match aggregator {
+                "Amount" => matches.len() as i32,
+                "GreatestCardManaCost" => matches
+                    .iter()
+                    .map(|c| c.mana_cost.cmc() as i32)
+                    .max()
+                    .unwrap_or(0),
+                _ => 0,
+            };
+        }
     }
 
     // Count$CardsInYourGraveyard or Count$TypeYouCtrl.Graveyard
@@ -804,7 +863,7 @@ pub fn adjust(
     let cast_zone = game.card(card_id).zone;
     let target_cards = sa.get_targets().all_target_cards();
 
-    let adjusted = compute_cost_adjustment_with_targets(
+    let adjusted = compute_cost_adjustment_for_payment(
         game,
         game.card(card_id),
         payer,

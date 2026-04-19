@@ -16,6 +16,30 @@ pub enum GameEntity {
 pub struct PlayOption {
     pub card_id: CardId,
     pub mode: PlayCardMode,
+    /// Disambiguates between multiple instances of the same alternative cost
+    /// keyword on the same card (e.g. intrinsic `Evoke {2}{U}` at index 0
+    /// versus granted `Evoke {4}` at index 1 when Ashling's static ability
+    /// adds a second Evoke cost). Zero for all other modes.
+    #[serde(default)]
+    pub alt_cost_index: u8,
+}
+
+impl PlayOption {
+    pub fn normal(card_id: CardId) -> Self {
+        Self {
+            card_id,
+            mode: PlayCardMode::Normal,
+            alt_cost_index: 0,
+        }
+    }
+
+    pub fn with_mode(card_id: CardId, mode: PlayCardMode) -> Self {
+        Self {
+            card_id,
+            mode,
+            alt_cost_index: 0,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

@@ -31,11 +31,17 @@ pub fn resolve_permanent_common(ctx: &mut EffectContext, sa: &SpellAbility) {
         ctx.game.card_mut(source).set_tapped(true);
     }
 
-    // Move host card to battlefield
+    // Move host card to battlefield.
+    //
+    // Java parity: PermanentEffect.resolve() calls game.getAction().moveToPlay
+    // which moves the card AND fires the ChangesZone trigger as a single op.
+    // In Rust the corresponding `emit_zone_trigger` lives at the spell
+    // resolution site (game_loop/stack_resolution.rs after move_card_with_runtime),
+    // so we must NOT emit here — doing so double-fires the ETB trigger
+    // (e.g. Rottenmouth Viper enters → 2 PutCounter + 2 DBRepeat iterations).
     let old_zone = ctx.game.card(source).zone;
     if old_zone != ZoneType::Battlefield {
         ctx.game
             .move_card(source, ZoneType::Battlefield, controller);
-        super::emit_zone_trigger(ctx.trigger_handler, source, old_zone, ZoneType::Battlefield);
     }
 }

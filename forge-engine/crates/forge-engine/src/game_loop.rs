@@ -736,6 +736,7 @@ mod tests {
             PlayerAction::CastSpell(crate::agent::PlayOption {
                 card_id: CardId(u32::MAX),
                 mode: PlayCardMode::Normal,
+                alt_cost_index: 0,
             })
         }
 

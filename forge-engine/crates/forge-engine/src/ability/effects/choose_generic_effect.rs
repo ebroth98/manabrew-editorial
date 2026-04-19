@@ -37,6 +37,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         .get("ChoiceAmount")
         .and_then(|s| s.parse::<usize>().ok())
         .unwrap_or(1);
+    let temp_remember = sa.params.has("TempRemember");
     let choosers = get_defined_players_or_targeted(ctx.game, sa);
     for chooser in choosers {
         let mut abilities: Vec<SpellAbility> = choice_texts
@@ -133,6 +134,21 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                 .collect();
         }
 
+        // Mirrors Java's ChooseGenericEffect: TempRemember$ Chooser swaps
+        // host.remembered_players with [chooser] for the duration of the
+        // chosen sub-ability's resolution, then restores. Sub-SVars like
+        // "Defined$ Remembered" / "UnlessPayer$ Remembered" then correctly
+        // resolve to the opponent who made the choice.
+        let prior_remembered_players = if temp_remember {
+            let prior = ctx.game.card(source_id).remembered_players.clone();
+            let card = ctx.game.card_mut(source_id);
+            card.remembered_players.clear();
+            card.add_remembered_player(chooser);
+            Some(prior)
+        } else {
+            None
+        };
+
         if !chosen_sas.is_empty() {
             for chosen_sa in chosen_sas {
                 super::resolve_effect_chain_with_parent(
@@ -152,6 +168,11 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                 fallback_sa.source = Some(source_id);
                 super::resolve_effect(ctx, &fallback_sa);
             }
+        }
+
+        if let Some(prior) = prior_remembered_players {
+            let card = ctx.game.card_mut(source_id);
+            card.remembered_players = prior;
         }
 
         if ctx.game.game_over {

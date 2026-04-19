@@ -84,7 +84,7 @@ impl GameState {
     pub fn player_commander_color_identity(&self, player: PlayerId) -> Vec<String> {
         let mut colors = Vec::new();
         for &commander in self.player_registered_commanders(player) {
-            for color in self.card(commander).color.iter() {
+            for color in self.card(commander).color_identity.iter() {
                 let name = color.long_name();
                 let mut chars = name.chars();
                 let Some(first) = chars.next() else {

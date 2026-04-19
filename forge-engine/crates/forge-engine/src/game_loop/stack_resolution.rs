@@ -656,10 +656,6 @@ impl GameLoop {
                 sa
             };
             self.resolve_single_effect(game, agents, sa_ref, parent_target_card);
-            // This SA's target context becomes the parent for the next sub-ability.
-            // Stack-entry targets are propagated so sub-abilities can resolve
-            // `Defined$ TargetedController` (e.g. An Offer You Can't Refuse's
-            // "its controller creates two Treasure tokens") correctly.
             parent_target_card = sa_ref.target_chosen.target_card;
             parent_target_player = sa_ref.target_chosen.target_player;
             parent_target_stack_entry = sa_ref.target_chosen.target_stack_entry;

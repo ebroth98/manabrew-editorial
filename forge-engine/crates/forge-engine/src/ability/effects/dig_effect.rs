@@ -176,8 +176,22 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         .filter(|id| !chosen.contains(id))
         .collect();
 
-    if !rest_random_order
-        && !skip_reorder
+    // `RestRandomOrder$ True` — Java Forge (`DigEffect.java` line 437) calls
+    // `Collections.shuffle(afterOrder, MyRandom.getRandom())` on the leftover
+    // list before moving each card to `dest_zone2`. We must consume the same
+    // `nextInt(N-1), nextInt(N-2), ..., nextInt(1)` sequence on the game RNG
+    // so subsequent shuffles (e.g. a following Farseek) stay in sync with
+    // Java, and produce the same permutation of the rest cards.
+    //
+    // NOTE: `GameRng::shuffle_cards` does a reverse/shuffle/reverse for
+    // library orientation, which is *not* what `Collections.shuffle` does on
+    // a generic list. We apply Java's Fisher-Yates directly via `next_int`.
+    if rest_random_order && rest.len() > 1 {
+        for i in (1..rest.len()).rev() {
+            let j = ctx.rng.next_int((i + 1) as i32) as usize;
+            rest.swap(i, j);
+        }
+    } else if !skip_reorder
         && rest.len() > 1
         && (dest_zone2 == ZoneType::Library || dest_zone2 == ZoneType::Graveyard)
     {

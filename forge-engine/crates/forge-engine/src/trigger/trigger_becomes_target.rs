@@ -18,9 +18,17 @@ pub struct TriggerBecomesTarget {
 
 impl TriggerBecomesTarget {
     pub fn parse(params: &Params) -> Box<dyn TriggerBehavior> {
+        // Java parity: BecomesTarget triggers can use either `ValidTarget$` or
+        // `ValidCard$` to filter which card-becoming-target counts. Keyword-generated
+        // Ward uses `ValidCard$ Card.Self` (see keyword_gen.rs); other scripts use
+        // `ValidTarget$`. Without the `ValidCard` fallback Ward fires on *every*
+        // BecomesTarget event in the game, since both filters end up None.
+        let valid_target = params
+            .get_cloned(keys::VALID_TARGET)
+            .or_else(|| params.get_cloned(keys::VALID_CARD));
         Box::new(Self {
             valid_source: params.get_cloned(keys::VALID_SOURCE),
-            valid_target: params.get_cloned(keys::VALID_TARGET),
+            valid_target,
             require_first_time: params.has("FirstTime"),
             require_valiant: params.has("Valiant"),
         })

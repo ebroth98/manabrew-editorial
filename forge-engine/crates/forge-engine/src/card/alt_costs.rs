@@ -23,6 +23,26 @@ impl Card {
         self.get_keyword_cost("Evoke")
     }
 
+    /// Get every Evoke cost on this card (intrinsic + granted). Multiple Evoke
+    /// keywords stack independently — e.g. an Elemental in hand under Ashling,
+    /// the Limitless has both its native `Evoke:2 U` and the granted `Evoke:4`.
+    /// Each is a distinct alternative cost in MTG and a separate playable entry.
+    pub fn get_all_evoke_costs(&self) -> Vec<String> {
+        let prefix = "Evoke:";
+        let mut out = Vec::new();
+        for kw in self.keywords.iter_strings() {
+            if let Some(cost) = kw.strip_prefix(prefix) {
+                out.push(cost.to_string());
+            }
+        }
+        for kw in self.granted_keywords.iter_strings() {
+            if let Some(cost) = kw.strip_prefix(prefix) {
+                out.push(cost.to_string());
+            }
+        }
+        out
+    }
+
     /// Get bestow cost (e.g. "Bestow:3 G G" → Some("3 G G")).
     pub fn get_bestow_cost(&self) -> Option<String> {
         self.get_keyword_cost("Bestow")
