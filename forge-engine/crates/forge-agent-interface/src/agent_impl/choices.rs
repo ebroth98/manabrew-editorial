@@ -9,16 +9,34 @@ use super::{AgentTransport, PromptAgent};
 
 pub(super) fn mulligan_decision<T: AgentTransport>(
     agent: &mut PromptAgent<T>,
-    _player: PlayerId,
+    player: PlayerId,
     hand: &[CardId],
     mulligan_count: u32,
 ) -> bool {
+    mulligan_decision_send(agent, player, hand, mulligan_count);
+    mulligan_decision_recv(agent, player, hand, mulligan_count)
+}
+
+pub(super) fn mulligan_decision_send<T: AgentTransport>(
+    agent: &mut PromptAgent<T>,
+    _player: PlayerId,
+    hand: &[CardId],
+    mulligan_count: u32,
+) {
     let hand_card_ids = PromptAgent::<T>::card_ids(hand);
     agent.send_prompt(AgentPromptInner::Mulligan {
         game_view: agent.view(),
         hand_card_ids,
         mulligan_count,
     });
+}
+
+pub(super) fn mulligan_decision_recv<T: AgentTransport>(
+    agent: &mut PromptAgent<T>,
+    _player: PlayerId,
+    _hand: &[CardId],
+    _mulligan_count: u32,
+) -> bool {
     match agent.recv_action() {
         PlayerAction::MulliganDecision { keep } => keep,
         _ => true,
@@ -27,10 +45,20 @@ pub(super) fn mulligan_decision<T: AgentTransport>(
 
 pub(super) fn choose_cards_to_bottom<T: AgentTransport>(
     agent: &mut PromptAgent<T>,
-    _player: PlayerId,
+    player: PlayerId,
     hand: &[CardId],
     count: usize,
 ) -> Vec<CardId> {
+    choose_cards_to_bottom_send(agent, player, hand, count);
+    choose_cards_to_bottom_recv(agent, player, hand, count)
+}
+
+pub(super) fn choose_cards_to_bottom_send<T: AgentTransport>(
+    agent: &mut PromptAgent<T>,
+    _player: PlayerId,
+    hand: &[CardId],
+    count: usize,
+) {
     let view = agent.view();
     let hand_card_ids = PromptAgent::<T>::card_ids(hand);
     let cards: Vec<CardDto> = hand
@@ -46,6 +74,14 @@ pub(super) fn choose_cards_to_bottom<T: AgentTransport>(
         cards,
         count,
     });
+}
+
+pub(super) fn choose_cards_to_bottom_recv<T: AgentTransport>(
+    agent: &mut PromptAgent<T>,
+    _player: PlayerId,
+    hand: &[CardId],
+    count: usize,
+) -> Vec<CardId> {
     match agent.recv_action() {
         PlayerAction::MulliganPutBackDecision { card_ids } => {
             card_ids.iter().filter_map(|s| parse_card_id(s)).collect()

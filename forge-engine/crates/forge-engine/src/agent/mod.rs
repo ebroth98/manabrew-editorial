@@ -56,6 +56,29 @@ pub trait PlayerAgent {
     fn mulligan_decision(&mut self, player: PlayerId, hand: &[CardId], mulligan_count: u32)
         -> bool;
 
+    /// Fire the mulligan prompt without blocking for a response.
+    /// Default: no-op. UI agents override to decouple prompt dispatch from
+    /// response collection so multiple players can be prompted in parallel.
+    fn mulligan_decision_send(
+        &mut self,
+        _player: PlayerId,
+        _hand: &[CardId],
+        _mulligan_count: u32,
+    ) {
+    }
+
+    /// Block waiting for the mulligan response previously sent via
+    /// `mulligan_decision_send`. Default falls back to the blocking
+    /// `mulligan_decision` so agents that don't split send/recv still work.
+    fn mulligan_decision_recv(
+        &mut self,
+        player: PlayerId,
+        hand: &[CardId],
+        mulligan_count: u32,
+    ) -> bool {
+        self.mulligan_decision(player, hand, mulligan_count)
+    }
+
     /// London Mulligan: after keeping, choose `count` cards from hand to put
     /// on the bottom of the library. Returns exactly `count` card IDs.
     /// Default: picks the first `count` cards (suitable for simple AI agents).
@@ -66,6 +89,26 @@ pub trait PlayerAgent {
         count: usize,
     ) -> Vec<CardId> {
         hand.iter().copied().take(count).collect()
+    }
+
+    /// Fire the put-back prompt without blocking. Default: no-op.
+    fn choose_cards_to_bottom_send(
+        &mut self,
+        _player: PlayerId,
+        _hand: &[CardId],
+        _count: usize,
+    ) {
+    }
+
+    /// Block waiting for the put-back response. Default falls back to the
+    /// blocking `choose_cards_to_bottom`.
+    fn choose_cards_to_bottom_recv(
+        &mut self,
+        player: PlayerId,
+        hand: &[CardId],
+        count: usize,
+    ) -> Vec<CardId> {
+        self.choose_cards_to_bottom(player, hand, count)
     }
 
     /// Choose a main-phase action: play a card from hand, tap a land for mana, untap a land,

@@ -8,12 +8,26 @@
 //! mulligan.  On a mulligan the hand is shuffled back and a fresh 7 cards
 //! are drawn.  When a player finally keeps, they put N cards from hand on
 //! the bottom of their library, where N is the number of mulligans taken.
+//!
+//! ## Java parity divergence
+//!
+//! Java's `MulliganService.runPlayerMulligans()` prompts each player
+//! sequentially (one blocking call per player per round). This Rust port
+//! fans out all non-kept players' prompts per round and collects the
+//! responses in parallel, then applies keep/mulligan decisions in turn
+//! order. The put-back prompts after all players have kept are also
+//! fanned out.
+//!
+//! Observable game state is identical (decisions still apply in turn
+//! order; mulligans don't interact). The divergence is purely in prompt
+//! timing, so networked multiplayer clients can respond simultaneously
+//! instead of waiting in queue.
 
 use crate::agent::PlayerAgent;
 use crate::game::GameState;
 use crate::game_log::GameLog;
 use crate::game_log_entry_type::GameLogEntryType;
-use crate::ids::PlayerId;
+use crate::ids::{CardId, PlayerId};
 use crate::mana::ManaPool;
 use forge_foundation::ZoneType;
 
@@ -37,39 +51,113 @@ pub fn run_london_mulligans(
     let mut mulligan_count = vec![0u32; player_count];
     let mut has_kept = vec![false; player_count];
 
+    // Per round: fan out prompts to every non-kept player, collect all
+    // responses, then apply decisions in turn order. See module docs for
+    // the Java parity divergence this introduces.
     loop {
         if has_kept.iter().all(|&k| k) {
             break;
         }
 
-        for i in 0..player_count {
-            if has_kept[i] {
-                continue;
-            }
+        let active: Vec<(usize, PlayerId, Vec<CardId>)> = (0..player_count)
+            .filter(|i| !has_kept[*i])
+            .map(|i| {
+                let pid = ordered[i];
+                let hand = game.cards_in_zone(ZoneType::Hand, pid).to_vec();
+                (i, pid, hand)
+            })
+            .collect();
 
-            let pid = ordered[i];
-            let hand: Vec<_> = game.cards_in_zone(ZoneType::Hand, pid).to_vec();
-
+        // Phase 1: snapshot + fire prompts for every active player.
+        for (i, pid, hand) in &active {
             agents[pid.index()].snapshot_state(game, mana_pools);
-
-            let keep = hand.is_empty()
-                || agents[pid.index()].mulligan_decision(pid, &hand, mulligan_count[i]);
-
-            if keep {
-                has_kept[i] = true;
-                put_back_cards(
-                    game,
-                    agents,
-                    pid,
-                    mulligan_count[i] as usize,
-                    mana_pools,
-                    game_log,
-                );
-            } else {
-                perform_mulligan(game, pid, rng, game_log);
-                mulligan_count[i] += 1;
+            if !hand.is_empty() {
+                agents[pid.index()].mulligan_decision_send(*pid, hand, mulligan_count[*i]);
             }
         }
+
+        // Phase 2: collect responses.  Prompts are already in flight so
+        // remote clients can respond concurrently.
+        let decisions: Vec<bool> = active
+            .iter()
+            .map(|(i, pid, hand)| {
+                if hand.is_empty() {
+                    true
+                } else {
+                    agents[pid.index()].mulligan_decision_recv(*pid, hand, mulligan_count[*i])
+                }
+            })
+            .collect();
+
+        // Phase 3: apply in turn order.
+        for ((i, pid, _), keep) in active.iter().zip(decisions.iter()) {
+            if *keep {
+                has_kept[*i] = true;
+            } else {
+                perform_mulligan(game, *pid, rng, game_log);
+                mulligan_count[*i] += 1;
+            }
+        }
+    }
+
+    run_put_back_phase(game, agents, &ordered, &mulligan_count, mana_pools, game_log);
+}
+
+/// After all players have kept, fan out put-back prompts in parallel and
+/// apply the results in turn order.
+fn run_put_back_phase(
+    game: &mut GameState,
+    agents: &mut [Box<dyn PlayerAgent>],
+    ordered: &[PlayerId],
+    mulligan_count: &[u32],
+    mana_pools: &[ManaPool],
+    game_log: &GameLog,
+) {
+    struct PutBackJob {
+        player: PlayerId,
+        hand: Vec<CardId>,
+        count: usize,
+    }
+
+    let jobs: Vec<PutBackJob> = ordered
+        .iter()
+        .enumerate()
+        .filter_map(|(i, &pid)| {
+            let count = mulligan_count[i] as usize;
+            if count == 0 {
+                return None;
+            }
+            agents[pid.index()].snapshot_state(game, mana_pools);
+            let hand = game.cards_in_zone(ZoneType::Hand, pid).to_vec();
+            agents[pid.index()].choose_cards_to_bottom_send(pid, &hand, count);
+            Some(PutBackJob {
+                player: pid,
+                hand,
+                count,
+            })
+        })
+        .collect();
+
+    for job in jobs {
+        let picks = agents[job.player.index()]
+            .choose_cards_to_bottom_recv(job.player, &job.hand, job.count);
+        for &card_id in &picks {
+            game.put_on_bottom_of_library(card_id, job.player);
+        }
+    }
+
+    for &pid in ordered {
+        let final_size = game.cards_in_zone(ZoneType::Hand, pid).len();
+        game_log.log(
+            GameLogEntryType::Mulligan,
+            1,
+            format!(
+                "{} keeps hand ({} card{})",
+                game.player(pid).name,
+                final_size,
+                if final_size == 1 { "" } else { "s" },
+            ),
+        );
     }
 }
 
@@ -91,37 +179,6 @@ fn perform_mulligan(
         GameLogEntryType::Mulligan,
         1,
         format!("{} mulligans", game.player(player).name),
-    );
-}
-
-/// After keeping, put N cards from hand on the bottom of the library.
-fn put_back_cards(
-    game: &mut GameState,
-    agents: &mut [Box<dyn PlayerAgent>],
-    player: PlayerId,
-    count: usize,
-    mana_pools: &[ManaPool],
-    game_log: &GameLog,
-) {
-    if count > 0 {
-        agents[player.index()].snapshot_state(game, mana_pools);
-        let hand: Vec<_> = game.cards_in_zone(ZoneType::Hand, player).to_vec();
-        let to_bottom = agents[player.index()].choose_cards_to_bottom(player, &hand, count);
-        for &card_id in &to_bottom {
-            game.put_on_bottom_of_library(card_id, player);
-        }
-    }
-
-    let final_size = game.cards_in_zone(ZoneType::Hand, player).len();
-    game_log.log(
-        GameLogEntryType::Mulligan,
-        1,
-        format!(
-            "{} keeps hand ({} card{})",
-            game.player(player).name,
-            final_size,
-            if final_size == 1 { "" } else { "s" },
-        ),
     );
 }
 

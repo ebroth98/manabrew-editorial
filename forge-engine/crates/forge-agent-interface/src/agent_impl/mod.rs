@@ -324,6 +324,24 @@ impl<T: AgentTransport> PlayerAgent for PromptAgent<T> {
         choices::mulligan_decision(self, player, hand, mulligan_count)
     }
 
+    fn mulligan_decision_send(
+        &mut self,
+        player: PlayerId,
+        hand: &[CardId],
+        mulligan_count: u32,
+    ) {
+        choices::mulligan_decision_send(self, player, hand, mulligan_count);
+    }
+
+    fn mulligan_decision_recv(
+        &mut self,
+        player: PlayerId,
+        hand: &[CardId],
+        mulligan_count: u32,
+    ) -> bool {
+        choices::mulligan_decision_recv(self, player, hand, mulligan_count)
+    }
+
     fn choose_cards_to_bottom(
         &mut self,
         player: PlayerId,
@@ -331,6 +349,24 @@ impl<T: AgentTransport> PlayerAgent for PromptAgent<T> {
         count: usize,
     ) -> Vec<CardId> {
         choices::choose_cards_to_bottom(self, player, hand, count)
+    }
+
+    fn choose_cards_to_bottom_send(
+        &mut self,
+        player: PlayerId,
+        hand: &[CardId],
+        count: usize,
+    ) {
+        choices::choose_cards_to_bottom_send(self, player, hand, count);
+    }
+
+    fn choose_cards_to_bottom_recv(
+        &mut self,
+        player: PlayerId,
+        hand: &[CardId],
+        count: usize,
+    ) -> Vec<CardId> {
+        choices::choose_cards_to_bottom_recv(self, player, hand, count)
     }
 
     fn choose_action(
