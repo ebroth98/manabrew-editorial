@@ -14,12 +14,19 @@
 use forge_foundation::{PhaseType, ZoneType};
 use serde::{Deserialize, Serialize};
 
+use crate::ability::ability_factory::build_spell_ability;
+use crate::ability::AbilityKey;
 use crate::card::Card;
 use crate::card_trait_base::{CardTrait, CardTraitBase};
+use crate::core::HasSVars;
 use crate::game::GameState;
 use crate::game_loop::trigger_replacement_base::TriggerReplacementBase;
+use crate::ids::{CardId, PlayerId};
 use crate::parsing::{keys, Params};
 pub use crate::player::GameLossReason;
+
+use super::replacement_handler::ReplacementEvent;
+use crate::spellability::SpellAbility;
 
 // Re-export so existing `use crate::replacement::replacement_effect::{ReplacementType, ReplacementLayer}`
 // paths keep working.
@@ -73,6 +80,24 @@ impl CardTrait for ReplacementEffect {
 }
 
 impl ReplacementEffect {
+    /// Attach the host card on the embedded trait base. Mirrors Java's
+    /// inherited `CardTraitBase.setHostCard(host)` — called from the
+    /// `ReplacementEffect` constructor (`ReplacementEffect.java:107`) so
+    /// a freshly-constructed effect is always host-bound.
+    ///
+    /// In Rust the parser builds an unbound effect first (parser doesn't
+    /// have a `Card` handle) and every insertion site
+    /// (`card_state::add_replacement_effect`, keyword grants, factory
+    /// helpers) routes through this method to bind the host. After this
+    /// call, `CardTrait` machinery can stop threading explicit `host: &Card`
+    /// args. `TriggerReplacementBase::set_host_card` also propagates the
+    /// host into any cached overriding ability.
+    pub fn set_host_card(&mut self, host: Card) {
+        self.base.set_host_card(host);
+    }
+}
+
+impl ReplacementEffect {
     pub fn new(
         event: ReplacementType,
         layer: ReplacementLayer,
@@ -108,37 +133,88 @@ impl ReplacementEffect {
         !self.suppressed && (self.active_zones.is_empty() || self.active_zones.contains(&zone))
     }
 
-    /// Returns a human-readable description for this effect (from `Description$`).
-    pub fn description(&self) -> &str {
-        self.params
-            .get(keys::DESCRIPTION)
-            .unwrap_or("Replacement effect")
+    /// Human-readable description. Mirrors Java `ReplacementEffect.getDescription()`.
+    ///
+    /// - Suppressed or missing `Description$` → empty string.
+    /// - Applies text-change effects carried on the trait (Glamerdye / Crystal
+    ///   Spray word-swaps).
+    /// - Substitutes `CARDNAME` and `NICKNAME` with the host's name.
+    /// - Substitutes `EFFECTSOURCE` with the card that created this host via
+    ///   `effect_source` (token makers, emblems, etc.).
+    /// - For `DamageDone` replacements whose overriding `SpellAbility` uses
+    ///   `AB$ ReplaceDamage` / `AB$ ReplaceSplitDamage`, appends
+    ///   `"Shields remain: N"` when the `Amount$` / `VarName$` SVar resolves
+    ///   to `Number$<n>`. Only fires when the SA is already cached on the
+    ///   base (matches Java's `getOverridingAbility()` not `ensureAbility()`).
+    ///
+    /// Multi-locale translation is UI-layer and intentionally skipped.
+    pub fn description(&self, host: &Card, game: &GameState) -> String {
+        if self.suppressed || self.base.card_trait_base.is_suppressed() {
+            return String::new();
+        }
+        let Some(raw) = self.params.get(keys::DESCRIPTION) else {
+            return String::new();
+        };
+        let mut desc =
+            crate::ability::ability_utils::apply_description_text_change_effects(raw, host);
+        desc = desc.replace("CARDNAME", &host.card_name);
+        // Nickname localization isn't ported; fall back to the card name
+        // (matches `spell_ability_effect::tokenize_description`).
+        desc = desc.replace("NICKNAME", &host.card_name);
+        if desc.contains("EFFECTSOURCE") {
+            let source_name = host
+                .effect_source
+                .map(|id| game.card(id).card_name.clone())
+                .unwrap_or_else(|| host.card_name.clone());
+            desc = desc.replace("EFFECTSOURCE", &source_name);
+        }
+
+        // DamageDone shield-remaining appendix (Java L228-253).
+        if self.event == ReplacementType::DamageDone {
+            if let Some(rep_sa) = self.base.get_overriding_ability() {
+                desc = append_shield_remaining(desc, rep_sa, host);
+            }
+        }
+
+        desc
     }
 
-    /// Returns `false` — effects don't track individual run state in our
-    /// architecture. The handler's `has_run` set is cleared at the start of
-    /// each `ReplacementHandler::run()` call, matching Java's reset semantics.
+    /// Always `false`. Java's `ReplacementEffect.hasRun` is a per-effect flag
+    /// used mainly during `otherChoices` resolution (Java gap #2 here). Our
+    /// per-event chain uses `ReplacementHandler.has_run` instead, and a new
+    /// handler is constructed by `apply_replacements` per event — so stale
+    /// run-marks never leak across events. Revisit when `otherChoices` lands
+    /// (a nested choice flow is the only path that needs the per-effect flag).
     pub fn has_run(&self) -> bool {
         false
     }
 
     /// Check requirements for this replacement effect against the current game state.
     ///
-    /// - `PlayerTurn$` — verifies the active player matches the source card's controller.
-    /// - `ActivePhases$` — verifies the current phase is in the comma-separated list.
-    ///
-    /// Returns `true` if all requirements are met (or if no requirements are specified).
-    ///
-    /// Mirrors Java `ReplacementEffect.requirementsCheck()`.
+
     pub fn requirements_check(&self, game: &GameState, source: &Card) -> bool {
-        // PlayerTurn$ check — active player must be the source's controller
+        if self.suppressed || self.base.card_trait_base.is_suppressed() {
+            return false;
+        }
+
         if let Some(pt) = self.params.get(keys::PLAYER_TURN) {
-            if pt == "True" && game.active_player() != source.controller {
-                return false;
+            if pt == "True" {
+                if game.active_player() != source.controller {
+                    return false;
+                }
+            } else {
+                let players = crate::ability::ability_utils::resolve_defined_players(
+                    pt,
+                    source.controller,
+                    game,
+                );
+                if !players.contains(&game.active_player()) {
+                    return false;
+                }
             }
         }
 
-        // ActivePhases$ check — current phase must be in the listed phases
+        // ActivePhases$ — current phase must be in the listed phases.
         if let Some(phases_str) = self.params.get(keys::ACTIVE_PHASES) {
             let current = game.turn.phase;
             let any_match = phases_str
@@ -150,7 +226,7 @@ impl ReplacementEffect {
             }
         }
 
-        true
+        crate::card::valid_filter::meets_common_requirements(game, &self.params, source)
     }
 
     /// Clone this replacement effect. Since `ReplacementEffect` derives `Clone`,
@@ -161,13 +237,311 @@ impl ReplacementEffect {
         self.clone()
     }
 
-    /// Return the `ReplaceWith$` param value if present — this is the SVar name
-    /// of the replacement ability to execute.
+    /// Mirrors Java `ReplacementEffect.ensureAbility()`:
     ///
-    /// Mirrors Java `ReplacementEffect.ensureAbility()` which lazily resolves
-    /// the SVar into a SpellAbility.
-    pub fn ensure_ability(&self) -> Option<String> {
-        self.params.get(keys::REPLACE_WITH).map(|s| s.to_string())
+    /// 1. If an overriding `SpellAbility` is already cached on the base, return
+    ///    a clone of it.
+    /// 2. Otherwise, if `ReplaceWith$` is set, look up the named SVar on the
+    ///    host card, parse it via `AbilityFactory.getAbility()` (the Rust
+    ///    equivalent is `build_spell_ability`), and return the built ability.
+    ///
+    /// This variant does NOT cache the built ability (const receiver). Use
+    /// `ensure_ability_mut` to lazily cache on the base, matching Java's
+    /// `setOverridingAbility(sa)` call inside `ensureAbility`.
+    pub fn ensure_ability(
+        &self,
+        game: &GameState,
+        host_card: CardId,
+        activating_player: PlayerId,
+    ) -> Option<SpellAbility> {
+        if let Some(overriding) = self.base.get_overriding_ability() {
+            return Some(overriding.clone());
+        }
+        let svar_name = self.params.get(keys::REPLACE_WITH)?;
+        let host = game.card(host_card);
+        let script = host.get_svar(svar_name)?;
+        Some(build_spell_ability(
+            game,
+            host_card,
+            script,
+            activating_player,
+        ))
+    }
+
+    /// Mirrors Java `ReplacementEffect.ensureAbility()` including the cache
+    /// write (Java calls `setOverridingAbility(sa)` on first build). Returns
+    /// a mutable reference to the cached ability so callers can mutate
+    /// trigger payloads before resolution.
+    pub fn ensure_ability_mut(
+        &mut self,
+        game: &GameState,
+        host_card: CardId,
+        activating_player: PlayerId,
+    ) -> Option<&mut SpellAbility> {
+        if self.base.get_overriding_ability().is_none() {
+            let ability = self.ensure_ability(game, host_card, activating_player)?;
+            // Store directly — `TriggerReplacementBase::set_overriding_ability`
+            // re-binds host/keyword/state by reading `card_trait_base.get_host_card()`,
+            // which panics for replacement effects (host-binding gap #11). The
+            // built ability is already host-bound by `build_spell_ability`.
+            self.base.overriding_ability = Some(ability);
+        }
+        self.base.overriding_ability.as_mut()
+    }
+
+    /// Filter for ETB replacement events. Mirrors Java
+    /// `ReplacementEffect.canReplaceETB(runParams)` (L321-345).
+    ///
+    /// Returns `false` (skip) when the effect targets things OTHER than itself
+    /// (`ValidCard$` is not `Card.Self`-prefixed) AND the affected card IS
+    /// the host card — i.e. the effect would be replacing its own ETB.
+    /// Otherwise returns `true`.
+    ///
+    /// Not yet ported: Java's second guard reads `AbilityKey.LastStateBattlefield`
+    /// to also skip when the host wasn't on the battlefield before this
+    /// Moved event. Rust doesn't snapshot the previous battlefield state for
+    /// replacement resolution, so that branch is omitted. Effects whose host
+    /// just entered may still slip through in narrow nested ETB scenarios.
+    pub fn can_replace_etb(&self, source: &Card, affected: &Card) -> bool {
+        let targets_self_only = self
+            .params
+            .get(keys::VALID_CARD)
+            .map(|v| v.starts_with("Card.Self"))
+            .unwrap_or(false);
+        if !targets_self_only && source.id == affected.id {
+            return false;
+        }
+        true
+    }
+
+    /// Mirrors Java `ReplacementEffect.setReplacingObjects(runParams, sa)`.
+    /// Java's base method is an empty default overridden by each concrete
+    /// subclass (`ReplaceMoved`, `ReplaceDamage`, `ReplaceAddCounter`, …).
+    /// Rust has no subclasses; the match on `self.event` fills the same role
+    /// by dispatching per event type inline.
+    ///
+    /// The sub-ability walk is a Rust-ism — Java's resolver inherits the
+    /// triggering/replacing maps from the parent SA automatically, while the
+    /// Rust `SpellAbility` resolver reads directly from each node. Writing
+    /// to every node keeps `Defined$ ReplacedCard`-style lookups working
+    /// inside `SubAbility$` chains (Rust stores these under
+    /// `sa.trigger_objects`; Java keeps `replacingObjects` separate).
+    ///
+    /// Scope note: today this only runs on event paths that actually build a
+    /// `SpellAbility` and resolve it through the SA resolver — currently just
+    /// `replace_moved::execute`. Other handlers mutate events inline via
+    /// `execute_replace_effect_chain` and bypass this hook. Migrate those
+    /// paths first before adding their cases here.
+    pub fn set_replacing_objects(
+        &self,
+        event: &ReplacementEvent,
+        sa: &mut crate::spellability::SpellAbility,
+    ) {
+        let mut current = Some(sa);
+        while let Some(node) = current {
+            match event {
+                ReplacementEvent::Moved { card, origin, destination, .. } => {
+                    let card_csv = card.0.to_string();
+                    // Java `ReplaceMoved.setReplacingObjects`: Card + (NewCard,
+                    // CardLKI, Cause, LastStateBattlefield, LastStateGraveyard,
+                    // CounterTable, CounterMap). Rust's `ReplacementEvent::Moved`
+                    // only carries card + zones; the other keys aren't tracked
+                    // on the event today.
+                    node.set_triggering_object(AbilityKey::Card, card_csv.as_str());
+                    node.set_triggering_object(AbilityKey::ReplacedCard, card_csv.as_str());
+                    node.set_triggering_object(AbilityKey::Affected, card_csv.as_str());
+                    node.set_triggering_object(
+                        AbilityKey::Origin,
+                        format!("{:?}", origin).as_str(),
+                    );
+                    node.set_triggering_object(
+                        AbilityKey::Destination,
+                        format!("{:?}", destination).as_str(),
+                    );
+                }
+                ReplacementEvent::DamageToCard { target, amount, source, .. } => {
+                    // Java `ReplaceDamage.setReplacingObjects`: DamageAmount,
+                    // Target (from Affected), Source (from DamageSource).
+                    let target_csv = target.0.to_string();
+                    node.set_triggering_object(AbilityKey::Target, target_csv.as_str());
+                    node.set_triggering_object(AbilityKey::Affected, target_csv.as_str());
+                    node.set_triggering_object(
+                        AbilityKey::DamageAmount,
+                        amount.to_string().as_str(),
+                    );
+                    if let Some(src) = source {
+                        let src_csv = src.0.to_string();
+                        node.set_triggering_object(AbilityKey::Source, src_csv.as_str());
+                        node.set_triggering_object(AbilityKey::DamageSource, src_csv.as_str());
+                    }
+                }
+                ReplacementEvent::DamageToPlayer { target, amount, source, .. } => {
+                    node.set_triggering_object(
+                        AbilityKey::DamageAmount,
+                        amount.to_string().as_str(),
+                    );
+                    if let Some(src) = source {
+                        let src_csv = src.0.to_string();
+                        node.set_triggering_object(AbilityKey::Source, src_csv.as_str());
+                        node.set_triggering_object(AbilityKey::DamageSource, src_csv.as_str());
+                    }
+                    node.set_triggering_object(
+                        AbilityKey::TriggeredPlayer,
+                        target.index().to_string().as_str(),
+                    );
+                }
+                ReplacementEvent::Destroy { target } => {
+                    // Java `ReplaceDestroy.setReplacingObjects`: Card, Cause.
+                    let target_csv = target.0.to_string();
+                    node.set_triggering_object(AbilityKey::Card, target_csv.as_str());
+                    node.set_triggering_object(AbilityKey::Affected, target_csv.as_str());
+                }
+                ReplacementEvent::AddCounter { target, counter_type, count, .. } => {
+                    // Java `ReplaceAddCounter.setReplacingObjects`: CounterMap,
+                    // Card/Player (polymorphic on Affected), Object.
+                    let target_csv = target.0.to_string();
+                    node.set_triggering_object(AbilityKey::Card, target_csv.as_str());
+                    node.set_triggering_object(AbilityKey::Affected, target_csv.as_str());
+                    node.set_triggering_object(AbilityKey::Object, target_csv.as_str());
+                    node.set_triggering_object(
+                        AbilityKey::CounterMap,
+                        format!("{:?}:{}", counter_type, count).as_str(),
+                    );
+                }
+                ReplacementEvent::Draw { player, extra_draws, .. } => {
+                    // Java `ReplaceDraw.setReplacingObjects`: Player (from
+                    // Affected) + Cause + Source (from cause.getHostCard()).
+                    let pid = player.index().to_string();
+                    node.set_triggering_object(AbilityKey::TriggeredPlayer, pid.as_str());
+                    node.set_triggering_object(AbilityKey::Affected, pid.as_str());
+                    node.set_triggering_object(
+                        AbilityKey::Num,
+                        extra_draws.to_string().as_str(),
+                    );
+                }
+                ReplacementEvent::DrawCards { player, count } => {
+                    // Java `ReplaceDrawCards.setReplacingObjects`: Player + Num.
+                    let pid = player.index().to_string();
+                    node.set_triggering_object(AbilityKey::TriggeredPlayer, pid.as_str());
+                    node.set_triggering_object(AbilityKey::Affected, pid.as_str());
+                    node.set_triggering_object(AbilityKey::Num, count.to_string().as_str());
+                }
+                ReplacementEvent::CreateToken { player, count, .. } => {
+                    // Java `ReplaceToken.setReplacingObjects`: TokenNum, Token,
+                    // Cause, Player.
+                    let pid = player.index().to_string();
+                    node.set_triggering_object(AbilityKey::TriggeredPlayer, pid.as_str());
+                    node.set_triggering_object(AbilityKey::Affected, pid.as_str());
+                    node.set_triggering_object(
+                        AbilityKey::TokenNum,
+                        count.to_string().as_str(),
+                    );
+                }
+                ReplacementEvent::GainLife { player, amount }
+                | ReplacementEvent::PayLife { player, amount }
+                | ReplacementEvent::LifeReduced { player, amount, .. } => {
+                    let pid = player.index().to_string();
+                    node.set_triggering_object(AbilityKey::TriggeredPlayer, pid.as_str());
+                    node.set_triggering_object(AbilityKey::Affected, pid.as_str());
+                    node.set_triggering_object(
+                        AbilityKey::LifeAmount,
+                        amount.to_string().as_str(),
+                    );
+                }
+                ReplacementEvent::Mill { player, count }
+                | ReplacementEvent::Scry { player, count }
+                | ReplacementEvent::Proliferate { player, count }
+                | ReplacementEvent::CopySpell { player, count } => {
+                    let pid = player.index().to_string();
+                    node.set_triggering_object(AbilityKey::TriggeredPlayer, pid.as_str());
+                    node.set_triggering_object(AbilityKey::Affected, pid.as_str());
+                    node.set_triggering_object(AbilityKey::Num, count.to_string().as_str());
+                }
+                ReplacementEvent::BeginTurn { player }
+                | ReplacementEvent::BeginPhase { player, .. }
+                | ReplacementEvent::DeclareBlocker { player }
+                | ReplacementEvent::RollPlanarDice { player }
+                | ReplacementEvent::PlanarDiceResult { player }
+                | ReplacementEvent::LoseMana { player }
+                | ReplacementEvent::GameLoss { player, .. }
+                | ReplacementEvent::GameWin { player }
+                | ReplacementEvent::Cascade { player }
+                | ReplacementEvent::Learn { player }
+                | ReplacementEvent::Planeswalk { player }
+                | ReplacementEvent::SetInMotion { player }
+                | ReplacementEvent::AssembleContraption { player } => {
+                    let pid = player.index().to_string();
+                    node.set_triggering_object(AbilityKey::TriggeredPlayer, pid.as_str());
+                    node.set_triggering_object(AbilityKey::Affected, pid.as_str());
+                }
+                ReplacementEvent::Counter { card }
+                | ReplacementEvent::Tap { card }
+                | ReplacementEvent::Untap { card }
+                | ReplacementEvent::Explore { card }
+                | ReplacementEvent::Transform { card }
+                | ReplacementEvent::TurnFaceUp { card }
+                | ReplacementEvent::AssignDealDamage { card } => {
+                    let csv = card.0.to_string();
+                    node.set_triggering_object(AbilityKey::Card, csv.as_str());
+                    node.set_triggering_object(AbilityKey::Affected, csv.as_str());
+                }
+                ReplacementEvent::DealtDamage { target, amount, source } => {
+                    let target_csv = target.0.to_string();
+                    node.set_triggering_object(AbilityKey::Target, target_csv.as_str());
+                    node.set_triggering_object(AbilityKey::Affected, target_csv.as_str());
+                    node.set_triggering_object(
+                        AbilityKey::DamageAmount,
+                        amount.to_string().as_str(),
+                    );
+                    if let Some(src) = source {
+                        node.set_triggering_object(
+                            AbilityKey::DamageSource,
+                            src.0.to_string().as_str(),
+                        );
+                    }
+                }
+                ReplacementEvent::RemoveCounter { target, counter_type, count } => {
+                    let target_csv = target.0.to_string();
+                    node.set_triggering_object(AbilityKey::Card, target_csv.as_str());
+                    node.set_triggering_object(
+                        AbilityKey::CounterMap,
+                        format!("{:?}:{}", counter_type, count).as_str(),
+                    );
+                }
+                ReplacementEvent::Attached { card, target } => {
+                    node.set_triggering_object(AbilityKey::Card, card.0.to_string().as_str());
+                    node.set_triggering_object(
+                        AbilityKey::Target,
+                        target.0.to_string().as_str(),
+                    );
+                    node.set_triggering_object(
+                        AbilityKey::Affected,
+                        target.0.to_string().as_str(),
+                    );
+                }
+                ReplacementEvent::ProduceMana { source, activator, mana } => {
+                    node.set_triggering_object(
+                        AbilityKey::Source,
+                        source.0.to_string().as_str(),
+                    );
+                    node.set_triggering_object(AbilityKey::Card, source.0.to_string().as_str());
+                    node.set_triggering_object(
+                        AbilityKey::TriggeredPlayer,
+                        activator.index().to_string().as_str(),
+                    );
+                    node.set_triggering_object(AbilityKey::Produced, mana.as_str());
+                }
+                ReplacementEvent::RollDice { player, sides, number, .. } => {
+                    node.set_triggering_object(
+                        AbilityKey::TriggeredPlayer,
+                        player.index().to_string().as_str(),
+                    );
+                    node.set_triggering_object(AbilityKey::Num, number.to_string().as_str());
+                    node.set_triggering_object(AbilityKey::Sides, sides.to_string().as_str());
+                }
+            }
+            current = node.get_sub_ability_mut();
+        }
     }
 
     /// Check if this effect's event type matches the given event.
@@ -187,6 +561,56 @@ impl ReplacementEffect {
         }
         false
     }
+}
+
+
+/// Append "Shields remain: N" when a `ReplaceDamage` / `ReplaceSplitDamage`
+/// ability's `Amount$` / `VarName$` resolves to a `Number$<n>` SVar.
+///
+/// Mirrors Java `ReplacementEffect.getDescription()` lines 228-253. Returns
+/// the description unchanged when the ability api / params / SVar shape
+/// doesn't match (Java silently skips).
+fn append_shield_remaining(mut desc: String, rep_sa: &SpellAbility, host: &Card) -> String {
+    use crate::ability::api_type::ApiType;
+
+    let api = match rep_sa.api {
+        Some(a) => a,
+        None => return desc,
+    };
+
+    let (param_value, default_one) = match api {
+        ApiType::ReplaceDamage => match rep_sa.params.get("Amount") {
+            Some(v) => (v.to_string(), false),
+            None => return desc,
+        },
+        ApiType::ReplaceSplitDamage => (
+            rep_sa
+                .params
+                .get("VarName")
+                .unwrap_or("1")
+                .to_string(),
+            true,
+        ),
+        _ => return desc,
+    };
+
+    // Java: if numeric, skip (the raw number already appears in text elsewhere).
+    // ReplaceSplitDamage with the default "1" renders as "Shields remain: 1".
+    if param_value.chars().all(|c| c.is_ascii_digit()) {
+        if default_one && param_value == "1" {
+            desc.push_str(" \nShields remain: 1");
+        }
+        return desc;
+    }
+
+    // Non-numeric → resolve as SVar on host, expect "Number$<value>".
+    if let Some(resolved) = host.get_svar(&param_value) {
+        if let Some(rest) = resolved.strip_prefix("Number$") {
+            desc.push_str(" \nShields remain: ");
+            desc.push_str(rest);
+        }
+    }
+    desc
 }
 
 // ── Helper filter functions ───────────────────────────────────────────────────

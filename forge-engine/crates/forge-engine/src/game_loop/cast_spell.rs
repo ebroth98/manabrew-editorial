@@ -1383,14 +1383,12 @@ impl GameLoop {
                 ReplacementEffect, ReplacementLayer, ReplacementType,
             };
             let params = crate::parsing::Params::from_raw("ValidCard$ Card.Self");
-            game.card_mut(card_id)
-                .replacement_effects
-                .push(ReplacementEffect::new(
-                    ReplacementType::Counter,
-                    ReplacementLayer::CantHappen,
-                    params,
-                    vec![], // active everywhere (including stack)
-                ));
+            game.card_mut(card_id).add_replacement_effect(ReplacementEffect::new(
+                ReplacementType::Counter,
+                ReplacementLayer::CantHappen,
+                params,
+                vec![], // active everywhere (including stack)
+            ));
         }
 
         game.card_mut(card_id)

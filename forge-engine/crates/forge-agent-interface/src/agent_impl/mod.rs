@@ -719,6 +719,16 @@ impl<T: AgentTransport> PlayerAgent for PromptAgent<T> {
         choices::choose_single_replacement_effect(self, player, descriptions)
     }
 
+    fn confirm_replacement_effect(
+        &mut self,
+        player: PlayerId,
+        question: &str,
+        effect_description: &str,
+        card_name: Option<&str>,
+    ) -> bool {
+        choices::confirm_replacement_effect(self, player, question, effect_description, card_name)
+    }
+
     fn choose_optional_trigger(
         &mut self,
         player: PlayerId,

@@ -136,7 +136,7 @@ impl KeywordInstance {
             if let Some(repl) =
                 crate::replacement::replacement_effect::parse_replacement_effect(repl_str)
             {
-                card.replacement_effects.push(repl);
+                card.add_replacement_effect(repl);
             }
         }
     }

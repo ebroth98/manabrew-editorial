@@ -98,6 +98,39 @@ pub(super) fn choose_optional_trigger<T: AgentTransport>(
     }
 }
 
+/// Ask the player whether to apply an optional replacement effect
+/// (`Optional$ True`). Mirrors Java `PlayerController.confirmReplacementEffect`.
+/// Defaults to `true` on malformed responses to match the base trait default.
+pub(super) fn confirm_replacement_effect<T: AgentTransport>(
+    agent: &mut PromptAgent<T>,
+    _player: PlayerId,
+    question: &str,
+    effect_description: &str,
+    card_name: Option<&str>,
+) -> bool {
+    let message = if effect_description.is_empty() {
+        question.to_string()
+    } else if question.is_empty() {
+        effect_description.to_string()
+    } else {
+        format!("{question}\n{effect_description}")
+    };
+    agent.send_prompt(AgentPromptInner::ChooseOptionalTrigger {
+        game_view: agent.view(),
+        description: message,
+        cards: Vec::new(),
+        source_card_name: card_name.map(String::from),
+        prompt_kind: Some("confirm_replacement_effect".to_string()),
+        option_labels: Some(vec!["Decline".to_string(), "Accept".to_string()]),
+        mode: None,
+        api: None,
+    });
+    match agent.recv_action() {
+        PlayerAction::OptionalTriggerDecision { accept } => accept,
+        _ => true,
+    }
+}
+
 pub(super) fn confirm_action<T: AgentTransport>(
     agent: &mut PromptAgent<T>,
     _player: PlayerId,

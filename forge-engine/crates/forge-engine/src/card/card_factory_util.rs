@@ -158,7 +158,7 @@ pub fn add_dredge_replacement(card: &mut Card) {
             amount, card.card_name, amount
         );
         if let Some(repl) = parse_replacement_effect(&repl_str) {
-            card.replacement_effects.push(repl);
+            card.add_replacement_effect(repl);
         }
     }
 }
@@ -246,7 +246,7 @@ pub fn add_madness_replacement(card: &mut Card) {
             desc
         );
         if let Some(repl) = parse_replacement_effect(&repl_str) {
-            card.replacement_effects.push(repl);
+            card.add_replacement_effect(repl);
         }
     }
 }
@@ -281,7 +281,7 @@ pub fn add_flashback_replacement(card: &mut Card) {
         desc
     );
     if let Some(repl) = parse_replacement_effect(&repl_str) {
-        card.replacement_effects.push(repl);
+        card.add_replacement_effect(repl);
     }
 }
 

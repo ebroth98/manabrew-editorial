@@ -114,7 +114,7 @@ impl KeywordsChange {
                 if let Some(repl) =
                     crate::replacement::replacement_effect::parse_replacement_effect(kw_str)
                 {
-                    card.replacement_effects.push(repl);
+                    card.add_replacement_effect(repl);
                 }
             }
         }

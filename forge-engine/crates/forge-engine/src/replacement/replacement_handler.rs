@@ -346,8 +346,9 @@ impl ReplacementHandler {
                     let descriptions: Vec<String> = eligible
                         .iter()
                         .map(|(card_id, re, _)| {
-                            let card_name = &game.cards[card_id.index()].card_name;
-                            let desc = re.description();
+                            let host = game.card(*card_id);
+                            let card_name = &host.card_name;
+                            let desc = re.description(host, game);
                             format!("{card_name}: {desc}")
                         })
                         .collect();
@@ -1181,7 +1182,7 @@ fn execute_effect(
             agents[decider.index()].confirm_replacement_effect(
                 decider,
                 &question,
-                effect.description(),
+                &effect.description(host, game),
                 Some(&host.card_name),
             )
         } else {
@@ -1275,7 +1276,8 @@ fn replacement_question(
     game: &GameState,
     event: &ReplacementEvent,
 ) -> String {
-    let desc = effect.description().replace("CARDNAME", &host.card_name);
+    // `description(host, game)` already handles CARDNAME/NICKNAME + text changes.
+    let desc = effect.description(host, game);
     match event {
         ReplacementEvent::Moved { card, .. } => format!(
             "Apply {} to {}?\n{}",

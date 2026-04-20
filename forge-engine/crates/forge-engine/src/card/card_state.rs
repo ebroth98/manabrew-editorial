@@ -730,7 +730,8 @@ pub fn remove_static_ability(card: &mut Card, mode: crate::staticability::Static
     before != card.static_abilities.len()
 }
 
-pub fn add_replacement_effect(card: &mut Card, re: ReplacementEffect) -> bool {
+pub fn add_replacement_effect(card: &mut Card, mut re: ReplacementEffect) -> bool {
+    re.set_host_card(card.clone());
     card.replacement_effects.push(re);
     true
 }

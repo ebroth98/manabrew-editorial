@@ -82,6 +82,10 @@ pub fn can_replace(
             return false;
         }
     }
+    // Mirrors Java `ReplaceMoved.canReplace()` L103: only gate ETB chains.
+    if destination == ZoneType::Battlefield && !effect.can_replace_etb(source_card, moving_card) {
+        return false;
+    }
     true
 }
 
@@ -135,6 +139,7 @@ pub fn execute(
     // If the redirect value wasn't a zone name, try executing it as an SVar spell ability.
     if let Some(replace_with_key) = effect.params.get(keys::REPLACE_WITH) {
         let succeeded = execute_replace_with(
+            effect,
             replace_with_key,
             game,
             source_card_id,
@@ -159,6 +164,7 @@ pub fn execute(
 }
 
 fn execute_replace_with(
+    effect: &ReplacementEffect,
     replace_with: &str,
     game: &mut GameState,
     source_card_id: CardId,
@@ -171,7 +177,7 @@ fn execute_replace_with(
     };
     let controller = game.card(source_card_id).controller;
     let mut sa = build_spell_ability(game, source_card_id, &raw, controller);
-    set_replacing_objects_for_moved(event, &mut sa);
+    effect.set_replacing_objects(event, &mut sa);
 
     let mut local_agents_storage: Option<Vec<Box<dyn PlayerAgent>>> = None;
     let agents: &mut [Box<dyn PlayerAgent>] = if let Some(agents) = agents {
@@ -276,18 +282,6 @@ fn execute_replace_with(
     true
 }
 
-fn set_replacing_objects_for_moved(
-    event: &ReplacementEvent,
-    sa: &mut crate::spellability::SpellAbility,
-) {
-    let ReplacementEvent::Moved { card, .. } = event else {
-        return;
-    };
-    let card_csv = card.0.to_string();
-    let mut current = Some(sa);
-    while let Some(node) = current {
-        node.set_triggering_object(crate::ability::AbilityKey::Card, &card_csv);
-        node.set_triggering_object(crate::ability::AbilityKey::ReplacedCard, &card_csv);
-        current = node.get_sub_ability_mut();
-    }
-}
+// `set_replacing_objects_for_moved` was inlined into the cross-event
+// `ReplacementEffect::set_replacing_objects` dispatcher in `replacement_effect.rs`
+// to mirror Java's polymorphic `setReplacingObjects` hook.
