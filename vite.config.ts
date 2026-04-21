@@ -3,6 +3,7 @@ import { defineConfig } from 'vite'
 import type { Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
+import Icons from 'unplugin-icons/vite'
 
 const host = process.env.TAURI_DEV_HOST
 
@@ -21,7 +22,22 @@ function crossOriginIsolation(): Plugin {
 }
 
 export default defineConfig({
-  plugins: [react(), tailwindcss(), crossOriginIsolation()],
+  plugins: [
+    react(),
+    tailwindcss(),
+    // Resolves `~icons/<set>/<name>` imports (with `?url` / `?raw` /
+    // default component export) from the installed `@iconify-json/*`
+    // packages. Tree-shaken: only icons actually imported end up in
+    // the bundle.
+    Icons({
+      // `raw` compiler exports the plain SVG string for bare imports —
+      // matches our `?raw` usage in `PointerLayer` and avoids pulling
+      // in `@svgr/core` which the `jsx` compiler would otherwise need
+      // as a peer dependency.
+      compiler: 'raw',
+    }),
+    crossOriginIsolation(),
+  ],
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),

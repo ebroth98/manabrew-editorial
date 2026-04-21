@@ -22,9 +22,11 @@ const CARD_SCALE_DEFAULT: React.CSSProperties = {
   transformOrigin: "bottom center",
   transition: "transform 250ms cubic-bezier(0.23, 0.63, 0.32, 1)",
 };
+// Both CSS vars are always defined by `Game.tsx` from the active theme,
+// so this style just dereferences them — no literal colour fallback.
 const PLAYABLE_GLOW_STYLE: React.CSSProperties = {
-  backgroundColor: "var(--playable-glow-color, rgba(251, 146, 60, 0.3))",
-  border: "2px solid var(--playable-ring-color-strong, rgba(251, 146, 60, 1))",
+  backgroundColor: "var(--playable-glow-color)",
+  border: "2px solid var(--playable-ring-color-strong)",
 };
 const EMPTY_ACTIONS: HandActionOption[] = [];
 

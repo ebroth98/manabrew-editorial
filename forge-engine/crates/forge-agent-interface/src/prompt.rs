@@ -1,7 +1,11 @@
 use serde::{Deserialize, Serialize};
 
-use crate::game_view_dto::{CardDto, GameViewDto};
+use crate::game_view_dto::{CardDto, GameViewDto, TargetingIntent};
 use forge_engine_core::player::actions::PlayerAction as EnginePlayerAction;
+
+fn default_intent() -> TargetingIntent {
+    TargetingIntent::Hostile
+}
 
 /// A display-only event that the frontend should animate before rendering the prompt's game state.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -116,8 +120,12 @@ pub enum AgentPromptInner {
         #[serde(rename = "sourceCardId", skip_serializing_if = "Option::is_none")]
         source_card_id: Option<String>,
         /// Whether the targeting effect is hostile (damage/destroy) vs friendly (buff).
+        /// Kept for backwards compatibility; prefer `intent`.
         #[serde(default)]
         hostile: bool,
+        /// Semantic classification used by the UI to pick a pointer icon / glow color.
+        #[serde(default = "default_intent")]
+        intent: TargetingIntent,
     },
     ChooseTargetCard {
         #[serde(rename = "gameView")]
@@ -128,6 +136,8 @@ pub enum AgentPromptInner {
         source_card_id: Option<String>,
         #[serde(default)]
         hostile: bool,
+        #[serde(default = "default_intent")]
+        intent: TargetingIntent,
     },
     ChooseTargetAny {
         #[serde(rename = "gameView")]
@@ -140,6 +150,8 @@ pub enum AgentPromptInner {
         source_card_id: Option<String>,
         #[serde(default)]
         hostile: bool,
+        #[serde(default = "default_intent")]
+        intent: TargetingIntent,
     },
     ChooseTargetCardFromZone {
         #[serde(rename = "gameView")]
@@ -151,6 +163,8 @@ pub enum AgentPromptInner {
         zone_cards: Vec<CardDto>,
         #[serde(rename = "sourceCardId", skip_serializing_if = "Option::is_none")]
         source_card_id: Option<String>,
+        #[serde(default = "default_intent")]
+        intent: TargetingIntent,
     },
     GameOver {
         #[serde(rename = "gameView")]
@@ -224,6 +238,8 @@ pub enum AgentPromptInner {
         valid_spell_ids: Vec<String>,
         #[serde(rename = "sourceCardId", skip_serializing_if = "Option::is_none")]
         source_card_id: Option<String>,
+        #[serde(default = "default_intent")]
+        intent: TargetingIntent,
     },
     /// Choose whether an optional triggered ability fires.
     ChooseOptionalTrigger {

@@ -195,7 +195,7 @@ export function ManualTabletopControls({
               </button>
               <div className="mt-2 grid grid-cols-[1fr_auto_auto] items-center gap-1">
                 <div className="flex items-center gap-1 text-xs">
-                  <Heart className="h-3 w-3 text-red-500" />
+                  <Heart className="h-3 w-3 text-life" />
                   <span className="tabular-nums">{player.life}</span>
                 </div>
                 <Button
@@ -231,7 +231,7 @@ export function ManualTabletopControls({
               </div>
               <div className="mt-1 grid grid-cols-[1fr_auto_auto] items-center gap-1">
                 <div className="flex items-center gap-1 text-xs">
-                  <Skull className="h-3 w-3 text-green-600" />
+                  <Skull className="h-3 w-3 text-poison" />
                   <span className="tabular-nums">{player.poison}</span>
                 </div>
                 <Button

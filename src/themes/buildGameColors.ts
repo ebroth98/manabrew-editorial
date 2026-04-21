@@ -1,0 +1,157 @@
+/**
+ * Shared helper that turns a preset-specific palette into the 70 game
+ * colour keys consumed by `GameThemeColors`. Every preset defines one
+ * `BasePalette` (about 25 entries) and spreads the output of
+ * `buildGameColors(palette)` into its `gameColors` map.
+ *
+ * This keeps per-preset theme files short and ensures every preset
+ * assigns the same semantic intent to the same base hue — e.g. every
+ * theme's "pointer.sacrifice" draws from its palette's `redDeep`, every
+ * theme's "pt.buffed" from its `green`, and so on.
+ */
+
+export interface BasePalette {
+  /** Opaque, high-contrast foreground used for icons, strokes, and
+   *  reveal / neutral pointer glyphs. Usually a near-white for dark
+   *  themes and a near-black for light ones. */
+  foreground: string;
+  /** Subdued label colour (empty-zone labels). */
+  labelMuted: string;
+  /** Ghost label colour (card-loading placeholder). Slightly brighter
+   *  than `labelMuted`. */
+  labelGhost: string;
+
+  /** Sprite background used while a card image is still loading. */
+  placeholderFill: string;
+  /** Stroke around the placeholder sprite. */
+  placeholderStroke: string;
+  /** Canvas backdrop for the Pixi play area. */
+  canvasBackground: string;
+
+  /** Core hue set — map each to the nearest match in the preset's
+   *  canonical palette. */
+  red: string;         // hostile, destructive, lethal, counter
+  redDeep: string;     // sacrifice, loseLife, depletion, madness (deeper red)
+  orange: string;      // damage, fight, attack, exerted, level
+  amber: string;       // lore, tap, token, warning-ish warm yellow
+  yellow: string;      // quest
+  green: string;       // buff, p1p1, heal-alt
+  teal: string;        // attach, bestow, storage, untap warm
+  cyan: string;        // untap, warped, study
+  blue: string;        // draw, friendly, loyalty
+  sky: string;         // bounce
+  indigo: string;      // mill, time, plotted
+  violet: string;      // discard, charge
+  purple: string;      // exile, transformed, copy, gainControl
+  pink: string;        // heal
+  slate: string;       // destroy, morph, fade, pt-neutral, counter-default
+  brown: string;       // mining, age, brick
+  paper: string;       // page (near-white muted paper tone)
+  /** Poison-counter / skull tint — cooler / more olive than `green` so
+   *  an infect pip reads as "ill" rather than a straight buff. */
+  poison: string;
+
+  /** Mana pip tints. Opaque hexes — consumers apply their own alpha. */
+  manaW: string;
+  manaU: string;
+  manaB: string;
+  manaR: string;
+  manaG: string;
+  manaC: string;
+}
+
+/**
+ * Convert a palette into the full set of `gameColors` entries covering
+ * every new theme token. Callers spread this into their preset's
+ * `gameColors` map alongside the legacy keys.
+ */
+export function buildGameColors(p: BasePalette): Record<string, string> {
+  return {
+    // ── Targeting pointer colours ────────────────────────────────────
+    // Only two colours: `hostile` for intents that act against the
+    // target; `friendly` for supportive intents. The monochrome icon
+    // glyph carries the specific semantic. See `intentIsHostile()` in
+    // `@/types/promptType`.
+    "pointer.hostile":  rgbaFromHex(p.red, 0.88),
+    "pointer.friendly": rgbaFromHex(p.blue, 0.88),
+
+    // ── Mana symbol tints ────────────────────────────────────────────
+    "mana.W": p.manaW,
+    "mana.U": p.manaU,
+    "mana.B": p.manaB,
+    "mana.R": p.manaR,
+    "mana.G": p.manaG,
+    "mana.C": p.manaC,
+
+    // ── Card status ring / badge colours ─────────────────────────────
+    "cardStatus.exerted":     p.orange,
+    "cardStatus.morph":       p.slate,
+    "cardStatus.bestow":      p.teal,
+    "cardStatus.token":       p.amber,
+    "cardStatus.transformed": p.purple,
+    "cardStatus.plotted":     p.indigo,
+    "cardStatus.madness":     p.redDeep,
+    "cardStatus.warped":      p.cyan,
+
+    // ── Generic text / label colours ─────────────────────────────────
+    "textOnTinted": p.foreground,
+    "textMuted":    p.labelMuted,
+    "textGhost":    p.labelGhost,
+
+    // ── Canvas-level neutrals ────────────────────────────────────────
+    // Shadow stays a physics-black across all presets — dark-mode and
+    // light-mode surfaces still drop black shadows.
+    "canvas.background": p.canvasBackground,
+    "canvas.shadow":     "#000000",
+    "canvas.neutral":    p.foreground,
+
+    // ── Card placeholder ─────────────────────────────────────────────
+    "cardPlaceholder.fill":   p.placeholderFill,
+    "cardPlaceholder.stroke": p.placeholderStroke,
+
+    // ── P/T badge backgrounds ────────────────────────────────────────
+    "pt.neutral":  p.slate,
+    "pt.lethal":   p.red,
+    "pt.buffed":   p.green,
+    "pt.debuffed": p.red,
+
+    // ── Generic status signals ───────────────────────────────────────
+    // Semantic tokens for non-creature UI states. `poison` is a cooler
+    // / more olive sibling of `green` so the infect pip reads as ill
+    // rather than as a stat buff.
+    "success": p.green,
+    "poison":  p.poison,
+    "life":    p.red,
+
+    // ── Counter chip colours ─────────────────────────────────────────
+    "counter.default":   p.slate,
+    "counter.p1p1":      p.green,
+    "counter.m1m1":      p.red,
+    "counter.loyalty":   p.blue,
+    "counter.charge":    p.purple,
+    "counter.quest":     p.yellow,
+    "counter.study":     p.cyan,
+    "counter.lore":      p.amber,
+    "counter.age":       p.brown,
+    "counter.time":      p.indigo,
+    "counter.fade":      p.slate,
+    "counter.level":     p.orange,
+    "counter.storage":   p.teal,
+    "counter.mining":    p.brown,
+    "counter.brick":     p.brown,
+    "counter.depletion": p.redDeep,
+    "counter.page":      p.paper,
+  };
+}
+
+/** Convert a `#rrggbb` hex to an rgba() string with the given alpha. */
+function rgbaFromHex(hex: string, alpha: number): string {
+  const clean = hex.replace("#", "");
+  const full = clean.length === 3
+    ? clean.split("").map((c) => c + c).join("")
+    : clean;
+  const r = parseInt(full.slice(0, 2), 16);
+  const g = parseInt(full.slice(2, 4), 16);
+  const b = parseInt(full.slice(4, 6), 16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}

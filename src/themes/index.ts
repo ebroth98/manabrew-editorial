@@ -47,6 +47,35 @@ export interface GameThemePresetColors {
   "arrow.hostileTarget": string;
   "arrow.friendlyTarget": string;
   "cardRing": string;
+  /** Optional per-intent pointer colour overrides; keys are
+   *  `pointer.<intent>` where `<intent>` is a `TargetingIntent` value.
+   *  Presets that don't define these fall through to the default
+   *  preset's entries. */
+  [pointerOverride: `pointer.${string}`]: string | undefined;
+  /** Optional mana-letter tint overrides (`mana.W` ... `mana.C`). */
+  [manaOverride: `mana.${string}`]: string | undefined;
+  /** Optional card-status badge colour overrides (`cardStatus.exerted`, etc.). */
+  [cardStatusOverride: `cardStatus.${string}`]: string | undefined;
+  /** Optional per-counter-type badge colour overrides (`counter.p1p1`, etc.). */
+  [counterOverride: `counter.${string}`]: string | undefined;
+  /** Optional P/T badge state overrides (`pt.neutral`, etc.). */
+  [ptOverride: `pt.${string}`]: string | undefined;
+  /** Optional override for the generic text-on-tinted-bg colour. */
+  textOnTinted?: string;
+  /** Optional override for the positive-state indicator colour (green). */
+  success?: string;
+  /** Optional override for the poison counter / skull colour (MTG infect green). */
+  poison?: string;
+  /** Optional override for the life / heart indicator colour (red). */
+  life?: string;
+  /** Optional override for the subdued "empty zone" label colour. */
+  textMuted?: string;
+  /** Optional override for the ghost-placeholder card-name colour. */
+  textGhost?: string;
+  /** Optional canvas-level neutral overrides (`canvas.background`, etc.). */
+  [canvasOverride: `canvas.${string}`]: string | undefined;
+  /** Optional placeholder card colour overrides (`cardPlaceholder.fill`, etc.). */
+  [placeholderOverride: `cardPlaceholder.${string}`]: string | undefined;
 }
 
 export interface ThemePreset {

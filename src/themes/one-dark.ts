@@ -1,4 +1,39 @@
 import type { ThemePreset } from "./index";
+import { buildGameColors, type BasePalette } from "./buildGameColors";
+
+/** Atom One Dark palette. Comment grey doubles as the muted label. */
+const palette: BasePalette = {
+  foreground: "#abb2bf",
+  labelMuted: "#5c6370",
+  labelGhost: "#767d8a",
+  placeholderFill: "#282c34",
+  placeholderStroke: "#3b3f4c",
+  canvasBackground: "#282c34",
+  red:      "#e06c75",
+  redDeep:  "#b85058",
+  orange:   "#d19a66",
+  amber:    "#e5c07b",
+  yellow:   "#e5c07b",
+  green:    "#98c379",
+  teal:     "#56b6c2",
+  cyan:     "#56b6c2",
+  blue:     "#61afef",
+  sky:      "#61afef",
+  indigo:   "#528bff",
+  violet:   "#c678dd",
+  purple:   "#c678dd",
+  pink:     "#e06c75",
+  slate:    "#5c6370",
+  brown:    "#d19a66",
+  paper:    "#abb2bf",
+  poison:   "#7a9c61",           // darker / mossier one-dark green
+  manaW:    "#abb2bf",
+  manaU:    "#61afef",
+  manaB:    "#3b3f4c",
+  manaR:    "#e06c75",
+  manaG:    "#98c379",
+  manaC:    "#767d8a",
+};
 
 const preset: ThemePreset = {
   id: "one-dark",
@@ -73,6 +108,7 @@ const preset: ThemePreset = {
     "arrow.hostileTarget": "rgba(224, 108, 117, 0.88)",
     "arrow.friendlyTarget": "rgba(171, 178, 191, 0.88)",
     "cardRing": "#e5c07b",
+    ...buildGameColors(palette),
     },
     };
 

@@ -103,23 +103,24 @@ function CardComponent({
 
   // P/T color-coding: green if buffed above base, red if debuffed
   const ptStyle = useMemo(() => {
-    if (lethal) return { backgroundColor: themeColors.promptAction.attackAction, color: "#fff" };
+    const fg = themeColors.textOnTinted;
+    if (lethal) return { backgroundColor: themeColors.pt.lethal, color: fg };
     if (card.basePower == null || card.power == null) {
       return {
-        backgroundColor: withAlpha(themeColors.promptAction.cancel, 0.72),
-        color: "#fff",
+        backgroundColor: withAlpha(themeColors.pt.neutral, 0.72),
+        color: fg,
       };
     }
     const currentP = parseInt(card.power, 10);
     const currentT = parseInt(card.toughness ?? "0", 10);
     const buffed = currentP > card.basePower || currentT > (card.baseToughness ?? 0);
     const debuffed = currentP < card.basePower || currentT < (card.baseToughness ?? 0);
-    if (buffed && !debuffed) return { backgroundColor: themeColors.cardRing, color: "#fff" };
-    if (debuffed && !buffed) return { backgroundColor: themeColors.promptAction.attackAction, color: "#fff" };
-    if (buffed && debuffed) return { backgroundColor: themeColors.cardRing, color: "#fff" };
+    if (buffed && !debuffed) return { backgroundColor: themeColors.pt.buffed, color: fg };
+    if (debuffed && !buffed) return { backgroundColor: themeColors.pt.debuffed, color: fg };
+    if (buffed && debuffed) return { backgroundColor: themeColors.pt.buffed, color: fg };
     return {
-      backgroundColor: withAlpha(themeColors.promptAction.cancel, 0.72),
-      color: "#fff",
+      backgroundColor: withAlpha(themeColors.pt.neutral, 0.72),
+      color: fg,
     };
   }, [lethal, card.basePower, card.power, card.toughness, card.baseToughness, themeColors]);
 
@@ -129,10 +130,11 @@ function CardComponent({
         "relative rounded-lg border bg-card text-card-foreground shadow-sm cursor-pointer group overflow-hidden",
         "w-[150px] aspect-[5/7]",
         isTapped && "rotate-90",
-        creature &&
-          card.summoningSick &&
-          onBattlefield &&
-          "ring-2 ring-dashed ring-gray-400",
+        // Summoning-sickness ring: dashed outline in the theme's muted
+        // `prompt-action-cancel` colour, inset so it sits on the rounded
+        // card edge. Re-tints automatically per preset.
+        creature && card.summoningSick && onBattlefield &&
+          "outline-2 outline-dashed outline-prompt-action-cancel -outline-offset-2",
         card.phasedOut && "opacity-30 grayscale",
         className,
       )}

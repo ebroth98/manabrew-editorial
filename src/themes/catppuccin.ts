@@ -1,4 +1,40 @@
 import type { ThemePreset } from "./index";
+import { buildGameColors, type BasePalette } from "./buildGameColors";
+
+/** Catppuccin Mocha palette — pastel warm; maps love → red, mauve →
+ *  violet/purple, peach → orange, etc. */
+const palette: BasePalette = {
+  foreground: "#cdd6f4",        // text
+  labelMuted: "#6c7086",        // overlay0
+  labelGhost: "#a6adc8",        // subtext0
+  placeholderFill: "#1e1e2e",   // base
+  placeholderStroke: "#45475a", // surface1
+  canvasBackground: "#1e1e2e",
+  red:      "#f38ba8",          // red
+  redDeep:  "#a05571",
+  orange:   "#fab387",          // peach
+  amber:    "#f9e2af",          // yellow
+  yellow:   "#f9e2af",
+  green:    "#a6e3a1",          // green
+  teal:     "#94e2d5",          // teal
+  cyan:     "#89dceb",          // sky
+  blue:     "#89b4fa",          // blue
+  sky:      "#74c7ec",          // sapphire
+  indigo:   "#b4befe",          // lavender
+  violet:   "#cba6f7",          // mauve
+  purple:   "#cba6f7",
+  pink:     "#f5c2e7",          // pink
+  slate:    "#6c7086",
+  brown:    "#fab387",
+  paper:    "#bac2de",          // subtext1
+  poison:   "#8cc58a",          // muted sibling of Catppuccin green
+  manaW:    "#f5e0dc",          // rosewater
+  manaU:    "#89b4fa",
+  manaB:    "#45475a",
+  manaR:    "#f38ba8",
+  manaG:    "#a6e3a1",
+  manaC:    "#bac2de",
+};
 
 const preset: ThemePreset = {
   id: "catppuccin",
@@ -73,6 +109,7 @@ const preset: ThemePreset = {
     "arrow.hostileTarget": "rgba(243, 139, 168, 0.88)",
     "arrow.friendlyTarget": "rgba(137, 180, 250, 0.88)",
     "cardRing": "#f9e2af",
+    ...buildGameColors(palette),
   },
 };
 

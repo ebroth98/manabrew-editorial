@@ -15,7 +15,7 @@ export function getPromptActionButtonStyle(baseColor: string): CSSProperties {
 
   return {
     border: "0",
-    color: "#fff",
+    color: GAME_THEME_COLORS.textOnTinted,
     backgroundColor: resolved,
     boxShadow: shadow,
   };

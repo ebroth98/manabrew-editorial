@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import type { Card as XMageCard, StackObject } from "@/types/openmagic";
 import type { AgentPrompt } from "@/stores/useGameStore";
+import { TargetingIntent } from "@/types/promptType";
 
 /**
  * Prompt types that are part of the spell-casting flow.
@@ -123,14 +124,18 @@ export function useCastingState({
   // Track the chosen target so the arrow persists through cost payment
   const [targetId, setTargetId] = useState<string | null>(null);
   const [targetHostile, setTargetHostile] = useState(false);
+  const [targetIntent, setTargetIntent] = useState<TargetingIntent>(TargetingIntent.Hostile);
 
   // Whether the engine says the current effect is hostile
   const promptHostile = currentPrompt?.hostile ?? true;
+  const promptIntent = currentPrompt?.intent
+    ?? (promptHostile ? TargetingIntent.Hostile : TargetingIntent.Friendly);
 
   // Clear target when casting card changes (new spell or cast finished)
   useEffect(() => {
     setTargetId(null);
     setTargetHostile(false);
+    setTargetIntent(TargetingIntent.Hostile);
   }, [castingCardId]);
 
   // Whether we're in the targeting phase (arrow follows cursor)
@@ -138,32 +143,36 @@ export function useCastingState({
 
   // Arrow hostility: use locked value if target chosen, else prompt value
   const arrowHostile = targetId ? targetHostile : promptHostile;
+  const arrowIntent: TargetingIntent = targetId ? targetIntent : promptIntent;
 
   // Wrapped target actions that record the chosen target
   const wrappedTargetCard = useCallback((cardId: string | null) => {
     if (cardId && castingCardId) {
       setTargetId(cardId);
       setTargetHostile(promptHostile);
+      setTargetIntent(promptIntent);
     }
     targetCard(cardId);
-  }, [targetCard, castingCardId, promptHostile]);
+  }, [targetCard, castingCardId, promptHostile, promptIntent]);
 
   const wrappedTargetPlayer = useCallback((playerId: string) => {
     if (castingCardId) {
       setTargetId(playerId);
       setTargetHostile(promptHostile);
+      setTargetIntent(promptIntent);
     }
     targetPlayer(playerId);
-  }, [targetPlayer, castingCardId, promptHostile]);
+  }, [targetPlayer, castingCardId, promptHostile, promptIntent]);
 
   const wrappedTargetAny = useCallback((target: { kind: string; playerId?: string; cardId?: string }) => {
     const id = target.cardId ?? target.playerId ?? null;
     if (castingCardId && id) {
       setTargetId(id);
       setTargetHostile(promptHostile);
+      setTargetIntent(promptIntent);
     }
     targetAny(target);
-  }, [targetAny, castingCardId, promptHostile]);
+  }, [targetAny, castingCardId, promptHostile, promptIntent]);
 
   return {
     /** The card ID being cast, or null. */
@@ -176,8 +185,10 @@ export function useCastingState({
     isTargeting,
     /** The locked target ID after the player chose a target. */
     targetId,
-    /** Whether the arrow should be hostile (red) or friendly (blue). */
+    /** Legacy hostile flag — kept for any consumer that hasn't migrated to `arrowIntent`. */
     arrowHostile,
+    /** Semantic intent driving pointer icon + glow colour. */
+    arrowIntent,
     /** Whether there's an active casting arrow to show. */
     showArrow: !!castingCardId && (isTargeting || !!targetId),
     /** Wrapped target actions that track the chosen target. */

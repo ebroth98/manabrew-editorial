@@ -1,7 +1,7 @@
 import type { GameView, Card, ActivatableAbilityInfo, Deck } from '@/types/openmagic';
 import type { GameLogEntry } from '@/types/gameLog';
 import type { GameSnapshotEntry } from '@/types/gameSnapshot';
-import type { PromptType } from '@/types/promptType';
+import type { PromptType, TargetingIntent } from '@/types/promptType';
 import type { CardIdentity } from '@/types/server';
 
 export interface DisplayEvent {
@@ -76,8 +76,11 @@ export interface AgentPrompt {
   sourceCardName?: string;
   /** Source card ID for targeting prompts (identifies the card being cast) */
   sourceCardId?: string;
-  /** Whether the targeting effect is hostile (damage/destroy) vs friendly (buff) */
+  /** Whether the targeting effect is hostile (damage/destroy) vs friendly (buff).
+   *  Kept for backwards compatibility; prefer `intent`. */
   hostile?: boolean;
+  /** Semantic classification used by the UI to pick a pointer icon and glow color. */
+  intent?: TargetingIntent;
   /** chooseBuyback: the buyback cost string */
   buybackCost?: string;
   /** chooseMultikicker / chooseReplicate: the cost per iteration */

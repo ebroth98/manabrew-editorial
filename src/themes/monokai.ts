@@ -1,4 +1,39 @@
 import type { ThemePreset } from "./index";
+import { buildGameColors, type BasePalette } from "./buildGameColors";
+
+/** Monokai palette — high-contrast neon on near-black. */
+const palette: BasePalette = {
+  foreground: "#f8f8f2",
+  labelMuted: "#75715e",        // comment
+  labelGhost: "#9a9685",
+  placeholderFill: "#272822",
+  placeholderStroke: "#49483e",
+  canvasBackground: "#272822",
+  red:      "#f92672",
+  redDeep:  "#b61e56",
+  orange:   "#fd971f",
+  amber:    "#e6db74",
+  yellow:   "#e6db74",
+  green:    "#a6e22e",
+  teal:     "#66d9ef",
+  cyan:     "#66d9ef",
+  blue:     "#66d9ef",
+  sky:      "#66d9ef",
+  indigo:   "#ae81ff",
+  violet:   "#ae81ff",
+  purple:   "#ae81ff",
+  pink:     "#f92672",
+  slate:    "#75715e",
+  brown:    "#fd971f",
+  paper:    "#f8f8f2",
+  poison:   "#8bb82a",          // deeper olive version of monokai neon green
+  manaW:    "#f8f8f2",
+  manaU:    "#66d9ef",
+  manaB:    "#49483e",
+  manaR:    "#f92672",
+  manaG:    "#a6e22e",
+  manaC:    "#75715e",
+};
 
 const preset: ThemePreset = {
   id: "monokai",
@@ -73,6 +108,7 @@ const preset: ThemePreset = {
     "arrow.hostileTarget": "rgba(249, 38, 114, 0.88)",
     "arrow.friendlyTarget": "rgba(102, 217, 239, 0.88)",
     cardRing: "#fd971f",
+    ...buildGameColors(palette),
   },
 };
 

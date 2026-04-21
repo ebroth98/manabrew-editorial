@@ -7,6 +7,7 @@ import { PixiGameScene, type PixiSceneOptions } from "./PixiGameScene";
 // is constructed.
 installPixiPatches();
 import { adaptTheme } from "./themeAdapter";
+import { setPixiTextStyleTheme } from "./textStyles";
 import { getGameThemeColors } from "@/components/game/game.theme";
 import { usePreferencesStore } from "@/stores/usePreferencesStore";
 import { ZONE_COLUMN_RESERVED_PX } from "@/components/game/game.constants";
@@ -197,7 +198,9 @@ export function PixiGameCanvas({
     }, sceneOptionsRef.current);
 
     const themeColors = getGameThemeColors();
-    newScene.setTheme(adaptTheme(themeColors));
+    const pixiTheme = adaptTheme(themeColors);
+    setPixiTextStyleTheme(pixiTheme, themeColors);
+    newScene.setTheme(pixiTheme);
 
     const parent = canvasRef.current.parentElement;
     if (parent) {
@@ -237,7 +240,9 @@ export function PixiGameCanvas({
     if (!scene) return;
     const unsub = usePreferencesStore.subscribe(() => {
       const themeColors = getGameThemeColors();
-      scene.setTheme(adaptTheme(themeColors));
+      const pixiTheme = adaptTheme(themeColors);
+      setPixiTextStyleTheme(pixiTheme, themeColors);
+      scene.setTheme(pixiTheme);
     });
     return unsub;
   }, [scene]);

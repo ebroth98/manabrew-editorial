@@ -2,21 +2,25 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Application, type Ticker } from "pixi.js";
 import { installPixiPatches } from "./pixiPatches";
 import { ArrowLayer, type ArrowDef } from "./ArrowLayer";
+import { PointerLayer, type ResolvedPointer } from "./PointerLayer";
 
 installPixiPatches();
 import { adaptTheme, type PixiThemeColors } from "./themeAdapter";
 import { getGameThemeColors } from "@/components/game/game.theme";
 import { usePreferencesStore } from "@/stores/usePreferencesStore";
+import { intentPrefersArrow, TargetingIntent } from "@/types/promptType";
 import type {
   ArrowSpec,
   ArrowEndpoint,
   CastingArrowSpec,
+  PointerSpec,
   ScreenPos,
 } from "./types";
 import type { PixiGameScene } from "./PixiGameScene";
 
 interface PixiArrowsCanvasProps {
   arrowSpecs?: ArrowSpec[];
+  pointerSpecs?: PointerSpec[];
   castingArrow?: CastingArrowSpec | null;
   /** Ref to the main `PixiGameScene` (the player's own canvas). Drives
    *  the placement-ghost lookup and is the first scene searched for
@@ -47,6 +51,7 @@ interface PixiArrowsCanvasProps {
  */
 export function PixiArrowsCanvas({
   arrowSpecs,
+  pointerSpecs,
   castingArrow,
   mainSceneRef,
   opponentSceneRefs,
@@ -61,12 +66,15 @@ export function PixiArrowsCanvas({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const appRef = useRef<Application | null>(null);
   const arrowLayerRef = useRef<ArrowLayer | null>(null);
+  const pointerLayerRef = useRef<PointerLayer | null>(null);
   const themeRef = useRef<PixiThemeColors | null>(null);
 
   // Latest inputs accessed inside the ticker callback without re-binding.
   const arrowSpecsRef = useRef<ArrowSpec[]>([]);
+  const pointerSpecsRef = useRef<PointerSpec[]>([]);
   const castingArrowRef = useRef<CastingArrowSpec | null>(null);
   useEffect(() => { arrowSpecsRef.current = arrowSpecs ?? []; }, [arrowSpecs]);
+  useEffect(() => { pointerSpecsRef.current = pointerSpecs ?? []; }, [pointerSpecs]);
   useEffect(() => { castingArrowRef.current = castingArrow ?? null; }, [castingArrow]);
 
   const cursorViewportRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
@@ -100,8 +108,17 @@ export function PixiArrowsCanvas({
     arrowLayerRef.current = arrowLayer;
     app.stage.addChild(arrowLayer.graphics);
 
+    const pointerLayer = new PointerLayer();
+    pointerLayerRef.current = pointerLayer;
+    app.stage.addChild(pointerLayer.graphics);
+    // Fire-and-forget: sprites simply render blank until textures resolve.
+    pointerLayer.loadAssets().catch((err) => {
+      console.error("[pixi-arrows] pointer asset load failed:", err);
+    });
+
     themeRef.current = adaptTheme(getGameThemeColors());
     arrowLayer.setTheme(themeRef.current);
+    pointerLayer.setTheme(themeRef.current);
 
     app.ticker.add((ticker: Ticker) => {
       if (!arrowLayerRef.current || !canvasRef.current) return;
@@ -112,15 +129,17 @@ export function PixiArrowsCanvas({
           if (ref.current) opponentScenes.push(ref.current);
         }
       }
-      const resolved = resolveArrows(
+      const { arrows, pointers } = resolveArrowsAndPointers(
         canvasRef.current,
         arrowSpecsRef.current,
+        pointerSpecsRef.current,
         castingArrowRef.current,
         mainSceneRef.current,
         opponentScenes,
         cursorViewportRef.current,
       );
-      arrowLayerRef.current.update(resolved, ticker.deltaMS);
+      arrowLayerRef.current.update(arrows, ticker.deltaMS);
+      pointerLayerRef.current?.update(pointers, ticker.deltaMS);
     });
 
     setReady(true);
@@ -131,6 +150,8 @@ export function PixiArrowsCanvas({
     return () => {
       arrowLayerRef.current?.destroy();
       arrowLayerRef.current = null;
+      pointerLayerRef.current?.destroy();
+      pointerLayerRef.current = null;
       appRef.current?.destroy(true);
       appRef.current = null;
       setReady(false);
@@ -144,6 +165,7 @@ export function PixiArrowsCanvas({
     const apply = () => {
       themeRef.current = adaptTheme(getGameThemeColors());
       arrowLayerRef.current?.setTheme(themeRef.current);
+      pointerLayerRef.current?.setTheme(themeRef.current);
     };
     apply();
     return usePreferencesStore.subscribe(apply);
@@ -179,15 +201,18 @@ export function PixiArrowsCanvas({
 // Endpoint resolution — pure helpers below
 // ────────────────────────────────────────────────────────────────────────
 
-function resolveArrows(
+function resolveArrowsAndPointers(
   canvas: HTMLCanvasElement,
-  specs: ArrowSpec[],
+  arrowSpecs: ArrowSpec[],
+  pointerSpecs: PointerSpec[],
   casting: CastingArrowSpec | null,
   mainScene: PixiGameScene | null,
   opponentScenes: PixiGameScene[],
   cursorViewport: { x: number; y: number },
-): ArrowDef[] {
-  if (specs.length === 0 && !casting) return [];
+): { arrows: ArrowDef[]; pointers: ResolvedPointer[] } {
+  if (arrowSpecs.length === 0 && pointerSpecs.length === 0 && !casting) {
+    return { arrows: [], pointers: [] };
+  }
   const canvasRect = canvas.getBoundingClientRect();
   const scenesWithRect: Array<{ scene: PixiGameScene; rect: DOMRect }> = [];
   if (mainScene) {
@@ -237,18 +262,34 @@ function resolveArrows(
     }
   };
 
-  const resolved: ArrowDef[] = [];
-  for (const spec of specs) {
+  const arrows: ArrowDef[] = [];
+  for (const spec of arrowSpecs) {
     const from = resolveEndpoint(spec.from);
     const to = resolveEndpoint(spec.to);
     if (!from || !to) continue;
-    resolved.push({
+    arrows.push({
       fromX: from.x, fromY: from.y,
       toX: to.x, toY: to.y,
       type: spec.type,
     });
   }
 
+  const pointers: ResolvedPointer[] = [];
+  for (const spec of pointerSpecs) {
+    const from = resolveEndpoint(spec.from);
+    const to = resolveEndpoint(spec.to);
+    if (!from || !to) continue;
+    pointers.push({
+      fromX: from.x, fromY: from.y,
+      toX: to.x, toY: to.y,
+      intent: spec.intent,
+      locked: true,
+    });
+  }
+
+  // Casting pointer: cursor-following icon that locks onto the chosen
+  // target. Combat-intent casting (shouldn't happen here) would fall back
+  // to the arrow layer.
   if (casting) {
     const from = domCenter(
       `[data-casting-card="${CSS.escape(casting.castingCardId)}"]`,
@@ -264,16 +305,27 @@ function resolveArrows(
         to = toLocal(cursorViewport);
       }
       if (to) {
-        resolved.push({
-          fromX: from.x, fromY: from.y,
-          toX: to.x, toY: to.y,
-          type: casting.hostile ? "hostile-target" : "friendly-target",
-        });
+        const intent = casting.intent
+          ?? (casting.hostile ? TargetingIntent.Hostile : TargetingIntent.Friendly);
+        if (intentPrefersArrow(intent)) {
+          arrows.push({
+            fromX: from.x, fromY: from.y,
+            toX: to.x, toY: to.y,
+            type: intent === TargetingIntent.Attack ? "attack" : "block",
+          });
+        } else {
+          pointers.push({
+            fromX: from.x, fromY: from.y,
+            toX: to.x, toY: to.y,
+            intent,
+            locked: !!casting.targetId,
+          });
+        }
       }
     }
   }
 
-  return resolved;
+  return { arrows, pointers };
 }
 
 function domCenter(

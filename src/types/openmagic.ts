@@ -207,8 +207,11 @@ export interface StackTarget {
   nodeIndex: number;
   /** Zero-based target slot index within the node. */
   targetIndex: number;
-  /** Whether this target is hostile (damage/destroy) vs friendly (buff). */
+  /** Whether this target is hostile (damage/destroy) vs friendly (buff).
+   *  Kept for backwards compatibility; prefer `intent`. */
   hostile: boolean;
+  /** Semantic classification used to pick a pointer icon and glow color. */
+  intent: import("@/types/promptType").TargetingIntent;
 }
 
 export interface ActivatableAbilityInfo {

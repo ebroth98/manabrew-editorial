@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { DeckLabelBadge } from "@/components/deck/DeckLabelBadge";
 import { X, Plus } from "lucide-react";
 import { useDeckStore } from "@/stores/useDeckStore";
+import { useGameThemeColors } from "@/components/game/game.theme";
 import { toast } from "sonner";
 
 const SUGGESTED_LABELS = [
@@ -36,6 +37,8 @@ export function DeckLabelsModal({ open, onClose }: DeckLabelsModalProps) {
   const [newLabel, setNewLabel] = useState("");
   const [newLabelColor, setNewLabelColor] = useState("");
   const { currentDeck, addDeckLabel, removeDeckLabel, updateDeckLabelColor, saveCurrentDeck } = useDeckStore();
+  const themeColors = useGameThemeColors();
+  const defaultLabelColor = themeColors.promptAction.cancel;
   const labels = currentDeck.labels ?? [];
 
   if (!open) return null;
@@ -74,7 +77,7 @@ export function DeckLabelsModal({ open, onClose }: DeckLabelsModalProps) {
                     <DeckLabelBadge label={label} size="md" />
                     <input
                       type="color"
-                      value={label.color ?? "#6b7280"}
+                      value={label.color ?? defaultLabelColor}
                       onChange={(e) => {
                         updateDeckLabelColor(label.name, e.target.value);
                         saveCurrentDeck();
@@ -114,7 +117,7 @@ export function DeckLabelsModal({ open, onClose }: DeckLabelsModalProps) {
               />
               <input
                 type="color"
-                value={newLabelColor || "#6b7280"}
+                value={newLabelColor || defaultLabelColor}
                 onChange={(e) => setNewLabelColor(e.target.value)}
                 className="h-8 w-10 rounded border border-input bg-transparent p-0.5 cursor-pointer"
                 title="Pick color"

@@ -7,26 +7,27 @@ import { useState } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { ManaSymbols } from "@/components/game/ManaSymbols";
 
-// CMC 1–7+ buckets with cool→warm colour progression
+// CMC 1–7+ buckets — cool→warm progression using theme counter / signal
+// tokens so the curve retones with the active preset.
 const BUCKETS = [
-  { label: "1",  bar: "bg-emerald-500 dark:bg-emerald-500" },
-  { label: "2",  bar: "bg-teal-500    dark:bg-teal-400"    },
-  { label: "3",  bar: "bg-sky-500     dark:bg-sky-400"     },
-  { label: "4",  bar: "bg-violet-500  dark:bg-violet-400"  },
-  { label: "5",  bar: "bg-amber-500   dark:bg-amber-400"   },
-  { label: "6",  bar: "bg-orange-500  dark:bg-orange-400"  },
-  { label: "7+", bar: "bg-red-500     dark:bg-red-400"     },
+  { label: "1",  bar: "bg-pt-buffed"       }, // +1 growth green
+  { label: "2",  bar: "bg-counter-storage" }, // teal
+  { label: "3",  bar: "bg-counter-study"   }, // cyan
+  { label: "4",  bar: "bg-counter-charge"  }, // purple
+  { label: "5",  bar: "bg-warning"         }, // amber
+  { label: "6",  bar: "bg-counter-level"   }, // orange
+  { label: "7+", bar: "bg-pt-lethal"       }, // red
 ];
 
 const BAR_MAX_PX = 72;
 
 const COLOR_ROWS: { color: ManaColor; label: string; bar: string }[] = [
-  { color: "W", label: "W", bar: "bg-yellow-300"  },
-  { color: "U", label: "U", bar: "bg-blue-500"    },
-  { color: "B", label: "B", bar: "bg-zinc-500"    },
-  { color: "R", label: "R", bar: "bg-red-500"     },
-  { color: "G", label: "G", bar: "bg-green-500"   },
-  { color: "C", label: "C", bar: "bg-zinc-400"    },
+  { color: "W", label: "W", bar: "bg-mana-w" },
+  { color: "U", label: "U", bar: "bg-mana-u" },
+  { color: "B", label: "B", bar: "bg-mana-b" },
+  { color: "R", label: "R", bar: "bg-mana-r" },
+  { color: "G", label: "G", bar: "bg-mana-g" },
+  { color: "C", label: "C", bar: "bg-mana-c" },
 ];
 
 /** Resolve CMC for a card. Returns undefined when genuinely unknown. */
@@ -171,10 +172,10 @@ export function DeckStats({ cards: propCards }: DeckStatsProps) {
                   <div className="mt-1.5 space-y-1">
                     {genericTotal > 0 && (
                       <div className="flex items-center gap-2">
-                        <span className="inline-block w-3.5 h-3.5 rounded-sm shrink-0 border border-zinc-400/50 bg-zinc-300 dark:bg-zinc-600" title="Generic" />
+                        <span className="inline-block w-3.5 h-3.5 rounded-sm shrink-0 border border-border bg-muted-foreground/40" title="Generic" />
                         <div className="flex-1 h-2 rounded-full bg-muted overflow-hidden">
                           <div
-                            className="h-full rounded-full transition-all duration-300 bg-zinc-300 dark:bg-zinc-600"
+                            className="h-full rounded-full transition-all duration-300 bg-muted-foreground/60"
                             style={{ width: `${totalAll > 0 ? (genericTotal / totalAll) * 100 : 0}%` }}
                           />
                         </div>

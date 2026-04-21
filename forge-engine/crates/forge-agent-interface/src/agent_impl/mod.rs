@@ -637,10 +637,11 @@ impl<T: AgentTransport> PlayerAgent for PromptAgent<T> {
         sa: Option<&forge_engine_core::spellability::SpellAbility>,
     ) -> Option<PlayerId> {
         let source = sa.and_then(|s| s.source);
-        let hostile = sa
-            .map(|s| crate::game_view_dto::is_hostile_api(s))
-            .unwrap_or(false);
-        targeting::choose_target_player(self, player, valid, source, hostile)
+        let intent = sa
+            .map(crate::game_view_dto::targeting_intent_of)
+            .unwrap_or(crate::game_view_dto::TargetingIntent::Hostile);
+        let hostile = intent.is_hostile();
+        targeting::choose_target_player(self, player, valid, source, hostile, intent)
     }
 
     fn choose_target_card(
@@ -650,10 +651,11 @@ impl<T: AgentTransport> PlayerAgent for PromptAgent<T> {
         sa: Option<&forge_engine_core::spellability::SpellAbility>,
     ) -> Option<CardId> {
         let source = sa.and_then(|s| s.source);
-        let hostile = sa
-            .map(|s| crate::game_view_dto::is_hostile_api(s))
-            .unwrap_or(false);
-        targeting::choose_target_card(self, player, valid, source, hostile)
+        let intent = sa
+            .map(crate::game_view_dto::targeting_intent_of)
+            .unwrap_or(crate::game_view_dto::TargetingIntent::Hostile);
+        let hostile = intent.is_hostile();
+        targeting::choose_target_card(self, player, valid, source, hostile, intent)
     }
 
     fn choose_target_card_from_zone(
@@ -664,10 +666,11 @@ impl<T: AgentTransport> PlayerAgent for PromptAgent<T> {
         sa: Option<&forge_engine_core::spellability::SpellAbility>,
     ) -> Option<CardId> {
         let source = sa.and_then(|s| s.source);
-        let hostile = sa
-            .map(|s| crate::game_view_dto::is_hostile_api(s))
-            .unwrap_or(false);
-        targeting::choose_target_card_from_zone(self, player, zone, valid, source, hostile)
+        let intent = sa
+            .map(crate::game_view_dto::targeting_intent_of)
+            .unwrap_or(crate::game_view_dto::TargetingIntent::Hostile);
+        let hostile = intent.is_hostile();
+        targeting::choose_target_card_from_zone(self, player, zone, valid, source, hostile, intent)
     }
 
     fn choose_target_any(
@@ -678,10 +681,19 @@ impl<T: AgentTransport> PlayerAgent for PromptAgent<T> {
         sa: Option<&forge_engine_core::spellability::SpellAbility>,
     ) -> TargetChoice {
         let source = sa.and_then(|s| s.source);
-        let hostile = sa
-            .map(|s| crate::game_view_dto::is_hostile_api(s))
-            .unwrap_or(false);
-        targeting::choose_target_any(self, player, valid_players, valid_cards, source, hostile)
+        let intent = sa
+            .map(crate::game_view_dto::targeting_intent_of)
+            .unwrap_or(crate::game_view_dto::TargetingIntent::Hostile);
+        let hostile = intent.is_hostile();
+        targeting::choose_target_any(
+            self,
+            player,
+            valid_players,
+            valid_cards,
+            source,
+            hostile,
+            intent,
+        )
     }
 
     fn choose_sacrifice(

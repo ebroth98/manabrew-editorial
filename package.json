@@ -61,6 +61,8 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",
+    "@iconify-json/game-icons": "^1.2.3",
+    "@iconify/utils": "^3.1.0",
     "@redux-devtools/core": "^5.0.0",
     "@redux-devtools/dock-monitor": "^5.0.0",
     "@redux-devtools/inspector-monitor": "^7.0.0",
@@ -80,6 +82,7 @@
     "tsx": "^4.21.0",
     "typescript": "~5.9.3",
     "typescript-eslint": "^8.48.0",
+    "unplugin-icons": "^23.0.1",
     "vite": "^7.3.1"
   }
 }

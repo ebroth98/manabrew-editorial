@@ -1,17 +1,18 @@
 import { cn } from "@/lib/utils";
+import type { GameThemeColors } from "@/components/game/game.theme";
 
 // ---------------------------------------------------------------------------
 // Counter configuration registry
 // ---------------------------------------------------------------------------
 
+type CounterColorKey = keyof GameThemeColors["counter"];
+
 /** Visual configuration for a single counter type. */
 export interface CounterConfig {
   /** Symbol shown inside the badge. Keep ≤ 3 chars so it fits at small sizes. */
   label: string;
-  /** Tailwind background colour class. */
-  bg: string;
-  /** Tailwind foreground (text) colour class. */
-  fg: string;
+  /** Theme colour key for this counter's background tint. */
+  colorKey: CounterColorKey;
   /** Full human-readable name used in tooltips. */
   title: string;
 }
@@ -22,25 +23,27 @@ export interface CounterConfig {
  * Keys must match the `CounterType` variant names produced by the Rust engine
  * (derived from `{:?}` formatting, e.g. "P1P1", "M1M1", "Loyalty").
  *
- * To add a new counter type, just add an entry here — no other changes needed.
+ * Colour comes from `theme.counter.<colorKey>` — see `src/themes/default.ts`
+ * for the canonical palette. To add a new counter type, add an entry here
+ * and a matching `counter.<name>` key to the theme.
  */
 export const COUNTER_CONFIG: Record<string, CounterConfig> = {
-  P1P1:      { label: "+1",  bg: "bg-green-500",   fg: "text-white",      title: "+1/+1"     },
-  M1M1:      { label: "−1",  bg: "bg-red-600",     fg: "text-white",      title: "−1/−1"     },
-  Loyalty:   { label: "♦",   bg: "bg-blue-500",    fg: "text-white",      title: "Loyalty"   },
-  Charge:    { label: "⚡",   bg: "bg-purple-500",  fg: "text-white",      title: "Charge"    },
-  Quest:     { label: "◎",   bg: "bg-yellow-400",  fg: "text-gray-900",   title: "Quest"     },
-  Study:     { label: "✎",   bg: "bg-cyan-500",    fg: "text-white",      title: "Study"     },
-  Lore:      { label: "✦",   bg: "bg-amber-500",   fg: "text-white",      title: "Lore"      },
-  Age:       { label: "⌛",   bg: "bg-stone-500",   fg: "text-white",      title: "Age"       },
-  Time:      { label: "⏳",   bg: "bg-indigo-500",  fg: "text-white",      title: "Time"      },
-  Fade:      { label: "✕",   bg: "bg-slate-500",   fg: "text-white",      title: "Fade"      },
-  Level:     { label: "★",   bg: "bg-orange-500",  fg: "text-white",      title: "Level"     },
-  Storage:   { label: "▲",   bg: "bg-teal-500",    fg: "text-white",      title: "Storage"   },
-  Mining:    { label: "⛏",   bg: "bg-yellow-700",  fg: "text-white",      title: "Mining"    },
-  Brick:     { label: "▪",   bg: "bg-orange-800",  fg: "text-white",      title: "Brick"     },
-  Depletion: { label: "▼",   bg: "bg-rose-700",    fg: "text-white",      title: "Depletion" },
-  Page:      { label: "📄",  bg: "bg-zinc-400",    fg: "text-gray-900",   title: "Page"      },
+  P1P1:      { label: "+1",  colorKey: "p1p1",      title: "+1/+1"     },
+  M1M1:      { label: "−1",  colorKey: "m1m1",      title: "−1/−1"     },
+  Loyalty:   { label: "♦",   colorKey: "loyalty",   title: "Loyalty"   },
+  Charge:    { label: "⚡",   colorKey: "charge",    title: "Charge"    },
+  Quest:     { label: "◎",   colorKey: "quest",     title: "Quest"     },
+  Study:     { label: "✎",   colorKey: "study",     title: "Study"     },
+  Lore:      { label: "✦",   colorKey: "lore",      title: "Lore"      },
+  Age:       { label: "⌛",   colorKey: "age",       title: "Age"       },
+  Time:      { label: "⏳",   colorKey: "time",      title: "Time"      },
+  Fade:      { label: "✕",   colorKey: "fade",      title: "Fade"      },
+  Level:     { label: "★",   colorKey: "level",     title: "Level"     },
+  Storage:   { label: "▲",   colorKey: "storage",   title: "Storage"   },
+  Mining:    { label: "⛏",   colorKey: "mining",    title: "Mining"    },
+  Brick:     { label: "▪",   colorKey: "brick",     title: "Brick"     },
+  Depletion: { label: "▼",   colorKey: "depletion", title: "Depletion" },
+  Page:      { label: "📄",  colorKey: "page",      title: "Page"      },
 };
 
 /** Returns the config for a known counter type, or a sensible generic fallback. */
@@ -48,12 +51,33 @@ export function getCounterConfig(type: string): CounterConfig {
   return (
     COUNTER_CONFIG[type] ?? {
       label: type.slice(0, 3),
-      bg: "bg-gray-600",
-      fg: "text-white",
+      colorKey: "default",
       title: type,
     }
   );
 }
+
+/** Static `bg-counter-*` class per counter colour key — Tailwind JIT
+ *  needs the full class name in source, so we can't string-build it. */
+const COUNTER_BG_CLASS: Record<CounterColorKey, string> = {
+  default:   "bg-counter-default",
+  p1p1:      "bg-counter-p1p1",
+  m1m1:      "bg-counter-m1m1",
+  loyalty:   "bg-counter-loyalty",
+  charge:    "bg-counter-charge",
+  quest:     "bg-counter-quest",
+  study:     "bg-counter-study",
+  lore:      "bg-counter-lore",
+  age:       "bg-counter-age",
+  time:      "bg-counter-time",
+  fade:      "bg-counter-fade",
+  level:     "bg-counter-level",
+  storage:   "bg-counter-storage",
+  mining:    "bg-counter-mining",
+  brick:     "bg-counter-brick",
+  depletion: "bg-counter-depletion",
+  page:      "bg-counter-page",
+};
 
 // ---------------------------------------------------------------------------
 // Size tokens
@@ -99,7 +123,9 @@ export function CounterBadge({ type, count, size = "sm", className }: CounterBad
       className={cn(
         "inline-flex items-center justify-center rounded-full font-bold leading-none",
         "select-none shadow-sm ring-1 ring-black/20",
-        cfg.bg, cfg.fg, sz.pill, className,
+        COUNTER_BG_CLASS[cfg.colorKey],
+        "text-text-on-tinted",
+        sz.pill, className,
       )}
       title={`${count} ${cfg.title} counter${count !== 1 ? "s" : ""}`}
     >

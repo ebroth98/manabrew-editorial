@@ -2,59 +2,84 @@ import { Container, Sprite, Texture, Graphics, Text, TextStyle } from "pixi.js";
 import type { Card } from "@/types/openmagic";
 import { CARD_W, CARD_H } from "@/components/game/game.constants";
 import { loadCardTexture } from "./textureCache";
-import { BLACK, WHITE } from "./constants";
+import { adaptTheme, type PixiThemeColors } from "./themeAdapter";
+import { getGameThemeColors } from "@/components/game/game.theme";
+
+/**
+ * Shared, mutable theme reference used by every `CardSprite` instance.
+ * `PixiGameScene.setTheme` calls `setCardSpriteTheme` so every sprite
+ * repaints against the active preset without needing to thread the
+ * theme through the Container constructor.
+ */
+// Seeded from the active preset so every sprite can draw correctly from
+// construction time; `setCardSpriteTheme` then keeps it in sync with live
+// preset / overrides changes.
+let activeTheme: PixiThemeColors = adaptTheme(getGameThemeColors());
+
+/** TextStyle instances whose `fill` tracks the theme's `textOnTinted` colour.
+ *  Each call to `setCardSpriteTheme` updates them in place so already-rendered
+ *  Text objects repaint without needing to be replaced. */
+const TINTED_TEXT_STYLES: TextStyle[] = [];
+
+export function setCardSpriteTheme(theme: PixiThemeColors): void {
+  activeTheme = theme;
+  for (const style of TINTED_TEXT_STYLES) {
+    style.fill = theme.textOnTinted.source;
+  }
+}
+
+function registerTintedTextStyle(style: TextStyle): TextStyle {
+  TINTED_TEXT_STYLES.push(style);
+  return style;
+}
 
 // Hand cards render at up to ~3.25× base scale (medium hover) and ~4.3× (large
 // hover). Rasterize text textures high enough that they remain sharp across
 // that range on top of the 3× canvas backing.
 const TEXT_RASTER_RESOLUTION = 5;
 
-const PT_STYLE = new TextStyle({
+// `tintedTextFill` is recomputed whenever the active theme changes; each
+// registered TextStyle has its `fill` rewritten in place so already-
+// rendered Text objects re-tint without being replaced.
+const tintedTextFill = (): string => activeTheme.textOnTinted.source;
+
+const PT_STYLE = registerTintedTextStyle(new TextStyle({
   fontFamily: "system-ui, -apple-system, sans-serif",
   fontSize: 10,
   fontWeight: "bold",
-  fill: "#ffffff",
-});
+  fill: tintedTextFill(),
+}));
 
-const BADGE_STYLE = new TextStyle({
+const BADGE_STYLE = registerTintedTextStyle(new TextStyle({
   fontFamily: "system-ui, -apple-system, sans-serif",
   fontSize: 6,
   fontWeight: "bold",
-  fill: "#ffffff",
-});
+  fill: tintedTextFill(),
+}));
 
-const COUNTER_STYLE = new TextStyle({
+const COUNTER_STYLE = registerTintedTextStyle(new TextStyle({
   fontFamily: "system-ui, -apple-system, sans-serif",
   fontSize: 8,
   fontWeight: "bold",
-  fill: "#ffffff",
-});
+  fill: tintedTextFill(),
+}));
 
-const CHIP_STYLE = new TextStyle({
+const CHIP_STYLE = registerTintedTextStyle(new TextStyle({
   fontFamily: "system-ui, -apple-system, sans-serif",
   fontSize: 7,
   fontWeight: "bold",
-  fill: "#ffffff",
-});
+  fill: tintedTextFill(),
+}));
 
-const NAME_STYLE = new TextStyle({
+const NAME_STYLE = registerTintedTextStyle(new TextStyle({
   fontFamily: "system-ui, -apple-system, sans-serif",
   fontSize: 8,
-  fill: "#ffffff",
+  fill: tintedTextFill(),
   wordWrap: true,
   wordWrapWidth: CARD_W - 8,
   align: "center",
-});
+}));
 
-// ── Colors ───────────────────────────────────────────────────────
-const PLACEHOLDER_FILL = 0x1a1a2e;
-const PLACEHOLDER_STROKE = 0x444466;
-const COUNTER_DEFAULT_COLOR = 0x4b5563;
-const PT_COLOR_NEUTRAL = 0x6b7280;
-const PT_COLOR_LETHAL = 0xdc2626;
-const PT_COLOR_BUFFED = 0x22c55e;
-const PT_COLOR_DEBUFFED = 0xdc2626;
-const HIGHLIGHT_FALLBACK = 0xfb923c;
 
 // ── Geometry ─────────────────────────────────────────────────────
 const CARD_RADIUS = 6;
@@ -70,54 +95,56 @@ const MAX_VISIBLE_KEYWORDS = 4;
 // unobstructed regardless of hover scale.
 const BADGE_TITLE_BAND_FRAC = 0.1;
 
-const BADGE_COLORS: Record<string, number> = {
-  EXERTED: 0xf97316,
-  MORPH: 0x4b5563,
-  BESTOW: 0x14b8a6,
-  TOKEN: 0xfbbf24,
-  TRANSFORMED: 0xa855f7,
-  PLOTTED: 0x6366f1,
-  MADNESS: 0xdc2626,
-  WARPED: 0x0891b2,
-};
+type CardStatusKey = keyof PixiThemeColors["cardStatus"];
 
 interface BadgeRule {
   label: string;
   test: (card: Card) => boolean;
-  colorKey: keyof typeof BADGE_COLORS;
+  colorKey: CardStatusKey;
 }
 
 const BADGE_RULES: BadgeRule[] = [
-  { label: "EXERTED",     test: (c) => !!c.exerted,        colorKey: "EXERTED" },
-  { label: "MORPH",       test: (c) => !!c.isFaceDown,     colorKey: "MORPH" },
-  { label: "BESTOW",      test: (c) => !!c.isBestowed,     colorKey: "BESTOW" },
-  { label: "TRANSFORMED", test: (c) => !!c.isTransformed,  colorKey: "TRANSFORMED" },
-  { label: "PLOTTED",     test: (c) => !!c.isPlotted,      colorKey: "PLOTTED" },
-  { label: "MADNESS",     test: (c) => !!c.isMadnessExiled, colorKey: "MADNESS" },
-  { label: "WARPED",      test: (c) => !!c.isWarpExiled,   colorKey: "WARPED" },
-  { label: "TOKEN",       test: (c) => !!c.isToken,        colorKey: "TOKEN" },
+  { label: "EXERTED",     test: (c) => !!c.exerted,        colorKey: "exerted" },
+  { label: "MORPH",       test: (c) => !!c.isFaceDown,     colorKey: "morph" },
+  { label: "BESTOW",      test: (c) => !!c.isBestowed,     colorKey: "bestow" },
+  { label: "TRANSFORMED", test: (c) => !!c.isTransformed,  colorKey: "transformed" },
+  { label: "PLOTTED",     test: (c) => !!c.isPlotted,      colorKey: "plotted" },
+  { label: "MADNESS",     test: (c) => !!c.isMadnessExiled, colorKey: "madness" },
+  { label: "WARPED",      test: (c) => !!c.isWarpExiled,   colorKey: "warped" },
+  { label: "TOKEN",       test: (c) => !!c.isToken,        colorKey: "token" },
 ];
 
-const COUNTER_COLORS: Record<string, number> = {
-  P1P1:      0x22c55e,
-  M1M1:      0xdc2626,
-  Loyalty:   0x3b82f6,
-  Charge:    0xa855f7,
-  Quest:     0xfacc15,
-  Study:     0x06b6d4,
-  Lore:      0xf59e0b,
-  Age:       0x78716c,
-  Time:      0x6366f1,
-  Fade:      0x64748b,
-  Level:     0xf97316,
-  Storage:   0x14b8a6,
-  Mining:    0xa16207,
-  Brick:     0x9a3412,
-  Depletion: 0xbe123c,
-  Page:      0xa1a1aa,
+function badgeColor(key: CardStatusKey): number {
+  return activeTheme.cardStatus[key];
+}
+
+/** Static mapping from counter-type string (as it appears on the card
+ *  state) to the `PixiThemeColors.counter` key. Any type not listed here
+ *  falls through to `counter.default`. */
+const COUNTER_TYPE_KEYS: Record<string, keyof PixiThemeColors["counter"]> = {
+  P1P1:      "p1p1",
+  M1M1:      "m1m1",
+  Loyalty:   "loyalty",
+  Charge:    "charge",
+  Quest:     "quest",
+  Study:     "study",
+  Lore:      "lore",
+  Age:       "age",
+  Time:      "time",
+  Fade:      "fade",
+  Level:     "level",
+  Storage:   "storage",
+  Mining:    "mining",
+  Brick:     "brick",
+  Depletion: "depletion",
+  Page:      "page",
 };
 
-const getCounterColor = (type: string) => COUNTER_COLORS[type] ?? COUNTER_DEFAULT_COLOR;
+function getCounterColor(type: string): number {
+  const palette = activeTheme.counter;
+  const key = COUNTER_TYPE_KEYS[type];
+  return key ? palette[key] : palette.default;
+}
 
 const COUNTER_LABEL_OVERRIDES: Record<string, string> = {
   P1P1: "+1",
@@ -136,17 +163,18 @@ const parseStat = (value: string | undefined): number => {
 };
 
 const resolvePTBgColor = (card: Card): number => {
+  const pt = activeTheme.pt;
   const toughness = parseStat(card.toughness);
-  if (card.damage != null && card.damage >= toughness) return PT_COLOR_LETHAL;
-  if (card.basePower == null) return PT_COLOR_NEUTRAL;
+  if (card.damage != null && card.damage >= toughness) return pt.lethal;
+  if (card.basePower == null) return pt.neutral;
 
   const curP = parseStat(card.power);
   const curT = toughness;
   const buffed = curP > card.basePower || curT > (card.baseToughness ?? 0);
   const debuffed = curP < card.basePower || curT < (card.baseToughness ?? 0);
-  if (buffed) return PT_COLOR_BUFFED;
-  if (debuffed) return PT_COLOR_DEBUFFED;
-  return PT_COLOR_NEUTRAL;
+  if (buffed) return pt.buffed;
+  if (debuffed) return pt.debuffed;
+  return pt.neutral;
 };
 
 export class CardSprite extends Container {
@@ -178,8 +206,8 @@ export class CardSprite extends Container {
 
     this.placeholderGfx = new Graphics();
     this.placeholderGfx.roundRect(0, 0, CARD_W, CARD_H, CARD_RADIUS);
-    this.placeholderGfx.fill({ color: PLACEHOLDER_FILL, alpha: 0.8 });
-    this.placeholderGfx.stroke({ color: PLACEHOLDER_STROKE, width: 1 });
+    this.placeholderGfx.fill({ color: activeTheme.cardPlaceholder.fill, alpha: 0.8 });
+    this.placeholderGfx.stroke({ color: activeTheme.cardPlaceholder.stroke, width: 1 });
     this.addChild(this.placeholderGfx);
 
     this.nameText = new Text({ text: card.name, style: NAME_STYLE });
@@ -191,7 +219,7 @@ export class CardSprite extends Container {
 
     this.imageMask = new Graphics();
     this.imageMask.roundRect(0, 0, CARD_W, CARD_H, CARD_RADIUS);
-    this.imageMask.fill(WHITE);
+    this.imageMask.fill(activeTheme.canvas.neutral);
     this.addChild(this.imageMask);
 
     this.imageSpr = new Sprite(Texture.EMPTY);
@@ -327,7 +355,7 @@ export class CardSprite extends Container {
     const bh = this.badgeText.height + 2;
     this.badgeBg.clear();
     this.badgeBg.roundRect(0, 0, bw, bh, CHIP_RADIUS);
-    this.badgeBg.fill({ color: BADGE_COLORS[rule.colorKey]!, alpha: 0.9 });
+    this.badgeBg.fill({ color: badgeColor(rule.colorKey), alpha: 0.9 });
 
     this.badgeText.x = 2.5;
     this.badgeText.y = 1;
@@ -366,7 +394,7 @@ export class CardSprite extends Container {
       const bw = txt.width + 8;
       bg.roundRect(0, 0, bw, COUNTER_HEIGHT, COUNTER_RADIUS);
       bg.fill({ color, alpha: 0.9 });
-      bg.stroke({ color: BLACK, width: 1, alpha: 0.2 });
+      bg.stroke({ color: activeTheme.canvas.shadow, width: 1, alpha: 0.2 });
 
       badge.addChild(bg);
       badge.addChild(txt);
@@ -408,7 +436,7 @@ export class CardSprite extends Container {
       }
 
       bg.roundRect(0, 0, cw, rowH, CHIP_RADIUS);
-      bg.fill({ color: BLACK, alpha: 0.6 });
+      bg.fill({ color: activeTheme.canvas.shadow, alpha: 0.6 });
 
       chip.addChild(bg);
       chip.addChild(txt);
@@ -428,7 +456,7 @@ export class CardSprite extends Container {
     this.drawRingStroke(color, alpha);
   }
 
-  setHighlight(active: boolean, color = HIGHLIGHT_FALLBACK, alpha = 0.3): void {
+  setHighlight(active: boolean, color = activeTheme.cardRing, alpha = 0.3): void {
     this.ringGfx.clear();
     if (!active) return;
     this.drawRingStroke(color, 1);

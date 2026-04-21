@@ -19,7 +19,7 @@ export function GameOverScreen({ winnerId, me, opponents, turn, onEndGame }: Gam
       <h2
         className={cn(
           "text-3xl font-bold",
-          isDraw ? "text-amber-600" : didWin ? "text-green-600" : "text-red-600",
+          isDraw ? "text-muted-foreground" : didWin ? "text-success" : "text-destructive",
         )}
       >
         {isDraw ? "Draw!" : didWin ? "You Win!" : "You Lose!"}

@@ -30,7 +30,7 @@ export function CardOverlayButton({ variant, onClick, title, label }: CardOverla
   };
   const labelStyle: CSSProperties = {
     backgroundColor: withAlpha(baseColor, 0.92),
-    color: "#fff",
+    color: themeColors.textOnTinted,
   };
 
   return (

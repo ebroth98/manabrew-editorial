@@ -1,4 +1,40 @@
 import type { ThemePreset } from "./index";
+import { buildGameColors, type BasePalette } from "./buildGameColors";
+
+/** Dracula canonical palette. `comment` (#6272a4) doubles as the muted
+ *  label / slate; dracula has no distinct teal so cyan covers both. */
+const palette: BasePalette = {
+  foreground: "#f8f8f2",
+  labelMuted: "#6272a4",
+  labelGhost: "#8c95b8",
+  placeholderFill: "#282a36",
+  placeholderStroke: "#44475a",
+  canvasBackground: "#282a36",
+  red:      "#ff5555",
+  redDeep:  "#c44848",
+  orange:   "#ffb86c",
+  amber:    "#f1fa8c",
+  yellow:   "#f1fa8c",
+  green:    "#50fa7b",
+  teal:     "#8be9fd",
+  cyan:     "#8be9fd",
+  blue:     "#6272a4",
+  sky:      "#8be9fd",
+  indigo:   "#bd93f9",
+  violet:   "#bd93f9",
+  purple:   "#bd93f9",
+  pink:     "#ff79c6",
+  slate:    "#6272a4",
+  brown:    "#ffb86c",
+  paper:    "#f8f8f2",
+  poison:   "#3fc562",            // deeper / less neon than dracula green
+  manaW:    "#f8f8f2",
+  manaU:    "#bd93f9",
+  manaB:    "#44475a",
+  manaR:    "#ff5555",
+  manaG:    "#50fa7b",
+  manaC:    "#6272a4",
+};
 
 const preset: ThemePreset = {
   id: "dracula",
@@ -73,6 +109,7 @@ const preset: ThemePreset = {
     "arrow.hostileTarget": "rgba(255, 85, 85, 0.88)",
     "arrow.friendlyTarget": "rgba(139, 233, 253, 0.88)",
     "cardRing": "#f1fa8c",
+    ...buildGameColors(palette),
   },
 };
 

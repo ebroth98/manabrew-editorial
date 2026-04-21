@@ -12,13 +12,11 @@ import { GameLoadingScreen } from "@/components/game/GameLoadingScreen";
 import { ManualTabletopControls } from "@/components/game/ManualTabletopControls";
 import { MainActionOverlay, RightActionPanel } from "@/components/game/panels";
 import { StackDisplay } from "@/components/game/panels/StackDisplay";
-import { CastingArrow } from "@/components/game/CastingArrow";
 import { useCastingState } from "@/hooks/useCastingState";
-import { ArrowOverlay } from "@/components/game/ArrowOverlay";
 import { PixiArrowsCanvas } from "@/pixi/PixiArrowsCanvas";
 import type { PixiGameScene } from "@/pixi/PixiGameScene";
-import { useGameArrows } from "@/components/game/useGameArrows";
 import { buildArrowSpecs } from "@/components/game/arrowSpecs";
+import { buildPointerSpecs } from "@/components/game/pointerSpecs";
 import { PlayModePicker } from "@/components/game/PlayModePicker";
 import { HAND_CARD_BASES } from "@/components/game/game.styles";
 import { useHandScale } from "@/hooks/useHandScale";
@@ -814,18 +812,6 @@ export default function Game() {
     [gameView?.combatAssignments?.map((a) => `${a.blockerId}:${a.attackerId}`).join(",")],
   );
 
-  const arrows = useGameArrows({
-    containerRef,
-    promptType,
-    attackerIds,
-    blockAssignments,
-    combatAssignments,
-    pendingAttackers,
-    myPlayerId: me?.id ?? "",
-    opponentPlayerId: opponent?.id ?? "",
-    stack: gameView?.stack ?? [],
-  });
-
   const hoveredStackObjectIdForSpecs = useStackUIStore((s) => s.hoveredStackObjectId);
   const arrowSpecs = useMemo(
     () =>
@@ -851,6 +837,15 @@ export default function Game() {
       gameView?.stack,
       hoveredStackObjectIdForSpecs,
     ],
+  );
+
+  const pointerSpecs = useMemo(
+    () =>
+      buildPointerSpecs({
+        stack: gameView?.stack ?? [],
+        activeStackObjectId: hoveredStackObjectIdForSpecs,
+      }),
+    [gameView?.stack, hoveredStackObjectIdForSpecs],
   );
 
   const hoveredStackObjectId = useStackUIStore((s) => s.hoveredStackObjectId);
@@ -1122,10 +1117,20 @@ export default function Game() {
   const shouldShowPreStackFlash =
     activeFlashCard?.types.includes("Land") ?? false;
 
+  // While the cursor is carrying a targeting glyph (free-follow phase
+  // before the user locks a target), hide the native OS pointer so the
+  // floating glyph reads as the cursor itself. Once a target is locked
+  // the glyph anchors to the target and the OS cursor can return so the
+  // user can click Confirm / Cancel.
+  const hideOsCursor = casting.showArrow && !!casting.castingCardId && !casting.targetId;
+
   return (
     <div
       ref={containerRef}
-      className="relative flex flex-col h-full min-h-0 gap-1.5 p-1.5 overflow-hidden select-none"
+      className={cn(
+        "relative flex flex-col h-full min-h-0 gap-1.5 p-1.5 overflow-hidden select-none",
+        hideOsCursor && "targeting-cursor-hidden",
+      )}
       style={
         {
           "--flash-duration": `${flashDurationMs}ms`,
@@ -1133,30 +1138,39 @@ export default function Game() {
           "--playable-glow-color": withAlpha(themeColors.cardRing, 0.3),
           "--playable-ring-color-strong": themeColors.cardRing,
           "--playable-glow-color-strong": withAlpha(themeColors.cardRing, 0.6),
+          // Casting pulse: friendly-intent glow around the spell being cast.
+          "--casting-ring-color": withAlpha(themeColors.arrow.friendlyTarget, 0.7),
+          "--casting-ring-color-strong": themeColors.arrow.friendlyTarget,
+          "--casting-glow-color": withAlpha(themeColors.arrow.friendlyTarget, 0.3),
+          "--casting-glow-color-strong": withAlpha(themeColors.arrow.friendlyTarget, 0.6),
+          // Rejection flash: hostile-intent glow used when a card is
+          // dismissed from the mulligan / selection pool.
+          "--rejecting-ring-color": withAlpha(themeColors.pointer.hostile, 0.9),
+          "--rejecting-ring-color-strong": themeColors.pointer.hostile,
+          "--rejecting-glow-color": withAlpha(themeColors.pointer.hostile, 0.5),
+          "--rejecting-glow-color-strong": withAlpha(themeColors.pointer.hostile, 0.7),
         } as React.CSSProperties
       }
     >
-      {/* Arrow rendering: SVG when off-Pixi, dedicated full-board Pixi
-          canvas when on. The overlay canvas is transparent and has
-          pointer-events:none so it never blocks the DOM behind it. */}
-      {!pixiEnabled ? (
-        <ArrowOverlay arrows={arrows} />
-      ) : (
-        <PixiArrowsCanvas
-          mainSceneRef={pixiSceneRef}
-          opponentSceneRefs={opponentSceneRefsRef.current}
-          arrowSpecs={arrowSpecs}
-          castingArrow={
-            casting.showArrow && casting.castingCardId
-              ? {
-                  castingCardId: casting.castingCardId,
-                  targetId: casting.targetId,
-                  hostile: casting.arrowHostile,
-                }
-              : null
-          }
-        />
-      )}
+      {/* Dedicated full-board Pixi canvas for arrows and targeting pointers.
+          The overlay canvas is transparent with pointer-events:none so it
+          never blocks the DOM behind it. */}
+      <PixiArrowsCanvas
+        mainSceneRef={pixiSceneRef}
+        opponentSceneRefs={opponentSceneRefsRef.current}
+        arrowSpecs={arrowSpecs}
+        pointerSpecs={pointerSpecs}
+        castingArrow={
+          casting.showArrow && casting.castingCardId
+            ? {
+                castingCardId: casting.castingCardId,
+                targetId: casting.targetId,
+                hostile: casting.arrowHostile,
+                intent: casting.arrowIntent,
+              }
+            : null
+        }
+      />
       <div className="flex gap-1 min-h-0 flex-1 overflow-visible">
         <GameBoard
           pixiSceneRef={pixiSceneRef}
@@ -1353,12 +1367,6 @@ export default function Game() {
         castingCard={casting.castingCard}
         rightPanelCollapsed={isActionPanelCollapsed}
       />
-
-      {/* React SVG casting arrow — only used off-Pixi. In Pixi mode the
-          scene draws it via `castingArrow` passed into GameBoard below. */}
-      {!pixiEnabled && casting.showArrow && casting.castingCardId && (
-        <CastingArrow castingCardId={casting.castingCardId} targetId={casting.targetId} hostile={casting.arrowHostile} />
-      )}
 
       <GameModals
         promptType={promptType}

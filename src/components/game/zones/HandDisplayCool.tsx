@@ -348,13 +348,23 @@ export function HandDisplayCool({
                       card.isPlayable &&
                       cn("playable-card", isHov && "is-hovered"),
                     rejectedId === card.id && "animate-reject-flash",
-                    isSelected &&
-                      "ring-2 ring-red-500/80 shadow-[0_12px_28px_rgba(220,38,38,0.35)] opacity-85",
+                    isSelected && "opacity-85",
                   )}
                   style={{
                     width: curW,
                     height: curH,
-                  }}
+                    ...(isSelected && {
+                      // Mulligan-rejected ring + glow — derived from the
+                      // theme's hostile-pointer colour via the CSS var
+                      // that `useAppTheme` writes on :root. `color-mix`
+                      // lets us apply a percent-alpha without parsing
+                      // the rgba string ourselves.
+                      outline: "2px solid var(--pointer-hostile)",
+                      outlineOffset: "0px",
+                      boxShadow:
+                        "0 12px 28px color-mix(in srgb, var(--pointer-hostile) 35%, transparent)",
+                    }),
+                  } as React.CSSProperties}
                   isHovered={isHov}
                   onFlip={onFlipCard}
                   showBackFace={showBackFace}
@@ -362,7 +372,9 @@ export function HandDisplayCool({
                 />
 
                 {isSelected && (
-                  <div className="absolute left-1/2 -bottom-3 -translate-x-1/2 whitespace-nowrap rounded-full bg-red-600/95 text-white text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 shadow-lg pointer-events-none">
+                  <div
+                    className="absolute left-1/2 -bottom-3 -translate-x-1/2 whitespace-nowrap rounded-full bg-pointer-hostile text-text-on-tinted text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 shadow-lg pointer-events-none"
+                  >
                     → Library bottom
                   </div>
                 )}
@@ -384,7 +396,6 @@ export function HandDisplayCool({
                         left: -hovW,
                         width: hovW + 10 + 220,
                         height: hovH,
-                        // backgroundColor: "rgba(0, 255, 0, 0.4)", // Green for visibility during implementation
                         borderBottomRightRadius: "100%",
                         zIndex: -1,
                       }}

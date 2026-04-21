@@ -194,7 +194,83 @@ Always use `@/` path aliases. Never use `../../` relative paths that escape the 
 
 ---
 
-## 9. Naming Conventions
+## 9. Colors — NEVER hardcode
+
+**All colours must be theme-driven. No hex / rgb / rgba / hsl literals
+anywhere in component or Pixi code.** Every colour the user sees comes
+from a preset file under `src/themes/` and flows through one of two
+resolvers:
+
+| Surface | Source of truth | Hook / util |
+|---------|-----------------|-------------|
+| Light / dark app chrome (Radix tokens) | `ThemePreset.light` / `ThemePreset.dark` HSL maps | `useAppTheme()` in `src/hooks/useAppTheme.ts` |
+| Game / Pixi board colours | `ThemePreset.gameColors` (dot-path record) | `useGameThemeColors()` in `src/components/game/game.theme.ts` |
+
+### Where colours live
+
+- **Preset files** (`src/themes/<name>.ts`) declare every semantic colour
+  for that preset. Default values live in `src/themes/default.ts`; every
+  other preset inherits unset keys from the default via the chain in
+  `resolveGameThemeColors`.
+- **Schema** (`GameThemeColors` in `src/components/game/game.theme.ts`)
+  defines the typed shape with semantic groupings (`pointer.*`,
+  `mana.*`, `cardStatus.*`, `counter.*`, `pt.*`, `canvas.*`,
+  `cardPlaceholder.*`, `textOnTinted` / `textMuted` / `textGhost`, …).
+  Adding a new surface means adding it to this interface **and** the
+  default preset.
+- **Pixi adapter** (`src/pixi/themeAdapter.ts`) converts strings to the
+  numeric form Pixi expects. Pixi layers read from `PixiThemeColors`
+  and never from literal hex.
+
+### Rules
+
+1. **No `#RRGGBB`, `rgba(…)`, `hsl(…)`, or `0xRRGGBB` literals in
+   source files.** Pull every colour from the theme.
+2. **No tailwind palette classes that carry semantic colour** (e.g.
+   `ring-red-500`, `bg-blue-400`). Use the theme-token utility classes
+   instead: `bg-pointer-hostile`, `text-counter-p1p1`, `ring-card-ring`,
+   `text-destructive`, `bg-pt-buffed`, etc. Every key in
+   `GameThemeColors` has a matching `bg-*` / `text-*` / `ring-*` /
+   `border-*` utility generated via `@theme` in `src/index.css`. If a
+   colour you need isn't a theme token, add one — don't reach for the
+   palette.
+
+   *Narrow identity-palette exception.* Two files intentionally keep
+   tailwind palette names to lock in a stable visual identity across
+   theme changes:
+   - `FormatBadge.tsx` — per-format brand hues (Modern = blue, Pauper
+     = rose, …). The colour *is* the identity.
+   - `DeckVsSelector.tsx` — Player 1 = blue, Player 2 = red slot
+     assignments that must stay distinguishable regardless of preset.
+
+   Any other palette usage should route through the theme.
+3. **Absolute fallbacks live only in the merged map** inside
+   `resolveGameThemeColors` — never sprinkle fallback literals in
+   components. If a preset omits a key, the resolver chain handles it.
+4. **Pixi scene classes seed a non-null theme at construction time**
+   (`adaptTheme(getGameThemeColors())`) so every draw call can read
+   theme values directly — no `this.theme?.X ?? FALLBACK` patterns.
+5. **The one narrow exception**: pure `rgba(0, 0, 0, X)` shadow idioms
+   in tailwind arbitrary classes (`shadow-[0_10px_30px_rgba(0,0,0,0.35)]`)
+   are allowed when the shadow is intentionally physics-black. Any
+   coloured shadow must go through the theme.
+
+### When introducing a new colour
+
+1. Add the schema field to `GameThemeColors` (and to `PixiThemeColors`
+   via `themeAdapter` if it touches the canvas).
+2. Add the default value to `src/themes/default.ts` under the new key.
+3. Extend the path-template signatures in `src/themes/index.ts` so
+   other preset authors can override via dot-paths.
+4. Update any other preset that needs a custom value — presets without
+   an override inherit from the default.
+
+If you find yourself about to type a hex literal in a component, stop
+and add a semantic theme key instead.
+
+---
+
+## 10. Naming Conventions
 
 | Entity | Convention | Example |
 |--------|-----------|---------|
@@ -207,7 +283,7 @@ Always use `@/` path aliases. Never use `../../` relative paths that escape the 
 
 ---
 
-## 10. Testing Checklist
+## 11. Testing Checklist
 
 Before committing UI changes:
 1. `npx tsc -p tsconfig.app.json --noEmit` — must pass with zero errors

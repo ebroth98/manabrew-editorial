@@ -202,6 +202,9 @@ pub struct StackTargetDto {
     pub target_index: u32,
     /// Whether this target is hostile (damage, destroy, counter) vs friendly (buff, heal).
     pub hostile: bool,
+    /// Semantic intent of the targeting (damage, sacrifice, buff, etc.).
+    /// Used by the UI to pick a pointer icon and glow color.
+    pub intent: TargetingIntent,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -212,22 +215,162 @@ pub enum StackTargetKindDto {
     Stack,
 }
 
-/// Determine if a spell ability's effect is hostile based on its API type.
-pub fn is_hostile_api(sa: &SpellAbility) -> bool {
-    use forge_engine_core::ability::api_type::ApiType;
-    match sa.api {
-        Some(ApiType::DealDamage)
-        | Some(ApiType::Destroy)
-        | Some(ApiType::DestroyAll)
-        | Some(ApiType::Counter)
-        | Some(ApiType::Sacrifice)
-        | Some(ApiType::SacrificeAll)
-        | Some(ApiType::ChangeZone)
-        | Some(ApiType::ChangeZoneAll)
-        | Some(ApiType::LoseLife)
-        | Some(ApiType::Debuff) => true,
-        _ => false,
+/// Semantic classification of what a targeting choice will do to its target.
+/// Derived from the source `SpellAbility`'s `ApiType` and params. The UI uses
+/// this to choose a pointer icon and the per-intent glow color.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum TargetingIntent {
+    /// Damage (DealDamage, EachDamage, DamageAll targeting).
+    Damage,
+    /// Outright destruction (Destroy, DestroyAll).
+    Destroy,
+    /// Sacrifice by controller (Sacrifice, SacrificeAll).
+    Sacrifice,
+    /// Exile (ChangeZone to Exile).
+    Exile,
+    /// Return to hand (ChangeZone to Hand).
+    Bounce,
+    /// Mill / library manipulation targeting a player.
+    Mill,
+    /// Force a discard.
+    Discard,
+    /// Counter a spell / ability on the stack.
+    Counter,
+    /// Tap a permanent.
+    Tap,
+    /// Untap a permanent.
+    Untap,
+    /// Copy a permanent or spell.
+    Copy,
+    /// Positive stat / ability buff (Pump, PutCounter +1/+1, Animate, Protection).
+    Buff,
+    /// Negative stat / ability debuff (Debuff, minus counters).
+    Debuff,
+    /// Gain life / heal effect.
+    Heal,
+    /// Cause the target player to lose life (not damage).
+    LoseLife,
+    /// Reveal / look-at effects.
+    Reveal,
+    /// Draw-card effect targeting a player.
+    Draw,
+    /// Gain control of a permanent or spell.
+    GainControl,
+    /// Fight (two creatures deal damage to each other).
+    Fight,
+    /// Attach / equip.
+    Attach,
+    /// Attack (combat declaration — UI keeps classic arrow).
+    Attack,
+    /// Block (combat declaration — UI keeps classic arrow).
+    Block,
+    /// Generic hostile (falls back to finger-point red pointer).
+    Hostile,
+    /// Generic friendly (falls back to finger-point green pointer).
+    Friendly,
+}
+
+impl TargetingIntent {
+    /// True for intents whose UI representation should remain an arrow
+    /// (combat declarations). Everything else uses the new pointer icons.
+    pub fn prefers_arrow(self) -> bool {
+        matches!(self, TargetingIntent::Attack | TargetingIntent::Block)
     }
+
+    /// Whether this intent is hostile for the purpose of the legacy
+    /// `hostile: bool` field (kept for backwards compatibility with any
+    /// consumer that hasn't yet migrated to `intent`).
+    pub fn is_hostile(self) -> bool {
+        matches!(
+            self,
+            TargetingIntent::Damage
+                | TargetingIntent::Destroy
+                | TargetingIntent::Sacrifice
+                | TargetingIntent::Exile
+                | TargetingIntent::Bounce
+                | TargetingIntent::Mill
+                | TargetingIntent::Discard
+                | TargetingIntent::Counter
+                | TargetingIntent::Tap
+                | TargetingIntent::Debuff
+                | TargetingIntent::LoseLife
+                | TargetingIntent::GainControl
+                | TargetingIntent::Fight
+                | TargetingIntent::Hostile
+        )
+    }
+}
+
+/// Classify the targeting intent of a spell ability from its `ApiType`
+/// and (where needed) parameters. Falls back to `Hostile` / `Friendly`
+/// when the API type is unknown or ambiguous.
+pub fn targeting_intent_of(sa: &SpellAbility) -> TargetingIntent {
+    use forge_engine_core::ability::api_type::ApiType;
+    let Some(api) = sa.api else {
+        return TargetingIntent::Hostile;
+    };
+    match api {
+        ApiType::DealDamage | ApiType::DamageAll | ApiType::EachDamage => TargetingIntent::Damage,
+        ApiType::Destroy | ApiType::DestroyAll => TargetingIntent::Destroy,
+        ApiType::Sacrifice | ApiType::SacrificeAll => TargetingIntent::Sacrifice,
+        ApiType::ChangeZone | ApiType::ChangeZoneAll => classify_change_zone(sa),
+        ApiType::Mill => TargetingIntent::Mill,
+        ApiType::Discard => TargetingIntent::Discard,
+        ApiType::Counter => TargetingIntent::Counter,
+        ApiType::ControlSpell => TargetingIntent::GainControl,
+        ApiType::Tap | ApiType::TapAll => TargetingIntent::Tap,
+        ApiType::Untap | ApiType::UntapAll => TargetingIntent::Untap,
+        ApiType::TapOrUntap | ApiType::TapOrUntapAll => TargetingIntent::Tap,
+        ApiType::CopyPermanent | ApiType::CopySpellAbility | ApiType::Clone => {
+            TargetingIntent::Copy
+        }
+        ApiType::Pump | ApiType::PumpAll | ApiType::Animate | ApiType::AnimateAll
+        | ApiType::Protection | ApiType::ProtectionAll => TargetingIntent::Buff,
+        ApiType::PutCounter | ApiType::PutCounterAll => classify_put_counter(sa),
+        ApiType::RemoveCounter | ApiType::RemoveCounterAll => TargetingIntent::Debuff,
+        ApiType::Debuff => TargetingIntent::Debuff,
+        ApiType::GainLife => TargetingIntent::Heal,
+        ApiType::LoseLife => TargetingIntent::LoseLife,
+        ApiType::Draw => TargetingIntent::Draw,
+        ApiType::Reveal | ApiType::RevealHand | ApiType::LookAt | ApiType::PeekAndReveal => {
+            TargetingIntent::Reveal
+        }
+        ApiType::GainControl | ApiType::GainControlVariant | ApiType::ExchangeControl
+        | ApiType::ExchangeControlVariant => TargetingIntent::GainControl,
+        ApiType::Fight => TargetingIntent::Fight,
+        ApiType::Attach | ApiType::Unattach => TargetingIntent::Attach,
+        _ => TargetingIntent::Hostile,
+    }
+}
+
+/// Distinguish Exile vs Bounce vs generic Hostile for ChangeZone effects.
+fn classify_change_zone(sa: &SpellAbility) -> TargetingIntent {
+    match sa.params.get("Destination").unwrap_or("") {
+        "Exile" => TargetingIntent::Exile,
+        "Hand" | "Library" => TargetingIntent::Bounce,
+        "Graveyard" => TargetingIntent::Destroy,
+        "Battlefield" => TargetingIntent::Friendly,
+        _ => TargetingIntent::Hostile,
+    }
+}
+
+/// PutCounter effects can be buffs (+1/+1) or debuffs (-1/-1) depending on
+/// the counter type. Default to Buff since most targeted put-counter
+/// effects place positive counters.
+fn classify_put_counter(sa: &SpellAbility) -> TargetingIntent {
+    let counter_type = sa.params.get("CounterType").unwrap_or("");
+    if counter_type.starts_with("M1M1") || counter_type.contains("-1/-1") {
+        TargetingIntent::Debuff
+    } else {
+        TargetingIntent::Buff
+    }
+}
+
+/// Determine if a spell ability's effect is hostile based on its API type.
+/// Kept for backwards compatibility; new code should use `targeting_intent_of`.
+pub fn is_hostile_api(sa: &SpellAbility) -> bool {
+    targeting_intent_of(sa).is_hostile()
 }
 
 fn collect_stack_targets(root: &SpellAbility) -> Vec<StackTargetDto> {
@@ -237,7 +380,8 @@ fn collect_stack_targets(root: &SpellAbility) -> Vec<StackTargetDto> {
 
     while let Some(sa) = current {
         let mut target_index = 0u32;
-        let hostile = is_hostile_api(sa);
+        let intent = targeting_intent_of(sa);
+        let hostile = intent.is_hostile();
 
         if let Some(cid) = sa.target_chosen.target_card {
             out.push(StackTargetDto {
@@ -246,6 +390,7 @@ fn collect_stack_targets(root: &SpellAbility) -> Vec<StackTargetDto> {
                 node_index,
                 target_index,
                 hostile,
+                intent,
             });
             target_index += 1;
         }
@@ -256,6 +401,7 @@ fn collect_stack_targets(root: &SpellAbility) -> Vec<StackTargetDto> {
                 node_index,
                 target_index,
                 hostile,
+                intent,
             });
             target_index += 1;
         }
@@ -266,6 +412,7 @@ fn collect_stack_targets(root: &SpellAbility) -> Vec<StackTargetDto> {
                 node_index,
                 target_index,
                 hostile,
+                intent,
             });
         }
 

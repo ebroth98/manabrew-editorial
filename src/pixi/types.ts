@@ -33,12 +33,10 @@ export type ArrowEndpoint =
   | { kind: "stack"; id: string }
   | { kind: "placement-ghost" };
 
-export type ArrowType =
-  | "attack"
-  | "block"
-  | "hostile-target"
-  | "friendly-target"
-  | "placement";
+/** Arrows are now reserved for combat declarations (attack/block) and
+ *  the placement preview when casting a permanent spell. Every other
+ *  targeting interaction renders as a `PointerSpec` instead. */
+export type ArrowType = "attack" | "block" | "placement";
 
 export interface ArrowSpec {
   from: ArrowEndpoint;
@@ -46,8 +44,18 @@ export interface ArrowSpec {
   type: ArrowType;
 }
 
+/** A targeting pointer — floating icon anchored to a source card with a
+ *  cursor-following or target-anchored endpoint, plus an animated glow on
+ *  the source (and target, when locked). Icon and color derive from the
+ *  intent via the theme. */
+export interface PointerSpec {
+  from: ArrowEndpoint;
+  to: ArrowEndpoint;
+  intent: import("@/types/promptType").TargetingIntent;
+}
+
 /**
- * Cursor-following arrow shown during target selection. Source is a
+ * Cursor-following pointer shown during target selection. Source is a
  * React-rendered element with `data-casting-card={id}` (StackDisplay).
  * Target is either a specific card/player (locked target) or the cursor.
  */
@@ -55,7 +63,10 @@ export interface CastingArrowSpec {
   castingCardId: string;
   /** When set, the arrow locks onto this card or player id. */
   targetId?: string | null;
+  /** Legacy hostile flag — kept so existing props don't break. */
   hostile: boolean;
+  /** Semantic intent used to pick the pointer icon + glow color. */
+  intent: import("@/types/promptType").TargetingIntent;
 }
 
 export interface GameCanvasCallbacks {

@@ -1,5 +1,6 @@
 import { Graphics } from "pixi.js";
-import type { PixiThemeColors } from "./themeAdapter";
+import { adaptTheme, type PixiThemeColors } from "./themeAdapter";
+import { getGameThemeColors } from "@/components/game/game.theme";
 import type { ArrowType } from "./types";
 
 // Re-export so existing callers still import ArrowType from this module.
@@ -28,10 +29,6 @@ const ARROWHEAD_WIDTH = 11;
 const ARROWHEAD_NOTCH = 0.45; // controls the concave base for a sleek look
 const ARROW_Z_INDEX = 8000;
 
-// Fallback colors used only in the brief window before `setTheme` is called.
-const ARROW_FALLBACK_COLOR = 0xffffff;
-const ARROW_FALLBACK_ALPHA = 0.85;
-const SHADOW_COLOR = 0x000000;
 const PLACEMENT_ARROW_ALPHA = 0.7;
 
 // Dashed (marching-ants) placement arrow.
@@ -94,18 +91,13 @@ function sampleQuadratic(
 // ── Arrow colors from theme ────────────────────────────────────────────────
 function getArrowColor(
   type: ArrowType,
-  theme: PixiThemeColors | null,
+  theme: PixiThemeColors,
 ): { color: number; alpha: number } {
-  if (!theme) return { color: ARROW_FALLBACK_COLOR, alpha: ARROW_FALLBACK_ALPHA };
   switch (type) {
     case "attack":
       return theme.arrow.attack;
     case "block":
       return theme.arrow.block;
-    case "hostile-target":
-      return theme.arrow.hostileTarget;
-    case "friendly-target":
-      return theme.arrow.friendlyTarget;
     case "placement":
       return { color: theme.activeAction.active, alpha: PLACEMENT_ARROW_ALPHA };
   }
@@ -121,7 +113,9 @@ export class ArrowLayer {
   /** Container-like Graphics wrapper so the scene has a single child to own. */
   private root: Graphics;
 
-  private theme: PixiThemeColors | null = null;
+  // Seeded synchronously from the active preset so the first tick before
+  // `setTheme` fires still draws theme-correct arrows.
+  private theme: PixiThemeColors = adaptTheme(getGameThemeColors());
   private arrows: ArrowDef[] = [];
   private dashOffset = 0;
 
@@ -204,7 +198,7 @@ export class ArrowLayer {
     this.shadowGfx.moveTo(x1, y1 + SHADOW_OFFSET_Y);
     this.shadowGfx.quadraticCurveTo(cx, cy + SHADOW_OFFSET_Y, x2, y2 + SHADOW_OFFSET_Y);
     this.shadowGfx.stroke({
-      color: SHADOW_COLOR,
+      color: this.theme.canvas.shadow,
       width: SHADOW_WIDTH,
       alpha: alpha * SHADOW_ALPHA,
       cap: "round",
@@ -309,7 +303,7 @@ export class ArrowLayer {
     this.headGfx.lineTo(notchX, notchY + SHADOW_OFFSET_Y);
     this.headGfx.lineTo(rightX, rightY + SHADOW_OFFSET_Y);
     this.headGfx.closePath();
-    this.headGfx.fill({ color: SHADOW_COLOR, alpha: alpha * SHADOW_ALPHA });
+    this.headGfx.fill({ color: this.theme.canvas.shadow, alpha: alpha * SHADOW_ALPHA });
 
     // Filled arrowhead with a subtle concave base for a sleek silhouette.
     this.headGfx.moveTo(tipX, tipY);

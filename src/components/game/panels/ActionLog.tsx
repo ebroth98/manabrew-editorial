@@ -42,7 +42,7 @@ export function ActionLog({
       case "stack": return { bg: withAlpha(priorityColor, 0.12), fg: priorityColor };
       case "priority": return { bg: withAlpha(priorityColor, 0.12), fg: priorityColor };
       case "warning": return { bg: withAlpha(themeColors.promptAction.attackAction, 0.12), fg: themeColors.promptAction.attackAction };
-      default: return { bg: "rgba(128, 128, 128, 0.12)", fg: "rgba(128, 128, 128, 1)" };
+      default: return { bg: withAlpha(themeColors.textMuted, 0.12), fg: themeColors.textMuted };
     }
   };
 
@@ -73,7 +73,7 @@ export function ActionLog({
               key={i}
               className={cn(
                 "py-1 border-b border-border/40 last:border-b-0",
-                entry.entryType === "warning" && "text-red-400 font-semibold",
+                entry.entryType === "warning" && "text-warning font-semibold",
               )}
               onMouseEnter={(e) => onHoverLogCard(entry.cardId ?? null, e, { useAnchor: true })}
               onMouseLeave={() => onHoverLogCard(null)}

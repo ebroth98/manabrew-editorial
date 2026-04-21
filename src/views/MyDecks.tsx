@@ -361,7 +361,7 @@ export default function MyDecks() {
                       onMouseEnter={(e) => preview.handleMouseEnter(selected.deck.commanders![0], e)}
                       onMouseLeave={preview.handleMouseLeave}
                     >
-                      <Crown className="h-3 w-3 text-yellow-500 shrink-0" />
+                      <Crown className="h-3 w-3 text-commander shrink-0" />
                       <span className="text-sm flex-1 truncate">
                         {selected.deck.commanders![0].name}
                       </span>
@@ -427,7 +427,7 @@ export default function MyDecks() {
                               variant="ghost"
                               className={
                                 isCommander
-                                  ? "h-5 w-5 text-yellow-500 shrink-0"
+                                  ? "h-5 w-5 text-commander shrink-0"
                                   : "h-5 w-5 text-muted-foreground/40 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
                               }
                               title={

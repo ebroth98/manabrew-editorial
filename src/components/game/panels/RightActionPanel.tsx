@@ -199,10 +199,10 @@ function PixiFpsCounter() {
   const frameMs = stats.deltaMs.toFixed(1);
   const color =
     stats.fps >= 55
-      ? "text-emerald-400"
+      ? "text-success"
       : stats.fps >= 40
-        ? "text-amber-400"
-        : "text-rose-400";
+        ? "text-warning"
+        : "text-destructive";
 
   return (
     <div className="flex items-center justify-between gap-3 rounded-md border border-border/70 px-3 py-2">

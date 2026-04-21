@@ -1,4 +1,39 @@
 import type { ThemePreset } from "./index";
+import { buildGameColors, type BasePalette } from "./buildGameColors";
+
+/** Tokyo Night palette — muted blues / magentas with warm accents. */
+const palette: BasePalette = {
+  foreground: "#c0caf5",
+  labelMuted: "#565f89",
+  labelGhost: "#a9b1d6",
+  placeholderFill: "#1a1b26",
+  placeholderStroke: "#24283b",
+  canvasBackground: "#1a1b26",
+  red:      "#f7768e",
+  redDeep:  "#bb4d61",
+  orange:   "#ff9e64",
+  amber:    "#e0af68",
+  yellow:   "#e0af68",
+  green:    "#9ece6a",
+  teal:     "#73daca",
+  cyan:     "#7dcfff",
+  blue:     "#7aa2f7",
+  sky:      "#7dcfff",
+  indigo:   "#3d59a1",
+  violet:   "#bb9af7",
+  purple:   "#bb9af7",
+  pink:     "#f7768e",
+  slate:    "#565f89",
+  brown:    "#ff9e64",
+  paper:    "#c0caf5",
+  poison:   "#7fb055",          // deeper olive version of tokyo-night green
+  manaW:    "#c0caf5",
+  manaU:    "#7aa2f7",
+  manaB:    "#414868",
+  manaR:    "#f7768e",
+  manaG:    "#9ece6a",
+  manaC:    "#a9b1d6",
+};
 
 const preset: ThemePreset = {
   id: "tokyo-night",
@@ -73,6 +108,7 @@ const preset: ThemePreset = {
     "arrow.hostileTarget": "rgba(247, 118, 142, 0.88)",
     "arrow.friendlyTarget": "rgba(125, 207, 255, 0.88)",
     "cardRing": "#e0af68",
+    ...buildGameColors(palette),
   },
 };
 

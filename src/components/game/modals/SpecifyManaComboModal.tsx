@@ -9,13 +9,15 @@ interface SpecifyManaComboModalProps {
   onConfirm: (chosenColors: string[]) => void;
 }
 
-const LETTER_INFO: Record<string, { label: string; bg: string; hoverRing: string; text: string }> = {
-  W: { label: "White", bg: "bg-amber-50 dark:bg-amber-100", hoverRing: "hover:ring-amber-300", text: "text-amber-900" },
-  U: { label: "Blue",  bg: "bg-blue-100 dark:bg-blue-200", hoverRing: "hover:ring-blue-400", text: "text-blue-900" },
-  B: { label: "Black", bg: "bg-gray-300 dark:bg-gray-400", hoverRing: "hover:ring-gray-600", text: "text-gray-900" },
-  R: { label: "Red",   bg: "bg-red-100 dark:bg-red-200", hoverRing: "hover:ring-red-400", text: "text-red-900" },
-  G: { label: "Green", bg: "bg-green-100 dark:bg-green-200", hoverRing: "hover:ring-green-500", text: "text-green-900" },
-  C: { label: "Colorless", bg: "bg-gray-100 dark:bg-gray-200", hoverRing: "hover:ring-gray-400", text: "text-gray-700" },
+/** Per-colour row tint — uses `mana-<letter>` theme tokens so the
+ *  picker retones with the active preset. */
+const LETTER_INFO: Record<string, { label: string; bg: string }> = {
+  W: { label: "White",     bg: "bg-mana-w" },
+  U: { label: "Blue",      bg: "bg-mana-u" },
+  B: { label: "Black",     bg: "bg-mana-b" },
+  R: { label: "Red",       bg: "bg-mana-r" },
+  G: { label: "Green",     bg: "bg-mana-g" },
+  C: { label: "Colorless", bg: "bg-mana-c" },
 };
 
 function manaSymbolUrl(symbol: string): string {
@@ -70,12 +72,12 @@ export function SpecifyManaComboModal({ availableColors, amount, sourceCardName,
 
       <div className="p-4 flex flex-col gap-2">
         {availableColors.map(color => {
-          const info = LETTER_INFO[color] ?? { label: color, bg: "bg-muted", hoverRing: "", text: "text-foreground" };
+          const info = LETTER_INFO[color] ?? { label: color, bg: "bg-muted" };
           const count = counts[color] ?? 0;
           return (
             <div key={color} className="flex items-center gap-3">
               <img src={manaSymbolUrl(color)} alt={`{${color}}`} className="w-8 h-8" />
-              <span className={cn("text-sm font-medium w-16", info.text)}>{info.label}</span>
+              <span className={cn("text-sm font-medium w-16 px-2 py-0.5 rounded text-foreground", info.bg)}>{info.label}</span>
               <div className="flex items-center gap-1">
                 <button
                   onClick={() => decrement(color)}

@@ -2,6 +2,8 @@ import { useMemo } from "react";
 import { usePreferencesStore } from "@/stores/usePreferencesStore";
 import { THEME_PRESETS } from "@/themes";
 
+export type ManaLetter = "W" | "U" | "B" | "R" | "G" | "C";
+
 export interface GameThemeColors {
   activeAction: {
     priority: string;
@@ -19,10 +21,111 @@ export interface GameThemeColors {
     hostileTarget: string;
     friendlyTarget: string;
   };
+  /** Pointer glow palette. Only two colours: `hostile` for intents that
+   *  act against the target (damage, destroy, sacrifice, exile, counter,
+   *  tap, discard, …) and `friendly` for supportive intents (buff, heal,
+   *  draw, reveal, untap, attach, …). The monochrome icon glyph carries
+   *  the specific semantic; the colour only signals valence. See
+   *  `intentIsHostile()` in `@/types/promptType`. */
+  pointer: {
+    hostile: string;
+    friendly: string;
+  };
+  /** Mana-symbol tint used for pip highlights and the dual-land split-tap
+   *  button backgrounds. Stored as opaque hex; consumers apply alpha
+   *  themselves via `withAlpha`. */
+  mana: Record<ManaLetter, string>;
+  /** Status-ring / badge colour for each special card state surfaced on
+   *  the battlefield (exerted, face-down morph, bestowed aura, copy-token,
+   *  transformed DFC, plotted / warp / madness exiled). */
+  cardStatus: {
+    exerted: string;
+    morph: string;
+    bestow: string;
+    token: string;
+    transformed: string;
+    plotted: string;
+    madness: string;
+    warped: string;
+  };
+  /** Foreground text colour used on top of tinted chips / badges (PT,
+   *  counter chips, warning pills). Theme-resolved so future light-mode
+   *  variants can flip it to a dark ink. */
+  textOnTinted: string;
+  /** Subdued label colour used for "empty zone" placeholders over the
+   *  canvas surface (graveyard / exile / library zone labels). */
+  textMuted: string;
+  /** Ghost-placeholder colour used for card-name labels while the card
+   *  art is still loading. Slightly brighter than `textMuted`. */
+  textGhost: string;
+  /** Canvas-level neutrals. `background` paints the empty pixi surface;
+   *  `shadow` is the drop-shadow ink; `neutral` is the high-contrast
+   *  stroke colour used for arrow strokes / icon outlines. */
+  canvas: {
+    background: string;
+    shadow: string;
+    neutral: string;
+  };
+  /** Placeholder colours used for a card sprite before its texture loads. */
+  cardPlaceholder: {
+    fill: string;
+    stroke: string;
+  };
+  /** P/T badge backgrounds, keyed by stat-state. Use these only for
+   *  actual Power/Toughness badges — do not reuse them as generic
+   *  good/bad signals (that's what `success` / `destructive` / `warning`
+   *  are for). */
+  pt: {
+    neutral: string;
+    lethal: string;
+    buffed: string;
+    debuffed: string;
+  };
+  /** Positive-state indicator — connected, saved, win, good FPS. Green. */
+  success: string;
+  /** Poison counter / skull icon colour. Traditionally MTG infect green. */
+  poison: string;
+  /** Life total / heart icon colour. Red. */
+  life: string;
+  /** Per-counter-type badge colour used by the permanent's counter chips.
+   *  `default` is the fallback for unknown counter types. */
+  counter: {
+    default: string;
+    p1p1: string;
+    m1m1: string;
+    loyalty: string;
+    charge: string;
+    quest: string;
+    study: string;
+    lore: string;
+    age: string;
+    time: string;
+    fade: string;
+    level: string;
+    storage: string;
+    mining: string;
+    brick: string;
+    depletion: string;
+    page: string;
+  };
   cardRing: string;
 }
 
-/** 
+/** Default preset's gameColors map, consulted as a semantic fallback when
+ *  the active preset doesn't declare a given game-theme key. This
+ *  keeps all concrete colours inside theme files (no hardcoded palette
+ *  duplicated inside this module). */
+const DEFAULT_PRESET_GAME_COLORS: Record<string, string> = (() => {
+  const defaultPreset = THEME_PRESETS.find((p) => p.id === "default");
+  const out: Record<string, string> = {};
+  if (!defaultPreset) return out;
+  for (const [key, value] of Object.entries(defaultPreset.gameColors)) {
+    if (typeof value === "string") out[key] = value;
+  }
+  return out;
+})();
+
+/**
  * A template for the game theme color structure.
  * Used for path validation and as a fallback schema.
  */
@@ -30,6 +133,26 @@ const COLOR_SCHEMA: GameThemeColors = {
   activeAction: { priority: "", active: "" },
   promptAction: { passAction: "", attackAction: "", defenseAction: "", cancel: "" },
   arrow: { attack: "", block: "", hostileTarget: "", friendlyTarget: "" },
+  pointer: { hostile: "", friendly: "" },
+  mana: { W: "", U: "", B: "", R: "", G: "", C: "" },
+  cardStatus: {
+    exerted: "", morph: "", bestow: "", token: "",
+    transformed: "", plotted: "", madness: "", warped: "",
+  },
+  textOnTinted: "",
+  textMuted: "",
+  textGhost: "",
+  canvas: { background: "", shadow: "", neutral: "" },
+  cardPlaceholder: { fill: "", stroke: "" },
+  pt: { neutral: "", lethal: "", buffed: "", debuffed: "" },
+  success: "",
+  poison: "",
+  life: "",
+  counter: {
+    default: "", p1p1: "", m1m1: "", loyalty: "", charge: "", quest: "",
+    study: "", lore: "", age: "", time: "", fade: "", level: "",
+    storage: "", mining: "", brick: "", depletion: "", page: "",
+  },
   cardRing: "",
 };
 
@@ -86,8 +209,39 @@ export function resolveGameThemeColors(
       hostileTarget: "rgba(210, 40, 40, 0.88)",
       friendlyTarget: "rgba(90, 150, 255, 0.88)",
     },
+    pointer: { hostile: "", friendly: "" },
+    mana: { W: "", U: "", B: "", R: "", G: "", C: "" },
+    cardStatus: {
+      exerted: "", morph: "", bestow: "", token: "",
+      transformed: "", plotted: "", madness: "", warped: "",
+    },
+    textOnTinted: "",
+    textMuted: "",
+    textGhost: "",
+    canvas: { background: "", shadow: "", neutral: "" },
+    cardPlaceholder: { fill: "", stroke: "" },
+    pt: { neutral: "", lethal: "", buffed: "", debuffed: "" },
+    success: "",
+    poison: "",
+    life: "",
+    counter: {
+      default: "", p1p1: "", m1m1: "", loyalty: "", charge: "", quest: "",
+      study: "", lore: "", age: "", time: "", fade: "", level: "",
+      storage: "", mining: "", brick: "", depletion: "", page: "",
+    },
     cardRing: "#fb923c",
   };
+
+  // 2a. Semantic fallback: seed pointer colours (and any other
+  // defaultable key) from the default theme preset before we apply the
+  // active preset's overrides. This keeps concrete colours inside theme
+  // files and lets other presets opt out of restating every intent.
+  if (activePresetId !== "default") {
+    for (const [path, value] of Object.entries(DEFAULT_PRESET_GAME_COLORS)) {
+      if (!hasColorPath(path) || !value.trim()) continue;
+      setByPath(merged as unknown as Record<string, unknown>, path, value.trim());
+    }
+  }
 
   // 3. Apply preset colors
   for (const [path, value] of Object.entries(presetColors)) {
@@ -175,16 +329,54 @@ export function resolveGameThemeColors(
   return merged;
 }
 
-/** 
+/**
  * Base game theme colors exported for legacy compatibility.
  * Now derived dynamically from the default theme.
  */
 export const GAME_THEME_COLORS: GameThemeColors = resolveGameThemeColors({}, "default");
 
+/**
+ * Flatten the nested `GameThemeColors` object into CSS-variable-ready
+ * key/value pairs. Object paths become dash-separated, camelCase is
+ * converted to kebab-case, and each key is prefixed with `--` so the
+ * result can be handed directly to `element.style.setProperty`.
+ *
+ * Example: `{ pointer: { hostile: "red" } }` → `{ "--pointer-hostile": "red" }`.
+ */
+export function flattenGameThemeToCssVars(
+  theme: GameThemeColors,
+): Record<string, string> {
+  const out: Record<string, string> = {};
+  const walk = (value: unknown, prefix: string): void => {
+    if (typeof value === "string") {
+      if (value.trim()) out[`--${prefix}`] = value;
+      return;
+    }
+    if (value == null || typeof value !== "object") return;
+    for (const [key, nested] of Object.entries(value as Record<string, unknown>)) {
+      const segment = camelToKebab(key).toLowerCase();
+      const nextPrefix = prefix ? `${prefix}-${segment}` : segment;
+      walk(nested, nextPrefix);
+    }
+  };
+  walk(theme, "");
+  return out;
+}
+
+function camelToKebab(s: string): string {
+  return s.replace(/[A-Z]/g, (char, index) =>
+    index === 0 ? char.toLowerCase() : `-${char.toLowerCase()}`,
+  );
+}
+
 export function getDefaultGameThemeColorMap(): Record<string, string> {
   const presetId = usePreferencesStore.getState().appThemePreset;
   const preset = THEME_PRESETS.find((p) => p.id === presetId) || THEME_PRESETS[0]!;
-  return { ...preset.gameColors };
+  const out: Record<string, string> = {};
+  for (const [key, value] of Object.entries(preset.gameColors)) {
+    if (typeof value === "string") out[key] = value;
+  }
+  return out;
 }
 
 export function getGameThemeColors(): GameThemeColors {

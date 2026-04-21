@@ -2,15 +2,12 @@ import { memo } from "react";
 import { cn } from "@/lib/utils";
 import { extractManaLetters } from "@/components/game/manaUtils";
 import { manaSymbolUrl } from "@/components/game/game.utils";
+import { useGameThemeColors, withAlpha, type ManaLetter } from "@/components/game/game.theme";
 
-export const MANA_COLORS: Record<string, string> = {
-  W: "rgba(248, 246, 216, 0.45)", // White
-  U: "rgba(193, 215, 233, 0.45)", // Blue
-  B: "rgba(186, 177, 171, 0.45)", // Black
-  R: "rgba(235, 159, 130, 0.45)", // Red
-  G: "rgba(196, 211, 202, 0.45)", // Green
-  C: "rgba(204, 202, 199, 0.45)", // Colorless
-};
+/** Alpha applied to the mana-letter tint when used as the tap-button fill. */
+const MANA_BUTTON_ALPHA = 0.45;
+/** Background used when the ability doesn't map to a single mana letter. */
+const MANA_BUTTON_FALLBACK_ALPHA = 0.4;
 
 /** A button with a mana symbol for tapping a dual land for a specific color, styled to fill card sections. */
 export const ManaAbilityTapButton = memo(function ManaAbilityTapButton({
@@ -25,8 +22,11 @@ export const ManaAbilityTapButton = memo(function ManaAbilityTapButton({
   className?: string;
 }) {
   const letters = extractManaLetters(description);
-  const letter = letters[0] ?? null;
-  const bgColor = letter ? MANA_COLORS[letter] : "rgba(0, 0, 0, 0.4)";
+  const letter = (letters[0] ?? null) as ManaLetter | null;
+  const themeColors = useGameThemeColors();
+  const bgColor = letter
+    ? withAlpha(themeColors.mana[letter], MANA_BUTTON_ALPHA)
+    : withAlpha(themeColors.promptAction.cancel, MANA_BUTTON_FALLBACK_ALPHA);
 
   return (
     <button

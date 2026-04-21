@@ -34,6 +34,85 @@
   --color-warning: hsl(var(--warning));
   --color-overlay: hsl(var(--overlay));
 
+  /* ──────────────────────────────────────────────────────────────────
+   * Game theme tokens — mirror `GameThemeColors` in
+   * `src/components/game/game.theme.ts`. `useAppTheme` writes the
+   * underlying `--<path>` vars on :root from the active preset, so
+   * every `bg-<token>` / `text-<token>` / `ring-<token>` class below
+   * re-paints automatically when the user switches preset.
+   * ────────────────────────────────────────────────────────────────── */
+  --color-active-action-priority: var(--active-action-priority);
+  --color-active-action-active: var(--active-action-active);
+
+  --color-prompt-action-pass-action: var(--prompt-action-pass-action);
+  --color-prompt-action-attack-action: var(--prompt-action-attack-action);
+  --color-prompt-action-defense-action: var(--prompt-action-defense-action);
+  --color-prompt-action-cancel: var(--prompt-action-cancel);
+
+  --color-arrow-attack: var(--arrow-attack);
+  --color-arrow-block: var(--arrow-block);
+  --color-arrow-hostile-target: var(--arrow-hostile-target);
+  --color-arrow-friendly-target: var(--arrow-friendly-target);
+
+  --color-pointer-hostile: var(--pointer-hostile);
+  --color-pointer-friendly: var(--pointer-friendly);
+
+  --color-mana-w: var(--mana-w);
+  --color-mana-u: var(--mana-u);
+  --color-mana-b: var(--mana-b);
+  --color-mana-r: var(--mana-r);
+  --color-mana-g: var(--mana-g);
+  --color-mana-c: var(--mana-c);
+
+  --color-card-status-exerted: var(--card-status-exerted);
+  --color-card-status-morph: var(--card-status-morph);
+  --color-card-status-bestow: var(--card-status-bestow);
+  --color-card-status-token: var(--card-status-token);
+  --color-card-status-transformed: var(--card-status-transformed);
+  --color-card-status-plotted: var(--card-status-plotted);
+  --color-card-status-madness: var(--card-status-madness);
+  --color-card-status-warped: var(--card-status-warped);
+
+  --color-text-on-tinted: var(--text-on-tinted);
+  --color-text-muted: var(--text-muted);
+  --color-text-ghost: var(--text-ghost);
+
+  --color-canvas-background: var(--canvas-background);
+  --color-canvas-shadow: var(--canvas-shadow);
+  --color-canvas-neutral: var(--canvas-neutral);
+
+  --color-card-placeholder-fill: var(--card-placeholder-fill);
+  --color-card-placeholder-stroke: var(--card-placeholder-stroke);
+
+  --color-pt-neutral: var(--pt-neutral);
+  --color-pt-lethal: var(--pt-lethal);
+  --color-pt-buffed: var(--pt-buffed);
+  --color-pt-debuffed: var(--pt-debuffed);
+
+  --color-success: var(--success);
+  --color-poison: var(--poison);
+  --color-life: var(--life);
+
+  --color-counter-default: var(--counter-default);
+  --color-counter-p1p1: var(--counter-p1p1);
+  --color-counter-m1m1: var(--counter-m1m1);
+  --color-counter-loyalty: var(--counter-loyalty);
+  --color-counter-charge: var(--counter-charge);
+  --color-counter-quest: var(--counter-quest);
+  --color-counter-study: var(--counter-study);
+  --color-counter-lore: var(--counter-lore);
+  --color-counter-age: var(--counter-age);
+  --color-counter-time: var(--counter-time);
+  --color-counter-fade: var(--counter-fade);
+  --color-counter-level: var(--counter-level);
+  --color-counter-storage: var(--counter-storage);
+  --color-counter-mining: var(--counter-mining);
+  --color-counter-brick: var(--counter-brick);
+  --color-counter-depletion: var(--counter-depletion);
+  --color-counter-page: var(--counter-page);
+
+  --color-card-ring: var(--card-ring);
+
   --radius-lg: var(--radius);
   --radius-md: calc(var(--radius) - 2px);
   --radius-sm: calc(var(--radius) - 4px);
@@ -305,11 +384,22 @@
   max-height: none !important;
 }
 
+/* While a targeting glyph is following the cursor, hide the native OS
+   pointer everywhere inside the board so the floating glyph reads as
+   the cursor itself. Toggled by `Game.tsx` via the
+   `targeting-cursor-hidden` class. */
+.targeting-cursor-hidden,
+.targeting-cursor-hidden * {
+  cursor: none !important;
+}
+
 /* Playable card border highlight in hand */
 .playable-card {
+  /* Both vars are always set by `Game.tsx` from the active theme — no
+     literal rgba fallback needed. */
   box-shadow:
-    0 0 0 2px var(--playable-ring-color, rgba(251, 146, 60, 0.75)),
-    0 0 12px var(--playable-glow-color, rgba(251, 146, 60, 0.3));
+    0 0 0 2px var(--playable-ring-color),
+    0 0 12px var(--playable-glow-color);
 }
 
 .playable-card.is-hovered {
@@ -319,18 +409,18 @@
 @keyframes playable-glow-pulse {
   0% {
     box-shadow:
-      0 0 0 2px var(--playable-ring-color, rgba(251, 146, 60, 0.75)),
-      0 0 12px var(--playable-glow-color, rgba(251, 146, 60, 0.3));
+      0 0 0 2px var(--playable-ring-color),
+      0 0 12px var(--playable-glow-color);
   }
   50% {
     box-shadow:
-      0 0 0 2px var(--playable-ring-color-strong, rgba(251, 146, 60, 1)),
-      0 0 22px var(--playable-glow-color-strong, rgba(251, 146, 60, 0.6));
+      0 0 0 2px var(--playable-ring-color-strong),
+      0 0 22px var(--playable-glow-color-strong);
   }
   100% {
     box-shadow:
-      0 0 0 2px var(--playable-ring-color, rgba(251, 146, 60, 0.75)),
-      0 0 12px var(--playable-glow-color, rgba(251, 146, 60, 0.3));
+      0 0 0 2px var(--playable-ring-color),
+      0 0 12px var(--playable-glow-color);
   }
 }
 
@@ -341,18 +431,18 @@
 @keyframes casting-glow {
   0% {
     box-shadow:
-      0 0 0 2px rgba(96, 165, 250, 0.7),
-      0 0 14px rgba(96, 165, 250, 0.3);
+      0 0 0 2px var(--casting-ring-color),
+      0 0 14px var(--casting-glow-color);
   }
   50% {
     box-shadow:
-      0 0 0 3px rgba(96, 165, 250, 1),
-      0 0 24px rgba(96, 165, 250, 0.6);
+      0 0 0 3px var(--casting-ring-color-strong),
+      0 0 24px var(--casting-glow-color-strong);
   }
   100% {
     box-shadow:
-      0 0 0 2px rgba(96, 165, 250, 0.7),
-      0 0 14px rgba(96, 165, 250, 0.3);
+      0 0 0 2px var(--casting-ring-color),
+      0 0 14px var(--casting-glow-color);
   }
 }
 
@@ -385,13 +475,13 @@
 @keyframes reject-flash {
   0% {
     box-shadow:
-      0 0 0 2px rgba(239, 68, 68, 0.9),
-      0 0 16px rgba(239, 68, 68, 0.5);
+      0 0 0 2px var(--rejecting-ring-color),
+      0 0 16px var(--rejecting-glow-color);
   }
   35% {
     box-shadow:
-      0 0 0 3px rgba(239, 68, 68, 1),
-      0 0 24px rgba(239, 68, 68, 0.7);
+      0 0 0 3px var(--rejecting-ring-color-strong),
+      0 0 24px var(--rejecting-glow-color-strong);
   }
   100% {
     box-shadow: none;

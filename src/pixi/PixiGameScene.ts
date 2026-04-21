@@ -20,8 +20,9 @@ import type {
   ScreenPos,
   ScreenBounds,
 } from "./types";
-import type { PixiThemeColors } from "./themeAdapter";
-import { CardSprite } from "./CardSprite";
+import { adaptTheme, type PixiThemeColors } from "./themeAdapter";
+import { getGameThemeColors } from "@/components/game/game.theme";
+import { CardSprite, setCardSpriteTheme } from "./CardSprite";
 import {
   CARD_W,
   CARD_H,
@@ -58,13 +59,9 @@ import {
   BATTLEFIELD_LERP,
   BG_ALPHA_DROP,
   BG_ALPHA_IDLE,
-  BG_COLOR,
-  BLACK,
   CARD_RADIUS,
   DROP_STROKE_ALPHA,
   DROP_TINT_ALPHA,
-  FALLBACK_GRAY,
-  FALLBACK_ORANGE,
   GAP,
   GHOST_FILL_ALPHA,
   GHOST_STROKE_ALPHA,
@@ -104,7 +101,6 @@ import {
   SNAP_SCALE,
   STACK_SEED_TTL_MS,
   TABLE_RADIUS,
-  WHITE,
   Z_GRID_SKELETON,
   Z_HAND_CONTAINER,
   Z_HAND_HOVERED,
@@ -211,7 +207,10 @@ export class PixiGameScene {
   private backgroundGfx: Graphics;
   private entries = new Map<string, SpriteEntry>();
   private callbacks: GameCanvasCallbacks;
-  private theme: PixiThemeColors | null = null;
+  // Seeded synchronously from the active preset so every draw call can
+  // read theme colours without nullability checks — `setTheme` then keeps
+  // it in sync with live preset / overrides changes.
+  private theme: PixiThemeColors = adaptTheme(getGameThemeColors());
   private leftReserved = ZONE_COLUMN_RESERVED_PX;
   private hoveredCardId: string | null = null;
   private battlefieldHoverClearTimer: number | null = null;
@@ -419,6 +418,7 @@ export class PixiGameScene {
     if (this.destroyed) return;
     this.theme = theme;
     this.arrowLayer.setTheme(theme);
+    setCardSpriteTheme(theme);
     this.drawTableBackground();
   }
 
@@ -563,7 +563,7 @@ export class PixiGameScene {
   }
 
   setDropActive(active: boolean): void {
-    if (this.destroyed || !this.theme) return;
+    if (this.destroyed) return;
     this.drawDropTargetBackground(active);
   }
 
@@ -779,15 +779,15 @@ export class PixiGameScene {
     const zone = this.getPlayZone();
     this.backgroundGfx.clear();
     this.backgroundGfx.roundRect(zone.x, zone.y, zone.width, zone.height, TABLE_RADIUS);
-    this.backgroundGfx.fill({ color: BG_COLOR, alpha: BG_ALPHA_IDLE });
+    this.backgroundGfx.fill({ color: this.theme.canvas.background, alpha: BG_ALPHA_IDLE });
   }
 
   private drawDropTargetBackground(active: boolean): void {
     const zone = this.getPlayZone();
     this.backgroundGfx.clear();
     this.backgroundGfx.roundRect(zone.x, zone.y, zone.width, zone.height, TABLE_RADIUS);
-    this.backgroundGfx.fill({ color: BG_COLOR, alpha: BG_ALPHA_DROP });
-    if (!active || !this.theme) return;
+    this.backgroundGfx.fill({ color: this.theme.canvas.background, alpha: BG_ALPHA_DROP });
+    if (!active) return;
     const tint = this.theme.activeAction.active;
     this.backgroundGfx.roundRect(
       zone.x + 2,
@@ -823,7 +823,7 @@ export class PixiGameScene {
       return;
     }
     const grid = this.gridInfo;
-    const color = this.theme?.activeAction.active ?? FALLBACK_ORANGE;
+    const color = this.theme.activeAction.active;
     const occupied = new Map<string, string>();
     for (const [id, pos] of this.gridTargets) {
       if (draggingIds.has(id)) continue;
@@ -881,7 +881,7 @@ export class PixiGameScene {
     const h = CARD_H * this.cardScale;
     const cx = slot.x + w / 2;
     const cy = slot.y + h / 2;
-    const color = this.theme?.activeAction.active ?? FALLBACK_ORANGE;
+    const color = this.theme.activeAction.active;
 
     gfx.clear();
     gfx.roundRect(cx - w / 2, cy - h / 2, w, h, CARD_RADIUS);
@@ -1335,14 +1335,9 @@ export class PixiGameScene {
     // re-render → prop change) overwrites the marquee selection glow
     // even though `selectedCardIds` is still populated.
     if (this.selectedCardIds.has(sprite.card.id)) {
-      sprite.setRing(this.theme?.cardRing ?? FALLBACK_ORANGE);
+      sprite.setRing(this.theme.cardRing);
       return;
     }
-    if (!this.theme) {
-      sprite.setRing(null);
-      return;
-    }
-
     const card = sprite.card;
     if (state.attackingCardIds?.includes(card.id)) {
       sprite.setRing(this.theme.promptAction.attackAction);
@@ -1429,7 +1424,7 @@ export class PixiGameScene {
 
       const letters = extractManaLetters(ab.description);
       const letter = letters[0];
-      const color = manaColorFor(letter, BLACK);
+      const color = manaColorFor(letter, this.theme, this.theme.canvas.shadow);
 
       const btn = new Graphics();
       const paintBtn = (highlighted: boolean) => {
@@ -1440,7 +1435,7 @@ export class PixiGameScene {
           alpha: highlighted ? MANA_BUTTON_HOVER_ALPHA : MANA_BUTTON_ALPHA,
         });
         btn.stroke({
-          color: WHITE,
+          color: this.theme.canvas.neutral,
           width: 1,
           alpha: highlighted
             ? MANA_BUTTON_STROKE_HOVER_ALPHA
@@ -1478,7 +1473,7 @@ export class PixiGameScene {
     state: BattlefieldState,
     kind: ActionKind,
   ): void {
-    const ring = this.theme?.cardRing ?? FALLBACK_ORANGE;
+    const ring = this.theme.cardRing;
     let label = OVERLAY_LABEL_SELECT;
     let symbol: string | null = null;
     let color = ring;
@@ -1493,7 +1488,7 @@ export class PixiGameScene {
     } else if (kind.isUntappable) {
       label = OVERLAY_LABEL_UNTAP;
       symbol = SYMBOL_UNTAP;
-      color = this.theme?.promptAction.cancel ?? FALLBACK_GRAY;
+      color = this.theme.promptAction.cancel;
       idleAlpha = ACTION_BUTTON_ALPHA;
       hoverAlpha = ACTION_BUTTON_HOVER_ALPHA;
     }
@@ -1588,7 +1583,7 @@ export class PixiGameScene {
     icon.eventMode = "none";
     const circle = new Graphics();
     circle.circle(0, 0, radius);
-    circle.fill({ color: BLACK, alpha: ICON_BG_ALPHA });
+    circle.fill({ color: this.theme.canvas.shadow, alpha: ICON_BG_ALPHA });
     icon.addChild(circle);
 
     const tex = getManaSymbolTextureSync(label);
@@ -2001,7 +1996,7 @@ export class PixiGameScene {
     if (!this.lastState) return;
     for (const entry of this.entries.values()) {
       if (this.selectedCardIds.has(entry.sprite.card.id)) {
-        entry.sprite.setRing(this.theme?.cardRing ?? FALLBACK_ORANGE);
+        entry.sprite.setRing(this.theme.cardRing);
       } else {
         this.applyBattlefieldRing(entry.sprite, this.lastState);
       }
@@ -2185,7 +2180,7 @@ export class PixiGameScene {
       sprite.setRing(null);
       return;
     }
-    const ring = this.theme?.cardRing ?? FALLBACK_ORANGE;
+    const ring = this.theme.cardRing;
     if (isHovered) sprite.setHighlight(true, ring, PLAYABLE_HIGHLIGHT_ALPHA);
     else sprite.setRing(ring, PLAYABLE_RING_ALPHA);
   }
@@ -2295,13 +2290,10 @@ export class PixiGameScene {
     }
     if (!to) return null;
 
-    return {
-      fromX: from.x,
-      fromY: from.y,
-      toX: to.x,
-      toY: to.y,
-      type: spec.hostile ? "hostile-target" : "friendly-target",
-    };
+    // Casting arrow is rendered exclusively by the overlay `PointerLayer`
+    // now — no matching arrow type exists on the main-scene arrow layer.
+    void from; void to; void spec;
+    return null;
   }
 
   private resolveArrowEndpoint(

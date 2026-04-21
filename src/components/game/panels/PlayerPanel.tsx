@@ -135,7 +135,7 @@ export function PlayerPanel({
           <>
             <span className="text-white/20">|</span>
             <StatBadge label="Poison Counters">
-              <span className="inline-flex items-center gap-1 font-bold text-[11px] text-emerald-500">
+              <span className="inline-flex items-center gap-1 font-bold text-[11px] text-poison">
                 ☠<span className="tabular-nums">{player.poison || 0}</span>
               </span>
             </StatBadge>

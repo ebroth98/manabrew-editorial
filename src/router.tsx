@@ -15,11 +15,11 @@ export const router = createBrowserRouter([
     path: "/",
     element: <AppShell />,
     errorElement: (
-      <div className="flex items-center justify-center h-screen text-red-400">
+      <div className="flex items-center justify-center h-screen text-destructive">
         <div className="text-center">
           <h1 className="text-2xl font-bold">Page Not Found</h1>
           <p className="mt-2 text-muted-foreground">The page you're looking for doesn't exist.</p>
-          <a href="/" className="mt-4 inline-block text-blue-400 hover:underline">Go Home</a>
+          <a href="/" className="mt-4 inline-block text-primary hover:underline">Go Home</a>
         </div>
       </div>
     ),

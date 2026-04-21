@@ -3,15 +3,199 @@ import { usePreferencesStore, type ZonePanelItem } from "@/stores/usePreferences
 import { THEME_PRESETS, type ThemeColors } from "@/themes";
 import { useServerStore } from "@/stores/useServerStore";
 import { useGameStore } from "@/stores/useGameStore";
-import { getDefaultGameThemeColorMap, toPickerHexColor } from "@/components/game/game.theme";
+import { getDefaultGameThemeColorMap, toPickerHexColor, useGameThemeColors, type GameThemeColors } from "@/components/game/game.theme";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { useTheme } from "next-themes";
 import { Navigate } from "react-router-dom";
+import { HelpCircle } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 /** Human-readable labels for theme color keys */
-const APP_THEME_COLOR_LABELS: Record<string, string> = {
+/**
+ * Canonical key unions. These drive the typed colour-description maps
+ * below so a typo in a description key fails at compile time and adding
+ * a new token to the schema shows up as a missing-description TS error
+ * (via the `Record<…>` form used on the descriptions themselves — not
+ * `Partial<Record<…>>` — so exhaustiveness is enforced).
+ */
+type AppThemeKey = keyof ThemeColors;
+
+/**
+ * Dot-notation string keys for every leaf in `GameThemeColors`.
+ * Produces `"pointer.hostile" | "mana.W" | "textOnTinted" | …` at the
+ * TS level; `Partial<Record<GameThemePath, string>>` on the description
+ * map catches typos without forcing every leaf to be documented at
+ * once. Add new tokens to the schema first — the description keys are
+ * then type-checked against the live shape.
+ */
+type GameThemePath = {
+  [K in keyof GameThemeColors & string]: GameThemeColors[K] extends string
+    ? K
+    : GameThemeColors[K] extends Record<string, string>
+      ? `${K}.${keyof GameThemeColors[K] & string}`
+      : never;
+}[keyof GameThemeColors & string];
+
+/**
+ * Legacy game colour keys that still live in preset `gameColors` maps
+ * (consumed by `resolveGameThemeColors`' backwards-compatibility
+ * fallbacks) but are not part of the `GameThemeColors` schema.
+ * Kept out of the schema so runtime consumers don't grow new shapes,
+ * but documented here so the Settings tooltip still has descriptions
+ * for them when they appear in the picker list.
+ */
+type LegacyGameThemePath =
+  | "highlight"
+  | "hand.playableBorder"
+  | "activeAction.turnText"
+  | "activeAction.myTurnRing"
+  | "activeAction.opponentTurnRing"
+  | "promptAction.default"
+  | "promptAction.passPriority"
+  | "promptAction.passUntilEnd"
+  | "promptAction.pacificAction";
+
+/** Human-readable description for each Radix (app chrome) colour token.
+ *  Shown as the `title` attribute of a small `?` icon next to the label. */
+const APP_THEME_COLOR_DESCRIPTIONS: Record<AppThemeKey, string> = {
+  background: "Page / window background fill.",
+  foreground: "Default body text colour.",
+  card: "Surface colour for cards, panels, and solid containers.",
+  "card-foreground": "Text colour placed on `card` surfaces.",
+  popover: "Background of popovers, menus, and floating panels.",
+  "popover-foreground": "Text colour inside popovers.",
+  primary: "Primary action colour — main call-to-action buttons, links, active chip fills.",
+  "primary-foreground": "Text / icons placed on a `primary` background.",
+  secondary: "Secondary / subtle button background.",
+  "secondary-foreground": "Text on secondary-style buttons.",
+  muted: "Muted surface for low-priority regions.",
+  "muted-foreground": "Captions, hints, and secondary text colour.",
+  accent: "Hover / active highlight surface.",
+  "accent-foreground": "Text on accent surfaces.",
+  destructive: "Destructive actions, errors, and deny states.",
+  "destructive-foreground": "Text placed on `destructive` buttons.",
+  border: "Default border and divider lines.",
+  input: "Form input borders and backgrounds.",
+  ring: "Focus ring around interactive elements.",
+  selection: "Background of selected text.",
+  "selection-foreground": "Colour of selected text itself.",
+  commander: "Commander indicator (crown icon, commander panel accent).",
+  warning: "Warning states and soft cautions.",
+  overlay: "Modal / dialog backdrop dim.",
+};
+
+/** Human-readable description for each game-surface colour token.
+ *  Keys are type-checked against the live `GameThemeColors` schema
+ *  (plus the legacy alias set) — a typo or renamed schema field
+ *  fails compilation here. */
+const GAME_THEME_COLOR_DESCRIPTIONS: Partial<Record<GameThemePath | LegacyGameThemePath, string>> = {
+  "activeAction.priority": "Highlight surrounding the player who currently has priority.",
+  "activeAction.active": "Active-turn ring, turn-text colour, and general 'your turn' cue.",
+  "activeAction.turnText": "Legacy alias for `activeAction.active` (turn-banner text).",
+  "activeAction.myTurnRing": "Legacy alias — ring around cards on your turn.",
+  "activeAction.opponentTurnRing": "Legacy alias — ring around cards on opponent's turn.",
+  "highlight": "General-purpose highlight accent.",
+  "hand.playableBorder": "Glow border around playable cards in your hand.",
+  "promptAction.passAction": "Pass priority / pass turn button fill.",
+  "promptAction.attackAction": "Declare-attackers button fill.",
+  "promptAction.defenseAction": "Defense / declare-blockers button fill.",
+  "promptAction.cancel": "Cancel / decline button fill.",
+  "promptAction.default": "Legacy alias — primary prompt button.",
+  "promptAction.passPriority": "Legacy alias — pass priority button.",
+  "promptAction.passUntilEnd": "Legacy alias — pass until end-of-turn button.",
+  "promptAction.pacificAction": "Legacy alias — secondary (pacifist) prompt button.",
+  "arrow.attack": "Attacker arrow from attacker to defender.",
+  "arrow.block": "Blocker arrow from blocker to attacker.",
+  "arrow.hostileTarget": "Legacy hostile-target arrow (Pixi fallback).",
+  "arrow.friendlyTarget": "Legacy friendly-target arrow (Pixi fallback).",
+  "pointer.hostile": "Glow around the cursor for hostile targeting — damage, destroy, sacrifice, exile, counter, etc. Also used for the mulligan-reject ring.",
+  "pointer.friendly": "Glow around the cursor for friendly / supportive targeting — buff, heal, draw, reveal, untap, attach, copy.",
+  "mana.W": "White mana pip and dual-land tap-button tint.",
+  "mana.U": "Blue mana pip and dual-land tap-button tint.",
+  "mana.B": "Black mana pip and dual-land tap-button tint.",
+  "mana.R": "Red mana pip and dual-land tap-button tint.",
+  "mana.G": "Green mana pip and dual-land tap-button tint.",
+  "mana.C": "Colorless mana pip and tap-button tint.",
+  "cardStatus.exerted": "Badge colour for exerted creatures (won't untap).",
+  "cardStatus.morph": "Badge for face-down / morph creatures.",
+  "cardStatus.bestow": "Badge for bestowed auras.",
+  "cardStatus.token": "Badge for token creatures.",
+  "cardStatus.transformed": "Badge for transformed double-faced cards.",
+  "cardStatus.plotted": "Badge for plotted cards in exile.",
+  "cardStatus.madness": "Badge for madness-exiled cards.",
+  "cardStatus.warped": "Badge for warp-exiled cards.",
+  "counter.default": "Fallback chip colour for unknown counter types.",
+  "counter.p1p1": "+1/+1 counter chip.",
+  "counter.m1m1": "-1/-1 counter chip.",
+  "counter.loyalty": "Loyalty counter chip (planeswalkers).",
+  "counter.charge": "Charge counter chip.",
+  "counter.quest": "Quest counter chip.",
+  "counter.study": "Study counter chip.",
+  "counter.lore": "Lore counter chip (sagas).",
+  "counter.age": "Age counter chip.",
+  "counter.time": "Time counter chip (suspend, etc.).",
+  "counter.fade": "Fade counter chip.",
+  "counter.level": "Level counter chip (level-up creatures).",
+  "counter.storage": "Storage counter chip.",
+  "counter.mining": "Mining counter chip.",
+  "counter.brick": "Brick counter chip.",
+  "counter.depletion": "Depletion counter chip.",
+  "counter.page": "Page counter chip (book rooms).",
+  "pt.neutral": "P/T badge when stats match the printed base.",
+  "pt.lethal": "P/T badge when incoming damage would be lethal.",
+  "pt.buffed": "P/T badge when stats are above the printed base.",
+  "pt.debuffed": "P/T badge when stats are below the printed base.",
+  "success": "Positive states — connected, saved, victory banner, good FPS.",
+  "poison": "Poison counter / skull icon — MTG infect-green.",
+  "life": "Life total / heart icon.",
+  "canvas.background": "Pixi canvas table background fill.",
+  "canvas.shadow": "Drop-shadow ink (almost always black).",
+  "canvas.neutral": "High-contrast stroke / outline colour for arrows and icons.",
+  "cardPlaceholder.fill": "Loading-state card sprite fill.",
+  "cardPlaceholder.stroke": "Loading-state card sprite border.",
+  "textOnTinted": "Text colour placed on tinted chips and badges.",
+  "textMuted": "Subdued label colour on empty-zone placeholders.",
+  "textGhost": "Ghost card-name colour shown while art loads.",
+  "cardRing": "Default card selection / focus ring.",
+};
+
+/**
+ * Small `?` hover-help icon shown next to a picker label. Renders a
+ * custom CSS tooltip below the icon on hover / focus — native `title`
+ * attributes don't always fire reliably and are slow to appear, so we
+ * drive the popover with tailwind `group-hover` + `group-focus-within`.
+ * An invisible native `title` + `aria-label` remain for screen readers
+ * and for users who expect the OS tooltip as a fallback.
+ */
+function HelpMark({ description }: { description: string | undefined }) {
+  if (!description) return null;
+  return (
+    <span
+      className="group relative inline-flex items-center"
+      tabIndex={0}
+      role="button"
+      aria-label={description}
+    >
+      <HelpCircle className="h-3 w-3 text-muted-foreground/60 group-hover:text-foreground group-focus-within:text-foreground cursor-help" />
+      <span
+        role="tooltip"
+        className={cn(
+          "pointer-events-none absolute left-0 top-full z-50 mt-1 w-56 whitespace-normal",
+          "rounded-md border bg-popover px-2 py-1.5 text-[11px] leading-snug text-popover-foreground shadow-lg",
+          "opacity-0 -translate-y-1 transition-all duration-150",
+          "group-hover:opacity-100 group-hover:translate-y-0",
+          "group-focus-within:opacity-100 group-focus-within:translate-y-0",
+        )}
+      >
+        {description}
+      </span>
+    </span>
+  );
+}
+
+const APP_THEME_COLOR_LABELS: Record<AppThemeKey, string> = {
   background: "Background",
   foreground: "Text",
   card: "Card Surface",
@@ -38,9 +222,135 @@ const APP_THEME_COLOR_LABELS: Record<string, string> = {
   overlay: "Overlay",
 };
 
-function hslToHex(hsl: string): string {
+/** Group the app-chrome Radix tokens by semantic role so the picker
+ *  reads like "surfaces → brand → state → structure" instead of a
+ *  flat list ordered by schema declaration. */
+const APP_THEME_GROUPS: { heading: string; description: string; keys: AppThemeKey[] }[] = [
+  {
+    heading: "Surfaces & Foregrounds",
+    description: "Neutral page, card, and popover backgrounds plus their paired text colours.",
+    keys: [
+      "background", "foreground",
+      "card", "card-foreground",
+      "popover", "popover-foreground",
+    ],
+  },
+  {
+    heading: "Brand & Accent",
+    description: "Primary action colour and the softer accent / secondary tints.",
+    keys: [
+      "primary", "primary-foreground",
+      "secondary", "secondary-foreground",
+      "accent", "accent-foreground",
+    ],
+  },
+  {
+    heading: "State Signals",
+    description: "Destructive, warning, commander, and selection highlights.",
+    keys: [
+      "destructive", "destructive-foreground",
+      "warning",
+      "commander",
+      "selection", "selection-foreground",
+    ],
+  },
+  {
+    heading: "Muted & Structure",
+    description: "Subdued surfaces, borders, input fields, focus ring, and overlay dim.",
+    keys: [
+      "muted", "muted-foreground",
+      "border", "input", "ring",
+      "overlay",
+    ],
+  },
+];
+
+/** Group the game-surface tokens by prefix so related entries sit
+ *  together (all `pointer.*` in one block, all `counter.*` in another,
+ *  …). Keys are matched by prefix; anything not covered falls into
+ *  the "Miscellaneous" group at the end. */
+const GAME_THEME_GROUPS: { heading: string; description: string; prefixes?: string[]; exactKeys?: string[] }[] = [
+  {
+    heading: "Active Action",
+    description: "Priority ring, turn glow, and related active-state cues.",
+    prefixes: ["activeAction."],
+  },
+  {
+    heading: "Prompt Buttons",
+    description: "Pass, attack, defense, cancel, and related prompt action buttons.",
+    prefixes: ["promptAction."],
+  },
+  {
+    heading: "Combat & Placement Arrows",
+    description: "Curved arrows for attack / block declarations and the placement ghost.",
+    prefixes: ["arrow."],
+  },
+  {
+    heading: "Targeting Pointers",
+    description: "Per-intent pointer icon glow (sacrifice, destroy, exile, bounce, tap …).",
+    prefixes: ["pointer."],
+  },
+  {
+    heading: "Mana Symbols",
+    description: "W / U / B / R / G / C pip and tap-button tints.",
+    prefixes: ["mana."],
+  },
+  {
+    heading: "Card Status Badges",
+    description: "Exerted, morph, bestow, token, transformed, plotted, madness, warped.",
+    prefixes: ["cardStatus."],
+  },
+  {
+    heading: "Counters",
+    description: "Per-counter-type chip colour (P1P1, M1M1, Loyalty, Charge …).",
+    prefixes: ["counter."],
+  },
+  {
+    heading: "P / T Badge",
+    description: "Neutral / lethal / buffed / debuffed stat-badge backgrounds.",
+    prefixes: ["pt."],
+  },
+  {
+    heading: "Status Signals",
+    description: "Generic UI states: success (connected / win), poison counter, life / heart.",
+    exactKeys: ["success", "poison", "life"],
+  },
+  {
+    heading: "Canvas",
+    description: "Pixi table background, shadow ink, and high-contrast neutral.",
+    prefixes: ["canvas."],
+  },
+  {
+    heading: "Card Placeholder",
+    description: "Sprite fill / stroke used while a card's image is loading.",
+    prefixes: ["cardPlaceholder."],
+  },
+  {
+    heading: "Text Roles",
+    description: "Generic text colours on tinted chips, empty zones, and ghost placeholders.",
+    exactKeys: ["textOnTinted", "textMuted", "textGhost"],
+  },
+  {
+    heading: "Highlights",
+    description: "Player hand playable border + highlight accents.",
+    exactKeys: ["highlight", "hand.playableBorder"],
+  },
+  {
+    heading: "Card Ring",
+    description: "Fallback ring / selection halo colour.",
+    exactKeys: ["cardRing"],
+  },
+];
+
+/**
+ * Convert an HSL triplet (space-separated string) to a hex colour.
+ * Returns the caller-supplied `fallback` when the input is unparseable —
+ * callers are expected to pass a theme-resolved colour so no literal is
+ * baked into this utility.
+ */
+function hslToHex(hsl: string, fallback: string): string {
   const parts = hsl.trim().split(/\s+/).map((s) => parseFloat(s));
-  if (parts.length < 3 || parts.some(isNaN)) return "#808080";
+  if (parts.length < 3 || parts.some(isNaN)) return fallback;
   const [h, s, l] = parts;
   const sn = s / 100;
   const ln = l / 100;
@@ -83,6 +393,10 @@ export default function Settings() {
   const { flashDurationMs, setFlashDurationMs } = prefs;
   const server = useServerStore();
   const { theme, setTheme, resolvedTheme } = useTheme();
+  // Neutral used as the fallback swatch when the user edits an HSL value
+  // to something unparseable — derived from the active preset so it
+  // matches the rest of the UI instead of a hardcoded grey.
+  const neutralSwatchColor = useGameThemeColors().promptAction.cancel;
   const [activeTab, setActiveTab] = useState<"server" | "preferences" | "theme">("preferences");
   const [presetOpen, setPresetOpen] = useState(false);
   const [editingThemeColorPath, setEditingThemeColorPath] = useState<string | null>(null);
@@ -146,7 +460,7 @@ export default function Settings() {
   }
 
   return (
-    <div className="max-w-xl mx-auto py-8 px-4 space-y-8">
+    <div className="max-w-7xl mx-auto py-8 px-4 lg:px-8 space-y-8">
       <h1 className="text-2xl font-bold">Preferences</h1>
 
       <section className="space-y-4">
@@ -217,8 +531,8 @@ export default function Settings() {
               Save & Reconnect
             </Button>
             {server.connected && (
-              <span className="text-xs text-green-600 dark:text-green-400 flex items-center gap-1">
-                <span className="h-2 w-2 rounded-full bg-green-500" />
+              <span className="text-xs text-success flex items-center gap-1">
+                <span className="h-2 w-2 rounded-full bg-success" />
                 Connected as {server.username}
               </span>
             )}
@@ -226,7 +540,7 @@ export default function Settings() {
               <span className="text-xs text-muted-foreground">Connecting...</span>
             )}
             {server.error && (
-              <span className="text-xs text-red-600 dark:text-red-400">{server.error}</span>
+              <span className="text-xs text-destructive">{server.error}</span>
             )}
           </div>
           <p className="text-xs text-muted-foreground">
@@ -239,7 +553,9 @@ export default function Settings() {
         <section className="space-y-4">
           <h2 className="text-lg font-semibold">Preferences</h2>
 
-          <div className="flex items-start gap-3">
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+
+          <div className="rounded-lg border bg-card/40 p-4 flex items-start gap-3">
             <input
               id="auto-pass"
               type="checkbox"
@@ -256,7 +572,7 @@ export default function Settings() {
             </div>
           </div>
 
-          <div className="space-y-2 pt-2">
+          <div className="rounded-lg border bg-card/40 p-4 space-y-2">
             <Label>Battlefield Zone Column Side</Label>
             <div className="flex items-center gap-2">
               <Button
@@ -276,7 +592,7 @@ export default function Settings() {
             </div>
           </div>
 
-          <div className="space-y-2">
+          <div className="rounded-lg border bg-card/40 p-4 space-y-2">
             <Label>Battlefield Zone Column Order</Label>
             <div className="grid grid-cols-3 gap-2">
               {(["Top", "Middle", "Bottom"] as const).map((slot, index) => (
@@ -302,7 +618,7 @@ export default function Settings() {
             </p>
           </div>
 
-          <div className="space-y-2">
+          <div className="rounded-lg border bg-card/40 p-4 space-y-2">
             <Label>Hand Display Mode</Label>
             <div className="flex items-center gap-2">
               <Button
@@ -325,7 +641,7 @@ export default function Settings() {
             </p>
           </div>
 
-          <div className="space-y-2">
+          <div className="rounded-lg border bg-card/40 p-4 space-y-2">
             <Label>GPU Canvas Renderer (Experimental)</Label>
             <div className="flex items-center gap-2">
               <Button
@@ -342,7 +658,7 @@ export default function Settings() {
             </p>
           </div>
 
-          <div className="space-y-2">
+          <div className="rounded-lg border bg-card/40 p-4 space-y-2">
             <Label>Hand Card Size</Label>
             <div className="flex items-center gap-2">
               <Button
@@ -372,7 +688,7 @@ export default function Settings() {
             </p>
           </div>
 
-          <div className="space-y-2">
+          <div className="rounded-lg border bg-card/40 p-4 space-y-2">
             <Label>
               Battlefield Card Size ({Math.round(prefs.battlefieldCardScale * 100)}%)
             </Label>
@@ -385,7 +701,7 @@ export default function Settings() {
               onChange={(e) =>
                 prefs.setBattlefieldCardScale(Number(e.target.value) / 100)
               }
-              className="w-full"
+              className="w-full accent-primary"
             />
             <div className="flex items-center gap-2">
               <Button
@@ -415,7 +731,7 @@ export default function Settings() {
             </p>
           </div>
 
-          <div className="space-y-2">
+          <div className="rounded-lg border bg-card/40 p-4 space-y-2">
             <Label>Card Preview Trigger</Label>
             <div className="flex items-center gap-2">
               <Button
@@ -452,7 +768,7 @@ export default function Settings() {
             </p>
           </div>
 
-          <div className="space-y-2">
+          <div className="rounded-lg border bg-card/40 p-4 space-y-2">
             <div className="flex items-center justify-between">
               <Label htmlFor="hover-delay">Card Preview Delay</Label>
               <span className="text-sm font-mono text-muted-foreground">
@@ -474,31 +790,29 @@ export default function Settings() {
             </p>
           </div>
 
-          <div className="space-y-4">
-            <h2 className="text-lg font-semibold">Game Animations</h2>
-
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <Label htmlFor="flash-duration">Flash duration</Label>
-                <span className="text-sm font-mono text-muted-foreground">
-                  {flashDurationMs}ms
-                </span>
-              </div>
-              <input
-                id="flash-duration"
-                type="range"
-                min={FLASH_MIN}
-                max={FLASH_MAX}
-                step={FLASH_STEP}
-                value={flashDurationMs}
-                onChange={(e) => setFlashDurationMs(Number(e.target.value))}
-                className="w-full accent-primary"
-              />
-              <p className="text-xs text-muted-foreground">
-                How long card-play and turn-start flashes stay on screen.
-              </p>
+          <div className="rounded-lg border bg-card/40 p-4 space-y-2">
+            <div className="flex items-center justify-between">
+              <Label htmlFor="flash-duration">Flash duration</Label>
+              <span className="text-sm font-mono text-muted-foreground">
+                {flashDurationMs}ms
+              </span>
             </div>
+            <input
+              id="flash-duration"
+              type="range"
+              min={FLASH_MIN}
+              max={FLASH_MAX}
+              step={FLASH_STEP}
+              value={flashDurationMs}
+              onChange={(e) => setFlashDurationMs(Number(e.target.value))}
+              className="w-full accent-primary"
+            />
+            <p className="text-xs text-muted-foreground">
+              Card-play and turn-start flash duration.
+            </p>
           </div>
+
+          </div>{/* end preferences grid */}
         </section>
       )}
 
@@ -506,7 +820,9 @@ export default function Settings() {
         <section className="space-y-4">
           <h2 className="text-lg font-semibold">Theme</h2>
 
-          <div className="space-y-2">
+          <div className="grid gap-4 md:grid-cols-2">
+
+          <div className="rounded-lg border bg-card/40 p-4 space-y-2">
             <Label>App Theme</Label>
             <div className="flex items-center gap-2">
               <Button
@@ -536,7 +852,7 @@ export default function Settings() {
             </p>
           </div>
 
-          <div className="space-y-2 pt-2">
+          <div className="rounded-lg border bg-card/40 p-4 space-y-2">
             <Label>Color Preset</Label>
             {(() => {
               const active = THEME_PRESETS.find((p) => p.id === prefs.appThemePreset);
@@ -596,6 +912,8 @@ export default function Settings() {
             </p>
           </div>
 
+          </div>{/* end top-level mode/preset grid */}
+
           <div className="space-y-3 pt-2">
             <div className="flex items-center justify-between gap-2">
               <Label>App Theme Colors</Label>
@@ -608,39 +926,55 @@ export default function Settings() {
                 Reset Colors
               </Button>
             </div>
-            <div className="space-y-2">
-              {Object.keys(APP_THEME_COLOR_LABELS).map((key) => {
-                const activePreset = THEME_PRESETS.find((p) => p.id === prefs.appThemePreset);
-                const mode = resolvedTheme === "dark" ? "dark" : "light";
-                const presetValue = activePreset?.[mode]?.[key as keyof ThemeColors] ?? "";
-                const activeValue = prefs.appThemeColorOverrides[key] ?? presetValue;
-                const hexValue = hslToHex(activeValue);
-
-                return (
-                  <div key={key} className="flex items-center gap-3 rounded-md border px-2 py-1.5">
-                    <Label className="flex-1 text-xs font-mono">
-                      {APP_THEME_COLOR_LABELS[key]}
-                    </Label>
-                    <input
-                      type="color"
-                      value={hexValue}
-                      onChange={(e) => prefs.setAppThemeColorOverride(key, hexToHsl(e.target.value))}
-                      className="h-8 w-10 rounded border border-input bg-transparent p-0.5"
-                    />
-                    <button
-                      type="button"
-                      className="w-24 text-right text-[11px] font-mono text-muted-foreground hover:text-foreground underline-offset-2 hover:underline"
-                      onClick={() => {
-                        beginThemeColorEdit(`app.${key}`, activeValue);
-                      }}
-                      title="Click to edit color value"
-                    >
-                      {hexValue}
-                    </button>
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {APP_THEME_GROUPS.map((group) => {
+              const activePreset = THEME_PRESETS.find((p) => p.id === prefs.appThemePreset);
+              const mode = resolvedTheme === "dark" ? "dark" : "light";
+              return (
+                <div key={group.heading} className="rounded-lg border bg-card/40 p-4 space-y-1.5">
+                  <div className="flex items-baseline gap-2">
+                    <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                      {group.heading}
+                    </h4>
+                    <span className="text-[10px] text-muted-foreground/70">
+                      {group.description}
+                    </span>
                   </div>
-                );
-              })}
-            </div>
+                  <div className="space-y-1">
+                    {group.keys.map((key) => {
+                      const presetValue = activePreset?.[mode]?.[key as keyof ThemeColors] ?? "";
+                      const activeValue = prefs.appThemeColorOverrides[key] ?? presetValue;
+                      const hexValue = hslToHex(activeValue, neutralSwatchColor);
+                      return (
+                        <div key={key} className="flex flex-col gap-1 rounded-md border px-2 py-1.5 min-w-0">
+                          <Label className="text-xs font-mono break-words flex items-center gap-1">
+                            <span>{APP_THEME_COLOR_LABELS[key] ?? key}</span>
+                            <HelpMark description={APP_THEME_COLOR_DESCRIPTIONS[key]} />
+                          </Label>
+                          <div className="flex items-center gap-2 min-w-0">
+                            <input
+                              type="color"
+                              value={hexValue}
+                              onChange={(e) => prefs.setAppThemeColorOverride(key, hexToHsl(e.target.value))}
+                              className="h-8 w-10 shrink-0 rounded border border-input bg-transparent p-0.5"
+                            />
+                            <button
+                              type="button"
+                              className="flex-1 min-w-0 text-right text-[11px] font-mono text-muted-foreground hover:text-foreground underline-offset-2 hover:underline truncate"
+                              onClick={() => beginThemeColorEdit(`app.${key}`, activeValue)}
+                              title="Click to edit color value"
+                            >
+                              {hexValue}
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+            </div>{/* end app theme grid */}
             <p className="text-xs text-muted-foreground">
               Override individual colors from the active preset.
             </p>
@@ -657,54 +991,108 @@ export default function Settings() {
                 Reset Colors
               </Button>
             </div>
-            <div className="space-y-2">
-              {Object.entries(DEFAULT_GAME_THEME_COLOR_MAP).map(([path, defaultColor]) => {
-                const activeColor = prefs.gameThemeColorOverrides[path] ?? defaultColor;
-                return (
-                  <div key={path} className="flex items-center gap-3 rounded-md border px-2 py-1.5">
-                    <Label htmlFor={`theme-color-${path}`} className="flex-1 text-xs font-mono">
-                      {path}
-                    </Label>
-                    <input
-                      id={`theme-color-${path}`}
-                      type="color"
-                      value={toPickerHexColor(activeColor)}
-                      onChange={(e) => prefs.setGameThemeColorOverride(path, e.target.value)}
-                      className="h-8 w-10 rounded border border-input bg-transparent p-0.5"
-                    />
-                    {editingThemeColorPath === path ? (
-                      <input
-                        autoFocus
-                        value={editingThemeColorValue}
-                        onChange={(e) => setEditingThemeColorValue(e.target.value)}
-                        onBlur={() => commitThemeColorEdit(path, defaultColor)}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") {
-                            commitThemeColorEdit(path, defaultColor);
-                          }
-                          if (e.key === "Escape") {
-                            setEditingThemeColorPath(null);
-                            setEditingThemeColorValue("");
-                          }
-                        }}
-                        className="w-24 h-7 rounded border border-input bg-background px-1.5 text-right text-[11px] font-mono"
-                      />
-                    ) : (
-                      <button
-                        type="button"
-                        className="w-24 text-right text-[11px] font-mono text-muted-foreground hover:text-foreground underline-offset-2 hover:underline"
-                        onClick={() => beginThemeColorEdit(path, activeColor)}
-                        title="Click to edit color value"
-                      >
-                        {activeColor}
-                      </button>
-                    )}
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {(() => {
+              const allPaths = Object.keys(DEFAULT_GAME_THEME_COLOR_MAP);
+              const grouped = new Set<string>();
+              const groups = GAME_THEME_GROUPS.map((g) => {
+                const keys: string[] = [];
+                if (g.prefixes) {
+                  for (const prefix of g.prefixes) {
+                    for (const path of allPaths) {
+                      if (path.startsWith(prefix) && !grouped.has(path)) {
+                        keys.push(path);
+                        grouped.add(path);
+                      }
+                    }
+                  }
+                }
+                if (g.exactKeys) {
+                  for (const path of g.exactKeys) {
+                    if (path in DEFAULT_GAME_THEME_COLOR_MAP && !grouped.has(path)) {
+                      keys.push(path);
+                      grouped.add(path);
+                    }
+                  }
+                }
+                return { ...g, keys };
+              });
+              const miscKeys = allPaths.filter((p) => !grouped.has(p));
+              if (miscKeys.length > 0) {
+                groups.push({
+                  heading: "Other",
+                  description: "Tokens not covered by the groups above.",
+                  keys: miscKeys,
+                });
+              }
+              return groups
+                .filter((g) => g.keys.length > 0)
+                .map((group) => (
+                  <div key={group.heading} className="rounded-lg border bg-card/40 p-4 space-y-1.5">
+                    <div className="flex items-baseline gap-2">
+                      <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                        {group.heading}
+                      </h4>
+                      <span className="text-[10px] text-muted-foreground/70">
+                        {group.description}
+                      </span>
+                    </div>
+                    <div className="space-y-1">
+                      {group.keys.map((path) => {
+                        const defaultColor = DEFAULT_GAME_THEME_COLOR_MAP[path] ?? "";
+                        const activeColor = prefs.gameThemeColorOverrides[path] ?? defaultColor;
+                        return (
+                          <div key={path} className="flex flex-col gap-1 rounded-md border px-2 py-1.5 min-w-0">
+                            <Label htmlFor={`theme-color-${path}`} className="text-xs font-mono break-words flex items-center gap-1">
+                              <span>{path}</span>
+                              <HelpMark description={GAME_THEME_COLOR_DESCRIPTIONS[path as GameThemePath | LegacyGameThemePath]} />
+                            </Label>
+                            <div className="flex items-center gap-2 min-w-0">
+                              <input
+                                id={`theme-color-${path}`}
+                                type="color"
+                                value={toPickerHexColor(activeColor)}
+                                onChange={(e) => prefs.setGameThemeColorOverride(path, e.target.value)}
+                                className="h-8 w-10 shrink-0 rounded border border-input bg-transparent p-0.5"
+                              />
+                              {editingThemeColorPath === path ? (
+                                <input
+                                  autoFocus
+                                  value={editingThemeColorValue}
+                                  onChange={(e) => setEditingThemeColorValue(e.target.value)}
+                                  onBlur={() => commitThemeColorEdit(path, defaultColor)}
+                                  onKeyDown={(e) => {
+                                    if (e.key === "Enter") {
+                                      commitThemeColorEdit(path, defaultColor);
+                                    }
+                                    if (e.key === "Escape") {
+                                      setEditingThemeColorPath(null);
+                                      setEditingThemeColorValue("");
+                                    }
+                                  }}
+                                  className="flex-1 min-w-0 h-7 rounded border border-input bg-background px-1.5 text-right text-[11px] font-mono"
+                                />
+                              ) : (
+                                <button
+                                  type="button"
+                                  className="flex-1 min-w-0 text-right text-[11px] font-mono text-muted-foreground hover:text-foreground underline-offset-2 hover:underline truncate"
+                                  onClick={() => beginThemeColorEdit(path, activeColor)}
+                                  title="Click to edit color value"
+                                >
+                                  {activeColor}
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
-                );
-              })}
-            </div>
+                ));
+            })()}
+            </div>{/* end game theme grid */}
             <p className="text-xs text-muted-foreground">
-              Generated from game theme keys. Defaults come from current game theme values.
+              Generated from game theme keys. Defaults come from the active preset.
             </p>
           </div>
         </section>

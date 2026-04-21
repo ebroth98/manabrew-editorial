@@ -2,7 +2,7 @@ use forge_engine_core::agent::TargetChoice;
 use forge_engine_core::ids::{CardId, PlayerId};
 use forge_foundation::ZoneType;
 
-use crate::game_view_dto::CardDto;
+use crate::game_view_dto::{CardDto, TargetingIntent};
 use crate::ids_codec::card_id_str;
 use crate::ids_codec::parse_card_id;
 use crate::ids_codec::parse_player_id;
@@ -17,6 +17,7 @@ pub(super) fn choose_target_player<T: AgentTransport>(
     valid: &[PlayerId],
     source: Option<CardId>,
     hostile: bool,
+    intent: TargetingIntent,
 ) -> Option<PlayerId> {
     let valid_player_ids = PromptAgent::<T>::player_ids(valid);
     let source_card_id = source.map(card_id_str);
@@ -25,6 +26,7 @@ pub(super) fn choose_target_player<T: AgentTransport>(
         valid_player_ids,
         source_card_id,
         hostile,
+        intent,
     });
     agent.recv_player_choice_or_first(valid)
 }
@@ -35,6 +37,7 @@ pub(super) fn choose_target_card<T: AgentTransport>(
     valid: &[CardId],
     source: Option<CardId>,
     hostile: bool,
+    intent: TargetingIntent,
 ) -> Option<CardId> {
     let valid_card_ids = PromptAgent::<T>::card_ids(valid);
     let mut view = agent.view();
@@ -45,6 +48,7 @@ pub(super) fn choose_target_card<T: AgentTransport>(
         valid_card_ids,
         source_card_id,
         hostile,
+        intent,
     });
     agent.recv_card_choice_or_first(valid)
 }
@@ -56,6 +60,7 @@ pub(super) fn choose_target_card_from_zone<T: AgentTransport>(
     valid: &[CardId],
     source: Option<CardId>,
     _hostile: bool,
+    intent: TargetingIntent,
 ) -> Option<CardId> {
     let valid_card_ids = PromptAgent::<T>::card_ids(valid);
     let view = agent.view();
@@ -90,6 +95,7 @@ pub(super) fn choose_target_card_from_zone<T: AgentTransport>(
         zone: format!("{:?}", zone),
         zone_cards,
         source_card_id,
+        intent,
     });
     agent.recv_card_choice_or_first(valid)
 }
@@ -101,6 +107,7 @@ pub(super) fn choose_target_any<T: AgentTransport>(
     valid_cards: &[CardId],
     source: Option<CardId>,
     hostile: bool,
+    intent: TargetingIntent,
 ) -> TargetChoice {
     let valid_player_ids = PromptAgent::<T>::player_ids(valid_players);
     let valid_card_ids = PromptAgent::<T>::card_ids(valid_cards);
@@ -113,6 +120,7 @@ pub(super) fn choose_target_any<T: AgentTransport>(
         valid_card_ids,
         source_card_id,
         hostile,
+        intent,
     });
     match agent.recv_action() {
         PlayerAction::TargetAny { target } => match target {
@@ -148,6 +156,7 @@ pub(super) fn choose_target_spell<T: AgentTransport>(
         game_view: agent.view(),
         valid_spell_ids,
         source_card_id,
+        intent: TargetingIntent::Counter,
     });
     agent.recv_spell_choice_or_first(valid)
 }
@@ -167,6 +176,7 @@ pub(super) fn choose_sacrifice<T: AgentTransport>(
         valid_card_ids,
         source_card_id,
         hostile: true,
+        intent: TargetingIntent::Sacrifice,
     });
     agent.recv_card_choice_or_first(valid)
 }

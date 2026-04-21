@@ -773,7 +773,7 @@ export function DeckBuilder({ onToggleSearch, onBack }: { onToggleSearch?: () =>
                   </div>
                   <span className="text-[10px] text-muted-foreground shrink-0">{s.deck.cards.length}</span>
                   {s.deck.draft && (
-                    <span className="text-[9px] px-1 py-0 rounded border border-amber-500/50 text-amber-600 font-medium shrink-0">DRAFT</span>
+                    <span className="text-[9px] px-1 py-0 rounded border border-warning/50 text-warning font-medium shrink-0">DRAFT</span>
                   )}
                   <Button
                     size="icon"
@@ -910,7 +910,7 @@ export function DeckBuilder({ onToggleSearch, onBack }: { onToggleSearch?: () =>
           <Button
             size="sm"
             variant="outline"
-            className="h-7 shrink-0 gap-1 text-xs border-amber-500/50 text-amber-600 hover:bg-amber-500/10"
+            className="h-7 shrink-0 gap-1 text-xs border-warning/50 text-warning hover:bg-warning/10"
             title="Deck has errors — save as draft (not playable)"
             onClick={handleSaveDraft}
           >
