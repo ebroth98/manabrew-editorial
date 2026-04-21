@@ -131,73 +131,66 @@ impl GameLoop {
         player: PlayerId,
         is_main_phase: bool,
     ) -> ActionSpace {
+        let _params_lookup_scope =
+            crate::perf::ParamsLookupScopeGuard::enter(crate::perf::ParamsLookupScope::ActionSpace);
         let can_play_sorcery =
             is_main_phase && player == game.active_player() && game.stack.is_empty();
         let must_be_instant = !can_play_sorcery;
 
-        let playable = self.get_playable_cards(game, player, must_be_instant);
-        let activatable: Vec<(CardId, usize)> = self
-            .get_activatable_abilities(game, player, can_play_sorcery)
-            .into_iter()
-            .filter(|&(card_id, ability_idx)| {
-                game.card(card_id)
-                    .activated_abilities
-                    .iter()
-                    .find(|ab| ab.ability_index == ability_idx)
-                    .map(|ab| {
-                        // Exclude mana abilities (they go through tappable_lands).
-                        if ab.is_mana_ability {
-                            return false;
-                        }
-                        // Exclude Room UnlockDoor abilities — Java models these as
-                        // StaticAbilityApiBased (not ActivatedAbility), so they
-                        // belong in the `playable` list with PlayCardMode::UnlockDoor.
-                        if ab
-                            .params
-                            .get(crate::parsing::keys::AB)
-                            .map(|v| v.eq_ignore_ascii_case("UnlockDoor"))
-                            .unwrap_or(false)
-                        {
-                            return false;
-                        }
-                        true
-                    })
-                    .unwrap_or(false)
-            })
-            .collect();
+        let playable = {
+            let _params_lookup_scope = crate::perf::ParamsLookupScopeGuard::enter(
+                crate::perf::ParamsLookupScope::ActionSpacePlayable,
+            );
+            self.get_playable_cards(game, player, must_be_instant)
+        };
+        let activatable: Vec<(CardId, usize)> = {
+            let _params_lookup_scope = crate::perf::ParamsLookupScopeGuard::enter(
+                crate::perf::ParamsLookupScope::ActionSpaceActivatable,
+            );
+            self.get_activatable_abilities(game, player, can_play_sorcery)
+        };
 
-        let tappable_lands: Vec<CardId> = game
-            .cards_in_zone(ZoneType::Battlefield, player)
-            .iter()
-            .copied()
-            .filter(|&cid| Self::mana_source_available_for_payment(game, player, cid))
-            .collect();
+        let tappable_lands: Vec<CardId> = {
+            let _params_lookup_scope = crate::perf::ParamsLookupScopeGuard::enter(
+                crate::perf::ParamsLookupScope::ActionSpaceManaSource,
+            );
+            game.cards_in_zone(ZoneType::Battlefield, player)
+                .iter()
+                .copied()
+                .filter(|&cid| Self::mana_source_available_for_payment(game, player, cid))
+                .collect()
+        };
 
         let pool_snapshot = self.pool(player).clone();
-        let untappable_lands: Vec<CardId> = game
-            .cards_in_zone(ZoneType::Battlefield, player)
-            .iter()
-            .copied()
-            .filter(|&cid| {
-                let c = game.card(cid);
-                if !c.tapped {
-                    return false;
-                }
-                // Only permanents with a real mana ability can be untapped to undo mana.
-                let has_mana_ability = c.activated_abilities.iter().any(|ab| ab.is_mana_ability);
-                if !has_mana_ability {
-                    return false;
-                }
-                let atoms = mana::land_mana_atoms(c);
-                if !atoms.is_empty() {
-                    atoms.iter().any(|&a| pool_snapshot.has_atom(a, 1))
-                } else if let Some(atom) = basic_land_mana_atom(c) {
-                    pool_snapshot.has_atom(atom, 1)
-                } else {
-                    false
-                }
-            })
-            .collect();
+        let untappable_lands: Vec<CardId> = {
+            let _params_lookup_scope = crate::perf::ParamsLookupScopeGuard::enter(
+                crate::perf::ParamsLookupScope::ActionSpaceUntap,
+            );
+            game.cards_in_zone(ZoneType::Battlefield, player)
+                .iter()
+                .copied()
+                .filter(|&cid| {
+                    let c = game.card(cid);
+                    if !c.tapped {
+                        return false;
+                    }
+                    // Only permanents with a real mana ability can be untapped to undo mana.
+                    let has_mana_ability =
+                        c.activated_abilities.iter().any(|ab| ab.is_mana_ability);
+                    if !has_mana_ability {
+                        return false;
+                    }
+                    let atoms = mana::land_mana_atoms(c);
+                    if !atoms.is_empty() {
+                        atoms.iter().any(|&a| pool_snapshot.has_atom(a, 1))
+                    } else if let Some(atom) = basic_land_mana_atom(c) {
+                        pool_snapshot.has_atom(atom, 1)
+                    } else {
+                        false
+                    }
+                })
+                .collect()
+        };
 
         ActionSpace {
             playable,

@@ -64,11 +64,7 @@ impl GameLoop {
         }
         let can_activate = |card_id: CardId, ab: &crate::ability::ActivatedAbility| {
             // Per-game activation cap (e.g. "GameActivationLimit$ 1").
-            if let Some(limit) = ab
-                .params
-                .get(keys::GAME_ACTIVATION_LIMIT)
-                .and_then(|v| v.parse::<u32>().ok())
-            {
+            if let Some(limit) = ab.game_activation_limit {
                 let used = game
                     .card(card_id)
                     .activations_this_game
@@ -80,7 +76,7 @@ impl GameLoop {
                 }
             }
             // PowerUp: once-per-game restriction
-            if ab.params.is_true(keys::POWER_UP) {
+            if ab.power_up {
                 let card = game.card(card_id);
                 if card
                     .activations_this_game
@@ -92,7 +88,7 @@ impl GameLoop {
                     return false;
                 }
             }
-            if ab.params.is_true(keys::SORCERY_SPEED) && !can_play_sorcery {
+            if ab.sorcery_speed && !can_play_sorcery {
                 return false;
             }
             // Activated abilities that require targets should only be offered
@@ -200,8 +196,11 @@ impl GameLoop {
                 continue;
             }
             for ab in &card.activated_abilities {
+                if ab.is_mana_ability || ab.is_unlock_door {
+                    continue;
+                }
                 // Skip abilities with ActivationZone$ Hand — they're for hand, not battlefield
-                if ab.params.get(keys::ACTIVATION_ZONE) == Some("Hand") {
+                if ab.activation_zone == Some(ZoneType::Hand) {
                     continue;
                 }
                 if can_activate(card_id, ab) {
@@ -215,7 +214,10 @@ impl GameLoop {
         for card_id in hand {
             let card = game.card(card_id);
             for ab in &card.activated_abilities {
-                if ab.params.get(keys::ACTIVATION_ZONE) == Some("Hand") {
+                if ab.is_mana_ability || ab.is_unlock_door {
+                    continue;
+                }
+                if ab.activation_zone == Some(ZoneType::Hand) {
                     if can_activate(card_id, ab) {
                         result.push((card_id, ab.ability_index));
                     }
@@ -228,7 +230,10 @@ impl GameLoop {
         for card_id in graveyard {
             let card = game.card(card_id);
             for ab in &card.activated_abilities {
-                if ab.params.get(keys::ACTIVATION_ZONE) == Some("Graveyard") {
+                if ab.is_mana_ability || ab.is_unlock_door {
+                    continue;
+                }
+                if ab.activation_zone == Some(ZoneType::Graveyard) {
                     if can_activate(card_id, ab) {
                         result.push((card_id, ab.ability_index));
                     }
@@ -241,7 +246,10 @@ impl GameLoop {
         for card_id in exile {
             let card = game.card(card_id);
             for ab in &card.activated_abilities {
-                if ab.params.get(keys::ACTIVATION_ZONE) == Some("Exile") {
+                if ab.is_mana_ability || ab.is_unlock_door {
+                    continue;
+                }
+                if ab.activation_zone == Some(ZoneType::Exile) {
                     if can_activate(card_id, ab) {
                         result.push((card_id, ab.ability_index));
                     }

@@ -391,6 +391,7 @@ fn load_data_or_exit(cli: &Cli) -> runner::LoadedData {
 }
 
 fn main() {
+    let _perf_summary = forge_engine_core::perf::SummaryGuard::new();
     let cli = Cli::parse();
     let games_flag_present =
         std::env::args().any(|arg| arg == "--games" || arg.starts_with("--games="));

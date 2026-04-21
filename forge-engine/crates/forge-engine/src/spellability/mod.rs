@@ -405,14 +405,20 @@ impl SpellAbility {
 
     /// Create a simple SpellAbility for tests and triggers.
     pub fn new_simple(source: Option<CardId>, player: PlayerId, ability_text: &str) -> Self {
+        let _perf_scope = crate::perf::ParamsLookupScopeGuard::enter(
+            crate::perf::ParamsLookupScope::AbilityBuild,
+        );
         let params = Params::from_raw(ability_text);
-        let api = params
-            .get(keys::SP)
-            .or_else(|| params.get(keys::DB))
-            .or_else(|| params.get(keys::AB))
+        let api = crate::parsing::raw_get(ability_text, keys::SP)
+            .or_else(|| crate::parsing::raw_get(ability_text, keys::DB))
+            .or_else(|| crate::parsing::raw_get(ability_text, keys::AB))
             .and_then(|s| ApiType::smart_value_of(s));
-        let target_restrictions = TargetRestrictions::new(&params);
-        let cost = params.get(keys::COST).map(parse_cost);
+        let target_restrictions = if crate::parsing::raw_has_key(ability_text, keys::VALID_TGTS) {
+            TargetRestrictions::new(&params)
+        } else {
+            None
+        };
+        let cost = crate::parsing::raw_get(ability_text, keys::COST).map(parse_cost);
 
         SpellAbility {
             id: next_spell_ability_id(),
@@ -813,10 +819,12 @@ impl SpellAbility {
     /// Clone this spell ability.
     /// Mirrors Java's `SpellAbility.copy()`.
     pub fn copy(&self) -> Self {
+        crate::perf::increment(crate::perf::Metric::SpellAbilityClones, 1);
         self.clone()
     }
 
     pub fn copy_for_player(&self, activ: PlayerId) -> Self {
+        crate::perf::increment(crate::perf::Metric::SpellAbilityClones, 1);
         let mut clone = self.clone();
         clone.activating_player = activ;
         clone
@@ -861,6 +869,7 @@ impl SpellAbility {
         lki: bool,
         keep_text_changes: bool,
     ) -> Self {
+        crate::perf::increment(crate::perf::Metric::SpellAbilityClones, 1);
         let mut clone = self.clone();
         clone.id = if lki {
             self.id
@@ -946,6 +955,7 @@ impl SpellAbility {
     /// Clone with no mana cost.
     /// Mirrors Java's `SpellAbility.copyWithNoManaCost()`.
     pub fn copy_with_no_mana_cost(&self) -> Self {
+        crate::perf::increment(crate::perf::Metric::SpellAbilityClones, 1);
         let mut copied = self.clone();
         copied.pay_costs = None;
         copied
@@ -954,6 +964,7 @@ impl SpellAbility {
     /// Clone with a specific cost.
     /// Mirrors Java's `SpellAbility.copyWithDefinedCost(String)`.
     pub fn copy_with_defined_cost(&self, cost: &str) -> Self {
+        crate::perf::increment(crate::perf::Metric::SpellAbilityClones, 1);
         let mut copied = self.clone();
         copied.pay_costs = Some(parse_cost(cost));
         copied
@@ -962,6 +973,7 @@ impl SpellAbility {
     /// Clone with mana cost replacement.
     /// Mirrors Java's `SpellAbility.copyWithManaCostReplaced(String, String)`.
     pub fn copy_with_mana_cost_replaced(&self, old: &str, new: &str) -> Self {
+        crate::perf::increment(crate::perf::Metric::SpellAbilityClones, 1);
         let mut copied = self.clone();
         if let Some(ref cost) = self.pay_costs {
             let cost_str = format!("{:?}", cost);

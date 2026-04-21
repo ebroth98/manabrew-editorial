@@ -22,7 +22,13 @@ impl GameLoop {
         priority_player: crate::ids::PlayerId,
     ) {
         for agent in agents.iter_mut() {
-            agent.snapshot_state(game, &self.mana_pools);
+            {
+                let _perf_scope = crate::perf::ParamsLookupScopeGuard::enter(
+                    crate::perf::ParamsLookupScope::PrioritySnapshot,
+                );
+                crate::perf::increment_priority_snapshot();
+                agent.snapshot_state(game, &self.mana_pools);
+            }
             agent.notify(GameNotification::PriorityChanged {
                 player: priority_player,
             });

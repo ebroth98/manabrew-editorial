@@ -122,42 +122,7 @@ enum ActionChoice {
 #[allow(private_interfaces)]
 impl DeterministicAgent {
     fn shallow_snapshot_card(card: &Card) -> Card {
-        let mut out = Card::new(
-            card.id,
-            card.card_name.clone(),
-            card.owner,
-            card.type_line.clone(),
-            card.mana_cost.clone(),
-            card.color,
-            card.base_power,
-            card.base_toughness,
-            vec![],
-            vec![],
-        );
-        out.controller = card.controller;
-        out.zone = card.zone;
-        out.tapped = card.tapped;
-        out.phased_out = card.phased_out;
-        out.cant_attack_static = card.cant_attack_static;
-        out.cant_block_static = card.cant_block_static;
-        out.detained = card.detained;
-        out.summoning_sick = card.summoning_sick;
-        out.damage = card.damage;
-        out.static_power_modifier = card.static_power_modifier;
-        out.static_toughness_modifier = card.static_toughness_modifier;
-        out.static_set_power = card.static_set_power;
-        out.static_set_toughness = card.static_set_toughness;
-        out.power_modifier = card.power_modifier;
-        out.toughness_modifier = card.toughness_modifier;
-        out.perpetual_power_modifier = card.perpetual_power_modifier;
-        out.perpetual_toughness_modifier = card.perpetual_toughness_modifier;
-        out.counters = card.counters.clone();
-        out.keywords = card.keywords.clone();
-        out.granted_keywords = card.granted_keywords.clone();
-        out.pump_keywords = card.pump_keywords.clone();
-        out.static_abilities = card.static_abilities.clone();
-        out.replacement_effects = card.replacement_effects.clone();
-        out
+        card.clone_for_parity_snapshot()
     }
 
     fn shallow_cards(game: &GameState) -> Vec<Card> {
@@ -250,9 +215,7 @@ impl DeterministicAgent {
                 if *cid != card_id {
                     continue;
                 }
-                let params = forge_engine_core::parsing::Params::from_raw(text);
-                if params
-                    .get(forge_engine_core::parsing::keys::AB)
+                if forge_engine_core::parsing::raw_get(text, forge_engine_core::parsing::keys::AB)
                     .map(|v| v.eq_ignore_ascii_case("UnlockDoor"))
                     .unwrap_or(false)
                 {
@@ -594,48 +557,88 @@ impl DeterministicAgent {
 
 impl PlayerAgent for DeterministicAgent {
     fn snapshot_state(&mut self, game: &GameState, _mana_pools: &[ManaPool]) {
+        let split_priority_snapshot = forge_engine_core::perf::current_params_lookup_scope()
+            == Some(forge_engine_core::perf::ParamsLookupScope::PrioritySnapshot);
         // Assign parity IDs for all currently existing cards as soon as we
         // observe state, so later parity_id reads are not first-touch dependent.
-        self.parity_map.sync_with_game(game);
+        {
+            let _perf_scope = split_priority_snapshot
+                .then(|| {
+                    forge_engine_core::perf::ParamsLookupScopeGuard::enter(
+                        forge_engine_core::perf::ParamsLookupScope::PrioritySnapshotSync,
+                    )
+                })
+                .flatten();
+            self.parity_map.sync_with_game(game);
+        }
 
-        let card_names: Vec<(CardId, String)> = game
-            .cards
-            .iter()
-            .map(|c| {
-                let name = if c.face_down {
-                    String::new()
-                } else {
-                    c.card_name.clone()
-                };
-                (c.id, name)
-            })
-            .collect();
-        let card_is_land: Vec<(CardId, bool)> =
-            game.cards.iter().map(|c| (c.id, c.is_land())).collect();
-        let ability_is_mana: Vec<((CardId, usize), bool)> = game
-            .cards
-            .iter()
-            .flat_map(|c| {
-                c.activated_abilities
-                    .iter()
-                    .map(move |ab| ((c.id, ab.ability_index), ab.is_mana_ability))
-            })
-            .collect();
-        let ability_texts: Vec<((CardId, usize), String)> = game
-            .cards
-            .iter()
-            .flat_map(|c| {
-                c.activated_abilities
-                    .iter()
-                    .map(move |ab| ((c.id, ab.ability_index), ab.ability_text.clone()))
-            })
-            .collect();
-        let card_owner_controller: Vec<(CardId, (u32, u32))> = game
-            .cards
-            .iter()
-            .map(|c| (c.id, (c.owner.0, c.controller.0)))
-            .collect();
-        let cards: Vec<Card> = game.cards.iter().map(Self::shallow_snapshot_card).collect();
+        let (card_names, card_is_land, card_owner_controller) = {
+            let _perf_scope = split_priority_snapshot
+                .then(|| {
+                    forge_engine_core::perf::ParamsLookupScopeGuard::enter(
+                        forge_engine_core::perf::ParamsLookupScope::PrioritySnapshotMetadata,
+                    )
+                })
+                .flatten();
+            let card_names: Vec<(CardId, String)> = game
+                .cards
+                .iter()
+                .map(|c| {
+                    let name = if c.face_down {
+                        String::new()
+                    } else {
+                        c.card_name.clone()
+                    };
+                    (c.id, name)
+                })
+                .collect();
+            let card_is_land: Vec<(CardId, bool)> =
+                game.cards.iter().map(|c| (c.id, c.is_land())).collect();
+            let card_owner_controller: Vec<(CardId, (u32, u32))> = game
+                .cards
+                .iter()
+                .map(|c| (c.id, (c.owner.0, c.controller.0)))
+                .collect();
+            (card_names, card_is_land, card_owner_controller)
+        };
+        let (ability_is_mana, ability_texts) = {
+            let _perf_scope = split_priority_snapshot
+                .then(|| {
+                    forge_engine_core::perf::ParamsLookupScopeGuard::enter(
+                        forge_engine_core::perf::ParamsLookupScope::PrioritySnapshotAbility,
+                    )
+                })
+                .flatten();
+            let ability_is_mana: Vec<((CardId, usize), bool)> = game
+                .cards
+                .iter()
+                .flat_map(|c| {
+                    c.activated_abilities
+                        .iter()
+                        .map(move |ab| ((c.id, ab.ability_index), ab.is_mana_ability))
+                })
+                .collect();
+            let ability_texts: Vec<((CardId, usize), String)> = game
+                .cards
+                .iter()
+                .flat_map(|c| {
+                    c.activated_abilities
+                        .iter()
+                        .map(move |ab| ((c.id, ab.ability_index), ab.ability_text.clone()))
+                })
+                .collect();
+            (ability_is_mana, ability_texts)
+        };
+        let cards: Vec<Card> = {
+            let _perf_scope = split_priority_snapshot
+                .then(|| {
+                    forge_engine_core::perf::ParamsLookupScopeGuard::enter(
+                        forge_engine_core::perf::ParamsLookupScope::PrioritySnapshotCardClone,
+                    )
+                })
+                .flatten();
+            game.cards.iter().map(Self::shallow_snapshot_card).collect()
+        };
         self.last_game_snapshot = Some(GameSnapshot {
             cards,
             card_names,
@@ -779,17 +782,18 @@ impl PlayerAgent for DeterministicAgent {
                     .map(|(card_id, idx)| ActionChoice::Ability(card_id, idx)),
             )
             .collect();
-        let choices = choice_space::sort_native(&choices, |a, b| {
-            self.action_sort_key(a).cmp(&self.action_sort_key(b))
-        });
+        let mut choices: Vec<(String, ActionChoice)> = choices
+            .iter()
+            .map(|choice| (self.action_sort_key(choice), *choice))
+            .collect();
+        choices.sort_by(|a, b| a.0.cmp(&b.0));
         if self.is_verbose() {
             let rendered: Vec<String> = choices
                 .iter()
                 .enumerate()
-                .map(|(idx, choice)| match *choice {
+                .map(|(idx, (sort_key, choice))| match *choice {
                     ActionChoice::Card(play) => format!(
-                        "#{idx}: {} [{}]",
-                        self.action_sort_key(choice),
+                        "#{idx}: {sort_key} [{}]",
                         match play.mode {
                             PlayCardMode::Normal => "Normal",
                             PlayCardMode::BackFaceLand => "BackFaceLand",
@@ -838,7 +842,7 @@ impl PlayerAgent for DeterministicAgent {
             idx
         };
 
-        match choices[chosen_idx] {
+        match choices[chosen_idx].1 {
             ActionChoice::Card(chosen) => PlayerAction::CastSpell(chosen),
             ActionChoice::Ability(card_id, ability_idx) => {
                 PlayerAction::ActivateAbility(AbilityRef {

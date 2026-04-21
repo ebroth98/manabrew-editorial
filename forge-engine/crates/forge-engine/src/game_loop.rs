@@ -13,8 +13,7 @@ use crate::agent::{CombatCostAction, MainPhaseAction, ManaCostAction, PlayerAgen
 use crate::card::Card;
 use crate::combat::{self, CombatState};
 use crate::cost::{self, parse_cost, CostPart};
-use crate::event::{RunParams};
-use crate::trigger::TriggerType;
+use crate::event::RunParams;
 use crate::game::GameState;
 use crate::game_log::GameLog;
 use crate::game_log_entry_type::GameLogEntryType;
@@ -27,6 +26,7 @@ use crate::spellability::target_restrictions;
 use crate::spellability::{SpellAbility, StackEntry};
 use crate::staticability::layer::apply_continuous_effects;
 use crate::trigger::handler::TriggerHandler;
+use crate::trigger::TriggerType;
 
 // ── GameLoop ────────────────────────────────────────────────────────
 
@@ -267,9 +267,11 @@ impl GameLoop {
         if !self.experimental_restore_snapshot {
             return false;
         }
-        let Some(snapshot) = self.previous_game_state.clone() else {
+        let Some(snapshot) = self.previous_game_state.as_ref() else {
             return false;
         };
+        crate::perf::increment(crate::perf::Metric::SnapshotClones, 1);
+        let snapshot = snapshot.clone();
         self.restore_snapshot(game, &snapshot);
         true
     }
@@ -279,10 +281,11 @@ impl GameLoop {
             .checkpoints
             .iter()
             .find(|(id, _, _)| *id == checkpoint_id)
-            .cloned()
         else {
             return false;
         };
+        crate::perf::increment(crate::perf::Metric::SnapshotClones, 1);
+        let snapshot = snapshot.clone();
         self.restore_snapshot(game, &snapshot);
         true
     }
@@ -537,6 +540,8 @@ impl GameLoop {
         agents: &mut [Box<dyn PlayerAgent>],
         _rng: &mut impl rand::Rng,
     ) {
+        let _perf_scope =
+            crate::perf::ParamsLookupScopeGuard::enter(crate::perf::ParamsLookupScope::GameLoop);
         let active = game.active_player();
         let active_name = game.player(active).name.clone();
 
@@ -663,6 +668,8 @@ fn check_sba(
     trigger_handler: &mut TriggerHandler,
     agents: &mut [Box<dyn PlayerAgent>],
 ) -> bool {
+    let _perf_scope =
+        crate::perf::ParamsLookupScopeGuard::enter(crate::perf::ParamsLookupScope::PrioritySba);
     let result = game.check_state_based_actions_with_trigger_agents(Some(trigger_handler), agents);
     if result {
         // Flush triggers fired during SBA before re-registering. This preserves

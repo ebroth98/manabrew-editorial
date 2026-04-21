@@ -48,6 +48,11 @@ impl GameLoop {
                     })
                 })
         };
+        let chosen_types_by_source: std::collections::HashMap<CardId, String> = game
+            .cards
+            .iter()
+            .filter_map(|c| c.chosen_type.clone().map(|chosen| (c.id, chosen)))
+            .collect();
 
         for &card_id in hand {
             let card = game.card(card_id);
@@ -64,8 +69,8 @@ impl GameLoop {
                     playable.push(crate::agent::PlayOption {
                         card_id,
                         mode: crate::agent::PlayCardMode::Normal,
-                    alt_cost_index: 0,
-                                        });
+                        alt_cost_index: 0,
+                    });
                     if card
                         .other_part
                         .as_ref()
@@ -74,8 +79,8 @@ impl GameLoop {
                         playable.push(crate::agent::PlayOption {
                             card_id,
                             mode: crate::agent::PlayCardMode::BackFaceLand,
-                        alt_cost_index: 0,
-                                                });
+                            alt_cost_index: 0,
+                        });
                     }
                 }
             } else if card
@@ -95,8 +100,8 @@ impl GameLoop {
                     playable.push(crate::agent::PlayOption {
                         card_id,
                         mode: crate::agent::PlayCardMode::BackFaceLand,
-                    alt_cost_index: 0,
-                                        });
+                        alt_cost_index: 0,
+                    });
                 }
             } else {
                 let cast_sa =
@@ -138,11 +143,7 @@ impl GameLoop {
                     is_spell: true,
                     type_line: Some(card.type_line.clone()),
                     card_name: Some(card.card_name.clone()),
-                    chosen_types_by_source: game
-                        .cards
-                        .iter()
-                        .filter_map(|c| c.chosen_type.clone().map(|chosen| (c.id, chosen)))
-                        .collect(),
+                    chosen_types_by_source: chosen_types_by_source.clone(),
                 };
                 let available_mana = mana::calculate_available_mana_with_context(
                     self.pool(player),
@@ -197,11 +198,11 @@ impl GameLoop {
                     // simulation matching Java's ComputerUtilMana behavior.
                     let has_phyrexian = payable_base.shards().iter().any(|s| s.is_phyrexian());
                     if has_phyrexian {
-                        let ai_phy_param = card.abilities.iter().find_map(|ab| {
-                            let params = Params::from_raw(ab);
-                            params.get_cloned(keys::AI_PHYREXIAN_PAYMENT)
-                        });
-                        let phyrexian_life_allowed = match ai_phy_param.as_deref() {
+                        let ai_phy_param = card
+                            .abilities
+                            .iter()
+                            .find_map(|ab| crate::parsing::raw_get(ab, keys::AI_PHYREXIAN_PAYMENT));
+                        let phyrexian_life_allowed = match ai_phy_param {
                             Some("Never") => false,
                             Some(s) if s.starts_with("OnFatalDamage.") => {
                                 let dmg: i32 = s[14..].parse().unwrap_or(0);
@@ -270,7 +271,10 @@ impl GameLoop {
                         let adjusted = cost_adj.apply(&evoke_mana).add(&raise_mana);
                         available_mana.can_pay(&adjusted)
                             && crate::cost::can_pay_ignoring_mana_for_spell(
-                                &evoke_cost, game, card_id, player,
+                                &evoke_cost,
+                                game,
+                                card_id,
+                                player,
                             )
                     })
                     .collect();
@@ -498,7 +502,7 @@ impl GameLoop {
                     let all_valid = card
                         .abilities
                         .iter()
-                        .filter(|ab| Params::from_raw(ab).has(keys::SP))
+                        .filter(|ab| crate::parsing::raw_has_key(ab, keys::SP))
                         .all(|ab| {
                             target_restrictions::has_candidates_in_chain(
                                 game,
@@ -512,8 +516,8 @@ impl GameLoop {
                             playable.push(crate::agent::PlayOption {
                                 card_id,
                                 mode: crate::agent::PlayCardMode::Normal,
-                            alt_cost_index: 0,
-                                                        });
+                                alt_cost_index: 0,
+                            });
                         }
                         if spectacle_ok {
                             playable.push(crate::agent::PlayOption {
@@ -521,7 +525,7 @@ impl GameLoop {
                                 mode: crate::agent::PlayCardMode::Alternative(
                                     crate::spellability::AlternativeCost::Spectacle,
                                 ),
-                            alt_cost_index: 0,
+                                alt_cost_index: 0,
                             });
                         }
                         // Push one Evoke entry per payable Evoke cost. PlayOption
@@ -559,7 +563,7 @@ impl GameLoop {
                                 mode: crate::agent::PlayCardMode::Alternative(
                                     crate::spellability::AlternativeCost::Dash,
                                 ),
-                            alt_cost_index: 0,
+                                alt_cost_index: 0,
                             });
                         }
                         if blitz_ok {
@@ -568,7 +572,7 @@ impl GameLoop {
                                 mode: crate::agent::PlayCardMode::Alternative(
                                     crate::spellability::AlternativeCost::Blitz,
                                 ),
-                            alt_cost_index: 0,
+                                alt_cost_index: 0,
                             });
                         }
                         if overload_ok {
@@ -577,15 +581,15 @@ impl GameLoop {
                                 mode: crate::agent::PlayCardMode::Alternative(
                                     crate::spellability::AlternativeCost::Overload,
                                 ),
-                            alt_cost_index: 0,
+                                alt_cost_index: 0,
                             });
                         }
                         if static_alt_ok {
                             playable.push(crate::agent::PlayOption {
                                 card_id,
                                 mode: crate::agent::PlayCardMode::StaticAlternative,
-                            alt_cost_index: 0,
-                                                        });
+                                alt_cost_index: 0,
+                            });
                         }
                         if emerge_ok {
                             playable.push(crate::agent::PlayOption {
@@ -593,7 +597,7 @@ impl GameLoop {
                                 mode: crate::agent::PlayCardMode::Alternative(
                                     crate::spellability::AlternativeCost::Emerge,
                                 ),
-                            alt_cost_index: 0,
+                                alt_cost_index: 0,
                             });
                         }
                         if suspend_ok {
@@ -602,15 +606,15 @@ impl GameLoop {
                                 mode: crate::agent::PlayCardMode::Alternative(
                                     crate::spellability::AlternativeCost::Suspend,
                                 ),
-                            alt_cost_index: 0,
+                                alt_cost_index: 0,
                             });
                         }
                         if foretell_exile_ok {
                             playable.push(crate::agent::PlayOption {
                                 card_id,
                                 mode: crate::agent::PlayCardMode::ForetellExile,
-                            alt_cost_index: 0,
-                                                        });
+                                alt_cost_index: 0,
+                            });
                         }
                         if morph_ok {
                             playable.push(crate::agent::PlayOption {
@@ -618,7 +622,7 @@ impl GameLoop {
                                 mode: crate::agent::PlayCardMode::Alternative(
                                     crate::spellability::AlternativeCost::Morph,
                                 ),
-                            alt_cost_index: 0,
+                                alt_cost_index: 0,
                             });
                         }
                         if bestow_ok {
@@ -627,7 +631,7 @@ impl GameLoop {
                                 mode: crate::agent::PlayCardMode::Alternative(
                                     crate::spellability::AlternativeCost::Bestow,
                                 ),
-                            alt_cost_index: 0,
+                                alt_cost_index: 0,
                             });
                         }
                         if warp_ok {
@@ -636,7 +640,7 @@ impl GameLoop {
                                 mode: crate::agent::PlayCardMode::Alternative(
                                     crate::spellability::AlternativeCost::Warp,
                                 ),
-                            alt_cost_index: 0,
+                                alt_cost_index: 0,
                             });
                         }
                     }
@@ -675,8 +679,8 @@ impl GameLoop {
                     playable.push(crate::agent::PlayOption {
                         card_id,
                         mode: crate::agent::PlayCardMode::Normal,
-                    alt_cost_index: 0,
-                                        });
+                        alt_cost_index: 0,
+                    });
                 }
             }
         }
@@ -723,8 +727,8 @@ impl GameLoop {
                         playable.push(crate::agent::PlayOption {
                             card_id,
                             mode: crate::agent::PlayCardMode::UnlockDoor,
-                        alt_cost_index: 0,
-                                                });
+                            alt_cost_index: 0,
+                        });
                     }
                 }
             }
@@ -775,7 +779,7 @@ impl GameLoop {
                     mode: crate::agent::PlayCardMode::Alternative(
                         crate::spellability::AlternativeCost::Flashback,
                     ),
-                alt_cost_index: 0,
+                    alt_cost_index: 0,
                 });
             }
             if escape_ok {
@@ -784,7 +788,7 @@ impl GameLoop {
                     mode: crate::agent::PlayCardMode::Alternative(
                         crate::spellability::AlternativeCost::Escape,
                     ),
-                alt_cost_index: 0,
+                    alt_cost_index: 0,
                 });
             }
         }
@@ -803,8 +807,8 @@ impl GameLoop {
                         playable.push(crate::agent::PlayOption {
                             card_id,
                             mode: crate::agent::PlayCardMode::Normal,
-                        alt_cost_index: 0,
-                                                });
+                            alt_cost_index: 0,
+                        });
                     }
                     continue;
                 }
@@ -849,8 +853,8 @@ impl GameLoop {
                     playable.push(crate::agent::PlayOption {
                         card_id,
                         mode: crate::agent::PlayCardMode::Normal,
-                    alt_cost_index: 0,
-                                        });
+                        alt_cost_index: 0,
+                    });
                 }
                 continue;
             }
@@ -879,7 +883,7 @@ impl GameLoop {
                             mode: crate::agent::PlayCardMode::Alternative(
                                 crate::spellability::AlternativeCost::Foretell,
                             ),
-                        alt_cost_index: 0,
+                            alt_cost_index: 0,
                         });
                     }
                 }
@@ -901,7 +905,7 @@ impl GameLoop {
                     mode: crate::agent::PlayCardMode::Alternative(
                         crate::spellability::AlternativeCost::Plot,
                     ),
-                alt_cost_index: 0,
+                    alt_cost_index: 0,
                 });
             } else if card.has_keyword(crate::card::KEYWORD_WARP_EXILED) {
                 // Warp: exiled card can be cast for its normal mana cost
@@ -925,8 +929,8 @@ impl GameLoop {
                     playable.push(crate::agent::PlayOption {
                         card_id,
                         mode: crate::agent::PlayCardMode::Normal,
-                    alt_cost_index: 0,
-                                        });
+                        alt_cost_index: 0,
+                    });
                 }
             }
         }
@@ -957,8 +961,8 @@ impl GameLoop {
                     playable.push(crate::agent::PlayOption {
                         card_id,
                         mode: crate::agent::PlayCardMode::Normal,
-                    alt_cost_index: 0,
-                                        });
+                        alt_cost_index: 0,
+                    });
                 }
             }
         }

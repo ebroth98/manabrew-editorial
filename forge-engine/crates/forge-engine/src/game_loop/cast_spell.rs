@@ -5,12 +5,12 @@ use crate::mana::mana_cost_being_paid::ManaCostBeingPaid;
 impl GameLoop {
     pub(crate) fn parse_spell_cost(abilities: &[String]) -> Option<crate::cost::Cost> {
         for ability in abilities {
+            if !crate::parsing::raw_has_key(ability, keys::SP) {
+                continue;
+            }
             let params = Params::from_raw(ability);
-            // Only process SP$ lines (spell abilities)
-            if params.has(keys::SP) {
-                if let Some(cost_str) = params.get(keys::COST) {
-                    return Some(parse_cost(cost_str));
-                }
+            if let Some(cost_str) = params.get(keys::COST) {
+                return Some(parse_cost(cost_str));
             }
         }
         None
@@ -543,7 +543,7 @@ impl GameLoop {
         let abilities_for_spell = game.card(card_id).abilities.clone();
         let spell_ability_text = abilities_for_spell
             .iter()
-            .find(|a| Params::from_raw(a).has(keys::SP))
+            .find(|a| crate::parsing::raw_has_key(a, keys::SP))
             .cloned()
             .unwrap_or_default();
 
@@ -1081,6 +1081,7 @@ impl GameLoop {
             .insert("XPaid".to_string(), x_value.to_string());
 
         if !sa.overloaded {
+            crate::perf::increment(crate::perf::Metric::GameStateTargetingClones, 1);
             let mut targeting_game = game.clone();
             if sa.is_spell && targeting_game.card(card_id).zone != ZoneType::Stack {
                 // Java deterministic spell casting moves the spell to stack
@@ -1389,12 +1390,13 @@ impl GameLoop {
                 ReplacementEffect, ReplacementLayer, ReplacementType,
             };
             let params = crate::parsing::Params::from_raw("ValidCard$ Card.Self");
-            game.card_mut(card_id).add_replacement_effect(ReplacementEffect::new(
-                ReplacementType::Counter,
-                ReplacementLayer::CantHappen,
-                params,
-                vec![], // active everywhere (including stack)
-            ));
+            game.card_mut(card_id)
+                .add_replacement_effect(ReplacementEffect::new(
+                    ReplacementType::Counter,
+                    ReplacementLayer::CantHappen,
+                    params,
+                    vec![], // active everywhere (including stack)
+                ));
         }
 
         game.card_mut(card_id)
@@ -1825,12 +1827,14 @@ impl GameLoop {
         } else {
             format!("Cast: {}", card_name)
         };
+        crate::perf::increment(crate::perf::Metric::StackEntryClones, 1);
         let sa_for_trigger = self.push_spell_ability_to_stack(
             game,
             agents,
             player,
             StackPushContext {
                 source_card: card_id,
+                // Deep-clones the stack entry and its SpellAbility graph.
                 entry: entry.clone(),
                 stack_log_name: card_name.clone(),
                 stack_message,
@@ -1873,6 +1877,7 @@ impl GameLoop {
                     ) {
                         continue;
                     }
+                    crate::perf::increment(crate::perf::Metric::StackEntryClones, 1);
                     let mut copy = entry.clone();
                     copy.spell_ability =
                         crate::card::card_factory::copy_spell_ability(&entry.spell_ability, player);
@@ -1933,6 +1938,7 @@ impl GameLoop {
                 ) {
                     continue;
                 }
+                crate::perf::increment(crate::perf::Metric::StackEntryClones, 1);
                 let mut copy = entry.clone();
                 copy.spell_ability =
                     crate::card::card_factory::copy_spell_ability(&entry.spell_ability, player);

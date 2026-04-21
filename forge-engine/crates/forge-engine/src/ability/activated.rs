@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use crate::cost::{parse_cost, Cost};
 use crate::parsing::keys;
 use crate::parsing::Params;
+use forge_foundation::ZoneType;
 
 /// A parsed activated ability from a card's A: line.
 /// Mirrors Java's SpellAbility with AB$ prefix.
@@ -16,6 +17,16 @@ pub struct ActivatedAbility {
     pub ability_text: String,
     /// Whether this is a mana ability (resolves without using the stack).
     pub is_mana_ability: bool,
+    /// Parsed ActivationZone$ override. Activated abilities default to battlefield.
+    pub activation_zone: Option<ZoneType>,
+    /// Parsed GameActivationLimit$ for cheap action-space gating.
+    pub game_activation_limit: Option<u32>,
+    /// Whether this ability has PowerUp$ True.
+    pub power_up: bool,
+    /// Whether this ability has SorcerySpeed$ True.
+    pub sorcery_speed: bool,
+    /// Whether this is the synthetic Room UnlockDoor ability.
+    pub is_unlock_door: bool,
     /// Parsed pipe-delimited parameters.
     pub params: Params,
 }
@@ -51,12 +62,26 @@ pub fn parse_activated_ability(raw: &str, index: usize) -> Option<ActivatedAbili
     let is_mana_ability = (ab_type.eq_ignore_ascii_case("Mana")
         || ab_type.eq_ignore_ascii_case("ManaReflected"))
         && !has_targets;
+    let activation_zone = params
+        .get(keys::ACTIVATION_ZONE)
+        .and_then(ZoneType::from_str_compat);
+    let game_activation_limit = params
+        .get(keys::GAME_ACTIVATION_LIMIT)
+        .and_then(|v| v.parse::<u32>().ok());
+    let power_up = params.is_true(keys::POWER_UP);
+    let sorcery_speed = params.is_true(keys::SORCERY_SPEED);
+    let is_unlock_door = ab_type.eq_ignore_ascii_case("UnlockDoor");
 
     Some(ActivatedAbility {
         ability_index: index,
         cost,
         ability_text: raw.to_string(),
         is_mana_ability,
+        activation_zone,
+        game_activation_limit,
+        power_up,
+        sorcery_speed,
+        is_unlock_door,
         params,
     })
 }

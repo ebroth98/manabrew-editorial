@@ -3,6 +3,8 @@ use crate::card::card_damage_history::TrackedEntity;
 
 impl GameLoop {
     pub fn step_combat(&mut self, game: &mut GameState, agents: &mut [Box<dyn PlayerAgent>]) {
+        let _perf_scope =
+            crate::perf::ParamsLookupScopeGuard::enter(crate::perf::ParamsLookupScope::Combat);
         let active = game.active_player();
         let defending = game.opponent_of(active);
         self.combat.clear_with_cards(&mut game.cards);

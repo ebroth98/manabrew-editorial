@@ -24,6 +24,19 @@ use crate::ids::{CardId, PlayerId};
 use crate::parsing::keys;
 use crate::parsing::Params;
 
+const STATIC_ZONE_KEYS: &[&str] = &[keys::ACTIVE_ZONES, keys::EFFECT_ZONE];
+
+const STATIC_CONDITION_KEYS: &[&str] = &[
+    keys::PHASES,
+    keys::CONDITION,
+    keys::PLAYER_TURN,
+    "TopCardOfLibraryIs",
+    "ClassLevel",
+    "CheckSecondSVar",
+    "CheckThirdSVar",
+    "CheckFourthSVar",
+];
+
 // ── Mode ────────────────────────────────────────────────────────────────────
 
 /// The mode of a static ability.
@@ -249,6 +262,13 @@ impl StaticAbility {
     }
 
     pub fn zones_check(&self, source_zone: ZoneType) -> bool {
+        if !self.params.contains_any_key(STATIC_ZONE_KEYS) {
+            return source_zone == ZoneType::Battlefield;
+        }
+
+        let _perf_scope = crate::perf::ParamsLookupScopeGuard::enter(
+            crate::perf::ParamsLookupScope::StaticAbility,
+        );
         if let Some(active) = self.params.get(keys::ACTIVE_ZONES) {
             let zones: Vec<ZoneType> = active
                 .split(',')
@@ -276,6 +296,9 @@ impl StaticAbility {
     }
 
     pub fn check_conditions(&self, source: &Card, game: &GameState) -> bool {
+        let _perf_scope = crate::perf::ParamsLookupScopeGuard::enter(
+            crate::perf::ParamsLookupScope::StaticAbility,
+        );
         if !self.zones_check(source.zone) {
             return false;
         }
@@ -284,6 +307,10 @@ impl StaticAbility {
         }
         if !crate::card::valid_filter::meets_common_requirements(game, &self.params, source) {
             return false;
+        }
+
+        if !self.params.contains_any_key(STATIC_CONDITION_KEYS) {
+            return true;
         }
 
         if let Some(phases) = self.params.get(keys::PHASES) {

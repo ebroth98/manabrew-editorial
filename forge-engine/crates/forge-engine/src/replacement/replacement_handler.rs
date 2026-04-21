@@ -969,6 +969,8 @@ fn collect_effects(
     event: &ReplacementEvent,
     layer: ReplacementLayer,
 ) -> Vec<(CardId, ReplacementEffect, usize)> {
+    let _perf_scope =
+        crate::perf::ParamsLookupScopeGuard::enter(crate::perf::ParamsLookupScope::Replacement);
     use super::{
         replace_add_counter,
         // Format/mechanic-specific replacements

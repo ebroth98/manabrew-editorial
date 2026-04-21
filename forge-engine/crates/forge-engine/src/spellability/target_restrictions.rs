@@ -122,6 +122,8 @@ impl TargetRestrictions {
         player: PlayerId,
         source_card: Option<CardId>,
     ) -> bool {
+        let _perf_scope =
+            crate::perf::ParamsLookupScopeGuard::enter(crate::perf::ParamsLookupScope::Target);
         match &self.target_kind {
             TargetKind::None => true,
             // "target player" = any alive player (including the caster themselves).
@@ -265,13 +267,8 @@ pub fn apply_other_source_filter(
 /// Mirrors Java `TargetRestrictions.getMinTargets/getMaxTargets` via
 /// `AbilityUtils.calculateAmount(...)`.
 fn resolve_target_count_expr(expr: &str, game: &GameState, sa: &SpellAbility) -> i32 {
-    if let Ok(n) = expr.trim().parse::<i32>() {
+    if let Some(n) = parse_literal_target_count(expr) {
         return n;
-    }
-    if let Some(stripped) = expr.trim().strip_prefix('+') {
-        if let Ok(n) = stripped.parse::<i32>() {
-            return n;
-        }
     }
 
     // Reuse shared numeric/SVar resolver by injecting a temporary param.
@@ -280,6 +277,13 @@ fn resolve_target_count_expr(expr: &str, game: &GameState, sa: &SpellAbility) ->
         .params
         .put("__target_count__".to_string(), expr.to_string());
     crate::ability::effects::resolve_numeric_svar(game, &sa_tmp, "__target_count__", 1)
+}
+
+fn parse_literal_target_count(expr: &str) -> Option<i32> {
+    if let Ok(n) = expr.trim().parse::<i32>() {
+        return Some(n);
+    }
+    expr.trim().strip_prefix('+')?.parse::<i32>().ok()
 }
 
 /// Check if there are valid spells on the stack matching the TargetType$ filter.
@@ -430,6 +434,8 @@ pub fn has_candidates(
     ability: &str,
     source: Option<CardId>,
 ) -> bool {
+    let _perf_scope =
+        crate::perf::ParamsLookupScopeGuard::enter(crate::perf::ParamsLookupScope::Target);
     let params = Params::from_raw(ability);
     match TargetRestrictions::new(&params) {
         Some(tr) => tr.has_candidates(game, player, source),
@@ -446,15 +452,19 @@ pub fn has_candidates_in_chain(
     ability: &str,
     source: Option<CardId>,
 ) -> bool {
+    let _perf_scope =
+        crate::perf::ParamsLookupScopeGuard::enter(crate::perf::ParamsLookupScope::Target);
     let params = Params::from_raw(ability);
     if let Some(tr) = TargetRestrictions::new(&params) {
-        let min_targets = if let Some(card_id) = source {
-            let sa = crate::spellability::build_spell_ability(game, card_id, ability, player);
-            tr.get_min_targets(game, &sa)
-        } else {
-            let sa = SpellAbility::new_simple(None, player, ability);
-            tr.get_min_targets(game, &sa)
-        };
+        let min_targets = parse_literal_target_count(&tr.min_targets).unwrap_or_else(|| {
+            if let Some(card_id) = source {
+                let sa = crate::spellability::build_spell_ability(game, card_id, ability, player);
+                tr.get_min_targets(game, &sa)
+            } else {
+                let sa = SpellAbility::new_simple(None, player, ability);
+                tr.get_min_targets(game, &sa)
+            }
+        });
         if min_targets > 0 && !tr.has_candidates(game, player, source) {
             return false;
         }
@@ -490,6 +500,8 @@ pub fn can_be_targeted_by_sa(
     source_controller: PlayerId,
     source_sa: &SpellAbility,
 ) -> bool {
+    let _perf_scope =
+        crate::perf::ParamsLookupScopeGuard::enter(crate::perf::ParamsLookupScope::Target);
     can_be_targeted_by_internal(
         game,
         target_id,

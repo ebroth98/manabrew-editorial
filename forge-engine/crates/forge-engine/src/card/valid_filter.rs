@@ -39,6 +39,33 @@ use crate::parsing::compare::compare_expr;
 use crate::parsing::keys;
 use crate::parsing::Params;
 
+const COMMON_REQUIREMENT_KEYS: &[&str] = &[
+    "Metalcraft",
+    "Delirium",
+    "Threshold",
+    "Hellbent",
+    "Bloodthirst",
+    "FatefulHour",
+    "Monarch",
+    "Revolt",
+    "Desert",
+    "Blessing",
+    "DayTime",
+    "Adamant",
+    "LifeTotal",
+    keys::IS_PRESENT,
+    "IsPresent2",
+    "CheckDefinedPlayer",
+    keys::CHECK_SVAR,
+    "CheckSecondSVar",
+    "ManaSpent",
+    "ManaNotSpent",
+    "WerewolfTransformCondition",
+    "WerewolfUntransformCondition",
+    "ClassLevel",
+    keys::CONDITION,
+];
+
 fn requirement_controller(game: &GameState, source: &Card) -> PlayerId {
     let mut controller = source.controller;
 
@@ -928,6 +955,12 @@ pub fn meets_common_requirements_with_svars(
     source: &Card,
     svar_source: &dyn HasSVars,
 ) -> bool {
+    if !params.contains_any_key(COMMON_REQUIREMENT_KEYS) {
+        return true;
+    }
+
+    let _perf_scope =
+        crate::perf::ParamsLookupScopeGuard::enter(crate::perf::ParamsLookupScope::ValidFilter);
     let controller = requirement_controller(game, source);
 
     if !check_named_boolean_param(params, "Metalcraft", game.player_has_metalcraft(controller)) {

@@ -815,6 +815,15 @@ impl Card {
         card
     }
 
+    pub fn clone_for_parity_snapshot(&self) -> Self {
+        let mut out = self.clone();
+        out.abilities.clear();
+        out.activated_abilities.clear();
+        out.triggers.clear();
+        out.cast_sa = None;
+        out
+    }
+
     /// Construct a `Card` from a `CardRules` definition.
     /// This is the single entry point for creating game-ready cards from the
     /// card database. Mirrors Java's `CardFactory.readCard()` + `CardFactoryUtil`.

@@ -6,6 +6,9 @@ impl GameLoop {
         game: &mut GameState,
         agents: &mut [Box<dyn PlayerAgent>],
     ) {
+        let _perf_scope = crate::perf::ParamsLookupScopeGuard::enter(
+            crate::perf::ParamsLookupScope::PriorityTrigger,
+        );
         let pushed = self
             .trigger_handler
             .process_waiting_triggers(&self.mana_pools, game, agents);

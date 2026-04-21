@@ -260,7 +260,14 @@ pub(super) fn choose_single_entity_for_effect<T: AgentTransport>(
                 GameEntity::Card(_) => None,
             })
             .collect();
-        let chosen = super::targeting::choose_target_player(agent, _player, &players, None, false);
+        let chosen = super::targeting::choose_target_player(
+            agent,
+            _player,
+            &players,
+            None,
+            false,
+            crate::game_view_dto::TargetingIntent::Hostile,
+        );
         return chosen.map(GameEntity::Player).or_else(|| {
             if is_optional {
                 None

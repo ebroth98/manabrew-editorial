@@ -6,6 +6,8 @@ impl GameLoop {
         game: &mut GameState,
         agents: &mut [Box<dyn PlayerAgent>],
     ) {
+        let _perf_scope =
+            crate::perf::ParamsLookupScopeGuard::enter(crate::perf::ParamsLookupScope::Phase);
         // Run BeginTurn replacement effects before the turn begins.
         let active = game.active_player();
         {
@@ -437,6 +439,8 @@ impl GameLoop {
         agents: &mut [Box<dyn PlayerAgent>],
         is_main_phase: bool,
     ) {
+        let _perf_scope =
+            crate::perf::ParamsLookupScopeGuard::enter(crate::perf::ParamsLookupScope::Priority);
         self.game_log.log(
             GameLogEntryType::Info,
             2,

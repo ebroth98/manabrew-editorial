@@ -13,6 +13,39 @@ use std::collections::BTreeMap;
 use forge_foundation::ZoneType;
 use serde::{Deserialize, Serialize};
 
+pub fn raw_has_key(raw: &str, key: &str) -> bool {
+    raw_get(raw, key).is_some()
+}
+
+pub fn raw_has_any(raw: &str, keys: &[&str]) -> bool {
+    raw.split('|').any(|part| {
+        let part = part.trim();
+        let Some(idx) = part.find('$') else {
+            return false;
+        };
+        let part_key = part[..idx].trim();
+        keys.iter().any(|key| part_key == *key)
+    })
+}
+
+pub fn raw_get<'a>(raw: &'a str, key: &str) -> Option<&'a str> {
+    raw.split('|').find_map(|part| {
+        let part = part.trim();
+        let Some(idx) = part.find('$') else {
+            return None;
+        };
+        if part[..idx].trim() != key {
+            return None;
+        }
+        let value = if part[idx..].starts_with("$ ") {
+            &part[idx + 2..]
+        } else {
+            &part[idx + 1..]
+        };
+        Some(value.trim())
+    })
+}
+
 // ── Params wrapper ──────────────────────────────────────────────────────────
 
 /// Typed wrapper around parsed DSL parameters.
@@ -30,6 +63,7 @@ impl Params {
     /// Handles both `Key$ Value` and `Key$Value` (no trailing space) formats.
     /// Mirrors Java's `FileSection.parseToMap()`.
     pub fn from_raw(raw: &str) -> Self {
+        crate::perf::increment_params_parse();
         let mut map = BTreeMap::new();
         for part in raw.split('|') {
             let part = part.trim();
@@ -65,23 +99,26 @@ impl Params {
 
     /// Get a parameter value by key.
     /// Mirrors Java's `CardTraitBase.getParam(String)`.
-    pub fn get<K: ToString>(&self, key: K) -> Option<&str> {
-        self.0.get(&key.to_string()).map(|s| s.as_str())
+    pub fn get<K: AsRef<str>>(&self, key: K) -> Option<&str> {
+        crate::perf::increment_params_lookup();
+        self.0.get(key.as_ref()).map(|s| s.as_str())
     }
 
     /// Get a parameter value or a default.
     /// Mirrors Java's `CardTraitBase.getParamOrDefault(String, String)`.
-    pub fn get_or_default<'a, K: ToString>(&'a self, key: K, default: &'a str) -> &'a str {
+    pub fn get_or_default<'a, K: AsRef<str>>(&'a self, key: K, default: &'a str) -> &'a str {
+        crate::perf::increment_params_lookup();
         self.0
-            .get(&key.to_string())
+            .get(key.as_ref())
             .map(|s| s.as_str())
             .unwrap_or(default)
     }
 
     /// Check if a parameter key exists.
     /// Mirrors Java's `CardTraitBase.hasParam(String)`.
-    pub fn has<K: ToString>(&self, key: K) -> bool {
-        self.0.contains_key(&key.to_string())
+    pub fn has<K: AsRef<str>>(&self, key: K) -> bool {
+        crate::perf::increment_params_lookup();
+        self.0.contains_key(key.as_ref())
     }
 
     /// Set a parameter value.
@@ -92,8 +129,8 @@ impl Params {
 
     /// Remove a parameter and return its value.
     /// Mirrors Java's `CardTraitBase.removeParam(String)`.
-    pub fn remove<K: ToString>(&mut self, key: K) -> Option<String> {
-        self.0.remove(&key.to_string())
+    pub fn remove<K: AsRef<str>>(&mut self, key: K) -> Option<String> {
+        self.0.remove(key.as_ref())
     }
 
     /// Check if the map is empty.
@@ -101,29 +138,35 @@ impl Params {
         self.0.is_empty()
     }
 
+    /// Check whether any key exists without recording accessor instrumentation.
+    ///
+    /// Intended for coarse hot-path gates before a caller decides whether to
+    /// perform many instrumented typed lookups.
+    pub fn contains_any_key(&self, keys: &[&str]) -> bool {
+        keys.iter().any(|key| self.0.contains_key(*key))
+    }
+
     // ── Typed accessors ─────────────────────────────────────────────────
 
     /// Check if a boolean param is set to "True" (case-insensitive).
     /// Mirrors the common Java pattern `"True".equals(getParam(key))`.
-    pub fn is_true<K: ToString>(&self, key: K) -> bool {
-        let key = key.to_string();
+    pub fn is_true<K: AsRef<str>>(&self, key: K) -> bool {
+        crate::perf::increment_params_lookup();
         self.0
-            .get(&key)
+            .get(key.as_ref())
             .map_or(false, |v| v.eq_ignore_ascii_case("True"))
     }
 
     /// Parse a parameter as i32, returning None if absent or non-numeric.
-    pub fn as_i32<K: ToString>(&self, key: K) -> Option<i32> {
-        self.0
-            .get(&key.to_string())
-            .and_then(|v| v.trim().parse().ok())
+    pub fn as_i32<K: AsRef<str>>(&self, key: K) -> Option<i32> {
+        crate::perf::increment_params_lookup();
+        self.0.get(key.as_ref()).and_then(|v| v.trim().parse().ok())
     }
 
     /// Parse a parameter as usize, returning None if absent or non-numeric.
-    pub fn as_usize<K: ToString>(&self, key: K) -> Option<usize> {
-        self.0
-            .get(&key.to_string())
-            .and_then(|v| v.trim().parse().ok())
+    pub fn as_usize<K: AsRef<str>>(&self, key: K) -> Option<usize> {
+        crate::perf::increment_params_lookup();
+        self.0.get(key.as_ref()).and_then(|v| v.trim().parse().ok())
     }
 
     /// Get a parameter value, cloning it into an owned String.

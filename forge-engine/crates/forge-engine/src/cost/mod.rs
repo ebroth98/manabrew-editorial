@@ -949,6 +949,8 @@ pub fn can_pay(
     player: PlayerId,
     ability: Option<&SpellAbility>,
 ) -> bool {
+    let _perf_scope =
+        crate::perf::ParamsLookupScopeGuard::enter(crate::perf::ParamsLookupScope::Cost);
     for part in &cost.parts {
         if !can_pay_part_distributed(part, game, available_mana, source, player, ability) {
             return false;

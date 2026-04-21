@@ -4,14 +4,14 @@ use forge_foundation::ZoneType;
 
 use crate::agent::{notify_all_agents, GameLogEvent, PlayerAgent};
 use crate::card::valid_filter;
-use crate::event::{RunParams};
-use crate::trigger::TriggerType;
+use crate::event::RunParams;
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
 use crate::mana::ManaPool;
 use crate::parsing::compare::compare_expr;
 use crate::parsing::keys;
 use crate::spellability::{build_spell_ability, StackEntry};
+use crate::trigger::TriggerType;
 use crate::trigger::{parse_trigger, Trigger};
 
 /// An active trigger reference — (card_id, trigger_index) pair.
@@ -1216,6 +1216,8 @@ impl TriggerHandler {
         mode: &TriggerType,
         params: &RunParams,
     ) -> bool {
+        let _perf_scope =
+            crate::perf::ParamsLookupScopeGuard::enter(crate::perf::ParamsLookupScope::Trigger);
         let card = game.card(host_card);
         if trigger_index >= card.triggers.len() {
             return false;
@@ -1419,9 +1421,9 @@ impl Default for TriggerHandler {
 mod tests {
     use super::*;
     use crate::card::Card;
-    use crate::event::{RunParams};
-use crate::trigger::TriggerType;
+    use crate::event::RunParams;
     use crate::ids::PlayerId;
+    use crate::trigger::TriggerType;
     use forge_carddb::parse_card_script;
     use forge_foundation::PhaseType;
 

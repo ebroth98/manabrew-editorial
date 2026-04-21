@@ -331,9 +331,11 @@ impl CardState {
         self.intrinsic_keywords.remove(keyword)
     }
     pub fn get_spell_abilities(&self) -> FCollectionView<SpellAbility> {
+        crate::perf::increment(crate::perf::Metric::CardStateCollectionClones, 1);
         self.abilities.clone()
     }
     pub fn get_mana_abilities(&self) -> FCollectionView<SpellAbility> {
+        crate::perf::increment(crate::perf::Metric::CardStateCollectionClones, 1);
         self.abilities
             .clone()
             .into_iter()
@@ -341,6 +343,7 @@ impl CardState {
             .collect()
     }
     pub fn get_non_mana_abilities(&self) -> FCollectionView<SpellAbility> {
+        crate::perf::increment(crate::perf::Metric::CardStateCollectionClones, 1);
         self.abilities
             .clone()
             .into_iter()
@@ -352,6 +355,7 @@ impl CardState {
         &self.land_trait_changes
     }
     pub fn get_intrinsic_spell_abilities(&self) -> Vec<SpellAbility> {
+        crate::perf::increment(crate::perf::Metric::CardStateCollectionClones, 1);
         self.abilities
             .clone()
             .into_iter()
@@ -381,6 +385,7 @@ impl CardState {
         true
     }
     pub fn get_triggers(&self) -> FCollectionView<Trigger> {
+        crate::perf::increment(crate::perf::Metric::CardStateCollectionClones, 1);
         self.triggers.clone()
     }
     pub fn has_trigger_id(&self, id: i32) -> bool {
@@ -391,6 +396,7 @@ impl CardState {
         true
     }
     pub fn get_static_abilities(&self) -> FCollectionView<StaticAbility> {
+        crate::perf::increment(crate::perf::Metric::CardStateCollectionClones, 1);
         self.static_abilities.clone()
     }
     pub fn add_static_ability_state(&mut self, static_ability: StaticAbility) -> bool {
@@ -401,6 +407,7 @@ impl CardState {
         false
     }
     pub fn get_replacement_effects(&self) -> FCollectionView<ReplacementEffect> {
+        crate::perf::increment(crate::perf::Metric::CardStateCollectionClones, 1);
         self.replacement_effects.clone()
     }
     pub fn add_replacement_effect_state(&mut self, replacement_effect: ReplacementEffect) -> bool {

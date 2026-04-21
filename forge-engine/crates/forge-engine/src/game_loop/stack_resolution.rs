@@ -32,6 +32,9 @@ impl GameLoop {
     }
 
     pub fn resolve_stack(&mut self, game: &mut GameState, agents: &mut [Box<dyn PlayerAgent>]) {
+        let _perf_scope = crate::perf::ParamsLookupScopeGuard::enter(
+            crate::perf::ParamsLookupScope::StackResolution,
+        );
         if game.stack.is_empty() {
             return;
         }
@@ -80,6 +83,7 @@ impl GameLoop {
         // Storm/copy spells: resolve effect only, no card movement (copies have no physical card)
         if entry.spell_ability.is_copy {
             self.resolve_spell_effect(game, agents, &entry);
+            crate::perf::increment(crate::perf::Metric::SpellAbilityClones, 3);
             self.trigger_handler.run_trigger(
                 TriggerType::AbilityResolves,
                 RunParams {
@@ -232,6 +236,7 @@ impl GameLoop {
 
             // Triggered/activated ability: resolve the effect
             self.resolve_spell_effect(game, agents, &entry);
+            crate::perf::increment(crate::perf::Metric::SpellAbilityClones, 3);
             self.trigger_handler.run_trigger(
                 TriggerType::AbilityResolves,
                 RunParams {
@@ -287,6 +292,7 @@ impl GameLoop {
 
                 // Resolve any ETB effects defined on the card
                 self.resolve_spell_effect(game, agents, &entry);
+                crate::perf::increment(crate::perf::Metric::SpellAbilityClones, 3);
                 self.trigger_handler.run_trigger(
                     TriggerType::AbilityResolves,
                     RunParams {
@@ -517,6 +523,7 @@ impl GameLoop {
             } else {
                 // Non-permanent spell: resolve effect, then route to destination zone
                 self.resolve_spell_effect(game, agents, &entry);
+                crate::perf::increment(crate::perf::Metric::SpellAbilityClones, 3);
                 self.trigger_handler.run_trigger(
                     TriggerType::AbilityResolves,
                     RunParams {

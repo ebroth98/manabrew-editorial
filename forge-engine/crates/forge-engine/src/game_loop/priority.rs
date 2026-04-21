@@ -39,6 +39,8 @@ impl GameLoop {
         agents: &mut [Box<dyn PlayerAgent>],
         is_main_phase: bool,
     ) {
+        let _perf_scope =
+            crate::perf::ParamsLookupScopeGuard::enter(crate::perf::ParamsLookupScope::Priority);
         let mut priority_player = game.active_player();
         let mut last_notified_priority: Option<PlayerId> = None;
         let mut passed_count = 0;
@@ -99,9 +101,18 @@ impl GameLoop {
             let action_space = self.action_space(game, priority_player, is_main_phase);
             self.log_waiting_for_priority(game, priority_player);
             let action = {
+                let _perf_scope = crate::perf::ParamsLookupScopeGuard::enter(
+                    crate::perf::ParamsLookupScope::PriorityChoice,
+                );
                 let agent = agents[priority_player.index()].as_mut();
                 let mut controller = PlayerController::new(game, priority_player, agent);
-                controller.snapshot_state(&self.mana_pools);
+                {
+                    let _perf_scope = crate::perf::ParamsLookupScopeGuard::enter(
+                        crate::perf::ParamsLookupScope::PrioritySnapshot,
+                    );
+                    crate::perf::increment_priority_snapshot();
+                    controller.snapshot_state(&self.mana_pools);
+                }
                 controller.choose_priority_action(
                     &action_space.playable,
                     &action_space.tappable_lands,
@@ -144,6 +155,9 @@ impl GameLoop {
                     }
                 }
             };
+            let _perf_scope = crate::perf::ParamsLookupScopeGuard::enter(
+                crate::perf::ParamsLookupScope::PriorityExecution,
+            );
             match priority_action {
                 MainPhaseAction::Pass => {
                     self.log_priority_pass(game, priority_player);

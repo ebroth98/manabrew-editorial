@@ -103,42 +103,7 @@ impl CapturingAgent {
     fn shallow_snapshot_card(
         card: &forge_engine_core::card::Card,
     ) -> forge_engine_core::card::Card {
-        let mut out = forge_engine_core::card::Card::new(
-            card.id,
-            card.card_name.clone(),
-            card.owner,
-            card.type_line.clone(),
-            card.mana_cost.clone(),
-            card.color,
-            card.base_power,
-            card.base_toughness,
-            vec![],
-            vec![],
-        );
-        out.full_name = card.full_name.clone();
-        out.face_down = card.face_down;
-        out.controller = card.controller;
-        out.zone = card.zone;
-        out.tapped = card.tapped;
-        out.phased_out = card.phased_out;
-        out.cant_attack_static = card.cant_attack_static;
-        out.cant_block_static = card.cant_block_static;
-        out.detained = card.detained;
-        out.summoning_sick = card.summoning_sick;
-        out.damage = card.damage;
-        out.static_power_modifier = card.static_power_modifier;
-        out.static_toughness_modifier = card.static_toughness_modifier;
-        out.static_set_power = card.static_set_power;
-        out.static_set_toughness = card.static_set_toughness;
-        out.power_modifier = card.power_modifier;
-        out.toughness_modifier = card.toughness_modifier;
-        out.perpetual_power_modifier = card.perpetual_power_modifier;
-        out.perpetual_toughness_modifier = card.perpetual_toughness_modifier;
-        out.counters = card.counters.clone();
-        out.keywords = card.keywords.clone();
-        out.granted_keywords = card.granted_keywords.clone();
-        out.pump_keywords = card.pump_keywords.clone();
-        out
+        card.clone_for_parity_snapshot()
     }
 
     fn shallow_stack_entry(entry: &StackEntry) -> StackEntry {
@@ -862,10 +827,13 @@ pub fn run_with_data(config: &RunConfig, data: &LoadedData) -> Result<GameTrace,
     // as the agents, matching Java's single MyRandom consumption order.
     game_loop.game_rng = Box::new(crate::java_random::JavaGameRng(Rc::clone(&game_rng)));
 
+    forge_engine_core::perf::reset_counters();
+
     // Run turns — CapturingAgent captures turn-start snapshots automatically
     while !game.game_over && game.turn.turn_number <= config.max_turns {
         let _t_turn = Instant::now();
         game_loop.run_turn(&mut game, &mut agents, &mut rng);
+        forge_engine_core::perf::record_turn_wall(_t_turn.elapsed());
     }
 
     crate::parity_log::clear_sink();

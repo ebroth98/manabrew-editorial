@@ -58,6 +58,22 @@ impl AbilityRecordType {
         }
     }
 
+    /// Determine the record type from raw ability text without building a
+    /// temporary params map just for the AB/SP/ST/DB probe.
+    pub fn from_raw(raw: &str) -> Option<AbilityRecordType> {
+        if crate::parsing::raw_has_key(raw, keys::AB) {
+            Some(AbilityRecordType::Ability)
+        } else if crate::parsing::raw_has_key(raw, keys::SP) {
+            Some(AbilityRecordType::Spell)
+        } else if crate::parsing::raw_has_key(raw, ST) {
+            Some(AbilityRecordType::StaticAbility)
+        } else if crate::parsing::raw_has_key(raw, keys::DB) {
+            Some(AbilityRecordType::SubAbility)
+        } else {
+            None
+        }
+    }
+
     /// Java-name alias for `from_params`. Mirrors
     /// `AbilityFactory.AbilityRecordType.getRecordType(Map)`.
     pub fn get_record_type(params: &Params) -> Option<AbilityRecordType> {
@@ -120,6 +136,50 @@ pub const ADDITIONAL_ABILITY_KEYS: &[&str] = &[
     "VoteTiedAbility",
 ];
 
+const RESTRICTION_KEYS: &[&str] = &[
+    "ActivationZone",
+    "ActivationPhases",
+    "SorcerySpeed",
+    "InstantSpeed",
+    "Activator",
+    "PlayerTurn",
+    "OpponentTurn",
+    "ActivationLimit",
+    "GameActivationLimit",
+    "Threshold",
+    "Metalcraft",
+    "Delirium",
+    "Hellbent",
+    "Revolt",
+    "Desert",
+    "Blessing",
+    "Solved",
+    "IsPresent",
+    "PresentCompare",
+    "PresentZone",
+    "PresentDefined",
+    "ClassLevel",
+    "ActivateCardsInHand",
+];
+
+const CONDITION_KEYS: &[&str] = &[
+    "ConditionPhases",
+    "ConditionPlayerTurn",
+    "ConditionOpponentTurn",
+    "ConditionThreshold",
+    "ConditionMetalcraft",
+    "ConditionDelirium",
+    "ConditionHellbent",
+    "ConditionRevolt",
+    "ConditionDesert",
+    "ConditionBlessing",
+    "ConditionSolved",
+    "ConditionPresent",
+    "ConditionCompare",
+    "ConditionPresentZone",
+    "ConditionDefined",
+];
+
 /// Parse a pipe-delimited ability string into a key-value map.
 /// Mirrors Java's `AbilityFactory.getMapParams()`.
 pub fn get_map_params(ab_string: &str) -> HashMap<String, String> {
@@ -157,14 +217,16 @@ pub fn build_spell_ability_from_host_card(
     ability_text: &str,
     player: PlayerId,
 ) -> SpellAbility {
-    let params = Params::from_raw(ability_text);
-    let record_type = AbilityRecordType::from_params(&params).unwrap_or_else(|| {
+    let _perf_scope =
+        crate::perf::ParamsLookupScopeGuard::enter(crate::perf::ParamsLookupScope::AbilityBuild);
+    let record_type = AbilityRecordType::from_raw(ability_text).unwrap_or_else(|| {
         panic!(
             "AbilityFactory::build_spell_ability requires AB$/SP$/ST$/DB$ ability text; got: {:?}",
             ability_text
         )
     });
-    build_spell_ability_of_type(host, ability_text, player, record_type)
+    let params = Params::from_raw(ability_text);
+    build_spell_ability_of_type_with_params(host, ability_text, player, record_type, params)
 }
 
 /// Build a spell ability for card-casting contexts.
@@ -177,11 +239,13 @@ pub fn build_spell_ability_for_card_cast(
     card_id: CardId,
     player: PlayerId,
 ) -> SpellAbility {
+    let _perf_scope =
+        crate::perf::ParamsLookupScopeGuard::enter(crate::perf::ParamsLookupScope::AbilityBuild);
     if let Some(spell_ability_text) = game
         .card(card_id)
         .abilities
         .iter()
-        .find(|a| Params::from_raw(a).has(keys::SP))
+        .find(|a| crate::parsing::raw_has_key(a, keys::SP))
         .cloned()
     {
         let host = game.card(card_id);
@@ -321,12 +385,34 @@ fn build_spell_ability_of_type(
     player: PlayerId,
     record_type: AbilityRecordType,
 ) -> SpellAbility {
+    let _perf_scope =
+        crate::perf::ParamsLookupScopeGuard::enter(crate::perf::ParamsLookupScope::AbilityBuild);
     let params = Params::from_raw(ability_text);
+    build_spell_ability_of_type_with_params(host, ability_text, player, record_type, params)
+}
+
+fn build_spell_ability_of_type_with_params(
+    host: &Card,
+    ability_text: &str,
+    player: PlayerId,
+    record_type: AbilityRecordType,
+    params: Params,
+) -> SpellAbility {
     let api = record_type
         .api_type_of(&params)
         .and_then(ApiType::smart_value_of);
-    let target_restrictions = TargetRestrictions::new(&params);
-    let cost = parse_ability_cost(host, &params, record_type);
+    let target_restrictions = if crate::parsing::raw_has_key(ability_text, keys::VALID_TGTS) {
+        TargetRestrictions::new(&params)
+    } else {
+        None
+    };
+    let cost = if record_type != AbilityRecordType::SubAbility
+        && crate::parsing::raw_has_key(ability_text, keys::COST)
+    {
+        parse_ability_cost(host, &params, record_type)
+    } else {
+        None
+    };
     let mut restriction = crate::spellability::SpellAbilityRestriction::default();
     let mut condition = crate::spellability::SpellAbilityCondition::default();
 
@@ -336,8 +422,12 @@ fn build_spell_ability_of_type(
         | AbilityRecordType::StaticAbility
         | AbilityRecordType::SubAbility => restriction.variables.set_zone(ZoneType::Battlefield),
     }
-    restriction.set_restrictions(&params);
-    condition.set_conditions(&params);
+    if crate::parsing::raw_has_any(ability_text, RESTRICTION_KEYS) {
+        restriction.set_restrictions(&params);
+    }
+    if crate::parsing::raw_has_any(ability_text, CONDITION_KEYS) {
+        condition.set_conditions(&params);
+    }
 
     // Recursively build sub-ability chain from SVars
     let sub_ability = if let Some(sub_svar_name) = params.get(keys::SUB_ABILITY) {
@@ -352,7 +442,11 @@ fn build_spell_ability_of_type(
         None
     };
 
-    let mana_part = build_mana_part(&params);
+    let mana_part = if crate::parsing::raw_has_key(ability_text, keys::PRODUCED) {
+        build_mana_part(&params)
+    } else {
+        None
+    };
 
     SpellAbility {
         id: 0,

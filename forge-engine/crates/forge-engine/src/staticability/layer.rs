@@ -39,7 +39,7 @@ use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
 use crate::parsing::keys;
 use crate::replacement::replacement_effect::ReplacementType;
-use crate::staticability::{CardFilter, Layer, StaticAbility, StaticMode};
+use crate::staticability::{CardFilter, Layer, StaticMode};
 
 // ── Effect collection ────────────────────────────────────────────────────────
 
@@ -94,6 +94,12 @@ enum EffectKind {
 /// - Any triggered ability fires.
 /// - Before querying `can_attack()` / `can_block()` for combat legality.
 pub fn apply_continuous_effects(game: &mut GameState) {
+    let _perf_timer = crate::perf::ScopeTimer::start(
+        crate::perf::Metric::ContinuousEffectsCalls,
+        crate::perf::Metric::ContinuousEffectsNs,
+    );
+    let _params_lookup_scope =
+        crate::perf::ParamsLookupScopeGuard::enter(crate::perf::ParamsLookupScope::Continuous);
     // ── 1. Reset all derived fields ──────────────────────────────────────
     for card in game.cards.iter_mut() {
         // Remove abilities granted by continuous effects (AddAbility$).
@@ -135,134 +141,68 @@ pub fn apply_continuous_effects(game: &mut GameState) {
         }
     }
 
-    // ── 2. Collect (source_id, static_ability) for every battlefield permanent ──
-    // We clone the data we need so the borrow checker lets us mutate later.
-    let sources: Vec<(CardId, StaticAbility)> = game
-        .cards
-        .iter()
-        .filter(|c| c.zone == ZoneType::Battlefield)
-        .flat_map(|c| c.static_abilities.iter().map(move |sa| (c.id, sa.clone())))
-        .collect();
-
-    // ── 3. Build list of effects-to-apply (deferred to allow sorting) ────
+    // ── 2. Build list of effects-to-apply (deferred to allow sorting) ────
     let mut pending: Vec<PendingEffect> = Vec::new();
+    let mut cant_attack_targets: Vec<CardId> = Vec::new();
+    let mut cant_block_targets: Vec<CardId> = Vec::new();
 
-    for (source_id, sa) in &sources {
-        let source_card = &game.cards[source_id.index()];
+    for player_idx in 0..game.player_order.len() {
+        let player = game.player_order[player_idx];
+        for &source_id in game.cards_in_zone(ZoneType::Battlefield, player) {
+            let source_card = game.card(source_id);
+            let static_ability_count = source_card.static_abilities.len();
 
-        // Full static-ability condition gate (IsPresent$, CheckSVar$, Condition$, etc.).
-        // Mirrors Java static ability checks before applying continuous effects.
-        if !sa.check_conditions(source_card, game) {
-            continue;
-        }
+            for sa_idx in 0..static_ability_count {
+                let source_card = game.card(source_id);
+                let sa = &source_card.static_abilities[sa_idx];
 
-        // CharacteristicDefining statics always affect only the host card.
-        // Mirrors Java StaticAbilityContinuous.getAffectedCards() line 1036.
-        let is_cda = sa
-            .params
-            .get(keys::CHARACTERISTIC_DEFINING)
-            .map(|v| v.eq_ignore_ascii_case("True"))
-            .unwrap_or(false);
+                // Full static-ability condition gate (IsPresent$, CheckSVar$, Condition$, etc.).
+                // Mirrors Java static ability checks before applying continuous effects.
+                if !sa.check_conditions(source_card, game) {
+                    continue;
+                }
 
-        // Determine which cards are affected by this static ability.
-        let affected_str = sa
-            .params
-            .get(keys::AFFECTED)
-            .or_else(|| sa.params.get(keys::VALID_CARDS))
-            .or_else(|| sa.params.get(keys::VALID_CARD))
-            .unwrap_or("Creature.YouControl");
-        let targets: Vec<CardId> = if is_cda {
-            // CDAs always affect only the source card itself.
-            if source_card.zone == ZoneType::Battlefield {
-                vec![*source_id]
-            } else {
-                vec![]
-            }
-        } else if affected_str.eq_ignore_ascii_case("Card.Self")
-            || affected_str.starts_with("Card.Self+")
-        {
-            // Self-referencing static: only affects the source card itself,
-            // but qualifiers after "+" must still be checked (e.g.
-            // "Card.Self+counters_GE2_CHARGE" only matches when the card
-            // has ≥2 charge counters).  Mirrors Java's
-            // StaticAbilityContinuous.getAffectedCards() which validates
-            // all qualifiers even for self-referencing statics.
-            if source_card.zone == ZoneType::Battlefield
-                && crate::card::valid_filter::matches_valid_card(
-                    affected_str,
-                    source_card,
-                    source_card,
-                )
-            {
-                vec![*source_id]
-            } else {
-                vec![]
-            }
-        } else if affected_str.eq_ignore_ascii_case("Card.EnchantedBy")
-            || affected_str.contains(".EquippedBy")
-            || affected_str.contains(".EnchantedBy")
-        {
-            // Aura / Equipment static effects: affect what this source is
-            // attached to.  Java treats EquippedBy and EnchantedBy
-            // identically — both resolve to the entity the source is
-            // attached to.  (e.g. Short Sword: "Creature.EquippedBy",
-            // Control Magic: "Card.EnchantedBy")
-            source_card
-                .attached_to
-                .filter(|&cid| game.card(cid).zone == ZoneType::Battlefield)
-                .into_iter()
-                .collect()
-        } else {
-            let filter = CardFilter::parse(affected_str);
-            // AffectedZone$ overrides the default Battlefield filter (e.g.
-            // Ashling, the Limitless grants Evoke:4 to Elementals in Hand).
-            let affected_zones: Vec<ZoneType> = sa
-                .params
-                .get(keys::AFFECTED_ZONE)
-                .map(|s| {
-                    s.split(',')
-                        .filter_map(|z| ZoneType::from_str_compat(z.trim()))
-                        .collect()
-                })
-                .unwrap_or_else(|| vec![ZoneType::Battlefield]);
-            game.cards
-                .iter()
-                .filter(|c| {
-                    affected_zones.contains(&c.zone)
-                        && filter.matches_with_game(c, source_card, game)
-                })
-                .map(|c| c.id)
-                .collect()
-        };
+                // CharacteristicDefining statics always affect only the host card.
+                // Mirrors Java StaticAbilityContinuous.getAffectedCards() line 1036.
+                let is_cda = sa
+                    .params
+                    .get(keys::CHARACTERISTIC_DEFINING)
+                    .map(|v| v.eq_ignore_ascii_case("True"))
+                    .unwrap_or(false);
 
-        match sa.mode {
-            // ── Continuous: queue effect for later sorted application ────
-            StaticMode::Continuous => {
-                for target in targets {
+                // Determine which cards are affected by this static ability.
+                let affected_str = sa
+                    .params
+                    .get(keys::AFFECTED)
+                    .or_else(|| sa.params.get(keys::VALID_CARDS))
+                    .or_else(|| sa.params.get(keys::VALID_CARD))
+                    .unwrap_or("Creature.YouControl");
+
+                let mut apply_to_target = |target: CardId| match sa.mode {
+                // ── Continuous: queue effect for later sorted application ────
+                StaticMode::Continuous => {
                     // Java parity: one continuous static can contribute effects in
                     // multiple layers (e.g. Brothers Yamazaki adds both +2/+2 and Haste).
-                    if sa.params.has(keys::GAIN_CONTROL) {
-                        let Some(gain_control) = sa.params.get(keys::GAIN_CONTROL) else {
-                            continue;
-                        };
+                    if let Some(gain_control) = sa.params.get(keys::GAIN_CONTROL) {
                         let new_controller = match gain_control {
-                            "You" | "YouCtrl" => source_card.controller,
-                            "Opponent" => game.opponent_of(source_card.controller),
-                            _ => continue,
+                            "You" | "YouCtrl" => Some(source_card.controller),
+                            "Opponent" => Some(game.opponent_of(source_card.controller)),
+                            _ => None,
                         };
-                        pending.push(PendingEffect {
-                            layer: Layer::Control,
-                            target,
-                            kind: EffectKind::SetController {
-                                controller: new_controller,
-                            },
-                        });
+                        if let Some(controller) = new_controller {
+                            pending.push(PendingEffect {
+                                layer: Layer::Control,
+                                target,
+                                kind: EffectKind::SetController { controller },
+                            });
+                        }
                     }
 
-                    if sa.params.has(keys::ADD_POWER) || sa.params.has(keys::ADD_TOUGHNESS)
-                    {
-                        let p = resolve_add_pt_param(game, sa, *source_id, keys::ADD_POWER);
-                        let t = resolve_add_pt_param(game, sa, *source_id, keys::ADD_TOUGHNESS);
+                    let add_power = sa.params.get(keys::ADD_POWER);
+                    let add_toughness = sa.params.get(keys::ADD_TOUGHNESS);
+                    if add_power.is_some() || add_toughness.is_some() {
+                        let p = resolve_add_pt_value(game, source_id, add_power);
+                        let t = resolve_add_pt_value(game, source_id, add_toughness);
                         pending.push(PendingEffect {
                             layer: Layer::ModifyPT,
                             target,
@@ -273,8 +213,9 @@ pub fn apply_continuous_effects(game: &mut GameState) {
                         });
                     }
 
-                    let source = game.card(*source_id);
-                    for added_type in resolve_added_types(source, sa) {
+                    let add_type = sa.params.get(keys::ADD_TYPE);
+                    let source = game.card(source_id);
+                    for added_type in resolve_added_types(source, add_type) {
                         pending.push(PendingEffect {
                             layer: Layer::Type,
                             target,
@@ -282,10 +223,11 @@ pub fn apply_continuous_effects(game: &mut GameState) {
                         });
                     }
 
-                    if sa.params.has(keys::SET_POWER) || sa.params.has(keys::SET_TOUGHNESS)
-                    {
-                        let sp = resolve_set_pt_param(game, &sa, *source_id, keys::SET_POWER);
-                        let st = resolve_set_pt_param(game, &sa, *source_id, keys::SET_TOUGHNESS);
+                    let set_power = sa.params.get(keys::SET_POWER);
+                    let set_toughness = sa.params.get(keys::SET_TOUGHNESS);
+                    if set_power.is_some() || set_toughness.is_some() {
+                        let sp = resolve_set_pt_value(game, source_id, set_power);
+                        let st = resolve_set_pt_value(game, source_id, set_toughness);
                         pending.push(PendingEffect {
                             layer: Layer::SetPT,
                             target,
@@ -296,9 +238,8 @@ pub fn apply_continuous_effects(game: &mut GameState) {
                         });
                     }
 
-                    if sa.params.has(keys::ADD_KEYWORD) {
+                    if let Some(kws) = sa.params.get(keys::ADD_KEYWORD) {
                         // AddKeyword$ supports multiple keywords separated by " & ".
-                        let kws = sa.params.get_cloned(keys::ADD_KEYWORD).unwrap_or_default();
                         for kw in kws.split('&').map(str::trim).filter(|s| !s.is_empty()) {
                             pending.push(PendingEffect {
                                 layer: Layer::Ability,
@@ -311,7 +252,7 @@ pub fn apply_continuous_effects(game: &mut GameState) {
                     // AddType$ — grant a type/subtype (layer 4). Supports
                     // comma or " & " separated lists, e.g. Yavimaya, Cradle of
                     // Growth: AddType$ Forest.
-                    if let Some(raw) = sa.params.get(keys::ADD_TYPE) {
+                    if let Some(raw) = add_type {
                         for t in raw.split(|c| c == ',' || c == '&').map(str::trim) {
                             if t.is_empty() {
                                 continue;
@@ -329,7 +270,7 @@ pub fn apply_continuous_effects(game: &mut GameState) {
                     // E.g. Abundant Growth: AddAbility$ AbundantGrowthTap
                     //   SVar:AbundantGrowthTap:AB$ Mana | Cost$ T | Produced$ Any
                     if let Some(svar_name) = sa.params.get(keys::ADD_ABILITY) {
-                        let source = game.card(*source_id);
+                        let source = game.card(source_id);
                         if let Some(ab_text) = source.svars.get(svar_name).cloned() {
                             pending.push(PendingEffect {
                                 layer: Layer::Ability,
@@ -343,7 +284,7 @@ pub fn apply_continuous_effects(game: &mut GameState) {
                     }
 
                     if let Some(add_trigger) = sa.params.get(keys::ADD_TRIGGER) {
-                        let source = game.card(*source_id);
+                        let source = game.card(source_id);
                         for svar_name in add_trigger
                             .split(" & ")
                             .map(str::trim)
@@ -362,8 +303,8 @@ pub fn apply_continuous_effects(game: &mut GameState) {
                         }
                     }
 
-                    let source = game.card(*source_id);
-                    for subtype in resolve_added_basic_land_types(source, sa) {
+                    let source = game.card(source_id);
+                    for subtype in resolve_added_basic_land_types(source, add_type) {
                         if let Some(ab_text) = basic_land_mana_ability_text(&subtype) {
                             pending.push(PendingEffect {
                                 layer: Layer::Ability,
@@ -376,106 +317,168 @@ pub fn apply_continuous_effects(game: &mut GameState) {
                         }
                     }
                 }
-            }
 
-            // ── Restriction statics: apply immediately (not layer-ordered) ──
-            StaticMode::CantAttack => {
-                for target in targets {
-                    game.cards[target.index()].cant_attack_static = true;
+                // ── Restriction statics: apply immediately (not layer-ordered) ──
+                StaticMode::CantAttack => {
+                    cant_attack_targets.push(target);
+                }
+                StaticMode::CantBlock => {
+                    cant_block_targets.push(target);
+                }
+
+                // Attack-cost statics are checked at combat time, not continuously.
+                StaticMode::CantAttackUnless
+                | StaticMode::CantBlockUnless
+                | StaticMode::CantBlockBy
+                | StaticMode::OptionalAttackCost
+                // Non-layer static modes are enforced by dedicated rule checks
+                // in their own modules / gameplay paths (cast checks, targeting
+                // checks, combat checks, trigger suppression, etc.), so they are
+                // intentionally not applied in the continuous layer collector.
+                | StaticMode::ETBTapped
+                | StaticMode::CantBeCast
+                | StaticMode::CantBeActivated
+                | StaticMode::CantPlayLand
+                | StaticMode::ReduceCost
+                | StaticMode::IncreaseCost
+                | StaticMode::SetCost
+                | StaticMode::CantTarget
+                | StaticMode::CantAttach
+                | StaticMode::MustAttack
+                | StaticMode::MustBlock
+                | StaticMode::Panharmonicon
+                | StaticMode::CantGainLosePayLife
+                | StaticMode::CantDraw
+                | StaticMode::CantExile
+                | StaticMode::CantSacrifice
+                | StaticMode::CantRegenerate
+                | StaticMode::DisableTriggers
+                | StaticMode::CantPutCounter
+                | StaticMode::CastWithFlash
+                | StaticMode::BlockRestrict
+                | StaticMode::AttackRestrict
+                | StaticMode::CanAttackDefender
+                | StaticMode::IgnoreHexproof
+                | StaticMode::IgnoreShroud
+                | StaticMode::IgnoreLegendRule
+                | StaticMode::MustTarget
+                | StaticMode::AssignCombatDamageAsUnblocked
+                | StaticMode::AssignNoCombatDamage
+                | StaticMode::CombatDamageToughness
+                | StaticMode::NoCleanupDamage
+                | StaticMode::InfectDamage
+                | StaticMode::WitherDamage
+                | StaticMode::ColorlessDamageSource
+                | StaticMode::CountersRemain
+                | StaticMode::MaxCounter
+                | StaticMode::ManaConvert
+                | StaticMode::UnspentMana
+                | StaticMode::ManaBurn
+                | StaticMode::ActivateAbilityAsIfHaste
+                | StaticMode::CanAdapt
+                | StaticMode::AlternativeCost
+                | StaticMode::CantAttackBlock
+                | StaticMode::CantBeCopied
+                | StaticMode::CantBeSuspected
+                | StaticMode::CantBecomeMonarch
+                | StaticMode::CantChangeDayTime
+                | StaticMode::CantCrew
+                | StaticMode::CantDiscard
+                | StaticMode::CantPhaseIn
+                | StaticMode::CantPhaseOut
+                | StaticMode::CantTransform
+                | StaticMode::CantVenture
+                | StaticMode::Devotion
+                | StaticMode::CanExhaust
+                | StaticMode::FlipCoinMod
+                | StaticMode::GainLifeRadiation
+                | StaticMode::IgnoreLandwalk
+                | StaticMode::NumLoyaltyAct
+                | StaticMode::PlotZone
+                | StaticMode::SurveilNum
+                | StaticMode::TapPowerValue
+                | StaticMode::TurnReversed
+                | StaticMode::PhaseReversed
+                | StaticMode::UntapOtherPlayer
+                | StaticMode::CanBlockIfReach
+                | StaticMode::BlockTapped
+                | StaticMode::CanAttackIfHaste
+                | StaticMode::MinMaxBlocker
+                | StaticMode::AttackVigilance
+                | StaticMode::CantPreventDamage
+                | StaticMode::CantGainLife
+                | StaticMode::CantLoseLife
+                | StaticMode::CantPayLife
+                | StaticMode::CantChangeLife
+                | StaticMode::Other(_) => {}
+            };
+
+                if is_cda {
+                    // CDAs always affect only the source card itself.
+                    if source_card.zone == ZoneType::Battlefield {
+                        apply_to_target(source_id);
+                    }
+                } else if affected_str.eq_ignore_ascii_case("Card.Self")
+                    || affected_str.starts_with("Card.Self+")
+                {
+                    // Self-referencing static: only affects the source card itself,
+                    // but qualifiers after "+" must still be checked (e.g.
+                    // "Card.Self+counters_GE2_CHARGE" only matches when the card
+                    // has >=2 charge counters). Mirrors Java's
+                    // StaticAbilityContinuous.getAffectedCards() which validates
+                    // all qualifiers even for self-referencing statics.
+                    if source_card.zone == ZoneType::Battlefield
+                        && crate::card::valid_filter::matches_valid_card(
+                            affected_str,
+                            source_card,
+                            source_card,
+                        )
+                    {
+                        apply_to_target(source_id);
+                    }
+                } else if affected_str.eq_ignore_ascii_case("Card.EnchantedBy")
+                    || affected_str.contains(".EquippedBy")
+                    || affected_str.contains(".EnchantedBy")
+                {
+                    // Aura / Equipment static effects: affect what this source is
+                    // attached to. Java treats EquippedBy and EnchantedBy
+                    // identically: both resolve to the entity the source is
+                    // attached to. (e.g. Short Sword: "Creature.EquippedBy",
+                    // Control Magic: "Card.EnchantedBy")
+                    if let Some(cid) = source_card.attached_to {
+                        if game.card(cid).zone == ZoneType::Battlefield {
+                            apply_to_target(cid);
+                        }
+                    }
+                } else {
+                    let filter = CardFilter::parse(affected_str);
+                    // AffectedZone$ overrides the default Battlefield filter (e.g.
+                    // Ashling, the Limitless grants Evoke:4 to Elementals in Hand).
+                    let affected_zones: Option<Vec<ZoneType>> =
+                        sa.params.get(keys::AFFECTED_ZONE).map(|s| {
+                            s.split(',')
+                                .filter_map(|z| ZoneType::from_str_compat(z.trim()))
+                                .collect()
+                        });
+                    for card in &game.cards {
+                        let zone_matches = match &affected_zones {
+                            Some(zones) => zones.contains(&card.zone),
+                            None => card.zone == ZoneType::Battlefield,
+                        };
+                        if zone_matches && filter.matches_with_game(card, source_card, game) {
+                            apply_to_target(card.id);
+                        }
+                    }
                 }
             }
-            StaticMode::CantBlock => {
-                for target in targets {
-                    game.cards[target.index()].cant_block_static = true;
-                }
-            }
-
-            // Attack-cost statics are checked at combat time, not continuously.
-            StaticMode::CantAttackUnless
-            | StaticMode::CantBlockUnless
-            | StaticMode::CantBlockBy
-            | StaticMode::OptionalAttackCost
-            // Non-layer static modes are enforced by dedicated rule checks
-            // in their own modules / gameplay paths (cast checks, targeting
-            // checks, combat checks, trigger suppression, etc.), so they are
-            // intentionally not applied in the continuous layer collector.
-            | StaticMode::ETBTapped
-            | StaticMode::CantBeCast
-            | StaticMode::CantBeActivated
-            | StaticMode::CantPlayLand
-            | StaticMode::ReduceCost
-            | StaticMode::IncreaseCost
-            | StaticMode::SetCost
-            | StaticMode::CantTarget
-            | StaticMode::CantAttach
-            | StaticMode::MustAttack
-            | StaticMode::MustBlock
-            | StaticMode::Panharmonicon
-            | StaticMode::CantGainLosePayLife
-            | StaticMode::CantDraw
-            | StaticMode::CantExile
-            | StaticMode::CantSacrifice
-            | StaticMode::CantRegenerate
-            | StaticMode::DisableTriggers
-            | StaticMode::CantPutCounter
-            | StaticMode::CastWithFlash
-            | StaticMode::BlockRestrict
-            | StaticMode::AttackRestrict
-            | StaticMode::CanAttackDefender
-            | StaticMode::IgnoreHexproof
-            | StaticMode::IgnoreShroud
-            | StaticMode::IgnoreLegendRule
-            | StaticMode::MustTarget
-            | StaticMode::AssignCombatDamageAsUnblocked
-            | StaticMode::AssignNoCombatDamage
-            | StaticMode::CombatDamageToughness
-            | StaticMode::NoCleanupDamage
-            | StaticMode::InfectDamage
-            | StaticMode::WitherDamage
-            | StaticMode::ColorlessDamageSource
-            | StaticMode::CountersRemain
-            | StaticMode::MaxCounter
-            | StaticMode::ManaConvert
-            | StaticMode::UnspentMana
-            | StaticMode::ManaBurn
-            | StaticMode::ActivateAbilityAsIfHaste
-            | StaticMode::CanAdapt
-            | StaticMode::AlternativeCost
-            | StaticMode::CantAttackBlock
-            | StaticMode::CantBeCopied
-            | StaticMode::CantBeSuspected
-            | StaticMode::CantBecomeMonarch
-            | StaticMode::CantChangeDayTime
-            | StaticMode::CantCrew
-            | StaticMode::CantDiscard
-            | StaticMode::CantPhaseIn
-            | StaticMode::CantPhaseOut
-            | StaticMode::CantTransform
-            | StaticMode::CantVenture
-            | StaticMode::Devotion
-            | StaticMode::CanExhaust
-            | StaticMode::FlipCoinMod
-            | StaticMode::GainLifeRadiation
-            | StaticMode::IgnoreLandwalk
-            | StaticMode::NumLoyaltyAct
-            | StaticMode::PlotZone
-            | StaticMode::SurveilNum
-            | StaticMode::TapPowerValue
-            | StaticMode::TurnReversed
-            | StaticMode::PhaseReversed
-            | StaticMode::UntapOtherPlayer
-            | StaticMode::CanBlockIfReach
-            | StaticMode::BlockTapped
-            | StaticMode::CanAttackIfHaste
-            | StaticMode::MinMaxBlocker
-            | StaticMode::AttackVigilance
-            | StaticMode::CantPreventDamage
-            | StaticMode::CantGainLife
-            | StaticMode::CantLoseLife
-            | StaticMode::CantPayLife
-            | StaticMode::CantChangeLife
-            | StaticMode::Other(_) => {}
         }
+    }
+
+    for target in cant_attack_targets {
+        game.cards[target.index()].cant_attack_static = true;
+    }
+    for target in cant_block_targets {
+        game.cards[target.index()].cant_block_static = true;
     }
 
     // ── 4. Sort by layer then apply ──────────────────────────────────────
@@ -756,17 +759,11 @@ pub fn get_etb_unless_reveal_cost(card: &crate::card::Card) -> Option<(i32, Stri
     None
 }
 
-/// Resolve a SetPower/SetToughness parameter that may be an integer literal or
 /// Resolve an AddPower$/AddToughness$ parameter that may be a literal integer
 /// or an SVar reference (e.g. "X" → Count$Valid Enchantment.YouCtrl).
-fn resolve_add_pt_param(
-    game: &GameState,
-    sa: &StaticAbility,
-    source_id: CardId,
-    param_name: &str,
-) -> i32 {
-    let val_str = match sa.params.get(param_name) {
-        Some(s) => s,
+fn resolve_add_pt_value(game: &GameState, source_id: CardId, val_str: Option<&str>) -> i32 {
+    let val_str = match val_str {
+        Some(val_str) => val_str,
         None => return 0,
     };
 
@@ -798,14 +795,8 @@ fn resolve_add_pt_param(
 /// Resolve a SetPower$/SetToughness$ parameter that may be a literal integer or
 /// an SVar reference (e.g. "X" → SVar:X:Count$Valid Creature.ChosenType).
 /// Mirrors Java `AbilityUtils.calculateAmount(hostCard, param, stAb)`.
-fn resolve_set_pt_param(
-    game: &GameState,
-    sa: &StaticAbility,
-    source_id: CardId,
-    param_name: &str,
-) -> Option<i32> {
-    let val_str = sa.params.get(param_name)?;
-
+fn resolve_set_pt_value(game: &GameState, source_id: CardId, val_str: Option<&str>) -> Option<i32> {
+    let val_str = val_str?;
     // Try direct integer parse first
     if let Ok(n) = val_str.trim().parse::<i32>() {
         return Some(n);
@@ -843,15 +834,18 @@ fn basic_land_mana_ability_text(subtype: &str) -> Option<&'static str> {
     }
 }
 
-fn resolve_added_basic_land_types(source: &crate::card::Card, sa: &StaticAbility) -> Vec<String> {
-    resolve_added_types(source, sa)
+fn resolve_added_basic_land_types(
+    source: &crate::card::Card,
+    add_type: Option<&str>,
+) -> Vec<String> {
+    resolve_added_types(source, add_type)
         .into_iter()
         .filter(|added| basic_land_mana_ability_text(added).is_some())
         .collect()
 }
 
-fn resolve_added_types(source: &crate::card::Card, sa: &StaticAbility) -> Vec<String> {
-    let Some(add_type) = sa.params.get(keys::ADD_TYPE) else {
+fn resolve_added_types(source: &crate::card::Card, add_type: Option<&str>) -> Vec<String> {
+    let Some(add_type) = add_type else {
         return Vec::new();
     };
     let mut resolved = Vec::new();
