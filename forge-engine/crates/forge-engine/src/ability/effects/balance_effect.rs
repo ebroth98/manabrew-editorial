@@ -14,7 +14,13 @@ use crate::spellability::SpellAbility;
 /// - `Zone` — zone to balance (default Battlefield)
 ///
 /// Each player with more than the minimum count sacrifices/discards down to the minimum.
-pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
+/// Struct form of this effect so it can participate in the
+/// `SpellAbilityEffect` trait hierarchy — mirrors Java's
+/// `BalanceEffect` class extending `SpellAbilityEffect`.
+pub struct BalanceEffect;
+
+impl crate::ability::spell_ability_effect::SpellAbilityEffect for BalanceEffect {
+    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let controller = sa.activating_player;
 
     let filter = sa
@@ -131,5 +137,6 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                 // Other zones: not commonly balanced, skip
             }
         }
+    }
     }
 }

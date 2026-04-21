@@ -7,7 +7,13 @@ use crate::ids::CardId;
 use crate::parsing::keys;
 use crate::spellability::SpellAbility;
 
-pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
+/// Struct form of this effect so it can participate in the
+/// `SpellAbilityEffect` trait hierarchy — mirrors Java's
+/// `CopyPermanentEffect` class extending `SpellAbilityEffect`.
+pub struct CopyPermanentEffect;
+
+impl crate::ability::spell_ability_effect::SpellAbilityEffect for CopyPermanentEffect {
+    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     // Clone a permanent onto the battlefield under the controller's control.
     // Mirrors Java CopyPermanentEffect.
     // Supports: Defined$, SetColor$, AddTypes$, PumpKeywords$.
@@ -26,11 +32,64 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     }
 
     let original = ctx.game.card(original_id).clone();
+    let copy = get_proto_type(sa, &original, sa.activating_player);
+    let copy_id = ctx.game.create_card(copy);
+    rebind_copied_traits(ctx.game, copy_id);
+    ctx.game
+        .move_card(copy_id, ZoneType::Battlefield, sa.activating_player);
+    ctx.trigger_handler
+        .register_active_trigger(ctx.game, copy_id);
+    emit_zone_trigger(
+        ctx.trigger_handler,
+        copy_id,
+        ZoneType::None,
+        ZoneType::Battlefield,
+    );
+    ctx.trigger_handler.flush_waiting_triggers(ctx.game);
 
+    // `AtEOT$ <action>` — register an end-of-turn delayed trigger targeting
+    // the created copy (Java CopyPermanentEffect → registerDelayedTrigger).
+    if let Some(action) = sa.params.get(keys::AT_EOT) {
+        crate::ability::spell_ability_effect::register_at_eot(
+            ctx.trigger_handler,
+            ctx.game,
+            sa,
+            action,
+            vec![copy_id],
+        );
+    }
+
+    // `RememberTokens$ True` — track each created token on the source card so
+    // a downstream SubAbility (e.g. Ashling's `DelTrig` with
+    // `RememberObjects$ Remembered`) can find it later.
+    let remember_tokens = sa
+        .params
+        .get("RememberTokens")
+        .map_or(false, |v| v.eq_ignore_ascii_case("True"));
+    if remember_tokens {
+        if let Some(sid) = sa.source {
+            ctx.game.card_mut(sid).add_remembered_card(copy_id);
+        }
+    }
+    }
+}
+
+/// Build the in-memory copy of `original` that a Copy/Embalm/Eternalize effect
+/// will place onto the battlefield. Mirrors Java
+/// `CopyPermanentEffect.getProtoType(SpellAbility, Card, Player)`.
+///
+/// Returned `Card` carries a placeholder `CardId(0)`; callers must invoke
+/// `GameState::create_card` to receive the real id. Mana-cost strip,
+/// `SetColor`, `AddTypes`, `SetPower/Toughness`, `PumpKeywords`, `AddKeywords`
+/// are all applied here. Transformable / back-side handling and
+/// `DefinedName` image re-keying are Java-only today (Rust doesn't have a
+/// paper-card backing store to rebind); see the Java impl at L275 for the
+/// full prototype pipeline.
+pub fn get_proto_type(sa: &SpellAbility, original: &Card, new_owner: crate::ids::PlayerId) -> Card {
     let mut copy = Card::new(
         CardId(0),
         original.card_name.clone(),
-        sa.activating_player,
+        new_owner,
         original.type_line.clone(),
         original.mana_cost.clone(),
         original.color,
@@ -43,7 +102,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     copy.set_svars_map(original.svars.clone());
     copy.set_static_abilities(original.static_abilities.clone());
     copy.set_replacement_effects(original.copiable_replacement_effects());
-    copy.set_perpetual(&original, false);
+    copy.set_perpetual(original, false);
     // Copies are tokens for zone-change purposes (cease to exist off battlefield).
     copy.set_is_token(true);
 
@@ -107,32 +166,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         copy.set_mana_cost(forge_foundation::mana::ManaCost::no_cost());
     }
 
-    let copy_id = ctx.game.create_card(copy);
-    rebind_copied_traits(ctx.game, copy_id);
-    ctx.game
-        .move_card(copy_id, ZoneType::Battlefield, sa.activating_player);
-    ctx.trigger_handler
-        .register_active_trigger(ctx.game, copy_id);
-    emit_zone_trigger(
-        ctx.trigger_handler,
-        copy_id,
-        ZoneType::None,
-        ZoneType::Battlefield,
-    );
-    ctx.trigger_handler.flush_waiting_triggers(ctx.game);
-
-    // `RememberTokens$ True` — track each created token on the source card so
-    // a downstream SubAbility (e.g. Ashling's `DelTrig` with
-    // `RememberObjects$ Remembered`) can find it later.
-    let remember_tokens = sa
-        .params
-        .get("RememberTokens")
-        .map_or(false, |v| v.eq_ignore_ascii_case("True"));
-    if remember_tokens {
-        if let Some(sid) = sa.source {
-            ctx.game.card_mut(sid).add_remembered_card(copy_id);
-        }
-    }
+    copy
 }
 
 fn rebind_copied_traits(game: &mut crate::game::GameState, copy_id: CardId) {

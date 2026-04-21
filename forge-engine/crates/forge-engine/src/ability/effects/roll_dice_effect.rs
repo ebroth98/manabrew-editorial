@@ -52,6 +52,67 @@ pub fn make_formated_description(game: &GameState, sa: &SpellAbility) -> String 
     desc
 }
 
+/// Wrap raw natural rolls as `DieRollResult`s (natural == modified at start).
+/// Mirrors Java `RollDiceEffect.getResultsList(List<Integer>)`.
+pub fn get_results_list(natural_results: &[i32]) -> Vec<DieRollResult> {
+    natural_results
+        .iter()
+        .map(|&r| DieRollResult {
+            natural_value: r,
+            modified_value: r,
+        })
+        .collect()
+}
+
+/// Project `DieRollResult`s to their natural values.
+/// Mirrors Java `RollDiceEffect.getNaturalResults(List<DieRollResult>)`.
+pub fn get_natural_results(results: &[DieRollResult]) -> Vec<i32> {
+    results.iter().map(|r| r.natural_value).collect()
+}
+
+/// Project `DieRollResult`s to their post-modification values.
+/// Mirrors Java `RollDiceEffect.getFinalResults(List<DieRollResult>)`.
+pub fn get_final_results(results: &[DieRollResult]) -> Vec<i32> {
+    results.iter().map(|r| r.modified_value).collect()
+}
+
+/// Return the battlefield cards under `player` that can currently increment a
+/// die roll (Xenosquirrel via P1P1 counter, Night Shift via life payment).
+/// Mirrors Java `RollDiceEffect.getIncrementCards`.
+pub fn get_increment_cards(
+    game: &GameState,
+    player: PlayerId,
+    xeno_keyword: &str,
+    night_shift_keyword: &str,
+) -> Vec<crate::ids::CardId> {
+    let mut out = Vec::new();
+    let battlefield: Vec<_> = game
+        .cards_in_zone(ZoneType::Battlefield, player)
+        .iter()
+        .copied()
+        .collect();
+
+    for cid in battlefield.iter().copied() {
+        let card = game.card(cid);
+        if card.has_keyword(xeno_keyword)
+            && card.counter_count(&crate::card::counter_type::CounterType::P1P1) > 0
+        {
+            out.push(cid);
+        }
+    }
+    for cid in battlefield {
+        let card = game.card(cid);
+        if !card.has_keyword(night_shift_keyword) {
+            continue;
+        }
+        // Java `canPayLife(1, true, ...)` — require at least 1 life available.
+        if game.player(player).life >= 1 {
+            out.push(cid);
+        }
+    }
+    out
+}
+
 /// Roll dice for a specific player.
 /// Mirrors Java's `RollDiceEffect.rollDiceForPlayer(Player, SpellAbility, ...)`.
 ///
@@ -95,7 +156,13 @@ pub fn roll_dice_for_player_to_visit_attractions(
 /// A:SP$ RollDice | Sides$ 20 | ResultSubAbilities$ 1:Low,10:Mid,20:High
 /// A:SP$ RollDice | Sides$ 6 | ResultSubAbilities$ 1:Fail,4:Success
 /// ```
-pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
+/// Struct form of this effect so it can participate in the
+/// `SpellAbilityEffect` trait hierarchy — mirrors Java's
+/// `RollDiceEffect` class extending `SpellAbilityEffect`.
+pub struct RollDiceEffect;
+
+impl crate::ability::spell_ability_effect::SpellAbilityEffect for RollDiceEffect {
+    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let controller = sa.activating_player;
     let source_id = match sa.source {
         Some(id) => id,
@@ -134,12 +201,15 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             }
         }
     }
+    }
 }
 
+/// One die's natural roll + any modifications applied after the fact.
+/// Mirrors Java's `RollDiceEffect.DieRollResult`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-struct DieRollResult {
-    natural_value: i32,
-    modified_value: i32,
+pub struct DieRollResult {
+    pub natural_value: i32,
+    pub modified_value: i32,
 }
 
 fn roll_for_player(
@@ -1105,7 +1175,9 @@ fn apply_keyword_roll_rerolls(
     }
 }
 
-fn get_reroll_cards(
+/// Return the battlefield cards under `player` that can currently reroll dice.
+/// Mirrors Java `RollDiceEffect.getRerollCards`.
+pub fn get_reroll_cards(
     game: &GameState,
     player: PlayerId,
     monitor_keyword: &str,

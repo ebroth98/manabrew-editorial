@@ -185,6 +185,14 @@ impl GameState {
         if host_left_battlefield && was_permanent {
             self.player_record_permanent_left_battlefield(src_owner);
         }
+        // Java `Card.clearCastSA` — the cast-SA link dies once the instance
+        // leaves the battlefield (a new cast produces a fresh instance).
+        if host_left_battlefield {
+            self.card_mut(card_id).cast_sa = None;
+            // `ControlGain$ LoseControl$ LeavesPlay` — drop the scheduled
+            // revert since the card is no longer on the battlefield.
+            crate::ability::effects::control_gain_effect::leaves_play_hook(self, card_id);
+        }
         if dest_zone == ZoneType::Graveyard && was_permanent && !is_token {
             self.player_record_permanent_put_into_graveyard(self.card(card_id).owner);
         }
@@ -1249,6 +1257,8 @@ impl GameState {
             return false; // Untap was prevented
         }
         self.cards[card_id.index()].tapped = false;
+        // `ControlGain$ LoseControl$ Untap` — revert scheduled steal now.
+        crate::ability::effects::control_gain_effect::untap_hook(self, card_id);
         true
     }
 

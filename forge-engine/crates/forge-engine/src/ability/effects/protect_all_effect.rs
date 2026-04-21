@@ -26,7 +26,13 @@ pub fn run(game: &mut crate::game::GameState, card_id: crate::ids::CardId, keywo
 /// ```text
 /// A:SP$ ProtectionAll | ValidCards$ Creature.YouCtrl | Gains$ Protection from chosen color
 /// ```
-pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
+/// Struct form of this effect so it can participate in the
+/// `SpellAbilityEffect` trait hierarchy — mirrors Java's
+/// `ProtectAllEffect` class extending `SpellAbilityEffect`.
+pub struct ProtectAllEffect;
+
+impl crate::ability::spell_ability_effect::SpellAbilityEffect for ProtectAllEffect {
+    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let controller = sa.activating_player;
     let valid_filter = sa
         .params
@@ -87,5 +93,6 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         if ctx.game.card(cid).zone == ZoneType::Battlefield {
             ctx.game.card_mut(cid).pump_keywords.add(&prot_keyword);
         }
+    }
     }
 }

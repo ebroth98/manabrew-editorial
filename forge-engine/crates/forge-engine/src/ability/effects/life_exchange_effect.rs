@@ -12,7 +12,13 @@ use crate::spellability::SpellAbility;
 /// A:SP$ LifeExchange | ValidTgts$ Player
 /// A:SP$ LifeExchange | Defined$ Opponent
 /// ```
-pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
+/// Struct form of this effect so it can participate in the
+/// `SpellAbilityEffect` trait hierarchy — mirrors Java's
+/// `LifeExchangeEffect` class extending `SpellAbilityEffect`.
+pub struct LifeExchangeEffect;
+
+impl crate::ability::spell_ability_effect::SpellAbilityEffect for LifeExchangeEffect {
+    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let controller = sa.activating_player;
 
     // Determine the other player: targeted or Defined$
@@ -92,10 +98,12 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             false,
         );
     }
+    }
 }
 
 #[cfg(test)]
 mod tests {
+    use crate::ability::spell_ability_effect::SpellAbilityEffect;
     use std::collections::HashMap;
 
     use crate::ability::effects::EffectContext;
@@ -140,7 +148,7 @@ mod tests {
             parent_target_card: None,
             rng: &mut rng_adapter,
         };
-        super::resolve(&mut ctx, &sa);
+        super::LifeExchangeEffect::resolve(&mut ctx, &sa);
 
         assert_eq!(ctx.game.player(p0).life, 30);
         assert_eq!(ctx.game.player(p1).life, 5);

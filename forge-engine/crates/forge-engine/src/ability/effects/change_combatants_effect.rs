@@ -10,7 +10,13 @@ use crate::ability::api_type::ApiType;
 use crate::parsing::keys;
 use crate::spellability::SpellAbility;
 
-pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
+/// Struct form of this effect so it can participate in the
+/// `SpellAbilityEffect` trait hierarchy — mirrors Java's
+/// `ChangeCombatantsEffect` class extending `SpellAbilityEffect`.
+pub struct ChangeCombatantsEffect;
+
+impl crate::ability::spell_ability_effect::SpellAbilityEffect for ChangeCombatantsEffect {
+    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let targets: Vec<crate::ids::CardId> = if sa.uses_targeting() {
         sa.target_chosen.target_card.into_iter().collect()
     } else {
@@ -105,5 +111,6 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                 }
             }
         }
+    }
     }
 }

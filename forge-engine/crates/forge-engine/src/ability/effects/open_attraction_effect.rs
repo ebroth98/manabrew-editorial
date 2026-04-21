@@ -8,7 +8,13 @@ use super::EffectContext;
 use crate::parsing::keys;
 use crate::spellability::SpellAbility;
 
-pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
+/// Struct form of this effect so it can participate in the
+/// `SpellAbilityEffect` trait hierarchy — mirrors Java's
+/// `OpenAttractionEffect` class extending `SpellAbilityEffect`.
+pub struct OpenAttractionEffect;
+
+impl crate::ability::spell_ability_effect::SpellAbilityEffect for OpenAttractionEffect {
+    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let source = match sa.source {
         Some(s) => s,
         None => return,
@@ -65,5 +71,6 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                 }
             }
         }
+    }
     }
 }

@@ -9,6 +9,13 @@ use super::EffectContext;
 use crate::spellability::SpellAbility;
 
 /// Resolve by delegating to the existing `cleanup_effect` handler.
-pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
-    super::cleanup_effect::resolve(ctx, sa);
+/// Struct form of this effect so it can participate in the
+/// `SpellAbilityEffect` trait hierarchy — mirrors Java's
+/// `CleanUpEffect` class extending `SpellAbilityEffect`.
+pub struct CleanUpEffect;
+
+impl crate::ability::spell_ability_effect::SpellAbilityEffect for CleanUpEffect {
+    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
+    super::cleanup_effect::CleanupEffect::resolve(ctx, sa);
+    }
 }

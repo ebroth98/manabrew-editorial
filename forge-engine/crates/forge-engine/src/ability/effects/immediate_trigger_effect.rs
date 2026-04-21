@@ -10,7 +10,13 @@ use crate::parsing::keys;
 use crate::spellability::SpellAbility;
 use crate::trigger::DelayedTrigger;
 
-pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
+/// Struct form of this effect so it can participate in the
+/// `SpellAbilityEffect` trait hierarchy — mirrors Java's
+/// `ImmediateTriggerEffect` class extending `SpellAbilityEffect`.
+pub struct ImmediateTriggerEffect;
+
+impl crate::ability::spell_ability_effect::SpellAbilityEffect for ImmediateTriggerEffect {
+    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     if let Some(remember_def) = sa.params.get(keys::REMEMBER_OBJECTS) {
         if let Some(source_id) = sa.source {
             if remember_def.eq_ignore_ascii_case("Targeted") {
@@ -46,5 +52,6 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                 ctx.trigger_handler.register_delayed_trigger(delayed);
             }
         }
+    }
     }
 }

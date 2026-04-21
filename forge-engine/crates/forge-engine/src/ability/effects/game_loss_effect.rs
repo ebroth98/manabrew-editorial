@@ -13,7 +13,13 @@ use crate::spellability::SpellAbility;
 /// A:SP$ GameLoss | Defined$ You
 /// A:SP$ GameLoss | Defined$ Opponent
 /// ```
-pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
+/// Struct form of this effect so it can participate in the
+/// `SpellAbilityEffect` trait hierarchy — mirrors Java's
+/// `GameLossEffect` class extending `SpellAbilityEffect`.
+pub struct GameLossEffect;
+
+impl crate::ability::spell_ability_effect::SpellAbilityEffect for GameLossEffect {
+    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let controller = sa.activating_player;
 
     let defined = sa.params.get("Defined").unwrap_or("You");
@@ -45,10 +51,12 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             ctx.game.winner = Some(alive[0]);
         }
     }
+    }
 }
 
 #[cfg(test)]
 mod tests {
+    use crate::ability::spell_ability_effect::SpellAbilityEffect;
     use std::collections::HashMap;
 
     use crate::ability::effects::EffectContext;
@@ -89,7 +97,7 @@ mod tests {
             parent_target_card: None,
             rng: &mut rng_adapter,
         };
-        super::resolve(&mut ctx, &sa);
+        super::GameLossEffect::resolve(&mut ctx, &sa);
 
         assert!(ctx.game.player(p0).has_lost);
         assert!(!ctx.game.player(p1).has_lost);

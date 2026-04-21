@@ -13,7 +13,13 @@ use crate::spellability::{build_spell_ability, SpellAbility};
 /// - `RepeatCards` — if present, iterate over matching cards (filter string)
 /// - `RepeatPlayers` — if present, iterate over matching players
 /// - `Zone` — zone to search for RepeatCards (default Battlefield)
-pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
+/// Struct form of this effect so it can participate in the
+/// `SpellAbilityEffect` trait hierarchy — mirrors Java's
+/// `RepeatEachEffect` class extending `SpellAbilityEffect`.
+pub struct RepeatEachEffect;
+
+impl crate::ability::spell_ability_effect::SpellAbilityEffect for RepeatEachEffect {
+    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let source_id = match sa.source {
         Some(id) => id,
         None => return,
@@ -110,7 +116,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         let mut flush_sa = sa.clone();
         flush_sa.damage_map = ctx.game.pending_damage_map.clone();
         flush_sa.prevent_map = ctx.game.pending_prevent_map.clone();
-        super::damage_resolve_effect::resolve(ctx, &flush_sa);
+        super::damage_resolve_effect::DamageResolveEffect::resolve(ctx, &flush_sa);
         ctx.game.clear_pending_damage_maps();
     }
     if use_change_zone_table {
@@ -118,6 +124,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             table.trigger_changes_zone_all(ctx.trigger_handler, ctx.game, Some(sa));
             ctx.game.clear_pending_change_zone_table();
         }
+    }
     }
 }
 

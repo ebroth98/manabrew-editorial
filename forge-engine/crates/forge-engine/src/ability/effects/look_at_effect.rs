@@ -10,7 +10,13 @@ use crate::spellability::SpellAbility;
 /// The activating player looks at cards in a hidden zone (e.g. top of library or opponent's hand)
 /// without revealing them to others.
 /// In the engine this is informational — we notify only the activating player's agent.
-pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
+/// Struct form of this effect so it can participate in the
+/// `SpellAbilityEffect` trait hierarchy — mirrors Java's
+/// `LookAtEffect` class extending `SpellAbilityEffect`.
+pub struct LookAtEffect;
+
+impl crate::ability::spell_ability_effect::SpellAbilityEffect for LookAtEffect {
+    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let num = parse_param(&sa.ability_text, "NumCards$ ")
         .or_else(|| parse_param(&sa.ability_text, "ScryNum$ "))
         .unwrap_or(1) as usize;
@@ -51,4 +57,5 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             GameLogEvent::info(msg).with_player(sa.activating_player),
         ),
     );
+    }
 }

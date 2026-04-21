@@ -11,7 +11,13 @@ use crate::spellability::SpellAbility;
 ///
 /// `SP$ Mill | NumCards$ N | Defined$ You`
 /// Moves the top N cards of the target player's library to their graveyard.
-pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
+/// Struct form of this effect so it can participate in the
+/// `SpellAbilityEffect` trait hierarchy — mirrors Java's
+/// `MillEffect` class extending `SpellAbilityEffect`.
+pub struct MillEffect;
+
+impl crate::ability::spell_ability_effect::SpellAbilityEffect for MillEffect {
+    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let num = resolve_numeric_svar(ctx.game, sa, "NumCards", 1).max(0) as usize;
 
     // Determine target player: targeted (ValidTgts$) takes priority, then Defined$.
@@ -111,10 +117,12 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             false,
         );
     }
+    }
 }
 
 #[cfg(test)]
 mod tests {
+    use crate::ability::spell_ability_effect::SpellAbilityEffect;
     use forge_foundation::{CardTypeLine, ColorSet, ManaCost, ZoneType};
 
     use crate::ability::effects::EffectContext;
@@ -177,7 +185,7 @@ mod tests {
             rng: &mut rng_adapter,
         };
 
-        super::resolve(&mut ctx, &sa);
+        super::MillEffect::resolve(&mut ctx, &sa);
 
         assert_eq!(ctx.game.cards_in_zone(ZoneType::Library, p0).len(), 1);
         assert_eq!(ctx.game.cards_in_zone(ZoneType::Graveyard, p0).len(), 2);
@@ -214,7 +222,7 @@ mod tests {
             rng: &mut rng_adapter,
         };
 
-        super::resolve(&mut ctx, &sa);
+        super::MillEffect::resolve(&mut ctx, &sa);
 
         assert_eq!(ctx.game.cards_in_zone(ZoneType::Library, p0).len(), 0);
         assert_eq!(ctx.game.cards_in_zone(ZoneType::Graveyard, p0).len(), 1);

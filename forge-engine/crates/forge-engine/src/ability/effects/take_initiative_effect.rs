@@ -11,7 +11,13 @@ use crate::spellability::SpellAbility;
 /// ```text
 /// A:SP$ TakeInitiative | Defined$ You
 /// ```
-pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
+/// Struct form of this effect so it can participate in the
+/// `SpellAbilityEffect` trait hierarchy — mirrors Java's
+/// `TakeInitiativeEffect` class extending `SpellAbilityEffect`.
+pub struct TakeInitiativeEffect;
+
+impl crate::ability::spell_ability_effect::SpellAbilityEffect for TakeInitiativeEffect {
+    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let controller = sa.activating_player;
 
     let defined = sa.params.get("Defined").unwrap_or("You");
@@ -24,10 +30,12 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
 
     ctx.game
         .player_take_initiative(target, Some(ctx.trigger_handler));
+    }
 }
 
 #[cfg(test)]
 mod tests {
+    use crate::ability::spell_ability_effect::SpellAbilityEffect;
     use std::collections::HashMap;
 
     use crate::ability::effects::EffectContext;
@@ -68,7 +76,7 @@ mod tests {
             parent_target_card: None,
             rng: &mut rng_adapter,
         };
-        super::resolve(&mut ctx, &sa);
+        super::TakeInitiativeEffect::resolve(&mut ctx, &sa);
 
         assert_eq!(ctx.game.initiative_holder, Some(p0));
     }

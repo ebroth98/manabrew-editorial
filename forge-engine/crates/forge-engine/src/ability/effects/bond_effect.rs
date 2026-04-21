@@ -9,7 +9,13 @@ use super::EffectContext;
 use crate::ids::CardId;
 use crate::spellability::SpellAbility;
 
-pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
+/// Struct form of this effect so it can participate in the
+/// `SpellAbilityEffect` trait hierarchy — mirrors Java's
+/// `BondEffect` class extending `SpellAbilityEffect`.
+pub struct BondEffect;
+
+impl crate::ability::spell_ability_effect::SpellAbilityEffect for BondEffect {
+    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let Some(source_id) = sa.source else { return };
     let controller = sa.activating_player;
 
@@ -63,5 +69,6 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     ) {
         ctx.game.card_mut(source_id).set_paired_with(Some(partner));
         ctx.game.card_mut(partner).set_paired_with(Some(source_id));
+    }
     }
 }

@@ -8,7 +8,13 @@ use forge_foundation::ZoneType;
 use super::EffectContext;
 use crate::spellability::SpellAbility;
 
-pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
+/// Struct form of this effect so it can participate in the
+/// `SpellAbilityEffect` trait hierarchy — mirrors Java's
+/// `BlockEffect` class extending `SpellAbilityEffect`.
+pub struct BlockEffect;
+
+impl crate::ability::spell_ability_effect::SpellAbilityEffect for BlockEffect {
+    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let targets: Vec<crate::ids::CardId> = if sa.uses_targeting() {
         sa.target_chosen.target_card.into_iter().collect()
     } else if let Some(def) = sa.defined() {
@@ -27,5 +33,6 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         }
         // Mark creature as "must block" — the combat system checks this flag
         ctx.game.card_mut(card_id).set_must_block(true);
+    }
     }
 }

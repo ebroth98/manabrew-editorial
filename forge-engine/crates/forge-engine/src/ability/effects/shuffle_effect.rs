@@ -14,7 +14,13 @@ use crate::spellability::SpellAbility;
 /// A:SP$ Shuffle | Defined$ You
 /// A:SP$ Shuffle | Defined$ Each
 /// ```
-pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
+/// Struct form of this effect so it can participate in the
+/// `SpellAbilityEffect` trait hierarchy — mirrors Java's
+/// `ShuffleEffect` class extending `SpellAbilityEffect`.
+pub struct ShuffleEffect;
+
+impl crate::ability::spell_ability_effect::SpellAbilityEffect for ShuffleEffect {
+    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let defined = sa.params.get(keys::DEFINED).unwrap_or("You");
     let players = resolve_defined_players(defined, sa.activating_player, ctx.game);
     let optional = sa.params.has(keys::OPTIONAL);
@@ -45,5 +51,6 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             },
             false,
         );
+    }
     }
 }

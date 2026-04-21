@@ -14,7 +14,13 @@ use crate::spellability::SpellAbility;
 /// A:SP$ TapAll | ValidCards$ Creature.Blue
 /// A:SP$ TapAll | ValidCards$ Creature.OppCtrl
 /// ```
-pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
+/// Struct form of this effect so it can participate in the
+/// `SpellAbilityEffect` trait hierarchy — mirrors Java's
+/// `TapAllEffect` class extending `SpellAbilityEffect`.
+pub struct TapAllEffect;
+
+impl crate::ability::spell_ability_effect::SpellAbilityEffect for TapAllEffect {
+    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let valid_cards_filter = sa
         .params
         .get("ValidCards")
@@ -47,10 +53,12 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             );
         }
     }
+    }
 }
 
 #[cfg(test)]
 mod tests {
+    use crate::ability::spell_ability_effect::SpellAbilityEffect;
     use forge_foundation::{CardTypeLine, ColorSet, ManaCost, ZoneType};
     use std::collections::HashMap;
 
@@ -114,7 +122,7 @@ mod tests {
             parent_target_card: None,
             rng: &mut rng_adapter,
         };
-        super::resolve(&mut ctx, &sa);
+        super::TapAllEffect::resolve(&mut ctx, &sa);
 
         assert!(ctx.game.card(c1).tapped);
         assert!(ctx.game.card(c2).tapped);

@@ -4,7 +4,13 @@ use crate::spellability::SpellAbility;
 
 /// `DB$ Branch` — resolve one of two sub-abilities based on a condition SVar.
 /// Mirrors Java `BranchEffect`.
-pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
+/// Struct form of this effect so it can participate in the
+/// `SpellAbilityEffect` trait hierarchy — mirrors Java's
+/// `BranchEffect` class extending `SpellAbilityEffect`.
+pub struct BranchEffect;
+
+impl crate::ability::spell_ability_effect::SpellAbilityEffect for BranchEffect {
+    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let take_true_branch = evaluate_branch_condition(ctx, sa);
     let key = if take_true_branch {
         keys::TRUE_SUB_ABILITY
@@ -55,6 +61,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         if ctx.game.game_over {
             break;
         }
+    }
     }
 }
 

@@ -13,7 +13,13 @@ use crate::spellability::SpellAbility;
 ///
 /// The agent decides the order via `choose_reorder_library`.
 /// The default implementation (PassAgent) keeps the existing order.
-pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
+/// Struct form of this effect so it can participate in the
+/// `SpellAbilityEffect` trait hierarchy — mirrors Java's
+/// `RearrangeTopOfLibraryEffect` class extending `SpellAbilityEffect`.
+pub struct RearrangeTopOfLibraryEffect;
+
+impl crate::ability::spell_ability_effect::SpellAbilityEffect for RearrangeTopOfLibraryEffect {
+    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let num = parse_param(&sa.ability_text, "NumCards$ ").unwrap_or(3) as usize;
     let may_shuffle = sa
         .params
@@ -96,5 +102,6 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                 false,
             );
         }
+    }
     }
 }

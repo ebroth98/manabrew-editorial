@@ -14,7 +14,13 @@ use crate::trigger::TriggerType;
 use crate::ids::CardId;
 use crate::spellability::SpellAbility;
 
-pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
+/// Struct form of this effect so it can participate in the
+/// `SpellAbilityEffect` trait hierarchy — mirrors Java's
+/// `IncubateEffect` class extending `SpellAbilityEffect`.
+pub struct IncubateEffect;
+
+impl crate::ability::spell_ability_effect::SpellAbilityEffect for IncubateEffect {
+    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let amount = super::resolve_numeric_svar(ctx.game, sa, "Amount", 1).max(0);
     let times = super::resolve_numeric_svar(ctx.game, sa, "Times", 1).max(0) as usize;
     let controller = sa.activating_player;
@@ -29,6 +35,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         for _ in 0..times {
             create_incubator_token(ctx, sa, pid, amount);
         }
+    }
     }
 }
 

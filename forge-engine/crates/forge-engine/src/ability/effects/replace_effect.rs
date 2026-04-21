@@ -6,7 +6,13 @@
 use super::EffectContext;
 use crate::spellability::SpellAbility;
 
-pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
+/// Struct form of this effect so it can participate in the
+/// `SpellAbilityEffect` trait hierarchy — mirrors Java's
+/// `ReplaceEffect` class extending `SpellAbilityEffect`.
+pub struct ReplaceEffect;
+
+impl crate::ability::spell_ability_effect::SpellAbilityEffect for ReplaceEffect {
+    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     // Generic replacement effects are handled by the replacement handler system.
     // This effect type is primarily a marker — the actual replacement logic
     // is defined by the ReplacementEffect on the source card and processed
@@ -20,5 +26,6 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                 .svars
                 .insert("ReplaceWith".to_string(), val.to_string());
         }
+    }
     }
 }

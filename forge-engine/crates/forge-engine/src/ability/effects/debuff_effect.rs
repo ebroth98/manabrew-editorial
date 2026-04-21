@@ -15,7 +15,13 @@ pub fn run(game: &mut crate::game::GameState, card_id: crate::ids::CardId, amoun
     }
 }
 
-pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
+/// Struct form of this effect so it can participate in the
+/// `SpellAbilityEffect` trait hierarchy — mirrors Java's
+/// `DebuffEffect` class extending `SpellAbilityEffect`.
+pub struct DebuffEffect;
+
+impl crate::ability::spell_ability_effect::SpellAbilityEffect for DebuffEffect {
+    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let amount = sa
         .params
         .get("Num")
@@ -56,5 +62,6 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                 ctx.game.card_mut(target).add_cant_have_keyword(&kw);
             }
         }
+    }
     }
 }

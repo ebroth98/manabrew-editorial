@@ -7,7 +7,13 @@ use crate::spellability::SpellAbility;
 /// SP$ Discard — target/defined players discard N cards.
 ///
 /// Mirrors Java's `DiscardEffect.resolve()`.
-pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
+/// Struct form of this effect so it can participate in the
+/// `SpellAbilityEffect` trait hierarchy — mirrors Java's
+/// `DiscardEffect` class extending `SpellAbilityEffect`.
+pub struct DiscardEffect;
+
+impl crate::ability::spell_ability_effect::SpellAbilityEffect for DiscardEffect {
+    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let num: usize = sa
         .params
         .as_usize(crate::parsing::keys::NUM_CARDS)
@@ -131,5 +137,6 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                 );
             }
         }
+    }
     }
 }

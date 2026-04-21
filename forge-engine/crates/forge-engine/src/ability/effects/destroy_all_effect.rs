@@ -21,7 +21,13 @@ use crate::spellability::SpellAbility;
 /// A:SP$ DestroyAll | ValidCards$ Creature | NoRegen$ True
 /// A:SP$ DestroyAll | ValidCards$ Permanent.nonArtifact
 /// ```
-pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
+/// Struct form of this effect so it can participate in the
+/// `SpellAbilityEffect` trait hierarchy — mirrors Java's
+/// `DestroyAllEffect` class extending `SpellAbilityEffect`.
+pub struct DestroyAllEffect;
+
+impl crate::ability::spell_ability_effect::SpellAbilityEffect for DestroyAllEffect {
+    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let valid_cards_filter = sa
         .params
         .get("ValidCards")
@@ -103,10 +109,12 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                 .unwrap_or_else(|| ctx.game.card(card_id).toughness()),
         );
     }
+    }
 }
 
 #[cfg(test)]
 mod tests {
+    use crate::ability::spell_ability_effect::SpellAbilityEffect;
     use forge_foundation::{CardTypeLine, ColorSet, ManaCost, ZoneType};
     use std::collections::HashMap;
 
@@ -196,7 +204,7 @@ mod tests {
             &edition_dates,
             &mut rng_adapter,
         );
-        super::resolve(&mut ctx, &sa);
+        super::DestroyAllEffect::resolve(&mut ctx, &sa);
 
         assert_eq!(ctx.game.cards_in_zone(ZoneType::Battlefield, p0).len(), 0);
         assert_eq!(ctx.game.cards_in_zone(ZoneType::Battlefield, p1).len(), 0);
@@ -238,7 +246,7 @@ mod tests {
             &edition_dates,
             &mut rng_adapter,
         );
-        super::resolve(&mut ctx, &sa);
+        super::DestroyAllEffect::resolve(&mut ctx, &sa);
 
         // One creature destroyed, indestructible one stays
         assert_eq!(ctx.game.cards_in_zone(ZoneType::Battlefield, p0).len(), 1);

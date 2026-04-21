@@ -18,7 +18,13 @@ use crate::spellability::SpellAbility;
 /// ```text
 /// A:SP$ Proliferate
 /// ```
-pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
+/// Struct form of this effect so it can participate in the
+/// `SpellAbilityEffect` trait hierarchy — mirrors Java's
+/// `CountersProliferateEffect` class extending `SpellAbilityEffect`.
+pub struct CountersProliferateEffect;
+
+impl crate::ability::spell_ability_effect::SpellAbilityEffect for CountersProliferateEffect {
+    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let controller = sa.activating_player;
 
     // Run Proliferate replacement effects before proliferating.
@@ -82,6 +88,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                 proliferate_card(ctx, cid);
             }
         }
+    }
     }
 }
 

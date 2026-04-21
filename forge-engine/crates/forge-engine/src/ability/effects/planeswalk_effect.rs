@@ -9,7 +9,13 @@ use crate::replacement::replacement_handler::{apply_replacements, ReplacementEve
 use crate::replacement::ReplacementResult;
 use crate::spellability::SpellAbility;
 
-pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
+/// Struct form of this effect so it can participate in the
+/// `SpellAbilityEffect` trait hierarchy — mirrors Java's
+/// `PlaneswalkEffect` class extending `SpellAbilityEffect`.
+pub struct PlaneswalkEffect;
+
+impl crate::ability::spell_ability_effect::SpellAbilityEffect for PlaneswalkEffect {
+    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     // Run Planeswalk replacement effects before planeswalking.
     let mut event = ReplacementEvent::Planeswalk {
         player: sa.activating_player,
@@ -28,4 +34,5 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         },
         false,
     );
+    }
 }

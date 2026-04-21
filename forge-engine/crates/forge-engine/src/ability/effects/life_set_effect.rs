@@ -14,7 +14,13 @@ use crate::spellability::SpellAbility;
 /// A:SP$ LifeSet | Defined$ Opponent | LifeAmount$ 1
 /// A:SP$ LifeSet | Defined$ Each | LifeAmount$ 20
 /// ```
-pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
+/// Struct form of this effect so it can participate in the
+/// `SpellAbilityEffect` trait hierarchy — mirrors Java's
+/// `LifeSetEffect` class extending `SpellAbilityEffect`.
+pub struct LifeSetEffect;
+
+impl crate::ability::spell_ability_effect::SpellAbilityEffect for LifeSetEffect {
+    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let controller = sa.activating_player;
 
     let amount = parse_param(&sa.ability_text, "LifeAmount$ ").unwrap_or(0);
@@ -59,10 +65,12 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             );
         }
     }
+    }
 }
 
 #[cfg(test)]
 mod tests {
+    use crate::ability::spell_ability_effect::SpellAbilityEffect;
     use std::collections::HashMap;
 
     use crate::ability::effects::EffectContext;
@@ -102,7 +110,7 @@ mod tests {
             parent_target_card: None,
             rng: &mut rng_adapter,
         };
-        super::resolve(&mut ctx, &sa);
+        super::LifeSetEffect::resolve(&mut ctx, &sa);
 
         assert_eq!(ctx.game.player(p0).life, 10);
         assert_eq!(ctx.game.player(p0).life_lost_this_turn, 10);
@@ -137,7 +145,7 @@ mod tests {
             parent_target_card: None,
             rng: &mut rng_adapter,
         };
-        super::resolve(&mut ctx, &sa);
+        super::LifeSetEffect::resolve(&mut ctx, &sa);
 
         assert_eq!(ctx.game.player(p0).life, 20);
         assert_eq!(ctx.game.player(p0).life_gained_this_turn, 15);

@@ -45,3 +45,34 @@ pub fn copy_copiable_characteristics(copy_from: &Card, to: &mut Card) {
     to.triggers = copy_from.triggers.clone();
     to.svars = copy_from.svars.clone();
 }
+
+/// Return a Last Known Information snapshot of `card` — its state frozen at
+/// the point of the call. Mirrors Java `CardCopyService.getLKICopy(Card)`.
+///
+/// The snapshot locks in effective power/toughness (as of the current layer
+/// stack) as new base values, captures current counters, zone, tapped/phased
+/// status, and the remembered / imprinted / chosen-* buckets. Consumers use
+/// LKI copies to answer "what was this creature when it died?" style
+/// queries without being disturbed by subsequent layer recomputation.
+pub fn get_lki_copy(card: &Card) -> Card {
+    let mut lki = card.clone();
+
+    // Lock in effective P/T so further modifiers don't shift it.
+    let current_power = card.power();
+    let current_toughness = card.toughness();
+    lki.base_power = Some(current_power);
+    lki.base_toughness = Some(current_toughness);
+    lki.power_modifier = 0;
+    lki.toughness_modifier = 0;
+    lki.static_power_modifier = 0;
+    lki.static_toughness_modifier = 0;
+    lki.perpetual_power_modifier = 0;
+    lki.perpetual_toughness_modifier = 0;
+    lki.lki_power = Some(current_power);
+    lki.lki_toughness = Some(current_toughness);
+
+    // Snapshot counters. Mirrors Java `newCopy.setCounters(Maps.newHashMap(copyFrom.getCounters()))`.
+    lki.lki_counters = Some(card.counters.clone());
+
+    lki
+}

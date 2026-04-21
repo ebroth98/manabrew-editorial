@@ -10,7 +10,13 @@ use crate::spellability::SpellAbility;
 use crate::staticability::layer::apply_continuous_effects;
 use crate::trigger::TriggerType;
 
-pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
+/// Struct form of this effect so it can participate in the
+/// `SpellAbilityEffect` trait hierarchy — mirrors Java's
+/// `ClassLevelUpEffect` class extending `SpellAbilityEffect`.
+pub struct ClassLevelUpEffect;
+
+impl crate::ability::spell_ability_effect::SpellAbilityEffect for ClassLevelUpEffect {
+    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let Some(host_id) = sa.source else { return };
 
     let current_level = ctx.game.card(host_id).class_level;
@@ -46,4 +52,5 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         },
         false,
     );
+    }
 }

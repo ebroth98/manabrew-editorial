@@ -23,7 +23,13 @@ pub fn run(game: &mut crate::game::GameState, card_id: crate::ids::CardId) {
 /// A:SP$ Goad | ValidTgts$ Creature.OppCtrl
 /// A:SP$ Goad | ValidCards$ Creature.OppCtrl
 /// ```
-pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
+/// Struct form of this effect so it can participate in the
+/// `SpellAbilityEffect` trait hierarchy — mirrors Java's
+/// `GoadEffect` class extending `SpellAbilityEffect`.
+pub struct GoadEffect;
+
+impl crate::ability::spell_ability_effect::SpellAbilityEffect for GoadEffect {
+    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let controller = sa.activating_player;
 
     // Targeted mode
@@ -59,5 +65,6 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         if ctx.game.card(source).zone == ZoneType::Battlefield {
             ctx.game.card_mut(source).set_goaded_by(Some(controller));
         }
+    }
     }
 }

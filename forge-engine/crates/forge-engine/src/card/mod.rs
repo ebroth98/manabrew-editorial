@@ -96,6 +96,32 @@ pub struct CardOtherPart {
     pub svars: BTreeMap<String, String>,
 }
 
+/// When a `SP$ GainControl` steals a permanent, the revert trigger is stored
+/// here. Fires during the appropriate phase or event handler, at which point
+/// the card's `original_controller_eot` is restored.
+///
+/// Mirrors the subset of Java `ControlGainEffect.LoseControl$` variants that
+/// schedule a `GameCommand`. Java also has variants we intentionally skip
+/// here (`StaticCommandCheck` driven by an SVar comparator, `UntilSourceUnattached`,
+/// `UntilTheEndOfYourNextTurn`) — they require either a scheduler that scans
+/// every tick or a turn-owner counter that the engine doesn't maintain yet.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, strum_macros::EnumString,
+)]
+#[strum(ascii_case_insensitive)]
+pub enum LoseControlCondition {
+    /// Revert at the end of the current turn (default EOT branch).
+    #[strum(serialize = "EOT", serialize = "UntilEOT", serialize = "EndOfTurn")]
+    EndOfTurn,
+    /// Revert the next time this card untaps.
+    #[strum(serialize = "Untap", serialize = "UntilUntap", serialize = "NextUntap")]
+    NextUntap,
+    /// Revert at end of combat (Threaten-style steal-and-swing).
+    EndOfCombat,
+    /// Revert when the card leaves the battlefield.
+    LeavesPlay,
+}
+
 /// Saved pre-animate state for AnimateEffect, restored at cleanup.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AnimateState {
@@ -329,6 +355,28 @@ pub struct Card {
     pub remembered_cmc: Vec<i32>,
     /// Source card that created this effect card (for Card.EffectSource checks).
     pub effect_source: Option<CardId>,
+    /// The spell ability used to cast this card instance onto the stack.
+    /// Mirrors Java `Card.getCastSA()`. Populated when the card hits the stack,
+    /// cleared when it leaves the battlefield.
+    #[serde(skip, default)]
+    pub cast_sa: Option<Box<SpellAbility>>,
+    /// For `SP$ Charm`: last turn each mode (keyed by its SVar name) was chosen
+    /// on this card instance. Feeds `ChoiceRestriction$` filtering.
+    /// Mirrors the per-card mode history Java keeps on `Card`.
+    #[serde(default)]
+    pub chosen_charm_modes: HashMap<String, i32>,
+    /// LKI (last-known-information) snapshots of cards remembered by this
+    /// card via `RememberLKI$`. Each entry is a frozen copy taken at remember
+    /// time via `CardCopyService::get_lki_copy`. Callers that care about
+    /// "what was this creature when it died" query this list instead of
+    /// `remembered_cards` (which stores live IDs and drifts).
+    #[serde(skip, default)]
+    pub remembered_lki_cards: Vec<Card>,
+    /// When set, the card's `original_controller_eot` must be restored on the
+    /// trigger described here. Mirrors the Java `ControlGainEffect` set of
+    /// `LoseControl$` variants that register distinct GameCommands.
+    #[serde(default)]
+    pub lose_control_condition: Option<LoseControlCondition>,
     /// True if this temporary effect expires at end of turn cleanup.
     pub temp_effect_until_eot: bool,
     /// Host card this temporary effect is linked to; when host leaves the
@@ -666,6 +714,10 @@ impl Card {
             chosen_map: HashMap::new(),
             remembered_cmc: Vec::new(),
             effect_source: None,
+            cast_sa: None,
+            chosen_charm_modes: HashMap::new(),
+            remembered_lki_cards: Vec::new(),
+            lose_control_condition: None,
             temp_effect_until_eot: false,
             temp_effect_host: None,
             forget_on_moved_origin: None,

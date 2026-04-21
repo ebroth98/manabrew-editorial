@@ -14,7 +14,13 @@ use crate::spellability::{build_spell_ability, SpellAbility};
 /// A:SP$ FlipACoin | WinSubAbility$ Win | LoseSubAbility$ Lose
 /// A:SP$ FlipACoin | NoCall$ True | HeadsSubAbility$ Heads | TailsSubAbility$ Tails
 /// ```
-pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
+/// Struct form of this effect so it can participate in the
+/// `SpellAbilityEffect` trait hierarchy — mirrors Java's
+/// `FlipCoinEffect` class extending `SpellAbilityEffect`.
+pub struct FlipCoinEffect;
+
+impl crate::ability::spell_ability_effect::SpellAbilityEffect for FlipCoinEffect {
+    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let controller = sa.activating_player;
     let no_call = sa
         .params
@@ -77,6 +83,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                 resolve_sub_chain(ctx, sub_sa);
             }
         }
+    }
     }
 }
 
@@ -142,7 +149,8 @@ fn flip_single_coin(
 /// Get the flip multiplier for a player. Each instance of "If you would flip
 /// a coin, instead flip two coins and ignore one." doubles the flips.
 /// Mirrors Java `FlipCoinEffect.getFlipMultiplier`.
-fn get_flip_multiplier(ctx: &EffectContext, flipper: crate::ids::PlayerId) -> i32 {
+/// Mirrors Java `FlipCoinEffect.getFlipMultiplier(Player)`.
+pub fn get_flip_multiplier(ctx: &EffectContext, flipper: crate::ids::PlayerId) -> i32 {
     let keyword = "If you would flip a coin, instead flip two coins and ignore one.";
     let count = ctx
         .game

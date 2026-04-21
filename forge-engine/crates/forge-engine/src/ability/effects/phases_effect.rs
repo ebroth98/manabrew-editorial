@@ -16,7 +16,13 @@ use crate::spellability::SpellAbility;
 /// A:SP$ Phases | ValidTgts$ Creature | TgtPrompt$ Select target creature
 /// A:SP$ Phases | Defined$ Self | PhaseInOrOut$ Out
 /// ```
-pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
+/// Struct form of this effect so it can participate in the
+/// `SpellAbilityEffect` trait hierarchy — mirrors Java's
+/// `PhasesEffect` class extending `SpellAbilityEffect`.
+pub struct PhasesEffect;
+
+impl crate::ability::spell_ability_effect::SpellAbilityEffect for PhasesEffect {
+    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let phase_mode = sa.params.get("PhaseInOrOut").unwrap_or("Out");
 
     // Targeted: use the chosen target card.
@@ -32,6 +38,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         if ctx.game.card(source).zone == ZoneType::Battlefield {
             apply_phase(ctx, source, phase_mode);
         }
+    }
     }
 }
 
@@ -68,6 +75,7 @@ fn apply_phase(ctx: &mut EffectContext, card_id: crate::ids::CardId, mode: &str)
 
 #[cfg(test)]
 mod tests {
+    use crate::ability::spell_ability_effect::SpellAbilityEffect;
     use forge_foundation::{CardTypeLine, ColorSet, ManaCost, ZoneType};
     use std::collections::HashMap;
 
@@ -129,7 +137,7 @@ mod tests {
             parent_target_card: None,
             rng: &mut rng_adapter,
         };
-        super::resolve(&mut ctx, &sa);
+        super::PhasesEffect::resolve(&mut ctx, &sa);
 
         assert!(ctx.game.card(c1).phased_out);
     }
@@ -167,7 +175,7 @@ mod tests {
             parent_target_card: None,
             rng: &mut rng_adapter,
         };
-        super::resolve(&mut ctx, &sa);
+        super::PhasesEffect::resolve(&mut ctx, &sa);
 
         assert!(!ctx.game.card(c1).phased_out);
     }

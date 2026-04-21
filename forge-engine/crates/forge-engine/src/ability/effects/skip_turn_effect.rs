@@ -11,7 +11,13 @@ use crate::spellability::SpellAbility;
 /// ```text
 /// A:SP$ SkipTurn | Defined$ Opponent | NumTurns$ 1
 /// ```
-pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
+/// Struct form of this effect so it can participate in the
+/// `SpellAbilityEffect` trait hierarchy — mirrors Java's
+/// `SkipTurnEffect` class extending `SpellAbilityEffect`.
+pub struct SkipTurnEffect;
+
+impl crate::ability::spell_ability_effect::SpellAbilityEffect for SkipTurnEffect {
+    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let controller = sa.activating_player;
     let num = parse_param(&sa.ability_text, "NumTurns$ ").unwrap_or(1);
 
@@ -23,10 +29,12 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             ctx.game.player_add_skip_turns(target, num);
         }
     }
+    }
 }
 
 #[cfg(test)]
 mod tests {
+    use crate::ability::spell_ability_effect::SpellAbilityEffect;
     use std::collections::HashMap;
 
     use crate::ability::effects::EffectContext;
@@ -68,7 +76,7 @@ mod tests {
             parent_target_card: None,
             rng: &mut rng_adapter,
         };
-        super::resolve(&mut ctx, &sa);
+        super::SkipTurnEffect::resolve(&mut ctx, &sa);
 
         assert_eq!(ctx.game.player(p1).skip_turns, 1);
     }

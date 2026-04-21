@@ -18,7 +18,13 @@ use crate::spellability::SpellAbility;
 /// A:SP$ Untap | Defined$ Self | ETB$ True
 /// DB$ Untap | Defined$ ParentTarget
 /// ```
-pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
+/// Struct form of this effect so it can participate in the
+/// `SpellAbilityEffect` trait hierarchy — mirrors Java's
+/// `UntapEffect` class extending `SpellAbilityEffect`.
+pub struct UntapEffect;
+
+impl crate::ability::spell_ability_effect::SpellAbilityEffect for UntapEffect {
+    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let controller = sa.activating_player;
     let etb = sa.params.has(crate::parsing::keys::ETB);
 
@@ -34,6 +40,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         if ctx.game.card(card_id).zone == ZoneType::Battlefield {
             untap_card(ctx, card_id, controller, etb);
         }
+    }
     }
 }
 
@@ -122,6 +129,7 @@ fn untap_card(
 
 #[cfg(test)]
 mod tests {
+    use crate::ability::spell_ability_effect::SpellAbilityEffect;
     use forge_foundation::{CardTypeLine, ColorSet, ManaCost, ZoneType};
     use std::collections::HashMap;
 
@@ -184,7 +192,7 @@ mod tests {
             parent_target_card: None,
             rng: &mut rng_adapter,
         };
-        super::resolve(&mut ctx, &sa);
+        super::UntapEffect::resolve(&mut ctx, &sa);
 
         assert!(!ctx.game.card(c1).tapped);
     }

@@ -51,7 +51,13 @@ pub fn load_counters(
     }
 }
 
-pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
+/// Struct form of this effect so it can participate in the
+/// `SpellAbilityEffect` trait hierarchy — mirrors Java's
+/// `CountersNoteEffect` class extending `SpellAbilityEffect`.
+pub struct CountersNoteEffect;
+
+impl crate::ability::spell_ability_effect::SpellAbilityEffect for CountersNoteEffect {
+    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let Some(source_id) = sa.source else { return };
     let counter_type_str = sa
         .params
@@ -75,5 +81,6 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             .unwrap_or(&0);
         // Store noted value in source's remembered_cmc (used by WithNotedCounters$)
         ctx.game.card_mut(source_id).add_remembered_cmc(count);
+    }
     }
 }

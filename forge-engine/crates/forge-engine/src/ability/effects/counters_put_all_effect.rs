@@ -22,7 +22,13 @@ use crate::spellability::SpellAbility;
 /// A:SP$ PutCounterAll | CounterType$ P1P1 | CounterNum$ 1 | ValidCards$ Creature.YouCtrl
 /// A:SP$ PutCounterAll | CounterType$ CHARGE | CounterNum$ 2 | ValidCards$ Artifact
 /// ```
-pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
+/// Struct form of this effect so it can participate in the
+/// `SpellAbilityEffect` trait hierarchy — mirrors Java's
+/// `CountersPutAllEffect` class extending `SpellAbilityEffect`.
+pub struct CountersPutAllEffect;
+
+impl crate::ability::spell_ability_effect::SpellAbilityEffect for CountersPutAllEffect {
+    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let counter_type = sa
         .params
         .get("CounterType")
@@ -93,5 +99,6 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                 false,
             );
         }
+    }
     }
 }

@@ -8,7 +8,13 @@ use crate::parsing::keys;
 use crate::spellability::SpellAbility;
 use forge_foundation::ZoneType;
 
-pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
+/// Struct form of this effect so it can participate in the
+/// `SpellAbilityEffect` trait hierarchy — mirrors Java's
+/// `AbandonEffect` class extending `SpellAbilityEffect`.
+pub struct AbandonEffect;
+
+impl crate::ability::spell_ability_effect::SpellAbilityEffect for AbandonEffect {
+    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let Some(source_id) = sa.source else {
         return;
     };
@@ -46,4 +52,5 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         },
         false,
     );
+    }
 }

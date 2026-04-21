@@ -4,6 +4,60 @@ use super::EffectContext;
 use crate::card::card_util;
 use crate::spellability::SpellAbility;
 
+/// Return the list of qualities a `SP$ Protection | Gains$ Choice` ability can
+/// choose from. Mirrors Java `ProtectEffect.getProtectionList(SpellAbility)`.
+///
+/// When `Choices$` contains `AnyColor`, expands to the five MTG colors. When
+/// `Choices$` contains `CardType`, Java expands to every card type — not yet
+/// implemented here (no `CardType::all()` enumerator). Everything else is a
+/// comma-separated list.
+pub fn get_protection_list(sa: &SpellAbility) -> Vec<String> {
+    let gains = sa
+        .params
+        .get(crate::parsing::keys::GAINS)
+        .unwrap_or("");
+    if gains != "Choice" && !gains.contains("chosen color") {
+        return gains
+            .split(',')
+            .map(|c| c.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect();
+    }
+
+    let mut out = Vec::new();
+    let choices = sa
+        .params
+        .get(crate::parsing::keys::CHOICES)
+        .unwrap_or("");
+    let mut choices_mut = choices.to_string();
+    if choices_mut.contains("AnyColor") {
+        out.extend(
+            ["White", "Blue", "Black", "Red", "Green"]
+                .iter()
+                .map(|s| s.to_string()),
+        );
+        choices_mut = choices_mut
+            .replace("AnyColor,", "")
+            .replace("AnyColor", "");
+    }
+    let trimmed = choices_mut.trim().trim_end_matches(',');
+    if !trimmed.is_empty() {
+        out.extend(
+            trimmed
+                .split(',')
+                .map(|c| c.trim().to_string())
+                .filter(|s| !s.is_empty()),
+        );
+    }
+    if out.is_empty() {
+        out = ["White", "Blue", "Black", "Red", "Green"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+    }
+    out
+}
+
 /// End-of-turn revert for Protection. Mirrors the `GameCommand.run()` in Java
 /// `ProtectEffect` that removes the granted protection keyword when the
 /// effect duration expires.
@@ -24,7 +78,13 @@ pub fn run(game: &mut crate::game::GameState, card_id: crate::ids::CardId, keywo
 /// A:SP$ Protection | Gains$ Protection from chosen color | Choices$ White,Blue,Black,Red,Green
 /// A:SP$ Protection | Gains$ Protection from red
 /// ```
-pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
+/// Struct form of this effect so it can participate in the
+/// `SpellAbilityEffect` trait hierarchy — mirrors Java's
+/// `ProtectEffect` class extending `SpellAbilityEffect`.
+pub struct ProtectEffect;
+
+impl crate::ability::spell_ability_effect::SpellAbilityEffect for ProtectEffect {
+    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let controller = sa.activating_player;
 
     // Determine target
@@ -56,36 +116,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     }
 
     if is_choice {
-        // Build the protection choices from `Choices$` parameter.
-        // `AnyColor` expands to the 5 Magic colors.
-        let choices = sa
-            .params
-            .get(crate::parsing::keys::CHOICES)
-            .map(|s| {
-                if s.contains("AnyColor") {
-                    vec![
-                        "White".into(),
-                        "Blue".into(),
-                        "Black".into(),
-                        "Red".into(),
-                        "Green".into(),
-                    ]
-                } else {
-                    s.split(',')
-                        .map(|c| c.trim().to_string())
-                        .collect::<Vec<_>>()
-                }
-            })
-            .unwrap_or_else(|| {
-                vec![
-                    "White".into(),
-                    "Blue".into(),
-                    "Black".into(),
-                    "Red".into(),
-                    "Green".into(),
-                ]
-            });
-
+        let choices = get_protection_list(sa);
         let chosen = ctx.agents[controller.index()].choose_color(controller, &choices);
         if let Some(color) = chosen {
             let prot_kw = format!("Protection from {}", color.to_lowercase());
@@ -98,5 +129,6 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         for card_id in targets {
             ctx.game.card_mut(card_id).add_pump_keyword(&gains);
         }
+    }
     }
 }

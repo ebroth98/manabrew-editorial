@@ -5,7 +5,13 @@ use crate::spellability::SpellAbility;
 /// `SP$ ChooseColor` — player(s) choose a color.
 ///
 /// Mirrors Java's `ChooseColorEffect.java`.
-pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
+/// Struct form of this effect so it can participate in the
+/// `SpellAbilityEffect` trait hierarchy — mirrors Java's
+/// `ChooseColorEffect` class extending `SpellAbilityEffect`.
+pub struct ChooseColorEffect;
+
+impl crate::ability::spell_ability_effect::SpellAbilityEffect for ChooseColorEffect {
+    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let source_id = match sa.source {
         Some(id) => id,
         None => return,
@@ -74,5 +80,6 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         for color in chosen {
             card.add_chosen_color(color);
         }
+    }
     }
 }

@@ -12,7 +12,13 @@ use crate::spellability::SpellAbility;
 /// A:SP$ AddPhase | ExtraPhase$ Combat | Amount$ 1
 /// A:SP$ AddPhase | ExtraPhase$ Combat | Amount$ 2
 /// ```
-pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
+/// Struct form of this effect so it can participate in the
+/// `SpellAbilityEffect` trait hierarchy — mirrors Java's
+/// `AddPhaseEffect` class extending `SpellAbilityEffect`.
+pub struct AddPhaseEffect;
+
+impl crate::ability::spell_ability_effect::SpellAbilityEffect for AddPhaseEffect {
+    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let extra_phase = sa.params.get("ExtraPhase").unwrap_or("Combat");
 
     let amount = parse_param(&sa.ability_text, "Amount$ ").unwrap_or(1) as u32;
@@ -25,10 +31,12 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             // Only extra combat phases are supported for now
         }
     }
+    }
 }
 
 #[cfg(test)]
 mod tests {
+    use crate::ability::spell_ability_effect::SpellAbilityEffect;
     use std::collections::HashMap;
 
     use crate::ability::effects::EffectContext;
@@ -70,7 +78,7 @@ mod tests {
             parent_target_card: None,
             rng: &mut rng_adapter,
         };
-        super::resolve(&mut ctx, &sa);
+        super::AddPhaseEffect::resolve(&mut ctx, &sa);
 
         assert_eq!(ctx.game.extra_combat_phases, 1);
     }

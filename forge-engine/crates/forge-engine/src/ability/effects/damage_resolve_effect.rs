@@ -6,7 +6,13 @@ use crate::card::card_damage_map::DamageTarget;
 use crate::card::CounterType;
 use crate::spellability::SpellAbility;
 
-pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
+/// Struct form of this effect so it can participate in the
+/// `SpellAbilityEffect` trait hierarchy — mirrors Java's
+/// `DamageResolveEffect` class extending `SpellAbilityEffect`.
+pub struct DamageResolveEffect;
+
+impl crate::ability::spell_ability_effect::SpellAbilityEffect for DamageResolveEffect {
+    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let from_pending = sa.damage_map.is_none();
     let damage_map_owned = sa
         .damage_map
@@ -116,10 +122,12 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     if from_pending {
         ctx.game.clear_pending_damage_maps();
     }
+    }
 }
 
 #[cfg(test)]
 mod tests {
+    use crate::ability::spell_ability_effect::SpellAbilityEffect;
     use std::collections::HashMap;
 
     use forge_foundation::{CardTypeLine, ColorSet, ManaCost, ZoneType};
@@ -189,7 +197,7 @@ mod tests {
             rng: &mut rng,
         };
 
-        super::resolve(&mut ctx, &sa);
+        super::DamageResolveEffect::resolve(&mut ctx, &sa);
 
         assert_eq!(ctx.game.card(tgt).damage, 2);
         assert_eq!(ctx.game.player(p1).life, 19);
@@ -239,7 +247,7 @@ mod tests {
             rng: &mut rng,
         };
 
-        super::resolve(&mut ctx, &sa);
+        super::DamageResolveEffect::resolve(&mut ctx, &sa);
         assert_eq!(ctx.game.card(tgt).zone, ZoneType::Battlefield);
         assert!(ctx.game.cards.iter().any(|c| {
             c.zone == ZoneType::Command

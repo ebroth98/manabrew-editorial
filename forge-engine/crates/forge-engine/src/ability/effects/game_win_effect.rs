@@ -11,7 +11,13 @@ use crate::spellability::SpellAbility;
 /// ```text
 /// A:SP$ GameWin | Defined$ You
 /// ```
-pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
+/// Struct form of this effect so it can participate in the
+/// `SpellAbilityEffect` trait hierarchy — mirrors Java's
+/// `GameWinEffect` class extending `SpellAbilityEffect`.
+pub struct GameWinEffect;
+
+impl crate::ability::spell_ability_effect::SpellAbilityEffect for GameWinEffect {
+    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let controller = sa.activating_player;
 
     let defined = sa.params.get("Defined").unwrap_or("You");
@@ -43,10 +49,12 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
 
     ctx.game.game_over = true;
     ctx.game.winner = Some(winner);
+    }
 }
 
 #[cfg(test)]
 mod tests {
+    use crate::ability::spell_ability_effect::SpellAbilityEffect;
     use std::collections::HashMap;
 
     use crate::ability::effects::EffectContext;
@@ -86,7 +94,7 @@ mod tests {
             parent_target_card: None,
             rng: &mut rng_adapter,
         };
-        super::resolve(&mut ctx, &sa);
+        super::GameWinEffect::resolve(&mut ctx, &sa);
 
         assert!(ctx.game.game_over);
         assert_eq!(ctx.game.winner, Some(p0));

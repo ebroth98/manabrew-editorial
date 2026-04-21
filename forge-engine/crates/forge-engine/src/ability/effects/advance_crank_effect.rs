@@ -11,7 +11,13 @@ use crate::ids::CardId;
 use crate::parsing::keys;
 use crate::spellability::SpellAbility;
 
-pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
+/// Struct form of this effect so it can participate in the
+/// `SpellAbilityEffect` trait hierarchy — mirrors Java's
+/// `AdvanceCrankEffect` class extending `SpellAbilityEffect`.
+pub struct AdvanceCrankEffect;
+
+impl crate::ability::spell_ability_effect::SpellAbilityEffect for AdvanceCrankEffect {
+    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let players = if let Some(def) = sa.params.get(keys::DEFINED) {
         super::resolve_defined_players(def, sa.activating_player, ctx.game)
     } else {
@@ -51,5 +57,6 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                 false,
             );
         }
+    }
     }
 }

@@ -9,7 +9,13 @@ use forge_foundation::ZoneType;
 use super::EffectContext;
 use crate::spellability::SpellAbility;
 
-pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
+/// Struct form of this effect so it can participate in the
+/// `SpellAbilityEffect` trait hierarchy — mirrors Java's
+/// `AscendEffect` class extending `SpellAbilityEffect`.
+pub struct AscendEffect;
+
+impl crate::ability::spell_ability_effect::SpellAbilityEffect for AscendEffect {
+    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let controller = sa.activating_player;
     let players = if let Some(def) = sa.defined_player() {
         super::resolve_defined_players(def, controller, ctx.game)
@@ -31,5 +37,6 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             // The blessing is checked by card scripts via "Player.hasCityBlessing"
             ctx.game.player_set_blessing(pid, true);
         }
+    }
     }
 }

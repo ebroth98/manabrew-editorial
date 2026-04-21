@@ -28,7 +28,8 @@ pub fn create_skip_phase_effect(
 ///
 /// Parses the Phase$ and Defined$ parameters and applies the skip.
 pub fn run(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
-    resolve(ctx, sa);
+    use crate::ability::spell_ability_effect::SpellAbilityEffect;
+    SkipPhaseEffect::resolve(ctx, sa);
 }
 
 /// Resolve `SP$ SkipPhase` — make a player skip their next occurrence of a phase.
@@ -43,7 +44,13 @@ pub fn run(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
 /// A:SP$ SkipPhase | Defined$ You | Phase$ Combat
 /// A:SP$ SkipPhase | Defined$ Opponent | Phase$ Untap
 /// ```
-pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
+/// Struct form of this effect so it can participate in the
+/// `SpellAbilityEffect` trait hierarchy — mirrors Java's
+/// `SkipPhaseEffect` class extending `SpellAbilityEffect`.
+pub struct SkipPhaseEffect;
+
+impl crate::ability::spell_ability_effect::SpellAbilityEffect for SkipPhaseEffect {
+    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let controller = sa.activating_player;
 
     let phase = sa
@@ -72,13 +79,16 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             }
         }
     }
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use std::collections::HashMap;
 
+    use super::SkipPhaseEffect;
     use crate::ability::effects::EffectContext;
+    use crate::ability::spell_ability_effect::SpellAbilityEffect;
     use crate::agent::PassAgent;
     use crate::game::GameState;
     use crate::ids::PlayerId;
@@ -117,7 +127,7 @@ mod tests {
             parent_target_card: None,
             rng: &mut rng_adapter,
         };
-        super::resolve(&mut ctx, &sa);
+        super::SkipPhaseEffect::resolve(&mut ctx, &sa);
 
         assert!(ctx.game.player(p1).skip_next_draw);
         assert!(!ctx.game.player(p1).skip_next_combat);
@@ -152,7 +162,7 @@ mod tests {
             parent_target_card: None,
             rng: &mut rng_adapter,
         };
-        super::resolve(&mut ctx, &sa);
+        super::SkipPhaseEffect::resolve(&mut ctx, &sa);
 
         assert!(ctx.game.player(p0).skip_next_combat);
     }

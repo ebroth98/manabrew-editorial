@@ -8,7 +8,13 @@ use super::EffectContext;
 use crate::parsing::keys;
 use crate::spellability::SpellAbility;
 
-pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
+/// Struct form of this effect so it can participate in the
+/// `SpellAbilityEffect` trait hierarchy — mirrors Java's
+/// `ControlPlayerEffect` class extending `SpellAbilityEffect`.
+pub struct ControlPlayerEffect;
+
+impl crate::ability::spell_ability_effect::SpellAbilityEffect for ControlPlayerEffect {
+    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let controller_def = sa
         .params
         .get(keys::CONTROLLER)
@@ -53,5 +59,6 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                 remembered_cards: Vec::new(),
                 remembered_lki_cards: Vec::new(),
             });
+    }
     }
 }

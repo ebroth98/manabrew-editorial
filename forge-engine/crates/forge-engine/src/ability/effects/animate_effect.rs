@@ -28,7 +28,13 @@ use forge_foundation::ManaCost;
 /// - `OverwriteTypes` — if "True", replace type_line instead of adding
 ///
 /// The animate_state is saved so step_cleanup can restore the original card state.
-pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
+/// Struct form of this effect so it can participate in the
+/// `SpellAbilityEffect` trait hierarchy — mirrors Java's
+/// `AnimateEffect` class extending `SpellAbilityEffect`.
+pub struct AnimateEffect;
+
+impl crate::ability::spell_ability_effect::SpellAbilityEffect for AnimateEffect {
+    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let controller = sa.activating_player;
 
     // Determine target card
@@ -306,44 +312,22 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         }
     }
 
-    // AtEOT$ — register a delayed trigger for the end step that performs
-    // the specified action (Sacrifice, Exile, Hand, etc.) on the animated
-    // cards. Mirrors Java's AnimateEffect → registerDelayedTrigger.
-    if let Some(eot_action) = sa.params.get(keys::AT_EOT) {
-        let execute_svar = match eot_action {
-            "Sacrifice" => "DB$ SacrificeAll | Defined$ DelayTriggerRememberedLKI | Controller$ You".to_string(),
-            "SacrificeCtrl" => "DB$ SacrificeAll | Defined$ DelayTriggerRememberedLKI".to_string(),
-            "Exile" => "DB$ ChangeZone | Defined$ DelayTriggerRememberedLKI | Origin$ Battlefield | Destination$ Exile".to_string(),
-            "Hand" => "DB$ ChangeZone | Defined$ DelayTriggerRememberedLKI | Origin$ Battlefield | Destination$ Hand".to_string(),
-            "Destroy" => "DB$ Destroy | Defined$ DelayTriggerRememberedLKI".to_string(),
-            _ => "DB$ SacrificeAll | Defined$ DelayTriggerRememberedLKI | Controller$ You".to_string(),
-        };
+    // `AtEOT$ <action>` — register an end-of-turn delayed trigger on the
+    // animated cards still on the battlefield.
+    if let Some(action) = sa.params.get(keys::AT_EOT) {
         let remembered: Vec<crate::ids::CardId> = eot_targets
             .iter()
             .copied()
             .filter(|&cid| ctx.game.card(cid).zone == ZoneType::Battlefield)
             .collect();
-        if !remembered.is_empty() {
-            ctx.trigger_handler
-                .register_delayed_trigger(crate::trigger::handler::DelayedTrigger {
-                    mode: crate::trigger::TriggerType::Phase,
-                    trigger_mode: Box::new(crate::trigger::trigger_phase::TriggerPhase {
-                        phase: Some(forge_foundation::PhaseType::EndOfTurn),
-                        valid_player: None,
-                    })
-                        as Box<dyn crate::trigger::TriggerBehavior>,
-                    params: crate::parsing::Params::default(),
-                    execute_svar,
-                    controller,
-                    source_card: sa.source.unwrap_or(remembered[0]),
-                    created_turn: ctx.game.turn.turn_number,
-                    created_phase: ctx.game.turn.phase,
-                    target_card: None,
-                    remembered_amount: 0,
-                    remembered_cards: remembered.clone(),
-                    remembered_lki_cards: remembered,
-                });
-        }
+        crate::ability::spell_ability_effect::register_at_eot(
+            ctx.trigger_handler,
+            ctx.game,
+            sa,
+            action,
+            remembered,
+        );
+    }
     }
 }
 

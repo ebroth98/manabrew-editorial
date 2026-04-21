@@ -32,7 +32,13 @@ pub fn run(
 /// ```text
 /// A:SP$ PowerExchange | ValidTgts$ Creature | TgtPrompt$ Select target creature
 /// ```
-pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
+/// Struct form of this effect so it can participate in the
+/// `SpellAbilityEffect` trait hierarchy — mirrors Java's
+/// `PowerExchangeEffect` class extending `SpellAbilityEffect`.
+pub struct PowerExchangeEffect;
+
+impl crate::ability::spell_ability_effect::SpellAbilityEffect for PowerExchangeEffect {
+    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let source = sa.source;
     let target = sa.target_chosen.target_card;
 
@@ -107,10 +113,12 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     ctx.game
         .card_mut(c2)
         .set_power_modifier(p1 - c2_base - c2_static);
+    }
 }
 
 #[cfg(test)]
 mod tests {
+    use crate::ability::spell_ability_effect::SpellAbilityEffect;
     use forge_foundation::{CardTypeLine, ColorSet, ManaCost, ZoneType};
     use std::collections::HashMap;
 
@@ -184,7 +192,7 @@ mod tests {
             parent_target_card: None,
             rng: &mut rng_adapter,
         };
-        super::resolve(&mut ctx, &sa);
+        super::PowerExchangeEffect::resolve(&mut ctx, &sa);
 
         assert_eq!(ctx.game.card(c1).power(), 5);
         assert_eq!(ctx.game.card(c2).power(), 2);

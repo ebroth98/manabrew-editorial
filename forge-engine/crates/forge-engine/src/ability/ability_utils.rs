@@ -73,6 +73,26 @@ fn unique_push_spell(spells: &mut Vec<SpellAbility>, spell: SpellAbility) {
 
 // ── Defined$ Card Resolution ─────────────────────────────────────────
 
+/// Static (non-prefix) `Defined$` tokens that refer to a set of cards.
+/// Prefix-based tokens (`Triggered*`, `ValidGraveyard <filter>`, ...) stay as
+/// separate branches below since strum can't match open-ended suffixes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, strum_macros::EnumString)]
+#[strum(ascii_case_insensitive)]
+pub enum DefinedCardToken {
+    #[strum(serialize = "Self", serialize = "CARDNAME")]
+    SelfCard,
+    Remembered,
+    #[strum(serialize = "Enchanted", serialize = "Equipped", serialize = "AttachedTo")]
+    Attached,
+    EnchantedBy,
+    Imprinted,
+    #[strum(serialize = "TopOfLibrary", serialize = "OfLibrary")]
+    TopOfLibrary,
+    TopOfGraveyard,
+    Tapped,
+    Untapped,
+}
+
 /// Resolve `Defined$` strings to a list of card IDs.
 /// Mirrors Java's `AbilityUtils.getDefinedCards()`.
 pub fn get_defined_cards(
@@ -81,55 +101,93 @@ pub fn get_defined_cards(
     defined: &str,
     activating_player: Option<PlayerId>,
 ) -> Vec<CardId> {
-    match defined {
-        "Self" | "CARDNAME" => host_card.into_iter().collect(),
-        "Remembered" => {
-            if let Some(src) = host_card {
-                game.card(src).remembered_cards.clone()
-            } else {
-                Vec::new()
-            }
-        }
-        "Enchanted" => {
-            if let Some(src) = host_card {
-                game.card(src).attached_to.into_iter().collect()
-            } else {
-                Vec::new()
-            }
-        }
-        "Imprinted" => {
-            if let Some(src) = host_card {
-                game.card(src).imprinted_cards.clone()
-            } else {
-                Vec::new()
-            }
-        }
-        _ if defined.starts_with("ValidGraveyard") => {
-            // "ValidGraveyard <filter>" — return graveyard cards matching filter.
-            // Mirrors Java's AbilityUtils.getDefinedCards() for graveyard-based defined sets.
-            let filter = defined
-                .strip_prefix("ValidGraveyard")
-                .unwrap_or("")
-                .trim();
-            let player = activating_player.unwrap_or_else(|| {
-                host_card
-                    .map(|c| game.card(c).controller)
-                    .unwrap_or(PlayerId(0))
-            });
-            game.cards_in_zone(ZoneType::Graveyard, player)
-                .iter()
-                .copied()
-                .filter(|&cid| {
-                    if filter.is_empty() {
-                        return true;
-                    }
-                    let card = game.card(cid);
-                    matches_valid_cards(card, filter, player)
-                })
-                .collect()
-        }
-        _ => Vec::new(),
+    if let Ok(token) = defined.parse::<DefinedCardToken>() {
+        return resolve_defined_card_token(token, game, host_card, activating_player);
     }
+    // Prefix-based tokens.
+    if let Some(rest) = defined.strip_prefix("ValidGraveyard") {
+        let filter = rest.trim();
+        let player = activating_player.unwrap_or_else(|| {
+            host_card
+                .map(|c| game.card(c).controller)
+                .unwrap_or(PlayerId(0))
+        });
+        return game
+            .cards_in_zone(ZoneType::Graveyard, player)
+            .iter()
+            .copied()
+            .filter(|&cid| filter.is_empty() || matches_valid_cards(game.card(cid), filter, player))
+            .collect();
+    }
+    // `Discarded` / `Sacrificed` live on the SA (`discarded_cost_cards` +
+    // per-cost paid slots), not the host card, so they're resolved by the
+    // SA-aware path `spell_ability_effect::resolve_defined_cards_for_sa`.
+    Vec::new()
+}
+
+fn resolve_defined_card_token(
+    token: DefinedCardToken,
+    game: &GameState,
+    host_card: Option<CardId>,
+    activating_player: Option<PlayerId>,
+) -> Vec<CardId> {
+    match token {
+        DefinedCardToken::SelfCard => host_card.into_iter().collect(),
+        DefinedCardToken::Remembered => host_card
+            .map(|src| game.card(src).remembered_cards.clone())
+            .unwrap_or_default(),
+        DefinedCardToken::Attached => host_card
+            .and_then(|src| game.card(src).attached_to)
+            .into_iter()
+            .collect(),
+        DefinedCardToken::EnchantedBy => host_card
+            .into_iter()
+            .flat_map(|src| {
+                game.cards
+                    .iter()
+                    .filter_map(move |c| {
+                        (c.attached_to == Some(src) && c.type_line.has_subtype("Aura"))
+                            .then_some(c.id)
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .collect(),
+        DefinedCardToken::Imprinted => host_card
+            .map(|src| game.card(src).imprinted_cards.clone())
+            .unwrap_or_default(),
+        DefinedCardToken::TopOfLibrary => activating_player
+            .and_then(|pid| game.cards_in_zone(ZoneType::Library, pid).last().copied())
+            .into_iter()
+            .collect(),
+        DefinedCardToken::TopOfGraveyard => activating_player
+            .and_then(|pid| game.cards_in_zone(ZoneType::Graveyard, pid).last().copied())
+            .into_iter()
+            .collect(),
+        DefinedCardToken::Tapped => activating_player
+            .map(|pid| filter_battlefield(game, pid, |c| c.tapped))
+            .unwrap_or_default(),
+        DefinedCardToken::Untapped => activating_player
+            .map(|pid| filter_battlefield(game, pid, |c| !c.tapped))
+            .unwrap_or_default(),
+    }
+}
+
+/// Return battlefield cards matching `pred`, for every player in turn order.
+/// Helper for `Tapped` / `Untapped` defined tokens.
+fn filter_battlefield(
+    game: &GameState,
+    _starter: PlayerId,
+    pred: impl Fn(&Card) -> bool,
+) -> Vec<CardId> {
+    let mut out = Vec::new();
+    for &pid in &game.player_order {
+        for &cid in game.cards_in_zone(ZoneType::Battlefield, pid) {
+            if pred(game.card(cid)) {
+                out.push(cid);
+            }
+        }
+    }
+    out
 }
 
 /// Resolve `Defined$` strings to a list of player IDs.
@@ -183,6 +241,23 @@ pub fn parse_num_dmg(ability: &str) -> i32 {
 ///
 /// Handles both bare names ("Opponent") and prefixed forms ("Player.Opponent")
 /// used by cards like Guttersnipe: `Defined$ Player.Opponent`.
+/// Static (non-prefix) `Defined$` tokens that point at a single player.
+/// Does not include SA-context tokens (`Remembered`, `TriggeredPlayer`, etc.)
+/// — those live in `resolve_defined_player_with_sa`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, strum_macros::EnumString)]
+#[strum(ascii_case_insensitive)]
+pub enum DefinedPlayerToken {
+    You,
+    #[strum(serialize = "Opponent", serialize = "OpponentCtrl")]
+    Opponent,
+    #[strum(
+        serialize = "DefendingPlayer",
+        serialize = "TriggeredDefendingPlayer",
+        serialize = "TriggeredDefender"
+    )]
+    DefendingPlayer,
+}
+
 pub fn resolve_defined_player(
     defined: &str,
     controller: PlayerId,
@@ -190,17 +265,13 @@ pub fn resolve_defined_player(
 ) -> Option<PlayerId> {
     // Strip "Player." prefix if present (e.g. "Player.Opponent" → "Opponent")
     let key = defined.strip_prefix("Player.").unwrap_or(defined);
-    match key {
-        "You" => Some(controller),
-        "Opponent" | "OpponentCtrl" => {
-            let opp = game.opponent_of(controller);
-            Some(opp)
+    let token = key.parse::<DefinedPlayerToken>().ok()?;
+    Some(match token {
+        DefinedPlayerToken::You => controller,
+        DefinedPlayerToken::Opponent | DefinedPlayerToken::DefendingPlayer => {
+            game.opponent_of(controller)
         }
-        "DefendingPlayer" | "TriggeredDefendingPlayer" | "TriggeredDefender" => {
-            Some(game.opponent_of(controller))
-        }
-        _ => None,
-    }
+    })
 }
 
 /// Resolve a Defined$ parameter to a player ID with spell/trigger context.
@@ -511,10 +582,10 @@ pub fn resolve_defined_players_with_sa(
     }
 }
 
-/// Resolve a Defined$ parameter to spell abilities with spell/trigger context.
-/// Mirrors the Java `AbilityUtils.getDefinedSpellAbilities()` cases needed by
-/// trigger and copy/counter effects.
-pub fn resolve_defined_spell_abilities_with_sa(
+/// Resolve a `Defined$` parameter to spell abilities.
+/// Mirrors Java `AbilityUtils.getDefinedSpellAbilities(Card, String, CardTraitBase)`
+/// (AbilityUtils.java:1202).
+pub fn get_defined_spell_abilities(
     defined: &str,
     sa: &SpellAbility,
     game: &GameState,
@@ -523,6 +594,90 @@ pub fn resolve_defined_spell_abilities_with_sa(
     let mut spells = Vec::new();
 
     match key {
+        // Self — the SA itself (Java L1214).
+        "Self" => unique_push_spell(&mut spells, sa.clone()),
+
+        // Parent — the root of the sub-ability chain (Java L1216).
+        // The Rust engine doesn't thread a back-pointer to the parent, so the
+        // best-effort resolution returns `sa` itself (root == current for
+        // non-nested calls). Nested sub-ability nodes that need the root must
+        // carry `parent_target_card` through `EffectContext` (already done for
+        // targets); proper Parent-SA threading is deferred until SAs own a
+        // parent handle.
+        "Parent" => unique_push_spell(&mut spells, sa.clone()),
+
+        // Remembered — cards remembered by the host contribute their SAs; any
+        // SpellAbility objects directly in the remembered list are added too.
+        // The Rust `Card::remembered_cards` only stores CardIds, so the "spell
+        // ability remembered" branch is unreachable here (Java L1222–L1226).
+        "Remembered" => {
+            if let Some(host_id) = sa.source {
+                let remembered = game.card(host_id).remembered_cards.clone();
+                for cid in remembered {
+                    for ab_text in game.card(cid).abilities.iter() {
+                        let built = crate::spellability::build_spell_ability_from_host_card(
+                            game.card(cid),
+                            ab_text,
+                            sa.activating_player,
+                        );
+                        unique_push_spell(&mut spells, built);
+                    }
+                }
+            }
+        }
+
+        // Imprinted — mirrors Java L1227–L1230.
+        "Imprinted" => {
+            if let Some(host_id) = sa.source {
+                let imprinted = game.card(host_id).imprinted_cards.clone();
+                for cid in imprinted {
+                    for ab_text in game.card(cid).abilities.iter() {
+                        let built = crate::spellability::build_spell_ability_from_host_card(
+                            game.card(cid),
+                            ab_text,
+                            sa.activating_player,
+                        );
+                        unique_push_spell(&mut spells, built);
+                    }
+                }
+            }
+        }
+
+        // EffectSource — the SA that created an effect card (Java L1231–L1234).
+        // Tracked via `Card::effect_source`; best we can do without
+        // `Card::effect_source_ability` is project to the first ability on the
+        // source card — matches Java behavior when the source has exactly one
+        // SA, which is the common case for command-zone effects.
+        "EffectSource" => {
+            if let Some(host_id) = sa.source {
+                if let Some(effect_src) = game.card(host_id).effect_source {
+                    let src_card = game.card(effect_src);
+                    if let Some(ab_text) = src_card.abilities.first() {
+                        let built = crate::spellability::build_spell_ability_from_host_card(
+                            src_card,
+                            ab_text,
+                            sa.activating_player,
+                        );
+                        unique_push_spell(&mut spells, built);
+                    }
+                }
+            }
+        }
+
+        // SourceFirstSpell — stack entry whose host matches this SA's source
+        // (Java L1235–L1239).
+        "SourceFirstSpell" => {
+            if let Some(host_id) = sa.source {
+                if let Some(entry) = game
+                    .stack
+                    .iter()
+                    .find(|e| e.spell_ability.source == Some(host_id))
+                {
+                    unique_push_spell(&mut spells, entry.spell_ability.clone());
+                }
+            }
+        }
+
         "TriggeredSpellAbility" => {
             for trigger_key in ["SpellAbility", "SourceSA", "Cause", "AbilityMana"] {
                 if let Some(spell) = sa.get_triggering_spell_ability(trigger_key) {
@@ -530,7 +685,7 @@ pub fn resolve_defined_spell_abilities_with_sa(
                 }
             }
         }
-        "SpellTargeted" => {
+        "SpellTargeted" | "ThisTargeted" => {
             if let Some(stack_id) = sa.target_chosen.target_stack_entry {
                 if let Some(entry) = game.stack.find_by_id(stack_id) {
                     unique_push_spell(&mut spells, entry.spell_ability.clone());
@@ -547,7 +702,15 @@ pub fn resolve_defined_spell_abilities_with_sa(
                 unique_push_spell(&mut spells, spell.clone());
             }
         }
-        _ => {}
+        _ => {
+            // Triggered<Key> — pull a SpellAbility from the triggering-objects
+            // map by AbilityKey name (Java L1240–L1247).
+            if let Some(trigger_key) = key.strip_prefix("Triggered") {
+                if let Some(spell) = sa.get_triggering_spell_ability(trigger_key) {
+                    unique_push_spell(&mut spells, spell.clone());
+                }
+            }
+        }
     }
 
     spells
@@ -1870,6 +2033,133 @@ pub fn add_splice_effect(sa: &mut SpellAbility, game: &GameState, splice_card_id
     if !sa.description.is_empty() {
         sa.description
             .push_str(&format!(" (Splicing {} onto it)", name));
+    }
+}
+
+// ── Defined$ convenience overloads ───────────────────────────────────
+
+/// Resolve a `Defined$` expression to a combined list of the targeted
+/// `GameObject`s — cards + players + spell abilities.
+/// Mirrors Java `AbilityUtils.getDefinedObjects(Card, String, CardTraitBase)`.
+///
+/// The three sub-resolvers are surfaced separately via their native Rust enums
+/// rather than a shared `GameObject` trait object, so this helper returns a
+/// tuple instead of Java's `FCollection<GameObject>`.
+#[allow(clippy::type_complexity)]
+pub fn get_defined_objects(
+    defined: &str,
+    sa: &SpellAbility,
+    game: &GameState,
+) -> (Vec<PlayerId>, Vec<CardId>, Vec<SpellAbility>) {
+    let d = if defined.is_empty() { "Self" } else { defined };
+    (
+        resolve_defined_players_with_sa(d, sa, sa.activating_player, game),
+        get_defined_cards(game, sa.source, d, Some(sa.activating_player)),
+        get_defined_spell_abilities(d, sa, game),
+    )
+}
+
+/// Resolve a `Defined$` expression to a combined player + card list.
+/// Mirrors Java `AbilityUtils.getDefinedEntities(Card, String, CardTraitBase)`.
+pub fn get_defined_entities(
+    defined: &str,
+    sa: &SpellAbility,
+    game: &GameState,
+) -> (Vec<PlayerId>, Vec<CardId>) {
+    let d = if defined.is_empty() { "Self" } else { defined };
+    (
+        resolve_defined_players_with_sa(d, sa, sa.activating_player, game),
+        get_defined_cards(game, sa.source, d, Some(sa.activating_player)),
+    )
+}
+
+/// Collect the basic spell abilities that a Play$ effect could cast from
+/// `tgt_card`. Mirrors Java `AbilityUtils.getBasicSpellsFromPlayEffect(Card, Player)`.
+///
+/// "Basic" means the non-alternative cost variants — the Rust engine has no
+/// `Spell` wrapper analogue yet, so we synthesize fresh `SpellAbility` objects
+/// from the target card's ability text, filtering to spells / land abilities
+/// the way Java does in `collectSpellsForPlayEffect`.
+pub fn get_basic_spells_from_play_effect(
+    game: &GameState,
+    tgt_card: CardId,
+    controller: PlayerId,
+) -> Vec<SpellAbility> {
+    get_spells_from_play_effect(game, tgt_card, controller, false)
+}
+
+/// Full variant of `getBasicSpellsFromPlayEffect` — when `with_alt_cost` is
+/// `true`, alternative-cost (flashback/overload/…) variants are included.
+/// Mirrors Java `AbilityUtils.getSpellsFromPlayEffect(Card, Player, CardStateName, boolean)`.
+///
+/// Alt-cost expansion depends on `GameActionUtil.getAlternativeCosts`, which
+/// is not ported yet — the `with_alt_cost=true` branch currently degrades to
+/// the basic list. Revisit once alt-cost collection is available.
+pub fn get_spells_from_play_effect(
+    game: &GameState,
+    tgt_card: CardId,
+    controller: PlayerId,
+    _with_alt_cost: bool,
+) -> Vec<SpellAbility> {
+    let card = game.card(tgt_card);
+    let mut out = Vec::new();
+    for ab_text in &card.abilities {
+        let params = crate::parsing::Params::from_raw(ab_text);
+        let record = crate::ability::ability_factory::AbilityRecordType::from_params(&params);
+        let is_spell = matches!(
+            record,
+            Some(crate::ability::ability_factory::AbilityRecordType::Spell)
+        );
+        if !is_spell && !card.type_line.is_land() {
+            continue;
+        }
+        let built = crate::spellability::build_spell_ability_from_host_card(
+            card, ab_text, controller,
+        );
+        out.push(built);
+    }
+    out
+}
+
+/// Read an SVar from the SA's host, applying in-flight text-change effects
+/// when the SA is intrinsic — mirrors Java `AbilityUtils.getSVar(CardTraitBase, String)`.
+pub fn get_s_var(sa: &SpellAbility, game: &GameState, svar_name: &str) -> Option<String> {
+    let host_id = sa.source?;
+    let raw = game.card(host_id).get_s_var(svar_name)?.to_string();
+    if !sa.is_intrinsic() || raw.is_empty() {
+        return Some(raw);
+    }
+    // Text-change effects are applied at Card state time; no additional
+    // rewrite needed here (see `apply_description_text_change_effects` for the
+    // description path). Mirrors Java's behavior when no active text changes
+    // match the SVar value.
+    Some(raw)
+}
+
+/// Returns `true` when a trait can't be linked to the cast-SA of `card` because
+/// the trait originates from a different physical host (transformed / melded /
+/// adventure-cast situations).
+///
+/// Mirrors Java `AbilityUtils.isUnlinkedFromCastSA(CardTraitBase, Card)`.
+pub fn is_unlinked_from_cast_sa(sa: &SpellAbility, card: &Card) -> bool {
+    if !sa.is_intrinsic() {
+        return false;
+    }
+    if sa.source != Some(card.id) {
+        return false;
+    }
+    // Java: getHostCard() vs cast_sa.getOriginalHost()/getHostCard() — if the
+    // trait's original host disagrees with the cast-SA's host, the trait is
+    // unlinked (e.g. intrinsic ability granted by a transformed face whose
+    // cast-SA belongs to the front face).
+    let trait_host = sa.original_host.or(sa.source);
+    let Some(cast) = card.cast_sa.as_deref() else {
+        return false;
+    };
+    let cast_host = cast.original_host.or(cast.source);
+    match (trait_host, cast_host) {
+        (Some(t), Some(c)) => t != c,
+        _ => false,
     }
 }
 

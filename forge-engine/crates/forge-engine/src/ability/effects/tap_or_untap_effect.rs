@@ -9,7 +9,13 @@ use crate::spellability::SpellAbility;
 /// `SP$ TapOrUntap` — choose tap or untap for the targeted/defined permanent.
 ///
 /// Mirrors Java `TapOrUntapEffect.java` binary prompt behavior.
-pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
+/// Struct form of this effect so it can participate in the
+/// `SpellAbilityEffect` trait hierarchy — mirrors Java's
+/// `TapOrUntapEffect` class extending `SpellAbilityEffect`.
+pub struct TapOrUntapEffect;
+
+impl crate::ability::spell_ability_effect::SpellAbilityEffect for TapOrUntapEffect {
+    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let controller = sa.activating_player;
     let source_name = sa
         .source
@@ -66,5 +72,6 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                 false,
             );
         }
+    }
     }
 }

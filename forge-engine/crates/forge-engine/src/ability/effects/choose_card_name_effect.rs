@@ -7,7 +7,13 @@ use super::EffectContext;
 use crate::parsing::keys;
 use crate::spellability::SpellAbility;
 
-pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
+/// Struct form of this effect so it can participate in the
+/// `SpellAbilityEffect` trait hierarchy — mirrors Java's
+/// `ChooseCardNameEffect` class extending `SpellAbilityEffect`.
+pub struct ChooseCardNameEffect;
+
+impl crate::ability::spell_ability_effect::SpellAbilityEffect for ChooseCardNameEffect {
+    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let Some(source_id) = sa.source else { return };
     let controller = sa.activating_player;
 
@@ -28,5 +34,6 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
 
     if sa.param_is_true(keys::REMEMBER_CHOSEN) {
         // Remember the name for later checks
+    }
     }
 }

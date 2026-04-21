@@ -18,7 +18,13 @@ use crate::spellability::SpellAbility;
 /// A:SP$ MoveCounter | CounterType$ P1P1 | CounterNum$ 1 | Source$ Self | Defined$ Targeted
 /// A:SP$ MoveCounter | CounterType$ CHARGE | CounterNum$ 2
 /// ```
-pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
+/// Struct form of this effect so it can participate in the
+/// `SpellAbilityEffect` trait hierarchy — mirrors Java's
+/// `MoveCounterEffect` class extending `SpellAbilityEffect`.
+pub struct MoveCounterEffect;
+
+impl crate::ability::spell_ability_effect::SpellAbilityEffect for MoveCounterEffect {
+    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let counter_type = sa
         .params
         .get(crate::parsing::keys::COUNTER_TYPE)
@@ -112,4 +118,5 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         },
         false,
     );
+    }
 }

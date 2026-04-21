@@ -7,7 +7,13 @@ use crate::ids::CardId;
 use crate::parsing::keys;
 use crate::spellability::SpellAbility;
 
-pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
+/// Struct form of this effect so it can participate in the
+/// `SpellAbilityEffect` trait hierarchy — mirrors Java's
+/// `SacrificeAllEffect` class extending `SpellAbilityEffect`.
+pub struct SacrificeAllEffect;
+
+impl crate::ability::spell_ability_effect::SpellAbilityEffect for SacrificeAllEffect {
+    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let valid_cards_filter = sa
         .params
         .get("ValidCards")
@@ -145,5 +151,6 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         );
         ctx.move_card(card_id, ZoneType::Graveyard, owner);
         ctx.trigger_handler.flush_waiting_triggers(ctx.game);
+    }
     }
 }

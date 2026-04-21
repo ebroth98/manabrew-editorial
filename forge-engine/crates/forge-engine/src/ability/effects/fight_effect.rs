@@ -15,7 +15,13 @@ use crate::spellability::SpellAbility;
 /// as the first fighter.
 ///
 /// Mirrors Java's `FightEffect.resolve()`.
-pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
+/// Struct form of this effect so it can participate in the
+/// `SpellAbilityEffect` trait hierarchy — mirrors Java's
+/// `FightEffect` class extending `SpellAbilityEffect`.
+pub struct FightEffect;
+
+impl crate::ability::spell_ability_effect::SpellAbilityEffect for FightEffect {
+    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let use_damage_map = ctx.game.pending_damage_map.is_some() || sa.params.has("DamageMap");
     if sa.params.has("DamageMap") {
         ctx.game.ensure_pending_damage_maps();
@@ -141,4 +147,5 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     );
 
     let _ = crate::ability::spell_ability_effect::replace_dying(ctx.game, sa);
+    }
 }

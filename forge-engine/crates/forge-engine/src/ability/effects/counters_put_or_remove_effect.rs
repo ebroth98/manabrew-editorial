@@ -8,7 +8,13 @@ use crate::spellability::SpellAbility;
 /// `SP$ CountersPutOrRemove` — choose add/remove on target card counters.
 ///
 /// Mirrors Java `CountersPutOrRemoveEffect.java` binary choice semantics.
-pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
+/// Struct form of this effect so it can participate in the
+/// `SpellAbilityEffect` trait hierarchy — mirrors Java's
+/// `CountersPutOrRemoveEffect` class extending `SpellAbilityEffect`.
+pub struct CountersPutOrRemoveEffect;
+
+impl crate::ability::spell_ability_effect::SpellAbilityEffect for CountersPutOrRemoveEffect {
+    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let Some(source_id) = sa.source else { return };
     let controller = sa.activating_player;
     let source_name = ctx.game.card(source_id).card_name.clone();
@@ -101,5 +107,6 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         if sa.params.has(keys::REMEMBER_REMOVED_CARDS) {
             ctx.game.card_mut(source_id).add_remembered_card(target_id);
         }
+    }
     }
 }

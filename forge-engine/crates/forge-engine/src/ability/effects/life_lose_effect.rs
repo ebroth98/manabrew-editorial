@@ -5,7 +5,13 @@ use crate::replacement::replacement_handler::{apply_replacements, ReplacementEve
 use crate::replacement::ReplacementResult;
 use crate::spellability::SpellAbility;
 
-pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
+/// Struct form of this effect so it can participate in the
+/// `SpellAbilityEffect` trait hierarchy — mirrors Java's
+/// `LifeLoseEffect` class extending `SpellAbilityEffect`.
+pub struct LifeLoseEffect;
+
+impl crate::ability::spell_ability_effect::SpellAbilityEffect for LifeLoseEffect {
+    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let amount = resolve_numeric_svar(ctx.game, sa, "LifeAmount", 1);
     // Mirror Java getTargetPlayers(): targeted player first, then Defined, then activator.
     let target = sa
@@ -57,7 +63,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             .insert("AFLifeLost".to_string(), format!("Number${}", amount));
     }
 
-    // Fire LifeLost trigger
+    // Per-player `LifeLost` trigger.
     ctx.trigger_handler.run_trigger(
         TriggerType::LifeLost,
         RunParams {
@@ -70,4 +76,21 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         },
         false,
     );
+
+    // Java fires one aggregated `LifeLostAll` per effect; the Rust engine's
+    // `LifeLose` only processes one target per call, so the aggregate map has
+    // a single entry. Fire here so trigger-on-opponent-life-loss cards (e.g.
+    // the Speed mechanic) see the event.
+    ctx.trigger_handler.run_trigger(
+        TriggerType::LifeLostAll,
+        RunParams {
+            player: Some(target),
+            life_amount: Some(amount),
+            source_card: sa.source,
+            source_sa: Some(sa.clone()),
+            ..Default::default()
+        },
+        false,
+    );
+    }
 }

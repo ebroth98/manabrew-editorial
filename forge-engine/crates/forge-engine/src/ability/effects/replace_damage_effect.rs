@@ -5,7 +5,13 @@
 use super::EffectContext;
 use crate::spellability::SpellAbility;
 
-pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
+/// Struct form of this effect so it can participate in the
+/// `SpellAbilityEffect` trait hierarchy — mirrors Java's
+/// `ReplaceDamageEffect` class extending `SpellAbilityEffect`.
+pub struct ReplaceDamageEffect;
+
+impl crate::ability::spell_ability_effect::SpellAbilityEffect for ReplaceDamageEffect {
+    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     // Damage replacement is handled by the replacement handler system.
     // This effect registers or configures the replacement.
     if let Some(source_id) = sa.source {
@@ -14,5 +20,6 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                 .card_mut(source_id)
                 .set_s_var("ReplaceDamageAmount", val);
         }
+    }
     }
 }

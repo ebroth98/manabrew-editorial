@@ -4,7 +4,13 @@ use crate::spellability::SpellAbility;
 use crate::trigger::trigger::parse_trigger;
 
 /// Mirrors Java's `DelayedTriggerEffect`.
-pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
+/// Struct form of this effect so it can participate in the
+/// `SpellAbilityEffect` trait hierarchy — mirrors Java's
+/// `DelayedTriggerEffect` class extending `SpellAbilityEffect`.
+pub struct DelayedTriggerEffect;
+
+impl crate::ability::spell_ability_effect::SpellAbilityEffect for DelayedTriggerEffect {
+    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let Some(source_id) = sa.source else {
         return;
     };
@@ -92,9 +98,11 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     } else {
         ctx.trigger_handler.register_delayed_trigger(delayed);
     }
+    }
 }
 
 /// End-of-turn / next-turn registration callback.
 pub fn run(ctx: &mut EffectContext, sa: &SpellAbility) {
-    resolve(ctx, sa);
+    use crate::ability::spell_ability_effect::SpellAbilityEffect;
+    DelayedTriggerEffect::resolve(ctx, sa);
 }

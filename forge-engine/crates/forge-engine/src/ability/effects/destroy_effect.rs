@@ -6,7 +6,13 @@ use crate::event::{RunParams};
 use crate::trigger::TriggerType;
 use crate::spellability::SpellAbility;
 
-pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
+/// Struct form of this effect so it can participate in the
+/// `SpellAbilityEffect` trait hierarchy — mirrors Java's
+/// `DestroyEffect` class extending `SpellAbilityEffect`.
+pub struct DestroyEffect;
+
+impl crate::ability::spell_ability_effect::SpellAbilityEffect for DestroyEffect {
+    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let mut targets = Vec::new();
     if let Some(target_card) = sa.target_chosen.target_card {
         targets.push(target_card);
@@ -15,10 +21,39 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     targets.sort_unstable_by_key(|cid| cid.0);
     targets.dedup();
 
+    let no_regen = sa.params.is_true("NoRegen");
+    let remember_destroyed = sa.params.is_true("RememberDestroyed");
+    let always_remember = sa.params.is_true("AlwaysRemember");
+
     for target_card in targets {
         if ctx.game.card(target_card).zone == ZoneType::Battlefield {
+            let is_indestructible = ctx.game.card(target_card).has_indestructible();
+            let has_regen_shield = ctx.game.card(target_card).regeneration_shields > 0;
+
             // Indestructible prevents destruction (CR 702.12)
-            if ctx.game.card(target_card).has_indestructible() {
+            if is_indestructible {
+                // `AlwaysRemember` remembers the target even when destruction is
+                // prevented (Java `AbilityUtils.setCauseSA` path for "that card"
+                // references in chained subs).
+                if always_remember {
+                    if let Some(sid) = sa.source {
+                        ctx.game.card_mut(sid).add_remembered_card(target_card);
+                    }
+                }
+                continue;
+            }
+
+            // Regeneration (CR 701.15): consume a shield instead of destroying,
+            // unless `NoRegen$ True` suppresses the replacement.
+            if has_regen_shield && !no_regen {
+                ctx.game.card_mut(target_card).regeneration_shields -= 1;
+                // Regenerating taps the creature and removes it from combat.
+                ctx.game.card_mut(target_card).tapped = true;
+                if always_remember {
+                    if let Some(sid) = sa.source {
+                        ctx.game.card_mut(sid).add_remembered_card(target_card);
+                    }
+                }
                 continue;
             }
             let owner = ctx.game.card(target_card).owner;
@@ -71,6 +106,16 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                     .lki_toughness
                     .unwrap_or_else(|| ctx.game.card(target_card).toughness()),
             );
+
+            // Track the destroyed card on the source so chained sub-abilities
+            // (`Destroyed` triggers in `EffectEffect`, "that card" references)
+            // can find it.
+            if remember_destroyed || always_remember {
+                if let Some(sid) = sa.source {
+                    ctx.game.card_mut(sid).add_remembered_card(target_card);
+                }
+            }
         }
+    }
     }
 }

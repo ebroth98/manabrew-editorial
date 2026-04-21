@@ -7,7 +7,13 @@ use super::EffectContext;
 use crate::parsing::keys;
 use crate::spellability::SpellAbility;
 
-pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
+/// Struct form of this effect so it can participate in the
+/// `SpellAbilityEffect` trait hierarchy — mirrors Java's
+/// `StoreSVarEffect` class extending `SpellAbilityEffect`.
+pub struct StoreSVarEffect;
+
+impl crate::ability::spell_ability_effect::SpellAbilityEffect for StoreSVarEffect {
+    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let Some(source_id) = sa.source else { return };
 
     let svar_name = sa
@@ -68,4 +74,5 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         .card_mut(source_id)
         .svars
         .insert(svar_name.clone(), resolved_value);
+    }
 }

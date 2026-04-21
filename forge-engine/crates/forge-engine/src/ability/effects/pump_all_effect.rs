@@ -45,7 +45,13 @@ pub fn run(
 /// A:SP$ PumpAll | ValidCards$ Creature | NumAtt$ -2 | NumDef$ -2
 /// DB$ PumpAll | PumpZone$ Hand | ValidCards$ Creature.YouOwn | NumAtt$ +1 | NumDef$ +1 | Duration$ Perpetual
 /// ```
-pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
+/// Struct form of this effect so it can participate in the
+/// `SpellAbilityEffect` trait hierarchy — mirrors Java's
+/// `PumpAllEffect` class extending `SpellAbilityEffect`.
+pub struct PumpAllEffect;
+
+impl crate::ability::spell_ability_effect::SpellAbilityEffect for PumpAllEffect {
+    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     // parse_param strips leading '+' sign via Rust's i32::from_str which accepts it.
     // Fall back to SVar resolution for Count$Kicked etc.
     let att_bonus = parse_param(&sa.ability_text, "NumAtt$ ")
@@ -140,10 +146,12 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             }
         }
     }
+    }
 }
 
 #[cfg(test)]
 mod tests {
+    use crate::ability::spell_ability_effect::SpellAbilityEffect;
     use forge_foundation::{CardTypeLine, ColorSet, ManaCost, ZoneType};
     use std::collections::HashMap;
 
@@ -233,7 +241,7 @@ mod tests {
             &edition_dates,
             &mut rng_adapter,
         );
-        super::resolve(&mut ctx, &sa);
+        super::PumpAllEffect::resolve(&mut ctx, &sa);
 
         assert_eq!(ctx.game.card(c1).power(), 4); // 2+2
         assert_eq!(ctx.game.card(c1).toughness(), 4);
@@ -274,7 +282,7 @@ mod tests {
             &edition_dates,
             &mut rng_adapter,
         );
-        super::resolve(&mut ctx, &sa);
+        super::PumpAllEffect::resolve(&mut ctx, &sa);
 
         assert_eq!(ctx.game.card(c1).power(), 0); // 2-2
         assert_eq!(ctx.game.card(c1).toughness(), 0);
@@ -316,7 +324,7 @@ mod tests {
             &edition_dates,
             &mut rng_adapter,
         );
-        super::resolve(&mut ctx, &sa);
+        super::PumpAllEffect::resolve(&mut ctx, &sa);
 
         assert_eq!(ctx.game.card(mine).power(), 4); // boosted
         assert_eq!(ctx.game.card(theirs).power(), 2); // unchanged

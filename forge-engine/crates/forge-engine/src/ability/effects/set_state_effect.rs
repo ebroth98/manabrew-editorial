@@ -13,7 +13,13 @@ use crate::spellability::SpellAbility;
 ///   `ConditionDefined$ Remembered | ConditionPresent$ Card.Instant,Card.Sorcery | ConditionCompare$ EQ1`
 ///
 /// If the condition passes, transforms the source DFC card to its other face.
-pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
+/// Struct form of this effect so it can participate in the
+/// `SpellAbilityEffect` trait hierarchy — mirrors Java's
+/// `SetStateEffect` class extending `SpellAbilityEffect`.
+pub struct SetStateEffect;
+
+impl crate::ability::spell_ability_effect::SpellAbilityEffect for SetStateEffect {
+    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let mode = sa.params.get(keys::MODE).unwrap_or("");
 
     let source_id = match sa.source {
@@ -131,6 +137,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             ));
             eprintln!("{}", err);
         }
+    }
     }
 }
 

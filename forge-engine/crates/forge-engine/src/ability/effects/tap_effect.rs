@@ -18,7 +18,13 @@ use crate::spellability::SpellAbility;
 /// A:SP$ Tap | Defined$ Self | ETB$ True
 /// A:SP$ Tap | ValidTgts$ Creature | RememberTapped$ True
 /// ```
-pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
+/// Struct form of this effect so it can participate in the
+/// `SpellAbilityEffect` trait hierarchy — mirrors Java's
+/// `TapEffect` class extending `SpellAbilityEffect`.
+pub struct TapEffect;
+
+impl crate::ability::spell_ability_effect::SpellAbilityEffect for TapEffect {
+    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let controller = sa.activating_player;
     let etb = sa.params.has(crate::parsing::keys::ETB);
     let remember_tapped = sa.params.has(crate::parsing::keys::REMEMBER_TAPPED);
@@ -36,6 +42,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             always_remember,
             sa.source,
         );
+    }
     }
 }
 
@@ -83,6 +90,7 @@ fn tap_card(
 
 #[cfg(test)]
 mod tests {
+    use crate::ability::spell_ability_effect::SpellAbilityEffect;
     use forge_foundation::{CardTypeLine, ColorSet, ManaCost, ZoneType};
     use std::collections::HashMap;
 
@@ -144,7 +152,7 @@ mod tests {
             parent_target_card: None,
             rng: &mut rng_adapter,
         };
-        super::resolve(&mut ctx, &sa);
+        super::TapEffect::resolve(&mut ctx, &sa);
 
         assert!(ctx.game.card(c1).tapped);
     }

@@ -14,12 +14,20 @@ use crate::spellability::SpellAbility;
 /// ```text
 /// A:SP$ Fog
 /// ```
-pub fn resolve(ctx: &mut EffectContext, _sa: &SpellAbility) {
+/// Struct form of this effect so it can participate in the
+/// `SpellAbilityEffect` trait hierarchy — mirrors Java's
+/// `FogEffect` class extending `SpellAbilityEffect`.
+pub struct FogEffect;
+
+impl crate::ability::spell_ability_effect::SpellAbilityEffect for FogEffect {
+    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     ctx.game.prevent_all_combat_damage = true;
+    }
 }
 
 #[cfg(test)]
 mod tests {
+    use crate::ability::spell_ability_effect::SpellAbilityEffect;
     use std::collections::HashMap;
 
     use crate::ability::effects::EffectContext;
@@ -61,7 +69,7 @@ mod tests {
             parent_target_card: None,
             rng: &mut rng_adapter,
         };
-        super::resolve(&mut ctx, &sa);
+        super::FogEffect::resolve(&mut ctx, &sa);
 
         assert!(ctx.game.prevent_all_combat_damage);
     }

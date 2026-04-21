@@ -8,7 +8,13 @@ use forge_foundation::ZoneType;
 ///
 /// Mirrors Java's AbilityStatic resolve() for the Plot keyword
 /// (CardFactoryUtil.java:3426-3437).
-pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
+/// Struct form of this effect so it can participate in the
+/// `SpellAbilityEffect` trait hierarchy — mirrors Java's
+/// `PlotEffect` class extending `SpellAbilityEffect`.
+pub struct PlotEffect;
+
+impl crate::ability::spell_ability_effect::SpellAbilityEffect for PlotEffect {
+    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let card_id = match sa.source {
         Some(id) => id,
         None => return,
@@ -29,4 +35,5 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             .with_player(player)
             .with_card(card_id),
     );
+    }
 }

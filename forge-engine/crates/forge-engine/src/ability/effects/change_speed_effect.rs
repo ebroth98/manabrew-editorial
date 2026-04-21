@@ -4,7 +4,13 @@
 use super::EffectContext;
 use crate::spellability::SpellAbility;
 
-pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
+/// Struct form of this effect so it can participate in the
+/// `SpellAbilityEffect` trait hierarchy — mirrors Java's
+/// `ChangeSpeedEffect` class extending `SpellAbilityEffect`.
+pub struct ChangeSpeedEffect;
+
+impl crate::ability::spell_ability_effect::SpellAbilityEffect for ChangeSpeedEffect {
+    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let mode = sa.params.get("Mode").unwrap_or("Increase");
     let players = if let Some(defined) = sa.params.get("Defined") {
         crate::ability::ability_utils::resolve_defined_players_with_sa(
@@ -30,5 +36,6 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             ctx.game
                 .increase_player_speed(player, Some(ctx.trigger_handler));
         }
+    }
     }
 }

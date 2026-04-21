@@ -15,7 +15,13 @@ use crate::spellability::SpellAbility;
 /// A:SP$ ChooseType | Type$ Creature
 /// A:SP$ ChooseType | Type$ Card | ValidTypes$ Artifact,Creature,Enchantment,Land,Planeswalker
 /// ```
-pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
+/// Struct form of this effect so it can participate in the
+/// `SpellAbilityEffect` trait hierarchy — mirrors Java's
+/// `ChooseTypeEffect` class extending `SpellAbilityEffect`.
+pub struct ChooseTypeEffect;
+
+impl crate::ability::spell_ability_effect::SpellAbilityEffect for ChooseTypeEffect {
+    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let controller = sa.activating_player;
     let type_category = sa
         .params
@@ -63,5 +69,6 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                 false,
             );
         }
+    }
     }
 }

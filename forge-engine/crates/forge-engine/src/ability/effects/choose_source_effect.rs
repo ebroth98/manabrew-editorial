@@ -14,7 +14,13 @@ use crate::spellability::SpellAbility;
 /// ```text
 /// A:SP$ ChooseSource | Choices$ Permanent
 /// ```
-pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
+/// Struct form of this effect so it can participate in the
+/// `SpellAbilityEffect` trait hierarchy — mirrors Java's
+/// `ChooseSourceEffect` class extending `SpellAbilityEffect`.
+pub struct ChooseSourceEffect;
+
+impl crate::ability::spell_ability_effect::SpellAbilityEffect for ChooseSourceEffect {
+    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let controller = sa.activating_player;
     let choices_filter = sa
         .params
@@ -44,5 +50,6 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         if let Some(source_id) = sa.source {
             ctx.game.card_mut(source_id).add_chosen_card(chosen_id);
         }
+    }
     }
 }

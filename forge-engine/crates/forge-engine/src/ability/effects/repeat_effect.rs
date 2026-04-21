@@ -9,7 +9,13 @@ use crate::parsing::compare::compare_expr;
 use crate::parsing::keys;
 use crate::spellability::{build_spell_ability, SpellAbility};
 
-pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
+/// Struct form of this effect so it can participate in the
+/// `SpellAbilityEffect` trait hierarchy — mirrors Java's
+/// `RepeatEffect` class extending `SpellAbilityEffect`.
+pub struct RepeatEffect;
+
+impl crate::ability::spell_ability_effect::SpellAbilityEffect for RepeatEffect {
+    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let Some(source_id) = sa.source else {
         return;
     };
@@ -53,6 +59,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
 
     if let Some(sub_sa) = sa.sub_ability.as_deref() {
         resolve_sub_chain(ctx, sub_sa.clone());
+    }
     }
 }
 
@@ -152,6 +159,7 @@ fn resolve_sub_chain(ctx: &mut EffectContext, initial: SpellAbility) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ability::spell_ability_effect::SpellAbilityEffect;
     use crate::agent::{PlayOption, PlayerAgent, TargetChoice};
     use crate::card::Card;
     use crate::combat::DefenderId;
@@ -298,7 +306,7 @@ mod tests {
         let mut rng = crate::game_rng::ThreadRngAdapter;
         let start_life = game.player(p1).life;
 
-        resolve(
+        RepeatEffect::resolve(
             &mut EffectContext {
                 game: &mut game,
                 combat: None,
@@ -364,7 +372,7 @@ mod tests {
         let mut rng = crate::game_rng::ThreadRngAdapter;
         let start_life = game.player(p1).life;
 
-        resolve(
+        RepeatEffect::resolve(
             &mut EffectContext {
                 game: &mut game,
                 combat: None,

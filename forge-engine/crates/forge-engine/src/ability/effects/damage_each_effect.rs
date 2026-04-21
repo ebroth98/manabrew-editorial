@@ -16,7 +16,13 @@ use crate::spellability::SpellAbility;
 /// ```text
 /// A:SP$ EachDamage | ValidCards$ Creature.YouCtrl | NumDmg$ X
 /// ```
-pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
+/// Struct form of this effect so it can participate in the
+/// `SpellAbilityEffect` trait hierarchy — mirrors Java's
+/// `DamageEachEffect` class extending `SpellAbilityEffect`.
+pub struct DamageEachEffect;
+
+impl crate::ability::spell_ability_effect::SpellAbilityEffect for DamageEachEffect {
+    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let use_damage_map = ctx.game.pending_damage_map.is_some() || sa.params.has("DamageMap");
     if sa.params.has("DamageMap") {
         ctx.game.ensure_pending_damage_maps();
@@ -89,5 +95,6 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                 false,
             );
         }
+    }
     }
 }

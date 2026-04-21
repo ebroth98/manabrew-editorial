@@ -9,7 +9,13 @@ use crate::spellability::SpellAbility;
 /// ```text
 /// A:SP$ GameDraw
 /// ```
-pub fn resolve(ctx: &mut EffectContext, _sa: &SpellAbility) {
+/// Struct form of this effect so it can participate in the
+/// `SpellAbilityEffect` trait hierarchy — mirrors Java's
+/// `GameDrawEffect` class extending `SpellAbilityEffect`.
+pub struct GameDrawEffect;
+
+impl crate::ability::spell_ability_effect::SpellAbilityEffect for GameDrawEffect {
+    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     // All players lose — no winner
     let all_players: Vec<_> = ctx.game.player_order.clone();
     for &pid in &all_players {
@@ -19,10 +25,12 @@ pub fn resolve(ctx: &mut EffectContext, _sa: &SpellAbility) {
 
     ctx.game.game_over = true;
     ctx.game.winner = None;
+    }
 }
 
 #[cfg(test)]
 mod tests {
+    use crate::ability::spell_ability_effect::SpellAbilityEffect;
     use std::collections::HashMap;
 
     use crate::ability::effects::EffectContext;
@@ -62,7 +70,7 @@ mod tests {
             parent_target_card: None,
             rng: &mut rng_adapter,
         };
-        super::resolve(&mut ctx, &sa);
+        super::GameDrawEffect::resolve(&mut ctx, &sa);
 
         assert!(ctx.game.game_over);
         assert_eq!(ctx.game.winner, None);

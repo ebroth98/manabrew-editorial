@@ -14,7 +14,13 @@ use crate::spellability::SpellAbility;
 /// Looks at the top N cards of the target player's library.
 /// The activating player chooses up to K of them and moves them to DestinationZone (default Hand).
 /// The rest go to DestinationZone2 (default Library bottom).
-pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
+/// Struct form of this effect so it can participate in the
+/// `SpellAbilityEffect` trait hierarchy — mirrors Java's
+/// `DigMultipleEffect` class extending `SpellAbilityEffect`.
+pub struct DigMultipleEffect;
+
+impl crate::ability::spell_ability_effect::SpellAbilityEffect for DigMultipleEffect {
+    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let dig_num = parse_param(&sa.ability_text, "DigNum$ ").unwrap_or(1) as usize;
     let optional = sa.params.has(keys::OPTIONAL);
     let change_all = sa
@@ -205,10 +211,12 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             emit_zone_trigger(ctx.trigger_handler, id, ZoneType::Library, dest_zone2);
         }
     }
+    }
 }
 
 #[cfg(test)]
 mod tests {
+    use crate::ability::spell_ability_effect::SpellAbilityEffect;
     use forge_foundation::{CardTypeLine, ColorSet, ManaCost, ZoneType};
 
     use crate::ability::effects::EffectContext;
@@ -362,7 +370,7 @@ mod tests {
             rng: &mut rng_adapter,
         };
 
-        super::resolve(&mut ctx, &sa);
+        super::DigMultipleEffect::resolve(&mut ctx, &sa);
 
         // 1 card goes to hand, 2 go to graveyard.
         assert_eq!(ctx.game.cards_in_zone(ZoneType::Hand, p0).len(), 1);

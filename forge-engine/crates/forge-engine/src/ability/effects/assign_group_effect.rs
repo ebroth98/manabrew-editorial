@@ -6,7 +6,13 @@ use super::EffectContext;
 use crate::ids::CardId;
 use crate::spellability::SpellAbility;
 
-pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
+/// Struct form of this effect so it can participate in the
+/// `SpellAbilityEffect` trait hierarchy — mirrors Java's
+/// `AssignGroupEffect` class extending `SpellAbilityEffect`.
+pub struct AssignGroupEffect;
+
+impl crate::ability::spell_ability_effect::SpellAbilityEffect for AssignGroupEffect {
+    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let source = match sa.source {
         Some(s) => s,
         None => return,
@@ -27,5 +33,6 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     // Remember the assigned cards
     for card_id in &targets {
         ctx.game.card_mut(source).add_remembered_card(*card_id);
+    }
     }
 }

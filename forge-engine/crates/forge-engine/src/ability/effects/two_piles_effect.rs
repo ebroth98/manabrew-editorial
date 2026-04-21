@@ -16,7 +16,13 @@ use crate::spellability::SpellAbility;
 /// A:SP$ TwoPiles | NumCards$ 5 | Zone1$ Hand | Zone2$ Graveyard
 /// A:SP$ TwoPiles | NumCards$ 3 | Zone1$ Hand | Zone2$ Library
 /// ```
-pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
+/// Struct form of this effect so it can participate in the
+/// `SpellAbilityEffect` trait hierarchy — mirrors Java's
+/// `TwoPilesEffect` class extending `SpellAbilityEffect`.
+pub struct TwoPilesEffect;
+
+impl crate::ability::spell_ability_effect::SpellAbilityEffect for TwoPilesEffect {
+    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let controller = sa.activating_player;
     let num_cards = sa
         .params
@@ -107,5 +113,6 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             ctx.move_card(cid, zone2, controller);
             emit_zone_trigger(ctx.trigger_handler, cid, ZoneType::Library, zone2);
         }
+    }
     }
 }

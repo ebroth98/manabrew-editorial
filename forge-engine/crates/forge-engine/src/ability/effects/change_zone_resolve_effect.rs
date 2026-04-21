@@ -10,7 +10,13 @@ use crate::spellability::SpellAbility;
 /// Resolve accumulated zone change triggers.
 /// In practice this is handled by the zone-change bookkeeping in the engine;
 /// this effect serves as the explicit resolution point matching Java's pattern.
-pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
+/// Struct form of this effect so it can participate in the
+/// `SpellAbilityEffect` trait hierarchy — mirrors Java's
+/// `ChangeZoneResolveEffect` class extending `SpellAbilityEffect`.
+pub struct ChangeZoneResolveEffect;
+
+impl crate::ability::spell_ability_effect::SpellAbilityEffect for ChangeZoneResolveEffect {
+    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     if let Some(table) = sa.change_zone_table.as_ref() {
         table.trigger_changes_zone_all(ctx.trigger_handler, ctx.game, Some(sa));
         return;
@@ -19,10 +25,12 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         table.trigger_changes_zone_all(ctx.trigger_handler, ctx.game, Some(sa));
         ctx.game.clear_pending_change_zone_table();
     }
+    }
 }
 
 #[cfg(test)]
 mod tests {
+    use crate::ability::spell_ability_effect::SpellAbilityEffect;
     use std::collections::HashMap;
 
     use forge_foundation::{CardTypeLine, ColorSet, ManaCost, ZoneType};
@@ -80,7 +88,7 @@ mod tests {
             rng: &mut rng,
         };
 
-        super::resolve(&mut ctx, &sa);
+        super::ChangeZoneResolveEffect::resolve(&mut ctx, &sa);
         assert!(ctx.game.pending_change_zone_table.is_none());
     }
 }

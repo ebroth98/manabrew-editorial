@@ -5,7 +5,13 @@ use crate::replacement::replacement_handler::{apply_replacements, ReplacementEve
 use crate::replacement::ReplacementResult;
 use crate::spellability::SpellAbility;
 
-pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
+/// Struct form of this effect so it can participate in the
+/// `SpellAbilityEffect` trait hierarchy — mirrors Java's
+/// `DrawEffect` class extending `SpellAbilityEffect`.
+pub struct DrawEffect;
+
+impl crate::ability::spell_ability_effect::SpellAbilityEffect for DrawEffect {
+    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let num = resolve_numeric_svar(ctx.game, sa, "NumCards", 1);
     let target = sa
         .params
@@ -42,8 +48,12 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     // Draw cards one at a time and fire Drawn trigger after each draw.
     // This ensures `drawn_this_turn` is correct for triggers with `Number$ N`
     // (e.g. Sneaky Snacker: "When you draw your third card in a turn...").
+    let remember_drawn = sa.params.is_true("RememberDrawn");
+    let should_reveal = sa.params.is_true("Reveal");
+    let mut drawn: Vec<crate::ids::CardId> = Vec::new();
     for _ in 0..num {
         if let Some(card_id) = ctx.game.draw_card_with_agents(target, ctx.agents) {
+            drawn.push(card_id);
             // Snapshot drawn_this_turn AFTER draw_card increments it.
             // This captures the exact count at draw time for Number$ N matching.
             let drawn_snapshot = ctx.game.player(target).drawn_this_turn;
@@ -65,5 +75,26 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                 ctx.trigger_handler.flush_waiting_triggers(ctx.game);
             }
         }
+    }
+
+    // `Reveal$ True` — reveal the drawn cards to all players once the draw
+    // completes. Mirrors Java `DrawEffect` which calls `revealTo` after the
+    // per-player loop.
+    if should_reveal && !drawn.is_empty() {
+        for agent in ctx.agents.iter_mut() {
+            agent.on_library_peek(ctx.game, &drawn);
+        }
+    }
+
+    // `RememberDrawn$ True` — attach each drawn card to the source card's
+    // remembered list (e.g. Mystic Remora, Dark Confidant variants).
+    if remember_drawn {
+        if let Some(source_id) = sa.source {
+            let card_mut = ctx.game.card_mut(source_id);
+            for cid in &drawn {
+                card_mut.add_remembered_card(*cid);
+            }
+        }
+    }
     }
 }

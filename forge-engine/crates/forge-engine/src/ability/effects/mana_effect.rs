@@ -33,7 +33,13 @@ pub fn handle_special_mana(
 
 /// Resolve DB$ Mana — produce mana as a sub-ability effect.
 /// Mirrors Java's ManaEffect.java for the stack-based resolution path.
-pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
+/// Struct form of this effect so it can participate in the
+/// `SpellAbilityEffect` trait hierarchy — mirrors Java's
+/// `ManaEffect` class extending `SpellAbilityEffect`.
+pub struct ManaEffect;
+
+impl crate::ability::spell_ability_effect::SpellAbilityEffect for ManaEffect {
+    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let player = sa.activating_player;
     let source_id = match sa.source {
         Some(id) => id,
@@ -44,6 +50,30 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         Some(p) => p.to_string(),
         None => return,
     };
+
+    // `Optional$` — activator confirms before producing (Java ManaEffect
+    // optional-prompt branch).
+    if sa.params.is_true("Optional") {
+        let card_name = ctx.game.card(source_id).card_name.clone();
+        if !ctx.agents[player.index()].confirm_action(
+            player,
+            Some("ProduceMana"),
+            "Produce mana?",
+            &[],
+            Some(&card_name),
+            sa.api,
+        ) {
+            return;
+        }
+    }
+
+    // `Chooser$` — delegate the color / combo choice to a specific player
+    // (e.g. Mirari's Wake: owner chooses mana type but opponent votes).
+    let chooser = sa
+        .params
+        .get("Chooser")
+        .and_then(|d| super::resolve_defined_player(d, player, ctx.game))
+        .unwrap_or(player);
 
     // Read metadata params from the ability. Substitute "ChosenType" with
     // the source card's chosen type so the restriction stored on the Mana
@@ -198,8 +228,8 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                 .collect()
         };
         let card_name = ctx.game.card(source_id).card_name.clone();
-        let chosen = ctx.agents[player.index()].specify_mana_combo(
-            player,
+        let chosen = ctx.agents[chooser.index()].specify_mana_combo(
+            chooser,
             &available,
             amount as usize,
             Some(&card_name),
@@ -247,6 +277,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             m.triggers_when_spent = triggers_when_spent.clone();
             ctx.mana_pools[player.index()].add_mana(m);
         }
+    }
     }
 }
 

@@ -14,7 +14,13 @@ use super::{emit_zone_trigger, EffectContext};
 use crate::ids::{CardId, PlayerId};
 use crate::spellability::SpellAbility;
 
-pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
+/// Struct form of this effect so it can participate in the
+/// `SpellAbilityEffect` trait hierarchy — mirrors Java's
+/// `ManifestEffect` class extending `SpellAbilityEffect`.
+pub struct ManifestEffect;
+
+impl crate::ability::spell_ability_effect::SpellAbilityEffect for ManifestEffect {
+    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let manifest_params = parse_manifest_params(ctx, sa);
     let amount = manifest_params.amount;
     let controller = sa.activating_player;
@@ -28,6 +34,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
 
     for pid in players {
         manifest_for_player(ctx, sa, pid, amount);
+    }
     }
 }
 

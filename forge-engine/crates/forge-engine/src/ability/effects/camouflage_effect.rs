@@ -9,7 +9,13 @@ use forge_foundation::ZoneType;
 use super::EffectContext;
 use crate::spellability::SpellAbility;
 
-pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
+/// Struct form of this effect so it can participate in the
+/// `SpellAbilityEffect` trait hierarchy — mirrors Java's
+/// `CamouflageEffect` class extending `SpellAbilityEffect`.
+pub struct CamouflageEffect;
+
+impl crate::ability::spell_ability_effect::SpellAbilityEffect for CamouflageEffect {
+    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     // Camouflage works by randomizing blocker assignments.
     // In our engine, combat blocking is handled by the combat system.
     // We mark the source creature so combat resolution knows to randomize.
@@ -20,5 +26,6 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                 .svars
                 .insert("Camouflage".to_string(), "True".to_string());
         }
+    }
     }
 }

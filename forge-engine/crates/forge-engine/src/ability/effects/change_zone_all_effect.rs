@@ -121,7 +121,13 @@ pub fn build_spell_ability(sa: &mut crate::spellability::SpellAbility) {
     }
 }
 
-pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
+/// Struct form of this effect so it can participate in the
+/// `SpellAbilityEffect` trait hierarchy — mirrors Java's
+/// `ChangeZoneAllEffect` class extending `SpellAbilityEffect`.
+pub struct ChangeZoneAllEffect;
+
+impl crate::ability::spell_ability_effect::SpellAbilityEffect for ChangeZoneAllEffect {
+    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let origin_str = sa.params.get(keys::ORIGIN).unwrap_or("Battlefield");
     let destination_str = sa.params.get(keys::DESTINATION).unwrap_or("Graveyard");
     // Forge uses ChangeType$ as the primary filter for ChangeZoneAll; fall back to ValidCards$.
@@ -223,6 +229,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                 ctx.rng.shuffle_cards(&mut lib.cards);
             }
         }
+    }
     }
 }
 

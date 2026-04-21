@@ -58,10 +58,33 @@ impl AbilityRecordType {
         }
     }
 
+    /// Java-name alias for `from_params`. Mirrors
+    /// `AbilityFactory.AbilityRecordType.getRecordType(Map)`.
+    pub fn get_record_type(params: &Params) -> Option<AbilityRecordType> {
+        Self::from_params(params)
+    }
+
     /// Get the API type string from parsed parameters for this record type.
     pub fn api_type_of<'a>(&self, params: &'a Params) -> Option<&'a str> {
         params.get(self.prefix())
     }
+
+    /// Resolve the `ApiType` enum for a parsed parameter map, mirroring
+    /// Java `AbilityFactory.AbilityRecordType.getApiTypeOf(Map)`.
+    pub fn get_api_type_of(&self, params: &Params) -> Option<crate::ability::api_type::ApiType> {
+        self.api_type_of(params)
+            .and_then(crate::ability::api_type::ApiType::smart_value_of)
+    }
+}
+
+/// Java-name alias for `build_spell_ability_from_host_card`. Mirrors
+/// `AbilityFactory.getAbility(String abString, Card card)`.
+pub fn get_ability(
+    host: &crate::card::Card,
+    ability_text: &str,
+    player: crate::ids::PlayerId,
+) -> crate::spellability::SpellAbility {
+    build_spell_ability_from_host_card(host, ability_text, player)
 }
 
 /// Keys used for additional sub-abilities in ability scripts.

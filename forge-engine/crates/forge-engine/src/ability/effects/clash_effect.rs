@@ -9,9 +9,15 @@ use forge_foundation::ZoneType;
 use super::EffectContext;
 use crate::ids::{CardId, PlayerId};
 use crate::parsing::keys;
-use crate::spellability::SpellAbility;
+use crate::spellability::{build_spell_ability, SpellAbility};
 
-pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
+/// Struct form of this effect so it can participate in the
+/// `SpellAbilityEffect` trait hierarchy — mirrors Java's
+/// `ClashEffect` class extending `SpellAbilityEffect`.
+pub struct ClashEffect;
+
+impl crate::ability::spell_ability_effect::SpellAbilityEffect for ClashEffect {
+    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let controller = sa.activating_player;
 
     // Choose opponent to clash with
@@ -31,7 +37,6 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         }
     }
 
-    // Reveal top cards
     let p_lib = ctx
         .game
         .cards_in_zone(ZoneType::Library, controller)
@@ -52,7 +57,6 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         .map(|cid| ctx.game.card(cid).mana_cost.cmc() as i32)
         .unwrap_or(-1);
 
-    // Reveal to all agents
     let mut revealed = Vec::new();
     if let Some(cid) = p_card {
         revealed.push(cid);
@@ -64,19 +68,37 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         agent.on_library_peek(ctx.game, &revealed);
     }
 
-    // Determine winner
-    let _player_wins = p_cmc > o_cmc;
+    // Java CR 701.11: Both players choose order simultaneously; the clash
+    // winner is the activator iff their revealed CMC is strictly greater.
+    // Tie → no winner; `Otherwise` branch runs.
+    let activator_wins = p_cmc > o_cmc;
 
-    // WinSubAbility / OtherwiseSubAbility — resolved via sub-ability chain
-    // The SA's sub_ability handles this via the Branch mechanism in Java.
-    // For now, we track the result for triggers.
-
-    // Each player puts their card on top or bottom
     clash_move(ctx, controller, p_card);
     clash_move(ctx, opponent, o_card);
 
-    // The clash result is typically used by the parent SA via Branch/Defined
-    // to resolve WinSubAbility or OtherwiseSubAbility.
+    // `WinSubAbility$ X` / `OtherwiseSubAbility$ Y` — SVar references resolved
+    // from the host. Mirrors Java `ClashEffect` which triggers the right
+    // sub-ability via the `BranchEffect`-like flow.
+    let sub_key = if activator_wins {
+        "WinSubAbility"
+    } else {
+        "OtherwiseSubAbility"
+    };
+    if let Some(source_id) = sa.source {
+        if let Some(sub_svar) = sa.params.get(sub_key) {
+            if let Some(sub_text) = ctx
+                .game
+                .card(source_id)
+                .get_s_var(sub_svar)
+                .map(str::to_string)
+            {
+                let sub_sa =
+                    build_spell_ability(ctx.game, source_id, &sub_text, controller);
+                super::resolve_effect(ctx, &sub_sa);
+            }
+        }
+    }
+    }
 }
 
 /// Player chooses to put their clashed card on top or bottom of library.

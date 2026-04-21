@@ -11,15 +11,23 @@ use crate::spellability::SpellAbility;
 /// ```text
 /// A:SP$ EndCombatPhase
 /// ```
-pub fn resolve(ctx: &mut EffectContext, _sa: &SpellAbility) {
+/// Struct form of this effect so it can participate in the
+/// `SpellAbilityEffect` trait hierarchy — mirrors Java's
+/// `EndCombatPhaseEffect` class extending `SpellAbilityEffect`.
+pub struct EndCombatPhaseEffect;
+
+impl crate::ability::spell_ability_effect::SpellAbilityEffect for EndCombatPhaseEffect {
+    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     if !ctx.game.turn.is_combat() {
         return; // CR 723.2g — only meaningful during combat
     }
     ctx.game.end_combat_requested = true;
+    }
 }
 
 #[cfg(test)]
 mod tests {
+    use crate::ability::spell_ability_effect::SpellAbilityEffect;
     use std::collections::HashMap;
 
     use crate::ability::effects::EffectContext;
@@ -61,7 +69,7 @@ mod tests {
             parent_target_card: None,
             rng: &mut rng_adapter,
         };
-        super::resolve(&mut ctx, &sa);
+        super::EndCombatPhaseEffect::resolve(&mut ctx, &sa);
 
         assert!(ctx.game.end_combat_requested);
     }
@@ -96,7 +104,7 @@ mod tests {
             parent_target_card: None,
             rng: &mut rng_adapter,
         };
-        super::resolve(&mut ctx, &sa);
+        super::EndCombatPhaseEffect::resolve(&mut ctx, &sa);
 
         assert!(!ctx.game.end_combat_requested);
     }

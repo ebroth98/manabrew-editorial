@@ -6,25 +6,65 @@ use crate::trigger::TriggerType;
 use crate::parsing::keys;
 use crate::spellability::SpellAbility;
 
-/// End-of-turn revert for control gain. Mirrors the `GameCommand.run()` in Java
-/// `ControlGainEffect` that restores the original controller and removes granted
-/// keywords when the effect duration expires.
+/// Revert a scheduled control-gain. Mirrors Java `ControlGainEffect`'s
+/// `GameCommand.run()`: restore `original_controller_eot`, drop the
+/// `lose_control_condition`, and clear granted keywords. Zone guard — if the
+/// card has already left the battlefield, the scheduler caller is expected to
+/// have handled cleanup via `leaves_play_hook`.
 pub fn run(game: &mut crate::game::GameState, card_id: crate::ids::CardId) {
     if game.card(card_id).zone != ZoneType::Battlefield {
         return;
     }
-    // Restore original controller if an EOT controller was set
+    revert(game, card_id);
+}
+
+fn revert(game: &mut crate::game::GameState, card_id: crate::ids::CardId) {
     if let Some(original) = game.card(card_id).original_controller_eot {
         game.change_controller(card_id, original);
         game.card_mut(card_id).set_original_controller_eot(None);
     }
-    // Clear any granted keywords that were part of the control-gain effect
+    game.card_mut(card_id).lose_control_condition = None;
     game.card_mut(card_id).clear_granted_keywords();
+}
+
+/// Hook invoked whenever a card untaps — reverts the steal if the card was
+/// scheduled with `LoseControlCondition::NextUntap`.
+pub fn untap_hook(game: &mut crate::game::GameState, card_id: crate::ids::CardId) {
+    if game.card(card_id).lose_control_condition == Some(crate::card::LoseControlCondition::NextUntap) {
+        revert(game, card_id);
+    }
+}
+
+/// Hook invoked at end of combat — reverts steals scheduled with
+/// `LoseControlCondition::EndOfCombat`.
+pub fn end_of_combat_hook(game: &mut crate::game::GameState) {
+    let targets: Vec<crate::ids::CardId> = game
+        .cards
+        .iter()
+        .filter(|c| c.lose_control_condition == Some(crate::card::LoseControlCondition::EndOfCombat))
+        .map(|c| c.id)
+        .collect();
+    for cid in targets {
+        if game.card(cid).zone == ZoneType::Battlefield {
+            revert(game, cid);
+        }
+    }
+}
+
+/// Hook invoked as a permanent leaves the battlefield — reverts scheduled
+/// `LoseControlCondition::LeavesPlay` commands. The card is technically
+/// already in limbo when this fires, so we just clear the schedule.
+pub fn leaves_play_hook(game: &mut crate::game::GameState, card_id: crate::ids::CardId) {
+    if game.card(card_id).lose_control_condition == Some(crate::card::LoseControlCondition::LeavesPlay) {
+        game.card_mut(card_id).lose_control_condition = None;
+        game.card_mut(card_id).set_original_controller_eot(None);
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ability::spell_ability_effect::SpellAbilityEffect;
     use crate::agent::{PassAgent, PlayerAgent};
     use crate::card::Card;
     use crate::game::GameState;
@@ -87,7 +127,7 @@ mod tests {
                 "SP$ GainControl | ValidTgts$ Creature.OppCtrl | LoseControl$ EOT",
             );
             steal.target_chosen.target_card = Some(goblin);
-            resolve(&mut ctx, &steal);
+            ControlGainEffect::resolve(&mut ctx, &steal);
             assert_eq!(ctx.game.card(goblin).controller, p1);
 
             let mut steal_back = SpellAbility::new_simple(
@@ -96,7 +136,7 @@ mod tests {
                 "SP$ GainControl | ValidTgts$ Creature.OppCtrl | LoseControl$ EOT",
             );
             steal_back.target_chosen.target_card = Some(goblin);
-            resolve(&mut ctx, &steal_back);
+            ControlGainEffect::resolve(&mut ctx, &steal_back);
             assert_eq!(ctx.game.card(goblin).controller, p0);
         }
 
@@ -110,7 +150,13 @@ mod tests {
 /// SP$ ControlGain — gain control of target permanent until end of turn or permanently.
 ///
 /// Mirrors Java's `ControlGainEffect.resolve()`.
-pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
+/// Struct form of this effect so it can participate in the
+/// `SpellAbilityEffect` trait hierarchy — mirrors Java's
+/// `ControlGainEffect` class extending `SpellAbilityEffect`.
+pub struct ControlGainEffect;
+
+impl crate::ability::spell_ability_effect::SpellAbilityEffect for ControlGainEffect {
+    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let target_card = match sa.target_chosen.target_card {
         Some(c) => c,
         None => return,
@@ -150,17 +196,19 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         );
     }
 
-    // Schedule controller return at end of turn if LoseControl$ EOT
-    if sa
-        .params
-        .get(keys::LOSE_CONTROL)
-        .map(|v| v == "EOT")
-        .unwrap_or(false)
-        && ctx.game.card(target_card).original_controller_eot.is_none()
-    {
-        ctx.game
-            .card_mut(target_card)
-            .set_original_controller_eot(Some(old_controller));
+    // Schedule the controller-return GameCommand based on the LoseControl$
+    // variant. Only record original_controller on the first steal so repeated
+    // steal → steal-back → EOT reverts to the pre-chain controller.
+    let already_scheduled = ctx.game.card(target_card).original_controller_eot.is_some();
+    if let Some(raw) = sa.params.get(keys::LOSE_CONTROL) {
+        if let Ok(cond) = raw.parse::<crate::card::LoseControlCondition>() {
+            if !already_scheduled {
+                ctx.game
+                    .card_mut(target_card)
+                    .set_original_controller_eot(Some(old_controller));
+            }
+            ctx.game.card_mut(target_card).lose_control_condition = Some(cond);
+        }
     }
 
     // Handle Untap parameter
@@ -174,5 +222,6 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         for kw in keywords {
             ctx.game.card_mut(target_card).add_granted_keyword(&kw);
         }
+    }
     }
 }

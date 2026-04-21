@@ -3,7 +3,13 @@
 use super::EffectContext;
 use crate::spellability::SpellAbility;
 
-pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
+/// Struct form of this effect so it can participate in the
+/// `SpellAbilityEffect` trait hierarchy — mirrors Java's
+/// `IntensifyEffect` class extending `SpellAbilityEffect`.
+pub struct IntensifyEffect;
+
+impl crate::ability::spell_ability_effect::SpellAbilityEffect for IntensifyEffect {
+    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     if let Some(sid) = sa.source {
         let current = ctx
             .game
@@ -18,5 +24,6 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         ctx.game
             .card_mut(sid)
             .set_s_var("IntensifyCount", format!("Number${}", current + 1));
+    }
     }
 }

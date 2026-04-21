@@ -18,7 +18,13 @@ use crate::spellability::SpellAbility;
 /// ```text
 /// A:SP$ Encode | Defined$ Self
 /// ```
-pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
+/// Struct form of this effect so it can participate in the
+/// `SpellAbilityEffect` trait hierarchy — mirrors Java's
+/// `EncodeEffect` class extending `SpellAbilityEffect`.
+pub struct EncodeEffect;
+
+impl crate::ability::spell_ability_effect::SpellAbilityEffect for EncodeEffect {
+    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let controller = sa.activating_player;
 
     let spell_card = match sa.source {
@@ -70,4 +76,5 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         .card_mut(creature_id)
         .encoded_cards
         .push(spell_card);
+    }
 }

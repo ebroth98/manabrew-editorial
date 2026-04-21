@@ -19,7 +19,13 @@ pub fn run(game: &mut crate::game::GameState, card_id: crate::ids::CardId) {
     }
 }
 
-pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
+/// Struct form of this effect so it can participate in the
+/// `SpellAbilityEffect` trait hierarchy — mirrors Java's
+/// `DamagePreventEffect` class extending `SpellAbilityEffect`.
+pub struct DamagePreventEffect;
+
+impl crate::ability::spell_ability_effect::SpellAbilityEffect for DamagePreventEffect {
+    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let amount = super::resolve_numeric_svar(ctx.game, sa, "Amount", 1).max(0);
 
     // Target a player
@@ -48,5 +54,6 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             let controller = sa.activating_player;
             ctx.game.player_add_damage_prevention(controller, amount);
         }
+    }
     }
 }

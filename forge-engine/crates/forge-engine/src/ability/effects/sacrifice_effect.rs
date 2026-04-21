@@ -92,7 +92,13 @@ fn do_sacrifice(
     }
 }
 
-pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
+/// Struct form of this effect so it can participate in the
+/// `SpellAbilityEffect` trait hierarchy — mirrors Java's
+/// `SacrificeEffect` class extending `SpellAbilityEffect`.
+pub struct SacrificeEffect;
+
+impl crate::ability::spell_ability_effect::SpellAbilityEffect for SacrificeEffect {
+    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     // ── Cumulative Upkeep ────────────────────────────────────────────────
     // Mirrors Java SacrificeEffect lines 52-75: when CumulativeUpkeep$ is set,
     // add an Age counter, build merged cost (base cost × age counters),
@@ -350,5 +356,6 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                 }
             }
         }
+    }
     }
 }

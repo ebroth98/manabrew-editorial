@@ -11,7 +11,13 @@ use crate::spellability::SpellAbility;
 /// If `RememberRevealed$ True`, stores the peeked card IDs on the source card's
 /// `remembered_cards` list so that a subsequent `SetState | Mode$ Transform`
 /// condition check can inspect them.
-pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
+/// Struct form of this effect so it can participate in the
+/// `SpellAbilityEffect` trait hierarchy — mirrors Java's
+/// `PeekAndRevealEffect` class extending `SpellAbilityEffect`.
+pub struct PeekAndRevealEffect;
+
+impl crate::ability::spell_ability_effect::SpellAbilityEffect for PeekAndRevealEffect {
+    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let num = sa
         .params
         .get("PeekAmount")
@@ -60,5 +66,6 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                 ctx.game.card_mut(source_id).add_remembered_card(card_id);
             }
         }
+    }
     }
 }

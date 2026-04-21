@@ -5,7 +5,13 @@ use crate::ability::spell_ability_effect::get_defined_players_or_targeted;
 use crate::parsing::keys;
 use crate::spellability::{build_spell_ability, SpellAbility};
 
-pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
+/// Struct form of this effect so it can participate in the
+/// `SpellAbilityEffect` trait hierarchy — mirrors Java's
+/// `ChooseGenericEffect` class extending `SpellAbilityEffect`.
+pub struct ChooseGenericEffect;
+
+impl crate::ability::spell_ability_effect::SpellAbilityEffect for ChooseGenericEffect {
+    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let source_id = match sa.source {
         Some(id) => id,
         None => return,
@@ -178,5 +184,6 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         if ctx.game.game_over {
             break;
         }
+    }
     }
 }

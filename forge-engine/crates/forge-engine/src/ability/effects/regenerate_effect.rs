@@ -16,7 +16,13 @@ use crate::spellability::SpellAbility;
 /// A:SP$ Regenerate | Defined$ Self
 /// A:SP$ Regenerate | ValidTgts$ Creature.YouCtrl | TgtPrompt$ Select target creature you control
 /// ```
-pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
+/// Struct form of this effect so it can participate in the
+/// `SpellAbilityEffect` trait hierarchy — mirrors Java's
+/// `RegenerateEffect` class extending `SpellAbilityEffect`.
+pub struct RegenerateEffect;
+
+impl crate::ability::spell_ability_effect::SpellAbilityEffect for RegenerateEffect {
+    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     // Targeted: use the chosen target card.
     if let Some(target_card) = sa.target_chosen.target_card {
         if ctx.game.card(target_card).zone == ZoneType::Battlefield
@@ -43,10 +49,12 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             ctx.game.card_mut(source).regeneration_shields += 1;
         }
     }
+    }
 }
 
 #[cfg(test)]
 mod tests {
+    use crate::ability::spell_ability_effect::SpellAbilityEffect;
     use forge_foundation::{CardTypeLine, ColorSet, ManaCost, ZoneType};
     use std::collections::HashMap;
 
@@ -107,7 +115,7 @@ mod tests {
             parent_target_card: None,
             rng: &mut rng_adapter,
         };
-        super::resolve(&mut ctx, &sa);
+        super::RegenerateEffect::resolve(&mut ctx, &sa);
 
         assert_eq!(ctx.game.card(c1).regeneration_shields, 1);
     }
@@ -143,8 +151,8 @@ mod tests {
             parent_target_card: None,
             rng: &mut rng_adapter,
         };
-        super::resolve(&mut ctx, &sa);
-        super::resolve(&mut ctx, &sa);
+        super::RegenerateEffect::resolve(&mut ctx, &sa);
+        super::RegenerateEffect::resolve(&mut ctx, &sa);
 
         assert_eq!(ctx.game.card(c1).regeneration_shields, 2);
     }

@@ -9,7 +9,13 @@ use crate::parsing::keys;
 use crate::replacement::replacement_handler::{apply_replacements_with_agents, ReplacementEvent};
 use crate::spellability::SpellAbility;
 
-pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
+/// Struct form of this effect so it can participate in the
+/// `SpellAbilityEffect` trait hierarchy — mirrors Java's
+/// `CountersPutEffect` class extending `SpellAbilityEffect`.
+pub struct CountersPutEffect;
+
+impl crate::ability::spell_ability_effect::SpellAbilityEffect for CountersPutEffect {
+    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let counter_type_str = sa.params.get(keys::COUNTER_TYPE).unwrap_or("P1P1");
     // Mirror Java CountersPutEffect.java:625-636 — when none of the multi-type
     // dispatch params are present, route the type through the player controller's
@@ -189,9 +195,23 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         ctx.game.card_mut(card_id).set_renowned(true);
     }
 
-    // Fire CounterAdded trigger
+    // Per-target `CounterAdded` firing.
     ctx.trigger_handler.run_trigger(
         TriggerType::CounterAdded,
+        RunParams {
+            card: Some(card_id),
+            counter_type: Some(format!("{:?}", counter_type)),
+            counter_amount: Some(count),
+            cause_player: Some(cause_player),
+            ..Default::default()
+        },
+        false,
+    );
+    // Java fires `CounterAddedOnce` once per effect regardless of target
+    // count. Rust's counters_put_effect currently handles a single target per
+    // resolve, so firing it once here matches Java semantics.
+    ctx.trigger_handler.run_trigger(
+        TriggerType::CounterAddedOnce,
         RunParams {
             card: Some(card_id),
             counter_type: Some(format!("{:?}", counter_type)),
@@ -213,6 +233,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             },
             false,
         );
+    }
     }
 }
 
@@ -242,6 +263,7 @@ fn matches_choose_from_list_path(sa: &SpellAbility) -> bool {
 
 #[cfg(test)]
 mod tests {
+    use crate::ability::spell_ability_effect::SpellAbilityEffect;
     use std::collections::HashMap;
 
     use forge_foundation::{CardTypeLine, ColorSet, ManaCost, ZoneType};
@@ -331,14 +353,14 @@ mod tests {
             &mut rng_adapter,
         );
 
-        super::resolve(&mut ctx, &sa);
+        super::CountersPutEffect::resolve(&mut ctx, &sa);
         assert_eq!(
             ctx.game.card(clay_golem).counter_count(&CounterType::P1P1),
             4
         );
         assert!(ctx.game.card(clay_golem).monstrous);
 
-        super::resolve(&mut ctx, &sa);
+        super::CountersPutEffect::resolve(&mut ctx, &sa);
         assert_eq!(
             ctx.game.card(clay_golem).counter_count(&CounterType::P1P1),
             4

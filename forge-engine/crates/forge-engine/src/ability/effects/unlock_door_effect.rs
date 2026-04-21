@@ -32,7 +32,13 @@ fn unlocked_room_count(ctx: &EffectContext, card_id: CardId) -> i32 {
     0
 }
 
-pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
+/// Struct form of this effect so it can participate in the
+/// `SpellAbilityEffect` trait hierarchy — mirrors Java's
+/// `UnlockDoorEffect` class extending `SpellAbilityEffect`.
+pub struct UnlockDoorEffect;
+
+impl crate::ability::spell_ability_effect::SpellAbilityEffect for UnlockDoorEffect {
+    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let targets: Vec<CardId> = if let Some(target) = sa.target_chosen.target_card {
         vec![target]
     } else if let Some(source) = sa.source {
@@ -122,5 +128,6 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                 );
             }
         }
+    }
     }
 }

@@ -16,7 +16,13 @@ use crate::spellability::SpellAbility;
 /// A:SP$ AddTurn | Defined$ You | NumTurns$ 2
 /// A:SP$ AddTurn | Defined$ You | NumTurns$ 1 | SkipUntap$ True
 /// ```
-pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
+/// Struct form of this effect so it can participate in the
+/// `SpellAbilityEffect` trait hierarchy — mirrors Java's
+/// `AddTurnEffect` class extending `SpellAbilityEffect`.
+pub struct AddTurnEffect;
+
+impl crate::ability::spell_ability_effect::SpellAbilityEffect for AddTurnEffect {
+    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let controller = sa.activating_player;
 
     let num_turns = parse_param(&sa.ability_text, "NumTurns$ ").unwrap_or(1);
@@ -34,6 +40,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         let mut et = ExtraTurn::new(target);
         et.set_skip_untap(skip_untap);
         ctx.game.extra_turns.push_back(et);
+    }
     }
 }
 
@@ -88,6 +95,7 @@ pub fn create_cant_set_schemes_in_motion_effect(ctx: &mut EffectContext, sa: &Sp
 
 #[cfg(test)]
 mod tests {
+    use crate::ability::spell_ability_effect::SpellAbilityEffect;
     use std::collections::HashMap;
 
     use crate::ability::effects::EffectContext;
@@ -127,7 +135,7 @@ mod tests {
             parent_target_card: None,
             rng: &mut rng_adapter,
         };
-        super::resolve(&mut ctx, &sa);
+        super::AddTurnEffect::resolve(&mut ctx, &sa);
 
         assert_eq!(ctx.game.extra_turns.len(), 2);
         assert_eq!(ctx.game.extra_turns[0].player, p0);
@@ -163,7 +171,7 @@ mod tests {
             parent_target_card: None,
             rng: &mut rng_adapter,
         };
-        super::resolve(&mut ctx, &sa);
+        super::AddTurnEffect::resolve(&mut ctx, &sa);
 
         assert_eq!(ctx.game.extra_turns.len(), 1);
         assert_eq!(ctx.game.extra_turns[0].player, p0);

@@ -5,12 +5,15 @@
 //! in Rust we keep the trait for interface parity and provide the utility
 //! methods as free functions that take `(&GameState, &SpellAbility)`.
 
+use crate::ability::api_type::ApiType;
 use crate::ability::AbilityKey;
+use crate::agent::PlayerAgent;
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
 use crate::player::player_factory_util::add_replacement_effect;
 use crate::spellability::SpellAbility;
 
+use super::ability_factory::AbilityRecordType;
 use super::ability_utils;
 use super::effects::EffectContext;
 
@@ -19,30 +22,33 @@ use super::effects::EffectContext;
 /// Mirrors Java's abstract `SpellAbilityEffect` class.
 /// Each effect type provides a `resolve` implementation that performs
 /// the actual game-state mutation.
+/// Every effect is a stateless unit struct, so all methods are associated
+/// functions (no `self`). The trait is therefore not object-safe — runtime
+/// dispatch through `dyn SpellAbilityEffect` is intentionally unsupported;
+/// dispatch happens via the `effect_dispatch!` macro at compile time.
 pub trait SpellAbilityEffect {
     /// Resolve this effect for the given spell ability.
-    fn resolve(&self, ctx: &mut EffectContext, sa: &SpellAbility);
+    fn resolve(ctx: &mut EffectContext, sa: &SpellAbility);
 
     /// Return the stack description for this effect.
     /// Defaults to the spell ability's own description.
-    fn get_stack_description(&self, sa: &SpellAbility) -> String {
+    fn get_stack_description(sa: &SpellAbility) -> String {
         sa.ability_text.clone()
     }
 
     /// Build/configure the spell ability after construction.
     /// Default is a no-op; some effects override this to add parameters.
-    fn build_spell_ability(&self, _sa: &mut SpellAbility) {}
+    fn build_spell_ability(_sa: &mut SpellAbility) {}
 
     /// Tokenize a description string, replacing CARDNAME with the card's name.
     /// Mirrors Java's `SpellAbilityEffect.tokenizeString(SpellAbility, String)`.
-    fn tokenize_string(&self, game: &GameState, sa: &SpellAbility, desc: &str) -> String {
+    fn tokenize_string(game: &GameState, sa: &SpellAbility, desc: &str) -> String {
         tokenize_string(game, sa, desc)
     }
 
     /// Add a "forget on moved" trigger for remembered cards.
     /// Mirrors Java's `SpellAbilityEffect.addForgetOnMovedTrigger(SpellAbility, Card, String)`.
     fn add_forget_on_moved_trigger(
-        &self,
         game: &mut GameState,
         host_id: CardId,
         remembered_card_id: CardId,
@@ -53,7 +59,6 @@ pub trait SpellAbilityEffect {
     /// Create a temporary effect card in the command zone.
     /// Mirrors Java's `SpellAbilityEffect.createEffect(SpellAbility, Player, String, String)`.
     fn create_effect(
-        &self,
         game: &mut GameState,
         sa: &SpellAbility,
         name: &str,
@@ -64,26 +69,43 @@ pub trait SpellAbilityEffect {
 
     /// Run the effect (resolve entry point).
     /// Mirrors Java's `SpellAbilityEffect.run(SpellAbility)`.
-    fn run(&self, ctx: &mut super::effects::EffectContext, sa: &SpellAbility) {
+    fn run(ctx: &mut super::effects::EffectContext, sa: &SpellAbility) {
         run(ctx, sa)
     }
 
     /// Track which card exiled another card, for "exile until" effects.
     /// Mirrors Java's `SpellAbilityEffect.handleExiledWith(SpellAbility, Card)`.
-    fn handle_exiled_with(&self, game: &mut GameState, sa: &SpellAbility, exiled_card_id: CardId) {
+    fn handle_exiled_with(game: &mut GameState, sa: &SpellAbility, exiled_card_id: CardId) {
         handle_exiled_with(game, sa, exiled_card_id)
     }
 
     /// Execute the exile-with command.
     /// Mirrors Java's `SpellAbilityEffect.exileEffectCommand(Game, SpellAbility, Card)`.
     fn exile_effect_command(
-        &self,
         game: &mut GameState,
         trigger_handler: &mut crate::trigger::handler::TriggerHandler,
         sa: &SpellAbility,
         card_id: CardId,
     ) {
         exile_effect_command(game, trigger_handler, sa, card_id)
+    }
+
+    /// Full stack-description with sub-ability concatenation.
+    /// Mirrors Java `SpellAbilityEffect.getStackDescriptionWithSubs(Map, SpellAbility)`.
+    fn get_stack_description_with_subs(game: &GameState, sa: &SpellAbility) -> String {
+        let fallback = Self::get_stack_description(sa);
+        get_stack_description_with_subs(game, sa, &fallback)
+    }
+
+    /// Resolve a replacement chooser when the original lost the game (CR 800.4g).
+    /// Mirrors Java `SpellAbilityEffect.getNewChooser(SpellAbility, Player)`.
+    fn get_new_chooser(
+        game: &GameState,
+        agents: &mut [Box<dyn PlayerAgent>],
+        sa: &SpellAbility,
+        loser: PlayerId,
+    ) -> Option<PlayerId> {
+        get_new_chooser(game, agents, sa, loser)
     }
 }
 
@@ -280,6 +302,11 @@ fn resolve_defined_cards_for_sa(game: &GameState, sa: &SpellAbility, defined: &s
         "TriggeredBlocker" => sa.get_triggering_cards(AbilityKey::Blocker),
         "Explorer" => sa.get_triggering_cards(AbilityKey::Explorer),
         "Explored" => sa.get_triggering_cards(AbilityKey::Explored),
+        // Cards paid during cost — Java reads `SA.paidHash`; Rust stores the
+        // discarded slot on `discarded_cost_cards`, sacrificed slot on
+        // `GameState.last_sacrificed_card`.
+        "Discarded" => sa.discarded_cost_cards.clone(),
+        "Sacrificed" => game.last_sacrificed_card.into_iter().collect(),
         _ => ability_utils::get_defined_cards(game, sa.source, defined, Some(sa.activating_player)),
     }
 }
@@ -338,7 +365,7 @@ pub fn add_forget_on_moved_trigger(
 /// Effect cards are invisible game objects that hold continuous effects,
 /// delayed triggers, and other state that persists beyond a single resolution.
 /// They are placed in the Command zone and cleaned up when their effect ends.
-pub fn create_effect(game: &mut GameState, sa: &SpellAbility, name: &str, image: &str) -> CardId {
+pub fn create_effect(game: &mut GameState, sa: &SpellAbility, name: &str, _image: &str) -> CardId {
     use forge_foundation::{CardTypeLine, ColorSet, ManaCost};
 
     let owner = sa.activating_player;
@@ -369,9 +396,8 @@ pub fn create_effect(game: &mut GameState, sa: &SpellAbility, name: &str, image:
     let effect_id = game.create_card(effect_card);
     game.move_card(effect_id, forge_foundation::ZoneType::Command, owner);
 
-    // Copy the image hint from the source card
+    // Java passes `image` for UI; Rust tracks provenance via `effect_source` instead.
     if let Some(source_id) = sa.source {
-        let _ = image; // image parameter used in Java for UI; we track source_id instead
         game.card_mut(effect_id).effect_source = Some(source_id);
         let source_svars = game.card(source_id).svars.clone();
         game.card_mut(effect_id).set_svars_map(source_svars);
@@ -441,6 +467,332 @@ pub fn exile_effect_command(
             game.card_mut(source_id).add_remembered_card(card_id);
         }
     }
+}
+
+/// Render the stack description for a SpellAbility, including sub-ability text.
+/// Mirrors Java `SpellAbilityEffect.getStackDescriptionWithSubs(Map, SpellAbility)`.
+///
+/// `stack_desc_fallback` supplies the `getStackDescription(sa)` hook (per-effect
+/// overrides) when the SA has no `StackDescription$` param. Pass the SA's own
+/// `description` field for the default behavior.
+pub fn get_stack_description_with_subs(
+    game: &GameState,
+    sa: &SpellAbility,
+    stack_desc_fallback: &str,
+) -> String {
+    let mut sb = String::new();
+
+    let is_permanent_api = matches!(
+        sa.api,
+        Some(ApiType::PermanentCreature) | Some(ApiType::PermanentNoncreature)
+    );
+    let is_sub = matches!(
+        AbilityRecordType::from_params(&sa.params),
+        Some(AbilityRecordType::SubAbility)
+    );
+
+    if !is_permanent_api {
+        if !is_sub {
+            if let Some(src_id) = sa.source {
+                sb.push_str(&game.card(src_id).card_name);
+                sb.push_str(" -");
+            }
+        }
+        sb.push(' ');
+    }
+
+    // Own description
+    if let Some(raw_stack_desc) = sa.params.get("StackDescription") {
+        let (stack_desc, reps): (&str, Option<Vec<(String, String)>>) =
+            if let Some(rest) = raw_stack_desc.strip_prefix("REP") {
+                let pairs = rest
+                    .trim_start()
+                    .split(" & ")
+                    .filter_map(|s| {
+                        s.split_once('_')
+                            .map(|(a, b)| (a.to_string(), b.to_string()))
+                    })
+                    .collect();
+                ("SpellDescription", Some(pairs))
+            } else {
+                (raw_stack_desc, None)
+            };
+
+        if stack_desc.eq_ignore_ascii_case("SpellDescription") {
+            if let Some(raw_sdesc) = sa.params.get("SpellDescription") {
+                let mut spell_desc = raw_sdesc.replace(",,,,,,", " ").replace(",,,", " ");
+                // Strip reminder text `(...)`.
+                if let (Some(l), Some(r)) = (spell_desc.find(" ("), spell_desc.find(')')) {
+                    if r > l {
+                        let reminder = spell_desc[l..=r].to_string();
+                        spell_desc = spell_desc.replacen(&reminder, "", 1);
+                    }
+                }
+                if let Some(replacements) = &reps {
+                    for (from, to) in replacements {
+                        if let Some(idx) = spell_desc.find(from) {
+                            spell_desc.replace_range(idx..idx + from.len(), to);
+                        }
+                    }
+                    sb.push_str(&tokenize_string(game, sa, &spell_desc));
+                } else {
+                    sb.push_str(&spell_desc);
+                }
+            }
+            if reps.is_none() && has_any_target(sa) {
+                sb.push_str(" (Targeting: ");
+                sb.push_str(&join_targets(game, sa));
+                sb.push(')');
+            }
+        } else if !stack_desc.eq_ignore_ascii_case("None") {
+            sb.push_str(&tokenize_string(game, sa, stack_desc));
+        }
+    } else {
+        let cond_desc = sa.params.get("ConditionDescription");
+        let after_desc = sa.params.get("AfterDescription");
+        let base_desc = stack_desc_fallback.to_string();
+        if let Some(cd) = cond_desc {
+            sb.push_str(cd);
+            sb.push(' ');
+            if cd.ends_with(',') {
+                // Uncapitalize first letter of base_desc (mirrors Java StringUtils.uncapitalize).
+                let mut chars = base_desc.chars();
+                if let Some(c) = chars.next() {
+                    sb.extend(c.to_lowercase());
+                    sb.push_str(chars.as_str());
+                }
+            } else {
+                sb.push_str(&base_desc);
+            }
+        } else {
+            sb.push_str(&base_desc);
+        }
+        if let Some(ad) = after_desc {
+            sb.push(' ');
+            sb.push_str(ad);
+        }
+    }
+
+    // Sub-ability chain (Java: `sa.getSubAbility().getStackDescription()`).
+    // Permanent spells intentionally skip sub-description.
+    if !is_permanent_api {
+        if let Some(sub) = sa.sub_ability.as_deref() {
+            let sub_fallback = sub.description.clone();
+            sb.push_str(&get_stack_description_with_subs(game, sub, &sub_fallback));
+        }
+    }
+
+    // Announce/X value suffix.
+    if let Some(svar) = sa.params.get("Announce") {
+        let amount = calculate_amount_for_sa(game, sa, svar);
+        sb.push_str(&format!(" ({svar}={amount})"));
+    } else if sa.cost_has_mana_x() {
+        sb.push_str(&format!(" (X={})", sa.x_mana_cost_paid));
+    }
+
+    // CARDNAME / NICKNAME substitution (already handled by tokenize_string for
+    // the REP-path, but cover the non-tokenized paths too).
+    if let Some(src_id) = sa.source {
+        let name = game.card(src_id).card_name.clone();
+        sb = sb.replace("CARDNAME", &name);
+        sb = sb.replace("NICKNAME", &name);
+    }
+
+    sb
+}
+
+fn has_any_target(sa: &SpellAbility) -> bool {
+    !sa.target_chosen.all_target_cards().is_empty()
+        || !sa.target_chosen.all_target_players().is_empty()
+}
+
+fn join_targets(game: &GameState, sa: &SpellAbility) -> String {
+    let mut names = Vec::new();
+    for cid in sa.target_chosen.all_target_cards() {
+        names.push(game.card(cid).card_name.clone());
+    }
+    for pid in sa.target_chosen.all_target_players() {
+        names.push(format!("P{}", pid.index()));
+    }
+    names.join(", ")
+}
+
+fn calculate_amount_for_sa(game: &GameState, sa: &SpellAbility, svar: &str) -> i32 {
+    if let Ok(n) = svar.parse::<i32>() {
+        return n;
+    }
+    let Some(src) = sa.source else {
+        return 0;
+    };
+    let Some(expr) = sa
+        .params
+        .get(svar)
+        .or_else(|| game.card(src).get_s_var(svar))
+    else {
+        return 0;
+    };
+    crate::svar::resolve_count_svar_for_sa(expr, game, src, sa.activating_player, sa)
+}
+
+/// Ask the activator's controller to pick a replacement chooser when the
+/// original chooser has lost the game mid-effect (CR 800.4g).
+///
+/// Mirrors Java `SpellAbilityEffect.getNewChooser(SpellAbility, Player)`.
+pub fn get_new_chooser(
+    game: &GameState,
+    agents: &mut [Box<dyn PlayerAgent>],
+    sa: &SpellAbility,
+    loser: PlayerId,
+) -> Option<PlayerId> {
+    let activator = sa.activating_player;
+    let loser_is_opponent = loser != activator;
+    let options: Vec<PlayerId> = game
+        .alive_players()
+        .into_iter()
+        .filter(|&pid| pid != activator)
+        .filter(|&pid| {
+            if loser_is_opponent {
+                // opponents of activator
+                pid != activator
+            } else {
+                // all other players
+                true
+            }
+        })
+        .collect();
+
+    if options.is_empty() {
+        return None;
+    }
+    agents[activator.index()].choose_target_player(activator, &options, Some(sa))
+}
+
+/// `AtEOT$ <action>` — delayed-trigger action token.
+/// Mirrors Java's `SpellAbilityEffect.registerDelayedTrigger` `location` arg.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, strum_macros::EnumString, Default)]
+#[strum(ascii_case_insensitive)]
+pub enum AtEotAction {
+    /// Owner sacrifices the remembered card (Controller$ You).
+    #[default]
+    Sacrifice,
+    /// Controller sacrifices (no Controller$ override).
+    SacrificeCtrl,
+    Destroy,
+    Exile,
+    Hand,
+    Library,
+}
+
+impl AtEotAction {
+    /// SVar payload registered on the delayed trigger.
+    pub fn execute_svar(self) -> &'static str {
+        match self {
+            AtEotAction::Sacrifice => {
+                "DB$ SacrificeAll | Defined$ DelayTriggerRememberedLKI | Controller$ You"
+            }
+            AtEotAction::SacrificeCtrl => "DB$ SacrificeAll | Defined$ DelayTriggerRememberedLKI",
+            AtEotAction::Exile => {
+                "DB$ ChangeZone | Defined$ DelayTriggerRememberedLKI | Origin$ Battlefield | \
+                 Destination$ Exile"
+            }
+            AtEotAction::Hand => {
+                "DB$ ChangeZone | Defined$ DelayTriggerRememberedLKI | Origin$ Battlefield | \
+                 Destination$ Hand"
+            }
+            AtEotAction::Library => {
+                "DB$ ChangeZone | Defined$ DelayTriggerRememberedLKI | Origin$ Battlefield | \
+                 Destination$ Library | Shuffle$ True"
+            }
+            AtEotAction::Destroy => "DB$ Destroy | Defined$ DelayTriggerRememberedLKI",
+        }
+    }
+}
+
+/// Register a delayed trigger that fires at end of turn and performs `action`
+/// on `remembered` cards. Mirrors Java
+/// `SpellAbilityEffect.registerDelayedTrigger(sa, location, iterable)`.
+///
+/// `action` parses via `AtEotAction::from_str` — unknown tokens default to
+/// `Sacrifice` (matches Java when the call site passes an unrecognized tag).
+pub fn register_at_eot(
+    trigger_handler: &mut crate::trigger::handler::TriggerHandler,
+    game: &crate::game::GameState,
+    sa: &SpellAbility,
+    action: &str,
+    remembered: Vec<CardId>,
+) {
+    if remembered.is_empty() {
+        return;
+    }
+    let action = action.parse::<AtEotAction>().unwrap_or_default();
+    let execute_svar = action.execute_svar().to_string();
+    trigger_handler.register_delayed_trigger(crate::trigger::handler::DelayedTrigger {
+        mode: crate::trigger::TriggerType::Phase,
+        trigger_mode: Box::new(crate::trigger::trigger_phase::TriggerPhase {
+            phase: Some(forge_foundation::PhaseType::EndOfTurn),
+            valid_player: None,
+        }) as Box<dyn crate::trigger::TriggerBehavior>,
+        params: crate::parsing::Params::default(),
+        execute_svar,
+        controller: sa.activating_player,
+        source_card: sa.source.unwrap_or(remembered[0]),
+        created_turn: game.turn.turn_number,
+        created_phase: game.turn.phase,
+        target_card: None,
+        remembered_amount: 0,
+        remembered_cards: remembered.clone(),
+        remembered_lki_cards: remembered,
+    });
+}
+
+/// Validate a `Duration$` param against the host card's current state.
+/// Mirrors Java's `SpellAbilityEffect.checkValidDuration(String, SpellAbility)`.
+///
+/// Returns `true` when the duration is either absent or its prerequisites
+/// (host in play, tapped, controlled by activator, ...) are still satisfied
+/// at resolution time.
+pub fn check_valid_duration(game: &GameState, sa: &SpellAbility, duration: Option<&str>) -> bool {
+    let Some(duration) = duration else {
+        return true;
+    };
+    let Some(host_id) = sa.source else {
+        return true;
+    };
+    let host = game.card(host_id);
+    let in_play_or_stack = matches!(
+        host.zone,
+        forge_foundation::ZoneType::Battlefield | forge_foundation::ZoneType::Stack
+    );
+
+    if (duration.starts_with("UntilHostLeavesPlay")
+        || duration == "UntilLoseControlOfHost"
+        || duration == "UntilUntaps"
+        || duration == "AsLongAsControl"
+        || duration == "AsLongAsInPlay")
+        && !in_play_or_stack
+    {
+        return false;
+    }
+    if (duration == "AsLongAsControl" || duration == "AsLongAsInPlay") && host.phased_out {
+        return false;
+    }
+    if (duration == "UntilLoseControlOfHost" || duration == "AsLongAsControl")
+        && host.controller != sa.activating_player
+    {
+        return false;
+    }
+    if duration == "UntilUntaps" && !host.tapped {
+        return false;
+    }
+    if duration == "UntilTargetedUntaps" {
+        if let Some(tgt_id) = sa.target_chosen.target_card {
+            let tgt = game.card(tgt_id);
+            if !tgt.tapped || tgt.phased_out {
+                return false;
+            }
+        }
+    }
+    true
 }
 
 /// Set up the "replace dying" replacement effect for cards that should

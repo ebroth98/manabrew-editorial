@@ -10,7 +10,13 @@ use crate::spellability::SpellAbility;
 /// SP$ Attach / AB$ Attach — attach source Equipment/Aura to target creature.
 ///
 /// Mirrors Java's `AttachEffect.resolve()`.
-pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
+/// Struct form of this effect so it can participate in the
+/// `SpellAbilityEffect` trait hierarchy — mirrors Java's
+/// `AttachEffect` class extending `SpellAbilityEffect`.
+pub struct AttachEffect;
+
+impl crate::ability::spell_ability_effect::SpellAbilityEffect for AttachEffect {
+    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     // Source is the card being attached (the Equipment or Aura)
     let aura_id = match sa.source {
         Some(s) => s,
@@ -116,4 +122,5 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         },
         false,
     );
+    }
 }

@@ -12,15 +12,23 @@ use crate::spellability::SpellAbility;
 /// ```text
 /// A:SP$ EndTurn
 /// ```
-pub fn resolve(ctx: &mut EffectContext, _sa: &SpellAbility) {
+/// Struct form of this effect so it can participate in the
+/// `SpellAbilityEffect` trait hierarchy — mirrors Java's
+/// `EndTurnEffect` class extending `SpellAbilityEffect`.
+pub struct EndTurnEffect;
+
+impl crate::ability::spell_ability_effect::SpellAbilityEffect for EndTurnEffect {
+    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     // Clear the stack (exile all spells/abilities)
     while ctx.game.stack.pop().is_some() {}
     // Signal the game loop to skip to cleanup
     ctx.game.end_turn_requested = true;
+    }
 }
 
 #[cfg(test)]
 mod tests {
+    use crate::ability::spell_ability_effect::SpellAbilityEffect;
     use std::collections::HashMap;
 
     use crate::ability::effects::EffectContext;
@@ -60,7 +68,7 @@ mod tests {
             parent_target_card: None,
             rng: &mut rng_adapter,
         };
-        super::resolve(&mut ctx, &sa);
+        super::EndTurnEffect::resolve(&mut ctx, &sa);
 
         assert!(ctx.game.end_turn_requested);
         // Stack should be empty after EndTurn

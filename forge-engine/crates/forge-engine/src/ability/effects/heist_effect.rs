@@ -9,7 +9,13 @@ use forge_foundation::ZoneType;
 use super::{emit_zone_trigger, EffectContext};
 use crate::spellability::SpellAbility;
 
-pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
+/// Struct form of this effect so it can participate in the
+/// `SpellAbilityEffect` trait hierarchy — mirrors Java's
+/// `HeistEffect` class extending `SpellAbilityEffect`.
+pub struct HeistEffect;
+
+impl crate::ability::spell_ability_effect::SpellAbilityEffect for HeistEffect {
+    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let controller = sa.activating_player;
     let num = super::resolve_numeric_svar(ctx.game, sa, "Num", 1).max(0) as usize;
 
@@ -36,5 +42,6 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         }
 
         emit_zone_trigger(ctx.trigger_handler, top, old_zone, ZoneType::Exile);
+    }
     }
 }

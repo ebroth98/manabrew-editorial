@@ -171,6 +171,12 @@ impl GameLoop {
                 stack_push.stack_message
             );
         }
+        // Record the cast SA on the source card so `isUnlinkedFromCastSA` and
+        // friends can check linkage later. Mirrors Java `Card.setCastSA`.
+        if stack_push.entry.spell_ability.is_spell {
+            game.card_mut(stack_push.source_card).cast_sa =
+                Some(Box::new(stack_push.entry.spell_ability.clone()));
+        }
         game.stack.push(stack_push.entry.clone());
         self.log_stack_push(&stack_push.stack_log_name, &game.player(player).name);
         let mut event = if stack_push.event_kind == SpellAbilityLogEventKind::Stack {

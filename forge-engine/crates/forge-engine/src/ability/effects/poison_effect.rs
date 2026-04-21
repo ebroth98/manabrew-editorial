@@ -11,7 +11,13 @@ use crate::spellability::SpellAbility;
 /// - `DB$ Poison | Defined$ You | Num$ 1`       (Phyrexian Vatmother)
 /// - `DB$ Poison | ValidTgts$ Player | Num$ 1`  (Hand of the Praetors — targeted)
 /// - `DB$ Poison | Defined$ TriggeredTarget | Num$ 1` (trigger context)
-pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
+/// Struct form of this effect so it can participate in the
+/// `SpellAbilityEffect` trait hierarchy — mirrors Java's
+/// `PoisonEffect` class extending `SpellAbilityEffect`.
+pub struct PoisonEffect;
+
+impl crate::ability::spell_ability_effect::SpellAbilityEffect for PoisonEffect {
+    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let amount = parse_param(&sa.ability_text, "Num$ ").unwrap_or(1);
     if amount == 0 {
         return;
@@ -75,5 +81,6 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                 }
             }
         }
+    }
     }
 }

@@ -12,8 +12,15 @@ use crate::parsing::keys;
 use crate::spellability::SpellAbility;
 
 /// Resolve a permanent entering the battlefield.
-pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
+/// Struct form of this effect so it can participate in the
+/// `SpellAbilityEffect` trait hierarchy — mirrors Java's
+/// `PermanentEffect` class extending `SpellAbilityEffect`.
+pub struct PermanentEffect;
+
+impl crate::ability::spell_ability_effect::SpellAbilityEffect for PermanentEffect {
+    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     resolve_permanent_common(ctx, sa);
+    }
 }
 
 /// Shared implementation for Permanent, PermanentCreature and PermanentNoncreature.

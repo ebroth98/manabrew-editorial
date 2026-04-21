@@ -170,7 +170,7 @@ fn spell_ability_x_property(spell_ability: &SpellAbility, expr: &str, game: &Gam
 fn resolve_spell_ability_expr(expr: &str, game: &GameState, sa: &SpellAbility) -> Option<i32> {
     let (defined, property) = expr.split_once('$')?;
     let spells =
-        crate::ability::ability_utils::resolve_defined_spell_abilities_with_sa(defined, sa, game);
+        crate::ability::ability_utils::get_defined_spell_abilities(defined, sa, game);
     if spells.is_empty() {
         return None;
     }

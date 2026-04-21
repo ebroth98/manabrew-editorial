@@ -28,7 +28,13 @@ pub fn build_spell_ability(sa: &mut SpellAbility) {
 /// A:SP$ CopySpellAbility | Defined$ TopStack
 /// A:SP$ CopySpellAbility | Defined$ TriggeredSpellAbility
 /// ```
-pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
+/// Struct form of this effect so it can participate in the
+/// `SpellAbilityEffect` trait hierarchy — mirrors Java's
+/// `CopySpellAbilityEffect` class extending `SpellAbilityEffect`.
+pub struct CopySpellAbilityEffect;
+
+impl crate::ability::spell_ability_effect::SpellAbilityEffect for CopySpellAbilityEffect {
+    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let controller = sa.activating_player;
 
     // Run CopySpell replacement effects before copying.
@@ -42,7 +48,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     }
 
     let original = if let Some(defined) = sa.params.get("Defined") {
-        crate::ability::ability_utils::resolve_defined_spell_abilities_with_sa(
+        crate::ability::ability_utils::get_defined_spell_abilities(
             defined, sa, ctx.game,
         )
         .into_iter()
@@ -101,5 +107,6 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             false,
         );
         super::emit_targeting_triggers(ctx, source_id, &trigger_sa);
+    }
     }
 }

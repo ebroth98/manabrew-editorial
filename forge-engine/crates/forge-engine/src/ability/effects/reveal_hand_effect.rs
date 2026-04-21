@@ -9,7 +9,13 @@ use crate::spellability::SpellAbility;
 /// `SP$ RevealHand | Defined$ Player`
 /// The target player reveals their entire hand to all other players.
 /// In the engine this is informational — we notify all agents.
-pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
+/// Struct form of this effect so it can participate in the
+/// `SpellAbilityEffect` trait hierarchy — mirrors Java's
+/// `RevealHandEffect` class extending `SpellAbilityEffect`.
+pub struct RevealHandEffect;
+
+impl crate::ability::spell_ability_effect::SpellAbilityEffect for RevealHandEffect {
+    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let target = sa
         .target_chosen
         .target_player
@@ -50,5 +56,6 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         agent.notify(crate::agent::notification::GameNotification::Event(
             GameLogEvent::rule(msg.clone()).with_player(target),
         ));
+    }
     }
 }

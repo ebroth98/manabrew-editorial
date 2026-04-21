@@ -66,7 +66,13 @@ const DUNGEONS: &[(&str, &[&str])] = &[
     ),
 ];
 
-pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
+/// Struct form of this effect so it can participate in the
+/// `SpellAbilityEffect` trait hierarchy — mirrors Java's
+/// `VentureEffect` class extending `SpellAbilityEffect`.
+pub struct VentureEffect;
+
+impl crate::ability::spell_ability_effect::SpellAbilityEffect for VentureEffect {
+    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let controller = sa.activating_player;
     let players = if let Some(def) = sa.defined_player() {
         super::resolve_defined_players(def, controller, ctx.game)
@@ -81,6 +87,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             continue;
         }
         venture_into_dungeon(ctx, sa, pid);
+    }
     }
 }
 

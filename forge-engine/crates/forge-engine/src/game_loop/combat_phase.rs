@@ -1069,6 +1069,9 @@ impl GameLoop {
         // End combat
         self.set_phase(game, agents, PhaseType::CombatEnd);
         self.emit_phase_trigger(game, agents, PhaseType::CombatEnd);
+        // Revert any `ControlGain$ LoseControl$ EndOfCombat` steals (Threaten-
+        // style "attack and return").
+        crate::ability::effects::control_gain_effect::end_of_combat_hook(game);
         self.step_with_priority(game, agents, false);
 
         // End-of-combat damage history reset and must_block cleanup

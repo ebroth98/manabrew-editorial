@@ -9,7 +9,13 @@ use crate::ids::CardId;
 use crate::parsing::keys;
 use crate::spellability::SpellAbility;
 
-pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
+/// Struct form of this effect so it can participate in the
+/// `SpellAbilityEffect` trait hierarchy — mirrors Java's
+/// `MultiplePilesEffect` class extending `SpellAbilityEffect`.
+pub struct MultiplePilesEffect;
+
+impl crate::ability::spell_ability_effect::SpellAbilityEffect for MultiplePilesEffect {
+    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let source = match sa.source {
         Some(s) => s,
         None => return,
@@ -63,5 +69,6 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         for card_id in &piles[chosen_idx] {
             ctx.game.card_mut(source).add_remembered_card(*card_id);
         }
+    }
     }
 }

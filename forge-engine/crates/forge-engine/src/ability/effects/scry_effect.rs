@@ -12,7 +12,13 @@ use crate::spellability::SpellAbility;
 /// `SP$ Scry | ScryNum$ N`
 /// Lets the activating player look at the top N cards of their library,
 /// then put any number of them on the bottom in any order; the rest stay on top.
-pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
+/// Struct form of this effect so it can participate in the
+/// `SpellAbilityEffect` trait hierarchy — mirrors Java's
+/// `ScryEffect` class extending `SpellAbilityEffect`.
+pub struct ScryEffect;
+
+impl crate::ability::spell_ability_effect::SpellAbilityEffect for ScryEffect {
+    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let num = parse_param(&sa.ability_text, "ScryNum$ ").unwrap_or(1) as usize;
 
     let target = sa
@@ -111,10 +117,12 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         },
         false,
     );
+    }
 }
 
 #[cfg(test)]
 mod tests {
+    use crate::ability::spell_ability_effect::SpellAbilityEffect;
     use forge_foundation::{CardTypeLine, ColorSet, ManaCost, ZoneType};
 
     use crate::ability::effects::EffectContext;
@@ -259,7 +267,7 @@ mod tests {
             rng: &mut rng_adapter,
         };
 
-        super::resolve(&mut ctx, &sa);
+        super::ScryEffect::resolve(&mut ctx, &sa);
 
         // Library still has all 3 cards, a is now on top (b,c went to bottom).
         let lib = ctx.game.cards_in_zone(ZoneType::Library, p0);
@@ -300,7 +308,7 @@ mod tests {
             rng: &mut rng_adapter,
         };
 
-        super::resolve(&mut ctx, &sa);
+        super::ScryEffect::resolve(&mut ctx, &sa);
 
         // PassAgent returns empty bottom list, so all cards stay on top.
         // Order preserved: [a, b] with b still on top.

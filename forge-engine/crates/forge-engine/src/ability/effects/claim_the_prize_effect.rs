@@ -8,7 +8,13 @@ use crate::trigger::TriggerType;
 use crate::parsing::keys;
 use crate::spellability::SpellAbility;
 
-pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
+/// Struct form of this effect so it can participate in the
+/// `SpellAbilityEffect` trait hierarchy — mirrors Java's
+/// `ClaimThePrizeEffect` class extending `SpellAbilityEffect`.
+pub struct ClaimThePrizeEffect;
+
+impl crate::ability::spell_ability_effect::SpellAbilityEffect for ClaimThePrizeEffect {
+    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let source = match sa.source {
         Some(s) => s,
         None => return,
@@ -35,5 +41,6 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             },
             false,
         );
+    }
     }
 }

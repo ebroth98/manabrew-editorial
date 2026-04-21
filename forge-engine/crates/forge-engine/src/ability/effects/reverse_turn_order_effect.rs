@@ -9,12 +9,20 @@ use crate::spellability::SpellAbility;
 /// ```text
 /// A:SP$ ReverseTurnOrder
 /// ```
-pub fn resolve(ctx: &mut EffectContext, _sa: &SpellAbility) {
+/// Struct form of this effect so it can participate in the
+/// `SpellAbilityEffect` trait hierarchy — mirrors Java's
+/// `ReverseTurnOrderEffect` class extending `SpellAbilityEffect`.
+pub struct ReverseTurnOrderEffect;
+
+impl crate::ability::spell_ability_effect::SpellAbilityEffect for ReverseTurnOrderEffect {
+    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     ctx.game.player_order.reverse();
+    }
 }
 
 #[cfg(test)]
 mod tests {
+    use crate::ability::spell_ability_effect::SpellAbilityEffect;
     use std::collections::HashMap;
 
     use crate::ability::effects::EffectContext;
@@ -55,7 +63,7 @@ mod tests {
             parent_target_card: None,
             rng: &mut rng_adapter,
         };
-        super::resolve(&mut ctx, &sa);
+        super::ReverseTurnOrderEffect::resolve(&mut ctx, &sa);
 
         assert_eq!(ctx.game.player_order, vec![PlayerId(1), PlayerId(0)]);
     }

@@ -15,7 +15,13 @@ use crate::spellability::SpellAbility;
 /// # Params
 /// - `ConniveNum` — number of times to connive (default: 1)
 /// - Target or `Defined$` — the creature that connives
-pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
+/// Struct form of this effect so it can participate in the
+/// `SpellAbilityEffect` trait hierarchy — mirrors Java's
+/// `ConniveEffect` class extending `SpellAbilityEffect`.
+pub struct ConniveEffect;
+
+impl crate::ability::spell_ability_effect::SpellAbilityEffect for ConniveEffect {
+    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let num: usize = sa
         .params
         .get("ConniveNum")
@@ -105,5 +111,6 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             },
             false,
         );
+    }
     }
 }

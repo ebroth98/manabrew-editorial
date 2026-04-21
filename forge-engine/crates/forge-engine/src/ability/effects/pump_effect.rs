@@ -7,6 +7,34 @@ use crate::card::perpetual::{perpetual_keywords, perpetual_pt_boost};
 use crate::parsing::keys;
 use crate::spellability::SpellAbility;
 
+/// Parsed `NumAtt$`/`NumDef$` bonus spec: either a fixed literal or a
+/// target-relative scale (Java L469–L481).
+#[derive(Clone, Copy)]
+enum PtBonus {
+    Fixed(i32),
+    Double,
+    Triple,
+}
+
+impl PtBonus {
+    fn parse(raw: Option<&str>, fallback: impl FnOnce() -> i32) -> Self {
+        match raw {
+            Some("Double") => PtBonus::Double,
+            Some("Triple") => PtBonus::Triple,
+            _ => PtBonus::Fixed(fallback()),
+        }
+    }
+
+    /// Resolve the bonus against a concrete target's current P or T.
+    fn resolve(self, current: i32) -> i32 {
+        match self {
+            PtBonus::Fixed(n) => n,
+            PtBonus::Double => current,
+            PtBonus::Triple => current * 2,
+        }
+    }
+}
+
 /// End-of-turn revert for Pump. Mirrors the `GameCommand.run()` in Java
 /// `PumpEffect` that reverses the P/T bonus and removes granted keywords
 /// when the effect duration expires.
@@ -27,15 +55,46 @@ pub fn run(
     }
 }
 
-pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
-    // Try direct integer first, then fall back to SVar resolution (for Count$Kicked etc.)
-    let att_bonus = parse_param(&sa.ability_text, "NumAtt$ ")
-        .unwrap_or_else(|| resolve_numeric_svar(ctx.game, sa, "NumAtt", 0));
-    let def_bonus = parse_param(&sa.ability_text, "NumDef$ ")
-        .unwrap_or_else(|| resolve_numeric_svar(ctx.game, sa, "NumDef", 0));
+/// Struct form of this effect so it can participate in the
+/// `SpellAbilityEffect` trait hierarchy — mirrors Java's
+/// `PumpEffect` class extending `SpellAbilityEffect`.
+pub struct PumpEffect;
+
+impl crate::ability::spell_ability_effect::SpellAbilityEffect for PumpEffect {
+    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
+    let mut pumped_targets: Vec<crate::ids::CardId> = Vec::new();
+
+    // `Optional$` — activator confirms before any pump applies (Java L283–L292).
+    if sa.params.has("Optional") {
+        let card_name = sa.source.map(|cid| ctx.game.card(cid).card_name.clone());
+        let prompt = sa
+            .params
+            .get("OptionQuestion")
+            .unwrap_or("Apply pump to target?");
+        let activator = sa.activating_player;
+        if !ctx.agents[activator.index()].confirm_action(
+            activator,
+            Some("OptionalPump"),
+            prompt,
+            &[],
+            card_name.as_deref(),
+            sa.api,
+        ) {
+            return;
+        }
+    }
+
+    let att_bonus = PtBonus::parse(sa.params.get("NumAtt"), || {
+        parse_param(&sa.ability_text, "NumAtt$ ")
+            .unwrap_or_else(|| resolve_numeric_svar(ctx.game, sa, "NumAtt", 0))
+    });
+    let def_bonus = PtBonus::parse(sa.params.get("NumDef"), || {
+        parse_param(&sa.ability_text, "NumDef$ ")
+            .unwrap_or_else(|| resolve_numeric_svar(ctx.game, sa, "NumDef", 0))
+    });
 
     // Parse KW$ parameter for keyword grants (e.g. "KW$ Haste" or "KW$ Flying & Trample")
-    let keywords: Vec<String> = sa
+    let mut keywords: Vec<String> = sa
         .params
         .get(keys::KW)
         .map(|kw_str| {
@@ -46,6 +105,45 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                 .collect()
         })
         .unwrap_or_default();
+
+    // `KWChoice$` — activator picks one keyword from a comma-separated list
+    // (Java L297–L302). Reuses `choose_mode` which maps to a pick-one dialog
+    // in concrete agents.
+    if let Some(kw_choice) = sa.params.get("KWChoice") {
+        let options: Vec<String> = kw_choice
+            .split(',')
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect();
+        if !options.is_empty() {
+            let activator = sa.activating_player;
+            let card_name = sa.source.map(|cid| ctx.game.card(cid).card_name.clone());
+            let picks = ctx.agents[activator.index()].choose_mode(
+                activator,
+                &options,
+                1,
+                1,
+                card_name.as_deref(),
+            );
+            if let Some(&idx) = picks.first() {
+                if let Some(kw) = options.get(idx) {
+                    keywords.push(kw.clone());
+                }
+            }
+        }
+    }
+
+    // `CanBlockAny$` — synthetic keyword grant (Java L79–L85 / L240–L253).
+    // Rust has no dedicated `addCanBlockAny` / `addCanBlockAdditional`, so we
+    // encode the permission as pump keywords that block-restriction code can
+    // match on ("CanBlockAny" / "CanBlock:N"). Full block-amount support lands
+    // once the combat module reads these markers.
+    if sa.params.is_true("CanBlockAny") {
+        keywords.push("CanBlockAny".to_string());
+    }
+    if let Some(amt) = sa.params.get("CanBlockAmount") {
+        keywords.push(format!("CanBlock:{}", amt));
+    }
 
     let is_perpetual = sa
         .params
@@ -79,30 +177,10 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             if !super::matches_valid_cards(ctx.game.card(cid), &valid_tgts, sa.activating_player) {
                 continue;
             }
-            if is_perpetual {
-                let ts = resolve_ts.expect("perpetual resolve timestamp must exist");
-                let card = ctx.game.card_mut(cid);
-                perpetual_pt_boost::PerpetualPtBoost {
-                    timestamp: ts,
-                    power: att_bonus,
-                    toughness: def_bonus,
-                }
-                .apply_effect(card);
-                for kw in &keywords {
-                    perpetual_keywords::PerpetualKeywords {
-                        timestamp: ts,
-                        add_keywords: vec![kw.clone()],
-                        remove_keywords: Vec::new(),
-                        remove_all: false,
-                    }
-                    .apply_effect(card);
-                }
-            } else {
-                ctx.game.card_mut(cid).add_pt_boost(att_bonus, def_bonus);
-                for kw in &keywords {
-                    ctx.game.card_mut(cid).add_pump_keyword(kw);
-                }
-            }
+            let target = ctx.game.card(cid);
+            let att = att_bonus.resolve(target.power());
+            let def = def_bonus.resolve(target.toughness());
+            apply_pump_to_card(ctx, cid, att, def, &keywords, is_perpetual, resolve_ts);
         }
         return;
     }
@@ -125,38 +203,68 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     targets.dedup();
 
     for target_card in targets {
-        if ctx.game.card(target_card).zone == ZoneType::Battlefield {
-            if is_perpetual {
-                let ts = resolve_ts.expect("perpetual resolve timestamp must exist");
-                let card = ctx.game.card_mut(target_card);
-                perpetual_pt_boost::PerpetualPtBoost {
-                    timestamp: ts,
-                    power: att_bonus,
-                    toughness: def_bonus,
-                }
-                .apply_effect(card);
-                for kw in &keywords {
-                    perpetual_keywords::PerpetualKeywords {
-                        timestamp: ts,
-                        add_keywords: vec![kw.clone()],
-                        remove_keywords: Vec::new(),
-                        remove_all: false,
-                    }
-                    .apply_effect(card);
-                }
-            } else {
-                ctx.game.card_mut(target_card).power_modifier += att_bonus;
-                ctx.game.card_mut(target_card).toughness_modifier += def_bonus;
-                for kw in &keywords {
-                    ctx.game.card_mut(target_card).pump_keywords.add(kw);
-                }
+        if ctx.game.card(target_card).zone != ZoneType::Battlefield {
+            continue;
+        }
+        let target = ctx.game.card(target_card);
+        let att = att_bonus.resolve(target.power());
+        let def = def_bonus.resolve(target.toughness());
+        apply_pump_to_card(ctx, target_card, att, def, &keywords, is_perpetual, resolve_ts);
+        pumped_targets.push(target_card);
+    }
+
+    // `AtEOT$ <action>` — register an end-of-turn delayed trigger that performs
+    // `action` on the pumped targets (Java PumpEffect L486).
+    if let Some(action) = sa.params.get(keys::AT_EOT) {
+        crate::ability::spell_ability_effect::register_at_eot(
+            ctx.trigger_handler,
+            ctx.game,
+            sa,
+            action,
+            pumped_targets,
+        );
+    }
+    }
+}
+
+fn apply_pump_to_card(
+    ctx: &mut EffectContext,
+    card_id: crate::ids::CardId,
+    att: i32,
+    def: i32,
+    keywords: &[String],
+    is_perpetual: bool,
+    resolve_ts: Option<i64>,
+) {
+    if is_perpetual {
+        let ts = resolve_ts.expect("perpetual resolve timestamp must exist");
+        let card = ctx.game.card_mut(card_id);
+        perpetual_pt_boost::PerpetualPtBoost {
+            timestamp: ts,
+            power: att,
+            toughness: def,
+        }
+        .apply_effect(card);
+        for kw in keywords {
+            perpetual_keywords::PerpetualKeywords {
+                timestamp: ts,
+                add_keywords: vec![kw.clone()],
+                remove_keywords: Vec::new(),
+                remove_all: false,
             }
+            .apply_effect(card);
+        }
+    } else {
+        ctx.game.card_mut(card_id).add_pt_boost(att, def);
+        for kw in keywords {
+            ctx.game.card_mut(card_id).add_pump_keyword(kw);
         }
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use crate::ability::spell_ability_effect::SpellAbilityEffect;
     use forge_foundation::{CardTypeLine, ColorSet, ManaCost, ZoneType};
     use std::collections::HashMap;
 
@@ -245,7 +353,7 @@ mod tests {
             &mut rng_adapter,
         );
 
-        super::resolve(&mut ctx, &sa);
+        super::PumpEffect::resolve(&mut ctx, &sa);
 
         assert!(ctx.game.card(guardian).has_indestructible());
     }
@@ -284,7 +392,7 @@ mod tests {
             &mut rng_adapter,
         );
 
-        super::resolve(&mut ctx, &sa);
+        super::PumpEffect::resolve(&mut ctx, &sa);
 
         assert!(!ctx.game.card(source).has_indestructible());
     }

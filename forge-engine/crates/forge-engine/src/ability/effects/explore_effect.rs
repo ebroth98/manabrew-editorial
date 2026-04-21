@@ -21,7 +21,13 @@ use crate::spellability::SpellAbility;
 /// A:SP$ Explore | Defined$ Self
 /// A:SP$ Explore | Defined$ Targeted | Num$ 2
 /// ```
-pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
+/// Struct form of this effect so it can participate in the
+/// `SpellAbilityEffect` trait hierarchy — mirrors Java's
+/// `ExploreEffect` class extending `SpellAbilityEffect`.
+pub struct ExploreEffect;
+
+impl crate::ability::spell_ability_effect::SpellAbilityEffect for ExploreEffect {
+    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let controller = sa.activating_player;
 
     // Determine the exploring creature
@@ -158,5 +164,6 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             },
             false,
         );
+    }
     }
 }

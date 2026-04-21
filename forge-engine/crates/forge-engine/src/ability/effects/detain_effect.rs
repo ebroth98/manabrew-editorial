@@ -14,7 +14,13 @@ use crate::spellability::SpellAbility;
 /// A:SP$ Detain | ValidTgts$ Creature
 /// A:SP$ Detain | Defined$ Targeted
 /// ```
-pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
+/// Struct form of this effect so it can participate in the
+/// `SpellAbilityEffect` trait hierarchy — mirrors Java's
+/// `DetainEffect` class extending `SpellAbilityEffect`.
+pub struct DetainEffect;
+
+impl crate::ability::spell_ability_effect::SpellAbilityEffect for DetainEffect {
+    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     // Targeted mode
     if let Some(target) = sa.target_chosen.target_card {
         if ctx.game.card(target).zone == ZoneType::Battlefield {
@@ -48,5 +54,6 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         if ctx.game.card(source).zone == ZoneType::Battlefield {
             ctx.game.card_mut(source).set_detained(true);
         }
+    }
     }
 }

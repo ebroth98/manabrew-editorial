@@ -21,6 +21,20 @@ use super::{parse_zone_type, EffectContext};
 use crate::parsing::keys;
 use crate::spellability::SpellAbility;
 
+/// Struct form so this directory-module effect can participate in the
+/// `SpellAbilityEffect` trait hierarchy alongside the single-file effects.
+pub struct ChangeZoneEffect;
+
+impl crate::ability::spell_ability_effect::SpellAbilityEffect for ChangeZoneEffect {
+    fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
+        resolve(ctx, sa);
+    }
+
+    fn build_spell_ability(sa: &mut SpellAbility) {
+        build_spell_ability(sa);
+    }
+}
+
 /// Configure the spell ability during construction.
 /// Mirrors Java `ChangeZoneEffect.buildSpellAbility` — calls
 /// `adjustChangeZoneTarget` to set the target zone to the origin zone.

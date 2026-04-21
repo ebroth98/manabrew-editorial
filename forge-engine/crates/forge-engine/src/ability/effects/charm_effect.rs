@@ -6,6 +6,17 @@ use crate::parsing::keys;
 use crate::parsing::Params;
 use crate::spellability::{build_spell_ability, SpellAbility};
 
+/// Scope of a `ChoiceRestriction$` on `SP$ Charm`. Past selections within
+/// this scope are filtered out of the available mode list.
+/// Mirrors Java's `CharmEffect` string literals.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, strum_macros::EnumString)]
+#[strum(ascii_case_insensitive)]
+pub enum ChoiceRestriction {
+    ThisGame,
+    ThisTurn,
+    YourLastCombat,
+}
+
 /// `SP$ Charm` — modal spell: player chooses N effects from a list.
 ///
 /// Mirrors Java's `CharmEffect.java`.
@@ -17,7 +28,13 @@ use crate::spellability::{build_spell_ability, SpellAbility};
 /// SVar:Mode2:DB$ Destroy | ValidTgts$ Creature | SpellDescription$ Destroy target creature.
 /// ```
 ///
-pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
+/// Struct form of this effect so it can participate in the
+/// `SpellAbilityEffect` trait hierarchy — mirrors Java's
+/// `CharmEffect` class extending `SpellAbilityEffect`.
+pub struct CharmEffect;
+
+impl crate::ability::spell_ability_effect::SpellAbilityEffect for CharmEffect {
+    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     // Java chains chosen charm modes onto the root SpellAbility during casting
     // (via make_choices_precast), then the stack resolver walks the full
     // sub-ability chain. If sub-abilities are already present, just return —
@@ -67,12 +84,42 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         })
         .collect();
 
+    // `ChoiceRestriction$` — drop modes already chosen on this source within
+    // the restriction scope. Java tracks per-source history on
+    // `Card.chosenModesThisGame` etc.; Rust stores a {mode_svar → turn_number}
+    // map on the Card keyed by the scope enum below.
+    let restriction = sa
+        .params
+        .get("ChoiceRestriction")
+        .and_then(|s| s.parse::<ChoiceRestriction>().ok());
+    let current_turn = ctx.game.turn.turn_number as i32;
+    let last_combat_turn = ctx
+        .game
+        .last_combat_turn_of(sa.activating_player)
+        .unwrap_or(i32::MIN);
+    let is_restricted_index = |mode_svar: &str| -> bool {
+        let Some(scope) = restriction else {
+            return false;
+        };
+        let history = &ctx.game.card(source_id).chosen_charm_modes;
+        let Some(&turn) = history.get(mode_svar) else {
+            return false;
+        };
+        match scope {
+            ChoiceRestriction::ThisGame => true,
+            ChoiceRestriction::ThisTurn => turn == current_turn,
+            ChoiceRestriction::YourLastCombat => turn >= last_combat_turn,
+        }
+    };
+
     // Filter modes to only those with valid targets (matching Java's CharmEffect
     // which passes only `possible` modes to chooseModeForAbility).
     let valid_mode_indices: Vec<usize> = mode_texts
         .iter()
         .enumerate()
-        .filter(|(_, text)| mode_has_valid_targets(ctx, text, player, source_id))
+        .filter(|(i, text)| {
+            !is_restricted_index(mode_svars[*i]) && mode_has_valid_targets(ctx, text, player, source_id)
+        })
         .map(|(i, _)| i)
         .collect();
 
@@ -136,6 +183,18 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     // Mirror that here — agent pick order must not leak into target prompts.
     chosen_indices.sort();
 
+    // Record chosen modes into source card's history so a future cast can
+    // honor `ChoiceRestriction$`. Also honors `CanRepeatModes` (Rust default)
+    // vs dedup mode.
+    for &idx in &chosen_indices {
+        if let Some(svar_name) = mode_svars.get(idx).copied() {
+            ctx.game
+                .card_mut(source_id)
+                .chosen_charm_modes
+                .insert(svar_name.to_string(), current_turn);
+        }
+    }
+
     // Resolve each chosen mode in declaration order
     for idx in chosen_indices {
         if idx >= mode_texts.len() {
@@ -165,6 +224,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         if ctx.game.game_over {
             break;
         }
+    }
     }
 }
 
@@ -521,6 +581,7 @@ fn setup_mode_targets(ctx: &mut EffectContext, mode_sa: &mut SpellAbility, playe
 
 #[cfg(test)]
 mod tests {
+    use crate::ability::spell_ability_effect::SpellAbilityEffect;
     use forge_foundation::{CardTypeLine, ColorSet, ManaCost, ZoneType};
     use std::collections::{BTreeMap, HashMap};
 
@@ -563,7 +624,7 @@ mod tests {
             rng: &mut rng_adapter,
         };
         // Should not panic
-        super::resolve(&mut ctx, &sa);
+        super::CharmEffect::resolve(&mut ctx, &sa);
     }
 
     /// Integration test: charm with two draw modes, PassAgent picks first mode.
@@ -646,7 +707,7 @@ mod tests {
 
         // PassAgent.choose_mode picks first min modes → ModeA (draw for p0)
         let p0_hand_before = ctx.game.cards_in_zone(ZoneType::Hand, p0).len();
-        super::resolve(&mut ctx, &sa);
+        super::CharmEffect::resolve(&mut ctx, &sa);
         let p0_hand_after = ctx.game.cards_in_zone(ZoneType::Hand, p0).len();
         // p0 should have drawn 1 card
         assert_eq!(p0_hand_after, p0_hand_before + 1);

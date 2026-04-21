@@ -32,7 +32,13 @@ use crate::spellability::SpellAbility;
 /// - `DB$ RemoveCounter | Defined$ Self | CounterType$ FADE | CounterNum$ 1`
 /// - `AB$ RemoveCounter | ValidTgts$ Creature | CounterType$ M1M1 | CounterNum$ 1`
 /// - `SP$ RemoveCounter | ValidTgts$ Creature.YouCtrl | CounterType$ P1P1 | CounterNum$ All`
-pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
+/// Struct form of this effect so it can participate in the
+/// `SpellAbilityEffect` trait hierarchy — mirrors Java's
+/// `CountersRemoveEffect` class extending `SpellAbilityEffect`.
+pub struct CountersRemoveEffect;
+
+impl crate::ability::spell_ability_effect::SpellAbilityEffect for CountersRemoveEffect {
+    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     // Parse counter type — skip unsupported "Any" / "All" type modes.
     let counter_type_str = sa.params.get("CounterType").unwrap_or("P1P1");
     if counter_type_str.eq_ignore_ascii_case("Any") || counter_type_str.eq_ignore_ascii_case("All")
@@ -107,6 +113,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         },
         false,
     );
+    }
 }
 
 /// Resolve the target card for counter removal.

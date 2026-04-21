@@ -14,7 +14,13 @@ use crate::spellability::SpellAbility;
 /// - `RememberChosen` — if "True", add chosen to source's remembered_cards
 ///
 /// Stores the chosen card(s) on the source card's `chosen_cards`.
-pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
+/// Struct form of this effect so it can participate in the
+/// `SpellAbilityEffect` trait hierarchy — mirrors Java's
+/// `ChooseCardEffect` class extending `SpellAbilityEffect`.
+pub struct ChooseCardEffect;
+
+impl crate::ability::spell_ability_effect::SpellAbilityEffect for ChooseCardEffect {
+    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let source_id = match sa.source {
         Some(id) => id,
         None => return,
@@ -76,5 +82,6 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         for &cid in &chosen {
             ctx.game.card_mut(source_id).add_remembered_card(cid);
         }
+    }
     }
 }
