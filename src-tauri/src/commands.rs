@@ -4,7 +4,8 @@ use crate::game_manager::GameManager;
 use crate::multiplayer_controller::relay_response;
 use crate::preset_decks::PresetDeckInfo;
 use crate::server_client::ServerClient;
-use forge_agent_interface::prompt::{AgentPrompt, PlayerAction};
+use forge_agent_interface::prompt::PlayerAction;
+use serde_json::Value;
 
 #[tauri::command]
 pub async fn start_game(
@@ -57,8 +58,8 @@ pub async fn restore_snapshot(
 }
 
 #[tauri::command]
-pub async fn get_prompt(gm: State<'_, GameManager>) -> Result<Option<AgentPrompt>, String> {
-    Ok(gm.get_latest_prompt())
+pub async fn get_prompt(gm: State<'_, GameManager>) -> Result<Option<Value>, String> {
+    Ok(gm.get_latest_prompt_payload())
 }
 
 #[tauri::command]

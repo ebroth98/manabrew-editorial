@@ -86,6 +86,7 @@ export function usePromptEffects({
     }
 
     if (!autoPassEnabled) return;
+    if (currentPrompt.autoPassDisabled === true) return;
 
     let shouldAutoPass = false;
 

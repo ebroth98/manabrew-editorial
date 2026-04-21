@@ -2,6 +2,7 @@ mod ai_agent;
 mod card_db;
 mod client_bot;
 mod commands;
+mod engine_backend;
 mod game_manager;
 mod multiplayer_controller;
 mod network;

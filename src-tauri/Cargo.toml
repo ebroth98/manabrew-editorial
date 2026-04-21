@@ -3,6 +3,9 @@ name = "forge-web"
 version = "0.0.0"
 edition = "2021"
 
+[features]
+java-forge = ["dep:j4rs"]
+
 [lib]
 name = "forge_web_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
@@ -26,3 +29,4 @@ forge-server = { path = "../forge-engine/crates/forge-server" }
 forge-agent-interface = { path = "../forge-engine/crates/forge-agent-interface" }
 forge-game-runtime = { path = "../forge-engine/crates/forge-game-runtime" }
 tauri-plugin-http = "2.5.8"
+j4rs = { version = "0.25.1", optional = true }

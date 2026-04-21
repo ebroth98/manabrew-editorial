@@ -4,53 +4,40 @@ use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
 use std::thread;
 
-use forge_engine_core::agent::PlayerAgent;
-use forge_engine_core::game::GameState;
-use forge_engine_core::game_loop::GameLoop;
-use forge_engine_core::ids::PlayerId;
-use forge_engine_core::player::RegisteredPlayer;
-use forge_game_runtime::deck::{force_commander_by_name, instantiate_registered_players};
-
-use rand::SeedableRng;
+use serde_json::{json, Value};
 use tauri::{AppHandle, Emitter};
 
-use crate::ai_agent::spawn_ai_prompt_responder;
-use crate::card_db::{card_rules_to_instance, get_token_db, get_token_image_map};
+use crate::engine_backend::{java_backend, rust_backend, EngineBackendKind};
 use crate::multiplayer_controller::{
     parse_remote_response, spawn_engine_prompt_forwarder, spawn_notify_forwarder,
     spawn_remote_prompt_forwarder, spawn_snapshot_forwarder,
 };
-use crate::preset_decks::{
-    is_preset_id, prepare_ai_registered_player, prepare_custom_registered_player,
-    prepare_preset_opponent_registered_player, prepare_preset_registered_player, CardIdentity,
-};
-use crate::tauri_transport::TauriTransport;
-use forge_agent_interface::agent_impl::PromptAgent;
+use crate::preset_decks::CardIdentity;
 use forge_agent_interface::game_log_event::GameLogEntryDto;
 use forge_agent_interface::game_snapshot_event::GameSnapshotEventDto;
 use forge_agent_interface::game_view_dto::GameViewDto;
 use forge_agent_interface::ids_codec::player_slot;
+use forge_agent_interface::java_prompt_normalizer::normalize_java_prompt;
 use forge_agent_interface::prompt::{AgentPrompt, AgentPromptInner, PlayerAction};
 
 pub struct GameManager {
     pub session: Mutex<Option<GameSession>>,
     pub latest_prompt: Arc<Mutex<Option<AgentPrompt>>>,
+    pub latest_prompt_payload: Arc<Mutex<Option<Value>>>,
 }
 
 pub struct GameSession {
     #[allow(dead_code)]
     pub game_id: String,
-    pub response_tx: mpsc::Sender<PlayerAction>,
-    /// Per-remote-player response channels (player_index → sender).
+    pub response_tx: Option<mpsc::Sender<PlayerAction>>,
+    pub java_response_tx: Option<mpsc::Sender<Value>>,
+    /// Per-remote-player response channels (player_index -> sender).
     pub remote_response_txs: HashMap<usize, mpsc::Sender<PlayerAction>>,
     #[allow(dead_code)]
     pub thread_handle: Option<thread::JoinHandle<()>>,
     pub is_multiplayer: bool,
     pub is_host: bool,
-    /// Cooperative abort flag shared with the game thread's `GameLoop`.
-    /// Flipping it causes `run()` to exit before the next turn so the
-    /// engine stops driving prompts at a frontend that has already
-    /// closed the game.
+    /// Cooperative abort flag shared with the Rust game thread's `GameLoop`.
     pub abort_signal: Arc<AtomicBool>,
 }
 
@@ -59,11 +46,21 @@ impl GameManager {
         Self {
             session: Mutex::new(None),
             latest_prompt: Arc::new(Mutex::new(None)),
+            latest_prompt_payload: Arc::new(Mutex::new(None)),
         }
     }
 
-    pub fn get_latest_prompt(&self) -> Option<AgentPrompt> {
-        self.latest_prompt.lock().ok().and_then(|g| g.clone())
+    pub fn get_latest_prompt_payload(&self) -> Option<Value> {
+        self.latest_prompt_payload
+            .lock()
+            .ok()
+            .and_then(|g| g.clone())
+            .or_else(|| {
+                self.latest_prompt.lock().ok().and_then(|g| {
+                    g.as_ref()
+                        .and_then(|prompt| serde_json::to_value(prompt).ok())
+                })
+            })
     }
 
     pub fn start_game(
@@ -76,42 +73,58 @@ impl GameManager {
     ) -> Result<String, String> {
         let mut session_guard = self.session.lock().map_err(|e| e.to_string())?;
 
-        // End existing session if any
         if let Some(old) = session_guard.take() {
-            drop(old.response_tx); // signal game thread to stop (recv returns Err)
-                                   // Don't join — let the old thread wind down while the new game starts
+            old.abort_signal.store(true, Ordering::Relaxed);
+            drop(old.response_tx);
+            drop(old.java_response_tx);
+            drop(old.remote_response_txs);
         }
-        // Clear any stale prompt from the previous game
-        if let Ok(mut lp) = self.latest_prompt.lock() {
-            *lp = None;
-        }
+        self.clear_latest_prompt();
 
         let game_id = format!("game-{}", uuid_simple());
         let game_id_clone = game_id.clone();
         let deck = deck_list;
+        let backend = EngineBackendKind::from_env();
+        if !backend.is_supported() {
+            java_backend::JavaRuntimeConfig::from_env().validate()?;
+            return Err(java_backend::unsupported_error());
+        }
 
-        // Channels
         let (prompt_tx, prompt_rx) = mpsc::channel::<AgentPrompt>();
         let (response_tx, response_rx) = mpsc::channel::<PlayerAction>();
+        let (java_prompt_tx, java_prompt_rx) = mpsc::channel::<Value>();
+        let (java_response_tx, java_response_rx) = mpsc::channel::<Value>();
         let (notify_tx, notify_rx) = mpsc::channel::<GameLogEntryDto>();
         let (snapshot_tx, snapshot_rx) = mpsc::channel::<GameSnapshotEventDto>();
 
         let response_tx_clone = response_tx.clone();
+        let java_response_tx_clone = java_response_tx.clone();
         let abort_signal = Arc::new(AtomicBool::new(false));
         let abort_signal_for_thread = abort_signal.clone();
 
-        spawn_engine_prompt_forwarder(app.clone(), self.latest_prompt.clone(), prompt_rx);
+        spawn_engine_prompt_forwarder(
+            app.clone(),
+            self.latest_prompt.clone(),
+            self.latest_prompt_payload.clone(),
+            prompt_rx,
+        );
+        spawn_java_prompt_forwarder(
+            app.clone(),
+            self.latest_prompt_payload.clone(),
+            java_prompt_rx,
+        );
         spawn_notify_forwarder(app.clone(), notify_rx, None);
         spawn_snapshot_forwarder(app.clone(), snapshot_rx, None);
 
-        // Game thread
         let handle = thread::spawn(move || {
             eprintln!(
-                "[game_thread] Starting game: {} with deck: {:?}",
-                game_id_clone, deck
+                "[game_thread] Starting game: {} with backend={} deck={:?}",
+                game_id_clone,
+                backend.label(),
+                deck
             );
-            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                run_game(
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| match backend {
+                EngineBackendKind::Rust => rust_backend::run_game(
                     game_id_clone.clone(),
                     deck,
                     starting_life,
@@ -122,7 +135,16 @@ impl GameManager {
                     notify_tx,
                     snapshot_tx,
                     abort_signal_for_thread,
-                );
+                ),
+                EngineBackendKind::JavaForge => java_backend::run_game(
+                    game_id_clone.clone(),
+                    deck,
+                    starting_life,
+                    commander_name,
+                    opponent_deck_list,
+                    java_prompt_tx,
+                    java_response_rx,
+                ),
             }));
             match result {
                 Ok(()) => eprintln!("[game_thread] Game {} finished normally", game_id_clone),
@@ -141,7 +163,9 @@ impl GameManager {
 
         *session_guard = Some(GameSession {
             game_id: game_id.clone(),
-            response_tx: response_tx_clone,
+            response_tx: matches!(backend, EngineBackendKind::Rust).then_some(response_tx_clone),
+            java_response_tx: matches!(backend, EngineBackendKind::JavaForge)
+                .then_some(java_response_tx_clone),
             remote_response_txs: HashMap::new(),
             thread_handle: Some(handle),
             is_multiplayer: false,
@@ -154,7 +178,6 @@ impl GameManager {
 
     pub fn respond(&self, app: AppHandle, action: PlayerAction) -> Result<(), String> {
         if matches!(action, PlayerAction::Concede) {
-            // Build a synthetic game-over prompt using the last known game view
             let game_view = {
                 let lp = self.latest_prompt.lock().map_err(|e| e.to_string())?;
                 let base_view = lp.as_ref().map(|p| p.inner.game_view().clone());
@@ -175,46 +198,47 @@ impl GameManager {
             if let Ok(mut lp) = self.latest_prompt.lock() {
                 *lp = Some(prompt.clone());
             }
+            if let Ok(mut lp) = self.latest_prompt_payload.lock() {
+                *lp = serde_json::to_value(&prompt).ok();
+            }
             let _ = app.emit("game:prompt", &prompt);
 
-            // Fully tear the session down — same sequence as `end_game` so
-            // the game thread actually exits instead of continuing to ask
-            // the (now conceded) player for decisions. Without this the
-            // agent blocks on `recv_action()` after we unblock it with a
-            // no-op PassPriority, and the next prompt the engine raises
-            // (opponent upkeep, triggers, etc.) keeps the thread hot in
-            // a wait → fire → wait loop that also drives the frontend's
-            // log spam since prompts still land on the `game:prompt`
-            // channel.
             let session_opt = {
                 let mut session_guard = self.session.lock().map_err(|e| e.to_string())?;
                 session_guard.take()
             };
             if let Some(session) = session_opt {
-                // Raise the cooperative abort flag the GameLoop checks
-                // between turns so the engine bails instead of looping
-                // silently after the concede.
                 session.abort_signal.store(true, Ordering::Relaxed);
-                let _ = session.response_tx.send(PlayerAction::PlayCard {
-                    card_id: None,
-                    mode: None,
-                });
+                if let Some(tx) = session.response_tx.as_ref() {
+                    let _ = tx.send(PlayerAction::PlayCard {
+                        card_id: None,
+                        mode: None,
+                    });
+                }
+                if let Some(tx) = session.java_response_tx.as_ref() {
+                    let _ = tx.send(json!({ "kind": "pass" }));
+                }
                 drop(session.response_tx);
+                drop(session.java_response_tx);
                 drop(session.remote_response_txs);
             }
-            if let Ok(mut lp) = self.latest_prompt.lock() {
-                *lp = None;
-            }
+            self.clear_latest_prompt();
             return Ok(());
         }
 
         let session_guard = self.session.lock().map_err(|e| e.to_string())?;
         if let Some(session) = session_guard.as_ref() {
-            session
-                .response_tx
-                .send(action)
-                .map_err(|e| format!("Game thread not responding: {}", e))?;
-            Ok(())
+            if let Some(tx) = session.response_tx.as_ref() {
+                tx.send(action)
+                    .map_err(|e| format!("Game thread not responding: {}", e))?;
+                Ok(())
+            } else if let Some(tx) = session.java_response_tx.as_ref() {
+                tx.send(translate_java_action(&action))
+                    .map_err(|e| format!("Java game thread not responding: {}", e))?;
+                Ok(())
+            } else {
+                Err("No active game response channel".into())
+            }
         } else {
             Err("No active game session".into())
         }
@@ -223,20 +247,12 @@ impl GameManager {
     pub fn end_game(&self) -> Result<(), String> {
         let mut session_guard = self.session.lock().map_err(|e| e.to_string())?;
         if let Some(session) = session_guard.take() {
-            // Flip the cooperative abort flag first — the game loop
-            // checks it between turns and will exit cleanly. Dropping the
-            // response channels without this used to leave the engine
-            // looping silently (the transport fell back to a no-op pass
-            // priority on a disconnect, which never ended the game).
             session.abort_signal.store(true, Ordering::Relaxed);
             drop(session.response_tx);
+            drop(session.java_response_tx);
             drop(session.remote_response_txs);
-            // Don't join — the thread winds down on its own so end_game returns fast.
         }
-        // Clear latest prompt so the next game doesn't see stale state
-        if let Ok(mut lp) = self.latest_prompt.lock() {
-            *lp = None;
-        }
+        self.clear_latest_prompt();
         Ok(())
     }
 
@@ -269,33 +285,32 @@ impl GameManager {
 
         let mut session_guard = self.session.lock().map_err(|e| e.to_string())?;
 
-        // End existing session if any
         if let Some(old) = session_guard.take() {
+            old.abort_signal.store(true, Ordering::Relaxed);
             drop(old.response_tx);
+            drop(old.java_response_tx);
             drop(old.remote_response_txs);
         }
-        if let Ok(mut lp) = self.latest_prompt.lock() {
-            *lp = None;
-        }
+        self.clear_latest_prompt();
 
-        // Multiplayer is single-engine authoritative; non-host peers run relay-only.
-        // Host identity is provided by the client from lobby state.
         if !local_is_host {
             return Ok("relay-only".into());
         }
 
         let game_id = format!("game-{}", uuid_simple());
         let game_id_clone = game_id.clone();
+        let backend = EngineBackendKind::from_env();
+        if !backend.is_supported() || matches!(backend, EngineBackendKind::JavaForge) {
+            java_backend::JavaRuntimeConfig::from_env().validate()?;
+            return Err("Tauri multiplayer java-forge dispatch is not wired yet".to_string());
+        }
 
-        // Engine-local player channels (TauriAgent)
         let (engine_prompt_tx, engine_prompt_rx) = mpsc::channel::<AgentPrompt>();
         let (engine_response_tx, engine_response_rx) = mpsc::channel::<PlayerAction>();
         let (engine_notify_tx, notify_rx) = mpsc::channel::<GameLogEntryDto>();
         let (engine_snapshot_tx, snapshot_rx) = mpsc::channel::<GameSnapshotEventDto>();
 
         let engine_response_tx_clone = engine_response_tx.clone();
-
-        // Remote players: shared prompt channel and per-player response channels
         let (remote_prompt_tx, remote_prompt_rx) = mpsc::channel::<(usize, AgentPrompt)>();
         let mut remote_response_txs: HashMap<usize, mpsc::Sender<PlayerAction>> = HashMap::new();
         let mut remote_response_rxs: Vec<(usize, mpsc::Receiver<PlayerAction>)> = Vec::new();
@@ -308,15 +323,17 @@ impl GameManager {
             }
         }
 
-        // Keep clones for the game thread (which builds agents internally)
         let game_engine_prompt_tx = engine_prompt_tx.clone();
         let game_remote_prompt_tx = remote_prompt_tx.clone();
-
-        // Drop extra senders so forwarders terminate when the game thread ends
         drop(engine_prompt_tx);
         drop(remote_prompt_tx);
 
-        spawn_engine_prompt_forwarder(app.clone(), self.latest_prompt.clone(), engine_prompt_rx);
+        spawn_engine_prompt_forwarder(
+            app.clone(),
+            self.latest_prompt.clone(),
+            self.latest_prompt_payload.clone(),
+            engine_prompt_rx,
+        );
         spawn_notify_forwarder(
             app.clone(),
             notify_rx,
@@ -329,7 +346,6 @@ impl GameManager {
         );
         spawn_remote_prompt_forwarder(app.clone(), remote_prompt_rx);
 
-        // Game thread
         let player_name_strs = player_names.clone();
         let selected_deck_lists = deck_lists.clone();
         let selected_commander_names = commander_names.clone();
@@ -337,11 +353,13 @@ impl GameManager {
         let abort_signal_for_thread = abort_signal.clone();
         let handle = thread::spawn(move || {
             eprintln!(
-                "[game_thread] Starting multiplayer game: {} with {} players",
-                game_id_clone, num_players
+                "[game_thread] Starting multiplayer game: {} with backend={} players={}",
+                game_id_clone,
+                backend.label(),
+                num_players
             );
-            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                run_multiplayer_game(
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| match backend {
+                EngineBackendKind::Rust => rust_backend::run_multiplayer_game(
                     game_id_clone.clone(),
                     player_name_strs,
                     selected_deck_lists,
@@ -355,7 +373,10 @@ impl GameManager {
                     game_remote_prompt_tx,
                     remote_response_rxs,
                     abort_signal_for_thread,
-                );
+                ),
+                EngineBackendKind::JavaForge => {
+                    unreachable!("unsupported backend rejected before thread start")
+                }
             }));
             match result {
                 Ok(()) => eprintln!("[game_thread] Game {} finished normally", game_id_clone),
@@ -374,7 +395,8 @@ impl GameManager {
 
         *session_guard = Some(GameSession {
             game_id: game_id.clone(),
-            response_tx: engine_response_tx_clone,
+            response_tx: Some(engine_response_tx_clone),
+            java_response_tx: None,
             remote_response_txs,
             thread_handle: Some(handle),
             is_multiplayer: true,
@@ -385,7 +407,6 @@ impl GameManager {
         Ok(game_id)
     }
 
-    /// Route a response from a remote player to the appropriate agent's channel.
     pub fn route_remote_response(&self, state: &serde_json::Value) {
         let (player_index, action) = match parse_remote_response(state) {
             Ok(v) => v,
@@ -419,11 +440,22 @@ impl GameManager {
             }
             session
                 .response_tx
+                .as_ref()
+                .ok_or_else(|| "Restore snapshots are not supported by java-forge yet".to_string())?
                 .send(PlayerAction::RestoreSnapshot { checkpoint_id })
                 .map_err(|e| format!("Game thread not responding: {}", e))?;
             Ok(())
         } else {
             Err("No active game session".into())
+        }
+    }
+
+    fn clear_latest_prompt(&self) {
+        if let Ok(mut lp) = self.latest_prompt.lock() {
+            *lp = None;
+        }
+        if let Ok(mut lp) = self.latest_prompt_payload.lock() {
+            *lp = None;
         }
     }
 }
@@ -434,231 +466,74 @@ fn uuid_simple() -> String {
     format!("{:08x}{:08x}", rng.gen::<u32>(), rng.gen::<u32>())
 }
 
-fn run_game(
-    game_id: String,
-    deck_list: Vec<CardIdentity>,
-    starting_life: i32,
-    commander_name: Option<String>,
-    opponent_deck_list: Option<Vec<CardIdentity>>,
-    prompt_tx: mpsc::Sender<AgentPrompt>,
-    response_rx: mpsc::Receiver<PlayerAction>,
-    notify_tx: mpsc::Sender<GameLogEntryDto>,
-    snapshot_tx: mpsc::Sender<GameSnapshotEventDto>,
-    abort_signal: Arc<AtomicBool>,
+fn spawn_java_prompt_forwarder(
+    app: AppHandle,
+    latest_prompt_payload: Arc<Mutex<Option<Value>>>,
+    rx: mpsc::Receiver<Value>,
 ) {
-    let mut players = Vec::with_capacity(2);
-    let mut human = if deck_list.len() == 1 && is_preset_id(&deck_list[0].name) {
-        prepare_preset_registered_player("You", &deck_list[0].name)
-    } else {
-        prepare_custom_registered_player("You", &deck_list)
-    };
-    human.registered.starting_life = starting_life;
-    if let Some(ref name) = commander_name {
-        force_commander_by_name(&mut human, name);
-    }
-    players.push(human);
-
-    let mut opponent = if let Some(ref opp_deck) = opponent_deck_list {
-        if opp_deck.len() == 1 && is_preset_id(&opp_deck[0].name) {
-            prepare_preset_registered_player("AI Opponent", &opp_deck[0].name)
-        } else {
-            prepare_custom_registered_player("AI Opponent", opp_deck)
+    thread::spawn(move || {
+        eprintln!("[java_prompt_fwd] Java prompt forwarder started");
+        while let Ok(prompt) = rx.recv() {
+            let prompt = normalize_java_prompt(prompt);
+            if let Ok(mut lp) = latest_prompt_payload.lock() {
+                *lp = Some(prompt.clone());
+            }
+            let _ = app.emit("game:prompt", &prompt);
         }
-    } else if deck_list.len() == 1 && is_preset_id(&deck_list[0].name) {
-        prepare_preset_opponent_registered_player("AI Opponent", &deck_list[0].name)
-    } else {
-        prepare_ai_registered_player("AI Opponent")
-    };
-    opponent.registered.starting_life = starting_life;
-    players.push(opponent);
-
-    let registered: Vec<RegisteredPlayer> = players.iter().map(|p| p.registered.clone()).collect();
-    let mut game = GameState::new_from_registered_players(&registered);
-    instantiate_registered_players(&mut game, players);
-
-    let p0 = PlayerId(0);
-    let p1 = PlayerId(1);
-
-    let human = PromptAgent::new(
-        p0,
-        game_id.clone(),
-        TauriTransport::new_local(prompt_tx.clone(), response_rx, notify_tx, snapshot_tx),
-    );
-
-    let (ai_prompt_tx, ai_prompt_rx) = mpsc::channel::<AgentPrompt>();
-    let (ai_response_tx, ai_response_rx) = mpsc::channel::<PlayerAction>();
-    spawn_ai_prompt_responder(ai_prompt_rx, ai_response_tx);
-    let ai = PromptAgent::new(
-        p1,
-        game_id.clone(),
-        TauriTransport::new_ai(ai_prompt_tx, ai_response_rx),
-    );
-
-    let mut agents: Vec<Box<dyn PlayerAgent>> = vec![Box::new(human), Box::new(ai)];
-    let mut game_loop = GameLoop::new(2);
-    game_loop.set_abort_signal(abort_signal);
-    if std::env::var("FORGE_ENGINE_GAME_LOG").is_err() {
-        game_loop.game_log.set_enabled(true);
-    }
-    game_loop.experimental_restore_snapshot =
-        std::env::var("FORGE_ENGINE_RESTORE_SNAPSHOT").is_ok();
-
-    // Register token templates so the engine can instantiate tokens by script name.
-    // Uses a placeholder owner (p0); the actual owner/controller is set at creation time.
-    // Attaches Scryfall set code + collector number from edition files for image lookup.
-    let token_db = get_token_db();
-    let token_image_map = get_token_image_map();
-    for (script_name, rules) in token_db.iter() {
-        let mut template = card_rules_to_instance(rules, p0);
-        if let Some(info) = token_image_map.get(script_name) {
-            template.set_code = Some(info.set_code.clone());
-            template.card_number = Some(info.collector_number.clone());
-        }
-        game_loop.register_token(script_name.clone(), template);
-    }
-
-    let mut rng = rand::rngs::StdRng::from_entropy();
-
-    let winner = game_loop.run(&mut game, &mut agents, &mut rng, 5000);
-
-    // Send final game-over prompt
-    let final_view = GameViewDto::from_engine(&game, &game_loop.mana_pools, p0, &game_id, &[], &[]);
-    let _ = prompt_tx.send(AgentPrompt {
-        display_events: vec![],
-        inner: AgentPromptInner::GameOver {
-            game_view: final_view,
-        },
+        eprintln!("[java_prompt_fwd] Java prompt forwarder ended");
     });
-
-    let _ = winner; // winner is also in the game_view
 }
 
-fn run_multiplayer_game(
-    game_id: String,
-    player_names: Vec<String>,
-    deck_lists: Vec<Vec<CardIdentity>>,
-    commander_names: Vec<Option<String>>,
-    engine_player_index: usize,
-    starting_life: i32,
-    engine_prompt_tx: mpsc::Sender<AgentPrompt>,
-    engine_response_rx: mpsc::Receiver<PlayerAction>,
-    engine_notify_tx: mpsc::Sender<GameLogEntryDto>,
-    engine_snapshot_tx: mpsc::Sender<GameSnapshotEventDto>,
-    remote_prompt_tx: mpsc::Sender<(usize, AgentPrompt)>,
-    remote_response_rxs: Vec<(usize, mpsc::Receiver<PlayerAction>)>,
-    abort_signal: Arc<AtomicBool>,
-) {
-    let num_players = player_names.len();
-    let mut prepared_players = Vec::with_capacity(num_players);
-    for i in 0..num_players {
-        let mut prepared = if deck_lists[i].len() == 1 && is_preset_id(&deck_lists[i][0].name) {
-            prepare_preset_registered_player(player_names[i].clone(), &deck_lists[i][0].name)
-        } else {
-            prepare_custom_registered_player(player_names[i].clone(), &deck_lists[i])
-        };
-        prepared.registered.starting_life = starting_life;
-        if let Some(ref commander_name) = commander_names[i] {
-            force_commander_by_name(&mut prepared, commander_name);
+fn translate_java_action(action: &PlayerAction) -> Value {
+    match action {
+        PlayerAction::PlayCard {
+            card_id: Some(card_id),
+            mode,
+        } => mode
+            .as_deref()
+            .and_then(|mode| {
+                mode.strip_prefix("prompt-action-")
+                    .or_else(|| mode.strip_prefix("java-forge-action:"))
+            })
+            .or_else(|| {
+                if mode.as_deref() == Some("java-forge-action") {
+                    card_id.strip_prefix("java-action-")
+                } else {
+                    None
+                }
+            })
+            .and_then(|index| index.parse::<usize>().ok())
+            .map(|index| json!({ "kind": "choose_action", "index": index }))
+            .unwrap_or_else(|| json!({ "kind": "pass" })),
+        PlayerAction::DiscardDecision { discarded_card_ids } => {
+            json!({ "kind": "choose_cards", "card_ids": discarded_card_ids })
         }
-        prepared_players.push(prepared);
-    }
-    let registered: Vec<RegisteredPlayer> = prepared_players
-        .iter()
-        .map(|p| p.registered.clone())
-        .collect();
-    let mut game = GameState::new_from_registered_players(&registered);
-    instantiate_registered_players(&mut game, prepared_players);
-
-    // Build agents inside the thread (avoids Send issues with trait objects).
-    let engine_pid = PlayerId(engine_player_index as u32);
-    let mut engine_agent: Option<Box<dyn PlayerAgent>> = Some(Box::new(PromptAgent::new(
-        engine_pid,
-        game_id.clone(),
-        TauriTransport::new_local(
-            engine_prompt_tx.clone(),
-            engine_response_rx,
-            engine_notify_tx,
-            engine_snapshot_tx,
-        ),
-    )));
-
-    let mut remote_rx_map: HashMap<usize, mpsc::Receiver<PlayerAction>> =
-        remote_response_rxs.into_iter().collect();
-
-    let mut agents: Vec<Box<dyn PlayerAgent>> = Vec::with_capacity(num_players);
-    for i in 0..num_players {
-        if i == engine_player_index {
-            agents.push(engine_agent.take().unwrap());
-        } else {
-            let pid = PlayerId(i as u32);
-            let resp_rx = remote_rx_map
-                .remove(&i)
-                .expect("Missing response rx for remote player");
-            let agent = PromptAgent::new(
-                pid,
-                game_id.clone(),
-                TauriTransport::new_relay(i, remote_prompt_tx.clone(), resp_rx),
-            );
-            agents.push(Box::new(agent));
+        PlayerAction::MulliganDecision { keep } => {
+            json!({ "kind": "mulligan_decision", "keep": keep })
         }
-    }
-
-    let mut game_loop = GameLoop::new(num_players);
-    game_loop.set_abort_signal(abort_signal);
-    if std::env::var("FORGE_ENGINE_GAME_LOG").is_err() {
-        game_loop.game_log.set_enabled(true);
-    }
-    game_loop.experimental_restore_snapshot =
-        std::env::var("FORGE_ENGINE_RESTORE_SNAPSHOT").is_ok();
-
-    // Register token templates with their Scryfall set code + collector
-    // number so the frontend can fetch the correct token art. Mirrors the
-    // single-player path — without this, tokens arrive with empty
-    // set_code/card_number and the UI falls back to a generic name lookup
-    // that returns the wrong image (or nothing) for common token names.
-    let p0 = PlayerId(0);
-    let token_db = get_token_db();
-    let token_image_map = get_token_image_map();
-    for (script_name, rules) in token_db.iter() {
-        let mut template = card_rules_to_instance(rules, p0);
-        if let Some(info) = token_image_map.get(script_name) {
-            template.set_code = Some(info.set_code.clone());
-            template.card_number = Some(info.collector_number.clone());
+        PlayerAction::MulliganPutBackDecision { card_ids } => {
+            json!({ "kind": "choose_cards", "card_ids": card_ids })
         }
-        game_loop.register_token(script_name.clone(), template);
-    }
-
-    let mut rng = rand::rngs::StdRng::from_entropy();
-
-    let _winner = game_loop.run(&mut game, &mut agents, &mut rng, 5000);
-
-    // Send final game-over prompt to the engine-local player.
-    let engine_pid = PlayerId(engine_player_index as u32);
-    let engine_final_view =
-        GameViewDto::from_engine(&game, &game_loop.mana_pools, engine_pid, &game_id, &[], &[]);
-    let _ = engine_prompt_tx.send(AgentPrompt {
-        display_events: vec![],
-        inner: AgentPromptInner::GameOver {
-            game_view: engine_final_view,
-        },
-    });
-
-    // Send final game-over prompt to each remote player
-    for i in 0..num_players {
-        if i == engine_player_index {
-            continue;
+        PlayerAction::DeclareAttackers { assignments } => json!({
+            "kind": "declare_attackers",
+            "assignments": assignments
+                .iter()
+                .map(|assignment| json!({
+                    "attackerId": assignment.attacker_id,
+                    "defenderId": assignment.defender_id,
+                }))
+                .collect::<Vec<_>>(),
+        }),
+        PlayerAction::TapLand {
+            ability_index: Some(index),
+            ..
         }
-        let pid = PlayerId(i as u32);
-        let remote_view =
-            GameViewDto::from_engine(&game, &game_loop.mana_pools, pid, &game_id, &[], &[]);
-        let _ = remote_prompt_tx.send((
-            i,
-            AgentPrompt {
-                display_events: vec![],
-                inner: AgentPromptInner::GameOver {
-                    game_view: remote_view,
-                },
-            },
-        ));
+        | PlayerAction::ActivateAbility {
+            ability_index: index,
+            ..
+        } => json!({ "kind": "choose_action", "index": index }),
+        PlayerAction::PlayCard { card_id: None, .. } => json!({ "kind": "pass" }),
+        PlayerAction::Concede => json!({ "kind": "pass" }),
+        _ => json!({ "kind": "pass" }),
     }
 }

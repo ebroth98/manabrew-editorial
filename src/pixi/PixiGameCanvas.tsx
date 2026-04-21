@@ -260,7 +260,7 @@ export function PixiGameCanvas({
   useEffect(() => {
     if (!scene) return;
     scene.setHandPreferences(handSize, vScale);
-    if (hand) scene.updateHand(hand);
+    scene.updateHand(hand ?? { cards: [] });
   }, [scene, hand, handSize, vScale]);
 
   useEffect(() => {

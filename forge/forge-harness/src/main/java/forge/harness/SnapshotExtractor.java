@@ -90,7 +90,7 @@ public final class SnapshotExtractor {
         ps.put("poison", p.getPoisonCounters());
         ps.put("lands_played", p.getLandsPlayedThisTurn());
         ps.put("has_lost", p.hasLost());
-        ps.put("has_won", p.hasWon());
+        ps.put("has_won", isOutcomeWinner(game, p));
 
         // Battlefield — full card snapshots sorted alphabetically
         List<Card> bfCards = new ArrayList<>(p.getCardsIn(ZoneType.Battlefield));
@@ -180,6 +180,17 @@ public final class SnapshotExtractor {
         return cs;
     }
 
+    static String javaCardId(Card c) {
+        return "java-card-" + ParityCardMap.parityId(c);
+    }
+
+    private static boolean isOutcomeWinner(Game game, Player p) {
+        return game.getOutcome() != null
+                && !game.getOutcome().isDraw()
+                && game.getOutcome().getWinningLobbyPlayer() != null
+                && p.getName().equals(game.getOutcome().getWinningLobbyPlayer().getName());
+    }
+
     private static String normalizeCardName(String name) {
         if (name != null && name.startsWith("Troll of Khazad-d") && name.endsWith("m")) {
             return "Troll of Khazad-d\u00fbm";
@@ -233,7 +244,7 @@ public final class SnapshotExtractor {
         return ct.getName().toLowerCase();
     }
 
-    private static int playerIndex(Game game, Player p) {
+    public static int playerIndex(Game game, Player p) {
         if (p == null) return 0;
         List<Player> players = game.getRegisteredPlayers();
         for (int i = 0; i < players.size(); i++) {

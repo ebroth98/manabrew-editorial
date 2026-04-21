@@ -1,34 +1,22 @@
 use std::collections::HashMap;
-use std::env;
-use std::path::PathBuf;
-use std::sync::{mpsc as std_mpsc, Arc, Mutex, OnceLock};
+use std::sync::{mpsc as std_mpsc, Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 
 mod config;
+mod engine_backend;
 
 use config::{workspace_root, Config, DeckSelection};
-use forge_agent_interface::agent_impl::PromptAgent;
-use forge_agent_interface::game_view_dto::GameViewDto;
+use engine_backend::{java_backend, rust_backend, EngineBackendKind};
 use forge_agent_interface::ids_codec::{parse_player_slot, player_slot};
-use forge_agent_interface::prompt::{AgentPrompt, AgentPromptInner, PlayerAction};
-use forge_agent_interface::simple_ai::{choose_simple_ai_action, spawn_simple_ai_prompt_responder};
-use forge_carddb::CardDatabase;
-use forge_engine_core::agent::PlayerAgent;
-use forge_engine_core::game::{GameState, TypeRegistry};
-use forge_engine_core::game_loop::GameLoop;
-use forge_engine_core::ids::PlayerId;
-use forge_game_runtime::deck::{
-    card_rules_to_instance, force_commander_by_name, instantiate_registered_players,
-    prepare_registered_player, DeckCardIdentity,
-};
-use forge_game_runtime::mpsc_transport::MpscTransport as NodeTransport;
+use forge_agent_interface::prompt::{AgentPrompt, PlayerAction};
+use forge_agent_interface::simple_ai::choose_simple_ai_action;
+use forge_engine_core::game::TypeRegistry;
 use forge_server::protocol::{
     CardIdentity, ClientMessage, PlayerDeckInfo, RoomInfo, RoomStatus, ServerMessage,
 };
 use futures_util::stream::{SplitSink, SplitStream};
 use futures_util::{SinkExt, StreamExt};
-use rand::SeedableRng;
 use serde::Deserialize;
 use serde_json::{json, Value};
 use tokio::net::TcpStream;
@@ -58,8 +46,13 @@ struct RelayClient {
     read: WsRead,
 }
 
-struct EngineSession {
-    remote_response_txs: HashMap<usize, std_mpsc::Sender<PlayerAction>>,
+enum EngineSession {
+    Rust {
+        remote_response_txs: HashMap<usize, std_mpsc::Sender<PlayerAction>>,
+    },
+    Java {
+        remote_response_txs: HashMap<usize, std_mpsc::Sender<Value>>,
+    },
 }
 
 #[derive(Default)]
@@ -97,6 +90,19 @@ async fn main() {
                 .unwrap_or_else(|_| "self_hosted_node=info".into()),
         )
         .init();
+
+    if std::env::var("SELF_HOSTED_NODE_JAVA_SMOKE").is_ok() {
+        let max_prompts = std::env::var("SELF_HOSTED_NODE_JAVA_SMOKE_PROMPTS")
+            .ok()
+            .and_then(|value| value.parse().ok())
+            .unwrap_or(4);
+        if let Err(error) = java_backend::run_smoke_game(max_prompts) {
+            error!(%error, "java-forge smoke failed");
+            std::process::exit(1);
+        }
+        info!(max_prompts, "java-forge smoke completed");
+        return;
+    }
 
     let config = Config::from_env();
     if let Err(error) = run(config).await {
@@ -594,7 +600,7 @@ async fn maybe_answer_bot_prompt(
         return Ok(());
     };
 
-    let action = {
+    let action_value = {
         let mut guard = match loop_state.lock() {
             Ok(guard) => guard,
             Err(error) => {
@@ -611,8 +617,16 @@ async fn maybe_answer_bot_prompt(
             );
             return Ok(());
         }
-        if let Some(action) = choose_simple_ai_action_from_prompt_value(prompt_value) {
-            Some(action)
+        if prompt_value.get("kind").and_then(Value::as_str) == Some("priority") {
+            Some(json!({ "kind": "pass" }))
+        } else if let Some(action) = choose_simple_ai_action_from_prompt_value(prompt_value) {
+            match serde_json::to_value(action) {
+                Ok(value) => Some(value),
+                Err(error) => {
+                    warn!(observer = %client.username, %error, "failed to serialize bot action");
+                    None
+                }
+            }
         } else {
             let prompt: AgentPrompt = match serde_json::from_value(prompt_value.clone()) {
                 Ok(prompt) => prompt,
@@ -626,11 +640,17 @@ async fn maybe_answer_bot_prompt(
             let action = choose_simple_ai_action(prompt, &mut signature, &mut choice);
             guard.last_choose_action_signature = signature;
             guard.last_choose_action_choice = choice;
-            action
+            action.and_then(|action| match serde_json::to_value(action) {
+                Ok(value) => Some(value),
+                Err(error) => {
+                    warn!(observer = %client.username, %error, "failed to serialize bot action");
+                    None
+                }
+            })
         }
     };
 
-    let Some(action) = action else {
+    let Some(action_value) = action_value else {
         warn!(observer = %client.username, for_player, "simple AI had no response for prompt");
         return Ok(());
     };
@@ -640,7 +660,7 @@ async fn maybe_answer_bot_prompt(
             state: json!({
                 "kind": "response",
                 "fromPlayer": for_player,
-                "action": action,
+                "action": action_value,
             }),
         })
         .await?;
@@ -739,6 +759,23 @@ fn maybe_start_hosted_engine(
         debug!("hosted engine disabled for this node");
         return;
     }
+    let backend = EngineBackendKind::from_env();
+    if !backend.is_supported() {
+        if let Err(error) = java_backend::JavaRuntimeConfig::from_env().validate() {
+            warn!(
+                backend = backend.label(),
+                %error,
+                "hosted engine backend runtime is not ready"
+            );
+            return;
+        }
+        warn!(
+            backend = backend.label(),
+            message = java_backend::unsupported_message(),
+            "hosted engine backend is not implemented yet"
+        );
+        return;
+    }
 
     let local_player_index = if config.host_plays {
         match player_order
@@ -792,59 +829,109 @@ fn maybe_start_hosted_engine(
         commander_names.push(deck.commander_name);
     }
 
-    let (remote_prompt_tx, remote_prompt_rx) = std_mpsc::channel::<(usize, AgentPrompt)>();
-    let mut remote_response_txs = HashMap::new();
-    let mut remote_response_rxs = Vec::new();
-    for i in 0..num_players {
-        if Some(i) == local_player_index {
-            continue;
-        }
-        let (response_tx, response_rx) = std_mpsc::channel::<PlayerAction>();
-        remote_response_txs.insert(i, response_tx);
-        remote_response_rxs.push((i, response_rx));
-    }
-    *guard = Some(EngineSession {
-        remote_response_txs,
-    });
-    drop(guard);
-
-    spawn_remote_prompt_forwarder(outbound_tx.clone(), remote_prompt_rx);
-
     let player_names = player_order;
     let game_id = format!("room-game-{}", Uuid::new_v4());
-    thread::spawn(move || {
-        info!(
-            game_id,
-            players = num_players,
-            local_player_index,
-            "starting hosted engine thread"
-        );
-        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            run_hosted_engine_game(
-                game_id.clone(),
-                player_names,
-                ordered_decks,
-                commander_names,
-                local_player_index,
-                starting_life,
-                remote_prompt_tx,
-                remote_response_rxs,
-            );
-        }));
-        match result {
-            Ok(()) => info!("hosted engine thread finished"),
-            Err(error) => {
-                let message = if let Some(message) = error.downcast_ref::<String>() {
-                    message.clone()
-                } else if let Some(message) = error.downcast_ref::<&str>() {
-                    message.to_string()
-                } else {
-                    "unknown panic".to_string()
-                };
-                error!(message, "hosted engine thread panicked");
+
+    match backend {
+        EngineBackendKind::Rust => {
+            let (remote_prompt_tx, remote_prompt_rx) = std_mpsc::channel::<(usize, AgentPrompt)>();
+            let mut remote_response_txs = HashMap::new();
+            let mut remote_response_rxs = Vec::new();
+            for i in 0..num_players {
+                if Some(i) == local_player_index {
+                    continue;
+                }
+                let (response_tx, response_rx) = std_mpsc::channel::<PlayerAction>();
+                remote_response_txs.insert(i, response_tx);
+                remote_response_rxs.push((i, response_rx));
             }
+            *guard = Some(EngineSession::Rust {
+                remote_response_txs,
+            });
+            drop(guard);
+
+            spawn_remote_prompt_forwarder(outbound_tx.clone(), remote_prompt_rx);
+            thread::spawn(move || {
+                info!(
+                    game_id,
+                    backend = backend.label(),
+                    players = num_players,
+                    local_player_index,
+                    "starting hosted engine thread"
+                );
+                let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    rust_backend::run_hosted_engine_game(
+                        game_id.clone(),
+                        player_names,
+                        ordered_decks,
+                        commander_names,
+                        local_player_index,
+                        starting_life,
+                        remote_prompt_tx,
+                        remote_response_rxs,
+                    )
+                }));
+                log_hosted_engine_result(result);
+            });
         }
-    });
+        EngineBackendKind::JavaForge => {
+            let (remote_prompt_tx, remote_prompt_rx) = std_mpsc::channel::<(usize, Value)>();
+            let mut remote_response_txs = HashMap::new();
+            let mut remote_response_rxs = Vec::new();
+            for i in 0..num_players {
+                if Some(i) == local_player_index {
+                    continue;
+                }
+                let (response_tx, response_rx) = std_mpsc::channel::<Value>();
+                remote_response_txs.insert(i, response_tx);
+                remote_response_rxs.push((i, response_rx));
+            }
+            *guard = Some(EngineSession::Java {
+                remote_response_txs,
+            });
+            drop(guard);
+
+            spawn_raw_prompt_forwarder(outbound_tx.clone(), remote_prompt_rx);
+            thread::spawn(move || {
+                info!(
+                    game_id,
+                    backend = backend.label(),
+                    players = num_players,
+                    local_player_index,
+                    "starting hosted engine thread"
+                );
+                let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    java_backend::run_hosted_engine_game(
+                        game_id.clone(),
+                        player_names,
+                        ordered_decks,
+                        commander_names,
+                        local_player_index,
+                        starting_life,
+                        remote_prompt_tx,
+                        remote_response_rxs,
+                    )
+                }));
+                log_hosted_engine_result(result);
+            });
+        }
+    }
+}
+
+fn log_hosted_engine_result(result: std::thread::Result<()>) {
+    match result {
+        Ok(()) => info!("hosted engine thread finished"),
+        Err(error) => {
+            let message = if let Some(message) = error.downcast_ref::<String>() {
+                message.clone()
+            } else if let Some(message) = error.downcast_ref::<&str>() {
+                message.to_string()
+            } else {
+                "unknown panic".to_string()
+            };
+            error!(message, "hosted engine thread panicked");
+        }
+    }
 }
 
 fn route_remote_response(engine_session: &SharedEngineSession, state: &Value) {
@@ -863,13 +950,6 @@ fn route_remote_response(engine_session: &SharedEngineSession, state: &Value) {
         warn!(from_player, "relay response missing action");
         return;
     };
-    let action: PlayerAction = match serde_json::from_value(action_value.clone()) {
-        Ok(action) => action,
-        Err(error) => {
-            warn!(from_player, %error, "relay response has invalid action");
-            return;
-        }
-    };
 
     let guard = match engine_session.lock() {
         Ok(guard) => guard,
@@ -882,18 +962,141 @@ fn route_remote_response(engine_session: &SharedEngineSession, state: &Value) {
         debug!(from_player, "no engine session for relay response");
         return;
     };
-    let Some(tx) = session.remote_response_txs.get(&player_index) else {
-        debug!(from_player, player_index, "no response channel for player");
-        return;
-    };
-    if let Err(error) = tx.send(action) {
-        warn!(from_player, %error, "failed to route relay response");
+    match session {
+        EngineSession::Rust {
+            remote_response_txs,
+        } => {
+            let action: PlayerAction = match serde_json::from_value(action_value.clone()) {
+                Ok(action) => action,
+                Err(error) => {
+                    warn!(from_player, %error, "relay response has invalid rust action");
+                    return;
+                }
+            };
+            let Some(tx) = remote_response_txs.get(&player_index) else {
+                debug!(from_player, player_index, "no response channel for player");
+                return;
+            };
+            if let Err(error) = tx.send(action) {
+                warn!(from_player, %error, "failed to route relay response");
+            }
+        }
+        EngineSession::Java {
+            remote_response_txs,
+        } => {
+            let Some(tx) = remote_response_txs.get(&player_index) else {
+                debug!(from_player, player_index, "no response channel for player");
+                return;
+            };
+            if let Err(error) = tx.send(translate_java_action(action_value)) {
+                warn!(from_player, %error, "failed to route relay response");
+            }
+        }
     }
+}
+
+fn translate_java_action(action_value: &Value) -> Value {
+    if action_value.get("kind").is_some() {
+        return action_value.clone();
+    }
+    if action_value.get("type").and_then(Value::as_str) == Some("playCard")
+        && action_value
+            .get("mode")
+            .and_then(Value::as_str)
+            .is_some_and(|mode| {
+                mode == "java-forge-action"
+                    || mode.starts_with("java-forge-action:")
+                    || mode.starts_with("prompt-action-")
+            })
+    {
+        let mode_index = action_value
+            .get("mode")
+            .and_then(Value::as_str)
+            .and_then(|mode| {
+                mode.strip_prefix("prompt-action-")
+                    .or_else(|| mode.strip_prefix("java-forge-action:"))
+            });
+        let card_index = action_value
+            .get("cardId")
+            .and_then(Value::as_str)
+            .and_then(|card_id| card_id.strip_prefix("java-action-"));
+        if let Some(index) = mode_index
+            .or(card_index)
+            .and_then(|index| index.parse::<usize>().ok())
+        {
+            return json!({ "kind": "choose_action", "index": index });
+        }
+    }
+    if action_value.get("type").and_then(Value::as_str) == Some("discardDecision") {
+        return json!({
+            "kind": "choose_cards",
+            "card_ids": action_value
+                .get("discardedCardIds")
+                .cloned()
+                .unwrap_or_else(|| json!([])),
+        });
+    }
+    if action_value.get("type").and_then(Value::as_str) == Some("mulliganDecision") {
+        return json!({
+            "kind": "mulligan_decision",
+            "keep": action_value
+                .get("keep")
+                .and_then(Value::as_bool)
+                .unwrap_or(true),
+        });
+    }
+    if action_value.get("type").and_then(Value::as_str) == Some("mulliganPutBackDecision") {
+        return json!({
+            "kind": "choose_cards",
+            "card_ids": action_value
+                .get("cardIds")
+                .cloned()
+                .unwrap_or_else(|| json!([])),
+        });
+    }
+    if action_value.get("type").and_then(Value::as_str) == Some("declareAttackers") {
+        return json!({
+            "kind": "declare_attackers",
+            "assignments": action_value
+                .get("assignments")
+                .cloned()
+                .unwrap_or_else(|| json!([])),
+        });
+    }
+    if action_value.get("type").and_then(Value::as_str) == Some("tapLand")
+        || action_value.get("type").and_then(Value::as_str) == Some("activateAbility")
+    {
+        if let Some(index) = action_value.get("abilityIndex").and_then(Value::as_u64) {
+            return json!({ "kind": "choose_action", "index": index });
+        }
+    }
+    json!({ "kind": "pass" })
 }
 
 fn spawn_remote_prompt_forwarder(
     outbound_tx: tokio_mpsc::UnboundedSender<ClientMessage>,
     remote_prompt_rx: std_mpsc::Receiver<(usize, AgentPrompt)>,
+) {
+    thread::spawn(move || {
+        while let Ok((player_index, prompt)) = remote_prompt_rx.recv() {
+            let state = json!({
+                "kind": "prompt",
+                "forPlayer": player_slot(player_index),
+                "prompt": prompt,
+            });
+            if outbound_tx
+                .send(ClientMessage::BroadcastState { state })
+                .is_err()
+            {
+                break;
+            }
+        }
+    });
+}
+
+fn spawn_raw_prompt_forwarder(
+    outbound_tx: tokio_mpsc::UnboundedSender<ClientMessage>,
+    remote_prompt_rx: std_mpsc::Receiver<(usize, Value)>,
 ) {
     thread::spawn(move || {
         while let Ok((player_index, prompt)) = remote_prompt_rx.recv() {
@@ -1002,157 +1205,6 @@ impl RelayClient {
         })
         .await
     }
-}
-
-fn run_hosted_engine_game(
-    game_id: String,
-    player_names: Vec<String>,
-    deck_lists: Vec<Vec<CardIdentity>>,
-    commander_names: Vec<Option<String>>,
-    local_player_index: Option<usize>,
-    starting_life: i32,
-    remote_prompt_tx: std_mpsc::Sender<(usize, AgentPrompt)>,
-    remote_response_rxs: Vec<(usize, std_mpsc::Receiver<PlayerAction>)>,
-) {
-    let num_players = player_names.len();
-    let mut prepared_players = Vec::with_capacity(num_players);
-    for i in 0..num_players {
-        let identities = deck_lists[i]
-            .iter()
-            .map(|identity| DeckCardIdentity {
-                name: identity.name.clone(),
-                set_code: identity.set_code.clone(),
-                section: None,
-            })
-            .collect::<Vec<_>>();
-        let mut prepared =
-            prepare_registered_player(player_names[i].clone(), get_card_db(), &identities);
-        prepared.registered.starting_life = starting_life;
-        if let Some(ref commander_name) = commander_names[i] {
-            if !force_commander_by_name(&mut prepared, commander_name) {
-                warn!(commander_name, "commander name not found in selected deck");
-            }
-        }
-        prepared_players.push(prepared);
-    }
-
-    let registered = prepared_players
-        .iter()
-        .map(|player| player.registered.clone())
-        .collect::<Vec<_>>();
-    let mut game = GameState::new_from_registered_players(&registered);
-    instantiate_registered_players(&mut game, prepared_players);
-
-    let local_ai = local_player_index.map(|player_index| {
-        let (ai_prompt_tx, ai_prompt_rx) = std_mpsc::channel::<AgentPrompt>();
-        let (ai_response_tx, ai_response_rx) = std_mpsc::channel::<PlayerAction>();
-        spawn_simple_ai_prompt_responder(ai_prompt_rx, ai_response_tx);
-        (
-            player_index,
-            Box::new(PromptAgent::new(
-                PlayerId(player_index as u32),
-                game_id.clone(),
-                NodeTransport::new_ai(ai_prompt_tx, ai_response_rx),
-            )) as Box<dyn PlayerAgent>,
-        )
-    });
-
-    let mut remote_rx_map: HashMap<usize, std_mpsc::Receiver<PlayerAction>> =
-        remote_response_rxs.into_iter().collect();
-
-    let mut local_ai = local_ai;
-    let mut agents: Vec<Box<dyn PlayerAgent>> = Vec::with_capacity(num_players);
-    for i in 0..num_players {
-        if Some(i) == local_player_index {
-            agents.push(local_ai.take().expect("missing local ai agent").1);
-        } else {
-            let response_rx = remote_rx_map
-                .remove(&i)
-                .expect("missing remote response receiver");
-            agents.push(Box::new(PromptAgent::new(
-                PlayerId(i as u32),
-                game_id.clone(),
-                NodeTransport::new_relay(i, remote_prompt_tx.clone(), response_rx),
-            )));
-        }
-    }
-
-    let mut game_loop = GameLoop::new(num_players);
-    if std::env::var("FORGE_ENGINE_GAME_LOG").is_err() {
-        game_loop.game_log.set_enabled(true);
-    }
-    game_loop.experimental_restore_snapshot =
-        std::env::var("FORGE_ENGINE_RESTORE_SNAPSHOT").is_ok();
-
-    let token_db = get_token_db();
-    for (script_name, rules) in token_db.iter() {
-        let template = card_rules_to_instance(rules, PlayerId(0));
-        game_loop.register_token(script_name.clone(), template);
-    }
-
-    let mut rng = rand::rngs::StdRng::from_entropy();
-    let _winner = game_loop.run(&mut game, &mut agents, &mut rng, 5000);
-
-    for i in 0..num_players {
-        if Some(i) == local_player_index {
-            continue;
-        }
-        let pid = PlayerId(i as u32);
-        let game_view =
-            GameViewDto::from_engine(&game, &game_loop.mana_pools, pid, &game_id, &[], &[]);
-        let _ = remote_prompt_tx.send((
-            i,
-            AgentPrompt {
-                display_events: vec![],
-                inner: AgentPromptInner::GameOver { game_view },
-            },
-        ));
-    }
-}
-
-fn get_card_db() -> &'static CardDatabase {
-    static CARD_DB: OnceLock<CardDatabase> = OnceLock::new();
-    CARD_DB.get_or_init(|| {
-        let dir = cards_dir();
-        info!(path = %dir.display(), "loading card database");
-        let (db, result) = CardDatabase::load_from_directory(&dir);
-        info!(
-            loaded = result.loaded,
-            failed = result.failed,
-            "loaded card database"
-        );
-        for (file, error) in result.errors.iter().take(10) {
-            warn!(file, %error, "card parse error");
-        }
-        db
-    })
-}
-
-fn get_token_db() -> &'static CardDatabase {
-    static TOKEN_DB: OnceLock<CardDatabase> = OnceLock::new();
-    TOKEN_DB.get_or_init(|| {
-        let dir = token_scripts_dir();
-        info!(path = %dir.display(), "loading token database");
-        let (db, result) = CardDatabase::load_from_directory(&dir);
-        info!(
-            loaded = result.loaded,
-            failed = result.failed,
-            "loaded token database"
-        );
-        db
-    })
-}
-
-fn cards_dir() -> PathBuf {
-    env::var("CARDS_DIR")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| workspace_root().join("forge/forge-gui/res/cardsfolder"))
-}
-
-fn token_scripts_dir() -> PathBuf {
-    env::var("TOKEN_SCRIPTS_DIR")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| workspace_root().join("forge/forge-gui/res/tokenscripts"))
 }
 
 fn log_room_update(observer: &str, room: &RoomInfo) {

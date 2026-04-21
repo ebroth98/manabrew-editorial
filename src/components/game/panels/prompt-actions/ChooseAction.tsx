@@ -23,8 +23,7 @@ export function ChooseAction({
     const passActionStyle = getPromptActionButtonStyle(promptActionColors.passAction);
 
     return (
-      <div
-        className="flex w-3/5 flex-col gap-1.5">
+      <div className="flex w-3/5 flex-col gap-1.5">
         <div className="relative group/pass-priority">
           <Button
             size="sm"

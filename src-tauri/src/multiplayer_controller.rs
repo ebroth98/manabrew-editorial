@@ -2,6 +2,7 @@ use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
 use std::thread;
 
+use serde_json::Value;
 use tauri::{AppHandle, Emitter, Manager};
 
 use crate::network::{
@@ -16,6 +17,7 @@ use forge_agent_interface::prompt::{AgentPrompt, PlayerAction};
 pub fn spawn_engine_prompt_forwarder(
     app: AppHandle,
     latest_prompt: Arc<Mutex<Option<AgentPrompt>>>,
+    latest_prompt_payload: Arc<Mutex<Option<Value>>>,
     rx: mpsc::Receiver<AgentPrompt>,
 ) {
     thread::spawn(move || {
@@ -23,6 +25,9 @@ pub fn spawn_engine_prompt_forwarder(
         while let Ok(prompt) = rx.recv() {
             if let Ok(mut lp) = latest_prompt.lock() {
                 *lp = Some(prompt.clone());
+            }
+            if let Ok(mut lp) = latest_prompt_payload.lock() {
+                *lp = serde_json::to_value(&prompt).ok();
             }
             let _ = app.emit("game:prompt", &prompt);
         }

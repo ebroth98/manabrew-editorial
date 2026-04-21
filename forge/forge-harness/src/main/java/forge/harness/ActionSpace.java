@@ -41,10 +41,16 @@ public final class ActionSpace {
     private ActionSpace() {}
 
     private static String actionBaseLabel(final SpellAbility sa) {
-        final String kind = sa.isLandAbility() ? "LAND"
-                : (sa.isSpell() ? "SPELL" : (sa.isManaAbility() ? "MANA" : "AB"));
+        final String kind = sa.isCycling() ? "CYCLE"
+                : (sa.isLandAbility() ? "LAND"
+                : (sa.isSpell() ? "SPELL" : (sa.isManaAbility() ? "MANA" : "AB")));
         final String fbTag = sa.isFlashback() ? "[FB]" : "";
-        return kind + ":" + sa.getHostCard().getName() + fbTag;
+        final String hostName = sa.getHostCard().getName();
+        final String faceName = sa.getCardState() == null ? hostName : sa.getCardState().getName();
+        final String name = faceName == null || faceName.isBlank() || faceName.equals(hostName)
+                ? hostName
+                : hostName + "|" + faceName;
+        return kind + ":" + name + fbTag;
     }
 
     /**

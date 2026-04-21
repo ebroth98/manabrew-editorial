@@ -26,7 +26,7 @@ public class HeadlessGuiBase implements IGuiBase {
     private final String assetsDir;
 
     public HeadlessGuiBase(String assetsDir) {
-        this.assetsDir = assetsDir;
+        this.assetsDir = assetsDir.endsWith(File.separator) ? assetsDir : assetsDir + File.separator;
     }
 
     @Override public boolean isRunningOnDesktop() { return true; }

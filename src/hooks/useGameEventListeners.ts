@@ -7,6 +7,12 @@ import { normalizeSnapshotPayload } from '@/types/gameSnapshot';
 import { applyPrompt } from '@/stores/gameStore.constants';
 import type { AgentPrompt } from '@/stores/gameStore.types';
 
+function normalizeEnginePrompt(prompt: unknown): AgentPrompt | null {
+  return typeof prompt === 'object' && prompt !== null && 'type' in prompt
+    ? (prompt as AgentPrompt)
+    : null;
+}
+
 /**
  * Hook that sets up platform event listeners for game state updates.
  * Works with both Tauri and Web platforms.
@@ -22,11 +28,11 @@ export function useGameEventListeners() {
     // the game:prompt event was emitted before this component mounted
     const fetchInitialState = async () => {
       try {
-        const prompt = await runtime.api.getPrompt();
-        if (prompt && (prompt as AgentPrompt).gameView) {
+        const prompt = normalizeEnginePrompt(await runtime.api.getPrompt());
+        if (prompt?.gameView) {
           const currentView = useGameStore.getState().gameView;
           if (!currentView) {
-            applyPrompt(prompt as AgentPrompt, 'Initial', useGameStore.setState, useGameStore.getState);
+            applyPrompt(prompt, 'Initial', useGameStore.setState, useGameStore.getState);
           }
         }
       } catch (e) {
@@ -38,7 +44,9 @@ export function useGameEventListeners() {
 
     try {
       unsubscribers.push(
-        platform.events.on<AgentPrompt>('game:prompt', (prompt) => {
+        platform.events.on<unknown>('game:prompt', (payload) => {
+          const prompt = normalizeEnginePrompt(payload);
+          if (!prompt) return;
           const activeRuntime = getSelectedGameRuntime();
           const gameView = useGameStore.getState().gameView;
           if (gameView?.gameOver) return;
@@ -75,8 +83,10 @@ export function useGameEventListeners() {
 
       // Remote prompt listener: receives prompts relayed via the server for non-host players
       unsubscribers.push(
-        platform.events.on<{ kind: string; forPlayer: string; prompt: AgentPrompt }>('game:remote_prompt', (payload) => {
-          const { forPlayer, prompt } = payload;
+        platform.events.on<{ kind: string; forPlayer: string; prompt: unknown }>('game:remote_prompt', (payload) => {
+          const { forPlayer } = payload;
+          const prompt = normalizeEnginePrompt(payload.prompt);
+          if (!prompt) return;
           const { myPlayerSlot } = useGameStore.getState();
           if (forPlayer === myPlayerSlot) {
             // This prompt is for us — render it fully.

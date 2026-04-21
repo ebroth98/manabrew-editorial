@@ -103,6 +103,68 @@ yarn build
 
 Creates a distributable native app in `src-tauri/target/release/`.
 
+### Java Forge Backend (WIP)
+
+The app normally runs the native Rust engine. The `java-forge` backend is an opt-in bridge that runs the Java Forge rules engine through the existing game API/runtime shape. Use it when testing the Java-backed Forge integration instead of the Rust engine.
+
+#### Build the Java Harness
+
+Use JDK 18 for the Forge harness. On macOS with Zulu 18 installed:
+
+```bash
+export JAVA_HOME=/Library/Java/JavaVirtualMachines/zulu-18.jdk/Contents/Home
+```
+
+Build the harness jar and update its checksum:
+
+```bash
+JAVA_HOME=/Library/Java/JavaVirtualMachines/zulu-18.jdk/Contents/Home yarn build:harness
+```
+
+Useful checks while working on this backend:
+
+```bash
+yarn exec tsc -b
+cargo check -p forge-web --features java-forge
+cargo check -p self-hosted-node --features java-forge
+```
+
+#### Run Tauri with Java Forge
+
+Start the desktop app with the Java backend selected:
+
+```bash
+OPEN_MAGIC_ENGINE_BACKEND=java-forge yarn tauri:dev -- --features java-forge
+```
+
+If running the compiled debug binary directly:
+
+```bash
+OPEN_MAGIC_ENGINE_BACKEND=java-forge ./target/debug/forge-web
+```
+
+The UI alone does not prove which backend is active. Confirm the Java path in the terminal logs:
+
+```text
+[game_thread] Starting game: ... backend=java-forge
+The Callbacks are not initialized because the j4rs lib was not found. You may ignore this error if you do not use callbacks.
+Language 'en-US' loaded successfully.
+Read cards: ...
+[parity-reset] Resetting all forge-game ID counters via reflection
+[java_game_thread] Java Forge session started: ...
+```
+
+Without `OPEN_MAGIC_ENGINE_BACKEND=java-forge`, the app can still run the normal Rust backend.
+
+Current WIP behavior:
+
+- Java Forge priority prompts are normalized into the existing `AgentPrompt` / `GameView` UI flow.
+- Java hand and command-zone actions are shown through the existing playable-card UI.
+- Commander games are detected from player count, 40 life, or commander names.
+- Java discard prompts are routed through the existing discard UI.
+- Non-human Java prompts currently use a simple first-available-action fallback, not a full Forge AI policy.
+- Mana action coverage depends on what the Java harness `ActionSpace` exposes.
+
 ## Commands Reference
 
 ### Frontend
