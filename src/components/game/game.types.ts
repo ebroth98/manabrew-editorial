@@ -24,6 +24,7 @@ export interface OpponentHalfProps {
   exile: XMageCard[];
   commandZone?: XMageCard[];
   isTargetable: boolean;
+  isSelectedTarget?: boolean;
   onTarget: () => void;
   isFlashing: boolean;
   activePlayerId: string;
@@ -124,7 +125,9 @@ export interface MainActionOverlayProps {
   pendingAttackers: string[];
   onPassPriority: () => void;
   onPassUntilEot: () => void;
-  onDeclareAttackers: (attackerIds: string[]) => void;
+  selectedAttackDefenderId?: string | null;
+  selectedAttackDefenderLabel?: string | null;
+  onDeclareAttackers: (attackerIds: string[], defenderId?: string) => void;
   pendingAttacker: string | null;
   attackerIds: string[];
   blockAssignments: CombatAssignment[];

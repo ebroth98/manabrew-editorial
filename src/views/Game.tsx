@@ -486,6 +486,7 @@ export default function Game() {
   const {
     pendingAttackers,
     pendingAttacker,
+    attackDefenderId,
     blockAssignments,
     playerIsTargetable,
     handleTargetPlayer,
@@ -498,6 +499,9 @@ export default function Game() {
     targetPlayer: casting.wrappedTargetPlayer,
     currentPrompt: activePrompt,
   });
+  const selectedAttackDefender = activePrompt?.possibleDefenderIds?.find(
+    (defender) => defender.id === attackDefenderId,
+  );
 
   // Zone viewer helpers (wrap store actions)
   function openZone(title: string, cards: XMageCard[], onClickCard?: (cardId: string) => void) {
@@ -1201,6 +1205,7 @@ export default function Game() {
           currentPrompt={activePrompt}
           pendingAttackers={pendingAttackers}
           pendingAttacker={pendingAttacker}
+          selectedAttackDefenderId={attackDefenderId}
           blockAssignments={blockAssignments}
           playerIsTargetable={playerIsTargetable}
           turnFlashPlayerId={turnFlashPlayerId}
@@ -1309,6 +1314,8 @@ export default function Game() {
           pendingAttackers={pendingAttackers}
           onPassPriority={passPriority}
           onPassUntilEot={activatePassUntilEot}
+          selectedAttackDefenderId={attackDefenderId}
+          selectedAttackDefenderLabel={selectedAttackDefender?.label}
           onDeclareAttackers={declareAttackers}
           pendingAttacker={pendingAttacker}
           attackerIds={activePrompt?.attackerIds ?? []}

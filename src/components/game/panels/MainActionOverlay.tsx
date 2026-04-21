@@ -21,6 +21,8 @@ export function MainActionOverlay({
   pendingAttackers,
   onPassPriority,
   onPassUntilEot,
+  selectedAttackDefenderId,
+  selectedAttackDefenderLabel,
   onDeclareAttackers,
   pendingAttacker,
   attackerIds,
@@ -74,6 +76,8 @@ export function MainActionOverlay({
               pendingAttackers={pendingAttackers}
               onPassPriority={onPassPriority}
               onPassUntilEot={onPassUntilEot}
+              selectedAttackDefenderId={selectedAttackDefenderId}
+              selectedAttackDefenderLabel={selectedAttackDefenderLabel}
               onDeclareAttackers={onDeclareAttackers}
               pendingAttacker={pendingAttacker}
               blockAssignments={blockAssignments}

@@ -68,6 +68,7 @@ interface PlayerPanelProps {
   isActiveTurn?: boolean;
   isPriorityPlayer?: boolean;
   isTargetable?: boolean;
+  isSelectedTarget?: boolean;
   onTarget?: () => void;
   isFlashing?: boolean;
   onOpenCommandZone?: () => void;
@@ -82,6 +83,7 @@ export function PlayerPanel({
   isActiveTurn,
   isPriorityPlayer: _isPriorityPlayer,
   isTargetable,
+  isSelectedTarget,
   onTarget,
   isFlashing,
   onOpenCommandZone,
@@ -195,6 +197,7 @@ export function PlayerPanel({
   );
 
   const targetableColor = withAlpha(themeColors.promptAction.attackAction, 0.9);
+  const selectedTargetColor = themeColors.promptAction.attackAction;
 
   return (
     <div
@@ -202,12 +205,16 @@ export function PlayerPanel({
       className={cn(
         "relative transition-colors rounded-full",
         isTargetable && "cursor-pointer animate-player-targetable-pulse",
+        isSelectedTarget && "ring-4 ring-offset-2 ring-offset-black/30",
         isFlashing && "animate-player-turn-flash",
         className,
       )}
       style={
-        isTargetable
-          ? ({ "--targetable-color": targetableColor } as CSSProperties)
+        isTargetable || isSelectedTarget
+          ? ({
+              "--targetable-color": targetableColor,
+              "--tw-ring-color": selectedTargetColor,
+            } as CSSProperties)
           : undefined
       }
       onClick={isTargetable ? onTarget : undefined}
@@ -221,6 +228,9 @@ export function PlayerPanel({
             style={{
               ...(isTargetable
                 ? ({ "--tw-ring-color": targetableColor } as CSSProperties)
+                : {}),
+              ...(isSelectedTarget
+                ? ({ "--tw-ring-color": selectedTargetColor } as CSSProperties)
                 : {}),
               ...(isActiveTurn
                 ? ({

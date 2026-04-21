@@ -21,8 +21,10 @@ export interface ChooseActionProps extends PromptActionLayoutProps {
 export interface ChooseAttackersProps extends PromptActionLayoutProps {
   availableAttackerIds: string[];
   pendingAttackers: string[];
+  selectedDefenderId?: string | null;
+  selectedDefenderLabel?: string | null;
   onPassPriority: () => void;
-  onDeclareAttackers: (attackerIds: string[]) => void;
+  onDeclareAttackers: (attackerIds: string[], defenderId?: string) => void;
 }
 
 export interface ChooseBlockersProps extends PromptActionLayoutProps {

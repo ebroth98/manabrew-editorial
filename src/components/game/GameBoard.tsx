@@ -54,6 +54,7 @@ interface GameBoardProps {
   // Combat state
   pendingAttackers: string[];
   pendingAttacker: string | null;
+  selectedAttackDefenderId?: string | null;
   blockAssignments: { blockerId: string; attackerId: string }[];
   playerIsTargetable: (playerId: string) => boolean;
 
@@ -144,6 +145,7 @@ export function GameBoard({
   currentPrompt,
   pendingAttackers,
   pendingAttacker,
+  selectedAttackDefenderId,
   blockAssignments,
   playerIsTargetable,
   turnFlashPlayerId,
@@ -264,6 +266,7 @@ export function GameBoard({
               exile={opponentExile}
               commandZone={opponentCommandZone}
               isTargetable={playerIsTargetable(opponents[0]!.id)}
+              isSelectedTarget={selectedAttackDefenderId === opponents[0]!.id}
               onTarget={() => onTargetPlayer(opponents[0]!.id)}
               isFlashing={turnFlashPlayerId === opponents[0]?.id}
               activePlayerId={activePlayerId}
@@ -298,6 +301,7 @@ export function GameBoard({
                       exile={i === 0 ? opponentExile : []}
                       commandZone={i === 0 ? opponentCommandZone : undefined}
                       isTargetable={playerIsTargetable(op.id)}
+                      isSelectedTarget={selectedAttackDefenderId === op.id}
                       onTarget={() => onTargetPlayer(op.id)}
                       isFlashing={turnFlashPlayerId === op.id}
                       activePlayerId={activePlayerId}

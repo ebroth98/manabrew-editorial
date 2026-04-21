@@ -12,7 +12,10 @@ interface UseCombatStateOptions {
   targetCard: (cardId: string) => void;
   targetAny: (target: { kind: string; playerId?: string; cardId?: string }) => void;
   targetPlayer: (playerId: string) => void;
-  currentPrompt: { validPlayerIds?: string[] } | null;
+  currentPrompt: {
+    validPlayerIds?: string[];
+    possibleDefenderIds?: { id: string; label: string }[];
+  } | null;
 }
 
 export function useCombatState({
@@ -24,22 +27,37 @@ export function useCombatState({
 }: UseCombatStateOptions) {
   const [pendingAttackers, setPendingAttackers] = useState<string[]>([]);
   const [pendingAttacker, setPendingAttacker] = useState<string | null>(null);
+  const [attackDefenderId, setAttackDefenderId] = useState<string | null>(null);
   const [blockAssignments, setBlockAssignments] = useState<CombatAssignment[]>([]);
 
   // Reset combat state whenever the prompt type changes
   useEffect(() => {
     setPendingAttackers([]);
     setPendingAttacker(null);
+    setAttackDefenderId(null);
     setBlockAssignments([]);
   }, [promptType]);
 
+  useEffect(() => {
+    if (promptType !== PromptType.ChooseAttackers) return;
+    const defenders = currentPrompt?.possibleDefenderIds ?? [];
+    if (defenders.length === 0) return;
+    if (!attackDefenderId || !defenders.some((defender) => defender.id === attackDefenderId)) {
+      setAttackDefenderId(defenders[0]!.id);
+    }
+  }, [attackDefenderId, currentPrompt?.possibleDefenderIds, promptType]);
+
   const playerIsTargetable =
-    promptType === PromptType.ChooseTargetPlayer || promptType === PromptType.ChooseTargetAny
+    promptType === PromptType.ChooseAttackers
+      ? (pid: string) => currentPrompt?.possibleDefenderIds?.some((defender) => defender.id === pid) ?? false
+      : promptType === PromptType.ChooseTargetPlayer || promptType === PromptType.ChooseTargetAny
       ? (pid: string) => currentPrompt?.validPlayerIds?.includes(pid) ?? false
       : () => false;
 
   function handleTargetPlayer(pid: string) {
-    if (promptType === PromptType.ChooseTargetAny) {
+    if (promptType === PromptType.ChooseAttackers) {
+      setAttackDefenderId(pid);
+    } else if (promptType === PromptType.ChooseTargetAny) {
       targetAny({ kind: "player", playerId: pid });
     } else {
       targetPlayer(pid);
@@ -77,6 +95,7 @@ export function useCombatState({
   return {
     pendingAttackers,
     pendingAttacker,
+    attackDefenderId,
     blockAssignments,
     playerIsTargetable,
     handleTargetPlayer,

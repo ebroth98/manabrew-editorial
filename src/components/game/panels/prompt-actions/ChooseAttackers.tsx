@@ -13,11 +13,17 @@ export function ChooseAttackers({
   isWaitingForResponse,
   availableAttackerIds,
   pendingAttackers,
+  selectedDefenderId,
+  selectedDefenderLabel,
   onPassPriority,
   onDeclareAttackers,
 }: ChooseAttackersProps) {
   const promptActionColors = usePromptActionColors();
   const hasPendingAttackers = pendingAttackers.length > 0;
+  const attackLabel = selectedDefenderLabel ? `ATTACK ${selectedDefenderLabel}` : "ATTACK";
+  const selectedAttackLabel = hasPendingAttackers
+    ? `${attackLabel} (${pendingAttackers.length})`
+    : attackLabel;
 
   if (buttonLayout === "modern") {
     const attackAllStyle = getPromptActionButtonStyle(promptActionColors.attackAction);
@@ -30,7 +36,7 @@ export function ChooseAttackers({
           size="sm"
           variant="outline"
           className="h-9 w-full rounded-lg text-sm font-black tracking-[0.12em] !border-0 !text-white transition-[filter,box-shadow] hover:brightness-105"
-          onClick={() => onDeclareAttackers(availableAttackerIds)}
+          onClick={() => onDeclareAttackers(availableAttackerIds, selectedDefenderId ?? undefined)}
           disabled={isWaitingForResponse}
           style={attackAllStyle}
         >
@@ -40,11 +46,11 @@ export function ChooseAttackers({
           size="sm"
           variant="outline"
           className="h-9 w-full rounded-lg text-sm font-black tracking-[0.12em] !border-0 !text-white transition-[filter,box-shadow] hover:brightness-105"
-          onClick={() => onDeclareAttackers(pendingAttackers)}
+          onClick={() => onDeclareAttackers(pendingAttackers, selectedDefenderId ?? undefined)}
           disabled={isWaitingForResponse || !hasPendingAttackers}
           style={attackStyle}
         >
-          {hasPendingAttackers ? `ATTACK (${pendingAttackers.length})` : "ATTACK"}
+          {selectedAttackLabel}
         </Button>
         <Button
           size="sm"
@@ -68,16 +74,16 @@ export function ChooseAttackers({
         icon={<Sword className="h-3.5 w-3.5" />}
         variant="secondary"
         baseColor={promptActionColors.attackAction}
-        onClick={() => onDeclareAttackers(availableAttackerIds)}
+        onClick={() => onDeclareAttackers(availableAttackerIds, selectedDefenderId ?? undefined)}
         disabled={isWaitingForResponse}
       />
       <PromptActionButton
         layout={buttonLayout}
-        label={hasPendingAttackers ? `Attack (${pendingAttackers.length})` : "Attack"}
+        label={selectedDefenderLabel ? selectedAttackLabel : hasPendingAttackers ? `Attack (${pendingAttackers.length})` : "Attack"}
         icon={<Sword className="h-3.5 w-3.5" />}
         className={BUTTON_ATTACK}
         baseColor={promptActionColors.attackAction}
-        onClick={() => onDeclareAttackers(pendingAttackers)}
+        onClick={() => onDeclareAttackers(pendingAttackers, selectedDefenderId ?? undefined)}
         disabled={isWaitingForResponse || !hasPendingAttackers}
       />
       <PromptActionButton

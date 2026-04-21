@@ -2,6 +2,8 @@ use std::collections::HashMap;
 
 use serde_json::{json, Value};
 
+use crate::prompt::{PlayerAction, TargetAnyChoice};
+
 pub fn normalize_java_prompt(prompt: Value) -> Value {
     if !is_java_prompt(&prompt) {
         return prompt;
@@ -49,6 +51,18 @@ pub fn normalize_java_prompt(prompt: Value) -> Value {
             "count": as_usize(prompt.get("count"), as_usize(prompt.get("max"), 0)),
         });
     }
+    if prompt.get("kind").and_then(Value::as_str) == Some("reveal_cards") {
+        return json!({
+            "type": if player == 0 { "revealCards" } else { "stateUpdate" },
+            "gameView": game_view,
+            "displayEvents": [],
+            "cards": to_prompt_cards(prompt.get("cards")),
+            "zone": optional_string(prompt.get("zone")).unwrap_or_else(|| "unknown".to_string()),
+            "ownerPlayerId": optional_string(prompt.get("ownerPlayerId")).unwrap_or_else(|| format!("player-{player}")),
+            "message": optional_string(prompt.get("message")).unwrap_or_else(|| "Look at these cards".to_string()),
+            "autoPassDisabled": true,
+        });
+    }
     if prompt.get("kind").and_then(Value::as_str) == Some("choose_attackers") {
         return json!({
             "type": if player == 0 { "chooseAttackers" } else { "stateUpdate" },
@@ -56,6 +70,264 @@ pub fn normalize_java_prompt(prompt: Value) -> Value {
             "displayEvents": [],
             "availableAttackerIds": to_card_ids(prompt.get("attackers")),
             "possibleDefenderIds": to_defender_ids(prompt.get("defenders")),
+            "autoPassDisabled": true,
+        });
+    }
+    if prompt.get("kind").and_then(Value::as_str) == Some("choose_blockers") {
+        return json!({
+            "type": if player == 0 { "chooseBlockers" } else { "stateUpdate" },
+            "gameView": game_view,
+            "displayEvents": [],
+            "attackerIds": to_card_ids(prompt.get("attackers")),
+            "availableBlockerIds": to_card_ids(prompt.get("blockers")),
+            "autoPassDisabled": true,
+        });
+    }
+    if prompt.get("kind").and_then(Value::as_str) == Some("choose_damage_assignment_order") {
+        return json!({
+            "type": if player == 0 { "chooseDamageAssignmentOrder" } else { "stateUpdate" },
+            "gameView": game_view,
+            "displayEvents": [],
+            "attackerId": optional_normalized_card_id(prompt.get("attackerId")).unwrap_or_default(),
+            "blockerIds": to_card_ids(prompt.get("blockers")),
+            "blockerCards": to_prompt_cards(prompt.get("blockers")),
+            "autoPassDisabled": true,
+        });
+    }
+    if prompt.get("kind").and_then(Value::as_str) == Some("choose_combat_damage_assignment") {
+        return json!({
+            "type": if player == 0 { "chooseCombatDamageAssignment" } else { "stateUpdate" },
+            "gameView": game_view,
+            "displayEvents": [],
+            "attackerId": optional_normalized_card_id(prompt.get("attackerId")).unwrap_or_default(),
+            "blockerIds": to_card_ids(prompt.get("blockers")),
+            "defenderId": optional_normalized_card_id(prompt.get("defenderId"))
+                .or_else(|| optional_string(prompt.get("defenderId"))),
+            "totalDamage": as_i64(prompt.get("totalDamage"), 0),
+            "attackerHasDeathtouch": prompt
+                .get("attackerHasDeathtouch")
+                .and_then(Value::as_bool)
+                .unwrap_or(false),
+            "autoPassDisabled": true,
+        });
+    }
+    if prompt.get("kind").and_then(Value::as_str) == Some("choose_cards_for_effect") {
+        return json!({
+            "type": if player == 0 { "chooseCardsForEffect" } else { "stateUpdate" },
+            "gameView": game_view,
+            "displayEvents": [],
+            "validCardIds": to_card_ids(prompt.get("cards")),
+            "zoneCards": to_prompt_cards(prompt.get("cards")),
+            "minChoices": as_usize(prompt.get("min"), 1),
+            "maxChoices": as_usize(prompt.get("max"), 1),
+            "sourceCardName": optional_string(prompt.get("sourceCardName")),
+            "description": optional_string(prompt.get("description")),
+            "autoPassDisabled": true,
+        });
+    }
+    if prompt.get("kind").and_then(Value::as_str) == Some("choose_mode") {
+        return json!({
+            "type": if player == 0 { "chooseMode" } else { "stateUpdate" },
+            "gameView": game_view,
+            "displayEvents": [],
+            "options": to_strings(prompt.get("options")),
+            "minChoices": as_usize(prompt.get("min"), 1),
+            "maxChoices": as_usize(prompt.get("max"), 1),
+            "sourceCardName": optional_string(prompt.get("sourceCardName")),
+            "autoPassDisabled": true,
+        });
+    }
+    if matches!(
+        prompt.get("kind").and_then(Value::as_str),
+        Some("choose_optional_trigger" | "confirm_action")
+    ) {
+        return json!({
+            "type": if player == 0 { "chooseOptionalTrigger" } else { "stateUpdate" },
+            "gameView": game_view,
+            "displayEvents": [],
+            "description": optional_string(prompt.get("description")).unwrap_or_else(|| "Confirm?".to_string()),
+            "sourceCardName": optional_string(prompt.get("sourceCardName")),
+            "promptKind": optional_string(prompt.get("promptKind")),
+            "optionLabels": to_strings(prompt.get("optionLabels")),
+            "mode": optional_string(prompt.get("mode")),
+            "api": optional_string(prompt.get("api")),
+            "autoPassDisabled": true,
+        });
+    }
+    if prompt.get("kind").and_then(Value::as_str) == Some("pay_cost_to_prevent_effect") {
+        return json!({
+            "type": if player == 0 { "payCostToPreventEffect" } else { "stateUpdate" },
+            "gameView": game_view,
+            "displayEvents": [],
+            "description": optional_string(prompt.get("description")).unwrap_or_else(|| "Pay cost?".to_string()),
+            "costKind": optional_string(prompt.get("mode")).unwrap_or_else(|| "Cost".to_string()),
+            "sourceCardName": optional_string(prompt.get("sourceCardName")),
+            "api": optional_string(prompt.get("api")),
+            "autoPassDisabled": true,
+        });
+    }
+    if prompt.get("kind").and_then(Value::as_str) == Some("choose_number") {
+        return json!({
+            "type": if player == 0 { "chooseNumber" } else { "stateUpdate" },
+            "gameView": game_view,
+            "displayEvents": [],
+            "min": as_i64(prompt.get("min"), 0),
+            "max": as_i64(prompt.get("max"), 0),
+            "sourceCardName": optional_string(prompt.get("sourceCardName")),
+            "description": optional_string(prompt.get("description")),
+            "autoPassDisabled": true,
+        });
+    }
+    if prompt.get("kind").and_then(Value::as_str) == Some("choose_color") {
+        return json!({
+            "type": if player == 0 { "chooseColor" } else { "stateUpdate" },
+            "gameView": game_view,
+            "displayEvents": [],
+            "validColors": to_strings(prompt.get("options")),
+            "sourceCardName": optional_string(prompt.get("sourceCardName")),
+            "autoPassDisabled": true,
+        });
+    }
+    if prompt.get("kind").and_then(Value::as_str) == Some("choose_type") {
+        return json!({
+            "type": if player == 0 { "chooseType" } else { "stateUpdate" },
+            "gameView": game_view,
+            "displayEvents": [],
+            "typeCategory": optional_string(prompt.get("description")).unwrap_or_else(|| "Card".to_string()),
+            "validTypes": to_strings(prompt.get("options")),
+            "sourceCardName": optional_string(prompt.get("sourceCardName")),
+            "autoPassDisabled": true,
+        });
+    }
+    if prompt.get("kind").and_then(Value::as_str) == Some("choose_card_name") {
+        return json!({
+            "type": if player == 0 { "chooseCardName" } else { "stateUpdate" },
+            "gameView": game_view,
+            "displayEvents": [],
+            "validNames": to_strings(prompt.get("options")),
+            "sourceCardName": optional_string(prompt.get("sourceCardName")),
+            "autoPassDisabled": true,
+        });
+    }
+    if prompt.get("kind").and_then(Value::as_str) == Some("choose_scry") {
+        return json!({
+            "type": if player == 0 { "scry" } else { "stateUpdate" },
+            "gameView": game_view,
+            "displayEvents": [],
+            "cardIds": to_card_ids(prompt.get("cards")),
+            "cards": to_prompt_cards(prompt.get("cards")),
+            "autoPassDisabled": true,
+        });
+    }
+    if prompt.get("kind").and_then(Value::as_str) == Some("choose_surveil") {
+        return json!({
+            "type": if player == 0 { "surveil" } else { "stateUpdate" },
+            "gameView": game_view,
+            "displayEvents": [],
+            "cardIds": to_card_ids(prompt.get("cards")),
+            "cards": to_prompt_cards(prompt.get("cards")),
+            "autoPassDisabled": true,
+        });
+    }
+    if prompt.get("kind").and_then(Value::as_str) == Some("choose_dig") {
+        return json!({
+            "type": if player == 0 { "dig" } else { "stateUpdate" },
+            "gameView": game_view,
+            "displayEvents": [],
+            "cardIds": to_card_ids(prompt.get("cards")),
+            "cards": to_prompt_cards(prompt.get("cards")),
+            "numToTake": as_usize(prompt.get("max"), 1),
+            "optional": prompt.get("optional").and_then(Value::as_bool).unwrap_or(false),
+            "sourceCardName": optional_string(prompt.get("sourceCardName")),
+            "autoPassDisabled": true,
+        });
+    }
+    if prompt.get("kind").and_then(Value::as_str) == Some("choose_delve") {
+        return json!({
+            "type": if player == 0 { "chooseDelve" } else { "stateUpdate" },
+            "gameView": game_view,
+            "displayEvents": [],
+            "validCardIds": to_card_ids(prompt.get("cards")),
+            "zoneCards": to_prompt_cards(prompt.get("cards")),
+            "maxCards": as_usize(prompt.get("max"), 0),
+            "sourceCardName": optional_string(prompt.get("sourceCardName")),
+            "autoPassDisabled": true,
+        });
+    }
+    if prompt.get("kind").and_then(Value::as_str) == Some("choose_convoke") {
+        return json!({
+            "type": if player == 0 { "chooseConvoke" } else { "stateUpdate" },
+            "gameView": game_view,
+            "displayEvents": [],
+            "validCardIds": to_card_ids(prompt.get("cards")),
+            "remainingCost": optional_string(prompt.get("description")).unwrap_or_default(),
+            "sourceCardName": optional_string(prompt.get("sourceCardName")),
+            "autoPassDisabled": true,
+        });
+    }
+    if prompt.get("kind").and_then(Value::as_str) == Some("choose_improvise") {
+        return json!({
+            "type": if player == 0 { "chooseImprovise" } else { "stateUpdate" },
+            "gameView": game_view,
+            "displayEvents": [],
+            "validCardIds": to_card_ids(prompt.get("cards")),
+            "remainingCost": optional_string(prompt.get("description")).unwrap_or_default(),
+            "sourceCardName": optional_string(prompt.get("sourceCardName")),
+            "autoPassDisabled": true,
+        });
+    }
+    if prompt.get("kind").and_then(Value::as_str) == Some("reorder_library") {
+        return json!({
+            "type": if player == 0 { "reorderLibrary" } else { "stateUpdate" },
+            "gameView": game_view,
+            "displayEvents": [],
+            "cardIds": to_card_ids(prompt.get("cards")),
+            "cards": to_prompt_cards(prompt.get("cards")),
+            "sourceCardName": optional_string(prompt.get("sourceCardName")),
+            "autoPassDisabled": true,
+        });
+    }
+    if prompt.get("kind").and_then(Value::as_str) == Some("choose_target_player") {
+        return json!({
+            "type": if player == 0 { "chooseTargetPlayer" } else { "stateUpdate" },
+            "gameView": game_view,
+            "displayEvents": [],
+            "validPlayerIds": to_target_ids(prompt.get("players")),
+            "sourceCardId": optional_normalized_card_id(prompt.get("sourceCardId")),
+            "hostile": true,
+            "autoPassDisabled": true,
+        });
+    }
+    if prompt.get("kind").and_then(Value::as_str) == Some("choose_target_card") {
+        return json!({
+            "type": if player == 0 { "chooseTargetCard" } else { "stateUpdate" },
+            "gameView": game_view,
+            "displayEvents": [],
+            "validCardIds": to_target_card_ids(prompt.get("cards")),
+            "sourceCardId": optional_normalized_card_id(prompt.get("sourceCardId")),
+            "hostile": true,
+            "autoPassDisabled": true,
+        });
+    }
+    if prompt.get("kind").and_then(Value::as_str) == Some("choose_target_any") {
+        return json!({
+            "type": if player == 0 { "chooseTargetAny" } else { "stateUpdate" },
+            "gameView": game_view,
+            "displayEvents": [],
+            "validPlayerIds": to_target_ids(prompt.get("players")),
+            "validCardIds": to_target_card_ids(prompt.get("cards")),
+            "sourceCardId": optional_normalized_card_id(prompt.get("sourceCardId")),
+            "hostile": true,
+            "autoPassDisabled": true,
+        });
+    }
+    if prompt.get("kind").and_then(Value::as_str) == Some("choose_target_spell") {
+        return json!({
+            "type": if player == 0 { "chooseTargetSpell" } else { "stateUpdate" },
+            "gameView": game_view,
+            "displayEvents": [],
+            "validSpellIds": to_target_ids(prompt.get("spells")),
+            "sourceCardId": optional_normalized_card_id(prompt.get("sourceCardId")),
             "autoPassDisabled": true,
         });
     }
@@ -171,10 +443,202 @@ pub fn normalize_java_prompt(prompt: Value) -> Value {
     })
 }
 
+pub fn translate_java_player_action(action: &PlayerAction) -> Value {
+    match action {
+        PlayerAction::PlayCard {
+            card_id: Some(card_id),
+            mode,
+        } => mode
+            .as_deref()
+            .and_then(|mode| {
+                mode.strip_prefix("prompt-action-")
+                    .or_else(|| mode.strip_prefix("java-forge-action:"))
+            })
+            .or_else(|| {
+                if mode.as_deref() == Some("java-forge-action") {
+                    card_id.strip_prefix("java-action-")
+                } else {
+                    None
+                }
+            })
+            .and_then(|index| index.parse::<usize>().ok())
+            .map(|index| json!({ "kind": "choose_action", "index": index }))
+            .unwrap_or_else(|| json!({ "kind": "pass" })),
+        PlayerAction::DiscardDecision { discarded_card_ids } => {
+            json!({ "kind": "choose_cards", "card_ids": discarded_card_ids })
+        }
+        PlayerAction::MulliganDecision { keep } => {
+            json!({ "kind": "mulligan_decision", "keep": keep })
+        }
+        PlayerAction::MulliganPutBackDecision { card_ids } => {
+            json!({ "kind": "choose_cards", "card_ids": card_ids })
+        }
+        PlayerAction::RevealCardsAcknowledged => {
+            json!({ "kind": "reveal_cards_acknowledged" })
+        }
+        PlayerAction::ChooseCardsDecision { chosen_card_ids } => {
+            json!({ "kind": "choose_cards", "card_ids": chosen_card_ids })
+        }
+        PlayerAction::ModeDecision { chosen_indices } => {
+            json!({ "kind": "mode_decision", "indices": chosen_indices })
+        }
+        PlayerAction::OptionalTriggerDecision { accept }
+        | PlayerAction::PayCostToPreventEffectDecision { accept } => {
+            json!({ "kind": "boolean_decision", "accept": accept })
+        }
+        PlayerAction::ColorDecision { color } => {
+            json!({ "kind": "string_decision", "value": color.as_deref().unwrap_or_default() })
+        }
+        PlayerAction::TypeDecision { chosen_type } => {
+            json!({ "kind": "string_decision", "value": chosen_type.as_deref().unwrap_or_default() })
+        }
+        PlayerAction::NumberDecision { chosen_number } => {
+            json!({ "kind": "number_decision", "number": chosen_number.unwrap_or_default() })
+        }
+        PlayerAction::CardNameDecision { chosen_name } => {
+            json!({ "kind": "string_decision", "value": chosen_name.as_deref().unwrap_or_default() })
+        }
+        PlayerAction::ScryDecision { bottom_card_ids } => {
+            json!({ "kind": "scry_decision", "bottom_card_ids": bottom_card_ids })
+        }
+        PlayerAction::SurveilDecision { graveyard_card_ids } => {
+            json!({ "kind": "surveil_decision", "graveyard_card_ids": graveyard_card_ids })
+        }
+        PlayerAction::DigDecision { chosen_card_ids } => {
+            json!({ "kind": "dig_decision", "chosen_card_ids": chosen_card_ids })
+        }
+        PlayerAction::DelveDecision { chosen_card_ids }
+        | PlayerAction::ConvokeDecision { chosen_card_ids }
+        | PlayerAction::ImproviseDecision { chosen_card_ids } => {
+            json!({ "kind": "choose_cards", "card_ids": chosen_card_ids })
+        }
+        PlayerAction::ReorderLibraryDecision { ordered_card_ids } => {
+            json!({ "kind": "reorder_library_decision", "ordered_card_ids": ordered_card_ids })
+        }
+        PlayerAction::DamageAssignmentOrderDecision {
+            ordered_blocker_ids,
+        } => {
+            json!({ "kind": "damage_assignment_order_decision", "ordered_card_ids": ordered_blocker_ids })
+        }
+        PlayerAction::CombatDamageAssignmentDecision { assignments } => json!({
+            "kind": "combat_damage_assignment_decision",
+            "assignments": assignments
+                .iter()
+                .map(|assignment| json!({
+                    "assigneeId": assignment.assignee_id,
+                    "damage": assignment.damage,
+                }))
+                .collect::<Vec<_>>(),
+        }),
+        PlayerAction::TargetPlayer { player_id } => json!({
+            "kind": "target_choice",
+            "target": {
+                "kind": "player",
+                "id": player_id.as_deref().unwrap_or_default(),
+            },
+        }),
+        PlayerAction::TargetCard { card_id } => json!({
+            "kind": "target_choice",
+            "target": {
+                "kind": "card",
+                "id": card_id.as_deref().unwrap_or_default(),
+            },
+        }),
+        PlayerAction::TargetAny { target } => match target {
+            TargetAnyChoice::Player { player_id } => json!({
+                "kind": "target_choice",
+                "target": { "kind": "player", "id": player_id },
+            }),
+            TargetAnyChoice::Card { card_id } => json!({
+                "kind": "target_choice",
+                "target": { "kind": "card", "id": card_id },
+            }),
+            TargetAnyChoice::None => json!({ "kind": "pass" }),
+        },
+        PlayerAction::TargetSpell { spell_id } => json!({
+            "kind": "target_choice",
+            "target": {
+                "kind": "spell",
+                "id": spell_id.as_deref().unwrap_or_default(),
+            },
+        }),
+        PlayerAction::DeclareAttackers { assignments } => json!({
+            "kind": "declare_attackers",
+            "assignments": assignments
+                .iter()
+                .map(|assignment| json!({
+                    "attackerId": assignment.attacker_id,
+                    "defenderId": assignment.defender_id,
+                }))
+                .collect::<Vec<_>>(),
+        }),
+        PlayerAction::DeclareBlockers { assignments } => json!({
+            "kind": "declare_blockers",
+            "assignments": assignments
+                .iter()
+                .map(|assignment| json!({
+                    "blockerId": assignment.blocker_id,
+                    "attackerId": assignment.attacker_id,
+                }))
+                .collect::<Vec<_>>(),
+        }),
+        PlayerAction::TapLand {
+            ability_index: Some(index),
+            ..
+        }
+        | PlayerAction::ActivateAbility {
+            ability_index: index,
+            ..
+        } => json!({ "kind": "choose_action", "index": index }),
+        PlayerAction::PlayCard { card_id: None, .. } => json!({ "kind": "pass" }),
+        PlayerAction::Concede => json!({ "kind": "pass" }),
+        _ => json!({ "kind": "pass" }),
+    }
+}
+
+pub fn translate_java_action_value(action_value: &Value) -> Value {
+    if action_value.get("kind").is_some() {
+        return action_value.clone();
+    }
+    serde_json::from_value::<PlayerAction>(action_value.clone())
+        .map(|action| translate_java_player_action(&action))
+        .unwrap_or_else(|_| json!({ "kind": "pass" }))
+}
+
 fn is_java_prompt(prompt: &Value) -> bool {
     matches!(
         prompt.get("kind").and_then(Value::as_str),
-        Some("priority" | "choose_discard" | "mulligan" | "mulligan_put_back" | "choose_attackers")
+        Some(
+            "priority"
+                | "choose_discard"
+                | "mulligan"
+                | "mulligan_put_back"
+                | "reveal_cards"
+                | "choose_attackers"
+                | "choose_blockers"
+                | "choose_damage_assignment_order"
+                | "choose_combat_damage_assignment"
+                | "choose_cards_for_effect"
+                | "choose_mode"
+                | "choose_optional_trigger"
+                | "confirm_action"
+                | "pay_cost_to_prevent_effect"
+                | "choose_number"
+                | "choose_color"
+                | "choose_type"
+                | "choose_card_name"
+                | "choose_scry"
+                | "choose_surveil"
+                | "choose_dig"
+                | "choose_delve"
+                | "choose_convoke"
+                | "choose_improvise"
+                | "reorder_library"
+                | "choose_target_player"
+                | "choose_target_card"
+                | "choose_target_any"
+                | "choose_target_spell"
+        )
     ) && prompt.get("snapshot").is_some_and(Value::is_object)
 }
 
@@ -399,11 +863,21 @@ fn to_card(
 
 fn to_stack_object(entry: &Value, index: usize, controller_id: &str) -> Value {
     json!({
-        "id": format!("engine-stack-{index}"),
+        "id": entry
+            .get("id")
+            .and_then(Value::as_str)
+            .map(str::to_string)
+            .unwrap_or_else(|| format!("engine-stack-{index}")),
         "sourceId": format!("engine-stack-source-{index}"),
         "controllerId": controller_id,
-        "name": entry.as_str().unwrap_or("Stack object"),
-        "text": "",
+        "name": entry
+            .as_str()
+            .or_else(|| entry.get("name").and_then(Value::as_str))
+            .unwrap_or("Stack object"),
+        "text": entry
+            .get("description")
+            .and_then(Value::as_str)
+            .unwrap_or_default(),
         "isPermanentSpell": false,
         "targets": [],
     })
@@ -497,6 +971,34 @@ fn to_card_ids(cards: Option<&Value>) -> Vec<String> {
         .collect()
 }
 
+fn to_target_ids(targets: Option<&Value>) -> Vec<String> {
+    targets
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default()
+        .iter()
+        .filter_map(|target| target.get("id").and_then(Value::as_str).map(str::to_string))
+        .collect()
+}
+
+fn to_target_card_ids(cards: Option<&Value>) -> Vec<String> {
+    cards
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default()
+        .iter()
+        .filter_map(|card| {
+            card.get("id")
+                .and_then(Value::as_str)
+                .map(normalize_card_id)
+        })
+        .collect()
+}
+
+fn optional_normalized_card_id(value: Option<&Value>) -> Option<String> {
+    value.and_then(Value::as_str).map(normalize_card_id)
+}
+
 fn to_prompt_cards(cards: Option<&Value>) -> Vec<Value> {
     cards
         .and_then(Value::as_array)
@@ -515,6 +1017,21 @@ fn to_prompt_cards(cards: Option<&Value>) -> Vec<Value> {
             }))
         })
         .collect()
+}
+
+fn to_strings(value: Option<&Value>) -> Vec<String> {
+    value
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default()
+        .iter()
+        .filter_map(Value::as_str)
+        .map(str::to_string)
+        .collect()
+}
+
+fn optional_string(value: Option<&Value>) -> Option<String> {
+    value.and_then(Value::as_str).map(str::to_string)
 }
 
 fn to_defender_ids(defenders: Option<&Value>) -> Vec<Value> {

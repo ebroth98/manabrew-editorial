@@ -18,6 +18,7 @@
     "build:harness": "cd forge && mvn -pl forge-harness -am package -DskipTests && cd .. && bash scripts/check-harness.sh --update-checksum",
     "parity": "node scripts/parity.mjs",
     "parity:test": "bash scripts/check-harness.sh && cargo run -p forge-parity --bin forge-parity -- --java-jar forge/forge-harness/target/forge-harness-jar-with-dependencies.jar",
+    "audit:prompts": "node scripts/audit-prompt-contract.mjs",
     "scan": "node scan_structure.cjs",
     "import-deck": "tsx scripts/import-deck.ts",
     "format-engine": "cargo fmt --manifest-path Cargo.toml -p forge-foundation -p forge-carddb -p forge-engine-core -p forge-server -p forge-parity -p forge-wasm -p forge-agent-interface",

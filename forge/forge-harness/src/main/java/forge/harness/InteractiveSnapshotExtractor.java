@@ -7,6 +7,7 @@ import forge.game.card.Card;
 import forge.game.card.CounterEnumType;
 import forge.game.card.CounterType;
 import forge.game.player.Player;
+import forge.game.spellability.SpellAbilityStackInstance;
 import forge.game.zone.ZoneType;
 
 import java.util.ArrayList;
@@ -42,6 +43,7 @@ public final class InteractiveSnapshotExtractor {
             index++;
         }
         snapshot.put("players", players);
+        snapshot.put("stack", snapshotStack(game));
         return snapshot;
     }
 
@@ -101,6 +103,24 @@ public final class InteractiveSnapshotExtractor {
         out.put("id", SnapshotExtractor.javaCardId(card));
         out.put("name", normalizeCardName(card.getName()));
         return out;
+    }
+
+    private static List<Map<String, Object>> snapshotStack(final Game game) {
+        final List<Map<String, Object>> out = new ArrayList<>();
+        for (final SpellAbilityStackInstance item : game.getStack()) {
+            final Map<String, Object> stackItem = new LinkedHashMap<>();
+            stackItem.put("id", stackItemId(item));
+            stackItem.put("name", item.getSourceCard() == null
+                    ? item.getStackDescription()
+                    : normalizeCardName(item.getSourceCard().getName()));
+            stackItem.put("description", item.getStackDescription());
+            out.add(stackItem);
+        }
+        return out;
+    }
+
+    static String stackItemId(final SpellAbilityStackInstance item) {
+        return "engine-stack-" + item.getId();
     }
 
     private static String normalizeCardName(final String name) {

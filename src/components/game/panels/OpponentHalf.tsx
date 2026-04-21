@@ -28,6 +28,7 @@ export function OpponentHalf({
   exile,
   commandZone,
   isTargetable,
+  isSelectedTarget,
   onTarget,
   isFlashing,
   activePlayerId,
@@ -146,6 +147,7 @@ export function OpponentHalf({
               isActiveTurn={activePlayerId === player.id}
               isPriorityPlayer={priorityPlayerId === player.id}
               isTargetable={isTargetable}
+              isSelectedTarget={isSelectedTarget}
               onTarget={onTarget}
               isFlashing={isFlashing}
               onOpenCommandZone={

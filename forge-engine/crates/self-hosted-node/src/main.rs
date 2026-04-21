@@ -9,6 +9,7 @@ mod engine_backend;
 use config::{workspace_root, Config, DeckSelection};
 use engine_backend::{java_backend, rust_backend, EngineBackendKind};
 use forge_agent_interface::ids_codec::{parse_player_slot, player_slot};
+use forge_agent_interface::java_prompt_normalizer::translate_java_action_value;
 use forge_agent_interface::prompt::{AgentPrompt, PlayerAction};
 use forge_agent_interface::simple_ai::choose_simple_ai_action;
 use forge_engine_core::game::TypeRegistry;
@@ -101,6 +102,18 @@ async fn main() {
             std::process::exit(1);
         }
         info!(max_prompts, "java-forge smoke completed");
+        return;
+    }
+    if let Ok(scenario_name) = std::env::var("SELF_HOSTED_NODE_JAVA_SCENARIO") {
+        let max_prompts = std::env::var("SELF_HOSTED_NODE_JAVA_SCENARIO_PROMPTS")
+            .ok()
+            .and_then(|value| value.parse().ok())
+            .unwrap_or(20);
+        if let Err(error) = java_backend::run_scenario(&scenario_name, max_prompts) {
+            error!(scenario_name, %error, "java-forge scenario failed");
+            std::process::exit(1);
+        }
+        info!(scenario_name, max_prompts, "java-forge scenario completed");
         return;
     }
 
@@ -988,89 +1001,11 @@ fn route_remote_response(engine_session: &SharedEngineSession, state: &Value) {
                 debug!(from_player, player_index, "no response channel for player");
                 return;
             };
-            if let Err(error) = tx.send(translate_java_action(action_value)) {
+            if let Err(error) = tx.send(translate_java_action_value(action_value)) {
                 warn!(from_player, %error, "failed to route relay response");
             }
         }
     }
-}
-
-fn translate_java_action(action_value: &Value) -> Value {
-    if action_value.get("kind").is_some() {
-        return action_value.clone();
-    }
-    if action_value.get("type").and_then(Value::as_str) == Some("playCard")
-        && action_value
-            .get("mode")
-            .and_then(Value::as_str)
-            .is_some_and(|mode| {
-                mode == "java-forge-action"
-                    || mode.starts_with("java-forge-action:")
-                    || mode.starts_with("prompt-action-")
-            })
-    {
-        let mode_index = action_value
-            .get("mode")
-            .and_then(Value::as_str)
-            .and_then(|mode| {
-                mode.strip_prefix("prompt-action-")
-                    .or_else(|| mode.strip_prefix("java-forge-action:"))
-            });
-        let card_index = action_value
-            .get("cardId")
-            .and_then(Value::as_str)
-            .and_then(|card_id| card_id.strip_prefix("java-action-"));
-        if let Some(index) = mode_index
-            .or(card_index)
-            .and_then(|index| index.parse::<usize>().ok())
-        {
-            return json!({ "kind": "choose_action", "index": index });
-        }
-    }
-    if action_value.get("type").and_then(Value::as_str) == Some("discardDecision") {
-        return json!({
-            "kind": "choose_cards",
-            "card_ids": action_value
-                .get("discardedCardIds")
-                .cloned()
-                .unwrap_or_else(|| json!([])),
-        });
-    }
-    if action_value.get("type").and_then(Value::as_str) == Some("mulliganDecision") {
-        return json!({
-            "kind": "mulligan_decision",
-            "keep": action_value
-                .get("keep")
-                .and_then(Value::as_bool)
-                .unwrap_or(true),
-        });
-    }
-    if action_value.get("type").and_then(Value::as_str) == Some("mulliganPutBackDecision") {
-        return json!({
-            "kind": "choose_cards",
-            "card_ids": action_value
-                .get("cardIds")
-                .cloned()
-                .unwrap_or_else(|| json!([])),
-        });
-    }
-    if action_value.get("type").and_then(Value::as_str) == Some("declareAttackers") {
-        return json!({
-            "kind": "declare_attackers",
-            "assignments": action_value
-                .get("assignments")
-                .cloned()
-                .unwrap_or_else(|| json!([])),
-        });
-    }
-    if action_value.get("type").and_then(Value::as_str) == Some("tapLand")
-        || action_value.get("type").and_then(Value::as_str) == Some("activateAbility")
-    {
-        if let Some(index) = action_value.get("abilityIndex").and_then(Value::as_u64) {
-            return json!({ "kind": "choose_action", "index": index });
-        }
-    }
-    json!({ "kind": "pass" })
 }
 
 fn spawn_remote_prompt_forwarder(

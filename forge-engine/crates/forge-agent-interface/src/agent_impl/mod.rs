@@ -1,15 +1,16 @@
 use forge_engine_core::agent::notification::GameNotification;
 use forge_engine_core::agent::{
-    BinaryChoiceKind, CombatCostAction, GameLogEvent, ManaCostAction, PlayOption, PlayerAgent,
-    TargetChoice,
+    BinaryChoiceKind, CombatCostAction, GameEntity, ManaCostAction, PlayOption, PlayerAgent,
+    RollSwapChoice, TargetChoice,
 };
+use forge_engine_core::card::CounterType;
 use forge_engine_core::combat::DefenderId;
 use forge_engine_core::game::GameState;
 use forge_engine_core::ids::{CardId, PlayerId};
 use forge_engine_core::mana::ManaPool;
 use forge_engine_core::player::actions::player_action::AbilityRef;
 use forge_engine_core::player::actions::PlayerAction as EnginePlayerAction;
-use forge_foundation::{PhaseType, ZoneType};
+use forge_foundation::ZoneType;
 
 use crate::game_log_event::GameLogEntryDto;
 use crate::game_snapshot_event::GameSnapshotEventDto;
@@ -324,12 +325,7 @@ impl<T: AgentTransport> PlayerAgent for PromptAgent<T> {
         choices::mulligan_decision(self, player, hand, mulligan_count)
     }
 
-    fn mulligan_decision_send(
-        &mut self,
-        player: PlayerId,
-        hand: &[CardId],
-        mulligan_count: u32,
-    ) {
+    fn mulligan_decision_send(&mut self, player: PlayerId, hand: &[CardId], mulligan_count: u32) {
         choices::mulligan_decision_send(self, player, hand, mulligan_count);
     }
 
@@ -351,12 +347,7 @@ impl<T: AgentTransport> PlayerAgent for PromptAgent<T> {
         choices::choose_cards_to_bottom(self, player, hand, count)
     }
 
-    fn choose_cards_to_bottom_send(
-        &mut self,
-        player: PlayerId,
-        hand: &[CardId],
-        count: usize,
-    ) {
+    fn choose_cards_to_bottom_send(&mut self, player: PlayerId, hand: &[CardId], count: usize) {
         choices::choose_cards_to_bottom_send(self, player, hand, count);
     }
 
@@ -744,6 +735,20 @@ impl<T: AgentTransport> PlayerAgent for PromptAgent<T> {
         choices::choose_discard(self, player, hand, num)
     }
 
+    fn choose_discard_any_number(
+        &mut self,
+        player: PlayerId,
+        hand: &[CardId],
+        min: usize,
+        max: usize,
+    ) -> Vec<CardId> {
+        choices::choose_discard_any_number(self, player, hand, min, max)
+    }
+
+    fn choose_legend_keep(&mut self, player: PlayerId, duplicates: &[CardId]) -> CardId {
+        choices::choose_legend_keep(self, player, duplicates)
+    }
+
     fn choose_target_spell(&mut self, player: PlayerId, valid: &[u32]) -> Option<u32> {
         targeting::choose_target_spell(self, player, valid, None)
     }
@@ -757,6 +762,42 @@ impl<T: AgentTransport> PlayerAgent for PromptAgent<T> {
         card_name: Option<&str>,
     ) -> Vec<usize> {
         choices::choose_mode(self, player, descriptions, min, max, card_name)
+    }
+
+    fn choose_spell_abilities_for_effect(
+        &mut self,
+        player: PlayerId,
+        abilities: &[forge_engine_core::spellability::SpellAbility],
+        num: usize,
+    ) -> Vec<usize> {
+        choices::choose_spell_abilities_for_effect(self, player, abilities, num)
+    }
+
+    fn get_ability_to_play(
+        &mut self,
+        player: PlayerId,
+        abilities: &[forge_engine_core::spellability::SpellAbility],
+    ) -> Option<usize> {
+        choices::get_ability_to_play(self, player, abilities)
+    }
+
+    fn choose_single_entity_for_effect(
+        &mut self,
+        player: PlayerId,
+        valid: &[GameEntity],
+        is_optional: bool,
+    ) -> Option<GameEntity> {
+        choices::choose_single_entity_for_effect(self, player, valid, is_optional)
+    }
+
+    fn choose_entities_for_effect(
+        &mut self,
+        player: PlayerId,
+        candidates: &[GameEntity],
+        min: usize,
+        max: usize,
+    ) -> Vec<GameEntity> {
+        choices::choose_entities_for_effect(self, player, candidates, min, max)
     }
 
     fn choose_single_replacement_effect(
@@ -893,6 +934,16 @@ impl<T: AgentTransport> PlayerAgent for PromptAgent<T> {
         choices::choose_color(self, player, valid_colors)
     }
 
+    fn choose_colors(
+        &mut self,
+        player: PlayerId,
+        valid_colors: &[String],
+        min: usize,
+        max: usize,
+    ) -> Vec<String> {
+        choices::choose_colors(self, player, valid_colors, min, max)
+    }
+
     fn choose_cards_for_effect(
         &mut self,
         player: PlayerId,
@@ -933,6 +984,15 @@ impl<T: AgentTransport> PlayerAgent for PromptAgent<T> {
         choices::choose_type(self, player, type_category, valid_types)
     }
 
+    fn choose_counter_type(
+        &mut self,
+        player: PlayerId,
+        options: &[CounterType],
+        prompt: &str,
+    ) -> Option<CounterType> {
+        choices::choose_counter_type(self, player, options, prompt)
+    }
+
     fn choose_card_name(&mut self, player: PlayerId, valid_names: &[String]) -> Option<String> {
         choices::choose_card_name(self, player, valid_names)
     }
@@ -943,6 +1003,67 @@ impl<T: AgentTransport> PlayerAgent for PromptAgent<T> {
 
     fn choose_number(&mut self, player: PlayerId, min: i32, max: i32) -> Option<i32> {
         choices::choose_number(self, player, min, max)
+    }
+
+    fn choose_number_from_list(
+        &mut self,
+        player: PlayerId,
+        choices: &[i32],
+        message: &str,
+        card_name: Option<&str>,
+    ) -> Option<i32> {
+        choices::choose_number_from_list(self, player, choices, message, card_name)
+    }
+
+    fn choose_roll_to_ignore(
+        &mut self,
+        player: PlayerId,
+        rolls: &[i32],
+        card_name: Option<&str>,
+    ) -> Option<i32> {
+        choices::choose_roll_to_ignore(self, player, rolls, card_name)
+    }
+
+    fn choose_roll_to_swap(
+        &mut self,
+        player: PlayerId,
+        rolls: &[i32],
+        card_name: Option<&str>,
+    ) -> Option<i32> {
+        choices::choose_roll_to_swap(self, player, rolls, card_name)
+    }
+
+    fn choose_dice_to_reroll(
+        &mut self,
+        player: PlayerId,
+        rolls: &[i32],
+        card_name: Option<&str>,
+    ) -> Vec<i32> {
+        choices::choose_dice_to_reroll(self, player, rolls, card_name)
+    }
+
+    fn choose_roll_to_modify(
+        &mut self,
+        player: PlayerId,
+        rolls: &[i32],
+        card_name: Option<&str>,
+    ) -> Option<i32> {
+        choices::choose_roll_to_modify(self, player, rolls, card_name)
+    }
+
+    fn choose_roll_swap_value(
+        &mut self,
+        player: PlayerId,
+        current_result: i32,
+        power: i32,
+        toughness: i32,
+        card_name: Option<&str>,
+    ) -> Option<RollSwapChoice> {
+        choices::choose_roll_swap_value(self, player, current_result, power, toughness, card_name)
+    }
+
+    fn flip_coin_call(&mut self, player: PlayerId) -> bool {
+        choices::flip_coin_call(self, player)
     }
 
     fn pay_combat_cost(

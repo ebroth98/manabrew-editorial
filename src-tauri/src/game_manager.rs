@@ -17,7 +17,9 @@ use forge_agent_interface::game_log_event::GameLogEntryDto;
 use forge_agent_interface::game_snapshot_event::GameSnapshotEventDto;
 use forge_agent_interface::game_view_dto::GameViewDto;
 use forge_agent_interface::ids_codec::player_slot;
-use forge_agent_interface::java_prompt_normalizer::normalize_java_prompt;
+use forge_agent_interface::java_prompt_normalizer::{
+    normalize_java_prompt, translate_java_player_action,
+};
 use forge_agent_interface::prompt::{AgentPrompt, AgentPromptInner, PlayerAction};
 
 pub struct GameManager {
@@ -233,7 +235,7 @@ impl GameManager {
                     .map_err(|e| format!("Game thread not responding: {}", e))?;
                 Ok(())
             } else if let Some(tx) = session.java_response_tx.as_ref() {
-                tx.send(translate_java_action(&action))
+                tx.send(translate_java_player_action(&action))
                     .map_err(|e| format!("Java game thread not responding: {}", e))?;
                 Ok(())
             } else {
@@ -482,58 +484,4 @@ fn spawn_java_prompt_forwarder(
         }
         eprintln!("[java_prompt_fwd] Java prompt forwarder ended");
     });
-}
-
-fn translate_java_action(action: &PlayerAction) -> Value {
-    match action {
-        PlayerAction::PlayCard {
-            card_id: Some(card_id),
-            mode,
-        } => mode
-            .as_deref()
-            .and_then(|mode| {
-                mode.strip_prefix("prompt-action-")
-                    .or_else(|| mode.strip_prefix("java-forge-action:"))
-            })
-            .or_else(|| {
-                if mode.as_deref() == Some("java-forge-action") {
-                    card_id.strip_prefix("java-action-")
-                } else {
-                    None
-                }
-            })
-            .and_then(|index| index.parse::<usize>().ok())
-            .map(|index| json!({ "kind": "choose_action", "index": index }))
-            .unwrap_or_else(|| json!({ "kind": "pass" })),
-        PlayerAction::DiscardDecision { discarded_card_ids } => {
-            json!({ "kind": "choose_cards", "card_ids": discarded_card_ids })
-        }
-        PlayerAction::MulliganDecision { keep } => {
-            json!({ "kind": "mulligan_decision", "keep": keep })
-        }
-        PlayerAction::MulliganPutBackDecision { card_ids } => {
-            json!({ "kind": "choose_cards", "card_ids": card_ids })
-        }
-        PlayerAction::DeclareAttackers { assignments } => json!({
-            "kind": "declare_attackers",
-            "assignments": assignments
-                .iter()
-                .map(|assignment| json!({
-                    "attackerId": assignment.attacker_id,
-                    "defenderId": assignment.defender_id,
-                }))
-                .collect::<Vec<_>>(),
-        }),
-        PlayerAction::TapLand {
-            ability_index: Some(index),
-            ..
-        }
-        | PlayerAction::ActivateAbility {
-            ability_index: index,
-            ..
-        } => json!({ "kind": "choose_action", "index": index }),
-        PlayerAction::PlayCard { card_id: None, .. } => json!({ "kind": "pass" }),
-        PlayerAction::Concede => json!({ "kind": "pass" }),
-        _ => json!({ "kind": "pass" }),
-    }
 }

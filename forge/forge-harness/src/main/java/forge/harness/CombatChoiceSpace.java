@@ -64,4 +64,8 @@ public final class CombatChoiceSpace {
         }
         return out;
     }
+
+    public static boolean canBlock(final Card attacker, final Card blocker, final Combat combat) {
+        return CombatUtil.canBlock(attacker, blocker, combat);
+    }
 }

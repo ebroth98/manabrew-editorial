@@ -130,6 +130,7 @@ export function TargetModals({
             minChoices={currentPrompt.minChoices ?? 1}
             maxChoices={currentPrompt.maxChoices ?? 1}
             sourceCardName={currentPrompt.sourceCardName}
+            description={currentPrompt.description}
             onConfirm={onChooseCardsDecision}
           />
         )}

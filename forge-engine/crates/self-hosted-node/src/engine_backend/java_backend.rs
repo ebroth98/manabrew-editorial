@@ -11,7 +11,11 @@ use std::sync::mpsc::TryRecvError;
 use std::time::Duration;
 
 #[cfg(feature = "java-forge")]
-use forge_agent_interface::java_prompt_normalizer::normalize_java_prompt;
+use forge_agent_interface::java_prompt_normalizer::{
+    normalize_java_prompt, translate_java_action_value,
+};
+#[cfg(feature = "java-forge")]
+use forge_agent_interface::prompt::PlayerAction;
 use forge_server::protocol::CardIdentity;
 #[cfg(feature = "java-forge")]
 use j4rs::{Instance, InvocationArg, JavaOpt, Jvm, JvmBuilder};
@@ -97,6 +101,43 @@ pub fn run_smoke_game(max_prompts: usize) -> Result<(), String> {
 pub fn run_smoke_game(_max_prompts: usize) -> Result<(), String> {
     Err(
         "java-forge smoke requires building self-hosted-node with --features java-forge"
+            .to_string(),
+    )
+}
+
+#[cfg(feature = "java-forge")]
+pub fn run_scenario(name: &str, max_prompts: usize) -> Result<(), String> {
+    let scenario = JavaScenario::from_name(name)?;
+    let config = JavaRuntimeConfig::from_env();
+    let assets_dir = config.assets_dir.to_string_lossy().to_string();
+    let bridge = J4rsBridge::new(&config)?;
+    let mut session = JavaForgeSession::new(bridge);
+    session.initialize(&assets_dir)?;
+
+    let request = StartGameRequest::new(
+        format!("self-hosted-java-scenario-{}", scenario.name()),
+        20,
+        vec![
+            PlayerConfig::new("Scenario A".to_string(), &scenario_deck("Swamp"), None),
+            PlayerConfig::new("Scenario B".to_string(), &scenario_deck("Forest"), None),
+        ],
+    );
+    let session_id = session.start_game(&request)?;
+    info!(
+        session_id,
+        scenario = scenario.name(),
+        "java-forge scenario started"
+    );
+
+    let result = run_scenario_loop(&mut session, scenario, max_prompts);
+    let end_result = session.end_game();
+    result.and(end_result)
+}
+
+#[cfg(not(feature = "java-forge"))]
+pub fn run_scenario(_name: &str, _max_prompts: usize) -> Result<(), String> {
+    Err(
+        "java-forge scenarios require building self-hosted-node with --features java-forge"
             .to_string(),
     )
 }
@@ -332,6 +373,264 @@ fn smoke_deck(land_name: &str, spell_name: &str) -> Vec<CardIdentity> {
             set_code: String::new(),
         }))
         .collect()
+}
+
+#[cfg(feature = "java-forge")]
+fn scenario_deck(land_name: &str) -> Vec<CardIdentity> {
+    (0..60)
+        .map(|_| CardIdentity {
+            name: land_name.to_string(),
+            set_code: String::new(),
+        })
+        .collect()
+}
+
+#[cfg(feature = "java-forge")]
+enum JavaScenario {
+    KeepAndPlayLand {
+        played_land: bool,
+    },
+    MulliganOncePlayLand {
+        mulliganed: bool,
+        kept_second_hand: bool,
+        put_back_done: bool,
+        played_land: bool,
+    },
+}
+
+#[cfg(feature = "java-forge")]
+impl JavaScenario {
+    fn from_name(name: &str) -> Result<Self, String> {
+        match name {
+            "keep-and-play-land" => Ok(Self::KeepAndPlayLand { played_land: false }),
+            "mulligan-once-play-land" => Ok(Self::MulliganOncePlayLand {
+                mulliganed: false,
+                kept_second_hand: false,
+                put_back_done: false,
+                played_land: false,
+            }),
+            _ => Err(format!(
+                "unknown java-forge scenario '{name}'. Supported scenarios: keep-and-play-land, mulligan-once-play-land"
+            )),
+        }
+    }
+
+    fn name(&self) -> &'static str {
+        match self {
+            Self::KeepAndPlayLand { .. } => "keep-and-play-land",
+            Self::MulliganOncePlayLand { .. } => "mulligan-once-play-land",
+        }
+    }
+
+    fn next_action(&mut self, prompt: &Value) -> Result<Option<PlayerAction>, String> {
+        match self {
+            Self::KeepAndPlayLand { played_land } => {
+                if *played_land && battlefield_contains(prompt, "Swamp") {
+                    return Ok(None);
+                }
+                match prompt_type(prompt) {
+                    Some("mulligan") => Ok(Some(PlayerAction::MulliganDecision { keep: true })),
+                    Some("chooseAction") => {
+                        if let Some(action) = play_first_card_action(prompt, "Swamp")? {
+                            *played_land = true;
+                            Ok(Some(action))
+                        } else {
+                            Ok(Some(PlayerAction::PlayCard {
+                                card_id: None,
+                                mode: None,
+                            }))
+                        }
+                    }
+                    other => Err(format!(
+                        "scenario '{}' expected mulligan or chooseAction, got {:?}",
+                        self.name(),
+                        other
+                    )),
+                }
+            }
+            Self::MulliganOncePlayLand {
+                mulliganed,
+                kept_second_hand,
+                put_back_done,
+                played_land,
+            } => {
+                if *played_land && battlefield_contains(prompt, "Swamp") {
+                    return Ok(None);
+                }
+                match prompt_type(prompt) {
+                    Some("mulligan") if !*mulliganed => {
+                        *mulliganed = true;
+                        Ok(Some(PlayerAction::MulliganDecision { keep: false }))
+                    }
+                    Some("mulligan") if !*kept_second_hand => {
+                        *kept_second_hand = true;
+                        Ok(Some(PlayerAction::MulliganDecision { keep: true }))
+                    }
+                    Some("mulliganPutBack") if !*put_back_done => {
+                        let count = prompt
+                            .get("count")
+                            .and_then(Value::as_u64)
+                            .unwrap_or(1) as usize;
+                        let card_ids = prompt_card_ids(prompt, "handCardIds", count)?;
+                        *put_back_done = true;
+                        Ok(Some(PlayerAction::MulliganPutBackDecision { card_ids }))
+                    }
+                    Some("chooseAction") => {
+                        if let Some(action) = play_first_card_action(prompt, "Swamp")? {
+                            *played_land = true;
+                            Ok(Some(action))
+                        } else {
+                            Ok(Some(PlayerAction::PlayCard {
+                                card_id: None,
+                                mode: None,
+                            }))
+                        }
+                    }
+                    other => Err(format!(
+                        "scenario '{}' expected mulligan, mulliganPutBack, or chooseAction, got {:?}",
+                        self.name(),
+                        other
+                    )),
+                }
+            }
+        }
+    }
+}
+
+#[cfg(feature = "java-forge")]
+fn run_scenario_loop<B: JavaBridge>(
+    session: &mut JavaForgeSession<B>,
+    mut scenario: JavaScenario,
+    max_prompts: usize,
+) -> Result<(), String> {
+    let mut prompts_seen = 0usize;
+    let mut last_prompt_json: Option<String> = None;
+    while prompts_seen < max_prompts {
+        let Some(prompt_json) = wait_for_prompt(session, 600)? else {
+            return Err(format!(
+                "timed out waiting for java-forge scenario '{}' prompt",
+                scenario.name()
+            ));
+        };
+        if last_prompt_json.as_deref() == Some(prompt_json.as_str()) {
+            std::thread::sleep(Duration::from_millis(50));
+            continue;
+        }
+        last_prompt_json = Some(prompt_json.clone());
+        prompts_seen += 1;
+
+        let prompt: Value = serde_json::from_str(&prompt_json)
+            .map_err(|err| format!("failed to parse java scenario prompt: {err}"))?;
+        let player = prompt
+            .get("player")
+            .and_then(Value::as_u64)
+            .unwrap_or_default();
+        if player != 0 {
+            session.submit_action(&auto_java_action(&prompt).to_string())?;
+            continue;
+        }
+
+        let normalized_prompt = normalize_java_prompt(prompt);
+        info!(
+            scenario = scenario.name(),
+            prompts_seen,
+            prompt_type = prompt_type(&normalized_prompt).unwrap_or("<missing>"),
+            "java-forge scenario prompt"
+        );
+        let Some(action) = scenario.next_action(&normalized_prompt)? else {
+            info!(
+                scenario = scenario.name(),
+                prompts_seen, "java-forge scenario assertions satisfied"
+            );
+            return Ok(());
+        };
+        submit_player_action(session, &action)?;
+    }
+    Err(format!(
+        "java-forge scenario '{}' did not complete within {max_prompts} prompts",
+        scenario.name()
+    ))
+}
+
+#[cfg(feature = "java-forge")]
+fn submit_player_action<B: JavaBridge>(
+    session: &mut JavaForgeSession<B>,
+    action: &PlayerAction,
+) -> Result<(), String> {
+    let action_value = serde_json::to_value(action)
+        .map_err(|err| format!("failed to serialize scenario player action: {err}"))?;
+    let java_action = translate_java_action_value(&action_value);
+    session.submit_action(&java_action.to_string())?;
+    Ok(())
+}
+
+#[cfg(feature = "java-forge")]
+fn prompt_type(prompt: &Value) -> Option<&str> {
+    prompt.get("type").and_then(Value::as_str)
+}
+
+#[cfg(feature = "java-forge")]
+fn play_first_card_action(prompt: &Value, card_name: &str) -> Result<Option<PlayerAction>, String> {
+    let Some(option) = prompt
+        .get("playableOptions")
+        .and_then(Value::as_array)
+        .and_then(|options| {
+            options.iter().find(|option| {
+                option
+                    .get("modeLabel")
+                    .and_then(Value::as_str)
+                    .is_some_and(|label| label.contains(card_name))
+            })
+        })
+    else {
+        return Ok(None);
+    };
+    let card_id = option
+        .get("cardId")
+        .and_then(Value::as_str)
+        .ok_or_else(|| format!("playable option for '{card_name}' is missing cardId"))?;
+    let mode = option
+        .get("mode")
+        .and_then(Value::as_str)
+        .ok_or_else(|| format!("playable option for '{card_name}' is missing mode"))?;
+    Ok(Some(PlayerAction::PlayCard {
+        card_id: Some(card_id.to_string()),
+        mode: Some(mode.to_string()),
+    }))
+}
+
+#[cfg(feature = "java-forge")]
+fn prompt_card_ids(prompt: &Value, field: &str, count: usize) -> Result<Vec<String>, String> {
+    let card_ids = prompt
+        .get(field)
+        .and_then(Value::as_array)
+        .ok_or_else(|| format!("prompt is missing {field}"))?;
+    if card_ids.len() < count {
+        return Err(format!(
+            "prompt field {field} has {} cards, need {count}",
+            card_ids.len()
+        ));
+    }
+    Ok(card_ids
+        .iter()
+        .take(count)
+        .filter_map(Value::as_str)
+        .map(str::to_string)
+        .collect())
+}
+
+#[cfg(feature = "java-forge")]
+fn battlefield_contains(prompt: &Value, card_name: &str) -> bool {
+    prompt
+        .get("gameView")
+        .and_then(|game_view| game_view.get("battlefield"))
+        .and_then(Value::as_array)
+        .is_some_and(|cards| {
+            cards.iter().any(|card| {
+                card.get("name").and_then(Value::as_str) == Some(card_name)
+                    && card.get("controllerId").and_then(Value::as_str) == Some("player-0")
+            })
+        })
 }
 
 pub trait JavaBridge {
