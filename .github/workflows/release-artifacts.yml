@@ -96,6 +96,17 @@ jobs:
       - name: Set up MSVC environment
         uses: ilammy/msvc-dev-cmd@v1
 
+      # Ensures cargo + wasm32 target are on PATH for this job even if
+      # the runner service's PATH doesn't include %USERPROFILE%\.cargo\bin.
+      # Idempotent when Rust is already installed on the runner.
+      - name: Install Rust (stable + wasm32)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Install wasm-pack
+        run: cargo install wasm-pack --locked
+
       - run: yarn
 
       - name: Build WASM + bundle cards
