@@ -271,8 +271,10 @@ if (-not $runners) {
             Write-Warning "C:\Users\Administrator\.cargo\bin, so cargo lookups fail in CI."
             Write-Warning "Switching logon to .\Administrator."
 
-            $cred = Get-Credential -Message "Enter password for .\Administrator (used to run the runner service)" -UserName ".\Administrator"
+            $adminAccount = "$env:COMPUTERNAME\Administrator"
+            $cred = Get-Credential -Message "Enter password for $adminAccount (used to run the runner service)" -UserName $adminAccount
             if (-not $cred) { throw "No credentials supplied; aborting." }
+            Write-Host "  captured credential for: $($cred.UserName)"
 
             $plain = $cred.GetNetworkCredential().Password
             if ([string]::IsNullOrEmpty($plain)) {
