@@ -52,10 +52,8 @@ pub fn is_possible_activated(sa: &SpellAbility, game: &GameState) -> bool {
         None => return false,
     };
 
-    let card = game.card(card_id);
-
     // Check activation zone restriction -- activated abilities default to battlefield
-    if card.zone != ZoneType::Battlefield {
+    if !game.card_is_in_zone(card_id, ZoneType::Battlefield) {
         return false;
     }
 

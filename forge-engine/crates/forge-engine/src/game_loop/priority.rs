@@ -327,7 +327,7 @@ impl GameLoop {
                         });
                         if self.java_parity_failed_spell_setup_to_stack
                             && has_must_target_static
-                            && game.card(play.card_id).zone == ZoneType::Hand
+                            && game.card_is_in_zone(play.card_id, ZoneType::Hand)
                         {
                             game.move_card(play.card_id, ZoneType::Stack, priority_player);
                         }

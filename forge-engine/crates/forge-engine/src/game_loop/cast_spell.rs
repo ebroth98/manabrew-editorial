@@ -39,7 +39,7 @@ impl GameLoop {
         {
             return None;
         }
-        let origin_zone = game.card(card_id).zone;
+        let origin_zone = game.card_current_zone(card_id);
         let play_name = if can_play_back_face_land {
             game.card(card_id)
                 .other_part
@@ -424,7 +424,7 @@ impl GameLoop {
         match play_mode {
             crate::agent::PlayCardMode::ForetellExile => {
                 if game.card(card_id).get_foretell_cost().is_some()
-                    && game.card(card_id).zone == ZoneType::Hand
+                    && game.card_is_in_zone(card_id, ZoneType::Hand)
                 {
                     let available_mana =
                         mana::calculate_available_mana(self.pool(player), game, player);
@@ -466,7 +466,7 @@ impl GameLoop {
                 crate::spellability::AlternativeCost::Suspend,
             ) => {
                 if let Some((suspend_cost, counters)) = game.card(card_id).get_suspend_cost() {
-                    if game.card(card_id).zone != ZoneType::Hand {
+                    if !game.card_is_in_zone(card_id, ZoneType::Hand) {
                         return Some(None);
                     }
                     let available_mana =
@@ -655,7 +655,7 @@ impl GameLoop {
         // by cost_adjustment::adjust() called later in this function.
         // Do not apply compute_cost_adjustment here.
         // We still need raise_cost for its non-mana cost parts (e.g. Waterbend).
-        let cast_zone = game.card(card_id).zone;
+        let cast_zone = game.card_current_zone(card_id);
         let raise_cost = crate::cost::cost_adjustment::compute_raise_cost_parts(
             game,
             game.card(card_id),
@@ -1004,7 +1004,7 @@ impl GameLoop {
 
         // Detect commander cast from Command zone (for commander tax)
         let is_commander_cast = game.player_is_commander(player, card_id)
-            && game.card(card_id).zone == ZoneType::Command;
+            && game.card_is_in_zone(card_id, ZoneType::Command);
         let mut commander_tax = if is_commander_cast {
             game.player_commander_tax(player, card_id)
         } else {
@@ -1083,7 +1083,7 @@ impl GameLoop {
         if !sa.overloaded {
             crate::perf::increment(crate::perf::Metric::GameStateTargetingClones, 1);
             let mut targeting_game = game.clone();
-            if sa.is_spell && targeting_game.card(card_id).zone != ZoneType::Stack {
+            if sa.is_spell && !targeting_game.card_is_in_zone(card_id, ZoneType::Stack) {
                 // Java deterministic spell casting moves the spell to stack
                 // before setupTargets(), so counterspells can see themselves
                 // as legal stack targets during target selection.
@@ -1116,7 +1116,7 @@ impl GameLoop {
                     card_name
                 );
                 if self.java_parity_failed_spell_setup_to_stack
-                    && game.card(card_id).zone != ZoneType::Stack
+                    && !game.card_is_in_zone(card_id, ZoneType::Stack)
                 {
                     game.move_card(card_id, ZoneType::Stack, player);
                 }
@@ -1369,7 +1369,7 @@ impl GameLoop {
                 },
             );
             if !mana_paid {
-                if game.card(card_id).zone != original_zone {
+                if game.card_current_zone(card_id) != original_zone {
                     self.move_card_with_runtime(
                         game,
                         card_id,
@@ -1808,7 +1808,7 @@ impl GameLoop {
         } else {
             // Use the card's actual zone (usually Hand, but could be
             // Exile for Warp-from-exile casts with Normal mode).
-            Some(game.card(card_id).zone)
+            Some(game.card_current_zone(card_id))
         };
 
         let entry = StackEntry {
@@ -2139,10 +2139,9 @@ impl GameLoop {
             let src_owner = card.controller;
             card.zone = ZoneType::Library;
             if src_zone != ZoneType::None {
-                game.zone_mut(src_zone, src_owner).remove(card_id);
+                game.remove_card_from_zone(src_zone, src_owner, card_id);
             }
-            game.zone_mut(ZoneType::Library, player)
-                .add_to_bottom(card_id);
+            game.add_card_to_zone_bottom(ZoneType::Library, player, card_id);
         }
     }
 }

@@ -1,4 +1,4 @@
-use std::collections::{HashMap, VecDeque};
+use std::collections::VecDeque;
 
 use forge_foundation::ZoneType;
 use serde::{Deserialize, Serialize};
@@ -11,7 +11,7 @@ use crate::phase::ExtraTurn;
 use crate::phase::TurnState;
 use crate::player::PlayerState;
 use crate::spellability::MagicStack;
-use crate::zone::{CostPaymentStack, Zone, ZoneKey};
+use crate::zone::{CostPaymentStack, Zone, ZoneKey, ZoneStore};
 
 /// Global registry of type lists loaded from `TypeLists.txt`.
 ///
@@ -96,7 +96,7 @@ pub struct GameState {
 
     // Zones: keyed by (ZoneType, PlayerId)
     #[serde(skip)]
-    pub zones: HashMap<ZoneKey, Zone>,
+    zones: ZoneStore,
 
     // The stack
     pub stack: MagicStack,
@@ -205,32 +205,7 @@ impl GameState {
             player_order.push(pid);
         }
 
-        let mut zones = HashMap::new();
-        let zone_types = [
-            ZoneType::Hand,
-            ZoneType::Library,
-            ZoneType::Graveyard,
-            ZoneType::Battlefield,
-            ZoneType::Exile,
-            ZoneType::Command,
-            ZoneType::Sideboard,
-            ZoneType::SchemeDeck,
-            ZoneType::PlanarDeck,
-            ZoneType::AttractionDeck,
-            ZoneType::ContraptionDeck,
-            ZoneType::Junkyard,
-            ZoneType::Ante,
-            ZoneType::ExtraHand,
-            ZoneType::Subgame,
-            ZoneType::Stack,
-        ];
-
-        for &pid in &player_order {
-            for &zt in &zone_types {
-                let key = ZoneKey::new(zt, pid);
-                zones.insert(key, Zone::new(zt, pid));
-            }
-        }
+        let zones = ZoneStore::new(&player_order);
 
         GameState {
             cards: Vec::new(),
@@ -296,13 +271,100 @@ impl GameState {
     }
 
     pub fn zone(&self, zone_type: ZoneType, owner: PlayerId) -> &Zone {
-        let key = ZoneKey::new(zone_type, owner);
-        self.zones.get(&key).expect("Zone not found")
+        self.zones.get(zone_type, owner).expect("Zone not found")
     }
 
     pub fn zone_mut(&mut self, zone_type: ZoneType, owner: PlayerId) -> &mut Zone {
-        let key = ZoneKey::new(zone_type, owner);
-        self.zones.get_mut(&key).expect("Zone not found")
+        self.zones
+            .get_mut(zone_type, owner)
+            .expect("Zone not found")
+    }
+
+    pub fn zone_store_snapshot(&self) -> ZoneStore {
+        self.zones.clone()
+    }
+
+    pub fn replace_zone_store(&mut self, zones: ZoneStore) {
+        self.zones = zones;
+    }
+
+    pub fn iter_zones(&self) -> impl Iterator<Item = (ZoneKey, &Zone)> {
+        self.zones.iter()
+    }
+
+    pub fn cards_in_all_zones(&self, zone_type: ZoneType) -> impl Iterator<Item = CardId> + '_ {
+        self.iter_zones()
+            .filter(move |(key, _)| key.zone_type == zone_type)
+            .flat_map(|(_, zone)| zone.cards.iter().copied())
+    }
+
+    pub fn card_zone_location(&self, card: CardId) -> Option<ZoneKey> {
+        self.zones.card_location(card)
+    }
+
+    pub fn card_zone(&self, card: CardId) -> Option<ZoneType> {
+        self.card_zone_location(card)
+            .map(|location| location.zone_type)
+    }
+
+    pub fn card_current_zone(&self, card: CardId) -> ZoneType {
+        self.card_zone(card).unwrap_or_else(|| self.card(card).zone)
+    }
+
+    pub fn card_is_in_zone(&self, card: CardId, zone: ZoneType) -> bool {
+        self.card_current_zone(card) == zone
+    }
+
+    pub fn card_zone_owner(&self, card: CardId) -> Option<PlayerId> {
+        self.card_zone_location(card).map(|location| location.owner)
+    }
+
+    pub fn card_zone_location_matches_card(&self, card: CardId) -> bool {
+        let card_ref = self.card(card);
+        match self.card_zone_location(card) {
+            Some(location) => {
+                location.zone_type == card_ref.zone && location.owner == card_ref.controller
+            }
+            None => card_ref.zone == ZoneType::None,
+        }
+    }
+
+    pub fn reset_zone_turn_tracking(&mut self) {
+        for zone in self.zones.values_mut() {
+            zone.reset_cards_added_this_turn();
+        }
+    }
+
+    pub(crate) fn remove_card_from_zone(
+        &mut self,
+        zone_type: ZoneType,
+        owner: PlayerId,
+        card: CardId,
+    ) -> bool {
+        self.zones.remove_card(zone_type, owner, card)
+    }
+
+    pub(crate) fn add_card_to_zone(&mut self, zone_type: ZoneType, owner: PlayerId, card: CardId) {
+        self.zones.add_card_to_top(zone_type, owner, card);
+    }
+
+    pub(crate) fn add_card_to_zone_bottom(
+        &mut self,
+        zone_type: ZoneType,
+        owner: PlayerId,
+        card: CardId,
+    ) {
+        self.zones.add_card_to_bottom(zone_type, owner, card);
+    }
+
+    pub(crate) fn save_zone_lki(
+        &mut self,
+        zone_type: ZoneType,
+        owner: PlayerId,
+        card: CardId,
+        from: ZoneType,
+    ) {
+        self.zones.save_lki(zone_type, owner, card, from);
     }
 
     pub fn active_player(&self) -> PlayerId {
@@ -467,8 +529,10 @@ mod tests {
             vec![],
         );
         let cid = game.create_card(card);
-        game.zone_mut(ZoneType::Library, PlayerId(0)).add(cid);
+        game.add_card_to_zone(ZoneType::Library, PlayerId(0), cid);
+        game.card_mut(cid).zone = ZoneType::Library;
         assert_eq!(game.zone(ZoneType::Library, PlayerId(0)).len(), 1);
+        assert_eq!(game.card_zone(cid), Some(ZoneType::Library));
     }
 
     #[test]

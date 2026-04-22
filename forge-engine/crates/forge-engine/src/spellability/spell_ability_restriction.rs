@@ -150,13 +150,12 @@ impl SpellAbilityRestriction {
     /// Check if this spell ability can be played given the current game state.
     /// Mirrors Java's `SpellAbilityRestriction.canPlay(Card, SpellAbility)`.
     pub fn can_play(&self, game: &GameState, card_id: CardId, player: PlayerId) -> bool {
-        let card = game.card(card_id);
-
         // Check zone restriction
-        let card_zone = card.zone;
+        let card_zone = game.card_current_zone(card_id);
         if card_zone != self.variables.zone() {
             return false;
         }
+        let card = game.card(card_id);
         if !self.can_player_activate_host(game, card_id, player) {
             return false;
         }
@@ -236,8 +235,7 @@ impl SpellAbilityRestriction {
     /// Check zone restrictions only.
     /// Mirrors Java's `SpellAbilityRestriction.checkZoneRestrictions(Card, SpellAbility)`.
     pub fn check_zone_restrictions(&self, game: &GameState, card_id: CardId) -> bool {
-        let card = game.card(card_id);
-        card.zone == self.variables.zone()
+        game.card_current_zone(card_id) == self.variables.zone()
     }
 
     /// Check timing restrictions (phase, sorcery speed, etc.).

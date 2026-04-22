@@ -29,7 +29,7 @@ pub fn can_play(sa: &SpellAbility, game: &GameState) -> bool {
     if sa.params.is_true("Morph") || sa.params.is_true("MorphUp") || sa.params.is_true("Megamorph")
     {
         // Must be on the battlefield
-        if card.zone != ZoneType::Battlefield {
+        if !game.card_is_in_zone(card_id, ZoneType::Battlefield) {
             return false;
         }
         // Must be face-down

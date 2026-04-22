@@ -2295,10 +2295,9 @@ mod tests {
             vec!["AB$ Mana | Cost$ T | Produced$ G"],
         ));
 
-        game.zone_mut(ZoneType::Battlefield, player)
-            .add(reserved_food);
-        game.zone_mut(ZoneType::Battlefield, player).add(goose);
-        game.zone_mut(ZoneType::Battlefield, player).add(forest);
+        game.add_card_to_zone(ZoneType::Battlefield, player, reserved_food);
+        game.add_card_to_zone(ZoneType::Battlefield, player, goose);
+        game.add_card_to_zone(ZoneType::Battlefield, player, forest);
         game.card_mut(reserved_food).zone = ZoneType::Battlefield;
         game.card_mut(goose).zone = ZoneType::Battlefield;
         game.card_mut(forest).zone = ZoneType::Battlefield;
@@ -2350,7 +2349,7 @@ mod tests {
         ));
 
         for cid in [reserved_food, goose, forest] {
-            game.zone_mut(ZoneType::Battlefield, player).add(cid);
+            game.add_card_to_zone(ZoneType::Battlefield, player, cid);
             game.card_mut(cid).zone = ZoneType::Battlefield;
             game.card_mut(cid).summoning_sick = false;
         }
@@ -2401,7 +2400,7 @@ mod tests {
         ));
 
         for cid in [plains, mountain, forest] {
-            game.zone_mut(ZoneType::Battlefield, player).add(cid);
+            game.add_card_to_zone(ZoneType::Battlefield, player, cid);
             game.card_mut(cid).zone = ZoneType::Battlefield;
             game.card_mut(cid).summoning_sick = false;
         }
@@ -2429,7 +2428,7 @@ mod tests {
             vec!["AB$ Mana | Cost$ T Sac<1/CARDNAME> | Produced$ Any"],
         ));
 
-        game.zone_mut(ZoneType::Battlefield, player).add(treasure);
+        game.add_card_to_zone(ZoneType::Battlefield, player, treasure);
         game.card_mut(treasure).zone = ZoneType::Battlefield;
         game.card_mut(treasure).summoning_sick = false;
 
@@ -2488,8 +2487,8 @@ mod tests {
             "Land Forest",
             vec!["AB$ Mana | Cost$ T | Produced$ G"],
         ));
-        game.zone_mut(ZoneType::Battlefield, player).add(treasure2);
-        game.zone_mut(ZoneType::Battlefield, player).add(forest);
+        game.add_card_to_zone(ZoneType::Battlefield, player, treasure2);
+        game.add_card_to_zone(ZoneType::Battlefield, player, forest);
         game.card_mut(treasure2).zone = ZoneType::Battlefield;
         game.card_mut(treasure2).summoning_sick = false;
         game.card_mut(forest).zone = ZoneType::Battlefield;

@@ -26,10 +26,8 @@ pub fn can_play(sa: &SpellAbility, game: &GameState) -> bool {
         None => return false,
     };
 
-    let card = game.card(card_id);
-
     // A spell cannot be cast if its card is already on the battlefield
-    if card.zone == ZoneType::Battlefield {
+    if game.card_is_in_zone(card_id, ZoneType::Battlefield) {
         return false;
     }
 
@@ -62,10 +60,8 @@ pub fn check_restrictions(sa: &SpellAbility, game: &GameState) -> bool {
 /// Returns the card if playable, None otherwise.
 pub fn can_play_from_host(sa: &SpellAbility, game: &GameState) -> Option<CardId> {
     let card_id = sa.source?;
-    let card = game.card(card_id);
-
     // A spell cannot be cast if its card is already on the battlefield
-    if card.zone == ZoneType::Battlefield {
+    if game.card_is_in_zone(card_id, ZoneType::Battlefield) {
         return None;
     }
 

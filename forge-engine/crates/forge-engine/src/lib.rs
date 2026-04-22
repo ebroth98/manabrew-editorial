@@ -15,6 +15,7 @@ pub mod game_log_formatter;
 pub mod game_loop;
 pub mod game_object;
 pub mod game_rng;
+pub mod game_runtime;
 pub mod game_snapshot;
 pub mod ids;
 pub mod keyword;

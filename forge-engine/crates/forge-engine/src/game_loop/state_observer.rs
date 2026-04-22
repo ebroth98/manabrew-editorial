@@ -110,8 +110,7 @@ impl GameLoop {
         }
 
         let mut zone_rows: Vec<String> = game
-            .zones
-            .iter()
+            .iter_zones()
             .map(|(k, z)| {
                 let ids = z
                     .cards

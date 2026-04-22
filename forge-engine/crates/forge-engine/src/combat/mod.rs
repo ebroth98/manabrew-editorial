@@ -272,7 +272,7 @@ impl CombatState {
     /// Check if any creature in combat has first strike or double strike.
     pub fn has_first_strikers(&self, game: &GameState) -> bool {
         for &(attacker_id, _) in &self.attackers {
-            if game.card(attacker_id).zone != ZoneType::Battlefield {
+            if !game.card_is_in_zone(attacker_id, ZoneType::Battlefield) {
                 continue;
             }
             let card = game.card(attacker_id);
@@ -281,7 +281,7 @@ impl CombatState {
             }
         }
         for &(blocker_id, _) in &self.blockers {
-            if game.card(blocker_id).zone != ZoneType::Battlefield {
+            if !game.card_is_in_zone(blocker_id, ZoneType::Battlefield) {
                 continue;
             }
             let card = game.card(blocker_id);
@@ -317,7 +317,7 @@ impl CombatState {
 
         for (attacker_id, defender) in self.attackers.clone() {
             // Check attacker is still alive
-            if game.card(attacker_id).zone != ZoneType::Battlefield {
+            if !game.card_is_in_zone(attacker_id, ZoneType::Battlefield) {
                 continue;
             }
 
@@ -635,7 +635,7 @@ impl CombatState {
                 let mut alive_blockers: Vec<CardId> = blockers
                     .iter()
                     .copied()
-                    .filter(|&bid| game.card(bid).zone == ZoneType::Battlefield)
+                    .filter(|&bid| game.card_is_in_zone(bid, ZoneType::Battlefield))
                     .collect();
                 let mut effective_defender = defender;
                 if has_trample_planeswalker {
@@ -721,7 +721,7 @@ impl CombatState {
                 }
                 let mut blocker_damage_infos: Vec<BlockerDamageInfo> = Vec::new();
                 for &blocker_id in &blockers {
-                    if game.card(blocker_id).zone != ZoneType::Battlefield {
+                    if !game.card_is_in_zone(blocker_id, ZoneType::Battlefield) {
                         continue;
                     }
                     let blocker_card = game.card(blocker_id);
@@ -903,7 +903,7 @@ impl CombatState {
 
                 for info in &blocker_damage_infos {
                     // Blocker may have been removed by an SBA or replacement
-                    if game.card(info.blocker_id).zone != ZoneType::Battlefield {
+                    if !game.card_is_in_zone(info.blocker_id, ZoneType::Battlefield) {
                         continue;
                     }
                     deal_combat_damage_to_card(
@@ -1271,7 +1271,7 @@ fn validate_damage_assignment(
     let has_deathtouch = game.card(attacker_id).has_deathtouch();
     let mut can_move_to_next = true;
     for &blocker_id in blockers_in_order {
-        if game.card(blocker_id).zone != ZoneType::Battlefield {
+        if !game.card_is_in_zone(blocker_id, ZoneType::Battlefield) {
             continue;
         }
         if crate::staticability::static_ability_colorless_damage_source::target_is_protected_from_source(
@@ -1347,7 +1347,7 @@ fn fallback_damage_assignment(
         if damage_left <= 0 {
             break;
         }
-        if game.card(blocker_id).zone != ZoneType::Battlefield {
+        if !game.card_is_in_zone(blocker_id, ZoneType::Battlefield) {
             continue;
         }
         if crate::staticability::static_ability_colorless_damage_source::target_is_protected_from_source(
@@ -1473,7 +1473,7 @@ fn compute_blocker_damage_allocations(
     let attackers_for_blocker: Vec<CardId> = combat
         .get_attackers_for(blocker_id)
         .into_iter()
-        .filter(|&aid| game.card(aid).zone == ZoneType::Battlefield)
+        .filter(|&aid| game.card_is_in_zone(aid, ZoneType::Battlefield))
         .collect();
     if attackers_for_blocker.is_empty() {
         return Vec::new();

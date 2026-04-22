@@ -7,11 +7,11 @@ use serde::{Deserialize, Serialize};
 
 use crate::ability::ability_utils;
 use crate::event::{RunParams, ZoneChangeRecord};
-use crate::trigger::TriggerType;
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
 use crate::spellability::SpellAbility;
 use crate::trigger::TriggerHandler;
+use crate::trigger::TriggerType;
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct CardZoneTable {
@@ -136,12 +136,7 @@ impl CardZoneTable {
     fn with_last_state(&self, game: &GameState) -> Self {
         let mut table = self.clone();
         table.last_state_battlefield = game.pre_sba_battlefield.clone();
-        table.last_state_graveyard = game
-            .zones
-            .iter()
-            .filter(|(key, _)| key.zone_type == ZoneType::Graveyard)
-            .flat_map(|(_, zone)| zone.cards.iter().copied())
-            .collect();
+        table.last_state_graveyard = game.cards_in_all_zones(ZoneType::Graveyard).collect();
         table
     }
 }

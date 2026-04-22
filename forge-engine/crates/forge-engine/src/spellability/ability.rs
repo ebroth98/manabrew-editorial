@@ -30,12 +30,12 @@ pub fn can_play(sa: &SpellAbility, game: &GameState) -> bool {
         return false;
     }
 
-    let card = game.card(card_id);
-
     // The card must be on the battlefield to activate in-play abilities
-    if card.zone != ZoneType::Battlefield {
+    if !game.card_is_in_zone(card_id, ZoneType::Battlefield) {
         return false;
     }
+
+    let card = game.card(card_id);
 
     // Face-down cards cannot activate abilities (except morph turn-face-up,
     // which is handled by AbilityStatic, not Ability)

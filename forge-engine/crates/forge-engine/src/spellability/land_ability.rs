@@ -29,8 +29,7 @@ pub fn can_play(sa: &SpellAbility, game: &GameState) -> bool {
     }
 
     // Card must not already be on the battlefield
-    let card = game.card(card_id);
-    if card.zone == ZoneType::Battlefield {
+    if game.card_is_in_zone(card_id, ZoneType::Battlefield) {
         return false;
     }
 

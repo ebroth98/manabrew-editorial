@@ -146,7 +146,7 @@ impl GameState {
             return;
         };
         if self.card(effect_id).zone == ZoneType::Command {
-            self.zone_mut(ZoneType::Command, player).remove(effect_id);
+            self.remove_card_from_zone(ZoneType::Command, player, effect_id);
         }
         self.card_mut(effect_id).zone = ZoneType::None;
         self.player_mut(player).commander_effect_card = None;

@@ -318,9 +318,7 @@ impl GameLoop {
                     // Rotate stack's turn-tracking (this_turn_cast → last_turn_cast).
                     game.stack.on_next_turn();
                     // Reset zone turn tracking for all zones.
-                    for zone in game.zones.values_mut() {
-                        zone.reset_cards_added_this_turn();
-                    }
+                    game.reset_zone_turn_tracking();
                     let player_order = game.player_order.clone();
                     if let Some((player, _skip)) =
                         game.turn.advance_turn(&mut game.extra_turns, &player_order)

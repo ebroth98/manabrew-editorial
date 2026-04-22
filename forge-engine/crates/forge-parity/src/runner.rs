@@ -12,6 +12,7 @@ use forge_engine_core::card::CardInstance;
 use forge_engine_core::combat::DefenderId;
 use forge_engine_core::game::GameState;
 use forge_engine_core::game_loop::GameLoop;
+use forge_engine_core::game_runtime::GameRuntime;
 use forge_engine_core::ids::{CardId, PlayerId};
 use forge_engine_core::spellability::{MagicStack, SpellAbility, StackEntry};
 use forge_foundation::ZoneType;
@@ -132,7 +133,7 @@ impl CapturingAgent {
         let mut sim = GameState::new(&player_name_refs, starting_life);
         sim.players = game.players.clone();
         sim.cards = game.cards.iter().map(Self::shallow_snapshot_card).collect();
-        sim.zones = game.zones.clone();
+        sim.replace_zone_store(game.zone_store_snapshot());
         let mut stack = MagicStack::new();
         for entry in game.stack.iter() {
             stack.push(Self::shallow_stack_entry(entry));
@@ -789,7 +790,7 @@ pub fn run_with_data(config: &RunConfig, data: &LoadedData) -> Result<GameTrace,
     // Both agents share the same game RNG so random effects match Java's MyRandom.
     // Both agents share the same snapshot_index so callbacks from either player
     // reference the correct snapshot position (matching Java's approach).
-    let mut agents: Vec<Box<dyn PlayerAgent>> = vec![
+    let agents: Vec<Box<dyn PlayerAgent>> = vec![
         Box::new(CapturingAgent::new(
             p0,
             config.verbose.clone(),
@@ -820,19 +821,19 @@ pub fn run_with_data(config: &RunConfig, data: &LoadedData) -> Result<GameTrace,
         )),
     ];
 
-    game_loop.run_opening_hand_actions(&mut game, &mut agents);
-
     // Wire the Java-compatible RNG into the game loop so that effect-level
     // shuffles, coin flips, and dice rolls consume the same PRNG instance
     // as the agents, matching Java's single MyRandom consumption order.
     game_loop.game_rng = Box::new(crate::java_random::JavaGameRng(Rc::clone(&game_rng)));
+    let mut runtime = GameRuntime::from_parts(game, game_loop, agents);
+    runtime.run_opening_hand_actions();
 
     forge_engine_core::perf::reset_counters();
 
     // Run turns — CapturingAgent captures turn-start snapshots automatically
-    while !game.game_over && game.turn.turn_number <= config.max_turns {
+    while !runtime.game().game_over && runtime.game().turn.turn_number <= config.max_turns {
         let _t_turn = Instant::now();
-        game_loop.run_turn(&mut game, &mut agents, &mut rng);
+        runtime.run_turn(&mut rng);
         forge_engine_core::perf::record_turn_wall(_t_turn.elapsed());
     }
 

@@ -248,7 +248,7 @@ mod tests {
             vec!["AB$ Mana | Cost$ Sac<1/CARDNAME> | Produced$ C | Amount$ 1"],
         ));
 
-        game.zone_mut(ZoneType::Battlefield, player).add(spawn);
+        game.add_card_to_zone(ZoneType::Battlefield, player, spawn);
         game.card_mut(spawn).zone = ZoneType::Battlefield;
         game.card_mut(spawn).tapped = true;
 
@@ -269,7 +269,7 @@ mod tests {
             vec!["AB$ Mana | Cost$ Sac<1/CARDNAME> | Produced$ C | Amount$ 1"],
         ));
 
-        game.zone_mut(ZoneType::Battlefield, player).add(spawn);
+        game.add_card_to_zone(ZoneType::Battlefield, player, spawn);
         game.card_mut(spawn).zone = ZoneType::Battlefield;
 
         let mana_ability = game.card(spawn).activated_abilities[0].clone();
@@ -307,7 +307,7 @@ mod tests {
             vec!["AB$ ChangeZone | Cost$ T PayLife<1> Sac<1/CARDNAME> | Origin$ Library | Destination$ Battlefield | ChangeType$ Land.Basic"],
         ));
 
-        game.zone_mut(ZoneType::Battlefield, player).add(vista);
+        game.add_card_to_zone(ZoneType::Battlefield, player, vista);
         game.card_mut(vista).zone = ZoneType::Battlefield;
 
         assert!(!GameLoop::mana_source_available_for_payment(

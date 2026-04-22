@@ -6,6 +6,7 @@ pub mod cost_payment_stack;
 pub mod magic_stack;
 pub mod player_zone;
 pub mod player_zone_battlefield;
+pub mod zone_store;
 pub mod zone_type;
 
 use forge_foundation::ZoneType;
@@ -17,6 +18,7 @@ use crate::ids::{CardId, PlayerId};
 pub use cost_payment_stack::CostPaymentStack;
 pub use player_zone::PlayerZone;
 pub use player_zone_battlefield::PlayerZoneBattlefield;
+pub use zone_store::ZoneStore;
 
 /// A game zone owned by a specific player.
 /// Each player has their own Hand, Library, Graveyard, etc.

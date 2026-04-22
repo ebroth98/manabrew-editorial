@@ -411,7 +411,7 @@ pub fn update_all_zones_for_view(game: &GameState, player: PlayerId) -> Vec<(Zon
 pub fn reset_extra_zones(game: &mut GameState, player: PlayerId) {
     let cards = game.cards_in_zone(ZoneType::ExtraHand, player).to_vec();
     for card_id in cards {
-        game.zone_mut(ZoneType::ExtraHand, player).remove(card_id);
+        game.remove_card_from_zone(ZoneType::ExtraHand, player, card_id);
         game.card_mut(card_id).zone = ZoneType::None;
     }
 }
@@ -501,7 +501,7 @@ pub fn create_monarch_effect(
 pub fn remove_monarch_effect(game: &mut GameState, player: PlayerId) {
     if let Some(effect_id) = game.player(player).monarch_effect_card {
         if game.card(effect_id).zone == ZoneType::Command {
-            game.zone_mut(ZoneType::Command, player).remove(effect_id);
+            game.remove_card_from_zone(ZoneType::Command, player, effect_id);
         }
         game.card_mut(effect_id).zone = ZoneType::None;
     }
@@ -538,7 +538,7 @@ pub fn create_radiation_effect(
 pub fn remove_initiative_effect(game: &mut GameState, player: PlayerId) {
     if let Some(effect_id) = game.player(player).initiative_effect_card {
         if game.card(effect_id).zone == ZoneType::Command {
-            game.zone_mut(ZoneType::Command, player).remove(effect_id);
+            game.remove_card_from_zone(ZoneType::Command, player, effect_id);
         }
         game.card_mut(effect_id).zone = ZoneType::None;
     }
@@ -551,7 +551,7 @@ pub fn remove_initiative_effect(game: &mut GameState, player: PlayerId) {
 pub fn remove_radiation_effect(game: &mut GameState, player: PlayerId) {
     if let Some(effect_id) = game.player(player).radiation_effect_card {
         if game.card(effect_id).zone == ZoneType::Command {
-            game.zone_mut(ZoneType::Command, player).remove(effect_id);
+            game.remove_card_from_zone(ZoneType::Command, player, effect_id);
         }
         game.card_mut(effect_id).zone = ZoneType::None;
     }
@@ -1051,7 +1051,7 @@ pub fn destroy_physical_card(game: &mut GameState, card_id: CardId) {
     let zone = game.card(card_id).zone;
     let controller = game.card(card_id).controller;
     if zone != ZoneType::None {
-        game.zone_mut(zone, controller).remove(card_id);
+        game.remove_card_from_zone(zone, controller, card_id);
     }
     game.card_mut(card_id).zone = ZoneType::None;
 }
@@ -1074,7 +1074,7 @@ pub fn update_keyword_card_ability_text(game: &mut GameState, player: PlayerId) 
     match (game.player(player).keyword_effect_card, has_keywords) {
         (Some(effect_id), false) => {
             if game.card(effect_id).zone != ZoneType::None {
-                game.zone_mut(ZoneType::Command, player).remove(effect_id);
+                game.remove_card_from_zone(ZoneType::Command, player, effect_id);
                 game.card_mut(effect_id).zone = ZoneType::None;
             }
             game.player_mut(player).keyword_effect_card = None;
@@ -1281,7 +1281,7 @@ pub fn remove_current_plane(game: &mut GameState, player: PlayerId) -> Option<Ca
             let card = game.card(card_id);
             card.type_line.has_subtype("Plane") || card.type_line.has_subtype("Phenomenon")
         })?;
-    game.zone_mut(ZoneType::Command, player).remove(current);
+    game.remove_card_from_zone(ZoneType::Command, player, current);
     game.card_mut(current).zone = ZoneType::None;
     Some(current)
 }

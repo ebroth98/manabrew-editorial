@@ -2,8 +2,7 @@ use forge_foundation::ZoneType;
 
 use crate::agent::PlayerAgent;
 use crate::card::CounterType;
-use crate::event::{RunParams};
-use crate::trigger::TriggerType;
+use crate::event::RunParams;
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
 use crate::replacement::replacement_handler::{
@@ -13,6 +12,7 @@ use crate::replacement::GameLossReason;
 use crate::replacement::ReplacementResult;
 use crate::staticability::layer::{apply_continuous_effects, apply_etb_tapped};
 use crate::trigger::handler::TriggerHandler;
+use crate::trigger::TriggerType;
 
 /// Game state mutation methods — moving cards, dealing damage, state-based actions.
 impl GameState {
@@ -223,23 +223,24 @@ impl GameState {
             }
             self.cards[card_id.index()].zone = ZoneType::None;
             if src_zone != ZoneType::None {
-                self.zone_mut(src_zone, src_owner).remove(card_id);
+                self.remove_card_from_zone(src_zone, src_owner, card_id);
             }
             // Effect cards with ForgetOnMoved should be removed from the game
             // entirely (zone = None), not moved to Exile. Moving them to Exile
             // creates phantom cards that diverge from Java parity.
             for eff_id in exile_effects {
                 let controller = self.card(eff_id).controller;
-                self.zone_mut(ZoneType::Command, controller).remove(eff_id);
+                self.remove_card_from_zone(ZoneType::Command, controller, eff_id);
                 self.cards[eff_id.index()].zone = ZoneType::None;
             }
             apply_continuous_effects(self);
+            debug_assert!(self.card_zone_location_matches_card(card_id));
             return;
         }
 
         // Remove from source zone
         if src_zone != ZoneType::None {
-            self.zone_mut(src_zone, src_owner).remove(card_id);
+            self.remove_card_from_zone(src_zone, src_owner, card_id);
         }
 
         // Update card's zone
@@ -254,8 +255,7 @@ impl GameState {
         self.assign_zone_timestamp(card_id);
 
         // Track LKI: record which zone this card came from on the destination zone.
-        self.zone_mut(dest_zone, dest_owner)
-            .save_lki(card_id, src_zone);
+        self.save_zone_lki(dest_zone, dest_owner, card_id, src_zone);
 
         // Reset state on zone change
         match dest_zone {
@@ -270,7 +270,7 @@ impl GameState {
                 }
                 // Add to destination zone first so the card is "on the
                 // battlefield" when ETB-tapped checks run against it.
-                self.zone_mut(dest_zone, dest_owner).add(card_id);
+                self.add_card_to_zone(dest_zone, dest_owner, card_id);
                 if was_land {
                     self.player_record_landfall(dest_owner);
                 }
@@ -392,6 +392,7 @@ impl GameState {
                 // even if it dies within the same resolution chain.
                 self.update_lki_snapshot(card_id);
                 apply_continuous_effects(self);
+                debug_assert!(self.card_zone_location_matches_card(card_id));
                 return;
             }
             ZoneType::Graveyard | ZoneType::Hand | ZoneType::Exile | ZoneType::Library => {
@@ -492,7 +493,7 @@ impl GameState {
         }
 
         // Add to destination zone
-        self.zone_mut(dest_zone, dest_owner).add(card_id);
+        self.add_card_to_zone(dest_zone, dest_owner, card_id);
 
         // Commander 903.9a tracking: once a commander enters graveyard or exile,
         // SBA may offer moving it to the command zone exactly once.
@@ -513,7 +514,7 @@ impl GameState {
         // entirely (zone = None), not moved to Exile.
         for eff_id in exile_effects {
             let controller = self.card(eff_id).controller;
-            self.zone_mut(ZoneType::Command, controller).remove(eff_id);
+            self.remove_card_from_zone(ZoneType::Command, controller, eff_id);
             self.cards[eff_id.index()].zone = ZoneType::None;
         }
 
@@ -528,7 +529,7 @@ impl GameState {
                 .collect();
             for eff_id in linked_effects {
                 let controller = self.card(eff_id).controller;
-                self.zone_mut(ZoneType::Command, controller).remove(eff_id);
+                self.remove_card_from_zone(ZoneType::Command, controller, eff_id);
                 self.cards[eff_id.index()].zone = ZoneType::None;
             }
 
@@ -547,6 +548,7 @@ impl GameState {
         }
 
         apply_continuous_effects(self);
+        debug_assert!(self.card_zone_location_matches_card(card_id));
     }
 
     /// Deal damage to a card (creature).
@@ -1275,8 +1277,8 @@ impl GameState {
 
         // Move between zone lists
         if zone != ZoneType::None {
-            self.zone_mut(zone, old_controller).remove(card_id);
-            self.zone_mut(zone, new_controller).add(card_id);
+            self.remove_card_from_zone(zone, old_controller, card_id);
+            self.add_card_to_zone(zone, new_controller, card_id);
         }
         self.cards[card_id.index()].controller = new_controller;
     }
@@ -1321,13 +1323,12 @@ impl GameState {
         let src_owner = card.controller;
 
         if src_zone != ZoneType::None {
-            self.zone_mut(src_zone, src_owner).remove(card_id);
+            self.remove_card_from_zone(src_zone, src_owner, card_id);
         }
 
         self.cards[card_id.index()].zone = ZoneType::Library;
         self.assign_zone_timestamp(card_id);
-        self.zone_mut(ZoneType::Library, owner)
-            .add_to_bottom(card_id);
+        self.add_card_to_zone_bottom(ZoneType::Library, owner, card_id);
     }
 
     /// Remove a spell from the stack by its entry ID (used by Counter).

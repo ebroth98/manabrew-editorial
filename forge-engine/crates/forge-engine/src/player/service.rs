@@ -4,8 +4,7 @@ use forge_foundation::ZoneType;
 use rand::seq::SliceRandom;
 
 use crate::card::CardInstance;
-use crate::event::{RunParams};
-use crate::trigger::TriggerType;
+use crate::event::RunParams;
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
 use crate::player::player_factory_util::{add_trigger_ability, new_player_effect_card};
@@ -15,6 +14,7 @@ use crate::replacement::replacement_handler::{
 };
 use crate::replacement::replacement_result::ReplacementResult;
 use crate::trigger::handler::TriggerHandler;
+use crate::trigger::TriggerType;
 
 impl GameState {
     pub fn new_from_registered_players(players: &[RegisteredPlayer]) -> Self {
@@ -60,7 +60,7 @@ impl GameState {
         };
         let zone = self.card(effect_id).zone;
         if zone != ZoneType::None {
-            self.zone_mut(zone, player).remove(effect_id);
+            self.remove_card_from_zone(zone, player, effect_id);
         }
         self.card_mut(effect_id).zone = ZoneType::None;
     }

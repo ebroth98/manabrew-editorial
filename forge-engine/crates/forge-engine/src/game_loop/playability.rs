@@ -1020,7 +1020,7 @@ mod tests {
             );
             land.zone = ZoneType::Battlefield;
             let land_id = game.create_card(land);
-            game.zone_mut(ZoneType::Battlefield, player).add(land_id);
+            game.add_card_to_zone(ZoneType::Battlefield, player, land_id);
         }
 
         let mut target = card(
@@ -1035,8 +1035,7 @@ mod tests {
         );
         target.zone = ZoneType::Battlefield;
         let target_id = game.create_card(target);
-        game.zone_mut(ZoneType::Battlefield, opponent)
-            .add(target_id);
+        game.add_card_to_zone(ZoneType::Battlefield, opponent, target_id);
 
         let mut dismember = card(
             "Dismember",
@@ -1050,7 +1049,7 @@ mod tests {
         );
         dismember.zone = ZoneType::Hand;
         let dismember_id = game.create_card(dismember);
-        game.zone_mut(ZoneType::Hand, player).add(dismember_id);
+        game.add_card_to_zone(ZoneType::Hand, player, dismember_id);
 
         let game_loop = GameLoop::new(2);
         let sa =
