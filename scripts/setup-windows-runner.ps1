@@ -274,22 +274,44 @@ if (-not $runners) {
             $cred = Get-Credential -Message "Enter password for .\Administrator (used to run the runner service)" -UserName ".\Administrator"
             if (-not $cred) { throw "No credentials supplied; aborting." }
 
+            $plain = $cred.GetNetworkCredential().Password
+            if ([string]::IsNullOrEmpty($plain)) {
+                throw "Empty password received from Get-Credential prompt."
+            }
+
             Grant-LogOnAsServiceRight -AccountName ".\Administrator"
+
+            # Sanity: re-read policy and confirm the Administrator SID is now
+            # listed under SeServiceLogonRight. Catches silent secedit failures.
+            $adminSid = (New-Object System.Security.Principal.NTAccount("$env:COMPUTERNAME\Administrator")).Translate(
+                [System.Security.Principal.SecurityIdentifier]).Value
+            $verify = Join-Path $env:TEMP "verify-$(Get-Random).inf"
+            & secedit /export /areas USER_RIGHTS /cfg $verify /quiet | Out-Null
+            $verifyContent = Get-Content $verify -Raw -Encoding Unicode
+            Remove-Item $verify -ErrorAction SilentlyContinue
+            if ($verifyContent -notmatch [regex]::Escape("*$adminSid")) {
+                throw "SeServiceLogonRight grant did not apply to $adminSid. Run 'secedit /export /areas USER_RIGHTS /cfg out.inf' to inspect."
+            }
+            Write-Host "  verified SeServiceLogonRight grant for $adminSid."
 
             Write-Host "  stopping service..."
             Stop-Service $svc.Name -Force
 
-            $result = $wmi.Change(
-                $null,$null,$null,$null,$null,$null,
-                $cred.UserName,
-                $cred.GetNetworkCredential().Password
-            ).ReturnValue
-            if ($result -ne 0) {
-                throw "Win32_Service.Change returned $result (see https://learn.microsoft.com/windows/win32/cimwin32prov/change-method-in-class-win32-service)"
+            # Use sc.exe rather than WMI Change() - clearer error codes.
+            # sc.exe obj= / password= syntax requires the space after '='.
+            Write-Host "  setting logon account to $($cred.UserName)..."
+            $scOut = & sc.exe config $svc.Name obj= $cred.UserName password= $plain 2>&1
+            if ($LASTEXITCODE -ne 0) {
+                Write-Host ($scOut | Out-String)
+                throw "sc.exe config failed with exit $LASTEXITCODE. Common causes: wrong password, account disabled, or SeServiceLogonRight not granted."
             }
 
             Write-Host "  starting service as $($cred.UserName)..."
-            Start-Service $svc.Name
+            try {
+                Start-Service $svc.Name -ErrorAction Stop
+            } catch {
+                throw "Service failed to start after logon change: $($_.Exception.Message). Check Event Viewer -> Windows Logs -> System for the exact cause (usually 7000 or 7038)."
+            }
 
             $wmi2 = Get-WmiObject Win32_Service -Filter "Name='$($svc.Name)'"
             Write-Host "  now runs as: $($wmi2.StartName)"
