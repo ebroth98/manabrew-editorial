@@ -83,7 +83,11 @@ for (const file of [".gitignore", "package.json", "README.md"]) {
 }
 
 console.log("\nBundling card data...");
-run(process.execPath, [join(scriptsDir, "bundle-cards.mjs")]);
+// shell: false because process.execPath may contain spaces (e.g.
+// "C:\Program Files\nodejs\node.exe") which cmd.exe would mis-parse when
+// shell is true. Without shell, spawnSync passes the path as a single
+// argument to CreateProcess.
+run(process.execPath, [join(scriptsDir, "bundle-cards.mjs")], { shell: false });
 
 console.log("\nBuild complete!");
 console.log(`WASM output: ${outputDir}`);
