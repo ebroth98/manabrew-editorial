@@ -3,7 +3,7 @@ name: Release artifacts
 on:
   push:
     branches: [main]
-    tags: ['v*']
+    tags: ["v*"]
   workflow_dispatch:
     inputs:
       build_macos:
@@ -27,9 +27,9 @@ jobs:
   #   3. Push to main       -> read the PR body checkboxes.
   gate:
     name: Check build gate
-    runs-on: [self-hosted, Linux]
+    runs-on: [self-hosted, Linux, Windows]
     outputs:
-      should_build_macos:   ${{ steps.check.outputs.should_build_macos }}
+      should_build_macos: ${{ steps.check.outputs.should_build_macos }}
       should_build_windows: ${{ steps.check.outputs.should_build_windows }}
     steps:
       - name: Evaluate gate
