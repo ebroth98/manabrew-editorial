@@ -855,6 +855,122 @@ fn run_single_matchup_pool(
     result
 }
 
+/// Serve-mode matchup result including timing and cache-hit marker.
+#[cfg(feature = "serve")]
+struct ServedMatchup {
+    result: MatchupResult,
+    duration_ms: u64,
+    cache_hit: bool,
+}
+
+/// Run a matchup using a pool, consulting the Java cache first. On miss, runs
+/// Rust and Java concurrently (like `run_single_matchup_pool`) and stores the
+/// Java output so subsequent identical runs short-circuit.
+#[cfg(feature = "serve")]
+fn run_matchup_cached(
+    config: &RunConfig,
+    data: &LoadedData,
+    pool: &ServerPool,
+    cache: Option<&JavaCache>,
+) -> ServedMatchup {
+    let start = std::time::Instant::now();
+
+    if let Some(c) = cache {
+        if let Some(cached_java) = c.get(
+            &config.deck1,
+            &config.deck2,
+            config.seed,
+            config.max_turns,
+            config.prefer_actions,
+        ) {
+            let rust_trace = match runner::run_with_data(config, data) {
+                Ok(t) => t,
+                Err(e) => {
+                    return ServedMatchup {
+                        result: MatchupResult::error(
+                            config,
+                            format!("Rust engine error: {}", e),
+                        ),
+                        duration_ms: start.elapsed().as_millis() as u64,
+                        cache_hit: false,
+                    };
+                }
+            };
+            let mut result = compare_snapshots(config, &rust_trace, &cached_java);
+            result.covered_cards = rust_trace.covered_cards;
+            return ServedMatchup {
+                result,
+                duration_ms: start.elapsed().as_millis() as u64,
+                cache_hit: true,
+            };
+        }
+    }
+
+    let (rust_result, java_result) = std::thread::scope(|s| {
+        let rust_handle = std::thread::Builder::new()
+            .name("parity-rust".to_string())
+            .stack_size(PARITY_THREAD_STACK_SIZE)
+            .spawn_scoped(s, || runner::run_with_data(config, data))
+            .expect("Failed to spawn Rust parity thread");
+        let java_result = pool.run_matchup(
+            &config.deck1,
+            &config.deck2,
+            config.seed,
+            config.max_turns,
+            config.prefer_actions,
+            config.deep,
+            &config.variant,
+            &config.commanders,
+            config.verbose.to_java_arg(),
+        );
+        let rust_result = rust_handle.join().expect("Rust engine thread panicked");
+        (rust_result, java_result)
+    });
+
+    let rust_trace = match rust_result {
+        Ok(trace) => trace,
+        Err(e) => {
+            return ServedMatchup {
+                result: MatchupResult::error(config, format!("Rust engine error: {}", e)),
+                duration_ms: start.elapsed().as_millis() as u64,
+                cache_hit: false,
+            };
+        }
+    };
+    let java_data = match java_result {
+        Ok(snaps) => snaps,
+        Err(e) => {
+            return ServedMatchup {
+                result: MatchupResult::error(config, format!("Java server error: {}", e)),
+                duration_ms: start.elapsed().as_millis() as u64,
+                cache_hit: false,
+            };
+        }
+    };
+
+    let mut result = compare_snapshots(config, &rust_trace, &java_data);
+    result.covered_cards = rust_trace.covered_cards;
+
+    if result.status != MatchupStatus::Error {
+        if let Some(c) = cache {
+            let _ = c.put(
+                &config.deck1,
+                &config.deck2,
+                config.seed,
+                config.max_turns,
+                config.prefer_actions,
+                &java_data,
+            );
+        }
+    }
+
+    ServedMatchup {
+        result,
+        duration_ms: start.elapsed().as_millis() as u64,
+        cache_hit: false,
+    }
+}
+
 /// Run a single matchup using one-shot JavaBridge (fallback mode).
 /// Rust and Java engines run in parallel using scoped threads.
 fn run_single_matchup_oneshot(
@@ -2886,7 +3002,8 @@ fn run_serve_mode(cli: &Cli) {
         }
     }
 
-    // Spawn Java server
+    // Spawn Java server pool so jobs can run in parallel. Falls back to 1
+    // worker if memory is tight; matches the --matrix path's defaults.
     let server_config = JavaServerConfig {
         jar_path: jar_path.clone(),
         forge_home: None,
@@ -2894,11 +3011,47 @@ fn run_serve_mode(cli: &Cli) {
         verbose: cli.is_verbose(),
         java_heap: cli.java_heap.clone(),
     };
-    let mut java_server = match JavaServer::spawn(&server_config) {
-        Ok(s) => s,
+    let num_workers = cli
+        .java_workers
+        .unwrap_or_else(|| max_workers_for_memory(&cli.java_heap))
+        .max(1);
+    let server_pool = match ServerPool::spawn(num_workers, &server_config) {
+        Ok(p) => {
+            tracing::info!(workers = num_workers, "Java server pool spawned");
+            p
+        }
         Err(e) => {
-            tracing::error!(%e, "Failed to spawn Java server");
+            tracing::error!(%e, "Failed to spawn Java server pool");
             std::process::exit(1);
+        }
+    };
+
+    // Open Java output cache so unchanged Java source short-circuits the Java
+    // run entirely. Keyed on a hash of Java source + deck definitions — when
+    // that changes the cache is wiped automatically.
+    let java_cache: Option<JavaCache> = if cli.no_cache {
+        None
+    } else {
+        let project_root = std::env::current_dir().unwrap_or_default();
+        let source_hash = if project_root.join("forge/forge-harness/src").exists() {
+            java_cache::compute_source_hash(&project_root)
+        } else {
+            java_cache::compute_jar_hash(&jar_path).unwrap_or_default()
+        };
+        match JavaCache::open(std::path::Path::new(&cli.cache_dir), source_hash) {
+            Ok(c) => {
+                tracing::info!(
+                    cache_dir = %cli.cache_dir,
+                    source_hash = %c.source_hash(),
+                    entries = c.len(),
+                    "Java cache opened"
+                );
+                Some(c)
+            }
+            Err(e) => {
+                tracing::warn!(%e, "Failed to open Java cache — continuing without");
+                None
+            }
         }
     };
 
@@ -2998,168 +3151,172 @@ fn run_serve_mode(cli: &Cli) {
     let cfg = Arc::clone(&dashboard_config);
 
     let mut completed = 0usize;
+    let cache_hits = AtomicUsize::new(0);
+    let cache_misses = AtomicUsize::new(0);
     // Track config values to detect changes and rebuild scheduler
     let mut prev_games_per_matchup = cfg.games_per_matchup.load(Ordering::Relaxed);
     let mut prev_fuzz_enabled = cfg.fuzz_enabled.load(Ordering::Relaxed);
     let mut prev_self_matchups = cfg.self_matchups.load(Ordering::Relaxed);
 
     loop {
-        // 1. Check job queue first (priority over scheduler)
-        let queued = job_queue.queue.lock().unwrap().pop_front();
-        if let Some(queued_job) = queued {
+        // 1. Drain up to N queued jobs (API-submitted; takes priority over scheduler)
+        let drained: Vec<web::QueuedJob> = {
+            let mut queue = job_queue.queue.lock().unwrap();
+            let mut batch_jobs = Vec::with_capacity(num_workers);
+            while batch_jobs.len() < num_workers {
+                match queue.pop_front() {
+                    Some(j) => batch_jobs.push(j),
+                    None => break,
+                }
+            }
+            batch_jobs
+        };
+
+        if !drained.is_empty() {
+            // Mark each as active for its batch (best-effort; last-write wins).
             {
                 let mut batches = job_queue.batches.lock().unwrap();
-                if let Some(batch) = batches.get_mut(&queued_job.batch_id) {
-                    batch.active_job = Some(web::ActiveJob {
-                        regression_name: queued_job.regression_name.clone(),
+                for queued_job in &drained {
+                    if let Some(batch) = batches.get_mut(&queued_job.batch_id) {
+                        batch.active_job = Some(web::ActiveJob {
+                            regression_name: queued_job.regression_name.clone(),
+                            deck1: queued_job.deck1.clone(),
+                            deck2: queued_job.deck2.clone(),
+                            seed: queued_job.seed,
+                            max_turns: queued_job.max_turns,
+                        });
+                    }
+                }
+            }
+
+            // Run all jobs concurrently via rayon. Each closure consults the
+            // Java cache first; misses fall through to the shared server pool.
+            let pool_ref = &server_pool;
+            let cache_ref = java_cache.as_ref();
+            let data_ref = &data;
+            let cci = &cli_cards_dir;
+            let ccd = &cli_decks_dir;
+            let ccv = &cli_verbose;
+            let cjh = &cli_java_heap;
+
+            let served: Vec<(web::QueuedJob, ServedMatchup)> = drained
+                .into_par_iter()
+                .map(|queued_job| {
+                    let config = RunConfig {
                         deck1: queued_job.deck1.clone(),
                         deck2: queued_job.deck2.clone(),
                         seed: queued_job.seed,
                         max_turns: queued_job.max_turns,
-                    });
-                }
-            }
-
-            let config = RunConfig {
-                deck1: queued_job.deck1.clone(),
-                deck2: queued_job.deck2.clone(),
-                seed: queued_job.seed,
-                max_turns: queued_job.max_turns,
-                deep: queued_job.deep,
-                loose_parity: false,
-                log_snapshots: false,
-                cards_dir: cli_cards_dir.clone(),
-                decks_dir: cli_decks_dir.clone(),
-                verbose: cli_verbose.clone(),
-                prefer_actions: queued_job.prefer_actions,
-                java_heap: cli_java_heap.clone(),
-                variant: queued_job.variant.clone(),
-                commanders: queued_job.commanders.clone(),
-                full_log: false,
-            };
-
-            let game_start = Instant::now();
-
-            // Respawn server if dead
-            if !java_server.is_alive() {
-                tracing::warn!("Java server died, respawning...");
-                java_server = match JavaServer::spawn(&server_config) {
-                    Ok(s) => s,
-                    Err(e) => {
-                        tracing::error!(%e, "Failed to respawn Java server");
-                        // Record error for batch
-                        let mut batches = job_queue.batches.lock().unwrap();
-                        if let Some(batch) = batches.get_mut(&queued_job.batch_id) {
-                            batch.completed += 1;
-                            batch.errors += 1;
-                            batch.active_job = None;
-                            batch.push_result(web::JobResult {
-                                deck1: queued_job.deck1.clone(),
-                                deck2: queued_job.deck2.clone(),
-                                seed: queued_job.seed,
-                                status: "error".into(),
-                                error: Some(format!("Java server respawn failed: {}", e)),
-                                divergence_field: None,
-                                rust_value: None,
-                                java_value: None,
-                                divergence_location: None,
-                                rust_trace: None,
-                                java_trace: None,
-                            });
-                            if batch.completed >= batch.total {
-                                batch.done = true;
-                            }
-                        }
-                        std::thread::sleep(std::time::Duration::from_secs(5));
-                        continue;
+                        deep: queued_job.deep,
+                        loose_parity: false,
+                        log_snapshots: false,
+                        cards_dir: cci.clone(),
+                        decks_dir: ccd.clone(),
+                        verbose: ccv.clone(),
+                        prefer_actions: queued_job.prefer_actions,
+                        java_heap: cjh.clone(),
+                        variant: queued_job.variant.clone(),
+                        commanders: queued_job.commanders.clone(),
+                        full_log: false,
+                    };
+                    let m = run_matchup_cached(&config, data_ref, pool_ref, cache_ref);
+                    if m.cache_hit {
+                        cache_hits.fetch_add(1, Ordering::Relaxed);
+                    } else if !matches!(m.result.status, MatchupStatus::Error) {
+                        cache_misses.fetch_add(1, Ordering::Relaxed);
                     }
-                };
-            }
+                    (queued_job, m)
+                })
+                .collect();
 
-            let result = run_single_matchup_server(&config, &data, &mut java_server);
-            let duration_ms = game_start.elapsed().as_millis() as u64;
-
-            let status_str = match result.status {
-                MatchupStatus::Pass => "pass",
-                MatchupStatus::Skipped => "skipped",
-                MatchupStatus::Fail => "fail",
-                MatchupStatus::Error => "error",
-            };
-
-            tracing::info!(
-                batch = queued_job.batch_id,
-                regression = %queued_job.regression_name,
-                deck1 = %short_deck(&queued_job.deck1),
-                deck2 = %short_deck(&queued_job.deck2),
-                seed = queued_job.seed,
-                ms = duration_ms,
-                status = status_str,
-                "CI job"
-            );
-
-            // Update batch status
-            {
-                let mut batches = job_queue.batches.lock().unwrap();
-                if let Some(batch) = batches.get_mut(&queued_job.batch_id) {
-                    batch.completed += 1;
-                    batch.active_job = None;
-                    match result.status {
-                        MatchupStatus::Pass => batch.passed += 1,
-                        MatchupStatus::Skipped => batch.skipped += 1,
-                        MatchupStatus::Fail => batch.failed += 1,
-                        MatchupStatus::Error => batch.errors += 1,
-                    }
-                    let (div_field, rust_val, java_val, div_loc) =
-                        if let Some(ref div) = result.first_divergence {
-                            (
-                                Some(div.field.clone()),
-                                Some(div.rust_value.clone()),
-                                Some(div.java_value.clone()),
-                                Some(format!("turn {} {}", div.turn, div.phase)),
-                            )
-                        } else {
-                            (None, None, None, None)
-                        };
-                    batch.push_result(web::JobResult {
-                        deck1: queued_job.deck1.clone(),
-                        deck2: queued_job.deck2.clone(),
-                        seed: queued_job.seed,
-                        status: status_str.to_string(),
-                        error: result.error_message.clone(),
-                        divergence_field: div_field,
-                        rust_value: rust_val,
-                        java_value: java_val,
-                        divergence_location: div_loc,
-                        rust_trace: result
-                            .rust_snapshot
-                            .clone()
-                            .map(|s| serde_json::to_string(&s).unwrap_or_default()),
-                        java_trace: result
-                            .java_snapshot
-                            .clone()
-                            .map(|s| serde_json::to_string(&s).unwrap_or_default()),
-                    });
-                    if batch.completed >= batch.total {
-                        batch.done = true;
-                    }
-                }
-            }
-
-            // Store in DB
-            {
-                let storage = app_state.storage.lock().unwrap();
-                if let Err(e) = storage.insert_run(
-                    0,
-                    &result,
+            // Serialize bookkeeping per-result.
+            for (queued_job, served) in served {
+                let ServedMatchup {
+                    result,
                     duration_ms,
-                    false,
-                    app_state.commit_sha.as_deref(),
-                ) {
-                    tracing::error!(%e, "DB insert error");
-                }
-            }
+                    cache_hit,
+                } = served;
+                let status_str = match result.status {
+                    MatchupStatus::Pass => "pass",
+                    MatchupStatus::Skipped => "skipped",
+                    MatchupStatus::Fail => "fail",
+                    MatchupStatus::Error => "error",
+                };
 
-            completed += 1;
+                tracing::info!(
+                    batch = queued_job.batch_id,
+                    regression = %queued_job.regression_name,
+                    deck1 = %short_deck(&queued_job.deck1),
+                    deck2 = %short_deck(&queued_job.deck2),
+                    seed = queued_job.seed,
+                    ms = duration_ms,
+                    cache = cache_hit,
+                    status = status_str,
+                    "CI job"
+                );
+
+                {
+                    let mut batches = job_queue.batches.lock().unwrap();
+                    if let Some(batch) = batches.get_mut(&queued_job.batch_id) {
+                        batch.completed += 1;
+                        batch.active_job = None;
+                        match result.status {
+                            MatchupStatus::Pass => batch.passed += 1,
+                            MatchupStatus::Skipped => batch.skipped += 1,
+                            MatchupStatus::Fail => batch.failed += 1,
+                            MatchupStatus::Error => batch.errors += 1,
+                        }
+                        let (div_field, rust_val, java_val, div_loc) =
+                            if let Some(ref div) = result.first_divergence {
+                                (
+                                    Some(div.field.clone()),
+                                    Some(div.rust_value.clone()),
+                                    Some(div.java_value.clone()),
+                                    Some(format!("turn {} {}", div.turn, div.phase)),
+                                )
+                            } else {
+                                (None, None, None, None)
+                            };
+                        batch.push_result(web::JobResult {
+                            deck1: queued_job.deck1.clone(),
+                            deck2: queued_job.deck2.clone(),
+                            seed: queued_job.seed,
+                            status: status_str.to_string(),
+                            error: result.error_message.clone(),
+                            divergence_field: div_field,
+                            rust_value: rust_val,
+                            java_value: java_val,
+                            divergence_location: div_loc,
+                            rust_trace: result
+                                .rust_snapshot
+                                .clone()
+                                .map(|s| serde_json::to_string(&s).unwrap_or_default()),
+                            java_trace: result
+                                .java_snapshot
+                                .clone()
+                                .map(|s| serde_json::to_string(&s).unwrap_or_default()),
+                        });
+                        if batch.completed >= batch.total {
+                            batch.done = true;
+                        }
+                    }
+                }
+
+                {
+                    let storage = app_state.storage.lock().unwrap();
+                    if let Err(e) = storage.insert_run(
+                        0,
+                        &result,
+                        duration_ms,
+                        false,
+                        app_state.commit_sha.as_deref(),
+                    ) {
+                        tracing::error!(%e, "DB insert error");
+                    }
+                }
+
+                completed += 1;
+            }
             continue;
         }
 
@@ -3270,23 +3427,14 @@ fn run_serve_mode(cli: &Cli) {
             log_snapshots: false,
         };
 
-        let game_start = Instant::now();
-
-        // Respawn server if dead
-        if !java_server.is_alive() {
-            tracing::warn!("Java server died, respawning...");
-            java_server = match JavaServer::spawn(&server_config) {
-                Ok(s) => s,
-                Err(e) => {
-                    tracing::error!(%e, "Failed to respawn Java server");
-                    std::thread::sleep(std::time::Duration::from_secs(5));
-                    continue;
-                }
-            };
+        let served = run_matchup_cached(&config, &data, &server_pool, java_cache.as_ref());
+        if served.cache_hit {
+            cache_hits.fetch_add(1, Ordering::Relaxed);
+        } else if !matches!(served.result.status, MatchupStatus::Error) {
+            cache_misses.fetch_add(1, Ordering::Relaxed);
         }
-
-        let result = run_single_matchup_server(&config, &data, &mut java_server);
-        let duration_ms = game_start.elapsed().as_millis() as u64;
+        let duration_ms = served.duration_ms;
+        let result = served.result;
 
         completed += 1;
 
@@ -3356,8 +3504,13 @@ fn run_serve_mode(cli: &Cli) {
         }
     }
 
-    java_server.shutdown();
-    tracing::info!(games = completed, "Serve mode complete");
+    server_pool.shutdown();
+    tracing::info!(
+        games = completed,
+        cache_hits = cache_hits.load(Ordering::Relaxed),
+        cache_misses = cache_misses.load(Ordering::Relaxed),
+        "Serve mode complete"
+    );
 }
 
 // ── Analyze-only Mode ──────────────────────────────────────────────
