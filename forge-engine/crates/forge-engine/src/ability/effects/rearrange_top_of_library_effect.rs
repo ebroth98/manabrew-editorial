@@ -39,11 +39,9 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let count = num.min(lib_len);
 
     // Take top N cards (last `count` elements).
-    let mut top_n: Vec<_> = {
-        let zone = ctx.game.zone_mut(ZoneType::Library, target);
-        let len = zone.cards.len();
-        zone.cards.split_off(len - count)
-    };
+    let mut top_n = ctx
+        .game
+        .take_top_cards_from_zone(ZoneType::Library, target, count);
 
     // Reverse to present in top-first order, matching Java's getTopXCardsFromLibrary
     // which returns [top, 2nd, 3rd, ...]. Rust's split_off gives [3rd, 2nd, top].
@@ -74,7 +72,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     // Convention: last element in put_back = top of library, matching Java's
     // moveToLibrary(card, 0) loop where the last card iterated ends up on top.
     for &id in &put_back {
-        ctx.game.zone_mut(ZoneType::Library, target).cards.push(id);
+        ctx.game.add_card_to_zone(ZoneType::Library, target, id);
     }
 
     // Handle optional shuffle.
@@ -89,8 +87,8 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
             Some(crate::ability::api_type::ApiType::RearrangeTopOfLibrary),
         );
         if wants_shuffle {
-            let lib = ctx.game.zone_mut(ZoneType::Library, target);
-            ctx.rng.shuffle_cards(&mut lib.cards);
+            ctx.game
+                .shuffle_zone_cards(ZoneType::Library, target, ctx.rng);
             ctx.trigger_handler.run_trigger(
                 TriggerType::Shuffled,
                 RunParams {

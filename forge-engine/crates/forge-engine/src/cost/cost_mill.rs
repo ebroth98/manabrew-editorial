@@ -15,7 +15,7 @@ pub fn pay_as_decided(
 ) -> Vec<crate::ids::CardId> {
     let mut milled = Vec::new();
     for _ in 0..amount {
-        if let Some(top) = game.zone_mut(ZoneType::Library, player).take_top() {
+        if let Some(top) = game.take_top_card_from_zone(ZoneType::Library, player) {
             game.move_card(top, ZoneType::Graveyard, player);
             milled.push(top);
         }

@@ -85,11 +85,9 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let count = dig_num.min(lib_len);
 
     // Take top N cards off the library.
-    let mut top_n: Vec<_> = {
-        let zone = ctx.game.zone_mut(ZoneType::Library, dig_player);
-        let len = zone.cards.len();
-        zone.cards.split_off(len - count)
-    };
+    let mut top_n = ctx
+        .game
+        .take_top_cards_from_zone(ZoneType::Library, dig_player, count);
     // Java DigEffect iterates top cards in top-first order.
     // Our library uses index 0 = bottom, so split_off returns deepest->top.
     // Reverse to expose the same chooser order Java uses.
@@ -126,8 +124,10 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
         if !accepted {
             // Put cards back into library — reverse to restore original deepest→top order.
             top_n.reverse();
-            let zone = ctx.game.zone_mut(ZoneType::Library, dig_player);
-            zone.cards.extend(top_n);
+            for card_id in top_n {
+                ctx.game
+                    .add_card_to_zone(ZoneType::Library, dig_player, card_id);
+            }
             return;
         }
     }
@@ -166,15 +166,18 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
         };
         ctx.move_card(id, dest_zone1, dest_owner);
         if dest_zone1 == ZoneType::Library {
-            let zone = ctx.game.zone_mut(ZoneType::Library, dest_owner);
             match lib_position1 {
-                pos if pos < 0 => zone.reorder(id, 0),
+                pos if pos < 0 => {
+                    ctx.game
+                        .reorder_card_in_zone(ZoneType::Library, dest_owner, id, 0)
+                }
                 0 => {}
                 pos => {
-                    let len = zone.cards.len();
+                    let len = ctx.game.cards_in_zone(ZoneType::Library, dest_owner).len();
                     let from_top = pos as usize;
                     let index = len.saturating_sub(from_top + 1);
-                    zone.reorder(id, index);
+                    ctx.game
+                        .reorder_card_in_zone(ZoneType::Library, dest_owner, id, index);
                 }
             }
         }
@@ -189,14 +192,12 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
             // lib_position2 == -1 means bottom (index 0), 0 means top.
             if lib_position2 == 0 {
                 // top of library
-                ctx.game.zone_mut(ZoneType::Library, owner).cards.push(id);
+                ctx.game.add_card_to_zone(ZoneType::Library, owner, id);
                 ctx.game.card_mut(id).set_zone(ZoneType::Library);
             } else {
                 // bottom of library
                 ctx.game
-                    .zone_mut(ZoneType::Library, owner)
-                    .cards
-                    .insert(0, id);
+                    .add_card_to_zone_bottom(ZoneType::Library, owner, id);
                 ctx.game.card_mut(id).set_zone(ZoneType::Library);
             }
         } else {
@@ -336,7 +337,7 @@ mod tests {
         let b = make_land(&mut game, p0);
         let c = make_land(&mut game, p0);
         // Library (bottom→top): a, b, c  → c is on top
-        game.zone_mut(ZoneType::Library, p0).cards = vec![a, b, c];
+        game.replace_zone_cards(ZoneType::Library, p0, vec![a, b, c]);
 
         // Dig 3, take 1 to hand, rest go to graveyard.
         let sa = SpellAbility::new_simple(

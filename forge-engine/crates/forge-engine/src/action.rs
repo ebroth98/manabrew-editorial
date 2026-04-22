@@ -1185,9 +1185,7 @@ impl GameState {
 
     /// Shuffle a player's library using the provided RNG.
     pub fn shuffle_library(&mut self, player: PlayerId, rng: &mut impl rand::Rng) {
-        use rand::seq::SliceRandom;
-        let zone = self.zone_mut(ZoneType::Library, player);
-        zone.cards.shuffle(rng);
+        self.shuffle_zone_cards_with_rand(ZoneType::Library, player, rng);
     }
 
     /// Reset per-turn state for all cards and players of a given player.

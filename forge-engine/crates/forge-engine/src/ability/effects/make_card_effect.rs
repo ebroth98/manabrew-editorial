@@ -97,9 +97,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
 
     // Shuffle library if cards went there without a specific position
     if zone == ZoneType::Library && !sa.params.has(keys::LIBRARY_POSITION) {
-        {
-            let lib = ctx.game.zone_mut(ZoneType::Library, controller);
-            ctx.rng.shuffle_cards(&mut lib.cards);
-        }
+        ctx.game
+            .shuffle_zone_cards(ZoneType::Library, controller, ctx.rng);
     }
 }

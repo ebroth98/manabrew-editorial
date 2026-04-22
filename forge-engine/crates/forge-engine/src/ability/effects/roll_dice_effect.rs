@@ -1576,8 +1576,7 @@ mod tests {
         );
         card.zone = forge_foundation::ZoneType::Battlefield;
         let card_id = game.create_card(card);
-        game.zone_mut(forge_foundation::ZoneType::Battlefield, player)
-            .add(card_id);
+        game.add_card_to_zone(forge_foundation::ZoneType::Battlefield, player, card_id);
 
         let mut agents: Vec<Box<dyn PlayerAgent>> = vec![Box::new(SwapAgent), Box::new(SwapAgent)];
         let mut rolls = vec![
@@ -1628,8 +1627,7 @@ mod tests {
         card.add_counter(&crate::card::CounterType::P1P1, 2);
         card.zone = forge_foundation::ZoneType::Battlefield;
         let card_id = game.create_card(card);
-        game.zone_mut(forge_foundation::ZoneType::Battlefield, player)
-            .add(card_id);
+        game.add_card_to_zone(forge_foundation::ZoneType::Battlefield, player, card_id);
 
         let mut agents: Vec<Box<dyn PlayerAgent>> =
             vec![Box::new(ModifyAgent), Box::new(ModifyAgent)];
@@ -1686,8 +1684,7 @@ mod tests {
         card.set_s_var("ModsThisTurn", "Number$0");
         card.zone = forge_foundation::ZoneType::Battlefield;
         let card_id = game.create_card(card);
-        game.zone_mut(forge_foundation::ZoneType::Battlefield, player)
-            .add(card_id);
+        game.add_card_to_zone(forge_foundation::ZoneType::Battlefield, player, card_id);
 
         let mut agents: Vec<Box<dyn PlayerAgent>> =
             vec![Box::new(ModifyAgent), Box::new(ModifyAgent)];
@@ -1738,8 +1735,7 @@ mod tests {
         );
         source.zone = forge_foundation::ZoneType::Battlefield;
         let source_id = game.create_card(source);
-        game.zone_mut(forge_foundation::ZoneType::Battlefield, player)
-            .add(source_id);
+        game.add_card_to_zone(forge_foundation::ZoneType::Battlefield, player, source_id);
 
         let mut monitor = Card::new(
             CardId(0),
@@ -1761,8 +1757,7 @@ mod tests {
         monitor.set_s_var("RollRerollCost", "1");
         monitor.zone = forge_foundation::ZoneType::Battlefield;
         let monitor_id = game.create_card(monitor);
-        game.zone_mut(forge_foundation::ZoneType::Battlefield, player)
-            .add(monitor_id);
+        game.add_card_to_zone(forge_foundation::ZoneType::Battlefield, player, monitor_id);
 
         let mut plains = Card::new(
             CardId(0),
@@ -1778,8 +1773,7 @@ mod tests {
         );
         plains.zone = forge_foundation::ZoneType::Battlefield;
         let plains_id = game.create_card(plains);
-        game.zone_mut(forge_foundation::ZoneType::Battlefield, player)
-            .add(plains_id);
+        game.add_card_to_zone(forge_foundation::ZoneType::Battlefield, player, plains_id);
 
         let sa = SpellAbility::new_empty(Some(source_id), player);
         let mut trigger_handler = TriggerHandler::new();
@@ -1834,8 +1828,7 @@ mod tests {
         );
         source.zone = forge_foundation::ZoneType::Battlefield;
         let source_id = game.create_card(source);
-        game.zone_mut(forge_foundation::ZoneType::Battlefield, player)
-            .add(source_id);
+        game.add_card_to_zone(forge_foundation::ZoneType::Battlefield, player, source_id);
 
         let mut sa = SpellAbility::new_empty(Some(source_id), player);
         sa.params.put("IgnoreLower".to_string(), "1".to_string());

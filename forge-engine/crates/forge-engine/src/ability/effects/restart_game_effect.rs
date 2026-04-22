@@ -78,10 +78,8 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
         }
 
         // Shuffle library
-        {
-            let lib = ctx.game.zone_mut(ZoneType::Library, player_id);
-            ctx.rng.shuffle_cards(&mut lib.cards);
-        }
+        ctx.game
+            .shuffle_zone_cards(ZoneType::Library, player_id, ctx.rng);
     }
 
     // Reset global game state

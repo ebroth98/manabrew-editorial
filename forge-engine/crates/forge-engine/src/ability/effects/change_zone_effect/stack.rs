@@ -52,16 +52,13 @@ pub(super) fn resolve_stack_removal(
     if dest_zone == ZoneType::Library
         && (lib_position == "-1" || lib_position.eq_ignore_ascii_case("Bottom"))
     {
-        let zone = ctx.game.zone_mut(ZoneType::Library, dest_owner);
-        if let Some(pos) = zone.cards.iter().rposition(|&c| c == card_id) {
-            zone.cards.remove(pos);
-            zone.cards.insert(0, card_id);
-        }
+        ctx.game
+            .reorder_card_in_zone(ZoneType::Library, dest_owner, card_id, 0);
     }
 
     if dest_zone == ZoneType::Library && sa.is_shuffle() {
-        let lib = ctx.game.zone_mut(ZoneType::Library, dest_owner);
-        ctx.rng.shuffle_cards(&mut lib.cards);
+        ctx.game
+            .shuffle_zone_cards(ZoneType::Library, dest_owner, ctx.rng);
     }
 
     // Counters

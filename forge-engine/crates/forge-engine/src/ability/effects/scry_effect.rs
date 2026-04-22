@@ -63,12 +63,9 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let count = num.min(lib_len);
 
     // Take top N cards off the library (index 0 = bottom, last = top).
-    let mut top_n: Vec<_> = {
-        let zone = ctx.game.zone_mut(ZoneType::Library, target);
-        let len = zone.cards.len();
-        // Take the last `count` cards (top of library).
-        zone.cards.split_off(len - count)
-    };
+    let mut top_n = ctx
+        .game
+        .take_top_cards_from_zone(ZoneType::Library, target, count);
     // Reverse to match Java's iteration order (top-to-bottom).
     // Java's `getCardsIn(Library, n)` returns cards starting from index 0 (top)
     // downward, so the deterministic agent must consume RNG in the same order.
@@ -91,19 +88,18 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
         .filter(|id| !bottom.contains(id))
         .collect();
 
-    // Put bottom cards at index 0 (true bottom), order as returned by agent.
-    let zone = ctx.game.zone_mut(ZoneType::Library, target);
     // Insert bottom cards at the front (index 0 = bottom in our representation).
     // Java moves `toBottom` cards one-by-one in the order returned by the
     // controller; each subsequent move becomes the new bottom card.
     for &id in &bottom {
-        zone.cards.insert(0, id);
+        ctx.game
+            .add_card_to_zone_bottom(ZoneType::Library, target, id);
     }
     // Put remaining top cards back on top (append to end).
     // `top` is in top-to-bottom order (from the reversed top_n), so iterate
     // in reverse to restore original library order (last push = actual top).
     for &id in top.iter().rev() {
-        zone.cards.push(id);
+        ctx.game.add_card_to_zone(ZoneType::Library, target, id);
     }
 
     // Fire Scry trigger
@@ -237,7 +233,7 @@ mod tests {
         let c = make_land(&mut game, p0);
 
         // Library order (bottom to top): a, b, c  → c is on top
-        game.zone_mut(ZoneType::Library, p0).cards = vec![a, b, c];
+        game.replace_zone_cards(ZoneType::Library, p0, vec![a, b, c]);
 
         // Scry 2: sees [b, c] (top 2). BottomAllAgent puts both on bottom.
         let sa = SpellAbility::new_simple(None, p0, "SP$ Scry | ScryNum$ 2");
@@ -280,7 +276,7 @@ mod tests {
 
         let a = make_land(&mut game, p0);
         let b = make_land(&mut game, p0);
-        game.zone_mut(ZoneType::Library, p0).cards = vec![a, b];
+        game.replace_zone_cards(ZoneType::Library, p0, vec![a, b]);
 
         let sa = SpellAbility::new_simple(None, p0, "SP$ Scry | ScryNum$ 2");
         let mut trigger_handler = TriggerHandler::new();

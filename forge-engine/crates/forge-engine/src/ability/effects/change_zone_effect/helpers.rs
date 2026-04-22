@@ -10,12 +10,12 @@ use super::super::{
     resolve_defined_players, EffectContext,
 };
 use crate::card::Card;
-use crate::event::{RunParams};
-use crate::trigger::TriggerType;
+use crate::event::RunParams;
 use crate::ids::{CardId, PlayerId};
 use crate::parsing::keys;
 use crate::spellability::SpellAbility;
 use crate::staticability::parse_static_ability;
+use crate::trigger::TriggerType;
 
 // ─── Card Matching ──────────────────────────────────────────────────────────
 
@@ -373,11 +373,8 @@ pub(super) fn apply_post_move(
     if dest_zone == ZoneType::Library
         && (lib_position == "-1" || lib_position.eq_ignore_ascii_case("Bottom"))
     {
-        let zone = ctx.game.zone_mut(ZoneType::Library, dest_owner);
-        if let Some(pos) = zone.cards.iter().rposition(|&c| c == card_id) {
-            zone.cards.remove(pos);
-            zone.cards.insert(0, card_id);
-        }
+        ctx.game
+            .reorder_card_in_zone(ZoneType::Library, dest_owner, card_id, 0);
     }
 
     // Battlefield entry effects

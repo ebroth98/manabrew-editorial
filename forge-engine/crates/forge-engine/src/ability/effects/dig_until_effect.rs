@@ -86,9 +86,9 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
 
     // Remove found + rest cards from library
     let removed: Vec<_> = found.iter().chain(rest.iter()).copied().collect();
-    {
-        let zone = ctx.game.zone_mut(ZoneType::Library, target_player);
-        zone.cards.retain(|id| !removed.contains(id));
+    for card_id in removed {
+        ctx.game
+            .remove_card_from_zone(ZoneType::Library, target_player, card_id);
     }
 
     // Move found cards to destination
@@ -112,9 +112,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
         if revealed_dest == ZoneType::Library {
             // Put on bottom
             ctx.game
-                .zone_mut(ZoneType::Library, owner)
-                .cards
-                .insert(0, id);
+                .add_card_to_zone_bottom(ZoneType::Library, owner, id);
             ctx.game.card_mut(id).set_zone(ZoneType::Library);
         } else {
             ctx.move_card(id, revealed_dest, owner);

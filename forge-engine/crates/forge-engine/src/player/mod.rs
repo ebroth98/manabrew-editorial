@@ -261,7 +261,7 @@ pub fn note_number_for_name(game: &mut GameState, player: PlayerId, name: &str, 
 pub fn mill(game: &mut GameState, player: PlayerId, amount: usize) -> Vec<CardId> {
     let mut milled = Vec::with_capacity(amount);
     for _ in 0..amount {
-        let Some(card_id) = game.zone_mut(ZoneType::Library, player).take_top() else {
+        let Some(card_id) = game.take_top_card_from_zone(ZoneType::Library, player) else {
             break;
         };
         let owner = game.card(card_id).owner;

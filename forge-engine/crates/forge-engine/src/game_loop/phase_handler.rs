@@ -610,8 +610,7 @@ impl GameLoop {
         for effect_id in temp_effect_ids {
             if game.card(effect_id).zone == ZoneType::Command {
                 let controller = game.card(effect_id).controller;
-                game.zone_mut(ZoneType::Command, controller)
-                    .remove(effect_id);
+                game.remove_card_from_zone(ZoneType::Command, controller, effect_id);
                 game.card_mut(effect_id).set_zone(ZoneType::None);
             }
         }

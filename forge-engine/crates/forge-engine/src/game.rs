@@ -357,6 +357,81 @@ impl GameState {
         self.zones.add_card_to_bottom(zone_type, owner, card);
     }
 
+    pub fn take_top_card_from_zone(
+        &mut self,
+        zone_type: ZoneType,
+        owner: PlayerId,
+    ) -> Option<CardId> {
+        self.zones.take_top_card(zone_type, owner)
+    }
+
+    pub fn take_top_cards_from_zone(
+        &mut self,
+        zone_type: ZoneType,
+        owner: PlayerId,
+        count: usize,
+    ) -> Vec<CardId> {
+        let mut cards = Vec::with_capacity(count);
+        for _ in 0..count {
+            let Some(card) = self.take_top_card_from_zone(zone_type, owner) else {
+                break;
+            };
+            cards.push(card);
+        }
+        cards.reverse();
+        cards
+    }
+
+    pub fn reorder_card_in_zone(
+        &mut self,
+        zone_type: ZoneType,
+        owner: PlayerId,
+        card: CardId,
+        index: usize,
+    ) {
+        self.zones.reorder_card(zone_type, owner, card, index);
+    }
+
+    pub fn move_cards_to_zone_top(
+        &mut self,
+        zone_type: ZoneType,
+        owner: PlayerId,
+        cards: &[CardId],
+    ) {
+        self.zones.move_cards_to_top(zone_type, owner, cards);
+    }
+
+    pub fn move_cards_to_zone_bottom(
+        &mut self,
+        zone_type: ZoneType,
+        owner: PlayerId,
+        cards: &[CardId],
+    ) {
+        self.zones.move_cards_to_bottom(zone_type, owner, cards);
+    }
+
+    pub fn replace_zone_cards(&mut self, zone_type: ZoneType, owner: PlayerId, cards: Vec<CardId>) {
+        self.zones.replace_cards(zone_type, owner, cards);
+    }
+
+    pub fn shuffle_zone_cards(
+        &mut self,
+        zone_type: ZoneType,
+        owner: PlayerId,
+        rng: &mut dyn crate::game_rng::GameRng,
+    ) {
+        self.zones.shuffle_cards(zone_type, owner, rng);
+    }
+
+    pub fn shuffle_zone_cards_with_rand<R: rand::Rng + ?Sized>(
+        &mut self,
+        zone_type: ZoneType,
+        owner: PlayerId,
+        rng: &mut R,
+    ) {
+        self.zones.shuffle_cards_with_rand(zone_type, owner, rng);
+    }
+
     pub(crate) fn save_zone_lki(
         &mut self,
         zone_type: ZoneType,

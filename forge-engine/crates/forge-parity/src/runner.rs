@@ -746,7 +746,7 @@ pub fn run_with_data(config: &RunConfig, data: &LoadedData) -> Result<GameTrace,
             // (Rust draws via pop(), Java draws via get(0))
             lib_cards.reverse();
             // Write back the shuffled order
-            game.zone_mut(ZoneType::Library, pid).cards = lib_cards;
+            game.replace_zone_cards(ZoneType::Library, pid, lib_cards);
         }
     }
 

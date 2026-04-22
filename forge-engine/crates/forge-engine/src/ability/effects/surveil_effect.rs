@@ -46,11 +46,9 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let count = num.min(lib_len);
 
     // Take top N cards off the library (last `count` elements = top of library).
-    let mut top_n: Vec<_> = {
-        let zone = ctx.game.zone_mut(ZoneType::Library, target);
-        let len = zone.cards.len();
-        zone.cards.split_off(len - count)
-    };
+    let mut top_n = ctx
+        .game
+        .take_top_cards_from_zone(ZoneType::Library, target, count);
     // Reverse to match Java's `getTopXCardsFromLibrary` top-to-bottom iteration order.
     top_n.reverse();
 
@@ -81,7 +79,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     // `keep_top` is in top-to-bottom order, so iterate in reverse to restore
     // the correct library order when appending to our bottom-to-top vec.
     for &id in keep_top.iter().rev() {
-        ctx.game.zone_mut(ZoneType::Library, target).cards.push(id);
+        ctx.game.add_card_to_zone(ZoneType::Library, target, id);
     }
 
     // Fire Surveil trigger
@@ -213,7 +211,7 @@ mod tests {
         let a = make_land(&mut game, p0);
         let b = make_land(&mut game, p0);
         let c = make_land(&mut game, p0);
-        game.zone_mut(ZoneType::Library, p0).cards = vec![a, b, c];
+        game.replace_zone_cards(ZoneType::Library, p0, vec![a, b, c]);
 
         // Surveil 2: sees top 2 (b, c). GraveyardAllAgent puts both in GY.
         let sa = SpellAbility::new_simple(None, p0, "SP$ Surveil | Amount$ 2");
@@ -253,7 +251,7 @@ mod tests {
 
         let a = make_land(&mut game, p0);
         let b = make_land(&mut game, p0);
-        game.zone_mut(ZoneType::Library, p0).cards = vec![a, b];
+        game.replace_zone_cards(ZoneType::Library, p0, vec![a, b]);
 
         let sa = SpellAbility::new_simple(None, p0, "SP$ Surveil | Amount$ 2");
         let mut trigger_handler = TriggerHandler::new();

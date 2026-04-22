@@ -117,11 +117,8 @@ fn clash_move(ctx: &mut EffectContext, player: PlayerId, card: Option<CardId>) {
 
     if !put_on_top {
         // Move to bottom (card is already on top — move to index 0)
-        let zone = ctx.game.zone_mut(ZoneType::Library, player);
-        if let Some(pos) = zone.cards.iter().rposition(|&c| c == card_id) {
-            zone.cards.remove(pos);
-            zone.cards.insert(0, card_id);
-        }
+        ctx.game
+            .reorder_card_in_zone(ZoneType::Library, player, card_id, 0);
     }
     // If top, card stays where it is (already on top)
 }

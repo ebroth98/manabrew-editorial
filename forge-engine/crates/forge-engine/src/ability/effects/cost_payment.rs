@@ -488,7 +488,7 @@ fn try_pay_effect_cost(
             }
             CostPart::Mill(amount) => {
                 for _ in 0..*amount {
-                    if let Some(top) = ctx.game.zone_mut(ZoneType::Library, payer).take_top() {
+                    if let Some(top) = ctx.game.take_top_card_from_zone(ZoneType::Library, payer) {
                         ctx.move_card(top, ZoneType::Graveyard, payer);
                         ctx.trigger_handler.run_trigger(
                             TriggerType::Milled,

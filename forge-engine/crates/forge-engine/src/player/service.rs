@@ -726,7 +726,7 @@ impl GameState {
         } else {
             0
         };
-        let Some(card_id) = self.zone_mut(ZoneType::Library, player).take_top() else {
+        let Some(card_id) = self.take_top_card_from_zone(ZoneType::Library, player) else {
             self.player_mut(player).tried_to_draw_from_empty_library = true;
             return None;
         };
@@ -761,8 +761,7 @@ impl GameState {
     }
 
     pub fn player_shuffle_library(&mut self, player: PlayerId, rng: &mut impl rand::Rng) {
-        let zone = self.zone_mut(ZoneType::Library, player);
-        zone.cards.shuffle(rng);
+        self.shuffle_zone_cards_with_rand(ZoneType::Library, player, rng);
     }
 
     pub fn player_record_spell_cast(&mut self, player: PlayerId, card_id: CardId) {

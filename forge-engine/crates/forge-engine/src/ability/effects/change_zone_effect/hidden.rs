@@ -293,8 +293,8 @@ pub(super) fn resolve_hidden_origin(
 
     // Leonin Arbiter check
     if origin_zone == ZoneType::Library && !can_search_library(ctx, controller) {
-        let lib = ctx.game.zone_mut(ZoneType::Library, search_player);
-        ctx.rng.shuffle_cards(&mut lib.cards);
+        ctx.game
+            .shuffle_zone_cards(ZoneType::Library, search_player, ctx.rng);
         return;
     }
 
@@ -415,8 +415,8 @@ pub(super) fn resolve_hidden_origin(
     // Exactly$ — must find exactly ChangeNum or fail
     if sa.param_is_true(keys::EXACTLY) && cards_to_move.len() != change_num {
         if origin_zone == ZoneType::Library {
-            let lib = ctx.game.zone_mut(ZoneType::Library, search_player);
-            ctx.rng.shuffle_cards(&mut lib.cards);
+            ctx.game
+                .shuffle_zone_cards(ZoneType::Library, search_player, ctx.rng);
         }
         return;
     }

@@ -38,8 +38,8 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
                 continue;
             }
         }
-        let lib = ctx.game.zone_mut(forge_foundation::ZoneType::Library, pid);
-        ctx.rng.shuffle_cards(&mut lib.cards);
+        ctx.game
+            .shuffle_zone_cards(forge_foundation::ZoneType::Library, pid, ctx.rng);
         // Fire Shuffled trigger (mirrors Java Player.shuffle)
         ctx.trigger_handler.run_trigger(
             TriggerType::Shuffled,

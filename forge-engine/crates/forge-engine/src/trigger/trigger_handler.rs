@@ -1439,8 +1439,11 @@ mod tests {
         maralen.id = crate::ids::CardId(0);
         maralen.zone = forge_foundation::ZoneType::Battlefield;
         game.cards.push(maralen);
-        game.zone_mut(forge_foundation::ZoneType::Battlefield, PlayerId(0))
-            .add(crate::ids::CardId(0));
+        game.add_card_to_zone(
+            forge_foundation::ZoneType::Battlefield,
+            PlayerId(0),
+            crate::ids::CardId(0),
+        );
 
         let mut handler = TriggerHandler::new();
         handler.register_active_trigger(&game, crate::ids::CardId(0));

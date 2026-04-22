@@ -1,5 +1,6 @@
 use forge_foundation::ZoneType;
 
+use crate::game_rng::GameRng;
 use crate::ids::{CardId, PlayerId};
 
 use super::{Zone, ZoneKey};
@@ -88,6 +89,89 @@ impl ZoneStore {
             .expect("Zone not found")
             .add_to_bottom(card);
         self.set_card_location(card, zone_type, owner);
+    }
+
+    pub fn take_top_card(&mut self, zone_type: ZoneType, owner: PlayerId) -> Option<CardId> {
+        let card = self
+            .get_mut(zone_type, owner)
+            .expect("Zone not found")
+            .take_top()?;
+        self.clear_card_location(card, zone_type, owner);
+        Some(card)
+    }
+
+    pub fn reorder_card(
+        &mut self,
+        zone_type: ZoneType,
+        owner: PlayerId,
+        card: CardId,
+        index: usize,
+    ) {
+        self.get_mut(zone_type, owner)
+            .expect("Zone not found")
+            .reorder(card, index);
+    }
+
+    pub fn move_cards_to_top(&mut self, zone_type: ZoneType, owner: PlayerId, cards: &[CardId]) {
+        let zone = self.get_mut(zone_type, owner).expect("Zone not found");
+        for card in cards {
+            if let Some(pos) = zone.cards.iter().position(|&c| c == *card) {
+                zone.cards.remove(pos);
+            }
+        }
+        for card in cards {
+            zone.cards.push(*card);
+        }
+    }
+
+    pub fn move_cards_to_bottom(&mut self, zone_type: ZoneType, owner: PlayerId, cards: &[CardId]) {
+        let zone = self.get_mut(zone_type, owner).expect("Zone not found");
+        for card in cards {
+            if let Some(pos) = zone.cards.iter().position(|&c| c == *card) {
+                zone.cards.remove(pos);
+            }
+        }
+        for card in cards.iter().rev() {
+            zone.cards.insert(0, *card);
+        }
+    }
+
+    pub fn replace_cards(&mut self, zone_type: ZoneType, owner: PlayerId, cards: Vec<CardId>) {
+        let previous = {
+            let zone = self.get_mut(zone_type, owner).expect("Zone not found");
+            std::mem::replace(&mut zone.cards, cards)
+        };
+        for card in previous {
+            self.clear_card_location(card, zone_type, owner);
+        }
+        let current = self
+            .get(zone_type, owner)
+            .expect("Zone not found")
+            .cards
+            .clone();
+        for card in current {
+            self.set_card_location(card, zone_type, owner);
+        }
+    }
+
+    pub fn shuffle_cards(&mut self, zone_type: ZoneType, owner: PlayerId, rng: &mut dyn GameRng) {
+        self.get_mut(zone_type, owner)
+            .expect("Zone not found")
+            .shuffle(rng);
+    }
+
+    pub fn shuffle_cards_with_rand<R: rand::Rng + ?Sized>(
+        &mut self,
+        zone_type: ZoneType,
+        owner: PlayerId,
+        rng: &mut R,
+    ) {
+        use rand::seq::SliceRandom;
+
+        self.get_mut(zone_type, owner)
+            .expect("Zone not found")
+            .cards
+            .shuffle(rng);
     }
 
     pub fn save_lki(&mut self, zone_type: ZoneType, owner: PlayerId, card: CardId, from: ZoneType) {

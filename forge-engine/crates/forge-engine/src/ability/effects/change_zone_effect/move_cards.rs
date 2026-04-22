@@ -6,11 +6,11 @@ use forge_foundation::ZoneType;
 
 use super::super::{emit_zone_trigger, EffectContext};
 use super::helpers::{apply_post_move, apply_pre_move, resolve_dest_owner};
-use crate::event::{RunParams};
-use crate::trigger::TriggerType;
+use crate::event::RunParams;
 use crate::ids::{CardId, PlayerId};
 use crate::parsing::keys;
 use crate::spellability::SpellAbility;
+use crate::trigger::TriggerType;
 
 /// Move collected cards to destination zone and apply all post-move effects.
 pub(super) fn move_cards(
@@ -75,8 +75,7 @@ pub(super) fn move_cards(
                 if ctx.game.cards_in_zone(ZoneType::Library, pid).is_empty() {
                     continue;
                 }
-                let lib = ctx.game.zone_mut(ZoneType::Library, pid);
-                ctx.rng.shuffle_cards(&mut lib.cards);
+                ctx.game.shuffle_zone_cards(ZoneType::Library, pid, ctx.rng);
                 ctx.trigger_handler.run_trigger(
                     TriggerType::Shuffled,
                     RunParams {
@@ -214,8 +213,7 @@ pub(super) fn move_cards(
                     first5
                 );
             }
-            let lib = ctx.game.zone_mut(ZoneType::Library, pid);
-            ctx.rng.shuffle_cards(&mut lib.cards);
+            ctx.game.shuffle_zone_cards(ZoneType::Library, pid, ctx.rng);
             if std::env::var("FORGE_LIB_DUMP").is_ok() {
                 let lib_ref = ctx.game.zone(ZoneType::Library, pid);
                 let ids: Vec<CardId> = lib_ref.cards.iter().rev().take(5).copied().collect();
@@ -252,30 +250,25 @@ fn reapply_library_position(
         return;
     }
 
-    let zone = ctx.game.zone_mut(ZoneType::Library, owner);
     let moved_in_library: Vec<CardId> = ordered
         .iter()
         .copied()
-        .filter(|cid| zone.cards.contains(cid))
+        .filter(|cid| {
+            ctx.game
+                .cards_in_zone(ZoneType::Library, owner)
+                .contains(cid)
+        })
         .collect();
     if moved_in_library.is_empty() {
         return;
     }
 
-    for card_id in &moved_in_library {
-        if let Some(pos) = zone.cards.iter().position(|&c| c == *card_id) {
-            zone.cards.remove(pos);
-        }
-    }
-
     if lib_position == "-1" || lib_position.eq_ignore_ascii_case("Bottom") {
-        for card_id in moved_in_library.iter().rev() {
-            zone.cards.insert(0, *card_id);
-        }
+        ctx.game
+            .move_cards_to_zone_bottom(ZoneType::Library, owner, &moved_in_library);
     } else {
-        for card_id in moved_in_library {
-            zone.cards.push(card_id);
-        }
+        ctx.game
+            .move_cards_to_zone_top(ZoneType::Library, owner, &moved_in_library);
     }
 }
 

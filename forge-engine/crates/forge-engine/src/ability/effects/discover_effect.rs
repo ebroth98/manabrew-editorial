@@ -107,11 +107,8 @@ fn discover_for_player(ctx: &mut EffectContext, sa: &SpellAbility, player: Playe
     for card_id in exiled_rest {
         let old = ctx.game.card(card_id).zone;
         ctx.move_card(card_id, ZoneType::Library, player);
-        let zone = ctx.game.zone_mut(ZoneType::Library, player);
-        if let Some(pos) = zone.cards.iter().rposition(|&c| c == card_id) {
-            zone.cards.remove(pos);
-            zone.cards.insert(0, card_id);
-        }
+        ctx.game
+            .reorder_card_in_zone(ZoneType::Library, player, card_id, 0);
         emit_zone_trigger(ctx.trigger_handler, card_id, old, ZoneType::Library);
     }
 }

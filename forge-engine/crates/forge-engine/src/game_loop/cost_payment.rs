@@ -832,7 +832,7 @@ impl GameLoop {
                 }
                 CostPart::Mill(amount) => {
                     for _ in 0..*amount {
-                        if let Some(top) = game.zone_mut(ZoneType::Library, player).take_top() {
+                        if let Some(top) = game.take_top_card_from_zone(ZoneType::Library, player) {
                             self.move_card_with_runtime(
                                 game,
                                 top,
@@ -1454,7 +1454,7 @@ impl GameLoop {
                 }
                 CostPart::Mill(amount) => {
                     for _ in 0..*amount {
-                        if let Some(top) = game.zone_mut(ZoneType::Library, player).take_top() {
+                        if let Some(top) = game.take_top_card_from_zone(ZoneType::Library, player) {
                             self.move_card_with_runtime(
                                 game,
                                 top,
