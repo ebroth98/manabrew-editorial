@@ -15,15 +15,12 @@ use crate::spellability::SpellAbility;
 /// Struct form of this effect so it can participate in the
 /// `SpellAbilityEffect` trait hierarchy — mirrors Java's
 /// `EndTurnEffect` class extending `SpellAbilityEffect`.
-pub struct EndTurnEffect;
-
-impl crate::ability::spell_ability_effect::SpellAbilityEffect for EndTurnEffect {
-    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
+#[forge_engine_macros::spell_effect(EndTurnEffect)]
+fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     // Clear the stack (exile all spells/abilities)
     while ctx.game.stack.pop().is_some() {}
     // Signal the game loop to skip to cleanup
     ctx.game.end_turn_requested = true;
-    }
 }
 
 #[cfg(test)]

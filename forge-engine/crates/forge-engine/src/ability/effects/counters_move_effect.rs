@@ -11,10 +11,8 @@ use forge_foundation::ZoneType;
 /// Struct form of this effect so it can participate in the
 /// `SpellAbilityEffect` trait hierarchy — mirrors Java's
 /// `CountersMoveEffect` class extending `SpellAbilityEffect`.
-pub struct CountersMoveEffect;
-
-impl crate::ability::spell_ability_effect::SpellAbilityEffect for CountersMoveEffect {
-    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
+#[forge_engine_macros::spell_effect(CountersMoveEffect)]
+fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let counter_type_str = sa
         .params
         .get(keys::COUNTER_TYPE)
@@ -56,5 +54,4 @@ impl crate::ability::spell_ability_effect::SpellAbilityEffect for CountersMoveEf
         .card_mut(from)
         .remove_counter(&counter_type, to_move);
     ctx.game.card_mut(to).add_counter(&counter_type, to_move);
-    }
 }

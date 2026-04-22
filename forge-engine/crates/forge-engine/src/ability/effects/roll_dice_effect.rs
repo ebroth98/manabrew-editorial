@@ -3,8 +3,7 @@ use std::collections::{HashMap, HashSet};
 
 use crate::agent::GameLogEvent;
 use crate::cost::{parse_cost, Cost, CostPart};
-use crate::event::{RunParams};
-use crate::trigger::TriggerType;
+use crate::event::RunParams;
 use crate::game::GameState;
 use crate::game_rng::GameRng;
 use crate::ids::PlayerId;
@@ -13,6 +12,7 @@ use crate::replacement::replacement_handler::{apply_replacements, ReplacementEve
 use crate::replacement::ReplacementResult;
 use crate::spellability::{build_spell_ability, SpellAbility};
 use crate::trigger::handler::TriggerHandler;
+use crate::trigger::TriggerType;
 use forge_foundation::ZoneType;
 
 /// Build a formatted description for a roll dice effect.
@@ -159,10 +159,8 @@ pub fn roll_dice_for_player_to_visit_attractions(
 /// Struct form of this effect so it can participate in the
 /// `SpellAbilityEffect` trait hierarchy — mirrors Java's
 /// `RollDiceEffect` class extending `SpellAbilityEffect`.
-pub struct RollDiceEffect;
-
-impl crate::ability::spell_ability_effect::SpellAbilityEffect for RollDiceEffect {
-    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
+#[forge_engine_macros::spell_effect(RollDiceEffect)]
+fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let controller = sa.activating_player;
     let source_id = match sa.source {
         Some(id) => id,
@@ -200,7 +198,6 @@ impl crate::ability::spell_ability_effect::SpellAbilityEffect for RollDiceEffect
                 }
             }
         }
-    }
     }
 }
 

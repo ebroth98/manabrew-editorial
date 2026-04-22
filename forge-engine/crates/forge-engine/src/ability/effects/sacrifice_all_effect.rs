@@ -2,18 +2,16 @@ use forge_foundation::ZoneType;
 
 use super::{emit_zone_trigger_with_lki_counters, matches_change_type, EffectContext};
 use crate::event::{AbilityValue, RunParams};
-use crate::trigger::TriggerType;
 use crate::ids::CardId;
 use crate::parsing::keys;
 use crate::spellability::SpellAbility;
+use crate::trigger::TriggerType;
 
 /// Struct form of this effect so it can participate in the
 /// `SpellAbilityEffect` trait hierarchy — mirrors Java's
 /// `SacrificeAllEffect` class extending `SpellAbilityEffect`.
-pub struct SacrificeAllEffect;
-
-impl crate::ability::spell_ability_effect::SpellAbilityEffect for SacrificeAllEffect {
-    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
+#[forge_engine_macros::spell_effect(SacrificeAllEffect)]
+fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let valid_cards_filter = sa
         .params
         .get("ValidCards")
@@ -151,6 +149,5 @@ impl crate::ability::spell_ability_effect::SpellAbilityEffect for SacrificeAllEf
         );
         ctx.move_card(card_id, ZoneType::Graveyard, owner);
         ctx.trigger_handler.flush_waiting_triggers(ctx.game);
-    }
     }
 }

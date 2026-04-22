@@ -10,10 +10,8 @@ use crate::spellability::SpellAbility;
 /// Struct form of this effect so it can participate in the
 /// `SpellAbilityEffect` trait hierarchy — mirrors Java's
 /// `CopyPermanentEffect` class extending `SpellAbilityEffect`.
-pub struct CopyPermanentEffect;
-
-impl crate::ability::spell_ability_effect::SpellAbilityEffect for CopyPermanentEffect {
-    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
+#[forge_engine_macros::spell_effect(CopyPermanentEffect)]
+fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     // Clone a permanent onto the battlefield under the controller's control.
     // Mirrors Java CopyPermanentEffect.
     // Supports: Defined$, SetColor$, AddTypes$, PumpKeywords$.
@@ -70,7 +68,6 @@ impl crate::ability::spell_ability_effect::SpellAbilityEffect for CopyPermanentE
         if let Some(sid) = sa.source {
             ctx.game.card_mut(sid).add_remembered_card(copy_id);
         }
-    }
     }
 }
 

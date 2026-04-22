@@ -19,10 +19,8 @@ use crate::spellability::SpellAbility;
 /// Struct form of this effect so it can participate in the
 /// `SpellAbilityEffect` trait hierarchy — mirrors Java's
 /// `AddTurnEffect` class extending `SpellAbilityEffect`.
-pub struct AddTurnEffect;
-
-impl crate::ability::spell_ability_effect::SpellAbilityEffect for AddTurnEffect {
-    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
+#[forge_engine_macros::spell_effect(AddTurnEffect)]
+fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let controller = sa.activating_player;
 
     let num_turns = parse_param(&sa.ability_text, "NumTurns$ ").unwrap_or(1);
@@ -40,7 +38,6 @@ impl crate::ability::spell_ability_effect::SpellAbilityEffect for AddTurnEffect 
         let mut et = ExtraTurn::new(target);
         et.set_skip_untap(skip_untap);
         ctx.game.extra_turns.push_back(et);
-    }
     }
 }
 

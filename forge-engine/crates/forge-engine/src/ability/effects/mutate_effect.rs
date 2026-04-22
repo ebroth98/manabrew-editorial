@@ -5,18 +5,16 @@
 use forge_foundation::ZoneType;
 
 use super::EffectContext;
-use crate::event::{RunParams};
-use crate::trigger::TriggerType;
+use crate::event::RunParams;
 use crate::parsing::keys;
 use crate::spellability::SpellAbility;
+use crate::trigger::TriggerType;
 
 /// Struct form of this effect so it can participate in the
 /// `SpellAbilityEffect` trait hierarchy — mirrors Java's
 /// `MutateEffect` class extending `SpellAbilityEffect`.
-pub struct MutateEffect;
-
-impl crate::ability::spell_ability_effect::SpellAbilityEffect for MutateEffect {
-    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
+#[forge_engine_macros::spell_effect(MutateEffect)]
+fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let source = match sa.source {
         Some(s) => s,
         None => return,
@@ -101,5 +99,4 @@ impl crate::ability::spell_ability_effect::SpellAbilityEffect for MutateEffect {
     );
 
     let _ = old_zone;
-    }
 }

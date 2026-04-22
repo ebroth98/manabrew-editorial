@@ -12,10 +12,8 @@ use crate::spellability::{build_spell_ability, SpellAbility};
 /// Struct form of this effect so it can participate in the
 /// `SpellAbilityEffect` trait hierarchy — mirrors Java's
 /// `RepeatEffect` class extending `SpellAbilityEffect`.
-pub struct RepeatEffect;
-
-impl crate::ability::spell_ability_effect::SpellAbilityEffect for RepeatEffect {
-    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
+#[forge_engine_macros::spell_effect(RepeatEffect)]
+fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let Some(source_id) = sa.source else {
         return;
     };
@@ -59,7 +57,6 @@ impl crate::ability::spell_ability_effect::SpellAbilityEffect for RepeatEffect {
 
     if let Some(sub_sa) = sa.sub_ability.as_deref() {
         resolve_sub_chain(ctx, sub_sa.clone());
-    }
     }
 }
 

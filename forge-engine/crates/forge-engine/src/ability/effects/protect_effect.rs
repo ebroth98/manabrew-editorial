@@ -12,10 +12,7 @@ use crate::spellability::SpellAbility;
 /// implemented here (no `CardType::all()` enumerator). Everything else is a
 /// comma-separated list.
 pub fn get_protection_list(sa: &SpellAbility) -> Vec<String> {
-    let gains = sa
-        .params
-        .get(crate::parsing::keys::GAINS)
-        .unwrap_or("");
+    let gains = sa.params.get(crate::parsing::keys::GAINS).unwrap_or("");
     if gains != "Choice" && !gains.contains("chosen color") {
         return gains
             .split(',')
@@ -25,10 +22,7 @@ pub fn get_protection_list(sa: &SpellAbility) -> Vec<String> {
     }
 
     let mut out = Vec::new();
-    let choices = sa
-        .params
-        .get(crate::parsing::keys::CHOICES)
-        .unwrap_or("");
+    let choices = sa.params.get(crate::parsing::keys::CHOICES).unwrap_or("");
     let mut choices_mut = choices.to_string();
     if choices_mut.contains("AnyColor") {
         out.extend(
@@ -36,9 +30,7 @@ pub fn get_protection_list(sa: &SpellAbility) -> Vec<String> {
                 .iter()
                 .map(|s| s.to_string()),
         );
-        choices_mut = choices_mut
-            .replace("AnyColor,", "")
-            .replace("AnyColor", "");
+        choices_mut = choices_mut.replace("AnyColor,", "").replace("AnyColor", "");
     }
     let trimmed = choices_mut.trim().trim_end_matches(',');
     if !trimmed.is_empty() {
@@ -81,10 +73,8 @@ pub fn run(game: &mut crate::game::GameState, card_id: crate::ids::CardId, keywo
 /// Struct form of this effect so it can participate in the
 /// `SpellAbilityEffect` trait hierarchy — mirrors Java's
 /// `ProtectEffect` class extending `SpellAbilityEffect`.
-pub struct ProtectEffect;
-
-impl crate::ability::spell_ability_effect::SpellAbilityEffect for ProtectEffect {
-    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
+#[forge_engine_macros::spell_effect(ProtectEffect)]
+fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let controller = sa.activating_player;
 
     // Determine target
@@ -129,6 +119,5 @@ impl crate::ability::spell_ability_effect::SpellAbilityEffect for ProtectEffect 
         for card_id in targets {
             ctx.game.card_mut(card_id).add_pump_keyword(&gains);
         }
-    }
     }
 }

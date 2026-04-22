@@ -4,10 +4,10 @@ use super::{
     matches_valid_cards, parse_counter_type, parse_param, resolve_numeric_svar, EffectContext,
 };
 use crate::card::CounterType;
-use crate::event::{RunParams};
-use crate::trigger::TriggerType;
+use crate::event::RunParams;
 use crate::ids::CardId;
 use crate::spellability::SpellAbility;
+use crate::trigger::TriggerType;
 
 /// `SP$ PutCounterAll` — put counters on all matching permanents.
 ///
@@ -25,10 +25,8 @@ use crate::spellability::SpellAbility;
 /// Struct form of this effect so it can participate in the
 /// `SpellAbilityEffect` trait hierarchy — mirrors Java's
 /// `CountersPutAllEffect` class extending `SpellAbilityEffect`.
-pub struct CountersPutAllEffect;
-
-impl crate::ability::spell_ability_effect::SpellAbilityEffect for CountersPutAllEffect {
-    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
+#[forge_engine_macros::spell_effect(CountersPutAllEffect)]
+fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let counter_type = sa
         .params
         .get("CounterType")
@@ -99,6 +97,5 @@ impl crate::ability::spell_ability_effect::SpellAbilityEffect for CountersPutAll
                 false,
             );
         }
-    }
     }
 }

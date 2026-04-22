@@ -2,12 +2,12 @@ use forge_foundation::ZoneType;
 
 use super::{emit_zone_trigger, EffectContext};
 use crate::card::CounterType;
-use crate::event::{RunParams};
-use crate::trigger::TriggerType;
+use crate::event::RunParams;
 use crate::parsing::keys;
 use crate::replacement::replacement_handler::{apply_replacements, ReplacementEvent};
 use crate::replacement::ReplacementResult;
 use crate::spellability::SpellAbility;
+use crate::trigger::TriggerType;
 
 /// `SP$ Explore` — target creature explores.
 ///
@@ -24,10 +24,8 @@ use crate::spellability::SpellAbility;
 /// Struct form of this effect so it can participate in the
 /// `SpellAbilityEffect` trait hierarchy — mirrors Java's
 /// `ExploreEffect` class extending `SpellAbilityEffect`.
-pub struct ExploreEffect;
-
-impl crate::ability::spell_ability_effect::SpellAbilityEffect for ExploreEffect {
-    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
+#[forge_engine_macros::spell_effect(ExploreEffect)]
+fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let controller = sa.activating_player;
 
     // Determine the exploring creature
@@ -164,6 +162,5 @@ impl crate::ability::spell_ability_effect::SpellAbilityEffect for ExploreEffect 
             },
             false,
         );
-    }
     }
 }

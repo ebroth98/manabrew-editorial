@@ -5,18 +5,16 @@
 use forge_foundation::ZoneType;
 
 use super::EffectContext;
-use crate::event::{RunParams};
-use crate::trigger::TriggerType;
+use crate::event::RunParams;
 use crate::ids::CardId;
 use crate::spellability::SpellAbility;
+use crate::trigger::TriggerType;
 
 /// Struct form of this effect so it can participate in the
 /// `SpellAbilityEffect` trait hierarchy — mirrors Java's
 /// `BecomesBlockedEffect` class extending `SpellAbilityEffect`.
-pub struct BecomesBlockedEffect;
-
-impl crate::ability::spell_ability_effect::SpellAbilityEffect for BecomesBlockedEffect {
-    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
+#[forge_engine_macros::spell_effect(BecomesBlockedEffect)]
+fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     // Get target cards (attackers to mark as blocked)
     let targets: Vec<CardId> = if let Some(target) = sa.target_chosen.target_card {
         vec![target]
@@ -41,6 +39,5 @@ impl crate::ability::spell_ability_effect::SpellAbilityEffect for BecomesBlocked
             },
             false,
         );
-    }
     }
 }

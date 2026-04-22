@@ -1,9 +1,9 @@
 use forge_foundation::ZoneType;
 
 use super::{parse_counter_type, resolve_numeric_svar, EffectContext};
-use crate::event::{RunParams};
-use crate::trigger::TriggerType;
+use crate::event::RunParams;
 use crate::spellability::SpellAbility;
+use crate::trigger::TriggerType;
 
 /// `SP$ MoveCounter` — move counters from one permanent to another.
 ///
@@ -21,10 +21,8 @@ use crate::spellability::SpellAbility;
 /// Struct form of this effect so it can participate in the
 /// `SpellAbilityEffect` trait hierarchy — mirrors Java's
 /// `MoveCounterEffect` class extending `SpellAbilityEffect`.
-pub struct MoveCounterEffect;
-
-impl crate::ability::spell_ability_effect::SpellAbilityEffect for MoveCounterEffect {
-    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
+#[forge_engine_macros::spell_effect(MoveCounterEffect)]
+fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let counter_type = sa
         .params
         .get(crate::parsing::keys::COUNTER_TYPE)
@@ -118,5 +116,4 @@ impl crate::ability::spell_ability_effect::SpellAbilityEffect for MoveCounterEff
         },
         false,
     );
-    }
 }

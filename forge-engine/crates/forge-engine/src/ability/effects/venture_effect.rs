@@ -17,10 +17,10 @@ use forge_foundation::{CardTypeLine, ColorSet, ManaCost, ZoneType};
 
 use super::EffectContext;
 use crate::card::Card;
-use crate::event::{RunParams};
-use crate::trigger::TriggerType;
+use crate::event::RunParams;
 use crate::ids::{CardId, PlayerId};
 use crate::spellability::SpellAbility;
+use crate::trigger::TriggerType;
 
 /// Standard dungeon definitions: (name, rooms in order, last room name)
 /// For dungeons with branches, we list the linear path (agent auto-chooses).
@@ -69,10 +69,8 @@ const DUNGEONS: &[(&str, &[&str])] = &[
 /// Struct form of this effect so it can participate in the
 /// `SpellAbilityEffect` trait hierarchy — mirrors Java's
 /// `VentureEffect` class extending `SpellAbilityEffect`.
-pub struct VentureEffect;
-
-impl crate::ability::spell_ability_effect::SpellAbilityEffect for VentureEffect {
-    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
+#[forge_engine_macros::spell_effect(VentureEffect)]
+fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let controller = sa.activating_player;
     let players = if let Some(def) = sa.defined_player() {
         super::resolve_defined_players(def, controller, ctx.game)
@@ -87,7 +85,6 @@ impl crate::ability::spell_ability_effect::SpellAbilityEffect for VentureEffect 
             continue;
         }
         venture_into_dungeon(ctx, sa, pid);
-    }
     }
 }
 

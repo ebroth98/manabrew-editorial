@@ -18,10 +18,8 @@ use crate::spellability::SpellAbility;
 /// Struct form of this effect so it can participate in the
 /// `SpellAbilityEffect` trait hierarchy — mirrors Java's
 /// `RemoveFromCombatEffect` class extending `SpellAbilityEffect`.
-pub struct RemoveFromCombatEffect;
-
-impl crate::ability::spell_ability_effect::SpellAbilityEffect for RemoveFromCombatEffect {
-    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
+#[forge_engine_macros::spell_effect(RemoveFromCombatEffect)]
+fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let target = sa.target_chosen.target_card.or_else(|| {
         match sa.params.get(crate::parsing::keys::DEFINED) {
             Some("Self") => sa.source,
@@ -35,6 +33,5 @@ impl crate::ability::spell_ability_effect::SpellAbilityEffect for RemoveFromComb
             // Untap the creature (removed from combat means it won't deal/receive combat damage)
             ctx.game.card_mut(card_id).set_tapped(false);
         }
-    }
     }
 }

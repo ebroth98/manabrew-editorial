@@ -31,10 +31,8 @@ pub enum ChoiceRestriction {
 /// Struct form of this effect so it can participate in the
 /// `SpellAbilityEffect` trait hierarchy — mirrors Java's
 /// `CharmEffect` class extending `SpellAbilityEffect`.
-pub struct CharmEffect;
-
-impl crate::ability::spell_ability_effect::SpellAbilityEffect for CharmEffect {
-    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
+#[forge_engine_macros::spell_effect(CharmEffect)]
+fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     // Java chains chosen charm modes onto the root SpellAbility during casting
     // (via make_choices_precast), then the stack resolver walks the full
     // sub-ability chain. If sub-abilities are already present, just return —
@@ -118,7 +116,8 @@ impl crate::ability::spell_ability_effect::SpellAbilityEffect for CharmEffect {
         .iter()
         .enumerate()
         .filter(|(i, text)| {
-            !is_restricted_index(mode_svars[*i]) && mode_has_valid_targets(ctx, text, player, source_id)
+            !is_restricted_index(mode_svars[*i])
+                && mode_has_valid_targets(ctx, text, player, source_id)
         })
         .map(|(i, _)| i)
         .collect();
@@ -224,7 +223,6 @@ impl crate::ability::spell_ability_effect::SpellAbilityEffect for CharmEffect {
         if ctx.game.game_over {
             break;
         }
-    }
     }
 }
 

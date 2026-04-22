@@ -12,12 +12,9 @@ use crate::spellability::SpellAbility;
 /// Struct form of this effect so it can participate in the
 /// `SpellAbilityEffect` trait hierarchy — mirrors Java's
 /// `ReverseTurnOrderEffect` class extending `SpellAbilityEffect`.
-pub struct ReverseTurnOrderEffect;
-
-impl crate::ability::spell_ability_effect::SpellAbilityEffect for ReverseTurnOrderEffect {
-    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
+#[forge_engine_macros::spell_effect(ReverseTurnOrderEffect)]
+fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     ctx.game.player_order.reverse();
-    }
 }
 
 #[cfg(test)]

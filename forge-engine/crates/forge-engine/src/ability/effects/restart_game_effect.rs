@@ -19,10 +19,8 @@ pub fn get_stack_description(sa: &SpellAbility) -> String {
 /// Struct form of this effect so it can participate in the
 /// `SpellAbilityEffect` trait hierarchy — mirrors Java's
 /// `RestartGameEffect` class extending `SpellAbilityEffect`.
-pub struct RestartGameEffect;
-
-impl crate::ability::spell_ability_effect::SpellAbilityEffect for RestartGameEffect {
-    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
+#[forge_engine_macros::spell_effect(RestartGameEffect)]
+fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let activator = sa.activating_player;
 
     // Get all player IDs
@@ -92,5 +90,4 @@ impl crate::ability::spell_ability_effect::SpellAbilityEffect for RestartGameEff
 
     // Set active player to the activator (Karn's controller restarts)
     let _ = activator;
-    }
 }

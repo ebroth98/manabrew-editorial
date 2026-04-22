@@ -1,9 +1,9 @@
 use forge_foundation::ZoneType;
 
 use super::{emit_zone_trigger, resolve_defined_player, resolve_numeric_svar, EffectContext};
-use crate::event::{RunParams};
-use crate::trigger::TriggerType;
+use crate::event::RunParams;
 use crate::spellability::SpellAbility;
+use crate::trigger::TriggerType;
 
 /// Mirrors Java's `SurveilEffect.java`.
 ///
@@ -13,10 +13,8 @@ use crate::spellability::SpellAbility;
 /// Struct form of this effect so it can participate in the
 /// `SpellAbilityEffect` trait hierarchy — mirrors Java's
 /// `SurveilEffect` class extending `SpellAbilityEffect`.
-pub struct SurveilEffect;
-
-impl crate::ability::spell_ability_effect::SpellAbilityEffect for SurveilEffect {
-    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
+#[forge_engine_macros::spell_effect(SurveilEffect)]
+fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let num = resolve_numeric_svar(ctx.game, sa, "Amount", 1).max(0) as usize;
 
     let target = sa
@@ -95,7 +93,6 @@ impl crate::ability::spell_ability_effect::SpellAbilityEffect for SurveilEffect 
         },
         false,
     );
-    }
 }
 
 #[cfg(test)]

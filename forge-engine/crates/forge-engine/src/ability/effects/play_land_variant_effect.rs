@@ -13,15 +13,12 @@ use crate::spellability::SpellAbility;
 /// Struct form of this effect so it can participate in the
 /// `SpellAbilityEffect` trait hierarchy — mirrors Java's
 /// `PlayLandVariantEffect` class extending `SpellAbilityEffect`.
-pub struct PlayLandVariantEffect;
-
-impl crate::ability::spell_ability_effect::SpellAbilityEffect for PlayLandVariantEffect {
-    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
+#[forge_engine_macros::spell_effect(PlayLandVariantEffect)]
+fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     // PlayLandVariant is a niche effect used by cards like Dryad of the Ilysian Grove.
     // Full implementation requires the card database for land lookup.
     let err = crate::ability::IllegalAbilityException::new(
         "PlayLandVariant effect not yet fully implemented",
     );
     eprintln!("{}", err);
-    }
 }

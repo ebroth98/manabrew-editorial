@@ -5,19 +5,17 @@
 use forge_foundation::ZoneType;
 
 use super::EffectContext;
-use crate::event::{RunParams};
-use crate::trigger::TriggerType;
+use crate::event::RunParams;
 use crate::ids::CardId;
 use crate::parsing::keys;
 use crate::spellability::SpellAbility;
+use crate::trigger::TriggerType;
 
 /// Struct form of this effect so it can participate in the
 /// `SpellAbilityEffect` trait hierarchy — mirrors Java's
 /// `AlterAttributeEffect` class extending `SpellAbilityEffect`.
-pub struct AlterAttributeEffect;
-
-impl crate::ability::spell_ability_effect::SpellAbilityEffect for AlterAttributeEffect {
-    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
+#[forge_engine_macros::spell_effect(AlterAttributeEffect)]
+fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let activate = sa
         .params
         .get("Activate")
@@ -122,6 +120,5 @@ impl crate::ability::spell_ability_effect::SpellAbilityEffect for AlterAttribute
                 }
             }
         }
-    }
     }
 }

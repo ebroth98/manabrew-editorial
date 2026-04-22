@@ -9,14 +9,11 @@ use crate::spellability::SpellAbility;
 /// Struct form of this effect so it can participate in the
 /// `SpellAbilityEffect` trait hierarchy — mirrors Java's
 /// `SwitchBlockEffect` class extending `SpellAbilityEffect`.
-pub struct SwitchBlockEffect;
-
-impl crate::ability::spell_ability_effect::SpellAbilityEffect for SwitchBlockEffect {
-    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
+#[forge_engine_macros::spell_effect(SwitchBlockEffect)]
+fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     // SwitchBlock is a niche combat effect that modifies blocking assignments.
     // The full implementation requires deep integration with the combat system.
     // The combat module handles block declarations — this effect would modify
     // the declared blockers list.
     let _ = ctx;
-    }
 }

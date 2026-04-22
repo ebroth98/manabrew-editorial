@@ -8,17 +8,15 @@
 use forge_foundation::ZoneType;
 
 use super::EffectContext;
-use crate::event::{RunParams};
-use crate::trigger::TriggerType;
+use crate::event::RunParams;
 use crate::spellability::SpellAbility;
+use crate::trigger::TriggerType;
 
 /// Struct form of this effect so it can participate in the
 /// `SpellAbilityEffect` trait hierarchy — mirrors Java's
 /// `InternalRadiationEffect` class extending `SpellAbilityEffect`.
-pub struct InternalRadiationEffect;
-
-impl crate::ability::spell_ability_effect::SpellAbilityEffect for InternalRadiationEffect {
-    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
+#[forge_engine_macros::spell_effect(InternalRadiationEffect)]
+fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let controller = sa.activating_player;
     let num_rad = ctx.game.player(controller).radiation_counters;
 
@@ -73,5 +71,4 @@ impl crate::ability::spell_ability_effect::SpellAbilityEffect for InternalRadiat
     let current_rad = ctx.game.player(controller).radiation_counters;
     ctx.game
         .player_set_radiation(controller, (current_rad - non_land_count).max(0));
-    }
 }

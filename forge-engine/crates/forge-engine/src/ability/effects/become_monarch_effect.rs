@@ -14,10 +14,8 @@ use crate::spellability::SpellAbility;
 /// Struct form of this effect so it can participate in the
 /// `SpellAbilityEffect` trait hierarchy — mirrors Java's
 /// `BecomeMonarchEffect` class extending `SpellAbilityEffect`.
-pub struct BecomeMonarchEffect;
-
-impl crate::ability::spell_ability_effect::SpellAbilityEffect for BecomeMonarchEffect {
-    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
+#[forge_engine_macros::spell_effect(BecomeMonarchEffect)]
+fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let controller = sa.activating_player;
 
     let defined = sa.params.get("Defined").unwrap_or("You");
@@ -30,7 +28,6 @@ impl crate::ability::spell_ability_effect::SpellAbilityEffect for BecomeMonarchE
 
     ctx.game
         .player_set_monarch(target, Some(ctx.trigger_handler));
-    }
 }
 
 #[cfg(test)]

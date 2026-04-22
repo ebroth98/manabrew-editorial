@@ -12,10 +12,8 @@ use crate::spellability::SpellAbility;
 /// Struct form of this effect so it can participate in the
 /// `SpellAbilityEffect` trait hierarchy — mirrors Java's
 /// `MakeCardEffect` class extending `SpellAbilityEffect`.
-pub struct MakeCardEffect;
-
-impl crate::ability::spell_ability_effect::SpellAbilityEffect for MakeCardEffect {
-    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
+#[forge_engine_macros::spell_effect(MakeCardEffect)]
+fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let source = match sa.source {
         Some(s) => s,
         None => return,
@@ -103,6 +101,5 @@ impl crate::ability::spell_ability_effect::SpellAbilityEffect for MakeCardEffect
             let lib = ctx.game.zone_mut(ZoneType::Library, controller);
             ctx.rng.shuffle_cards(&mut lib.cards);
         }
-    }
     }
 }

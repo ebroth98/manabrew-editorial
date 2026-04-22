@@ -1,12 +1,12 @@
 use forge_foundation::ZoneType;
 
 use super::{emit_zone_trigger_with_lki_counters, matches_valid_cards, EffectContext};
-use crate::event::{RunParams};
-use crate::trigger::TriggerType;
+use crate::event::RunParams;
 use crate::ids::CardId;
 use crate::replacement::replacement_handler::{apply_replacements, ReplacementEvent};
 use crate::replacement::ReplacementResult;
 use crate::spellability::SpellAbility;
+use crate::trigger::TriggerType;
 
 /// `SP$ DestroyAll` — destroy all permanents matching `ValidCards$`.
 ///
@@ -24,10 +24,8 @@ use crate::spellability::SpellAbility;
 /// Struct form of this effect so it can participate in the
 /// `SpellAbilityEffect` trait hierarchy — mirrors Java's
 /// `DestroyAllEffect` class extending `SpellAbilityEffect`.
-pub struct DestroyAllEffect;
-
-impl crate::ability::spell_ability_effect::SpellAbilityEffect for DestroyAllEffect {
-    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
+#[forge_engine_macros::spell_effect(DestroyAllEffect)]
+fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let valid_cards_filter = sa
         .params
         .get("ValidCards")
@@ -108,7 +106,6 @@ impl crate::ability::spell_ability_effect::SpellAbilityEffect for DestroyAllEffe
                 .lki_toughness
                 .unwrap_or_else(|| ctx.game.card(card_id).toughness()),
         );
-    }
     }
 }
 

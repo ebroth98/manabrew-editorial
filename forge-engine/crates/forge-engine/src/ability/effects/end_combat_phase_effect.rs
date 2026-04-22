@@ -14,15 +14,12 @@ use crate::spellability::SpellAbility;
 /// Struct form of this effect so it can participate in the
 /// `SpellAbilityEffect` trait hierarchy — mirrors Java's
 /// `EndCombatPhaseEffect` class extending `SpellAbilityEffect`.
-pub struct EndCombatPhaseEffect;
-
-impl crate::ability::spell_ability_effect::SpellAbilityEffect for EndCombatPhaseEffect {
-    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
+#[forge_engine_macros::spell_effect(EndCombatPhaseEffect)]
+fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     if !ctx.game.turn.is_combat() {
         return; // CR 723.2g — only meaningful during combat
     }
     ctx.game.end_combat_requested = true;
-    }
 }
 
 #[cfg(test)]

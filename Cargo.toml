@@ -4,6 +4,7 @@ members = [
     "src-tauri",
     "forge-engine/crates/forge-foundation",
     "forge-engine/crates/forge-carddb",
+    "forge-engine/crates/forge-engine-macros",
     "forge-engine/crates/forge-engine",
     "forge-engine/crates/forge-server",
     "forge-engine/crates/self-hosted-node",

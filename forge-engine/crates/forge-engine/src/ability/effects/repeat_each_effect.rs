@@ -16,10 +16,8 @@ use crate::spellability::{build_spell_ability, SpellAbility};
 /// Struct form of this effect so it can participate in the
 /// `SpellAbilityEffect` trait hierarchy — mirrors Java's
 /// `RepeatEachEffect` class extending `SpellAbilityEffect`.
-pub struct RepeatEachEffect;
-
-impl crate::ability::spell_ability_effect::SpellAbilityEffect for RepeatEachEffect {
-    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
+#[forge_engine_macros::spell_effect(RepeatEachEffect)]
+fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let source_id = match sa.source {
         Some(id) => id,
         None => return,
@@ -124,7 +122,6 @@ impl crate::ability::spell_ability_effect::SpellAbilityEffect for RepeatEachEffe
             table.trigger_changes_zone_all(ctx.trigger_handler, ctx.game, Some(sa));
             ctx.game.clear_pending_change_zone_table();
         }
-    }
     }
 }
 

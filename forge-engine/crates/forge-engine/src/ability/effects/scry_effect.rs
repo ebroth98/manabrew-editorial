@@ -1,11 +1,11 @@
 use forge_foundation::ZoneType;
 
 use super::{parse_param, resolve_defined_player, EffectContext};
-use crate::event::{RunParams};
-use crate::trigger::TriggerType;
+use crate::event::RunParams;
 use crate::replacement::replacement_handler::{apply_replacements, ReplacementEvent};
 use crate::replacement::ReplacementResult;
 use crate::spellability::SpellAbility;
+use crate::trigger::TriggerType;
 
 /// Mirrors Java's `ScryEffect.java`.
 ///
@@ -15,10 +15,8 @@ use crate::spellability::SpellAbility;
 /// Struct form of this effect so it can participate in the
 /// `SpellAbilityEffect` trait hierarchy — mirrors Java's
 /// `ScryEffect` class extending `SpellAbilityEffect`.
-pub struct ScryEffect;
-
-impl crate::ability::spell_ability_effect::SpellAbilityEffect for ScryEffect {
-    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
+#[forge_engine_macros::spell_effect(ScryEffect)]
+fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let num = parse_param(&sa.ability_text, "ScryNum$ ").unwrap_or(1) as usize;
 
     let target = sa
@@ -117,7 +115,6 @@ impl crate::ability::spell_ability_effect::SpellAbilityEffect for ScryEffect {
         },
         false,
     );
-    }
 }
 
 #[cfg(test)]

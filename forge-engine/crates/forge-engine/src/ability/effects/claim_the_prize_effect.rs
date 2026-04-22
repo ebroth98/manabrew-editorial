@@ -3,18 +3,16 @@
 //! each defined attraction.
 
 use super::EffectContext;
-use crate::event::{RunParams};
-use crate::trigger::TriggerType;
+use crate::event::RunParams;
 use crate::parsing::keys;
 use crate::spellability::SpellAbility;
+use crate::trigger::TriggerType;
 
 /// Struct form of this effect so it can participate in the
 /// `SpellAbilityEffect` trait hierarchy — mirrors Java's
 /// `ClaimThePrizeEffect` class extending `SpellAbilityEffect`.
-pub struct ClaimThePrizeEffect;
-
-impl crate::ability::spell_ability_effect::SpellAbilityEffect for ClaimThePrizeEffect {
-    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
+#[forge_engine_macros::spell_effect(ClaimThePrizeEffect)]
+fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let source = match sa.source {
         Some(s) => s,
         None => return,
@@ -41,6 +39,5 @@ impl crate::ability::spell_ability_effect::SpellAbilityEffect for ClaimThePrizeE
             },
             false,
         );
-    }
     }
 }

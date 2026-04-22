@@ -19,10 +19,8 @@ use crate::spellability::SpellAbility;
 /// Struct form of this effect so it can participate in the
 /// `SpellAbilityEffect` trait hierarchy — mirrors Java's
 /// `RegenerateEffect` class extending `SpellAbilityEffect`.
-pub struct RegenerateEffect;
-
-impl crate::ability::spell_ability_effect::SpellAbilityEffect for RegenerateEffect {
-    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
+#[forge_engine_macros::spell_effect(RegenerateEffect)]
+fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     // Targeted: use the chosen target card.
     if let Some(target_card) = sa.target_chosen.target_card {
         if ctx.game.card(target_card).zone == ZoneType::Battlefield
@@ -48,7 +46,6 @@ impl crate::ability::spell_ability_effect::SpellAbilityEffect for RegenerateEffe
         {
             ctx.game.card_mut(source).regeneration_shields += 1;
         }
-    }
     }
 }
 

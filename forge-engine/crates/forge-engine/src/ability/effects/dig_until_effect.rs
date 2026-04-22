@@ -23,10 +23,8 @@ use crate::spellability::SpellAbility;
 /// Struct form of this effect so it can participate in the
 /// `SpellAbilityEffect` trait hierarchy — mirrors Java's
 /// `DigUntilEffect` class extending `SpellAbilityEffect`.
-pub struct DigUntilEffect;
-
-impl crate::ability::spell_ability_effect::SpellAbilityEffect for DigUntilEffect {
-    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
+#[forge_engine_macros::spell_effect(DigUntilEffect)]
+fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let amount = parse_param(&sa.ability_text, "Amount$ ")
         .unwrap_or_else(|| resolve_numeric_svar(ctx.game, sa, "Amount", 1))
         as usize;
@@ -122,6 +120,5 @@ impl crate::ability::spell_ability_effect::SpellAbilityEffect for DigUntilEffect
             ctx.move_card(id, revealed_dest, owner);
             emit_zone_trigger(ctx.trigger_handler, id, ZoneType::Library, revealed_dest);
         }
-    }
     }
 }

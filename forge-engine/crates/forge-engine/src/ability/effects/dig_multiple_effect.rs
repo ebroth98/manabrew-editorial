@@ -17,10 +17,8 @@ use crate::spellability::SpellAbility;
 /// Struct form of this effect so it can participate in the
 /// `SpellAbilityEffect` trait hierarchy — mirrors Java's
 /// `DigMultipleEffect` class extending `SpellAbilityEffect`.
-pub struct DigMultipleEffect;
-
-impl crate::ability::spell_ability_effect::SpellAbilityEffect for DigMultipleEffect {
-    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
+#[forge_engine_macros::spell_effect(DigMultipleEffect)]
+fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let dig_num = parse_param(&sa.ability_text, "DigNum$ ").unwrap_or(1) as usize;
     let optional = sa.params.has(keys::OPTIONAL);
     let change_all = sa
@@ -210,7 +208,6 @@ impl crate::ability::spell_ability_effect::SpellAbilityEffect for DigMultipleEff
             ctx.move_card(id, dest_zone2, dest_owner);
             emit_zone_trigger(ctx.trigger_handler, id, ZoneType::Library, dest_zone2);
         }
-    }
     }
 }
 

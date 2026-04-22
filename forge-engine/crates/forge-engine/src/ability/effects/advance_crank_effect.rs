@@ -5,19 +5,17 @@
 use forge_foundation::ZoneType;
 
 use super::EffectContext;
-use crate::event::{RunParams};
-use crate::trigger::TriggerType;
+use crate::event::RunParams;
 use crate::ids::CardId;
 use crate::parsing::keys;
 use crate::spellability::SpellAbility;
+use crate::trigger::TriggerType;
 
 /// Struct form of this effect so it can participate in the
 /// `SpellAbilityEffect` trait hierarchy — mirrors Java's
 /// `AdvanceCrankEffect` class extending `SpellAbilityEffect`.
-pub struct AdvanceCrankEffect;
-
-impl crate::ability::spell_ability_effect::SpellAbilityEffect for AdvanceCrankEffect {
-    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
+#[forge_engine_macros::spell_effect(AdvanceCrankEffect)]
+fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let players = if let Some(def) = sa.params.get(keys::DEFINED) {
         super::resolve_defined_players(def, sa.activating_player, ctx.game)
     } else {
@@ -57,6 +55,5 @@ impl crate::ability::spell_ability_effect::SpellAbilityEffect for AdvanceCrankEf
                 false,
             );
         }
-    }
     }
 }

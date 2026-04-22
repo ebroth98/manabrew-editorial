@@ -8,10 +8,8 @@ use crate::spellability::SpellAbility;
 /// Struct form of this effect so it can participate in the
 /// `SpellAbilityEffect` trait hierarchy — mirrors Java's
 /// `LosePerpetualEffect` class extending `SpellAbilityEffect`.
-pub struct LosePerpetualEffect;
-
-impl crate::ability::spell_ability_effect::SpellAbilityEffect for LosePerpetualEffect {
-    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
+#[forge_engine_macros::spell_effect(LosePerpetualEffect)]
+fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let Some(host_id) = sa.source else {
         return;
     };
@@ -44,6 +42,5 @@ impl crate::ability::spell_ability_effect::SpellAbilityEffect for LosePerpetualE
                 .remove_changed_card_traits(timestamp, static_id);
             ctx.game.card_mut(host_id).remove_perpetual(timestamp);
         }
-    }
     }
 }

@@ -47,10 +47,8 @@ pub fn run(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
 /// Struct form of this effect so it can participate in the
 /// `SpellAbilityEffect` trait hierarchy — mirrors Java's
 /// `SkipPhaseEffect` class extending `SpellAbilityEffect`.
-pub struct SkipPhaseEffect;
-
-impl crate::ability::spell_ability_effect::SpellAbilityEffect for SkipPhaseEffect {
-    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
+#[forge_engine_macros::spell_effect(SkipPhaseEffect)]
+fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let controller = sa.activating_player;
 
     let phase = sa
@@ -78,7 +76,6 @@ impl crate::ability::spell_ability_effect::SpellAbilityEffect for SkipPhaseEffec
                 eprintln!("{}", err);
             }
         }
-    }
     }
 }
 

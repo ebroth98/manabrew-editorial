@@ -1,8 +1,8 @@
 use super::{resolve_defined_players, EffectContext};
-use crate::event::{RunParams};
-use crate::trigger::TriggerType;
+use crate::event::RunParams;
 use crate::parsing::keys;
 use crate::spellability::SpellAbility;
+use crate::trigger::TriggerType;
 
 /// `SP$ Shuffle` — shuffle one or more players' libraries.
 ///
@@ -17,10 +17,8 @@ use crate::spellability::SpellAbility;
 /// Struct form of this effect so it can participate in the
 /// `SpellAbilityEffect` trait hierarchy — mirrors Java's
 /// `ShuffleEffect` class extending `SpellAbilityEffect`.
-pub struct ShuffleEffect;
-
-impl crate::ability::spell_ability_effect::SpellAbilityEffect for ShuffleEffect {
-    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
+#[forge_engine_macros::spell_effect(ShuffleEffect)]
+fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let defined = sa.params.get(keys::DEFINED).unwrap_or("You");
     let players = resolve_defined_players(defined, sa.activating_player, ctx.game);
     let optional = sa.params.has(keys::OPTIONAL);
@@ -51,6 +49,5 @@ impl crate::ability::spell_ability_effect::SpellAbilityEffect for ShuffleEffect 
             },
             false,
         );
-    }
     }
 }

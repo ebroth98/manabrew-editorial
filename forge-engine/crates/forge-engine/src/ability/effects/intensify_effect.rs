@@ -6,10 +6,8 @@ use crate::spellability::SpellAbility;
 /// Struct form of this effect so it can participate in the
 /// `SpellAbilityEffect` trait hierarchy — mirrors Java's
 /// `IntensifyEffect` class extending `SpellAbilityEffect`.
-pub struct IntensifyEffect;
-
-impl crate::ability::spell_ability_effect::SpellAbilityEffect for IntensifyEffect {
-    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
+#[forge_engine_macros::spell_effect(IntensifyEffect)]
+fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     if let Some(sid) = sa.source {
         let current = ctx
             .game
@@ -24,6 +22,5 @@ impl crate::ability::spell_ability_effect::SpellAbilityEffect for IntensifyEffec
         ctx.game
             .card_mut(sid)
             .set_s_var("IntensifyCount", format!("Number${}", current + 1));
-    }
     }
 }

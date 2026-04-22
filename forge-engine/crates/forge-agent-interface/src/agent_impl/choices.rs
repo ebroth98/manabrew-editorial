@@ -3,7 +3,7 @@ use forge_engine_core::card::CounterType;
 use forge_engine_core::ids::{CardId, PlayerId};
 use forge_engine_core::spellability::SpellAbility;
 
-use crate::game_view_dto::CardDto;
+use crate::game_view_dto::{CardDto, TargetingIntent};
 use crate::ids_codec::parse_card_id;
 use crate::prompt::{AgentPromptInner, PlayerAction};
 
@@ -266,7 +266,7 @@ pub(super) fn choose_single_entity_for_effect<T: AgentTransport>(
             &players,
             None,
             false,
-            crate::game_view_dto::TargetingIntent::Hostile,
+            TargetingIntent::Hostile,
         );
         return chosen.map(GameEntity::Player).or_else(|| {
             if is_optional {

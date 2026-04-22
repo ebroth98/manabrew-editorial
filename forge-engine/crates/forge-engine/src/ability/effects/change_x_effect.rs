@@ -8,10 +8,8 @@ use crate::spellability::SpellAbility;
 /// Struct form of this effect so it can participate in the
 /// `SpellAbilityEffect` trait hierarchy — mirrors Java's
 /// `ChangeXEffect` class extending `SpellAbilityEffect`.
-pub struct ChangeXEffect;
-
-impl crate::ability::spell_ability_effect::SpellAbilityEffect for ChangeXEffect {
-    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
+#[forge_engine_macros::spell_effect(ChangeXEffect)]
+fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let Some(source_id) = sa.source else { return };
 
     let new_x = super::resolve_numeric_svar(ctx.game, sa, "NewX", 0);
@@ -19,5 +17,4 @@ impl crate::ability::spell_ability_effect::SpellAbilityEffect for ChangeXEffect 
         .card_mut(source_id)
         .svars
         .insert("X".to_string(), format!("Number${}", new_x));
-    }
 }

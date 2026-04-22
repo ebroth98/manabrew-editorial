@@ -9,10 +9,8 @@ use crate::spellability::SpellAbility;
 /// Struct form of this effect so it can participate in the
 /// `SpellAbilityEffect` trait hierarchy — mirrors Java's
 /// `LifeExchangeVariantEffect` class extending `SpellAbilityEffect`.
-pub struct LifeExchangeVariantEffect;
-
-impl crate::ability::spell_ability_effect::SpellAbilityEffect for LifeExchangeVariantEffect {
-    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
+#[forge_engine_macros::spell_effect(LifeExchangeVariantEffect)]
+fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let controller = sa.activating_player;
 
     let target = sa
@@ -21,5 +19,4 @@ impl crate::ability::spell_ability_effect::SpellAbilityEffect for LifeExchangeVa
         .unwrap_or_else(|| ctx.game.opponent_of(controller));
 
     ctx.game.player_exchange_life_totals(controller, target);
-    }
 }

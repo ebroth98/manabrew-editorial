@@ -10,10 +10,8 @@ use forge_foundation::ZoneType;
 /// Struct form of this effect so it can participate in the
 /// `SpellAbilityEffect` trait hierarchy — mirrors Java's
 /// `CountersRemoveAllEffect` class extending `SpellAbilityEffect`.
-pub struct CountersRemoveAllEffect;
-
-impl crate::ability::spell_ability_effect::SpellAbilityEffect for CountersRemoveAllEffect {
-    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
+#[forge_engine_macros::spell_effect(CountersRemoveAllEffect)]
+fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let counter_type_str = sa
         .params
         .get(keys::COUNTER_TYPE)
@@ -48,6 +46,5 @@ impl crate::ability::spell_ability_effect::SpellAbilityEffect for CountersRemove
                 .card_mut(card_id)
                 .remove_counter(&counter_type, current);
         }
-    }
     }
 }

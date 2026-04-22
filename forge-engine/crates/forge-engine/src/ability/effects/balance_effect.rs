@@ -1,9 +1,9 @@
 use forge_foundation::ZoneType;
 
 use super::{emit_zone_trigger, matches_valid_cards, parse_zone_type, EffectContext};
-use crate::event::{RunParams};
-use crate::trigger::TriggerType;
+use crate::event::RunParams;
 use crate::spellability::SpellAbility;
+use crate::trigger::TriggerType;
 
 /// `SP$ Balance` — equalize resources across all players.
 ///
@@ -17,10 +17,8 @@ use crate::spellability::SpellAbility;
 /// Struct form of this effect so it can participate in the
 /// `SpellAbilityEffect` trait hierarchy — mirrors Java's
 /// `BalanceEffect` class extending `SpellAbilityEffect`.
-pub struct BalanceEffect;
-
-impl crate::ability::spell_ability_effect::SpellAbilityEffect for BalanceEffect {
-    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
+#[forge_engine_macros::spell_effect(BalanceEffect)]
+fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let controller = sa.activating_player;
 
     let filter = sa
@@ -137,6 +135,5 @@ impl crate::ability::spell_ability_effect::SpellAbilityEffect for BalanceEffect 
                 // Other zones: not commonly balanced, skip
             }
         }
-    }
     }
 }

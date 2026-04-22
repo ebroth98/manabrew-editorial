@@ -13,10 +13,8 @@ use crate::spellability::SpellAbility;
 /// Struct form of this effect so it can participate in the
 /// `SpellAbilityEffect` trait hierarchy — mirrors Java's
 /// `ChangeZoneResolveEffect` class extending `SpellAbilityEffect`.
-pub struct ChangeZoneResolveEffect;
-
-impl crate::ability::spell_ability_effect::SpellAbilityEffect for ChangeZoneResolveEffect {
-    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
+#[forge_engine_macros::spell_effect(ChangeZoneResolveEffect)]
+fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     if let Some(table) = sa.change_zone_table.as_ref() {
         table.trigger_changes_zone_all(ctx.trigger_handler, ctx.game, Some(sa));
         return;
@@ -24,7 +22,6 @@ impl crate::ability::spell_ability_effect::SpellAbilityEffect for ChangeZoneReso
     if let Some(table) = ctx.game.pending_change_zone_table.clone() {
         table.trigger_changes_zone_all(ctx.trigger_handler, ctx.game, Some(sa));
         ctx.game.clear_pending_change_zone_table();
-    }
     }
 }
 

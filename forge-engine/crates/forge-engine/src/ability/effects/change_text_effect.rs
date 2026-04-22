@@ -29,10 +29,8 @@ pub fn run(game: &mut crate::game::GameState, card_id: crate::ids::CardId) {
 /// Struct form of this effect so it can participate in the
 /// `SpellAbilityEffect` trait hierarchy — mirrors Java's
 /// `ChangeTextEffect` class extending `SpellAbilityEffect`.
-pub struct ChangeTextEffect;
-
-impl crate::ability::spell_ability_effect::SpellAbilityEffect for ChangeTextEffect {
-    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
+#[forge_engine_macros::spell_effect(ChangeTextEffect)]
+fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let Some(source_id) = sa.source else { return };
 
     let original = sa
@@ -56,5 +54,4 @@ impl crate::ability::spell_ability_effect::SpellAbilityEffect for ChangeTextEffe
         .card_mut(source_id)
         .svars
         .insert(format!("ChangedText_{}", original), replacement);
-    }
 }

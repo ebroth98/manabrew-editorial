@@ -9,18 +9,16 @@ use forge_foundation::{CardTypeLine, ColorSet, ManaCost, ZoneType};
 
 use super::{emit_zone_trigger, parse_counter_type, EffectContext};
 use crate::card::Card;
-use crate::event::{RunParams};
-use crate::trigger::TriggerType;
+use crate::event::RunParams;
 use crate::ids::CardId;
 use crate::spellability::SpellAbility;
+use crate::trigger::TriggerType;
 
 /// Struct form of this effect so it can participate in the
 /// `SpellAbilityEffect` trait hierarchy — mirrors Java's
 /// `IncubateEffect` class extending `SpellAbilityEffect`.
-pub struct IncubateEffect;
-
-impl crate::ability::spell_ability_effect::SpellAbilityEffect for IncubateEffect {
-    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
+#[forge_engine_macros::spell_effect(IncubateEffect)]
+fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let amount = super::resolve_numeric_svar(ctx.game, sa, "Amount", 1).max(0);
     let times = super::resolve_numeric_svar(ctx.game, sa, "Times", 1).max(0) as usize;
     let controller = sa.activating_player;
@@ -35,7 +33,6 @@ impl crate::ability::spell_ability_effect::SpellAbilityEffect for IncubateEffect
         for _ in 0..times {
             create_incubator_token(ctx, sa, pid, amount);
         }
-    }
     }
 }
 

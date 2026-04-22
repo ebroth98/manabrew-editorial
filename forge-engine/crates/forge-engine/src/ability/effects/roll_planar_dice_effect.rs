@@ -3,19 +3,17 @@
 //! can result in Planeswalk, Chaos, or blank.
 
 use super::EffectContext;
-use crate::event::{RunParams};
-use crate::trigger::TriggerType;
+use crate::event::RunParams;
 use crate::replacement::replacement_handler::{apply_replacements, ReplacementEvent};
 use crate::replacement::ReplacementResult;
 use crate::spellability::SpellAbility;
+use crate::trigger::TriggerType;
 
 /// Struct form of this effect so it can participate in the
 /// `SpellAbilityEffect` trait hierarchy — mirrors Java's
 /// `RollPlanarDiceEffect` class extending `SpellAbilityEffect`.
-pub struct RollPlanarDiceEffect;
-
-impl crate::ability::spell_ability_effect::SpellAbilityEffect for RollPlanarDiceEffect {
-    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
+#[forge_engine_macros::spell_effect(RollPlanarDiceEffect)]
+fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     // Run RollPlanarDice replacement effects before rolling.
     let mut event = ReplacementEvent::RollPlanarDice {
         player: sa.activating_player,
@@ -54,6 +52,5 @@ impl crate::ability::spell_ability_effect::SpellAbilityEffect for RollPlanarDice
         _ => {
             // Blank — nothing happens
         }
-    }
     }
 }

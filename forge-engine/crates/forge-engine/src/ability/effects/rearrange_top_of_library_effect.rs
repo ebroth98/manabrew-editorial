@@ -1,9 +1,9 @@
 use forge_foundation::ZoneType;
 
 use super::{parse_param, resolve_defined_player, EffectContext};
-use crate::event::{RunParams};
-use crate::trigger::TriggerType;
+use crate::event::RunParams;
 use crate::spellability::SpellAbility;
+use crate::trigger::TriggerType;
 
 /// Mirrors the `RearrangeTopOfLibrary` API used by cards like Ponder.
 ///
@@ -16,10 +16,8 @@ use crate::spellability::SpellAbility;
 /// Struct form of this effect so it can participate in the
 /// `SpellAbilityEffect` trait hierarchy — mirrors Java's
 /// `RearrangeTopOfLibraryEffect` class extending `SpellAbilityEffect`.
-pub struct RearrangeTopOfLibraryEffect;
-
-impl crate::ability::spell_ability_effect::SpellAbilityEffect for RearrangeTopOfLibraryEffect {
-    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
+#[forge_engine_macros::spell_effect(RearrangeTopOfLibraryEffect)]
+fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let num = parse_param(&sa.ability_text, "NumCards$ ").unwrap_or(3) as usize;
     let may_shuffle = sa
         .params
@@ -102,6 +100,5 @@ impl crate::ability::spell_ability_effect::SpellAbilityEffect for RearrangeTopOf
                 false,
             );
         }
-    }
     }
 }

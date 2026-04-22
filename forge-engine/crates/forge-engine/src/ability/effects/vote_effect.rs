@@ -8,19 +8,17 @@
 use std::collections::HashMap;
 
 use super::EffectContext;
-use crate::event::{RunParams};
-use crate::trigger::TriggerType;
+use crate::event::RunParams;
 use crate::ids::PlayerId;
 use crate::parsing::keys;
 use crate::spellability::SpellAbility;
+use crate::trigger::TriggerType;
 
 /// Struct form of this effect so it can participate in the
 /// `SpellAbilityEffect` trait hierarchy — mirrors Java's
 /// `VoteEffect` class extending `SpellAbilityEffect`.
-pub struct VoteEffect;
-
-impl crate::ability::spell_ability_effect::SpellAbilityEffect for VoteEffect {
-    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
+#[forge_engine_macros::spell_effect(VoteEffect)]
+fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let controller = sa.activating_player;
 
     // Get voting players (usually all players, starting with activator)
@@ -130,5 +128,4 @@ impl crate::ability::spell_ability_effect::SpellAbilityEffect for VoteEffect {
     // The winning sub-ability is resolved by the parent SA's sub-ability chain.
     // In Java, VoteSubAbility or the Choice abilities are resolved here.
     // In Rust, the sub-ability system handles this via the spell resolution pipeline.
-    }
 }

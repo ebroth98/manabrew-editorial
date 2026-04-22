@@ -15,10 +15,8 @@ use crate::spellability::SpellAbility;
 /// Struct form of this effect so it can participate in the
 /// `SpellAbilityEffect` trait hierarchy — mirrors Java's
 /// `MeldEffect` class extending `SpellAbilityEffect`.
-pub struct MeldEffect;
-
-impl crate::ability::spell_ability_effect::SpellAbilityEffect for MeldEffect {
-    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
+#[forge_engine_macros::spell_effect(MeldEffect)]
+fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let Some(host_card_id) = sa.source else {
         return;
     };
@@ -150,5 +148,4 @@ impl crate::ability::spell_ability_effect::SpellAbilityEffect for MeldEffect {
     );
 
     let _ = super::add_to_combat(ctx, sa, primary, keys::ATTACKING);
-    }
 }

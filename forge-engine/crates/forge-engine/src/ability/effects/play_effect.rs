@@ -2,19 +2,17 @@ use forge_foundation::ZoneType;
 
 use super::EffectContext;
 use crate::agent::{GameEntity, GameLogEvent};
-use crate::event::{RunParams};
-use crate::trigger::TriggerType;
+use crate::event::RunParams;
 use crate::ids::CardId;
 use crate::parsing::keys;
 use crate::spellability::{SpellAbility, StackEntry};
+use crate::trigger::TriggerType;
 
 /// Struct form of this effect so it can participate in the
 /// `SpellAbilityEffect` trait hierarchy — mirrors Java's
 /// `PlayEffect` class extending `SpellAbilityEffect`.
-pub struct PlayEffect;
-
-impl crate::ability::spell_ability_effect::SpellAbilityEffect for PlayEffect {
-    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
+#[forge_engine_macros::spell_effect(PlayEffect)]
+fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let card_id = match resolve_target_card(sa) {
         Some(cid) => cid,
         None => return,
@@ -185,7 +183,6 @@ impl crate::ability::spell_ability_effect::SpellAbilityEffect for PlayEffect {
         if let Some(source_id) = sa.source {
             ctx.game.card_mut(source_id).remembered_cards.push(card_id);
         }
-    }
     }
 }
 

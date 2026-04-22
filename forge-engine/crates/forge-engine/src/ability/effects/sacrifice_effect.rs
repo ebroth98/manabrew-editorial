@@ -3,11 +3,11 @@ use forge_foundation::ZoneType;
 use super::{emit_zone_trigger_with_lki_counters, matches_change_type, EffectContext};
 use crate::ability::spell_ability_effect::get_target_players;
 use crate::card::CounterType;
-use crate::event::{RunParams};
-use crate::trigger::TriggerType;
+use crate::event::RunParams;
 use crate::ids::PlayerId;
 use crate::parsing::keys;
 use crate::spellability::SpellAbility;
+use crate::trigger::TriggerType;
 
 /// Perform the actual sacrifice of a card: fire triggers, move to graveyard, emit zone change.
 /// If `exploit_source` is Some, also fires the Exploited trigger for the Exploit keyword.
@@ -95,10 +95,8 @@ fn do_sacrifice(
 /// Struct form of this effect so it can participate in the
 /// `SpellAbilityEffect` trait hierarchy — mirrors Java's
 /// `SacrificeEffect` class extending `SpellAbilityEffect`.
-pub struct SacrificeEffect;
-
-impl crate::ability::spell_ability_effect::SpellAbilityEffect for SacrificeEffect {
-    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
+#[forge_engine_macros::spell_effect(SacrificeEffect)]
+fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     // ── Cumulative Upkeep ────────────────────────────────────────────────
     // Mirrors Java SacrificeEffect lines 52-75: when CumulativeUpkeep$ is set,
     // add an Age counter, build merged cost (base cost × age counters),
@@ -356,6 +354,5 @@ impl crate::ability::spell_ability_effect::SpellAbilityEffect for SacrificeEffec
                 }
             }
         }
-    }
     }
 }

@@ -12,10 +12,8 @@ use crate::spellability::SpellAbility;
 /// Struct form of this effect so it can participate in the
 /// `SpellAbilityEffect` trait hierarchy — mirrors Java's
 /// `RevealEffect` class extending `SpellAbilityEffect`.
-pub struct RevealEffect;
-
-impl crate::ability::spell_ability_effect::SpellAbilityEffect for RevealEffect {
-    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
+#[forge_engine_macros::spell_effect(RevealEffect)]
+fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let num = parse_param(&sa.ability_text, "NumCards$ ").unwrap_or(1) as usize;
 
     let target = sa
@@ -44,6 +42,5 @@ impl crate::ability::spell_ability_effect::SpellAbilityEffect for RevealEffect {
                 GameLogEvent::rule(format!("Revealed: {}", name)).with_card(id),
             ));
         }
-    }
     }
 }

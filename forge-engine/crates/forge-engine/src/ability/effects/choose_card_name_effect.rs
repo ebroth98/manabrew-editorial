@@ -10,10 +10,8 @@ use crate::spellability::SpellAbility;
 /// Struct form of this effect so it can participate in the
 /// `SpellAbilityEffect` trait hierarchy — mirrors Java's
 /// `ChooseCardNameEffect` class extending `SpellAbilityEffect`.
-pub struct ChooseCardNameEffect;
-
-impl crate::ability::spell_ability_effect::SpellAbilityEffect for ChooseCardNameEffect {
-    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
+#[forge_engine_macros::spell_effect(ChooseCardNameEffect)]
+fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let Some(source_id) = sa.source else { return };
     let controller = sa.activating_player;
 
@@ -34,6 +32,5 @@ impl crate::ability::spell_ability_effect::SpellAbilityEffect for ChooseCardName
 
     if sa.param_is_true(keys::REMEMBER_CHOSEN) {
         // Remember the name for later checks
-    }
     }
 }

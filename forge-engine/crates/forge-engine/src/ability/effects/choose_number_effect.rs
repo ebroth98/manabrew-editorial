@@ -17,10 +17,8 @@ use crate::spellability::SpellAbility;
 /// Struct form of this effect so it can participate in the
 /// `SpellAbilityEffect` trait hierarchy — mirrors Java's
 /// `ChooseNumberEffect` class extending `SpellAbilityEffect`.
-pub struct ChooseNumberEffect;
-
-impl crate::ability::spell_ability_effect::SpellAbilityEffect for ChooseNumberEffect {
-    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
+#[forge_engine_macros::spell_effect(ChooseNumberEffect)]
+fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let controller = sa.activating_player;
     let min = parse_param(&sa.ability_text, "Min$ ")
         .unwrap_or_else(|| resolve_numeric_svar(ctx.game, sa, "Min", 0));
@@ -44,6 +42,5 @@ impl crate::ability::spell_ability_effect::SpellAbilityEffect for ChooseNumberEf
         if let Some(source_id) = sa.source {
             ctx.game.card_mut(source_id).set_chosen_number(Some(num));
         }
-    }
     }
 }

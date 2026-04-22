@@ -10,10 +10,8 @@ use crate::spellability::SpellAbility;
 /// Struct form of this effect so it can participate in the
 /// `SpellAbilityEffect` trait hierarchy — mirrors Java's
 /// `VillainousChoiceEffect` class extending `SpellAbilityEffect`.
-pub struct VillainousChoiceEffect;
-
-impl crate::ability::spell_ability_effect::SpellAbilityEffect for VillainousChoiceEffect {
-    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
+#[forge_engine_macros::spell_effect(VillainousChoiceEffect)]
+fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let controller = sa.activating_player;
 
     // Get choices (sub-ability names from Choices$ param)
@@ -62,6 +60,5 @@ impl crate::ability::spell_ability_effect::SpellAbilityEffect for VillainousChoi
                 .add_remembered_cmc(choice_idx as i32);
             ctx.game.card_mut(source_id).add_remembered_player(pid);
         }
-    }
     }
 }

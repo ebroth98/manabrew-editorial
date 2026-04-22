@@ -1291,6 +1291,7 @@ version = "0.1.0"
 dependencies = [
  "dyn-clone",
  "forge-carddb",
+ "forge-engine-macros",
  "forge-foundation",
  "indexmap 2.13.0",
  "rand 0.8.5",
@@ -1300,6 +1301,10 @@ dependencies = [
  "strum_macros",
  "typetag",
 ]
+
+[[package]]
+name = "forge-engine-macros"
+version = "0.1.0"
 
 [[package]]
 name = "forge-foundation"

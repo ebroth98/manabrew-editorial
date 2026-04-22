@@ -7,10 +7,8 @@ use crate::trigger::trigger::parse_trigger;
 /// Struct form of this effect so it can participate in the
 /// `SpellAbilityEffect` trait hierarchy — mirrors Java's
 /// `DelayedTriggerEffect` class extending `SpellAbilityEffect`.
-pub struct DelayedTriggerEffect;
-
-impl crate::ability::spell_ability_effect::SpellAbilityEffect for DelayedTriggerEffect {
-    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
+#[forge_engine_macros::spell_effect(DelayedTriggerEffect)]
+fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let Some(source_id) = sa.source else {
         return;
     };
@@ -97,7 +95,6 @@ impl crate::ability::spell_ability_effect::SpellAbilityEffect for DelayedTrigger
             .register_player_defined_delayed_trigger(controller, delayed);
     } else {
         ctx.trigger_handler.register_delayed_trigger(delayed);
-    }
     }
 }
 

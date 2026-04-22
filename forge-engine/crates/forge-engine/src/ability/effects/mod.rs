@@ -230,7 +230,7 @@ pub use effect_context::EffectContext;
 pub use effect_resolver::{
     resolve_effect, resolve_effect_chain, resolve_effect_chain_with_parent, IMPLEMENTED_API_TYPES,
 };
-pub(crate) use effect_resolver::sub_ability_handled_internally;
+pub(crate) use effect_resolver::{build_spell_ability_for_api, sub_ability_handled_internally};
 pub(crate) use targeting_triggers::{emit_targeting_triggers, emit_targeting_triggers_for_sa};
 pub(crate) use combat_helpers::add_to_combat;
 pub(crate) use cost_payment::{try_pay_cumulative_upkeep, try_pay_unless_cost};

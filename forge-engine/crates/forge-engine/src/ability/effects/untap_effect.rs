@@ -2,10 +2,10 @@ use forge_foundation::ZoneType;
 
 use super::EffectContext;
 use crate::card::card_util;
-use crate::event::{RunParams};
-use crate::trigger::TriggerType;
+use crate::event::RunParams;
 use crate::ids::CardId;
 use crate::spellability::SpellAbility;
+use crate::trigger::TriggerType;
 
 /// Resolve `SP$ Untap` — untap target permanent(s).
 ///
@@ -21,10 +21,8 @@ use crate::spellability::SpellAbility;
 /// Struct form of this effect so it can participate in the
 /// `SpellAbilityEffect` trait hierarchy — mirrors Java's
 /// `UntapEffect` class extending `SpellAbilityEffect`.
-pub struct UntapEffect;
-
-impl crate::ability::spell_ability_effect::SpellAbilityEffect for UntapEffect {
-    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
+#[forge_engine_macros::spell_effect(UntapEffect)]
+fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let controller = sa.activating_player;
     let etb = sa.params.has(crate::parsing::keys::ETB);
 
@@ -40,7 +38,6 @@ impl crate::ability::spell_ability_effect::SpellAbilityEffect for UntapEffect {
         if ctx.game.card(card_id).zone == ZoneType::Battlefield {
             untap_card(ctx, card_id, controller, etb);
         }
-    }
     }
 }
 

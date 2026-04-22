@@ -58,10 +58,8 @@ pub fn run(
 /// Struct form of this effect so it can participate in the
 /// `SpellAbilityEffect` trait hierarchy — mirrors Java's
 /// `PumpEffect` class extending `SpellAbilityEffect`.
-pub struct PumpEffect;
-
-impl crate::ability::spell_ability_effect::SpellAbilityEffect for PumpEffect {
-    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
+#[forge_engine_macros::spell_effect(PumpEffect)]
+fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let mut pumped_targets: Vec<crate::ids::CardId> = Vec::new();
 
     // `Optional$` — activator confirms before any pump applies (Java L283–L292).
@@ -209,7 +207,15 @@ impl crate::ability::spell_ability_effect::SpellAbilityEffect for PumpEffect {
         let target = ctx.game.card(target_card);
         let att = att_bonus.resolve(target.power());
         let def = def_bonus.resolve(target.toughness());
-        apply_pump_to_card(ctx, target_card, att, def, &keywords, is_perpetual, resolve_ts);
+        apply_pump_to_card(
+            ctx,
+            target_card,
+            att,
+            def,
+            &keywords,
+            is_perpetual,
+            resolve_ts,
+        );
         pumped_targets.push(target_card);
     }
 
@@ -223,7 +229,6 @@ impl crate::ability::spell_ability_effect::SpellAbilityEffect for PumpEffect {
             action,
             pumped_targets,
         );
-    }
     }
 }
 

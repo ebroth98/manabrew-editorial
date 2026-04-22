@@ -11,10 +11,8 @@ use crate::spellability::SpellAbility;
 /// Struct form of this effect so it can participate in the
 /// `SpellAbilityEffect` trait hierarchy — mirrors Java's
 /// `ControlPlayerEffect` class extending `SpellAbilityEffect`.
-pub struct ControlPlayerEffect;
-
-impl crate::ability::spell_ability_effect::SpellAbilityEffect for ControlPlayerEffect {
-    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
+#[forge_engine_macros::spell_effect(ControlPlayerEffect)]
+fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let controller_def = sa
         .params
         .get(keys::CONTROLLER)
@@ -59,6 +57,5 @@ impl crate::ability::spell_ability_effect::SpellAbilityEffect for ControlPlayerE
                 remembered_cards: Vec::new(),
                 remembered_lki_cards: Vec::new(),
             });
-    }
     }
 }

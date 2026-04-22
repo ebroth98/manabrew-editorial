@@ -36,10 +36,8 @@ pub fn handle_special_mana(
 /// Struct form of this effect so it can participate in the
 /// `SpellAbilityEffect` trait hierarchy — mirrors Java's
 /// `ManaEffect` class extending `SpellAbilityEffect`.
-pub struct ManaEffect;
-
-impl crate::ability::spell_ability_effect::SpellAbilityEffect for ManaEffect {
-    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
+#[forge_engine_macros::spell_effect(ManaEffect)]
+fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let player = sa.activating_player;
     let source_id = match sa.source {
         Some(id) => id,
@@ -277,7 +275,6 @@ impl crate::ability::spell_ability_effect::SpellAbilityEffect for ManaEffect {
             m.triggers_when_spent = triggers_when_spent.clone();
             ctx.mana_pools[player.index()].add_mana(m);
         }
-    }
     }
 }
 

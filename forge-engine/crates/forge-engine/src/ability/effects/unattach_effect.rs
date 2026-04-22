@@ -11,10 +11,8 @@ use forge_foundation::ZoneType;
 /// Struct form of this effect so it can participate in the
 /// `SpellAbilityEffect` trait hierarchy — mirrors Java's
 /// `UnattachEffect` class extending `SpellAbilityEffect`.
-pub struct UnattachEffect;
-
-impl crate::ability::spell_ability_effect::SpellAbilityEffect for UnattachEffect {
-    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
+#[forge_engine_macros::spell_effect(UnattachEffect)]
+fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     // Determine which card(s) to unattach
     let cards: Vec<CardId> = if sa.uses_targeting() {
         sa.target_chosen.target_card.into_iter().collect()
@@ -41,6 +39,5 @@ impl crate::ability::spell_ability_effect::SpellAbilityEffect for UnattachEffect
             // Clear the attachment link
             ctx.game.card_mut(card_id).set_attached_to(None);
         }
-    }
     }
 }

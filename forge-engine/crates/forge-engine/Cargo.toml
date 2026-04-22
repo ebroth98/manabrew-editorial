@@ -6,6 +6,7 @@ edition = "2021"
 [dependencies]
 forge-foundation = { path = "../forge-foundation" }
 forge-carddb = { path = "../forge-carddb" }
+forge-engine-macros = { path = "../forge-engine-macros" }
 strum_macros = "0.28.0"
 strum = "0.28"
 serde = { workspace = true }

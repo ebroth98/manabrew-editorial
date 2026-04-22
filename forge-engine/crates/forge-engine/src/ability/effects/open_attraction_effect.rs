@@ -11,10 +11,8 @@ use crate::spellability::SpellAbility;
 /// Struct form of this effect so it can participate in the
 /// `SpellAbilityEffect` trait hierarchy — mirrors Java's
 /// `OpenAttractionEffect` class extending `SpellAbilityEffect`.
-pub struct OpenAttractionEffect;
-
-impl crate::ability::spell_ability_effect::SpellAbilityEffect for OpenAttractionEffect {
-    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
+#[forge_engine_macros::spell_effect(OpenAttractionEffect)]
+fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let source = match sa.source {
         Some(s) => s,
         None => return,
@@ -71,6 +69,5 @@ impl crate::ability::spell_ability_effect::SpellAbilityEffect for OpenAttraction
                 }
             }
         }
-    }
     }
 }

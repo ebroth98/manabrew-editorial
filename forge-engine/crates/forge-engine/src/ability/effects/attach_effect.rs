@@ -13,10 +13,8 @@ use crate::spellability::SpellAbility;
 /// Struct form of this effect so it can participate in the
 /// `SpellAbilityEffect` trait hierarchy — mirrors Java's
 /// `AttachEffect` class extending `SpellAbilityEffect`.
-pub struct AttachEffect;
-
-impl crate::ability::spell_ability_effect::SpellAbilityEffect for AttachEffect {
-    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
+#[forge_engine_macros::spell_effect(AttachEffect)]
+fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     // Source is the card being attached (the Equipment or Aura)
     let aura_id = match sa.source {
         Some(s) => s,
@@ -122,5 +120,4 @@ impl crate::ability::spell_ability_effect::SpellAbilityEffect for AttachEffect {
         },
         false,
     );
-    }
 }

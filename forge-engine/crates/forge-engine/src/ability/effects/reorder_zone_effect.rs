@@ -11,10 +11,8 @@ use crate::spellability::SpellAbility;
 /// Struct form of this effect so it can participate in the
 /// `SpellAbilityEffect` trait hierarchy — mirrors Java's
 /// `ReorderZoneEffect` class extending `SpellAbilityEffect`.
-pub struct ReorderZoneEffect;
-
-impl crate::ability::spell_ability_effect::SpellAbilityEffect for ReorderZoneEffect {
-    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
+#[forge_engine_macros::spell_effect(ReorderZoneEffect)]
+fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let controller = sa.activating_player;
     let zone_str = sa
         .params
@@ -35,6 +33,5 @@ impl crate::ability::spell_ability_effect::SpellAbilityEffect for ReorderZoneEff
         // so we leave cards in their current order.
         // A full implementation would call agent.order_cards().
         let _ = ctx.game.cards_in_zone(zone, pid);
-    }
     }
 }

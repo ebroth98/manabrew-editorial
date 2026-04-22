@@ -31,10 +31,8 @@ use forge_foundation::ManaCost;
 /// Struct form of this effect so it can participate in the
 /// `SpellAbilityEffect` trait hierarchy — mirrors Java's
 /// `AnimateEffect` class extending `SpellAbilityEffect`.
-pub struct AnimateEffect;
-
-impl crate::ability::spell_ability_effect::SpellAbilityEffect for AnimateEffect {
-    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
+#[forge_engine_macros::spell_effect(AnimateEffect)]
+fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let controller = sa.activating_player;
 
     // Determine target card
@@ -327,7 +325,6 @@ impl crate::ability::spell_ability_effect::SpellAbilityEffect for AnimateEffect 
             action,
             remembered,
         );
-    }
     }
 }
 

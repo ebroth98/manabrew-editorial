@@ -10,10 +10,8 @@ use crate::spellability::SpellAbility;
 /// Struct form of this effect so it can participate in the
 /// `SpellAbilityEffect` trait hierarchy — mirrors Java's
 /// `ChooseEvenOddEffect` class extending `SpellAbilityEffect`.
-pub struct ChooseEvenOddEffect;
-
-impl crate::ability::spell_ability_effect::SpellAbilityEffect for ChooseEvenOddEffect {
-    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
+#[forge_engine_macros::spell_effect(ChooseEvenOddEffect)]
+fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let Some(source_id) = sa.source else { return };
     let source_name = ctx.game.card(source_id).card_name.clone();
 
@@ -40,6 +38,5 @@ impl crate::ability::spell_ability_effect::SpellAbilityEffect for ChooseEvenOddE
         ctx.game
             .card_mut(source_id)
             .set_s_var("ChosenEvenOdd", if odd { "Odd" } else { "Even" });
-    }
     }
 }

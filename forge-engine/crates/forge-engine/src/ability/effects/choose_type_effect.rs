@@ -18,10 +18,8 @@ use crate::spellability::SpellAbility;
 /// Struct form of this effect so it can participate in the
 /// `SpellAbilityEffect` trait hierarchy — mirrors Java's
 /// `ChooseTypeEffect` class extending `SpellAbilityEffect`.
-pub struct ChooseTypeEffect;
-
-impl crate::ability::spell_ability_effect::SpellAbilityEffect for ChooseTypeEffect {
-    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
+#[forge_engine_macros::spell_effect(ChooseTypeEffect)]
+fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let controller = sa.activating_player;
     let type_category = sa
         .params
@@ -69,6 +67,5 @@ impl crate::ability::spell_ability_effect::SpellAbilityEffect for ChooseTypeEffe
                 false,
             );
         }
-    }
     }
 }

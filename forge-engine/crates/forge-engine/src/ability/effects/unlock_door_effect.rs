@@ -5,11 +5,11 @@
 use forge_foundation::ZoneType;
 
 use super::EffectContext;
-use crate::event::{RunParams};
-use crate::trigger::TriggerType;
+use crate::event::RunParams;
 use crate::ids::CardId;
 use crate::parsing::keys;
 use crate::spellability::SpellAbility;
+use crate::trigger::TriggerType;
 
 fn unlocked_room_count(ctx: &EffectContext, card_id: CardId) -> i32 {
     let card = ctx.game.card(card_id);
@@ -35,10 +35,8 @@ fn unlocked_room_count(ctx: &EffectContext, card_id: CardId) -> i32 {
 /// Struct form of this effect so it can participate in the
 /// `SpellAbilityEffect` trait hierarchy — mirrors Java's
 /// `UnlockDoorEffect` class extending `SpellAbilityEffect`.
-pub struct UnlockDoorEffect;
-
-impl crate::ability::spell_ability_effect::SpellAbilityEffect for UnlockDoorEffect {
-    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
+#[forge_engine_macros::spell_effect(UnlockDoorEffect)]
+fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let targets: Vec<CardId> = if let Some(target) = sa.target_chosen.target_card {
         vec![target]
     } else if let Some(source) = sa.source {
@@ -128,6 +126,5 @@ impl crate::ability::spell_ability_effect::SpellAbilityEffect for UnlockDoorEffe
                 );
             }
         }
-    }
     }
 }

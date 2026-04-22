@@ -32,10 +32,8 @@ pub fn run(
 /// Struct form of this effect so it can participate in the
 /// `SpellAbilityEffect` trait hierarchy — mirrors Java's
 /// `TextBoxExchangeEffect` class extending `SpellAbilityEffect`.
-pub struct TextBoxExchangeEffect;
-
-impl crate::ability::spell_ability_effect::SpellAbilityEffect for TextBoxExchangeEffect {
-    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
+#[forge_engine_macros::spell_effect(TextBoxExchangeEffect)]
+fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let source = sa.source;
     let target = sa.target_chosen.target_card;
 
@@ -58,5 +56,4 @@ impl crate::ability::spell_ability_effect::SpellAbilityEffect for TextBoxExchang
     // Re-register triggers
     ctx.trigger_handler.register_active_trigger(ctx.game, card1);
     ctx.trigger_handler.register_active_trigger(ctx.game, card2);
-    }
 }

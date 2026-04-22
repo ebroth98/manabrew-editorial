@@ -35,10 +35,8 @@ pub fn run(
 /// Struct form of this effect so it can participate in the
 /// `SpellAbilityEffect` trait hierarchy — mirrors Java's
 /// `PowerExchangeEffect` class extending `SpellAbilityEffect`.
-pub struct PowerExchangeEffect;
-
-impl crate::ability::spell_ability_effect::SpellAbilityEffect for PowerExchangeEffect {
-    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
+#[forge_engine_macros::spell_effect(PowerExchangeEffect)]
+fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let source = sa.source;
     let target = sa.target_chosen.target_card;
 
@@ -113,7 +111,6 @@ impl crate::ability::spell_ability_effect::SpellAbilityEffect for PowerExchangeE
     ctx.game
         .card_mut(c2)
         .set_power_modifier(p1 - c2_base - c2_static);
-    }
 }
 
 #[cfg(test)]

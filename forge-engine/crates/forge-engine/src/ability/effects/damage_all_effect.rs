@@ -21,10 +21,8 @@ use crate::spellability::SpellAbility;
 /// Struct form of this effect so it can participate in the
 /// `SpellAbilityEffect` trait hierarchy — mirrors Java's
 /// `DamageAllEffect` class extending `SpellAbilityEffect`.
-pub struct DamageAllEffect;
-
-impl crate::ability::spell_ability_effect::SpellAbilityEffect for DamageAllEffect {
-    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
+#[forge_engine_macros::spell_effect(DamageAllEffect)]
+fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let num_dmg = resolve_numeric_svar(ctx.game, sa, "NumDmg", 0);
     if num_dmg <= 0 {
         return;
@@ -206,7 +204,6 @@ impl crate::ability::spell_ability_effect::SpellAbilityEffect for DamageAllEffec
                 );
             }
         }
-    }
     }
 }
 

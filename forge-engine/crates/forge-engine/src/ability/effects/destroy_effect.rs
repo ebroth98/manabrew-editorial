@@ -2,17 +2,15 @@ use forge_foundation::ZoneType;
 
 use super::{emit_zone_trigger_with_lki_counters, EffectContext};
 use crate::card::card_util;
-use crate::event::{RunParams};
-use crate::trigger::TriggerType;
+use crate::event::RunParams;
 use crate::spellability::SpellAbility;
+use crate::trigger::TriggerType;
 
 /// Struct form of this effect so it can participate in the
 /// `SpellAbilityEffect` trait hierarchy — mirrors Java's
 /// `DestroyEffect` class extending `SpellAbilityEffect`.
-pub struct DestroyEffect;
-
-impl crate::ability::spell_ability_effect::SpellAbilityEffect for DestroyEffect {
-    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
+#[forge_engine_macros::spell_effect(DestroyEffect)]
+fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let mut targets = Vec::new();
     if let Some(target_card) = sa.target_chosen.target_card {
         targets.push(target_card);
@@ -116,6 +114,5 @@ impl crate::ability::spell_ability_effect::SpellAbilityEffect for DestroyEffect 
                 }
             }
         }
-    }
     }
 }

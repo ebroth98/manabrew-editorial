@@ -3,19 +3,17 @@
 //! Planechase format support — fires trigger for plane change.
 
 use super::EffectContext;
-use crate::event::{RunParams};
-use crate::trigger::TriggerType;
+use crate::event::RunParams;
 use crate::replacement::replacement_handler::{apply_replacements, ReplacementEvent};
 use crate::replacement::ReplacementResult;
 use crate::spellability::SpellAbility;
+use crate::trigger::TriggerType;
 
 /// Struct form of this effect so it can participate in the
 /// `SpellAbilityEffect` trait hierarchy — mirrors Java's
 /// `PlaneswalkEffect` class extending `SpellAbilityEffect`.
-pub struct PlaneswalkEffect;
-
-impl crate::ability::spell_ability_effect::SpellAbilityEffect for PlaneswalkEffect {
-    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
+#[forge_engine_macros::spell_effect(PlaneswalkEffect)]
+fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     // Run Planeswalk replacement effects before planeswalking.
     let mut event = ReplacementEvent::Planeswalk {
         player: sa.activating_player,
@@ -34,5 +32,4 @@ impl crate::ability::spell_ability_effect::SpellAbilityEffect for PlaneswalkEffe
         },
         false,
     );
-    }
 }

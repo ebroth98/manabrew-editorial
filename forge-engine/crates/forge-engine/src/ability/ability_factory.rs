@@ -448,7 +448,7 @@ fn build_spell_ability_of_type_with_params(
         None
     };
 
-    SpellAbility {
+    let mut sa = SpellAbility {
         id: 0,
         api,
         source: Some(host.id),
@@ -514,7 +514,11 @@ fn build_spell_ability_of_type_with_params(
         change_zone_table: None,
         damage_map: None,
         prevent_map: None,
+    };
+    if let Some(api) = api {
+        crate::ability::effects::build_spell_ability_for_api(api, &mut sa);
     }
+    sa
 }
 
 fn build_mana_part(params: &Params) -> Option<AbilityManaPart> {

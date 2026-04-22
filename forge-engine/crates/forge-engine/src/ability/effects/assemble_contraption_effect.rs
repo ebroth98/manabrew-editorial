@@ -13,10 +13,8 @@ use crate::spellability::SpellAbility;
 /// Struct form of this effect so it can participate in the
 /// `SpellAbilityEffect` trait hierarchy — mirrors Java's
 /// `AssembleContraptionEffect` class extending `SpellAbilityEffect`.
-pub struct AssembleContraptionEffect;
-
-impl crate::ability::spell_ability_effect::SpellAbilityEffect for AssembleContraptionEffect {
-    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
+#[forge_engine_macros::spell_effect(AssembleContraptionEffect)]
+fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let source = match sa.source {
         Some(s) => s,
         None => return,
@@ -77,6 +75,5 @@ impl crate::ability::spell_ability_effect::SpellAbilityEffect for AssembleContra
                 ctx.game.card_mut(source).add_remembered_card(card_id);
             }
         }
-    }
     }
 }

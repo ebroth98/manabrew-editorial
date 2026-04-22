@@ -14,10 +14,8 @@ use crate::spellability::SpellAbility;
 /// Struct form of this effect so it can participate in the
 /// `SpellAbilityEffect` trait hierarchy — mirrors Java's
 /// `PeekAndRevealEffect` class extending `SpellAbilityEffect`.
-pub struct PeekAndRevealEffect;
-
-impl crate::ability::spell_ability_effect::SpellAbilityEffect for PeekAndRevealEffect {
-    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
+#[forge_engine_macros::spell_effect(PeekAndRevealEffect)]
+fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let num = sa
         .params
         .get("PeekAmount")
@@ -66,6 +64,5 @@ impl crate::ability::spell_ability_effect::SpellAbilityEffect for PeekAndRevealE
                 ctx.game.card_mut(source_id).add_remembered_card(card_id);
             }
         }
-    }
     }
 }

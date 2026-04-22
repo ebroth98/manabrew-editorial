@@ -27,10 +27,8 @@ pub fn build_spell_ability(sa: &mut SpellAbility) {
 /// Struct form of this effect so it can participate in the
 /// `SpellAbilityEffect` trait hierarchy — mirrors Java's
 /// `ChangeTargetsEffect` class extending `SpellAbilityEffect`.
-pub struct ChangeTargetsEffect;
-
-impl crate::ability::spell_ability_effect::SpellAbilityEffect for ChangeTargetsEffect {
-    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
+#[forge_engine_macros::spell_effect(ChangeTargetsEffect)]
+fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let controller = sa.activating_player;
 
     // Find the targeted spell on the stack
@@ -116,6 +114,5 @@ impl crate::ability::spell_ability_effect::SpellAbilityEffect for ChangeTargetsE
         ctx.game
             .card_mut(target_spell_card)
             .set_s_var("RedirectedTarget", format!("{}", chosen.0));
-    }
     }
 }

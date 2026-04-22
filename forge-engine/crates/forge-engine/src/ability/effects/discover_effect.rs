@@ -16,10 +16,8 @@ use crate::spellability::SpellAbility;
 /// Struct form of this effect so it can participate in the
 /// `SpellAbilityEffect` trait hierarchy — mirrors Java's
 /// `DiscoverEffect` class extending `SpellAbilityEffect`.
-pub struct DiscoverEffect;
-
-impl crate::ability::spell_ability_effect::SpellAbilityEffect for DiscoverEffect {
-    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
+#[forge_engine_macros::spell_effect(DiscoverEffect)]
+fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let num = super::resolve_numeric_svar(ctx.game, sa, "Num", 1).max(0);
     let controller = sa.activating_player;
 
@@ -31,7 +29,6 @@ impl crate::ability::spell_ability_effect::SpellAbilityEffect for DiscoverEffect
 
     for pid in players {
         discover_for_player(ctx, sa, pid, num);
-    }
     }
 }
 

@@ -17,12 +17,9 @@ use crate::spellability::SpellAbility;
 /// Struct form of this effect so it can participate in the
 /// `SpellAbilityEffect` trait hierarchy — mirrors Java's
 /// `FogEffect` class extending `SpellAbilityEffect`.
-pub struct FogEffect;
-
-impl crate::ability::spell_ability_effect::SpellAbilityEffect for FogEffect {
-    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
+#[forge_engine_macros::spell_effect(FogEffect)]
+fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     ctx.game.prevent_all_combat_damage = true;
-    }
 }
 
 #[cfg(test)]

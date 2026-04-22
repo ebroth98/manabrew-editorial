@@ -1,11 +1,11 @@
 use forge_foundation::ZoneType;
 
 use super::{emit_zone_trigger, resolve_defined_player, resolve_numeric_svar, EffectContext};
-use crate::event::{RunParams};
-use crate::trigger::TriggerType;
+use crate::event::RunParams;
 use crate::replacement::replacement_handler::{apply_replacements, ReplacementEvent};
 use crate::replacement::ReplacementResult;
 use crate::spellability::SpellAbility;
+use crate::trigger::TriggerType;
 
 /// Mirrors Java's `MillEffect.java`.
 ///
@@ -14,10 +14,8 @@ use crate::spellability::SpellAbility;
 /// Struct form of this effect so it can participate in the
 /// `SpellAbilityEffect` trait hierarchy — mirrors Java's
 /// `MillEffect` class extending `SpellAbilityEffect`.
-pub struct MillEffect;
-
-impl crate::ability::spell_ability_effect::SpellAbilityEffect for MillEffect {
-    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
+#[forge_engine_macros::spell_effect(MillEffect)]
+fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let num = resolve_numeric_svar(ctx.game, sa, "NumCards", 1).max(0) as usize;
 
     // Determine target player: targeted (ValidTgts$) takes priority, then Defined$.
@@ -116,7 +114,6 @@ impl crate::ability::spell_ability_effect::SpellAbilityEffect for MillEffect {
             },
             false,
         );
-    }
     }
 }
 

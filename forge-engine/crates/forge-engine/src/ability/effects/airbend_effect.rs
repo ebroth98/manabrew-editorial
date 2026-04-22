@@ -12,10 +12,8 @@ use crate::spellability::SpellAbility;
 /// Struct form of this effect so it can participate in the
 /// `SpellAbilityEffect` trait hierarchy — mirrors Java's
 /// `AirbendEffect` class extending `SpellAbilityEffect`.
-pub struct AirbendEffect;
-
-impl crate::ability::spell_ability_effect::SpellAbilityEffect for AirbendEffect {
-    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
+#[forge_engine_macros::spell_effect(AirbendEffect)]
+fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let targets: Vec<CardId> = if let Some(target) = sa.target_chosen.target_card {
         vec![target]
     } else if let Some(source) = sa.source {
@@ -47,6 +45,5 @@ impl crate::ability::spell_ability_effect::SpellAbilityEffect for AirbendEffect 
         ctx.game
             .card_mut(card_id)
             .set_s_var("AirbendCastable", "MayPlayAltManaCost$2");
-    }
     }
 }

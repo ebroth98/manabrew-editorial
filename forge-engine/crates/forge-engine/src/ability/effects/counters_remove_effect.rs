@@ -1,12 +1,12 @@
 use forge_foundation::ZoneType;
 
 use super::{parse_counter_type, EffectContext};
-use crate::event::{RunParams};
-use crate::trigger::TriggerType;
+use crate::event::RunParams;
 use crate::ids::CardId;
 use crate::replacement::replacement_handler::{apply_replacements, ReplacementEvent};
 use crate::replacement::ReplacementResult;
 use crate::spellability::SpellAbility;
+use crate::trigger::TriggerType;
 
 /// Resolve `DB$ RemoveCounter` / `AB$ RemoveCounter` / `SP$ RemoveCounter`.
 ///
@@ -35,10 +35,8 @@ use crate::spellability::SpellAbility;
 /// Struct form of this effect so it can participate in the
 /// `SpellAbilityEffect` trait hierarchy — mirrors Java's
 /// `CountersRemoveEffect` class extending `SpellAbilityEffect`.
-pub struct CountersRemoveEffect;
-
-impl crate::ability::spell_ability_effect::SpellAbilityEffect for CountersRemoveEffect {
-    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
+#[forge_engine_macros::spell_effect(CountersRemoveEffect)]
+fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     // Parse counter type — skip unsupported "Any" / "All" type modes.
     let counter_type_str = sa.params.get("CounterType").unwrap_or("P1P1");
     if counter_type_str.eq_ignore_ascii_case("Any") || counter_type_str.eq_ignore_ascii_case("All")
@@ -113,7 +111,6 @@ impl crate::ability::spell_ability_effect::SpellAbilityEffect for CountersRemove
         },
         false,
     );
-    }
 }
 
 /// Resolve the target card for counter removal.

@@ -11,10 +11,8 @@ use crate::spellability::SpellAbility;
 /// Struct form of this effect so it can participate in the
 /// `SpellAbilityEffect` trait hierarchy — mirrors Java's
 /// `EndureEffect` class extending `SpellAbilityEffect`.
-pub struct EndureEffect;
-
-impl crate::ability::spell_ability_effect::SpellAbilityEffect for EndureEffect {
-    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
+#[forge_engine_macros::spell_effect(EndureEffect)]
+fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let amount = super::resolve_numeric_svar(ctx.game, sa, "Num", 1).max(0);
     if amount < 1 {
         return; // CR 701.63b
@@ -39,6 +37,5 @@ impl crate::ability::spell_ability_effect::SpellAbilityEffect for EndureEffect {
         ctx.game
             .card_mut(card_id)
             .add_counter(&counter_type, amount);
-    }
     }
 }

@@ -16,10 +16,8 @@ use crate::spellability::SpellAbility;
 /// Struct form of this effect so it can participate in the
 /// `SpellAbilityEffect` trait hierarchy — mirrors Java's
 /// `UntapAllEffect` class extending `SpellAbilityEffect`.
-pub struct UntapAllEffect;
-
-impl crate::ability::spell_ability_effect::SpellAbilityEffect for UntapAllEffect {
-    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
+#[forge_engine_macros::spell_effect(UntapAllEffect)]
+fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let valid_cards_filter = sa
         .params
         .get("ValidCards")
@@ -51,7 +49,6 @@ impl crate::ability::spell_ability_effect::SpellAbilityEffect for UntapAllEffect
                 false,
             );
         }
-    }
     }
 }
 

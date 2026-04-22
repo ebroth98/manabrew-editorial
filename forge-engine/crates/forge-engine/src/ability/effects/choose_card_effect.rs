@@ -17,10 +17,8 @@ use crate::spellability::SpellAbility;
 /// Struct form of this effect so it can participate in the
 /// `SpellAbilityEffect` trait hierarchy — mirrors Java's
 /// `ChooseCardEffect` class extending `SpellAbilityEffect`.
-pub struct ChooseCardEffect;
-
-impl crate::ability::spell_ability_effect::SpellAbilityEffect for ChooseCardEffect {
-    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
+#[forge_engine_macros::spell_effect(ChooseCardEffect)]
+fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let source_id = match sa.source {
         Some(id) => id,
         None => return,
@@ -82,6 +80,5 @@ impl crate::ability::spell_ability_effect::SpellAbilityEffect for ChooseCardEffe
         for &cid in &chosen {
             ctx.game.card_mut(source_id).add_remembered_card(cid);
         }
-    }
     }
 }

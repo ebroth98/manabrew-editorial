@@ -1,10 +1,10 @@
 use super::EffectContext;
-use crate::event::{RunParams};
-use crate::trigger::TriggerType;
+use crate::event::RunParams;
 use crate::parsing::keys;
 use crate::replacement::replacement_handler::{apply_replacements, ReplacementEvent};
 use crate::replacement::ReplacementResult;
 use crate::spellability::SpellAbility;
+use crate::trigger::TriggerType;
 
 /// Configure the spell ability during construction.
 /// Mirrors Java `CopySpellAbilityEffect.buildSpellAbility` — sets the target zone
@@ -31,10 +31,8 @@ pub fn build_spell_ability(sa: &mut SpellAbility) {
 /// Struct form of this effect so it can participate in the
 /// `SpellAbilityEffect` trait hierarchy — mirrors Java's
 /// `CopySpellAbilityEffect` class extending `SpellAbilityEffect`.
-pub struct CopySpellAbilityEffect;
-
-impl crate::ability::spell_ability_effect::SpellAbilityEffect for CopySpellAbilityEffect {
-    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
+#[forge_engine_macros::spell_effect(CopySpellAbilityEffect)]
+fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let controller = sa.activating_player;
 
     // Run CopySpell replacement effects before copying.
@@ -48,11 +46,9 @@ impl crate::ability::spell_ability_effect::SpellAbilityEffect for CopySpellAbili
     }
 
     let original = if let Some(defined) = sa.params.get("Defined") {
-        crate::ability::ability_utils::get_defined_spell_abilities(
-            defined, sa, ctx.game,
-        )
-        .into_iter()
-        .next()
+        crate::ability::ability_utils::get_defined_spell_abilities(defined, sa, ctx.game)
+            .into_iter()
+            .next()
     } else {
         let stack_entries: Vec<_> = ctx.game.stack.iter().collect();
         stack_entries.iter().rev().find_map(|entry| {
@@ -107,6 +103,5 @@ impl crate::ability::spell_ability_effect::SpellAbilityEffect for CopySpellAbili
             false,
         );
         super::emit_targeting_triggers(ctx, source_id, &trigger_sa);
-    }
     }
 }

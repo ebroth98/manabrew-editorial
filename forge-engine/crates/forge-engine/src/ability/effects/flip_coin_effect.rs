@@ -17,10 +17,8 @@ use crate::spellability::{build_spell_ability, SpellAbility};
 /// Struct form of this effect so it can participate in the
 /// `SpellAbilityEffect` trait hierarchy — mirrors Java's
 /// `FlipCoinEffect` class extending `SpellAbilityEffect`.
-pub struct FlipCoinEffect;
-
-impl crate::ability::spell_ability_effect::SpellAbilityEffect for FlipCoinEffect {
-    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
+#[forge_engine_macros::spell_effect(FlipCoinEffect)]
+fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let controller = sa.activating_player;
     let no_call = sa
         .params
@@ -83,7 +81,6 @@ impl crate::ability::spell_ability_effect::SpellAbilityEffect for FlipCoinEffect
                 resolve_sub_chain(ctx, sub_sa);
             }
         }
-    }
     }
 }
 

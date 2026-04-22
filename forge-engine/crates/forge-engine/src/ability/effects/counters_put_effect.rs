@@ -3,19 +3,17 @@ use forge_foundation::ZoneType;
 use super::{
     parse_counter_type, parse_param, resolve_defined_player, resolve_numeric_svar, EffectContext,
 };
-use crate::event::{RunParams};
-use crate::trigger::TriggerType;
+use crate::event::RunParams;
 use crate::parsing::keys;
 use crate::replacement::replacement_handler::{apply_replacements_with_agents, ReplacementEvent};
 use crate::spellability::SpellAbility;
+use crate::trigger::TriggerType;
 
 /// Struct form of this effect so it can participate in the
 /// `SpellAbilityEffect` trait hierarchy — mirrors Java's
 /// `CountersPutEffect` class extending `SpellAbilityEffect`.
-pub struct CountersPutEffect;
-
-impl crate::ability::spell_ability_effect::SpellAbilityEffect for CountersPutEffect {
-    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
+#[forge_engine_macros::spell_effect(CountersPutEffect)]
+fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let counter_type_str = sa.params.get(keys::COUNTER_TYPE).unwrap_or("P1P1");
     // Mirror Java CountersPutEffect.java:625-636 — when none of the multi-type
     // dispatch params are present, route the type through the player controller's
@@ -233,7 +231,6 @@ impl crate::ability::spell_ability_effect::SpellAbilityEffect for CountersPutEff
             },
             false,
         );
-    }
     }
 }
 

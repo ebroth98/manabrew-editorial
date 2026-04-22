@@ -7,10 +7,8 @@ use crate::spellability::SpellAbility;
 /// Struct form of this effect so it can participate in the
 /// `SpellAbilityEffect` trait hierarchy — mirrors Java's
 /// `ActivateAbilityEffect` class extending `SpellAbilityEffect`.
-pub struct ActivateAbilityEffect;
-
-impl crate::ability::spell_ability_effect::SpellAbilityEffect for ActivateAbilityEffect {
-    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
+#[forge_engine_macros::spell_effect(ActivateAbilityEffect)]
+fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let controller = sa.activating_player;
     let defined = sa.params.get(keys::DEFINED).unwrap_or("You");
     let only_mana = sa.params.is_true(keys::MANA_ABILITY);
@@ -75,6 +73,5 @@ impl crate::ability::spell_ability_effect::SpellAbilityEffect for ActivateAbilit
                 }
             }
         }
-    }
     }
 }

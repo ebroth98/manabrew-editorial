@@ -14,10 +14,8 @@ use crate::spellability::SpellAbility;
 /// Struct form of this effect so it can participate in the
 /// `SpellAbilityEffect` trait hierarchy — mirrors Java's
 /// `ZoneExchangeEffect` class extending `SpellAbilityEffect`.
-pub struct ZoneExchangeEffect;
-
-impl crate::ability::spell_ability_effect::SpellAbilityEffect for ZoneExchangeEffect {
-    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
+#[forge_engine_macros::spell_effect(ZoneExchangeEffect)]
+fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let controller = sa.activating_player;
 
     // Determine the two zones
@@ -108,5 +106,4 @@ impl crate::ability::spell_ability_effect::SpellAbilityEffect for ZoneExchangeEf
 
     super::emit_zone_trigger(ctx.trigger_handler, obj1, old1, zone2);
     super::emit_zone_trigger(ctx.trigger_handler, obj2, old2, zone1);
-    }
 }

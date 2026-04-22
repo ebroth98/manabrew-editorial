@@ -1,9 +1,9 @@
 use forge_foundation::ZoneType;
 
 use super::{emit_zone_trigger, EffectContext};
-use crate::event::{RunParams};
-use crate::trigger::TriggerType;
+use crate::event::RunParams;
 use crate::spellability::SpellAbility;
+use crate::trigger::TriggerType;
 
 /// `DB$ Connive` — target creature connives N times.
 ///
@@ -18,10 +18,8 @@ use crate::spellability::SpellAbility;
 /// Struct form of this effect so it can participate in the
 /// `SpellAbilityEffect` trait hierarchy — mirrors Java's
 /// `ConniveEffect` class extending `SpellAbilityEffect`.
-pub struct ConniveEffect;
-
-impl crate::ability::spell_ability_effect::SpellAbilityEffect for ConniveEffect {
-    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
+#[forge_engine_macros::spell_effect(ConniveEffect)]
+fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let num: usize = sa
         .params
         .get("ConniveNum")
@@ -111,6 +109,5 @@ impl crate::ability::spell_ability_effect::SpellAbilityEffect for ConniveEffect 
             },
             false,
         );
-    }
     }
 }

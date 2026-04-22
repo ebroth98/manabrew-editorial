@@ -8,10 +8,8 @@ use crate::spellability::{build_spell_ability, SpellAbility};
 /// Struct form of this effect so it can participate in the
 /// `SpellAbilityEffect` trait hierarchy — mirrors Java's
 /// `ChooseGenericEffect` class extending `SpellAbilityEffect`.
-pub struct ChooseGenericEffect;
-
-impl crate::ability::spell_ability_effect::SpellAbilityEffect for ChooseGenericEffect {
-    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
+#[forge_engine_macros::spell_effect(ChooseGenericEffect)]
+fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let source_id = match sa.source {
         Some(id) => id,
         None => return,
@@ -184,6 +182,5 @@ impl crate::ability::spell_ability_effect::SpellAbilityEffect for ChooseGenericE
         if ctx.game.game_over {
             break;
         }
-    }
     }
 }

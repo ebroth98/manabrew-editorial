@@ -9,10 +9,8 @@ use crate::spellability::SpellAbility;
 /// Struct form of this effect so it can participate in the
 /// `SpellAbilityEffect` trait hierarchy — mirrors Java's
 /// `DayTimeEffect` class extending `SpellAbilityEffect`.
-pub struct DayTimeEffect;
-
-impl crate::ability::spell_ability_effect::SpellAbilityEffect for DayTimeEffect {
-    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
+#[forge_engine_macros::spell_effect(DayTimeEffect)]
+fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let value = sa
         .params
         .get(crate::parsing::keys::VALUE)
@@ -37,5 +35,4 @@ impl crate::ability::spell_ability_effect::SpellAbilityEffect for DayTimeEffect 
 
     // Day/Night changes trigger DFC transformations — handled by the game loop's
     // state-based actions which check is_night against each DFC card.
-    }
 }

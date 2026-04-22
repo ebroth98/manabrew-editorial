@@ -11,11 +11,14 @@ use crate::trigger::TriggerType;
 /// Build/configure the spell ability after construction.
 /// Mirrors Java's `CounterEffect.buildSpellAbility(SpellAbility)`.
 ///
-/// For counter effects, this is a no-op since the default targeting and
-/// cost setup from `AbilityFactory` handles everything needed.
-pub fn build_spell_ability(_sa: &mut crate::spellability::SpellAbility) {
-    // No additional configuration needed for Counter effects.
-    // Targeting restrictions (TargetType$ Spell) are handled by the factory.
+/// Counter effects target spells or abilities on the stack when they use
+/// targeting, matching Java's `TargetRestrictions.setZone(ZoneType.Stack)`.
+pub fn build_spell_ability(sa: &mut crate::spellability::SpellAbility) {
+    if sa.uses_targeting() {
+        if let Some(ref mut tr) = sa.target_restrictions {
+            tr.tgt_zone = vec![ZoneType::Stack];
+        }
+    }
 }
 
 /// Check if the "would be destroyed" condition is met for a conditional counter.
@@ -76,73 +79,70 @@ pub fn check_for_condition_would_destroy(
 /// Struct form of this effect so it can participate in the
 /// `SpellAbilityEffect` trait hierarchy — mirrors Java's
 /// `CounterEffect` class extending `SpellAbilityEffect`.
-pub struct CounterEffect;
+#[forge_engine_macros::spell_effect(CounterEffect)]
+fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
+    let entry_id = match counter_target_stack_entry_id(ctx, sa) {
+        Some(id) => id,
+        None => return, // no target chosen
+    };
 
-impl crate::ability::spell_ability_effect::SpellAbilityEffect for CounterEffect {
-    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
-        let entry_id = match counter_target_stack_entry_id(ctx, sa) {
-            Some(id) => id,
-            None => return, // no target chosen
-        };
+    // Determine destination (default: graveyard).
+    let dest_zone = sa
+        .params
+        .get(keys::DESTINATION)
+        .and_then(|d| super::parse_zone_type(d))
+        .unwrap_or(ZoneType::Graveyard);
 
-        // Determine destination (default: graveyard).
-        let dest_zone = sa
-            .params
-            .get(keys::DESTINATION)
-            .and_then(|d| super::parse_zone_type(d))
-            .unwrap_or(ZoneType::Graveyard);
-
-        // Check if the spell has a "can't be countered" replacement effect.
-        // Find the source card of the targeted stack entry.
-        if let Some(entry) = ctx.game.stack.find_by_id(entry_id) {
-            if let Some(source_card) = entry.spell_ability.source {
-                let mut event = ReplacementEvent::Counter { card: source_card };
-                let result = apply_replacements(ctx.game, &mut event);
-                if result == ReplacementResult::Replaced {
-                    return;
-                }
+    // Check if the spell has a "can't be countered" replacement effect.
+    // Find the source card of the targeted stack entry.
+    if let Some(entry) = ctx.game.stack.find_by_id(entry_id) {
+        if let Some(source_card) = entry.spell_ability.source {
+            let mut event = ReplacementEvent::Counter { card: source_card };
+            let result = apply_replacements(ctx.game, &mut event);
+            if result == ReplacementResult::Replaced {
+                return;
             }
         }
+    }
 
-        // Remove from stack
-        if let Some(entry) = ctx.game.stack.remove_by_id(entry_id) {
-            let countered_sa = &entry.spell_ability;
-            if let Some(source_card) = countered_sa.source {
-                // Only move if the card is still "virtual" (on the stack, zone = None is fine)
-                // — it was removed from hand when cast; move it to dest zone now.
-                let owner = ctx.game.card(source_card).owner;
+    // Remove from stack
+    if let Some(entry) = ctx.game.stack.remove_by_id(entry_id) {
+        let countered_sa = &entry.spell_ability;
+        if let Some(source_card) = countered_sa.source {
+            // Only move if the card is still "virtual" (on the stack, zone = None is fine)
+            // — it was removed from hand when cast; move it to dest zone now.
+            let owner = ctx.game.card(source_card).owner;
 
-                // Remember parameters if needed
-                if sa.params.has(keys::REMEMBER_COUNTERED) {
-                    ctx.game
-                        .card_mut(sa.source.unwrap())
-                        .add_remembered_card(source_card);
-                }
-                if sa.params.has(keys::REMEMBER_COUNTERED_CMC) {
-                    // Store CMC value
-                    let cmc = ctx.game.card(source_card).mana_cost.cmc();
-                    ctx.game
-                        .card_mut(sa.source.unwrap())
-                        .add_remembered_cmc(cmc);
-                }
-
-                if !countered_sa.is_activated && !countered_sa.is_trigger {
-                    ctx.move_card(source_card, dest_zone, owner);
-                    emit_zone_trigger(ctx.trigger_handler, source_card, ZoneType::Stack, dest_zone);
-                }
-
-                // Fire Countered trigger
-                ctx.trigger_handler.run_trigger(
-                    TriggerType::Countered,
-                    RunParams {
-                        card: Some(source_card),
-                        spell_ability: Some(countered_sa.clone()),
-                        cause: Some(sa.clone()),
-                        ..Default::default()
-                    },
-                    false,
-                );
+            // Remember parameters if needed
+            if sa.params.has(keys::REMEMBER_COUNTERED) {
+                ctx.game
+                    .card_mut(sa.source.unwrap())
+                    .add_remembered_card(source_card);
             }
+            if sa.params.has(keys::REMEMBER_COUNTERED_CMC) {
+                // Store CMC value
+                let cmc = ctx.game.card(source_card).mana_cost.cmc();
+                ctx.game
+                    .card_mut(sa.source.unwrap())
+                    .add_remembered_cmc(cmc);
+            }
+
+            if !countered_sa.is_activated && !countered_sa.is_trigger {
+                ctx.move_card(source_card, dest_zone, owner);
+                emit_zone_trigger(ctx.trigger_handler, source_card, ZoneType::Stack, dest_zone);
+            }
+
+            // Fire Countered trigger
+            ctx.trigger_handler.run_trigger(
+                TriggerType::Countered,
+                RunParams {
+                    card: Some(source_card),
+                    spell_ability: Some(countered_sa.clone()),
+                    cause: Some(sa.clone()),
+                    ..Default::default()
+                },
+                false,
+            );
         }
     }
 }

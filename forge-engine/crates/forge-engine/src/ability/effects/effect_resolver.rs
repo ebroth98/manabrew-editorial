@@ -18,15 +18,22 @@ use super::effect_context::EffectContext;
 // package layout.
 use super::*;
 
-/// Generates both `IMPLEMENTED_API_TYPES` and `resolve_effect_once` from a
-/// single source of truth. Adding a new effect requires only one entry whose
-/// right-hand side names the effect's struct (which must implement
-/// `SpellAbilityEffect`).
+/// Generates effect hook dispatch from a single source of truth. Adding a new
+/// effect requires only one entry whose right-hand side names the effect's
+/// struct (which must implement `SpellAbilityEffect`).
 macro_rules! effect_dispatch {
-    ( $( $api:path => $handler:path ),* $(,)? ) => {
+    ( $( $api:path => $handler:path $( [build = $build:path] )? ),* $(,)? ) => {
         /// All API types that have implemented effect handlers.
         /// Used by the fuzz card pool filter to exclude cards with unimplemented effects.
         pub const IMPLEMENTED_API_TYPES: &[ApiType] = &[ $( $api ),* ];
+
+        /// Dispatch Java-parity `SpellAbilityEffect.buildSpellAbility`.
+        pub(crate) fn build_spell_ability_for_api(api_type: ApiType, sa: &mut SpellAbility) {
+            match api_type {
+                $( $api => effect_dispatch!(@build sa, $handler $(, $build)?), )*
+                _ => {}
+            }
+        }
 
         /// Inner dispatch for a single execution of an effect. Each arm calls
         /// the trait's associated `resolve(ctx, sa)` directly on the struct
@@ -51,6 +58,14 @@ macro_rules! effect_dispatch {
             }
         }
     };
+
+    (@build $sa:ident, $handler:path, $build:path) => {
+        $build($sa)
+    };
+
+    (@build $sa:ident, $handler:path) => {
+        <$handler as SpellAbilityEffect>::build_spell_ability($sa)
+    };
 }
 
 effect_dispatch! {
@@ -64,8 +79,8 @@ effect_dispatch! {
     ApiType::Pump => pump_effect::PumpEffect,
     ApiType::Destroy => destroy_effect::DestroyEffect,
     ApiType::Draw => draw_effect::DrawEffect,
-    ApiType::ChangeZoneAll => change_zone_all_effect::ChangeZoneAllEffect,
-    ApiType::ChangeZone => change_zone_effect::ChangeZoneEffect,
+    ApiType::ChangeZoneAll => change_zone_all_effect::ChangeZoneAllEffect [build = change_zone_all_effect::build_spell_ability],
+    ApiType::ChangeZone => change_zone_effect::ChangeZoneEffect [build = change_zone_effect::build_spell_ability],
     ApiType::SacrificeAll => sacrifice_all_effect::SacrificeAllEffect,
     ApiType::Sacrifice => sacrifice_effect::SacrificeEffect,
     ApiType::CopyPermanent => copy_permanent_effect::CopyPermanentEffect,
@@ -96,7 +111,7 @@ effect_dispatch! {
     ApiType::Heist => heist_effect::HeistEffect,
     ApiType::ImmediateTrigger => immediate_trigger_effect::ImmediateTriggerEffect,
     ApiType::StoreSVar => store_s_var_effect::StoreSVarEffect,
-    ApiType::ChangeTargets => change_targets_effect::ChangeTargetsEffect,
+    ApiType::ChangeTargets => change_targets_effect::ChangeTargetsEffect [build = change_targets_effect::build_spell_ability],
     ApiType::ChangeText => change_text_effect::ChangeTextEffect,
     ApiType::ChangeX => change_x_effect::ChangeXEffect,
     ApiType::CountersMove => counters_move_effect::CountersMoveEffect,
@@ -111,7 +126,7 @@ effect_dispatch! {
     ApiType::Bond => bond_effect::BondEffect,
     ApiType::ChooseCardName => choose_card_name_effect::ChooseCardNameEffect,
     ApiType::ChooseGeneric => choose_generic_effect::ChooseGenericEffect,
-    ApiType::ControlSpell => control_spell_effect::ControlSpellEffect,
+    ApiType::ControlSpell => control_spell_effect::ControlSpellEffect [build = control_spell_effect::build_spell_ability],
     ApiType::DamagePrevent => damage_prevent_effect::DamagePreventEffect,
     ApiType::ExchangeLifeVariant => life_exchange_variant_effect::LifeExchangeVariantEffect,
     ApiType::ReplaceDamage => replace_damage_effect::ReplaceDamageEffect,
@@ -122,8 +137,8 @@ effect_dispatch! {
     ApiType::ExchangeTextBox => text_box_exchange_effect::TextBoxExchangeEffect,
     ApiType::SwitchBlock => switch_block_effect::SwitchBlockEffect,
     ApiType::ChangeCombatants => change_combatants_effect::ChangeCombatantsEffect,
-    ApiType::Mana => mana_effect::ManaEffect,
-    ApiType::ManaReflected => mana_reflected_effect::ManaReflectedEffect,
+    ApiType::Mana => mana_effect::ManaEffect [build = mana_effect::build_spell_ability],
+    ApiType::ManaReflected => mana_reflected_effect::ManaReflectedEffect [build = mana_reflected_effect::build_spell_ability],
     ApiType::Mill => mill_effect::MillEffect,
     ApiType::Scry => scry_effect::ScryEffect,
     ApiType::Surveil => surveil_effect::SurveilEffect,
@@ -141,7 +156,7 @@ effect_dispatch! {
     ApiType::PeekAndReveal => peek_and_reveal_effect::PeekAndRevealEffect,
     ApiType::SetState => set_state_effect::SetStateEffect,
     ApiType::Cleanup => cleanup_effect::CleanupEffect,
-    ApiType::Counter => counter_effect::CounterEffect,
+    ApiType::Counter => counter_effect::CounterEffect [build = counter_effect::build_spell_ability],
     ApiType::GainControl => control_gain_effect::ControlGainEffect,
     ApiType::Fight => fight_effect::FightEffect,
     ApiType::Discard => discard_effect::DiscardEffect,
@@ -212,7 +227,7 @@ effect_dispatch! {
     ApiType::MoveCounter => move_counter_effect::MoveCounterEffect,
     ApiType::TimeTravel => time_travel_effect::TimeTravelEffect,
     ApiType::MustBlock => must_block_effect::MustBlockEffect,
-    ApiType::CopySpellAbility => copy_spell_ability_effect::CopySpellAbilityEffect,
+    ApiType::CopySpellAbility => copy_spell_ability_effect::CopySpellAbilityEffect [build = copy_spell_ability_effect::build_spell_ability],
     ApiType::TwoPiles => two_piles_effect::TwoPilesEffect,
     ApiType::Encode => encode_effect::EncodeEffect,
 
@@ -239,7 +254,7 @@ effect_dispatch! {
     ApiType::DamageResolve => damage_resolve_effect::DamageResolveEffect,
     ApiType::Debuff => debuff_effect::DebuffEffect,
     ApiType::Draft => draft_effect::DraftEffect,
-    ApiType::Earthbend => earthbend_effect::EarthbendEffect,
+    ApiType::Earthbend => earthbend_effect::EarthbendEffect [build = earthbend_effect::build_spell_ability],
     ApiType::Endure => endure_effect::EndureEffect,
     ApiType::GainOwnership => ownership_gain_effect::OwnershipGainEffect,
     ApiType::Intensify => intensify_effect::IntensifyEffect,

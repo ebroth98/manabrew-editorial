@@ -8,10 +8,8 @@ use crate::spellability::SpellAbility;
 /// Struct form of this effect so it can participate in the
 /// `SpellAbilityEffect` trait hierarchy — mirrors Java's
 /// `ChooseColorEffect` class extending `SpellAbilityEffect`.
-pub struct ChooseColorEffect;
-
-impl crate::ability::spell_ability_effect::SpellAbilityEffect for ChooseColorEffect {
-    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
+#[forge_engine_macros::spell_effect(ChooseColorEffect)]
+fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let source_id = match sa.source {
         Some(id) => id,
         None => return,
@@ -80,6 +78,5 @@ impl crate::ability::spell_ability_effect::SpellAbilityEffect for ChooseColorEff
         for color in chosen {
             card.add_chosen_color(color);
         }
-    }
     }
 }

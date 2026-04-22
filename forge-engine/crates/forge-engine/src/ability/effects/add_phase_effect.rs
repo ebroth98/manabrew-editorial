@@ -15,10 +15,8 @@ use crate::spellability::SpellAbility;
 /// Struct form of this effect so it can participate in the
 /// `SpellAbilityEffect` trait hierarchy — mirrors Java's
 /// `AddPhaseEffect` class extending `SpellAbilityEffect`.
-pub struct AddPhaseEffect;
-
-impl crate::ability::spell_ability_effect::SpellAbilityEffect for AddPhaseEffect {
-    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
+#[forge_engine_macros::spell_effect(AddPhaseEffect)]
+fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let extra_phase = sa.params.get("ExtraPhase").unwrap_or("Combat");
 
     let amount = parse_param(&sa.ability_text, "Amount$ ").unwrap_or(1) as u32;
@@ -30,7 +28,6 @@ impl crate::ability::spell_ability_effect::SpellAbilityEffect for AddPhaseEffect
         _ => {
             // Only extra combat phases are supported for now
         }
-    }
     }
 }
 

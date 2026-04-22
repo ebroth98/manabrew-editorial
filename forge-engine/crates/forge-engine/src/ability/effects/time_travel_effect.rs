@@ -12,10 +12,8 @@ use crate::spellability::SpellAbility;
 /// Struct form of this effect so it can participate in the
 /// `SpellAbilityEffect` trait hierarchy — mirrors Java's
 /// `TimeTravelEffect` class extending `SpellAbilityEffect`.
-pub struct TimeTravelEffect;
-
-impl crate::ability::spell_ability_effect::SpellAbilityEffect for TimeTravelEffect {
-    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
+#[forge_engine_macros::spell_effect(TimeTravelEffect)]
+fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let controller = sa.activating_player;
     let Some(source_id) = sa.source else { return };
     let source_name = ctx.game.card(source_id).card_name.clone();
@@ -92,6 +90,5 @@ impl crate::ability::spell_ability_effect::SpellAbilityEffect for TimeTravelEffe
                 );
             }
         }
-    }
     }
 }

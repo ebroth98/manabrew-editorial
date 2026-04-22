@@ -1,17 +1,15 @@
 use super::{resolve_defined_player_with_sa, resolve_numeric_svar, EffectContext};
-use crate::event::{RunParams};
-use crate::trigger::TriggerType;
+use crate::event::RunParams;
 use crate::replacement::replacement_handler::{apply_replacements, ReplacementEvent};
 use crate::replacement::ReplacementResult;
 use crate::spellability::SpellAbility;
+use crate::trigger::TriggerType;
 
 /// Struct form of this effect so it can participate in the
 /// `SpellAbilityEffect` trait hierarchy — mirrors Java's
 /// `DrawEffect` class extending `SpellAbilityEffect`.
-pub struct DrawEffect;
-
-impl crate::ability::spell_ability_effect::SpellAbilityEffect for DrawEffect {
-    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
+#[forge_engine_macros::spell_effect(DrawEffect)]
+fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let num = resolve_numeric_svar(ctx.game, sa, "NumCards", 1);
     let target = sa
         .params
@@ -95,6 +93,5 @@ impl crate::ability::spell_ability_effect::SpellAbilityEffect for DrawEffect {
                 card_mut.add_remembered_card(*cid);
             }
         }
-    }
     }
 }

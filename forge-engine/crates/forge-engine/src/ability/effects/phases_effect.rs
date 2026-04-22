@@ -1,9 +1,9 @@
 use forge_foundation::ZoneType;
 
 use super::EffectContext;
-use crate::event::{RunParams};
-use crate::trigger::TriggerType;
+use crate::event::RunParams;
 use crate::spellability::SpellAbility;
+use crate::trigger::TriggerType;
 
 /// Resolve `SP$ Phases` — phase permanents in or out.
 ///
@@ -19,10 +19,8 @@ use crate::spellability::SpellAbility;
 /// Struct form of this effect so it can participate in the
 /// `SpellAbilityEffect` trait hierarchy — mirrors Java's
 /// `PhasesEffect` class extending `SpellAbilityEffect`.
-pub struct PhasesEffect;
-
-impl crate::ability::spell_ability_effect::SpellAbilityEffect for PhasesEffect {
-    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
+#[forge_engine_macros::spell_effect(PhasesEffect)]
+fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let phase_mode = sa.params.get("PhaseInOrOut").unwrap_or("Out");
 
     // Targeted: use the chosen target card.
@@ -38,7 +36,6 @@ impl crate::ability::spell_ability_effect::SpellAbilityEffect for PhasesEffect {
         if ctx.game.card(source).zone == ZoneType::Battlefield {
             apply_phase(ctx, source, phase_mode);
         }
-    }
     }
 }
 

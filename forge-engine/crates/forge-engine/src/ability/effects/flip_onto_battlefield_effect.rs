@@ -14,10 +14,8 @@ use crate::spellability::SpellAbility;
 /// Struct form of this effect so it can participate in the
 /// `SpellAbilityEffect` trait hierarchy — mirrors Java's
 /// `FlipOntoBattlefieldEffect` class extending `SpellAbilityEffect`.
-pub struct FlipOntoBattlefieldEffect;
-
-impl crate::ability::spell_ability_effect::SpellAbilityEffect for FlipOntoBattlefieldEffect {
-    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
+#[forge_engine_macros::spell_effect(FlipOntoBattlefieldEffect)]
+fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let _controller = sa.activating_player;
 
     // Get all permanents on the battlefield (except the source)
@@ -55,6 +53,5 @@ impl crate::ability::spell_ability_effect::SpellAbilityEffect for FlipOntoBattle
         let owner = ctx.game.card(card_id).owner;
         ctx.move_card(card_id, ZoneType::Graveyard, owner);
         super::emit_zone_trigger(ctx.trigger_handler, card_id, old_zone, ZoneType::Graveyard);
-    }
     }
 }

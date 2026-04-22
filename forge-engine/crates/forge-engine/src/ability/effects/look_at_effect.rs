@@ -13,10 +13,8 @@ use crate::spellability::SpellAbility;
 /// Struct form of this effect so it can participate in the
 /// `SpellAbilityEffect` trait hierarchy — mirrors Java's
 /// `LookAtEffect` class extending `SpellAbilityEffect`.
-pub struct LookAtEffect;
-
-impl crate::ability::spell_ability_effect::SpellAbilityEffect for LookAtEffect {
-    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
+#[forge_engine_macros::spell_effect(LookAtEffect)]
+fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let num = parse_param(&sa.ability_text, "NumCards$ ")
         .or_else(|| parse_param(&sa.ability_text, "ScryNum$ "))
         .unwrap_or(1) as usize;
@@ -57,5 +55,4 @@ impl crate::ability::spell_ability_effect::SpellAbilityEffect for LookAtEffect {
             GameLogEvent::info(msg).with_player(sa.activating_player),
         ),
     );
-    }
 }

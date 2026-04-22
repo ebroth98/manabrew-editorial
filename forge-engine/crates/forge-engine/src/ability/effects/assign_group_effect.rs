@@ -9,10 +9,8 @@ use crate::spellability::SpellAbility;
 /// Struct form of this effect so it can participate in the
 /// `SpellAbilityEffect` trait hierarchy — mirrors Java's
 /// `AssignGroupEffect` class extending `SpellAbilityEffect`.
-pub struct AssignGroupEffect;
-
-impl crate::ability::spell_ability_effect::SpellAbilityEffect for AssignGroupEffect {
-    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
+#[forge_engine_macros::spell_effect(AssignGroupEffect)]
+fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let source = match sa.source {
         Some(s) => s,
         None => return,
@@ -33,6 +31,5 @@ impl crate::ability::spell_ability_effect::SpellAbilityEffect for AssignGroupEff
     // Remember the assigned cards
     for card_id in &targets {
         ctx.game.card_mut(source).add_remembered_card(*card_id);
-    }
     }
 }

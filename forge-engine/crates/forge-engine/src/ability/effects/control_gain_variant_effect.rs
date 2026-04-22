@@ -13,10 +13,8 @@ use crate::spellability::SpellAbility;
 /// Struct form of this effect so it can participate in the
 /// `SpellAbilityEffect` trait hierarchy — mirrors Java's
 /// `ControlGainVariantEffect` class extending `SpellAbilityEffect`.
-pub struct ControlGainVariantEffect;
-
-impl crate::ability::spell_ability_effect::SpellAbilityEffect for ControlGainVariantEffect {
-    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
+#[forge_engine_macros::spell_effect(ControlGainVariantEffect)]
+fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let controller = sa.activating_player;
 
     let mode = sa
@@ -73,6 +71,5 @@ impl crate::ability::spell_ability_effect::SpellAbilityEffect for ControlGainVar
             // Other modes (multiplayer-specific) are logged and skipped
             eprintln!("[ControlGainVariant] Unimplemented mode: {}", mode);
         }
-    }
     }
 }

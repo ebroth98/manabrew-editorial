@@ -11,10 +11,8 @@ use crate::spellability::SpellAbility;
 /// Struct form of this effect so it can participate in the
 /// `SpellAbilityEffect` trait hierarchy — mirrors Java's
 /// `SubgameEffect` class extending `SpellAbilityEffect`.
-pub struct SubgameEffect;
-
-impl crate::ability::spell_ability_effect::SpellAbilityEffect for SubgameEffect {
-    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
+#[forge_engine_macros::spell_effect(SubgameEffect)]
+fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     // Subgame is one of the most complex effects in Magic.
     // Full implementation requires creating a new GameState, transferring
     // all library cards, running a complete game, then returning cards.
@@ -46,6 +44,5 @@ impl crate::ability::spell_ability_effect::SpellAbilityEffect for SubgameEffect 
                 }
             }
         }
-    }
     }
 }

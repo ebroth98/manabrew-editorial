@@ -48,10 +48,8 @@ pub fn run(
 /// Struct form of this effect so it can participate in the
 /// `SpellAbilityEffect` trait hierarchy — mirrors Java's
 /// `PumpAllEffect` class extending `SpellAbilityEffect`.
-pub struct PumpAllEffect;
-
-impl crate::ability::spell_ability_effect::SpellAbilityEffect for PumpAllEffect {
-    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
+#[forge_engine_macros::spell_effect(PumpAllEffect)]
+fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     // parse_param strips leading '+' sign via Rust's i32::from_str which accepts it.
     // Fall back to SVar resolution for Count$Kicked etc.
     let att_bonus = parse_param(&sa.ability_text, "NumAtt$ ")
@@ -145,7 +143,6 @@ impl crate::ability::spell_ability_effect::SpellAbilityEffect for PumpAllEffect 
                 ctx.game.card_mut(card_id).add_pump_keyword(kw);
             }
         }
-    }
     }
 }
 

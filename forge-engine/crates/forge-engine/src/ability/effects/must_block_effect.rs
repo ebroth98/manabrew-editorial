@@ -26,10 +26,8 @@ pub fn run(game: &mut crate::game::GameState, card_id: crate::ids::CardId) {
 /// Struct form of this effect so it can participate in the
 /// `SpellAbilityEffect` trait hierarchy — mirrors Java's
 /// `MustBlockEffect` class extending `SpellAbilityEffect`.
-pub struct MustBlockEffect;
-
-impl crate::ability::spell_ability_effect::SpellAbilityEffect for MustBlockEffect {
-    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
+#[forge_engine_macros::spell_effect(MustBlockEffect)]
+fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     // Targeted mode
     if let Some(target) = sa.target_chosen.target_card {
         if ctx.game.card(target).zone == ZoneType::Battlefield {
@@ -63,6 +61,5 @@ impl crate::ability::spell_ability_effect::SpellAbilityEffect for MustBlockEffec
         if ctx.game.card(source).zone == ZoneType::Battlefield {
             ctx.game.card_mut(source).set_must_block(true);
         }
-    }
     }
 }

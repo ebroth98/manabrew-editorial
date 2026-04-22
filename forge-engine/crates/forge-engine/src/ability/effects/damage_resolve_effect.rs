@@ -9,10 +9,8 @@ use crate::spellability::SpellAbility;
 /// Struct form of this effect so it can participate in the
 /// `SpellAbilityEffect` trait hierarchy — mirrors Java's
 /// `DamageResolveEffect` class extending `SpellAbilityEffect`.
-pub struct DamageResolveEffect;
-
-impl crate::ability::spell_ability_effect::SpellAbilityEffect for DamageResolveEffect {
-    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
+#[forge_engine_macros::spell_effect(DamageResolveEffect)]
+fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let from_pending = sa.damage_map.is_none();
     let damage_map_owned = sa
         .damage_map
@@ -121,7 +119,6 @@ impl crate::ability::spell_ability_effect::SpellAbilityEffect for DamageResolveE
 
     if from_pending {
         ctx.game.clear_pending_damage_maps();
-    }
     }
 }
 

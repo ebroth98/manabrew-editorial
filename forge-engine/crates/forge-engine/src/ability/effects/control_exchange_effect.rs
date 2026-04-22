@@ -13,10 +13,8 @@ use crate::spellability::SpellAbility;
 /// Struct form of this effect so it can participate in the
 /// `SpellAbilityEffect` trait hierarchy — mirrors Java's
 /// `ControlExchangeEffect` class extending `SpellAbilityEffect`.
-pub struct ControlExchangeEffect;
-
-impl crate::ability::spell_ability_effect::SpellAbilityEffect for ControlExchangeEffect {
-    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
+#[forge_engine_macros::spell_effect(ControlExchangeEffect)]
+fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let mut object1: Option<CardId> = None;
     let mut object2: Option<CardId> = None;
 
@@ -84,6 +82,5 @@ impl crate::ability::spell_ability_effect::SpellAbilityEffect for ControlExchang
             ctx.game.card_mut(sid).add_remembered_card(card1);
             ctx.game.card_mut(sid).add_remembered_card(card2);
         }
-    }
     }
 }

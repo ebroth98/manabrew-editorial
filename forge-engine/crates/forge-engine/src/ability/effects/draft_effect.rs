@@ -9,10 +9,8 @@ use crate::spellability::SpellAbility;
 /// Struct form of this effect so it can participate in the
 /// `SpellAbilityEffect` trait hierarchy — mirrors Java's
 /// `DraftEffect` class extending `SpellAbilityEffect`.
-pub struct DraftEffect;
-
-impl crate::ability::spell_ability_effect::SpellAbilityEffect for DraftEffect {
-    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
+#[forge_engine_macros::spell_effect(DraftEffect)]
+fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let source = match sa.source {
         Some(s) => s,
         None => return,
@@ -47,5 +45,4 @@ impl crate::ability::spell_ability_effect::SpellAbilityEffect for DraftEffect {
         }
     }
     let _ = controller; // used in full impl for zone changes
-    }
 }

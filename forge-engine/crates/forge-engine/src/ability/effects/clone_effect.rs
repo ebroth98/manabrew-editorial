@@ -17,10 +17,8 @@ use crate::spellability::SpellAbility;
 /// Struct form of this effect so it can participate in the
 /// `SpellAbilityEffect` trait hierarchy — mirrors Java's
 /// `CloneEffect` class extending `SpellAbilityEffect`.
-pub struct CloneEffect;
-
-impl crate::ability::spell_ability_effect::SpellAbilityEffect for CloneEffect {
-    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
+#[forge_engine_macros::spell_effect(CloneEffect)]
+fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let source_id = match sa.source {
         Some(id) => id,
         None => return,
@@ -76,7 +74,6 @@ impl crate::ability::spell_ability_effect::SpellAbilityEffect for CloneEffect {
     // Step 5: Re-register triggers for the cloned card
     ctx.trigger_handler
         .register_active_trigger(ctx.game, clone_target_id);
-    }
 }
 
 /// End-of-turn revert for clone effects. Mirrors the `GameCommand.run()`

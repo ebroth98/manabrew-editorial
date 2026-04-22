@@ -23,16 +23,9 @@ use crate::spellability::SpellAbility;
 
 /// Struct form so this directory-module effect can participate in the
 /// `SpellAbilityEffect` trait hierarchy alongside the single-file effects.
-pub struct ChangeZoneEffect;
-
-impl crate::ability::spell_ability_effect::SpellAbilityEffect for ChangeZoneEffect {
-    fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
-        resolve(ctx, sa);
-    }
-
-    fn build_spell_ability(sa: &mut SpellAbility) {
-        build_spell_ability(sa);
-    }
+#[forge_engine_macros::spell_effect(ChangeZoneEffect)]
+fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
+    resolve(ctx, sa);
 }
 
 /// Configure the spell ability during construction.

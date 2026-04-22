@@ -3,11 +3,11 @@ use forge_foundation::ZoneType;
 use super::EffectContext;
 use crate::agent::GameEntity;
 use crate::card::CounterType;
-use crate::event::{RunParams};
-use crate::trigger::TriggerType;
+use crate::event::RunParams;
 use crate::ids::CardId;
 use crate::replacement::replacement_handler::{apply_replacements_with_agents, ReplacementEvent};
 use crate::spellability::SpellAbility;
+use crate::trigger::TriggerType;
 
 /// `SP$ Proliferate` — choose any number of permanents and/or players that
 /// have counters on them, then add one counter of each kind already there.
@@ -21,10 +21,8 @@ use crate::spellability::SpellAbility;
 /// Struct form of this effect so it can participate in the
 /// `SpellAbilityEffect` trait hierarchy — mirrors Java's
 /// `CountersProliferateEffect` class extending `SpellAbilityEffect`.
-pub struct CountersProliferateEffect;
-
-impl crate::ability::spell_ability_effect::SpellAbilityEffect for CountersProliferateEffect {
-    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
+#[forge_engine_macros::spell_effect(CountersProliferateEffect)]
+fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let controller = sa.activating_player;
 
     // Run Proliferate replacement effects before proliferating.
@@ -88,7 +86,6 @@ impl crate::ability::spell_ability_effect::SpellAbilityEffect for CountersProlif
                 proliferate_card(ctx, cid);
             }
         }
-    }
     }
 }
 

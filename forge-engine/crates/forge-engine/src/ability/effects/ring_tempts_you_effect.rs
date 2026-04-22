@@ -28,10 +28,8 @@ pub fn run(game: &mut crate::game::GameState, player: crate::ids::PlayerId) {
 /// Struct form of this effect so it can participate in the
 /// `SpellAbilityEffect` trait hierarchy — mirrors Java's
 /// `RingTemptsYouEffect` class extending `SpellAbilityEffect`.
-pub struct RingTemptsYouEffect;
-
-impl crate::ability::spell_ability_effect::SpellAbilityEffect for RingTemptsYouEffect {
-    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
+#[forge_engine_macros::spell_effect(RingTemptsYouEffect)]
+fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let controller = sa.activating_player;
     let players = if let Some(def) = sa.defined_player() {
         super::resolve_defined_players(def, controller, ctx.game)
@@ -41,7 +39,6 @@ impl crate::ability::spell_ability_effect::SpellAbilityEffect for RingTemptsYouE
 
     for pid in players {
         ring_tempts(ctx, sa, pid);
-    }
     }
 }
 

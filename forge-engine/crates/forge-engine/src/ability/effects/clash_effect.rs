@@ -14,10 +14,8 @@ use crate::spellability::{build_spell_ability, SpellAbility};
 /// Struct form of this effect so it can participate in the
 /// `SpellAbilityEffect` trait hierarchy — mirrors Java's
 /// `ClashEffect` class extending `SpellAbilityEffect`.
-pub struct ClashEffect;
-
-impl crate::ability::spell_ability_effect::SpellAbilityEffect for ClashEffect {
-    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
+#[forge_engine_macros::spell_effect(ClashEffect)]
+fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let controller = sa.activating_player;
 
     // Choose opponent to clash with
@@ -92,12 +90,10 @@ impl crate::ability::spell_ability_effect::SpellAbilityEffect for ClashEffect {
                 .get_s_var(sub_svar)
                 .map(str::to_string)
             {
-                let sub_sa =
-                    build_spell_ability(ctx.game, source_id, &sub_text, controller);
+                let sub_sa = build_spell_ability(ctx.game, source_id, &sub_text, controller);
                 super::resolve_effect(ctx, &sub_sa);
             }
         }
-    }
     }
 }
 

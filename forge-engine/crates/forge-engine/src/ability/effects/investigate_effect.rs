@@ -9,19 +9,17 @@ use forge_foundation::{CardTypeLine, ColorSet, ManaCost, ZoneType};
 use super::{emit_zone_trigger, EffectContext};
 use crate::card::card_zone_table::CardZoneTable;
 use crate::card::Card;
-use crate::event::{RunParams};
-use crate::trigger::TriggerType;
+use crate::event::RunParams;
 use crate::ids::CardId;
 use crate::parsing::keys;
 use crate::spellability::SpellAbility;
+use crate::trigger::TriggerType;
 
 /// Struct form of this effect so it can participate in the
 /// `SpellAbilityEffect` trait hierarchy — mirrors Java's
 /// `InvestigateEffect` class extending `SpellAbilityEffect`.
-pub struct InvestigateEffect;
-
-impl crate::ability::spell_ability_effect::SpellAbilityEffect for InvestigateEffect {
-    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
+#[forge_engine_macros::spell_effect(InvestigateEffect)]
+fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let amount = super::resolve_numeric_svar(ctx.game, sa, "Num", 1).max(0) as usize;
     let controller = sa.activating_player;
 
@@ -48,7 +46,6 @@ impl crate::ability::spell_ability_effect::SpellAbilityEffect for InvestigateEff
             table.put(Some(ZoneType::None), Some(ZoneType::Battlefield), tid);
         }
         table.trigger_changes_zone_all(ctx.trigger_handler, ctx.game, Some(sa));
-    }
     }
 }
 

@@ -1,10 +1,10 @@
 use forge_foundation::ZoneType;
 
 use super::EffectContext;
-use crate::event::{RunParams};
-use crate::trigger::TriggerType;
+use crate::event::RunParams;
 use crate::parsing::keys;
 use crate::spellability::SpellAbility;
+use crate::trigger::TriggerType;
 
 /// Revert a scheduled control-gain. Mirrors Java `ControlGainEffect`'s
 /// `GameCommand.run()`: restore `original_controller_eot`, drop the
@@ -30,7 +30,9 @@ fn revert(game: &mut crate::game::GameState, card_id: crate::ids::CardId) {
 /// Hook invoked whenever a card untaps — reverts the steal if the card was
 /// scheduled with `LoseControlCondition::NextUntap`.
 pub fn untap_hook(game: &mut crate::game::GameState, card_id: crate::ids::CardId) {
-    if game.card(card_id).lose_control_condition == Some(crate::card::LoseControlCondition::NextUntap) {
+    if game.card(card_id).lose_control_condition
+        == Some(crate::card::LoseControlCondition::NextUntap)
+    {
         revert(game, card_id);
     }
 }
@@ -41,7 +43,9 @@ pub fn end_of_combat_hook(game: &mut crate::game::GameState) {
     let targets: Vec<crate::ids::CardId> = game
         .cards
         .iter()
-        .filter(|c| c.lose_control_condition == Some(crate::card::LoseControlCondition::EndOfCombat))
+        .filter(|c| {
+            c.lose_control_condition == Some(crate::card::LoseControlCondition::EndOfCombat)
+        })
         .map(|c| c.id)
         .collect();
     for cid in targets {
@@ -55,7 +59,9 @@ pub fn end_of_combat_hook(game: &mut crate::game::GameState) {
 /// `LoseControlCondition::LeavesPlay` commands. The card is technically
 /// already in limbo when this fires, so we just clear the schedule.
 pub fn leaves_play_hook(game: &mut crate::game::GameState, card_id: crate::ids::CardId) {
-    if game.card(card_id).lose_control_condition == Some(crate::card::LoseControlCondition::LeavesPlay) {
+    if game.card(card_id).lose_control_condition
+        == Some(crate::card::LoseControlCondition::LeavesPlay)
+    {
         game.card_mut(card_id).lose_control_condition = None;
         game.card_mut(card_id).set_original_controller_eot(None);
     }
@@ -153,10 +159,8 @@ mod tests {
 /// Struct form of this effect so it can participate in the
 /// `SpellAbilityEffect` trait hierarchy — mirrors Java's
 /// `ControlGainEffect` class extending `SpellAbilityEffect`.
-pub struct ControlGainEffect;
-
-impl crate::ability::spell_ability_effect::SpellAbilityEffect for ControlGainEffect {
-    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
+#[forge_engine_macros::spell_effect(ControlGainEffect)]
+fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let target_card = match sa.target_chosen.target_card {
         Some(c) => c,
         None => return,
@@ -222,6 +226,5 @@ impl crate::ability::spell_ability_effect::SpellAbilityEffect for ControlGainEff
         for kw in keywords {
             ctx.game.card_mut(target_card).add_granted_keyword(&kw);
         }
-    }
     }
 }

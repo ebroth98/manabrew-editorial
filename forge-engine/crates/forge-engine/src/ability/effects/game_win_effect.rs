@@ -14,10 +14,8 @@ use crate::spellability::SpellAbility;
 /// Struct form of this effect so it can participate in the
 /// `SpellAbilityEffect` trait hierarchy — mirrors Java's
 /// `GameWinEffect` class extending `SpellAbilityEffect`.
-pub struct GameWinEffect;
-
-impl crate::ability::spell_ability_effect::SpellAbilityEffect for GameWinEffect {
-    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
+#[forge_engine_macros::spell_effect(GameWinEffect)]
+fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let controller = sa.activating_player;
 
     let defined = sa.params.get("Defined").unwrap_or("You");
@@ -49,7 +47,6 @@ impl crate::ability::spell_ability_effect::SpellAbilityEffect for GameWinEffect 
 
     ctx.game.game_over = true;
     ctx.game.winner = Some(winner);
-    }
 }
 
 #[cfg(test)]

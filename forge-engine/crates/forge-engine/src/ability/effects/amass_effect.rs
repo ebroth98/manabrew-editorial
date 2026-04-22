@@ -11,19 +11,17 @@ use forge_foundation::{CardTypeLine, ColorSet, ManaCost, ZoneType};
 
 use super::{emit_zone_trigger, parse_counter_type, EffectContext};
 use crate::card::Card;
-use crate::event::{RunParams};
-use crate::trigger::TriggerType;
+use crate::event::RunParams;
 use crate::ids::CardId;
 use crate::spellability::SpellAbility;
 use crate::staticability::parse_static_ability;
+use crate::trigger::TriggerType;
 
 /// Struct form of this effect so it can participate in the
 /// `SpellAbilityEffect` trait hierarchy — mirrors Java's
 /// `AmassEffect` class extending `SpellAbilityEffect`.
-pub struct AmassEffect;
-
-impl crate::ability::spell_ability_effect::SpellAbilityEffect for AmassEffect {
-    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
+#[forge_engine_macros::spell_effect(AmassEffect)]
+fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let controller = sa.activating_player;
     let amount = super::resolve_numeric_svar(ctx.game, sa, "Num", 1).max(0);
     let amass_type = sa
@@ -98,7 +96,6 @@ impl crate::ability::spell_ability_effect::SpellAbilityEffect for AmassEffect {
 
     if !has_type {
         add_type_effect(ctx, sa, controller, target, &amass_type);
-    }
     }
 }
 

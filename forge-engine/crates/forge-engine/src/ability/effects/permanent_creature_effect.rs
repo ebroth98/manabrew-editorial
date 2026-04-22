@@ -8,12 +8,9 @@ use crate::spellability::SpellAbility;
 /// Struct form of this effect so it can participate in the
 /// `SpellAbilityEffect` trait hierarchy — mirrors Java's
 /// `PermanentCreatureEffect` class extending `SpellAbilityEffect`.
-pub struct PermanentCreatureEffect;
-
-impl crate::ability::spell_ability_effect::SpellAbilityEffect for PermanentCreatureEffect {
-    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
+#[forge_engine_macros::spell_effect(PermanentCreatureEffect)]
+fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     super::permanent_effect::resolve_permanent_common(ctx, sa);
-    }
 }
 
 /// Stack text formatted as `"{Name} - Creature {P}/{T}"`, mirroring Java

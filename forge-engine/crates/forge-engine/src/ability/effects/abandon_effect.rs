@@ -2,19 +2,17 @@
 //! Ported from Java's AbandonEffect: sets player as lost.
 
 use super::EffectContext;
-use crate::event::{RunParams};
-use crate::trigger::TriggerType;
+use crate::event::RunParams;
 use crate::parsing::keys;
 use crate::spellability::SpellAbility;
+use crate::trigger::TriggerType;
 use forge_foundation::ZoneType;
 
 /// Struct form of this effect so it can participate in the
 /// `SpellAbilityEffect` trait hierarchy — mirrors Java's
 /// `AbandonEffect` class extending `SpellAbilityEffect`.
-pub struct AbandonEffect;
-
-impl crate::ability::spell_ability_effect::SpellAbilityEffect for AbandonEffect {
-    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
+#[forge_engine_macros::spell_effect(AbandonEffect)]
+fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let Some(source_id) = sa.source else {
         return;
     };
@@ -52,5 +50,4 @@ impl crate::ability::spell_ability_effect::SpellAbilityEffect for AbandonEffect 
         },
         false,
     );
-    }
 }

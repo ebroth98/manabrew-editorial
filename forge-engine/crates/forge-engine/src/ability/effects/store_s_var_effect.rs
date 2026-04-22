@@ -10,10 +10,8 @@ use crate::spellability::SpellAbility;
 /// Struct form of this effect so it can participate in the
 /// `SpellAbilityEffect` trait hierarchy — mirrors Java's
 /// `StoreSVarEffect` class extending `SpellAbilityEffect`.
-pub struct StoreSVarEffect;
-
-impl crate::ability::spell_ability_effect::SpellAbilityEffect for StoreSVarEffect {
-    fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
+#[forge_engine_macros::spell_effect(StoreSVarEffect)]
+fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let Some(source_id) = sa.source else { return };
 
     let svar_name = sa
@@ -74,5 +72,4 @@ impl crate::ability::spell_ability_effect::SpellAbilityEffect for StoreSVarEffec
         .card_mut(source_id)
         .svars
         .insert(svar_name.clone(), resolved_value);
-    }
 }
