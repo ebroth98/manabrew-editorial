@@ -49,13 +49,11 @@ function Add-ToSystemPath($dir) {
 }
 
 function Grant-LogOnAsServiceRight {
-    # Grants the SeServiceLogonRight privilege to an account via secedit.
-    # Required when changing a service's logon account to a user that doesn't
-    # already have the right (sc.exe / WMI Change() do not grant it).
+    # Grants the SeServiceLogonRight privilege to an account by calling
+    # LsaAddAccountRights directly via P/Invoke. More reliable than secedit,
+    # which can silently fail (exit 0 without applying the change).
     param([Parameter(Mandatory)][string]$AccountName)
 
-    # NTAccount cannot parse the ".\user" shorthand. Normalise to either
-    # "<HOST>\user" for local accounts or "<DOMAIN>\user" as supplied.
     $normalised = $AccountName
     if ($normalised.StartsWith('.\')) {
         $normalised = "$env:COMPUTERNAME\" + $normalised.Substring(2)
@@ -70,42 +68,81 @@ function Grant-LogOnAsServiceRight {
         throw "Could not resolve account '$normalised' to a SID: $($_.Exception.Message)"
     }
 
-    $tmp = Join-Path $env:TEMP "lsa-grant-$(Get-Random)"
-    New-Item -ItemType Directory -Force $tmp | Out-Null
-    try {
-        $export = Join-Path $tmp "policy.inf"
-        $import = Join-Path $tmp "grant.inf"
-        $db     = Join-Path $tmp "local.sdb"
+    if (-not ('LsaGrant' -as [type])) {
+        Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+using System.Security.Principal;
 
-        & secedit /export /areas USER_RIGHTS /cfg $export /quiet | Out-Null
-        $content = Get-Content $export -Raw -Encoding Unicode
+public static class LsaGrant {
+    [StructLayout(LayoutKind.Sequential)]
+    private struct LSA_UNICODE_STRING {
+        public ushort Length;
+        public ushort MaximumLength;
+        public IntPtr Buffer;
+    }
 
-        if ($content -match "SeServiceLogonRight\s*=\s*([^\r\n]*)") {
-            $existing = $matches[1].Trim()
-            if ($existing -match [regex]::Escape("*$sid")) {
-                Write-Host "$AccountName already has 'Log on as a service' right."
-                return
-            }
-            $newValue = if ($existing) { "$existing,*$sid" } else { "*$sid" }
-        } else {
-            $newValue = "*$sid"
+    [StructLayout(LayoutKind.Sequential)]
+    private struct LSA_OBJECT_ATTRIBUTES {
+        public int    Length;
+        public IntPtr RootDirectory;
+        public IntPtr ObjectName;
+        public uint   Attributes;
+        public IntPtr SecurityDescriptor;
+        public IntPtr SecurityQualityOfService;
+    }
+
+    [DllImport("advapi32.dll", SetLastError = true)]
+    private static extern uint LsaOpenPolicy(IntPtr SystemName, ref LSA_OBJECT_ATTRIBUTES Attrs, uint AccessMask, out IntPtr PolicyHandle);
+
+    [DllImport("advapi32.dll", SetLastError = true)]
+    private static extern uint LsaAddAccountRights(IntPtr PolicyHandle, byte[] AccountSid, LSA_UNICODE_STRING[] UserRights, uint CountOfRights);
+
+    [DllImport("advapi32.dll")]
+    private static extern uint LsaClose(IntPtr Handle);
+
+    [DllImport("advapi32.dll")]
+    private static extern int LsaNtStatusToWinError(uint Status);
+
+    public static void Grant(string sidString, string rightName) {
+        var sid = new SecurityIdentifier(sidString);
+        var sidBytes = new byte[sid.BinaryLength];
+        sid.GetBinaryForm(sidBytes, 0);
+
+        var attrs = new LSA_OBJECT_ATTRIBUTES { Length = Marshal.SizeOf(typeof(LSA_OBJECT_ATTRIBUTES)) };
+
+        IntPtr handle;
+        // POLICY_CREATE_ACCOUNT | POLICY_LOOKUP_NAMES = 0x30
+        uint status = LsaOpenPolicy(IntPtr.Zero, ref attrs, 0x30, out handle);
+        if (status != 0) throw new System.ComponentModel.Win32Exception(LsaNtStatusToWinError(status), "LsaOpenPolicy failed");
+
+        IntPtr buf = IntPtr.Zero;
+        try {
+            byte[] nameBytes = System.Text.Encoding.Unicode.GetBytes(rightName);
+            buf = Marshal.AllocHGlobal(nameBytes.Length);
+            Marshal.Copy(nameBytes, 0, buf, nameBytes.Length);
+
+            var rights = new LSA_UNICODE_STRING[1];
+            rights[0].Length        = (ushort)nameBytes.Length;
+            rights[0].MaximumLength = (ushort)nameBytes.Length;
+            rights[0].Buffer        = buf;
+
+            status = LsaAddAccountRights(handle, sidBytes, rights, 1);
+            if (status != 0) throw new System.ComponentModel.Win32Exception(LsaNtStatusToWinError(status), "LsaAddAccountRights failed");
+        } finally {
+            if (buf != IntPtr.Zero) Marshal.FreeHGlobal(buf);
+            LsaClose(handle);
         }
+    }
+}
+'@ -ErrorAction Stop
+    }
 
-        $inf = @"
-[Unicode]
-Unicode=yes
-[Version]
-signature="`$CHICAGO`$"
-Revision=1
-[Privilege Rights]
-SeServiceLogonRight = $newValue
-"@
-        [IO.File]::WriteAllText($import, $inf, [System.Text.UnicodeEncoding]::new($false, $true))
-
-        & secedit /configure /db $db /cfg $import /areas USER_RIGHTS /quiet | Out-Null
-        Write-Host "Granted 'Log on as a service' to $AccountName."
-    } finally {
-        Remove-Item -Recurse -Force $tmp -ErrorAction SilentlyContinue
+    try {
+        [LsaGrant]::Grant($sid, "SeServiceLogonRight")
+        Write-Host "Granted 'Log on as a service' to $normalised (SID $sid)."
+    } catch {
+        throw "LsaAddAccountRights failed for $normalised ($sid): $($_.Exception.Message)"
     }
 }
 

@@ -123,31 +123,12 @@ jobs:
       - name: Set up MSVC environment
         uses: ilammy/msvc-dev-cmd@v1
 
-      # Runner prerequisites (set up once on the machine):
+      # Runner prerequisites (set up once on the machine via
+      # scripts/setup-windows-runner.ps1):
       #   - Rust + rustup installed, %USERPROFILE%\.cargo\bin on SYSTEM PATH
-      #   - `rustup target add wasm32-unknown-unknown`
-      #   - `cargo install wasm-pack --locked`
-      #   - Runner service restarted so it picks up PATH
-      # TEMP: diagnostic step - remove once Windows PATH issue is resolved.
-      - name: Debug runner env
-        shell: powershell
-        run: |
-          Write-Host "=== System PATH (HKLM) ==="
-          [Environment]::GetEnvironmentVariable("Path","Machine") -split ';' | ForEach-Object { "  $_" }
-          Write-Host "`n=== `$env:PATH (this step) ==="
-          $env:PATH -split ';' | ForEach-Object { "  $_" }
-          Write-Host "`n=== Tool lookups ==="
-          cmd /c "where cargo"     ; Write-Host "where cargo exit:     $LASTEXITCODE"
-          cmd /c "where wasm-pack" ; Write-Host "where wasm-pack exit: $LASTEXITCODE"
-          cmd /c "where rustup"    ; Write-Host "where rustup exit:    $LASTEXITCODE"
-          Write-Host "`n=== Runner identity ==="
-          whoami
-          Write-Host "`n=== Runner.Listener process ==="
-          Get-Process Runner.Listener -ErrorAction SilentlyContinue | Select Id, StartTime | Format-List
-          Write-Host "`n=== Candidate cargo locations ==="
-          Get-ChildItem C:\Users\*\.cargo\bin\cargo.exe -ErrorAction SilentlyContinue | Select FullName
-          Get-ChildItem C:\Tools\cargo-bin\cargo.exe -ErrorAction SilentlyContinue | Select FullName
-
+      #   - wasm32-unknown-unknown target + wasm-pack installed
+      #   - Runner service runs as .\Administrator (service account needs
+      #     read access to .cargo\bin, which NetworkService does not have)
       - run: yarn
 
       - name: Build WASM + bundle cards
