@@ -353,6 +353,76 @@ Monthly manual pulls work well. Most upstream changes are card-level (new cards,
 4. Run `yarn parity <test>` to verify behavioral parity
 5. Open a PR — never push directly to `main`
 
+## Releases
+
+Releases are published by pushing a git tag that matches `v*` (e.g. `v0.1.0`). Tag pushes trigger the `.github/workflows/release-artifacts.yml` workflow, which builds the macOS `.dmg` and Windows `.exe` / `.msi` on self-hosted runners and publishes a GitHub Release with all three binaries attached.
+
+Non-tag events also run the workflow but do **not** publish a Release:
+
+- **Push to `main`** — builds `.dmg` / `.exe` only if the corresponding checkbox in the PR body is ticked (see `.github/pull_request_template.md`). Artifacts are uploaded to the Actions run with 30-day retention.
+- **`workflow_dispatch`** — prompts for `build_macos` / `build_windows` toggles. Same 30-day artifact retention.
+
+### Step-by-step
+
+1. **Confirm `main` is in the state you want to release.**
+   ```bash
+   git checkout main
+   git pull --ff-only
+   git status               # must be clean
+   ```
+
+2. **Pick a version number.** Use semver: `v<major>.<minor>.<patch>`. Prereleases add a suffix (`v0.2.0-rc1`, `v0.2.0-beta`) and are automatically flagged as "Pre-release" on GitHub.
+
+3. **Bump the app version** so the installer filenames match the tag. Update `version` in:
+   - `package.json`
+   - `src-tauri/tauri.conf.json`
+   - `src-tauri/Cargo.toml`
+
+   Commit and push:
+   ```bash
+   git add package.json src-tauri/tauri.conf.json src-tauri/Cargo.toml
+   git commit -m "chore: bump version to 0.2.0"
+   git push origin main
+   ```
+
+   Wait for CI to go green on that commit.
+
+4. **Tag and push.** The tag name must start with `v`.
+   ```bash
+   git tag v0.2.0
+   git push origin v0.2.0
+   ```
+
+5. **Watch the workflow** in the Actions tab. Four jobs run in sequence:
+   ```
+   gate ──► macos-dmg ─┐
+        └─► windows-exe ─► release
+   ```
+   Windows builds take ~15–25 min; mac varies. The `release` job fires once both installers upload.
+
+6. **Verify the release.** Repo → **Releases** should now show the new tag with:
+   - Auto-generated changelog (commits since the previous tag, grouped by conventional-commit prefix)
+   - `OpenMagic_X.Y.Z_x64-setup.exe` (Windows NSIS installer)
+   - `OpenMagic_X.Y.Z_x64_en-US.msi` (Windows MSI)
+   - `.dmg` (macOS)
+
+### Re-running or fixing a bad release
+
+- **A build job failed:** land a fix on `main`, delete the tag, re-tag the new commit.
+  ```bash
+  git tag -d v0.2.0
+  git push origin :refs/tags/v0.2.0
+  # after the fix merges:
+  git tag v0.2.0 <new-sha>
+  git push origin v0.2.0
+  ```
+- **Only the `release` job failed (builds succeeded):** re-run just that job from the Actions UI — the artifacts are still attached to the run.
+- **Release published but wrong:** `gh release delete v0.2.0 --cleanup-tag`, then re-tag.
+
+### Runner prerequisites
+
+The workflow runs on self-hosted runners (`self-hosted, macOS` and `self-hosted, Windows`). The Windows runner requires a one-time setup via `scripts/setup-windows-runner.ps1` — installs Rust, MSVC Build Tools, Tauri CLI, `wasm-pack`, and configures the runner service to run as `.\Administrator` (needed so the service can read cargo bins under the Administrator profile).
+
 ## License
 
 GPL-3.0 — same as [Forge](https://github.com/Card-Forge/forge).
