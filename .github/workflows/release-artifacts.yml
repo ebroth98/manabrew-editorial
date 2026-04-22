@@ -5,21 +5,32 @@ on:
     branches: [main]
     tags: ['v*']
   workflow_dispatch:
+    inputs:
+      build_macos:
+        description: "Build macOS .dmg"
+        type: boolean
+        default: true
+      build_windows:
+        description: "Build Windows .exe / .msi"
+        type: boolean
+        default: true
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
-  # ── Gate: read PR checkbox on main-branch pushes ───────────────────
-  # Tag pushes (v*) and workflow_dispatch always build.
-  # On `push` to main, find the associated PR and only build if the
-  # "Build release artifacts" checkbox is checked in the PR body.
+  # ── Gate: decide which platforms to build ──────────────────────────
+  # Precedence:
+  #   1. workflow_dispatch  -> honour the boolean inputs.
+  #   2. Tag push (v*)      -> build both (release needs both artifacts).
+  #   3. Push to main       -> read the PR body checkboxes.
   gate:
     name: Check build gate
     runs-on: [self-hosted, Linux]
     outputs:
-      should_build: ${{ steps.check.outputs.should_build }}
+      should_build_macos:   ${{ steps.check.outputs.should_build_macos }}
+      should_build_windows: ${{ steps.check.outputs.should_build_windows }}
     steps:
       - name: Evaluate gate
         id: check
@@ -27,11 +38,24 @@ jobs:
         with:
           script: |
             const { eventName, ref, sha } = context;
-            if (eventName === 'workflow_dispatch' || ref.startsWith('refs/tags/v')) {
-              core.info(`Gate bypassed: eventName=${eventName} ref=${ref}`);
-              core.setOutput('should_build', 'true');
+
+            if (eventName === 'workflow_dispatch') {
+              const inputs = context.payload.inputs ?? {};
+              const mac = String(inputs.build_macos   ?? 'true') === 'true';
+              const win = String(inputs.build_windows ?? 'true') === 'true';
+              core.info(`workflow_dispatch; mac=${mac} win=${win}`);
+              core.setOutput('should_build_macos',   mac ? 'true' : 'false');
+              core.setOutput('should_build_windows', win ? 'true' : 'false');
               return;
             }
+
+            if (ref.startsWith('refs/tags/v')) {
+              core.info(`Tag push ${ref}; building both platforms.`);
+              core.setOutput('should_build_macos',   'true');
+              core.setOutput('should_build_windows', 'true');
+              return;
+            }
+
             const { data: prs } = await github.rest.repos.listPullRequestsAssociatedWithCommit({
               owner: context.repo.owner,
               repo: context.repo.repo,
@@ -39,20 +63,23 @@ jobs:
             });
             const pr = prs[0];
             if (!pr) {
-              core.info(`No PR found for commit ${sha}; skipping build.`);
-              core.setOutput('should_build', 'false');
+              core.info(`No PR found for commit ${sha}; skipping builds.`);
+              core.setOutput('should_build_macos',   'false');
+              core.setOutput('should_build_windows', 'false');
               return;
             }
             const body = pr.body ?? '';
-            const checked = /^\s*-\s*\[x\]\s*Build release artifacts/im.test(body);
-            core.info(`PR #${pr.number} checkbox checked: ${checked}`);
-            core.setOutput('should_build', checked ? 'true' : 'false');
+            const mac = /^\s*-\s*\[x\]\s*Build macOS \.dmg/im.test(body);
+            const win = /^\s*-\s*\[x\]\s*Build Windows \.exe/im.test(body);
+            core.info(`PR #${pr.number} mac=${mac} win=${win}`);
+            core.setOutput('should_build_macos',   mac ? 'true' : 'false');
+            core.setOutput('should_build_windows', win ? 'true' : 'false');
 
   # ── macOS .dmg ─────────────────────────────────────────────────────
   macos-dmg:
     name: Build macOS .dmg
     needs: gate
-    if: needs.gate.outputs.should_build == 'true'
+    if: needs.gate.outputs.should_build_macos == 'true'
     runs-on: [self-hosted, macOS]
     steps:
       - uses: actions/checkout@v4
@@ -82,7 +109,7 @@ jobs:
   windows-exe:
     name: Build Windows .exe
     needs: gate
-    if: needs.gate.outputs.should_build == 'true'
+    if: needs.gate.outputs.should_build_windows == 'true'
     runs-on: [self-hosted, Windows]
     steps:
       - uses: actions/checkout@v4
@@ -103,7 +130,7 @@ jobs:
       #   - Runner service restarted so it picks up PATH
       # TEMP: diagnostic step - remove once Windows PATH issue is resolved.
       - name: Debug runner env
-        shell: pwsh
+        shell: powershell
         run: |
           Write-Host "=== System PATH (HKLM) ==="
           [Environment]::GetEnvironmentVariable("Path","Machine") -split ';' | ForEach-Object { "  $_" }

@@ -9,9 +9,10 @@
 
 ## Build artifacts
 <!--
-  Check the box to build `.dmg` / `.exe` / `.msi` bundles on merge to main
-  (artifacts uploaded to the Actions run, 30-day retention).
-  Leave unchecked to skip — faster CI, no release binaries produced.
-  Tag pushes (v*) always build and publish a GitHub Release regardless.
+  Check the boxes below to build the corresponding installer on merge to main
+  (uploaded to the Actions run, 30-day retention).
+  Leave unchecked to skip — faster CI, no binaries produced.
+  Tag pushes (v*) always build both and publish a GitHub Release regardless.
 -->
-- [ ] Build release artifacts (.dmg / .exe) on merge to main
+- [ ] Build macOS .dmg on merge to main
+- [ ] Build Windows .exe / .msi on merge to main

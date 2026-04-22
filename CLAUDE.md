@@ -12,7 +12,7 @@ prevent future agents from having the same issue.
 - never automatically push any sort of code wait for an explicit push command
 - always reference docs/STYLE_GUIDELINES.md for any kind of ui work
 - Do not write unit tests unless explicitely asked to do so
-- When opening a PR, follow the structure in `.github/pull_request_template.md`: every PR body must include the **Summary**, **Why**, **Test plan**, and **Build artifacts** sections in that order. Check the `Build release artifacts` box only when the PR should produce `.dmg` / `.exe` bundles on merge to main; leave unchecked otherwise to save CI time.
+- When opening a PR, follow the structure in `.github/pull_request_template.md`: every PR body must include the **Summary**, **Why**, **Test plan**, and **Build artifacts** sections in that order. Check the `Build macOS .dmg` and/or `Build Windows .exe` boxes independently based on which installers the PR should produce on merge to main; leave unchecked otherwise to save CI time.
 
 
 ## Feature implementation
