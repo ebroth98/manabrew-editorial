@@ -27,7 +27,7 @@ jobs:
   #   3. Push to main       -> read the PR body checkboxes.
   gate:
     name: Check build gate
-    runs-on: [self-hosted, X64]
+    runs-on: [self-hosted, artifactGate]
     outputs:
       should_build_macos: ${{ steps.check.outputs.should_build_macos }}
       should_build_windows: ${{ steps.check.outputs.should_build_windows }}
