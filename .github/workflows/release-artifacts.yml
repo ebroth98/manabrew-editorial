@@ -1,0 +1,214 @@
+name: Release artifacts
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  # ── Gate: read PR checkbox on main-branch pushes ───────────────────
+  # Tag pushes (v*) and workflow_dispatch always build.
+  # On `push` to main, find the associated PR and only build if the
+  # "Build release artifacts" checkbox is checked in the PR body.
+  gate:
+    name: Check build gate
+    runs-on: [self-hosted, unix]
+    outputs:
+      should_build: ${{ steps.check.outputs.should_build }}
+    steps:
+      - name: Evaluate gate
+        id: check
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { eventName, ref, sha } = context;
+            if (eventName === 'workflow_dispatch' || ref.startsWith('refs/tags/v')) {
+              core.info(`Gate bypassed: eventName=${eventName} ref=${ref}`);
+              core.setOutput('should_build', 'true');
+              return;
+            }
+            const { data: prs } = await github.rest.repos.listPullRequestsAssociatedWithCommit({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              commit_sha: sha,
+            });
+            const pr = prs[0];
+            if (!pr) {
+              core.info(`No PR found for commit ${sha}; skipping build.`);
+              core.setOutput('should_build', 'false');
+              return;
+            }
+            const body = pr.body ?? '';
+            const checked = /^\s*-\s*\[x\]\s*Build release artifacts/im.test(body);
+            core.info(`PR #${pr.number} checkbox checked: ${checked}`);
+            core.setOutput('should_build', checked ? 'true' : 'false');
+
+  # ── macOS .dmg ─────────────────────────────────────────────────────
+  macos-dmg:
+    name: Build macOS .dmg
+    needs: gate
+    if: needs.gate.outputs.should_build == 'true'
+    runs-on: [self-hosted, macOS]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          clean: true
+
+      - run: yarn
+
+      - name: Build WASM + bundle cards
+        run: npm run build:wasm
+
+      - name: Tauri build (macOS)
+        run: npm run tauri -- build
+
+      - name: Upload .dmg
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-dmg-${{ github.sha }}
+          path: src-tauri/target/release/bundle/dmg/*.dmg
+          if-no-files-found: error
+          retention-days: 30
+
+  # ── Windows .exe ───────────────────────────────────────────────────
+  # NOTE: requires a self-hosted runner with the `windows` label
+  # (Rust + MSVC toolchain + Node + Yarn installed).
+  windows-exe:
+    name: Build Windows .exe
+    needs: gate
+    if: needs.gate.outputs.should_build == 'true'
+    runs-on: [self-hosted, Windows]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          clean: true
+
+      # Loads MSVC env (link.exe, LIB, INCLUDE) for subsequent steps so
+      # Rust/Tauri can link. Replaces the need for a persistent
+      # Developer Command Prompt.
+      - name: Set up MSVC environment
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - run: yarn
+
+      - name: Build WASM + bundle cards
+        run: npm run build:wasm
+
+      - name: Tauri build (Windows)
+        run: npm run tauri -- build
+
+      - name: Upload .exe
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-exe-${{ github.sha }}
+          path: |
+            src-tauri/target/release/bundle/nsis/*.exe
+            src-tauri/target/release/bundle/msi/*.msi
+          if-no-files-found: error
+          retention-days: 30
+
+  # ── Publish GitHub Release (tags only) ─────────────────────────────
+  # Triggered only on `v*` tag pushes. Downloads the artifacts built
+  # above, generates a changelog from commits since the previous tag,
+  # and publishes a GitHub Release with the bundles attached.
+  release:
+    name: Publish GitHub Release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [macos-dmg, windows-exe]
+    runs-on: [self-hosted, unix]
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download macOS artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: macos-dmg-${{ github.sha }}
+          path: release-assets/macos
+
+      - name: Download Windows artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: windows-exe-${{ github.sha }}
+          path: release-assets/windows
+
+      - name: Generate changelog
+        id: changelog
+        uses: mikepenz/release-changelog-builder-action@v5
+        with:
+          configurationJson: |
+            {
+              "categories": [
+                { "title": "## Features",      "labels": ["feat", "feature"] },
+                { "title": "## Fixes",         "labels": ["fix", "bug"] },
+                { "title": "## Changes",       "labels": [] }
+              ],
+              "label_extractor": [
+                { "pattern": "^(feat|fix|chore|docs|refactor|perf|test|ci)(\\(.+\\))?!?:.+", "target": "$1", "on_property": "title" }
+              ],
+              "template": "#{{CHANGELOG}}\n\n**Full Changelog**: #{{RELEASE_DIFF}}"
+            }
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish Release
+        id: publish
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
+          body: ${{ steps.changelog.outputs.changelog }}
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-rc') || contains(github.ref_name, '-beta') || contains(github.ref_name, '-alpha') }}
+          files: |
+            release-assets/macos/*.dmg
+            release-assets/windows/*.exe
+            release-assets/windows/*.msi
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Notify n8n so it can fan out to Discord (same endpoint deploy.sh
+      # uses). Requires repo secret N8N_DEPLOY_WEBHOOK_URL pointing at
+      # the n8n `/webhook/github-deploy` endpoint. Skipped silently if
+      # the secret is unset. Payload carries an `event: "release"` tag
+      # so the n8n workflow can branch on it (add a filter for
+      # `$json.body.event === "release"` alongside the existing main-branch
+      # check).
+      - name: Notify n8n (release published)
+        if: steps.publish.outputs.url != ''
+        env:
+          N8N_WEBHOOK_URL: ${{ secrets.N8N_DEPLOY_WEBHOOK_URL }}
+          RELEASE_TAG: ${{ github.ref_name }}
+          RELEASE_URL: ${{ steps.publish.outputs.url }}
+          RELEASE_BODY: ${{ steps.changelog.outputs.changelog }}
+          RELEASE_ACTOR: ${{ github.actor }}
+          RELEASE_SHA: ${{ github.sha }}
+          RELEASE_REPO: ${{ github.repository }}
+          RELEASE_PRERELEASE: ${{ contains(github.ref_name, '-rc') || contains(github.ref_name, '-beta') || contains(github.ref_name, '-alpha') }}
+        run: |
+          if [ -z "${N8N_WEBHOOK_URL:-}" ]; then
+            echo "N8N_DEPLOY_WEBHOOK_URL not set; skipping notification."
+            exit 0
+          fi
+          PAYLOAD=$(jq -n \
+            --arg event      "release" \
+            --arg tag        "$RELEASE_TAG" \
+            --arg url        "$RELEASE_URL" \
+            --arg body       "$RELEASE_BODY" \
+            --arg actor      "$RELEASE_ACTOR" \
+            --arg sha        "$RELEASE_SHA" \
+            --arg repo       "$RELEASE_REPO" \
+            --argjson prerelease "$RELEASE_PRERELEASE" \
+            '{event: $event, tag: $tag, url: $url, body: $body, actor: $actor, sha: $sha, repo: $repo, prerelease: $prerelease}')
+          curl -fsS -X POST -H 'Content-Type: application/json' \
+            -d "$PAYLOAD" "$N8N_WEBHOOK_URL"
