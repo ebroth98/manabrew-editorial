@@ -31,7 +31,7 @@ Use this when:
 **Always run this before any parity test.** The script computes a SHA-256 checksum of all Java source files and pom.xml files across the 5 modules the harness depends on (`forge-core`, `forge-game`, `forge-ai`, `forge-gui`, `forge-harness`) and compares against a stored checksum. If anything changed (or the JAR doesn't exist, or no stored checksum is found), it rebuilds automatically.
 
 ```bash
-bash scripts/check-harness.sh
+node scripts/harness.mjs ensure
 ```
 
 This will either print `harness: JAR is up-to-date` (no rebuild needed) or `harness: rebuilding JAR...` followed by `harness: rebuild complete` on success. Use a **300000ms timeout** for this command since Maven builds can take several minutes.
@@ -40,7 +40,7 @@ If the rebuild fails, stop and report the Maven error to the user. Do not procee
 
 To check staleness without rebuilding (useful for diagnostics):
 ```bash
-bash scripts/check-harness.sh --check
+node scripts/harness.mjs check
 # exit 0 = up-to-date, exit 1 = stale/missing
 ```
 
@@ -83,11 +83,11 @@ When a test fails, briefly explain the likely cause based on the divergence patt
 
 The Rust engine must compile. If it doesn't, run `cargo check -p forge-parity` and fix errors first.
 
-The Java harness rebuild is handled automatically by `scripts/check-harness.sh` (see Step 1). You should never need to manually run `mvn package`.
+The Java harness rebuild is handled automatically by `scripts/harness.mjs` (see Step 1). You should never need to manually run `mvn package`.
 
 ## Key files
 
-- **Harness rebuild script**: `scripts/check-harness.sh`
+- **Harness rebuild script**: `scripts/harness.mjs`
 - Regression test definitions: `forge-engine/crates/forge-parity/regression.json`
 - Parity script: `scripts/parity.mjs`
 - Parity binary: `forge-engine/crates/forge-parity/src/main.rs`
@@ -95,7 +95,7 @@ The Java harness rebuild is handled automatically by `scripts/check-harness.sh` 
 
 ## Watched Java source directories
 
-These are the directories that `check-harness.sh` monitors for changes:
+These are the directories that `harness.mjs` monitors for changes:
 
 - `forge/forge-core/src/` -- core card definitions, rules primitives
 - `forge/forge-game/src/` -- full game engine
