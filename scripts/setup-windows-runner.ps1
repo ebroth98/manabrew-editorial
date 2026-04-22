@@ -10,6 +10,9 @@
 # and the Tauri CLI.
 #
 # Idempotent: each step skips work already done. Safe to re-run.
+#
+# ASCII-only on purpose so PowerShell 5.1 (Windows default codepage) parses
+# the file correctly without a UTF-8 BOM.
 
 #Requires -RunAsAdministrator
 
@@ -17,8 +20,8 @@ $ErrorActionPreference = "Stop"
 $ProgressPreference    = "SilentlyContinue"   # faster Invoke-WebRequest
 
 function Section($msg) {
-    Write-Host "`n── $msg " -ForegroundColor Cyan -NoNewline
-    Write-Host ("─" * [Math]::Max(0, 70 - $msg.Length)) -ForegroundColor Cyan
+    $bar = "-" * [Math]::Max(0, 70 - $msg.Length)
+    Write-Host "`n== $msg $bar" -ForegroundColor Cyan
 }
 
 function Refresh-Path {
@@ -31,10 +34,10 @@ function Has-Command($name) {
     $null -ne (Get-Command $name -ErrorAction SilentlyContinue)
 }
 
-# ─── 1. TLS 1.2 ────────────────────────────────────────────────────────────
+# --- 1. TLS 1.2 -----------------------------------------------------------
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
-# ─── 2. Chocolatey ─────────────────────────────────────────────────────────
+# --- 2. Chocolatey --------------------------------------------------------
 Section "Chocolatey"
 if (Has-Command choco) {
     Write-Host "choco already installed: $(choco --version)"
@@ -43,7 +46,7 @@ if (Has-Command choco) {
     Refresh-Path
 }
 
-# ─── 3. Core tools via Chocolatey ──────────────────────────────────────────
+# --- 3. Core tools via Chocolatey ----------------------------------------
 Section "Core tools (git, node, yarn, nsis, jq, webview2)"
 $packages = @(
     "git",
@@ -54,12 +57,12 @@ $packages = @(
     "microsoft-edge-webview2-runtime"
 )
 foreach ($pkg in $packages) {
-    Write-Host "→ $pkg"
+    Write-Host "-> $pkg"
     choco install -y --no-progress $pkg
 }
 Refresh-Path
 
-# ─── 4. Visual Studio 2022 Build Tools (C++ workload) ──────────────────────
+# --- 4. Visual Studio 2022 Build Tools (C++ workload) --------------------
 Section "Visual Studio 2022 Build Tools + C++ workload"
 $vsWhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
 $vsPath  = ""
@@ -72,17 +75,17 @@ if (Test-Path $vsWhere) {
 if ($vsPath) {
     Write-Host "VS Build Tools with C++ already installed at: $vsPath"
 } else {
-    Write-Host "Downloading vs_buildtools.exe (direct bootstrapper — chocolatey's param-passing is flaky for this)..."
+    Write-Host "Downloading vs_buildtools.exe (direct bootstrapper - chocolatey's param-passing is flaky for this)..."
     $installer = "$env:TEMP\vs_buildtools.exe"
     Invoke-WebRequest -Uri "https://aka.ms/vs/17/release/vs_buildtools.exe" -OutFile $installer
     Write-Host "Running installer (10-30 min, no progress output; wait for prompt)..."
-    $args = @(
+    $vsArgs = @(
         "--quiet", "--wait", "--norestart", "--nocache",
         "--add", "Microsoft.VisualStudio.Workload.VCTools",
         "--add", "Microsoft.VisualStudio.Component.Windows11SDK.22621",
         "--includeRecommended"
     )
-    $proc = Start-Process -Wait -PassThru -FilePath $installer -ArgumentList $args
+    $proc = Start-Process -Wait -PassThru -FilePath $installer -ArgumentList $vsArgs
     # Exit codes 0 = success, 3010 = success, reboot required
     if ($proc.ExitCode -ne 0 -and $proc.ExitCode -ne 3010) {
         throw "vs_buildtools exited with code $($proc.ExitCode)"
@@ -95,7 +98,7 @@ if ($vsPath) {
     Write-Host "Installed at: $vsPath"
 }
 
-# ─── 5. Rust (MSVC toolchain) ──────────────────────────────────────────────
+# --- 5. Rust (MSVC toolchain) --------------------------------------------
 Section "Rust toolchain (MSVC)"
 if (Has-Command rustc) {
     Write-Host "rustc already installed: $(rustc --version)"
@@ -110,12 +113,12 @@ if (Has-Command rustc) {
     Refresh-Path
 }
 
-# ─── 6. Enter VS Dev Shell + install Tauri CLI ─────────────────────────────
+# --- 6. Enter VS Dev Shell + install Tauri CLI ---------------------------
 Section "Tauri CLI (requires MSVC linker on PATH)"
 if (Has-Command cargo-tauri) {
     Write-Host "tauri CLI already installed."
 } else {
-    # link.exe is never on system PATH — load the dev env for this session.
+    # link.exe is never on system PATH - load the dev env for this session.
     Import-Module "$vsPath\Common7\Tools\Microsoft.VisualStudio.DevShell.dll"
     Enter-VsDevShell -VsInstallPath $vsPath -SkipAutomaticLocation `
         -DevCmdArguments "-arch=x64 -host_arch=x64"
@@ -123,7 +126,7 @@ if (Has-Command cargo-tauri) {
     cargo install tauri-cli --version "^2"
 }
 
-# ─── 7. Sanity check ───────────────────────────────────────────────────────
+# --- 7. Sanity check -----------------------------------------------------
 Section "Versions"
 Refresh-Path
 function Try-Version($cmd, $arg = "--version") {
@@ -153,8 +156,8 @@ Write-Host @"
      .\svc.cmd start
      # OR, for interactive mode: Ctrl+C and re-run .\run.cmd
 3. The release-artifacts workflow already includes ilammy/msvc-dev-cmd@v1
-   to load MSVC env for every CI run — you do NOT need link.exe on the
+   to load MSVC env for every CI run - you do NOT need link.exe on the
    system PATH.
 4. Trigger a test build via workflow_dispatch on the Release artifacts
-   workflow, or push a tag like `v0.0.1-test`.
+   workflow, or push a tag like v0.0.1-test.
 "@
