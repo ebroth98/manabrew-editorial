@@ -1,5 +1,5 @@
 import { Texture, ImageSource } from "pixi.js";
-import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
+import { platformFetch } from "@/lib/platformFetch";
 
 const SCRYFALL_SYMBOL_BASE = "https://svgs.scryfall.io/card-symbols/";
 // Rasterize SVGs into a fixed-size canvas so Pixi gets a concrete texture
@@ -11,7 +11,7 @@ const loading = new Map<string, Promise<Texture>>();
 
 async function fetchSvgText(symbol: string): Promise<string> {
   const url = `${SCRYFALL_SYMBOL_BASE}${encodeURIComponent(symbol)}.svg`;
-  const response = await tauriFetch(url);
+  const response = await platformFetch(url);
   if (!response.ok) throw new Error(`HTTP ${response.status} for ${url}`);
   return await response.text();
 }

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
+import { platformFetch } from "@/lib/platformFetch";
 import { Loader2, ArrowLeft, Download, Search as SearchIcon } from "lucide-react";
 import { toast } from "sonner";
 
@@ -38,7 +38,7 @@ interface ImportDeckDialogProps {
 
 type Step = "input" | "loading" | "results" | "preview" | "importing";
 
-const requestOpts = { fetch: tauriFetch as unknown as typeof fetch };
+const requestOpts = { fetch: platformFetch as unknown as typeof fetch };
 
 export function ImportDeckDialog({ open, onOpenChange, mode, onImport }: ImportDeckDialogProps) {
   const [step, setStep] = useState<Step>("input");

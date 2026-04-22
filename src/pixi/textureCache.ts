@@ -1,5 +1,5 @@
 import { Texture, ImageSource } from "pixi.js";
-import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
+import { platformFetch } from "@/lib/platformFetch";
 import {
   getCardByName,
   getTokenByName,
@@ -126,11 +126,12 @@ async function resolveScryfallUrl(
 const CARD_BACK_URL = "https://game.scryfall.io/attachments/config/sleeves/standard/back.jpg";
 
 /**
- * Fetch image via Tauri's native HTTP (bypasses browser CORS entirely),
- * convert to blob URL, then load into HTMLImageElement for WebGL use.
+ * Fetch image via Tauri's native HTTP on desktop (bypasses browser CORS) or
+ * the browser's fetch on web, convert to blob URL, then load into an
+ * HTMLImageElement for WebGL use.
  */
 async function loadImageViaTauri(url: string): Promise<HTMLImageElement> {
-  const response = await tauriFetch(url);
+  const response = await platformFetch(url);
   if (!response.ok) throw new Error(`HTTP ${response.status} for ${url}`);
   const blob = await response.blob();
   const blobUrl = URL.createObjectURL(blob);
