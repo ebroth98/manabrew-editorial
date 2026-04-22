@@ -48,6 +48,54 @@ function Add-ToSystemPath($dir) {
     }
 }
 
+function Grant-LogOnAsServiceRight {
+    # Grants the SeServiceLogonRight privilege to an account via secedit.
+    # Required when changing a service's logon account to a user that doesn't
+    # already have the right (sc.exe / WMI Change() do not grant it).
+    param([Parameter(Mandatory)][string]$AccountName)
+
+    $sid = (New-Object System.Security.Principal.NTAccount($AccountName)).Translate(
+        [System.Security.Principal.SecurityIdentifier]).Value
+
+    $tmp = Join-Path $env:TEMP "lsa-grant-$(Get-Random)"
+    New-Item -ItemType Directory -Force $tmp | Out-Null
+    try {
+        $export = Join-Path $tmp "policy.inf"
+        $import = Join-Path $tmp "grant.inf"
+        $db     = Join-Path $tmp "local.sdb"
+
+        & secedit /export /areas USER_RIGHTS /cfg $export /quiet | Out-Null
+        $content = Get-Content $export -Raw -Encoding Unicode
+
+        if ($content -match "SeServiceLogonRight\s*=\s*([^\r\n]*)") {
+            $existing = $matches[1].Trim()
+            if ($existing -match [regex]::Escape("*$sid")) {
+                Write-Host "$AccountName already has 'Log on as a service' right."
+                return
+            }
+            $newValue = if ($existing) { "$existing,*$sid" } else { "*$sid" }
+        } else {
+            $newValue = "*$sid"
+        }
+
+        $inf = @"
+[Unicode]
+Unicode=yes
+[Version]
+signature="`$CHICAGO`$"
+Revision=1
+[Privilege Rights]
+SeServiceLogonRight = $newValue
+"@
+        [IO.File]::WriteAllText($import, $inf, [System.Text.UnicodeEncoding]::new($false, $true))
+
+        & secedit /configure /db $db /cfg $import /areas USER_RIGHTS /quiet | Out-Null
+        Write-Host "Granted 'Log on as a service' to $AccountName."
+    } finally {
+        Remove-Item -Recurse -Force $tmp -ErrorAction SilentlyContinue
+    }
+}
+
 # --- 1. TLS 1.2 -----------------------------------------------------------
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
@@ -183,22 +231,62 @@ if ($needTauri -or $needWasmPack) {
     Write-Host "tauri CLI and wasm-pack already installed."
 }
 
-# --- 7. Restart GitHub Actions runner service ----------------------------
-# The runner captures PATH at service-start time. Any cargo/wasm-pack PATH
-# changes made above won't be visible to it until the service restarts.
+# --- 7. GitHub Actions runner service ------------------------------------
+# Rust is installed under C:\Users\Administrator\.cargo. NetworkService (the
+# runner service default) cannot read Administrator's profile, so even with
+# the correct PATH the service sees "cargo not found". Fix: change the
+# service logon account to Administrator, which already owns the install.
+#
+# If the service already runs as Administrator, only restart it to pick up
+# PATH changes. Requires the Administrator password (prompted interactively).
 Section "GitHub Actions runner service"
 $runners = Get-Service "actions.runner.*" -ErrorAction SilentlyContinue
-if ($runners) {
+if (-not $runners) {
+    Write-Warning "No 'actions.runner.*' Windows service found."
+    Write-Warning "Install the runner as a service first, then re-run this script."
+} else {
     foreach ($svc in $runners) {
-        Write-Host "Restarting $($svc.Name) (was: $($svc.Status))..."
-        Restart-Service $svc.Name -Force
+        $wmi = Get-WmiObject Win32_Service -Filter "Name='$($svc.Name)'"
+        $currentUser = $wmi.StartName
+        Write-Host "Service: $($svc.Name)"
+        Write-Host "  currently runs as: $currentUser"
+
+        $needsAccountChange = $currentUser -notmatch '(?i)(^|\\)Administrator$'
+
+        if ($needsAccountChange) {
+            Write-Warning "Runner service runs as $currentUser. That account cannot read"
+            Write-Warning "C:\Users\Administrator\.cargo\bin, so cargo lookups fail in CI."
+            Write-Warning "Switching logon to .\Administrator."
+
+            $cred = Get-Credential -Message "Enter password for .\Administrator (used to run the runner service)" -UserName ".\Administrator"
+            if (-not $cred) { throw "No credentials supplied; aborting." }
+
+            Grant-LogOnAsServiceRight -AccountName ".\Administrator"
+
+            Write-Host "  stopping service..."
+            Stop-Service $svc.Name -Force
+
+            $result = $wmi.Change(
+                $null,$null,$null,$null,$null,$null,
+                $cred.UserName,
+                $cred.GetNetworkCredential().Password
+            ).ReturnValue
+            if ($result -ne 0) {
+                throw "Win32_Service.Change returned $result (see https://learn.microsoft.com/windows/win32/cimwin32prov/change-method-in-class-win32-service)"
+            }
+
+            Write-Host "  starting service as $($cred.UserName)..."
+            Start-Service $svc.Name
+
+            $wmi2 = Get-WmiObject Win32_Service -Filter "Name='$($svc.Name)'"
+            Write-Host "  now runs as: $($wmi2.StartName)"
+        } else {
+            Write-Host "  already running as Administrator; restarting to pick up PATH."
+            Restart-Service $svc.Name -Force
+        }
     }
     Start-Sleep -Seconds 2
     Get-Service "actions.runner.*" | Select-Object Name, Status | Format-Table | Out-String | Write-Host
-} else {
-    Write-Warning "No 'actions.runner.*' Windows service found."
-    Write-Warning "If the runner is configured as a service, verify with: Get-Service 'actions.runner.*'"
-    Write-Warning "If running interactively (run.cmd), stop it (Ctrl+C) and restart so it picks up PATH changes."
 }
 
 # --- 8. Sanity check -----------------------------------------------------
@@ -227,14 +315,15 @@ if ($wasm32Installed) { "wasm32     installed" } else { "wasm32     NOT INSTALLE
 
 Section "Next steps"
 Write-Host @"
-1. Verify the runner picked up the new PATH from a FRESH shell:
-     cargo --version
-     wasm-pack --version
-   (If this shell is the one you ran the script in, open a new PowerShell.)
-2. Trigger a test build via workflow_dispatch on the Release artifacts
-   workflow, or push a tag like v0.0.1-test.
+1. The runner service now runs as .\Administrator with PATH including
+   cargo + wasm-pack. Trigger a build via workflow_dispatch on the
+   Release artifacts workflow, or push a tag like v0.0.1-test.
+2. Confirm the service identity from a fresh shell if needed:
+     (Get-WmiObject Win32_Service -Filter "Name LIKE 'actions.runner%'").StartName
+   Should print '.\Administrator'.
 3. The release-artifacts workflow uses ilammy/msvc-dev-cmd@v1 to load MSVC
    env per run, so link.exe does NOT need to be on system PATH.
-4. If the workflow still can't find cargo, confirm the runner service was
-   restarted (step 7 above) - PATH changes are only picked up on restart.
+4. If you ever change the Administrator password, re-run this script so
+   the service gets the new password (services keep cached credentials
+   and will fail to start after a password change).
 "@
