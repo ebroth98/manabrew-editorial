@@ -25,7 +25,7 @@ concurrency:
 
 jobs:
   continuous-parity:
-    runs-on: [self-hosted, unix]
+    runs-on: [self-hosted, Linux]
     timeout-minutes: 120
     steps:
       - name: Checkout

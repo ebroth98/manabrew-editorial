@@ -20,7 +20,7 @@ concurrency:
 
 jobs:
   forge-engine-unit:
-    runs-on: [self-hosted, unix]
+    runs-on: [self-hosted, Linux]
     timeout-minutes: 30
     steps:
       - name: Checkout
@@ -32,7 +32,7 @@ jobs:
         run: yarn test:forge-engine
 
   parity-regression:
-    runs-on: [self-hosted, unix]
+    runs-on: [self-hosted, Linux]
     timeout-minutes: 90
     steps:
       - name: Checkout

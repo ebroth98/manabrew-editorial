@@ -16,7 +16,7 @@ concurrency:
 
 jobs:
   prepare-matrix:
-    runs-on: [self-hosted, unix]
+    runs-on: [self-hosted, Linux]
     outputs:
       matrix: ${{ steps.load.outputs.matrix }}
     steps:
@@ -39,7 +39,7 @@ jobs:
 
   parity:
     needs: prepare-matrix
-    runs-on: [self-hosted, unix]
+    runs-on: [self-hosted, Linux]
     timeout-minutes: 90
     strategy:
       fail-fast: false

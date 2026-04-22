@@ -17,7 +17,7 @@ jobs:
   # "Build release artifacts" checkbox is checked in the PR body.
   gate:
     name: Check build gate
-    runs-on: [self-hosted, unix]
+    runs-on: [self-hosted, Linux]
     outputs:
       should_build: ${{ steps.check.outputs.should_build }}
     steps:
@@ -122,7 +122,7 @@ jobs:
     name: Publish GitHub Release
     if: startsWith(github.ref, 'refs/tags/v')
     needs: [macos-dmg, windows-exe]
-    runs-on: [self-hosted, unix]
+    runs-on: [self-hosted, Linux]
     permissions:
       contents: write
     steps:

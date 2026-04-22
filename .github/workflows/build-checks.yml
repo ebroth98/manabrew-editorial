@@ -12,7 +12,7 @@ jobs:
   # ── TypeScript type-check ──────────────────────────────────────────
   typescript:
     name: TypeScript
-    runs-on: [self-hosted, unix]
+    runs-on: [self-hosted, Linux]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -26,7 +26,7 @@ jobs:
   # ── WASM + card bundler ────────────────────────────────────────────
   wasm:
     name: WASM build
-    runs-on: [self-hosted, unix]
+    runs-on: [self-hosted, Linux]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -41,7 +41,7 @@ jobs:
   # ── Rust workspace (engine, CLI, agent-interface) ──────────────────
   rust-engine:
     name: Rust engine
-    runs-on: [self-hosted, unix]
+    runs-on: [self-hosted, Linux]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -62,7 +62,7 @@ jobs:
   # ── Rust server ────────────────────────────────────────────────────
   rust-server:
     name: Rust server
-    runs-on: [self-hosted, unix]
+    runs-on: [self-hosted, Linux]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -75,7 +75,7 @@ jobs:
   # ── Rust parity dashboard ─────────────────────────────────────────
   rust-parity:
     name: Rust parity dashboard
-    runs-on: [self-hosted, unix]
+    runs-on: [self-hosted, Linux]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -88,7 +88,7 @@ jobs:
   # ── Full web build (wasm + tsc + vite) ─────────────────────────────
   web-build:
     name: Web build (full)
-    runs-on: [self-hosted, unix]
+    runs-on: [self-hosted, Linux]
     needs: [typescript, wasm]
     steps:
       - uses: actions/checkout@v4
@@ -104,7 +104,7 @@ jobs:
   # ── JSON lint (preset decks) ───────────────────────────────────────
   json-lint:
     name: JSON lint
-    runs-on: [self-hosted, unix]
+    runs-on: [self-hosted, Linux]
     steps:
       - uses: actions/checkout@v4
 
