@@ -47,20 +47,43 @@ if (Has-Command choco) {
 }
 
 # --- 3. Core tools via Chocolatey ----------------------------------------
-Section "Core tools (git, node, yarn, nsis, jq, webview2)"
+Section "Core tools (git, node, yarn, nsis, jq)"
 $packages = @(
     "git",
     "nodejs-lts",
     "yarn",
     "nsis",
-    "jq",
-    "microsoft-edge-webview2-runtime"
+    "jq"
 )
 foreach ($pkg in $packages) {
     Write-Host "-> $pkg"
     choco install -y --no-progress $pkg
 }
 Refresh-Path
+
+# WebView2 Runtime ships preinstalled on Windows 10 (20H1+) and Windows 11,
+# so no choco package is needed. Verify the install key is present; if
+# missing, point the user at the Evergreen Bootstrapper instead of failing
+# the build later inside Tauri.
+Section "WebView2 Runtime (preinstalled check)"
+$wv2Keys = @(
+    "HKLM:\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}",
+    "HKLM:\SOFTWARE\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}"
+)
+$wv2Installed = $false
+foreach ($k in $wv2Keys) {
+    if (Test-Path $k) {
+        $ver = (Get-ItemProperty $k -ErrorAction SilentlyContinue).pv
+        if ($ver) {
+            Write-Host "WebView2 Runtime present: $ver"
+            $wv2Installed = $true
+            break
+        }
+    }
+}
+if (-not $wv2Installed) {
+    Write-Warning "WebView2 Runtime not detected. Install the Evergreen Bootstrapper manually from https://developer.microsoft.com/microsoft-edge/webview2/ before running a Tauri build."
+}
 
 # --- 4. Visual Studio 2022 Build Tools (C++ workload) --------------------
 Section "Visual Studio 2022 Build Tools + C++ workload"
