@@ -54,8 +54,21 @@ function Grant-LogOnAsServiceRight {
     # already have the right (sc.exe / WMI Change() do not grant it).
     param([Parameter(Mandatory)][string]$AccountName)
 
-    $sid = (New-Object System.Security.Principal.NTAccount($AccountName)).Translate(
-        [System.Security.Principal.SecurityIdentifier]).Value
+    # NTAccount cannot parse the ".\user" shorthand. Normalise to either
+    # "<HOST>\user" for local accounts or "<DOMAIN>\user" as supplied.
+    $normalised = $AccountName
+    if ($normalised.StartsWith('.\')) {
+        $normalised = "$env:COMPUTERNAME\" + $normalised.Substring(2)
+    } elseif ($normalised -notmatch '\\') {
+        $normalised = "$env:COMPUTERNAME\$normalised"
+    }
+
+    try {
+        $sid = (New-Object System.Security.Principal.NTAccount($normalised)).Translate(
+            [System.Security.Principal.SecurityIdentifier]).Value
+    } catch {
+        throw "Could not resolve account '$normalised' to a SID: $($_.Exception.Message)"
+    }
 
     $tmp = Join-Path $env:TEMP "lsa-grant-$(Get-Random)"
     New-Item -ItemType Directory -Force $tmp | Out-Null
