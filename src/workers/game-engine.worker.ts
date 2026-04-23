@@ -12,6 +12,7 @@ import init, {
   test_rng,
   test_foundation,
   load_card_bundle,
+  load_token_bundle,
   parse_preset_decks,
   run_interactive_game,
   run_multiplayer_game,
@@ -88,7 +89,7 @@ async function loadCardData(): Promise<void> {
   if (cardsLoaded) return;
 
   try {
-    console.log("[GameWorker] Loading card bundle...");
+    console.log("[GameWorker] Loading card and token bundles...");
 
     const cardBundleResponse = await fetch("/wasm/cards-bundle.json");
     if (!cardBundleResponse.ok) {
@@ -102,6 +103,14 @@ async function loadCardData(): Promise<void> {
 
     const cardCount = load_card_bundle(cardBundleText);
     console.log(`[GameWorker] Loaded ${cardCount} cards into database`);
+
+    const tokenBundleResponse = await fetch("/wasm/tokens-bundle.json");
+    if (!tokenBundleResponse.ok) {
+      throw new Error(`Failed to fetch token bundle: ${tokenBundleResponse.status}`);
+    }
+    const tokenBundleText = await tokenBundleResponse.text();
+    const tokenCount = load_token_bundle(tokenBundleText);
+    console.log(`[GameWorker] Loaded ${tokenCount} token scripts into database`);
 
     const presetsResponse = await fetch("/wasm/preset-decks.json");
     if (!presetsResponse.ok) {

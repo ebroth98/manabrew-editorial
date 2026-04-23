@@ -122,6 +122,7 @@ class WorkerBridge {
 
         // Acknowledge the prompt so we don't re-read it
         Atomics.store(this.gameSignal, 0, 3); // PROMPT_ACKNOWLEDGED
+        Atomics.notify(this.gameSignal, 0);
 
         try {
           const prompt = JSON.parse(jsonStr);
@@ -174,6 +175,7 @@ class WorkerBridge {
         const jsonStr = new TextDecoder().decode(jsonBytes);
 
         Atomics.store(this.remoteSignal, 0, 3); // ACKNOWLEDGED
+        Atomics.notify(this.remoteSignal, 0);
 
         try {
           const prompt = JSON.parse(jsonStr);

@@ -14,9 +14,11 @@ const PROJECT_ROOT = path.resolve(__dirname, '..');
 
 const PRESET_DECKS_DIR = path.join(PROJECT_ROOT, 'preset_decks');
 const CARDSFOLDER_DIR = path.join(PROJECT_ROOT, 'forge/forge-gui/res/cardsfolder');
+const TOKEN_SCRIPTS_DIR = path.join(PROJECT_ROOT, 'forge/forge-gui/res/tokenscripts');
 const UPCOMING_DIR = path.join(CARDSFOLDER_DIR, 'upcoming');
 const EDITIONS_DIR = path.join(PROJECT_ROOT, 'forge/forge-gui/res/editions');
 const OUTPUT_FILE = path.join(PROJECT_ROOT, 'public/wasm/cards-bundle.json');
+const TOKEN_OUTPUT_FILE = path.join(PROJECT_ROOT, 'public/wasm/tokens-bundle.json');
 
 function extractFlavorName(line) {
   const match = line.match(/"flavorName"\s*:\s*"([^"]+)"/);
@@ -207,6 +209,32 @@ function bundleCards() {
   console.log(`Bundle size: ${(fs.statSync(OUTPUT_FILE).size / 1024).toFixed(1)} KB`);
 }
 
+function bundleTokens() {
+  console.log('Bundling token scripts for web...');
+
+  const bundle = {
+    version: 1,
+    generatedAt: new Date().toISOString(),
+    cards: {}
+  };
+
+  const tokenFiles = fs.readdirSync(TOKEN_SCRIPTS_DIR)
+    .filter((file) => file.endsWith('.txt'))
+    .sort();
+
+  for (const file of tokenFiles) {
+    const fullPath = path.join(TOKEN_SCRIPTS_DIR, file);
+    const content = fs.readFileSync(fullPath, 'utf-8');
+    const filename = path.basename(file, '.txt');
+    bundle.cards[filename] = content;
+  }
+
+  fs.writeFileSync(TOKEN_OUTPUT_FILE, JSON.stringify(bundle, null, 2));
+  console.log(`Token bundle written to: ${TOKEN_OUTPUT_FILE}`);
+  console.log(`Token bundle size: ${(fs.statSync(TOKEN_OUTPUT_FILE).size / 1024).toFixed(1)} KB`);
+  console.log(`Bundled ${tokenFiles.length} token scripts`);
+}
+
 // Also load and bundle preset deck metadata
 function bundlePresetDecks() {
   const presets = [];
@@ -236,5 +264,6 @@ function bundlePresetDecks() {
 }
 
 bundleCards();
+bundleTokens();
 bundlePresetDecks();
 console.log('Done!');

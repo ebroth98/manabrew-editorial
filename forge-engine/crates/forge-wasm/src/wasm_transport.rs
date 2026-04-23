@@ -77,10 +77,21 @@ impl WasmTransport {
         self.data.slice(0, len as u32).copy_to(&mut buf);
         buf
     }
+
+    fn wait_until_prompt_slot_available(&self) {
+        loop {
+            let current = js_sys::Atomics::load(&self.signal, 0).unwrap_or(0);
+            if matches!(current, SIGNAL_IDLE | SIGNAL_PROMPT_ACKNOWLEDGED) {
+                return;
+            }
+            let _ = js_sys::Atomics::wait(&self.signal, 0, current);
+        }
+    }
 }
 
 impl AgentTransport for WasmTransport {
     fn send_prompt(&self, prompt: AgentPrompt) {
+        self.wait_until_prompt_slot_available();
         let json = serde_json::to_vec(&prompt).unwrap_or_default();
         self.write_data(&json);
         js_sys::Atomics::store(&self.signal, 0, SIGNAL_PROMPT_READY).unwrap_or(0);
@@ -99,6 +110,7 @@ impl AgentTransport for WasmTransport {
         let json_bytes = self.read_data();
 
         js_sys::Atomics::store(&self.signal, 0, SIGNAL_IDLE).unwrap_or(0);
+        js_sys::Atomics::notify(&self.signal, 0).unwrap_or(0);
 
         serde_json::from_slice(&json_bytes).unwrap_or(PlayerAction::Pass { until_phase: None })
     }

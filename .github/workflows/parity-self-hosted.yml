@@ -57,7 +57,7 @@ jobs:
         run: |
           (
             ./target/release/forge-parity \
-              --ci --serve --port 8080 --verbose \
+              --ci --serve --port 8080 --verbose --java-workers 16 \
               --java-jar forge/forge-harness/target/forge-harness-jar-with-dependencies.jar \
               --db-path parity-ci.db \
               > parity-server.log 2>&1

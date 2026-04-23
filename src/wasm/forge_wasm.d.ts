@@ -16,6 +16,8 @@ export function get_card_count(): number;
  */
 export function get_engine_info(): any;
 
+export function get_token_count(): number;
+
 /**
  * Look up a card by name to verify it exists.
  */
@@ -26,6 +28,8 @@ export function has_card(name: string): boolean;
  */
 export function is_card_db_loaded(): boolean;
 
+export function is_token_db_loaded(): boolean;
+
 /**
  * Load the card database from a JSON bundle string.
  *
@@ -33,6 +37,8 @@ export function is_card_db_loaded(): boolean;
  * Returns the number of cards loaded.
  */
 export function load_card_bundle(json_str: string): number;
+
+export function load_token_bundle(json_str: string): number;
 
 /**
  * Log a message to the browser console (for debugging).
@@ -95,28 +101,31 @@ export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembl
 
 export interface InitOutput {
     readonly memory: WebAssembly.Memory;
-    readonly get_engine_info: () => any;
+    readonly get_card_count: () => number;
+    readonly get_token_count: () => number;
+    readonly has_card: (a: number, b: number) => number;
+    readonly is_card_db_loaded: () => number;
+    readonly is_token_db_loaded: () => number;
+    readonly load_card_bundle: (a: number, b: number) => [number, number, number];
+    readonly load_token_bundle: (a: number, b: number) => [number, number, number];
+    readonly log: (a: number, b: number) => void;
+    readonly parse_preset_decks: (a: number, b: number) => [number, number, number];
+    readonly wasm_init: () => void;
     readonly echo: (a: number, b: number) => [number, number];
-    readonly parse_deck: (a: any) => [number, number, number];
+    readonly get_engine_info: () => any;
     readonly parse_config: (a: any) => [number, number, number];
-    readonly test_rng: () => any;
-    readonly test_foundation: () => any;
+    readonly parse_deck: (a: any) => [number, number, number];
     readonly run_interactive_game: (a: any, b: any, c: any, d: any) => [number, number, number];
     readonly run_multiplayer_game: (a: any, b: any, c: any, d: any, e: any, f: number) => [number, number, number];
-    readonly log: (a: number, b: number) => void;
-    readonly wasm_init: () => void;
-    readonly load_card_bundle: (a: number, b: number) => [number, number, number];
-    readonly is_card_db_loaded: () => number;
-    readonly get_card_count: () => number;
-    readonly has_card: (a: number, b: number) => number;
-    readonly parse_preset_decks: (a: number, b: number) => [number, number, number];
-    readonly __wbindgen_malloc: (a: number, b: number) => number;
-    readonly __wbindgen_realloc: (a: number, b: number, c: number, d: number) => number;
-    readonly __wbindgen_exn_store: (a: number) => void;
-    readonly __externref_table_alloc: () => number;
+    readonly test_foundation: () => any;
+    readonly test_rng: () => any;
+    readonly __wbindgen_malloc_command_export: (a: number, b: number) => number;
+    readonly __wbindgen_realloc_command_export: (a: number, b: number, c: number, d: number) => number;
+    readonly __wbindgen_exn_store_command_export: (a: number) => void;
+    readonly __externref_table_alloc_command_export: () => number;
     readonly __wbindgen_externrefs: WebAssembly.Table;
-    readonly __wbindgen_free: (a: number, b: number, c: number) => void;
-    readonly __externref_table_dealloc: (a: number) => void;
+    readonly __wbindgen_free_command_export: (a: number, b: number, c: number) => void;
+    readonly __externref_table_dealloc_command_export: (a: number) => void;
     readonly __wbindgen_start: () => void;
 }
 

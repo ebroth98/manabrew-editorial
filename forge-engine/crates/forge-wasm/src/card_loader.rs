@@ -12,6 +12,8 @@ use wasm_bindgen::prelude::*;
 
 /// The global card database, loaded once from a JSON bundle.
 static CARD_DB: OnceLock<CardDatabase> = OnceLock::new();
+/// The global token-script database, loaded once from a JSON bundle.
+static TOKEN_DB: OnceLock<CardDatabase> = OnceLock::new();
 
 /// JSON structure for the card bundle.
 #[derive(Debug, Deserialize)]
@@ -91,6 +93,50 @@ pub fn load_card_bundle(json_str: &str) -> Result<u32, JsError> {
     Ok(loaded)
 }
 
+#[wasm_bindgen]
+pub fn load_token_bundle(json_str: &str) -> Result<u32, JsError> {
+    let bundle: CardBundle = serde_json::from_str(json_str)
+        .map_err(|e| JsError::new(&format!("Failed to parse token bundle: {}", e)))?;
+
+    web_sys::console::log_1(
+        &format!(
+            "[card_loader] Loading {} token scripts from bundle (v{})",
+            bundle.cards.len(),
+            bundle.version
+        )
+        .into(),
+    );
+
+    let scripts: Vec<(&str, &str)> = bundle
+        .cards
+        .iter()
+        .map(|(filename, content)| (filename.as_str(), content.as_str()))
+        .collect();
+
+    let (db, result) = CardDatabase::load_from_strings(scripts);
+
+    if result.failed > 0 {
+        web_sys::console::warn_1(
+            &format!("[card_loader] {} token scripts failed to parse", result.failed).into(),
+        );
+        for (file, err) in result.errors.iter().take(5) {
+            web_sys::console::warn_1(&format!("  - {}: {}", file, err).into());
+        }
+    }
+
+    let loaded = result.loaded as u32;
+
+    if TOKEN_DB.set(db).is_err() {
+        return Err(JsError::new("Token database already initialized"));
+    }
+
+    web_sys::console::log_1(
+        &format!("[card_loader] Successfully loaded {} token scripts", loaded).into(),
+    );
+
+    Ok(loaded)
+}
+
 /// Check if the card database is loaded.
 #[wasm_bindgen]
 pub fn is_card_db_loaded() -> bool {
@@ -106,6 +152,18 @@ pub fn get_card_count() -> u32 {
 /// Get the card database (internal use).
 pub fn get_card_db() -> Option<&'static CardDatabase> {
     CARD_DB.get()
+}
+
+#[wasm_bindgen]
+pub fn is_token_db_loaded() -> bool {
+    TOKEN_DB.get().is_some()
+}
+#[wasm_bindgen]
+pub fn get_token_count() -> u32 {
+    TOKEN_DB.get().map(|db| db.len() as u32).unwrap_or(0)
+}
+pub fn get_token_db() -> Option<&'static CardDatabase> {
+    TOKEN_DB.get()
 }
 
 /// Look up a card by name to verify it exists.

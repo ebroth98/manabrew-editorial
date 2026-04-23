@@ -12,7 +12,7 @@ use forge_foundation::ZoneType;
 use rand::SeedableRng;
 use serde::Deserialize;
 
-use crate::card_loader::{get_card_db, DeckCard};
+use crate::card_loader::{get_card_db, get_token_db, DeckCard};
 
 /// A prepared player with cards ready to be instantiated.
 pub struct PreparedPlayer {
@@ -154,7 +154,13 @@ impl WasmGame {
         game_state.initialize_registered_player_cards(ai_pid, &ai.registered, ai_cards, None);
 
         // Create game loop
-        let game_loop = GameLoop::new(2);
+        let mut game_loop = GameLoop::new(2);
+        if let Some(token_db) = get_token_db() {
+            for (script_name, rules) in token_db.iter() {
+                let template = card_rules_to_instance(rules, human_pid);
+                game_loop.register_token(script_name.clone(), template);
+            }
+        }
 
         // Create RNG
         let rng = rand::rngs::StdRng::from_entropy();
