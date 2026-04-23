@@ -174,8 +174,8 @@ pub fn apply_continuous_effects(game: &mut GameState) {
                 let affected_str = sa
                     .params
                     .get(keys::AFFECTED)
-                    .or_else(|| sa.params.get(keys::VALID_CARDS))
-                    .or_else(|| sa.params.get(keys::VALID_CARD))
+                    .or_else(|| sa.params.selector_value(keys::VALID_CARDS))
+                    .or_else(|| sa.params.selector_value(keys::VALID_CARD))
                     .unwrap_or("Creature.YouControl");
 
                 let mut apply_to_target = |target: CardId| match sa.mode {

@@ -23,7 +23,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let other = if let Some(target_player) = sa.target_chosen.target_player {
         target_player
     } else {
-        let defined = sa.params.get("Defined").unwrap_or("Opponent");
+        let defined = sa.defined().unwrap_or("Opponent");
         resolve_defined_player(defined, controller, ctx.game)
             .unwrap_or_else(|| ctx.game.opponent_of(controller))
     };

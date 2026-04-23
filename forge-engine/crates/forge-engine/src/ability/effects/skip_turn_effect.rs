@@ -1,4 +1,5 @@
-use super::{parse_param, resolve_defined_players, EffectContext};
+use super::{resolve_defined_players, resolve_numeric_svar, EffectContext};
+use crate::parsing::keys;
 use crate::spellability::SpellAbility;
 
 /// Resolve `SP$ SkipTurn` — make a player skip their next turn(s).
@@ -17,9 +18,9 @@ use crate::spellability::SpellAbility;
 #[forge_engine_macros::spell_effect(SkipTurnEffect)]
 fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let controller = sa.activating_player;
-    let num = parse_param(&sa.ability_text, "NumTurns$ ").unwrap_or(1);
+    let num = resolve_numeric_svar(ctx.game, sa, keys::NUM_TURNS, 1);
 
-    let defined = sa.params.get("Defined").unwrap_or("You");
+    let defined = sa.defined().unwrap_or("You");
 
     let targets = resolve_defined_players(defined, controller, ctx.game);
     for target in targets {

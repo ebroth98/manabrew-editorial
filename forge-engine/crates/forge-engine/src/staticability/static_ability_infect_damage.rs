@@ -1,10 +1,10 @@
 use forge_foundation::ZoneType;
 
-use crate::card::Card;
+use crate::card::{valid_filter, Card};
 use crate::game::GameState;
 use crate::ids::PlayerId;
 use crate::parsing::compare::compare_expr;
-use crate::parsing::keys;
+use crate::parsing::{keys, CompiledSelector};
 use crate::staticability::StaticMode;
 
 pub fn is_infect_damage(
@@ -37,7 +37,7 @@ pub fn is_infect_damage_with_life_override(
             if !condition_matches(game, source, st_ab, life_override) {
                 continue;
             }
-            let valid = st_ab.params.get(keys::VALID_TARGET);
+            let valid = st_ab.params.selector(keys::VALID_TARGET);
             // ValidTarget is evaluated relative to the static ability source
             // (e.g. Phyrexian Unlife's controller), not the damage source.
             if matches_valid_player(valid, target, source.controller) {
@@ -73,19 +73,9 @@ fn condition_matches(
 }
 
 fn matches_valid_player(
-    valid: Option<&str>,
+    valid: Option<&CompiledSelector>,
     player: PlayerId,
     source_controller: PlayerId,
 ) -> bool {
-    match valid {
-        None => true,
-        Some(v) if v.eq_ignore_ascii_case("Player") => true,
-        Some(v) if v.eq_ignore_ascii_case("You") || v.eq_ignore_ascii_case("YouCtrl") => {
-            player == source_controller
-        }
-        Some(v) if v.eq_ignore_ascii_case("Opponent") || v.eq_ignore_ascii_case("OppCtrl") => {
-            player != source_controller
-        }
-        _ => true,
-    }
+    valid_filter::matches_valid_player_selector_opt(valid, player, source_controller)
 }

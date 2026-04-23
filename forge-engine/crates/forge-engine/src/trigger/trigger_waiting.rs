@@ -1,7 +1,7 @@
-use crate::event::{RunParams};
-use crate::trigger::TriggerType;
+use crate::event::RunParams;
 use crate::ids::PlayerId;
 use crate::trigger::Trigger;
+use crate::trigger::TriggerType;
 
 /// Mirrors Java's TriggerWaiting data object.
 #[derive(Debug, Clone)]

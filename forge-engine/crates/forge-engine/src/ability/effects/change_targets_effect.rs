@@ -70,7 +70,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     }
 
     // Handle DefinedMagnet mode: redirect to a specific permanent
-    if let Some(magnet_def) = sa.params.get(keys::DEFINED_MAGNET) {
+    if let Some(magnet_def) = sa.params.reference_value(keys::DEFINED_MAGNET) {
         let new_target = if magnet_def == "Self" {
             sa.source
         } else if magnet_def == "ParentTarget" {

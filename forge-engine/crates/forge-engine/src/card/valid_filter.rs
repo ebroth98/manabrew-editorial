@@ -32,12 +32,18 @@ use forge_foundation::mana::ManaAtom;
 use forge_foundation::ZoneType;
 
 use crate::card::Card;
+use crate::combat::{CombatState, DefenderId};
 use crate::core::HasSVars;
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
 use crate::parsing::compare::compare_expr;
 use crate::parsing::keys;
-use crate::parsing::Params;
+use crate::parsing::{
+    CardColorSelector, CardIdentitySelector, CardSelectorType, CardStateSelector,
+    CardSupertypeSelector, CompiledSelector, ContextPredicate, ControllerSelector,
+    NumericSelectorProperty, Params, RelationPredicate, Selector, SelectorCompareOperator,
+    SelectorNumericOperand, SelectorPredicate, TargetRef,
+};
 
 const COMMON_REQUIREMENT_KEYS: &[&str] = &[
     "Metalcraft",
@@ -231,6 +237,10 @@ fn has_all_spent_colors(colors_spent_to_cast: u16, colors: u16) -> bool {
 /// matches_valid_card("Creature.YouCtrl.token", card, source)
 /// ```
 pub fn matches_valid_card(valid: &str, card: &Card, source: &Card) -> bool {
+    matches_valid_card_selector(&CompiledSelector::parse(valid), card, source)
+}
+
+fn legacy_matches_valid_card(valid: &str, card: &Card, context: MatchContext<'_>) -> bool {
     let valid = valid.trim();
     if valid.is_empty() {
         return true;
@@ -242,10 +252,10 @@ pub fn matches_valid_card(valid: &str, card: &Card, source: &Card) -> bool {
     if valid.contains(',') {
         return valid
             .split(',')
-            .any(|part| matches_single_valid_card(part.trim(), card, source));
+            .any(|part| matches_single_valid_card(part.trim(), card, context));
     }
 
-    matches_single_valid_card(valid, card, source)
+    matches_single_valid_card(valid, card, context)
 }
 
 /// Convenience wrapper: None means "no filter" → always matches.
@@ -256,18 +266,1290 @@ pub fn matches_valid_card_opt(valid: Option<&str>, card: &Card, source: &Card) -
     }
 }
 
-fn matches_single_valid_card(filter: &str, card: &Card, source: &Card) -> bool {
+/// Match a precompiled selector against a card without reparsing the
+/// comma/dot/plus selector structure.
+pub fn matches_valid_card_selector(
+    selector: &CompiledSelector,
+    card: &Card,
+    source: &Card,
+) -> bool {
+    matches_valid_card_selector_with_context(selector, card, MatchContext::from_source(source))
+}
+
+pub fn matches_valid_card_selector_in_game(
+    selector: &CompiledSelector,
+    card: &Card,
+    source: &Card,
+    game: &GameState,
+) -> bool {
+    matches_valid_card_selector_with_context(
+        selector,
+        card,
+        MatchContext::from_source(source).with_game(game),
+    )
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct MatchContext<'a> {
+    pub source_card: &'a Card,
+    pub source_controller: PlayerId,
+    pub targeted_cards: &'a [CardId],
+    pub targeted_players: &'a [PlayerId],
+    pub remembered_cards: &'a [CardId],
+    pub remembered_players: &'a [PlayerId],
+    pub triggering_card: Option<CardId>,
+    pub triggering_player: Option<PlayerId>,
+    pub combat: Option<&'a CombatState>,
+    pub game: Option<&'a GameState>,
+}
+
+impl<'a> MatchContext<'a> {
+    pub fn from_source(source_card: &'a Card) -> Self {
+        Self {
+            source_card,
+            source_controller: source_card.controller,
+            targeted_cards: &[],
+            targeted_players: &[],
+            remembered_cards: &source_card.remembered_cards,
+            remembered_players: &source_card.remembered_players,
+            triggering_card: None,
+            triggering_player: None,
+            combat: None,
+            game: None,
+        }
+    }
+
+    pub fn with_game(mut self, game: &'a GameState) -> Self {
+        self.game = Some(game);
+        self
+    }
+
+    pub fn with_combat(mut self, combat: &'a CombatState) -> Self {
+        self.combat = Some(combat);
+        self
+    }
+
+    pub fn with_targets(
+        mut self,
+        targeted_cards: &'a [CardId],
+        targeted_players: &'a [PlayerId],
+    ) -> Self {
+        self.targeted_cards = targeted_cards;
+        self.targeted_players = targeted_players;
+        self
+    }
+
+    pub fn with_triggering(
+        mut self,
+        triggering_card: Option<CardId>,
+        triggering_player: Option<PlayerId>,
+    ) -> Self {
+        self.triggering_card = triggering_card;
+        self.triggering_player = triggering_player;
+        self
+    }
+}
+
+/// Match a precompiled selector with explicit contextual state for predicates
+/// like `Attacking`, `TopLibrary`, and `ExiledWithSource`.
+pub fn matches_valid_card_selector_with_context(
+    selector: &CompiledSelector,
+    card: &Card,
+    context: MatchContext<'_>,
+) -> bool {
+    crate::perf::increment(crate::perf::Metric::SelectorMatches, 1);
+    let result = matches_card_selector_ir(&selector.ir, card, context);
+    #[cfg(debug_assertions)]
+    debug_assert_eq!(
+        result,
+        legacy_matches_valid_card(&selector.as_raw(), card, context),
+        "compiled card selector diverged from string matcher for {:?}",
+        selector.as_raw()
+    );
+    result
+}
+
+fn matches_card_selector_ir(selector: &Selector, card: &Card, context: MatchContext<'_>) -> bool {
+    if selector.alternatives.is_empty() {
+        return true;
+    }
+
+    selector.alternatives.iter().any(|alternative| {
+        alternative
+            .predicates
+            .iter()
+            .all(|predicate| matches_card_predicate(predicate, card, context))
+    })
+}
+
+fn matches_card_predicate(
+    predicate: &SelectorPredicate,
+    card: &Card,
+    context: MatchContext<'_>,
+) -> bool {
+    match predicate {
+        SelectorPredicate::Any => true,
+        SelectorPredicate::Player | SelectorPredicate::PlayerController(_) => false,
+        SelectorPredicate::CardType(card_type) => matches_card_type_predicate(card_type, card),
+        SelectorPredicate::CardSupertype(supertype) => {
+            matches_card_supertype_predicate(*supertype, card)
+        }
+        SelectorPredicate::CardIdentity(identity) => {
+            matches_card_identity(*identity, card, context)
+        }
+        SelectorPredicate::CardController(controller) => {
+            matches_card_controller(*controller, card.controller, context.source_controller)
+        }
+        SelectorPredicate::CardOwner(controller) => {
+            matches_card_controller(*controller, card.owner, context.source_controller)
+        }
+        SelectorPredicate::Tapped(tapped) => card.tapped == *tapped,
+        SelectorPredicate::StartedTurnTapped(tapped) => card.started_turn_tapped == *tapped,
+        SelectorPredicate::Zone(zone) => card.zone == *zone,
+        SelectorPredicate::RememberedCard => context.remembered_cards.contains(&card.id),
+        SelectorPredicate::EffectSource => context.source_card.effect_source == Some(card.id),
+        SelectorPredicate::Commander => card.is_commander,
+        SelectorPredicate::Legendary => card.type_line.is_legendary(),
+        SelectorPredicate::Kicked => card.kicked,
+        SelectorPredicate::Token(token) => card.is_token == *token,
+        SelectorPredicate::Color(color) => matches_card_color(*color, card),
+        SelectorPredicate::Multicolor => card.color.is_multicolor(),
+        SelectorPredicate::Colorless => card.color.is_colorless(),
+        SelectorPredicate::SourceColor(color) => matches_card_color(*color, card),
+        SelectorPredicate::SourceColorless => card.color.is_colorless(),
+        SelectorPredicate::ChosenColorSource => matches_chosen_color_source(card, context),
+        SelectorPredicate::CardState(state) => matches_card_state(*state, card, context),
+        SelectorPredicate::Context(predicate) => {
+            matches_context_predicate(predicate, card, context)
+        }
+        SelectorPredicate::Relation(predicate) => {
+            matches_relation_predicate(predicate, card, context)
+        }
+        SelectorPredicate::DamagedBy => card
+            .damage_sources_this_turn
+            .contains(&context.source_card.id),
+        SelectorPredicate::AttachedBy => context.source_card.attached_to == Some(card.id),
+        SelectorPredicate::WasCast { by_you } => {
+            card.was_cast() && (!by_you || card.controller == context.source_controller)
+        }
+        SelectorPredicate::ChosenType => context
+            .source_card
+            .chosen_type
+            .as_ref()
+            .is_some_and(|ct| card.type_line.has_subtype(ct) || card.has_keyword("Changeling")),
+        SelectorPredicate::Keyword { name, present } => card.has_keyword(name) == *present,
+        SelectorPredicate::NumericComparison {
+            property,
+            operator,
+            value,
+        } => matches_numeric_comparison(*property, *operator, value, card, context),
+        SelectorPredicate::NumericParity { property, even } => {
+            resolve_numeric_property(*property, card, context)
+                .is_some_and(|actual| (actual % 2 == 0) == *even)
+        }
+        SelectorPredicate::CounterComparison {
+            operator,
+            value,
+            counter_type,
+        } => matches_counter_comparison(*operator, value, counter_type, card, context),
+        SelectorPredicate::Not(predicate) => !matches_card_predicate(predicate, card, context),
+        SelectorPredicate::Raw(raw) => matches_raw_card_predicate(raw, card, context),
+    }
+}
+
+fn matches_chosen_color_source(card: &Card, context: MatchContext<'_>) -> bool {
+    context
+        .source_card
+        .chosen_colors
+        .iter()
+        .filter_map(|color| Color::from_name(&color.to_ascii_lowercase()))
+        .any(|color| card.color.has_color(color))
+}
+
+fn matches_card_type_predicate(card_type: &CardSelectorType, card: &Card) -> bool {
+    match card_type {
+        CardSelectorType::Card => true,
+        CardSelectorType::Creature => card.is_creature(),
+        CardSelectorType::Land => card.is_land(),
+        CardSelectorType::Instant => card.type_line.is_instant(),
+        CardSelectorType::Sorcery => card.type_line.is_sorcery(),
+        CardSelectorType::Artifact => card.type_line.is_artifact(),
+        CardSelectorType::Enchantment => card.type_line.is_enchantment(),
+        CardSelectorType::Planeswalker => card.type_line.is_planeswalker(),
+        CardSelectorType::Permanent => card.is_permanent(),
+        CardSelectorType::Spell => true,
+        CardSelectorType::NonLand => !card.is_land(),
+        CardSelectorType::NonCreature => !card.is_creature(),
+        CardSelectorType::Named(name) => card.card_name.eq_ignore_ascii_case(name),
+        CardSelectorType::Subtype(subtype) => card.has_subtype(subtype),
+    }
+}
+
+fn matches_card_supertype_predicate(supertype: CardSupertypeSelector, card: &Card) -> bool {
+    match supertype {
+        CardSupertypeSelector::Basic => card.type_line.is_basic(),
+        CardSupertypeSelector::Snow => card.type_line.is_snow(),
+    }
+}
+
+fn matches_card_controller(
+    controller: ControllerSelector,
+    card_controller: PlayerId,
+    source_controller: PlayerId,
+) -> bool {
+    match controller {
+        ControllerSelector::You => card_controller == source_controller,
+        ControllerSelector::Opponent => card_controller != source_controller,
+    }
+}
+
+fn matches_card_identity(
+    identity: CardIdentitySelector,
+    card: &Card,
+    context: MatchContext<'_>,
+) -> bool {
+    match identity {
+        CardIdentitySelector::Self_ => card.id == context.source_card.id,
+        CardIdentitySelector::Other => card.id != context.source_card.id,
+    }
+}
+
+fn matches_card_state(state: CardStateSelector, card: &Card, context: MatchContext<'_>) -> bool {
+    match state {
+        CardStateSelector::FaceDown => card.face_down,
+        CardStateSelector::Paired => card.paired_with.is_some(),
+        CardStateSelector::PairedWithSource => card.paired_with == Some(context.source_card.id),
+        CardStateSelector::Attached => {
+            card.attached_to.is_some() || card.attached_to_player.is_some()
+        }
+        CardStateSelector::Equipped => card.attached_to.is_some() && card.type_line.is_artifact(),
+        CardStateSelector::Enchanted => {
+            card.attached_to.is_some() && card.type_line.is_enchantment()
+        }
+        CardStateSelector::HasCounters => card.counters.values().any(|count| *count > 0),
+        CardStateSelector::IsImprinted => context.source_card.imprinted_cards.contains(&card.id),
+        CardStateSelector::Chosen => {
+            context.source_card.chosen_cards.contains(&card.id)
+                || context
+                    .source_card
+                    .named_cards
+                    .iter()
+                    .any(|name| card.card_name.eq_ignore_ascii_case(name))
+        }
+        CardStateSelector::ChosenCard => context.source_card.chosen_cards.contains(&card.id),
+        CardStateSelector::NamedCard => context
+            .source_card
+            .named_cards
+            .iter()
+            .any(|name| card.card_name.eq_ignore_ascii_case(name)),
+        CardStateSelector::ChosenColor => context
+            .source_card
+            .chosen_colors
+            .iter()
+            .filter_map(|color| Color::from_name(&color.to_ascii_lowercase()))
+            .any(|color| card.color.has_color(color)),
+        CardStateSelector::EnteredThisTurn => card.entered_this_turn(),
+        CardStateSelector::WasDealtDamageThisTurn => !card.damage_sources_this_turn.is_empty(),
+        CardStateSelector::Historic => {
+            card.type_line.is_artifact()
+                || card.type_line.is_legendary()
+                || card.has_subtype("Saga")
+        }
+        CardStateSelector::Modified => {
+            card.counters.values().any(|count| *count > 0)
+                || card.attached_to.is_some()
+                || card.power_modifier != 0
+                || card.toughness_modifier != 0
+                || card.static_power_modifier != 0
+                || card.static_toughness_modifier != 0
+        }
+        CardStateSelector::Saddled => card.get_s_var("SaddledBy").is_some(),
+        CardStateSelector::MayPlaySource => card.may_play(context.source_controller),
+        CardStateSelector::Suspended => card.has_keyword("Suspend") && card.zone == ZoneType::Exile,
+        CardStateSelector::SingleTarget => false,
+        CardStateSelector::PromisedGift => card.promised_gift.is_some(),
+    }
+}
+
+fn matches_context_predicate(
+    predicate: &ContextPredicate,
+    card: &Card,
+    context: MatchContext<'_>,
+) -> bool {
+    match predicate {
+        ContextPredicate::Attacking(target) => {
+            matches_attacking_predicate(target.as_ref(), card, context)
+        }
+        ContextPredicate::Blocking(target) => {
+            matches_blocking_predicate(target.as_ref(), card, context)
+        }
+        ContextPredicate::BlockedByValidThisTurn(target) => {
+            matches_blocked_by_valid_this_turn_target(target, card, context)
+        }
+        ContextPredicate::BlockedByValidThisTurnType(card_type) => {
+            matches_blocked_by_valid_this_turn_type(card_type, card, context)
+        }
+        ContextPredicate::BlockedValidThisTurn(card_type)
+        | ContextPredicate::BlockingValid(card_type) => {
+            matches_blocked_valid_this_turn_type(card_type, card, context)
+        }
+        ContextPredicate::Blocked => context.combat.map_or(
+            card.damage_history.creature_got_blocked_this_combat,
+            |combat| combat.was_blocked_this_combat(card.id),
+        ),
+        ContextPredicate::AttackedThisTurn => !card.damage_history.attacked_this_turn.is_empty(),
+        ContextPredicate::BlockingSource => context.combat.is_some_and(|combat| {
+            combat
+                .get_attackers_for(card.id)
+                .contains(&context.source_card.id)
+        }),
+        ContextPredicate::BlockedBySource => context.combat.is_some_and(|combat| {
+            combat
+                .get_blockers_for(card.id)
+                .contains(&context.source_card.id)
+        }),
+        ContextPredicate::WasCastFrom(_) => false,
+        ContextPredicate::EnteredThisTurnFrom(zone) => {
+            matches_entered_this_turn_from(*zone, card, context)
+        }
+        ContextPredicate::EnteredUnder(target) => {
+            card.entered_this_turn()
+                && relation_target_player_any(target, context, |player| card.controller == player)
+        }
+        ContextPredicate::TopLibrary => false,
+        ContextPredicate::ExiledWithSource => {
+            context.source_card.imprinted_cards.contains(&card.id)
+        }
+        ContextPredicate::RememberedPlayerCtrl => {
+            context.remembered_players.contains(&card.controller)
+        }
+        ContextPredicate::TargetedPlayerCtrl => context.targeted_players.contains(&card.controller),
+        ContextPredicate::ControlledBy(reference) => {
+            matches_controlled_by_reference(reference, card, context)
+        }
+        ContextPredicate::ActivePlayerCtrl
+        | ContextPredicate::DefenderCtrl
+        | ContextPredicate::EnchantedController
+        | ContextPredicate::NotDefinedTargeted => false,
+    }
+}
+
+fn matches_controlled_by_reference(
+    reference: &str,
+    card: &Card,
+    context: MatchContext<'_>,
+) -> bool {
+    if reference.eq_ignore_ascii_case("You") || reference.eq_ignore_ascii_case("YouCtrl") {
+        card.controller == context.source_controller
+    } else if reference.eq_ignore_ascii_case("Opponent")
+        || reference.eq_ignore_ascii_case("OppCtrl")
+        || reference.eq_ignore_ascii_case("OpponentCtrl")
+    {
+        card.controller != context.source_controller
+    } else if reference.eq_ignore_ascii_case("Remembered")
+        || reference.eq_ignore_ascii_case("RememberedPlayer")
+        || reference.eq_ignore_ascii_case("RememberedController")
+    {
+        context.remembered_players.contains(&card.controller)
+    } else if reference.eq_ignore_ascii_case("Targeted")
+        || reference.eq_ignore_ascii_case("TargetedPlayer")
+        || reference.eq_ignore_ascii_case("TargetedController")
+    {
+        context.targeted_players.contains(&card.controller)
+    } else {
+        false
+    }
+}
+
+fn matches_relation_predicate(
+    predicate: &RelationPredicate,
+    card: &Card,
+    context: MatchContext<'_>,
+) -> bool {
+    match predicate {
+        RelationPredicate::SharesNameWith(target) => {
+            relation_target_card_any(target, context, |target| {
+                card.card_name.eq_ignore_ascii_case(&target.card_name)
+            })
+        }
+        RelationPredicate::DoesNotShareNameWith(target) => {
+            !relation_target_card_any(target, context, |target| {
+                card.card_name.eq_ignore_ascii_case(&target.card_name)
+            })
+        }
+        RelationPredicate::SharesCardTypeWith(target) => {
+            relation_target_card_any(target, context, |target| card.shares_card_type_with(target))
+        }
+        RelationPredicate::SharesCreatureTypeWith(target) => {
+            relation_target_card_any(target, context, |target| shares_creature_type(card, target))
+        }
+        RelationPredicate::SharesColorWith(target) => {
+            relation_target_card_any(target, context, |target| {
+                card.color.shares_color_with(target.color)
+            })
+        }
+        RelationPredicate::SharesManaValueWith(target) => {
+            relation_target_card_any(target, context, |target| {
+                card.mana_cost.cmc() == target.mana_cost.cmc()
+            })
+        }
+        RelationPredicate::AttachedTo(target) => {
+            card.attached_to.is_some_and(|attached_to| {
+                relation_target_contains_id(target, attached_to, context)
+            }) || card.attached_to_player.is_some_and(|attached_to| {
+                relation_target_player_any(target, context, |player| player == attached_to)
+            })
+        }
+        RelationPredicate::AttachedToType(card_type) => {
+            let Some(game) = context.game else {
+                return false;
+            };
+            let Some(attached_to) = card.attached_to else {
+                return false;
+            };
+            matches_card_type_predicate(card_type, game.card(attached_to))
+        }
+        RelationPredicate::OwnedBy(target) => {
+            relation_target_player_any(target, context, |player| card.owner == player)
+        }
+        RelationPredicate::OpponentOf(target) => {
+            relation_target_player_any(target, context, |player| card.controller != player)
+        }
+        RelationPredicate::IsTargeting(target) => {
+            relation_target_contains_id(target, card.id, context)
+                || relation_target_player_any(target, context, |player| {
+                    context.targeted_players.contains(&player)
+                })
+        }
+    }
+}
+
+fn relation_target_card_any(
+    target: &TargetRef,
+    context: MatchContext<'_>,
+    mut predicate: impl FnMut(&Card) -> bool,
+) -> bool {
+    match target {
+        TargetRef::Source => predicate(context.source_card),
+        TargetRef::Remembered | TargetRef::RememberedLki => context.game.is_some_and(|game| {
+            context
+                .remembered_cards
+                .iter()
+                .any(|id| predicate(game.card(*id)))
+        }),
+        TargetRef::Imprinted => context.game.is_some_and(|game| {
+            context
+                .source_card
+                .imprinted_cards
+                .iter()
+                .any(|id| predicate(game.card(*id)))
+        }),
+        TargetRef::ChosenCard => context.game.is_some_and(|game| {
+            context
+                .source_card
+                .chosen_cards
+                .iter()
+                .any(|id| predicate(game.card(*id)))
+        }),
+        TargetRef::Targeted => {
+            let Some(game) = context.game else {
+                return false;
+            };
+            context
+                .targeted_cards
+                .iter()
+                .any(|id| predicate(game.card(*id)))
+        }
+        TargetRef::Battlefield => context.game.is_some_and(|game| {
+            game.cards_in_all_zones(ZoneType::Battlefield)
+                .any(|id| predicate(game.card(id)))
+        }),
+        TargetRef::OtherYourBattlefield => context.game.is_some_and(|game| {
+            game.cards_in_zone(ZoneType::Battlefield, context.source_controller)
+                .iter()
+                .copied()
+                .filter(|id| *id != context.source_card.id)
+                .any(|id| predicate(game.card(id)))
+        }),
+        TargetRef::YourGraveyard => context.game.is_some_and(|game| {
+            game.cards_in_zone(ZoneType::Graveyard, context.source_controller)
+                .iter()
+                .any(|id| predicate(game.card(*id)))
+        }),
+        TargetRef::Player
+        | TargetRef::Opponent
+        | TargetRef::ChosenCard
+        | TargetRef::ChosenPlayer
+        | TargetRef::TriggeredPlayer
+        | TargetRef::TriggeredCardController
+        | TargetRef::TriggeredDefendingPlayer
+        | TargetRef::TriggeredAttackedTarget => false,
+        TargetRef::TriggeredTarget | TargetRef::TriggeredCard => {
+            let (Some(game), Some(card_id)) = (context.game, context.triggering_card) else {
+                return false;
+            };
+            predicate(game.card(card_id))
+        }
+    }
+}
+
+fn relation_target_player_any(
+    target: &TargetRef,
+    context: MatchContext<'_>,
+    mut predicate: impl FnMut(PlayerId) -> bool,
+) -> bool {
+    match target {
+        TargetRef::Source => predicate(context.source_controller),
+        TargetRef::Remembered | TargetRef::RememberedLki => {
+            context.remembered_players.iter().copied().any(predicate)
+        }
+        TargetRef::Imprinted | TargetRef::ChosenCard => false,
+        TargetRef::ChosenPlayer => context.source_card.chosen_player.is_some_and(predicate),
+        TargetRef::Targeted => context.targeted_players.iter().copied().any(predicate),
+        TargetRef::Player => {
+            context.targeted_players.iter().copied().any(&mut predicate)
+                || context.remembered_players.iter().copied().any(predicate)
+        }
+        TargetRef::Opponent => context
+            .game
+            .is_some_and(|game| predicate(game.opponent_of(context.source_controller))),
+        TargetRef::Battlefield | TargetRef::OtherYourBattlefield | TargetRef::YourGraveyard => {
+            false
+        }
+        TargetRef::TriggeredTarget | TargetRef::TriggeredCard => context
+            .triggering_card
+            .and_then(|card_id| context.game.map(|game| game.card(card_id).controller))
+            .is_some_and(predicate),
+        TargetRef::TriggeredPlayer => context.triggering_player.is_some_and(predicate),
+        TargetRef::TriggeredCardController => context
+            .triggering_card
+            .and_then(|card_id| context.game.map(|game| game.card(card_id).controller))
+            .is_some_and(predicate),
+        TargetRef::TriggeredDefendingPlayer | TargetRef::TriggeredAttackedTarget => {
+            triggered_defending_player(context).is_some_and(predicate)
+        }
+    }
+}
+
+fn relation_target_contains_id(
+    target: &TargetRef,
+    card_id: CardId,
+    context: MatchContext<'_>,
+) -> bool {
+    match target {
+        TargetRef::Source => context.source_card.id == card_id,
+        TargetRef::Remembered | TargetRef::RememberedLki => {
+            context.remembered_cards.contains(&card_id)
+        }
+        TargetRef::Imprinted => context.source_card.imprinted_cards.contains(&card_id),
+        TargetRef::ChosenCard => context.source_card.chosen_cards.contains(&card_id),
+        TargetRef::Targeted => context.targeted_cards.contains(&card_id),
+        TargetRef::OtherYourBattlefield => context.game.is_some_and(|game| {
+            card_id != context.source_card.id
+                && game.card(card_id).zone == ZoneType::Battlefield
+                && game.card(card_id).controller == context.source_controller
+        }),
+        TargetRef::Player
+        | TargetRef::Opponent
+        | TargetRef::Battlefield
+        | TargetRef::YourGraveyard
+        | TargetRef::ChosenPlayer
+        | TargetRef::TriggeredPlayer
+        | TargetRef::TriggeredCardController
+        | TargetRef::TriggeredDefendingPlayer
+        | TargetRef::TriggeredAttackedTarget => false,
+        TargetRef::TriggeredTarget | TargetRef::TriggeredCard => {
+            context.triggering_card == Some(card_id)
+        }
+    }
+}
+
+fn matches_attacking_predicate(
+    target: Option<&TargetRef>,
+    card: &Card,
+    context: MatchContext<'_>,
+) -> bool {
+    let Some(target) = target else {
+        return context
+            .combat
+            .map_or(card.attacking_player.is_some(), |combat| {
+                combat.is_attacking(card.id)
+            });
+    };
+    if let Some(combat) = context.combat {
+        return combat
+            .attackers
+            .iter()
+            .find(|(attacker, _)| *attacker == card.id)
+            .is_some_and(|(_, defender)| matches_defender_target(*defender, target, context));
+    }
+    card.attacking_player
+        .is_some_and(|player| matches_player_target(player, target, context))
+}
+
+fn matches_blocking_predicate(
+    target: Option<&TargetRef>,
+    card: &Card,
+    context: MatchContext<'_>,
+) -> bool {
+    let Some(target) = target else {
+        return context
+            .combat
+            .map_or(card.damage_history.creature_blocked_this_combat, |combat| {
+                combat.was_blocking(card.id)
+            });
+    };
+    let Some(combat) = context.combat else {
+        return false;
+    };
+    combat
+        .blockers
+        .iter()
+        .filter(|(blocker, _)| *blocker == card.id)
+        .any(|(_, attacker)| relation_target_contains_id(target, *attacker, context))
+}
+
+fn matches_blocked_by_valid_this_turn_target(
+    target: &TargetRef,
+    card: &Card,
+    context: MatchContext<'_>,
+) -> bool {
+    let Some(combat) = context.combat else {
+        return false;
+    };
+    combat
+        .blockers
+        .iter()
+        .filter(|(_, attacker)| *attacker == card.id)
+        .any(|(blocker, _)| relation_target_contains_id(target, *blocker, context))
+}
+
+fn matches_blocked_by_valid_this_turn_type(
+    card_type: &CardSelectorType,
+    card: &Card,
+    context: MatchContext<'_>,
+) -> bool {
+    let (Some(combat), Some(game)) = (context.combat, context.game) else {
+        return false;
+    };
+    combat
+        .blockers
+        .iter()
+        .filter(|(_, attacker)| *attacker == card.id)
+        .any(|(blocker, _)| matches_card_type_predicate(card_type, game.card(*blocker)))
+}
+
+fn matches_blocked_valid_this_turn_type(
+    card_type: &CardSelectorType,
+    card: &Card,
+    context: MatchContext<'_>,
+) -> bool {
+    let (Some(combat), Some(game)) = (context.combat, context.game) else {
+        return false;
+    };
+    combat
+        .blockers
+        .iter()
+        .filter(|(blocker, _)| *blocker == card.id)
+        .any(|(_, attacker)| matches_card_type_predicate(card_type, game.card(*attacker)))
+}
+
+fn matches_defender_target(
+    defender: DefenderId,
+    target: &TargetRef,
+    context: MatchContext<'_>,
+) -> bool {
+    match defender {
+        DefenderId::Player(player) => matches_player_target(player, target, context),
+        DefenderId::Permanent(card_id) => relation_target_contains_id(target, card_id, context),
+    }
+}
+
+fn matches_player_target(player: PlayerId, target: &TargetRef, context: MatchContext<'_>) -> bool {
+    match target {
+        TargetRef::Player => true,
+        TargetRef::Opponent => player != context.source_controller,
+        _ => relation_target_player_any(target, context, |target_player| player == target_player),
+    }
+}
+
+fn triggered_defending_player(context: MatchContext<'_>) -> Option<PlayerId> {
+    context
+        .triggering_player
+        .or_else(|| context.combat.and_then(|combat| combat.defending_player))
+}
+
+fn shares_creature_type(card: &Card, target: &Card) -> bool {
+    card.is_creature()
+        && target.is_creature()
+        && card
+            .type_line
+            .subtypes
+            .iter()
+            .any(|subtype| target.type_line.has_subtype(subtype))
+}
+
+fn matches_entered_this_turn_from(zone: ZoneType, card: &Card, _context: MatchContext<'_>) -> bool {
+    match zone {
+        ZoneType::Battlefield => card.entered_this_turn(),
+        _ => false,
+    }
+}
+
+fn matches_card_color(color: CardColorSelector, card: &Card) -> bool {
+    match color {
+        CardColorSelector::White => card.color.has_white(),
+        CardColorSelector::Blue => card.color.has_blue(),
+        CardColorSelector::Black => card.color.has_black(),
+        CardColorSelector::Red => card.color.has_red(),
+        CardColorSelector::Green => card.color.has_green(),
+    }
+}
+
+fn matches_numeric_comparison(
+    property: NumericSelectorProperty,
+    operator: SelectorCompareOperator,
+    threshold: &SelectorNumericOperand,
+    card: &Card,
+    context: MatchContext<'_>,
+) -> bool {
+    let Some(threshold) = resolve_selector_operand(threshold, context) else {
+        return true;
+    };
+    let Some(value) = resolve_numeric_property(property, card, context) else {
+        return true;
+    };
+    compare_selector_value(value, operator, threshold)
+}
+
+fn resolve_numeric_property(
+    property: NumericSelectorProperty,
+    card: &Card,
+    context: MatchContext<'_>,
+) -> Option<i32> {
+    match property {
+        NumericSelectorProperty::ManaValue => Some(card.mana_cost.cmc() as i32),
+        NumericSelectorProperty::Power => Some(card.power()),
+        NumericSelectorProperty::Toughness => Some(card.toughness()),
+        NumericSelectorProperty::TargetCount => {
+            Some((context.targeted_cards.len() + context.targeted_players.len()) as i32)
+        }
+        NumericSelectorProperty::ManaSpent => {
+            Some(context.source_card.paying_mana_to_cast.len() as i32)
+        }
+    }
+}
+
+fn matches_counter_comparison(
+    operator: SelectorCompareOperator,
+    threshold: &SelectorNumericOperand,
+    counter_type: &str,
+    card: &Card,
+    context: MatchContext<'_>,
+) -> bool {
+    let Some(threshold) = resolve_selector_operand(threshold, context) else {
+        return true;
+    };
+    use crate::ability::effects::parse_counter_type;
+    let counter_type = parse_counter_type(counter_type);
+    let count = card.counter_count(&counter_type);
+    compare_selector_value(count, operator, threshold)
+}
+
+fn resolve_selector_operand(
+    operand: &SelectorNumericOperand,
+    context: MatchContext<'_>,
+) -> Option<i32> {
+    match operand {
+        SelectorNumericOperand::Literal(value) => Some(*value),
+        SelectorNumericOperand::Symbol(symbol) => context
+            .source_card
+            .get_s_var(symbol)
+            .and_then(|value| value.trim().parse::<i32>().ok()),
+    }
+}
+
+fn compare_selector_value(actual: i32, operator: SelectorCompareOperator, expected: i32) -> bool {
+    match operator {
+        SelectorCompareOperator::Eq => actual == expected,
+        SelectorCompareOperator::Ne => actual != expected,
+        SelectorCompareOperator::Lt => actual < expected,
+        SelectorCompareOperator::Le => actual <= expected,
+        SelectorCompareOperator::Gt => actual > expected,
+        SelectorCompareOperator::Ge => actual >= expected,
+    }
+}
+
+fn matches_raw_card_predicate(raw: &str, card: &Card, context: MatchContext<'_>) -> bool {
+    crate::perf::increment(crate::perf::Metric::SelectorRawPredicates, 1);
+    if let Some(result) = matches_domain_predicate(raw, card, context) {
+        return result;
+    }
+    legacy_matches_card_atom(raw, card, context)
+}
+
+fn legacy_matches_card_atom(raw: &str, card: &Card, context: MatchContext<'_>) -> bool {
+    let source = context.source_card;
+    let raw = raw.trim();
+    if raw.is_empty() {
+        return true;
+    }
+    if let Some(result) = matches_domain_predicate(raw, card, context) {
+        return result;
+    }
+    let (negated, value) = if let Some(stripped) = raw.strip_prefix('!') {
+        (true, stripped)
+    } else {
+        (false, raw)
+    };
+    let value_lower = value.to_ascii_lowercase();
+    if negated {
+        let positive_match = match value_lower.as_str() {
+            "token" => card.is_token,
+            "creature" => card.is_creature(),
+            "land" => card.is_land(),
+            "artifact" => card.type_line.is_artifact(),
+            "enchantment" => card.type_line.is_enchantment(),
+            "legendary" => card.type_line.is_legendary(),
+            "basic" => card.type_line.is_basic(),
+            "snow" => card.type_line.is_snow(),
+            _ => card.has_subtype(value),
+        };
+        return !positive_match;
+    }
+
+    match value_lower.as_str() {
+        "self" | "strictlyself" | "card.self" => card.id == source.id,
+        "other" | "strictlyother" => card.id != source.id,
+        "youctrl" | "youcontrol" | "you" => card.controller == source.controller,
+        "youown" => card.owner == source.controller,
+        "youdontctrl" => card.controller != source.controller,
+        "youdontown" => card.owner != source.controller,
+        "isremembered" | "card.isremembered" => source.remembered_cards.contains(&card.id),
+        "effectsource" | "card.effectsource" => source.effect_source == Some(card.id),
+        "oppctrl" | "opponentctrl" | "opponent" => card.controller != source.controller,
+        "oppown" | "opponentown" => card.owner != source.controller,
+        "iscommander" => card.is_commander,
+        "legendary" => card.type_line.is_legendary(),
+        "basic" => card.type_line.is_basic(),
+        "snow" => card.type_line.is_snow(),
+        "kicked" => card.kicked,
+        "noncreature" => !card.is_creature(),
+        "nonland" => !card.is_land(),
+        "nonlegendary" => !card.type_line.is_legendary(),
+        "nonbasic" => !card.type_line.is_basic(),
+        "nonsnow" => !card.type_line.is_snow(),
+        "token" => card.is_token,
+        "nontoken" => !card.is_token,
+        "tapped" => card.tapped,
+        "untapped" => !card.tapped,
+        "startedtheturnuntapped" => !card.started_turn_tapped,
+        "startedtheturntapped" => card.started_turn_tapped,
+        "multicolor" => card.color.is_multicolor(),
+        "colorless" => card.color.is_colorless(),
+        "whitesource" => matches_card_color(CardColorSelector::White, card),
+        "bluesource" => matches_card_color(CardColorSelector::Blue, card),
+        "blacksource" => matches_card_color(CardColorSelector::Black, card),
+        "redsource" => matches_card_color(CardColorSelector::Red, card),
+        "greensource" => matches_card_color(CardColorSelector::Green, card),
+        "colorlesssource" => card.color.is_colorless(),
+        "chosencolorsource" => matches_chosen_color_source(card, context),
+        "attacking" => matches_context_predicate(&ContextPredicate::Attacking(None), card, context),
+        "attackingyou" => matches_context_predicate(
+            &ContextPredicate::Attacking(Some(TargetRef::Source)),
+            card,
+            context,
+        ),
+        "blocking" => matches_context_predicate(&ContextPredicate::Blocking(None), card, context),
+        "blocked" => matches_context_predicate(&ContextPredicate::Blocked, card, context),
+        "attackedthisturn" => {
+            matches_context_predicate(&ContextPredicate::AttackedThisTurn, card, context)
+        }
+        "blockingsource" => {
+            matches_context_predicate(&ContextPredicate::BlockingSource, card, context)
+        }
+        "blockedbysource" => {
+            matches_context_predicate(&ContextPredicate::BlockedBySource, card, context)
+        }
+        "samename" => matches_relation_predicate(
+            &RelationPredicate::SharesNameWith(TargetRef::Source),
+            card,
+            context,
+        ),
+        shares if shares.starts_with("sharesnamewith") => {
+            raw_target_ref(&value["sharesNameWith".len()..]).is_some_and(|target| {
+                matches_relation_predicate(
+                    &RelationPredicate::SharesNameWith(target),
+                    card,
+                    context,
+                )
+            })
+        }
+        shares if shares.starts_with("doesnotsharenamewith") => {
+            raw_target_ref(&value["doesNotShareNameWith".len()..]).is_some_and(|target| {
+                matches_relation_predicate(
+                    &RelationPredicate::DoesNotShareNameWith(target),
+                    card,
+                    context,
+                )
+            })
+        }
+        shares if shares.starts_with("sharescardtypewith") => {
+            raw_target_ref(&value["sharesCardTypeWith".len()..]).is_some_and(|target| {
+                matches_relation_predicate(
+                    &RelationPredicate::SharesCardTypeWith(target),
+                    card,
+                    context,
+                )
+            })
+        }
+        shares if shares.starts_with("sharescolorwith") => {
+            raw_target_ref(&value["SharesColorWith".len()..]).is_some_and(|target| {
+                matches_relation_predicate(
+                    &RelationPredicate::SharesColorWith(target),
+                    card,
+                    context,
+                )
+            })
+        }
+        shares if shares.starts_with("sharescmcwith") => {
+            raw_target_ref(&value["SharesCMCWith".len()..]).is_some_and(|target| {
+                matches_relation_predicate(
+                    &RelationPredicate::SharesManaValueWith(target),
+                    card,
+                    context,
+                )
+            })
+        }
+        shares if shares.starts_with("sharescreaturetypewith") => {
+            raw_target_ref(&value["sharesCreatureTypeWith".len()..]).is_some_and(|target| {
+                matches_relation_predicate(
+                    &RelationPredicate::SharesCreatureTypeWith(target),
+                    card,
+                    context,
+                )
+            })
+        }
+        attacking if attacking.starts_with("attacking ") => {
+            raw_target_ref(&value["attacking ".len()..]).is_some_and(|target| {
+                matches_context_predicate(&ContextPredicate::Attacking(Some(target)), card, context)
+            })
+        }
+        blocked_by if blocked_by.starts_with("blockedbyvalidthisturn ") => {
+            raw_blocked_by_valid_this_turn(&value["blockedByValidThisTurn ".len()..])
+                .is_some_and(|predicate| matches_context_predicate(&predicate, card, context))
+        }
+        blocked if blocked.starts_with("blockedvalidthisturn ") => raw_card_selector_type(
+            &value["blockedValidThisTurn ".len()..],
+        )
+        .is_some_and(|card_type| {
+            matches_context_predicate(
+                &ContextPredicate::BlockedValidThisTurn(card_type),
+                card,
+                context,
+            )
+        }),
+        blocking_valid if blocking_valid.starts_with("blockingvalid ") => {
+            raw_card_selector_type(&value["blockingValid ".len()..]).is_some_and(|card_type| {
+                matches_context_predicate(
+                    &ContextPredicate::BlockingValid(card_type),
+                    card,
+                    context,
+                )
+            })
+        }
+        blocking if blocking.starts_with("blocking ") => {
+            raw_target_ref(&value["blocking ".len()..]).is_some_and(|target| {
+                matches_context_predicate(&ContextPredicate::Blocking(Some(target)), card, context)
+            })
+        }
+        controlled if controlled.starts_with("controlledby ") => {
+            matches_controlled_by_reference(value["ControlledBy ".len()..].trim(), card, context)
+        }
+        attached if attached.starts_with("attachedto ") => {
+            let relation = raw_attached_to_relation(value["AttachedTo ".len()..].trim());
+            relation.is_some_and(|relation| matches_relation_predicate(&relation, card, context))
+        }
+        owned if owned.starts_with("ownedby ") => raw_target_ref(&value["OwnedBy ".len()..])
+            .is_some_and(|target| {
+                matches_relation_predicate(&RelationPredicate::OwnedBy(target), card, context)
+            }),
+        opponent if opponent.starts_with("opponentof ") => {
+            raw_target_ref(&value["OpponentOf ".len()..]).is_some_and(|target| {
+                matches_relation_predicate(&RelationPredicate::OpponentOf(target), card, context)
+            })
+        }
+        targeting if targeting.starts_with("istargeting ") => {
+            raw_target_ref(&value["IsTargeting ".len()..]).is_some_and(|target| {
+                matches_relation_predicate(&RelationPredicate::IsTargeting(target), card, context)
+            })
+        }
+        "inzonebattlefield" => card.zone == forge_foundation::ZoneType::Battlefield,
+        "inzonegraveyard" => card.zone == forge_foundation::ZoneType::Graveyard,
+        "inzonehand" => card.zone == forge_foundation::ZoneType::Hand,
+        "inzoneexile" => card.zone == forge_foundation::ZoneType::Exile,
+        "inzonestack" => card.zone == forge_foundation::ZoneType::Stack,
+        "damagedby" => card
+            .damage_sources_this_turn
+            .contains(&context.source_card.id),
+        "equippedby" | "enchantedby" | "attachedby" => {
+            context.source_card.attached_to == Some(card.id)
+        }
+        "facedown" => matches_card_state(CardStateSelector::FaceDown, card, context),
+        "paired" => matches_card_state(CardStateSelector::Paired, card, context),
+        "pairedwith" => matches_card_state(CardStateSelector::PairedWithSource, card, context),
+        "attached" => matches_card_state(CardStateSelector::Attached, card, context),
+        "equipped" => matches_card_state(CardStateSelector::Equipped, card, context),
+        "enchanted" => matches_card_state(CardStateSelector::Enchanted, card, context),
+        "hascounters" => matches_card_state(CardStateSelector::HasCounters, card, context),
+        "isimprinted" => matches_card_state(CardStateSelector::IsImprinted, card, context),
+        "chosen" => matches_card_state(CardStateSelector::Chosen, card, context),
+        "chosencard" | "chosencardstrict" => {
+            matches_card_state(CardStateSelector::ChosenCard, card, context)
+        }
+        "namedcard" => matches_card_state(CardStateSelector::NamedCard, card, context),
+        "chosencolor" => matches_card_state(CardStateSelector::ChosenColor, card, context),
+        "thisturnentered" | "thisturnenteredfrom_battlefield" => {
+            matches_card_state(CardStateSelector::EnteredThisTurn, card, context)
+        }
+        entered if entered.starts_with("enteredunder ") => {
+            raw_target_ref(&value["EnteredUnder ".len()..]).is_some_and(|target| {
+                matches_context_predicate(&ContextPredicate::EnteredUnder(target), card, context)
+            })
+        }
+        "wasdealtdamagethisturn" => {
+            matches_card_state(CardStateSelector::WasDealtDamageThisTurn, card, context)
+        }
+        "historic" => matches_card_state(CardStateSelector::Historic, card, context),
+        "modified" => matches_card_state(CardStateSelector::Modified, card, context),
+        "issaddled" => matches_card_state(CardStateSelector::Saddled, card, context),
+        "mayplaysource" => matches_card_state(CardStateSelector::MayPlaySource, card, context),
+        "exiledwithsource" => {
+            matches_context_predicate(&ContextPredicate::ExiledWithSource, card, context)
+        }
+        "toplibrary" => matches_context_predicate(&ContextPredicate::TopLibrary, card, context),
+        "suspended" => matches_card_state(CardStateSelector::Suspended, card, context),
+        "singletarget" => matches_card_state(CardStateSelector::SingleTarget, card, context),
+        "promisedgift" => matches_card_state(CardStateSelector::PromisedGift, card, context),
+        "rememberedplayerctrl" => {
+            matches_context_predicate(&ContextPredicate::RememberedPlayerCtrl, card, context)
+        }
+        "wascast" => card.was_cast(),
+        "wascastbyyou" => card.was_cast() && card.controller == context.source_controller,
+        was_cast_from if was_cast_from.starts_with("wascastfrom") => false,
+        named if named.starts_with("named") => {
+            card.card_name.eq_ignore_ascii_case(value[5..].trim())
+        }
+        _ if value.starts_with("counters_") => check_counter_condition(value, card),
+        _ => {
+            if let Some(rest) = value_lower.strip_prefix("cmc") {
+                check_cmc_condition(rest, card)
+            } else if let Some(rest) = value_lower.strip_prefix("power") {
+                check_power_condition(rest, card)
+            } else if let Some(rest) = value_lower.strip_prefix("toughness") {
+                check_toughness_condition(rest, card)
+            } else if let Some(color) = Color::from_name(&value_lower) {
+                card.color.has_color(color)
+            } else if let Some(keyword_suffix) = value_lower.strip_prefix("with") {
+                if keyword_suffix.strip_prefix("out").is_some() {
+                    !card.has_keyword(&value[7..])
+                } else if !keyword_suffix.is_empty() {
+                    card.has_keyword(&value[4..])
+                } else {
+                    true
+                }
+            } else if let Some(negated_value) = value_lower.strip_prefix("non") {
+                let positive_match = match negated_value {
+                    "creature" => card.is_creature(),
+                    "land" => card.is_land(),
+                    "artifact" => card.type_line.is_artifact(),
+                    "enchantment" => card.type_line.is_enchantment(),
+                    "token" => card.is_token,
+                    _ => {
+                        if let Some(color) = Color::from_name(negated_value) {
+                            card.color.has_color(color)
+                        } else {
+                            card.has_subtype(&value[3..])
+                        }
+                    }
+                };
+                !positive_match
+            } else if value_lower == "chosentype" {
+                source.chosen_type.as_ref().is_some_and(|ct| {
+                    card.type_line.has_subtype(ct) || card.has_keyword("Changeling")
+                })
+            } else {
+                let color_name = value.strip_suffix("Source").unwrap_or(value);
+                if let Some(color) = Color::from_name(&color_name.to_lowercase()) {
+                    card.color.has_color(color)
+                } else if color_name.eq_ignore_ascii_case("Colorless") {
+                    card.color.is_colorless()
+                } else {
+                    card.has_subtype(value)
+                }
+            }
+        }
+    }
+}
+
+fn matches_domain_predicate(raw: &str, card: &Card, context: MatchContext<'_>) -> Option<bool> {
+    crate::ability::selector_domain::matches_selector_domain_predicate(raw, card, context)
+        .or_else(|| {
+            crate::cost::selector_domain::matches_selector_domain_predicate(raw, card, context)
+        })
+        .or_else(|| {
+            crate::trigger::selector_domain::matches_selector_domain_predicate(raw, card, context)
+        })
+        .or_else(|| {
+            crate::combat::selector_domain::matches_selector_domain_predicate(raw, card, context)
+        })
+}
+
+fn raw_target_ref(value: &str) -> Option<TargetRef> {
+    let value = value.trim();
+    if value.is_empty()
+        || value.eq_ignore_ascii_case("Self")
+        || value.eq_ignore_ascii_case("Source")
+        || value.eq_ignore_ascii_case("You")
+        || value.eq_ignore_ascii_case("YouCtrl")
+    {
+        Some(TargetRef::Source)
+    } else if value.eq_ignore_ascii_case("Remembered") {
+        Some(TargetRef::Remembered)
+    } else if value.eq_ignore_ascii_case("RememberedLKI") {
+        Some(TargetRef::RememberedLki)
+    } else if value.eq_ignore_ascii_case("Imprinted") {
+        Some(TargetRef::Imprinted)
+    } else if value.eq_ignore_ascii_case("ChosenCard") {
+        Some(TargetRef::ChosenCard)
+    } else if value.eq_ignore_ascii_case("ChosenPlayer") {
+        Some(TargetRef::ChosenPlayer)
+    } else if value.eq_ignore_ascii_case("Targeted") {
+        Some(TargetRef::Targeted)
+    } else if value.eq_ignore_ascii_case("TargetedPlayer")
+        || value.eq_ignore_ascii_case("TargetedController")
+    {
+        Some(TargetRef::Targeted)
+    } else if value.eq_ignore_ascii_case("Player") {
+        Some(TargetRef::Player)
+    } else if value.eq_ignore_ascii_case("Opponent") {
+        Some(TargetRef::Opponent)
+    } else if value.eq_ignore_ascii_case("Battlefield") {
+        Some(TargetRef::Battlefield)
+    } else if value.eq_ignore_ascii_case("OtherYourBattlefield") {
+        Some(TargetRef::OtherYourBattlefield)
+    } else if value.eq_ignore_ascii_case("YourGraveyard") {
+        Some(TargetRef::YourGraveyard)
+    } else if value.eq_ignore_ascii_case("TriggeredTarget") {
+        Some(TargetRef::TriggeredTarget)
+    } else if value.eq_ignore_ascii_case("TriggeredPlayer") {
+        Some(TargetRef::TriggeredPlayer)
+    } else if value.eq_ignore_ascii_case("TriggeredCard") {
+        Some(TargetRef::TriggeredCard)
+    } else if value.eq_ignore_ascii_case("TriggeredCardController") {
+        Some(TargetRef::TriggeredCardController)
+    } else if value.eq_ignore_ascii_case("TriggeredDefendingPlayer") {
+        Some(TargetRef::TriggeredDefendingPlayer)
+    } else if value.eq_ignore_ascii_case("TriggeredAttackedTarget") {
+        Some(TargetRef::TriggeredAttackedTarget)
+    } else {
+        None
+    }
+}
+
+fn raw_blocked_by_valid_this_turn(value: &str) -> Option<ContextPredicate> {
+    if let Some(target) = raw_target_ref(value) {
+        return Some(ContextPredicate::BlockedByValidThisTurn(target));
+    }
+    raw_card_selector_type(value).map(ContextPredicate::BlockedByValidThisTurnType)
+}
+
+fn raw_card_selector_type(value: &str) -> Option<CardSelectorType> {
+    let value = value.trim();
+    match value.to_ascii_lowercase().as_str() {
+        "card" => Some(CardSelectorType::Card),
+        "creature" => Some(CardSelectorType::Creature),
+        "land" => Some(CardSelectorType::Land),
+        "artifact" => Some(CardSelectorType::Artifact),
+        "enchantment" => Some(CardSelectorType::Enchantment),
+        "planeswalker" => Some(CardSelectorType::Planeswalker),
+        "permanent" => Some(CardSelectorType::Permanent),
+        "nonland" => Some(CardSelectorType::NonLand),
+        "noncreature" => Some(CardSelectorType::NonCreature),
+        _ if value
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || ch == '-' || ch == '\'') =>
+        {
+            Some(CardSelectorType::Subtype(value.to_string()))
+        }
+        _ => None,
+    }
+}
+
+fn raw_attached_to_relation(value: &str) -> Option<RelationPredicate> {
+    if let Some(target) = raw_target_ref(value) {
+        return Some(RelationPredicate::AttachedTo(target));
+    }
+    let card_type = match value.to_ascii_lowercase().as_str() {
+        "card" => CardSelectorType::Card,
+        "creature" => CardSelectorType::Creature,
+        "land" => CardSelectorType::Land,
+        "artifact" => CardSelectorType::Artifact,
+        "enchantment" => CardSelectorType::Enchantment,
+        "permanent" => CardSelectorType::Permanent,
+        _ => return None,
+    };
+    Some(RelationPredicate::AttachedToType(card_type))
+}
+
+/// Convenience wrapper: None means "no filter" -> always matches.
+pub fn matches_valid_card_selector_opt(
+    selector: Option<&CompiledSelector>,
+    card: &Card,
+    source: &Card,
+) -> bool {
+    match selector {
+        None => true,
+        Some(selector) => matches_valid_card_selector(selector, card, source),
+    }
+}
+
+pub fn matches_valid_card_selector_opt_with_context(
+    selector: Option<&CompiledSelector>,
+    card: &Card,
+    context: MatchContext<'_>,
+) -> bool {
+    match selector {
+        None => true,
+        Some(selector) => matches_valid_card_selector_with_context(selector, card, context),
+    }
+}
+
+pub fn matches_valid_card_selector_opt_in_game(
+    selector: Option<&CompiledSelector>,
+    card: &Card,
+    source: &Card,
+    game: &GameState,
+) -> bool {
+    matches_valid_card_selector_opt_with_context(
+        selector,
+        card,
+        MatchContext::from_source(source).with_game(game),
+    )
+}
+
+fn matches_single_valid_card(filter: &str, card: &Card, context: MatchContext<'_>) -> bool {
     // Handle comma-separated types with qualifiers (e.g. "Creature.YouCtrl,Artifact.YouCtrl")
     if filter.contains(',') {
         return filter
             .split(',')
-            .any(|alt| matches_type_and_qualifiers(alt.trim(), card, source));
+            .any(|alt| matches_type_and_qualifiers(alt.trim(), card, context));
     }
 
-    matches_type_and_qualifiers(filter, card, source)
+    matches_type_and_qualifiers(filter, card, context)
 }
 
-fn matches_type_and_qualifiers(filter: &str, card: &Card, source: &Card) -> bool {
+fn matches_type_and_qualifiers(filter: &str, card: &Card, context: MatchContext<'_>) -> bool {
     // Split on dots for compound filters (e.g. "Creature.Other", "Card.Self")
     let parts: Vec<&str> = filter.split('.').collect();
     if parts.is_empty() {
@@ -277,6 +1559,16 @@ fn matches_type_and_qualifiers(filter: &str, card: &Card, source: &Card) -> bool
     let type_part = parts[0];
     let qualifiers = &parts[1..];
 
+    matches_type_and_qualifier_parts(type_part, qualifiers, card, context)
+}
+
+fn matches_type_and_qualifier_parts(
+    type_part: &str,
+    qualifiers: &[&str],
+    card: &Card,
+    context: MatchContext<'_>,
+) -> bool {
+    let source = context.source_card;
     // Check the type portion
     let type_matches = match type_part {
         "Card" | "Any" => true, // matches any card
@@ -287,8 +1579,13 @@ fn matches_type_and_qualifiers(filter: &str, card: &Card, source: &Card) -> bool
         "Artifact" => card.type_line.is_artifact(),
         "Enchantment" => card.type_line.is_enchantment(),
         "Planeswalker" => card.type_line.is_planeswalker(),
+        "nonland" | "nonLand" | "NonLand" => !card.is_land(),
+        "noncreature" | "nonCreature" | "NonCreature" => !card.is_creature(),
         "Permanent" => card.is_permanent(),
         "Spell" => true, // used in some contexts
+        named if named.to_ascii_lowercase().starts_with("named") => {
+            card.card_name.eq_ignore_ascii_case(named[5..].trim())
+        }
         // Player-type filters: players are not cards, so never match.
         "Player" | "You" | "Opponent" | "Each" | "ActivePlayer" | "NonActivePlayer" => false,
         _ => {
@@ -340,6 +1637,8 @@ fn matches_type_and_qualifiers(filter: &str, card: &Card, source: &Card) -> bool
                     "artifact" => card.type_line.is_artifact(),
                     "enchantment" => card.type_line.is_enchantment(),
                     "legendary" => card.type_line.is_legendary(),
+                    "basic" => card.type_line.is_basic(),
+                    "snow" => card.type_line.is_snow(),
                     _ => {
                         // Try subtype match
                         card.has_subtype(raw)
@@ -371,8 +1670,18 @@ fn matches_type_and_qualifiers(filter: &str, card: &Card, source: &Card) -> bool
                         return false;
                     }
                 }
+                "youdontctrl" => {
+                    if card.controller == source.controller {
+                        return false;
+                    }
+                }
                 "youown" => {
                     if card.owner != source.controller {
+                        return false;
+                    }
+                }
+                "youdontown" => {
+                    if card.owner == source.controller {
                         return false;
                     }
                 }
@@ -403,6 +1712,16 @@ fn matches_type_and_qualifiers(filter: &str, card: &Card, source: &Card) -> bool
                 }
                 "legendary" => {
                     if !card.type_line.is_legendary() {
+                        return false;
+                    }
+                }
+                "basic" => {
+                    if !card.type_line.is_basic() {
+                        return false;
+                    }
+                }
+                "snow" => {
+                    if !card.type_line.is_snow() {
                         return false;
                     }
                 }
@@ -461,6 +1780,21 @@ fn matches_type_and_qualifiers(filter: &str, card: &Card, source: &Card) -> bool
                         return false;
                     }
                 }
+                "attacking"
+                | "attackingyou"
+                | "chosencolorsource"
+                | "blocking"
+                | "blocked"
+                | "attackedthisturn"
+                | "blockingsource"
+                | "blockedbysource"
+                | "toplibrary"
+                | "exiledwithsource"
+                | "rememberedplayerctrl" => {
+                    if !legacy_matches_card_atom(raw, card, context) {
+                        return false;
+                    }
+                }
                 "inzonebattlefield" => {
                     if card.zone != forge_foundation::ZoneType::Battlefield {
                         return false;
@@ -493,6 +1827,32 @@ fn matches_type_and_qualifiers(filter: &str, card: &Card, source: &Card) -> bool
                         return false;
                     }
                 }
+                "facedown"
+                | "paired"
+                | "pairedwith"
+                | "equipped"
+                | "enchanted"
+                | "hascounters"
+                | "isimprinted"
+                | "chosen"
+                | "chosencard"
+                | "chosencardstrict"
+                | "namedcard"
+                | "chosencolor"
+                | "thisturnentered"
+                | "thisturnenteredfrom_battlefield"
+                | "wasdealtdamagethisturn"
+                | "historic"
+                | "modified"
+                | "issaddled"
+                | "mayplaysource"
+                | "suspended"
+                | "singletarget"
+                | "promisedgift" => {
+                    if !legacy_matches_card_atom(raw, card, context) {
+                        return false;
+                    }
+                }
                 "wascast" => {
                     // Mirrors Java CardProperty.java:1923-1926 — card must have been
                     // cast (not put onto the battlefield by some other means).
@@ -507,6 +1867,11 @@ fn matches_type_and_qualifiers(filter: &str, card: &Card, source: &Card) -> bool
                     // card's controller at ETB time equals the caster for normal
                     // casts, which covers Sunderflock-style triggers.
                     if !card.was_cast() || card.controller != source.controller {
+                        return false;
+                    }
+                }
+                named if named.starts_with("named") => {
+                    if !card.card_name.eq_ignore_ascii_case(raw[5..].trim()) {
                         return false;
                     }
                 }
@@ -558,6 +1923,9 @@ fn matches_type_and_qualifiers(filter: &str, card: &Card, source: &Card) -> bool
                             "land" => card.is_land(),
                             "artifact" => card.type_line.is_artifact(),
                             "enchantment" => card.type_line.is_enchantment(),
+                            "legendary" => card.type_line.is_legendary(),
+                            "basic" => card.type_line.is_basic(),
+                            "snow" => card.type_line.is_snow(),
                             "token" => card.is_token,
                             _ => {
                                 if let Some(color) = Color::from_name(negated) {
@@ -645,6 +2013,112 @@ pub fn matches_valid_player_opt(
     match filter {
         None => true,
         Some(v) => matches_valid_player(v, player, source_controller),
+    }
+}
+
+/// Match a precompiled selector against a player without reparsing the
+/// comma-separated alternatives.
+pub fn matches_valid_player_selector(
+    selector: &CompiledSelector,
+    player: PlayerId,
+    source_controller: PlayerId,
+) -> bool {
+    let result = matches_player_selector_ir(&selector.ir, player, source_controller);
+    #[cfg(debug_assertions)]
+    debug_assert_eq!(
+        result,
+        matches_valid_player(&selector.as_raw(), player, source_controller),
+        "compiled player selector diverged from string matcher for {:?}",
+        selector.as_raw()
+    );
+    result
+}
+
+fn matches_player_selector_ir(
+    selector: &Selector,
+    player: PlayerId,
+    source_controller: PlayerId,
+) -> bool {
+    if selector.alternatives.is_empty() {
+        return true;
+    }
+
+    selector.alternatives.iter().any(|alternative| {
+        alternative
+            .predicates
+            .iter()
+            .all(|predicate| matches_player_predicate(predicate, player, source_controller))
+    })
+}
+
+fn matches_player_predicate(
+    predicate: &SelectorPredicate,
+    player: PlayerId,
+    source_controller: PlayerId,
+) -> bool {
+    match predicate {
+        SelectorPredicate::Any | SelectorPredicate::Player => true,
+        SelectorPredicate::PlayerController(controller)
+        | SelectorPredicate::CardController(controller) => {
+            matches_player_controller(*controller, player, source_controller)
+        }
+        SelectorPredicate::Raw(raw) => matches_single_valid_player(raw, player, source_controller),
+        // Legacy player matching treats unknown card-oriented predicates as
+        // permissive, so keep that behavior for mixed ValidTarget paths.
+        SelectorPredicate::CardType(_)
+        | SelectorPredicate::CardSupertype(_)
+        | SelectorPredicate::CardIdentity(_)
+        | SelectorPredicate::CardOwner(_)
+        | SelectorPredicate::Tapped(_)
+        | SelectorPredicate::StartedTurnTapped(_)
+        | SelectorPredicate::Zone(_)
+        | SelectorPredicate::RememberedCard
+        | SelectorPredicate::EffectSource
+        | SelectorPredicate::Commander
+        | SelectorPredicate::Legendary
+        | SelectorPredicate::Kicked
+        | SelectorPredicate::Token(_)
+        | SelectorPredicate::Color(_)
+        | SelectorPredicate::Multicolor
+        | SelectorPredicate::Colorless
+        | SelectorPredicate::SourceColor(_)
+        | SelectorPredicate::SourceColorless
+        | SelectorPredicate::ChosenColorSource
+        | SelectorPredicate::CardState(_)
+        | SelectorPredicate::Context(_)
+        | SelectorPredicate::Relation(_)
+        | SelectorPredicate::DamagedBy
+        | SelectorPredicate::AttachedBy
+        | SelectorPredicate::WasCast { .. }
+        | SelectorPredicate::ChosenType
+        | SelectorPredicate::Keyword { .. }
+        | SelectorPredicate::NumericComparison { .. }
+        | SelectorPredicate::NumericParity { .. }
+        | SelectorPredicate::CounterComparison { .. }
+        | SelectorPredicate::Not(_) => true,
+    }
+}
+
+fn matches_player_controller(
+    controller: ControllerSelector,
+    player: PlayerId,
+    source_controller: PlayerId,
+) -> bool {
+    match controller {
+        ControllerSelector::You => player == source_controller,
+        ControllerSelector::Opponent => player != source_controller,
+    }
+}
+
+/// Convenience wrapper: None means "no filter" -> always matches.
+pub fn matches_valid_player_selector_opt(
+    selector: Option<&CompiledSelector>,
+    player: PlayerId,
+    source_controller: PlayerId,
+) -> bool {
+    match selector {
+        None => true,
+        Some(selector) => matches_valid_player_selector(selector, player, source_controller),
     }
 }
 
@@ -839,9 +2313,10 @@ pub fn check_is_present(
         .unwrap_or(ZoneType::Battlefield);
     let present_defined = params.get("PresentDefined");
 
+    let selector = CompiledSelector::parse(is_present);
     let count = collect_present_cards(game, source, present_defined, present_player, present_zone)
         .into_iter()
-        .filter(|&cid| matches_valid_card(is_present, game.card(cid), source))
+        .filter(|&cid| matches_valid_card_selector_in_game(&selector, game.card(cid), source, game))
         .count() as i32;
 
     compare_requirement_amount(source, svar_source, present_compare, game, count)
@@ -1062,9 +2537,12 @@ pub fn meets_common_requirements_with_svars(
             .get("PresentZone2")
             .and_then(parse_zone_name)
             .unwrap_or(ZoneType::Battlefield);
+        let selector = CompiledSelector::parse(is_present);
         let count = collect_present_cards(game, source, None, present_player, present_zone)
             .into_iter()
-            .filter(|&cid| matches_valid_card(is_present, game.card(cid), source))
+            .filter(|&cid| {
+                matches_valid_card_selector_in_game(&selector, game.card(cid), source, game)
+            })
             .count() as i32;
         if !compare_requirement_amount(source, svar_source, present_compare, game, count) {
             return false;

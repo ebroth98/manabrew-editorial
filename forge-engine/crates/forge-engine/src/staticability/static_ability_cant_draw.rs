@@ -1,8 +1,9 @@
 use forge_foundation::ZoneType;
 
+use crate::card::valid_filter;
 use crate::game::GameState;
 use crate::ids::PlayerId;
-use crate::parsing::keys;
+use crate::parsing::{keys, CompiledSelector};
 use crate::staticability::StaticMode;
 
 pub fn can_draw_amount(game: &GameState, player: PlayerId, start_amount: i32) -> i32 {
@@ -20,7 +21,7 @@ pub fn can_draw_amount(game: &GameState, player: PlayerId, start_amount: i32) ->
             .iter()
             .filter(|sa| sa.mode == StaticMode::CantDraw)
         {
-            let valid_player = st_ab.params.get(keys::VALID_PLAYER);
+            let valid_player = st_ab.params.selector(keys::VALID_PLAYER);
             if !matches_valid_player(valid_player, player, card.controller) {
                 continue;
             }
@@ -42,7 +43,7 @@ pub fn can_draw_this_amount(game: &GameState, player: PlayerId, amount: i32) -> 
 
 pub fn apply_cant_draw_amount_ability(
     draw_limit: Option<&str>,
-    valid_player: Option<&str>,
+    valid_player: Option<&CompiledSelector>,
     player: PlayerId,
     source_controller: PlayerId,
     drawn_this_turn: i32,
@@ -56,19 +57,9 @@ pub fn apply_cant_draw_amount_ability(
 }
 
 fn matches_valid_player(
-    valid: Option<&str>,
+    valid: Option<&CompiledSelector>,
     player: PlayerId,
     source_controller: PlayerId,
 ) -> bool {
-    match valid {
-        None => true,
-        Some(v) if v.eq_ignore_ascii_case("Player") => true,
-        Some(v) if v.eq_ignore_ascii_case("You") || v.eq_ignore_ascii_case("YouCtrl") => {
-            player == source_controller
-        }
-        Some(v) if v.eq_ignore_ascii_case("Opponent") || v.eq_ignore_ascii_case("OppCtrl") => {
-            player != source_controller
-        }
-        _ => true,
-    }
+    valid_filter::matches_valid_player_selector_opt(valid, player, source_controller)
 }

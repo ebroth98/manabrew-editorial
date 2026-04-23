@@ -50,13 +50,13 @@ pub fn check_for_condition_would_destroy(
                     return game.card(target_card).controller == controller;
                 }
                 // For DestroyAll, check the ValidCards filter
-                if let Some(valid) = targeted_sa.params.get("ValidCards") {
+                if let Some(valid) = targeted_sa.params.selector("ValidCards") {
                     let our_permanents =
                         game.cards_in_zone(forge_foundation::ZoneType::Battlefield, controller);
                     return our_permanents.iter().any(|&cid| {
-                        crate::ability::ability_utils::matches_valid_cards(
+                        crate::ability::ability_utils::matches_valid_cards_selector_opt(
+                            Some(valid),
                             game.card(cid),
-                            valid,
                             targeted_sa.activating_player,
                         )
                     });
@@ -152,7 +152,7 @@ fn counter_target_stack_entry_id(ctx: &EffectContext, sa: &SpellAbility) -> Opti
         return Some(id);
     }
 
-    let defined = sa.params.get(keys::DEFINED)?;
+    let defined = sa.defined()?;
     let defined_spells =
         crate::ability::ability_utils::get_defined_spell_abilities(defined, sa, ctx.game);
     let mut candidate_sources: Vec<crate::ids::CardId> = defined_spells

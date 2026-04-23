@@ -1131,16 +1131,6 @@ impl TriggerHandler {
             None => return false,
         };
 
-        // For LTB (origin=Battlefield), use the LKI card state.
-        // For ETB (destination=Battlefield), use current state.
-        let cause_is_creature = if params.origin == Some(ZoneType::Battlefield) {
-            // Card may have already moved — check if it WAS a creature
-            // (LKI). The card's type_line is preserved after move_card.
-            game.card(cause_card_id).is_creature()
-        } else {
-            game.card(cause_card_id).is_creature()
-        };
-
         // Check cards for DisableTriggers static abilities.
         // For LTB triggers (Origin=Battlefield), also check cards that were on the
         // battlefield at the start of the current SBA check (pre_sba_battlefield).
@@ -1162,8 +1152,15 @@ impl TriggerHandler {
                 }
 
                 // ValidCause$ — must match the card changing zones
-                if let Some(valid_cause) = sa.params.get(keys::VALID_CAUSE) {
-                    if valid_cause == "Creature" && !cause_is_creature {
+                if let Some(valid_cause) = sa.params.selector(keys::VALID_CAUSE) {
+                    let context = valid_filter::MatchContext::from_source(card)
+                        .with_game(game)
+                        .with_triggering(cause_card_id.into(), params.player);
+                    if !valid_filter::matches_valid_card_selector_with_context(
+                        valid_cause,
+                        game.card(cause_card_id),
+                        context,
+                    ) {
                         continue;
                     }
                 }

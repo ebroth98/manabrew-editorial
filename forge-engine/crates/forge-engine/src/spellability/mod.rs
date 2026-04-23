@@ -24,6 +24,7 @@ use std::sync::atomic::{AtomicU32, Ordering};
 
 use serde::{Deserialize, Serialize};
 
+use crate::ability::ability_ir::AbilityIr;
 use crate::ability::api_type::ApiType;
 use crate::ability::AbilityKey;
 use crate::agent::PlayerAgent;
@@ -108,6 +109,11 @@ pub struct SpellAbility {
     pub ability_text: String,
     /// Parsed pipe-delimited parameters.
     pub params: Params,
+    /// Incrementally compiled Forge script IR. This is currently metadata for
+    /// parser migration and diagnostics; resolution still follows Java-parity
+    /// params until each API is explicitly wired.
+    #[serde(skip)]
+    pub compiled_ir: Option<AbilityIr>,
     /// Targeting restrictions parsed from `ValidTgts$`.
     /// `None` means this ability doesn't use targeting.
     /// Mirrors Java's `targetRestrictions` field.
@@ -429,6 +435,7 @@ impl SpellAbility {
             targeting_player: None,
             ability_text: ability_text.to_string(),
             params,
+            compiled_ir: None,
             target_restrictions,
             target_chosen: TargetChoices::default(),
             pay_costs: cost,
@@ -1060,6 +1067,23 @@ impl SpellAbility {
         cards
     }
 
+    /// Collect all targeted players from the entire chain.
+    /// Mirrors Java's `SpellAbility.findTargetedPlayers()`.
+    pub fn find_targeted_players(&self) -> Vec<PlayerId> {
+        let mut players = Vec::new();
+        players.extend(self.target_chosen.all_target_players());
+        let mut current = self.sub_ability.as_deref();
+        while let Some(sub) = current {
+            for player in sub.target_chosen.all_target_players() {
+                if !players.contains(&player) {
+                    players.push(player);
+                }
+            }
+            current = sub.sub_ability.as_deref();
+        }
+        players
+    }
+
     /// Whether this ability targets spells/abilities on the stack.
     /// Mirrors Java's `SpellAbility.canTargetSpellAbility()`.
     pub fn can_target_spell_ability(&self) -> bool {
@@ -1126,7 +1150,7 @@ impl SpellAbility {
     /// Whether `Defined$` resolves to a deterministic set of objects.
     /// Mirrors Java's `SpellAbility.knownDetermineDefined()`.
     pub fn known_determine_defined(&self) -> bool {
-        match self.params.get("Defined") {
+        match self.defined() {
             Some(defined) => matches!(
                 defined,
                 "Self"

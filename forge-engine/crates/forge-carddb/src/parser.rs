@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use forge_card_script::{ParsedCardScript, ScriptLineKind};
 use forge_foundation::{CardSplitType, CardTypeLine, ColorSet, ManaCost};
 
 use crate::card_face::CardFace;
@@ -44,11 +45,13 @@ impl CardScriptParser {
         filename: Option<&str>,
     ) -> Result<CardRules, String> {
         self.reset();
-        for line in lines {
-            if line.is_empty() || line.starts_with('#') {
-                continue;
+        let raw = lines.into_iter().collect::<Vec<_>>().join("\n");
+        let script = ParsedCardScript::parse(&raw);
+        for line in script.lines() {
+            match &line.kind {
+                ScriptLineKind::Blank | ScriptLineKind::Comment(_) => {}
+                _ => self.parse_line(line.raw),
             }
-            self.parse_line(line);
         }
         if let Some(f) = filename {
             self.normalized_name = f.to_string();

@@ -1,24 +1,24 @@
 use serde::{Deserialize, Serialize};
 
-use crate::event::{RunParams};
-use crate::trigger::TriggerType;
+use crate::event::RunParams;
 use crate::game::GameState;
 use crate::spellability::SpellAbility;
+use crate::trigger::TriggerType;
 
 use super::trigger::TriggerBehavior;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TriggerCounterAddedOnce {
-    pub valid_card: Option<String>,
+    pub valid_card: Option<crate::parsing::CompiledSelector>,
     pub counter_type: Option<String>,
-    pub valid_source: Option<String>,
+    pub valid_source: Option<crate::parsing::CompiledSelector>,
 }
 
 impl TriggerCounterAddedOnce {
     pub fn parse(
-        valid_card: Option<String>,
+        valid_card: Option<crate::parsing::CompiledSelector>,
         counter_type: Option<String>,
-        valid_source: Option<String>,
+        valid_source: Option<crate::parsing::CompiledSelector>,
     ) -> Box<dyn TriggerBehavior> {
         Box::new(Self {
             valid_card,
@@ -51,7 +51,7 @@ impl TriggerBehavior for TriggerCounterAddedOnce {
             return false;
         }
         if let Some(filter) = &self.valid_source {
-            if filter.eq_ignore_ascii_case("You") {
+            if filter.is_any_of(["You"]) {
                 return params.cause_player == Some(host_controller);
             }
         }

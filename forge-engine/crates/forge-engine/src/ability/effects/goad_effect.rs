@@ -1,6 +1,6 @@
 use forge_foundation::ZoneType;
 
-use super::{matches_valid_cards, EffectContext};
+use super::{matches_valid_cards_selector_opt, EffectContext};
 use crate::ids::CardId;
 use crate::parsing::keys;
 use crate::spellability::SpellAbility;
@@ -39,13 +39,17 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     }
 
     // Mass goad: ValidCards$ filter
-    if let Some(valid_filter) = sa.params.get(keys::VALID_CARDS) {
+    if let Some(valid_filter) = sa.params.selector(keys::VALID_CARDS) {
         let player_ids = ctx.game.player_order.clone();
         let mut targets: Vec<CardId> = Vec::new();
         for &pid in &player_ids {
             let zone_cards = ctx.game.cards_in_zone(ZoneType::Battlefield, pid).to_vec();
             for cid in zone_cards {
-                if matches_valid_cards(ctx.game.card(cid), valid_filter, sa.activating_player) {
+                if matches_valid_cards_selector_opt(
+                    Some(valid_filter),
+                    ctx.game.card(cid),
+                    sa.activating_player,
+                ) {
                     targets.push(cid);
                 }
             }

@@ -1,7 +1,9 @@
 use forge_foundation::ZoneType;
 
 use super::{emit_zone_trigger, resolve_defined_player, resolve_numeric_svar, EffectContext};
+use crate::ability::ability_ir::AbilityIr;
 use crate::event::RunParams;
+use crate::parsing::keys;
 use crate::replacement::replacement_handler::{apply_replacements, ReplacementEvent};
 use crate::replacement::ReplacementResult;
 use crate::spellability::SpellAbility;
@@ -16,7 +18,7 @@ use crate::trigger::TriggerType;
 /// `MillEffect` class extending `SpellAbilityEffect`.
 #[forge_engine_macros::spell_effect(MillEffect)]
 fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
-    let num = resolve_numeric_svar(ctx.game, sa, "NumCards", 1).max(0) as usize;
+    let num = resolve_mill_amount(ctx, sa).max(0) as usize;
 
     // Determine target player: targeted (ValidTgts$) takes priority, then Defined$.
     let target = sa
@@ -115,6 +117,23 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
             false,
         );
     }
+}
+
+fn resolve_mill_amount(ctx: &EffectContext, sa: &SpellAbility) -> i32 {
+    if let Some(AbilityIr::Mill(ir)) = &sa.compiled_ir {
+        if let Some(amount) = &ir.amount {
+            let resolved = amount.resolve_for_spell_ability(ctx.game, sa, 1);
+            #[cfg(debug_assertions)]
+            debug_assert_eq!(
+                resolved,
+                resolve_numeric_svar(ctx.game, sa, keys::NUM_CARDS, 1),
+                "compiled Mill amount diverged from string params"
+            );
+            return resolved;
+        }
+    }
+
+    resolve_numeric_svar(ctx.game, sa, keys::NUM_CARDS, 1)
 }
 
 #[cfg(test)]

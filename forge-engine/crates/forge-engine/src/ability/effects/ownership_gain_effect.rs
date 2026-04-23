@@ -4,7 +4,6 @@
 
 use super::EffectContext;
 use crate::ids::CardId;
-use crate::parsing::keys;
 use crate::spellability::SpellAbility;
 
 /// Struct form of this effect so it can participate in the
@@ -12,7 +11,7 @@ use crate::spellability::SpellAbility;
 /// `OwnershipGainEffect` class extending `SpellAbilityEffect`.
 #[forge_engine_macros::spell_effect(OwnershipGainEffect)]
 fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
-    let new_owner = if let Some(def) = sa.params.get(keys::DEFINED_PLAYER) {
+    let new_owner = if let Some(def) = sa.defined_player() {
         let players = super::resolve_defined_players(def, sa.activating_player, ctx.game);
         players.into_iter().next().unwrap_or(sa.activating_player)
     } else {

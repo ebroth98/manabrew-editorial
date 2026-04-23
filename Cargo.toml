@@ -3,6 +3,7 @@ resolver = "2"
 members = [
     "src-tauri",
     "forge-engine/crates/forge-foundation",
+    "forge-engine/crates/forge-card-script",
     "forge-engine/crates/forge-carddb",
     "forge-engine/crates/forge-engine-macros",
     "forge-engine/crates/forge-engine",

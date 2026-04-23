@@ -1,25 +1,25 @@
 use serde::{Deserialize, Serialize};
 
-use crate::event::{RunParams};
-use crate::trigger::TriggerType;
+use crate::event::RunParams;
 use crate::game::GameState;
 use crate::parsing::{keys, Params};
 use crate::spellability::SpellAbility;
+use crate::trigger::TriggerType;
 
 use super::trigger::{Trigger, TriggerBehavior};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TriggerTapsForMana {
-    pub valid_card: Option<String>,
-    pub activator: Option<String>,
+    pub valid_card: Option<crate::parsing::CompiledSelector>,
+    pub activator: Option<crate::parsing::CompiledSelector>,
     pub produced: Option<String>,
 }
 
 impl TriggerTapsForMana {
     pub fn parse(params: &Params) -> Box<dyn TriggerBehavior> {
         Box::new(Self {
-            valid_card: params.get_cloned(keys::VALID_CARD),
-            activator: params.get_cloned(keys::VALID_ACTIVATOR),
+            valid_card: params.selector_cloned(keys::VALID_CARD),
+            activator: params.selector_cloned(keys::VALID_ACTIVATOR),
             produced: params.get_cloned(keys::PRODUCED),
         })
     }

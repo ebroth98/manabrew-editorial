@@ -36,15 +36,18 @@ fn apply_ignore_landwalk(
     keyword: &str,
     source: &Card,
 ) -> bool {
-    if !valid_filter::matches_valid_card_opt(
-        st_ab.params.get(keys::VALID_ATTACKER),
+    if !valid_filter::matches_valid_card_selector_opt(
+        st_ab.params.selector(keys::VALID_ATTACKER),
         attacker,
         source,
     ) {
         return false;
     }
-    if !valid_filter::matches_valid_card_opt(st_ab.params.get(keys::VALID_BLOCKER), blocker, source)
-    {
+    if !valid_filter::matches_valid_card_selector_opt(
+        st_ab.params.selector(keys::VALID_BLOCKER),
+        blocker,
+        source,
+    ) {
         return false;
     }
     if let Some(valid_kw) = st_ab.params.get(keys::VALID_KEYWORD) {

@@ -21,8 +21,8 @@ pub fn with_toughness(cards: &[Card], card: &Card, _sa: Option<&SpellAbility>) -
             }
 
             // ValidCard$
-            if !valid_filter::matches_valid_card_opt(
-                st_ab.params.get(keys::VALID_CARD),
+            if !valid_filter::matches_valid_card_selector_opt(
+                st_ab.params.selector(keys::VALID_CARD),
                 card,
                 source,
             ) {
@@ -52,8 +52,8 @@ pub fn get_mod(cards: &[Card], card: &Card, _sa: Option<&SpellAbility>) -> i32 {
             .filter(|s| s.mode == StaticMode::TapPowerValue && s.zones_check(source.zone))
         {
             // ValidCard$
-            if !valid_filter::matches_valid_card_opt(
-                st_ab.params.get(keys::VALID_CARD),
+            if !valid_filter::matches_valid_card_selector_opt(
+                st_ab.params.selector(keys::VALID_CARD),
                 card,
                 source,
             ) {

@@ -10,7 +10,7 @@ use crate::spellability::SpellAbility;
 #[forge_engine_macros::spell_effect(ActivateAbilityEffect)]
 fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let controller = sa.activating_player;
-    let defined = sa.params.get(keys::DEFINED).unwrap_or("You");
+    let defined = sa.defined().unwrap_or("You");
     let only_mana = sa.params.is_true(keys::MANA_ABILITY);
     let type_filter = sa.params.get(keys::TYPE).unwrap_or("Card");
 

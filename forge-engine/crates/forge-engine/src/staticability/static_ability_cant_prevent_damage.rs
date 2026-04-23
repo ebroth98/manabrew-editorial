@@ -61,8 +61,8 @@ fn applies(
         }
     }
 
-    valid_filter::matches_valid_card_opt(
-        st_ab.params.get(keys::VALID_SOURCE),
+    valid_filter::matches_valid_card_selector_opt(
+        st_ab.params.selector(keys::VALID_SOURCE),
         damage_source,
         host,
     )

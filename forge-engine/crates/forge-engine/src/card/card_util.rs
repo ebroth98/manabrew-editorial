@@ -9,9 +9,11 @@ use crate::ability::ability_utils;
 use crate::ability::api_type::ApiType;
 use crate::card::card_collection::CardCollection;
 use crate::card::card_lists::CardLists;
+use crate::card::valid_filter;
 use crate::card::Card;
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
+use crate::parsing::CompiledSelector;
 use crate::spellability::target_restrictions;
 use crate::spellability::SpellAbility;
 
@@ -218,6 +220,10 @@ pub fn get_radiance(game: &GameState, sa: &SpellAbility) -> CardCollection {
         .get("ValidTgts")
         .map(|s| s.split(',').map(|t| t.trim()).collect())
         .unwrap_or_default();
+    let valid_selectors: Vec<_> = valid_tokens
+        .iter()
+        .map(|token| CompiledSelector::parse(token))
+        .collect();
 
     let combined = game.card(target).color;
     let mut out = CardCollection::new();
@@ -231,12 +237,13 @@ pub fn get_radiance(game: &GameState, sa: &SpellAbility) -> CardCollection {
                 if !card.color.has_color(color) {
                     continue;
                 }
-                if valid_tokens.is_empty()
-                    || valid_tokens.iter().any(|token| {
-                        ability_utils::matches_valid_cards(
+                if valid_selectors.is_empty()
+                    || valid_selectors.iter().any(|selector| {
+                        valid_filter::matches_valid_card_selector_in_game(
+                            selector,
                             card,
-                            token,
-                            game.card(source).controller,
+                            game.card(source),
+                            game,
                         )
                     })
                 {
@@ -427,14 +434,14 @@ fn collect_reflectable_cards(
     let Some(host) = ab_mana.source else {
         return Vec::new();
     };
-    let Some(valid_card) = root_sa.params.get("Valid") else {
+    let Some(valid_card) = root_sa.params.selector_value("Valid") else {
         return Vec::new();
     };
 
     let mut cards = if let Some(defined) = valid_card.strip_prefix("Defined.") {
         ability_utils::get_defined_cards(game, Some(host), defined, Some(ab_mana.activating_player))
     } else {
-        let activator = ab_mana.activating_player;
+        let valid_selector = CompiledSelector::parse(valid_card);
         game.player_order
             .iter()
             .flat_map(|&pid| {
@@ -444,7 +451,12 @@ fn collect_reflectable_cards(
             })
             .filter(|&cid| {
                 let card = game.card(cid);
-                ability_utils::matches_valid_cards(card, valid_card, activator)
+                valid_filter::matches_valid_card_selector_in_game(
+                    &valid_selector,
+                    card,
+                    game.card(host),
+                    game,
+                )
             })
             .collect()
     };
@@ -640,8 +652,8 @@ fn filter_valid_cards(
     if valid.is_empty() {
         return cards;
     }
-    let _ = src;
-    CardLists::filter_as_list(game, &cards, valid, controller)
+    let _ = controller;
+    CardLists::filter_as_list_with_source(game, &cards, valid, src)
 }
 
 fn color_long_name(color: Color) -> &'static str {

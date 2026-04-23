@@ -1,6 +1,6 @@
 use forge_foundation::ZoneType;
 
-use super::{parse_param, resolve_defined_player, EffectContext};
+use super::{resolve_defined_player, resolve_numeric_svar, EffectContext};
 use crate::event::RunParams;
 use crate::replacement::replacement_handler::{apply_replacements, ReplacementEvent};
 use crate::replacement::ReplacementResult;
@@ -17,7 +17,7 @@ use crate::trigger::TriggerType;
 /// `ScryEffect` class extending `SpellAbilityEffect`.
 #[forge_engine_macros::spell_effect(ScryEffect)]
 fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
-    let num = parse_param(&sa.ability_text, "ScryNum$ ").unwrap_or(1) as usize;
+    let num = resolve_numeric_svar(ctx.game, sa, "ScryNum", 1).max(0) as usize;
 
     let target = sa
         .params

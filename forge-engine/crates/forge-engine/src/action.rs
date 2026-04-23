@@ -1215,6 +1215,8 @@ impl GameState {
             }
             if self.cards[cid.index()].controller == player {
                 self.cards[cid.index()].new_turn();
+            } else {
+                self.cards[cid.index()].clear_global_turn_state();
             }
         }
     }

@@ -1,25 +1,25 @@
 use serde::{Deserialize, Serialize};
 
-use crate::event::{RunParams};
-use crate::trigger::TriggerType;
+use crate::event::RunParams;
 use crate::game::GameState;
 use crate::parsing::{keys, Params};
 use crate::spellability::SpellAbility;
+use crate::trigger::TriggerType;
 
 use super::trigger::TriggerBehavior;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TriggerDamageDoneOnceByController {
-    pub valid_source: Option<String>,
-    pub valid_target: Option<String>,
+    pub valid_source: Option<crate::parsing::CompiledSelector>,
+    pub valid_target: Option<crate::parsing::CompiledSelector>,
     pub combat_damage_only: bool,
 }
 
 impl TriggerDamageDoneOnceByController {
     pub fn parse(params: &Params) -> Box<dyn TriggerBehavior> {
         Box::new(Self {
-            valid_source: params.get_cloned(keys::VALID_SOURCE),
-            valid_target: params.get_cloned(keys::VALID_TARGET),
+            valid_source: params.selector_cloned(keys::VALID_SOURCE),
+            valid_target: params.selector_cloned(keys::VALID_TARGET),
             combat_damage_only: params.is_true(keys::COMBAT_DAMAGE),
         })
     }

@@ -46,11 +46,14 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
             .cards_in_zone(ZoneType::Hand, target_player)
             .to_vec();
         if let Some(valid_filter) = sa.params.get("DiscardValid") {
+            let valid_selector = sa.params.selector("DiscardValid");
             hand.retain(|&card_id| {
-                super::matches_valid_cards(
+                super::matches_valid_cards_for_sa(
+                    ctx.game,
+                    sa,
                     ctx.game.card(card_id),
+                    valid_selector,
                     valid_filter,
-                    sa.activating_player,
                 )
             });
         }

@@ -1,8 +1,8 @@
 use forge_foundation::ZoneType;
 
-use crate::card::Card;
+use crate::card::{valid_filter, Card};
 use crate::ids::PlayerId;
-use crate::parsing::keys;
+use crate::parsing::{keys, CompiledSelector};
 use crate::staticability::StaticMode;
 
 pub fn ignore_hexproof(cards: &[Card], target: &Card, activator: PlayerId) -> bool {
@@ -27,7 +27,7 @@ fn any_ignore(cards: &[Card], target: &Card, activator: PlayerId, mode: StaticMo
             ) {
                 continue;
             }
-            if !matches_valid_entity(st_ab.params.get(keys::VALID_ENTITY), target, source) {
+            if !matches_valid_entity(st_ab.params.selector(keys::VALID_ENTITY), target, source) {
                 continue;
             }
             return true;
@@ -58,25 +58,6 @@ fn matches_valid_player(
     }
 }
 
-fn matches_valid_entity(valid: Option<&str>, target: &Card, source: &Card) -> bool {
-    let Some(expr) = valid else {
-        return true;
-    };
-    expr.split(',').any(|clause| {
-        clause
-            .split('+')
-            .flat_map(|s| s.split('.'))
-            .map(str::trim)
-            .filter(|s| !s.is_empty())
-            .all(|tok| match tok {
-                "Card" | "Permanent" => true,
-                "Creature" => target.is_creature(),
-                "Card.Self" => target.id == source.id,
-                "Card.EffectSource" => source.effect_source == Some(target.id),
-                "Card.IsRemembered" => source.remembered_cards.contains(&target.id),
-                "YouCtrl" | "YouControl" => target.controller == source.controller,
-                "OppCtrl" | "OpponentCtrl" => target.controller != source.controller,
-                _ => true,
-            })
-    })
+fn matches_valid_entity(valid: Option<&CompiledSelector>, target: &Card, source: &Card) -> bool {
+    valid_filter::matches_valid_card_selector_opt(valid, target, source)
 }

@@ -1,12 +1,12 @@
 use forge_foundation::ZoneType;
 
 use crate::card::{valid_filter, Card};
-use crate::event::{RunParams};
-use crate::trigger::TriggerType;
+use crate::event::RunParams;
 use crate::game::GameState;
 use crate::ids::CardId;
-use crate::parsing::keys;
+use crate::parsing::{keys, CompiledSelector};
 use crate::trigger::Trigger;
+use crate::trigger::TriggerType;
 
 pub fn is_disabled(
     game: &GameState,
@@ -32,7 +32,7 @@ pub fn is_disabled(
                     continue;
                 }
             }
-            if let Some(valid_card) = st_ab.params.get(keys::VALID_CARD) {
+            if let Some(valid_card) = st_ab.params.selector(keys::VALID_CARD) {
                 if !matches_valid_card(valid_card, host, source) {
                     continue;
                 }
@@ -75,7 +75,7 @@ fn mode_specific_matches(
             } else {
                 run_params.card
             };
-            if let Some(valid_cause) = st_ab.params.get(keys::VALID_CAUSE) {
+            if let Some(valid_cause) = st_ab.params.selector(keys::VALID_CAUSE) {
                 let Some(cid) = moved else {
                     return false;
                 };
@@ -100,7 +100,7 @@ fn mode_specific_matches(
             true
         }
         TriggerType::ChangesZoneAll => {
-            if let Some(valid_cause) = st_ab.params.get(keys::VALID_CAUSE) {
+            if let Some(valid_cause) = st_ab.params.selector(keys::VALID_CAUSE) {
                 let Some(cause_sa) = run_params.cause.as_ref() else {
                     return false;
                 };
@@ -132,7 +132,7 @@ fn mode_specific_matches(
         | TriggerType::SpellCopied
         | TriggerType::SpellCopy
         | TriggerType::SpellAbilityCopy => {
-            if let Some(valid_cause) = st_ab.params.get(keys::VALID_CAUSE) {
+            if let Some(valid_cause) = st_ab.params.selector(keys::VALID_CAUSE) {
                 let Some(cid) = run_params.spell_card else {
                     return false;
                 };
@@ -144,7 +144,7 @@ fn mode_specific_matches(
                     return false;
                 }
             }
-            if let Some(valid_activator) = st_ab.params.get(keys::VALID_ACTIVATOR) {
+            if let Some(valid_activator) = st_ab.params.selector(keys::VALID_ACTIVATOR) {
                 let Some(pid) = run_params.spell_controller else {
                     return false;
                 };
@@ -155,7 +155,7 @@ fn mode_specific_matches(
             true
         }
         TriggerType::Attacks => {
-            if let Some(valid_cause) = st_ab.params.get(keys::VALID_CAUSE) {
+            if let Some(valid_cause) = st_ab.params.selector(keys::VALID_CAUSE) {
                 let Some(attacker) = run_params.attacker else {
                     return false;
                 };
@@ -176,7 +176,7 @@ fn mode_specific_matches(
                     return false;
                 }
             }
-            if let Some(valid_source) = st_ab.params.get(keys::VALID_SOURCE) {
+            if let Some(valid_source) = st_ab.params.selector(keys::VALID_SOURCE) {
                 let Some(source_id) = run_params.damage_source else {
                     return false;
                 };
@@ -188,7 +188,7 @@ fn mode_specific_matches(
                     return false;
                 }
             }
-            if let Some(valid_target) = st_ab.params.get(keys::VALID_TARGET) {
+            if let Some(valid_target) = st_ab.params.selector(keys::VALID_TARGET) {
                 if let Some(target_card) = run_params.damage_target_card {
                     if !matches_valid_card_for_controller(
                         valid_target,
@@ -209,28 +209,26 @@ fn mode_specific_matches(
     }
 }
 
-fn matches_valid_card(valid: &str, card: &Card, source: &Card) -> bool {
-    valid_filter::matches_valid_card(valid, card, source)
+fn matches_valid_card(valid: &CompiledSelector, card: &Card, source: &Card) -> bool {
+    valid_filter::matches_valid_card_selector(valid, card, source)
 }
 
 fn matches_valid_card_for_controller(
-    valid: &str,
+    valid: &CompiledSelector,
     card: &Card,
     source_controller: crate::ids::PlayerId,
 ) -> bool {
-    // Create a temporary Card with the controller for matching
-    // For disable triggers, we just need the controller, so we use a dummy source
     let mut dummy_source = card.clone();
     dummy_source.controller = source_controller;
-    valid_filter::matches_valid_card(valid, card, &dummy_source)
+    valid_filter::matches_valid_card_selector(valid, card, &dummy_source)
 }
 
 fn matches_valid_player(
-    valid: &str,
+    valid: &CompiledSelector,
     player: crate::ids::PlayerId,
     source_controller: crate::ids::PlayerId,
 ) -> bool {
-    valid_filter::matches_valid_player(valid, player, source_controller)
+    valid_filter::matches_valid_player_selector(valid, player, source_controller)
 }
 
 fn trigger_matches(

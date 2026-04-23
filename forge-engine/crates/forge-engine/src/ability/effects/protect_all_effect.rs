@@ -1,6 +1,6 @@
 use forge_foundation::ZoneType;
 
-use super::{matches_valid_cards, EffectContext};
+use super::{matches_valid_cards_for_sa, EffectContext};
 use crate::ids::CardId;
 use crate::spellability::SpellAbility;
 
@@ -37,6 +37,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
         .get(crate::parsing::keys::VALID_CARDS)
         .unwrap_or("Creature.YouCtrl")
         .to_string();
+    let valid_selector = sa.params.selector(crate::parsing::keys::VALID_CARDS);
     let gains = sa
         .params
         .get(crate::parsing::keys::GAINS)
@@ -81,7 +82,13 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     for &pid in &player_ids {
         let zone_cards = ctx.game.cards_in_zone(ZoneType::Battlefield, pid).to_vec();
         for cid in zone_cards {
-            if matches_valid_cards(ctx.game.card(cid), &valid_filter, controller) {
+            if matches_valid_cards_for_sa(
+                ctx.game,
+                sa,
+                ctx.game.card(cid),
+                valid_selector,
+                &valid_filter,
+            ) {
                 targets.push(cid);
             }
         }

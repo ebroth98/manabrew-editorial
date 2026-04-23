@@ -1,24 +1,24 @@
 use serde::{Deserialize, Serialize};
 
-use crate::event::{RunParams};
-use crate::trigger::TriggerType;
+use crate::event::RunParams;
 use crate::game::GameState;
 use crate::spellability::SpellAbility;
+use crate::trigger::TriggerType;
 
 use super::trigger::TriggerBehavior;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TriggerCounterPlayerAddedAll {
-    pub valid_source: Option<String>,
-    pub valid_object: Option<String>,
-    pub valid_object_to_source: Option<String>,
+    pub valid_source: Option<crate::parsing::CompiledSelector>,
+    pub valid_object: Option<crate::parsing::CompiledSelector>,
+    pub valid_object_to_source: Option<crate::parsing::CompiledSelector>,
 }
 
 impl TriggerCounterPlayerAddedAll {
     pub fn parse(
-        valid_source: Option<String>,
-        valid_object: Option<String>,
-        valid_object_to_source: Option<String>,
+        valid_source: Option<crate::parsing::CompiledSelector>,
+        valid_object: Option<crate::parsing::CompiledSelector>,
+        valid_object_to_source: Option<crate::parsing::CompiledSelector>,
     ) -> Box<dyn TriggerBehavior> {
         Box::new(Self {
             valid_source,
@@ -74,9 +74,10 @@ impl TriggerBehavior for TriggerCounterPlayerAddedAll {
                 trigger.matches_valid_player_filter_with_controller(filter, pid, source_player)
             } else if let Some(cid) = params.object_card {
                 let card_controller = game.card(cid).controller;
-                if filter.contains("YouCtrl") {
+                let raw_filter = filter.as_raw();
+                if raw_filter.contains("YouCtrl") {
                     card_controller == source_player
-                } else if filter.contains("OppCtrl") {
+                } else if raw_filter.contains("OppCtrl") {
                     card_controller != source_player
                 } else {
                     trigger.matches_valid_card_filter(filter, cid, game)

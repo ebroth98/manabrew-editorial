@@ -6,7 +6,7 @@
 
 use forge_foundation::ZoneType;
 
-use crate::card::Card;
+use crate::card::{valid_filter, Card};
 use crate::parsing::keys;
 use crate::staticability::StaticMode;
 
@@ -28,10 +28,12 @@ pub fn get_block_cost(cards: &[Card], blocker: &Card, _attacker: &Card) -> i32 {
             }
 
             // Check ValidCard$ matches the blocker
-            if let Some(valid) = sa.params.get(keys::VALID_CARD) {
-                if !matches_valid_for_cost(blocker, valid) {
-                    continue;
-                }
+            if !valid_filter::matches_valid_card_selector_opt(
+                sa.params.selector(keys::VALID_CARD),
+                blocker,
+                source,
+            ) {
+                continue;
             }
 
             // Parse Cost$ parameter as generic mana amount
@@ -44,20 +46,4 @@ pub fn get_block_cost(cards: &[Card], blocker: &Card, _attacker: &Card) -> i32 {
     }
 
     total_cost
-}
-
-/// Simple valid-card check for cost statics.
-fn matches_valid_for_cost(card: &Card, valid: &str) -> bool {
-    let parts: Vec<&str> = valid.split('.').collect();
-    for part in parts {
-        match part {
-            "Creature" => {
-                if !card.is_creature() {
-                    return false;
-                }
-            }
-            _ => {}
-        }
-    }
-    true
 }

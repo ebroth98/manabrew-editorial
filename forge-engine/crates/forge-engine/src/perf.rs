@@ -32,6 +32,9 @@ pub enum Metric {
     AbilityBuildParamsLookups,
     StaticAbilityParamsLookups,
     ValidFilterParamsLookups,
+    SelectorParses,
+    SelectorMatches,
+    SelectorRawPredicates,
     GameLoopParamsLookups,
     PhaseParamsLookups,
     PriorityParamsLookups,
@@ -74,6 +77,9 @@ static TARGET_PARAMS_LOOKUPS: AtomicU64 = AtomicU64::new(0);
 static ABILITY_BUILD_PARAMS_LOOKUPS: AtomicU64 = AtomicU64::new(0);
 static STATIC_ABILITY_PARAMS_LOOKUPS: AtomicU64 = AtomicU64::new(0);
 static VALID_FILTER_PARAMS_LOOKUPS: AtomicU64 = AtomicU64::new(0);
+static SELECTOR_PARSES: AtomicU64 = AtomicU64::new(0);
+static SELECTOR_MATCHES: AtomicU64 = AtomicU64::new(0);
+static SELECTOR_RAW_PREDICATES: AtomicU64 = AtomicU64::new(0);
 static GAME_LOOP_PARAMS_LOOKUPS: AtomicU64 = AtomicU64::new(0);
 static PHASE_PARAMS_LOOKUPS: AtomicU64 = AtomicU64::new(0);
 static PRIORITY_PARAMS_LOOKUPS: AtomicU64 = AtomicU64::new(0);
@@ -178,6 +184,9 @@ fn counter(metric: Metric) -> &'static AtomicU64 {
         Metric::AbilityBuildParamsLookups => &ABILITY_BUILD_PARAMS_LOOKUPS,
         Metric::StaticAbilityParamsLookups => &STATIC_ABILITY_PARAMS_LOOKUPS,
         Metric::ValidFilterParamsLookups => &VALID_FILTER_PARAMS_LOOKUPS,
+        Metric::SelectorParses => &SELECTOR_PARSES,
+        Metric::SelectorMatches => &SELECTOR_MATCHES,
+        Metric::SelectorRawPredicates => &SELECTOR_RAW_PREDICATES,
         Metric::GameLoopParamsLookups => &GAME_LOOP_PARAMS_LOOKUPS,
         Metric::PhaseParamsLookups => &PHASE_PARAMS_LOOKUPS,
         Metric::PriorityParamsLookups => &PRIORITY_PARAMS_LOOKUPS,
@@ -225,6 +234,9 @@ fn name(metric: Metric) -> &'static str {
         Metric::AbilityBuildParamsLookups => "params.lookups.ability_build",
         Metric::StaticAbilityParamsLookups => "params.lookups.static_ability",
         Metric::ValidFilterParamsLookups => "params.lookups.valid_filter",
+        Metric::SelectorParses => "selector.parses",
+        Metric::SelectorMatches => "selector.matches",
+        Metric::SelectorRawPredicates => "selector.raw_predicates",
         Metric::GameLoopParamsLookups => "params.lookups.game_loop",
         Metric::PhaseParamsLookups => "params.lookups.phase",
         Metric::PriorityParamsLookups => "params.lookups.priority",
@@ -481,7 +493,8 @@ pub fn print_summary() {
             "trigger_params_lookups={} replacement_params_lookups={} ",
             "cost_params_lookups={} target_params_lookups={} ",
             "ability_build_params_lookups={} static_ability_params_lookups={} ",
-            "valid_filter_params_lookups={} game_loop_params_lookups={} ",
+            "valid_filter_params_lookups={} selector_parses={} selector_matches={} ",
+            "selector_raw_predicates={} game_loop_params_lookups={} ",
             "phase_params_lookups={} priority_params_lookups={} ",
             "priority_sba_params_lookups={} priority_trigger_params_lookups={} ",
             "priority_snapshots_taken={} ",
@@ -520,6 +533,9 @@ pub fn print_summary() {
         ABILITY_BUILD_PARAMS_LOOKUPS.load(Ordering::Relaxed),
         STATIC_ABILITY_PARAMS_LOOKUPS.load(Ordering::Relaxed),
         VALID_FILTER_PARAMS_LOOKUPS.load(Ordering::Relaxed),
+        SELECTOR_PARSES.load(Ordering::Relaxed),
+        SELECTOR_MATCHES.load(Ordering::Relaxed),
+        SELECTOR_RAW_PREDICATES.load(Ordering::Relaxed),
         GAME_LOOP_PARAMS_LOOKUPS.load(Ordering::Relaxed),
         PHASE_PARAMS_LOOKUPS.load(Ordering::Relaxed),
         PRIORITY_PARAMS_LOOKUPS.load(Ordering::Relaxed),

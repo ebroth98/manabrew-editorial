@@ -9,11 +9,11 @@ use forge_foundation::{ColorSet, ZoneType};
 
 use crate::ability::AbilityKey;
 use crate::card::filter_constants as fc;
-use crate::card::{Card, CounterType};
+use crate::card::{valid_filter, Card, CounterType};
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
+use crate::parsing::CompiledSelector;
 use crate::spellability::SpellAbility;
-
 
 fn push_unique_player(players: &mut Vec<PlayerId>, player: PlayerId) {
     if !players.contains(&player) {
@@ -82,7 +82,11 @@ pub enum DefinedCardToken {
     #[strum(serialize = "Self", serialize = "CARDNAME")]
     SelfCard,
     Remembered,
-    #[strum(serialize = "Enchanted", serialize = "Equipped", serialize = "AttachedTo")]
+    #[strum(
+        serialize = "Enchanted",
+        serialize = "Equipped",
+        serialize = "AttachedTo"
+    )]
     Attached,
     EnchantedBy,
     Imprinted,
@@ -116,7 +120,15 @@ pub fn get_defined_cards(
             .cards_in_zone(ZoneType::Graveyard, player)
             .iter()
             .copied()
-            .filter(|&cid| filter.is_empty() || matches_valid_cards(game.card(cid), filter, player))
+            .filter(|&cid| {
+                if filter.is_empty() {
+                    true
+                } else if let Some(source_id) = host_card {
+                    matches_valid_cards_for_source(game, source_id, game.card(cid), None, filter)
+                } else {
+                    matches_valid_cards(game.card(cid), filter, player)
+                }
+            })
             .collect();
     }
     // `Discarded` / `Sacrificed` live on the SA (`discarded_cost_cards` +
@@ -334,7 +346,8 @@ pub fn resolve_defined_player_with_sa(
         "TriggeredTarget" | "TriggeredTargets" => {
             if let Some(player) = parse_player_object(sa, AbilityKey::TargetPlayer) {
                 Some(player)
-            } else if let Some(card) = sa.get_triggering_cards(AbilityKey::TargetCard)
+            } else if let Some(card) = sa
+                .get_triggering_cards(AbilityKey::TargetCard)
                 .into_iter()
                 .next()
             {
@@ -350,7 +363,8 @@ pub fn resolve_defined_player_with_sa(
             }
         }
         "TriggeredTargetController" | "TriggeredTargetsController" => {
-            if let Some(card) = sa.get_triggering_cards(AbilityKey::TargetCard)
+            if let Some(card) = sa
+                .get_triggering_cards(AbilityKey::TargetCard)
                 .into_iter()
                 .next()
             {
@@ -532,11 +546,13 @@ pub fn resolve_defined_players_with_sa(
         "TriggeredActivator" => sa.get_triggering_players(AbilityKey::Activator),
         "TriggeredOpponentVotedDiff" => sa.get_triggering_players(AbilityKey::OpponentVotedDiff),
         "TriggeredOpponentVotedSame" => sa.get_triggering_players(AbilityKey::OpponentVotedSame),
-        "TriggeredCardController" => sa.get_triggering_cards(AbilityKey::Card)
+        "TriggeredCardController" => sa
+            .get_triggering_cards(AbilityKey::Card)
             .into_iter()
             .map(|cid| game.card(cid).controller)
             .collect(),
-        "TriggeredCardOwner" => sa.get_triggering_cards(AbilityKey::Card)
+        "TriggeredCardOwner" => sa
+            .get_triggering_cards(AbilityKey::Card)
             .into_iter()
             .map(|cid| game.card(cid).owner)
             .collect(),
@@ -561,7 +577,8 @@ pub fn resolve_defined_players_with_sa(
             };
             cards.into_iter().map(|cid| game.card(cid).owner).collect()
         }
-        "TriggeredSourceController" => sa.get_triggering_cards(AbilityKey::Source)
+        "TriggeredSourceController" => sa
+            .get_triggering_cards(AbilityKey::Source)
             .into_iter()
             .map(|cid| game.card(cid).controller)
             .collect(),
@@ -873,14 +890,11 @@ pub fn parse_counter_type(s: &str) -> CounterType {
 
 /// Parse a zone name string to ZoneType.
 pub fn parse_zone_type(s: &str) -> Option<ZoneType> {
-    match s.trim() {
-        "Battlefield" => Some(ZoneType::Battlefield),
-        "Graveyard" => Some(ZoneType::Graveyard),
-        "Hand" => Some(ZoneType::Hand),
-        "Library" | "Deck" => Some(ZoneType::Library),
-        "Exile" => Some(ZoneType::Exile),
-        "Command" => Some(ZoneType::Command),
-        _ => None,
+    let s = s.trim();
+    if s.eq_ignore_ascii_case("Deck") {
+        Some(ZoneType::Library)
+    } else {
+        ZoneType::from_str_compat(s)
     }
 }
 
@@ -910,6 +924,64 @@ pub fn matches_valid_cards(card: &Card, filter: &str, activating_player: PlayerI
     }
 
     matches_valid_cards_single(card, filter, activating_player)
+}
+
+pub fn matches_valid_cards_selector_opt(
+    selector: Option<&CompiledSelector>,
+    card: &Card,
+    activating_player: PlayerId,
+) -> bool {
+    selector.map_or(true, |selector| {
+        selector.alternatives.iter().any(|alternative| {
+            matches_valid_cards_single(card, &alternative.raw, activating_player)
+        })
+    })
+}
+
+pub fn matches_valid_cards_for_sa(
+    game: &GameState,
+    sa: &SpellAbility,
+    card: &Card,
+    selector: Option<&CompiledSelector>,
+    default_filter: &str,
+) -> bool {
+    match (selector, sa.source) {
+        (Some(selector), Some(source_id)) => valid_filter::matches_valid_card_selector_in_game(
+            selector,
+            card,
+            game.card(source_id),
+            game,
+        ),
+        (Some(selector), None) => {
+            matches_valid_cards_selector_opt(Some(selector), card, sa.activating_player)
+        }
+        (None, Some(source_id)) => valid_filter::matches_valid_card_selector_in_game(
+            &CompiledSelector::parse(default_filter),
+            card,
+            game.card(source_id),
+            game,
+        ),
+        (None, None) => matches_valid_cards(card, default_filter, sa.activating_player),
+    }
+}
+
+pub fn matches_valid_cards_for_source(
+    game: &GameState,
+    source_id: CardId,
+    card: &Card,
+    selector: Option<&CompiledSelector>,
+    default_filter: &str,
+) -> bool {
+    let source = game.card(source_id);
+    let parsed;
+    let selector = match selector {
+        Some(selector) => selector,
+        None => {
+            parsed = CompiledSelector::parse(default_filter);
+            &parsed
+        }
+    };
+    valid_filter::matches_valid_card_selector_in_game(selector, card, source, game)
 }
 
 fn matches_valid_cards_single(card: &Card, filter: &str, activating_player: PlayerId) -> bool {
@@ -1240,8 +1312,7 @@ pub fn matches_change_type(
                         return false;
                     }
                     let has_sub = card.type_line.has_subtype(stripped);
-                    let changeling_match =
-                        card.is_creature() && card.has_keyword("Changeling");
+                    let changeling_match = card.is_creature() && card.has_keyword("Changeling");
                     if has_sub || changeling_match {
                         return false;
                     }
@@ -1673,8 +1744,6 @@ pub fn filter_list_by_type(
         return cards.to_vec();
     }
 
-    let activating_player = sa.activating_player;
-
     // Handle Triggered prefix — resolve to a trigger card, then adjust filter
     let (effective_source, effective_filter) = if filter_type.starts_with("Triggered") {
         // Look up the triggered card object
@@ -1722,6 +1791,7 @@ pub fn filter_list_by_type(
         (sa.source, filter_type.to_string())
     };
 
+    let selector = CompiledSelector::parse(&effective_filter);
     cards
         .iter()
         .copied()
@@ -1733,7 +1803,17 @@ pub fn filter_list_by_type(
                     return cid == src;
                 }
             }
-            matches_valid_cards(card, &effective_filter, activating_player)
+            if let Some(source_id) = effective_source {
+                matches_valid_cards_for_source(
+                    game,
+                    source_id,
+                    card,
+                    Some(&selector),
+                    &effective_filter,
+                )
+            } else {
+                matches_valid_cards(card, &effective_filter, sa.activating_player)
+            }
         })
         .collect()
 }
@@ -2113,9 +2193,8 @@ pub fn get_spells_from_play_effect(
         if !is_spell && !card.type_line.is_land() {
             continue;
         }
-        let built = crate::spellability::build_spell_ability_from_host_card(
-            card, ab_text, controller,
-        );
+        let built =
+            crate::spellability::build_spell_ability_from_host_card(card, ab_text, controller);
         out.push(built);
     }
     out

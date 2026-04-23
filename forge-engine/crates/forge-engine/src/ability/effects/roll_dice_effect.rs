@@ -170,7 +170,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let amount = resolve_numeric_svar(ctx.game, sa, "Amount", 1).max(0);
     let players = if let Some(player) = sa.target_chosen.target_player {
         vec![player]
-    } else if let Some(defined) = sa.params.get("Defined") {
+    } else if let Some(defined) = sa.defined() {
         let resolved = resolve_defined_players(defined, controller, ctx.game);
         if resolved.is_empty() {
             vec![controller]

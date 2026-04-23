@@ -2,26 +2,23 @@ use serde::{Deserialize, Serialize};
 
 use crate::ability::AbilityKey;
 use crate::event::{AbilityValue, RunParams};
-use crate::trigger::TriggerType;
 use crate::game::GameState;
 use crate::parsing::{keys, Params};
 use crate::spellability::SpellAbility;
+use crate::trigger::TriggerType;
 
 use super::trigger::{Trigger, TriggerBehavior};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TriggerTokenCreatedOnce {
-    pub valid_card: Option<String>,
-    pub only_first: Option<String>,
+    pub valid_card: Option<crate::parsing::CompiledSelector>,
+    pub only_first: Option<crate::parsing::CompiledSelector>,
 }
 
 impl TriggerTokenCreatedOnce {
     pub fn parse(params: &Params) -> Box<dyn TriggerBehavior> {
-        let valid_card = params
-            .get("ValidToken")
-            .or_else(|| params.get(keys::VALID_CARD))
-            .map(|s| s.to_string());
-        let only_first = params.get_cloned("OnlyFirst");
+        let valid_card = params.selector_cloned_any(&["ValidToken", keys::VALID_CARD]);
+        let only_first = params.selector_cloned("OnlyFirst");
         Box::new(Self {
             valid_card,
             only_first,

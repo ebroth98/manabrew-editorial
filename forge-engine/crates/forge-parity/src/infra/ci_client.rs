@@ -289,6 +289,11 @@ fn cmd_poll(host: &str, port: u16, batch_id: &str, pr: Option<&str>, repo: Optio
                     eprintln!(
                         "[poll {poll_count}] Progress: {completed}/{total} (pass={passed} fail={failed} error={errors})"
                     );
+                    if completed == last_completed {
+                        if let Some(active) = describe_active_job(&v) {
+                            eprintln!("[poll {poll_count}] Active: {active}");
+                        }
+                    }
                     last_completed = completed;
                 }
 
@@ -345,6 +350,34 @@ fn cmd_poll(host: &str, port: u16, batch_id: &str, pr: Option<&str>, repo: Optio
 
         std::thread::sleep(Duration::from_secs(5));
     }
+}
+
+fn describe_active_job(batch: &serde_json::Value) -> Option<String> {
+    let active = batch.get("active_job")?;
+    if active.is_null() {
+        return None;
+    }
+    let regression = active
+        .get("regression_name")
+        .and_then(|v| v.as_str())
+        .unwrap_or("unknown");
+    let deck1 = active
+        .get("deck1")
+        .and_then(|v| v.as_str())
+        .unwrap_or("unknown");
+    let deck2 = active
+        .get("deck2")
+        .and_then(|v| v.as_str())
+        .unwrap_or("unknown");
+    let seed = active.get("seed").and_then(|v| v.as_u64()).unwrap_or(0);
+    let max_turns = active
+        .get("max_turns")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0);
+
+    Some(format!(
+        "{regression} {deck1} vs {deck2} seed={seed} max_turns={max_turns}"
+    ))
 }
 
 fn print_server_crash_diagnostics(last_seen_batch: &Option<serde_json::Value>) {

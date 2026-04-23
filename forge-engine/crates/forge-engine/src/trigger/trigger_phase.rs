@@ -1,17 +1,17 @@
 use serde::{Deserialize, Serialize};
 
-use crate::event::{RunParams};
-use crate::trigger::TriggerType;
+use crate::event::RunParams;
 use crate::game::GameState;
 use crate::parsing::{keys, Params};
 use crate::spellability::SpellAbility;
+use crate::trigger::TriggerType;
 
 use super::trigger::TriggerBehavior;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TriggerPhase {
     pub phase: Option<forge_foundation::PhaseType>,
-    pub valid_player: Option<String>,
+    pub valid_player: Option<crate::parsing::CompiledSelector>,
 }
 
 impl TriggerPhase {
@@ -19,7 +19,7 @@ impl TriggerPhase {
         let phase = params
             .get(keys::PHASE)
             .and_then(forge_foundation::PhaseType::from_script_name);
-        let valid_player = params.get_cloned(keys::VALID_PLAYER);
+        let valid_player = params.selector_cloned(keys::VALID_PLAYER);
         Box::new(Self {
             phase,
             valid_player,

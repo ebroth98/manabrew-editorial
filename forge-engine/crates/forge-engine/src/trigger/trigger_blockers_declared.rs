@@ -1,11 +1,8 @@
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    event::RunParams,
+    event::RunParams, game::GameState, parsing::Params, spellability::SpellAbility,
     trigger::TriggerType,
-    game::GameState,
-    parsing::Params,
-    spellability::SpellAbility,
 };
 
 use super::trigger::TriggerBehavior;

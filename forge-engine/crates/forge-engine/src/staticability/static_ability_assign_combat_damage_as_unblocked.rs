@@ -17,7 +17,7 @@ pub fn assign_as_unblocked(cards: &[Card], card: &Card, optional: bool) -> bool 
             } else if !has_optional && optional {
                 continue;
             }
-            if matches_valid_card(st_ab.params.get(keys::VALID_CARD), card, source) {
+            if matches_valid_card(st_ab.params.selector(keys::VALID_CARD), card, source) {
                 return true;
             }
         }
@@ -38,7 +38,7 @@ pub fn has_optional_assign_as_unblocked(cards: &[Card], card: &Card) -> bool {
         })
         .any(|(source, sa)| {
             sa.params.has(keys::OPTIONAL)
-                && matches_valid_card(sa.params.get(keys::VALID_CARD), card, source)
+                && matches_valid_card(sa.params.selector(keys::VALID_CARD), card, source)
         })
 }
 
@@ -55,7 +55,7 @@ pub fn has_mandatory_assign_as_unblocked(cards: &[Card], card: &Card) -> bool {
         })
         .any(|(source, sa)| {
             !sa.params.has(keys::OPTIONAL)
-                && matches_valid_card(sa.params.get(keys::VALID_CARD), card, source)
+                && matches_valid_card(sa.params.selector(keys::VALID_CARD), card, source)
         })
 }
 
@@ -64,6 +64,10 @@ pub fn assign_combat_damage_as_unblocked(cards: &[Card], card: &Card) -> bool {
     has_mandatory_assign_as_unblocked(cards, card)
 }
 
-fn matches_valid_card(valid: Option<&str>, card: &Card, source: &Card) -> bool {
-    valid_filter::matches_valid_card_opt(valid, card, source)
+fn matches_valid_card(
+    valid: Option<&crate::parsing::CompiledSelector>,
+    card: &Card,
+    source: &Card,
+) -> bool {
+    valid_filter::matches_valid_card_selector_opt(valid, card, source)
 }

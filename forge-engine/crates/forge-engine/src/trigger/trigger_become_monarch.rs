@@ -1,24 +1,19 @@
 use serde::{Deserialize, Serialize};
 
 use crate::parsing::{keys, Params};
-use crate::{
-    event::RunParams,
-    trigger::TriggerType,
-    game::GameState,
-    spellability::SpellAbility,
-};
+use crate::{event::RunParams, game::GameState, spellability::SpellAbility, trigger::TriggerType};
 
 use super::trigger::TriggerBehavior;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TriggerBecomeMonarch {
-    pub valid_player: Option<String>,
+    pub valid_player: Option<crate::parsing::CompiledSelector>,
 }
 
 impl TriggerBecomeMonarch {
     pub fn parse(params: &Params) -> Box<dyn TriggerBehavior> {
         Box::new(Self {
-            valid_player: params.get_cloned(keys::VALID_PLAYER),
+            valid_player: params.selector_cloned(keys::VALID_PLAYER),
         })
     }
 }

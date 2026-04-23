@@ -723,7 +723,7 @@ mod tests {
         let raw = "R$ Event$ Draw | ValidPlayer$ You | Description$ Skip your draw step.";
         let re = parse_replacement_effect(raw).expect("should parse");
         assert_eq!(re.event, ReplacementType::Draw);
-        assert_eq!(re.params.get(keys::VALID_PLAYER).unwrap(), "You");
+        assert_eq!(re.params.selector_value(keys::VALID_PLAYER).unwrap(), "You");
         assert!(re.active_zones.is_empty());
     }
 
@@ -732,7 +732,7 @@ mod tests {
         let raw = "R$ Event$ Destroy | ValidCard$ Card.Self | Description$ ~ is indestructible.";
         let re = parse_replacement_effect(raw).expect("should parse");
         assert_eq!(re.event, ReplacementType::Destroy);
-        assert_eq!(re.params.get(keys::VALID_CARD).unwrap(), "Card.Self");
+        assert_eq!(re.params.selector_value(keys::VALID_CARD).unwrap(), "Card.Self");
     }
 
     #[test]

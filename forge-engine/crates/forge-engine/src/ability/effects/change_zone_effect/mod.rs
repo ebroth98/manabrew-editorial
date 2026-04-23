@@ -17,7 +17,7 @@ mod stack;
 
 use forge_foundation::ZoneType;
 
-use super::{parse_zone_type, EffectContext};
+use super::EffectContext;
 use crate::parsing::keys;
 use crate::spellability::SpellAbility;
 
@@ -32,12 +32,10 @@ fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
 /// Mirrors Java `ChangeZoneEffect.buildSpellAbility` — calls
 /// `adjustChangeZoneTarget` to set the target zone to the origin zone.
 pub fn build_spell_ability(sa: &mut SpellAbility) {
-    if let Some(origin_str) = sa.params.get(crate::parsing::keys::ORIGIN) {
+    if let Some(zone) = sa.params.zone_type(crate::parsing::keys::ORIGIN) {
         if let Some(ref mut tr) = sa.target_restrictions {
             if !tr.can_tgt_player() {
-                if let Some(zone) = parse_zone_type(origin_str) {
-                    tr.tgt_zone = vec![zone];
-                }
+                tr.tgt_zone = vec![zone];
             }
         }
     }
@@ -46,17 +44,13 @@ pub fn build_spell_ability(sa: &mut SpellAbility) {
 /// Top-level resolve dispatcher — mirrors Java's `resolve()` which splits on
 /// `sa.isHidden()` into hidden-origin (library search) vs known-origin paths.
 pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
-    let origin_str = sa.origin().unwrap_or("");
-    let dest_zone = match parse_zone_type(sa.destination().unwrap_or("")) {
+    let dest_zone = match sa.destination_zone() {
         Some(z) => z,
         None => return,
     };
 
     // Multi-origin: Origin$ can be comma-separated (e.g. "Library,Graveyard")
-    let origins: Vec<ZoneType> = origin_str
-        .split(',')
-        .filter_map(|s| parse_zone_type(s.trim()))
-        .collect();
+    let origins: Vec<ZoneType> = sa.origin_zones();
 
     if origins.is_empty() {
         return;

@@ -30,7 +30,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let targets: Vec<CardId> = if let Some(target) = sa.target_chosen.target_card {
         vec![target]
     } else if let Some(source) = sa.source {
-        if let Some(def) = sa.params.get(keys::DEFINED) {
+        if let Some(def) = sa.defined() {
             if def == "Self" {
                 vec![source]
             } else {

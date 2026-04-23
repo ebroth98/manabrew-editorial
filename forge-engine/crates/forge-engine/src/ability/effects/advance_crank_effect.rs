@@ -7,7 +7,6 @@ use forge_foundation::ZoneType;
 use super::EffectContext;
 use crate::event::RunParams;
 use crate::ids::CardId;
-use crate::parsing::keys;
 use crate::spellability::SpellAbility;
 use crate::trigger::TriggerType;
 
@@ -16,7 +15,7 @@ use crate::trigger::TriggerType;
 /// `AdvanceCrankEffect` class extending `SpellAbilityEffect`.
 #[forge_engine_macros::spell_effect(AdvanceCrankEffect)]
 fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
-    let players = if let Some(def) = sa.params.get(keys::DEFINED) {
+    let players = if let Some(def) = sa.defined() {
         super::resolve_defined_players(def, sa.activating_player, ctx.game)
     } else {
         vec![sa.activating_player]

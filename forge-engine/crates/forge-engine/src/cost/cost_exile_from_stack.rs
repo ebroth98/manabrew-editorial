@@ -31,7 +31,9 @@ pub fn can_pay(
         .iter()
         .filter(|e| e.spell_ability.is_spell)
         .filter_map(|e| e.spell_ability.source)
-        .filter(|&cid| super::matches_exile_from_stack_filter(game, cid, player, type_filter))
+        .filter(|&cid| {
+            super::matches_exile_from_stack_filter(game, cid, source, player, type_filter)
+        })
         .count() as i32;
     count >= resolved_amount
 }

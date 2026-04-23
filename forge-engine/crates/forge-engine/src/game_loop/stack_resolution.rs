@@ -562,7 +562,9 @@ impl GameLoop {
                                 trigger_mode: Box::new(
                                     crate::trigger::trigger_phase::TriggerPhase {
                                         phase: Some(forge_foundation::PhaseType::Upkeep),
-                                        valid_player: Some("You".to_string()),
+                                        valid_player: Some(
+                                            crate::parsing::CompiledSelector::parse("You"),
+                                        ),
                                     },
                                 )
                                     as Box<dyn crate::trigger::TriggerBehavior>,

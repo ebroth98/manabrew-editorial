@@ -9,11 +9,11 @@ use crate::parsing::compare::compare_expr;
 use crate::parsing::keys;
 
 use super::replacement_effect::ReplacementEffect;
-use crate::card_trait_base::CardTrait;
 use super::replacement_handler::ReplacementEvent;
 use super::replacement_handler::{execute_replace_with_numeric_update, resolve_replace_value};
 use super::replacement_result::ReplacementResult;
 use super::replacement_type::ReplacementType;
+use crate::card_trait_base::CardTrait;
 
 /// Mirrors Java `ReplaceDamage.canReplace()`.
 pub fn can_replace(
@@ -43,19 +43,19 @@ pub fn can_replace(
     if amount <= 0 {
         return false;
     }
-    if let Some(valid_source) = effect.params.get(keys::VALID_SOURCE) {
+    if let Some(valid_source) = effect.params.selector(keys::VALID_SOURCE) {
         let Some(source_id) = damage_source else {
             return false;
         };
-        if !effect.matches_valid_card(valid_source, game.card(source_id), source_card) {
+        if !effect.matches_compiled_valid_card(valid_source, game.card(source_id), source_card) {
             return false;
         }
     }
-    if let Some(valid_target) = effect.params.get(keys::VALID_TARGET) {
+    if let Some(valid_target) = effect.params.selector(keys::VALID_TARGET) {
         let target_matches = if let Some(target) = target_player {
-            effect.matches_valid_player(valid_target, target, source_card)
+            effect.matches_compiled_valid_player(valid_target, target, source_card)
         } else if let Some(target) = target_card {
-            effect.matches_valid_card(valid_target, game.card(target), source_card)
+            effect.matches_compiled_valid_card(valid_target, game.card(target), source_card)
         } else {
             false
         };

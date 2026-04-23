@@ -72,7 +72,11 @@ pub fn apply_cant_be_cast_ability(
     game: Option<&GameState>,
 ) -> bool {
     // ValidCard check
-    if !valid_filter::matches_valid_card_opt(st_ab.params.get(keys::VALID_CARD), card, source) {
+    if !valid_filter::matches_valid_card_selector_opt(
+        st_ab.params.selector(keys::VALID_CARD),
+        card,
+        source,
+    ) {
         return false;
     }
 
@@ -149,12 +153,14 @@ pub fn apply_cant_be_cast_ability(
     if let Some(num_limit_str) = st_ab.params.get("NumLimitEachTurn") {
         if let Some(g) = game {
             let limit: i32 = num_limit_str.parse().unwrap_or(0);
-            let valid = st_ab.params.get(keys::VALID_CARD).unwrap_or("Card");
+            let valid = st_ab.params.selector(keys::VALID_CARD);
             let count = g
                 .player(activator)
                 .cards_cast_this_turn
                 .iter()
-                .filter(|&&cid| valid_filter::matches_valid_card(valid, g.card(cid), source))
+                .filter(|&&cid| {
+                    valid_filter::matches_valid_card_selector_opt(valid, g.card(cid), source)
+                })
                 .count() as i32;
             if count < limit {
                 return false;
@@ -209,7 +215,11 @@ pub fn apply_cant_be_activated_ability(
     activator: PlayerId,
 ) -> bool {
     // ValidCard check
-    if !valid_filter::matches_valid_card_opt(st_ab.params.get(keys::VALID_CARD), card, source) {
+    if !valid_filter::matches_valid_card_selector_opt(
+        st_ab.params.selector(keys::VALID_CARD),
+        card,
+        source,
+    ) {
         return false;
     }
 
@@ -274,7 +284,11 @@ pub fn apply_cant_play_land_ability(
     player: PlayerId,
 ) -> bool {
     // ValidCard check
-    if !valid_filter::matches_valid_card_opt(st_ab.params.get(keys::VALID_CARD), card, source) {
+    if !valid_filter::matches_valid_card_selector_opt(
+        st_ab.params.selector(keys::VALID_CARD),
+        card,
+        source,
+    ) {
         return false;
     }
 

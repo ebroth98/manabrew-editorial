@@ -1,8 +1,9 @@
 use forge_foundation::ZoneType;
 
-use super::{emit_zone_trigger_with_lki_counters, matches_valid_cards, EffectContext};
+use super::{emit_zone_trigger_with_lki_counters, matches_valid_cards_for_sa, EffectContext};
 use crate::event::RunParams;
 use crate::ids::CardId;
+use crate::parsing::keys;
 use crate::replacement::replacement_handler::{apply_replacements, ReplacementEvent};
 use crate::replacement::ReplacementResult;
 use crate::spellability::SpellAbility;
@@ -26,13 +27,7 @@ use crate::trigger::TriggerType;
 /// `DestroyAllEffect` class extending `SpellAbilityEffect`.
 #[forge_engine_macros::spell_effect(DestroyAllEffect)]
 fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
-    let valid_cards_filter = sa
-        .params
-        .get("ValidCards")
-        .map(|s| s.to_string())
-        .unwrap_or_else(|| "Creature".to_string());
-
-    let activating_player = sa.activating_player;
+    let valid_cards = sa.params.selector(keys::VALID_CARDS);
 
     // Pass 1 — collect matching battlefield cards
     let player_ids = ctx.game.player_order.clone();
@@ -40,7 +35,8 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     for &pid in &player_ids {
         let zone_cards = ctx.game.cards_in_zone(ZoneType::Battlefield, pid).to_vec();
         for cid in zone_cards {
-            if matches_valid_cards(ctx.game.card(cid), &valid_cards_filter, activating_player) {
+            if matches_valid_cards_for_sa(ctx.game, sa, ctx.game.card(cid), valid_cards, "Creature")
+            {
                 to_destroy.push(cid);
             }
         }

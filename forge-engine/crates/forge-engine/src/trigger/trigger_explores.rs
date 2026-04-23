@@ -1,24 +1,24 @@
 use serde::{Deserialize, Serialize};
 
-use crate::event::{RunParams};
-use crate::trigger::TriggerType;
+use crate::event::RunParams;
 use crate::game::GameState;
 use crate::parsing::{keys, Params};
 use crate::spellability::SpellAbility;
+use crate::trigger::TriggerType;
 
 use super::trigger::{Trigger, TriggerBehavior};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TriggerExplores {
-    pub valid_card: Option<String>,
-    pub valid_explored: Option<String>,
+    pub valid_card: Option<crate::parsing::CompiledSelector>,
+    pub valid_explored: Option<crate::parsing::CompiledSelector>,
 }
 
 impl TriggerExplores {
     pub fn parse(params: &Params) -> Box<dyn TriggerBehavior> {
         Box::new(Self {
-            valid_card: params.get_cloned(keys::VALID_CARD),
-            valid_explored: params.get_cloned("ValidExplored"),
+            valid_card: params.selector_cloned(keys::VALID_CARD),
+            valid_explored: params.selector_cloned("ValidExplored"),
         })
     }
 }

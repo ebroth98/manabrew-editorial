@@ -340,7 +340,7 @@ fn resolve_animate_targets(
     }
 
     // Check Defined$ param
-    if let Some(defined) = sa.params.get(keys::DEFINED) {
+    if let Some(defined) = sa.defined() {
         match defined {
             "Self" => {
                 if let Some(src) = sa.source {

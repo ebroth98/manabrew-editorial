@@ -2,18 +2,18 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     event::RunParams,
-    trigger::TriggerType,
     game::GameState,
     parsing::compare::compare_expr,
     parsing::{keys, Params},
     spellability::SpellAbility,
+    trigger::TriggerType,
 };
 
 use super::trigger::TriggerBehavior;
 
 fn attacked_target_matches(
     trigger: &super::trigger::Trigger,
-    filter: &str,
+    filter: &crate::parsing::CompiledSelector,
     params: &RunParams,
     game: &GameState,
 ) -> bool {
@@ -39,23 +39,20 @@ fn attacked_target_matches(
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TriggerAttackersDeclared {
-    pub valid_player: Option<String>,
-    pub valid_attackers: Option<String>,
+    pub valid_player: Option<crate::parsing::CompiledSelector>,
+    pub valid_attackers: Option<crate::parsing::CompiledSelector>,
     pub valid_attackers_amount: Option<String>,
-    pub attacked_target: Option<String>,
+    pub attacked_target: Option<crate::parsing::CompiledSelector>,
     pub one_target: bool,
 }
 
 impl TriggerAttackersDeclared {
     pub fn parse(mode_str: &str, params: &Params) -> Box<dyn TriggerBehavior> {
         Box::new(Self {
-            valid_player: params
-                .get(keys::ATTACKING_PLAYER)
-                .or_else(|| params.get(keys::VALID_PLAYER))
-                .map(|s| s.to_string()),
-            valid_attackers: params.get_cloned(keys::VALID_ATTACKERS),
+            valid_player: params.selector_cloned_any(&[keys::ATTACKING_PLAYER, keys::VALID_PLAYER]),
+            valid_attackers: params.selector_cloned(keys::VALID_ATTACKERS),
             valid_attackers_amount: params.get_cloned(keys::VALID_ATTACKERS_AMOUNT),
-            attacked_target: params.get_cloned("AttackedTarget"),
+            attacked_target: params.selector_cloned("AttackedTarget"),
             one_target: mode_str == "AttackersDeclaredOneTarget",
         })
     }

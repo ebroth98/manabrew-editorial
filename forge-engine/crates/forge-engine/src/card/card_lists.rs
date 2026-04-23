@@ -1,8 +1,10 @@
 use rand::seq::SliceRandom;
 
 use crate::ability::ability_utils;
+use crate::card::valid_filter;
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
+use crate::parsing::CompiledSelector;
 use crate::spellability::SpellAbility;
 
 /// Port of common `CardLists` utilities used by card filtering/counting code.
@@ -163,6 +165,36 @@ impl CardLists {
         source_controller: PlayerId,
     ) -> usize {
         Self::filter_as_list(game, cards, restriction, source_controller).len()
+    }
+
+    pub fn filter_as_list_with_source(
+        game: &GameState,
+        cards: &[CardId],
+        restriction: &str,
+        source: CardId,
+    ) -> Vec<CardId> {
+        let selector = CompiledSelector::parse(restriction);
+        cards
+            .iter()
+            .copied()
+            .filter(|&cid| {
+                valid_filter::matches_valid_card_selector_in_game(
+                    &selector,
+                    game.card(cid),
+                    game.card(source),
+                    game,
+                )
+            })
+            .collect()
+    }
+
+    pub fn count_with_source(
+        game: &GameState,
+        cards: &[CardId],
+        restriction: &str,
+        source: CardId,
+    ) -> usize {
+        Self::filter_as_list_with_source(game, cards, restriction, source).len()
     }
 
     pub fn cmc_can_sum_to(sum: i32, cards: &[CardId], game: &GameState) -> bool {

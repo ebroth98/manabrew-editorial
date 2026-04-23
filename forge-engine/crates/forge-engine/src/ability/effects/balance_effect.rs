@@ -1,6 +1,6 @@
 use forge_foundation::ZoneType;
 
-use super::{emit_zone_trigger, matches_valid_cards, parse_zone_type, EffectContext};
+use super::{emit_zone_trigger, matches_valid_cards_for_sa, parse_zone_type, EffectContext};
 use crate::event::RunParams;
 use crate::spellability::SpellAbility;
 use crate::trigger::TriggerType;
@@ -19,13 +19,12 @@ use crate::trigger::TriggerType;
 /// `BalanceEffect` class extending `SpellAbilityEffect`.
 #[forge_engine_macros::spell_effect(BalanceEffect)]
 fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
-    let controller = sa.activating_player;
-
     let filter = sa
         .params
         .get("Valid")
         .map(|s| s.to_string())
         .unwrap_or_else(|| "Card".to_string());
+    let filter_selector = sa.params.selector_cloned("Valid");
 
     let zone = sa
         .params
@@ -44,7 +43,15 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
                 .cards_in_zone(zone, pid)
                 .to_vec()
                 .iter()
-                .filter(|&&cid| matches_valid_cards(ctx.game.card(cid), &filter, controller))
+                .filter(|&&cid| {
+                    matches_valid_cards_for_sa(
+                        ctx.game,
+                        sa,
+                        ctx.game.card(cid),
+                        filter_selector.as_ref(),
+                        &filter,
+                    )
+                })
                 .count();
             (pid, count)
         })
@@ -68,7 +75,15 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
                         .cards_in_zone(ZoneType::Battlefield, pid)
                         .to_vec()
                         .into_iter()
-                        .filter(|&cid| matches_valid_cards(ctx.game.card(cid), &filter, controller))
+                        .filter(|&cid| {
+                            matches_valid_cards_for_sa(
+                                ctx.game,
+                                sa,
+                                ctx.game.card(cid),
+                                filter_selector.as_ref(),
+                                &filter,
+                            )
+                        })
                         .collect();
 
                     if valid.is_empty() {

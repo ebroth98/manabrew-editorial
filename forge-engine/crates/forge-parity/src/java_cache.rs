@@ -3,7 +3,8 @@
 //! Avoids spawning the Java harness for matchups whose output hasn't changed.
 //! Cache is keyed on:
 //! - A **source hash** covering all Java source files + deck definitions
-//! - Per-matchup parameters (deck1, deck2, seed, max_turns, prefer_actions)
+//! - Per-matchup parameters (deck1, deck2, seed, max_turns, prefer_actions,
+//!   deep, variant, commanders)
 //!
 //! When the source hash changes the entire cache is wiped (cheap — just delete
 //! the directory).  Individual entries are stored as compressed JSON files so
@@ -32,6 +33,9 @@ struct MatchupKey<'a> {
     seed: u64,
     max_turns: u32,
     prefer_actions: bool,
+    deep: bool,
+    variant: &'a str,
+    commanders: &'a [String],
 }
 
 // Minimal serde wrappers so we can store JavaMatchupData as JSON without
@@ -60,7 +64,7 @@ struct Manifest {
 }
 
 const MANIFEST_FILE: &str = "manifest.json";
-const CACHE_VERSION: u32 = 3;
+const CACHE_VERSION: u32 = 4;
 
 impl JavaCache {
     /// Open (or create) a cache directory.
@@ -123,8 +127,20 @@ impl JavaCache {
         seed: u64,
         max_turns: u32,
         prefer_actions: bool,
+        deep: bool,
+        variant: &str,
+        commanders: &[String],
     ) -> Option<JavaMatchupData> {
-        let path = self.entry_path(deck1, deck2, seed, max_turns, prefer_actions);
+        let path = self.entry_path(
+            deck1,
+            deck2,
+            seed,
+            max_turns,
+            prefer_actions,
+            deep,
+            variant,
+            commanders,
+        );
         let bytes = fs::read(&path).ok()?;
         let cached: CachedMatchup = match serde_json::from_slice(&bytes) {
             Ok(c) => c,
@@ -150,9 +166,21 @@ impl JavaCache {
         seed: u64,
         max_turns: u32,
         prefer_actions: bool,
+        deep: bool,
+        variant: &str,
+        commanders: &[String],
         data: &JavaMatchupData,
     ) -> std::io::Result<()> {
-        let path = self.entry_path(deck1, deck2, seed, max_turns, prefer_actions);
+        let path = self.entry_path(
+            deck1,
+            deck2,
+            seed,
+            max_turns,
+            prefer_actions,
+            deep,
+            variant,
+            commanders,
+        );
 
         // Ensure shard directory exists
         if let Some(parent) = path.parent() {
@@ -197,13 +225,16 @@ impl JavaCache {
 
     // ── internal ──────────────────────────────────────────────────────
 
-    fn entry_path(
+    fn entry_path<'a>(
         &self,
-        deck1: &str,
-        deck2: &str,
+        deck1: &'a str,
+        deck2: &'a str,
         seed: u64,
         max_turns: u32,
         prefer_actions: bool,
+        deep: bool,
+        variant: &'a str,
+        commanders: &'a [String],
     ) -> PathBuf {
         let key = MatchupKey {
             deck1,
@@ -211,6 +242,9 @@ impl JavaCache {
             seed,
             max_turns,
             prefer_actions,
+            deep,
+            variant,
+            commanders,
         };
         let hash = {
             let mut h = DefaultHasher::new();
@@ -230,6 +264,8 @@ pub fn compute_source_hash(project_root: &Path) -> String {
         "forge/forge-game/src",
         "forge/forge-core/src",
         "forge/forge-ai/src",
+        "forge/forge-gui/res/cardsfolder",
+        "forge/forge-gui/res/tokenscripts",
         "preset_decks",
     ];
 
@@ -281,7 +317,7 @@ fn collect_files(base: &Path, dir: &Path, out: &mut Vec<(String, Vec<u8>)>) {
         } else if path.is_file() {
             // Only hash source-like files
             let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
-            if matches!(ext, "java" | "json" | "xml" | "properties") {
+            if matches!(ext, "java" | "json" | "xml" | "properties" | "txt") {
                 if let Ok(content) = fs::read(&path) {
                     let rel = path
                         .strip_prefix(base)

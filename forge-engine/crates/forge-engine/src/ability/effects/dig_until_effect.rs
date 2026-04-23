@@ -1,9 +1,10 @@
 use forge_foundation::ZoneType;
 
 use super::{
-    emit_zone_trigger, matches_change_type, parse_param, parse_zone_type, resolve_defined_player,
+    emit_zone_trigger, matches_change_type, parse_zone_type, resolve_defined_player,
     resolve_numeric_svar, EffectContext,
 };
+use crate::card::valid_filter;
 use crate::parsing::keys;
 use crate::spellability::SpellAbility;
 
@@ -25,15 +26,10 @@ use crate::spellability::SpellAbility;
 /// `DigUntilEffect` class extending `SpellAbilityEffect`.
 #[forge_engine_macros::spell_effect(DigUntilEffect)]
 fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
-    let amount = parse_param(&sa.ability_text, "Amount$ ")
-        .unwrap_or_else(|| resolve_numeric_svar(ctx.game, sa, "Amount", 1))
-        as usize;
+    let amount = resolve_numeric_svar(ctx.game, sa, keys::AMOUNT, 1).max(0) as usize;
 
-    let valid_filter = sa
-        .params
-        .get("Valid")
-        .map(|s| s.to_string())
-        .unwrap_or_else(|| "Card".to_string());
+    let valid_selector = sa.params.selector(keys::VALID);
+    let valid_filter = sa.params.get(keys::VALID).unwrap_or("Card");
 
     let found_dest = sa
         .params
@@ -77,7 +73,17 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
         if found.len() >= amount {
             break;
         }
-        if matches_change_type(ctx.game.card(cid), &valid_filter, &[]) {
+        let card = ctx.game.card(cid);
+        let matches = match (valid_selector, sa.source) {
+            (Some(selector), Some(source_id)) => valid_filter::matches_valid_card_selector_in_game(
+                selector,
+                card,
+                ctx.game.card(source_id),
+                ctx.game,
+            ),
+            _ => matches_change_type(card, valid_filter, &[]),
+        };
+        if matches {
             found.push(cid);
         } else {
             rest.push(cid);

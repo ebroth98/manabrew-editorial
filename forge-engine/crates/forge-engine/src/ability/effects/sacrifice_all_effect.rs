@@ -1,6 +1,7 @@
 use forge_foundation::ZoneType;
 
 use super::{emit_zone_trigger_with_lki_counters, matches_change_type, EffectContext};
+use crate::card::valid_filter;
 use crate::event::{AbilityValue, RunParams};
 use crate::ids::CardId;
 use crate::parsing::keys;
@@ -12,17 +13,14 @@ use crate::trigger::TriggerType;
 /// `SacrificeAllEffect` class extending `SpellAbilityEffect`.
 #[forge_engine_macros::spell_effect(SacrificeAllEffect)]
 fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
-    let valid_cards_filter = sa
-        .params
-        .get("ValidCards")
-        .map(|s| s.to_string())
-        .unwrap_or_else(|| "Creature".to_string());
+    let valid_cards = sa.params.selector(keys::VALID_CARDS);
+    let valid_cards_filter = sa.params.get(keys::VALID_CARDS).unwrap_or("Creature");
 
     // When Defined$ narrows the sacrifice to specific cards (e.g. Ashling's
     // `DelayTriggerRememberedLKI` targets the token created by the parent
     // trigger), sacrifice only those cards instead of every matching
     // permanent on the battlefield.
-    let defined_cards: Option<Vec<CardId>> = match sa.params.get(keys::DEFINED) {
+    let defined_cards: Option<Vec<CardId>> = match sa.defined() {
         Some("DelayTriggerRememberedLKI") | Some("DelayTriggerRemembered") | Some("Remembered") => {
             let mut ids = Vec::new();
             for value in &sa.trigger_remembered {
@@ -93,7 +91,19 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
         for &pid in &player_ids {
             let zone_cards = ctx.game.cards_in_zone(ZoneType::Battlefield, pid).to_vec();
             for cid in zone_cards {
-                if matches_change_type(ctx.game.card(cid), &valid_cards_filter, &[]) {
+                let card = ctx.game.card(cid);
+                let matches = match (valid_cards, sa.source) {
+                    (Some(selector), Some(source_id)) => {
+                        valid_filter::matches_valid_card_selector_in_game(
+                            selector,
+                            card,
+                            ctx.game.card(source_id),
+                            ctx.game,
+                        )
+                    }
+                    _ => matches_change_type(card, valid_cards_filter, &[]),
+                };
+                if matches {
                     to_sacrifice.push(cid);
                 }
             }

@@ -1,6 +1,6 @@
 use forge_foundation::ZoneType;
 
-use crate::card::{Card, CounterType};
+use crate::card::{valid_filter, Card, CounterType};
 use crate::ids::PlayerId;
 use crate::parsing::keys;
 use crate::staticability::StaticMode;
@@ -19,7 +19,7 @@ pub fn any_cant_put_counter_on_card(
             if !counter_type_matches(st_ab.params.get(keys::COUNTER_TYPE), &counter_type) {
                 continue;
             }
-            if !matches_valid_card(st_ab.params.get(keys::VALID_CARD), target, source) {
+            if !matches_valid_card(st_ab.params.selector(keys::VALID_CARD), target, source) {
                 continue;
             }
             if st_ab.params.has(keys::VALID_PLAYER) {
@@ -46,7 +46,7 @@ pub fn any_cant_put_counter_on_player(
                 continue;
             }
             if !matches_valid_player(
-                st_ab.params.get(keys::VALID_PLAYER),
+                st_ab.params.selector(keys::VALID_PLAYER),
                 player,
                 source.controller,
             ) {
@@ -90,14 +90,14 @@ pub fn apply_cant_put_counter(
         if st_ab.params.has(keys::VALID_PLAYER) {
             return false;
         }
-        return matches_valid_card(st_ab.params.get(keys::VALID_CARD), card, source);
+        return matches_valid_card(st_ab.params.selector(keys::VALID_CARD), card, source);
     }
     if let Some(player) = target_player {
         if st_ab.params.has(keys::VALID_CARD) {
             return false;
         }
         return matches_valid_player(
-            st_ab.params.get(keys::VALID_PLAYER),
+            st_ab.params.selector(keys::VALID_PLAYER),
             player,
             source.controller,
         );
@@ -113,31 +113,19 @@ fn counter_type_matches(param: Option<&str>, ct: &CounterType) -> bool {
 }
 
 fn matches_valid_player(
-    valid: Option<&str>,
+    valid: Option<&crate::parsing::CompiledSelector>,
     player: PlayerId,
     source_controller: PlayerId,
 ) -> bool {
-    match valid {
-        None => true,
-        Some(v) if v.eq_ignore_ascii_case("Player") => true,
-        Some(v) if v.eq_ignore_ascii_case("You") || v.eq_ignore_ascii_case("YouCtrl") => {
-            player == source_controller
-        }
-        Some(v) if v.eq_ignore_ascii_case("Opponent") || v.eq_ignore_ascii_case("OppCtrl") => {
-            player != source_controller
-        }
-        _ => true,
-    }
+    valid_filter::matches_valid_player_selector_opt(valid, player, source_controller)
 }
 
-fn matches_valid_card(valid: Option<&str>, card: &Card, source: &Card) -> bool {
-    match valid {
-        None => true,
-        Some(v) if v.eq_ignore_ascii_case("Card") || v.eq_ignore_ascii_case("Permanent") => true,
-        Some(v) if v.eq_ignore_ascii_case("Card.Self") => card.id == source.id,
-        Some(v) if v.eq_ignore_ascii_case("Creature") => card.is_creature(),
-        _ => true,
-    }
+fn matches_valid_card(
+    valid: Option<&crate::parsing::CompiledSelector>,
+    card: &Card,
+    source: &Card,
+) -> bool {
+    valid_filter::matches_valid_card_selector_opt(valid, card, source)
 }
 
 fn parse_counter_type_opt(s: &str) -> Option<CounterType> {

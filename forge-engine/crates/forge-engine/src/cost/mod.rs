@@ -48,6 +48,7 @@ pub mod cost_untap_type;
 pub mod cost_waterbend;
 pub mod individual_cost_payment_instance;
 pub mod payment_decision;
+pub mod selector_domain;
 pub mod trait_cost_decision_maker;
 pub mod trait_cost_visitor;
 
@@ -751,6 +752,7 @@ pub fn get_enlist_targets(game: &GameState, player: PlayerId) -> Vec<CardId> {
 pub fn matches_exile_from_stack_filter(
     game: &GameState,
     card_id: CardId,
+    source: CardId,
     player: PlayerId,
     type_filter: &str,
 ) -> bool {
@@ -758,13 +760,20 @@ pub fn matches_exile_from_stack_filter(
         return true;
     }
     let card = game.card(card_id);
+    let source_card = game.card(source);
     for clause in type_filter.split(';') {
         let clause = clause.trim();
         if clause.is_empty() {
             continue;
         }
         let normalized = normalize_stack_clause_for_valid_cards(clause);
-        if matches_valid_cards(card, &normalized, player) {
+        let selector = crate::parsing::CompiledSelector::parse(&normalized);
+        if crate::card::valid_filter::matches_valid_card_selector_in_game(
+            &selector,
+            card,
+            source_card,
+            game,
+        ) {
             return true;
         }
     }

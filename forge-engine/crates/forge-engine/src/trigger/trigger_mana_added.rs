@@ -1,27 +1,27 @@
 use serde::{Deserialize, Serialize};
 
-use crate::event::{RunParams};
-use crate::trigger::TriggerType;
+use crate::event::RunParams;
 use crate::game::GameState;
 use crate::parsing::{keys, Params};
 use crate::spellability::SpellAbility;
+use crate::trigger::TriggerType;
 
 use super::trigger::{Trigger, TriggerBehavior};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TriggerManaAdded {
-    pub valid_source: Option<String>,
+    pub valid_source: Option<crate::parsing::CompiledSelector>,
     pub valid_sa: Option<String>,
-    pub player: Option<String>,
+    pub player: Option<crate::parsing::CompiledSelector>,
     pub produced: Option<String>,
 }
 
 impl TriggerManaAdded {
     pub fn parse(params: &Params) -> Box<dyn TriggerBehavior> {
         Box::new(Self {
-            valid_source: params.get_cloned("ValidSource"),
+            valid_source: params.selector_cloned("ValidSource"),
             valid_sa: params.get_cloned(keys::VALID_SA),
-            player: params.get_cloned(keys::PLAYER),
+            player: params.selector_cloned(keys::PLAYER),
             produced: params.get_cloned(keys::PRODUCED),
         })
     }

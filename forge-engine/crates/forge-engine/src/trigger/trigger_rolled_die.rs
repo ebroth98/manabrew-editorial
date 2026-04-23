@@ -1,17 +1,17 @@
 use serde::{Deserialize, Serialize};
 
-use crate::event::{RunParams};
-use crate::trigger::TriggerType;
+use crate::event::RunParams;
 use crate::game::GameState;
 use crate::parsing::compare::compare_expr;
 use crate::parsing::{keys, Params};
 use crate::spellability::SpellAbility;
+use crate::trigger::TriggerType;
 
 use super::trigger::TriggerBehavior;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TriggerRolledDie {
-    pub valid_player: Option<String>,
+    pub valid_player: Option<crate::parsing::CompiledSelector>,
     pub valid_result: Option<String>,
     pub valid_sides: Option<String>,
     pub number: Option<i32>,
@@ -22,7 +22,7 @@ pub struct TriggerRolledDie {
 impl TriggerRolledDie {
     pub fn parse(params: &Params) -> Box<dyn TriggerBehavior> {
         Box::new(Self {
-            valid_player: params.get_cloned(keys::VALID_PLAYER),
+            valid_player: params.selector_cloned(keys::VALID_PLAYER),
             valid_result: params.get_cloned(keys::VALID_RESULT),
             valid_sides: params.get_cloned(keys::VALID_SIDES),
             number: params.get("Number").and_then(|n| n.parse::<i32>().ok()),

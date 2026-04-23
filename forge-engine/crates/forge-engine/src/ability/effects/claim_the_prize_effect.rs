@@ -4,7 +4,6 @@
 
 use super::EffectContext;
 use crate::event::RunParams;
-use crate::parsing::keys;
 use crate::spellability::SpellAbility;
 use crate::trigger::TriggerType;
 
@@ -19,7 +18,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     };
 
     // Get defined cards (attractions) — defaults to Self
-    let attractions = if let Some(def) = sa.params.get(keys::DEFINED) {
+    let attractions = if let Some(def) = sa.defined() {
         if def == "Self" {
             vec![source]
         } else {

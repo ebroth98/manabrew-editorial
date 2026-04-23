@@ -8,6 +8,7 @@ pub mod block_cost;
 pub mod combat_lki;
 pub mod combat_util;
 pub mod global_attack_restrictions;
+pub mod selector_domain;
 
 use std::collections::{HashMap, HashSet};
 

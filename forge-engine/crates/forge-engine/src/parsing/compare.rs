@@ -6,6 +6,57 @@
 //! Used by `IsPresent$/PresentCompare$`, `CheckSVar$/SVarCompare$`,
 //! `ConditionCompare$`, and similar parameter patterns.
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CompareOp {
+    GreaterOrEqual,
+    GreaterThan,
+    LessOrEqual,
+    LessThan,
+    Equal,
+    NotEqual,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CompareExpr {
+    pub op: CompareOp,
+    pub threshold: i32,
+}
+
+impl CompareExpr {
+    pub fn parse(expr: &str) -> Option<Self> {
+        let (op, rest) = if let Some(rest) = expr.strip_prefix("GE") {
+            (CompareOp::GreaterOrEqual, rest)
+        } else if let Some(rest) = expr.strip_prefix("GT") {
+            (CompareOp::GreaterThan, rest)
+        } else if let Some(rest) = expr.strip_prefix("LE") {
+            (CompareOp::LessOrEqual, rest)
+        } else if let Some(rest) = expr.strip_prefix("LT") {
+            (CompareOp::LessThan, rest)
+        } else if let Some(rest) = expr.strip_prefix("NE") {
+            (CompareOp::NotEqual, rest)
+        } else if let Some(rest) = expr.strip_prefix("EQ") {
+            (CompareOp::Equal, rest)
+        } else {
+            return None;
+        };
+        Some(Self {
+            op,
+            threshold: rest.parse::<i32>().ok()?,
+        })
+    }
+
+    pub fn evaluate(self, value: i32) -> bool {
+        match self.op {
+            CompareOp::GreaterOrEqual => value >= self.threshold,
+            CompareOp::GreaterThan => value > self.threshold,
+            CompareOp::LessOrEqual => value <= self.threshold,
+            CompareOp::LessThan => value < self.threshold,
+            CompareOp::Equal => value == self.threshold,
+            CompareOp::NotEqual => value != self.threshold,
+        }
+    }
+}
+
 /// Compare a value against a DSL comparator expression.
 ///
 /// The expression is a prefix (`GE`, `GT`, `LE`, `LT`, `EQ`, `NE`) followed
@@ -29,18 +80,8 @@
 /// assert!(!compare_expr(4, "GT4"));
 /// ```
 pub fn compare_expr(value: i32, expr: &str) -> bool {
-    if let Some(rest) = expr.strip_prefix("GE") {
-        rest.parse::<i32>().map_or(true, |t| value >= t)
-    } else if let Some(rest) = expr.strip_prefix("GT") {
-        rest.parse::<i32>().map_or(true, |t| value > t)
-    } else if let Some(rest) = expr.strip_prefix("LE") {
-        rest.parse::<i32>().map_or(true, |t| value <= t)
-    } else if let Some(rest) = expr.strip_prefix("LT") {
-        rest.parse::<i32>().map_or(true, |t| value < t)
-    } else if let Some(rest) = expr.strip_prefix("NE") {
-        rest.parse::<i32>().map_or(true, |t| value != t)
-    } else if let Some(rest) = expr.strip_prefix("EQ") {
-        rest.parse::<i32>().map_or(true, |t| value == t)
+    if let Some(parsed) = CompareExpr::parse(expr) {
+        parsed.evaluate(value)
     } else {
         // Unknown comparator — permissive fallback (matches Java).
         true

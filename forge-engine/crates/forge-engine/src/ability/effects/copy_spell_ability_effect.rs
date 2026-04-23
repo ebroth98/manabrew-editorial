@@ -45,7 +45,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
         return;
     }
 
-    let original = if let Some(defined) = sa.params.get("Defined") {
+    let original = if let Some(defined) = sa.defined() {
         crate::ability::ability_utils::get_defined_spell_abilities(defined, sa, ctx.game)
             .into_iter()
             .next()

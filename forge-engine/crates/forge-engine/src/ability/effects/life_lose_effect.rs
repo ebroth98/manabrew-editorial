@@ -1,4 +1,5 @@
 use super::{resolve_defined_player_with_sa, resolve_numeric_svar, EffectContext};
+use crate::ability::ability_ir::AbilityIr;
 use crate::event::RunParams;
 use crate::replacement::replacement_handler::{apply_replacements, ReplacementEvent};
 use crate::replacement::ReplacementResult;
@@ -10,7 +11,7 @@ use crate::trigger::TriggerType;
 /// `LifeLoseEffect` class extending `SpellAbilityEffect`.
 #[forge_engine_macros::spell_effect(LifeLoseEffect)]
 fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
-    let amount = resolve_numeric_svar(ctx.game, sa, "LifeAmount", 1);
+    let amount = resolve_life_amount(ctx, sa);
     // Mirror Java getTargetPlayers(): targeted player first, then Defined, then activator.
     let target = sa
         .target_chosen
@@ -90,4 +91,21 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
         },
         false,
     );
+}
+
+fn resolve_life_amount(ctx: &EffectContext, sa: &SpellAbility) -> i32 {
+    if let Some(AbilityIr::LoseLife(ir)) = &sa.compiled_ir {
+        if let Some(amount) = &ir.amount {
+            let resolved = amount.resolve_for_spell_ability(ctx.game, sa, 1);
+            #[cfg(debug_assertions)]
+            debug_assert_eq!(
+                resolved,
+                resolve_numeric_svar(ctx.game, sa, crate::parsing::keys::LIFE_AMOUNT, 1),
+                "compiled LoseLife amount diverged from string params"
+            );
+            return resolved;
+        }
+    }
+
+    resolve_numeric_svar(ctx.game, sa, crate::parsing::keys::LIFE_AMOUNT, 1)
 }

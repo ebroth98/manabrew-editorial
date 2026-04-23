@@ -5,45 +5,36 @@
 //! through the [`Params`] wrapper — no code should use raw
 //! `BTreeMap<String, String>` for DSL parameters.
 
+pub mod amount;
+pub mod card_script;
 pub mod compare;
 pub mod keys;
 
 use std::collections::BTreeMap;
 
 use forge_foundation::ZoneType;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
+
+pub use amount::AmountExpr;
+pub use card_script::{
+    parse_semantic_param_value, ParamDiagnostic, ParamDiagnosticKind, ParamEntry, ParsedCardScript,
+    ParsedParams, ParsedParamsReport, ScriptAbility, ScriptAbilityRecord, ScriptDiagnostic,
+    ScriptDiagnosticKind, ScriptField, ScriptLine, ScriptLineKind, ScriptParamRecord, ScriptSVar,
+    ScriptSVarValue, SemanticAmount, SemanticComparison, SemanticComparisonOperator, SemanticParam,
+    SemanticParamValue, SemanticParamValueKind, SemanticSelector, SemanticSelectorAlternative,
+    SemanticSelectorPart, SemanticTransform,
+};
 
 pub fn raw_has_key(raw: &str, key: &str) -> bool {
-    raw_get(raw, key).is_some()
+    card_script::raw_has_key(raw, key)
 }
 
 pub fn raw_has_any(raw: &str, keys: &[&str]) -> bool {
-    raw.split('|').any(|part| {
-        let part = part.trim();
-        let Some(idx) = part.find('$') else {
-            return false;
-        };
-        let part_key = part[..idx].trim();
-        keys.iter().any(|key| part_key == *key)
-    })
+    card_script::raw_has_any(raw, keys)
 }
 
 pub fn raw_get<'a>(raw: &'a str, key: &str) -> Option<&'a str> {
-    raw.split('|').find_map(|part| {
-        let part = part.trim();
-        let Some(idx) = part.find('$') else {
-            return None;
-        };
-        if part[..idx].trim() != key {
-            return None;
-        }
-        let value = if part[idx..].starts_with("$ ") {
-            &part[idx + 2..]
-        } else {
-            &part[idx + 1..]
-        };
-        Some(value.trim())
-    })
+    card_script::raw_get(raw, key)
 }
 
 // ── Params wrapper ──────────────────────────────────────────────────────────
@@ -53,9 +44,353 @@ pub fn raw_get<'a>(raw: &'a str, key: &str) -> Option<&'a str> {
 /// Replaces raw `BTreeMap<String, String>` everywhere. Mirrors Java's
 /// `CardTraitBase.mapParams` with its `getParam`/`hasParam`/`matchesValidParam`
 /// accessor methods.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct CompiledSelector {
+    pub alternatives: Vec<CompiledSelectorAlternative>,
+    pub ir: Selector,
+}
+
+impl CompiledSelector {
+    pub fn parse(raw: &str) -> Self {
+        crate::perf::increment(crate::perf::Metric::SelectorParses, 1);
+        match parse_semantic_param_value(keys::VALID, raw) {
+            SemanticParamValue::Selector(selector) | SemanticParamValue::Reference(selector) => {
+                compile_semantic_selector(&selector)
+            }
+            _ => CompiledSelector::from_alternatives(vec![CompiledSelectorAlternative {
+                raw: raw.trim().to_string(),
+                parts: vec![CompiledSelectorPart {
+                    separator: None,
+                    value: raw.trim().to_string(),
+                }],
+            }]),
+        }
+    }
+
+    pub fn from_alternatives(alternatives: Vec<CompiledSelectorAlternative>) -> Self {
+        let ir = lower_compiled_selector(&alternatives);
+        Self { alternatives, ir }
+    }
+
+    pub fn from_raw_alternative(raw: &str) -> Self {
+        Self::from_alternatives(vec![CompiledSelectorAlternative {
+            raw: raw.trim().to_string(),
+            parts: vec![CompiledSelectorPart {
+                separator: None,
+                value: raw.trim().to_string(),
+            }],
+        }])
+    }
+
+    pub fn is_any_of<const N: usize>(&self, values: [&str; N]) -> bool {
+        self.alternatives.len() == 1
+            && self.alternatives.first().is_some_and(|alternative| {
+                values
+                    .iter()
+                    .any(|value| alternative.raw.eq_ignore_ascii_case(value))
+            })
+    }
+
+    pub fn as_raw(&self) -> String {
+        self.alternatives
+            .iter()
+            .map(|alternative| alternative.raw.as_str())
+            .collect::<Vec<_>>()
+            .join(",")
+    }
+
+    pub fn raw_predicates(&self) -> impl Iterator<Item = &str> {
+        self.ir
+            .alternatives
+            .iter()
+            .flat_map(|alternative| &alternative.predicates)
+            .filter_map(|predicate| match predicate {
+                SelectorPredicate::Raw(raw) => Some(raw.as_str()),
+                _ => None,
+            })
+    }
+}
+
+impl Serialize for CompiledSelector {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(&self.as_raw())
+    }
+}
+
+impl<'de> Deserialize<'de> for CompiledSelector {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let raw = String::deserialize(deserializer)?;
+        Ok(Self::parse(&raw))
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CompiledSelectorAlternative {
+    pub raw: String,
+    pub parts: Vec<CompiledSelectorPart>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CompiledSelectorPart {
+    pub separator: Option<char>,
+    pub value: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct Selector {
+    pub alternatives: Vec<SelectorAlt>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SelectorAlt {
+    pub predicates: Vec<SelectorPredicate>,
+}
+
+// Selector IR: these are predicates over cards, players, or contextual game
+// state. They are deliberately separate from amount/numeric expression parsing.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SelectorPredicate {
+    Any,
+    Player,
+    CardType(CardSelectorType),
+    CardIdentity(CardIdentitySelector),
+    CardController(ControllerSelector),
+    CardOwner(ControllerSelector),
+    PlayerController(ControllerSelector),
+    CardSupertype(CardSupertypeSelector),
+    Tapped(bool),
+    StartedTurnTapped(bool),
+    Zone(ZoneType),
+    RememberedCard,
+    EffectSource,
+    Commander,
+    Legendary,
+    Kicked,
+    Token(bool),
+    Color(CardColorSelector),
+    Multicolor,
+    Colorless,
+    SourceColor(CardColorSelector),
+    SourceColorless,
+    ChosenColorSource,
+    CardState(CardStateSelector),
+    Context(ContextPredicate),
+    Relation(RelationPredicate),
+    DamagedBy,
+    AttachedBy,
+    WasCast {
+        by_you: bool,
+    },
+    ChosenType,
+    Keyword {
+        name: String,
+        present: bool,
+    },
+    NumericComparison {
+        property: NumericSelectorProperty,
+        operator: SelectorCompareOperator,
+        value: SelectorNumericOperand,
+    },
+    NumericParity {
+        property: NumericSelectorProperty,
+        even: bool,
+    },
+    CounterComparison {
+        operator: SelectorCompareOperator,
+        value: SelectorNumericOperand,
+        counter_type: String,
+    },
+    Not(Box<SelectorPredicate>),
+    Raw(String),
+}
+
+// Intrinsic card/player selector predicates.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CardSelectorType {
+    Card,
+    Creature,
+    Land,
+    Instant,
+    Sorcery,
+    Artifact,
+    Enchantment,
+    Planeswalker,
+    Permanent,
+    Spell,
+    NonLand,
+    NonCreature,
+    Named(String),
+    Subtype(String),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CardSupertypeSelector {
+    Basic,
+    Snow,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ControllerSelector {
+    You,
+    Opponent,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CardIdentitySelector {
+    Self_,
+    Other,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CardColorSelector {
+    White,
+    Blue,
+    Black,
+    Red,
+    Green,
+}
+
+// Predicates that need match-time context beyond the candidate card itself.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ContextPredicate {
+    Attacking(Option<TargetRef>),
+    Blocking(Option<TargetRef>),
+    BlockedByValidThisTurn(TargetRef),
+    BlockedByValidThisTurnType(CardSelectorType),
+    BlockedValidThisTurn(CardSelectorType),
+    BlockingValid(CardSelectorType),
+    Blocked,
+    AttackedThisTurn,
+    BlockingSource,
+    BlockedBySource,
+    WasCastFrom(CastOrigin),
+    EnteredThisTurnFrom(ZoneType),
+    EnteredUnder(TargetRef),
+    TopLibrary,
+    ExiledWithSource,
+    RememberedPlayerCtrl,
+    TargetedPlayerCtrl,
+    ActivePlayerCtrl,
+    DefenderCtrl,
+    EnchantedController,
+    ControlledBy(String),
+    NotDefinedTargeted,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RelationPredicate {
+    SharesNameWith(TargetRef),
+    DoesNotShareNameWith(TargetRef),
+    SharesCardTypeWith(TargetRef),
+    SharesCreatureTypeWith(TargetRef),
+    SharesColorWith(TargetRef),
+    SharesManaValueWith(TargetRef),
+    AttachedTo(TargetRef),
+    AttachedToType(CardSelectorType),
+    OwnedBy(TargetRef),
+    OpponentOf(TargetRef),
+    IsTargeting(TargetRef),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TargetRef {
+    Source,
+    Remembered,
+    RememberedLki,
+    Imprinted,
+    ChosenCard,
+    ChosenPlayer,
+    Targeted,
+    Player,
+    Opponent,
+    Battlefield,
+    OtherYourBattlefield,
+    YourGraveyard,
+    TriggeredTarget,
+    TriggeredPlayer,
+    TriggeredCard,
+    TriggeredCardController,
+    TriggeredDefendingPlayer,
+    TriggeredAttackedTarget,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CastOrigin {
+    Hand,
+    YourHand,
+    YourHandByYou,
+    TheirHand,
+    Exile,
+    Graveyard,
+    YourGraveyard,
+    YourGraveyardByYou,
+    YourLibrary,
+}
+
+// Intrinsic card state predicates that do not need match-time game context.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CardStateSelector {
+    FaceDown,
+    Paired,
+    PairedWithSource,
+    Attached,
+    Equipped,
+    Enchanted,
+    HasCounters,
+    IsImprinted,
+    Chosen,
+    ChosenCard,
+    NamedCard,
+    ChosenColor,
+    EnteredThisTurn,
+    WasDealtDamageThisTurn,
+    Historic,
+    Modified,
+    Saddled,
+    MayPlaySource,
+    Suspended,
+    SingleTarget,
+    PromisedGift,
+}
+
+// Numeric selector comparisons (`cmcGE3`, `powerLEX`, `counters_EQ1_P1P1`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NumericSelectorProperty {
+    ManaValue,
+    Power,
+    Toughness,
+    TargetCount,
+    ManaSpent,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SelectorNumericOperand {
+    Literal(i32),
+    Symbol(String),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SelectorCompareOperator {
+    Eq,
+    Ne,
+    Lt,
+    Le,
+    Gt,
+    Ge,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum CompiledParamValue {
+    Selector(CompiledSelector),
+    Reference(CompiledSelector),
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct Params(BTreeMap<String, String>);
+pub struct Params(
+    BTreeMap<String, String>,
+    #[serde(skip)] BTreeMap<String, CompiledParamValue>,
+);
 
 impl Params {
     /// Parse a pipe-delimited DSL string into parameters.
@@ -64,25 +399,32 @@ impl Params {
     /// Mirrors Java's `FileSection.parseToMap()`.
     pub fn from_raw(raw: &str) -> Self {
         crate::perf::increment_params_parse();
+        let params = Self::from_parsed(&ParsedParams::parse(raw));
+        #[cfg(debug_assertions)]
+        debug_assert_eq!(params.inner(), &legacy_parse_params(raw));
+        params
+    }
+
+    /// Create owned compatibility params from a zero-copy parsed script.
+    ///
+    /// Duplicate keys intentionally keep Java/map compatibility: later entries
+    /// overwrite earlier entries.
+    pub fn from_parsed(parsed: &ParsedParams<'_>) -> Self {
         let mut map = BTreeMap::new();
-        for part in raw.split('|') {
-            let part = part.trim();
-            if let Some(idx) = part.find("$ ") {
-                let key = part[..idx].trim().to_string();
-                let value = part[idx + 2..].trim().to_string();
-                map.insert(key, value);
-            } else if let Some(idx) = part.find('$') {
-                let key = part[..idx].trim().to_string();
-                let value = part[idx + 1..].trim().to_string();
-                map.insert(key, value);
+        let mut compiled = BTreeMap::new();
+        for entry in parsed.entries() {
+            map.insert(entry.key.to_string(), entry.value.to_string());
+            if let Some(value) = compile_semantic_param_value(&entry.semantic().value) {
+                compiled.insert(entry.key.to_string(), value);
             }
         }
-        Params(map)
+        Params(map, compiled)
     }
 
     /// Create from an existing map (for migration from raw BTreeMap).
     pub fn from_map(map: BTreeMap<String, String>) -> Self {
-        Params(map)
+        let compiled = compile_param_map(&map);
+        Params(map, compiled)
     }
 
     /// Access the underlying map (escape hatch for incremental migration).
@@ -124,13 +466,16 @@ impl Params {
     /// Set a parameter value.
     /// Mirrors Java's `CardTraitBase.putParam(String, String)`.
     pub fn put(&mut self, key: String, value: String) {
+        update_compiled_param(&mut self.1, &key, &value);
         self.0.insert(key, value);
     }
 
     /// Remove a parameter and return its value.
     /// Mirrors Java's `CardTraitBase.removeParam(String)`.
     pub fn remove<K: AsRef<str>>(&mut self, key: K) -> Option<String> {
-        self.0.remove(key.as_ref())
+        let key = key.as_ref();
+        self.1.remove(key);
+        self.0.remove(key)
     }
 
     /// Check if the map is empty.
@@ -152,26 +497,189 @@ impl Params {
     /// Mirrors the common Java pattern `"True".equals(getParam(key))`.
     pub fn is_true<K: AsRef<str>>(&self, key: K) -> bool {
         crate::perf::increment_params_lookup();
-        self.0
-            .get(key.as_ref())
-            .map_or(false, |v| v.eq_ignore_ascii_case("True"))
+        let key = key.as_ref();
+        let result = self
+            .0
+            .get(key)
+            .map(|value| match parse_semantic_param_value(key, value) {
+                SemanticParamValue::Boolean(value) => value,
+                _ => value.eq_ignore_ascii_case("True"),
+            })
+            .unwrap_or(false);
+        #[cfg(debug_assertions)]
+        debug_assert_eq!(
+            result,
+            self.0
+                .get(key)
+                .map_or(false, |value| value.eq_ignore_ascii_case("True")),
+            "semantic boolean param {} diverged from string params",
+            key
+        );
+        result
     }
 
     /// Parse a parameter as i32, returning None if absent or non-numeric.
     pub fn as_i32<K: AsRef<str>>(&self, key: K) -> Option<i32> {
         crate::perf::increment_params_lookup();
-        self.0.get(key.as_ref()).and_then(|v| v.trim().parse().ok())
+        let key = key.as_ref();
+        let result = self.0.get(key).and_then(|value| semantic_i32(key, value));
+        #[cfg(debug_assertions)]
+        debug_assert_eq!(
+            result,
+            self.0.get(key).and_then(|value| value.trim().parse().ok()),
+            "semantic i32 param {} diverged from string params",
+            key
+        );
+        result
     }
 
     /// Parse a parameter as usize, returning None if absent or non-numeric.
     pub fn as_usize<K: AsRef<str>>(&self, key: K) -> Option<usize> {
         crate::perf::increment_params_lookup();
-        self.0.get(key.as_ref()).and_then(|v| v.trim().parse().ok())
+        let key = key.as_ref();
+        let result = self
+            .0
+            .get(key)
+            .and_then(|value| semantic_i32(key, value))
+            .and_then(|value| usize::try_from(value).ok());
+        #[cfg(debug_assertions)]
+        debug_assert_eq!(
+            result,
+            self.0.get(key).and_then(|value| value.trim().parse().ok()),
+            "semantic usize param {} diverged from string params",
+            key
+        );
+        result
+    }
+
+    /// Parse a parameter as a single zone type.
+    pub fn zone_type<K: AsRef<str>>(&self, key: K) -> Option<ZoneType> {
+        crate::perf::increment_params_lookup();
+        let key = key.as_ref();
+        let result = self
+            .0
+            .get(key)
+            .and_then(|value| semantic_zone_type(key, value));
+        #[cfg(debug_assertions)]
+        debug_assert_eq!(
+            result,
+            self.0.get(key).and_then(|value| legacy_zone_type(value)),
+            "semantic zone param {} diverged from string params",
+            key
+        );
+        result
+    }
+
+    /// Parse a parameter as a comma-separated zone list.
+    pub fn zone_types<K: AsRef<str>>(&self, key: K) -> Vec<ZoneType> {
+        crate::perf::increment_params_lookup();
+        let key = key.as_ref();
+        let result = self
+            .0
+            .get(key)
+            .map(|value| semantic_zone_types(key, value))
+            .unwrap_or_default();
+        #[cfg(debug_assertions)]
+        debug_assert_eq!(
+            result,
+            self.0
+                .get(key)
+                .map(|value| legacy_zone_types(value))
+                .unwrap_or_default(),
+            "semantic zone-list param {} diverged from string params",
+            key
+        );
+        result
+    }
+
+    /// Get a selector-like parameter, asserting that semantic classification
+    /// agrees with selector/reference usage while preserving the legacy raw
+    /// string consumed by current matchers.
+    pub fn selector_value<K: AsRef<str>>(&self, key: K) -> Option<&str> {
+        crate::perf::increment_params_lookup();
+        let key = key.as_ref();
+        let value = self.0.get(key).map(String::as_str)?;
+        #[cfg(debug_assertions)]
+        debug_assert!(
+            matches_selector_semantics(key, value),
+            "semantic selector param {} classified unexpectedly: {:?}",
+            key,
+            parse_semantic_param_value(key, value)
+        );
+        Some(value)
+    }
+
+    /// Get a compiled selector-like parameter.
+    pub fn selector<K: AsRef<str>>(&self, key: K) -> Option<&CompiledSelector> {
+        crate::perf::increment_params_lookup();
+        let key = key.as_ref();
+        match self.1.get(key) {
+            Some(CompiledParamValue::Selector(selector))
+            | Some(CompiledParamValue::Reference(selector)) => Some(selector),
+            None => None,
+        }
+    }
+
+    /// Get an owned compiled selector-like parameter.
+    ///
+    /// This is used when trigger/effect structs cache a filter for repeated
+    /// execution. It prefers the parser-produced IR and falls back to compiling
+    /// the raw value as a selector for compatibility with less-specific
+    /// historical keys like `ValidToken`.
+    pub fn selector_cloned<K: AsRef<str>>(&self, key: K) -> Option<CompiledSelector> {
+        crate::perf::increment_params_lookup();
+        let key = key.as_ref();
+        self.selector(key)
+            .cloned()
+            .or_else(|| self.0.get(key).map(|value| CompiledSelector::parse(value)))
+    }
+
+    pub fn selector_cloned_any(&self, keys: &[&str]) -> Option<CompiledSelector> {
+        keys.iter().find_map(|key| self.selector_cloned(*key))
+    }
+
+    /// Get a reference-like parameter, asserting that semantic classification
+    /// agrees with reference usage while preserving the legacy raw string.
+    pub fn reference_value<K: AsRef<str>>(&self, key: K) -> Option<&str> {
+        crate::perf::increment_params_lookup();
+        let key = key.as_ref();
+        let value = self.0.get(key).map(String::as_str)?;
+        #[cfg(debug_assertions)]
+        debug_assert!(
+            matches_reference_semantics(key, value),
+            "semantic reference param {} classified unexpectedly: {:?}",
+            key,
+            parse_semantic_param_value(key, value)
+        );
+        Some(value)
+    }
+
+    /// Get a compiled reference-like parameter.
+    pub fn reference<K: AsRef<str>>(&self, key: K) -> Option<&CompiledSelector> {
+        crate::perf::increment_params_lookup();
+        let key = key.as_ref();
+        match self.1.get(key) {
+            Some(CompiledParamValue::Reference(selector))
+            | Some(CompiledParamValue::Selector(selector)) => Some(selector),
+            None => None,
+        }
     }
 
     /// Get a parameter value, cloning it into an owned String.
     pub fn get_cloned(&self, key: &str) -> Option<String> {
         self.0.get(key).cloned()
+    }
+
+    /// Get a parameter value lowered through the semantic Forge DSL classifier.
+    ///
+    /// This borrows the stored value and falls back to `SemanticParamValue::Raw`
+    /// for keys that are intentionally not classified yet.
+    pub fn semantic_value<K: AsRef<str>>(&self, key: K) -> Option<SemanticParamValue<'_>> {
+        crate::perf::increment_params_lookup();
+        let key = key.as_ref();
+        self.0
+            .get(key)
+            .map(|value| parse_semantic_param_value(key, value))
     }
 
     // ── Diagnostics ────────────────────────────────────────────────────
@@ -201,6 +709,721 @@ impl Params {
     pub fn iter(&self) -> impl Iterator<Item = (&str, &str)> {
         self.0.iter().map(|(k, v)| (k.as_str(), v.as_str()))
     }
+}
+
+fn semantic_i32(key: &str, value: &str) -> Option<i32> {
+    match parse_semantic_param_value(key, value) {
+        SemanticParamValue::Integer(value) => Some(value),
+        SemanticParamValue::Amount(SemanticAmount::Literal(value)) => Some(value),
+        _ => value.trim().parse().ok(),
+    }
+}
+
+fn semantic_zone_type(key: &str, value: &str) -> Option<ZoneType> {
+    match parse_semantic_param_value(key, value) {
+        SemanticParamValue::ZoneList(zones) if zones.len() == 1 => {
+            zones.first().and_then(|zone| legacy_zone_type(zone))
+        }
+        SemanticParamValue::ZoneList(_) => None,
+        _ => legacy_zone_type(value),
+    }
+}
+
+fn semantic_zone_types(key: &str, value: &str) -> Vec<ZoneType> {
+    match parse_semantic_param_value(key, value) {
+        SemanticParamValue::ZoneList(zones) => {
+            zones.into_iter().filter_map(legacy_zone_type).collect()
+        }
+        _ => legacy_zone_types(value),
+    }
+}
+
+fn legacy_zone_type(value: &str) -> Option<ZoneType> {
+    let value = value.trim();
+    if value.eq_ignore_ascii_case("Deck") {
+        Some(ZoneType::Library)
+    } else {
+        ZoneType::from_str_compat(value)
+    }
+}
+
+fn legacy_zone_types(value: &str) -> Vec<ZoneType> {
+    value
+        .split([',', ' '])
+        .map(str::trim)
+        .filter(|part| !part.is_empty())
+        .filter_map(legacy_zone_type)
+        .collect()
+}
+
+fn compile_param_map(map: &BTreeMap<String, String>) -> BTreeMap<String, CompiledParamValue> {
+    map.iter()
+        .filter_map(|(key, value)| {
+            compile_semantic_param_value(&parse_semantic_param_value(key, value))
+                .map(|compiled| (key.clone(), compiled))
+        })
+        .collect()
+}
+
+fn update_compiled_param(
+    compiled: &mut BTreeMap<String, CompiledParamValue>,
+    key: &str,
+    value: &str,
+) {
+    match compile_semantic_param_value(&parse_semantic_param_value(key, value)) {
+        Some(value) => {
+            compiled.insert(key.to_string(), value);
+        }
+        None => {
+            compiled.remove(key);
+        }
+    }
+}
+
+fn compile_semantic_param_value(value: &SemanticParamValue<'_>) -> Option<CompiledParamValue> {
+    match value {
+        SemanticParamValue::Selector(selector) => Some(CompiledParamValue::Selector(
+            compile_semantic_selector(selector),
+        )),
+        SemanticParamValue::Reference(selector) => Some(CompiledParamValue::Reference(
+            compile_semantic_selector(selector),
+        )),
+        _ => None,
+    }
+}
+
+fn compile_semantic_selector(selector: &SemanticSelector<'_>) -> CompiledSelector {
+    let alternatives = selector
+        .alternatives
+        .iter()
+        .map(|alternative| CompiledSelectorAlternative {
+            raw: alternative.raw.to_string(),
+            parts: alternative
+                .parts
+                .iter()
+                .map(|part| CompiledSelectorPart {
+                    separator: part.separator,
+                    value: part.value.to_string(),
+                })
+                .collect(),
+        })
+        .collect::<Vec<_>>();
+    let ir = lower_compiled_selector(&alternatives);
+    CompiledSelector { alternatives, ir }
+}
+
+fn lower_compiled_selector(alternatives: &[CompiledSelectorAlternative]) -> Selector {
+    Selector {
+        alternatives: alternatives
+            .iter()
+            .map(|alternative| SelectorAlt {
+                predicates: alternative
+                    .parts
+                    .iter()
+                    .enumerate()
+                    .map(|(idx, part)| lower_selector_part(&part.value, idx == 0))
+                    .collect(),
+            })
+            .collect(),
+    }
+}
+
+fn lower_selector_part(value: &str, is_first_part: bool) -> SelectorPredicate {
+    let normalized = value.trim();
+    if normalized.is_empty() {
+        return SelectorPredicate::Raw(String::new());
+    }
+    let lower = normalized.to_ascii_lowercase();
+    if is_first_part {
+        return match lower.as_str() {
+            "any" => SelectorPredicate::Any,
+            "card" => SelectorPredicate::CardType(CardSelectorType::Card),
+            "creature" => SelectorPredicate::CardType(CardSelectorType::Creature),
+            "land" => SelectorPredicate::CardType(CardSelectorType::Land),
+            "instant" => SelectorPredicate::CardType(CardSelectorType::Instant),
+            "sorcery" => SelectorPredicate::CardType(CardSelectorType::Sorcery),
+            "artifact" => SelectorPredicate::CardType(CardSelectorType::Artifact),
+            "enchantment" => SelectorPredicate::CardType(CardSelectorType::Enchantment),
+            "planeswalker" => SelectorPredicate::CardType(CardSelectorType::Planeswalker),
+            "permanent" => SelectorPredicate::CardType(CardSelectorType::Permanent),
+            "spell" => SelectorPredicate::CardType(CardSelectorType::Spell),
+            "nonland" => SelectorPredicate::CardType(CardSelectorType::NonLand),
+            "noncreature" => SelectorPredicate::CardType(CardSelectorType::NonCreature),
+            "player" | "each" | "player.ingame" => SelectorPredicate::Player,
+            "you" | "youctrl" => SelectorPredicate::PlayerController(ControllerSelector::You),
+            "opponent" | "oppctrl" | "opponentctrl" => {
+                SelectorPredicate::PlayerController(ControllerSelector::Opponent)
+            }
+            named if named.starts_with("named") => SelectorPredicate::CardType(
+                CardSelectorType::Named(normalized[5..].trim().to_string()),
+            ),
+            _ => SelectorPredicate::CardType(CardSelectorType::Subtype(normalized.to_string())),
+        };
+    }
+
+    if let Some(stripped) = normalized.strip_prefix('!') {
+        let predicate = lower_selector_part(stripped, false);
+        return SelectorPredicate::Not(Box::new(predicate));
+    }
+
+    match lower.as_str() {
+        "self" | "strictlyself" => SelectorPredicate::CardIdentity(CardIdentitySelector::Self_),
+        "other" | "strictlyother" => SelectorPredicate::CardIdentity(CardIdentitySelector::Other),
+        "you" | "youctrl" | "youcontrol" => {
+            SelectorPredicate::CardController(ControllerSelector::You)
+        }
+        "opponent" | "oppctrl" | "opponentctrl" => {
+            SelectorPredicate::CardController(ControllerSelector::Opponent)
+        }
+        "youown" => SelectorPredicate::CardOwner(ControllerSelector::You),
+        "oppown" | "opponentown" => SelectorPredicate::CardOwner(ControllerSelector::Opponent),
+        "youdontctrl" => SelectorPredicate::Not(Box::new(SelectorPredicate::CardController(
+            ControllerSelector::You,
+        ))),
+        "youdontown" => SelectorPredicate::Not(Box::new(SelectorPredicate::CardOwner(
+            ControllerSelector::You,
+        ))),
+        "tapped" => SelectorPredicate::Tapped(true),
+        "untapped" => SelectorPredicate::Tapped(false),
+        "startedtheturntapped" => SelectorPredicate::StartedTurnTapped(true),
+        "startedtheturnuntapped" => SelectorPredicate::StartedTurnTapped(false),
+        "inzonebattlefield" => SelectorPredicate::Zone(ZoneType::Battlefield),
+        "inzonegraveyard" => SelectorPredicate::Zone(ZoneType::Graveyard),
+        "inzonehand" => SelectorPredicate::Zone(ZoneType::Hand),
+        "inzoneexile" => SelectorPredicate::Zone(ZoneType::Exile),
+        "inzonestack" => SelectorPredicate::Zone(ZoneType::Stack),
+        "isremembered" => SelectorPredicate::RememberedCard,
+        "effectsource" => SelectorPredicate::EffectSource,
+        "iscommander" => SelectorPredicate::Commander,
+        "legendary" => SelectorPredicate::Legendary,
+        "basic" => SelectorPredicate::CardSupertype(CardSupertypeSelector::Basic),
+        "snow" => SelectorPredicate::CardSupertype(CardSupertypeSelector::Snow),
+        "kicked" => SelectorPredicate::Kicked,
+        "token" => SelectorPredicate::Token(true),
+        "nontoken" => SelectorPredicate::Token(false),
+        "creature" => SelectorPredicate::CardType(CardSelectorType::Creature),
+        "land" => SelectorPredicate::CardType(CardSelectorType::Land),
+        "instant" => SelectorPredicate::CardType(CardSelectorType::Instant),
+        "sorcery" => SelectorPredicate::CardType(CardSelectorType::Sorcery),
+        "artifact" => SelectorPredicate::CardType(CardSelectorType::Artifact),
+        "enchantment" => SelectorPredicate::CardType(CardSelectorType::Enchantment),
+        "planeswalker" => SelectorPredicate::CardType(CardSelectorType::Planeswalker),
+        "permanent" => SelectorPredicate::CardType(CardSelectorType::Permanent),
+        "noncreature" => SelectorPredicate::CardType(CardSelectorType::NonCreature),
+        "nonland" => SelectorPredicate::CardType(CardSelectorType::NonLand),
+        "white" => SelectorPredicate::Color(CardColorSelector::White),
+        "blue" => SelectorPredicate::Color(CardColorSelector::Blue),
+        "black" => SelectorPredicate::Color(CardColorSelector::Black),
+        "red" => SelectorPredicate::Color(CardColorSelector::Red),
+        "green" => SelectorPredicate::Color(CardColorSelector::Green),
+        "multicolor" => SelectorPredicate::Multicolor,
+        "colorless" => SelectorPredicate::Colorless,
+        "whitesource" => SelectorPredicate::SourceColor(CardColorSelector::White),
+        "bluesource" => SelectorPredicate::SourceColor(CardColorSelector::Blue),
+        "blacksource" => SelectorPredicate::SourceColor(CardColorSelector::Black),
+        "redsource" => SelectorPredicate::SourceColor(CardColorSelector::Red),
+        "greensource" => SelectorPredicate::SourceColor(CardColorSelector::Green),
+        "colorlesssource" => SelectorPredicate::SourceColorless,
+        "chosencolorsource" => SelectorPredicate::ChosenColorSource,
+        "attacking" => SelectorPredicate::Context(ContextPredicate::Attacking(None)),
+        "attackingyou" => {
+            SelectorPredicate::Context(ContextPredicate::Attacking(Some(TargetRef::Source)))
+        }
+        "blocking" => SelectorPredicate::Context(ContextPredicate::Blocking(None)),
+        "blocked" => SelectorPredicate::Context(ContextPredicate::Blocked),
+        "attackedthisturn" => SelectorPredicate::Context(ContextPredicate::AttackedThisTurn),
+        "blockingsource" => SelectorPredicate::Context(ContextPredicate::BlockingSource),
+        "blockedbysource" => SelectorPredicate::Context(ContextPredicate::BlockedBySource),
+        "samename" => {
+            SelectorPredicate::Relation(RelationPredicate::SharesNameWith(TargetRef::Source))
+        }
+        "damagedby" => SelectorPredicate::DamagedBy,
+        "equippedby" | "enchantedby" | "attachedby" => SelectorPredicate::AttachedBy,
+        "facedown" => SelectorPredicate::CardState(CardStateSelector::FaceDown),
+        "paired" => SelectorPredicate::CardState(CardStateSelector::Paired),
+        "pairedwith" => SelectorPredicate::CardState(CardStateSelector::PairedWithSource),
+        "attached" => SelectorPredicate::CardState(CardStateSelector::Attached),
+        "equipped" => SelectorPredicate::CardState(CardStateSelector::Equipped),
+        "enchanted" => SelectorPredicate::CardState(CardStateSelector::Enchanted),
+        "hascounters" => SelectorPredicate::CardState(CardStateSelector::HasCounters),
+        "isimprinted" => SelectorPredicate::CardState(CardStateSelector::IsImprinted),
+        "chosen" => SelectorPredicate::CardState(CardStateSelector::Chosen),
+        "chosencard" | "chosencardstrict" => {
+            SelectorPredicate::CardState(CardStateSelector::ChosenCard)
+        }
+        "namedcard" => SelectorPredicate::CardState(CardStateSelector::NamedCard),
+        "chosencolor" => SelectorPredicate::CardState(CardStateSelector::ChosenColor),
+        "thisturnentered" => SelectorPredicate::CardState(CardStateSelector::EnteredThisTurn),
+        "wasdealtdamagethisturn" => {
+            SelectorPredicate::CardState(CardStateSelector::WasDealtDamageThisTurn)
+        }
+        "historic" => SelectorPredicate::CardState(CardStateSelector::Historic),
+        "modified" => SelectorPredicate::CardState(CardStateSelector::Modified),
+        "issaddled" => SelectorPredicate::CardState(CardStateSelector::Saddled),
+        "mayplaysource" => SelectorPredicate::CardState(CardStateSelector::MayPlaySource),
+        "exiledwithsource" => SelectorPredicate::Context(ContextPredicate::ExiledWithSource),
+        "toplibrary" => SelectorPredicate::Context(ContextPredicate::TopLibrary),
+        "suspended" => SelectorPredicate::CardState(CardStateSelector::Suspended),
+        "singletarget" => SelectorPredicate::CardState(CardStateSelector::SingleTarget),
+        "promisedgift" => SelectorPredicate::CardState(CardStateSelector::PromisedGift),
+        "wascast" => SelectorPredicate::WasCast { by_you: false },
+        "wascastbyyou" => SelectorPredicate::WasCast { by_you: true },
+        cast_origin if cast_origin.starts_with("wascastfrom") => {
+            lower_cast_origin_predicate(normalized)
+                .unwrap_or_else(|| SelectorPredicate::Raw(normalized.to_string()))
+        }
+        "chosentype" => SelectorPredicate::ChosenType,
+        "rememberedplayerctrl" => {
+            SelectorPredicate::Context(ContextPredicate::RememberedPlayerCtrl)
+        }
+        "targetedplayerctrl" => SelectorPredicate::Context(ContextPredicate::TargetedPlayerCtrl),
+        "activeplayerctrl" => SelectorPredicate::Context(ContextPredicate::ActivePlayerCtrl),
+        "defenderctrl" => SelectorPredicate::Context(ContextPredicate::DefenderCtrl),
+        "enchantedcontroller" => SelectorPredicate::Context(ContextPredicate::EnchantedController),
+        "notdefinedtargeted" => SelectorPredicate::Context(ContextPredicate::NotDefinedTargeted),
+        controlled if controlled.starts_with("controlledby ") => SelectorPredicate::Context(
+            ContextPredicate::ControlledBy(normalized["ControlledBy ".len()..].trim().to_string()),
+        ),
+        shares if shares.starts_with("sharesnamewith") => {
+            lower_relation_target_ref(normalized["sharesNameWith".len()..].trim())
+                .map(|target| {
+                    SelectorPredicate::Relation(RelationPredicate::SharesNameWith(target))
+                })
+                .unwrap_or_else(|| SelectorPredicate::Raw(normalized.to_string()))
+        }
+        shares if shares.starts_with("doesnotsharenamewith") => {
+            lower_relation_target_ref(normalized["doesNotShareNameWith".len()..].trim())
+                .map(|target| {
+                    SelectorPredicate::Relation(RelationPredicate::DoesNotShareNameWith(target))
+                })
+                .unwrap_or_else(|| SelectorPredicate::Raw(normalized.to_string()))
+        }
+        shares if shares.starts_with("sharescardtypewith") => {
+            lower_relation_target_ref(normalized["sharesCardTypeWith".len()..].trim())
+                .map(|target| {
+                    SelectorPredicate::Relation(RelationPredicate::SharesCardTypeWith(target))
+                })
+                .unwrap_or_else(|| SelectorPredicate::Raw(normalized.to_string()))
+        }
+        shares if shares.starts_with("sharescolorwith") => {
+            lower_relation_target_ref(normalized["SharesColorWith".len()..].trim())
+                .map(|target| {
+                    SelectorPredicate::Relation(RelationPredicate::SharesColorWith(target))
+                })
+                .unwrap_or_else(|| SelectorPredicate::Raw(normalized.to_string()))
+        }
+        shares if shares.starts_with("sharescmcwith") => {
+            lower_relation_target_ref(normalized["SharesCMCWith".len()..].trim())
+                .map(|target| {
+                    SelectorPredicate::Relation(RelationPredicate::SharesManaValueWith(target))
+                })
+                .unwrap_or_else(|| SelectorPredicate::Raw(normalized.to_string()))
+        }
+        shares if shares.starts_with("sharescreaturetypewith") => {
+            lower_relation_target_ref(normalized["sharesCreatureTypeWith".len()..].trim())
+                .map(|target| {
+                    SelectorPredicate::Relation(RelationPredicate::SharesCreatureTypeWith(target))
+                })
+                .unwrap_or_else(|| SelectorPredicate::Raw(normalized.to_string()))
+        }
+        attacking if attacking.starts_with("attacking ") => {
+            lower_relation_target_ref(normalized["attacking ".len()..].trim())
+                .map(|target| SelectorPredicate::Context(ContextPredicate::Attacking(Some(target))))
+                .unwrap_or_else(|| SelectorPredicate::Raw(normalized.to_string()))
+        }
+        blocked_by if blocked_by.starts_with("blockedbyvalidthisturn ") => {
+            lower_blocked_by_valid_this_turn(normalized["blockedByValidThisTurn ".len()..].trim())
+                .unwrap_or_else(|| SelectorPredicate::Raw(normalized.to_string()))
+        }
+        blocked if blocked.starts_with("blockedvalidthisturn ") => {
+            lower_card_selector_type(normalized["blockedValidThisTurn ".len()..].trim())
+                .map(|card_type| {
+                    SelectorPredicate::Context(ContextPredicate::BlockedValidThisTurn(card_type))
+                })
+                .unwrap_or_else(|| SelectorPredicate::Raw(normalized.to_string()))
+        }
+        blocking_valid if blocking_valid.starts_with("blockingvalid ") => {
+            lower_card_selector_type(normalized["blockingValid ".len()..].trim())
+                .map(|card_type| {
+                    SelectorPredicate::Context(ContextPredicate::BlockingValid(card_type))
+                })
+                .unwrap_or_else(|| SelectorPredicate::Raw(normalized.to_string()))
+        }
+        blocking if blocking.starts_with("blocking ") => {
+            lower_relation_target_ref(normalized["blocking ".len()..].trim())
+                .map(|target| SelectorPredicate::Context(ContextPredicate::Blocking(Some(target))))
+                .unwrap_or_else(|| SelectorPredicate::Raw(normalized.to_string()))
+        }
+        attached if attached.starts_with("attachedto ") => {
+            lower_attached_to_relation(normalized["AttachedTo ".len()..].trim())
+                .unwrap_or_else(|| SelectorPredicate::Raw(normalized.to_string()))
+        }
+        owned if owned.starts_with("ownedby ") => {
+            lower_relation_target_ref(normalized["OwnedBy ".len()..].trim())
+                .map(|target| SelectorPredicate::Relation(RelationPredicate::OwnedBy(target)))
+                .unwrap_or_else(|| SelectorPredicate::Raw(normalized.to_string()))
+        }
+        opponent if opponent.starts_with("opponentof ") => {
+            lower_relation_target_ref(normalized["OpponentOf ".len()..].trim())
+                .map(|target| SelectorPredicate::Relation(RelationPredicate::OpponentOf(target)))
+                .unwrap_or_else(|| SelectorPredicate::Raw(normalized.to_string()))
+        }
+        targeting if targeting.starts_with("istargeting ") => {
+            lower_relation_target_ref(normalized["IsTargeting ".len()..].trim())
+                .map(|target| SelectorPredicate::Relation(RelationPredicate::IsTargeting(target)))
+                .unwrap_or_else(|| SelectorPredicate::Raw(normalized.to_string()))
+        }
+        entered if entered.starts_with("thisturnenteredfrom_") => {
+            lower_entered_from_zone(normalized["ThisTurnEnteredFrom_".len()..].trim())
+                .map(|zone| SelectorPredicate::Context(ContextPredicate::EnteredThisTurnFrom(zone)))
+                .unwrap_or_else(|| SelectorPredicate::Raw(normalized.to_string()))
+        }
+        entered if entered.starts_with("enteredunder ") => {
+            lower_relation_target_ref(normalized["EnteredUnder ".len()..].trim())
+                .map(|target| SelectorPredicate::Context(ContextPredicate::EnteredUnder(target)))
+                .unwrap_or_else(|| SelectorPredicate::Raw(normalized.to_string()))
+        }
+        _ => lower_non_predicate(normalized).unwrap_or_else(|| {
+            lower_keyword_predicate(normalized).unwrap_or_else(|| {
+                lower_selector_comparison(normalized).unwrap_or_else(|| {
+                    lower_counter_comparison(normalized).unwrap_or_else(|| {
+                        lower_subtype_predicate(normalized)
+                            .unwrap_or_else(|| SelectorPredicate::Raw(normalized.to_string()))
+                    })
+                })
+            })
+        }),
+    }
+}
+
+fn lower_relation_target_ref(value: &str) -> Option<TargetRef> {
+    if value.is_empty()
+        || value.eq_ignore_ascii_case("Self")
+        || value.eq_ignore_ascii_case("Source")
+        || value.eq_ignore_ascii_case("You")
+        || value.eq_ignore_ascii_case("YouCtrl")
+    {
+        Some(TargetRef::Source)
+    } else if value.eq_ignore_ascii_case("Remembered") {
+        Some(TargetRef::Remembered)
+    } else if value.eq_ignore_ascii_case("RememberedLKI") {
+        Some(TargetRef::RememberedLki)
+    } else if value.eq_ignore_ascii_case("Imprinted") {
+        Some(TargetRef::Imprinted)
+    } else if value.eq_ignore_ascii_case("ChosenCard") {
+        Some(TargetRef::ChosenCard)
+    } else if value.eq_ignore_ascii_case("ChosenPlayer") {
+        Some(TargetRef::ChosenPlayer)
+    } else if value.eq_ignore_ascii_case("Targeted")
+        || value.eq_ignore_ascii_case("TargetedPlayer")
+        || value.eq_ignore_ascii_case("TargetedController")
+    {
+        Some(TargetRef::Targeted)
+    } else if value.eq_ignore_ascii_case("Player") {
+        Some(TargetRef::Player)
+    } else if value.eq_ignore_ascii_case("Opponent") {
+        Some(TargetRef::Opponent)
+    } else if value.eq_ignore_ascii_case("Battlefield") {
+        Some(TargetRef::Battlefield)
+    } else if value.eq_ignore_ascii_case("OtherYourBattlefield") {
+        Some(TargetRef::OtherYourBattlefield)
+    } else if value.eq_ignore_ascii_case("YourGraveyard") {
+        Some(TargetRef::YourGraveyard)
+    } else if value.eq_ignore_ascii_case("TriggeredTarget") {
+        Some(TargetRef::TriggeredTarget)
+    } else if value.eq_ignore_ascii_case("TriggeredPlayer") {
+        Some(TargetRef::TriggeredPlayer)
+    } else if value.eq_ignore_ascii_case("TriggeredCard") {
+        Some(TargetRef::TriggeredCard)
+    } else if value.eq_ignore_ascii_case("TriggeredCardController") {
+        Some(TargetRef::TriggeredCardController)
+    } else if value.eq_ignore_ascii_case("TriggeredDefendingPlayer") {
+        Some(TargetRef::TriggeredDefendingPlayer)
+    } else if value.eq_ignore_ascii_case("TriggeredAttackedTarget") {
+        Some(TargetRef::TriggeredAttackedTarget)
+    } else {
+        None
+    }
+}
+
+fn lower_blocked_by_valid_this_turn(value: &str) -> Option<SelectorPredicate> {
+    if let Some(target) = lower_relation_target_ref(value) {
+        return Some(SelectorPredicate::Context(
+            ContextPredicate::BlockedByValidThisTurn(target),
+        ));
+    }
+    lower_card_selector_type(value).map(|card_type| {
+        SelectorPredicate::Context(ContextPredicate::BlockedByValidThisTurnType(card_type))
+    })
+}
+
+fn lower_card_selector_type(value: &str) -> Option<CardSelectorType> {
+    match value.to_ascii_lowercase().as_str() {
+        "card" => Some(CardSelectorType::Card),
+        "creature" => Some(CardSelectorType::Creature),
+        "land" => Some(CardSelectorType::Land),
+        "artifact" => Some(CardSelectorType::Artifact),
+        "enchantment" => Some(CardSelectorType::Enchantment),
+        "planeswalker" => Some(CardSelectorType::Planeswalker),
+        "permanent" => Some(CardSelectorType::Permanent),
+        "nonland" => Some(CardSelectorType::NonLand),
+        "noncreature" => Some(CardSelectorType::NonCreature),
+        _ if value
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || ch == '-' || ch == '\'') =>
+        {
+            Some(CardSelectorType::Subtype(value.to_string()))
+        }
+        _ => None,
+    }
+}
+
+fn lower_entered_from_zone(value: &str) -> Option<ZoneType> {
+    match value.to_ascii_lowercase().as_str() {
+        "battlefield" => Some(ZoneType::Battlefield),
+        "graveyard" => Some(ZoneType::Graveyard),
+        "library" => Some(ZoneType::Library),
+        "hand" => Some(ZoneType::Hand),
+        "exile" => Some(ZoneType::Exile),
+        _ => None,
+    }
+}
+
+fn lower_attached_to_relation(value: &str) -> Option<SelectorPredicate> {
+    if let Some(target) = lower_relation_target_ref(value) {
+        return Some(SelectorPredicate::Relation(RelationPredicate::AttachedTo(
+            target,
+        )));
+    }
+    let card_type = match value.to_ascii_lowercase().as_str() {
+        "card" => CardSelectorType::Card,
+        "creature" => CardSelectorType::Creature,
+        "land" => CardSelectorType::Land,
+        "artifact" => CardSelectorType::Artifact,
+        "enchantment" => CardSelectorType::Enchantment,
+        "permanent" => CardSelectorType::Permanent,
+        _ => return None,
+    };
+    Some(SelectorPredicate::Relation(
+        RelationPredicate::AttachedToType(card_type),
+    ))
+}
+
+fn lower_cast_origin_predicate(value: &str) -> Option<SelectorPredicate> {
+    let lower = value.to_ascii_lowercase();
+    let origin = match lower.as_str() {
+        "wascastfromhand" => CastOrigin::Hand,
+        "wascastfromyourhand" => CastOrigin::YourHand,
+        "wascastfromyourhandbyyou" => CastOrigin::YourHandByYou,
+        "wascastfromtheirhand" => CastOrigin::TheirHand,
+        "wascastfromexile" => CastOrigin::Exile,
+        "wascastfromgraveyard" => CastOrigin::Graveyard,
+        "wascastfromyourgraveyard" => CastOrigin::YourGraveyard,
+        "wascastfromyourgraveyardbyyou" => CastOrigin::YourGraveyardByYou,
+        "wascastfromyourlibrary" => CastOrigin::YourLibrary,
+        _ => return None,
+    };
+    Some(SelectorPredicate::Context(ContextPredicate::WasCastFrom(
+        origin,
+    )))
+}
+
+fn lower_non_predicate(value: &str) -> Option<SelectorPredicate> {
+    let lower = value.to_ascii_lowercase();
+    let rest = lower.strip_prefix("non")?;
+    if rest.is_empty() {
+        return None;
+    }
+    let positive = match rest {
+        "white" => SelectorPredicate::Color(CardColorSelector::White),
+        "blue" => SelectorPredicate::Color(CardColorSelector::Blue),
+        "black" => SelectorPredicate::Color(CardColorSelector::Black),
+        "red" => SelectorPredicate::Color(CardColorSelector::Red),
+        "green" => SelectorPredicate::Color(CardColorSelector::Green),
+        "creature" => SelectorPredicate::CardType(CardSelectorType::Creature),
+        "land" => SelectorPredicate::CardType(CardSelectorType::Land),
+        "artifact" => SelectorPredicate::CardType(CardSelectorType::Artifact),
+        "enchantment" => SelectorPredicate::CardType(CardSelectorType::Enchantment),
+        "legendary" => SelectorPredicate::Legendary,
+        "basic" => SelectorPredicate::CardSupertype(CardSupertypeSelector::Basic),
+        "snow" => SelectorPredicate::CardSupertype(CardSupertypeSelector::Snow),
+        "token" => SelectorPredicate::Token(true),
+        _ => SelectorPredicate::CardType(CardSelectorType::Subtype(value[3..].to_string())),
+    };
+    Some(SelectorPredicate::Not(Box::new(positive)))
+}
+
+fn lower_keyword_predicate(value: &str) -> Option<SelectorPredicate> {
+    let lower = value.to_ascii_lowercase();
+    if lower.starts_with("without") && value.len() > 7 {
+        return Some(SelectorPredicate::Keyword {
+            name: value[7..].to_string(),
+            present: false,
+        });
+    }
+    if lower.starts_with("with") && value.len() > 4 {
+        return Some(SelectorPredicate::Keyword {
+            name: value[4..].to_string(),
+            present: true,
+        });
+    }
+    None
+}
+
+fn lower_subtype_predicate(value: &str) -> Option<SelectorPredicate> {
+    let lower = value.to_ascii_lowercase();
+    let structured = lower.starts_with("cmc")
+        || lower.starts_with("power")
+        || lower.starts_with("toughness")
+        || lower.starts_with("counters_")
+        || lower.starts_with("wascastfrom")
+        || lower.starts_with("shares")
+        || lower.starts_with("attached")
+        || lower.starts_with("controlledby ")
+        || lower.ends_with("source")
+        || value.contains(' ')
+        || value.contains('_')
+        || value.contains('/');
+    if structured
+        || value.is_empty()
+        || !value
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || ch == '-' || ch == '\'')
+    {
+        return None;
+    }
+    Some(SelectorPredicate::CardType(CardSelectorType::Subtype(
+        value.to_string(),
+    )))
+}
+
+fn lower_selector_comparison(value: &str) -> Option<SelectorPredicate> {
+    let lower = value.to_ascii_lowercase();
+    let (property, rest) = if let Some(rest) = lower.strip_prefix("cmc") {
+        (NumericSelectorProperty::ManaValue, rest)
+    } else if let Some(rest) = lower.strip_prefix("power") {
+        (NumericSelectorProperty::Power, rest)
+    } else if let Some(rest) = lower.strip_prefix("toughness") {
+        (NumericSelectorProperty::Toughness, rest)
+    } else if let Some(rest) = lower.strip_prefix("numtargets ") {
+        (NumericSelectorProperty::TargetCount, rest.trim())
+    } else if let Some(rest) = lower.strip_prefix("manaspent ") {
+        (NumericSelectorProperty::ManaSpent, rest.trim())
+    } else {
+        return None;
+    };
+    if rest == "even" {
+        return Some(SelectorPredicate::NumericParity {
+            property,
+            even: true,
+        });
+    }
+    if rest == "odd" {
+        return Some(SelectorPredicate::NumericParity {
+            property,
+            even: false,
+        });
+    }
+    let (operator, value) = parse_selector_comparison(rest)?;
+    Some(SelectorPredicate::NumericComparison {
+        property,
+        operator,
+        value,
+    })
+}
+
+fn lower_counter_comparison(value: &str) -> Option<SelectorPredicate> {
+    let rest = value.strip_prefix("counters_")?;
+    if rest.len() < 3 {
+        return None;
+    }
+    let operator = parse_selector_operator(&rest[..2])?;
+    let after_op = &rest[2..];
+    let split = after_op.find('_')?;
+    let value = parse_selector_operand(&after_op[..split])?;
+    let counter_type = after_op[split + 1..].to_string();
+    Some(SelectorPredicate::CounterComparison {
+        operator,
+        value,
+        counter_type,
+    })
+}
+
+fn parse_selector_comparison(
+    rest: &str,
+) -> Option<(SelectorCompareOperator, SelectorNumericOperand)> {
+    let operator = parse_selector_operator(rest.get(..2)?)?;
+    let value = parse_selector_operand(rest.get(2..)?)?;
+    Some((operator, value))
+}
+
+fn parse_selector_operand(value: &str) -> Option<SelectorNumericOperand> {
+    if value.is_empty() {
+        return None;
+    }
+    if let Ok(value) = value.parse::<i32>() {
+        Some(SelectorNumericOperand::Literal(value))
+    } else if value
+        .chars()
+        .all(|ch| ch.is_ascii_alphanumeric() || ch == '_')
+    {
+        Some(SelectorNumericOperand::Symbol(value.to_string()))
+    } else {
+        None
+    }
+}
+
+fn parse_selector_operator(operator: &str) -> Option<SelectorCompareOperator> {
+    match operator.to_ascii_lowercase().as_str() {
+        "eq" => Some(SelectorCompareOperator::Eq),
+        "ne" => Some(SelectorCompareOperator::Ne),
+        "lt" => Some(SelectorCompareOperator::Lt),
+        "le" => Some(SelectorCompareOperator::Le),
+        "gt" => Some(SelectorCompareOperator::Gt),
+        "ge" => Some(SelectorCompareOperator::Ge),
+        _ => None,
+    }
+}
+
+#[cfg(debug_assertions)]
+fn matches_selector_semantics(key: &str, value: &str) -> bool {
+    matches!(
+        parse_semantic_param_value(key, value),
+        SemanticParamValue::Selector(_)
+            | SemanticParamValue::Reference(_)
+            | SemanticParamValue::SVarReference(_)
+            | SemanticParamValue::DelimitedList(_)
+            | SemanticParamValue::Raw(_)
+    )
+}
+
+#[cfg(debug_assertions)]
+fn matches_reference_semantics(key: &str, value: &str) -> bool {
+    matches!(
+        parse_semantic_param_value(key, value),
+        SemanticParamValue::Reference(_)
+            | SemanticParamValue::Selector(_)
+            | SemanticParamValue::SVarReference(_)
+            | SemanticParamValue::Raw(_)
+    )
+}
+
+#[cfg(debug_assertions)]
+fn legacy_parse_params(raw: &str) -> BTreeMap<String, String> {
+    let mut map = BTreeMap::new();
+    for part in raw.split('|') {
+        let part = part.trim();
+        if let Some(idx) = part.find("$ ") {
+            let key = part[..idx].trim().to_string();
+            let value = part[idx + 2..].trim().to_string();
+            map.insert(key, value);
+        } else if let Some(idx) = part.find('$') {
+            let key = part[..idx].trim().to_string();
+            let value = part[idx + 1..].trim().to_string();
+            map.insert(key, value);
+        }
+    }
+    map
 }
 
 /// Adapter: convert a parse result to Option, logging failures only when
@@ -240,7 +1463,7 @@ pub fn parse_or_warn<T>(result: Option<T>, kind: &str, raw: &str) -> Option<T> {
 
 impl From<BTreeMap<String, String>> for Params {
     fn from(map: BTreeMap<String, String>) -> Self {
-        Params(map)
+        Params::from_map(map)
     }
 }
 

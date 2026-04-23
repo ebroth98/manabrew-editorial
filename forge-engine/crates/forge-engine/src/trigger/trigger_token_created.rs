@@ -1,26 +1,23 @@
 use serde::{Deserialize, Serialize};
 
-use crate::event::{RunParams};
-use crate::trigger::TriggerType;
+use crate::event::RunParams;
 use crate::game::GameState;
 use crate::parsing::{keys, Params};
 use crate::spellability::SpellAbility;
+use crate::trigger::TriggerType;
 
 use super::trigger::{Trigger, TriggerBehavior};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TriggerTokenCreated {
-    pub valid_card: Option<String>,
-    pub valid_player: Option<String>,
+    pub valid_card: Option<crate::parsing::CompiledSelector>,
+    pub valid_player: Option<crate::parsing::CompiledSelector>,
 }
 
 impl TriggerTokenCreated {
     pub fn parse(params: &Params) -> Box<dyn TriggerBehavior> {
-        let valid_card = params
-            .get("ValidToken")
-            .or_else(|| params.get(keys::VALID_CARD))
-            .map(|s| s.to_string());
-        let valid_player = params.get_cloned(keys::VALID_PLAYER);
+        let valid_card = params.selector_cloned_any(&["ValidToken", keys::VALID_CARD]);
+        let valid_player = params.selector_cloned(keys::VALID_PLAYER);
         Box::new(Self {
             valid_card,
             valid_player,

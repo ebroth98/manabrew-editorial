@@ -93,7 +93,12 @@ pub fn apply_cant_attack_ability(
     defender: PlayerId,
     cards: &[Card],
 ) -> bool {
-    if !valid_filter::matches_valid_card_opt(st_ab.params.get(keys::VALID_CARD), card, source) {
+    if !valid_filter::matches_valid_card_selector_opt_in_game(
+        st_ab.params.selector(keys::VALID_CARD),
+        card,
+        source,
+        game,
+    ) {
         return false;
     }
 
@@ -164,7 +169,7 @@ pub fn can_attack_defender(
             .iter()
             .filter(|sa| sa.check_conditions_full(&StaticMode::CanAttackDefender, source, game))
         {
-            if apply_can_attack_defender_ability(st_ab, card, source, defender) {
+            if apply_can_attack_defender_ability(game, st_ab, card, source, defender) {
                 return true;
             }
         }
@@ -174,18 +179,24 @@ pub fn can_attack_defender(
 
 /// Mirrors Java's `StaticAbilityCantAttackBlock.applyCanAttackDefenderAbility()`.
 pub fn apply_can_attack_defender_ability(
+    game: &GameState,
     st_ab: &StaticAbility,
     card: &Card,
     source: &Card,
     defender: PlayerId,
 ) -> bool {
-    if !valid_filter::matches_valid_card_opt(st_ab.params.get(keys::VALID_CARD), card, source) {
+    if !valid_filter::matches_valid_card_selector_opt_in_game(
+        st_ab.params.selector(keys::VALID_CARD),
+        card,
+        source,
+        game,
+    ) {
         return false;
     }
 
     // In Java: matchesValidParam("ValidAttacked", target) — target is the defender entity.
-    if !valid_filter::matches_valid_player_opt(
-        st_ab.params.get(keys::VALID_ATTACKED),
+    if !valid_filter::matches_valid_player_selector_opt(
+        st_ab.params.selector(keys::VALID_ATTACKED),
         defender,
         source.controller,
     ) {
@@ -215,7 +226,7 @@ pub fn cant_block(game: &GameState, cards: &[Card], blocker: &Card) -> bool {
             .iter()
             .filter(|sa| sa.check_conditions_full(&StaticMode::CantBlock, source, game))
         {
-            if apply_cant_block_ability(st_ab, blocker, source) {
+            if apply_cant_block_ability(game, st_ab, blocker, source) {
                 return true;
             }
         }
@@ -224,8 +235,18 @@ pub fn cant_block(game: &GameState, cards: &[Card], blocker: &Card) -> bool {
 }
 
 /// Mirrors Java's `StaticAbilityCantAttackBlock.applyCantBlockAbility()`.
-pub fn apply_cant_block_ability(st_ab: &StaticAbility, blocker: &Card, source: &Card) -> bool {
-    if !valid_filter::matches_valid_card_opt(st_ab.params.get(keys::VALID_CARD), blocker, source) {
+pub fn apply_cant_block_ability(
+    game: &GameState,
+    st_ab: &StaticAbility,
+    blocker: &Card,
+    source: &Card,
+) -> bool {
+    if !valid_filter::matches_valid_card_selector_opt_in_game(
+        st_ab.params.selector(keys::VALID_CARD),
+        blocker,
+        source,
+        game,
+    ) {
         return false;
     }
 
@@ -276,25 +297,37 @@ pub fn apply_cant_block_by_ability(
     source: &Card,
     cards: &[Card],
 ) -> bool {
-    if !valid_filter::matches_valid_card_opt(
-        st_ab.params.get(keys::VALID_ATTACKER),
+    if !valid_filter::matches_valid_card_selector_opt_in_game(
+        st_ab.params.selector(keys::VALID_ATTACKER),
         attacker,
         source,
+        game,
     ) {
         return false;
     }
 
     // ValidBlocker — complex logic matching Java's comma-split + withoutReach check
-    if let Some(valid_blocker_param) = st_ab.params.get(keys::VALID_BLOCKER) {
+    if let Some(valid_blocker_param) = st_ab.params.selector(keys::VALID_BLOCKER) {
         let mut still_block = true;
-        for v in valid_blocker_param.split(',') {
-            let v = v.trim();
+        for alternative in &valid_blocker_param.alternatives {
             if let Some(b) = blocker {
-                if valid_filter::matches_valid_card_opt(Some(v), b, source) {
+                let matches_blocker =
+                    crate::parsing::CompiledSelector::from_alternatives(vec![alternative.clone()]);
+                if valid_filter::matches_valid_card_selector_in_game(
+                    &matches_blocker,
+                    b,
+                    source,
+                    game,
+                ) {
                     still_block = false;
                     // Dragon Hunter check: if the filter includes "withoutReach"
                     // and canBlockIfReach returns true, re-set still_block.
-                    if v.contains("withoutReach") && can_block_if_reach(game, cards, attacker, b) {
+                    if alternative
+                        .parts
+                        .iter()
+                        .any(|part| part.value.eq_ignore_ascii_case("withoutReach"))
+                        && can_block_if_reach(game, cards, attacker, b)
+                    {
                         still_block = true;
                     }
                     if !still_block {
@@ -310,10 +343,11 @@ pub fn apply_cant_block_by_ability(
 
     // ValidAttackerRelative — relative to blocker
     if let Some(blocker_card) = blocker {
-        if !valid_filter::matches_valid_card_opt(
-            st_ab.params.get(keys::VALID_ATTACKER_RELATIVE),
+        if !valid_filter::matches_valid_card_selector_opt_in_game(
+            st_ab.params.selector(keys::VALID_ATTACKER_RELATIVE),
             attacker,
             blocker_card,
+            game,
         ) {
             return false;
         }
@@ -323,10 +357,11 @@ pub fn apply_cant_block_by_ability(
 
     // ValidBlockerRelative — relative to attacker
     if let Some(blocker_card) = blocker {
-        if !valid_filter::matches_valid_card_opt(
-            st_ab.params.get(keys::VALID_BLOCKER_RELATIVE),
+        if !valid_filter::matches_valid_card_selector_opt_in_game(
+            st_ab.params.selector(keys::VALID_BLOCKER_RELATIVE),
             blocker_card,
             attacker,
+            game,
         ) {
             return false;
         }
@@ -336,8 +371,8 @@ pub fn apply_cant_block_by_ability(
 
     // ValidDefender — checks blocker's controller
     if let Some(blocker_card) = blocker {
-        if !valid_filter::matches_valid_player_opt(
-            st_ab.params.get(keys::VALID_DEFENDER),
+        if !valid_filter::matches_valid_player_selector_opt(
+            st_ab.params.selector(keys::VALID_DEFENDER),
             blocker_card.controller,
             source.controller,
         ) {
@@ -383,7 +418,7 @@ pub fn can_block_if_reach(
             .iter()
             .filter(|sa| sa.check_conditions_full(&StaticMode::CanBlockIfReach, source, game))
         {
-            if apply_can_block_if_reach_ability(st_ab, attacker, blocker, source) {
+            if apply_can_block_if_reach_ability(game, st_ab, attacker, blocker, source) {
                 return true;
             }
         }
@@ -393,20 +428,26 @@ pub fn can_block_if_reach(
 
 /// Mirrors Java's `StaticAbilityCantAttackBlock.applyCanBlockIfReachAbility()`.
 pub fn apply_can_block_if_reach_ability(
+    game: &GameState,
     st_ab: &StaticAbility,
     attacker: &Card,
     blocker: &Card,
     source: &Card,
 ) -> bool {
-    if !valid_filter::matches_valid_card_opt(
-        st_ab.params.get(keys::VALID_ATTACKER),
+    if !valid_filter::matches_valid_card_selector_opt_in_game(
+        st_ab.params.selector(keys::VALID_ATTACKER),
         attacker,
         source,
+        game,
     ) {
         return false;
     }
-    if !valid_filter::matches_valid_card_opt(st_ab.params.get(keys::VALID_BLOCKER), blocker, source)
-    {
+    if !valid_filter::matches_valid_card_selector_opt_in_game(
+        st_ab.params.selector(keys::VALID_BLOCKER),
+        blocker,
+        source,
+        game,
+    ) {
         return false;
     }
     true
@@ -423,7 +464,7 @@ pub fn can_block_tapped(game: &GameState, cards: &[Card], card: &Card) -> bool {
             .iter()
             .filter(|sa| sa.check_conditions_full(&StaticMode::BlockTapped, source, game))
         {
-            if apply_block_tapped(st_ab, card, source) {
+            if apply_block_tapped(game, st_ab, card, source) {
                 return true;
             }
         }
@@ -432,8 +473,13 @@ pub fn can_block_tapped(game: &GameState, cards: &[Card], card: &Card) -> bool {
 }
 
 /// Mirrors Java's `StaticAbilityCantAttackBlock.applyBlockTapped()`.
-fn apply_block_tapped(st_ab: &StaticAbility, card: &Card, source: &Card) -> bool {
-    if !valid_filter::matches_valid_card_opt(st_ab.params.get(keys::VALID_CARD), card, source) {
+fn apply_block_tapped(game: &GameState, st_ab: &StaticAbility, card: &Card, source: &Card) -> bool {
+    if !valid_filter::matches_valid_card_selector_opt_in_game(
+        st_ab.params.selector(keys::VALID_CARD),
+        card,
+        source,
+        game,
+    ) {
         return false;
     }
     true
@@ -460,7 +506,7 @@ pub fn can_attack_haste(
             .iter()
             .filter(|sa| sa.check_conditions_full(&StaticMode::CanAttackIfHaste, source, game))
         {
-            if apply_can_attack_haste_ability(st_ab, attacker, _defender, source) {
+            if apply_can_attack_haste_ability(game, st_ab, attacker, _defender, source) {
                 return true;
             }
         }
@@ -470,18 +516,24 @@ pub fn can_attack_haste(
 
 /// Mirrors Java's `StaticAbilityCantAttackBlock.applyCanAttackHasteAbility()`.
 pub fn apply_can_attack_haste_ability(
+    game: &GameState,
     st_ab: &StaticAbility,
     card: &Card,
     defender: PlayerId,
     source: &Card,
 ) -> bool {
-    if !valid_filter::matches_valid_card_opt(st_ab.params.get(keys::VALID_CARD), card, source) {
+    if !valid_filter::matches_valid_card_selector_opt_in_game(
+        st_ab.params.selector(keys::VALID_CARD),
+        card,
+        source,
+        game,
+    ) {
         return false;
     }
 
     // ValidTarget — in Java this validates the target entity (defender).
-    if !valid_filter::matches_valid_player_opt(
-        st_ab.params.get(keys::VALID_TARGET),
+    if !valid_filter::matches_valid_player_selector_opt(
+        st_ab.params.selector(keys::VALID_TARGET),
         defender,
         source.controller,
     ) {
@@ -516,7 +568,7 @@ pub fn get_min_max_blocker(
             .filter(|sa| sa.check_conditions_full(&StaticMode::MinMaxBlocker, source, game))
         {
             apply_min_max_blocker_ability(
-                st_ab, attacker, source, _defender, cards, &mut min, &mut max,
+                game, st_ab, attacker, source, _defender, cards, &mut min, &mut max,
             );
         }
     }
@@ -526,6 +578,7 @@ pub fn get_min_max_blocker(
 
 /// Mirrors Java's `StaticAbilityCantAttackBlock.applyMinMaxBlockerAbility()`.
 pub fn apply_min_max_blocker_ability(
+    game: &GameState,
     st_ab: &StaticAbility,
     attacker: &Card,
     source: &Card,
@@ -534,7 +587,12 @@ pub fn apply_min_max_blocker_ability(
     min: &mut i32,
     max: &mut i32,
 ) {
-    if !valid_filter::matches_valid_card_opt(st_ab.params.get(keys::VALID_CARD), attacker, source) {
+    if !valid_filter::matches_valid_card_selector_opt_in_game(
+        st_ab.params.selector(keys::VALID_CARD),
+        attacker,
+        source,
+        game,
+    ) {
         return;
     }
 
@@ -574,7 +632,7 @@ pub fn attack_vigilance(game: &GameState, cards: &[Card], card: &Card) -> bool {
             .iter()
             .filter(|sa| sa.check_conditions_full(&StaticMode::AttackVigilance, source, game))
         {
-            if apply_attack_vigilance_ability(st_ab, card, source) {
+            if apply_attack_vigilance_ability(game, st_ab, card, source) {
                 return true;
             }
         }
@@ -583,8 +641,18 @@ pub fn attack_vigilance(game: &GameState, cards: &[Card], card: &Card) -> bool {
 }
 
 /// Mirrors Java's `StaticAbilityCantAttackBlock.applyAttackVigilanceAbility()`.
-pub fn apply_attack_vigilance_ability(st_ab: &StaticAbility, card: &Card, source: &Card) -> bool {
-    if !valid_filter::matches_valid_card_opt(st_ab.params.get(keys::VALID_CARD), card, source) {
+pub fn apply_attack_vigilance_ability(
+    game: &GameState,
+    st_ab: &StaticAbility,
+    card: &Card,
+    source: &Card,
+) -> bool {
+    if !valid_filter::matches_valid_card_selector_opt_in_game(
+        st_ab.params.selector(keys::VALID_CARD),
+        card,
+        source,
+        game,
+    ) {
         return false;
     }
     true
@@ -601,7 +669,11 @@ pub fn get_attack_cost(
     target: PlayerId,
     source: &Card,
 ) -> Option<String> {
-    if !valid_filter::matches_valid_card_opt(st_ab.params.get(keys::VALID_CARD), attacker, source) {
+    if !valid_filter::matches_valid_card_selector_opt(
+        st_ab.params.selector(keys::VALID_CARD),
+        attacker,
+        source,
+    ) {
         return None;
     }
 
@@ -645,7 +717,11 @@ pub fn get_block_cost(
     attacker_player: PlayerId,
     source: &Card,
 ) -> Option<String> {
-    if !valid_filter::matches_valid_card_opt(st_ab.params.get(keys::VALID_CARD), blocker, source) {
+    if !valid_filter::matches_valid_card_selector_opt(
+        st_ab.params.selector(keys::VALID_CARD),
+        blocker,
+        source,
+    ) {
         return None;
     }
 

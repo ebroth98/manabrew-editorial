@@ -2,12 +2,12 @@ use serde::{Deserialize, Serialize};
 
 use crate::ability::AbilityKey;
 use crate::event::{AbilityValue, RunParams};
-use crate::trigger::TriggerType;
 use crate::game::GameState;
 use crate::ids::CardId;
 use crate::parsing::compare::compare_expr;
 use crate::parsing::{keys, Params};
 use crate::spellability::SpellAbility;
+use crate::trigger::TriggerType;
 
 use super::trigger::TriggerBehavior;
 
@@ -15,33 +15,18 @@ use super::trigger::TriggerBehavior;
 pub struct TriggerChangesZoneAll {
     pub origin: Option<forge_foundation::ZoneType>,
     pub destination: Option<forge_foundation::ZoneType>,
-    pub valid_card: Option<String>,
-    pub valid_cause: Option<String>,
+    pub valid_card: Option<crate::parsing::CompiledSelector>,
+    pub valid_cause: Option<crate::parsing::CompiledSelector>,
     pub first_time_only: bool,
     pub valid_amount: Option<String>,
 }
 
 impl TriggerChangesZoneAll {
     pub fn parse(params: &Params) -> Box<dyn TriggerBehavior> {
-        let origin = params.get(keys::ORIGIN).and_then(|s| {
-            if s == "Any" {
-                None
-            } else {
-                forge_foundation::ZoneType::from_str_compat(s)
-            }
-        });
-        let destination = params.get(keys::DESTINATION).and_then(|s| {
-            if s == "Any" {
-                None
-            } else {
-                forge_foundation::ZoneType::from_str_compat(s)
-            }
-        });
-        let valid_card = params
-            .get(keys::VALID_CARDS)
-            .or_else(|| params.get(keys::VALID_CARD))
-            .map(|s| s.to_string());
-        let valid_cause = params.get_cloned(keys::VALID_CAUSE);
+        let origin = params.zone_type(keys::ORIGIN);
+        let destination = params.zone_type(keys::DESTINATION);
+        let valid_card = params.selector_cloned_any(&[keys::VALID_CARDS, keys::VALID_CARD]);
+        let valid_cause = params.selector_cloned(keys::VALID_CAUSE);
         let first_time_only = params.has("FirstTime");
         let valid_amount = params.get_cloned("ValidAmount");
         Box::new(Self {
@@ -94,7 +79,8 @@ impl TriggerBehavior for TriggerChangesZoneAll {
                 game,
                 origins.as_deref(),
                 destinations.as_deref(),
-                self.valid_card.as_deref(),
+                self.valid_card.as_ref(),
+                host_card,
                 host_controller,
             )
         } else {
@@ -133,7 +119,8 @@ impl TriggerBehavior for TriggerChangesZoneAll {
                         game,
                         self.origin.map(|zone| vec![zone]).as_deref(),
                         self.destination.map(|zone| vec![zone]).as_deref(),
-                        self.valid_card.as_deref(),
+                        self.valid_card.as_ref(),
+                        host_card,
                         host_controller,
                     )
                     .into_iter()

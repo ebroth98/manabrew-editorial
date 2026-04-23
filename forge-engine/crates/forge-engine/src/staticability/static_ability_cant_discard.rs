@@ -36,8 +36,8 @@ pub fn apply_cant_discard_ability(
     cause: Option<&SpellAbility>,
     is_effect: bool,
 ) -> bool {
-    if !valid_filter::matches_valid_player_opt(
-        st_ab.params.get(keys::VALID_PLAYER),
+    if !valid_filter::matches_valid_player_selector_opt(
+        st_ab.params.selector(keys::VALID_PLAYER),
         player,
         source_controller,
     ) {

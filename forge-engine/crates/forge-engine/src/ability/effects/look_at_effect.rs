@@ -1,6 +1,6 @@
 use forge_foundation::ZoneType;
 
-use super::{parse_param, parse_zone_type, resolve_defined_player, EffectContext};
+use super::{parse_zone_type, resolve_defined_player, resolve_numeric_svar, EffectContext};
 use crate::agent::GameLogEvent;
 use crate::spellability::SpellAbility;
 
@@ -15,9 +15,12 @@ use crate::spellability::SpellAbility;
 /// `LookAtEffect` class extending `SpellAbilityEffect`.
 #[forge_engine_macros::spell_effect(LookAtEffect)]
 fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
-    let num = parse_param(&sa.ability_text, "NumCards$ ")
-        .or_else(|| parse_param(&sa.ability_text, "ScryNum$ "))
-        .unwrap_or(1) as usize;
+    let num = if sa.params.has("NumCards") {
+        resolve_numeric_svar(ctx.game, sa, "NumCards", 1)
+    } else {
+        resolve_numeric_svar(ctx.game, sa, "ScryNum", 1)
+    }
+    .max(0) as usize;
 
     let source_zone = sa
         .params

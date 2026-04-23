@@ -20,7 +20,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
 
     let amount = super::resolve_numeric_svar(ctx.game, sa, "Amount", 1).max(1);
 
-    let players = if let Some(def) = sa.params.get(keys::DEFINED) {
+    let players = if let Some(def) = sa.defined() {
         super::resolve_defined_players(def, sa.activating_player, ctx.game)
     } else {
         vec![sa.activating_player]

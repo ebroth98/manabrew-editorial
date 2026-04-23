@@ -34,8 +34,8 @@ fn get_surveil_mod(
     player: PlayerId,
 ) -> i32 {
     // ValidPlayer$
-    if !valid_filter::matches_valid_player_opt(
-        st_ab.params.get(keys::VALID_PLAYER),
+    if !valid_filter::matches_valid_player_selector_opt(
+        st_ab.params.selector(keys::VALID_PLAYER),
         player,
         source_controller,
     ) {

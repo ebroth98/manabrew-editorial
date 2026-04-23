@@ -1,6 +1,6 @@
 use forge_foundation::ZoneType;
 
-use super::{matches_valid_cards, parse_zone_type, EffectContext};
+use super::{matches_valid_cards_for_sa, parse_zone_type, EffectContext};
 use crate::parsing::keys;
 use crate::spellability::SpellAbility;
 
@@ -106,7 +106,7 @@ fn resolve_clone_source(
     }
 
     // Check Defined$
-    if let Some(defined) = sa.params.get(keys::DEFINED) {
+    if let Some(defined) = sa.defined() {
         match defined {
             "Remembered" => {
                 if let Some(src) = sa.source {
@@ -122,6 +122,7 @@ fn resolve_clone_source(
 
     // Check Choices — player selects from valid cards
     if let Some(filter) = sa.params.get(keys::CHOICES).map(|s| s.to_string()) {
+        let filter_selector = sa.params.selector(keys::CHOICES);
         let zone = sa
             .params
             .get(keys::CHOICE_ZONE)
@@ -132,7 +133,13 @@ fn resolve_clone_source(
         for &pid in &ctx.game.player_order.clone() {
             let zone_cards = ctx.game.cards_in_zone(zone, pid).to_vec();
             for cid in zone_cards {
-                if matches_valid_cards(ctx.game.card(cid), &filter, controller) {
+                if matches_valid_cards_for_sa(
+                    ctx.game,
+                    sa,
+                    ctx.game.card(cid),
+                    filter_selector,
+                    &filter,
+                ) {
                     valid.push(cid);
                 }
             }

@@ -8,10 +8,10 @@ use crate::ids::CardId;
 use crate::parsing::keys;
 
 use super::replacement_effect::ReplacementEffect;
-use crate::card_trait_base::CardTrait;
 use super::replacement_handler::ReplacementEvent;
 use super::replacement_result::ReplacementResult;
 use super::replacement_type::ReplacementType;
+use crate::card_trait_base::CardTrait;
 
 /// Mirrors Java `ReplaceAttached.canReplace()`.
 pub fn can_replace(
@@ -28,14 +28,14 @@ pub fn can_replace(
         _ => return false,
     };
     let attach_card = &game.cards[card.index()];
-    if let Some(valid) = effect.params.get(keys::VALID_CARD) {
-        if !effect.matches_valid_card(valid, attach_card, source_card) {
+    if let Some(valid) = effect.params.selector(keys::VALID_CARD) {
+        if !effect.matches_compiled_valid_card(valid, attach_card, source_card) {
             return false;
         }
     }
     let target_card = &game.cards[target.index()];
-    if let Some(valid_target) = effect.params.get(keys::VALID_TARGET) {
-        if !effect.matches_valid_card(valid_target, target_card, source_card) {
+    if let Some(valid_target) = effect.params.selector(keys::VALID_TARGET) {
+        if !effect.matches_compiled_valid_card(valid_target, target_card, source_card) {
             return false;
         }
     }

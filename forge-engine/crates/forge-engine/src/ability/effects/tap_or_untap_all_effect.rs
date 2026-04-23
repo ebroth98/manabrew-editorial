@@ -1,6 +1,6 @@
 use forge_foundation::ZoneType;
 
-use super::{matches_valid_cards, resolve_defined_players, EffectContext};
+use super::{matches_valid_cards_for_sa, resolve_defined_players, EffectContext};
 use crate::agent::BinaryChoiceKind;
 use crate::ids::{CardId, PlayerId};
 use crate::spellability::SpellAbility;
@@ -34,6 +34,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
         .get(crate::parsing::keys::VALID_CARDS)
         .unwrap_or("Permanent")
         .to_string();
+    let valid_selector = sa.params.selector(crate::parsing::keys::VALID_CARDS);
 
     let restrict_controllers: Option<Vec<PlayerId>> =
         if let Some(pid) = sa.target_chosen.target_player {
@@ -57,7 +58,13 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
                     continue;
                 }
             }
-            if matches_valid_cards(ctx.game.card(cid), &valid_filter, controller) {
+            if matches_valid_cards_for_sa(
+                ctx.game,
+                sa,
+                ctx.game.card(cid),
+                valid_selector,
+                &valid_filter,
+            ) {
                 cards.push(cid);
             }
         }

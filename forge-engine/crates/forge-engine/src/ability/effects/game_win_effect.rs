@@ -18,7 +18,7 @@ use crate::spellability::SpellAbility;
 fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let controller = sa.activating_player;
 
-    let defined = sa.params.get("Defined").unwrap_or("You");
+    let defined = sa.defined().unwrap_or("You");
 
     let winner = resolve_defined_player(defined, controller, ctx.game).unwrap_or(controller);
 

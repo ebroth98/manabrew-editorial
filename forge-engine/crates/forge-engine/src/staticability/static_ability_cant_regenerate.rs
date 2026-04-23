@@ -1,6 +1,6 @@
 use forge_foundation::ZoneType;
 
-use crate::card::Card;
+use crate::card::{valid_filter, Card};
 use crate::parsing::keys;
 use crate::staticability::StaticMode;
 
@@ -14,7 +14,7 @@ pub fn cant_regenerate(cards: &[Card], target: &Card) -> bool {
             .iter()
             .filter(|sa| sa.mode == StaticMode::CantRegenerate)
         {
-            let valid = st_ab.params.get(keys::VALID_CARD);
+            let valid = st_ab.params.selector(keys::VALID_CARD);
             if matches_valid_card(valid, target, source) {
                 return true;
             }
@@ -28,21 +28,13 @@ pub fn apply_cant_regenerate_ability(
     target: &Card,
     source: &Card,
 ) -> bool {
-    matches_valid_card(st_ab.params.get(keys::VALID_CARD), target, source)
+    matches_valid_card(st_ab.params.selector(keys::VALID_CARD), target, source)
 }
 
-fn matches_valid_card(valid: Option<&str>, card: &Card, source: &Card) -> bool {
-    match valid {
-        None => true,
-        Some(v) if v.eq_ignore_ascii_case("Card") || v.eq_ignore_ascii_case("Permanent") => true,
-        Some(v) if v.eq_ignore_ascii_case("Creature") => card.is_creature(),
-        Some(v) if v.eq_ignore_ascii_case("Card.Self") => card.id == source.id,
-        Some(v) if v.eq_ignore_ascii_case("Card.IsRemembered") => {
-            source.remembered_cards.contains(&card.id)
-        }
-        Some(v) if v.eq_ignore_ascii_case("Card.EffectSource") => {
-            source.effect_source == Some(card.id)
-        }
-        _ => true,
-    }
+fn matches_valid_card(
+    valid: Option<&crate::parsing::CompiledSelector>,
+    card: &Card,
+    source: &Card,
+) -> bool {
+    valid_filter::matches_valid_card_selector_opt(valid, card, source)
 }

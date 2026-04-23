@@ -8,12 +8,13 @@ use std::collections::{HashMap, HashSet};
 use serde::{Deserialize, Serialize};
 
 use crate::card::valid_filter;
-use crate::event::{RunParams};
-use crate::trigger::TriggerType;
+use crate::event::RunParams;
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
+use crate::parsing::CompiledSelector;
 use crate::spellability::SpellAbility;
 use crate::trigger::TriggerHandler;
+use crate::trigger::TriggerType;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum DamageTarget {
@@ -59,23 +60,39 @@ impl CardDamageMap {
         host: CardId,
     ) -> CardDamageMap {
         let host_card = game.card(host);
+        let valid_source = valid_source.map(CompiledSelector::parse);
+        let valid_target = valid_target.map(CompiledSelector::parse);
         let mut out = CardDamageMap::default();
 
         for (&source, targets) in &self.data {
-            if let Some(valid) = valid_source {
-                if !valid_filter::matches_valid_card(valid, game.card(source), host_card) {
+            if let Some(valid) = valid_source.as_ref() {
+                if !valid_filter::matches_valid_card_selector_in_game(
+                    valid,
+                    game.card(source),
+                    host_card,
+                    game,
+                ) {
                     continue;
                 }
             }
 
             for (&target, &amount) in targets {
-                let target_ok = match (valid_target, target) {
+                let target_ok = match (valid_target.as_ref(), target) {
                     (None, _) => true,
                     (Some(valid), DamageTarget::Card(cid)) => {
-                        valid_filter::matches_valid_card(valid, game.card(cid), host_card)
+                        valid_filter::matches_valid_card_selector_in_game(
+                            valid,
+                            game.card(cid),
+                            host_card,
+                            game,
+                        )
                     }
                     (Some(valid), DamageTarget::Player(pid)) => {
-                        valid_filter::matches_valid_player(valid, pid, host_card.controller)
+                        valid_filter::matches_valid_player_selector(
+                            valid,
+                            pid,
+                            host_card.controller,
+                        )
                     }
                 };
                 if target_ok {

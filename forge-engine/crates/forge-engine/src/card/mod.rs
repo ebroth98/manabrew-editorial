@@ -105,9 +105,7 @@ pub struct CardOtherPart {
 /// here (`StaticCommandCheck` driven by an SVar comparator, `UntilSourceUnattached`,
 /// `UntilTheEndOfYourNextTurn`) — they require either a scheduler that scans
 /// every tick or a turn-owner counter that the engine doesn't maintain yet.
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, strum_macros::EnumString,
-)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, strum_macros::EnumString)]
 #[strum(ascii_case_insensitive)]
 pub enum LoseControlCondition {
     /// Revert at the end of the current turn (default EOT branch).
@@ -1372,13 +1370,18 @@ impl Card {
     }
 
     /// Reset per-turn state at start of turn.
-    pub fn new_turn(&mut self) {
+    pub fn clear_global_turn_state(&mut self) {
         self.entered_battlefield_this_turn = false;
         self.attacked_this_turn = false;
         self.attached_this_turn = false;
         self.has_deathtouch_damage = false;
         self.damage_sources_this_turn.clear();
         self.total_damage_done_this_turn = 0;
+    }
+
+    /// Reset controller-specific state at the start of that player's turn.
+    pub fn new_turn(&mut self) {
+        self.clear_global_turn_state();
         if self.zone == ZoneType::Battlefield {
             self.summoning_sick = false;
         }

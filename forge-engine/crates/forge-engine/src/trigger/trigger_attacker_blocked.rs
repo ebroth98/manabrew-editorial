@@ -2,23 +2,23 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     event::RunParams,
-    trigger::TriggerType,
     game::GameState,
     parsing::{keys, Params},
     spellability::SpellAbility,
+    trigger::TriggerType,
 };
 
 use super::trigger::TriggerBehavior;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TriggerAttackerBlocked {
-    pub valid_card: Option<String>,
+    pub valid_card: Option<crate::parsing::CompiledSelector>,
 }
 
 impl TriggerAttackerBlocked {
     pub fn parse(params: &Params) -> Box<dyn TriggerBehavior> {
         Box::new(Self {
-            valid_card: params.get_cloned(keys::VALID_CARD),
+            valid_card: params.selector_cloned(keys::VALID_CARD),
         })
     }
 }

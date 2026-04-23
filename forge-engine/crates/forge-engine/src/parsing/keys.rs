@@ -1,7 +1,7 @@
 //! Compile-time constants for all DSL parameter keys.
 //!
-//! These replace raw magic strings like `params.get("ValidCard")` with
-//! `params.get(keys::VALID_CARD)` — typos become compile errors and
+//! These replace raw magic strings like `params.selector_value("ValidCard")` with
+//! `params.selector_value(keys::VALID_CARD)` — typos become compile errors and
 //! keys are discoverable via IDE autocomplete.
 //!
 //! Mirrors the parameter keys used throughout Java Forge's ability text
@@ -100,7 +100,9 @@ pub const TRIGGERS_WHEN_SPENT: &str = "TriggersWhenSpent";
 pub const AMOUNT: &str = "Amount";
 pub const ADDITIONAL: &str = "Additional";
 pub const NUM_DMG: &str = "NumDmg";
+pub const LIFE_AMOUNT: &str = "LifeAmount";
 pub const DAMAGE_AMOUNT: &str = "DamageAmount";
+pub const DAMAGE_MAP: &str = "DamageMap";
 pub const CHANGE_NUM: &str = "ChangeNum";
 pub const VALUE: &str = "Value";
 pub const MIN: &str = "Min";

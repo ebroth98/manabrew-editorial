@@ -1,6 +1,6 @@
 use forge_foundation::ZoneType;
 
-use crate::card::Card;
+use crate::card::{valid_filter, Card};
 use crate::parsing::keys;
 use crate::staticability::StaticMode;
 
@@ -26,7 +26,7 @@ pub fn counters_remain(cards: &[Card], card: &Card, destination: ZoneType) -> bo
             if !active {
                 continue;
             }
-            if matches_valid_card(st_ab.params.get(keys::VALID_CARD), card, source) {
+            if matches_valid_card(st_ab.params.selector(keys::VALID_CARD), card, source) {
                 return true;
             }
         }
@@ -52,15 +52,13 @@ pub fn apply_counters_remain_ability(
                 .params
                 .get(keys::EFFECT_ZONE)
                 .is_some_and(|z| z.eq_ignore_ascii_case("All")));
-    active && matches_valid_card(st_ab.params.get(keys::VALID_CARD), card, source)
+    active && matches_valid_card(st_ab.params.selector(keys::VALID_CARD), card, source)
 }
 
-fn matches_valid_card(valid: Option<&str>, card: &Card, source: &Card) -> bool {
-    match valid {
-        None => true,
-        Some(v) if v.eq_ignore_ascii_case("Card") || v.eq_ignore_ascii_case("Permanent") => true,
-        Some(v) if v.eq_ignore_ascii_case("Creature") => card.is_creature(),
-        Some(v) if v.eq_ignore_ascii_case("Card.Self") => card.id == source.id,
-        _ => true,
-    }
+fn matches_valid_card(
+    valid: Option<&crate::parsing::CompiledSelector>,
+    card: &Card,
+    source: &Card,
+) -> bool {
+    valid_filter::matches_valid_card_selector_opt(valid, card, source)
 }

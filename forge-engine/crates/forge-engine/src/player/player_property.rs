@@ -3,9 +3,11 @@ use forge_foundation::ZoneType;
 use crate::ability::ability_utils;
 use crate::card::card_damage_history::TrackedEntity;
 use crate::card::valid_filter::matches_valid_card;
+use crate::card::valid_filter::matches_valid_card_selector_in_game;
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
 use crate::parsing::compare::compare_expr;
+use crate::parsing::CompiledSelector;
 use crate::spellability::SpellAbility;
 use crate::zone::zone_type::smart_value_of as parse_zone_type;
 
@@ -53,12 +55,17 @@ fn count_matching_cards<'a>(
         .count()
 }
 
-fn count_type(game: &GameState, cards: impl IntoIterator<Item = CardId>, card_type: &str) -> usize {
+fn count_type(
+    game: &GameState,
+    cards: impl IntoIterator<Item = CardId>,
+    card_type: &str,
+    source_id: CardId,
+) -> usize {
+    let selector = CompiledSelector::parse(card_type);
+    let source = game.card(source_id);
     cards
         .into_iter()
-        .filter(|&cid| {
-            ability_utils::matches_valid_cards(game.card(cid), card_type, game.card(cid).controller)
-        })
+        .filter(|&cid| matches_valid_card_selector_in_game(&selector, game.card(cid), source, game))
         .count()
 }
 
@@ -380,12 +387,14 @@ pub fn player_has_property(
                 .iter()
                 .copied(),
             card_type,
+            source_id,
         ) > count_type(
             game,
             game.cards_in_zone(ZoneType::Battlefield, compared_player)
                 .iter()
                 .copied(),
             card_type,
+            source_id,
         );
     } else if property.starts_with("withAtLeast") {
         let amount = property[11..12].parse::<usize>().unwrap_or(0);
@@ -406,6 +415,7 @@ pub fn player_has_property(
                 .iter()
                 .copied(),
             card_type,
+            source_id,
         );
         let yours = count_type(
             game,
@@ -413,6 +423,7 @@ pub fn player_has_property(
                 .iter()
                 .copied(),
             card_type,
+            source_id,
         );
         return theirs >= yours + amount;
     } else if property.starts_with("hasMore") {
@@ -447,10 +458,12 @@ pub fn player_has_property(
             game,
             game.cards_in_zone(zone, player).iter().copied(),
             card_type,
+            source_id,
         ) < count_type(
             game,
             game.cards_in_zone(zone, compared_player).iter().copied(),
             card_type,
+            source_id,
         );
     } else if let Some(kind) = property.strip_prefix("withMost") {
         if kind == "Life" {
@@ -486,6 +499,7 @@ pub fn player_has_property(
                         .iter()
                         .copied(),
                     card_type,
+                    source_id,
                 );
                 if count > best {
                     best = count;
@@ -524,12 +538,13 @@ pub fn player_has_property(
             .attacked_players_this_turn
             .contains(&controller);
     } else if let Some(card_type) = property.strip_prefix("attackedYouCtrlTheirCurrentTurn_") {
+        let selector = CompiledSelector::parse(card_type);
         return game
             .cards_in_zone(ZoneType::Battlefield, controller)
             .iter()
             .copied()
             .filter(|&cid| {
-                ability_utils::matches_valid_cards(game.card(cid), card_type, controller)
+                matches_valid_card_selector_in_game(&selector, game.card(cid), source, game)
             })
             .any(|cid| {
                 any_attacker_matches(game, player, TrackedEntity::Card(cid), "Card", source_id)

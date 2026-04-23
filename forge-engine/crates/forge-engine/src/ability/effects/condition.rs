@@ -14,7 +14,7 @@ use crate::parsing::compare::compare_expr;
 use crate::parsing::keys;
 use crate::spellability::SpellAbility;
 
-use super::helpers::matches_valid_cards;
+use super::helpers::matches_valid_cards_for_sa;
 
 /// Check if a conditional gate on this SA is satisfied.
 /// Mirrors Java's `SpellAbility.checkConditions()` +
@@ -138,7 +138,7 @@ pub(super) fn check_condition(game: &GameState, sa: &SpellAbility) -> bool {
                 imprinted
                     .into_iter()
                     .filter(|&cid| {
-                        matches_valid_cards(game.card(cid), valid_filter, sa.activating_player)
+                        matches_valid_cards_for_sa(game, sa, game.card(cid), None, valid_filter)
                     })
                     .count() as i32
             }

@@ -32,7 +32,7 @@ use crate::game_object::GameObject;
 use crate::ids::PlayerId;
 use crate::keyword::keyword_instance::Keyword;
 use crate::keyword::keyword_interface::KeywordInterface;
-use crate::parsing::Params;
+use crate::parsing::{CompiledSelector, Params};
 use crate::player::GameLossReason;
 
 // Keys of descriptive (text) parameters.
@@ -235,7 +235,8 @@ impl CardTraitBase {
     ) -> bool {
         match target {
             MatchValidTarget::Card(card) => {
-                valid_filter::matches_valid_card(&valids.join(","), card, src_card)
+                let selector = crate::parsing::CompiledSelector::parse(&valids.join(","));
+                valid_filter::matches_valid_card_selector(&selector, card, src_card)
             }
             MatchValidTarget::Player(player) => {
                 valid_filter::matches_valid_player(&valids.join(","), *player, src_player)
@@ -253,6 +254,48 @@ impl CardTraitBase {
                     .map(|parsed| parsed == *reason)
                     .unwrap_or(false)
             }),
+            MatchValidTarget::PlanarDice => {
+                unimplemented!("port: PlanarDice — planechase not implemented")
+            }
+        }
+    }
+
+    pub fn matches_compiled_valid_with_player(
+        &self,
+        target: &MatchValidTarget<'_>,
+        selector: &CompiledSelector,
+        src_card: &Card,
+        src_player: PlayerId,
+    ) -> bool {
+        match target {
+            MatchValidTarget::Card(card) => {
+                valid_filter::matches_valid_card_selector(selector, card, src_card)
+            }
+            MatchValidTarget::Player(player) => {
+                valid_filter::matches_valid_player_selector(selector, *player, src_player)
+            }
+            MatchValidTarget::GameObj(obj) => {
+                let owned: Vec<String> = selector
+                    .alternatives
+                    .iter()
+                    .map(|alternative| alternative.raw.clone())
+                    .collect();
+                obj.is_valid(&owned, src_player, src_card, self)
+            }
+            MatchValidTarget::Iter(items) => items.iter().any(|item| {
+                self.matches_compiled_valid_with_player(item, selector, src_card, src_player)
+            }),
+            MatchValidTarget::Str(s) => selector
+                .alternatives
+                .iter()
+                .any(|alternative| alternative.raw == *s),
+            MatchValidTarget::LossReason(reason) => {
+                selector.alternatives.iter().any(|alternative| {
+                    GameLossReason::smart_value_of(&alternative.raw)
+                        .map(|parsed| parsed == *reason)
+                        .unwrap_or(false)
+                })
+            }
             MatchValidTarget::PlanarDice => {
                 unimplemented!("port: PlanarDice — planechase not implemented")
             }
@@ -642,10 +685,33 @@ pub trait CardTrait {
             .matches_valid_with_player(target, valids, src, player)
     }
 
+    fn matches_compiled_valid(
+        &self,
+        target: &MatchValidTarget<'_>,
+        selector: &CompiledSelector,
+        src_card: Option<&Card>,
+    ) -> bool {
+        let Some(src) = src_card else {
+            return false;
+        };
+        let player = self.resolve_source_player(src);
+        self.base()
+            .matches_compiled_valid_with_player(target, selector, src, player)
+    }
+
     /// Mirrors `matchesValid(Object, String[])` — defaults source card to host.
     fn matches_valid_host(&self, target: &MatchValidTarget<'_>, valids: &[&str]) -> bool {
         let host = self.base().get_host_card().clone();
         self.matches_valid(target, valids, Some(&host))
+    }
+
+    fn matches_compiled_valid_host(
+        &self,
+        target: &MatchValidTarget<'_>,
+        selector: &CompiledSelector,
+    ) -> bool {
+        let host = self.base().get_host_card().clone();
+        self.matches_compiled_valid(target, selector, Some(&host))
     }
 
     fn matches_valid_param(
@@ -681,11 +747,29 @@ pub trait CardTrait {
         self.matches_valid(&MatchValidTarget::Card(card), &parts, Some(source))
     }
 
+    fn matches_compiled_valid_card(
+        &self,
+        selector: &CompiledSelector,
+        card: &Card,
+        source: &Card,
+    ) -> bool {
+        self.matches_compiled_valid(&MatchValidTarget::Card(card), selector, Some(source))
+    }
+
     /// Ergonomic comma-separated-expression wrapper over `matches_valid` for
     /// player targets.
     fn matches_valid_player(&self, expr: &str, player: PlayerId, source: &Card) -> bool {
         let parts: Vec<&str> = expr.split(',').collect();
         self.matches_valid(&MatchValidTarget::Player(player), &parts, Some(source))
+    }
+
+    fn matches_compiled_valid_player(
+        &self,
+        selector: &CompiledSelector,
+        player: PlayerId,
+        source: &Card,
+    ) -> bool {
+        self.matches_compiled_valid(&MatchValidTarget::Player(player), selector, Some(source))
     }
 }
 

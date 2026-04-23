@@ -1,8 +1,10 @@
 use forge_foundation::ZoneType;
 
-use super::{parse_param, EffectContext};
+use super::{resolve_numeric_svar, EffectContext};
+use crate::ability::ability_ir::AbilityIr;
 use crate::card::card_damage_map::DamageTarget;
 use crate::card::card_util;
+use crate::parsing::amount::AmountExpr;
 use crate::parsing::keys;
 use crate::spellability::SpellAbility;
 
@@ -55,6 +57,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
             .get(keys::VALID_TGTS)
             .map(|s| s.to_string())
             .unwrap_or_default();
+        let valid_tgts_selector = sa.params.selector(keys::VALID_TGTS);
         let all_bf: Vec<crate::ids::CardId> = ctx
             .game
             .player_order
@@ -66,7 +69,13 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
             if ctx.game.card(cid).zone != ZoneType::Battlefield {
                 continue;
             }
-            if !super::matches_valid_cards(ctx.game.card(cid), &valid_tgts, sa.activating_player) {
+            if !super::matches_valid_cards_for_sa(
+                ctx.game,
+                sa,
+                ctx.game.card(cid),
+                valid_tgts_selector,
+                &valid_tgts,
+            ) {
                 continue;
             }
             // Track damage source for DamagedBy trigger filters
@@ -328,28 +337,46 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
 /// references (e.g. `NumDmg$ X` where `SVar:X:ParentTargeted$CardPower`).
 /// Mirrors Java's `AbilityUtils.calculateAmount(sa, "NumDmg", sa)`.
 fn resolve_damage_amount(ctx: &EffectContext, sa: &SpellAbility) -> i32 {
-    // Fast path: NumDmg$ is a direct integer
-    if let Some(n) = parse_param(&sa.ability_text, "NumDmg$ ") {
-        return n;
-    }
-
-    // NumDmg$ <var> — look up the SVar on the source card and evaluate it.
-    // Example: NumDmg$ X with SVar:X:ParentTargeted$CardPower
-    let var_name = match sa.params.get(keys::NUM_DMG) {
-        Some(v) if !v.is_empty() => v,
-        _ => return 0,
-    };
-
-    // Check if var_name is "X" — use x_mana_cost_paid
-    if var_name == "X" {
-        if let Some(source_id) = sa.source {
-            if let Some(svar_expr) = ctx.game.card(source_id).get_s_var("X") {
-                return evaluate_svar_expr(ctx, sa, svar_expr);
+    if let Some(AbilityIr::DealDamage(ir)) = &sa.compiled_ir {
+        if let Some(amount) = &ir.amount {
+            if let Some(value) = resolve_amount_expr(ctx, sa, amount) {
+                #[cfg(debug_assertions)]
+                debug_assert_eq!(
+                    value,
+                    resolve_damage_amount_from_params(ctx, sa),
+                    "compiled DealDamage amount diverged from string params"
+                );
+                return value;
             }
         }
-        return sa.x_mana_cost_paid as i32;
     }
 
+    resolve_damage_amount_from_params(ctx, sa)
+}
+
+fn resolve_amount_expr(ctx: &EffectContext, sa: &SpellAbility, amount: &AmountExpr) -> Option<i32> {
+    match amount {
+        AmountExpr::Literal(value) => Some(*value),
+        AmountExpr::X => Some(resolve_x_amount(ctx, sa)),
+        AmountExpr::SVar(name) => Some(resolve_svar_amount(ctx, sa, name)),
+        AmountExpr::Raw(_) => None,
+    }
+}
+
+fn resolve_damage_amount_from_params(ctx: &EffectContext, sa: &SpellAbility) -> i32 {
+    resolve_numeric_svar(ctx.game, sa, keys::NUM_DMG, 0)
+}
+
+fn resolve_x_amount(ctx: &EffectContext, sa: &SpellAbility) -> i32 {
+    if let Some(source_id) = sa.source {
+        if let Some(svar_expr) = ctx.game.card(source_id).get_s_var("X") {
+            return evaluate_svar_expr(ctx, sa, svar_expr);
+        }
+    }
+    sa.x_mana_cost_paid as i32
+}
+
+fn resolve_svar_amount(ctx: &EffectContext, sa: &SpellAbility, var_name: &str) -> i32 {
     if let Some(source_id) = sa.source {
         let svar_val = ctx
             .game

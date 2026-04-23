@@ -195,17 +195,24 @@ fn cant_block_by(game: &GameState, attacker_id: CardId, blocker_id: CardId) -> b
                 continue;
             }
 
-            if let Some(valid_attacker) = sa.params.get(keys::VALID_ATTACKER) {
-                if !valid_filter::matches_valid_card(valid_attacker, attacker, source) {
+            if let Some(valid_attacker) = sa.params.selector(keys::VALID_ATTACKER) {
+                if !valid_filter::matches_valid_card_selector_in_game(
+                    valid_attacker,
+                    attacker,
+                    source,
+                    game,
+                ) {
                     continue;
                 }
             }
 
-            if let Some(valid_blocker) = sa.params.get(keys::VALID_BLOCKER) {
-                let blocker_matches = valid_blocker
-                    .split(',')
-                    .any(|v| valid_filter::matches_valid_card(v.trim(), blocker, source));
-                if !blocker_matches {
+            if let Some(valid_blocker) = sa.params.selector(keys::VALID_BLOCKER) {
+                if !valid_filter::matches_valid_card_selector_in_game(
+                    valid_blocker,
+                    blocker,
+                    source,
+                    game,
+                ) {
                     continue;
                 }
             }

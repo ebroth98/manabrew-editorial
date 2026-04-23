@@ -7,10 +7,10 @@
 use forge_foundation::ZoneType;
 use serde::{Deserialize, Serialize};
 
-use crate::card::card_property;
+use crate::card::{card_property, valid_filter};
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
-use crate::parsing::{keys, Params};
+use crate::parsing::{keys, CompiledSelector, Params};
 use crate::spellability::SpellAbility;
 
 /// What kinds of targets a spell can select.
@@ -44,6 +44,9 @@ pub enum TargetKind {
 pub struct TargetRestrictions {
     /// Raw valid target strings (e.g. ["Creature.OppCtrl"])
     pub valid_tgts: Vec<String>,
+    /// Compiled ValidTgts selector used for card target filtering.
+    #[serde(default)]
+    pub valid_tgts_selector: CompiledSelector,
     /// Parsed target kind
     pub target_kind: TargetKind,
     /// Additional target type filter (e.g. "Spell" from TargetType$ parameter)
@@ -62,12 +65,12 @@ impl TargetRestrictions {
     /// Construct from parsed pipe params. Returns `None` if no `ValidTgts$`
     /// parameter exists (mirrors Java: null targetRestrictions means no targeting).
     pub fn new(params: &Params) -> Option<Self> {
-        let valid_tgts_str = params.get(keys::VALID_TGTS)?;
+        let valid_tgts_str = params.selector_value(keys::VALID_TGTS)?;
         let valid_tgts: Vec<String> = valid_tgts_str
             .split(',')
             .map(|s| s.trim().to_string())
             .collect();
-        let origin_zone = params.get(keys::ORIGIN).and_then(|v| parse_zone_type(v));
+        let origin_zone = params.zone_type(keys::ORIGIN);
         // For CardInZone targeting (non-battlefield origin), pass the full
         // ValidTgts string so comma-separated types (e.g. "Creature,Land")
         // are all included in the filter. For battlefield targeting, use
@@ -103,6 +106,10 @@ impl TargetRestrictions {
 
         Some(TargetRestrictions {
             valid_tgts,
+            valid_tgts_selector: params
+                .selector(keys::VALID_TGTS)
+                .cloned()
+                .unwrap_or_else(|| CompiledSelector::parse(valid_tgts_str)),
             target_kind,
             target_type_filter,
             min_targets,
@@ -133,25 +140,43 @@ impl TargetRestrictions {
                 if any_target_allows_players(&self.valid_tgts) && !game.alive_players().is_empty() {
                     return true;
                 }
-                get_all_candidates_any_filtered(game, &self.valid_tgts, player)
+                get_all_candidates_any_filtered_for_restrictions(game, self, player, source_card)
                     .into_iter()
                     .any(|cid| can_be_targeted_by(game, cid, player, source_card))
             }
             TargetKind::Creature(ref filter) => {
-                get_all_candidates_creature_filtered(game, filter.as_deref(), player)
-                    .into_iter()
-                    .filter(|&cid| !is_other_filter_self_hit(filter.as_deref(), source_card, cid))
-                    .any(|cid| can_be_targeted_by(game, cid, player, source_card))
+                get_all_candidates_creature_filtered_for_restrictions(
+                    game,
+                    self,
+                    filter.as_deref(),
+                    player,
+                    source_card,
+                )
+                .into_iter()
+                .filter(|&cid| !is_other_filter_self_hit(filter.as_deref(), source_card, cid))
+                .any(|cid| can_be_targeted_by(game, cid, player, source_card))
             }
             TargetKind::Permanent(ref filter) => {
-                get_all_battlefield_permanents_filtered(game, filter.as_deref(), player)
-                    .into_iter()
-                    .filter(|&cid| !is_other_filter_self_hit(filter.as_deref(), source_card, cid))
-                    .any(|cid| can_be_targeted_by(game, cid, player, source_card))
+                get_all_battlefield_permanents_filtered_for_restrictions(
+                    game,
+                    self,
+                    filter.as_deref(),
+                    player,
+                    source_card,
+                )
+                .into_iter()
+                .filter(|&cid| !is_other_filter_self_hit(filter.as_deref(), source_card, cid))
+                .any(|cid| can_be_targeted_by(game, cid, player, source_card))
             }
-            TargetKind::CardInZone { zone, filter } => {
-                has_valid_target_in_zone(game, player, *zone, filter.as_deref(), source_card)
-            }
+            TargetKind::CardInZone { zone, filter } => !get_valid_cards_in_zone_for_restrictions(
+                game,
+                self,
+                *zone,
+                player,
+                filter.as_deref(),
+                source_card,
+            )
+            .is_empty(),
             TargetKind::Spell => {
                 !filter_spells_for_target_restrictions(game, &get_all_candidates_spells(game), self)
                     .is_empty()
@@ -229,6 +254,17 @@ impl TargetRestrictions {
         // Re-parse target kind from updated valid_tgts
         if let Some(first) = self.valid_tgts.first() {
             self.target_kind = parse_target_kind_legacy(first);
+        }
+        self.valid_tgts_selector = CompiledSelector::parse(&self.valid_tgts.join(","));
+    }
+}
+
+impl TargetRestrictions {
+    fn compiled_valid_tgts(&self) -> CompiledSelector {
+        if self.valid_tgts_selector.alternatives.is_empty() {
+            CompiledSelector::parse(&self.valid_tgts.join(","))
+        } else {
+            self.valid_tgts_selector.clone()
         }
     }
 }
@@ -419,8 +455,8 @@ fn parse_target_kind(val: &str) -> TargetKind {
 /// Convenience wrapper for code that doesn't have parsed params yet.
 pub fn parse_valid_targets(ability: &str) -> TargetKind {
     let params = Params::from_raw(ability);
-    let origin_zone = params.get(keys::ORIGIN).and_then(|v| parse_zone_type(v));
-    match params.get(keys::VALID_TGTS) {
+    let origin_zone = params.zone_type(keys::ORIGIN);
+    match params.selector_value(keys::VALID_TGTS) {
         Some(val) => parse_target_kind_enhanced(val, origin_zone),
         None => TargetKind::None,
     }
@@ -606,6 +642,24 @@ pub fn get_all_candidates_creature_filtered(
     }
 }
 
+fn get_all_candidates_creature_filtered_for_restrictions(
+    game: &GameState,
+    restrictions: &TargetRestrictions,
+    filter: Option<&str>,
+    source_controller: PlayerId,
+    source_card: Option<CardId>,
+) -> Vec<CardId> {
+    let all = get_all_candidates_creatures(game);
+    filter_card_candidates_for_restrictions(
+        game,
+        all,
+        restrictions,
+        filter,
+        source_controller,
+        source_card,
+    )
+}
+
 /// Get all permanents on the battlefield (any player).
 pub fn get_all_battlefield_permanents(game: &GameState) -> Vec<CardId> {
     let mut permanents = Vec::new();
@@ -634,20 +688,60 @@ pub fn get_all_battlefield_permanents_filtered(
     }
 }
 
-// ── Zone-aware targeting for cards like Raise Dead ───────────────────
-
-/// Parse a zone type string ("Graveyard", "Hand", "Battlefield", etc.)
-fn parse_zone_type(s: &str) -> Option<ZoneType> {
-    match s.to_lowercase().as_str() {
-        "graveyard" => Some(ZoneType::Graveyard),
-        "hand" => Some(ZoneType::Hand),
-        "battlefield" => Some(ZoneType::Battlefield),
-        "library" => Some(ZoneType::Library),
-        "exile" => Some(ZoneType::Exile),
-        "command" => Some(ZoneType::Command),
-        _ => None,
-    }
+fn get_all_battlefield_permanents_filtered_for_restrictions(
+    game: &GameState,
+    restrictions: &TargetRestrictions,
+    filter: Option<&str>,
+    source_controller: PlayerId,
+    source_card: Option<CardId>,
+) -> Vec<CardId> {
+    let all = get_all_battlefield_permanents(game);
+    filter_card_candidates_for_restrictions(
+        game,
+        all,
+        restrictions,
+        filter,
+        source_controller,
+        source_card,
+    )
 }
+
+fn filter_card_candidates_for_restrictions(
+    game: &GameState,
+    candidates: Vec<CardId>,
+    restrictions: &TargetRestrictions,
+    filter: Option<&str>,
+    source_controller: PlayerId,
+    source_card: Option<CardId>,
+) -> Vec<CardId> {
+    let Some(source_id) = source_card else {
+        return match filter {
+            None => candidates,
+            Some(f) => candidates
+                .into_iter()
+                .filter(|&cid| {
+                    card_property::card_has_property(game.card(cid), f, source_controller)
+                })
+                .collect(),
+        };
+    };
+    let selector = restrictions.compiled_valid_tgts();
+    let source = game.card(source_id);
+    candidates
+        .into_iter()
+        .filter(|&cid| !is_other_filter_self_hit(filter, source_card, cid))
+        .filter(|&cid| {
+            valid_filter::matches_valid_card_selector_in_game(
+                &selector,
+                game.card(cid),
+                source,
+                game,
+            )
+        })
+        .collect()
+}
+
+// ── Zone-aware targeting for cards like Raise Dead ───────────────────
 
 /// Enhanced parser that considers Origin$ parameter for zone targeting.
 /// This parser handles both legacy battlefield targeting and zone-aware targeting
@@ -773,6 +867,73 @@ pub fn get_valid_cards_in_zone(
     }
 }
 
+fn get_valid_cards_in_zone_for_restrictions(
+    game: &GameState,
+    restrictions: &TargetRestrictions,
+    zone: ZoneType,
+    player: PlayerId,
+    filter: Option<&str>,
+    source_card: Option<CardId>,
+) -> Vec<CardId> {
+    let zone_cards = candidate_zone_cards(game, zone, player, filter);
+    let Some(source_id) = source_card else {
+        return match filter {
+            None => zone_cards,
+            Some(f) => {
+                let clauses: Vec<&str> = f.split(',').map(str::trim).collect();
+                zone_cards
+                    .into_iter()
+                    .filter(|&cid| !is_other_filter_self_hit(Some(f), source_card, cid))
+                    .filter(|&cid| {
+                        clauses.iter().any(|clause| {
+                            card_property::card_has_property(game.card(cid), clause, player)
+                        })
+                    })
+                    .collect()
+            }
+        };
+    };
+    let selector = restrictions.compiled_valid_tgts();
+    let source = game.card(source_id);
+    zone_cards
+        .into_iter()
+        .filter(|&cid| !is_other_filter_self_hit(filter, source_card, cid))
+        .filter(|&cid| {
+            valid_filter::matches_valid_card_selector_in_game(
+                &selector,
+                game.card(cid),
+                source,
+                game,
+            )
+        })
+        .collect()
+}
+
+fn candidate_zone_cards(
+    game: &GameState,
+    zone: ZoneType,
+    player: PlayerId,
+    filter: Option<&str>,
+) -> Vec<CardId> {
+    let restrict_to_player = filter
+        .map(|f| {
+            f.contains("YouCtrl")
+                || f.contains("YouOwn")
+                || f.contains("YouControl")
+                || f.contains("EnchantedBy")
+        })
+        .unwrap_or(false);
+
+    if restrict_to_player {
+        game.cards_in_zone(zone, player).to_vec()
+    } else {
+        game.player_order
+            .iter()
+            .flat_map(|&pid| game.cards_in_zone(zone, pid).to_vec())
+            .collect()
+    }
+}
+
 /// Get all stack entry IDs for spells that can be countered.
 /// Mirrors Java's `TargetRestrictions.getAllCandidates()` for Spell targets.
 pub fn get_all_candidates_spells(game: &GameState) -> Vec<u32> {
@@ -817,6 +978,49 @@ pub fn get_all_candidates_any_filtered(
         }
     }
     candidates
+}
+
+fn get_all_candidates_any_filtered_for_restrictions(
+    game: &GameState,
+    restrictions: &TargetRestrictions,
+    source_controller: PlayerId,
+    source_card: Option<CardId>,
+) -> Vec<CardId> {
+    if restrictions
+        .valid_tgts
+        .iter()
+        .any(|t| t.trim().eq_ignore_ascii_case("Any"))
+    {
+        return get_all_candidates_creatures(game);
+    }
+    let candidates = get_all_battlefield_permanents(game);
+    let Some(source_id) = source_card else {
+        return candidates
+            .into_iter()
+            .filter(|&cid| {
+                restrictions.valid_tgts.iter().any(|raw| {
+                    let token = raw.trim();
+                    if token_allows_player_targets(token) {
+                        return false;
+                    }
+                    card_property::card_has_property(game.card(cid), token, source_controller)
+                })
+            })
+            .collect();
+    };
+    let selector = restrictions.compiled_valid_tgts();
+    let source = game.card(source_id);
+    candidates
+        .into_iter()
+        .filter(|&cid| {
+            valid_filter::matches_valid_card_selector_in_game(
+                &selector,
+                game.card(cid),
+                source,
+                game,
+            )
+        })
+        .collect()
 }
 
 /// Check if there are valid targets in a specific zone.

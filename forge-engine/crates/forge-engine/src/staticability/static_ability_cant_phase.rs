@@ -17,8 +17,8 @@ fn cant_phase(cards: &[Card], card: &Card, mode: StaticMode) -> bool {
             .iter()
             .filter(|sa| sa.mode == mode && sa.zones_check(source.zone))
         {
-            if valid_filter::matches_valid_card_opt(
-                st_ab.params.get(keys::VALID_CARD),
+            if valid_filter::matches_valid_card_selector_opt(
+                st_ab.params.selector(keys::VALID_CARD),
                 card,
                 source,
             ) {

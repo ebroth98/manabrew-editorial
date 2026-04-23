@@ -1,11 +1,10 @@
 use forge_foundation::ZoneType;
 
-use super::{
-    matches_valid_cards, parse_counter_type, parse_param, resolve_numeric_svar, EffectContext,
-};
+use super::{matches_valid_cards_for_sa, parse_counter_type, resolve_numeric_svar, EffectContext};
 use crate::card::CounterType;
 use crate::event::RunParams;
 use crate::ids::CardId;
+use crate::parsing::keys;
 use crate::spellability::SpellAbility;
 use crate::trigger::TriggerType;
 
@@ -32,17 +31,12 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
         .get("CounterType")
         .map(|s| parse_counter_type(s))
         .unwrap_or(CounterType::P1P1);
-    let count = parse_param(&sa.ability_text, "CounterNum$ ")
-        .unwrap_or_else(|| resolve_numeric_svar(ctx.game, sa, "CounterNum", 1));
+    let count = resolve_numeric_svar(ctx.game, sa, "CounterNum", 1);
     if count == 0 {
         return;
     }
 
-    let valid_filter = sa
-        .params
-        .get("ValidCards")
-        .map(|s| s.to_string())
-        .unwrap_or_else(|| "Creature".to_string());
+    let valid_cards = sa.params.selector(keys::VALID_CARDS);
     let zone = sa
         .params
         .get("ValidZone")
@@ -55,7 +49,8 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     for &pid in &player_ids {
         let zone_cards = ctx.game.cards_in_zone(zone, pid).to_vec();
         for cid in zone_cards {
-            if matches_valid_cards(ctx.game.card(cid), &valid_filter, sa.activating_player) {
+            if matches_valid_cards_for_sa(ctx.game, sa, ctx.game.card(cid), valid_cards, "Creature")
+            {
                 targets.push(cid);
             }
         }

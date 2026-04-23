@@ -11,7 +11,7 @@ pub fn is_wither_damage(cards: &[Card], source_card: &Card) -> bool {
             .iter()
             .filter(|sa| sa.mode == StaticMode::WitherDamage)
         {
-            if matches_valid_card(st_ab.params.get(keys::VALID_CARD), source_card, source) {
+            if matches_valid_card(st_ab.params.selector(keys::VALID_CARD), source_card, source) {
                 return true;
             }
         }
@@ -19,6 +19,10 @@ pub fn is_wither_damage(cards: &[Card], source_card: &Card) -> bool {
     false
 }
 
-fn matches_valid_card(valid: Option<&str>, card: &Card, source: &Card) -> bool {
-    valid_filter::matches_valid_card_opt(valid, card, source)
+fn matches_valid_card(
+    valid: Option<&crate::parsing::CompiledSelector>,
+    card: &Card,
+    source: &Card,
+) -> bool {
+    valid_filter::matches_valid_card_selector_opt(valid, card, source)
 }

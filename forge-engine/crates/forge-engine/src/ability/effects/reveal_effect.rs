@@ -1,6 +1,6 @@
 use forge_foundation::ZoneType;
 
-use super::{parse_param, resolve_defined_player, EffectContext};
+use super::{resolve_defined_player, resolve_numeric_svar, EffectContext};
 use crate::agent::GameLogEvent;
 use crate::spellability::SpellAbility;
 
@@ -14,7 +14,7 @@ use crate::spellability::SpellAbility;
 /// `RevealEffect` class extending `SpellAbilityEffect`.
 #[forge_engine_macros::spell_effect(RevealEffect)]
 fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
-    let num = parse_param(&sa.ability_text, "NumCards$ ").unwrap_or(1) as usize;
+    let num = resolve_numeric_svar(ctx.game, sa, "NumCards", 1).max(0) as usize;
 
     let target = sa
         .target_chosen

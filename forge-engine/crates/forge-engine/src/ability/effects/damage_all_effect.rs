@@ -1,7 +1,9 @@
 use forge_foundation::ZoneType;
 
-use super::{matches_valid_cards, resolve_numeric_svar, EffectContext};
+use super::{matches_valid_cards_selector_opt, resolve_numeric_svar, EffectContext};
+use crate::ability::ability_ir::AbilityIr;
 use crate::card::card_damage_map::DamageTarget;
+use crate::card::valid_filter;
 use crate::ids::CardId;
 use crate::parsing::keys;
 use crate::spellability::SpellAbility;
@@ -23,17 +25,13 @@ use crate::spellability::SpellAbility;
 /// `DamageAllEffect` class extending `SpellAbilityEffect`.
 #[forge_engine_macros::spell_effect(DamageAllEffect)]
 fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
-    let num_dmg = resolve_numeric_svar(ctx.game, sa, "NumDmg", 0);
+    let num_dmg = resolve_damage_all_amount(ctx, sa);
     if num_dmg <= 0 {
         return;
     }
 
-    let valid_cards_filter = sa
-        .params
-        .get(keys::VALID_CARDS)
-        .map(|s| s.to_string())
-        .unwrap_or_default();
-    let valid_players = sa.params.get(keys::VALID_PLAYERS).unwrap_or("").to_string();
+    let valid_cards_filter = sa.params.selector(keys::VALID_CARDS);
+    let valid_players = sa.params.selector(keys::VALID_PLAYERS);
     let activating_player = sa.activating_player;
     let use_damage_map = ctx.game.pending_damage_map.is_some() || sa.params.has("DamageMap");
     if sa.params.has("DamageMap") {
@@ -44,11 +42,15 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
 
     // Pass 1 — collect matching battlefield permanents
     let mut to_damage: Vec<CardId> = Vec::new();
-    if !valid_cards_filter.is_empty() {
+    if valid_cards_filter.is_some() {
         for &pid in &player_ids {
             let zone_cards = ctx.game.cards_in_zone(ZoneType::Battlefield, pid).to_vec();
             for cid in zone_cards {
-                if matches_valid_cards(ctx.game.card(cid), &valid_cards_filter, activating_player) {
+                if matches_valid_cards_selector_opt(
+                    valid_cards_filter,
+                    ctx.game.card(cid),
+                    activating_player,
+                ) {
                     to_damage.push(cid);
                 }
             }
@@ -145,10 +147,9 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     }
 
     // Deal damage to each matching player if ValidPlayers$ is set
-    if !valid_players.is_empty() {
-        let is_opponent_only = valid_players.contains("Opponent");
+    if let Some(valid_players) = valid_players {
         for pid in player_ids {
-            if is_opponent_only && pid == activating_player {
+            if !valid_filter::matches_valid_player_selector(valid_players, pid, activating_player) {
                 continue;
             }
             let source_has_infect = if let Some(src_id) = source {
@@ -205,6 +206,23 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
             }
         }
     }
+}
+
+fn resolve_damage_all_amount(ctx: &EffectContext, sa: &SpellAbility) -> i32 {
+    if let Some(AbilityIr::DamageAll(ir)) = &sa.compiled_ir {
+        if let Some(amount) = &ir.amount {
+            let resolved = amount.resolve_for_spell_ability(ctx.game, sa, 0);
+            #[cfg(debug_assertions)]
+            debug_assert_eq!(
+                resolved,
+                resolve_numeric_svar(ctx.game, sa, keys::NUM_DMG, 0),
+                "compiled DamageAll amount diverged from string params"
+            );
+            return resolved;
+        }
+    }
+
+    resolve_numeric_svar(ctx.game, sa, keys::NUM_DMG, 0)
 }
 
 #[cfg(test)]

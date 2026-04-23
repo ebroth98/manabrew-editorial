@@ -1,7 +1,7 @@
 use forge_foundation::ZoneType;
 
-use crate::card::{Card, CounterType};
-use crate::parsing::keys;
+use crate::card::{valid_filter, Card, CounterType};
+use crate::parsing::{keys, CompiledSelector};
 use crate::staticability::StaticMode;
 
 pub fn max_counter(cards: &[Card], target: &Card, counter_type: &CounterType) -> Option<i32> {
@@ -19,7 +19,7 @@ pub fn max_counter(cards: &[Card], target: &Card, counter_type: &CounterType) ->
                     }
                 }
             }
-            if !matches_valid_card(st_ab.params.get(keys::VALID_CARD), target, source) {
+            if !matches_valid_card(st_ab.params.selector(keys::VALID_CARD), target, source) {
                 continue;
             }
             let value = st_ab
@@ -33,14 +33,8 @@ pub fn max_counter(cards: &[Card], target: &Card, counter_type: &CounterType) ->
     result
 }
 
-fn matches_valid_card(valid: Option<&str>, card: &Card, source: &Card) -> bool {
-    match valid {
-        None => true,
-        Some(v) if v.eq_ignore_ascii_case("Card") || v.eq_ignore_ascii_case("Permanent") => true,
-        Some(v) if v.eq_ignore_ascii_case("Card.Self") => card.id == source.id,
-        Some(v) if v.eq_ignore_ascii_case("Creature") => card.is_creature(),
-        _ => true,
-    }
+fn matches_valid_card(valid: Option<&CompiledSelector>, card: &Card, source: &Card) -> bool {
+    valid_filter::matches_valid_card_selector_opt(valid, card, source)
 }
 
 fn parse_counter_type_opt(s: &str) -> Option<CounterType> {

@@ -537,6 +537,14 @@ pub fn load_data(cards_dir: Option<&str>, verbose: bool) -> Result<LoadedData, S
             "[parity] Loaded {} cards ({} failed)",
             result.loaded, result.failed
         );
+        let script_stats = crate::card_pool::scan_raw_script_diagnostics(cards_path);
+        eprintln!("[parity] {}", script_stats);
+        for example in script_stats.example_lines() {
+            eprintln!("[parity] script diagnostic example: {}", example);
+        }
+        for example in script_stats.semantic_raw_example_lines() {
+            eprintln!("[parity] script semantic raw example: {}", example);
+        }
     }
 
     let mut token_templates = Vec::new();
@@ -555,6 +563,14 @@ pub fn load_data(cards_dir: Option<&str>, verbose: bool) -> Result<LoadedData, S
         let (token_db, token_result) = CardDatabase::load_from_directory(&token_dir_path);
         if verbose {
             eprintln!("[parity] Loaded {} token scripts", token_result.loaded);
+            let token_script_stats = crate::card_pool::scan_raw_script_diagnostics(&token_dir_path);
+            eprintln!("[parity] Token {}", token_script_stats);
+            for example in token_script_stats.example_lines() {
+                eprintln!("[parity] token script diagnostic example: {}", example);
+            }
+            for example in token_script_stats.semantic_raw_example_lines() {
+                eprintln!("[parity] token script semantic raw example: {}", example);
+            }
         }
         for (script_name, rules) in token_db.iter() {
             let template = CardInstance::from_rules(rules, PlayerId(0));

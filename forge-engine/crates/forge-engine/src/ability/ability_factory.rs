@@ -13,7 +13,7 @@ use crate::cost::{Cost, CostPart};
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
 use crate::parsing::keys::ST;
-use crate::parsing::{keys, Params};
+use crate::parsing::{keys, Params, ParsedParams};
 use crate::spellability::target_restrictions::TargetRestrictions;
 use crate::spellability::{AbilityManaPart, SpellAbility, TargetChoices};
 use forge_foundation::ZoneType;
@@ -68,6 +68,20 @@ impl AbilityRecordType {
         } else if crate::parsing::raw_has_key(raw, ST) {
             Some(AbilityRecordType::StaticAbility)
         } else if crate::parsing::raw_has_key(raw, keys::DB) {
+            Some(AbilityRecordType::SubAbility)
+        } else {
+            None
+        }
+    }
+
+    pub fn from_parsed(params: &ParsedParams<'_>) -> Option<AbilityRecordType> {
+        if params.has(keys::AB) {
+            Some(AbilityRecordType::Ability)
+        } else if params.has(keys::SP) {
+            Some(AbilityRecordType::Spell)
+        } else if params.has(ST) {
+            Some(AbilityRecordType::StaticAbility)
+        } else if params.has(keys::DB) {
             Some(AbilityRecordType::SubAbility)
         } else {
             None
@@ -219,14 +233,23 @@ pub fn build_spell_ability_from_host_card(
 ) -> SpellAbility {
     let _perf_scope =
         crate::perf::ParamsLookupScopeGuard::enter(crate::perf::ParamsLookupScope::AbilityBuild);
-    let record_type = AbilityRecordType::from_raw(ability_text).unwrap_or_else(|| {
+    crate::perf::increment_params_parse();
+    let parsed = ParsedParams::parse(ability_text);
+    let record_type = AbilityRecordType::from_parsed(&parsed).unwrap_or_else(|| {
         panic!(
             "AbilityFactory::build_spell_ability requires AB$/SP$/ST$/DB$ ability text; got: {:?}",
             ability_text
         )
     });
-    let params = Params::from_raw(ability_text);
-    build_spell_ability_of_type_with_params(host, ability_text, player, record_type, params)
+    let params = Params::from_parsed(&parsed);
+    build_spell_ability_of_type_with_params(
+        host,
+        ability_text,
+        player,
+        record_type,
+        &parsed,
+        params,
+    )
 }
 
 /// Build a spell ability for card-casting contexts.
@@ -308,6 +331,7 @@ pub fn build_spell_ability_for_card_cast(
         targeting_player: None,
         ability_text: String::new(),
         params: Params::from_raw(""),
+        compiled_ir: None,
         target_restrictions,
         target_chosen: TargetChoices::default(),
         pay_costs: Some(Cost {
@@ -387,8 +411,17 @@ fn build_spell_ability_of_type(
 ) -> SpellAbility {
     let _perf_scope =
         crate::perf::ParamsLookupScopeGuard::enter(crate::perf::ParamsLookupScope::AbilityBuild);
-    let params = Params::from_raw(ability_text);
-    build_spell_ability_of_type_with_params(host, ability_text, player, record_type, params)
+    crate::perf::increment_params_parse();
+    let parsed = ParsedParams::parse(ability_text);
+    let params = Params::from_parsed(&parsed);
+    build_spell_ability_of_type_with_params(
+        host,
+        ability_text,
+        player,
+        record_type,
+        &parsed,
+        params,
+    )
 }
 
 fn build_spell_ability_of_type_with_params(
@@ -396,19 +429,19 @@ fn build_spell_ability_of_type_with_params(
     ability_text: &str,
     player: PlayerId,
     record_type: AbilityRecordType,
+    parsed: &ParsedParams<'_>,
     params: Params,
 ) -> SpellAbility {
     let api = record_type
         .api_type_of(&params)
         .and_then(ApiType::smart_value_of);
-    let target_restrictions = if crate::parsing::raw_has_key(ability_text, keys::VALID_TGTS) {
+    let compiled_ir = crate::ability::ability_ir::lower_ability_ir(api, parsed);
+    let target_restrictions = if parsed.has(keys::VALID_TGTS) {
         TargetRestrictions::new(&params)
     } else {
         None
     };
-    let cost = if record_type != AbilityRecordType::SubAbility
-        && crate::parsing::raw_has_key(ability_text, keys::COST)
-    {
+    let cost = if record_type != AbilityRecordType::SubAbility && parsed.has(keys::COST) {
         parse_ability_cost(host, &params, record_type)
     } else {
         None
@@ -422,10 +455,10 @@ fn build_spell_ability_of_type_with_params(
         | AbilityRecordType::StaticAbility
         | AbilityRecordType::SubAbility => restriction.variables.set_zone(ZoneType::Battlefield),
     }
-    if crate::parsing::raw_has_any(ability_text, RESTRICTION_KEYS) {
+    if parsed.has_any(RESTRICTION_KEYS) {
         restriction.set_restrictions(&params);
     }
-    if crate::parsing::raw_has_any(ability_text, CONDITION_KEYS) {
+    if parsed.has_any(CONDITION_KEYS) {
         condition.set_conditions(&params);
     }
 
@@ -442,7 +475,7 @@ fn build_spell_ability_of_type_with_params(
         None
     };
 
-    let mana_part = if crate::parsing::raw_has_key(ability_text, keys::PRODUCED) {
+    let mana_part = if parsed.has(keys::PRODUCED) {
         build_mana_part(&params)
     } else {
         None
@@ -457,6 +490,7 @@ fn build_spell_ability_of_type_with_params(
         targeting_player: None,
         ability_text: ability_text.to_string(),
         params,
+        compiled_ir,
         target_restrictions,
         target_chosen: TargetChoices::default(),
         pay_costs: cost,

@@ -1,9 +1,8 @@
 use forge_foundation::ZoneType;
 
-use crate::card::valid_filter;
-use crate::card::Card;
+use crate::card::{valid_filter, Card};
 use crate::ids::PlayerId;
-use crate::parsing::keys;
+use crate::parsing::{keys, CompiledSelector};
 use crate::staticability::StaticMode;
 
 pub fn cant_attach(cards: &[Card], attachment: &Card, target: &Card, check_sba: bool) -> bool {
@@ -13,22 +12,25 @@ pub fn cant_attach(cards: &[Card], attachment: &Card, target: &Card, check_sba: 
             .iter()
             .filter(|sa| sa.mode == StaticMode::CantAttach)
         {
-            if !matches_valid_card(st_ab.params.get(keys::VALID_CARD), attachment, source) {
+            if !matches_valid_card(st_ab.params.selector(keys::VALID_CARD), attachment, source) {
                 continue;
             }
-            if !matches_valid_card(st_ab.params.get(keys::TARGET), target, source) {
+            let target_selector = st_ab.params.selector_cloned(keys::TARGET);
+            if !matches_valid_card(target_selector.as_ref(), target, source) {
                 continue;
             }
-            if let Some(valid_card_to_target) = st_ab.params.get(keys::VALID_CARD_TO_TARGET) {
+            if let Some(valid_card_to_target) = st_ab.params.selector(keys::VALID_CARD_TO_TARGET) {
                 if !matches_valid_card_for_target(attachment, valid_card_to_target, target) {
                     continue;
                 }
             }
             if (check_sba || !st_ab.params.has(keys::EXCEPTION_SBA))
                 && st_ab.params.has(keys::EXCEPTIONS)
-                && matches_valid_card(st_ab.params.get(keys::EXCEPTIONS), attachment, source)
             {
-                continue;
+                let exception_selector = st_ab.params.selector_cloned(keys::EXCEPTIONS);
+                if matches_valid_card(exception_selector.as_ref(), attachment, source) {
+                    continue;
+                }
             }
             return true;
         }
@@ -44,8 +46,9 @@ pub fn apply_cant_attach_ability(
     target: &Card,
     activator: PlayerId,
 ) -> bool {
-    matches_valid_card(st_ab.params.get(keys::VALID_CARD), attachment, source)
-        && matches_valid_card(st_ab.params.get(keys::TARGET), target, source)
+    let target_selector = st_ab.params.selector_cloned(keys::TARGET);
+    matches_valid_card(st_ab.params.selector(keys::VALID_CARD), attachment, source)
+        && matches_valid_card(target_selector.as_ref(), target, source)
         && valid_filter::matches_valid_player_opt(
             st_ab.params.get(keys::ACTIVATOR),
             activator,
@@ -53,42 +56,21 @@ pub fn apply_cant_attach_ability(
         )
 }
 
-fn matches_valid_card(valid: Option<&str>, card: &Card, source: &Card) -> bool {
-    let Some(expr) = valid else {
-        return true;
-    };
-    expr.split(',').any(|clause| {
-        clause
-            .split('+')
-            .flat_map(|s| s.split('.'))
-            .map(str::trim)
-            .filter(|s| !s.is_empty())
-            .all(|tok| match tok {
-                "Card" | "Permanent" => true,
-                "Creature" => card.is_creature(),
-                "Card.Self" => card.id == source.id,
-                "Card.IsRemembered" => source.remembered_cards.contains(&card.id),
-                "Card.EffectSource" => source.effect_source == Some(card.id),
-                "nonLegendary" => !card.type_line.is_legendary(),
-                "Legendary" => card.type_line.is_legendary(),
-                "YouCtrl" | "YouControl" => card.controller == source.controller,
-                "OppCtrl" | "OpponentCtrl" => card.controller != source.controller,
-                _ => true,
-            })
-    })
+fn matches_valid_card(valid: Option<&CompiledSelector>, card: &Card, source: &Card) -> bool {
+    valid_filter::matches_valid_card_selector_opt(valid, card, source)
 }
 
-fn matches_valid_card_for_target(card: &Card, valid: &str, target: &Card) -> bool {
-    valid.split(',').any(|clause| {
-        clause
-            .split('+')
-            .flat_map(|s| s.split('.'))
-            .map(str::trim)
-            .filter(|s| !s.is_empty())
+fn matches_valid_card_for_target(card: &Card, valid: &CompiledSelector, target: &Card) -> bool {
+    valid.alternatives.iter().any(|alternative| {
+        alternative
+            .parts
+            .iter()
+            .map(|part| part.value.as_str())
             .all(|tok| match tok {
                 "Card" | "Permanent" => true,
                 "Creature" => card.is_creature(),
                 "Card.Self" => card.id == target.id,
+                "Self" => card.id == target.id,
                 "nonLegendary" => !target.type_line.is_legendary(),
                 "Legendary" => target.type_line.is_legendary(),
                 _ => true,

@@ -1062,6 +1062,7 @@ impl GameLoop {
                     self.pay_exile_from_stack_cost(
                         game,
                         agents,
+                        card_id,
                         player,
                         type_filter,
                         resolved_amount,
@@ -1683,6 +1684,7 @@ impl GameLoop {
                     self.pay_exile_from_stack_cost(
                         game,
                         agents,
+                        card_id,
                         player,
                         type_filter,
                         resolved_amount,
@@ -2168,6 +2170,7 @@ impl GameLoop {
         &mut self,
         game: &mut GameState,
         agents: &mut [Box<dyn PlayerAgent>],
+        source: CardId,
         player: PlayerId,
         type_filter: &str,
         amount: i32,
@@ -2179,7 +2182,13 @@ impl GameLoop {
                 .filter(|e| e.spell_ability.is_spell)
                 .filter(|e| {
                     e.spell_ability.source.is_some_and(|cid| {
-                        crate::cost::matches_exile_from_stack_filter(game, cid, player, type_filter)
+                        crate::cost::matches_exile_from_stack_filter(
+                            game,
+                            cid,
+                            source,
+                            player,
+                            type_filter,
+                        )
                     })
                 })
                 .map(|e| e.id)

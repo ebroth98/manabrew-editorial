@@ -11,7 +11,11 @@ pub fn apply_limit_increase(
     card: &Card,
     source: &Card,
 ) -> bool {
-    if !valid_filter::matches_valid_card_opt(st_ab.params.get(keys::VALID_CARD), card, source) {
+    if !valid_filter::matches_valid_card_selector_opt(
+        st_ab.params.selector(keys::VALID_CARD),
+        card,
+        source,
+    ) {
         return false;
     }
     st_ab.params.has(keys::TWICE)
@@ -47,8 +51,8 @@ pub fn additional_activations(cards: &[Card], card: &Card, sa: Option<&SpellAbil
             .iter()
             .filter(|s| s.mode == StaticMode::NumLoyaltyAct && s.zones_check(source.zone))
         {
-            if !valid_filter::matches_valid_card_opt(
-                st_ab.params.get(keys::VALID_CARD),
+            if !valid_filter::matches_valid_card_selector_opt(
+                st_ab.params.selector(keys::VALID_CARD),
                 card,
                 source,
             ) {

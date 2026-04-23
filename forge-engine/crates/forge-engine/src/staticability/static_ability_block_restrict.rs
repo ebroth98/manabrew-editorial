@@ -1,8 +1,8 @@
 use forge_foundation::ZoneType;
 
-use crate::card::Card;
+use crate::card::{valid_filter, Card};
 use crate::ids::PlayerId;
-use crate::parsing::keys;
+use crate::parsing::{keys, CompiledSelector};
 use crate::staticability::StaticMode;
 
 pub fn block_restrict_num(cards: &[Card], defender: PlayerId) -> i32 {
@@ -13,7 +13,7 @@ pub fn block_restrict_num(cards: &[Card], defender: PlayerId) -> i32 {
             .iter()
             .filter(|sa| sa.mode == StaticMode::BlockRestrict)
         {
-            let valid = st_ab.params.get(keys::VALID_DEFENDER);
+            let valid = st_ab.params.selector(keys::VALID_DEFENDER);
             if !matches_valid_player(valid, defender, source.controller) {
                 continue;
             }
@@ -31,21 +31,11 @@ pub fn block_restrict_num(cards: &[Card], defender: PlayerId) -> i32 {
 }
 
 fn matches_valid_player(
-    valid: Option<&str>,
+    valid: Option<&CompiledSelector>,
     player: PlayerId,
     source_controller: PlayerId,
 ) -> bool {
-    match valid {
-        None => true,
-        Some(v) if v.eq_ignore_ascii_case("Player") => true,
-        Some(v) if v.eq_ignore_ascii_case("You") || v.eq_ignore_ascii_case("YouCtrl") => {
-            player == source_controller
-        }
-        Some(v) if v.eq_ignore_ascii_case("Opponent") || v.eq_ignore_ascii_case("OppCtrl") => {
-            player != source_controller
-        }
-        _ => true,
-    }
+    valid_filter::matches_valid_player_selector_opt(valid, player, source_controller)
 }
 
 fn eval_amount(source: &Card, expr: &str) -> i32 {

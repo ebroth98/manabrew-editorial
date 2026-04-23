@@ -9,10 +9,10 @@ use crate::parsing::keys;
 use forge_foundation::ZoneType;
 
 use super::replacement_effect::ReplacementEffect;
-use crate::card_trait_base::CardTrait;
 use super::replacement_handler::ReplacementEvent;
 use super::replacement_result::ReplacementResult;
 use super::replacement_type::ReplacementType;
+use crate::card_trait_base::CardTrait;
 
 /// Mirrors Java `ReplaceDraw.canReplace()`.
 pub fn can_replace(
@@ -28,8 +28,8 @@ pub fn can_replace(
         ReplacementEvent::Draw { player, .. } => *player,
         _ => return false,
     };
-    if let Some(valid) = effect.params.get(keys::VALID_PLAYER) {
-        if !effect.matches_valid_player(valid, player, source_card) {
+    if let Some(valid) = effect.params.selector(keys::VALID_PLAYER) {
+        if !effect.matches_compiled_valid_player(valid, player, source_card) {
             return false;
         }
     }

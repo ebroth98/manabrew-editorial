@@ -1,4 +1,5 @@
-use super::{parse_param, resolve_defined_players, EffectContext};
+use super::{resolve_defined_players, resolve_numeric_svar, EffectContext};
+use crate::ability::ability_ir::AbilityIr;
 use crate::event::RunParams;
 use crate::spellability::SpellAbility;
 use crate::trigger::TriggerType;
@@ -21,9 +22,9 @@ use crate::trigger::TriggerType;
 fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let controller = sa.activating_player;
 
-    let amount = parse_param(&sa.ability_text, "LifeAmount$ ").unwrap_or(0);
+    let amount = resolve_life_set_amount(ctx, sa);
 
-    let defined = sa.params.get("Defined").unwrap_or("You");
+    let defined = sa.defined().unwrap_or("You");
 
     let targets = resolve_defined_players(defined, controller, ctx.game);
 
@@ -63,6 +64,23 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
             );
         }
     }
+}
+
+fn resolve_life_set_amount(ctx: &EffectContext, sa: &SpellAbility) -> i32 {
+    if let Some(AbilityIr::LifeSet(ir)) = &sa.compiled_ir {
+        if let Some(amount) = &ir.amount {
+            let resolved = amount.resolve_for_spell_ability(ctx.game, sa, 0);
+            #[cfg(debug_assertions)]
+            debug_assert_eq!(
+                resolved,
+                resolve_numeric_svar(ctx.game, sa, crate::parsing::keys::LIFE_AMOUNT, 0),
+                "compiled SetLife amount diverged from string params"
+            );
+            return resolved;
+        }
+    }
+
+    resolve_numeric_svar(ctx.game, sa, crate::parsing::keys::LIFE_AMOUNT, 0)
 }
 
 #[cfg(test)]

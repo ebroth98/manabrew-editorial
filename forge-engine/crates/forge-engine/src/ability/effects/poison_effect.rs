@@ -1,4 +1,5 @@
-use super::{parse_param, resolve_defined_player, EffectContext};
+use super::{resolve_defined_player, resolve_numeric_svar, EffectContext};
+use crate::ability::ability_ir::AbilityIr;
 use crate::spellability::SpellAbility;
 
 /// Resolve `DB$ Poison` / `SP$ Poison` — add poison counters to players.
@@ -16,7 +17,7 @@ use crate::spellability::SpellAbility;
 /// `PoisonEffect` class extending `SpellAbilityEffect`.
 #[forge_engine_macros::spell_effect(PoisonEffect)]
 fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
-    let amount = parse_param(&sa.ability_text, "Num$ ").unwrap_or(1);
+    let amount = resolve_poison_amount(ctx, sa);
     if amount == 0 {
         return;
     }
@@ -42,7 +43,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     }
 
     // Resolve Defined$ parameter.
-    let defined = sa.params.get("Defined").unwrap_or("Opponent");
+    let defined = sa.defined().unwrap_or("Opponent");
 
     // Special case: "Player" means ALL alive players (distinct from
     // resolve_defined_player which returns a single player).
@@ -80,4 +81,21 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
             }
         }
     }
+}
+
+fn resolve_poison_amount(ctx: &EffectContext, sa: &SpellAbility) -> i32 {
+    if let Some(AbilityIr::Poison(ir)) = &sa.compiled_ir {
+        if let Some(amount) = &ir.amount {
+            let resolved = amount.resolve_for_spell_ability(ctx.game, sa, 1);
+            #[cfg(debug_assertions)]
+            debug_assert_eq!(
+                resolved,
+                resolve_numeric_svar(ctx.game, sa, "Num", 1),
+                "compiled Poison amount diverged from string params"
+            );
+            return resolved;
+        }
+    }
+
+    resolve_numeric_svar(ctx.game, sa, "Num", 1)
 }

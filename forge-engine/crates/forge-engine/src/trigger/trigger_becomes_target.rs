@@ -1,18 +1,18 @@
 use serde::{Deserialize, Serialize};
 
 use crate::card::valid_filter;
-use crate::event::{RunParams};
-use crate::trigger::TriggerType;
+use crate::event::RunParams;
 use crate::game::GameState;
 use crate::parsing::{keys, Params};
 use crate::spellability::SpellAbility;
+use crate::trigger::TriggerType;
 
 use super::trigger::TriggerBehavior;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TriggerBecomesTarget {
-    pub valid_source: Option<String>,
-    pub valid_target: Option<String>,
+    pub valid_source: Option<crate::parsing::CompiledSelector>,
+    pub valid_target: Option<crate::parsing::CompiledSelector>,
     pub require_first_time: bool,
     pub require_valiant: bool,
 }
@@ -25,10 +25,10 @@ impl TriggerBecomesTarget {
         // `ValidTarget$`. Without the `ValidCard` fallback Ward fires on *every*
         // BecomesTarget event in the game, since both filters end up None.
         let valid_target = params
-            .get_cloned(keys::VALID_TARGET)
-            .or_else(|| params.get_cloned(keys::VALID_CARD));
+            .selector_cloned(keys::VALID_TARGET)
+            .or_else(|| params.selector_cloned(keys::VALID_CARD));
         Box::new(Self {
-            valid_source: params.get_cloned(keys::VALID_SOURCE),
+            valid_source: params.selector_cloned(keys::VALID_SOURCE),
             valid_target,
             require_first_time: params.has("FirstTime"),
             require_valiant: params.has("Valiant"),
@@ -51,8 +51,9 @@ impl TriggerBehavior for TriggerBecomesTarget {
         let host_controller = trigger.base.card_trait_base.get_host_card().controller;
         if let Some(filter) = self.valid_source.as_ref() {
             let source_matches = if let Some(source_sa) = params.source_sa.as_ref() {
-                if filter.starts_with("SpellAbility") {
-                    let parts: Vec<&str> = filter.split('.').collect();
+                let raw_filter = filter.as_raw();
+                if raw_filter.starts_with("SpellAbility") {
+                    let parts: Vec<&str> = raw_filter.split('.').collect();
                     let kind_matches = parts
                         .first()
                         .is_none_or(|part| part.eq_ignore_ascii_case("SpellAbility"));
@@ -85,7 +86,7 @@ impl TriggerBehavior for TriggerBecomesTarget {
             let target_player = params.target_player.or(params.player);
             let host = game.card(trigger.host_card_id());
             if !valid_filter::matches_valid(
-                filter,
+                &filter.as_raw(),
                 target_card.map(|id| game.card(id)),
                 target_player,
                 host,

@@ -24,7 +24,11 @@ pub fn apply_with_adapt(
     card: &Card,
     source: &Card,
 ) -> bool {
-    if !valid_filter::matches_valid_card_opt(st_ab.params.get(keys::VALID_CARD), card, source) {
+    if !valid_filter::matches_valid_card_selector_opt(
+        st_ab.params.selector(keys::VALID_CARD),
+        card,
+        source,
+    ) {
         return false;
     }
     if !matches_valid_sa(st_ab.params.get(keys::VALID_SA), sa) {

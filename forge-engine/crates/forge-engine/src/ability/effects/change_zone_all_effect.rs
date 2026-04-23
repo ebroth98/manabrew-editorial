@@ -1,6 +1,6 @@
 use forge_foundation::ZoneType;
 
-use super::{emit_zone_trigger, matches_change_type, parse_zone_type, EffectContext};
+use super::{emit_zone_trigger, matches_change_type, EffectContext};
 use crate::ids::{CardId, PlayerId};
 use crate::parsing::keys;
 use crate::spellability::SpellAbility;
@@ -110,12 +110,10 @@ pub fn build_spell_ability(sa: &mut crate::spellability::SpellAbility) {
     // If the SA has an Origin$ parameter and uses targeting, set the
     // target restriction zone to the origin zone so that targeting
     // looks in the correct zone (not just Battlefield).
-    if let Some(origin_str) = sa.params.get(crate::parsing::keys::ORIGIN) {
+    if let Some(zone) = sa.params.zone_type(crate::parsing::keys::ORIGIN) {
         if let Some(ref mut tr) = sa.target_restrictions {
             if !tr.can_tgt_player() {
-                if let Some(zone) = parse_zone_type(origin_str) {
-                    tr.tgt_zone = vec![zone];
-                }
+                tr.tgt_zone = vec![zone];
             }
         }
     }
@@ -126,13 +124,25 @@ pub fn build_spell_ability(sa: &mut crate::spellability::SpellAbility) {
 /// `ChangeZoneAllEffect` class extending `SpellAbilityEffect`.
 #[forge_engine_macros::spell_effect(ChangeZoneAllEffect)]
 fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
-    let origin_str = sa.params.get(keys::ORIGIN).unwrap_or("Battlefield");
-    let destination_str = sa.params.get(keys::DESTINATION).unwrap_or("Graveyard");
+    let Some(origin_zone) = sa
+        .params
+        .zone_type(keys::ORIGIN)
+        .or_else(|| (!sa.params.has(keys::ORIGIN)).then_some(ZoneType::Battlefield))
+    else {
+        return;
+    };
+    let Some(dest_zone) = sa
+        .params
+        .zone_type(keys::DESTINATION)
+        .or_else(|| (!sa.params.has(keys::DESTINATION)).then_some(ZoneType::Graveyard))
+    else {
+        return;
+    };
     // Forge uses ChangeType$ as the primary filter for ChangeZoneAll; fall back to ValidCards$.
     let valid_cards_filter = sa
         .params
         .get(keys::CHANGE_TYPE)
-        .or_else(|| sa.params.get(keys::VALID_CARDS))
+        .or_else(|| sa.params.selector_value(keys::VALID_CARDS))
         .map(|s| s.to_string())
         .unwrap_or_else(|| "Card".to_string());
     let tapped = sa
@@ -164,10 +174,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
         .unwrap_or(false);
     let exile_source = if until_host_leaves { sa.source } else { None };
 
-    if let (Some(dest_zone), Some(origin_zone)) = (
-        parse_zone_type(destination_str),
-        parse_zone_type(origin_str),
-    ) {
+    {
         // When the ability targets a player (e.g. Nihil Spellbomb: "target player's graveyard"),
         // only search that player's zone instead of all players.
         let player_ids: Vec<PlayerId> = if sa.target_chosen.target_player.is_some() {

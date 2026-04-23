@@ -5,43 +5,44 @@
 //! typos at compile time.
 
 use super::SpellAbility;
-use crate::parsing::keys;
+use crate::parsing::{keys, CompiledSelector};
+use forge_foundation::ZoneType;
 
 /// Typed accessors for common SpellAbility parameters.
 /// These mirror the param keys used in Java Forge's ability text format.
 impl SpellAbility {
     // ── Card/Target filters ────────────────────────────────────────────────
 
-    /// Get the `ValidCard$` filter string (e.g. "Creature.YouCtrl").
-    pub fn valid_card(&self) -> Option<&str> {
-        self.params.get(keys::VALID_CARD)
+    /// Get the compiled `ValidCard$` filter.
+    pub fn valid_card(&self) -> Option<&CompiledSelector> {
+        self.params.selector(keys::VALID_CARD)
     }
 
-    /// Get the `ValidPlayer$` filter string.
-    pub fn valid_player(&self) -> Option<&str> {
-        self.params.get(keys::VALID_PLAYER)
+    /// Get the compiled `ValidPlayer$` filter.
+    pub fn valid_player(&self) -> Option<&CompiledSelector> {
+        self.params.selector(keys::VALID_PLAYER)
     }
 
-    /// Get the `ValidTarget$` filter string.
-    pub fn valid_target(&self) -> Option<&str> {
-        self.params.get(keys::VALID_TARGET)
+    /// Get the compiled `ValidTarget$` filter.
+    pub fn valid_target(&self) -> Option<&CompiledSelector> {
+        self.params.selector(keys::VALID_TARGET)
     }
 
     /// Get the `ChangeType$` filter string (used by zone-change effects).
     pub fn change_type(&self) -> Option<&str> {
-        self.params.get(keys::CHANGE_TYPE)
+        self.params.selector_value(keys::CHANGE_TYPE)
     }
 
     // ── Zone/movement params ───────────────────────────────────────────────
 
     /// Get the `Defined$` card reference (e.g. "Self", "Remembered", "Targeted").
     pub fn defined(&self) -> Option<&str> {
-        self.params.get(keys::DEFINED)
+        self.params.reference_value(keys::DEFINED)
     }
 
     /// Get the `DefinedPlayer$` player reference (e.g. "Player", "You", "Opponent").
     pub fn defined_player(&self) -> Option<&str> {
-        self.params.get(keys::DEFINED_PLAYER)
+        self.params.reference_value(keys::DEFINED_PLAYER)
     }
 
     /// Get the `Origin$` zone type string.
@@ -49,9 +50,24 @@ impl SpellAbility {
         self.params.get(keys::ORIGIN)
     }
 
+    /// Get the `Origin$` zone type.
+    pub fn origin_zone(&self) -> Option<ZoneType> {
+        self.params.zone_type(keys::ORIGIN)
+    }
+
+    /// Get the `Origin$` zone list.
+    pub fn origin_zones(&self) -> Vec<ZoneType> {
+        self.params.zone_types(keys::ORIGIN)
+    }
+
     /// Get the `Destination$` zone type string.
     pub fn destination(&self) -> Option<&str> {
         self.params.get(keys::DESTINATION)
+    }
+
+    /// Get the `Destination$` zone type.
+    pub fn destination_zone(&self) -> Option<ZoneType> {
+        self.params.zone_type(keys::DESTINATION)
     }
 
     /// Get the `LibraryPosition$` string (e.g. "0", "-1", "Bottom").

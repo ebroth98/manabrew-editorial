@@ -10,9 +10,7 @@ use strum_macros::EnumString;
 
 use crate::trigger::trigger::{parse_trigger, Trigger};
 
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default, EnumString,
-)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default, EnumString)]
 #[strum(ascii_case_insensitive)]
 pub enum TriggerType {
     #[default]

@@ -1,19 +1,19 @@
 use serde::{Deserialize, Serialize};
 
-use crate::event::{RunParams};
-use crate::trigger::TriggerType;
+use crate::event::RunParams;
 use crate::game::GameState;
 use crate::spellability::SpellAbility;
+use crate::trigger::TriggerType;
 
 use super::trigger::TriggerBehavior;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TriggerChangesController {
-    pub valid_card: Option<String>,
+    pub valid_card: Option<crate::parsing::CompiledSelector>,
 }
 
 impl TriggerChangesController {
-    pub fn parse(valid_card: Option<String>) -> Box<dyn TriggerBehavior> {
+    pub fn parse(valid_card: Option<crate::parsing::CompiledSelector>) -> Box<dyn TriggerBehavior> {
         Box::new(Self { valid_card })
     }
 }

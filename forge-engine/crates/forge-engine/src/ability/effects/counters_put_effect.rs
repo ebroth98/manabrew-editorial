@@ -1,8 +1,6 @@
 use forge_foundation::ZoneType;
 
-use super::{
-    parse_counter_type, parse_param, resolve_defined_player, resolve_numeric_svar, EffectContext,
-};
+use super::{parse_counter_type, resolve_defined_player, resolve_numeric_svar, EffectContext};
 use crate::event::RunParams;
 use crate::parsing::keys;
 use crate::replacement::replacement_handler::{apply_replacements_with_agents, ReplacementEvent};
@@ -48,8 +46,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
         parse_counter_type(counter_type_str)
     };
     // Support SVar references for CounterNum (e.g. Count$Kicked.4.0 for kicker cards)
-    let mut count = parse_param(&sa.ability_text, "CounterNum$ ")
-        .unwrap_or_else(|| resolve_numeric_svar(ctx.game, sa, "CounterNum", 1));
+    let mut count = resolve_numeric_svar(ctx.game, sa, keys::COUNTER_NUM, 1);
     // Modular death triggers: override the static Modular N with the
     // actual LKI +1/+1 counter count from the dying creature (CR 702.43b).
     // trigger_remembered_amount is set by the death path's LKI capture.
@@ -64,7 +61,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
         .unwrap_or_else(|| ctx.game.player_order[0]);
     // Check for Defined$ — if targeting a player (e.g. Defined$ You for energy),
     // handle player-level counters like ENERGY instead of card counters.
-    if let Some(defined) = sa.params.get(keys::DEFINED) {
+    if let Some(defined) = sa.defined() {
         if let Some(target_player) = resolve_defined_player(defined, source_controller, ctx.game) {
             match counter_type_str.to_uppercase().as_str() {
                 "ENERGY" => {
@@ -88,7 +85,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
         // Targeting mode — use the actual chosen target (Necropede death trigger, etc.)
         sa.target_chosen.target_card
     } else {
-        let defined = sa.params.get(keys::DEFINED).unwrap_or("Self");
+        let defined = sa.defined().unwrap_or("Self");
         match defined {
             // Java AbilityUtils "TriggeredTarget*" / "Targeted" resolve from actual
             // target choices only; if no target was chosen (e.g. TargetMin$ 0), they
@@ -99,7 +96,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
         }
     };
     let Some(card_id) = target_id else { return };
-    if sa.params.get(keys::DEFINED).unwrap_or("Self") == "Self" && sa.source == Some(card_id) {
+    if sa.defined().unwrap_or("Self") == "Self" && sa.source == Some(card_id) {
         // Java parity: self-referential card effects must apply to the same object instance.
         // If host card changed zones, this ability resolves with no effect on the new object.
         if let Some(created_at) = sa.source_zone_timestamp {

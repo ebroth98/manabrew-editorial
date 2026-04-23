@@ -1,6 +1,6 @@
 use forge_foundation::ZoneType;
 
-use super::{parse_param, EffectContext};
+use super::{resolve_numeric_svar, EffectContext};
 use crate::spellability::SpellAbility;
 
 /// Mirrors Java's `PeekAndRevealEffect.java`.
@@ -16,13 +16,12 @@ use crate::spellability::SpellAbility;
 /// `PeekAndRevealEffect` class extending `SpellAbilityEffect`.
 #[forge_engine_macros::spell_effect(PeekAndRevealEffect)]
 fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
-    let num = sa
-        .params
-        .get("PeekAmount")
-        .and_then(|s| s.trim().parse::<i32>().ok())
-        .or_else(|| parse_param(&sa.ability_text, "NumCards$ "))
-        .unwrap_or(1)
-        .max(0) as usize;
+    let num = if sa.params.has("PeekAmount") {
+        resolve_numeric_svar(ctx.game, sa, "PeekAmount", 1)
+    } else {
+        resolve_numeric_svar(ctx.game, sa, "NumCards", 1)
+    }
+    .max(0) as usize;
     let remember_revealed = sa
         .params
         .get("RememberPeeked")

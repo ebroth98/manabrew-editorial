@@ -1,5 +1,7 @@
 use super::{resolve_defined_player_with_sa, resolve_numeric_svar, EffectContext};
+use crate::ability::ability_ir::AbilityIr;
 use crate::event::RunParams;
+use crate::parsing::keys;
 use crate::replacement::replacement_handler::{apply_replacements, ReplacementEvent};
 use crate::replacement::ReplacementResult;
 use crate::spellability::SpellAbility;
@@ -10,7 +12,7 @@ use crate::trigger::TriggerType;
 /// `DrawEffect` class extending `SpellAbilityEffect`.
 #[forge_engine_macros::spell_effect(DrawEffect)]
 fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
-    let num = resolve_numeric_svar(ctx.game, sa, "NumCards", 1);
+    let num = resolve_draw_amount(ctx, sa);
     let target = sa
         .params
         .get("Defined")
@@ -94,4 +96,21 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
             }
         }
     }
+}
+
+fn resolve_draw_amount(ctx: &EffectContext, sa: &SpellAbility) -> i32 {
+    if let Some(AbilityIr::Draw(ir)) = &sa.compiled_ir {
+        if let Some(amount) = &ir.amount {
+            let resolved = amount.resolve_for_spell_ability(ctx.game, sa, 1);
+            #[cfg(debug_assertions)]
+            debug_assert_eq!(
+                resolved,
+                resolve_numeric_svar(ctx.game, sa, keys::NUM_CARDS, 1),
+                "compiled Draw amount diverged from string params"
+            );
+            return resolved;
+        }
+    }
+
+    resolve_numeric_svar(ctx.game, sa, keys::NUM_CARDS, 1)
 }

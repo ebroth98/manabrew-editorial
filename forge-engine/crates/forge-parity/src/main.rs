@@ -882,15 +882,15 @@ fn run_matchup_cached(
             config.seed,
             config.max_turns,
             config.prefer_actions,
+            config.deep,
+            &config.variant,
+            &config.commanders,
         ) {
             let rust_trace = match runner::run_with_data(config, data) {
                 Ok(t) => t,
                 Err(e) => {
                     return ServedMatchup {
-                        result: MatchupResult::error(
-                            config,
-                            format!("Rust engine error: {}", e),
-                        ),
+                        result: MatchupResult::error(config, format!("Rust engine error: {}", e)),
                         duration_ms: start.elapsed().as_millis() as u64,
                         cache_hit: false,
                     };
@@ -959,6 +959,9 @@ fn run_matchup_cached(
                 config.seed,
                 config.max_turns,
                 config.prefer_actions,
+                config.deep,
+                &config.variant,
+                &config.commanders,
                 &java_data,
             );
         }
@@ -1607,6 +1610,9 @@ fn run_matrix_mode(cli: &Cli) {
                                 config.seed,
                                 config.max_turns,
                                 config.prefer_actions,
+                                config.deep,
+                                &config.variant,
+                                &config.commanders,
                             ) {
                                 cache_hits.fetch_add(1, Ordering::Relaxed);
                                 let mut result = compare_snapshots(config, &trace, &cached_java);
@@ -1793,6 +1799,9 @@ fn run_java_compare_and_cache(
                 config.seed,
                 config.max_turns,
                 config.prefer_actions,
+                config.deep,
+                &config.variant,
+                &config.commanders,
                 &java_data,
             );
         }
@@ -2285,6 +2294,9 @@ fn run_fuzz_mode(cli: &Cli) {
     let (pool, pool_stats) = CardPool::discover(&data.db);
     if cli.is_verbose() {
         eprintln!("[parity] {}", pool_stats);
+        for example in pool_stats.example_lines() {
+            eprintln!("[parity] pool diagnostic example: {}", example);
+        }
     }
 
     if pool.cards.iter().filter(|c| !c.is_land).count() == 0 {

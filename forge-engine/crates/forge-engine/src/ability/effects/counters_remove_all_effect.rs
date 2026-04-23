@@ -3,6 +3,7 @@
 //! Ported from Java's `CountersRemoveAllEffect.java`.
 
 use super::{parse_counter_type, EffectContext};
+use crate::card::valid_filter;
 use crate::parsing::keys;
 use crate::spellability::SpellAbility;
 use forge_foundation::ZoneType;
@@ -22,13 +23,19 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let targets: Vec<crate::ids::CardId> = if sa.uses_targeting() {
         sa.target_chosen.target_card.into_iter().collect()
     } else {
-        // Remove from all permanents matching ValidCard$
-        let valid = sa.valid_card().unwrap_or("Permanent");
+        // Remove from all permanents matching ValidCard$.
+        let valid = sa.valid_card();
+        let source = sa.source.map(|id| ctx.game.card(id));
         ctx.game
             .cards
             .iter()
             .filter(|c| {
-                c.zone == ZoneType::Battlefield && super::matches_change_type(c, valid, &[])
+                c.zone == ZoneType::Battlefield
+                    && source.is_none_or(|source| {
+                        valid_filter::matches_valid_card_selector_opt_in_game(
+                            valid, c, source, ctx.game,
+                        )
+                    })
             })
             .map(|c| c.id)
             .collect()

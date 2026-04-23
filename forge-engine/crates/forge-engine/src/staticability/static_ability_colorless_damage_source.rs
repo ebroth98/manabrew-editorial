@@ -1,7 +1,8 @@
 use forge_foundation::ZoneType;
 
-use crate::card::Card;
+use crate::card::{valid_filter, Card};
 use crate::parsing::keys;
+use crate::parsing::CompiledSelector;
 use crate::staticability::StaticMode;
 
 pub fn colorless_damage_source(cards: &[Card], source_card: &Card) -> bool {
@@ -11,7 +12,7 @@ pub fn colorless_damage_source(cards: &[Card], source_card: &Card) -> bool {
             .iter()
             .filter(|sa| sa.mode == StaticMode::ColorlessDamageSource)
         {
-            if matches_valid_card(st_ab.params.get(keys::VALID_CARD), source_card, source) {
+            if matches_valid_card(st_ab.params.selector(keys::VALID_CARD), source_card, source) {
                 return true;
             }
         }
@@ -24,7 +25,7 @@ pub fn apply_colorless_damage_source(
     source_card: &Card,
     source: &Card,
 ) -> bool {
-    matches_valid_card(st_ab.params.get(keys::VALID_CARD), source_card, source)
+    matches_valid_card(st_ab.params.selector(keys::VALID_CARD), source_card, source)
 }
 
 pub fn source_has_color(cards: &[Card], source_card: &Card, color_name: &str) -> bool {
@@ -71,30 +72,6 @@ pub fn target_is_protected_from_source(cards: &[Card], target: &Card, source: &C
     false
 }
 
-fn matches_valid_card(valid: Option<&str>, card: &Card, source: &Card) -> bool {
-    let Some(expr) = valid else {
-        return true;
-    };
-    expr.split(',').any(|clause| {
-        clause
-            .split('+')
-            .flat_map(|s| s.split('.'))
-            .map(str::trim)
-            .filter(|s| !s.is_empty())
-            .all(|tok| match tok {
-                "Card" => true,
-                "Permanent" => card.zone == ZoneType::Battlefield,
-                "Spell" => card.zone == ZoneType::Stack,
-                "Creature" => card.is_creature(),
-                "Card.Self" => card.id == source.id,
-                "Black" => card.color.has_black(),
-                "Red" => card.color.has_red(),
-                "Blue" => card.color.has_blue(),
-                "White" => card.color.has_white(),
-                "Green" => card.color.has_green(),
-                "inZoneBattlefield" => card.zone == ZoneType::Battlefield,
-                "inZoneStack" => card.zone == ZoneType::Stack,
-                _ => true,
-            })
-    })
+fn matches_valid_card(valid: Option<&CompiledSelector>, card: &Card, source: &Card) -> bool {
+    valid_filter::matches_valid_card_selector_opt(valid, card, source)
 }

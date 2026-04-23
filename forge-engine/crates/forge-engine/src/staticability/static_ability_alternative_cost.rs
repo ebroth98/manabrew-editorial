@@ -274,13 +274,17 @@ fn apply(
     }
 
     // Check ValidCard — mirrors Java's stAb.matchesValidParam("ValidCard", source)
-    if !valid_filter::matches_valid_card_opt(st_ab.params.get(keys::VALID_CARD), source, host) {
+    if !valid_filter::matches_valid_card_selector_opt(
+        st_ab.params.selector(keys::VALID_CARD),
+        source,
+        host,
+    ) {
         return false;
     }
 
     // Check ValidPlayer — mirrors Java's stAb.matchesValidParam("ValidPlayer", pl)
-    if !valid_filter::matches_valid_player_opt(
-        st_ab.params.get(keys::VALID_PLAYER),
+    if !valid_filter::matches_valid_player_selector_opt(
+        st_ab.params.selector(keys::VALID_PLAYER),
         player,
         host.controller,
     ) {

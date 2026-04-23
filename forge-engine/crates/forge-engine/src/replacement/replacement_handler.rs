@@ -867,8 +867,8 @@ pub fn would_phase_be_skipped(game: &GameState, player: PlayerId, phase: PhaseTy
                 }
             }
             // Check ValidPlayer$ matches the player
-            if let Some(vp) = re.params.get(keys::VALID_PLAYER) {
-                if !re.matches_valid_player(vp, player, card) {
+            if let Some(vp) = re.params.selector(keys::VALID_PLAYER) {
+                if !re.matches_compiled_valid_player(vp, player, card) {
                     continue;
                 }
             }
@@ -895,8 +895,8 @@ pub fn would_extra_turn_be_skipped(game: &GameState, player: PlayerId) -> bool {
                 continue;
             }
             // Check ValidPlayer$ matches the player
-            if let Some(vp) = re.params.get(keys::VALID_PLAYER) {
-                if !re.matches_valid_player(vp, player, card) {
+            if let Some(vp) = re.params.selector(keys::VALID_PLAYER) {
+                if !re.matches_compiled_valid_player(vp, player, card) {
                     continue;
                 }
             }

@@ -6,7 +6,7 @@
 
 use forge_foundation::ZoneType;
 
-use crate::card::Card;
+use crate::card::{valid_filter, Card};
 use crate::combat::DefenderId;
 use crate::parsing::keys;
 use crate::staticability::StaticMode;
@@ -30,10 +30,12 @@ pub fn get_attack_cost(cards: &[Card], attacker: &Card, defender: DefenderId) ->
             }
 
             // Check ValidCard$ matches the attacker
-            if let Some(valid) = sa.params.get(keys::VALID_CARD) {
-                if !matches_valid_for_cost(attacker, valid) {
-                    continue;
-                }
+            if !valid_filter::matches_valid_card_selector_opt(
+                sa.params.selector(keys::VALID_CARD),
+                attacker,
+                source,
+            ) {
+                continue;
             }
 
             // Check Target$ — who is being defended
@@ -67,20 +69,4 @@ pub fn get_attack_cost(cards: &[Card], attacker: &Card, defender: DefenderId) ->
     }
 
     total_cost
-}
-
-/// Simple valid-card check for cost statics.
-fn matches_valid_for_cost(card: &Card, valid: &str) -> bool {
-    let parts: Vec<&str> = valid.split('.').collect();
-    for part in parts {
-        match part {
-            "Creature" => {
-                if !card.is_creature() {
-                    return false;
-                }
-            }
-            _ => {} // Other filters not commonly used for attack costs
-        }
-    }
-    true
 }

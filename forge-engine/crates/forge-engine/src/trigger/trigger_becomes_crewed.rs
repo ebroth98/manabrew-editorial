@@ -2,18 +2,14 @@ use serde::{Deserialize, Serialize};
 
 use super::trigger::TriggerBehavior;
 use crate::{
-    event::RunParams,
-    trigger::TriggerType,
-    game::GameState,
-    parsing::compare::compare_expr,
-    parsing::Params,
-    spellability::SpellAbility,
+    event::RunParams, game::GameState, parsing::compare::compare_expr, parsing::Params,
+    spellability::SpellAbility, trigger::TriggerType,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TriggerBecomesCrewed {
-    pub valid_card: Option<String>,
-    pub valid_crew: Option<String>,
+    pub valid_card: Option<crate::parsing::CompiledSelector>,
+    pub valid_crew: Option<crate::parsing::CompiledSelector>,
     pub first_time_crewed: bool,
     pub valid_crew_amount: Option<String>,
 }
@@ -21,8 +17,8 @@ pub struct TriggerBecomesCrewed {
 impl TriggerBecomesCrewed {
     pub fn parse(params: &Params) -> Box<dyn TriggerBehavior> {
         Box::new(Self {
-            valid_card: params.get_cloned("ValidCard"),
-            valid_crew: params.get_cloned("ValidCrew"),
+            valid_card: params.selector_cloned("ValidCard"),
+            valid_crew: params.selector_cloned("ValidCrew"),
             first_time_crewed: params.has("FirstTimeCrewed"),
             valid_crew_amount: params.get_cloned("ValidCrewAmount"),
         })

@@ -1,19 +1,21 @@
 use serde::{Deserialize, Serialize};
 
-use crate::event::{RunParams};
-use crate::trigger::TriggerType;
+use crate::event::RunParams;
 use crate::game::GameState;
 use crate::spellability::SpellAbility;
+use crate::trigger::TriggerType;
 
 use super::trigger::TriggerBehavior;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TriggerChaosEnsues {
-    pub valid_player: Option<String>,
+    pub valid_player: Option<crate::parsing::CompiledSelector>,
 }
 
 impl TriggerChaosEnsues {
-    pub fn parse(valid_player: Option<String>) -> Box<dyn TriggerBehavior> {
+    pub fn parse(
+        valid_player: Option<crate::parsing::CompiledSelector>,
+    ) -> Box<dyn TriggerBehavior> {
         Box::new(Self { valid_player })
     }
 }

@@ -122,7 +122,7 @@ fn resolve_target_card(ctx: &EffectContext, sa: &SpellAbility) -> Option<CardId>
         return Some(card_id);
     }
 
-    let defined = sa.params.get("Defined").unwrap_or("Self");
+    let defined = sa.defined().unwrap_or("Self");
 
     match defined {
         "Self" => sa.source,

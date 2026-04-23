@@ -1,9 +1,10 @@
 use forge_foundation::ZoneType;
 
-use super::{matches_valid_cards, parse_param, resolve_numeric_svar, EffectContext};
+use super::{matches_valid_cards_for_sa, resolve_numeric_svar, EffectContext};
 use crate::card::perpetual::perpetual_interface::PerpetualInterface;
 use crate::card::perpetual::{perpetual_keywords, perpetual_pt_boost};
 use crate::ids::CardId;
+use crate::parsing::keys;
 use crate::spellability::SpellAbility;
 
 /// End-of-turn revert for PumpAll. Mirrors the `GameCommand.run()` in Java
@@ -52,10 +53,8 @@ pub fn run(
 fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     // parse_param strips leading '+' sign via Rust's i32::from_str which accepts it.
     // Fall back to SVar resolution for Count$Kicked etc.
-    let att_bonus = parse_param(&sa.ability_text, "NumAtt$ ")
-        .unwrap_or_else(|| resolve_numeric_svar(ctx.game, sa, "NumAtt", 0));
-    let def_bonus = parse_param(&sa.ability_text, "NumDef$ ")
-        .unwrap_or_else(|| resolve_numeric_svar(ctx.game, sa, "NumDef", 0));
+    let att_bonus = resolve_numeric_svar(ctx.game, sa, "NumAtt", 0);
+    let def_bonus = resolve_numeric_svar(ctx.game, sa, "NumDef", 0);
 
     // Parse KW$ parameter for keyword grants (e.g. "KW$ Haste" or "KW$ Flying & Trample")
     let keywords: Vec<String> = sa
@@ -74,12 +73,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
         return;
     }
 
-    let valid_cards_filter = sa
-        .params
-        .get("ValidCards")
-        .map(|s| s.to_string())
-        .unwrap_or_else(|| "Creature".to_string());
-    let activating_player = sa.activating_player;
+    let valid_cards = sa.params.selector(keys::VALID_CARDS);
 
     // Determine the zone to look for cards in (default: Battlefield).
     let pump_zone_str = sa.params.get("PumpZone").unwrap_or("Battlefield");
@@ -106,7 +100,8 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     for &pid in &player_ids {
         let zone_cards = ctx.game.cards_in_zone(pump_zone, pid).to_vec();
         for cid in zone_cards {
-            if matches_valid_cards(ctx.game.card(cid), &valid_cards_filter, activating_player) {
+            if matches_valid_cards_for_sa(ctx.game, sa, ctx.game.card(cid), valid_cards, "Creature")
+            {
                 to_pump.push(cid);
             }
         }

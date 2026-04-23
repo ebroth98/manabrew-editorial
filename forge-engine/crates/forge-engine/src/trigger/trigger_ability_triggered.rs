@@ -4,11 +4,11 @@ use super::trigger::TriggerBehavior;
 use crate::ability::AbilityKey;
 use crate::{
     event::{AbilityValue, RunParams},
-    trigger::TriggerType,
     game::GameState,
     ids::CardId,
     parsing::Params,
     spellability::SpellAbility,
+    trigger::TriggerType,
 };
 
 fn split_csv(s: &str) -> impl Iterator<Item = &str> {
@@ -20,8 +20,8 @@ pub struct TriggerAbilityTriggered {
     pub valid_mode: Option<String>,
     pub valid_destination: Option<String>,
     pub valid_spell_ability: Option<String>,
-    pub valid_source: Option<String>,
-    pub valid_cause: Option<String>,
+    pub valid_source: Option<crate::parsing::CompiledSelector>,
+    pub valid_cause: Option<crate::parsing::CompiledSelector>,
     pub triggered_own_ability: bool,
 }
 
@@ -31,8 +31,8 @@ impl TriggerAbilityTriggered {
             valid_mode: params.get_cloned("ValidMode"),
             valid_destination: params.get_cloned("ValidDestination"),
             valid_spell_ability: params.get_cloned("ValidSpellAbility"),
-            valid_source: params.get_cloned("ValidSource"),
-            valid_cause: params.get_cloned("ValidCause"),
+            valid_source: params.selector_cloned("ValidSource"),
+            valid_cause: params.selector_cloned("ValidCause"),
             triggered_own_ability: params.has("TriggeredOwnAbility"),
         })
     }
@@ -75,7 +75,7 @@ fn cause_cards_for_trigger(
         TriggerType::Attacks => params.attacker.into_iter().collect(),
         TriggerType::AttackersDeclared | TriggerType::AttackersDeclaredOneTarget => {
             let attackers = params.attacker_ids.clone().unwrap_or_default();
-            if let Some(valid_attackers) = trigger.params.get("ValidAttackers") {
+            if let Some(valid_attackers) = trigger.params.selector("ValidAttackers") {
                 attackers
                     .into_iter()
                     .filter(|&card_id| {

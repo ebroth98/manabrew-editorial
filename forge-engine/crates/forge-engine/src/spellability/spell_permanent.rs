@@ -38,6 +38,7 @@ pub fn create_permanent_spell(
         targeting_player: None,
         ability_text: String::new(),
         params: Params::default(),
+        compiled_ir: None,
         target_restrictions: None,
         target_chosen: TargetChoices::default(),
         pay_costs: None,

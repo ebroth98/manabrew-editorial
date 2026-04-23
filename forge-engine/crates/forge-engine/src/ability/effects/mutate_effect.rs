@@ -6,7 +6,6 @@ use forge_foundation::ZoneType;
 
 use super::EffectContext;
 use crate::event::RunParams;
-use crate::parsing::keys;
 use crate::spellability::SpellAbility;
 use crate::trigger::TriggerType;
 
@@ -23,7 +22,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     // Get the target creature to mutate onto
     let target = if let Some(target) = sa.target_chosen.target_card {
         target
-    } else if let Some(def) = sa.params.get(keys::DEFINED) {
+    } else if let Some(def) = sa.defined() {
         if def == "Self" {
             return; // Can't mutate onto self
         }

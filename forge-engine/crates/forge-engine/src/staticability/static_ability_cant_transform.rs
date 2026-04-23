@@ -24,7 +24,11 @@ pub fn apply_cant_transform_ability(
     source: &Card,
     cause: Option<&SpellAbility>,
 ) -> bool {
-    if !valid_filter::matches_valid_card_opt(st_ab.params.get(keys::VALID_CARD), card, source) {
+    if !valid_filter::matches_valid_card_selector_opt(
+        st_ab.params.selector(keys::VALID_CARD),
+        card,
+        source,
+    ) {
         return false;
     }
     // Java: if stAb.hasParam("ExceptCause") { if stAb.matchesValidParam("ExceptCause", cause) return false }

@@ -1,4 +1,5 @@
-use super::{parse_param, EffectContext};
+use super::{resolve_numeric_svar, EffectContext};
+use crate::parsing::keys;
 use crate::spellability::SpellAbility;
 
 /// Resolve `SP$ AddPhase` — add extra combat (or main) phases to the current turn.
@@ -19,7 +20,7 @@ use crate::spellability::SpellAbility;
 fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let extra_phase = sa.params.get("ExtraPhase").unwrap_or("Combat");
 
-    let amount = parse_param(&sa.ability_text, "Amount$ ").unwrap_or(1) as u32;
+    let amount = resolve_numeric_svar(ctx.game, sa, keys::AMOUNT, 1).max(0) as u32;
 
     match extra_phase {
         "Combat" | "BeginCombat" => {

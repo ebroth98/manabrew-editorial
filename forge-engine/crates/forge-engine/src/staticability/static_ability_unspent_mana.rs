@@ -62,8 +62,8 @@ pub fn has_mana_burn(game: &GameState, player: PlayerId) -> bool {
             // Java short-circuits on the first ManaBurn static found:
             // if (!stAb.matchesValidParam("ValidPlayer", player)) return false;
             // return true;
-            return valid_filter::matches_valid_player_opt(
-                st_ab.params.get(keys::VALID_PLAYER),
+            return valid_filter::matches_valid_player_selector_opt(
+                st_ab.params.selector(keys::VALID_PLAYER),
                 player,
                 card.controller,
             );
@@ -81,8 +81,8 @@ fn apply_unspent_mana_ability(
     player: PlayerId,
     result: &mut HashSet<u16>,
 ) {
-    if !valid_filter::matches_valid_player_opt(
-        st_ab.params.get(keys::VALID_PLAYER),
+    if !valid_filter::matches_valid_player_selector_opt(
+        st_ab.params.selector(keys::VALID_PLAYER),
         player,
         source_controller,
     ) {

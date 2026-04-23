@@ -1,6 +1,6 @@
 use forge_foundation::ZoneType;
 
-use super::{parse_counter_type, parse_param, resolve_numeric_svar, EffectContext};
+use super::{parse_counter_type, resolve_numeric_svar, EffectContext};
 use crate::agent::BinaryChoiceKind;
 use crate::parsing::keys;
 use crate::spellability::SpellAbility;
@@ -17,8 +17,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let controller = sa.activating_player;
     let source_name = ctx.game.card(source_id).card_name.clone();
 
-    let amount = parse_param(&sa.ability_text, "CounterNum$ ")
-        .unwrap_or_else(|| resolve_numeric_svar(ctx.game, sa, "CounterNum", 1));
+    let amount = resolve_numeric_svar(ctx.game, sa, keys::COUNTER_NUM, 1);
     if amount <= 0 {
         return;
     }

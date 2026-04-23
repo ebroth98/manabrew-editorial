@@ -1,8 +1,8 @@
 use forge_foundation::ZoneType;
 
 use super::{
-    emit_zone_trigger, matches_change_type, parse_param, parse_zone_type, resolve_defined_player,
-    EffectContext,
+    emit_zone_trigger, matches_change_type, parse_zone_type, resolve_defined_player,
+    resolve_numeric_svar, EffectContext,
 };
 use crate::agent::{notify_all_agents, GameLogEvent};
 use crate::parsing::keys;
@@ -20,7 +20,7 @@ use crate::spellability::SpellAbility;
 /// `DigEffect` class extending `SpellAbilityEffect`.
 #[forge_engine_macros::spell_effect(DigEffect)]
 fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
-    let dig_num = parse_param(&sa.ability_text, "DigNum$ ").unwrap_or(1) as usize;
+    let dig_num = resolve_numeric_svar(ctx.game, sa, "DigNum", 1).max(0) as usize;
     let optional = sa.params.has(keys::OPTIONAL);
     let skip_reorder = sa.param_is_true("SkipReorder");
     let rest_random_order = sa.param_is_true("RestRandomOrder");
@@ -37,7 +37,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let change_num = if change_all || any_number {
         dig_num
     } else {
-        parse_param(&sa.ability_text, "ChangeNum$ ").unwrap_or(1) as usize
+        resolve_numeric_svar(ctx.game, sa, keys::CHANGE_NUM, 1).max(0) as usize
     };
 
     let dest_zone1 = sa

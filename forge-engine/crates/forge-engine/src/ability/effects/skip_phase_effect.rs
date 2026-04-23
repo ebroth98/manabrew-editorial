@@ -57,7 +57,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
         .or_else(|| sa.params.get(keys::STEP))
         .unwrap_or("");
 
-    let defined = sa.params.get(keys::DEFINED).unwrap_or("You");
+    let defined = sa.defined().unwrap_or("You");
 
     let targets = resolve_defined_players(defined, controller, ctx.game);
     for target in targets {

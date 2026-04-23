@@ -191,7 +191,7 @@ fn rebind_copied_traits(game: &mut crate::game::GameState, copy_id: CardId) {
 
 fn resolve_original(sa: &SpellAbility) -> Option<CardId> {
     // Check Defined$ parameter first.
-    if let Some(defined) = sa.params.get(keys::DEFINED) {
+    if let Some(defined) = sa.defined() {
         match defined {
             "Self" => return sa.source,
             "ParentTarget" => return sa.target_chosen.target_card,

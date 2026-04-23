@@ -73,13 +73,20 @@ fn choose_untap_type_targets(
     } else {
         format!("{untap_type}.YouCtrl")
     };
+    let valid_selector = crate::parsing::CompiledSelector::parse(&valid_filter);
     let valid: Vec<CardId> = ctx
         .game
         .cards_in_zone(ZoneType::Battlefield, controller)
         .iter()
         .copied()
         .filter(|&card_id| {
-            super::matches_valid_cards(ctx.game.card(card_id), &valid_filter, controller)
+            super::matches_valid_cards_for_sa(
+                ctx.game,
+                sa,
+                ctx.game.card(card_id),
+                Some(&valid_selector),
+                &valid_filter,
+            )
         })
         .collect();
     if valid.is_empty() {

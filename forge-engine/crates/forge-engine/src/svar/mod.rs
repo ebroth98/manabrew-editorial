@@ -17,6 +17,7 @@ use crate::card::filter_constants as fc;
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
 use crate::parsing::compare::compare_expr;
+use crate::parsing::{SemanticAmount, SemanticParamValue};
 use crate::spellability::SpellAbility;
 
 fn parse_trigger_card_object(sa: &SpellAbility, key: &str) -> Option<CardId> {
@@ -169,8 +170,7 @@ fn spell_ability_x_property(spell_ability: &SpellAbility, expr: &str, game: &Gam
 
 fn resolve_spell_ability_expr(expr: &str, game: &GameState, sa: &SpellAbility) -> Option<i32> {
     let (defined, property) = expr.split_once('$')?;
-    let spells =
-        crate::ability::ability_utils::get_defined_spell_abilities(defined, sa, game);
+    let spells = crate::ability::ability_utils::get_defined_spell_abilities(defined, sa, game);
     if spells.is_empty() {
         return None;
     }
@@ -265,14 +265,14 @@ fn player_x_property(
                 };
                 (zones, restrictions)
             };
+            let selector = crate::parsing::CompiledSelector::parse(restrictions);
+            let source = game.card(source_id);
             game.cards
                 .iter()
                 .filter(|card| {
                     zones.contains(&card.zone)
-                        && crate::ability::ability_utils::matches_valid_cards(
-                            card,
-                            restrictions,
-                            player,
+                        && crate::card::valid_filter::matches_valid_card_selector_in_game(
+                            &selector, card, source, game,
                         )
                 })
                 .count() as i32
@@ -631,11 +631,98 @@ pub fn resolve_numeric_svar(
     param_name: &str,
     default: i32,
 ) -> i32 {
-    let raw_val = match sa.params.get(param_name) {
-        Some(v) if !v.is_empty() => v.to_string(),
-        _ => return default,
+    let Some(value) = sa.params.semantic_value(param_name) else {
+        return default;
     };
+
+    let resolved = resolve_semantic_numeric_value(game, sa, &value, default);
+    #[cfg(debug_assertions)]
+    debug_assert_eq!(
+        resolved,
+        resolve_numeric_svar_from_params(game, sa, param_name, default),
+        "semantic numeric param {} diverged from string params: raw={:?} semantic={:?}",
+        param_name,
+        sa.params.get(param_name),
+        value
+    );
+    resolved
+}
+
+fn resolve_numeric_svar_from_params(
+    game: &GameState,
+    sa: &SpellAbility,
+    param_name: &str,
+    default: i32,
+) -> i32 {
+    match sa.params.get(param_name) {
+        Some(v) if !v.is_empty() => resolve_numeric_value(game, sa, v, default),
+        _ => default,
+    }
+}
+
+fn resolve_semantic_numeric_value(
+    game: &GameState,
+    sa: &SpellAbility,
+    value: &SemanticParamValue<'_>,
+    default: i32,
+) -> i32 {
+    match value {
+        SemanticParamValue::Integer(value) => *value,
+        SemanticParamValue::Amount(amount) => resolve_semantic_amount(game, sa, amount, default),
+        SemanticParamValue::SVarReference(names) => match names.as_slice() {
+            [name] => resolve_numeric_value(game, sa, name, default),
+            [] => default,
+            _ => names
+                .iter()
+                .map(|name| resolve_numeric_value(game, sa, name, default))
+                .sum(),
+        },
+        SemanticParamValue::Raw(raw)
+        | SemanticParamValue::Expression(raw)
+        | SemanticParamValue::Text(raw)
+        | SemanticParamValue::Symbol(raw) => resolve_numeric_value(game, sa, raw, default),
+        _ => default,
+    }
+}
+
+fn resolve_semantic_amount(
+    game: &GameState,
+    sa: &SpellAbility,
+    amount: &SemanticAmount<'_>,
+    default: i32,
+) -> i32 {
+    match amount {
+        SemanticAmount::Literal(value) => *value,
+        SemanticAmount::X => resolve_numeric_value(game, sa, "X", default),
+        SemanticAmount::SVar(name) | SemanticAmount::Expression(name) => {
+            resolve_numeric_value(game, sa, name, default)
+        }
+        SemanticAmount::Any | SemanticAmount::All => {
+            resolve_numeric_value(game, sa, semantic_amount_raw(amount), default)
+        }
+    }
+}
+
+fn semantic_amount_raw(amount: &SemanticAmount<'_>) -> &'static str {
+    match amount {
+        SemanticAmount::Any => "Any",
+        SemanticAmount::All => "All",
+        _ => "",
+    }
+}
+
+/// Resolve a raw numeric DSL value using the same semantics as
+/// [`resolve_numeric_svar`], without first looking it up in `sa.params`.
+pub fn resolve_numeric_value(
+    game: &GameState,
+    sa: &SpellAbility,
+    raw_val: &str,
+    default: i32,
+) -> i32 {
     let val_str = raw_val.trim();
+    if val_str.is_empty() {
+        return default;
+    }
 
     // Try direct integer parse first
     if let Ok(n) = val_str.parse::<i32>() {
@@ -1128,15 +1215,14 @@ pub fn resolve_count_svar_for_sa(
             };
             if !zones.is_empty() {
                 let source = game.card(source_id);
+                let selector = crate::parsing::CompiledSelector::parse(restrictions);
                 let count = game
                     .cards
                     .iter()
                     .filter(|card| {
                         zones.contains(&card.zone)
-                            && crate::card::valid_filter::matches_valid_card(
-                                restrictions,
-                                card,
-                                source,
+                            && crate::card::valid_filter::matches_valid_card_selector_in_game(
+                                &selector, card, source, game,
                             )
                     })
                     .count() as i32;
@@ -1191,18 +1277,15 @@ pub fn resolve_count_svar_for_sa(
                 .collect()
         };
 
-        let chosen_type = game.card(source_id).chosen_type.clone();
+        let source = game.card(source_id);
+        let selector = crate::parsing::CompiledSelector::parse(filter_str);
         if greatest_power {
             // Return the greatest power among matching creatures
             let mut max_power = 0;
             for &cid in &cards_to_check {
                 let card = game.card(cid);
-                if valid_card_matches_with_source(
-                    filter_str,
-                    card,
-                    controller,
-                    source_id,
-                    chosen_type.as_deref(),
+                if crate::card::valid_filter::matches_valid_card_selector_in_game(
+                    &selector, card, source, game,
                 ) {
                     max_power = max_power.max(card.power());
                 }
@@ -1212,12 +1295,8 @@ pub fn resolve_count_svar_for_sa(
             let mut mask: u8 = 0;
             for &cid in &cards_to_check {
                 let card = game.card(cid);
-                if valid_card_matches_with_source(
-                    filter_str,
-                    card,
-                    controller,
-                    source_id,
-                    chosen_type.as_deref(),
+                if crate::card::valid_filter::matches_valid_card_selector_in_game(
+                    &selector, card, source, game,
                 ) {
                     mask |= card.color.mask();
                 }
@@ -1234,12 +1313,8 @@ pub fn resolve_count_svar_for_sa(
             let mut count = 0;
             for &cid in &cards_to_check {
                 let card = game.card(cid);
-                if valid_card_matches_with_source(
-                    filter_str,
-                    card,
-                    controller,
-                    source_id,
-                    chosen_type.as_deref(),
+                if crate::card::valid_filter::matches_valid_card_selector_in_game(
+                    &selector, card, source, game,
                 ) {
                     count += 1;
                 }
@@ -1385,10 +1460,7 @@ fn valid_card_matches_with_source(
                 // Mirrors Java CardTraitBase.isValid() ChosenType qualifier.
                 match chosen_type {
                     Some(ct)
-                        if card.type_line.has_subtype(ct)
-                            || card.has_keyword("Changeling") =>
-                    {
-                    }
+                        if card.type_line.has_subtype(ct) || card.has_keyword("Changeling") => {}
                     _ => return false,
                 }
             } else if sub_qual.starts_with("counters_") {

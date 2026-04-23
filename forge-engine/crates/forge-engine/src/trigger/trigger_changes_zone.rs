@@ -1,12 +1,12 @@
 use serde::{Deserialize, Serialize};
 
 use crate::ability::ability_utils::parse_counter_type;
-use crate::event::{RunParams};
-use crate::trigger::TriggerType;
+use crate::event::RunParams;
 use crate::game::GameState;
 use crate::parsing::compare::compare_expr;
 use crate::parsing::{keys, Params};
 use crate::spellability::SpellAbility;
+use crate::trigger::TriggerType;
 
 use super::trigger::TriggerBehavior;
 
@@ -34,39 +34,21 @@ impl TriggerBehavior for TriggerChangesZone {
         let host_card = trigger.base.card_trait_base.get_host_card().id;
         let host_controller = trigger.base.card_trait_base.get_host_card().controller;
         let current_trigger_id = Some(trigger.id);
-        let origin = trigger.params.get(keys::ORIGIN).and_then(|value| {
-            if value == "Any" {
-                None
-            } else {
-                forge_foundation::ZoneType::from_str_compat(value)
-            }
-        });
-        let destination = trigger.params.get(keys::DESTINATION).and_then(|value| {
-            if value == "Any" {
-                None
-            } else {
-                forge_foundation::ZoneType::from_str_compat(value)
-            }
-        });
+        let origin = trigger.params.zone_type(keys::ORIGIN);
+        let destination = trigger.params.zone_type(keys::DESTINATION);
         if !super::trigger::Trigger::matches_zone_filter(&origin, params.origin)
             || !super::trigger::Trigger::matches_zone_filter(&destination, params.destination)
         {
             return false;
         }
-        if let Some(excluded_origins) = trigger.params.get("ExcludedOrigins") {
-            let excluded = excluded_origins
-                .split(',')
-                .filter_map(|zone| forge_foundation::ZoneType::from_str_compat(zone.trim()))
-                .collect::<Vec<_>>();
+        if trigger.params.has("ExcludedOrigins") {
+            let excluded = trigger.params.zone_types("ExcludedOrigins");
             if params.origin.is_some_and(|zone| excluded.contains(&zone)) {
                 return false;
             }
         }
-        if let Some(excluded_destinations) = trigger.params.get("ExcludedDestinations") {
-            let excluded = excluded_destinations
-                .split(',')
-                .filter_map(|zone| forge_foundation::ZoneType::from_str_compat(zone.trim()))
-                .collect::<Vec<_>>();
+        if trigger.params.has("ExcludedDestinations") {
+            let excluded = trigger.params.zone_types("ExcludedDestinations");
             if params
                 .destination
                 .is_some_and(|zone| excluded.contains(&zone))
@@ -105,11 +87,11 @@ impl TriggerBehavior for TriggerChangesZone {
         {
             return false;
         }
-        let valid_card = trigger.params.get_cloned(keys::VALID_CARD);
+        let valid_card = trigger.params.selector_cloned(keys::VALID_CARD);
         if !trigger.matches_optional_valid_card_filter(&valid_card, moved_card, game) {
             return false;
         }
-        if let Some(filter) = trigger.params.get(keys::VALID_CAUSE) {
+        if let Some(filter) = trigger.params.selector(keys::VALID_CAUSE) {
             let cause_matches = params
                 .cause
                 .as_ref()

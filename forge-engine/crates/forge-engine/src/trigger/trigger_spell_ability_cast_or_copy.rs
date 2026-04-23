@@ -1,24 +1,24 @@
 use serde::{Deserialize, Serialize};
 
-use crate::event::{RunParams};
-use crate::trigger::TriggerType;
+use crate::event::RunParams;
 use crate::game::GameState;
 use crate::parsing::{keys, Params};
 use crate::spellability::SpellAbility;
+use crate::trigger::TriggerType;
 
 use super::trigger::{Trigger, TriggerBehavior};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TriggerSpellAbilityCastOrCopy {
     pub trigger_type: TriggerType,
-    pub valid_card: Option<String>,
-    pub valid_activating_player: Option<String>,
+    pub valid_card: Option<crate::parsing::CompiledSelector>,
+    pub valid_activating_player: Option<crate::parsing::CompiledSelector>,
 }
 
 impl TriggerSpellAbilityCastOrCopy {
     pub fn parse(mode_str: &str, params: &Params) -> Box<dyn TriggerBehavior> {
-        let valid_card = params.get_cloned(keys::VALID_CARD);
-        let valid_activating_player = params.get_cloned(keys::VALID_ACTIVATING_PLAYER);
+        let valid_card = params.selector_cloned(keys::VALID_CARD);
+        let valid_activating_player = params.selector_cloned(keys::VALID_ACTIVATING_PLAYER);
         let trigger_type = match mode_str {
             "SpellCast" => TriggerType::SpellCast,
             "AbilityCast" => TriggerType::AbilityCast,

@@ -1,7 +1,8 @@
 use forge_foundation::ZoneType;
 
-use super::{matches_valid_cards, EffectContext};
+use super::{matches_valid_cards_for_sa, EffectContext};
 use crate::ids::CardId;
+use crate::parsing::keys;
 use crate::spellability::SpellAbility;
 
 /// `SP$ UntapAll` — untap all matching permanents.
@@ -18,19 +19,20 @@ use crate::spellability::SpellAbility;
 /// `UntapAllEffect` class extending `SpellAbilityEffect`.
 #[forge_engine_macros::spell_effect(UntapAllEffect)]
 fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
-    let valid_cards_filter = sa
-        .params
-        .get("ValidCards")
-        .map(|s| s.to_string())
-        .unwrap_or_else(|| "Permanent".to_string());
-    let activating_player = sa.activating_player;
+    let valid_cards = sa.params.selector(keys::VALID_CARDS);
 
     let player_ids = ctx.game.player_order.clone();
     let mut to_untap: Vec<CardId> = Vec::new();
     for &pid in &player_ids {
         let zone_cards = ctx.game.cards_in_zone(ZoneType::Battlefield, pid).to_vec();
         for cid in zone_cards {
-            if matches_valid_cards(ctx.game.card(cid), &valid_cards_filter, activating_player) {
+            if matches_valid_cards_for_sa(
+                ctx.game,
+                sa,
+                ctx.game.card(cid),
+                valid_cards,
+                "Permanent",
+            ) {
                 to_untap.push(cid);
             }
         }

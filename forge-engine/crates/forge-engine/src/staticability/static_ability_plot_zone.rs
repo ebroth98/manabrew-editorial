@@ -10,8 +10,8 @@ pub fn plot_zone(cards: &[Card], card: &Card) -> bool {
             .iter()
             .filter(|sa| sa.mode == StaticMode::PlotZone && sa.zones_check(source.zone))
         {
-            if valid_filter::matches_valid_card_opt(
-                st_ab.params.get(keys::VALID_CARD),
+            if valid_filter::matches_valid_card_selector_opt(
+                st_ab.params.selector(keys::VALID_CARD),
                 card,
                 source,
             ) {

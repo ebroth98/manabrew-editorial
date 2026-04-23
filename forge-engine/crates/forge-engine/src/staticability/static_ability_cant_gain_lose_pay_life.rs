@@ -2,7 +2,7 @@ use forge_foundation::ZoneType;
 
 use crate::game::GameState;
 use crate::ids::PlayerId;
-use crate::parsing::keys;
+use crate::parsing::{keys, CompiledSelector};
 use crate::spellability::SpellAbility;
 use crate::staticability::StaticMode;
 
@@ -76,7 +76,7 @@ pub fn apply_common_ability(
         }
     }
     matches_valid_player(
-        st_ab.params.get(keys::VALID_PLAYER),
+        st_ab.params.selector(keys::VALID_PLAYER),
         player,
         source_id,
         source_controller,
@@ -106,7 +106,7 @@ fn any_common(
                 }
             }
             if !matches_valid_player(
-                st_ab.params.get(keys::VALID_PLAYER),
+                st_ab.params.selector(keys::VALID_PLAYER),
                 player,
                 card.id,
                 card.controller,
@@ -121,28 +121,39 @@ fn any_common(
 }
 
 fn matches_valid_player(
-    valid: Option<&str>,
+    valid: Option<&CompiledSelector>,
     player: PlayerId,
     source_id: crate::ids::CardId,
     source_controller: PlayerId,
     game: &GameState,
 ) -> bool {
-    match valid {
-        None => true,
-        Some(v) if v.eq_ignore_ascii_case("Player") => true,
-        Some(v) => {
-            let sa = SpellAbility::new_simple(Some(source_id), source_controller, "");
-            let property = v.strip_prefix("Player.").unwrap_or(v);
-            crate::player::player_property::player_has_property(
-                player,
-                property,
-                game,
-                source_id,
-                source_controller,
-                &sa,
-            )
-        }
+    let Some(valid) = valid else {
+        return true;
+    };
+    if valid.alternatives.is_empty() {
+        return true;
     }
+    let sa = SpellAbility::new_simple(Some(source_id), source_controller, "");
+    valid.alternatives.iter().any(|alternative| {
+        let mut checked_property = false;
+        let properties_match = alternative
+            .parts
+            .iter()
+            .map(|part| part.value.as_str())
+            .filter(|part| !part.eq_ignore_ascii_case("Player"))
+            .all(|property| {
+                checked_property = true;
+                crate::player::player_property::player_has_property(
+                    player,
+                    property,
+                    game,
+                    source_id,
+                    source_controller,
+                    &sa,
+                )
+            });
+        !checked_property || properties_match
+    })
 }
 
 #[cfg(test)]

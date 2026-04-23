@@ -1,20 +1,23 @@
 use serde::{Deserialize, Serialize};
 
-use crate::event::{RunParams};
-use crate::trigger::TriggerType;
+use crate::event::RunParams;
 use crate::game::GameState;
 use crate::spellability::SpellAbility;
+use crate::trigger::TriggerType;
 
 use super::trigger::TriggerBehavior;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TriggerCounterTypeAddedAll {
-    pub valid_object: Option<String>,
+    pub valid_object: Option<crate::parsing::CompiledSelector>,
     pub first_time_only: bool,
 }
 
 impl TriggerCounterTypeAddedAll {
-    pub fn parse(valid_object: Option<String>, first_time_only: bool) -> Box<dyn TriggerBehavior> {
+    pub fn parse(
+        valid_object: Option<crate::parsing::CompiledSelector>,
+        first_time_only: bool,
+    ) -> Box<dyn TriggerBehavior> {
         Box::new(Self {
             valid_object,
             first_time_only,

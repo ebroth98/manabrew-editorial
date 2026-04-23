@@ -1,6 +1,6 @@
 use forge_foundation::ZoneType;
 
-use super::{matches_valid_cards, parse_zone_type, EffectContext};
+use super::{matches_valid_cards_for_sa, parse_zone_type, EffectContext};
 use crate::spellability::SpellAbility;
 
 /// `SP$ ChooseCard` — player chooses card(s) from a filtered set in a zone.
@@ -43,6 +43,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
         .get("Choices")
         .map(|s| s.to_string())
         .unwrap_or_else(|| "Card".to_string());
+    let filter_selector = sa.params.selector_cloned("Choices");
 
     let remember = sa
         .params
@@ -55,7 +56,13 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     for &pid in &ctx.game.player_order.clone() {
         let zone_cards = ctx.game.cards_in_zone(zone, pid).to_vec();
         for cid in zone_cards {
-            if matches_valid_cards(ctx.game.card(cid), &filter, controller) {
+            if matches_valid_cards_for_sa(
+                ctx.game,
+                sa,
+                ctx.game.card(cid),
+                filter_selector.as_ref(),
+                &filter,
+            ) {
                 valid.push(cid);
             }
         }

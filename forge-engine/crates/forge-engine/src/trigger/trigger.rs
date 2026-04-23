@@ -10,13 +10,13 @@ use crate::card::{valid_filter, Card};
 use crate::card_trait_base::{CardTrait, CardTraitBase, MatchValidTarget};
 use crate::core::HasSVars;
 use crate::event::{AbilityValue, RunParams};
-use crate::trigger::TriggerType;
 use crate::game::GameState;
 use crate::game_loop::trigger_replacement_base::TriggerReplacementBase;
 use crate::ids::{CardId, PlayerId};
-use crate::parsing::{keys, Params};
+use crate::parsing::{keys, CompiledSelector, Params};
 use crate::player::PlayerCollection;
 use crate::spellability::{build_spell_ability, SpellAbility};
+use crate::trigger::TriggerType;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Trigger {
@@ -515,21 +515,15 @@ impl Trigger {
     /// Mirrors Java's `matchesValidParam` flow by routing through `CardTrait`.
     pub fn matches_optional_valid_card_filter(
         &self,
-        filter: &Option<String>,
+        filter: &Option<CompiledSelector>,
         card_id: Option<CardId>,
         game: &GameState,
     ) -> bool {
-        match (filter.as_deref(), card_id) {
+        match (filter.as_ref(), card_id) {
             (None, _) => true,
             (Some(_), None) => false,
-            (Some(raw), Some(card_id)) => {
-                let parts: Vec<&str> = raw
-                    .split(',')
-                    .map(str::trim)
-                    .filter(|s| !s.is_empty())
-                    .collect();
-                self.matches_valid_host(&MatchValidTarget::Card(game.card(card_id)), &parts)
-            }
+            (Some(selector), Some(card_id)) => self
+                .matches_compiled_valid_host(&MatchValidTarget::Card(game.card(card_id)), selector),
         }
     }
 
@@ -537,19 +531,14 @@ impl Trigger {
     /// Mirrors Java's `matchesValidParam` flow by routing through `CardTrait`.
     pub fn matches_optional_valid_player_filter(
         &self,
-        filter: &Option<String>,
+        filter: &Option<CompiledSelector>,
         player_id: Option<PlayerId>,
     ) -> bool {
-        match (filter.as_deref(), player_id) {
+        match (filter.as_ref(), player_id) {
             (None, _) => true,
             (Some(_), None) => false,
-            (Some(raw), Some(player_id)) => {
-                let parts: Vec<&str> = raw
-                    .split(',')
-                    .map(str::trim)
-                    .filter(|s| !s.is_empty())
-                    .collect();
-                self.matches_valid_host(&MatchValidTarget::Player(player_id), &parts)
+            (Some(selector), Some(player_id)) => {
+                self.matches_compiled_valid_host(&MatchValidTarget::Player(player_id), selector)
             }
         }
     }
@@ -557,41 +546,31 @@ impl Trigger {
     /// Matches a required card against a `Valid...` card filter from this trigger's host context.
     pub fn matches_valid_card_filter(
         &self,
-        filter: &str,
+        filter: &CompiledSelector,
         card_id: CardId,
         game: &GameState,
     ) -> bool {
-        let parts: Vec<&str> = filter
-            .split(',')
-            .map(str::trim)
-            .filter(|s| !s.is_empty())
-            .collect();
-        self.matches_valid_host(&MatchValidTarget::Card(game.card(card_id)), &parts)
+        self.matches_compiled_valid_host(&MatchValidTarget::Card(game.card(card_id)), filter)
     }
 
     /// Matches a required player against a `Valid...` player filter from this trigger's host context.
     pub fn matches_valid_player_filter(
         &self,
-        filter: &str,
+        filter: &CompiledSelector,
         player: PlayerId,
         _game: &GameState,
     ) -> bool {
-        let parts: Vec<&str> = filter
-            .split(',')
-            .map(str::trim)
-            .filter(|s| !s.is_empty())
-            .collect();
-        self.matches_valid_host(&MatchValidTarget::Player(player), &parts)
+        self.matches_compiled_valid_host(&MatchValidTarget::Player(player), filter)
     }
 
     /// Matches a required player against a `Valid...` player filter from an explicit source controller.
     pub fn matches_valid_player_filter_with_controller(
         &self,
-        filter: &str,
+        filter: &CompiledSelector,
         player: PlayerId,
         source_controller: PlayerId,
     ) -> bool {
-        valid_filter::matches_valid_player(filter, player, source_controller)
+        valid_filter::matches_valid_player_selector(filter, player, source_controller)
     }
 
     /// Matches an optional counter-type filter.
@@ -694,7 +673,7 @@ impl Trigger {
     /// Matches a damage target filter for either player or card targets.
     pub fn matches_damage_target_filter(
         &self,
-        filter: &Option<String>,
+        filter: &Option<CompiledSelector>,
         run_params: &RunParams,
         game: &GameState,
         strict_card_filter: bool,
@@ -706,21 +685,22 @@ impl Trigger {
         if let Some(target_card) = run_params.damage_target_card {
             self.matches_valid_card_filter(filter, target_card, game)
         } else if strict_card_filter {
-            let is_card_filter = filter.starts_with("Card.")
-                || filter.starts_with("Creature.")
-                || filter.starts_with("Permanent.")
-                || filter.starts_with("Artifact.")
-                || filter.starts_with("Enchantment.")
-                || filter.starts_with("Planeswalker.");
+            let raw = filter.as_raw();
+            let is_card_filter = raw.starts_with("Card.")
+                || raw.starts_with("Creature.")
+                || raw.starts_with("Permanent.")
+                || raw.starts_with("Artifact.")
+                || raw.starts_with("Enchantment.")
+                || raw.starts_with("Planeswalker.");
             if is_card_filter {
                 false
             } else if let Some(target_player) = run_params.damage_target_player {
-                self.matches_valid_player_with_host(filter, target_player, game)
+                self.matches_valid_player_filter(filter, target_player, game)
             } else {
                 false
             }
         } else if let Some(target_player) = run_params.damage_target_player {
-            self.matches_valid_player_with_host(filter, target_player, game)
+            self.matches_valid_player_filter(filter, target_player, game)
         } else {
             false
         }
@@ -1091,8 +1071,8 @@ pub fn parse_trigger(raw: &str, next_id: &mut u32) -> Option<Trigger> {
         "FightOnce" => crate::trigger::trigger_fight_once::TriggerFightOnce::parse(&params),
         "DamageDone" => crate::trigger::trigger_damage_done::TriggerDamageDone::parse(&params),
         "Countered" => {
-            let valid_card = params.get_cloned(keys::VALID_CARD);
-            let valid_cause = params.get_cloned(keys::VALID_CAUSE);
+            let valid_card = params.selector_cloned(keys::VALID_CARD);
+            let valid_cause = params.selector_cloned(keys::VALID_CAUSE);
             let valid_sa = params.get_cloned(keys::VALID_SA);
             crate::trigger::trigger_countered::TriggerCountered::parse(valid_card, valid_cause, valid_sa)
         }
@@ -1123,7 +1103,7 @@ pub fn parse_trigger(raw: &str, next_id: &mut u32) -> Option<Trigger> {
         "Destroyed" => crate::trigger::trigger_destroyed::TriggerDestroyed::parse(&params),
         "Exiled" => crate::trigger::trigger_exiled::TriggerExiled::parse(&params),
         "CollectEvidence" => {
-            let valid_player = params.get_cloned(keys::VALID_PLAYER);
+            let valid_player = params.selector_cloned(keys::VALID_PLAYER);
             crate::trigger::trigger_collect_evidence::TriggerCollectEvidence::parse(valid_player)
         }
         "Forage" => crate::trigger::trigger_forage::TriggerForage::parse(&params),
@@ -1141,7 +1121,7 @@ pub fn parse_trigger(raw: &str, next_id: &mut u32) -> Option<Trigger> {
         "BlockersDeclared" => crate::trigger::trigger_blockers_declared::TriggerBlockersDeclared::parse(&params),
         "ChangesZoneAll" => crate::trigger::trigger_changes_zone_all::TriggerChangesZoneAll::parse(&params),
         "ChangesController" => {
-            let valid_card = params.get_cloned(keys::VALID_CARD);
+            let valid_card = params.selector_cloned(keys::VALID_CARD);
             crate::trigger::trigger_changes_controller::TriggerChangesController::parse(valid_card)
         }
         "TurnBegin" | "NewTurn" => crate::trigger::trigger_turn_begin::TriggerTurnBegin::parse(&params),
@@ -1152,27 +1132,24 @@ pub fn parse_trigger(raw: &str, next_id: &mut u32) -> Option<Trigger> {
         }
         "LifeLostAll" => crate::trigger::trigger_life_lost_all::TriggerLifeLostAll::parse(&params),
         "CounterAddedOnce" => {
-            let valid_card = params.get_cloned(keys::VALID_CARD);
+            let valid_card = params.selector_cloned(keys::VALID_CARD);
             let counter_type = params.get_cloned(keys::COUNTER_TYPE);
-            let valid_source = params.get_cloned(keys::VALID_SOURCE);
+            let valid_source = params.selector_cloned(keys::VALID_SOURCE);
             crate::trigger::trigger_counter_added_once::TriggerCounterAddedOnce::parse(valid_card, counter_type, valid_source)
         }
         "CounterAddedAll" => {
             let counter_type = params.get_cloned(keys::COUNTER_TYPE);
-            let valid = params
-                .get(keys::VALID)
-                .or_else(|| params.get(keys::VALID_CARD))
-                .map(|s| s.to_string());
+            let valid = params.selector_cloned_any(&[keys::VALID, keys::VALID_CARD]);
             crate::trigger::trigger_counter_added_all::TriggerCounterAddedAll::parse(counter_type, valid)
         }
         "CounterPlayerAddedAll" => {
-            let valid_source = params.get_cloned("ValidSource");
-            let valid_object = params.get_cloned("ValidObject");
-            let valid_object_to_source = params.get_cloned("ValidObjectToSource");
+            let valid_source = params.selector_cloned("ValidSource");
+            let valid_object = params.selector_cloned("ValidObject");
+            let valid_object_to_source = params.selector_cloned("ValidObjectToSource");
             crate::trigger::trigger_counter_player_added_all::TriggerCounterPlayerAddedAll::parse(valid_source, valid_object, valid_object_to_source)
         }
         "CounterTypeAddedAll" => {
-            let valid_object = params.get_cloned("ValidObject");
+            let valid_object = params.selector_cloned("ValidObject");
             let first_time_only = params.has("FirstTime");
             crate::trigger::trigger_counter_type_added_all::TriggerCounterTypeAddedAll::parse(valid_object, first_time_only)
         }
@@ -1205,7 +1182,7 @@ pub fn parse_trigger(raw: &str, next_id: &mut u32) -> Option<Trigger> {
         "ExcessDamage" => crate::trigger::trigger_excess_damage::TriggerExcessDamage::parse(&params),
         "ExcessDamageAll" => crate::trigger::trigger_excess_damage_all::TriggerExcessDamageAll::parse(&params),
         "CounterRemovedOnce" => {
-            let valid_card = params.get_cloned(keys::VALID_CARD);
+            let valid_card = params.selector_cloned(keys::VALID_CARD);
             let counter_type = params.get_cloned(keys::COUNTER_TYPE);
             crate::trigger::trigger_counter_removed_once::TriggerCounterRemovedOnce::parse(valid_card, counter_type)
         }
@@ -1214,13 +1191,13 @@ pub fn parse_trigger(raw: &str, next_id: &mut u32) -> Option<Trigger> {
         "Mutates" => crate::trigger::trigger_mutates::TriggerMutates::parse(&params),
         "SetInMotion" => crate::trigger::trigger_set_in_motion::TriggerSetInMotion::parse(&params),
         "CaseSolved" => {
-            let valid_card = params.get_cloned(keys::VALID_CARD);
-            let valid_player = params.get_cloned(keys::VALID_PLAYER);
+            let valid_card = params.selector_cloned(keys::VALID_CARD);
+            let valid_player = params.selector_cloned(keys::VALID_PLAYER);
             crate::trigger::trigger_case_solved::TriggerCaseSolved::parse(valid_card, valid_player)
         }
         "ClaimPrize" => {
-            let valid_player = params.get_cloned(keys::VALID_PLAYER);
-            let valid_card = params.get_cloned(keys::VALID_CARD);
+            let valid_player = params.selector_cloned(keys::VALID_PLAYER);
+            let valid_card = params.selector_cloned(keys::VALID_CARD);
             crate::trigger::trigger_claim_prize::TriggerClaimPrize::parse(valid_player, valid_card)
         }
         "TakesInitiative" | "TakeInitiative" => crate::trigger::trigger_takes_initiative::TriggerTakesInitiative::parse(&params),
@@ -1231,11 +1208,11 @@ pub fn parse_trigger(raw: &str, next_id: &mut u32) -> Option<Trigger> {
         "Investigated" => crate::trigger::trigger_investigated::TriggerInvestigated::parse(&params),
         "Proliferate" => crate::trigger::trigger_proliferate::TriggerProliferate::parse(&params),
         "CompletedDungeon" | "DungeonCompleted" => {
-            let valid_player = params.get_cloned(keys::VALID_PLAYER);
+            let valid_player = params.selector_cloned(keys::VALID_PLAYER);
             crate::trigger::trigger_completed_dungeon::TriggerCompletedDungeon::parse(valid_player)
         }
         "CommitCrime" => {
-            let valid_player = params.get_cloned(keys::VALID_PLAYER);
+            let valid_player = params.selector_cloned(keys::VALID_PLAYER);
             crate::trigger::trigger_commit_crime::TriggerCommitCrime::parse(valid_player)
         }
         "GiveGift" => crate::trigger::trigger_give_gift::TriggerGiveGift::parse(&params),
@@ -1243,7 +1220,7 @@ pub fn parse_trigger(raw: &str, next_id: &mut u32) -> Option<Trigger> {
         "PayLife" => crate::trigger::trigger_pay_life::TriggerPayLife::parse(&params),
         "PayEcho" => crate::trigger::trigger_pay_echo::TriggerPayEcho::parse(&params),
         "ClassLevelGained" => {
-            let valid_card = params.get_cloned(keys::VALID_CARD);
+            let valid_card = params.selector_cloned(keys::VALID_CARD);
             let class_level = params.as_i32("ClassLevel");
             crate::trigger::trigger_class_level_gained::TriggerClassLevelGained::parse(valid_card, class_level)
         }
@@ -1266,22 +1243,19 @@ pub fn parse_trigger(raw: &str, next_id: &mut u32) -> Option<Trigger> {
         "Trains" => crate::trigger::trigger_trains::TriggerTrains::parse(&params),
         "Devoured" => crate::trigger::trigger_devoured::TriggerDevoured::parse(&params),
         "ConjureAll" => {
-            let valid_player = params.get_cloned(keys::VALID_PLAYER);
-            let valid_card = params.get_cloned(keys::VALID_CARD);
+            let valid_player = params.selector_cloned(keys::VALID_PLAYER);
+            let valid_card = params.selector_cloned(keys::VALID_CARD);
             crate::trigger::trigger_conjure_all::TriggerConjureAll::parse(valid_player, valid_card)
         }
         "SeekAll" => crate::trigger::trigger_seek_all::TriggerSeekAll::parse(&params),
         "BecomesCrewed" => crate::trigger::trigger_becomes_crewed::TriggerBecomesCrewed::parse(&params),
         "Championed" => {
-            let valid_card = params
-                .get("ValidCard")
-                .or_else(|| params.get("ValidChampioned"))
-                .map(|s| s.to_string());
-            let valid_source = params.get("ValidSource").map(|s| s.to_string());
+            let valid_card = params.selector_cloned_any(&["ValidCard", "ValidChampioned"]);
+            let valid_source = params.selector_cloned("ValidSource");
             crate::trigger::trigger_championed::TriggerChampioned::parse(valid_card, valid_source)
         }
         "Clashed" => {
-            let valid_player = params.get_cloned(keys::VALID_PLAYER);
+            let valid_player = params.selector_cloned(keys::VALID_PLAYER);
             let won = params.get("Won").map(|v| v.eq_ignore_ascii_case("True"));
             crate::trigger::trigger_clashed::TriggerClashed::parse(valid_player, won)
         }
@@ -1296,7 +1270,7 @@ pub fn parse_trigger(raw: &str, next_id: &mut u32) -> Option<Trigger> {
         "CrankContraption" | "CrankAdvanced" => crate::trigger::trigger_crank_contraption::TriggerCrankContraption::parse(&params),
         "PayCumulativeUpkeep" => crate::trigger::trigger_pay_cumulative_upkeep::TriggerPayCumulativeUpkeep::parse(&params),
         "ChaosEnsues" => {
-            let valid_player = params.get_cloned(keys::VALID_PLAYER);
+            let valid_player = params.selector_cloned(keys::VALID_PLAYER);
             crate::trigger::trigger_chaos_ensues::TriggerChaosEnsues::parse(valid_player)
         }
         "BecomesSaddled" => crate::trigger::trigger_becomes_saddled::TriggerBecomesSaddled::parse(&params),
@@ -1327,8 +1301,8 @@ pub fn parse_trigger(raw: &str, next_id: &mut u32) -> Option<Trigger> {
         TriggerType::SpellCast | TriggerType::SpellCastOrCopy
     ) {
         let valid_card_is_self = params
-            .get(keys::VALID_CARD)
-            .map(|v| v.eq_ignore_ascii_case("Card.Self"))
+            .selector(keys::VALID_CARD)
+            .map(|selector| selector.is_any_of(["Card.Self"]))
             .unwrap_or(false);
         if valid_card_is_self && !active_zones.contains(&ZoneType::Stack) {
             active_zones.push(ZoneType::Stack);
@@ -1336,7 +1310,7 @@ pub fn parse_trigger(raw: &str, next_id: &mut u32) -> Option<Trigger> {
     }
 
     if !params.has(keys::TRIGGER_ZONES) && mode.trigger_type() == TriggerType::ChangesZone {
-        if let Some(valid_card) = params.get(keys::VALID_CARD) {
+        if let Some(valid_card) = params.selector(keys::VALID_CARD) {
             let leaves_battlefield = params
                 .get(keys::ORIGIN)
                 .map(|origin| origin.split(',').any(|z| z.trim() == "Battlefield"))
@@ -1345,7 +1319,11 @@ pub fn parse_trigger(raw: &str, next_id: &mut u32) -> Option<Trigger> {
                 active_zones = vec![ZoneType::Battlefield];
             }
 
-            let self_trigger = valid_card.contains("Self");
+            let self_trigger = valid_card
+                .alternatives
+                .iter()
+                .flat_map(|alternative| &alternative.parts)
+                .any(|part| part.value.eq_ignore_ascii_case("Self"));
             let any_origin = params
                 .get(keys::ORIGIN)
                 .map(|origin| origin.eq_ignore_ascii_case("Any"))
@@ -1415,7 +1393,7 @@ mod tests {
         assert_eq!(params.get("Mode"), Some("ChangesZone"));
         assert_eq!(params.get("Origin"), Some("Any"));
         assert_eq!(params.get("Destination"), Some("Battlefield"));
-        assert_eq!(params.get("ValidCard"), Some("Card.Self"));
+        assert_eq!(params.selector_value("ValidCard"), Some("Card.Self"));
         assert_eq!(params.get("Execute"), Some("TrigDraw"));
     }
 

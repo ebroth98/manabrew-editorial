@@ -1,8 +1,9 @@
 use forge_foundation::ZoneType;
 
-use super::{matches_valid_cards, parse_param, resolve_numeric_svar, EffectContext};
+use super::{matches_valid_cards_for_sa, resolve_numeric_svar, EffectContext};
 use crate::card::card_damage_map::DamageTarget;
 use crate::ids::CardId;
+use crate::parsing::keys;
 use crate::spellability::SpellAbility;
 
 /// `SP$ EachDamage` — each matching creature/player deals damage.
@@ -26,19 +27,19 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
         ctx.game.ensure_pending_damage_maps();
     }
 
-    let valid_filter = sa
+    let valid_cards = sa.params.selector(keys::VALID_CARDS);
+    let fixed_dmg = sa
         .params
-        .get("ValidCards")
-        .map(|s| s.to_string())
-        .unwrap_or_else(|| "Creature".to_string());
-    let fixed_dmg = parse_param(&sa.ability_text, "NumDmg$ ").or_else(|| {
-        let v = resolve_numeric_svar(ctx.game, sa, "NumDmg", -1);
-        if v == -1 {
-            None
-        } else {
-            Some(v)
-        }
-    });
+        .has("NumDmg")
+        .then(|| {
+            let v = resolve_numeric_svar(ctx.game, sa, "NumDmg", -1);
+            if v == -1 {
+                None
+            } else {
+                Some(v)
+            }
+        })
+        .flatten();
 
     let player_ids = ctx.game.player_order.clone();
     let mut damagers: Vec<CardId> = Vec::new();
@@ -46,7 +47,8 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     for &pid in &player_ids {
         let zone_cards = ctx.game.cards_in_zone(ZoneType::Battlefield, pid).to_vec();
         for cid in zone_cards {
-            if matches_valid_cards(ctx.game.card(cid), &valid_filter, sa.activating_player) {
+            if matches_valid_cards_for_sa(ctx.game, sa, ctx.game.card(cid), valid_cards, "Creature")
+            {
                 damagers.push(cid);
             }
         }

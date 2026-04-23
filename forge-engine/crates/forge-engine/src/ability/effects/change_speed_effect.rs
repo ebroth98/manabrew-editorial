@@ -10,7 +10,7 @@ use crate::spellability::SpellAbility;
 #[forge_engine_macros::spell_effect(ChangeSpeedEffect)]
 fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let mode = sa.params.get("Mode").unwrap_or("Increase");
-    let players = if let Some(defined) = sa.params.get("Defined") {
+    let players = if let Some(defined) = sa.defined() {
         crate::ability::ability_utils::resolve_defined_players_with_sa(
             defined,
             sa,

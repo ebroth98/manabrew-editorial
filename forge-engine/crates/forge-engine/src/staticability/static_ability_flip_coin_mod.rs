@@ -18,8 +18,8 @@ pub fn fixed_result(game: &GameState, player: PlayerId) -> Option<bool> {
             .iter()
             .filter(|sa| sa.mode == StaticMode::FlipCoinMod && sa.zones_check(card.zone))
         {
-            if !valid_filter::matches_valid_player_opt(
-                st_ab.params.get(keys::VALID_PLAYER),
+            if !valid_filter::matches_valid_player_selector_opt(
+                st_ab.params.selector(keys::VALID_PLAYER),
                 player,
                 card.controller,
             ) {

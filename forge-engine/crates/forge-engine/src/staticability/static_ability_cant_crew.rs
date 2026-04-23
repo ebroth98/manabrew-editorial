@@ -25,5 +25,9 @@ pub fn apply_cant_crew(
     card: &Card,
     source: &Card,
 ) -> bool {
-    valid_filter::matches_valid_card_opt(st_ab.params.get(keys::VALID_CARD), card, source)
+    valid_filter::matches_valid_card_selector_opt(
+        st_ab.params.selector(keys::VALID_CARD),
+        card,
+        source,
+    )
 }

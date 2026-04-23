@@ -1,20 +1,23 @@
 use serde::{Deserialize, Serialize};
 
-use crate::event::{RunParams};
-use crate::trigger::TriggerType;
+use crate::event::RunParams;
 use crate::game::GameState;
 use crate::spellability::SpellAbility;
+use crate::trigger::TriggerType;
 
 use super::trigger::TriggerBehavior;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TriggerClashed {
-    pub valid_player: Option<String>,
+    pub valid_player: Option<crate::parsing::CompiledSelector>,
     pub won: Option<bool>,
 }
 
 impl TriggerClashed {
-    pub fn parse(valid_player: Option<String>, won: Option<bool>) -> Box<dyn TriggerBehavior> {
+    pub fn parse(
+        valid_player: Option<crate::parsing::CompiledSelector>,
+        won: Option<bool>,
+    ) -> Box<dyn TriggerBehavior> {
         Box::new(Self { valid_player, won })
     }
 }

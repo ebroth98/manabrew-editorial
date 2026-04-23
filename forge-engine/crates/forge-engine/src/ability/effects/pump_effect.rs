@@ -1,6 +1,6 @@
 use forge_foundation::ZoneType;
 
-use super::{parse_param, resolve_numeric_svar, EffectContext};
+use super::{resolve_numeric_svar, EffectContext};
 use crate::card::card_util;
 use crate::card::perpetual::perpetual_interface::PerpetualInterface;
 use crate::card::perpetual::{perpetual_keywords, perpetual_pt_boost};
@@ -83,12 +83,10 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     }
 
     let att_bonus = PtBonus::parse(sa.params.get("NumAtt"), || {
-        parse_param(&sa.ability_text, "NumAtt$ ")
-            .unwrap_or_else(|| resolve_numeric_svar(ctx.game, sa, "NumAtt", 0))
+        resolve_numeric_svar(ctx.game, sa, keys::NUM_ATT, 0)
     });
     let def_bonus = PtBonus::parse(sa.params.get("NumDef"), || {
-        parse_param(&sa.ability_text, "NumDef$ ")
-            .unwrap_or_else(|| resolve_numeric_svar(ctx.game, sa, "NumDef", 0))
+        resolve_numeric_svar(ctx.game, sa, keys::NUM_DEF, 0)
     });
 
     // Parse KW$ parameter for keyword grants (e.g. "KW$ Haste" or "KW$ Flying & Trample")
@@ -161,6 +159,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
             .get(keys::VALID_TGTS)
             .map(|s| s.to_string())
             .unwrap_or_default();
+        let valid_tgts_selector = sa.params.selector(keys::VALID_TGTS);
         let all_bf: Vec<crate::ids::CardId> = ctx
             .game
             .player_order
@@ -172,7 +171,13 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
             if ctx.game.card(cid).zone != ZoneType::Battlefield {
                 continue;
             }
-            if !super::matches_valid_cards(ctx.game.card(cid), &valid_tgts, sa.activating_player) {
+            if !super::matches_valid_cards_for_sa(
+                ctx.game,
+                sa,
+                ctx.game.card(cid),
+                valid_tgts_selector,
+                &valid_tgts,
+            ) {
                 continue;
             }
             let target = ctx.game.card(cid);

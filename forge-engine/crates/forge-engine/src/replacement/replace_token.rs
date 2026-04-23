@@ -8,10 +8,10 @@ use crate::ids::CardId;
 use crate::parsing::keys;
 
 use super::replacement_effect::ReplacementEffect;
-use crate::card_trait_base::CardTrait;
 use super::replacement_handler::{execute_replace_with_numeric_update, ReplacementEvent};
 use super::replacement_result::ReplacementResult;
 use super::replacement_type::ReplacementType;
+use crate::card_trait_base::CardTrait;
 
 /// Apply the token amount filter based on the effect's `ReplaceWith$` param.
 ///
@@ -54,8 +54,8 @@ pub fn can_replace(
     {
         return false;
     }
-    if let Some(valid) = effect.params.get(keys::VALID_PLAYER) {
-        if !effect.matches_valid_player(valid, player, source_card) {
+    if let Some(valid) = effect.params.selector(keys::VALID_PLAYER) {
+        if !effect.matches_compiled_valid_player(valid, player, source_card) {
             return false;
         }
     }

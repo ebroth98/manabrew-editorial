@@ -88,7 +88,7 @@ fn evaluate_branch_condition(ctx: &EffectContext, sa: &SpellAbility) -> bool {
                 .any(|cid| ctx.game.card(cid).type_line.has_subtype(&chosen_type));
         }
         return remembered.iter().copied().any(|cid| {
-            super::matches_valid_cards(ctx.game.card(cid), valid_filter, sa.activating_player)
+            super::matches_valid_cards_for_sa(ctx.game, sa, ctx.game.card(cid), None, valid_filter)
         });
     }
 

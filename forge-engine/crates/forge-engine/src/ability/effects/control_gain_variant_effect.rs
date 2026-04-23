@@ -1,6 +1,6 @@
 use forge_foundation::ZoneType;
 
-use super::{matches_valid_cards, EffectContext};
+use super::{matches_valid_cards_for_sa, EffectContext};
 use crate::spellability::SpellAbility;
 
 /// `SP$ ControlGainVariant` — complex control redistribution.
@@ -15,8 +15,6 @@ use crate::spellability::SpellAbility;
 /// `ControlGainVariantEffect` class extending `SpellAbilityEffect`.
 #[forge_engine_macros::spell_effect(ControlGainVariantEffect)]
 fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
-    let controller = sa.activating_player;
-
     let mode = sa
         .params
         .get("ChangeController")
@@ -28,6 +26,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
         .get("AllValid")
         .map(|s| s.to_string())
         .unwrap_or_else(|| "Permanent".to_string());
+    let filter_selector = sa.params.selector_cloned("AllValid");
 
     // Collect all matching permanents on the battlefield
     let matching: Vec<crate::ids::CardId> = {
@@ -35,7 +34,13 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
         for &pid in &ctx.game.player_order.clone() {
             let zone_cards = ctx.game.cards_in_zone(ZoneType::Battlefield, pid).to_vec();
             for cid in zone_cards {
-                if matches_valid_cards(ctx.game.card(cid), &filter, controller) {
+                if matches_valid_cards_for_sa(
+                    ctx.game,
+                    sa,
+                    ctx.game.card(cid),
+                    filter_selector.as_ref(),
+                    &filter,
+                ) {
                     result.push(cid);
                 }
             }

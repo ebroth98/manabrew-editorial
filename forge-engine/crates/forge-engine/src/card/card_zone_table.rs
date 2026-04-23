@@ -5,10 +5,11 @@ use std::collections::HashMap;
 use forge_foundation::ZoneType;
 use serde::{Deserialize, Serialize};
 
-use crate::ability::ability_utils;
+use crate::card::valid_filter;
 use crate::event::{RunParams, ZoneChangeRecord};
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
+use crate::parsing::CompiledSelector;
 use crate::spellability::SpellAbility;
 use crate::trigger::TriggerHandler;
 use crate::trigger::TriggerType;
@@ -75,7 +76,8 @@ impl CardZoneTable {
         game: &GameState,
         origin: Option<&[ZoneType]>,
         destination: Option<&[ZoneType]>,
-        valid: Option<&str>,
+        valid: Option<&CompiledSelector>,
+        source: CardId,
         source_controller: PlayerId,
     ) -> Vec<CardId> {
         let mut out = Vec::new();
@@ -94,9 +96,15 @@ impl CardZoneTable {
         }
         if let Some(filter) = valid {
             out.retain(|&cid| {
-                ability_utils::matches_valid_cards(game.card(cid), filter, source_controller)
+                valid_filter::matches_valid_card_selector_in_game(
+                    filter,
+                    game.card(cid),
+                    game.card(source),
+                    game,
+                )
             });
         }
+        let _ = source_controller;
         out
     }
 

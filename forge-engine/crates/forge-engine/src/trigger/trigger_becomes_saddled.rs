@@ -2,23 +2,20 @@ use serde::{Deserialize, Serialize};
 
 use super::trigger::TriggerBehavior;
 use crate::{
-    event::RunParams,
+    event::RunParams, game::GameState, parsing::Params, spellability::SpellAbility,
     trigger::TriggerType,
-    game::GameState,
-    parsing::Params,
-    spellability::SpellAbility,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TriggerBecomesSaddled {
-    pub valid_saddled: Option<String>,
+    pub valid_saddled: Option<crate::parsing::CompiledSelector>,
     pub first_time_saddled: bool,
 }
 
 impl TriggerBecomesSaddled {
     pub fn parse(params: &Params) -> Box<dyn TriggerBehavior> {
         Box::new(Self {
-            valid_saddled: params.get_cloned("ValidSaddled"),
+            valid_saddled: params.selector_cloned("ValidSaddled"),
             first_time_saddled: params.has("FirstTimeSaddled"),
         })
     }

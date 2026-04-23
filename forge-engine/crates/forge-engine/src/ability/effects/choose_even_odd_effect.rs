@@ -17,7 +17,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
 
     let players: Vec<PlayerId> = if let Some(pid) = sa.target_chosen.target_player {
         vec![pid]
-    } else if let Some(defined) = sa.params.get(keys::DEFINED) {
+    } else if let Some(defined) = sa.defined() {
         resolve_defined_players(defined, sa.activating_player, ctx.game)
     } else {
         vec![sa.activating_player]

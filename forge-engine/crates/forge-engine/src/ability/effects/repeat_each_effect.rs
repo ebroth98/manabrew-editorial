@@ -1,6 +1,6 @@
 use forge_foundation::ZoneType;
 
-use super::{matches_valid_cards, parse_zone_type, resolve_defined_players, EffectContext};
+use super::{matches_valid_cards_for_sa, parse_zone_type, resolve_defined_players, EffectContext};
 use crate::parsing::keys;
 use crate::spellability::{build_spell_ability, SpellAbility};
 
@@ -53,6 +53,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
 
     // Determine iteration mode: cards or players
     if let Some(repeat_cards_filter) = sa.params.get_cloned(keys::REPEAT_CARDS) {
+        let repeat_cards_selector = sa.params.selector_cloned(keys::REPEAT_CARDS);
         // Card iteration path
         let zone = sa
             .params
@@ -66,7 +67,13 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
             for &pid in &ctx.game.player_order.clone() {
                 let zone_cards = ctx.game.cards_in_zone(zone, pid).to_vec();
                 for cid in zone_cards {
-                    if matches_valid_cards(ctx.game.card(cid), &repeat_cards_filter, controller) {
+                    if matches_valid_cards_for_sa(
+                        ctx.game,
+                        sa,
+                        ctx.game.card(cid),
+                        repeat_cards_selector.as_ref(),
+                        &repeat_cards_filter,
+                    ) {
                         result.push(cid);
                     }
                 }

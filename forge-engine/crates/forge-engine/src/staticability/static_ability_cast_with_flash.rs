@@ -21,10 +21,11 @@ pub fn any_with_flash(
             .iter()
             .filter(|sa| sa.mode == StaticMode::CastWithFlash)
         {
-            if !matches_valid_card(st_ab.params.get(keys::VALID_CARD), spell_card, source) {
+            if !matches_valid_card(st_ab.params.selector(keys::VALID_CARD), spell_card, source) {
                 continue;
             }
-            if !matches_valid_player(st_ab.params.get(keys::CASTER), caster, source.controller) {
+            let caster_filter = st_ab.params.selector_cloned(keys::CASTER);
+            if !matches_valid_player(caster_filter.as_ref(), caster, source.controller) {
                 continue;
             }
             if let Some(valid_sa) = st_ab.params.get(keys::VALID_SA) {
@@ -64,10 +65,11 @@ pub fn apply_with_flash_needs_info(
     caster: PlayerId,
     spell_abilities: &[String],
 ) -> bool {
-    if !matches_valid_card(st_ab.params.get(keys::VALID_CARD), spell_card, source) {
+    if !matches_valid_card(st_ab.params.selector(keys::VALID_CARD), spell_card, source) {
         return false;
     }
-    if !matches_valid_player(st_ab.params.get(keys::CASTER), caster, source.controller) {
+    let caster_filter = st_ab.params.selector_cloned(keys::CASTER);
+    if !matches_valid_player(caster_filter.as_ref(), caster, source.controller) {
         return false;
     }
     if let Some(valid_sa) = st_ab.params.get(keys::VALID_SA) {
@@ -91,20 +93,28 @@ pub fn apply_with_flash_ability(
     source: &Card,
     caster: PlayerId,
 ) -> bool {
-    matches_valid_card(st_ab.params.get(keys::VALID_CARD), spell_card, source)
-        && matches_valid_player(st_ab.params.get(keys::CASTER), caster, source.controller)
+    matches_valid_card(st_ab.params.selector(keys::VALID_CARD), spell_card, source)
+        && matches_valid_player(
+            st_ab.params.selector_cloned(keys::CASTER).as_ref(),
+            caster,
+            source.controller,
+        )
 }
 
 fn matches_valid_player(
-    valid: Option<&str>,
+    valid: Option<&crate::parsing::CompiledSelector>,
     player: PlayerId,
     source_controller: PlayerId,
 ) -> bool {
-    valid_filter::matches_valid_player_opt(valid, player, source_controller)
+    valid_filter::matches_valid_player_selector_opt(valid, player, source_controller)
 }
 
-fn matches_valid_card(valid: Option<&str>, card: &Card, source: &Card) -> bool {
-    valid_filter::matches_valid_card_opt(valid, card, source)
+fn matches_valid_card(
+    valid: Option<&crate::parsing::CompiledSelector>,
+    card: &Card,
+    source: &Card,
+) -> bool {
+    valid_filter::matches_valid_card_selector_opt(valid, card, source)
 }
 
 fn spell_ability_matches(valid_sa: &str, ability_line: &str) -> bool {

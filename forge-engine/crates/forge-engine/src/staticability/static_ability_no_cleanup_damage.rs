@@ -11,7 +11,7 @@ pub fn damage_not_removed(cards: &[Card], card: &Card) -> bool {
             .iter()
             .filter(|sa| sa.mode == StaticMode::NoCleanupDamage)
         {
-            if matches_valid_card(st_ab.params.get(keys::VALID_CARD), card, source) {
+            if matches_valid_card(st_ab.params.selector(keys::VALID_CARD), card, source) {
                 return true;
             }
         }
@@ -19,6 +19,10 @@ pub fn damage_not_removed(cards: &[Card], card: &Card) -> bool {
     false
 }
 
-fn matches_valid_card(valid: Option<&str>, card: &Card, source: &Card) -> bool {
-    valid_filter::matches_valid_card_opt(valid, card, source)
+fn matches_valid_card(
+    valid: Option<&crate::parsing::CompiledSelector>,
+    card: &Card,
+    source: &Card,
+) -> bool {
+    valid_filter::matches_valid_card_selector_opt(valid, card, source)
 }

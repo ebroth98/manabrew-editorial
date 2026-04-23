@@ -97,10 +97,17 @@ fn check_repeat_conditions(ctx: &mut EffectContext, sa: &SpellAbility) -> bool {
                 .filter(|&cid| remembered_names.contains(&ctx.game.card(cid).card_name))
                 .count() as i32
         } else {
+            let selector = crate::parsing::CompiledSelector::parse(present);
             cards
                 .into_iter()
                 .filter(|&cid| {
-                    super::matches_valid_cards(ctx.game.card(cid), present, sa.activating_player)
+                    super::matches_valid_cards_for_sa(
+                        ctx.game,
+                        sa,
+                        ctx.game.card(cid),
+                        Some(&selector),
+                        present,
+                    )
                 })
                 .count() as i32
         };

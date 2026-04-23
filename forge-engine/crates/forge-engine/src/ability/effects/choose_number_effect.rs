@@ -1,4 +1,4 @@
-use super::{parse_param, resolve_numeric_svar, EffectContext};
+use super::{resolve_numeric_svar, EffectContext};
 use crate::spellability::SpellAbility;
 
 /// `SP$ ChooseNumber` — the activating player chooses a number.
@@ -20,10 +20,8 @@ use crate::spellability::SpellAbility;
 #[forge_engine_macros::spell_effect(ChooseNumberEffect)]
 fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let controller = sa.activating_player;
-    let min = parse_param(&sa.ability_text, "Min$ ")
-        .unwrap_or_else(|| resolve_numeric_svar(ctx.game, sa, "Min", 0));
-    let max = parse_param(&sa.ability_text, "Max$ ")
-        .unwrap_or_else(|| resolve_numeric_svar(ctx.game, sa, "Max", 10));
+    let min = resolve_numeric_svar(ctx.game, sa, "Min", 0);
+    let max = resolve_numeric_svar(ctx.game, sa, "Max", 10);
 
     let is_random = sa
         .params

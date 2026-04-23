@@ -17,7 +17,7 @@ use crate::spellability::SpellAbility;
 #[forge_engine_macros::spell_effect(ChoosePlayerEffect)]
 fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let controller = sa.activating_player;
-    let defined = sa.params.get(keys::DEFINED).unwrap_or("You");
+    let defined = sa.defined().unwrap_or("You");
     let choosers = resolve_defined_players(defined, controller, ctx.game);
 
     let valid_players: Vec<_> = if let Some(choices) = sa.params.get(keys::CHOICES) {

@@ -22,7 +22,7 @@ pub fn cant_sacrifice(
                     continue;
                 }
             }
-            if !matches_valid_card(st_ab.params.get(keys::VALID_CARD), card, source) {
+            if !matches_valid_card(st_ab.params.selector(keys::VALID_CARD), card, source) {
                 continue;
             }
             if !matches_valid_cause(st_ab.params.get(keys::VALID_CAUSE), cause) {
@@ -46,12 +46,16 @@ pub fn apply_cant_sacrifice_ability(
             return false;
         }
     }
-    matches_valid_card(st_ab.params.get(keys::VALID_CARD), card, source)
+    matches_valid_card(st_ab.params.selector(keys::VALID_CARD), card, source)
         && matches_valid_cause(st_ab.params.get(keys::VALID_CAUSE), cause)
 }
 
-fn matches_valid_card(valid: Option<&str>, card: &Card, source: &Card) -> bool {
-    valid_filter::matches_valid_card_opt(valid, card, source)
+fn matches_valid_card(
+    valid: Option<&crate::parsing::CompiledSelector>,
+    card: &Card,
+    source: &Card,
+) -> bool {
+    valid_filter::matches_valid_card_selector_opt(valid, card, source)
 }
 
 pub(crate) fn matches_valid_cause(valid: Option<&str>, cause: Option<&SpellAbility>) -> bool {

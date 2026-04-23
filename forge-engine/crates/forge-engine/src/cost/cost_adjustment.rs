@@ -258,10 +258,14 @@ fn compute_cost_adjustment_inner(
             }
 
             // ── checkRequirement: ValidCard$ ─────────────────────────
-            if let Some(valid_card) = st_ab.params.get(keys::VALID_CARD) {
-                if !matches_valid_card(valid_card, spell_card, source) {
-                    continue;
-                }
+            if !matches_valid_card(
+                st_ab.params.selector(keys::VALID_CARD),
+                spell_card,
+                source,
+                game,
+                targets,
+            ) {
+                continue;
             }
 
             // ── checkRequirement: EffectZone$ / AffectedZone$ ────────
@@ -307,13 +311,13 @@ fn compute_cost_adjustment_inner(
             }
 
             // ── checkRequirement: ValidTarget$ ───────────────────────
-            if let Some(valid_target) = st_ab.params.get(keys::VALID_TARGET) {
+            if let Some(valid_target) = st_ab.params.selector(keys::VALID_TARGET) {
                 let target_valid = if targets.is_empty() {
                     false
                 } else {
                     targets.iter().any(|&tid| {
                         let target = game.card(tid);
-                        matches_valid_card(valid_target, target, source)
+                        matches_valid_card(Some(valid_target), target, source, game, targets)
                     })
                 };
                 let unless = st_ab
@@ -487,10 +491,14 @@ pub fn compute_raise_cost_parts_with_targets(
                 // IncreaseCost without Activator$ → universal effect (e.g. Thalia)
             }
 
-            if let Some(valid_card) = st_ab.params.get(keys::VALID_CARD) {
-                if !matches_valid_card(valid_card, spell_card, source) {
-                    continue;
-                }
+            if !matches_valid_card(
+                st_ab.params.selector(keys::VALID_CARD),
+                spell_card,
+                source,
+                game,
+                targets,
+            ) {
+                continue;
             }
 
             if let Some(zone_str) = st_ab
@@ -528,13 +536,13 @@ pub fn compute_raise_cost_parts_with_targets(
                 continue;
             }
 
-            if let Some(valid_target) = st_ab.params.get(keys::VALID_TARGET) {
+            if let Some(valid_target) = st_ab.params.selector(keys::VALID_TARGET) {
                 let target_valid = if targets.is_empty() {
                     false
                 } else {
                     targets.iter().any(|&tid| {
                         let target = game.card(tid);
-                        matches_valid_card(valid_target, target, source)
+                        matches_valid_card(Some(valid_target), target, source, game, targets)
                     })
                 };
                 let unless = st_ab
@@ -688,11 +696,14 @@ fn evaluate_count_expr(game: &GameState, source: &Card, expr: &str, caster: Play
     // (max CMC). Add more here as parity tests surface them.
     if let Some(rest) = expr.strip_prefix("Count$Valid ") {
         if let Some((filter, aggregator)) = rest.split_once('$') {
+            let selector = crate::parsing::CompiledSelector::parse(filter);
             let matches: Vec<&Card> = game
                 .cards
                 .iter()
                 .filter(|c| c.zone == ZoneType::Battlefield)
-                .filter(|c| valid_filter::matches_valid_card(filter, c, source))
+                .filter(|c| {
+                    valid_filter::matches_valid_card_selector_in_game(&selector, c, source, game)
+                })
                 .collect();
             return match aggregator {
                 "Amount" => matches.len() as i32,
@@ -746,8 +757,17 @@ fn zone_name_matches(zone: ZoneType, name: &str) -> bool {
 
 // ── ValidCard$ matching (mirrors Java's checkRequirement ValidCard) ──
 
-pub(crate) fn matches_valid_card(valid: &str, spell: &Card, source: &Card) -> bool {
-    valid_filter::matches_valid_card(valid, spell, source)
+pub(crate) fn matches_valid_card(
+    valid: Option<&crate::parsing::CompiledSelector>,
+    spell: &Card,
+    source: &Card,
+    game: &GameState,
+    targeted_cards: &[CardId],
+) -> bool {
+    let context = valid_filter::MatchContext::from_source(source)
+        .with_game(game)
+        .with_targets(targeted_cards, &[]);
+    valid_filter::matches_valid_card_selector_opt_with_context(valid, spell, context)
 }
 
 // ── Affinity / Delve / Convoke / Improvise helpers ──────────────────

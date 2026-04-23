@@ -1513,14 +1513,17 @@ impl GameLoop {
                     {
                         let params = Params::from_raw(&trigger_svar);
                         // Check ValidCard$ filter against the spell being cast
-                        let valid = params.get(keys::VALID_CARD).unwrap_or("Card");
+                        let valid = params.selector(keys::VALID_CARD);
                         let card = game.card(card_id);
-                        let valid_ok = valid == "Card"
-                            || (valid.contains("Creature") && card.is_creature())
-                            || (valid.contains("Dragon") && card.type_line.has_subtype("Dragon"))
-                            || (valid.contains("cmcGE6") && card.mana_cost.cmc() >= 6)
-                            || (valid.contains("cmcGE5") && card.mana_cost.cmc() >= 5)
-                            || (valid.contains("IsCommander") && card.is_commander);
+                        let source = game.card(*source_id);
+                        let context = crate::card::valid_filter::MatchContext::from_source(source)
+                            .with_game(game)
+                            .with_combat(&self.combat)
+                            .with_triggering(Some(card_id), Some(player));
+                        let valid_ok =
+                            crate::card::valid_filter::matches_valid_card_selector_opt_with_context(
+                                valid, card, context,
+                            );
                         if valid_ok {
                             if let Some(execute) = params.get(keys::EXECUTE) {
                                 if let Some(exec_svar) =

@@ -2,24 +2,21 @@ use serde::{Deserialize, Serialize};
 
 use super::trigger::TriggerBehavior;
 use crate::{
-    event::RunParams,
+    event::RunParams, game::GameState, parsing::Params, spellability::SpellAbility,
     trigger::TriggerType,
-    game::GameState,
-    parsing::Params,
-    spellability::SpellAbility,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TriggerAbilityResolves {
     pub valid_spell_ability: Option<String>,
-    pub valid_source: Option<String>,
+    pub valid_source: Option<crate::parsing::CompiledSelector>,
 }
 
 impl TriggerAbilityResolves {
     pub fn parse(params: &Params) -> Box<dyn TriggerBehavior> {
         Box::new(Self {
             valid_spell_ability: params.get_cloned("ValidSpellAbility"),
-            valid_source: params.get_cloned("ValidSource"),
+            valid_source: params.selector_cloned("ValidSource"),
         })
     }
 }
