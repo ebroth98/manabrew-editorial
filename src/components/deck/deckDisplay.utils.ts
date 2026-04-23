@@ -1,0 +1,80 @@
+import type { Card } from "@/types/openmagic";
+
+const VALID_COLORS = ["W", "U", "B", "R", "G", "C"] as const;
+
+const MONO_COLOR_CLASSES: Record<string, string> = {
+  W: "text-amber-500",
+  U: "text-blue-500",
+  B: "text-violet-500",
+  R: "text-red-500",
+  G: "text-emerald-500",
+  C: "text-muted-foreground",
+};
+
+const MULTI_COLOR_CLASSES: Record<string, string> = {
+  WU: "text-sky-400",
+  WB: "text-stone-200",
+  WR: "text-orange-400",
+  WG: "text-lime-400",
+  UB: "text-indigo-400",
+  UR: "text-fuchsia-400",
+  UG: "text-cyan-400",
+  BR: "text-rose-400",
+  BG: "text-teal-400",
+  RG: "text-yellow-400",
+  WUB: "text-indigo-300",
+  WUR: "text-orange-300",
+  WUG: "text-cyan-300",
+  WBR: "text-rose-300",
+  WBG: "text-lime-300",
+  WRG: "text-yellow-300",
+  UBR: "text-fuchsia-300",
+  UBG: "text-teal-300",
+  URG: "text-cyan-300",
+  BRG: "text-orange-300",
+  WUBR: "text-fuchsia-200",
+  WUBG: "text-cyan-200",
+  WURG: "text-yellow-200",
+  WBRG: "text-orange-200",
+  UBRG: "text-emerald-200",
+  WUBRG: "text-foreground",
+};
+
+export const DECK_NAME_SHADOW_CLASS =
+  "drop-shadow-[0_1px_2px_rgba(0,0,0,0.35)]" as const;
+
+export function getDeckColors(
+  cards: Pick<Card, "color" | "manaCost">[],
+): string[] {
+  const seen = new Set<string>();
+  for (const card of cards) {
+    for (const ch of card.color ?? "") {
+      if (VALID_COLORS.includes(ch as (typeof VALID_COLORS)[number])) {
+        seen.add(ch);
+      }
+    }
+    if (card.manaCost?.includes("{C}")) seen.add("C");
+  }
+  return VALID_COLORS.filter((color) => seen.has(color));
+}
+
+export function getDeckColorCost(
+  cards: Pick<Card, "color" | "manaCost">[],
+): string {
+  return getDeckColors(cards)
+    .map((color) => `{${color}}`)
+    .join("");
+}
+
+export function getDeckNameColorClass(
+  cards: Pick<Card, "color" | "manaCost">[],
+  presetColor?: string,
+): string {
+  if (presetColor) return presetColor;
+  const colors = getDeckColors(cards);
+  if (colors.length === 0) return "text-foreground";
+  if (colors.length === 1) return MONO_COLOR_CLASSES[colors[0]] ?? "text-foreground";
+
+  const colorKey = colors.join("");
+  return MULTI_COLOR_CLASSES[colorKey] ?? "text-foreground";
+}

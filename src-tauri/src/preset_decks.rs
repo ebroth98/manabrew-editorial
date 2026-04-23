@@ -27,12 +27,14 @@ pub struct CardIdentity {
 
 /// Metadata for a preset deck, returned to the frontend via `get_preset_decks`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct PresetDeckInfo {
     pub id: String,
     pub label: String,
     pub desc: String,
     /// Tailwind CSS text-color class used for the deck title in the UI.
     pub color: String,
+    pub cover_card_name: Option<String>,
 }
 
 // ── JSON deck file schema ──────────────────────────────────────────
@@ -229,6 +231,18 @@ fn get_preset_by_id(id: &str) -> Option<&'static LoadedPreset> {
     get_registry().iter().find(|p| p.id == id)
 }
 
+fn choose_cover_card_name(cards: &[DeckCardEntry]) -> Option<String> {
+    cards.iter()
+        .find(|card| {
+            !matches!(
+                card.name.as_str(),
+                "Plains" | "Island" | "Swamp" | "Mountain" | "Forest" | "Wastes"
+            )
+        })
+        .or_else(|| cards.first())
+        .map(|card| card.name.clone())
+}
+
 // ── Public API ─────────────────────────────────────────────────────
 
 /// Return the ordered list of all available preset decks.
@@ -243,6 +257,7 @@ pub fn list_preset_decks() -> Vec<PresetDeckInfo> {
             label: p.label.clone(),
             desc: p.desc.clone(),
             color: p.color.clone(),
+            cover_card_name: choose_cover_card_name(&p.cards),
         })
         .collect()
 }

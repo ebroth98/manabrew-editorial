@@ -46,6 +46,7 @@ interface PresetDeck {
   label: string;
   desc: string;
   color: string;
+  coverCardName?: string;
   cards: Array<{ name: string; count: number; set?: string }>;
 }
 
@@ -163,6 +164,14 @@ function expandDeckList(
     }
   }
   return rawList.map((c) => ({ name: c.name, count: c.count ?? 1 }));
+}
+
+function choosePresetCoverCardName(
+  cards: Array<{ name: string; count: number; set?: string }>,
+): string | undefined {
+  return cards.find((card) => !/^([wburgc]|snow-)?basic land$/i.test(card.name))?.name
+    ?? cards.find((card) => !/^(plains|island|swamp|mountain|forest|wastes)$/i.test(card.name))?.name
+    ?? cards[0]?.name;
 }
 
 // ============================================================================
@@ -350,7 +359,13 @@ async function handleCommand(
     }
 
     case "get_preset_decks": {
-      return presetDecks;
+      return presetDecks.map((deck) => ({
+        id: deck.id,
+        label: deck.label,
+        desc: deck.desc,
+        color: deck.color,
+        coverCardName: deck.coverCardName ?? choosePresetCoverCardName(deck.cards),
+      }));
     }
 
     case "validate_deck_availability": {

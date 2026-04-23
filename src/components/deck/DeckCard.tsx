@@ -1,20 +1,24 @@
 import { useState } from "react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Pencil, Trash2 } from "lucide-react";
 import { DeckLabelBadge } from "@/components/deck/DeckLabelBadge";
+import {
+  DECK_NAME_SHADOW_CLASS,
+  getDeckColorCost,
+  getDeckNameColorClass,
+} from "@/components/deck/deckDisplay.utils";
+import { FormatBadge } from "@/components/game/FormatBadge";
+import { ManaSymbols } from "@/components/game/ManaSymbols";
+import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
-  DialogHeader,
-  DialogTitle,
   DialogDescription,
   DialogFooter,
+  DialogHeader,
+  DialogTitle,
 } from "@/components/ui/dialog";
-import { FormatBadge } from "@/components/game/FormatBadge";
-import { Pencil, Trash2 } from "lucide-react";
+import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
-import { extractColors } from "@/views/myDecks.utils";
-import { ManaSymbols } from "@/components/game/ManaSymbols";
 import type { SavedDeck } from "@/stores/useDeckStore";
 
 interface DeckCardProps {
@@ -43,7 +47,9 @@ export function DeckCard({
   onDelete,
   onEditNameChange,
 }: DeckCardProps) {
-  const deckColors = extractColors(deck.deck.cards);
+  const displayCards = [...deck.deck.cards, ...(deck.deck.commanders ?? [])];
+  const colorCost = getDeckColorCost(displayCards);
+  const titleColorClass = getDeckNameColorClass(displayCards);
   const [confirmOpen, setConfirmOpen] = useState(false);
 
   return (
@@ -57,16 +63,14 @@ export function DeckCard({
         )}
         onClick={onSelect}
       >
-        {/* Color identity */}
         <div className="w-16 shrink-0">
-          {deckColors.length > 0 ? (
-            <ManaSymbols cost={deckColors.map((c) => `{${c}}`).join("")} size="sm" />
+          {colorCost ? (
+            <ManaSymbols cost={colorCost} size="sm" />
           ) : (
-            <span className="text-xs text-muted-foreground italic">—</span>
+            <span className="text-xs text-muted-foreground italic">-</span>
           )}
         </div>
 
-        {/* Name + count + format badges */}
         <div className="flex-1 min-w-0">
           {isEditing ? (
             <Input
@@ -82,15 +86,13 @@ export function DeckCard({
               onClick={(e) => e.stopPropagation()}
             />
           ) : (
-            <p className="text-sm font-medium truncate">
+            <p className={cn("text-sm font-medium truncate", titleColorClass, DECK_NAME_SHADOW_CLASS)}>
               {deck.deck.name}
             </p>
           )}
           <div className="flex items-center gap-1 flex-wrap">
             <span className="text-xs text-muted-foreground">
-              {(deck.deck.commanders?.length ?? 0) > 0
-                ? deck.deck.cards.length + (deck.deck.commanders?.length ?? 0)
-                : deck.deck.cards.length} cards
+              {displayCards.length} cards
             </span>
             <FormatBadge formatId={deck.deck.format ?? "standard"} />
             {deck.deck.labels?.map((label) => (
@@ -99,7 +101,6 @@ export function DeckCard({
           </div>
         </div>
 
-        {/* Actions (visible on hover or selection) */}
         <div
           className={cn(
             "flex gap-1 shrink-0 transition-opacity",

@@ -18,6 +18,10 @@ import {
 } from "@/lib/formats";
 import { FormatBadge } from "@/components/game/FormatBadge";
 import { DeckSelectionCard } from "./DeckSelectionCard";
+import {
+  resolveDeckCoverSource,
+  resolvePresetDeckCoverSource,
+} from "@/components/deck/deckCover";
 import { cn } from "@/lib/utils";
 import { Search, Shuffle, Swords } from "lucide-react";
 import { getDeckFingerprint, serializeDeck } from "@/lib/decks";
@@ -89,6 +93,7 @@ export function CreateGameDialog({
     labels: currentDeck.labels,
     deckList: serializeDeck(currentDeck),
     isPreset: false as const,
+    cover: resolveDeckCoverSource(currentDeck),
     cards: [
       ...currentDeck.cards,
       ...currentDeck.sideboard,
@@ -110,6 +115,7 @@ export function CreateGameDialog({
       labels: s.deck.labels,
       deckList: serializeDeck(s.deck),
       isPreset: false as const,
+      cover: resolveDeckCoverSource(s.deck),
       cards: [
         ...s.deck.cards,
         ...s.deck.sideboard,
@@ -132,6 +138,7 @@ export function CreateGameDialog({
     color: deck.color,
     deckList: [{ name: deck.id, setCode: "", section: "main" as const }],
     isPreset: true as const,
+    cover: resolvePresetDeckCoverSource(deck.coverCardName),
     cards: [],
     commanderName: undefined as string | undefined,
   }));
@@ -216,7 +223,7 @@ export function CreateGameDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl p-0 gap-0 overflow-hidden">
+      <DialogContent className="w-[min(96vw,84rem)] max-w-6xl p-0 gap-0 overflow-hidden">
 
         {/* ── Header ── */}
         <div className="px-6 py-4 border-b">
@@ -231,7 +238,7 @@ export function CreateGameDialog({
         </div>
 
         {/* ── Body: left panel (settings) + right panel (deck picker) ── */}
-        <div className="flex overflow-hidden" style={{ maxHeight: "65vh" }}>
+        <div className="flex overflow-hidden" style={{ maxHeight: "78vh" }}>
 
           {/* Left panel — Format & options */}
           {!isLobbyMode && (
@@ -386,7 +393,7 @@ export function CreateGameDialog({
                   No preset decks match your search.
                 </p>
               ) : (
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-2 xl:grid-cols-3 gap-3">
                 {filteredPresetEntries.map((deck) => (
                   <DeckSelectionCard
                     key={deck.id}
@@ -396,6 +403,7 @@ export function CreateGameDialog({
                     color={deck.color}
                     deckList={deck.deckList}
                     cards={deck.cards}
+                    cover={deck.cover}
                     isPreset={deck.isPreset}
                     isSelected={selectedDeck === deck.id}
                     isLegal={true}
@@ -420,7 +428,7 @@ export function CreateGameDialog({
                   {searchLower ? "No saved decks match your search." : "No saved decks. Build one in the Deck Editor."}
                 </p>
               ) : (
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-2 xl:grid-cols-3 gap-3">
                   {filteredUserDecks.map((d) => {
                     const validation = validateDeckSections({
                       deckList: d.deckList,
@@ -438,6 +446,7 @@ export function CreateGameDialog({
                         labels={d.labels}
                         deckList={d.deckList}
                         cards={d.cards}
+                        cover={d.cover}
                         isPreset={d.isPreset}
                         isSelected={selectedDeck === d.id}
                         isLegal={validation.legal}

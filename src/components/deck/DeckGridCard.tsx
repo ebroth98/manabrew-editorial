@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -14,25 +13,14 @@ import { FormatBadge } from "@/components/game/FormatBadge";
 import { ManaSymbols } from "@/components/game/ManaSymbols";
 import { Pencil, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { extractColors } from "@/views/myDecks.utils";
 import type { SavedDeck } from "@/stores/useDeckStore";
-import type { Deck, Card } from "@/types/openmagic";
-import { getCardByName } from "@/api/scryfall";
+import { DeckCoverImage, resolveDeckCoverSource } from "@/components/deck/deckCover";
+import {
+  DECK_NAME_SHADOW_CLASS,
+  getDeckColorCost,
+  getDeckNameColorClass,
+} from "@/components/deck/deckDisplay.utils";
 
-/** Returns the card object used as cover (searches main + commanders). */
-function resolveCoverCard(deck: Deck): Card | undefined {
-  const allCards = [...deck.cards, ...(deck.commanders ?? [])];
-  if (deck.coverCardName) {
-    const found = allCards.find((c) => c.name === deck.coverCardName);
-    if (found) return found;
-  }
-  return deck.commanders?.[0] ?? deck.cards[0];
-}
-
-/** Scryfall art-crop URL for a card name (front face, direct redirect). */
-function frontArtCropUrl(cardName: string): string {
-  return `https://api.scryfall.com/cards/named?exact=${encodeURIComponent(cardName)}&format=image&version=art_crop`;
-}
 
 interface DeckGridCardProps {
   deck: SavedDeck;
@@ -43,31 +31,10 @@ interface DeckGridCardProps {
 
 export function DeckGridCard({ deck, onOpen, onDelete, onRename }: DeckGridCardProps) {
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const [artError, setArtError] = useState(false);
-  const colors = extractColors(deck.deck.cards);
-  const colorCost = colors.map((c) => `{${c}}`).join("");
-
-  const coverCard = resolveCoverCard(deck.deck);
-  const wantBackFace = coverCard?.isDoubleFaced && deck.deck.coverCardFace === 1;
-
-  // Fetch back-face art_crop only when a DFC is set to show its back
-  const { data: backFaceArtUrl } = useQuery({
-    queryKey: ["cover-back-face-art", coverCard?.name],
-    queryFn: async () => {
-      const scryfall = await getCardByName(coverCard!.name);
-      return scryfall.card_faces?.[1]?.image_uris?.art_crop ?? null;
-    },
-    enabled: !!coverCard && wantBackFace,
-    staleTime: Infinity,
-    gcTime: 1000 * 60 * 60,
-    retry: false,
-  });
-
-  const artUrl = !coverCard
-    ? undefined
-    : wantBackFace
-      ? (backFaceArtUrl ?? undefined)
-      : frontArtCropUrl(coverCard.name);
+  const displayCards = [...deck.deck.cards, ...(deck.deck.commanders ?? [])];
+  const colorCost = getDeckColorCost(displayCards);
+  const titleColorClass = getDeckNameColorClass(displayCards);
+  const cover = resolveDeckCoverSource(deck.deck);
 
   return (
     <>
@@ -78,17 +45,7 @@ export function DeckGridCard({ deck, onOpen, onDelete, onRename }: DeckGridCardP
         )}
         onClick={onOpen}
       >
-        {/* Cover art */}
-        {artUrl && !artError ? (
-          <img
-            src={artUrl}
-            alt={coverCard?.name}
-            className="absolute inset-0 w-full h-full object-cover"
-            onError={() => setArtError(true)}
-          />
-        ) : (
-          <div className="absolute inset-0 bg-gradient-to-br from-muted-foreground/5 to-muted-foreground/20" />
-        )}
+        <DeckCoverImage cover={cover} alt={cover?.cardName} />
 
         {/* Darkening overlay so bottom info is always readable */}
         <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-black/10" />
@@ -117,7 +74,7 @@ export function DeckGridCard({ deck, onOpen, onDelete, onRename }: DeckGridCardP
 
         {/* Bottom info overlay */}
         <div className="absolute bottom-0 left-0 right-0 px-2 pt-6 pb-2 z-10">
-          <p className="text-white text-xs font-semibold truncate leading-tight drop-shadow">
+          <p className={cn("text-white text-sm font-semibold truncate leading-tight", titleColorClass, DECK_NAME_SHADOW_CLASS)}>
             {deck.deck.name}
           </p>
           <div className="flex items-center gap-1 mt-1 flex-wrap">
@@ -126,6 +83,9 @@ export function DeckGridCard({ deck, onOpen, onDelete, onRename }: DeckGridCardP
             {deck.deck.labels?.map((label) => (
               <DeckLabelBadge key={label.name} label={label} size="sm" />
             ))}
+            <span className="ml-auto text-[10px] text-white/85">
+              {displayCards.length} cards
+            </span>
           </div>
         </div>
       </div>

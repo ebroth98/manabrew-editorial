@@ -42,6 +42,7 @@ export interface PresetDeckInfo {
   label: string;
   desc: string;
   color: string;
+  coverCardName?: string;
 }
 
 export interface DeckAvailabilityResult {

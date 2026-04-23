@@ -2,15 +2,75 @@ import type { ScryfallCard, ScryfallListResponse, ScryfallRulingsResponse, Scryf
 
 const SCRYFALL_API = "https://api.scryfall.com";
 const COLLECTION_BATCH_SIZE = 75;
+const SCRYFALL_QUEUE_DELAY_MS = 120;
+const SCRYFALL_MAX_RETRIES = 3;
+
+const scryfallQueue: Array<() => Promise<void>> = [];
+let scryfallQueueRunning = false;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function parseRetryAfterMs(retryAfter: string | null): number | null {
+  if (!retryAfter) return null;
+  const seconds = Number(retryAfter);
+  if (Number.isFinite(seconds) && seconds >= 0) {
+    return Math.ceil(seconds * 1000);
+  }
+  const retryDate = Date.parse(retryAfter);
+  if (Number.isNaN(retryDate)) return null;
+  return Math.max(retryDate - Date.now(), 0);
+}
+
+async function drainScryfallQueue(): Promise<void> {
+  if (scryfallQueueRunning) return;
+  scryfallQueueRunning = true;
+  while (scryfallQueue.length > 0) {
+    const job = scryfallQueue.shift()!;
+    await job();
+    if (scryfallQueue.length > 0) {
+      await sleep(SCRYFALL_QUEUE_DELAY_MS);
+    }
+  }
+  scryfallQueueRunning = false;
+}
+
+function queueScryfallCall<T>(fn: () => Promise<T>): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    scryfallQueue.push(async () => {
+      try {
+        resolve(await fn());
+      } catch (error) {
+        reject(error);
+      }
+    });
+    drainScryfallQueue();
+  });
+}
 
 export function scryfallCardKey(name: string, setCode?: string): string {
   return setCode ? `${name.toLowerCase()}::${setCode.toLowerCase()}` : name.toLowerCase();
 }
 
+async function performScryfallFetch<T>(url: string, errorMsg: string, init?: RequestInit): Promise<T> {
+  for (let attempt = 0; attempt <= SCRYFALL_MAX_RETRIES; attempt += 1) {
+    const response = await fetch(url, init);
+    if (response.status === 429 && attempt < SCRYFALL_MAX_RETRIES) {
+      const retryAfterMs = parseRetryAfterMs(response.headers.get("retry-after"));
+      await sleep(retryAfterMs ?? 1000 * (attempt + 1));
+      continue;
+    }
+    if (!response.ok) {
+      throw new Error(`${errorMsg} (HTTP ${response.status})`);
+    }
+    return response.json();
+  }
+  throw new Error(errorMsg);
+}
+
 async function scryfallFetch<T>(url: string, errorMsg: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(url, init);
-  if (!response.ok) throw new Error(errorMsg);
-  return response.json();
+  return queueScryfallCall(() => performScryfallFetch<T>(url, errorMsg, init));
 }
 
 export async function searchCards(query: string, page: number = 1, order?: string, dir?: string): Promise<ScryfallListResponse> {
@@ -94,13 +154,15 @@ export async function fetchCardCollection(cards: { name: string; setCode?: strin
     const batch = unique.slice(i, i + COLLECTION_BATCH_SIZE);
     const identifiers = batch.map((c) => (c.setCode ? { name: c.name, set: c.setCode.toLowerCase() } : { name: c.name }));
     try {
-      const response = await fetch(`${SCRYFALL_API}/cards/collection`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ identifiers }),
-      });
-      if (!response.ok) continue;
-      const data: { data: ScryfallCard[]; not_found: { name: string }[] } = await response.json();
+      const data = await scryfallFetch<{ data: ScryfallCard[]; not_found: { name: string }[] }>(
+        `${SCRYFALL_API}/cards/collection`,
+        "Failed to fetch card collection from Scryfall",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ identifiers }),
+        },
+      );
       for (const card of data.data) {
         const setAwareKey = scryfallCardKey(card.name, card.set);
         const legacyKey = scryfallCardKey(card.name);

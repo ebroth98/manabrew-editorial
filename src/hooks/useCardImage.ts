@@ -19,6 +19,8 @@ import {
   type ScryfallImageSize,
 } from "@/lib/cardImageCache";
 
+const CARD_IMAGE_FETCH_DEBOUNCE_MS = 80;
+
 /**
  * Resolve (and cache) the full `image_uris` record for a card identity.
  * Every consumer — the hand sprite, battlefield grid, stack panel,
@@ -41,6 +43,9 @@ export async function fetchCardImageEntry(
   if (inflight) return inflight;
 
   const task = (async (): Promise<CachedCardImage | null> => {
+    await new Promise((resolve) =>
+      setTimeout(resolve, CARD_IMAGE_FETCH_DEBOUNCE_MS),
+    );
     let card: ScryfallCard | null = null;
     if (isToken) {
       if (setCode && cardNumber) {
