@@ -334,6 +334,27 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
 
                 if valid.is_empty() {
                     None
+                } else if sa.params.is_true("Random") {
+                    // Random$ True — reservoir-sample a single element, matching
+                    // Java's `Aggregates.random(Iterable, 1)` at
+                    // `forge-core/.../Aggregates.java`. The reservoir form consumes
+                    // N-1 RNG draws for an N-element source, which is materially
+                    // different from a single `nextInt(N)` call. RNG-parity with
+                    // Java breaks unless we mirror the same draw count here.
+                    let mut picked: Option<crate::ids::CardId> = None;
+                    let mut i = 0i32;
+                    for &cid in valid.iter() {
+                        i += 1;
+                        if i == 1 {
+                            picked = Some(cid);
+                        } else {
+                            let j = ctx.rng.next_int(i);
+                            if j < 1 {
+                                picked = Some(cid);
+                            }
+                        }
+                    }
+                    picked
                 } else {
                     ctx.agents[sacrificing_player.index()].choose_sacrifice(
                         sacrificing_player,

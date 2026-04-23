@@ -55,6 +55,7 @@ pub fn create_permanent_spell(
         trigger_index: None,
         alt_cost: None,
         alt_cost_index: 0,
+        evoke_keyword_count: 0,
         kicked: false,
         buyback_paid: false,
         overloaded: false,

@@ -403,6 +403,17 @@ impl GameLoop {
                     return None;
                 }
                 sa.alt_cost = Some(alt_cost);
+                // Capture Evoke keyword count from the card WHILE STILL IN ITS
+                // ORIGINAL ZONE (usually hand). Zone-gated statics like Ashling,
+                // the Limitless's `AddKeyword$ Evoke:4 | AffectedZone$ Hand` grant
+                // extra Evoke keywords here; once the card moves to the stack
+                // those grants disappear, so we must snapshot now.
+                if alt_cost == crate::spellability::AlternativeCost::Evoke {
+                    if let Some(source_id) = sa.source {
+                        let count = game.card(source_id).get_all_evoke_costs().len();
+                        sa.evoke_keyword_count = count.min(u8::MAX as usize) as u8;
+                    }
+                }
             }
         }
         Some(PreparedSpellAbility {

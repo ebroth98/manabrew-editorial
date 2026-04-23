@@ -1,7 +1,7 @@
 use forge_foundation::ZoneType;
 
 use super::EffectContext;
-use crate::event::RunParams;
+use crate::event::{AbilityValue, RunParams};
 use crate::spellability::SpellAbility;
 use crate::trigger::TriggerType;
 
@@ -22,6 +22,31 @@ use crate::trigger::TriggerType;
 #[forge_engine_macros::spell_effect(PhasesEffect)]
 fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let phase_mode = sa.params.get("PhaseInOrOut").unwrap_or("Out");
+
+    // Defined$ DelayTriggerRememberedLKI / Remembered — phase the cards
+    // remembered by the parent delayed trigger (e.g. Teferi's Veil's
+    // "creature phases out at end of combat" queues the attacker's LKI).
+    match sa.params.get(crate::parsing::keys::DEFINED) {
+        Some("DelayTriggerRememberedLKI")
+        | Some("DelayTriggerRemembered")
+        | Some("Remembered") => {
+            let ids: Vec<crate::ids::CardId> = sa
+                .trigger_remembered
+                .iter()
+                .filter_map(|v| match v {
+                    AbilityValue::Card(cid) => Some(*cid),
+                    _ => None,
+                })
+                .collect();
+            for cid in ids {
+                if ctx.game.card(cid).zone == ZoneType::Battlefield {
+                    apply_phase(ctx, cid, phase_mode);
+                }
+            }
+            return;
+        }
+        _ => {}
+    }
 
     // Targeted: use the chosen target card.
     if let Some(target_card) = sa.target_chosen.target_card {

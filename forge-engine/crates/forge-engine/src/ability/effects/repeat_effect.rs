@@ -39,7 +39,17 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
 
     let mut count = 0i32;
     loop {
-        let sub_sa = build_spell_ability(ctx.game, source_id, &sub_text, sa.activating_player);
+        let mut sub_sa = build_spell_ability(ctx.game, source_id, &sub_text, sa.activating_player);
+        // Propagate parent targets so `Defined$ Targeted` in the sub-ability
+        // resolves to the parent's chosen target (e.g. Tyrant of Discord's
+        // Repeat calls a DBSac sub whose `Defined$ Targeted` must point to the
+        // opponent the parent spell targeted).
+        if sub_sa.target_chosen.target_card.is_none() {
+            sub_sa.target_chosen.target_card = sa.target_chosen.target_card;
+        }
+        if sub_sa.target_chosen.target_player.is_none() {
+            sub_sa.target_chosen.target_player = sa.target_chosen.target_player;
+        }
         resolve_sub_chain(ctx, sub_sa);
         count += 1;
 
@@ -146,8 +156,16 @@ fn check_repeat_conditions(ctx: &mut EffectContext, sa: &SpellAbility) -> bool {
 }
 
 fn resolve_sub_chain(ctx: &mut EffectContext, initial: SpellAbility) {
+    let parent_target_card = initial.target_chosen.target_card;
+    let parent_target_player = initial.target_chosen.target_player;
     let mut cur_opt: Option<SpellAbility> = Some(initial);
-    while let Some(cur_sa) = cur_opt {
+    while let Some(mut cur_sa) = cur_opt {
+        if cur_sa.target_chosen.target_card.is_none() {
+            cur_sa.target_chosen.target_card = parent_target_card;
+        }
+        if cur_sa.target_chosen.target_player.is_none() {
+            cur_sa.target_chosen.target_player = parent_target_player;
+        }
         super::resolve_effect(ctx, &cur_sa);
         cur_opt = if super::sub_ability_handled_internally(&cur_sa) {
             None

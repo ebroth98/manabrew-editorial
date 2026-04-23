@@ -1072,12 +1072,24 @@ fn matches_valid_cards_qualifier(
                     _ => attacking.is_some(), // any attack target
                 }
             }
-            // Color filters: "nonBlack", "nonRed", "nonWhite", etc.
+            // Type negations ("nonLand", "nonland", "nonCreature", etc.) and
+            // color filters ("nonBlack", "nonRed", etc.).
             else {
                 let lower = qualifier.to_ascii_lowercase();
-                if let Some(color_name) = lower.strip_prefix("non") {
-                    let excluded = ColorSet::from_names(color_name);
-                    !card.color.shares_color_with(excluded)
+                if let Some(rest) = lower.strip_prefix("non") {
+                    match rest {
+                        "land" => return !card.is_land(),
+                        "creature" => return !card.is_creature(),
+                        "artifact" => return !card.type_line.is_artifact(),
+                        "enchantment" => return !card.type_line.is_enchantment(),
+                        "planeswalker" => return !card.type_line.is_planeswalker(),
+                        "token" => return !card.is_token,
+                        "basic" => return !card.type_line.is_basic(),
+                        _ => {
+                            let excluded = ColorSet::from_names(rest);
+                            !card.color.shares_color_with(excluded)
+                        }
+                    }
                 } else {
                     // Unknown qualifier — match everything (forward-compatible)
                     true

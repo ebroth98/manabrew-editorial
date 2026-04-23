@@ -407,6 +407,7 @@ pub(super) fn apply_post_move(
                     remembered_amount: 0,
                     remembered_cards: Vec::new(),
                     remembered_lki_cards: Vec::new(),
+                    sort_after_active: false,
                 });
         }
         if sa.param_is_true(keys::ATTACKING) {

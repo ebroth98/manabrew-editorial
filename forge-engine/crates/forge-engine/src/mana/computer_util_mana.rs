@@ -2026,7 +2026,16 @@ fn score_mana_ability(
         if mana_text == "Any" {
             score += 7;
         } else {
-            score += mana_text.len() as i32;
+            // Java: `produced.split("\\s+").length` — count tokens, not chars.
+            // Previously Rust used `mana_text.len()` (character count), which
+            // inflates scores for multi-color Combo sources (e.g. Arcane
+            // Signet's "W U B R G" scored 9 chars vs Java's 5 tokens), pushing
+            // true any-mana sources (+7) above them in the autopay ordering.
+            let tokens = mana_text
+                .split_whitespace()
+                .filter(|t| !t.is_empty())
+                .count();
+            score += tokens.max(1) as i32;
             if !mana_text.contains('C') {
                 score += 1;
             }
@@ -2087,10 +2096,22 @@ fn autopay_source_score(game: &GameState, _player: PlayerId, ma: &ManaAbilityRef
     let card = game.card(ma.card_id);
     if let Some(ab_idx) = ma.ability_index {
         if let Some(ab) = card.activated_abilities.get(ab_idx) {
-            let resolved = if ma.atoms.len() >= 5
-                && !ma.atoms.contains(&ManaAtom::COLORLESS)
-                && !ma.atoms.contains(&ManaAtom::GENERIC)
-            {
+            // Java parity (AutoPay.ManaAbilityCandidate.score): the "Any mana"
+            // bonus (+7) hinges on `AbilityManaPart.isAnyMana()`, which checks
+            // whether the RAW `Produced$` parameter contains "Any". For sources
+            // whose resolved atom set is 5 colors but whose raw param is
+            // something else (e.g. Arcane Signet's `Combo ColorIdentity`
+            // expanding to WUBRG for a 5-color commander), Java scores them
+            // by the resolved-colors-count path — 5 tokens + 1 non-C = 6.
+            // Previously Rust forced these to "Any" (+7), which equalised them
+            // with true any-mana sources like Secluded Courtyard and caused
+            // the tap selection to pick the wrong source.
+            let orig_is_any = ab
+                .params
+                .get(keys::PRODUCED)
+                .map(|p| p.contains("Any"))
+                .unwrap_or(false);
+            let resolved = if orig_is_any {
                 "Any".to_string()
             } else {
                 ma.atoms

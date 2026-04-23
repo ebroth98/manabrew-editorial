@@ -56,6 +56,12 @@ pub struct DelayedTrigger {
     pub remembered_cards: Vec<CardId>,
     /// Snapshot of remembered cards for delayed-trigger `RememberedLKI` lookups.
     pub remembered_lki_cards: Vec<CardId>,
+    /// When true, this delayed trigger should sort AFTER same-event active
+    /// triggers (resolve FIRST on the LIFO stack). Used to mirror Java's
+    /// trigger-ID-based ordering for granted-evoke sacrifice triggers, whose
+    /// trigger ID is assigned after the card's intrinsic T: triggers and thus
+    /// lands on top of the stack.
+    pub sort_after_active: bool,
 }
 
 impl DelayedTrigger {
@@ -248,7 +254,13 @@ impl TriggerHandler {
         if self.waiting_triggers.is_empty() && self.delayed_triggers.is_empty() {
             return;
         }
+        let waiting_count = self.waiting_triggers.len();
         let matched = self.match_waiting_triggers(game);
+        eprintln!(
+            "[flush-debug] T{} {:?} flush waiting={} matched={} pre_matched_total={}",
+            game.turn.turn_number, game.turn.phase, waiting_count, matched.len(),
+            self.pre_matched_triggers.len() + matched.len()
+        );
         self.pre_matched_triggers.extend(matched);
     }
 
@@ -256,6 +268,15 @@ impl TriggerHandler {
     /// Drains waiting queue, matches triggers, returns PendingTriggers.
     /// The caller (game_loop) handles OptionalDecider$ prompting.
     pub fn run_waiting_triggers(&mut self, game: &GameState) -> Vec<PendingTrigger> {
+        let pre_matched_count = self.pre_matched_triggers.len();
+        let waiting_count = self.waiting_triggers.len();
+        let delayed_count = self.delayed_triggers.len();
+        if game.turn.turn_number == 15 && matches!(game.turn.phase, forge_foundation::PhaseType::Main1) {
+            eprintln!(
+                "[run-waiting-debug] T15 Main1 run_waiting pre_matched={} waiting={} delayed={}",
+                pre_matched_count, waiting_count, delayed_count
+            );
+        }
         // Start with any triggers that were pre-matched (flushed before SBA).
         let mut entries: Vec<(PendingTrigger, PlayerId, u64)> =
             std::mem::take(&mut self.pre_matched_triggers);
@@ -309,6 +330,18 @@ impl TriggerHandler {
         agents: &mut [Box<dyn PlayerAgent>],
         pending: Vec<PendingTrigger>,
     ) -> Vec<TriggerPushLog> {
+        if game.turn.turn_number == 15 && matches!(game.turn.phase, forge_foundation::PhaseType::Main1) {
+            eprintln!(
+                "[process-pending-debug] T15 Main1 processing {} pending triggers",
+                pending.len()
+            );
+            for pt in &pending {
+                let name = pt.entry.spell_ability.source
+                    .and_then(|id| game.cards.get(id.index()).map(|c| c.card_name.clone()))
+                    .unwrap_or_else(|| "?".to_string());
+                eprintln!("[process-pending-debug]   pending: source={:?} name={}", pt.entry.spell_ability.source, name);
+            }
+        }
         let mut push_logs = Vec::new();
         for mut pt in pending {
             let source_name = pt
@@ -332,11 +365,39 @@ impl TriggerHandler {
                 }
             }
 
-            if !pt
+            if game.turn.turn_number == 15 && matches!(game.turn.phase, forge_foundation::PhaseType::Main1) && source_name == "Aethersnipe" {
+                let uses = pt.entry.spell_ability.uses_targeting();
+                let sub_chain: String = {
+                    let mut names = vec![];
+                    let mut cur = pt.entry.spell_ability.sub_ability.as_deref();
+                    while let Some(sa) = cur {
+                        let uses = sa.uses_targeting();
+                        names.push(format!("sub(api={:?},uses_targeting={},ability_text={:.80})", sa.api, uses, sa.ability_text));
+                        cur = sa.sub_ability.as_deref();
+                    }
+                    names.join(" | ")
+                };
+                eprintln!(
+                    "[pt-aether-debug] T15 Main1 Aethersnipe pt.source={:?} api={:?} uses_targeting={} ability_text={:.200} {}",
+                    pt.entry.spell_ability.source, pt.entry.spell_ability.api, uses,
+                    pt.entry.spell_ability.ability_text, sub_chain
+                );
+            }
+            let setup_result = pt
                 .entry
                 .spell_ability
-                .setup_targets(game, agents, mana_pools)
-            {
+                .setup_targets(game, agents, mana_pools);
+            if game.turn.turn_number == 15 && matches!(game.turn.phase, forge_foundation::PhaseType::Main1) {
+                let tc_name = pt.entry.spell_ability.target_chosen.target_card
+                    .and_then(|cid| game.cards.get(cid.index()).map(|c| c.card_name.clone()))
+                    .unwrap_or_else(|| "None".to_string());
+                eprintln!(
+                    "[process-pending-debug] T15 Main1 setup_targets for source={}(src_id={:?}) -> {} target_card={:?} target_name={}",
+                    source_name, pt.entry.spell_ability.source, setup_result,
+                    pt.entry.spell_ability.target_chosen.target_card, tc_name
+                );
+            }
+            if !setup_result {
                 continue;
             }
             if let Some(source_id) = pt.entry.spell_ability.source {
@@ -516,6 +577,14 @@ impl TriggerHandler {
                     &event.mode,
                     &event.params,
                 );
+                if card.card_name == "Aethersnipe" {
+                    eprintln!(
+                        "[aether-trig-debug] T{} {:?} aethersnipe@{:?}(zone={:?}, is_token={}) trigger_idx={} event_mode={:?} event.card={:?} event.dest={:?} can_run={}",
+                        game.turn.turn_number, game.turn.phase, card_id, card.zone, card.is_token,
+                        trigger_index, event.mode,
+                        event.params.card, event.params.destination, can_run
+                    );
+                }
                 if can_run {
                     let sa = trigger.build_triggered_spell_ability(
                         game,
@@ -627,9 +696,13 @@ impl TriggerHandler {
             // Check delayed triggers (one-shot, removed after firing).
             //
             // Java places same-event delayed triggers such as Evoke's sacrifice
-            // below normal ETB triggers, so the normal ETB resolves first.
-            // Since the stack is LIFO and pending triggers are pushed in list
-            // order, insert delayed matches before active matches for this event.
+            // below normal ETB triggers by default, so the normal ETB resolves
+            // first. Since the stack is LIFO and pending triggers are pushed in
+            // list order, insert delayed matches before active matches for this
+            // event. Delayed triggers marked `sort_after_active` (granted-evoke
+            // sac) instead push AFTER active triggers and resolve first, mirroring
+            // Java's trigger-ID ascending sort when the granted keyword's trigger
+            // ID is higher than the card's intrinsic T: triggers.
             let delayed_insert_at = event_entries_start;
             let mut delayed_insert_offset = 0usize;
             let mut fired_indices = Vec::new();
@@ -709,11 +782,41 @@ impl TriggerHandler {
                     description: String::new(),
                 };
                 let delayed_ts = game.card(delayed.source_card).zone_timestamp;
-                entries.insert(
-                    delayed_insert_at + delayed_insert_offset,
-                    (pending, delayed.controller, delayed_ts),
-                );
-                delayed_insert_offset += 1;
+                // Java parity: Panharmonicon-class statics (e.g. Yarok, Roaming Throne)
+                // double triggered abilities of permanents the owner controls. Rust
+                // implements Evoke-style sacrifice and other keyword-induced triggers
+                // as DelayedTrigger instances; the non-delayed path at ~L580 already
+                // consults `extra_triggers`, but delayed matches bypassed it until now.
+                // Replicate the same check so that when Yarok's own Panharmonicon
+                // fires during its Evoke-on-ETB sacrifice, it doubles the trigger
+                // (matching Java's `amt=2` on `valid=Card.Self+evoked`).
+                let extra_delayed =
+                    crate::staticability::static_ability_panharmonicon::extra_triggers(
+                        game,
+                        delayed.source_card,
+                        &tmp_trigger,
+                        &event.params,
+                    );
+                if delayed.sort_after_active {
+                    // Push to end of entries (above active triggers → resolves first).
+                    entries.push((pending.clone(), delayed.controller, delayed_ts));
+                    for _ in 0..extra_delayed {
+                        entries.push((pending.clone(), delayed.controller, delayed_ts));
+                    }
+                } else {
+                    entries.insert(
+                        delayed_insert_at + delayed_insert_offset,
+                        (pending.clone(), delayed.controller, delayed_ts),
+                    );
+                    delayed_insert_offset += 1;
+                    for _ in 0..extra_delayed {
+                        entries.insert(
+                            delayed_insert_at + delayed_insert_offset,
+                            (pending.clone(), delayed.controller, delayed_ts),
+                        );
+                        delayed_insert_offset += 1;
+                    }
+                }
                 fired_indices.push(idx);
             }
 
@@ -917,6 +1020,12 @@ impl TriggerHandler {
     /// Registers a single card's triggers.
     pub fn register_active_trigger(&mut self, game: &GameState, card_id: CardId) {
         let card = game.card(card_id);
+        if card.card_name == "Aethersnipe" {
+            eprintln!(
+                "[aether-reg-debug] T{} {:?} register_active_trigger card={:?} is_token={} triggers_count={} zone={:?}",
+                game.turn.turn_number, game.turn.phase, card_id, card.is_token, card.triggers.len(), card.zone
+            );
+        }
         for (trig_idx, _) in card.triggers.iter().enumerate() {
             self.register_one_trigger(game, card_id, trig_idx);
         }

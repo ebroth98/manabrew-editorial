@@ -53,26 +53,33 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
                 ctx.game,
                 payer,
             );
-            if crate::cost::can_pay_with_ability(
+            let can_pay = crate::cost::can_pay_with_ability(
                 &cost,
                 ctx.game,
                 &available,
                 source,
                 payer,
                 Some(sa),
-            ) {
-                let paid = super::try_pay_unless_cost(ctx, sa, source, payer, &cost);
-                let card_name = sa.source.map(|cid| ctx.game.card(cid).card_name.clone());
-                ctx.agents[payer.index()].pay_cost_to_prevent_effect(
-                    payer,
-                    "UnlessCost",
-                    if paid { "true" } else { "false" },
-                    card_name.as_deref(),
-                    sa.api,
-                );
-                if paid {
-                    return; // Cost paid — sacrifice prevented
-                }
+            );
+            let paid = if can_pay {
+                super::try_pay_unless_cost(ctx, sa, source, payer, &cost)
+            } else {
+                false
+            };
+            // Always emit the callback to match Java's decision stream, which
+            // logs the unless-cost prompt regardless of whether the payer could
+            // afford it. Without this, a commander-tax-bound cost that a player
+            // can never pay silently drops the callback and shifts RNG parity.
+            let card_name = sa.source.map(|cid| ctx.game.card(cid).card_name.clone());
+            ctx.agents[payer.index()].pay_cost_to_prevent_effect(
+                payer,
+                "UnlessCost",
+                if paid { "true" } else { "false" },
+                card_name.as_deref(),
+                sa.api,
+            );
+            if paid {
+                return; // Cost paid — sacrifice prevented
             }
         }
     }

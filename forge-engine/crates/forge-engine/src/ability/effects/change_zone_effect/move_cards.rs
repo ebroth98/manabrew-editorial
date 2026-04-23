@@ -107,7 +107,14 @@ pub(super) fn move_cards(
 
         let dest_owner = resolve_dest_owner(ctx, sa, card_id, dest_zone);
         let old_zone = ctx.game.card(card_id).zone;
-        ctx.move_card(card_id, dest_zone, dest_owner);
+
+        // Consult Moved replacement effects so commander-to-command-zone
+        // redirects (and similar) apply when a permanent moves off the
+        // battlefield to its owner's hand/library. Mirrors Java's
+        // `GameAction.changeZone()` running `replacementHandler.run(Moved)`
+        // regardless of destination.
+        let final_dest = apply_hand_library_replacement(ctx, card_id, old_zone, dest_zone);
+        ctx.move_card(card_id, final_dest, dest_owner);
         apply_post_move(
             ctx,
             card_id,
@@ -161,6 +168,7 @@ pub(super) fn move_cards(
                     remembered_amount: 0,
                     remembered_cards: Vec::new(),
                     remembered_lki_cards: Vec::new(),
+                    sort_after_active: false,
                 });
         }
     }
@@ -236,6 +244,38 @@ pub(super) fn move_cards(
                 reapply_library_position(ctx, &ordered, dest_zone, &lib_position, pid);
             }
         }
+    }
+}
+
+/// Consult Moved replacement effects for off-battlefield moves to Hand/Library.
+/// Mirrors Java's `GameAction.changeZone()` which runs the replacement handler
+/// for every Moved event, not just Graveyard. Returns the destination zone
+/// after replacement (may be redirected to Command zone for commanders).
+fn apply_hand_library_replacement(
+    ctx: &mut EffectContext,
+    card_id: CardId,
+    origin: ZoneType,
+    destination: ZoneType,
+) -> ZoneType {
+    use crate::replacement::replacement_handler::{ReplacementEvent, ReplacementHandler};
+    if origin != ZoneType::Battlefield {
+        return destination;
+    }
+    if destination != ZoneType::Hand && destination != ZoneType::Library {
+        return destination;
+    }
+    let mut event = ReplacementEvent::Moved {
+        card: card_id,
+        origin,
+        destination,
+        is_discard: false,
+    };
+    let mut handler = ReplacementHandler::new();
+    handler.run(ctx.game, Some(ctx.agents), None, &mut event);
+    if let ReplacementEvent::Moved { destination: new_dest, .. } = event {
+        new_dest
+    } else {
+        destination
     }
 }
 

@@ -339,27 +339,49 @@ impl GameLoop {
                 // Evoke: register a one-shot ETB trigger that sacrifices this creature.
                 // This mirrors Forge Java semantics where Evoke uses a ChangesZone trigger
                 // and allows normal ETB abilities to trigger before the sacrifice resolves.
+                // Java parity: `CardFactoryUtil` attaches the "sacrifice when it enters"
+                // trigger once per Evoke keyword on the card, not once per cast. A card
+                // with both intrinsic `Evoke:1 U` and a granted `Evoke:4` (e.g. an
+                // Elemental in hand under Ashling, the Limitless) therefore carries
+                // two Evoke sac triggers. All of them fire on ETB; the first sacrifice
+                // succeeds and the rest are no-ops because the creature has already
+                // left the battlefield, but each one still consumes a stack entry.
                 if alt_cost == Some(crate::spellability::AlternativeCost::Evoke) {
-                    self.trigger_handler
-                        .register_delayed_trigger(crate::trigger::handler::DelayedTrigger {
-                        mode: TriggerType::ChangesZone,
-                        trigger_mode: Box::new(
-                            crate::trigger::trigger_changes_zone::TriggerChangesZone,
-                        )
-                            as Box<dyn crate::trigger::TriggerBehavior>,
-                        params: crate::parsing::Params::from_raw(
-                            "Mode$ ChangesZone | Destination$ Battlefield | ValidCard$ Card.Self",
-                        ),
-                        execute_svar: "DB$ Sacrifice".to_string(),
-                        controller: player,
-                        source_card: card_id,
-                        created_turn: game.turn.turn_number,
-                        created_phase: game.turn.phase,
-                        target_card: Some(card_id),
-                        remembered_amount: 0,
-                        remembered_cards: Vec::new(),
-                        remembered_lki_cards: Vec::new(),
-                    });
+                    let evoke_keyword_count =
+                        (entry.spell_ability.evoke_keyword_count as usize).max(1);
+                    // Mirror Java trigger-ID ordering: intrinsic Evoke's sac
+                    // trigger has a lower ID than the card's T: ETB triggers
+                    // (keywords are parsed first), so it pushes BELOW the ETB
+                    // on the stack and resolves last. Granted Evoke triggers
+                    // (e.g. Ashling, the Limitless's `AddKeyword$ Evoke:4`)
+                    // are assigned IDs after the card's intrinsic triggers, so
+                    // they push ABOVE the ETB and resolve FIRST — causing the
+                    // sacrifice to fire before the ETB bounce, which lets
+                    // Ashling's `Sacrificed` trigger spawn a token copy.
+                    for i in 0..evoke_keyword_count {
+                        self.trigger_handler.register_delayed_trigger(
+                            crate::trigger::handler::DelayedTrigger {
+                                mode: TriggerType::ChangesZone,
+                                trigger_mode: Box::new(
+                                    crate::trigger::trigger_changes_zone::TriggerChangesZone,
+                                )
+                                    as Box<dyn crate::trigger::TriggerBehavior>,
+                                params: crate::parsing::Params::from_raw(
+                                    "Mode$ ChangesZone | Destination$ Battlefield | ValidCard$ Card.Self",
+                                ),
+                                execute_svar: "DB$ Sacrifice".to_string(),
+                                controller: player,
+                                source_card: card_id,
+                                created_turn: game.turn.turn_number,
+                                created_phase: game.turn.phase,
+                                target_card: Some(card_id),
+                                remembered_amount: 0,
+                                remembered_cards: Vec::new(),
+                                remembered_lki_cards: Vec::new(),
+                                sort_after_active: i > 0,
+                            },
+                        );
+                    }
                 }
 
                 // Register triggers for the new permanent
@@ -397,6 +419,7 @@ impl GameLoop {
                             remembered_amount: 0,
                             remembered_cards: Vec::new(),
                             remembered_lki_cards: Vec::new(),
+                            sort_after_active: false,
                         },
                     );
                 }
@@ -427,6 +450,7 @@ impl GameLoop {
                             remembered_amount: 0,
                             remembered_cards: Vec::new(),
                             remembered_lki_cards: Vec::new(),
+                            sort_after_active: false,
                         },
                     );
                 }
@@ -517,6 +541,7 @@ impl GameLoop {
                             remembered_amount: 0,
                             remembered_cards: Vec::new(),
                             remembered_lki_cards: Vec::new(),
+                            sort_after_active: false,
                         },
                     );
                 }
@@ -581,6 +606,7 @@ impl GameLoop {
                                 remembered_amount: 0,
                                 remembered_cards: Vec::new(),
                                 remembered_lki_cards: Vec::new(),
+                                sort_after_active: false,
                             },
                         );
                         ZoneType::Exile

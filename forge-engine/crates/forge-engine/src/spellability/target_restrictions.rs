@@ -565,6 +565,15 @@ fn can_be_targeted_by_internal(
     ) {
         return false;
     }
+    // Shroud/hexproof/protection are permanent abilities (CR 113.6b) —
+    // they only apply while the card is on the battlefield. Cards in
+    // graveyard/exile/hand/library don't carry these keyword effects, so
+    // target-gating for those zones is purely about the valid-filter
+    // (already applied upstream). Skip the battlefield-only checks when
+    // the target isn't on the battlefield.
+    if target.zone != ZoneType::Battlefield {
+        return true;
+    }
     // Shroud: can't be targeted by anyone
     let ignore_shroud = crate::staticability::static_ability_ignore_hexproof_shroud::ignore_shroud(
         &game.cards,
@@ -617,7 +626,14 @@ pub fn get_all_candidates_creatures(game: &GameState) -> Vec<CardId> {
     let mut creatures = Vec::new();
     for &pid in &game.player_order {
         for &cid in game.cards_in_zone(ZoneType::Battlefield, pid) {
-            if game.card(cid).is_creature() {
+            let card = game.card(cid);
+            // CR 702.26: phased-out permanents are treated as though they
+            // don't exist. Match Java's `Player.getCardsIn(Battlefield)`
+            // default `filterOutPhasedOut = true`.
+            if card.phased_out {
+                continue;
+            }
+            if card.is_creature() {
                 creatures.push(cid);
             }
         }
@@ -665,6 +681,11 @@ pub fn get_all_battlefield_permanents(game: &GameState) -> Vec<CardId> {
     let mut permanents = Vec::new();
     for &pid in &game.player_order {
         for &cid in game.cards_in_zone(ZoneType::Battlefield, pid) {
+            // CR 702.26: phased-out permanents are treated as though they
+            // don't exist. Exclude from target candidate lists.
+            if game.card(cid).phased_out {
+                continue;
+            }
             permanents.push(cid);
         }
     }

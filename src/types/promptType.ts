@@ -16,7 +16,7 @@ export const PromptType = {
 
   // Main phase actions
   ChooseAction: "chooseAction",
-
+  //
   // Combat
   ChooseAttackers: "chooseAttackers",
   ChooseBlockers: "chooseBlockers",
@@ -105,7 +105,8 @@ export const TargetingIntent = {
   Friendly: "friendly",
 } as const;
 
-export type TargetingIntent = (typeof TargetingIntent)[keyof typeof TargetingIntent];
+export type TargetingIntent =
+  (typeof TargetingIntent)[keyof typeof TargetingIntent];
 
 /** Intents that should still be rendered as arrows (combat declarations). */
 export function intentPrefersArrow(intent: TargetingIntent): boolean {

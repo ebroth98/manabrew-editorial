@@ -66,10 +66,14 @@ fn normalize_turn_start_players(
 fn snapshot_player(game: &GameState, pid: PlayerId) -> PlayerSnapshot {
     let player = game.player(pid);
 
-    // Battlefield cards with full details
+    // Battlefield cards with full details. Match Java's
+    // `Player.getCardsIn(ZoneType.Battlefield)` which defaults to
+    // `filterOutPhasedOut = true` — phased-out permanents are omitted from
+    // snapshots (they're "treated as though they don't exist" per CR 702.26).
     let bf_cards = game.cards_in_zone(ZoneType::Battlefield, pid);
     let mut battlefield: Vec<CardSnapshot> = bf_cards
         .iter()
+        .filter(|&&cid| !game.card(cid).phased_out)
         .map(|&cid| {
             let card = game.card(cid);
             let counters = snapshot_counters(card);

@@ -1056,7 +1056,14 @@ fn calculate_available_mana_excluding_with_reserved_impl(
                                     } else {
                                         raw.to_string()
                                     };
-                                    mana_meets_restriction(&resolved, ctx)
+                                    let allowed = mana_meets_restriction(&resolved, ctx);
+                                    if card.card_name == "Secluded Courtyard" {
+                                        eprintln!(
+                                            "[restrict-debug] card={} ctx_card={:?} chosen={:?} raw={:?} resolved={:?} allowed={}",
+                                            card.card_name, ctx.card_name, card.chosen_type, raw, resolved, allowed
+                                        );
+                                    }
+                                    allowed
                                 }
                                 None => true,
                             }
@@ -1183,6 +1190,14 @@ fn calculate_available_mana_excluding_with_reserved_impl(
                             }
                         }
                         added_any = true;
+                        // Special branch already pushed one source entry per
+                        // produced atom (Bloom Tender: G, U, R). Mark fixed
+                        // output so the outer `if added_any` at the end of
+                        // the loop doesn't push an additional combined-mask
+                        // source (which would double-count the activation
+                        // and let a single Bloom Tender pay multiple same-
+                        // color requirements).
+                        counted_fixed_output = true;
                     }
                 } else {
                     let amount = resolve_mana_ability_amount(game, card_id, player, ab);

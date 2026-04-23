@@ -16,11 +16,19 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     // Mirrors Java CopyPermanentEffect.
     // Supports: Defined$, SetColor$, AddTypes$, PumpKeywords$.
 
+    eprintln!(
+        "[copyperm-debug] T{} {:?} resolve source={:?} defined={:?} trigger_remembered_len={}",
+        ctx.game.turn.turn_number, ctx.game.turn.phase, sa.source,
+        sa.params.get(keys::DEFINED), sa.trigger_remembered.len()
+    );
+
     // Resolve the card to copy: Defined$ first, then targeting.
     let original_id = resolve_original(sa);
     let Some(original_id) = original_id else {
+        eprintln!("[copyperm-debug]   resolve_original returned None - BAILING");
         return;
     };
+    eprintln!("[copyperm-debug]   original_id={:?} name={}", original_id, ctx.game.card(original_id).card_name);
 
     // For targeted copies, require the original on the battlefield.
     // For Defined$ Self (Embalm/Eternalize), the card may be in any zone.
@@ -32,11 +40,14 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let original = ctx.game.card(original_id).clone();
     let copy = get_proto_type(sa, &original, sa.activating_player);
     let copy_id = ctx.game.create_card(copy);
+    eprintln!("[copyperm-debug]   created copy_id={:?} name={} triggers_count={}",
+        copy_id, ctx.game.card(copy_id).card_name, ctx.game.card(copy_id).triggers.len());
     rebind_copied_traits(ctx.game, copy_id);
     ctx.game
         .move_card(copy_id, ZoneType::Battlefield, sa.activating_player);
     ctx.trigger_handler
         .register_active_trigger(ctx.game, copy_id);
+    eprintln!("[copyperm-debug]   moved to battlefield, emitting ETB trigger");
     emit_zone_trigger(
         ctx.trigger_handler,
         copy_id,
@@ -44,6 +55,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
         ZoneType::Battlefield,
     );
     ctx.trigger_handler.flush_waiting_triggers(ctx.game);
+    eprintln!("[copyperm-debug]   flushed waiting triggers");
 
     // `AtEOT$ <action>` — register an end-of-turn delayed trigger targeting
     // the created copy (Java CopyPermanentEffect → registerDelayedTrigger).

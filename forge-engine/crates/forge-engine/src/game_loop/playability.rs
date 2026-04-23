@@ -951,11 +951,29 @@ impl GameLoop {
                     ZoneType::Command,
                 );
                 let adjusted_cost = cost_adj.apply(&card.mana_cost);
-                let available_mana = mana::calculate_available_mana_for_casting_excluding(
+                // Use a context-aware availability check so mana abilities
+                // with `RestrictValid$` (e.g. Secluded Courtyard's
+                // "Spell.Creature+ChosenType") are filtered out when the
+                // commander isn't a matching creature type. Without this,
+                // command-zone casts could incorrectly pull colored mana
+                // from chosen-type-gated sources.
+                let payment_ctx = mana::ManaPaymentContext {
+                    is_spell: true,
+                    type_line: Some(card.type_line.clone()),
+                    card_name: Some(card.card_name.clone()),
+                    chosen_types_by_source: game
+                        .cards
+                        .iter()
+                        .filter_map(|c| c.chosen_type.clone().map(|chosen| (c.id, chosen)))
+                        .collect(),
+                };
+                let available_mana = mana::calculate_available_mana_with_context(
                     self.pool(player),
                     game,
                     player,
                     Some(card_id),
+                    &[],
+                    Some(&payment_ctx),
                 );
                 if available_mana.can_pay_with_extra_generic(&adjusted_cost, tax) {
                     playable.push(crate::agent::PlayOption {

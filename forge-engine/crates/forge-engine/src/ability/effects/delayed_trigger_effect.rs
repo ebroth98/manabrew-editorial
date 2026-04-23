@@ -63,15 +63,40 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     }) {
         remembered_lki_cards = ctx.game.card(source_id).remembered_cards.clone();
     }
-
     // `RememberObjects$ Remembered` — snapshot the source card's current
     // remembered_cards into the delayed trigger so the executed ability sees
     // them later via `SpellAbility::trigger_remembered`. Ashling uses this to
     // track the token copy it created for its end-step sacrifice clause.
-    let remembered_cards: Vec<crate::ids::CardId> = match sa.params.get("RememberObjects") {
-        Some("Remembered") => ctx.game.card(source_id).remembered_cards.clone(),
-        _ => Vec::new(),
-    };
+    let mut remembered_cards: Vec<crate::ids::CardId> =
+        match sa.params.get(keys::REMEMBER_OBJECTS) {
+            Some("Remembered") => ctx.game.card(source_id).remembered_cards.clone(),
+            _ => Vec::new(),
+        };
+
+    // `RememberObjects$ TriggeredAttackerLKICopy` — snapshot the attacker
+    // that fired the parent trigger so the delayed trigger's effect can
+    // phase it out / operate on it at a later phase. Teferi's Veil uses
+    // this to remember each attacker and phase them out at end of combat.
+    // The attacker id is populated into both `remembered_cards` (so
+    // `Defined$ DelayTriggerRememberedLKI` resolves via `trigger_remembered`)
+    // and `remembered_lki_cards` (for the trigger_objects string lookup).
+    if sa.params.get(keys::REMEMBER_OBJECTS).is_some_and(|value| {
+        value
+            .split(',')
+            .any(|token| token.trim() == "TriggeredAttackerLKICopy")
+    }) {
+        if let Some(attacker_str) =
+            sa.get_triggering_object(crate::ability::AbilityKey::Attacker)
+        {
+            if let Ok(id) = attacker_str.parse::<u32>() {
+                let cid = crate::ids::CardId(id);
+                remembered_lki_cards.push(cid);
+                if !remembered_cards.contains(&cid) {
+                    remembered_cards.push(cid);
+                }
+            }
+        }
+    }
 
     let delayed = crate::trigger::handler::DelayedTrigger {
         mode,
@@ -86,6 +111,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
         remembered_amount,
         remembered_cards,
         remembered_lki_cards,
+        sort_after_active: false,
     };
     if sa.params.has("ThisTurn") {
         ctx.trigger_handler

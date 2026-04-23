@@ -695,6 +695,12 @@ pub fn run_with_data(config: &RunConfig, data: &LoadedData) -> Result<GameTrace,
                 game.move_card(card_id, ZoneType::Command, pid);
                 game.player_register_commander(pid, card_id);
             }
+            // Create the commander effect card (provides the "if a commander
+            // would be put into its owner's hand or library, its owner may put
+            // it into the command zone instead" replacement). Without this,
+            // bouncing or milling a commander moves it to hand/library and
+            // breaks parity with Java's `CommanderEffect`.
+            game.player_create_commander_effect(pid, None);
         }
         // Set commander_damage_enabled based on variant
         let commander_damage_enabled = config.variant == "Commander";

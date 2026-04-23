@@ -639,6 +639,19 @@ pub fn get_valid_cards_to_target(game: &GameState, ability: &SpellAbility) -> Ve
 
     candidates.sort_unstable_by_key(|cid| cid.0);
     candidates.dedup();
+    if game.turn.turn_number == 15
+        && matches!(game.turn.phase, forge_foundation::PhaseType::Main1)
+        && ability.source.map(|sid| game.card(sid).card_name.as_str()) == Some("Aethersnipe")
+    {
+        let names: Vec<String> = candidates
+            .iter()
+            .map(|&cid| format!("{}@{:?}", game.card(cid).card_name, cid))
+            .collect();
+        eprintln!(
+            "[aether-tgt-debug] T15 Main1 Aethersnipe src={:?} valid_tgts={:?} candidates={:?}",
+            ability.source, tgt.valid_tgts, names
+        );
+    }
     candidates
 }
 
