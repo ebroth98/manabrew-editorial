@@ -1,42 +1,42 @@
 @import "tailwindcss";
 
 @theme {
-  --color-border: hsl(var(--border));
-  --color-input: hsl(var(--input));
-  --color-ring: hsl(var(--ring));
-  --color-background: hsl(var(--background));
-  --color-foreground: hsl(var(--foreground));
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
 
-  --color-primary: hsl(var(--primary));
-  --color-primary-foreground: hsl(var(--primary-foreground));
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
 
-  --color-secondary: hsl(var(--secondary));
-  --color-secondary-foreground: hsl(var(--secondary-foreground));
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
 
-  --color-destructive: hsl(var(--destructive));
-  --color-destructive-foreground: hsl(var(--destructive-foreground));
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
 
-  --color-muted: hsl(var(--muted));
-  --color-muted-foreground: hsl(var(--muted-foreground));
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
 
-  --color-accent: hsl(var(--accent));
-  --color-accent-foreground: hsl(var(--accent-foreground));
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
 
-  --color-popover: hsl(var(--popover));
-  --color-popover-foreground: hsl(var(--popover-foreground));
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
 
-  --color-card: hsl(var(--card));
-  --color-card-foreground: hsl(var(--card-foreground));
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
 
-  --color-selection: hsl(var(--selection));
-  --color-selection-foreground: hsl(var(--selection-foreground));
-  --color-commander: hsl(var(--commander));
-  --color-warning: hsl(var(--warning));
-  --color-overlay: hsl(var(--overlay));
+  --color-selection: var(--selection);
+  --color-selection-foreground: var(--selection-foreground);
+  --color-commander: var(--commander);
+  --color-warning: var(--warning);
+  --color-overlay: var(--overlay);
 
   /* ──────────────────────────────────────────────────────────────────
    * Game theme tokens — mirror `GameThemeColors` in
-   * `src/components/game/game.theme.ts`. `useAppTheme` writes the
+   * `src/components/game/game.theme.ts`. `useTheme` writes the
    * underlying `--<path>` vars on :root from the active preset, so
    * every `bg-<token>` / `text-<token>` / `ring-<token>` class below
    * re-paints automatically when the user switches preset.
@@ -226,6 +226,7 @@
   @keyframes player-turn-flash {
     0% {
       box-shadow: 0 0 0 0 transparent;
+      border-color: var(--border);
     }
     15% {
       box-shadow: 0 0 16px 6px var(--turn-flash-color, hsl(210 100% 60%));
@@ -235,6 +236,7 @@
     }
     100% {
       box-shadow: 0 0 0 0 transparent;
+      border-color: var(--border);
     }
   }
 

@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { DeckLabelBadge } from "@/components/deck/DeckLabelBadge";
 import { X, Plus } from "lucide-react";
 import { useDeckStore } from "@/stores/useDeckStore";
-import { useGameThemeColors } from "@/components/game/game.theme";
+import { useTheme } from "@/hooks/useTheme";
 import { toast } from "sonner";
 
 const SUGGESTED_LABELS = [
@@ -37,7 +37,7 @@ export function DeckLabelsModal({ open, onClose }: DeckLabelsModalProps) {
   const [newLabel, setNewLabel] = useState("");
   const [newLabelColor, setNewLabelColor] = useState("");
   const { currentDeck, addDeckLabel, removeDeckLabel, updateDeckLabelColor, saveCurrentDeck } = useDeckStore();
-  const themeColors = useGameThemeColors();
+  const themeColors = useTheme().game;
   const defaultLabelColor = themeColors.promptAction.cancel;
   const labels = currentDeck.labels ?? [];
 

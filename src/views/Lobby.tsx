@@ -17,13 +17,12 @@ import type { RoomMessagePayload } from "@/types/server";
 import type { GameView } from "@/types/openmagic";
 import {
   MANUAL_TABLETOP_RELAY_PROTOCOL,
-  SELF_HOSTED_NODE_RELAY_PROTOCOL,
   createRoomRelayEnvelope,
   isRoomRelayProtocol,
 } from "@/game";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { Bot, BotOff, Wifi, WifiOff, Loader2, Settings, RefreshCw, MessageSquare, Users } from "lucide-react";
+import { Wifi, WifiOff, Loader2, Settings, RefreshCw, MessageSquare, Users } from "lucide-react";
 
 interface ManualTabletopLaunchPayload {
   type: "launch";
@@ -74,9 +73,10 @@ export default function Lobby() {
   const [createRoomOpen, setCreateRoomOpen] = useState(false);
   const [deckDialogOpen, setDeckDialogOpen] = useState(false);
   const [aiDeckDialogOpen, setAiDeckDialogOpen] = useState(false);
-  const [selectedAiDeck, setSelectedAiDeck] = useState<SelectedAiDeck | null>(null);
   const [refreshingLobby, setRefreshingLobby] = useState(false);
   const [sidePanel, setSidePanel] = useState<"chat" | "players" | null>(null);
+  const [botUsernames, setBotUsernames] = useState<string[]>([]);
+  const [botDeckTarget, setBotDeckTarget] = useState<string | null>(null);
 
   useEffect(() => {
     if (!connected && !connecting && prefs.serverUsername) {
@@ -245,82 +245,41 @@ export default function Lobby() {
     }
   }
 
-  async function handleAddAiBot() {
+  function handleAddAiBot() {
     const room = currentRoom;
     if (!room || !username) return;
-    if (!getPlatform().server) {
-      toast.error("Adding an AI player requires a server connection.");
-      return;
-    }
     if (room.players.length >= room.max_players) {
       toast.error("The room is full.");
       return;
     }
-    if (!selectedAiDeck) {
-      toast.error("Select a deck for the AI player.");
-      return;
-    }
+    const botName = `${username}-bot-${Date.now().toString(36)}`;
+    setBotDeckTarget(botName);
+    setAiDeckDialogOpen(true);
+  }
 
+  async function spawnBot(botName: string, deck: SelectedAiDeck) {
+    const room = currentRoom;
+    if (!room || !username || !getPlatform().server) return;
     try {
-      if (room.host === username) {
-        await getPlatform().server!.spawnAiBot({
-          roomId: room.room_id,
-          username: `${username}-bot-${Date.now().toString(36)}`,
-          deckName: selectedAiDeck.name,
-          deckList: selectedAiDeck.deckList,
-          commanderName: selectedAiDeck.commanderName ?? null,
-        });
-        toast.success("AI player added.");
-        return;
-      }
-
-      await getPlatform().server!.sendRoomMessage(createRoomRelayEnvelope({
-        protocol: SELF_HOSTED_NODE_RELAY_PROTOCOL,
+      await getPlatform().server!.spawnAiBot({
         roomId: room.room_id,
-        payload: {
-          type: "spawnBot",
-          roomId: room.room_id,
-          requestedBy: username,
-          deck: {
-            deckName: selectedAiDeck.name,
-            deckList: selectedAiDeck.deckList,
-            commanderName: selectedAiDeck.commanderName,
-          },
-        },
-      }));
-      toast.success("AI player requested.");
+        username: botName,
+        deckName: deck.name,
+        deckList: deck.deckList,
+        commanderName: deck.commanderName ?? null,
+      });
+      setBotUsernames((prev) => [...prev, botName]);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to request AI player.");
+      toast.error(error instanceof Error ? error.message : "Failed to spawn bot.");
     }
   }
 
-  async function handleRemoveAiBot() {
-    const room = currentRoom;
-    if (!room || !username) return;
-    if (!getPlatform().server) {
-      toast.error("Removing an AI player requires a server connection.");
-      return;
-    }
-
+  async function handleRemoveBot(botName: string) {
     try {
-      if (room.host === username) {
-        await getPlatform().server!.removeAiBot();
-        toast.success("AI player removed.");
-        return;
-      }
-
-      await getPlatform().server!.sendRoomMessage(createRoomRelayEnvelope({
-        protocol: SELF_HOSTED_NODE_RELAY_PROTOCOL,
-        roomId: room.room_id,
-        payload: {
-          type: "removeBot",
-          roomId: room.room_id,
-          requestedBy: username,
-        },
-      }));
-      toast.success("AI player removed.");
+      await getPlatform().server!.removeAiBot(botName);
+      setBotUsernames((prev) => prev.filter((u) => u !== botName));
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to remove AI player.");
+      toast.error(error instanceof Error ? error.message : "Failed to remove bot.");
     }
   }
 
@@ -375,34 +334,6 @@ export default function Lobby() {
             <Button size="sm" className="h-7 text-xs" onClick={() => setCreateRoomOpen(true)} disabled={currentRoom != null}>
               New Room
             </Button>
-            <Button
-              size="sm"
-              variant="ghost"
-              className="h-7 max-w-44 truncate text-xs"
-              onClick={() => setAiDeckDialogOpen(true)}
-              disabled={!currentRoom}
-              title={selectedAiDeck?.name ?? "Choose AI deck"}
-            >
-              {selectedAiDeck?.name ?? "AI Deck"}
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              className="h-7 text-xs"
-              onClick={handleAddAiBot}
-              disabled={!currentRoom || currentRoom.players.length >= currentRoom.max_players}
-            >
-              <Bot className="h-3 w-3 mr-1" /> Add AI
-            </Button>
-            <Button
-              size="sm"
-              variant="ghost"
-              className="h-7 text-xs"
-              onClick={handleRemoveAiBot}
-              disabled={!currentRoom}
-            >
-              <BotOff className="h-3 w-3 mr-1" /> Remove AI
-            </Button>
             <div className="w-px h-4 bg-border mx-1" />
             <Button
               size="icon"
@@ -449,6 +380,9 @@ export default function Lobby() {
             onOpenDeckDialog={() => setDeckDialogOpen(true)}
             onStartGame={startGame}
             onStartTabletop={handleStartTabletop}
+            onAddBot={handleAddAiBot}
+            onRemoveBot={handleRemoveBot}
+            botUsernames={botUsernames}
           />
         </div>
 
@@ -473,16 +407,21 @@ export default function Lobby() {
       />
       <CreateGameDialog
         open={aiDeckDialogOpen}
-        onOpenChange={setAiDeckDialogOpen}
+        onOpenChange={(open) => {
+          setAiDeckDialogOpen(open);
+          if (!open) setBotDeckTarget(null);
+        }}
         mode="lobby"
         forcedFormatId={currentRoom?.format ? currentRoom.format.toLowerCase() : "standard"}
         onStart={(deckList, _formatId, commanderName, _playerCount, deckName) => {
-          setSelectedAiDeck({
-            name: deckName ?? "Selected AI Deck",
-            deckList,
-            commanderName,
-          });
-          toast.success(`Selected AI deck: ${deckName ?? "Selected AI Deck"}`);
+          if (botDeckTarget) {
+            void spawnBot(botDeckTarget, {
+              name: deckName ?? "Bot Deck",
+              deckList,
+              commanderName,
+            });
+            setBotDeckTarget(null);
+          }
         }}
       />
     </div>

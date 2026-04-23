@@ -4,7 +4,7 @@ import { ThemeProvider } from "next-themes";
 import { queryClient } from "@/api/queryClient";
 import { router } from "@/router";
 import { Toaster } from "@/components/ui/sonner";
-import { useAppTheme } from "@/hooks/useAppTheme";
+import { useTheme } from "@/hooks/useTheme";
 import { useGameDevStore } from "@/stores/useGameDevStore";
 import { lazy, Suspense, useEffect } from "react";
 import { toast } from "sonner";
@@ -15,7 +15,7 @@ const DevToolsPanel = import.meta.env.DEV
   : () => null;
 
 function ThemeApplicator({ children }: { children: React.ReactNode }) {
-  useAppTheme();
+  useTheme();
   return <>{children}</>;
 }
 

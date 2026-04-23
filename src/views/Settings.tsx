@@ -3,11 +3,13 @@ import { usePreferencesStore, type ZonePanelItem } from "@/stores/usePreferences
 import { THEME_PRESETS, type ThemeColors } from "@/themes";
 import { useServerStore } from "@/stores/useServerStore";
 import { useGameStore } from "@/stores/useGameStore";
-import { getDefaultGameThemeColorMap, toPickerHexColor, useGameThemeColors, type GameThemeColors } from "@/components/game/game.theme";
+import { toPickerHexColor } from "@/components/game/game.theme";
+import type { GameThemeColors } from "@/hooks/useTheme";
+import { useTheme, getDefaultGameThemeColorMap } from "@/hooks/useTheme";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { useTheme } from "next-themes";
+import { useTheme as useColorMode } from "next-themes";
 import { Navigate } from "react-router-dom";
 import { HelpCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -392,11 +394,11 @@ export default function Settings() {
   const prefs = usePreferencesStore();
   const { flashDurationMs, setFlashDurationMs } = prefs;
   const server = useServerStore();
-  const { theme, setTheme, resolvedTheme } = useTheme();
+  const { theme, setTheme, resolvedTheme } = useColorMode();
   // Neutral used as the fallback swatch when the user edits an HSL value
   // to something unparseable — derived from the active preset so it
   // matches the rest of the UI instead of a hardcoded grey.
-  const neutralSwatchColor = useGameThemeColors().promptAction.cancel;
+  const neutralSwatchColor = useTheme().game.promptAction.cancel;
   const [activeTab, setActiveTab] = useState<"server" | "preferences" | "theme">("preferences");
   const [presetOpen, setPresetOpen] = useState(false);
   const [editingThemeColorPath, setEditingThemeColorPath] = useState<string | null>(null);

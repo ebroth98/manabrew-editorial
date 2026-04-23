@@ -4,7 +4,8 @@ import { cn } from "@/lib/utils";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Heart } from "lucide-react";
 import { getInitials } from "../game.utils";
-import { useGameFontSizes, useGameThemeColors, withAlpha } from "../game.theme";
+import { withAlpha } from "../game.theme";
+import { useTheme } from "@/hooks/useTheme";
 import { BadgeOrbit, type OrbitBadge } from "./BadgeOrbit";
 
 export interface PlayerAvatarProps {
@@ -35,8 +36,9 @@ export function PlayerAvatar({
   isFlashing,
   className,
 }: PlayerAvatarProps) {
-  const themeColors = useGameThemeColors();
-  const fontSizes = useGameFontSizes();
+  const theme = useTheme();
+  const themeColors = theme.game;
+  const fontSizes = theme.fontSizes;
   const targetableColor = withAlpha(themeColors.promptAction.attackAction, 0.9);
   const selectedTargetColor = themeColors.promptAction.attackAction;
 

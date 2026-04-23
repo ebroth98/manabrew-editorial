@@ -5,8 +5,8 @@ import { ArrowLayer, type ArrowDef } from "./ArrowLayer";
 import { PointerLayer, type ResolvedPointer } from "./PointerLayer";
 
 installPixiPatches();
-import { adaptTheme, type PixiThemeColors } from "./themeAdapter";
-import { getGameThemeColors } from "@/components/game/game.theme";
+import type { AppTheme } from "@/hooks/useTheme";
+import { getTheme } from "@/hooks/useTheme";
 import { usePreferencesStore } from "@/stores/usePreferencesStore";
 import { intentPrefersArrow, TargetingIntent } from "@/types/promptType";
 import type {
@@ -67,7 +67,7 @@ export function PixiArrowsCanvas({
   const appRef = useRef<Application | null>(null);
   const arrowLayerRef = useRef<ArrowLayer | null>(null);
   const pointerLayerRef = useRef<PointerLayer | null>(null);
-  const themeRef = useRef<PixiThemeColors | null>(null);
+  const themeRef = useRef<AppTheme | null>(null);
 
   // Latest inputs accessed inside the ticker callback without re-binding.
   const arrowSpecsRef = useRef<ArrowSpec[]>([]);
@@ -115,7 +115,7 @@ export function PixiArrowsCanvas({
       console.error("[pixi-arrows] pointer asset load failed:", err);
     });
 
-    themeRef.current = adaptTheme(getGameThemeColors());
+    themeRef.current = getTheme();
     arrowLayer.setTheme(themeRef.current);
     pointerLayer.setTheme(themeRef.current);
 
@@ -185,7 +185,7 @@ export function PixiArrowsCanvas({
   useEffect(() => {
     if (!ready) return;
     const apply = () => {
-      themeRef.current = adaptTheme(getGameThemeColors());
+      themeRef.current = getTheme();
       arrowLayerRef.current?.setTheme(themeRef.current);
       pointerLayerRef.current?.setTheme(themeRef.current);
     };

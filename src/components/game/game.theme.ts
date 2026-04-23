@@ -1,4 +1,3 @@
-import { useMemo } from "react";
 import { usePreferencesStore } from "@/stores/usePreferencesStore";
 import { THEME_PRESETS, DEFAULT_GAME_FONT_SIZES, type GameFontSizes } from "@/themes";
 
@@ -385,12 +384,6 @@ export function resolveGameThemeColors(
 }
 
 /**
- * Base game theme colors exported for legacy compatibility.
- * Now derived dynamically from the default theme.
- */
-export const GAME_THEME_COLORS: GameThemeColors = resolveGameThemeColors({}, "default");
-
-/**
  * Flatten the nested `GameThemeColors` object into CSS-variable-ready
  * key/value pairs. Object paths become dash-separated, camelCase is
  * converted to kebab-case, and each key is prefixed with `--` so the
@@ -424,26 +417,6 @@ function camelToKebab(s: string): string {
   );
 }
 
-export function getDefaultGameThemeColorMap(): Record<string, string> {
-  const presetId = usePreferencesStore.getState().appThemePreset;
-  const preset = THEME_PRESETS.find((p) => p.id === presetId) || THEME_PRESETS[0]!;
-  const out: Record<string, string> = {};
-  for (const [key, value] of Object.entries(preset.gameColors)) {
-    if (typeof value === "string") out[key] = value;
-  }
-  return out;
-}
-
-export function getGameThemeColors(): GameThemeColors {
-  return resolveGameThemeColors(usePreferencesStore.getState().gameThemeColorOverrides);
-}
-
-export function useGameThemeColors(): GameThemeColors {
-  const overrides = usePreferencesStore((s) => s.gameThemeColorOverrides);
-  const presetId = usePreferencesStore((s) => s.appThemePreset);
-  return useMemo(() => resolveGameThemeColors(overrides, presetId), [overrides, presetId]);
-}
-
 /** Resolve the active preset's `gameFontSizes`, inheriting unset keys
  *  from the default preset, then from `DEFAULT_GAME_FONT_SIZES`. */
 export function resolveGameFontSizes(presetId?: string): GameFontSizes {
@@ -457,14 +430,6 @@ export function resolveGameFontSizes(presetId?: string): GameFontSizes {
   };
 }
 
-export function getGameFontSizes(): GameFontSizes {
-  return resolveGameFontSizes();
-}
-
-export function useGameFontSizes(): GameFontSizes {
-  const presetId = usePreferencesStore((s) => s.appThemePreset);
-  return useMemo(() => resolveGameFontSizes(presetId), [presetId]);
-}
 
 function normalizeHexColor(hex: string): string {
   const value = hex.trim().replace("#", "");

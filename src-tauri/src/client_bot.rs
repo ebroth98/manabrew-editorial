@@ -12,7 +12,12 @@ use crate::server_client::ServerConnectionConfig;
 use forge_server::protocol::{ClientMessage, ServerMessage};
 
 pub struct ClientBotManager {
-    task: Mutex<Option<JoinHandle<()>>>,
+    bots: Mutex<Vec<BotEntry>>,
+}
+
+struct BotEntry {
+    username: String,
+    handle: JoinHandle<()>,
 }
 
 #[derive(Debug, Clone)]
@@ -28,28 +33,53 @@ pub struct ClientBotConfig {
 impl ClientBotManager {
     pub fn new() -> Self {
         Self {
-            task: Mutex::new(None),
+            bots: Mutex::new(Vec::new()),
         }
     }
 
     pub fn spawn_bot(&self, config: ClientBotConfig) -> Result<(), String> {
-        self.stop_bot();
+        let bot_username = config.username.clone();
+        let bot_username_for_log = bot_username.clone();
         let handle = tauri::async_runtime::spawn(async move {
             if let Err(error) = run_client_bot(config).await {
-                eprintln!("[client_bot] bot exited: {}", error);
+                eprintln!("[client_bot] bot '{}' exited: {}", bot_username_for_log, error);
             }
         });
-        let mut task = self.task.lock().map_err(|error| error.to_string())?;
-        *task = Some(handle);
+        let mut bots = self.bots.lock().map_err(|e| e.to_string())?;
+        bots.push(BotEntry {
+            username: bot_username,
+            handle,
+        });
         Ok(())
     }
 
-    pub fn stop_bot(&self) {
-        if let Ok(mut task) = self.task.lock() {
-            if let Some(handle) = task.take() {
-                handle.abort();
+    pub fn stop_bot(&self, username: &str) -> bool {
+        let mut bots = match self.bots.lock() {
+            Ok(b) => b,
+            Err(_) => return false,
+        };
+        if let Some(idx) = bots.iter().position(|b| b.username == username) {
+            let entry = bots.remove(idx);
+            entry.handle.abort();
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn stop_all(&self) {
+        if let Ok(mut bots) = self.bots.lock() {
+            for entry in bots.drain(..) {
+                entry.handle.abort();
             }
         }
+    }
+
+    pub fn bot_usernames(&self) -> Vec<String> {
+        self.bots
+            .lock()
+            .map(|bots| bots.iter().map(|b| b.username.clone()).collect())
+            .unwrap_or_default()
     }
 }
 

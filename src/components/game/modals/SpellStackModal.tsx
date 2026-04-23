@@ -7,7 +7,7 @@ import { stackObjectToCardStub } from "../game.utils";
 import { useCardPreview } from "@/hooks/useCardPreview";
 import { HoverCardPreview } from "@/components/game/HoverCardPreview";
 import { MODAL_CARD_SIZE } from "../game.styles";
-import { useGameThemeColors } from "../game.theme";
+import { useTheme } from "@/hooks/useTheme";
 import type { CSSProperties } from "react";
 import { Button } from "@/components/ui/button";
 
@@ -22,7 +22,7 @@ interface SpellStackModalProps {
 export function SpellStackModal({ stack, validSpellIds, onTarget, onCancel }: SpellStackModalProps) {
   const preview = useCardPreview();
 
-  const themeColors = useGameThemeColors();
+  const themeColors = useTheme().game;
   const ringColor = themeColors.cardRing;
 
   const isTargeting = validSpellIds.length > 0;

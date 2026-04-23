@@ -5,7 +5,8 @@ import { CardOverlayButton } from "@/components/game/CardOverlayButton";
 import type { Card as XMageCard, ActivatableAbilityInfo } from "@/types/openmagic";
 import { CARD_W, CARD_H, CARD_GAP as GAP } from "../game.constants";
 import { CARD_RING, BATTLEFIELD_CARD } from "../game.styles";
-import { useGameThemeColors, withAlpha } from "../game.theme";
+import { withAlpha } from "../game.theme";
+import { useTheme } from "@/hooks/useTheme";
 import { useBattlefieldLayout } from "@/hooks/useBattlefieldLayout";
 import {
   extractManaLetters,
@@ -80,7 +81,7 @@ export function FreeBattlefield({
   placementGhost,
   hostileTargeting = false,
 }: FreeBattlefieldProps) {
-  const themeColors = useGameThemeColors();
+  const themeColors = useTheme().game;
   const cardMap = useMemo(() => {
     const m = new Map<string, XMageCard>();
     for (const c of cards) m.set(c.id, c);

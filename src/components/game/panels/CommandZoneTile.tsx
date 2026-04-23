@@ -2,7 +2,7 @@ import type { CSSProperties } from "react";
 import type { Card as CardType } from "@/types/openmagic";
 import { Card } from "@/components/game/Card";
 import { cn } from "@/lib/utils";
-import { useGameThemeColors } from "@/components/game/game.theme";
+import { useTheme } from "@/hooks/useTheme";
 
 interface CommandZoneTileProps {
   commanders: CardType[];
@@ -33,7 +33,7 @@ export function CommandZoneTile({
   onHoverCard,
   draggingCardId,
 }: CommandZoneTileProps) {
-  const themeColors = useGameThemeColors();
+  const themeColors = useTheme().game;
   const first = commanders[0];
   const count = commanders.length;
   if (!first) return null;

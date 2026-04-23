@@ -3,7 +3,8 @@ import { cn } from "@/lib/utils";
 import { PlayerPanel } from "./PlayerPanel";
 import { BattlefieldZone } from "../zones";
 import { PLAYER_CLUSTER_RESERVED_PX } from "../game.constants";
-import { useGameThemeColors, withAlpha } from "../game.theme";
+import { withAlpha } from "../game.theme";
+import { useTheme } from "@/hooks/useTheme";
 import { OPPONENT_SEATS, type OpponentHalfProps } from "../game.types";
 import { PromptType } from "@/types/promptType";
 import { usePreferencesStore } from "@/stores/usePreferencesStore";
@@ -48,7 +49,7 @@ export function OpponentHalf({
   isMonarch,
   hasInitiative,
 }: OpponentHalfProps) {
-  const themeColors = useGameThemeColors();
+  const themeColors = useTheme().game;
   const pixiEnabled = usePreferencesStore((s) => s.pixiEnabled);
 
   const leftReserved = PLAYER_CLUSTER_RESERVED_PX;

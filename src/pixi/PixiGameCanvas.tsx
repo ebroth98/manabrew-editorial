@@ -6,9 +6,8 @@ import { PixiGameScene, type PixiSceneOptions } from "./PixiGameScene";
 // Runtime workarounds for Pixi v8 bugs — must run before any `Application`
 // is constructed.
 installPixiPatches();
-import { adaptTheme } from "./themeAdapter";
 import { setPixiTextStyleTheme } from "./textStyles";
-import { getGameThemeColors } from "@/components/game/game.theme";
+import { getTheme } from "@/hooks/useTheme";
 import { usePreferencesStore } from "@/stores/usePreferencesStore";
 import { ZONE_COLUMN_RESERVED_PX } from "@/components/game/game.constants";
 import type {
@@ -196,10 +195,9 @@ export function PixiGameCanvas({
       },
     }, sceneOptionsRef.current);
 
-    const themeColors = getGameThemeColors();
-    const pixiTheme = adaptTheme(themeColors);
-    setPixiTextStyleTheme(pixiTheme, themeColors);
-    newScene.setTheme(pixiTheme);
+    const themeColors = getTheme();
+    setPixiTextStyleTheme(themeColors);
+    newScene.setTheme(themeColors);
 
     const parent = canvasRef.current.parentElement;
     if (parent) {
@@ -238,10 +236,9 @@ export function PixiGameCanvas({
   useEffect(() => {
     if (!scene) return;
     const unsub = usePreferencesStore.subscribe(() => {
-      const themeColors = getGameThemeColors();
-      const pixiTheme = adaptTheme(themeColors);
-      setPixiTextStyleTheme(pixiTheme, themeColors);
-      scene.setTheme(pixiTheme);
+      const themeColors = getTheme();
+      setPixiTextStyleTheme(themeColors);
+      scene.setTheme(themeColors);
     });
     return unsub;
   }, [scene]);

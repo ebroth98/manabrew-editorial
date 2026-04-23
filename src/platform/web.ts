@@ -620,7 +620,7 @@ class WebServerApi implements IServerApi {
     throw new Error("Client-hosted AI bots are only available in the Tauri app.");
   }
 
-  async removeAiBot(): Promise<void> {
+  async removeAiBot(_username: string): Promise<void> {
     throw new Error("Client-hosted AI bots are only available in the Tauri app.");
   }
 

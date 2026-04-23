@@ -79,7 +79,7 @@ export const Z_HAND_ACTIONS_MENU = 200;
 
 // ── Canvas alphas ───────────────────────────────────────────────────────────
 // Alpha values only — colour is pulled from the active theme
-// (`PixiThemeColors.canvas`).
+// (`GameThemeColors.canvas`).
 export const BG_ALPHA_IDLE = 0.4;
 export const BG_ALPHA_DROP = 0.15;
 export const DROP_STROKE_ALPHA = 0.8;

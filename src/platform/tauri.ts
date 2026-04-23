@@ -151,8 +151,8 @@ class TauriServerApi implements IServerApi {
     });
   }
 
-  async removeAiBot(): Promise<void> {
-    return invoke<void>("server_remove_ai_bot");
+  async removeAiBot(username: string): Promise<void> {
+    return invoke<void>("server_remove_ai_bot", { username });
   }
 }
 

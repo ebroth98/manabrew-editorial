@@ -3,7 +3,8 @@ import { useContext, useEffect } from "react";
 import { Minus, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PromptModalChromeContext } from "./PromptModalController";
-import { useGameThemeColors, withAlpha } from "../game.theme";
+import { withAlpha } from "../game.theme";
+import { useTheme } from "@/hooks/useTheme";
 
 interface ModalProps {
   children: React.ReactNode;
@@ -102,7 +103,7 @@ interface ModalInstructionsProps {
 }
 
 function ModalInstructions({ children, className }: ModalInstructionsProps) {
-  const themeColors = useGameThemeColors();
+  const themeColors = useTheme().game;
   const infoColor = themeColors.promptAction.defenseAction;
 
   return (

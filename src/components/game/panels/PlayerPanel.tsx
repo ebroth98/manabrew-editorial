@@ -5,7 +5,8 @@ import { GameIcon } from "@/components/game/GameIcon";
 import { ManaPool as ManaPoolDisplay } from "./ManaPool";
 import { PlayerAvatar } from "./PlayerAvatar";
 import { ZoneActionColumn } from "@/components/game/ZoneActionColumn";
-import { useGameFontSizes, useGameThemeColors, withAlpha } from "../game.theme";
+import { withAlpha } from "../game.theme";
+import { useTheme } from "@/hooks/useTheme";
 import type { OrbitBadge } from "./BadgeOrbit";
 import type { ZonePanelItem } from "@/stores/usePreferencesStore";
 import { useGameDevStore } from "@/stores/useGameDevStore";
@@ -75,8 +76,8 @@ export function PlayerPanel({
   hasPlayableInExile,
   zonePanelOrder,
 }: PlayerPanelProps) {
-  const themeColors = useGameThemeColors();
-  const fontSizes = useGameFontSizes();
+  const themeColors = useTheme().game;
+  const fontSizes = useTheme().fontSizes;
   const devOverrides = useGameDevStore((s) => s.playerOverrides);
 
   // Dev-only substitutions applied to the local player so the operator

@@ -203,8 +203,8 @@ resolvers:
 
 | Surface | Source of truth | Hook / util |
 |---------|-----------------|-------------|
-| Light / dark app chrome (Radix tokens) | `ThemePreset.light` / `ThemePreset.dark` HSL maps | `useAppTheme()` in `src/hooks/useAppTheme.ts` |
-| Game / Pixi board colours | `ThemePreset.gameColors` (dot-path record) | `useGameThemeColors()` in `src/components/game/game.theme.ts` |
+| Light / dark app chrome (Radix tokens) | `ThemePreset.light` / `ThemePreset.dark` HSL maps | `useTheme()` in `src/hooks/useTheme.ts` |
+| Game / Pixi board colours | `ThemePreset.gameColors` (dot-path record) | `useTheme().game` / `getTheme().game` in `src/hooks/useTheme.ts` |
 
 ### Where colours live
 
@@ -248,7 +248,7 @@ resolvers:
    `resolveGameThemeColors` — never sprinkle fallback literals in
    components. If a preset omits a key, the resolver chain handles it.
 4. **Pixi scene classes seed a non-null theme at construction time**
-   (`adaptTheme(getGameThemeColors())`) so every draw call can read
+   (`adaptTheme(getTheme().game)`) so every draw call can read
    theme values directly — no `this.theme?.X ?? FALLBACK` patterns.
 5. **The one narrow exception**: pure `rgba(0, 0, 0, X)` shadow idioms
    in tailwind arbitrary classes (`shadow-[0_10px_30px_rgba(0,0,0,0.35)]`)

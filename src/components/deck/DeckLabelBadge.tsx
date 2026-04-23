@@ -1,5 +1,5 @@
 import { cn } from "@/lib/utils";
-import { useGameThemeColors } from "@/components/game/game.theme";
+import { useTheme } from "@/hooks/useTheme";
 import type { DeckLabel } from "@/types/openmagic";
 
 /** Return the theme's shadow (dark) or neutral (light) colour depending on
@@ -25,7 +25,7 @@ interface DeckLabelBadgeProps {
 }
 
 export function DeckLabelBadge({ label, size = "sm", className }: DeckLabelBadgeProps) {
-  const themeColors = useGameThemeColors();
+  const themeColors = useTheme().game;
   return (
     <span
       className={cn("rounded-full font-medium border leading-tight", SIZE_CLASSES[size], className)}

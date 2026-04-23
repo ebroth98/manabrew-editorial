@@ -4,7 +4,8 @@
  */
 
 import { Container, Graphics, Text, TextStyle, Sprite } from "pixi.js";
-import type { PixiThemeColors } from "./themeAdapter";
+import type { AppTheme } from "@/hooks/useTheme";
+import { hexToNum } from "./colorUtils";
 import { applyIcon, ICON_COLORS } from "./panelIcons";
 
 /** Display cells. "combat" is a merged cell that represents all combat sub-phases. */
@@ -56,13 +57,12 @@ function easeOut(t: number): number {
 }
 
 // ── Indicator shapes for self (bottom) and opponents (top) ────────────
-const INDICATOR_SIZE = 10;
+const INDICATOR_SIZE = 13;
 const INDICATOR_GAP = 3;
 const INDICATOR_MARGIN = 4; // distance from cell edge
 
 
 type ShapeKind = "triangle" | "diamond" | "circle";
-const OPPONENT_SHAPES: ShapeKind[] = ["triangle", "diamond", "circle"];
 
 function drawShape(
   gfx: Graphics,
@@ -98,45 +98,11 @@ function drawShape(
   }
 }
 
-function drawShapeWithAlpha(
-  gfx: Graphics,
-  kind: ShapeKind,
-  cx: number,
-  cy: number,
-  size: number,
-  color: number,
-  filled: boolean,
-  pointUp: boolean,
-  alpha: number,
-): void {
-  const r = size / 2;
-  if (kind === "triangle") {
-    const tipY = pointUp ? cy - r : cy + r;
-    const baseY = pointUp ? cy + r : cy - r;
-    gfx.moveTo(cx, tipY);
-    gfx.lineTo(cx - r, baseY);
-    gfx.lineTo(cx + r, baseY);
-    gfx.closePath();
-  } else if (kind === "diamond") {
-    gfx.moveTo(cx, cy - r);
-    gfx.lineTo(cx + r, cy);
-    gfx.lineTo(cx, cy + r);
-    gfx.lineTo(cx - r, cy);
-    gfx.closePath();
-  } else {
-    gfx.circle(cx, cy, r * 0.8);
-  }
-  if (filled) {
-    gfx.fill({ color, alpha });
-  } else {
-    gfx.stroke({ color, width: 1.2, alpha: alpha * 0.5 });
-  }
-}
-
-const normalStyle = new TextStyle({ fontFamily: FONT, fontSize: 11, fontWeight: "600", fill: 0x555555, align: "center" });
-const activeStyle = new TextStyle({ fontFamily: FONT, fontSize: 11, fontWeight: "bold", fill: 0xffffff, align: "center" });
-const combatActiveStyle = new TextStyle({ fontFamily: FONT, fontSize: 11, fontWeight: "bold", fill: 0xffffff, align: "center" });
-const enabledStyle = new TextStyle({ fontFamily: FONT, fontSize: 11, fontWeight: "600", fill: 0xaaaaaa, align: "center" });
+// Text styles — fill is updated from theme in setTheme()
+const normalStyle = new TextStyle({ fontFamily: FONT, fontSize: 11, fontWeight: "600", fill: "#555555", align: "center" });
+const activeStyle = new TextStyle({ fontFamily: FONT, fontSize: 11, fontWeight: "bold", fill: "#ffffff", align: "center" });
+const combatActiveStyle = new TextStyle({ fontFamily: FONT, fontSize: 11, fontWeight: "bold", fill: "#ffffff", align: "center" });
+const enabledStyle = new TextStyle({ fontFamily: FONT, fontSize: 11, fontWeight: "600", fill: "#aaaaaa", align: "center" });
 
 interface PhaseCell {
   bg: Graphics;
@@ -149,12 +115,12 @@ interface PhaseCell {
   defaultLabel: string;
   subPhases?: string[];
   flashStart: number;
-  /** Bottom indicator (self-turn toggle). */
   selfIndicator: Graphics;
   selfHitArea: Graphics;
-  /** Top indicators (opponent-turn toggles, up to 3). */
+  selfHovered: boolean;
   oppIndicators: Graphics;
   oppHitAreas: Graphics[];
+  oppHovered: boolean[];
 }
 
 export interface OpponentInfo {
@@ -186,7 +152,7 @@ export interface PhaseStripCallbacks {
 
 export class PhaseStripLayer {
   readonly container: Container;
-  private theme: PixiThemeColors;
+  private theme: AppTheme;
   private callbacks: PhaseStripCallbacks = {};
   private lastState: PhaseStripState | null = null;
   private cells: PhaseCell[];
@@ -199,8 +165,10 @@ export class PhaseStripLayer {
   private canvasWidth = 0;
   private canvasHeight = 0;
   private lineGfx: Graphics;
+  private stripHitArea: Graphics;
+  private hoveredCellIndex = -1;
 
-  constructor(theme: PixiThemeColors) {
+  constructor(theme: AppTheme) {
     this.theme = theme;
     this.container = new Container();
     this.container.label = "phaseStrip";
@@ -208,6 +176,11 @@ export class PhaseStripLayer {
     // Divider line behind the cells
     this.lineGfx = new Graphics();
     this.container.addChild(this.lineGfx);
+
+    // Full-strip hit area for hover detection (show/hide empty indicators)
+    this.stripHitArea = new Graphics();
+    this.stripHitArea.eventMode = "static";
+    this.container.addChild(this.stripHitArea);
 
     this.cells = [];
     for (const p of PHASES) {
@@ -234,9 +207,10 @@ export class PhaseStripLayer {
       // Main cell hit area (for hover) — added first so indicators sit on top
       const hitArea = new Graphics();
       hitArea.eventMode = "static";
-      hitArea.cursor = "pointer";
-      hitArea.on("pointerover", () => { hoverBg.visible = true; });
-      hitArea.on("pointerout", () => { hoverBg.visible = false; });
+      hitArea.cursor = "default";
+      const cellIndex = this.cells.length; // index for this cell (before push)
+      hitArea.on("pointerover", () => { this.hoveredCellIndex = cellIndex; });
+      hitArea.on("pointerout", () => { if (this.hoveredCellIndex === cellIndex) this.hoveredCellIndex = -1; });
       this.container.addChild(hitArea);
 
       // Self indicator (bottom — my turn toggle)
@@ -245,16 +219,19 @@ export class PhaseStripLayer {
       const selfHitArea = new Graphics();
       selfHitArea.eventMode = "static";
       selfHitArea.cursor = "pointer";
+      const selfHovered = false;
       selfHitArea.on("pointerdown", () => {
         const phases = p.subPhases ?? [p.id];
         for (const ph of phases) this.callbacks.onToggleSelfPhase?.(ph);
       });
+      selfHitArea.on("pointerover", () => { cellRef.selfHovered = true; });
+      selfHitArea.on("pointerout", () => { cellRef.selfHovered = false; });
       this.container.addChild(selfHitArea);
 
-      // Opponent indicators (top — per-opponent turn toggles)
       const oppIndicators = new Graphics();
       this.container.addChild(oppIndicators);
       const oppHitAreas: Graphics[] = [];
+      const oppHovered: boolean[] = [false, false, false];
       for (let oi = 0; oi < 3; oi++) {
         const oha = new Graphics();
         oha.eventMode = "static";
@@ -268,21 +245,29 @@ export class PhaseStripLayer {
           const phases = p.subPhases ?? [p.id];
           for (const ph of phases) this.callbacks.onToggleOpponentPhase?.(opp.id, ph);
         });
+        oha.on("pointerover", () => { cellRef.oppHovered[oi] = true; });
+        oha.on("pointerout", () => { cellRef.oppHovered[oi] = false; });
         this.container.addChild(oha);
         oppHitAreas.push(oha);
       }
 
-      const cell: PhaseCell = {
+      const cellRef: PhaseCell = {
         bg, flashGfx, hoverBg, hitArea, text, icon,
         id: p.id, defaultLabel: p.short, subPhases: p.subPhases, flashStart: 0,
-        selfIndicator, selfHitArea, oppIndicators, oppHitAreas,
+        selfIndicator, selfHitArea, selfHovered,
+        oppIndicators, oppHitAreas, oppHovered,
       };
+      const cell = cellRef;
       this.cells.push(cell);
     }
   }
 
-  setTheme(theme: PixiThemeColors): void {
+  setTheme(theme: AppTheme): void {
     this.theme = theme;
+    normalStyle.fill = theme.game.textMuted;
+    activeStyle.fill = theme.game.textOnTinted;
+    combatActiveStyle.fill = theme.game.textOnTinted;
+    enabledStyle.fill = theme.game.textGhost;
   }
 
   setCallbacks(cb: PhaseStripCallbacks): void {
@@ -296,7 +281,8 @@ export class PhaseStripLayer {
 
   update(state: PhaseStripState): void {
     this.lastState = state;
-    const t = this.theme;
+    const t = this.theme.game;
+    const appTheme = this.theme.app;
     const y = (this.canvasHeight / 2) - CELL_H / 2;
     const centerX = this.canvasWidth / 2;
 
@@ -332,11 +318,18 @@ export class PhaseStripLayer {
     // Left segment
     this.lineGfx.moveTo(0, lineY);
     this.lineGfx.lineTo(stripLeft, lineY);
-    this.lineGfx.stroke({ color: 0xffffff, width: 2, alpha: 0.12 });
+    const lineColor = hexToNum(t.canvas.neutral);
+    this.lineGfx.stroke({ color: lineColor, width: 2, alpha: 0.12 });
     // Right segment
     this.lineGfx.moveTo(stripRight, lineY);
     this.lineGfx.lineTo(this.canvasWidth, lineY);
-    this.lineGfx.stroke({ color: 0xffffff, width: 2, alpha: 0.12 });
+    this.lineGfx.stroke({ color: lineColor, width: 2, alpha: 0.12 });
+
+    // Strip hover hit area — covers cells + indicator rows
+    const hoverPad = INDICATOR_SIZE + INDICATOR_MARGIN + 6;
+    this.stripHitArea.clear();
+    this.stripHitArea.rect(stripLeft, y - hoverPad, stripRight - stripLeft, CELL_H + hoverPad * 2);
+    this.stripHitArea.fill({ color: 0x000000, alpha: 0.001 });
 
     // Detect phase change for flash
     const turnJustStarted = state.isActiveTurn && !this.prevIsActiveTurn;
@@ -349,12 +342,11 @@ export class PhaseStripLayer {
     }
     this.prevStep = state.currentStep;
 
-    const combatActiveColor = t.promptAction.attackAction;
 
     // Determine the active player's color for the bar tint
     const pc = t.playerColors;
-    const selfColor = pc.self;
-    const oppColors = [pc.opponent1, pc.opponent2, pc.opponent3];
+    const selfColor = hexToNum(pc.self);
+    const oppColors = [hexToNum(pc.opponent1), hexToNum(pc.opponent2), hexToNum(pc.opponent3)];
 
     // Only update the displayed active player on non-cleanup phases
     // so the bar color doesn't flip early during cleanup.
@@ -369,7 +361,7 @@ export class PhaseStripLayer {
       ? selfColor
       : activeOppIdx >= 0
         ? oppColors[activeOppIdx]!
-        : 0x555555;
+        : hexToNum(t.textMuted);
 
     const count = this.cells.length;
     for (let i = 0; i < count; i++) {
@@ -417,27 +409,18 @@ export class PhaseStripLayer {
       cell.hitArea.clear();
       cell.hitArea.rect(cx, y, cellW, CELL_H);
       cell.hitArea.fill({ color: 0x000000, alpha: 0.001 });
-      cell.hitArea.eventMode = state.isInteractive ? "static" : "none";
-      cell.hitArea.cursor = state.isInteractive ? "pointer" : "default";
 
-      // Background — opaque base, tinted with turn color, current phase brighter
-      const phaseColor = isCombatCell && combatSubActive ? combatActiveColor : turnColor;
+      console.log({DIOPORCO: appTheme.foreground})
+      console.log({DIOPORCO2: appTheme.accent})
       cell.bg.clear();
       cell.bg.roundRect(cx, y, cellW, CELL_H, CELL_R);
-      cell.bg.fill({ color: 0x0c0c0c });
-      // All cells get a subtle tint of the turn color
-      cell.bg.roundRect(cx, y, cellW, CELL_H, CELL_R);
-      cell.bg.fill({ color: turnColor, alpha: 0.12 });
-      // Current phase gets a stronger highlight
+      cell.bg.fill({ color: hexToNum(appTheme.secondary) });
       if (isActive) {
         cell.bg.roundRect(cx, y, cellW, CELL_H, CELL_R);
-        cell.bg.fill({ color: phaseColor, alpha: 0.7 });
+        cell.bg.stroke({ color: turnColor, width: 2, alignment: 0.5 });
       }
 
-      // Hover overlay
       cell.hoverBg.clear();
-      cell.hoverBg.roundRect(cx, y, cellW, CELL_H, CELL_R);
-      cell.hoverBg.fill({ color: 0x2a2a2a, alpha: 0.5 });
 
       // Text position (non-combat cells; combat text is positioned with the icon above)
       cell.text.style = isActive
@@ -453,46 +436,40 @@ export class PhaseStripLayer {
         cell.text.y = y + CELL_H / 2;
       }
 
-      // ── Self indicator (bottom: triangle pointing down) ──
+      // ── Store indicator geometry for tick() drawing ──
       const phaseIds = cell.subPhases ?? [cell.id];
-      const selfEnabled = phaseIds.some((ph) => state.selfEnabledPhases.has(ph));
-      const selfIndCx = cx + cellW / 2;
+      (cell as any)._indData = {
+        cx: cx + cellW / 2,
+        selfCy: y + CELL_H + INDICATOR_MARGIN + INDICATOR_SIZE / 2,
+        oppCy: y - INDICATOR_MARGIN - INDICATOR_SIZE / 2,
+        selfEnabled: phaseIds.some((ph) => state.selfEnabledPhases.has(ph)),
+        selfColor,
+        oppCount: state.opponents.length,
+        oppEnabled: state.opponents.map((opp) => {
+          const stops = state.opponentEnabledPhases.get(opp.id);
+          return phaseIds.some((ph) => stops?.has(ph));
+        }),
+        oppColors,
+        cellW,
+        hideIndicators: isCombatCell,
+      };
+
+      // Hit areas (static positions, always present)
+      const indCx = cx + cellW / 2;
       const selfIndCy = y + CELL_H + INDICATOR_MARGIN + INDICATOR_SIZE / 2;
-
-      cell.selfIndicator.clear();
-      drawShape(cell.selfIndicator, "triangle", selfIndCx, selfIndCy, INDICATOR_SIZE, selfColor, selfEnabled, false);
-      cell.selfIndicator.alpha = isMeActive ? 1 : 0.3;
-
       cell.selfHitArea.clear();
-      cell.selfHitArea.rect(selfIndCx - INDICATOR_SIZE, selfIndCy - INDICATOR_SIZE, INDICATOR_SIZE * 2, INDICATOR_SIZE * 2);
+      cell.selfHitArea.rect(indCx - INDICATOR_SIZE, selfIndCy - INDICATOR_SIZE, INDICATOR_SIZE * 2, INDICATOR_SIZE * 2);
       cell.selfHitArea.fill({ color: 0x000000, alpha: 0.001 });
 
-      // ── Opponent indicators (top: shapes pointing up) ──
-      const oppCount = state.opponents.length;
-      cell.oppIndicators.clear();
-      const oppRowCx = cx + cellW / 2;
       const oppRowCy = y - INDICATOR_MARGIN - INDICATOR_SIZE / 2;
+      const oppCount = state.opponents.length;
       const oppTotalW = oppCount * INDICATOR_SIZE + Math.max(0, oppCount - 1) * INDICATOR_GAP;
-      const oppStartX = oppRowCx - oppTotalW / 2 + INDICATOR_SIZE / 2;
-
+      const oppStartX = indCx - oppTotalW / 2 + INDICATOR_SIZE / 2;
       for (let oi = 0; oi < 3; oi++) {
         const oha = cell.oppHitAreas[oi]!;
-        if (oi >= oppCount) {
-          oha.visible = false;
-          continue;
-        }
+        if (oi >= oppCount) { oha.visible = false; continue; }
         oha.visible = true;
-        const opp = state.opponents[oi]!;
-        const isThisOppTurn = displayActive === opp.id;
-        const oppStops = state.opponentEnabledPhases.get(opp.id);
-        const oppEnabled = phaseIds.some((ph) => oppStops?.has(ph));
-        const shape = OPPONENT_SHAPES[oi]!;
-        const color = oppColors[oi]!;
         const shapeX = oppStartX + oi * (INDICATOR_SIZE + INDICATOR_GAP);
-        const dimAlpha = isThisOppTurn ? 1 : 0.35;
-
-        drawShapeWithAlpha(cell.oppIndicators, shape, shapeX, oppRowCy, INDICATOR_SIZE, color, oppEnabled, true, dimAlpha);
-
         oha.clear();
         oha.rect(shapeX - INDICATOR_SIZE, oppRowCy - INDICATOR_SIZE, INDICATOR_SIZE * 2, INDICATOR_SIZE * 2);
         oha.fill({ color: 0x000000, alpha: 0.001 });
@@ -502,11 +479,48 @@ export class PhaseStripLayer {
       (cell as any)._fx = cx;
       (cell as any)._fy = y;
       (cell as any)._fw = cellW;
-      (cell as any)._fc = isCombatCell && combatSubActive ? combatActiveColor : turnColor;
+      (cell as any)._fc = turnColor;
     }
   }
 
   tick(): void {
+    // Draw indicators every frame
+    for (let ci = 0; ci < this.cells.length; ci++) {
+      const cell = this.cells[ci]!;
+      const d = (cell as any)._indData;
+      if (!d) continue;
+
+      if (d.hideIndicators) {
+        cell.selfIndicator.clear();
+        cell.oppIndicators.clear();
+        continue;
+      }
+
+      const cellHovered = this.hoveredCellIndex === ci;
+      const showEmpty = cellHovered || cell.selfHovered || cell.oppHovered.some(Boolean);
+
+      // Self indicator
+      cell.selfIndicator.clear();
+      if (d.selfEnabled || showEmpty) {
+        const sz = cell.selfHovered ? INDICATOR_SIZE * 1.25 : INDICATOR_SIZE;
+        drawShape(cell.selfIndicator, "circle", d.cx, d.selfCy, sz, d.selfColor, d.selfEnabled, false);
+      }
+
+      // Opponent indicators
+      cell.oppIndicators.clear();
+      const oppTotalW = d.oppCount * INDICATOR_SIZE + Math.max(0, d.oppCount - 1) * INDICATOR_GAP;
+      const oppStartX = d.cx - oppTotalW / 2 + INDICATOR_SIZE / 2;
+      for (let oi = 0; oi < d.oppCount; oi++) {
+        const enabled = d.oppEnabled[oi];
+        if (!enabled && !showEmpty) continue;
+        const color = d.oppColors[oi];
+        const shapeX = oppStartX + oi * (INDICATOR_SIZE + INDICATOR_GAP);
+        const sz = cell.oppHovered[oi] ? INDICATOR_SIZE * 1.25 : INDICATOR_SIZE;
+        drawShape(cell.oppIndicators, "circle", shapeX, d.oppCy, sz, color, enabled, true);
+      }
+    }
+
+    // Flash animation
     const now = performance.now();
     for (const cell of this.cells) {
       cell.flashGfx.clear();

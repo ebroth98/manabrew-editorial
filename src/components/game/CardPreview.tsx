@@ -8,7 +8,8 @@ import { TextWithMana } from "@/components/game/TextWithMana";
 import { useQuery } from "@tanstack/react-query";
 import { getCardByName } from "@/api/scryfall";
 import { FLASH_CARD_SIZE } from "./game.styles";
-import { useGameThemeColors, withAlpha } from "./game.theme";
+import { withAlpha } from "./game.theme";
+import { useTheme } from "@/hooks/useTheme";
 import { upgradeScryfallUrl } from "./game.utils";
 import { cn } from "@/lib/utils";
 import type { HandActionOption } from "@/stores/useGameUIStore";
@@ -57,7 +58,7 @@ export function CardPreview({
   isSticky = false,
 }: CardPreviewProps) {
   const hasActions = actions && actions.length > 0 && onSelectAction;
-  const themeColors = useGameThemeColors();
+  const themeColors = useTheme().game;
   const ringColor = themeColors.cardRing; // matches battlefield playable color
   const { data: fetchedUrl, isLoading } = useCardImage(card.name, card.imageUrl, card.isToken, card.color, card.setCode, card.cardNumber, "large");
   const imageUrl = upgradeScryfallUrl(card.imageUrl ?? fetchedUrl, "large");

@@ -356,7 +356,7 @@ export function HandDisplayCool({
                     ...(isSelected && {
                       // Mulligan-rejected ring + glow — derived from the
                       // theme's hostile-pointer colour via the CSS var
-                      // that `useAppTheme` writes on :root. `color-mix`
+                      // that `useTheme` writes on :root. `color-mix`
                       // lets us apply a percent-alpha without parsing
                       // the rgba string ourselves.
                       outline: "2px solid var(--pointer-hostile)",

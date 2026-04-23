@@ -1,7 +1,7 @@
 import { Graphics } from "pixi.js";
 import { CARD_W, CARD_H } from "@/components/game/game.constants";
-import { adaptTheme } from "./themeAdapter";
-import { getGameThemeColors } from "@/components/game/game.theme";
+import { getTheme } from "@/hooks/useTheme";
+import { hexToNum } from "./colorUtils";
 import type { ScreenPos } from "./types";
 
 const MIN_MARQUEE_SIZE = 4;
@@ -29,7 +29,7 @@ export class MarqueeHandler {
     this.gfx.zIndex = MARQUEE_Z_INDEX;
     // Seed the marquee colour from the current theme's `cardRing` when the
     // caller doesn't supply one; `setColor` keeps it in sync later.
-    this.color = color ?? adaptTheme(getGameThemeColors()).cardRing;
+    this.color = color ?? hexToNum(getTheme().game.cardRing);
     this.fillAlpha = fillAlpha;
   }
 

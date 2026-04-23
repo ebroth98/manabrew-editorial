@@ -1,6 +1,7 @@
 import type { CSSProperties } from "react";
 import { cn } from "@/lib/utils";
-import { useGameThemeColors, withAlpha } from "@/components/game/game.theme";
+import { withAlpha } from "@/components/game/game.theme";
+import { useTheme } from "@/hooks/useTheme";
 
 type OverlayVariant = "tap" | "untap" | "choosable" | "choosable-hostile" | "pending" | "attacking";
 
@@ -12,7 +13,7 @@ interface CardOverlayButtonProps {
 }
 
 export function CardOverlayButton({ variant, onClick, title, label }: CardOverlayButtonProps) {
-  const themeColors = useGameThemeColors();
+  const themeColors = useTheme().game;
 
   const variantColorMap: Record<OverlayVariant, string> = {
     tap: themeColors.cardRing,

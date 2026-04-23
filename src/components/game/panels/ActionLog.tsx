@@ -1,6 +1,7 @@
 import { cn } from "@/lib/utils";
 import type { GameLogEntryType, GameLogEntry } from "@/types/gameLog";
-import { useGameThemeColors, withAlpha } from "../game.theme";
+import { withAlpha } from "../game.theme";
+import { useTheme } from "@/hooks/useTheme";
 
 interface ActionLogProps {
   gameLog: GameLogEntry[];
@@ -16,7 +17,7 @@ export function ActionLog({
   onHoverLogCard,
 }: ActionLogProps) {
   const visibleLog = gameLog.filter((entry) => entry.entryType !== "rule");
-  const themeColors = useGameThemeColors();
+  const themeColors = useTheme().game;
   const priorityColor = themeColors.activeAction.priority;
   const infoColor = themeColors.promptAction.defenseAction;
 

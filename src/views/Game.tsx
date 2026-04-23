@@ -29,7 +29,8 @@ import { usePromptEffects } from "@/hooks/usePromptEffects";
 import { useCombatState } from "@/hooks/useCombatState";
 import { useGameEventListeners } from "@/hooks/useGameEventListeners";
 import { GameBoard } from "@/components/game/GameBoard";
-import { useGameThemeColors, withAlpha } from "@/components/game/game.theme";
+import { withAlpha } from "@/components/game/game.theme";
+import { useTheme } from "@/hooks/useTheme";
 import { cn } from "@/lib/utils";
 import { Navigate, useLocation } from "react-router-dom";
 import { PromptType } from "@/types/promptType";
@@ -120,7 +121,7 @@ export default function Game() {
   const vScale = useHandScale();
   const ghostCardW = Math.round(HAND_CARD_BASES[handSize].cardW * vScale);
   const ghostCardH = Math.round(HAND_CARD_BASES[handSize].cardH * vScale);
-  const themeColors = useGameThemeColors();
+  const themeColors = useTheme().game;
   const location = useLocation();
   const devExtraOpponents = ((location.state as { devExtraOpponents?: number } | null)?.devExtraOpponents ?? 0);
   const containerRef = useRef<HTMLDivElement>(null);

@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Hand, Users, Crown, Swords, Shield, LogOut } from "lucide-react";
+import { Hand, Users, Crown, Swords, Shield, LogOut, Bot, X } from "lucide-react";
 import type { RoomInfo } from "@/types/server";
 import { cn } from "@/lib/utils";
 
@@ -20,6 +20,9 @@ interface TablesListProps {
   onOpenDeckDialog: () => void;
   onStartGame: () => void;
   onStartTabletop?: () => void;
+  onAddBot?: () => void;
+  onRemoveBot?: (username: string) => void;
+  botUsernames?: string[];
 }
 
 export function TablesList({
@@ -32,6 +35,9 @@ export function TablesList({
   onOpenDeckDialog,
   onStartGame,
   onStartTabletop,
+  onAddBot,
+  onRemoveBot,
+  botUsernames = [],
 }: TablesListProps) {
   const [joiningRoomId, setJoiningRoomId] = useState<string | null>(null);
 
@@ -83,40 +89,66 @@ export function TablesList({
 
             {/* Player slots */}
             <div className="grid gap-2 sm:grid-cols-2">
-              {orderedPlayers.map((p) => (
-                <div
-                  key={p.username}
-                  className={cn(
-                    "rounded-lg border px-3 py-2 flex items-center gap-2.5 transition-colors",
-                    p.ready ? "border-primary/30 bg-primary/5" : "bg-muted/30",
-                  )}
-                >
-                  <div className={cn(
-                    "h-2 w-2 rounded-full shrink-0",
-                    p.ready ? "bg-primary" : "bg-muted-foreground/30",
-                  )} />
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-sm font-medium truncate">{p.username}</span>
-                      {p.username === currentRoom.host && (
-                        <Crown className="h-3 w-3 text-commander shrink-0" />
-                      )}
-                    </div>
-                    <div className="text-[11px] text-muted-foreground truncate">
-                      {p.selected_deck_name ?? "No deck selected"}
-                    </div>
-                  </div>
-                  <Badge
-                    variant={p.ready ? "default" : "outline"}
+              {orderedPlayers.map((p) => {
+                const isBot = botUsernames.includes(p.username);
+                return (
+                  <div
+                    key={p.username}
                     className={cn(
-                      "text-[9px] px-1.5 shrink-0",
-                      p.ready && "bg-primary border-primary text-primary-foreground hover:bg-primary",
+                      "rounded-lg border px-3 py-2 flex items-center gap-2.5 transition-colors",
+                      p.ready ? "border-primary/30 bg-primary/5" : "bg-muted/30",
                     )}
                   >
-                    {p.ready ? "Ready" : "Waiting"}
-                  </Badge>
-                </div>
-              ))}
+                    <div className={cn(
+                      "h-2 w-2 rounded-full shrink-0",
+                      p.ready ? "bg-primary" : "bg-muted-foreground/30",
+                    )} />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-1.5">
+                        {isBot && <Bot className="h-3 w-3 text-muted-foreground shrink-0" />}
+                        <span className="text-sm font-medium truncate">{p.username}</span>
+                        {p.username === currentRoom.host && (
+                          <Crown className="h-3 w-3 text-commander shrink-0" />
+                        )}
+                      </div>
+                      <div className="text-[11px] text-muted-foreground truncate">
+                        {p.selected_deck_name ?? "No deck selected"}
+                      </div>
+                    </div>
+                    {isBot && isHost ? (
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-6 w-6 shrink-0 text-muted-foreground hover:text-destructive"
+                        onClick={() => onRemoveBot?.(p.username)}
+                        title="Remove bot"
+                      >
+                        <X className="h-3 w-3" />
+                      </Button>
+                    ) : (
+                      <Badge
+                        variant={p.ready ? "default" : "outline"}
+                        className={cn(
+                          "text-[9px] px-1.5 shrink-0",
+                          p.ready && "bg-primary border-primary text-primary-foreground hover:bg-primary",
+                        )}
+                      >
+                        {p.ready ? "Ready" : "Waiting"}
+                      </Badge>
+                    )}
+                  </div>
+                );
+              })}
+              {/* Add Bot slot */}
+              {isHost && currentRoom.players.length < currentRoom.max_players && onAddBot && (
+                <button
+                  className="rounded-lg border border-dashed px-3 py-2 flex items-center justify-center gap-1.5 text-xs text-muted-foreground hover:text-foreground hover:border-primary/40 transition-colors cursor-pointer"
+                  onClick={onAddBot}
+                >
+                  <Bot className="h-3.5 w-3.5" />
+                  Add Bot
+                </button>
+              )}
             </div>
 
             {/* Actions */}

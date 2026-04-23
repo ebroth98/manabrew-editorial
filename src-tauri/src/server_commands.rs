@@ -26,7 +26,7 @@ pub async fn server_disconnect(
     client: State<'_, ServerClient>,
     bot_manager: State<'_, ClientBotManager>,
 ) -> Result<(), String> {
-    bot_manager.stop_bot();
+    bot_manager.stop_all();
     client.disconnect();
     Ok(())
 }
@@ -53,9 +53,15 @@ pub async fn server_spawn_ai_bot(
 }
 
 #[tauri::command]
-pub async fn server_remove_ai_bot(bot_manager: State<'_, ClientBotManager>) -> Result<(), String> {
-    bot_manager.stop_bot();
-    Ok(())
+pub async fn server_remove_ai_bot(
+    bot_manager: State<'_, ClientBotManager>,
+    username: String,
+) -> Result<(), String> {
+    if bot_manager.stop_bot(&username) {
+        Ok(())
+    } else {
+        Err(format!("No bot found with username '{}'", username))
+    }
 }
 
 #[tauri::command]
@@ -109,7 +115,7 @@ pub async fn server_leave_room(
     client: State<'_, ServerClient>,
     bot_manager: State<'_, ClientBotManager>,
 ) -> Result<(), String> {
-    bot_manager.stop_bot();
+    bot_manager.stop_all();
     send_server_message(&client, serde_json::json!({"type": "LeaveRoom"}))
 }
 

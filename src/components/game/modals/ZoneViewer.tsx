@@ -5,7 +5,7 @@ import { ManaSymbols } from "@/components/game/ManaSymbols";
 import { HAND_CARD } from "../game.styles";
 import { useCardPreview } from "@/hooks/useCardPreview";
 import { HoverCardPreview } from "@/components/game/HoverCardPreview";
-import { useGameThemeColors } from "../game.theme";
+import { useTheme } from "@/hooks/useTheme";
 import { Modal } from "./Modal";
 import type { CSSProperties } from "react";
 
@@ -24,7 +24,7 @@ export function ZoneViewer({
 }: ZoneViewerProps) {
   const preview = useCardPreview();
 
-  const themeColors = useGameThemeColors();
+  const themeColors = useTheme().game;
   const ringColor = themeColors.cardRing;
 
   return (

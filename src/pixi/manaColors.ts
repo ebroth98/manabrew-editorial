@@ -3,10 +3,11 @@
  *
  * The tint values themselves live in the theme (`mana.W` … `mana.C`); this
  * module only provides the letter-type guard and a convenience lookup that
- * reads from an already-resolved `PixiThemeColors`.
+ * reads from a `GameThemeColors` and converts inline.
  */
 
-import type { PixiThemeColors } from "./themeAdapter";
+import type { AppTheme } from "@/hooks/useTheme";
+import { hexToNum } from "./colorUtils";
 
 export type ManaLetter = "W" | "U" | "B" | "R" | "G" | "C";
 
@@ -17,6 +18,6 @@ export const isManaLetter = (value: string | undefined): value is ManaLetter =>
 
 export const manaColorFor = (
   letter: string | undefined,
-  theme: PixiThemeColors,
+  theme: AppTheme,
   fallback: number,
-): number => (isManaLetter(letter) ? theme.mana[letter] : fallback);
+): number => (isManaLetter(letter) ? hexToNum(theme.game.mana[letter]) : fallback);

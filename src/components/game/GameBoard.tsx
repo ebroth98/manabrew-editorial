@@ -431,7 +431,7 @@ export function GameBoard({
       </div>
 
       {/* Phase strip — the center line with resize grip on the left */}
-      <div className="h-16 w-full shrink-0 relative">
+      <div className="h-20 w-full shrink-0 relative">
         {/* Resize grip — overlaid on the left, above the phase strip */}
         <div
           className="absolute left-2 top-0 h-full w-10 cursor-row-resize z-20 flex items-center justify-center"

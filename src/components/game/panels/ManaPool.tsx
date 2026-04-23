@@ -1,9 +1,9 @@
 import { ManaSymbols } from "@/components/game/ManaSymbols";
 import { MANA_COLORS } from "../game.constants";
-import { useGameFontSizes } from "../game.theme";
+import { useTheme } from "@/hooks/useTheme";
 
 export function ManaPool({ pool }: { pool: Record<string, number> }) {
-  const fontSizes = useGameFontSizes();
+  const fontSizes = useTheme().fontSizes;
   return (
     <div className="flex flex-row items-center gap-1 flex-nowrap">
       {MANA_COLORS.flatMap(({ key }) => {

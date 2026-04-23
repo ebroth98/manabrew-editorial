@@ -3,7 +3,8 @@ import { cn } from "@/lib/utils";
 import type { StackObject } from "@/types/openmagic";
 import type { PromptActionType } from "./game.types";
 import { PromptType } from "@/types/promptType";
-import { useGameThemeColors, withAlpha } from "./game.theme";
+import { withAlpha } from "./game.theme";
+import { useTheme } from "@/hooks/useTheme";
 
 interface StackSectionProps {
   stack: StackObject[];
@@ -15,7 +16,7 @@ export function StackSection({ stack, promptType, onOpenStack }: StackSectionPro
   const isCounterPrompt = promptType === PromptType.ChooseTargetSpell;
   const show = stack.length > 0 || isCounterPrompt;
 
-  const themeColors = useGameThemeColors();
+  const themeColors = useTheme().game;
   const accentColor = themeColors.cardRing;
 
   if (!show) return null;

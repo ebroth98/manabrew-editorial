@@ -9,7 +9,7 @@ import { cn } from "@/lib/utils";
 import { useState } from "react";
 import { useModalKeyboard } from "@/hooks/useModalKeyboard";
 import { MODAL_CARD_SIZE } from "../game.styles";
-import { useGameThemeColors } from "../game.theme";
+import { useTheme } from "@/hooks/useTheme";
 import type { CSSProperties } from "react";
 
 export type LibraryPeekMode = "scry" | "surveil" | "dig" | "discard";
@@ -90,7 +90,7 @@ export function LibraryPeekModal({
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const preview = useCardPreview();
 
-  const themeColors = useGameThemeColors();
+  const themeColors = useTheme().game;
   const ringColor = themeColors.cardRing;
 
   const config = MODE_CONFIG[mode];

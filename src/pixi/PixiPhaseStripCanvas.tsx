@@ -8,8 +8,7 @@ import { Application } from "pixi.js";
 import { installPixiPatches } from "./pixiPatches";
 installPixiPatches();
 import { PhaseStripLayer, type PhaseStripState, type PhaseStripCallbacks } from "./PhaseStripLayer";
-import { adaptTheme } from "./themeAdapter";
-import { getGameThemeColors } from "@/components/game/game.theme";
+import { getTheme } from "@/hooks/useTheme";
 import { usePreferencesStore } from "@/stores/usePreferencesStore";
 
 interface Props {
@@ -46,7 +45,7 @@ export function PixiPhaseStripCanvas({ state, callbacks, className }: Props) {
     }
     if (!app.renderer) { appRef.current = null; return; }
 
-    const theme = adaptTheme(getGameThemeColors());
+    const theme = getTheme();
     const strip = new PhaseStripLayer(theme);
     stripRef.current = strip;
     app.stage.addChild(strip.container);
@@ -100,7 +99,7 @@ export function PixiPhaseStripCanvas({ state, callbacks, className }: Props) {
   useEffect(() => {
     if (!stripRef.current) return;
     const unsub = usePreferencesStore.subscribe(() => {
-      const theme = adaptTheme(getGameThemeColors());
+      const theme = getTheme();
       stripRef.current?.setTheme(theme);
     });
     return unsub;

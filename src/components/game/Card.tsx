@@ -7,7 +7,8 @@ import { getCardByName } from "@/api/scryfall";
 import { CounterDisplay } from "@/components/game/CounterBadge";
 import { ManaSymbols } from "@/components/game/ManaSymbols";
 import { KeywordChips } from "@/components/game/CardKeywords";
-import { useGameThemeColors, withAlpha } from "./game.theme";
+import { withAlpha } from "./game.theme";
+import { useTheme } from "@/hooks/useTheme";
 import { isCreature, isLethalDamage, upgradeScryfallUrl, type ScryfallImageSize } from "./game.utils";
 import { CARD_BADGES } from "./game.constants";
 import { CARD_BANNER_CONTAINER, CARD_BANNER_TEXT } from "./game.styles";
@@ -95,7 +96,7 @@ function CardComponent({
     resolution,
   );
   const displayName = showBackFace && doubleFacedData?.backName ? doubleFacedData.backName : card.name;
-  const themeColors = useGameThemeColors();
+  const themeColors = useTheme().game;
 
   const creature = isCreature(card);
   const lethal = isLethalDamage(card);

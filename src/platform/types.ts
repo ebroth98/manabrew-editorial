@@ -140,7 +140,7 @@ export interface IServerApi {
   broadcastState(state: Record<string, unknown>): Promise<void>;
   sendRoomMessage(message: RoomRelayEnvelope): Promise<void>;
   spawnAiBot(params: SpawnAiBotParams): Promise<void>;
-  removeAiBot(): Promise<void>;
+  removeAiBot(username: string): Promise<void>;
 }
 
 /**
