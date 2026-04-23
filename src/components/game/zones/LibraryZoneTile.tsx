@@ -1,5 +1,6 @@
 import { cn } from "@/lib/utils";
-import { useGameThemeColors, withAlpha } from "@/components/game/game.theme";
+import { useGameFontSizes, useGameThemeColors, withAlpha } from "@/components/game/game.theme";
+import { CARD_BACK_IMAGE_URL } from "@/components/game/game.constants";
 
 interface LibraryZoneTileProps {
   count: number;
@@ -13,45 +14,47 @@ export function LibraryZoneTile({
   label = "Lib",
 }: LibraryZoneTileProps) {
   const themeColors = useGameThemeColors();
-  const base = themeColors.promptAction.defenseAction;
-  const accent = themeColors.activeAction.active;
+  const fontSizes = useGameFontSizes();
+  const ringColor = themeColors.activeAction.active;
+  const empty = count === 0;
 
   return (
     <div className="flex flex-col items-center gap-0.5">
-      <div className="relative h-16 w-10">
-        <span
-          className="absolute left-1 top-1 h-14 w-8 rounded-md border"
-          style={{ borderColor: withAlpha(accent, 0.35), backgroundColor: withAlpha(base, 0.2) }}
-        />
-        <span
-          className="absolute left-0.5 top-0.5 h-14 w-8 rounded-md border"
-          style={{ borderColor: withAlpha(accent, 0.55), backgroundColor: withAlpha(base, 0.34) }}
-        />
-        <button
-          className={cn(
-            "absolute left-0 top-0 h-14 w-8 rounded-md text-card-foreground transition-colors",
-            "border-2",
-            onClick ? "" : "opacity-95",
-          )}
-          style={{
-            backgroundColor: withAlpha(base, onClick ? 0.55 : 0.48),
-            borderColor: withAlpha(accent, 0.8),
-            boxShadow: `inset 0 0 0 1px ${withAlpha(base, 0.35)}`,
-          }}
-          onClick={onClick}
-          disabled={!onClick}
-          title="Library"
-        >
-          <span
-            className="absolute inset-[4px] rounded-[4px] border"
-            style={{ borderColor: withAlpha(base, 0.3), backgroundColor: withAlpha(base, 0.3) }}
+      <button
+        type="button"
+        className={cn(
+          "relative h-[100px] w-[72px] overflow-hidden rounded-md transition-colors",
+          "border-2",
+          onClick ? "hover:brightness-110 cursor-pointer" : "opacity-95",
+        )}
+        style={{
+          borderColor: withAlpha(ringColor, 0.8),
+          boxShadow: `0 1px 4px ${withAlpha(ringColor, 0.25)}`,
+        }}
+        onClick={onClick}
+        disabled={!onClick}
+        title="Library"
+      >
+        {!empty && (
+          <img
+            src={CARD_BACK_IMAGE_URL}
+            alt=""
+            loading="eager"
+            className="absolute inset-0 h-full w-full object-cover pointer-events-none select-none"
+            draggable={false}
           />
-          <span className="relative z-10 text-base font-bold leading-none text-white">
-            {count}
-          </span>
-        </button>
-      </div>
-      <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
+        )}
+        <span
+          className="absolute bottom-0 left-0 right-0 flex justify-center py-0.5 font-extrabold leading-none tabular-nums text-white"
+          style={{ backgroundColor: "rgba(0, 0, 0, 0.62)", fontSize: fontSizes.zoneCount }}
+        >
+          {count}
+        </span>
+      </button>
+      <span
+        className="uppercase tracking-wide text-muted-foreground"
+        style={{ fontSize: fontSizes.zoneLabel }}
+      >
         {label}
       </span>
     </div>

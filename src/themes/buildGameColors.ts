@@ -141,6 +141,32 @@ export function buildGameColors(p: BasePalette): Record<string, string> {
     "counter.brick":     p.brown,
     "counter.depletion": p.redDeep,
     "counter.page":      p.paper,
+
+    // ── Player seat colours ──────────────────────────────────────────
+    // Phase strip indicator + turn tint. Seat-to-hue mapping is fixed
+    // across presets: self = green, opponents cycle amber → blue →
+    // purple. Each preset's palette-native version of those hues keeps
+    // the strip visually cohesive with the rest of its theme.
+    "playerColors.self":      p.green,
+    "playerColors.opponent1": p.amber,
+    "playerColors.opponent2": p.blue,
+    "playerColors.opponent3": p.purple,
+
+    // ── Badge icon colours ───────────────────────────────────────────
+    // Tint the status chips rendered next to the mana pool. No fill —
+    // the hue stains both the icon and its count. Kept semantically
+    // stable across presets (monarch = regal amber, poison = infect,
+    // damage = red) so icon meaning stays consistent everywhere.
+    "badges.monarch":         p.amber,
+    "badges.initiative":      p.blue,
+    "badges.poison":          p.poison,
+    "badges.energy":          p.yellow,
+    "badges.commanderDamage": p.red,
+    "badges.hand":            p.slate,
+    "badges.radiation":       p.green,
+    "badges.cityBlessing":    p.amber,
+    "badges.ring":            p.violet,
+    "badges.speed":           p.orange,
   };
 }
 

@@ -60,6 +60,11 @@ pub struct PlayerState {
     pub damage_prevention: i32,
 
     pub energy_counters: i32,
+    // NOT IMPLEMENTED: experience counters (Commander sets — Meren, Mizzix,
+    // …) and ticket counters (Unfinity stickers). Neither is tracked on
+    // `PlayerState` yet; the DTO + UI `PlayerPanel` will surface them as
+    // badges once a field is added here and plumbed through
+    // `game_view_dto::PlayerDto`.
     pub mana_shards: i32,
 
     pub mana_expended_this_turn: i32,

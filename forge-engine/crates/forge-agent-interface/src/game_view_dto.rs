@@ -91,6 +91,16 @@ pub struct PlayerDto {
     pub commander_damage: HashMap<String, i32>,
     /// Energy counters (Kaladesh block).
     pub energy_counters: i32,
+    /// Radiation counters (Fallout Commander). At the precombat main
+    /// phase the controller mills N cards and loses 1 life + 1 rad for
+    /// each non-land milled.
+    pub radiation_counters: i32,
+    /// True while this player has the City's Blessing (Ascend).
+    pub has_city_blessing: bool,
+    /// The Ring tempts you: 0 = no ring, 1-4 = level of temptation.
+    pub ring_level: i32,
+    /// Start Your Engines speed (Aetherdrift): 0 = no speed, 1-4.
+    pub speed: i32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -713,6 +723,10 @@ impl GameViewDto {
                 mana_pool: mana_pool_to_map(&pool),
                 commander_damage,
                 energy_counters: ps.energy_counters,
+                radiation_counters: ps.radiation_counters,
+                has_city_blessing: ps.has_city_blessing,
+                ring_level: ps.ring_level,
+                speed: ps.speed,
             });
         }
 

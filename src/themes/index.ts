@@ -3,6 +3,26 @@
  * for both light and dark modes. These override the CSS variables in index.css.
  */
 
+/** Semantic font sizes used across the in-game panel surfaces. Values
+ *  are raw pixel strings (e.g. `"13px"`, `"1rem"`) applied via
+ *  `style={{ fontSize }}` or emitted as CSS variables (`--game-font-*`)
+ *  in `useAppTheme`. Presets can override any entry to tune typography
+ *  without touching component code. */
+export interface GameFontSizes {
+  /** Numeric count next to row badges (monarch crown, poison bottle, …). */
+  badgeCount: string;
+  /** Life total rendered inside the avatar's heart chip. */
+  life: string;
+  /** Per-color count rendered before each mana symbol in the mana pool. */
+  manaCount: string;
+  /** Count overlay drawn over library / graveyard / exile / command zone tiles. */
+  zoneCount: string;
+  /** Uppercase label under each zone tile ("Lib", "GY", "Exile", "Cmd"). */
+  zoneLabel: string;
+  /** Initials rendered inside the player avatar when no image is set. */
+  avatarInitials: string;
+}
+
 export interface ThemeColors {
   background: string;
   foreground: string;
@@ -76,6 +96,15 @@ export interface GameThemePresetColors {
   [canvasOverride: `canvas.${string}`]: string | undefined;
   /** Optional placeholder card colour overrides (`cardPlaceholder.fill`, etc.). */
   [placeholderOverride: `cardPlaceholder.${string}`]: string | undefined;
+  /** Optional player seat colour overrides (`playerColors.self`,
+   *  `playerColors.opponent1`, …). Used by the phase strip indicators
+   *  and per-seat turn tint. */
+  [playerColorOverride: `playerColors.${string}`]: string | undefined;
+  /** Optional per-badge colour overrides (`badges.monarch`,
+   *  `badges.initiative`, `badges.poison`, `badges.energy`,
+   *  `badges.commanderDamage`, `badges.hand`). Drives the icon colour
+   *  of status chips rendered next to the mana pool. */
+  [badgeOverride: `badges.${string}`]: string | undefined;
 }
 
 export interface ThemePreset {
@@ -85,7 +114,22 @@ export interface ThemePreset {
   light: ThemeColors;
   dark: ThemeColors;
   gameColors: GameThemePresetColors;
+  /** Optional — presets that don't provide this fall through to the
+   *  default preset's entries via `resolveGameFontSizes`. */
+  gameFontSizes?: Partial<GameFontSizes>;
 }
+
+/** Fallback values used when neither the active preset nor the default
+ *  preset declares a token. Kept here so there's always a complete set
+ *  even if every theme file was empty. */
+export const DEFAULT_GAME_FONT_SIZES: GameFontSizes = {
+  badgeCount: "13px",
+  life: "14px",
+  manaCount: "11px",
+  zoneCount: "14px",
+  zoneLabel: "10px",
+  avatarInitials: "16px",
+};
 
 import defaultPreset from "./default";
 import rosePinePreset from "./rose-pine";

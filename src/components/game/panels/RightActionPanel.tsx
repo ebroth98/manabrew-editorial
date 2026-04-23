@@ -11,6 +11,7 @@ import {
   type DevPromptActionOverride,
   useGameDevStore,
 } from "@/stores/useGameDevStore";
+import { PlayerBadgeDevControls } from "@/components/dev/PlayerBadgeDevControls";
 
 const DEV_LABELS: Record<DevPromptActionOverride, string> = {
   chooseAction: "ChooseAction",
@@ -172,6 +173,7 @@ export function RightActionPanel({
                 </button>
               ))}
             </div>
+            <PlayerBadgeDevControls />
           </div>
         )}
       </div>

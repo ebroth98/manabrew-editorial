@@ -781,6 +781,10 @@ fn to_player(player: &Value, fallback_index: usize) -> Value {
         "manaPool": {},
         "commanderDamage": {},
         "energyCounters": 0,
+        "radiationCounters": 0,
+        "hasCityBlessing": false,
+        "ringLevel": 0,
+        "speed": 0,
     })
 }
 

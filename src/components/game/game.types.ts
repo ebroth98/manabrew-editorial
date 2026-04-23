@@ -17,6 +17,19 @@ export type FlashItem =
   | { kind: "card"; cardId: string; cardName: string; setCode: string }
   | { kind: "turn"; playerId: string; playerName: string };
 
+/** Seat identifier used to resolve per-player theme colours. Source of
+ *  truth for `playerColors.<seat>` theme keys and for `OPPONENT_SEATS`
+ *  index → seat mapping. */
+export type PlayerSeat = "self" | "opponent1" | "opponent2" | "opponent3";
+
+/** Ordered list of opponent seats, indexed by `opponentIndex`. Keep in
+ *  sync with `PlayerSeat` — TS will fail compilation if they diverge. */
+export const OPPONENT_SEATS: readonly Exclude<PlayerSeat, "self">[] = [
+  "opponent1",
+  "opponent2",
+  "opponent3",
+] as const;
+
 export interface OpponentHalfProps {
   player: Player;
   /** 0-based opponent index for seat color assignment. */
@@ -43,6 +56,8 @@ export interface OpponentHalfProps {
   onOpenZone: (title: string, cards: XMageCard[], onClickCard?: (cardId: string) => void) => void;
   zonePanelSide: "left" | "right";
   zonePanelOrder: ("library" | "graveyard" | "exile")[];
+  isMonarch?: boolean;
+  hasInitiative?: boolean;
   placementGhost?: PlacementGhost | null;
   hostileTargeting?: boolean;
   manaAbilityOptions?: ActivatableAbilityInfo[];
@@ -139,7 +154,6 @@ export interface MainActionOverlayProps {
   onConcede: () => void;
   resolveCardName: (cardId: string) => string;
   isMyPriority: boolean;
-  manaPool: Record<string, number>;
   turn: number;
   activePlayerName: string;
   isMyTurn: boolean;

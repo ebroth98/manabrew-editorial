@@ -1,18 +1,18 @@
-import { Fragment, useCallback, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Card, Player } from "@/types/openmagic";
 import type { AgentPrompt } from "@/stores/useGameStore";
 import { usePreferencesStore, type ZonePanelItem } from "@/stores/usePreferencesStore";
 import { PixiGameCanvas } from "@/pixi/PixiGameCanvas";
 import { PixiPhaseStripCanvas } from "@/pixi/PixiPhaseStripCanvas";
-import type { BattlefieldState, GameCanvasCallbacks, ScreenBounds, PlayerColumnState, PlayerColumnCallbacks } from "@/pixi/types";
+import type { BattlefieldState, GameCanvasCallbacks, ScreenBounds } from "@/pixi/types";
 import { usePhaseStopStore } from "@/stores/usePhaseStopStore";
 import type { PixiGameScene } from "@/pixi/PixiGameScene";
 import type { PromptType } from "@/types/promptType";
 import { PromptType as PT } from "@/types/promptType";
-import { OpponentHalf } from "@/components/game/panels";
+import { OpponentHalf, PlayerPanel } from "@/components/game/panels";
 import { FreeBattlefield, HandDisplay } from "@/components/game/zones";
 import type { PlacementGhost } from "@/components/game/zones/FreeBattlefield";
-import { ZONE_COLUMN_RESERVED_PX } from "@/components/game/game.constants";
+import { PLAYER_CLUSTER_RESERVED_PX } from "@/components/game/game.constants";
 import { useHandScale } from "@/hooks/useHandScale";
 import { HAND_CARD_BASES } from "@/components/game/game.styles";
 import type { HandActionOption } from "@/stores/useGameUIStore";
@@ -59,6 +59,10 @@ interface GameBoardProps {
   blockAssignments: { blockerId: string; attackerId: string }[];
   playerIsTargetable: (playerId: string) => boolean;
 
+  // Per-player game-wide flags
+  monarchId?: string | null;
+  initiativeHolderId?: string | null;
+
   // Flash state
   turnFlashPlayerId: string | null;
 
@@ -93,6 +97,7 @@ interface GameBoardProps {
   onTargetPlayer: (playerId: string) => void;
   onOpenZone: (title: string, cards: Card[], onClickCard?: (cardId: string) => void) => void;
   onOpenZoneAndCast: (title: string, cards: Card[], onClickCard: (cardId: string) => void) => void;
+  onCastSpell: (cardId: string) => void;
   onTapLand?: (card: Card) => void;
   onTapLands?: (cardIds: string[]) => void;
   onTapLandAbility?: (cardId: string, abilityIndex: number, color?: string) => void;
@@ -149,6 +154,8 @@ export function GameBoard({
   selectedAttackDefenderId,
   blockAssignments,
   playerIsTargetable,
+  monarchId,
+  initiativeHolderId,
   turnFlashPlayerId,
   showBackFace,
   zonePanelSide,
@@ -172,6 +179,7 @@ export function GameBoard({
   onTargetPlayer,
   onOpenZone,
   onOpenZoneAndCast,
+  onCastSpell,
   onTapLand,
   onTapLands,
   onTapLandAbility,
@@ -192,6 +200,37 @@ export function GameBoard({
   const pixiEnabled = usePreferencesStore((s) => s.pixiEnabled);
   const vScale = useHandScale();
   const handBottomReserved = Math.round(HAND_CARD_BASES[handSize].containerH * vScale * 0.5);
+
+  // Measure the hand fan's live DOM width so the player cluster (anchored
+  // bottom-left) can cap its own width to `(battlefield - hand)/2 - gap`
+  // — this is what prevents the zones row from sliding under the hand
+  // as the window narrows. The React `HandDisplay` is `invisible` when
+  // Pixi owns the visible fan but `visibility: hidden` still lays out,
+  // so its rect matches what Pixi draws.
+  const [handWidth, setHandWidth] = useState(0);
+  useEffect(() => {
+    const el = handContainerRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const next = Math.round(entry.contentRect.width);
+        setHandWidth((prev) => (prev === next ? prev : next));
+      }
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [handContainerRef]);
+
+  const CLUSTER_GAP_FROM_HAND_PX = 12;
+  const CLUSTER_MIN_WIDTH_PX = 120;
+  const clusterMaxWidthCss = useMemo(() => {
+    // `calc(50% - handHalf - gap - left-pad)` keeps the cluster's right
+    // edge comfortably left of the hand's left edge at every battlefield
+    // width. Falls back to 50%- if we haven't measured the hand yet.
+    const handHalf = handWidth / 2;
+    const pad = CLUSTER_GAP_FROM_HAND_PX + 8;
+    return `max(${CLUSTER_MIN_WIDTH_PX}px, calc(50% - ${handHalf + pad}px))`;
+  }, [handWidth]);
   const hostileTargeting = currentPrompt?.hostile ?? false;
   const showChooseActionManaSources =
     promptType === PT.ChooseAction &&
@@ -255,64 +294,6 @@ export function GameBoard({
     onFlipCard,
     onAttackerClick,
   }), [promptType, onBattlefieldClick, onHoverCard, onDismissHoverPreview, onHandCardDragStart, onHandCardClick, onTapLand, onTapLands, onTapLandAbility, onUntapLand, onUntapLands, onFlipCard, onAttackerClick]);
-
-  const totalCmdDmg = Object.values(me.commanderDamage ?? {}).reduce(
-    (a, b) => a + b,
-    0,
-  );
-
-  const pixiPlayerColumn = useMemo((): PlayerColumnState => ({
-    playerName: me.name,
-    playerId: me.id,
-    life: me.life,
-    handCount: me.handCount,
-    poison: me.poison,
-    energyCounters: me.energyCounters ?? 0,
-    commanderDamage: totalCmdDmg,
-    manaPool: me.manaPool,
-    libraryCount: me.libraryCount,
-    graveyardCount: graveyard.length,
-    exileCount: exile.length,
-    commandZoneCount: myCommandZone?.length ?? 0,
-    isActiveTurn: activePlayerId === me.id,
-    isPriorityPlayer: priorityPlayerId === me.id,
-    isTargetable: playerIsTargetable(me.id),
-    currentStep: step,
-    hasPlayableInGraveyard: promptType === PT.ChooseAction && graveyard.some((c) => c.isPlayable),
-    hasPlayableInExile: promptType === PT.ChooseAction && exile.some((c) => c.isPlayable),
-    enabledPhases: selfStops,
-    isInteractive: true,
-    playerSeat: "self",
-  }), [me, graveyard, exile, myCommandZone, activePlayerId, promptType, playerIsTargetable, totalCmdDmg, step, selfStops]);
-
-  const pixiPlayerColumnCallbacks = useMemo((): PlayerColumnCallbacks => ({
-    onOpenGraveyard: () => {
-      const hasPlayable = graveyard.some((c) => c.isPlayable);
-      if (hasPlayable && promptType === PT.ChooseAction) {
-        onOpenZoneAndCast("Your Graveyard", graveyard, () => {});
-      } else {
-        onOpenZone("Your Graveyard", graveyard);
-      }
-    },
-    onOpenExile: () => {
-      const hasPlayable = exile.some((c) => c.isPlayable);
-      if (hasPlayable && promptType === PT.ChooseAction) {
-        onOpenZoneAndCast("Your Exile", exile, () => {});
-      } else {
-        onOpenZone("Your Exile", exile);
-      }
-    },
-    onOpenCommandZone: (myCommandZone?.length ?? 0) > 0 ? () => {
-      const hasPlayable = myCommandZone!.some((c) => c.isPlayable);
-      if (hasPlayable && promptType === PT.ChooseAction) {
-        onOpenZoneAndCast("Your Command Zone", myCommandZone!, () => {});
-      } else {
-        onOpenZone("Your Command Zone", myCommandZone!);
-      }
-    } : undefined,
-    onTargetPlayer: playerIsTargetable(me.id) ? () => onTargetPlayer(me.id) : undefined,
-    onTogglePhase: toggleSelfStop,
-  }), [graveyard, exile, myCommandZone, promptType, onOpenZone, onOpenZoneAndCast, onTargetPlayer, playerIsTargetable, me.id, toggleSelfStop]);
 
   const opponentStopsMap = usePhaseStopStore((s) => s.opponentStops);
   const toggleOpponentStop = usePhaseStopStore((s) => s.toggleOpponentStop);
@@ -381,6 +362,8 @@ export function GameBoard({
               isSelectedTarget={selectedAttackDefenderId === opponents[0]!.id}
               onTarget={() => onTargetPlayer(opponents[0]!.id)}
               isFlashing={turnFlashPlayerId === opponents[0]?.id}
+              isMonarch={monarchId === opponents[0]?.id}
+              hasInitiative={initiativeHolderId === opponents[0]?.id}
               activePlayerId={activePlayerId}
               priorityPlayerId={priorityPlayerId}
               step={step}
@@ -418,6 +401,8 @@ export function GameBoard({
                       isSelectedTarget={selectedAttackDefenderId === op.id}
                       onTarget={() => onTargetPlayer(op.id)}
                       isFlashing={turnFlashPlayerId === op.id}
+                      isMonarch={monarchId === op.id}
+                      hasInitiative={initiativeHolderId === op.id}
                       activePlayerId={activePlayerId}
                       priorityPlayerId={priorityPlayerId}
                       step={step}
@@ -477,6 +462,70 @@ export function GameBoard({
                   "relative flex flex-col flex-1 min-w-0 overflow-visible",
                 )}
               >
+                {/* Cluster is given a `max-width` (not explicit width)
+                    driven by a ResizeObserver on the hand container.
+                    The container sizes to its content naturally, so
+                    there's no empty gutter at the right — but the cap
+                    triggers `flex-wrap` once the zones + avatar would
+                    start overlapping the hand. */}
+                <div
+                  className="absolute bottom-2 left-2 z-30 pointer-events-none"
+                  style={{ maxWidth: clusterMaxWidthCss }}
+                >
+                  <PlayerPanel
+                    player={me}
+                    isOpponent={false}
+                    seat="self"
+                    verticalAlign="bottom"
+                    isActiveTurn={activePlayerId === me.id}
+                    isPriorityPlayer={priorityPlayerId === me.id}
+                    isTargetable={playerIsTargetable(me.id)}
+                    onTarget={() => onTargetPlayer(me.id)}
+                    isFlashing={turnFlashPlayerId === me.id}
+                    isMonarch={monarchId === me.id}
+                    hasInitiative={initiativeHolderId === me.id}
+                    commanders={myCommandZone}
+                    graveyard={graveyard}
+                    exile={exile}
+                    onCastCommander={onCastSpell}
+                    onCommanderDragStart={onHandCardDragStart}
+                    draggingCardId={draggingCardId}
+                    onHoverCard={(card, e) => onHoverCard(card, e, { useAnchor: true })}
+                    onOpenCommandZone={() => {
+                      if ((myCommandZone?.length ?? 0) > 0) {
+                        const hasPlayable = myCommandZone!.some((c) => c.isPlayable);
+                        if (hasPlayable && promptType === PT.ChooseAction) {
+                          onOpenZoneAndCast("Your Command Zone", myCommandZone!, (_cardId) => {});
+                        } else {
+                          onOpenZone("Your Command Zone", myCommandZone!);
+                        }
+                      }
+                    }}
+                    onOpenGraveyard={() => {
+                      const hasPlayable = graveyard.some((c) => c.isPlayable);
+                      if (hasPlayable && promptType === PT.ChooseAction) {
+                        onOpenZoneAndCast("Your Graveyard", graveyard, (_cardId) => {});
+                      } else {
+                        onOpenZone("Your Graveyard", graveyard);
+                      }
+                    }}
+                    onOpenExile={() => {
+                      const hasPlayable = exile.some((c) => c.isPlayable);
+                      if (hasPlayable && promptType === PT.ChooseAction) {
+                        onOpenZoneAndCast("Your Exile", exile, (_cardId) => {});
+                      } else {
+                        onOpenZone("Your Exile", exile);
+                      }
+                    }}
+                    hasPlayableInGraveyard={
+                      promptType === PT.ChooseAction && graveyard.some((c) => c.isPlayable)
+                    }
+                    hasPlayableInExile={
+                      promptType === PT.ChooseAction && exile.some((c) => c.isPlayable)
+                    }
+                    zonePanelOrder={zonePanelOrder}
+                  />
+                </div>
                 {pixiEnabled && (
                   <div className="absolute inset-0 z-10 overflow-hidden">
                     <PixiGameCanvas
@@ -487,9 +536,7 @@ export function GameBoard({
                       isDropActive={isOverBattlefield}
                       callbacks={pixiCallbacks}
                       bottomReserved={handBottomReserved}
-                      leftReserved={ZONE_COLUMN_RESERVED_PX}
-                      playerColumn={pixiPlayerColumn}
-                      playerColumnCallbacks={pixiPlayerColumnCallbacks}
+                      leftReserved={PLAYER_CLUSTER_RESERVED_PX}
                       getHandActions={getHandActions}
                       onSelectHandAction={(_card, action) => onSelectHandAction?.(action)}
                       bottomRightReserved={PASS_BUTTON_RESERVED}
@@ -546,7 +593,7 @@ export function GameBoard({
                   onUntapLand={onUntapLand}
                   onUntapLands={onUntapLands}
                   bottomReserved={handBottomReserved}
-                  leftReserved={ZONE_COLUMN_RESERVED_PX}
+                  leftReserved={PLAYER_CLUSTER_RESERVED_PX}
                   rightReserved={0}
                   isDropActive={isOverBattlefield}
                   placementGhost={placementGhost?.controllerId === me.id ? placementGhost : null}

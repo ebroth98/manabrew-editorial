@@ -1,6 +1,8 @@
 import { useMemo } from "react";
 import { usePreferencesStore } from "@/stores/usePreferencesStore";
-import { THEME_PRESETS } from "@/themes";
+import { THEME_PRESETS, DEFAULT_GAME_FONT_SIZES, type GameFontSizes } from "@/themes";
+
+export type { GameFontSizes };
 
 export type ManaLetter = "W" | "U" | "B" | "R" | "G" | "C";
 
@@ -116,6 +118,21 @@ export interface GameThemeColors {
     opponent2: string;
     opponent3: string;
   };
+  /** Per-badge icon colours rendered next to the mana pool on the
+   *  player panel. Backgroundless — the colour tints both the icon
+   *  and its numeric count. */
+  badges: {
+    monarch: string;
+    initiative: string;
+    poison: string;
+    energy: string;
+    commanderDamage: string;
+    hand: string;
+    radiation: string;
+    cityBlessing: string;
+    ring: string;
+    speed: string;
+  };
 }
 
 /** Default preset's gameColors map, consulted as a semantic fallback when
@@ -162,6 +179,18 @@ const COLOR_SCHEMA: GameThemeColors = {
   },
   cardRing: "",
   playerColors: { self: "", opponent1: "", opponent2: "", opponent3: "" },
+  badges: {
+    monarch: "",
+    initiative: "",
+    poison: "",
+    energy: "",
+    commanderDamage: "",
+    hand: "",
+    radiation: "",
+    cityBlessing: "",
+    ring: "",
+    speed: "",
+  },
 };
 
 function hasColorPath(path: string): boolean {
@@ -243,6 +272,18 @@ export function resolveGameThemeColors(
       opponent1: "#facc15",
       opponent2: "#60a5fa",
       opponent3: "#c084fc",
+    },
+    badges: {
+      monarch: "#facc15",
+      initiative: "#60a5fa",
+      poison: "#65a30d",
+      energy: "#fbbf24",
+      commanderDamage: "#dc2626",
+      hand: "#9ca3af",
+      radiation: "#84cc16",
+      cityBlessing: "#f59e0b",
+      ring: "#a78bfa",
+      speed: "#f97316",
     },
   };
 
@@ -401,6 +442,28 @@ export function useGameThemeColors(): GameThemeColors {
   const overrides = usePreferencesStore((s) => s.gameThemeColorOverrides);
   const presetId = usePreferencesStore((s) => s.appThemePreset);
   return useMemo(() => resolveGameThemeColors(overrides, presetId), [overrides, presetId]);
+}
+
+/** Resolve the active preset's `gameFontSizes`, inheriting unset keys
+ *  from the default preset, then from `DEFAULT_GAME_FONT_SIZES`. */
+export function resolveGameFontSizes(presetId?: string): GameFontSizes {
+  const activePresetId = presetId ?? usePreferencesStore.getState().appThemePreset;
+  const active = THEME_PRESETS.find((p) => p.id === activePresetId);
+  const fallback = THEME_PRESETS.find((p) => p.id === "default");
+  return {
+    ...DEFAULT_GAME_FONT_SIZES,
+    ...(fallback?.gameFontSizes ?? {}),
+    ...(active?.gameFontSizes ?? {}),
+  };
+}
+
+export function getGameFontSizes(): GameFontSizes {
+  return resolveGameFontSizes();
+}
+
+export function useGameFontSizes(): GameFontSizes {
+  const presetId = usePreferencesStore((s) => s.appThemePreset);
+  return useMemo(() => resolveGameFontSizes(presetId), [presetId]);
 }
 
 function normalizeHexColor(hex: string): string {

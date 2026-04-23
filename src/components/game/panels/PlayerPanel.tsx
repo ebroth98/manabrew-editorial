@@ -1,69 +1,26 @@
-import type { CSSProperties, ReactNode } from "react";
-import type { Player } from "@/types/openmagic";
+import { useMemo } from "react";
+import type { Card, Player } from "@/types/openmagic";
 import { cn } from "@/lib/utils";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Heart, Layers, Sword } from "lucide-react";
+import { GameIcon } from "@/components/game/GameIcon";
 import { ManaPool as ManaPoolDisplay } from "./ManaPool";
-import { getAvatarColor, getInitials } from "../game.utils";
-import { useGameThemeColors, withAlpha } from "../game.theme";
-
-interface StatBadgeProps {
-  label: string;
-  children: ReactNode;
-  asButton?: boolean;
-  className?: string;
-  style?: CSSProperties;
-  onClick?: () => void;
-  disabled?: boolean;
-}
-
-function StatBadge({
-  label,
-  children,
-  asButton = false,
-  className,
-  style,
-  onClick,
-  disabled,
-}: StatBadgeProps) {
-  const baseClassName = cn(
-    "relative inline-flex items-center",
-    asButton && "disabled:opacity-80",
-    className,
-  );
-
-  const tooltip = (
-    <span className="pointer-events-none absolute left-1/2 top-full z-40 mt-1 -translate-x-1/2 whitespace-nowrap rounded bg-black/85 px-1.5 py-0.5 text-xs font-semibold text-white opacity-0 transition-opacity duration-150 delay-0 group-hover/stat:delay-300 group-hover/stat:opacity-100">
-      {label}
-    </span>
-  );
-
-  if (asButton) {
-    return (
-      <button
-        className={cn(baseClassName, "group/stat")}
-        style={style}
-        onClick={onClick}
-        disabled={disabled}
-      >
-        {children}
-        {tooltip}
-      </button>
-    );
-  }
-
-  return (
-    <span className={cn(baseClassName, "group/stat")} style={style}>
-      {children}
-      {tooltip}
-    </span>
-  );
-}
+import { PlayerAvatar } from "./PlayerAvatar";
+import { ZoneActionColumn } from "@/components/game/ZoneActionColumn";
+import { useGameFontSizes, useGameThemeColors, withAlpha } from "../game.theme";
+import type { OrbitBadge } from "./BadgeOrbit";
+import type { ZonePanelItem } from "@/stores/usePreferencesStore";
+import { useGameDevStore } from "@/stores/useGameDevStore";
+import type { PlayerSeat } from "../game.types";
 
 interface PlayerPanelProps {
   player: Player;
   isOpponent: boolean;
+  /** Seat identifier used to pick the per-player theme colour. */
+  seat: PlayerSeat;
   className?: string;
+  /** `bottom` = avatar anchored at the bottom of the cluster (local player); zones row sits on top. `top` = opponent mirror. */
+  /** Retained for backwards compat with existing callers but no longer
+   *  alters layout — the badge/mana row always sits above the avatar
+   *  and zones. */
   verticalAlign?: "top" | "bottom";
   isActiveTurn?: boolean;
   isPriorityPlayer?: boolean;
@@ -71,202 +28,298 @@ interface PlayerPanelProps {
   isSelectedTarget?: boolean;
   onTarget?: () => void;
   isFlashing?: boolean;
+  isMonarch?: boolean;
+  hasInitiative?: boolean;
+  commanders?: Card[];
+  graveyard?: Card[];
+  exile?: Card[];
   onOpenCommandZone?: () => void;
-  commandZoneCount?: number;
+  onCastCommander?: (cardId: string) => void;
+  onCommanderDragStart?: (card: Card, e: React.MouseEvent) => void;
+  draggingCardId?: string | null;
+  onHoverCard?: (card: Card | null, e?: React.MouseEvent) => void;
+  onOpenLibrary?: () => void;
+  onOpenGraveyard?: () => void;
+  onOpenExile?: () => void;
+  hasPlayableInGraveyard?: boolean;
+  hasPlayableInExile?: boolean;
+  zonePanelOrder?: ZonePanelItem[];
 }
 
 export function PlayerPanel({
   player,
-  isOpponent: _isOpponent,
+  isOpponent,
+  seat,
   className,
-  verticalAlign = "top",
+  verticalAlign: _verticalAlign = "bottom",
   isActiveTurn,
   isPriorityPlayer: _isPriorityPlayer,
   isTargetable,
   isSelectedTarget,
   onTarget,
   isFlashing,
+  isMonarch,
+  hasInitiative,
+  commanders,
+  graveyard,
+  exile,
   onOpenCommandZone,
-  commandZoneCount = 0,
+  onCastCommander,
+  onCommanderDragStart,
+  draggingCardId,
+  onHoverCard,
+  onOpenLibrary,
+  onOpenGraveyard,
+  onOpenExile,
+  hasPlayableInGraveyard,
+  hasPlayableInExile,
+  zonePanelOrder,
 }: PlayerPanelProps) {
-  const DEV_SHOW_ALL_STATS = false;
   const themeColors = useGameThemeColors();
+  const fontSizes = useGameFontSizes();
+  const devOverrides = useGameDevStore((s) => s.playerOverrides);
 
-  const totalCmdDmg = Object.values(player.commanderDamage ?? {}).reduce(
+  // Dev-only substitutions applied to the local player so the operator
+  // can inspect every badge/visual state without a real game driving it.
+  const applyOverride = !isOpponent;
+  const effectiveIsMonarch = applyOverride && devOverrides.forceMonarch ? true : isMonarch;
+  const effectiveHasInitiative = applyOverride && devOverrides.forceInitiative ? true : hasInitiative;
+  const effectiveCityBlessing = applyOverride && devOverrides.forceCityBlessing
+    ? true
+    : (player.hasCityBlessing ?? false);
+  const effectivePoison = applyOverride && devOverrides.poison != null ? devOverrides.poison : player.poison;
+  const effectiveEnergy = applyOverride && devOverrides.energy != null
+    ? devOverrides.energy
+    : (player.energyCounters ?? 0);
+  const effectiveRadiation = applyOverride && devOverrides.radiation != null
+    ? devOverrides.radiation
+    : (player.radiationCounters ?? 0);
+  const effectiveRingLevel = applyOverride && devOverrides.ringLevel != null
+    ? devOverrides.ringLevel
+    : (player.ringLevel ?? 0);
+  const effectiveSpeed = applyOverride && devOverrides.speed != null
+    ? devOverrides.speed
+    : (player.speed ?? 0);
+  const effectiveLife = applyOverride && devOverrides.life != null ? devOverrides.life : player.life;
+  const effectiveHandCount = applyOverride && devOverrides.handCount != null
+    ? devOverrides.handCount
+    : player.handCount;
+
+  const realCmdDmg = Object.values(player.commanderDamage ?? {}).reduce(
     (a, b) => a + b,
     0,
   );
+  const totalCmdDmg = applyOverride && devOverrides.cmdDamage != null
+    ? devOverrides.cmdDamage
+    : realCmdDmg;
 
-  const avatarRingColor = themeColors.activeAction.active;
+  // Effective player view — dev overrides flow into PlayerAvatar (life)
+  // + ManaPoolDisplay (handCount) without mutating the upstream object.
+  const effectivePlayer: Player = {
+    ...player,
+    life: effectiveLife,
+    handCount: effectiveHandCount,
+    poison: effectivePoison,
+    energyCounters: effectiveEnergy,
+  };
 
-  const isTop = verticalAlign === "top";
+  // NOT IMPLEMENTED: experience counters and ticket counters are not
+  // tracked on the engine `PlayerState` yet, so no badge exists for
+  // them. Add a field to `PlayerState` + `PlayerDto` + `Player` (TS)
+  // and drop a branch below to surface them as badges.
+  //
+  // Hand is the only badge that orbits the avatar — the rest move to a
+  // row below (next to the mana pool) so the avatar stays uncluttered.
+  const orbitBadges = useMemo<OrbitBadge[]>(() => ([
+    {
+      id: "hand",
+      icon: <GameIcon name="card-pickup" className="h-3.5 w-3.5" />,
+      label: "Cards in Hand",
+      count: effectiveHandCount,
+      color: withAlpha(themeColors.promptAction.cancel, 0.85),
+    },
+  ]), [effectiveHandCount, themeColors]);
 
-  const hasMana = Object.values(player.manaPool).some((v) => v > 0);
+  const rowBadges = useMemo<OrbitBadge[]>(() => {
+    const out: OrbitBadge[] = [];
+    if (effectiveIsMonarch) {
+      out.push({
+        id: "monarch",
+        icon: <GameIcon name="crown" className="h-[18px] w-[18px]" />,
+        label: "Monarch",
+        color: themeColors.badges.monarch,
+      });
+    }
+    if (effectiveHasInitiative) {
+      out.push({
+        id: "initiative",
+        icon: <GameIcon name="rolled-cloth" className="h-[18px] w-[18px]" />,
+        label: "Initiative",
+        color: themeColors.badges.initiative,
+      });
+    }
+    if (effectivePoison > 0) {
+      out.push({
+        id: "poison",
+        icon: <GameIcon name="poison-bottle" className="h-[18px] w-[18px]" />,
+        label: "Poison Counters",
+        count: effectivePoison,
+        color: themeColors.badges.poison,
+      });
+    }
+    if (effectiveEnergy > 0) {
+      out.push({
+        id: "energy",
+        icon: <GameIcon name="lightning-trio" className="h-[18px] w-[18px]" />,
+        label: "Energy Counters",
+        count: effectiveEnergy,
+        color: themeColors.badges.energy,
+      });
+    }
+    if (totalCmdDmg > 0) {
+      out.push({
+        id: "cmd-dmg",
+        icon: <GameIcon name="crossed-swords" className="h-[18px] w-[18px]" />,
+        label: "Commander Damage Taken",
+        count: totalCmdDmg,
+        color: themeColors.badges.commanderDamage,
+      });
+    }
+    if (effectiveRadiation > 0) {
+      out.push({
+        id: "radiation",
+        icon: <GameIcon name="radioactive" className="h-[18px] w-[18px]" />,
+        label: "Radiation Counters",
+        count: effectiveRadiation,
+        color: themeColors.badges.radiation,
+      });
+    }
+    if (effectiveCityBlessing) {
+      out.push({
+        id: "city-blessing",
+        icon: <GameIcon name="stone-tower" className="h-[18px] w-[18px]" />,
+        label: "City's Blessing",
+        color: themeColors.badges.cityBlessing,
+      });
+    }
+    if (effectiveRingLevel > 0) {
+      out.push({
+        id: "ring",
+        icon: <GameIcon name="ring" className="h-[18px] w-[18px]" />,
+        label: "The Ring tempts you",
+        count: effectiveRingLevel,
+        color: themeColors.badges.ring,
+      });
+    }
+    if (effectiveSpeed > 0) {
+      out.push({
+        id: "speed",
+        icon: <GameIcon name="speedometer" className="h-[18px] w-[18px]" />,
+        label: "Speed",
+        count: effectiveSpeed,
+        color: themeColors.badges.speed,
+      });
+    }
+    return out;
+  }, [
+    effectiveIsMonarch,
+    effectiveHasInitiative,
+    effectiveCityBlessing,
+    effectivePoison,
+    effectiveEnergy,
+    effectiveRadiation,
+    effectiveRingLevel,
+    effectiveSpeed,
+    totalCmdDmg,
+    themeColors,
+  ]);
 
-  const statsBar = (
-      <div
-        className="flex items-center gap-1 backdrop-blur-sm shadow-sm pl-10 pr-2 py-0.5 rounded-full"
-        style={{
-          backgroundColor: withAlpha(themeColors.promptAction.cancel, 0.58),
-        }}
-      >
-        <StatBadge label="Life Total">
-          <span className="inline-flex items-center gap-1 text-white">
-            <Heart
-              className="h-3 w-3"
-              style={{ color: themeColors.promptAction.attackAction }}
-            />
-            <span className="font-extrabold text-[11px] leading-none tabular-nums">
-              {player.life}
-            </span>
-          </span>
-        </StatBadge>
-        <span className="text-white/20">|</span>
-        <StatBadge label="Cards in Hand">
-          <span className="inline-flex items-center gap-1 text-white/90">
-            <Layers
-              className="h-3 w-3"
-              style={{ color: themeColors.promptAction.defenseAction }}
-            />
-            <span className="font-bold text-[11px] leading-none tabular-nums">
-              {player.handCount}
-            </span>
-          </span>
-        </StatBadge>
-        {(DEV_SHOW_ALL_STATS || player.poison > 0) && (
-          <>
-            <span className="text-white/20">|</span>
-            <StatBadge label="Poison Counters">
-              <span className="inline-flex items-center gap-1 font-bold text-[11px] text-poison">
-                ☠<span className="tabular-nums">{player.poison || 0}</span>
-              </span>
-            </StatBadge>
-          </>
-        )}
-        {(DEV_SHOW_ALL_STATS || (player.energyCounters ?? 0) > 0) && (
-          <>
-            <span className="text-white/20">|</span>
-            <StatBadge label="Energy Counters">
-              <span
-                className="inline-flex items-center gap-1 font-bold text-[11px]"
-                style={{ color: withAlpha(themeColors.activeAction.active, 0.9) }}
-              >
-                ⚡
-                <span className="tabular-nums">{player.energyCounters ?? 0}</span>
-              </span>
-            </StatBadge>
-          </>
-        )}
-        {(DEV_SHOW_ALL_STATS || totalCmdDmg > 0) && (
-          <>
-            <span className="text-white/20">|</span>
-            <StatBadge label="Commander Damage Taken">
-              <span
-                className="inline-flex items-center gap-1 font-bold text-[11px]"
-                style={{ color: withAlpha(themeColors.activeAction.active, 0.9) }}
-              >
-                ⚔<span className="tabular-nums">{totalCmdDmg || 0}</span>
-              </span>
-            </StatBadge>
-          </>
-        )}
-        {(DEV_SHOW_ALL_STATS || commandZoneCount > 0) && (
-          <>
-            <span className="text-white/20">|</span>
-            <StatBadge
-              label="Command Zone"
-              asButton
-              className={cn(
-                "font-bold text-[11px]",
-                onOpenCommandZone ? "" : "text-muted-foreground/80",
-              )}
-              style={
-                onOpenCommandZone
-                  ? { color: themeColors.promptAction.defenseAction }
-                  : undefined
-              }
-              onClick={onOpenCommandZone}
-              disabled={!onOpenCommandZone}
-            >
-              <Sword className="h-3 w-3" />
-              <span className="tabular-nums">{commandZoneCount}</span>
-            </StatBadge>
-          </>
-        )}
-      </div>
+  const seatColor = themeColors.playerColors[seat];
+
+  const avatarCell = (
+    <div className="h-[100px] flex items-center justify-center pointer-events-auto w-fit shrink-0">
+      <PlayerAvatar
+        player={effectivePlayer}
+        badges={orbitBadges}
+        seatColor={seatColor}
+        isActiveTurn={isActiveTurn}
+        isTargetable={isTargetable}
+        isSelectedTarget={isSelectedTarget}
+        onTarget={onTarget}
+        isFlashing={isFlashing}
+      />
+    </div>
   );
 
-  const targetableColor = withAlpha(themeColors.promptAction.attackAction, 0.9);
-  const selectedTargetColor = themeColors.promptAction.attackAction;
+  // Avatar is rendered as the `leading` flex item inside
+  // ZoneActionColumn so it shares the same `flex-wrap` row as the zone
+  // tiles — when the cluster narrows, the avatar wraps onto its own
+  // row above the zones automatically.
+  const zonesRow = (
+    <ZoneActionColumn
+      orientation="horizontal"
+      libraryCount={player.libraryCount}
+      graveyard={graveyard}
+      exile={exile}
+      order={zonePanelOrder}
+      onOpenLibrary={onOpenLibrary}
+      onOpenGraveyard={onOpenGraveyard}
+      onOpenExile={onOpenExile}
+      hasPlayableInGraveyard={hasPlayableInGraveyard}
+      hasPlayableInExile={hasPlayableInExile}
+      commanders={commanders}
+      onOpenCommandZone={onOpenCommandZone}
+      onCastCommander={onCastCommander}
+      onCommanderDragStart={onCommanderDragStart}
+      draggingCardId={draggingCardId}
+      onHoverCard={onHoverCard}
+      leading={avatarCell}
+    />
+  );
+
+  const manaRow = (
+    <div className="flex h-7 w-fit items-center justify-start gap-2 px-1 pointer-events-auto">
+      {rowBadges.length > 0 && (
+        <div className="flex items-center gap-1.5">
+          {rowBadges.map((b) => (
+            <span
+              key={b.id}
+              title={b.label}
+              className="inline-flex items-center gap-0.5"
+              style={{ color: b.color }}
+            >
+              <span className="inline-flex items-center">{b.icon}</span>
+              {b.count !== undefined && (
+                <span
+                  className="font-extrabold leading-none tabular-nums"
+                  style={{ fontSize: fontSizes.badgeCount }}
+                >
+                  {b.count}
+                </span>
+              )}
+            </span>
+          ))}
+        </div>
+      )}
+      <ManaPoolDisplay pool={player.manaPool} />
+    </div>
+  );
 
   return (
     <div
-      data-player-id={player.id}
       className={cn(
-        "relative transition-colors rounded-full",
-        isTargetable && "cursor-pointer animate-player-targetable-pulse",
-        isSelectedTarget && "ring-4 ring-offset-2 ring-offset-black/30",
-        isFlashing && "animate-player-turn-flash",
+        // Flex-col keeps mana+badges stacked above the avatar/zones
+        // cluster. The zones cluster itself is a `flex-wrap` row
+        // (ZoneActionColumn, horizontal) that hosts the avatar as its
+        // first item — so on narrow widths the avatar and zone tiles
+        // wrap together instead of being locked into a rigid 2-col
+        // grid.
+        "flex w-full flex-col gap-1 min-w-0",
         className,
       )}
-      style={
-        isTargetable || isSelectedTarget
-          ? ({
-              "--targetable-color": targetableColor,
-              "--tw-ring-color": selectedTargetColor,
-            } as CSSProperties)
-          : undefined
-      }
-      onClick={isTargetable ? onTarget : undefined}
-      title={isTargetable ? `Target ${player.name}` : undefined}
     >
-      {/* Avatar */}
-      <div className="relative z-10 h-10 w-10 shrink-0 p-0.5">
-        <div className="relative group/avatar h-full w-full">
-          <Avatar
-            className={cn("h-full w-full", isTargetable && "ring-2")}
-            style={{
-              ...(isTargetable
-                ? ({ "--tw-ring-color": targetableColor } as CSSProperties)
-                : {}),
-              ...(isSelectedTarget
-                ? ({ "--tw-ring-color": selectedTargetColor } as CSSProperties)
-                : {}),
-              ...(isActiveTurn
-                ? ({
-                    boxShadow: `0 0 0 2px ${avatarRingColor}`,
-                  } as CSSProperties)
-                : {}),
-            }}
-          >
-            <AvatarFallback
-              className={cn("text-xs font-bold", getAvatarColor(player.name))}
-            >
-              {getInitials(player.name)}
-            </AvatarFallback>
-          </Avatar>
-          <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-[60%] hidden group-hover/avatar:block whitespace-nowrap rounded bg-black/85 px-1.5 py-0.5 text-xs font-semibold text-white pointer-events-none z-40">
-            {player.name}
-          </span>
-        </div>
-      </div>
-
-      {/* Stats bar + mana pool — anchored to bottom (player) or top (opponent) */}
-      <div className={cn("absolute left-2 flex items-center gap-0.5", isTop ? "top-0" : "bottom-0")}>
-        {statsBar}
-        {hasMana && (
-          <StatBadge label="Mana Pool">
-            <div
-              className="flex items-center rounded-full px-1.5 py-0.5 shrink-0 backdrop-blur-sm shadow-sm"
-              style={{
-                backgroundColor: withAlpha(themeColors.promptAction.cancel, 0.58),
-              }}
-            >
-              <ManaPoolDisplay pool={player.manaPool} />
-            </div>
-          </StatBadge>
-        )}
-      </div>
+      {manaRow}
+      {zonesRow}
     </div>
   );
 }

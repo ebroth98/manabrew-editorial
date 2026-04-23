@@ -1,7 +1,9 @@
 import { ManaSymbols } from "@/components/game/ManaSymbols";
 import { MANA_COLORS } from "../game.constants";
+import { useGameFontSizes } from "../game.theme";
 
 export function ManaPool({ pool }: { pool: Record<string, number> }) {
+  const fontSizes = useGameFontSizes();
   return (
     <div className="flex flex-row items-center gap-1 flex-nowrap">
       {MANA_COLORS.flatMap(({ key }) => {
@@ -12,7 +14,10 @@ export function ManaPool({ pool }: { pool: Record<string, number> }) {
             key={key}
             className="inline-flex flex-row items-center gap-0.5 flex-nowrap"
           >
-            <span className="text-[11px] font-extrabold text-white leading-none tabular-nums">
+            <span
+              className="font-extrabold text-white leading-none tabular-nums"
+              style={{ fontSize: fontSizes.manaCount }}
+            >
               {count}
             </span>
             <ManaSymbols cost={key} size="lg" />

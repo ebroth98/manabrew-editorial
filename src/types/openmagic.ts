@@ -133,6 +133,14 @@ export interface Player {
   commanderDamage?: Record<string, number>;
   /** Energy counters (Kaladesh block). */
   energyCounters?: number;
+  /** Radiation counters (Fallout Commander). */
+  radiationCounters?: number;
+  /** City's Blessing status (Ascend). */
+  hasCityBlessing?: boolean;
+  /** The Ring tempts you: 0 = no ring, 1-4 = level of temptation. */
+  ringLevel?: number;
+  /** Start Your Engines speed (Aetherdrift): 0 = no speed, 1-4. */
+  speed?: number;
 }
 
 export interface Table {

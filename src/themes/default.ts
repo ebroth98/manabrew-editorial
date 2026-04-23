@@ -160,6 +160,37 @@ const preset: ThemePreset = {
     "counter.brick":     "#9a3412",
     "counter.depletion": "#be123c",
     "counter.page":      "#a1a1aa", // book room
+
+    // ── Player seat colours ──────────────────────────────────────────
+    // Used by the phase strip indicators and turn tint to distinguish
+    // the local player from each opponent. Seat index is the source of
+    // truth; re-ordering opponents in the UI follows these hues.
+    "playerColors.self":      "#4ade80", // green — you
+    "playerColors.opponent1": "#facc15", // amber — opponent A
+    "playerColors.opponent2": "#60a5fa", // blue — opponent B
+    "playerColors.opponent3": "#c084fc", // purple — opponent C
+
+    // ── Badge icon colours ───────────────────────────────────────────
+    // Tints the small game-icons next to the mana pool. No background
+    // fill — colour tints the icon + numeric count.
+    "badges.monarch":          "#facc15", // regal amber crown
+    "badges.initiative":       "#60a5fa", // cool blue banner
+    "badges.poison":           "#65a30d", // MTG infect green
+    "badges.energy":           "#fbbf24", // electric yellow
+    "badges.commanderDamage":  "#dc2626", // combat red
+    "badges.hand":             "#9ca3af", // neutral slate
+    "badges.radiation":        "#84cc16", // Fallout hazard green
+    "badges.cityBlessing":     "#f59e0b", // Ascend amber
+    "badges.ring":             "#a78bfa", // One Ring violet
+    "badges.speed":            "#f97316", // Aetherdrift orange
+  },
+  gameFontSizes: {
+    badgeCount:    "13px",
+    life:          "14px",
+    manaCount:     "11px",
+    zoneCount:     "14px",
+    zoneLabel:     "10px",
+    avatarInitials: "16px",
   },
 };
 

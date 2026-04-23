@@ -1205,6 +1205,8 @@ export default function Game() {
           opponentCommandZone={gameView.opponentCommandZone}
           activePlayerId={gameView.activePlayerId}
           priorityPlayerId={effectivePriorityHighlightPlayerId}
+          monarchId={gameView.monarchId ?? null}
+          initiativeHolderId={gameView.initiativeHolderId ?? null}
           step={gameView.step}
           promptType={promptType}
           currentPrompt={activePrompt}
@@ -1264,6 +1266,7 @@ export default function Game() {
               onClickCard(cardId);
             })
           }
+          onCastSpell={handleCastSpell}
           onTapLand={
             promptType === PromptType.ChooseAction || promptType === PromptType.PayCombatCost || promptType === PromptType.PayManaCost
               ? handleTapLand
@@ -1330,7 +1333,6 @@ export default function Game() {
           onConcede={concede}
           resolveCardName={(cardId) => cardNameById.get(cardId) ?? cardId}
           isMyPriority={gameView.priorityPlayerId === me.id}
-          manaPool={me.manaPool}
           turn={gameView.turn}
           activePlayerName={
             gameView.players.find((p) => p.id === gameView.activePlayerId)?.name ??

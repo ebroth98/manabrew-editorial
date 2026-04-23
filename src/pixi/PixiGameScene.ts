@@ -52,9 +52,6 @@ import {
   prewarmManaSymbols,
 } from "./manaSymbolCache";
 import { manaColorFor } from "./manaColors";
-import { PlayerSquarePanel } from "./PlayerSquarePanel";
-import { PhaseStripLayer, type PhaseStripState, type PhaseStripCallbacks } from "./PhaseStripLayer";
-import type { PlayerPanel, PlayerPanelState, PlayerPanelCallbacks } from "./playerPanel.types";
 import {
   ATTACH_OFFSET_Y,
   BATTLEFIELD_CARD_SCALE_DEFAULT,
@@ -268,8 +265,6 @@ export class PixiGameScene {
   private lastHandState: HandState | null = null;
   private handSize: HandSize = "medium";
   private vScale = 1;
-  private playerColumn: PlayerPanel;
-  private phaseStrip: PhaseStripLayer | null = null;
   private arrowLayer: ArrowLayer;
   /** Current arrow specs. Resolved to canvas-local ArrowDefs every tick so
    *  arrows follow animating sprites (hand lift, battlefield re-layout). */
@@ -357,14 +352,6 @@ export class PixiGameScene {
     this.arrowLayer = new ArrowLayer();
     this.root.addChild(this.arrowLayer.graphics);
 
-    this.playerColumn = new PlayerSquarePanel(this.theme, { anchorTop: this.mirrored });
-    this.root.addChild(this.playerColumn.container);
-    // Position at left edge — will be repositioned on resize/setPlayZone
-    this.playerColumn.setPosition(0, 0);
-
-    // Phase strip is rendered by the standalone PixiPhaseStripCanvas,
-    // not inside the scene.
-
     this.backgroundGfx.eventMode = "static";
     this.backgroundGfx.on("pointerdown", (e: FederatedPointerEvent) =>
       this.onBackgroundDown(e),
@@ -433,30 +420,8 @@ export class PixiGameScene {
     if (this.destroyed) return;
     this.theme = theme;
     this.arrowLayer.setTheme(theme);
-    this.playerColumn.setTheme(theme);
-    this.phaseStrip?.setTheme(theme);
     setCardSpriteTheme(theme);
     this.drawTableBackground();
-  }
-
-  updatePlayerColumn(state: PlayerPanelState): void {
-    if (this.destroyed) return;
-    this.playerColumn.update(state);
-  }
-
-  setPlayerColumnCallbacks(cb: PlayerPanelCallbacks): void {
-    if (this.destroyed) return;
-    this.playerColumn.setCallbacks(cb);
-  }
-
-  updatePhaseStrip(state: PhaseStripState): void {
-    if (this.destroyed) return;
-    this.phaseStrip?.update(state);
-  }
-
-  setPhaseStripCallbacks(cb: PhaseStripCallbacks): void {
-    if (this.destroyed) return;
-    this.phaseStrip?.setCallbacks(cb);
   }
 
   setReserved(bottom: number, left: number): void {
@@ -541,9 +506,6 @@ export class PixiGameScene {
     // Bottom-right reserved rect is anchored to canvas size — re-resolve
     // so the keep-out follows the resize.
     this.syncDragBlockers();
-    this.playerColumn.setPosition(zone.x, zone.y);
-    this.playerColumn.setHeight(zone.height);
-    this.phaseStrip?.resize(zone.width, zone.height);
     if (this.lastHandState) this.updateHand(this.lastHandState);
     if (this.lastState) this.updateBattlefield(this.lastState);
   }
@@ -583,10 +545,6 @@ export class PixiGameScene {
     if (this.lastHandState) this.updateHand(this.lastHandState);
     this.emptyText.x = this.zoneCenterX();
     this.emptyText.y = this.zoneCenterY();
-    const zone = this.getPlayZone();
-    this.playerColumn.setPosition(zone.x, zone.y);
-    this.playerColumn.setHeight(zone.height);
-    this.phaseStrip?.resize(zone.width, zone.height);
   }
 
   /** Current play-zone rectangle in canvas-local coords. Falls back to the
@@ -813,8 +771,6 @@ export class PixiGameScene {
       this.marquee.destroy();
       this.dragHandler.destroy();
       this.arrowLayer.destroy();
-      this.playerColumn.destroy();
-      this.phaseStrip?.destroy();
     } catch (err) {
       console.warn("[pixi] handler teardown threw:", err);
     }
@@ -2314,8 +2270,6 @@ export class PixiGameScene {
     }
     this.captureStackSeeds();
     this.resolveAndDrawArrows();
-    this.playerColumn.tick();
-    this.phaseStrip?.tick();
     if (this.dropActive) this.drawDropGrid();
   };
 

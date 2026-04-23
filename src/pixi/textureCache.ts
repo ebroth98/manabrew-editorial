@@ -123,7 +123,7 @@ async function resolveScryfallUrl(
   return pickImageUrl(pickUrisForName(entry, name), size) ?? null;
 }
 
-const CARD_BACK_URL = "https://game.scryfall.io/attachments/config/sleeves/standard/back.jpg";
+import { CARD_BACK_IMAGE_URL as CARD_BACK_URL } from "@/components/game/game.constants";
 
 /**
  * Fetch image via Tauri's native HTTP on desktop (bypasses browser CORS) or
