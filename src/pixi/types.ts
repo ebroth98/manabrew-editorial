@@ -112,6 +112,9 @@ export interface HandState {
   castingCardId?: string | null;
 }
 
+export type { PlayerPanelState as PlayerColumnState, PlayerPanelCallbacks as PlayerColumnCallbacks } from "./playerPanel.types";
+export type { PlayerPanel } from "./playerPanel.types";
+
 export interface CardSpriteData {
   card: Card;
   x: number;

@@ -95,7 +95,6 @@ export function PixiArrowsCanvas({
         autoDensity: true,
         // Arrows are thin lines — bump resolution so strokes stay sharp.
         resolution: Math.max(2, window.devicePixelRatio || 1),
-        resizeTo: canvasRef.current.parentElement ?? undefined,
       });
     } catch (err) {
       console.error("[pixi-arrows] init failed:", err);
@@ -142,6 +141,12 @@ export function PixiArrowsCanvas({
       pointerLayerRef.current?.update(pointers, ticker.deltaMS);
     });
 
+    // Initial resize since we no longer use resizeTo
+    const parent = canvasRef.current.parentElement;
+    if (parent) {
+      app.renderer.resize(parent.clientWidth, parent.clientHeight);
+    }
+
     setReady(true);
   }, [mainSceneRef]);
 
@@ -157,6 +162,23 @@ export function PixiArrowsCanvas({
       setReady(false);
     };
   }, [initApp]);
+
+  // Resize the canvas when the parent element resizes
+  useEffect(() => {
+    const parent = canvasRef.current?.parentElement;
+    const app = appRef.current;
+    if (!parent || !app) return;
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const { width, height } = entry.contentRect;
+        if (width > 0 && height > 0) {
+          app.renderer.resize(width, height);
+        }
+      }
+    });
+    observer.observe(parent);
+    return () => observer.disconnect();
+  }, [ready]);
 
   // Re-apply theme whenever preferences change (same subscription pattern
   // PixiGameCanvas uses for its scene).

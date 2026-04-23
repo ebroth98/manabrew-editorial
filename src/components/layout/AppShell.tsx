@@ -18,6 +18,7 @@ export function AppShell() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const setupListeners = useServerStore((s) => s.setupListeners);
   const location = useLocation();
+  const isGameRoute = location.pathname.startsWith("/game");
 
   // Register Tauri event listeners at app level so they're always active
   useEffect(() => {
@@ -82,9 +83,9 @@ export function AppShell() {
         >
           <Sidebar />
         </ResizablePanel>
-        <ResizableHandle withHandle className="hidden md:flex" />
+        <ResizableHandle withHandle className={cn("hidden md:flex", isGameRoute && "md:hidden")} />
         <ResizablePanel minSize={40} className="relative">
-          <div className="hidden md:block absolute left-0 top-1/2 -translate-y-1/2 z-30 group">
+          <div className={cn("hidden md:block absolute left-0 top-1/2 -translate-y-1/2 z-30 group", isGameRoute && "md:hidden")}>
             <Button
               size="icon"
               variant="ghost"
@@ -104,7 +105,10 @@ export function AppShell() {
               )}
             </Button>
           </div>
-          <main className="h-full overflow-auto p-4">
+          <main className={cn(
+            "h-full overflow-auto",
+            isGameRoute && "!p-0 !overflow-hidden",
+          )}>
             <Outlet />
           </main>
         </ResizablePanel>

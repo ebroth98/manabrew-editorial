@@ -19,6 +19,8 @@ export type FlashItem =
 
 export interface OpponentHalfProps {
   player: Player;
+  /** 0-based opponent index for seat color assignment. */
+  opponentIndex: number;
   permanents: XMageCard[];
   graveyard: XMageCard[];
   exile: XMageCard[];
@@ -29,6 +31,7 @@ export interface OpponentHalfProps {
   isFlashing: boolean;
   activePlayerId: string;
   priorityPlayerId: string;
+  step: string;
   promptType: PromptType | undefined;
   pendingAttacker: string | null;
   attackerIds?: string[];
@@ -136,6 +139,7 @@ export interface MainActionOverlayProps {
   onConcede: () => void;
   resolveCardName: (cardId: string) => string;
   isMyPriority: boolean;
+  manaPool: Record<string, number>;
   turn: number;
   activePlayerName: string;
   isMyTurn: boolean;

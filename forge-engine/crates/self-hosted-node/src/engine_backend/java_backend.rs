@@ -435,10 +435,7 @@ impl JavaScenario {
                             *played_land = true;
                             Ok(Some(action))
                         } else {
-                            Ok(Some(PlayerAction::PlayCard {
-                                card_id: None,
-                                mode: None,
-                            }))
+                            Ok(Some(PlayerAction::Pass { until_phase: None }))
                         }
                     }
                     other => Err(format!(
@@ -480,10 +477,7 @@ impl JavaScenario {
                             *played_land = true;
                             Ok(Some(action))
                         } else {
-                            Ok(Some(PlayerAction::PlayCard {
-                                card_id: None,
-                                mode: None,
-                            }))
+                            Ok(Some(PlayerAction::Pass { until_phase: None }))
                         }
                     }
                     other => Err(format!(

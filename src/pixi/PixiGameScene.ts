@@ -52,6 +52,9 @@ import {
   prewarmManaSymbols,
 } from "./manaSymbolCache";
 import { manaColorFor } from "./manaColors";
+import { PlayerSquarePanel } from "./PlayerSquarePanel";
+import { PhaseStripLayer, type PhaseStripState, type PhaseStripCallbacks } from "./PhaseStripLayer";
+import type { PlayerPanel, PlayerPanelState, PlayerPanelCallbacks } from "./playerPanel.types";
 import {
   ATTACH_OFFSET_Y,
   BATTLEFIELD_CARD_SCALE_DEFAULT,
@@ -60,8 +63,6 @@ import {
   BG_ALPHA_DROP,
   BG_ALPHA_IDLE,
   CARD_RADIUS,
-  DROP_STROKE_ALPHA,
-  DROP_TINT_ALPHA,
   GAP,
   GHOST_FILL_ALPHA,
   GHOST_STROKE_ALPHA,
@@ -226,6 +227,10 @@ export class PixiGameScene {
    * a partially-torn-down Pixi display tree.
    */
   private destroyed = false;
+  private dropActive = false;
+  /** Grid cell the user was hovering when they dropped a card from hand.
+   *  The next new card entering the battlefield gets this slot. */
+  private pendingDropSlot: { col: number; row: number } | null = null;
   private selectedCardIds = new Set<string>();
   private marquee: MarqueeHandler;
   private dragHandler: DragHandler;
@@ -263,6 +268,8 @@ export class PixiGameScene {
   private lastHandState: HandState | null = null;
   private handSize: HandSize = "medium";
   private vScale = 1;
+  private playerColumn: PlayerPanel;
+  private phaseStrip: PhaseStripLayer | null = null;
   private arrowLayer: ArrowLayer;
   /** Current arrow specs. Resolved to canvas-local ArrowDefs every tick so
    *  arrows follow animating sprites (hand lift, battlefield re-layout). */
@@ -350,6 +357,14 @@ export class PixiGameScene {
     this.arrowLayer = new ArrowLayer();
     this.root.addChild(this.arrowLayer.graphics);
 
+    this.playerColumn = new PlayerSquarePanel(this.theme, { anchorTop: this.mirrored });
+    this.root.addChild(this.playerColumn.container);
+    // Position at left edge — will be repositioned on resize/setPlayZone
+    this.playerColumn.setPosition(0, 0);
+
+    // Phase strip is rendered by the standalone PixiPhaseStripCanvas,
+    // not inside the scene.
+
     this.backgroundGfx.eventMode = "static";
     this.backgroundGfx.on("pointerdown", (e: FederatedPointerEvent) =>
       this.onBackgroundDown(e),
@@ -418,8 +433,30 @@ export class PixiGameScene {
     if (this.destroyed) return;
     this.theme = theme;
     this.arrowLayer.setTheme(theme);
+    this.playerColumn.setTheme(theme);
+    this.phaseStrip?.setTheme(theme);
     setCardSpriteTheme(theme);
     this.drawTableBackground();
+  }
+
+  updatePlayerColumn(state: PlayerPanelState): void {
+    if (this.destroyed) return;
+    this.playerColumn.update(state);
+  }
+
+  setPlayerColumnCallbacks(cb: PlayerPanelCallbacks): void {
+    if (this.destroyed) return;
+    this.playerColumn.setCallbacks(cb);
+  }
+
+  updatePhaseStrip(state: PhaseStripState): void {
+    if (this.destroyed) return;
+    this.phaseStrip?.update(state);
+  }
+
+  setPhaseStripCallbacks(cb: PhaseStripCallbacks): void {
+    if (this.destroyed) return;
+    this.phaseStrip?.setCallbacks(cb);
   }
 
   setReserved(bottom: number, left: number): void {
@@ -504,7 +541,11 @@ export class PixiGameScene {
     // Bottom-right reserved rect is anchored to canvas size — re-resolve
     // so the keep-out follows the resize.
     this.syncDragBlockers();
+    this.playerColumn.setPosition(zone.x, zone.y);
+    this.playerColumn.setHeight(zone.height);
+    this.phaseStrip?.resize(zone.width, zone.height);
     if (this.lastHandState) this.updateHand(this.lastHandState);
+    if (this.lastState) this.updateBattlefield(this.lastState);
   }
 
   /**
@@ -542,6 +583,10 @@ export class PixiGameScene {
     if (this.lastHandState) this.updateHand(this.lastHandState);
     this.emptyText.x = this.zoneCenterX();
     this.emptyText.y = this.zoneCenterY();
+    const zone = this.getPlayZone();
+    this.playerColumn.setPosition(zone.x, zone.y);
+    this.playerColumn.setHeight(zone.height);
+    this.phaseStrip?.resize(zone.width, zone.height);
   }
 
   /** Current play-zone rectangle in canvas-local coords. Falls back to the
@@ -564,6 +609,20 @@ export class PixiGameScene {
 
   setDropActive(active: boolean): void {
     if (this.destroyed) return;
+    // Capture the hovered cell when the drop ends (card released)
+    if (!active && this.dropActive) {
+      const zone = this.getPlayZone();
+      const blockers = [...this.collectOverlayBlockers(), ...this.collectHandBlockers()];
+      const grid = computeGridLayout(zone, this.leftReserved, blockers, this.cardScale);
+      const canvasRect = this.app.canvas.getBoundingClientRect();
+      const localX = this.cursorViewportX - canvasRect.left;
+      const localY = this.cursorViewportY - canvasRect.top;
+      const cell = cellFromPoint(grid, localX, localY);
+      if (cell && !cell.blocked) {
+        this.pendingDropSlot = { col: cell.col, row: cell.row };
+      }
+    }
+    this.dropActive = active;
     this.drawDropTargetBackground(active);
   }
 
@@ -692,11 +751,9 @@ export class PixiGameScene {
       dims.neighborPush,
     );
 
-    // Hand is centered horizontally in the play zone and anchored to its
-    // bottom edge, so it stays in "my half" even when the canvas is larger.
     const zone = this.getPlayZone();
     const centerX = zone.x + zone.width / 2;
-    const bottomY = zone.y + zone.height;
+    const bottomY = this.handBottomY();
 
     for (let i = 0; i < state.cards.length; i++) {
       const card = state.cards[i]!;
@@ -756,6 +813,8 @@ export class PixiGameScene {
       this.marquee.destroy();
       this.dragHandler.destroy();
       this.arrowLayer.destroy();
+      this.playerColumn.destroy();
+      this.phaseStrip?.destroy();
     } catch (err) {
       console.warn("[pixi] handler teardown threw:", err);
     }
@@ -787,22 +846,42 @@ export class PixiGameScene {
     this.backgroundGfx.clear();
     this.backgroundGfx.roundRect(zone.x, zone.y, zone.width, zone.height, TABLE_RADIUS);
     this.backgroundGfx.fill({ color: this.theme.canvas.background, alpha: BG_ALPHA_DROP });
-    if (!active) return;
-    const tint = this.theme.activeAction.active;
-    this.backgroundGfx.roundRect(
-      zone.x + 2,
-      zone.y + 2,
-      zone.width - 4,
-      zone.height - 4,
-      TABLE_RADIUS,
-    );
-    this.backgroundGfx.stroke({
-      color: tint,
-      width: 2,
-      alpha: DROP_STROKE_ALPHA,
-    });
-    this.backgroundGfx.roundRect(zone.x, zone.y, zone.width, zone.height, TABLE_RADIUS);
-    this.backgroundGfx.fill({ color: tint, alpha: DROP_TINT_ALPHA });
+    if (!active) {
+      // Hide the grid skeleton when not dropping
+      this.gridSkeletonGfx.visible = false;
+      return;
+    }
+    // Show the grid skeleton so the player can see where the card will land
+    this.drawDropGrid();
+  }
+
+  /** Draw the grid skeleton for hand-to-battlefield drops, highlighting the cell under the cursor. */
+  private drawDropGrid(): void {
+    const zone = this.getPlayZone();
+    const blockers = [...this.collectOverlayBlockers(), ...this.collectHandBlockers()];
+    const grid = computeGridLayout(zone, this.leftReserved, blockers, this.cardScale);
+    const color = this.theme.activeAction.active;
+    const gfx = this.gridSkeletonGfx;
+    gfx.clear();
+
+    // Find which cell the cursor is over (convert viewport coords to canvas-local)
+    const canvasRect = this.app.canvas.getBoundingClientRect();
+    const localX = this.cursorViewportX - canvasRect.left;
+    const localY = this.cursorViewportY - canvasRect.top;
+    const hoveredCell = cellFromPoint(grid, localX, localY);
+    const hoveredKey = hoveredCell && !hoveredCell.blocked
+      ? cellKey(hoveredCell.col, hoveredCell.row)
+      : null;
+
+    for (const cell of grid.cells) {
+      if (cell.blocked) continue;
+      const key = cellKey(cell.col, cell.row);
+      const isHover = key === hoveredKey;
+      gfx.roundRect(cell.x, cell.y, grid.cardW, grid.cardH, CARD_RADIUS);
+      gfx.fill({ color, alpha: isHover ? GRID_SKELETON_FILL_ALPHA * 5 : GRID_SKELETON_FILL_ALPHA });
+      gfx.stroke({ color, width: isHover ? 2 : 1, alpha: isHover ? GRID_SKELETON_HOVER_ALPHA : GRID_SKELETON_STROKE_ALPHA });
+    }
+    gfx.visible = true;
   }
 
   // ═══════════════════════════════════════════════════════════════
@@ -1042,11 +1121,22 @@ export class PixiGameScene {
       occupied.add(cellKey(cell.col, cell.row));
     }
 
+    // Assign pending drop slot to the first new card (from a hand drop)
+    if (this.pendingDropSlot && unplaced.length > 0) {
+      const dropCell = cellAt(grid, this.pendingDropSlot.col, this.pendingDropSlot.row);
+      if (dropCell && !dropCell.blocked && !occupied.has(cellKey(dropCell.col, dropCell.row))) {
+        // Find the first unplaced card that doesn't already have a user slot
+        const dropCandidate = unplaced[0]!;
+        this.userSlots.set(dropCandidate.id, this.pendingDropSlot);
+        positions.set(dropCandidate.id, { x: dropCell.cx, y: dropCell.cy });
+        occupied.add(cellKey(dropCell.col, dropCell.row));
+        unplaced.shift();
+      }
+      this.pendingDropSlot = null;
+    }
+
     // Pass 2: auto-place remaining cards, biased toward the anchor for
-    // their card class. Matches the React BattlefieldZone layout:
-    //   - player half: lands bottom, non-lands top ("landsAtTop" false).
-    //   - opponent half (mirrored): lands top, non-lands bottom — so the
-    //     two boards face each other across the middle of the screen.
+    // their card class.
     const centerX = zone.x + zone.width / 2;
     const topAnchorY = zone.y + grid.cellH / 2;
     const bottomAnchorY = zone.y + zone.height - grid.cellH / 2;
@@ -1103,10 +1193,16 @@ export class PixiGameScene {
       const cell = cellFromPoint(grid, pos.x, pos.y);
       if (cell) occupied.add(cellKey(cell.col, cell.row));
     }
-    // Only permanent spells trigger a placement ghost, and lands are
-    // played directly without ever hitting the stack — so the ghost is
-    // always for a non-land. Anchor matches auto-placement: top-center
-    // for player half, bottom-center for mirrored opponent half.
+
+    // If the user dropped a card onto a specific slot, use that slot
+    // for the placement ghost / arrow target — single source of truth.
+    if (this.pendingDropSlot) {
+      const dropCell = cellAt(grid, this.pendingDropSlot.col, this.pendingDropSlot.row);
+      if (dropCell && !dropCell.blocked && !occupied.has(cellKey(dropCell.col, dropCell.row))) {
+        return { x: dropCell.x, y: dropCell.y };
+      }
+    }
+
     const anchorX = zone.x + zone.width / 2;
     const anchorY = this.mirrored
       ? zone.y + zone.height - grid.cellH / 2
@@ -1145,12 +1241,21 @@ export class PixiGameScene {
     const handH = dims.cardH;
     const zone = this.getPlayZone();
 
+    // Blocker covers from where the hand actually starts (using the
+    // canonical bottomY) down to the zone bottom.
+    const bottomY = this.handBottomY();
+    const handTopY = bottomY - handH;
+    const zoneBottom = zone.y + zone.height;
+    // Only block the portion that's inside the visible zone
+    const blockerTop = Math.max(zone.y, handTopY) - GAP;
+    const blockerH = zoneBottom - blockerTop;
+    if (blockerH <= 0) return [];
     return [
       {
         x: zone.x + zone.width / 2 - handW / 2 - GAP,
-        y: zone.y + zone.height - handH - GAP,
+        y: blockerTop,
         width: handW + GAP * 2,
-        height: handH + GAP,
+        height: blockerH,
       },
     ];
   }
@@ -2025,6 +2130,13 @@ export class PixiGameScene {
    * Scale matches the current hand so the size lerp covers the same
    * distance as the position lerp.
    */
+  /** Single source of truth for the hand's vertical anchor point. */
+  private handBottomY(): number {
+    const zone = this.getPlayZone();
+    const dims = this.computeHandDimensions();
+    return zone.y + zone.height + dims.cardH * 0.25;
+  }
+
   private computeHandOriginSeed(): { x: number; y: number; scale: number } {
     const zone = this.getPlayZone();
     const dims = this.computeHandDimensions();
@@ -2032,7 +2144,7 @@ export class PixiGameScene {
     // edge of their zone since their "hand" lives off the screen above.
     const y = this.mirrored || !this.showHand
       ? zone.y + dims.cardH / 2
-      : zone.y + zone.height - dims.cardH / 2;
+      : this.handBottomY() - dims.cardH / 2;
     return {
       x: zone.x + zone.width / 2,
       y,
@@ -2202,6 +2314,9 @@ export class PixiGameScene {
     }
     this.captureStackSeeds();
     this.resolveAndDrawArrows();
+    this.playerColumn.tick();
+    this.phaseStrip?.tick();
+    if (this.dropActive) this.drawDropGrid();
   };
 
   /**

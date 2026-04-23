@@ -1,21 +1,20 @@
-import { Fragment, useMemo } from "react";
+import { Fragment, useCallback, useMemo, useRef, useState } from "react";
 import type { Card, Player } from "@/types/openmagic";
 import type { AgentPrompt } from "@/stores/useGameStore";
 import { usePreferencesStore, type ZonePanelItem } from "@/stores/usePreferencesStore";
 import { PixiGameCanvas } from "@/pixi/PixiGameCanvas";
-import type { BattlefieldState, GameCanvasCallbacks, ScreenBounds } from "@/pixi/types";
+import { PixiPhaseStripCanvas } from "@/pixi/PixiPhaseStripCanvas";
+import type { BattlefieldState, GameCanvasCallbacks, ScreenBounds, PlayerColumnState, PlayerColumnCallbacks } from "@/pixi/types";
+import { usePhaseStopStore } from "@/stores/usePhaseStopStore";
 import type { PixiGameScene } from "@/pixi/PixiGameScene";
 import type { PromptType } from "@/types/promptType";
 import { PromptType as PT } from "@/types/promptType";
-import { OpponentHalf, PlayerPanel } from "@/components/game/panels";
-import { MidPhaseStrip } from "@/components/game/MidPhaseStrip";
+import { OpponentHalf } from "@/components/game/panels";
 import { FreeBattlefield, HandDisplay } from "@/components/game/zones";
 import type { PlacementGhost } from "@/components/game/zones/FreeBattlefield";
-import { ZoneActionColumn } from "@/components/game/ZoneActionColumn";
 import { ZONE_COLUMN_RESERVED_PX } from "@/components/game/game.constants";
 import { useHandScale } from "@/hooks/useHandScale";
 import { HAND_CARD_BASES } from "@/components/game/game.styles";
-import { useGameThemeColors, withAlpha } from "@/components/game/game.theme";
 import type { HandActionOption } from "@/stores/useGameUIStore";
 import {
   ResizablePanelGroup,
@@ -28,7 +27,9 @@ import { cn } from "@/lib/utils";
 // phase buttons). Matches MainActionOverlay's `w-[300px]` + its visible
 // vertical extent so the battlefield doesn't auto-place or let the user
 // drag cards underneath it.
-const PASS_BUTTON_RESERVED = { width: 312, height: 280 } as const;
+// Only reserve space for the bottom-most mana pool strip — the prompt
+// overlay now sits higher and doesn't block card placement.
+const PASS_BUTTON_RESERVED = { width: 312, height: 50 } as const;
 
 interface GameBoardProps {
   // Core game state
@@ -184,11 +185,13 @@ export function GameBoard({
   onHandCardToggle,
   mulliganActive,
 }: GameBoardProps) {
-  const themeColors = useGameThemeColors();
+  const selfStops = usePhaseStopStore((s) => s.selfStops);
+  const toggleSelfStop = usePhaseStopStore((s) => s.toggleSelfStop);
+
   const handSize = usePreferencesStore((s) => s.handSize);
   const pixiEnabled = usePreferencesStore((s) => s.pixiEnabled);
   const vScale = useHandScale();
-  const handBottomReserved = Math.round(HAND_CARD_BASES[handSize].containerH * vScale);
+  const handBottomReserved = Math.round(HAND_CARD_BASES[handSize].containerH * vScale * 0.5);
   const hostileTargeting = currentPrompt?.hostile ?? false;
   const showChooseActionManaSources =
     promptType === PT.ChooseAction &&
@@ -253,14 +256,123 @@ export function GameBoard({
     onAttackerClick,
   }), [promptType, onBattlefieldClick, onHoverCard, onDismissHoverPreview, onHandCardDragStart, onHandCardClick, onTapLand, onTapLands, onTapLandAbility, onUntapLand, onUntapLands, onFlipCard, onAttackerClick]);
 
+  const totalCmdDmg = Object.values(me.commanderDamage ?? {}).reduce(
+    (a, b) => a + b,
+    0,
+  );
+
+  const pixiPlayerColumn = useMemo((): PlayerColumnState => ({
+    playerName: me.name,
+    playerId: me.id,
+    life: me.life,
+    handCount: me.handCount,
+    poison: me.poison,
+    energyCounters: me.energyCounters ?? 0,
+    commanderDamage: totalCmdDmg,
+    manaPool: me.manaPool,
+    libraryCount: me.libraryCount,
+    graveyardCount: graveyard.length,
+    exileCount: exile.length,
+    commandZoneCount: myCommandZone?.length ?? 0,
+    isActiveTurn: activePlayerId === me.id,
+    isPriorityPlayer: priorityPlayerId === me.id,
+    isTargetable: playerIsTargetable(me.id),
+    currentStep: step,
+    hasPlayableInGraveyard: promptType === PT.ChooseAction && graveyard.some((c) => c.isPlayable),
+    hasPlayableInExile: promptType === PT.ChooseAction && exile.some((c) => c.isPlayable),
+    enabledPhases: selfStops,
+    isInteractive: true,
+    playerSeat: "self",
+  }), [me, graveyard, exile, myCommandZone, activePlayerId, promptType, playerIsTargetable, totalCmdDmg, step, selfStops]);
+
+  const pixiPlayerColumnCallbacks = useMemo((): PlayerColumnCallbacks => ({
+    onOpenGraveyard: () => {
+      const hasPlayable = graveyard.some((c) => c.isPlayable);
+      if (hasPlayable && promptType === PT.ChooseAction) {
+        onOpenZoneAndCast("Your Graveyard", graveyard, () => {});
+      } else {
+        onOpenZone("Your Graveyard", graveyard);
+      }
+    },
+    onOpenExile: () => {
+      const hasPlayable = exile.some((c) => c.isPlayable);
+      if (hasPlayable && promptType === PT.ChooseAction) {
+        onOpenZoneAndCast("Your Exile", exile, () => {});
+      } else {
+        onOpenZone("Your Exile", exile);
+      }
+    },
+    onOpenCommandZone: (myCommandZone?.length ?? 0) > 0 ? () => {
+      const hasPlayable = myCommandZone!.some((c) => c.isPlayable);
+      if (hasPlayable && promptType === PT.ChooseAction) {
+        onOpenZoneAndCast("Your Command Zone", myCommandZone!, () => {});
+      } else {
+        onOpenZone("Your Command Zone", myCommandZone!);
+      }
+    } : undefined,
+    onTargetPlayer: playerIsTargetable(me.id) ? () => onTargetPlayer(me.id) : undefined,
+    onTogglePhase: toggleSelfStop,
+  }), [graveyard, exile, myCommandZone, promptType, onOpenZone, onOpenZoneAndCast, onTargetPlayer, playerIsTargetable, me.id, toggleSelfStop]);
+
+  const opponentStopsMap = usePhaseStopStore((s) => s.opponentStops);
+  const toggleOpponentStop = usePhaseStopStore((s) => s.toggleOpponentStop);
+
+  const pixiPhaseStrip = useMemo((): import("@/pixi/PhaseStripLayer").PhaseStripState => {
+    // Build per-opponent enabled phases map
+    const oppEnabled = new Map<string, Set<string>>();
+    for (const op of opponents) {
+      oppEnabled.set(op.id, opponentStopsMap.get(op.id) ?? new Set(["end"]));
+    }
+    return {
+      currentStep: step,
+      isActiveTurn: activePlayerId === me.id,
+      activePlayerId,
+      myPlayerId: me.id,
+      selfEnabledPhases: selfStops,
+      opponentEnabledPhases: oppEnabled,
+      opponents: opponents.map((op, i) => ({ id: op.id, index: i })),
+      isInteractive: true,
+    };
+  }, [step, activePlayerId, me.id, selfStops, opponents, opponentStopsMap]);
+
+  const pixiPhaseStripCallbacks = useMemo((): import("@/pixi/PhaseStripLayer").PhaseStripCallbacks => ({
+    onToggleSelfPhase: toggleSelfStop,
+    onToggleOpponentPhase: toggleOpponentStop,
+  }), [toggleSelfStop, toggleOpponentStop]);
+
+  // ── Resizable split via custom drag handle on phase strip left edge ──
+  const [splitPct, setSplitPct] = useState(45); // opponent % of total height
+  const boardRef = useRef<HTMLDivElement>(null);
+
+  const onGripPointerDown = useCallback((e: React.PointerEvent) => {
+    e.preventDefault();
+    const el = boardRef.current;
+    if (!el) return;
+    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+    const onMove = (ev: PointerEvent) => {
+      const rect = el.getBoundingClientRect();
+      const y = ev.clientY - rect.top;
+      const pct = Math.max(20, Math.min(80, (y / rect.height) * 100));
+      setSplitPct(pct);
+    };
+    const onUp = () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+  }, []);
+
   return (
-    <div className="game-board-surface flex flex-col gap-1 min-h-0 flex-1 overflow-visible">
-      {/* ── Resizable split: opponent (top) / me (bottom) ─── */}
-      <ResizablePanelGroup orientation="vertical" className="flex-1 min-h-0">
-        <ResizablePanel defaultSize={45} minSize={20} className="overflow-visible">
+    <div ref={boardRef} className="game-board-surface relative flex flex-col min-h-0 flex-1 overflow-visible">
+      {/* ── Split: opponent (top) / phase strip / me (bottom) ─── */}
+
+      {/* Opponent half */}
+      <div style={{ flex: `${splitPct} 1 0%` }} className="min-h-0 overflow-visible">
           {opponents.length <= 1 ? (
             <OpponentHalf
               player={opponents[0]!}
+              opponentIndex={0}
               permanents={opponentPermanentsByPlayer.get(opponents[0]!.id) ?? []}
               graveyard={opponentGraveyard}
               exile={opponentExile}
@@ -271,6 +383,7 @@ export function GameBoard({
               isFlashing={turnFlashPlayerId === opponents[0]?.id}
               activePlayerId={activePlayerId}
               priorityPlayerId={priorityPlayerId}
+              step={step}
               promptType={promptType}
               pendingAttacker={pendingAttacker}
               attackerIds={currentPrompt?.attackerIds}
@@ -296,6 +409,7 @@ export function GameBoard({
                   <ResizablePanel className="overflow-visible">
                     <OpponentHalf
                       player={op}
+                      opponentIndex={i}
                       permanents={opponentPermanentsByPlayer.get(op.id) ?? []}
                       graveyard={i === 0 ? opponentGraveyard : []}
                       exile={i === 0 ? opponentExile : []}
@@ -306,6 +420,7 @@ export function GameBoard({
                       isFlashing={turnFlashPlayerId === op.id}
                       activePlayerId={activePlayerId}
                       priorityPlayerId={priorityPlayerId}
+                      step={step}
                       promptType={promptType}
                       pendingAttacker={pendingAttacker}
                       attackerIds={currentPrompt?.attackerIds}
@@ -328,94 +443,42 @@ export function GameBoard({
               ))}
             </ResizablePanelGroup>
           )}
-        </ResizablePanel>
+      </div>
 
-        <ResizableHandle
-          withHandle={false}
-          gripOnly
-          className="h-8 w-full my-0 flex items-center justify-center overflow-visible"
+      {/* Phase strip — the center line with resize grip on the left */}
+      <div className="h-16 w-full shrink-0 relative">
+        {/* Resize grip — overlaid on the left, above the phase strip */}
+        <div
+          className="absolute left-2 top-0 h-full w-10 cursor-row-resize z-20 flex items-center justify-center"
+          onPointerDown={onGripPointerDown}
         >
-          <MidPhaseStrip currentStep={step} />
-        </ResizableHandle>
+          <div className="flex flex-col items-center gap-[3px]">
+            <div className="w-4 h-[2px] rounded-full bg-white/25" />
+            <div className="w-6 h-[2px] rounded-full bg-white/35" />
+            <div className="w-4 h-[2px] rounded-full bg-white/25" />
+          </div>
+        </div>
+        {/* Phase strip — full width, centered */}
+        <div className="absolute inset-0">
+          <PixiPhaseStripCanvas
+            state={pixiPhaseStrip}
+            callbacks={pixiPhaseStripCallbacks}
+          />
+        </div>
+      </div>
 
-        <ResizablePanel defaultSize={60} minSize={35}>
-          <div className="flex flex-col gap-1 h-full overflow-visible">
-            <div className="flex gap-2 flex-1 min-h-0 overflow-visible">
+      {/* Player half */}
+      <div style={{ flex: `${100 - splitPct} 1 0%` }} className="min-h-0 overflow-visible">
+          <div className="flex flex-col h-full overflow-visible">
+            <div className="flex flex-1 min-h-0 overflow-visible">
               <div
                 ref={battlefieldContainerRef}
                 className={cn(
-                  "relative flex flex-col flex-1 min-w-0 overflow-visible rounded-lg border border-transparent",
+                  "relative flex flex-col flex-1 min-w-0 overflow-visible",
                 )}
-                style={
-                  priorityPlayerId === me.id
-                    ? {
-                        borderColor: themeColors.activeAction.active,
-                        boxShadow: `inset 0 0 0 1px ${withAlpha(themeColors.activeAction.active, 0.85)}`,
-                      }
-                    : undefined
-                }
               >
-                <div className="absolute bottom-12 left-0 z-30">
-                  <ZoneActionColumn
-                    libraryCount={me.libraryCount}
-                    graveyardCount={graveyard.length}
-                    exileCount={exile.length}
-                    order={zonePanelOrder}
-                    onOpenGraveyard={() => {
-                      const hasPlayable = graveyard.some((c) => c.isPlayable);
-                      if (hasPlayable && promptType === PT.ChooseAction) {
-                        onOpenZoneAndCast("Your Graveyard", graveyard, (_cardId) => {
-                          // Parent will close zone and call handleCastSpell
-                        });
-                      } else {
-                        onOpenZone("Your Graveyard", graveyard);
-                      }
-                    }}
-                    onOpenExile={() => {
-                      const hasPlayable = exile.some((c) => c.isPlayable);
-                      if (hasPlayable && promptType === PT.ChooseAction) {
-                        onOpenZoneAndCast("Your Exile", exile, (_cardId) => {
-                          // Parent will close zone and call handleCastSpell
-                        });
-                      } else {
-                        onOpenZone("Your Exile", exile);
-                      }
-                    }}
-                    hasPlayableInGraveyard={
-                      promptType === PT.ChooseAction && graveyard.some((c) => c.isPlayable)
-                    }
-                    hasPlayableInExile={
-                      promptType === PT.ChooseAction && exile.some((c) => c.isPlayable)
-                    }
-                  />
-                </div>
-                <div className="absolute bottom-[-12px] left-[-12px] z-30 max-w-[calc(100%-8px)]">
-                  <PlayerPanel
-                    player={me}
-                    isOpponent={false}
-                    verticalAlign="bottom"
-                    isActiveTurn={activePlayerId === me.id}
-                    isPriorityPlayer={priorityPlayerId === me.id}
-                    isTargetable={playerIsTargetable(me.id)}
-                    onTarget={() => onTargetPlayer(me.id)}
-                    isFlashing={turnFlashPlayerId === me.id}
-                    onOpenCommandZone={() => {
-                      if ((myCommandZone?.length ?? 0) > 0) {
-                        const hasPlayable = myCommandZone!.some((c) => c.isPlayable);
-                        if (hasPlayable && promptType === PT.ChooseAction) {
-                          onOpenZoneAndCast("Your Command Zone", myCommandZone!, (_cardId) => {
-                            // Parent will close zone and call handleCastSpell
-                          });
-                        } else {
-                          onOpenZone("Your Command Zone", myCommandZone!);
-                        }
-                      }
-                    }}
-                    commandZoneCount={myCommandZone?.length ?? 0}
-                  />
-                </div>
                 {pixiEnabled && (
-                  <div className="absolute inset-0 z-10 rounded-lg overflow-hidden">
+                  <div className="absolute inset-0 z-10 overflow-hidden">
                     <PixiGameCanvas
                       battlefield={pixiBattlefield}
                       hand={mulliganActive ? undefined : pixiHand}
@@ -425,6 +488,8 @@ export function GameBoard({
                       callbacks={pixiCallbacks}
                       bottomReserved={handBottomReserved}
                       leftReserved={ZONE_COLUMN_RESERVED_PX}
+                      playerColumn={pixiPlayerColumn}
+                      playerColumnCallbacks={pixiPlayerColumnCallbacks}
                       getHandActions={getHandActions}
                       onSelectHandAction={(_card, action) => onSelectHandAction?.(action)}
                       bottomRightReserved={PASS_BUTTON_RESERVED}
@@ -518,8 +583,7 @@ export function GameBoard({
               </div>
             </div>
           </div>
-        </ResizablePanel>
-      </ResizablePanelGroup>
+      </div>
     </div>
   );
 }

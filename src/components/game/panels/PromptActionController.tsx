@@ -109,11 +109,11 @@ export function PromptActionController({
   isAutoPassing,
   isPassingUntilEot,
   isMyTurn,
-  passToPhaseShort,
+  passToPhaseShort: _passToPhaseShort,
   availableAttackerIds,
   pendingAttackers,
   onPassPriority,
-  onPassUntilEot,
+  onPassUntilEot: _onPassUntilEot,
   selectedAttackDefenderId,
   selectedAttackDefenderLabel,
   onDeclareAttackers,
@@ -142,10 +142,7 @@ export function PromptActionController({
       <ChooseAction
         buttonLayout={buttonLayout}
         isWaitingForResponse={isWaitingForResponse}
-        isMyTurn={isMyTurn}
-        passToPhaseShort={passToPhaseShort}
         onPassPriority={onPassPriority}
-        onPassUntilEot={onPassUntilEot}
       />
     ),
     chooseAttackers: () => (

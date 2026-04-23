@@ -9,6 +9,7 @@ import { Settings } from "lucide-react";
 import type { MainActionOverlayProps } from "../game.types";
 import { PromptActionController } from "./PromptActionController";
 import { CombatInfo } from "./CombatInfo";
+import { ManaPool } from "./ManaPool";
 import { PHASES } from "../game.constants";
 import { PromptType } from "@/types/promptType";
 
@@ -43,6 +44,7 @@ export function MainActionOverlay({
   mulliganPutBackCount,
   mulliganSelectedCount,
   onMulliganPutBackConfirm,
+  manaPool,
 }: MainActionOverlayProps) {
   if (promptType === PromptType.GameOver) return null;
   const buttonLayout = "modern" as const;
@@ -54,16 +56,15 @@ export function MainActionOverlay({
 
   return (
     <>
-      <section className="absolute bottom-30 right-0 z-40 w-[300px] max-w-[calc(100%-12px)] flex flex-col gap-3 pb-[170px]">
-        <CombatInfo
-          promptType={promptType}
-          attackerIds={attackerIds}
-          blockAssignments={blockAssignments}
-          resolveCardName={resolveCardName}
-        />
-
-        <div className="absolute bottom-0 right-0 w-[300px]">
-          <div className="h-9" />
+      <div className="absolute bottom-0 right-12 z-40 w-[300px] max-w-[calc(100%-12px)] flex flex-col items-end gap-0">
+        {/* Prompt / action area */}
+        <section className="w-full flex flex-col gap-3">
+          <CombatInfo
+            promptType={promptType}
+            attackerIds={attackerIds}
+            blockAssignments={blockAssignments}
+            resolveCardName={resolveCardName}
+          />
           <div className="flex flex-col items-center w-full [&_button]:mx-0">
             <PromptActionController
               promptType={promptType}
@@ -96,8 +97,12 @@ export function MainActionOverlay({
               onMulliganPutBackConfirm={onMulliganPutBackConfirm}
             />
           </div>
-        </div>
-      </section>
+        </section>
+        {/* Mana pool — fixed height so the layout doesn't shift */}
+        <section className="w-full p-2 h-10 flex items-center">
+          <ManaPool pool={manaPool} />
+        </section>
+      </div>
 
       <div className="absolute bottom-4 right-4 z-50">
         <DropdownMenu>

@@ -2,9 +2,6 @@ import { ManaSymbols } from "@/components/game/ManaSymbols";
 import { MANA_COLORS } from "../game.constants";
 
 export function ManaPool({ pool }: { pool: Record<string, number> }) {
-  const total = Object.values(pool).reduce((a, b) => a + b, 0);
-  if (total === 0)
-    return <span className="text-xs text-muted-foreground italic">Empty</span>;
   return (
     <div className="flex flex-row items-center gap-1 flex-nowrap">
       {MANA_COLORS.flatMap(({ key }) => {

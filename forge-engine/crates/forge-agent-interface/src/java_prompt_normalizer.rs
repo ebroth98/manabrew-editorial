@@ -446,7 +446,7 @@ pub fn normalize_java_prompt(prompt: Value) -> Value {
 pub fn translate_java_player_action(action: &PlayerAction) -> Value {
     match action {
         PlayerAction::PlayCard {
-            card_id: Some(card_id),
+            card_id,
             mode,
         } => mode
             .as_deref()
@@ -590,7 +590,7 @@ pub fn translate_java_player_action(action: &PlayerAction) -> Value {
             ability_index: index,
             ..
         } => json!({ "kind": "choose_action", "index": index }),
-        PlayerAction::PlayCard { card_id: None, .. } => json!({ "kind": "pass" }),
+        PlayerAction::Pass { .. } => json!({ "kind": "pass" }),
         PlayerAction::Concede => json!({ "kind": "pass" }),
         _ => json!({ "kind": "pass" }),
     }

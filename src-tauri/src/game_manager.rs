@@ -212,10 +212,7 @@ impl GameManager {
             if let Some(session) = session_opt {
                 session.abort_signal.store(true, Ordering::Relaxed);
                 if let Some(tx) = session.response_tx.as_ref() {
-                    let _ = tx.send(PlayerAction::PlayCard {
-                        card_id: None,
-                        mode: None,
-                    });
+                    let _ = tx.send(PlayerAction::Pass { until_phase: None });
                 }
                 if let Some(tx) = session.java_response_tx.as_ref() {
                     let _ = tx.send(json!({ "kind": "pass" }));

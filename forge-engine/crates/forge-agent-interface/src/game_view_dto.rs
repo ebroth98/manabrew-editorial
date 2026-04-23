@@ -453,6 +453,27 @@ fn phase_to_step(phase: forge_foundation::PhaseType) -> &'static str {
     }
 }
 
+/// Parse a frontend step string back to a PhaseType.
+pub fn step_to_phase(step: &str) -> Option<forge_foundation::PhaseType> {
+    use forge_foundation::PhaseType::*;
+    match step {
+        "untap" => Some(Untap),
+        "upkeep" => Some(Upkeep),
+        "draw" => Some(Draw),
+        "main1" => Some(Main1),
+        "begin_combat" => Some(CombatBegin),
+        "declare_attackers" => Some(CombatDeclareAttackers),
+        "declare_blockers" => Some(CombatDeclareBlockers),
+        "first_strike_damage" => Some(CombatFirstStrikeDamage),
+        "combat_damage" => Some(CombatDamage),
+        "end_combat" => Some(CombatEnd),
+        "main2" => Some(Main2),
+        "end" => Some(EndOfTurn),
+        "cleanup" => Some(Cleanup),
+        _ => None,
+    }
+}
+
 fn should_show_command_zone_card(game: &GameState, cid: CardId) -> bool {
     let card = game.card(cid);
     !(card.type_line.core_types.is_empty()

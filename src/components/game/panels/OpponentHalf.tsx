@@ -1,20 +1,24 @@
-import { useMemo } from "react";
+import { useCallback, useMemo } from "react";
 import { cn } from "@/lib/utils";
-import { PlayerPanel } from "./PlayerPanel";
 import { BattlefieldZone } from "../zones";
-import { ZoneActionColumn } from "@/components/game/ZoneActionColumn";
 import { ZONE_COLUMN_RESERVED_PX } from "../game.constants";
-import { useGameThemeColors, withAlpha } from "../game.theme";
 import type { OpponentHalfProps } from "../game.types";
 import { PromptType } from "@/types/promptType";
 import { usePreferencesStore } from "@/stores/usePreferencesStore";
 import { PixiGameCanvas } from "@/pixi/PixiGameCanvas";
-import type { BattlefieldState, GameCanvasCallbacks } from "@/pixi/types";
+import { usePhaseStopStore } from "@/stores/usePhaseStopStore";
+import type {
+  BattlefieldState,
+  GameCanvasCallbacks,
+  PlayerColumnState,
+  PlayerColumnCallbacks,
+} from "@/pixi/types";
 
-const OPPONENT_PLAYER_TILE_RESERVED_PX = 92;
 /** Options passed to the opponent's Pixi scene — no hand, no drag, and
  *  mirrored so lands sit at the top like the React BattlefieldZone's
  *  `landsAtTop` mode. */
+const DEFAULT_OPPONENT_STOPS = new Set(["end"]);
+
 const OPPONENT_SCENE_OPTIONS = {
   mirrored: true,
   showHand: false,
@@ -23,16 +27,18 @@ const OPPONENT_SCENE_OPTIONS = {
 
 export function OpponentHalf({
   player,
+  opponentIndex,
   permanents,
   graveyard,
   exile,
   commandZone,
   isTargetable,
-  isSelectedTarget,
+  isSelectedTarget: _isSelectedTarget,
   onTarget,
-  isFlashing,
+  isFlashing: _isFlashing,
   activePlayerId,
   priorityPlayerId,
+  step,
   promptType,
   pendingAttacker,
   attackerIds,
@@ -43,19 +49,22 @@ export function OpponentHalf({
   showBackFace,
   onOpenZone,
   zonePanelSide,
-  zonePanelOrder,
+  zonePanelOrder: _zonePanelOrder,
   placementGhost,
   hostileTargeting,
   manaAbilityOptions,
   onTapLandAbility,
   pixiSceneRef,
 }: OpponentHalfProps) {
-  const themeColors = useGameThemeColors();
+  const opponentEnabledPhases = usePhaseStopStore((s) => s.opponentStops.get(player.id)) ?? DEFAULT_OPPONENT_STOPS;
+  const toggleOpponentPhase = useCallback(
+    (phaseId: string) => usePhaseStopStore.getState().toggleOpponentStop(player.id, phaseId),
+    [player.id],
+  );
+
   const pixiEnabled = usePreferencesStore((s) => s.pixiEnabled);
 
-  const leftReserved =
-    (zonePanelSide === "left" ? ZONE_COLUMN_RESERVED_PX : 0) +
-    OPPONENT_PLAYER_TILE_RESERVED_PX;
+  const leftReserved = ZONE_COLUMN_RESERVED_PX;
   const rightReserved = zonePanelSide === "right" ? ZONE_COLUMN_RESERVED_PX : 0;
 
   const canTarget =
@@ -63,10 +72,13 @@ export function OpponentHalf({
     promptType === PromptType.ChooseTargetAny;
   const canPickForBlockers = promptType === PromptType.ChooseBlockers;
 
+  const totalCmdDmg = Object.values(player.commanderDamage ?? {}).reduce(
+    (a, b) => a + b,
+    0,
+  );
+
   const pixiBattlefield = useMemo<BattlefieldState>(() => ({
     cards: permanents,
-    // ChooseBlockers prompt: opponent's attackers get the ring + pending
-    // pile so the local player can see who's swinging at them.
     attackingCardIds: canPickForBlockers ? attackerIds ?? [] : undefined,
     pendingCardIds:
       canPickForBlockers && pendingAttacker ? [pendingAttacker] : undefined,
@@ -90,9 +102,6 @@ export function OpponentHalf({
       if (canPickForBlockers) onClickAnyCard(c);
     },
     onHoverCard: (c, bounds, opts) => {
-      // Pixi provides DOMRect-shaped bounds (canvas-local + screen offsets
-      // already applied). Synthesize a minimal anchorOverride so the React
-      // preview uses it verbatim.
       if (c && bounds) {
         const rect = new DOMRect(bounds.x, bounds.y, bounds.width, bounds.height);
         onHoverCard(c, undefined, {
@@ -105,61 +114,52 @@ export function OpponentHalf({
       }
     },
     onFlipCard,
-    // Opponent sprites never drive a cast / tap-land / target-player flow.
   }), [canTarget, canPickForBlockers, onClickCard, onClickAnyCard, onHoverCard, onFlipCard]);
+
+  const pixiPlayerColumn = useMemo((): PlayerColumnState => ({
+    playerName: player.name,
+    playerId: player.id,
+    life: player.life,
+    handCount: player.handCount,
+    poison: player.poison,
+    energyCounters: player.energyCounters ?? 0,
+    commanderDamage: totalCmdDmg,
+    manaPool: player.manaPool,
+    libraryCount: player.libraryCount,
+    graveyardCount: graveyard.length,
+    exileCount: exile.length,
+    commandZoneCount: commandZone?.length ?? 0,
+    currentStep: step,
+    isActiveTurn: activePlayerId === player.id,
+    isPriorityPlayer: priorityPlayerId === player.id,
+    isTargetable,
+    hasPlayableInGraveyard: false,
+    hasPlayableInExile: false,
+    enabledPhases: opponentEnabledPhases,
+    isInteractive: true,
+    playerSeat: (["opponent1", "opponent2", "opponent3"] as const)[opponentIndex] ?? "opponent1",
+  }), [player, graveyard, exile, commandZone, activePlayerId, priorityPlayerId, step, isTargetable, totalCmdDmg, opponentEnabledPhases]);
+
+  const pixiPlayerColumnCallbacks = useMemo((): PlayerColumnCallbacks => ({
+    onOpenGraveyard: () => onOpenZone(`${player.name}'s Graveyard`, graveyard),
+    onOpenExile: () => onOpenZone(`${player.name}'s Exile`, exile),
+    onOpenCommandZone: (commandZone?.length ?? 0) > 0
+      ? () => onOpenZone(`${player.name}'s Command Zone`, commandZone!)
+      : undefined,
+    onTargetPlayer: isTargetable ? onTarget : undefined,
+    onTogglePhase: toggleOpponentPhase,
+  }), [player.name, graveyard, exile, commandZone, onOpenZone, isTargetable, onTarget, toggleOpponentPhase]);
 
   return (
     <div
       className={cn(
-        "flex flex-col h-full min-h-0 overflow-visible rounded-lg border border-transparent",
+        "flex flex-col h-full min-h-0 overflow-visible",
       )}
-      style={
-        priorityPlayerId === player.id
-          ? {
-              borderColor: themeColors.activeAction.active,
-              boxShadow: `inset 0 0 0 1px ${withAlpha(themeColors.activeAction.active, 0.85)}`,
-            }
-          : undefined
-      }
     >
       <div className="flex gap-2 flex-1 min-h-0 overflow-visible">
         <div className="relative flex flex-col gap-1 flex-1 min-w-0 min-h-0 overflow-visible">
-          <div
-            className={cn(
-              "absolute bottom-1 z-20",
-              zonePanelSide === "left" ? "left-1" : "right-1",
-            )}
-          >
-            <ZoneActionColumn
-              libraryCount={player.libraryCount}
-              graveyardCount={graveyard.length}
-              exileCount={exile.length}
-              order={zonePanelOrder}
-              onOpenGraveyard={() => onOpenZone(`${player.name}'s Graveyard`, graveyard)}
-              onOpenExile={() => onOpenZone(`${player.name}'s Exile`, exile)}
-            />
-          </div>
-          <div className="absolute top-[-12px] left-[-12px] z-30 max-w-[calc(100%-8px)]">
-            <PlayerPanel
-              player={player}
-              isOpponent
-              verticalAlign="top"
-              isActiveTurn={activePlayerId === player.id}
-              isPriorityPlayer={priorityPlayerId === player.id}
-              isTargetable={isTargetable}
-              isSelectedTarget={isSelectedTarget}
-              onTarget={onTarget}
-              isFlashing={isFlashing}
-              onOpenCommandZone={
-                (commandZone?.length ?? 0) > 0
-                  ? () => onOpenZone(`${player.name}'s Command Zone`, commandZone!)
-                  : undefined
-              }
-              commandZoneCount={commandZone?.length ?? 0}
-            />
-          </div>
           {pixiEnabled && (
-            <div className="absolute inset-0 z-10 rounded-lg overflow-hidden">
+            <div className="absolute inset-0 z-10 overflow-hidden">
               <PixiGameCanvas
                 battlefield={pixiBattlefield}
                 sceneRef={pixiSceneRef}
@@ -167,6 +167,8 @@ export function OpponentHalf({
                 leftReserved={leftReserved}
                 bottomReserved={0}
                 externalBlockers={[]}
+                playerColumn={pixiPlayerColumn}
+                playerColumnCallbacks={pixiPlayerColumnCallbacks}
                 sceneOptions={OPPONENT_SCENE_OPTIONS}
               />
             </div>

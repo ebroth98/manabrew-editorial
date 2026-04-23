@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { usePreferencesStore } from "@/stores/usePreferencesStore";
+import { usePhaseStopStore, getNextStopPhase } from "@/stores/usePhaseStopStore";
 import type { AgentPrompt } from "@/stores/useGameStore";
 import type { LibraryPeekMode } from "@/components/game/modals";
 import type { Card } from "@/types/openmagic";
@@ -8,8 +9,9 @@ import { PromptType } from "@/types/promptType";
 interface UsePromptEffectsOptions {
   currentPrompt: AgentPrompt | null;
   isWaitingForResponse: boolean;
-  passPriority: () => void;
+  passPriority: (untilPhase?: string | null) => void;
   myHand: Card[];
+  myPlayerId: string;
   turn: number;
   stackLength: number;
 }
@@ -42,18 +44,55 @@ export function usePromptEffects({
   isWaitingForResponse,
   passPriority,
   myHand,
+  myPlayerId,
   turn,
   stackLength,
 }: UsePromptEffectsOptions) {
   const promptType = currentPrompt?.type;
   const autoPassEnabled = usePreferencesStore((s) => s.autoPassEnabled);
   const [isAutoPassing, setIsAutoPassing] = useState(false);
-  const [passUntilEotTurn, setPassUntilEotTurn] = useState<number | null>(null);
 
+  // Phase-stop auto-pass state lives in the store so non-pass actions can clear it
+  const passUntilPhase = usePhaseStopStore((s) => s.passUntilPhase);
+  const passUntilTurn = usePhaseStopStore((s) => s.passUntilTurn);
+
+  /**
+   * Unified pass action. Context-aware:
+   * - Clean priority (no stack): auto-pass until next enabled stop phase
+   * - In response (stack > 0): just pass priority once
+   */
+  const unifiedPass = useCallback(() => {
+    if (!currentPrompt || isWaitingForResponse) return;
+
+    const gv = currentPrompt.gameView;
+    const hasStack = (gv.stack?.length ?? 0) > 0;
+
+    if (hasStack) {
+      // Responding to something — atomic single pass
+      passPriority(null);
+      return;
+    }
+
+    // Clean priority — determine which stop set applies
+    const isMyTurn = gv.activePlayerId === myPlayerId;
+    const store = usePhaseStopStore.getState();
+    const stops = isMyTurn
+      ? store.selfStops
+      : store.getOpponentStops(gv.activePlayerId);
+
+    const nextStop = getNextStopPhase(gv.step, stops);
+
+    // Set frontend auto-pass state (fallback for any prompts the engine
+    // still sends despite the pass-until declaration)
+    usePhaseStopStore.getState().setPassUntil(nextStop, turn);
+
+    // Send pass with until-phase to engine so it can fast-forward
+    passPriority(nextStop);
+  }, [currentPrompt, isWaitingForResponse, passPriority, myPlayerId, turn]);
+
+  // F6: just triggers the same unified pass
   function activatePassUntilEot() {
-    if (passUntilEotTurn !== null) return;
-    setPassUntilEotTurn(turn);
-    passPriority();
+    unifiedPass();
   }
 
   // Library peek modal state
@@ -65,26 +104,95 @@ export function usePromptEffects({
   // Spell stack modal
   const [spellStackModalOpen, setSpellStackModalOpen] = useState(false);
 
-  // Auto-pass: passUntilEot takes precedence, then normal auto-pass
+  // Auto-pass logic
   useEffect(() => {
     setIsAutoPassing(false);
     if (!currentPrompt || isWaitingForResponse) return;
 
-    if (passUntilEotTurn !== null) {
-      if (turn > passUntilEotTurn) {
-        setPassUntilEotTurn(null);
-      } else if (currentPrompt.type === PromptType.ChooseAction && stackLength > 0) {
-        setPassUntilEotTurn(null);
-      } else if (currentPrompt.type === PromptType.ChooseAction || currentPrompt.type === PromptType.ChooseAttackers) {
-        setIsAutoPassing(true);
-        const timer = setTimeout(() => passPriority(), getAutoPassDelayMs());
-        return () => clearTimeout(timer);
-      } else {
-        setPassUntilEotTurn(null);
+    // Mandatory combat stops: after attackers or blockers are declared on
+    // the opponent's turn, always stop so the player can respond (cast
+    // instants, activate abilities, etc.) regardless of phase stop settings.
+    const MANDATORY_COMBAT_STOPS = new Set([
+      "declare_attackers", "declare_blockers",
+    ]);
+
+    if (currentPrompt.type === PromptType.ChooseAction && stackLength === 0) {
+      const gv = currentPrompt.gameView;
+      const isMyTurn = gv.activePlayerId === myPlayerId;
+      if (!isMyTurn && MANDATORY_COMBAT_STOPS.has(gv.step)) {
+        // Cancel any active pass-until and stop here
+        if (passUntilTurn !== null) {
+          usePhaseStopStore.getState().clearPassUntil();
+        }
+        return; // don't auto-pass — let the player act
       }
+    }
+
+    // ── Phase-stop auto-pass ──
+    if (passUntilTurn !== null) {
+      // Turn advanced — cancel
+      if (turn > passUntilTurn) {
+        usePhaseStopStore.getState().clearPassUntil();
+        return;
+      }
+
+      // Stack appeared — cancel (player is responding to something)
+      if (currentPrompt.type === PromptType.ChooseAction && stackLength > 0) {
+        usePhaseStopStore.getState().clearPassUntil();
+        return;
+      }
+
+      // Reached target phase — stop
+      if (passUntilPhase && currentPrompt.gameView.step === passUntilPhase && stackLength === 0) {
+        usePhaseStopStore.getState().clearPassUntil();
+        return;
+      }
+
+      // Current phase is a stop — cancel auto-pass so the player gets
+      // control (e.g. back on M1 after a spell resolved)
+      if (currentPrompt.type === PromptType.ChooseAction && stackLength === 0) {
+        const gv = currentPrompt.gameView;
+        const isMyTurn = gv.activePlayerId === myPlayerId;
+        const store = usePhaseStopStore.getState();
+        const stops = isMyTurn ? store.selfStops : store.getOpponentStops(gv.activePlayerId);
+        if (stops.has(gv.step)) {
+          usePhaseStopStore.getState().clearPassUntil();
+          return;
+        }
+      }
+
+      // Still auto-passing — relay until-phase to engine
+      if (currentPrompt.type === PromptType.ChooseAction || currentPrompt.type === PromptType.ChooseAttackers) {
+        setIsAutoPassing(true);
+        const timer = setTimeout(() => passPriority(passUntilPhase), getAutoPassDelayMs());
+        return () => clearTimeout(timer);
+      }
+
+      // Unexpected prompt type — cancel
+      usePhaseStopStore.getState().clearPassUntil();
       return;
     }
 
+    // ── Phase-stop skip: if current phase isn't a stop, auto-pass ──
+
+    if (currentPrompt.type === PromptType.ChooseAction && stackLength === 0) {
+      const gv = currentPrompt.gameView;
+      const isMyTurn = gv.activePlayerId === myPlayerId;
+
+      const store = usePhaseStopStore.getState();
+      const stops = isMyTurn
+        ? store.selfStops
+        : store.getOpponentStops(gv.activePlayerId);
+
+      if (!stops.has(gv.step)) {
+        const nextStop = getNextStopPhase(gv.step, stops);
+        setIsAutoPassing(true);
+        const timer = setTimeout(() => passPriority(nextStop), getAutoPassDelayMs());
+        return () => clearTimeout(timer);
+      }
+    }
+
+    // ── Normal auto-pass (no user action, just skip trivial prompts) ──
     if (!autoPassEnabled) return;
     if (currentPrompt.autoPassDisabled === true) return;
 
@@ -121,11 +229,18 @@ export function usePromptEffects({
 
     if (!shouldAutoPass) return;
 
+    // Compute next stop for the engine
+    const gv2 = currentPrompt.gameView;
+    const isMyTurn2 = gv2.activePlayerId === myPlayerId;
+    const store2 = usePhaseStopStore.getState();
+    const stops2 = isMyTurn2 ? store2.selfStops : store2.getOpponentStops(gv2.activePlayerId);
+    const autoNextStop = getNextStopPhase(gv2.step, stops2);
+
     setIsAutoPassing(true);
-    const timer = setTimeout(() => passPriority(), getAutoPassDelayMs());
+    const timer = setTimeout(() => passPriority(autoNextStop), getAutoPassDelayMs());
 
     return () => clearTimeout(timer);
-  }, [currentPrompt, isWaitingForResponse, autoPassEnabled, passPriority, passUntilEotTurn, turn, stackLength]);
+  }, [currentPrompt, isWaitingForResponse, autoPassEnabled, passPriority, passUntilTurn, passUntilPhase, turn, stackLength, myPlayerId]);
 
   // Open library-peek modal for Scry / Surveil / Dig / Discard prompts
   useEffect(() => {
@@ -191,7 +306,8 @@ export function usePromptEffects({
 
   return {
     isAutoPassing,
-    isPassingUntilEot: passUntilEotTurn !== null,
+    isPassingUntilEot: passUntilTurn !== null,
+    unifiedPass,
     activatePassUntilEot,
     libraryPeekModal,
     setLibraryPeekModal,

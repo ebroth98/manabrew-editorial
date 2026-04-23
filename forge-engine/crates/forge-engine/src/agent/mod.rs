@@ -50,6 +50,17 @@ pub trait PlayerAgent {
     ) {
     }
 
+    /// Returns the phase this player has declared they'll auto-pass until.
+    /// `Some(Some("main1"))` = pass until main1 phase.
+    /// `Some(None)` = pass through rest of turn.
+    /// `None` = no standing pass-until (prompt normally).
+    fn get_pass_until_phase(&self) -> Option<Option<&str>> {
+        None
+    }
+
+    /// Clear the pass-until declaration (e.g. when a trigger interrupts).
+    fn clear_pass_until(&mut self) {}
+
     /// Choose whether to keep the current opening hand or mulligan.
     /// `mulligan_count` is the number of mulligans already taken this game.
     /// Returns true to keep, false to mulligan.

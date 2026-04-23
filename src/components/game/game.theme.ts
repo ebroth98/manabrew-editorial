@@ -109,6 +109,13 @@ export interface GameThemeColors {
     page: string;
   };
   cardRing: string;
+  /** Player seat colours used by the phase strip indicators and turn tint. */
+  playerColors: {
+    self: string;
+    opponent1: string;
+    opponent2: string;
+    opponent3: string;
+  };
 }
 
 /** Default preset's gameColors map, consulted as a semantic fallback when
@@ -154,6 +161,7 @@ const COLOR_SCHEMA: GameThemeColors = {
     storage: "", mining: "", brick: "", depletion: "", page: "",
   },
   cardRing: "",
+  playerColors: { self: "", opponent1: "", opponent2: "", opponent3: "" },
 };
 
 function hasColorPath(path: string): boolean {
@@ -230,6 +238,12 @@ export function resolveGameThemeColors(
       storage: "", mining: "", brick: "", depletion: "", page: "",
     },
     cardRing: "#fb923c",
+    playerColors: {
+      self: "#4ade80",
+      opponent1: "#facc15",
+      opponent2: "#60a5fa",
+      opponent3: "#c084fc",
+    },
   };
 
   // 2a. Semantic fallback: seed pointer colours (and any other

@@ -84,6 +84,7 @@ pub struct PromptAgent<T: AgentTransport> {
     ability_descriptions: std::collections::HashMap<(u32, usize), (String, bool, Option<String>)>,
     pub(crate) pending_restore_checkpoint: Option<u64>,
     pub(crate) pending_mana_color: Option<String>,
+    pub pass_until_phase: Option<Option<String>>,
 }
 
 impl<T: AgentTransport> PromptAgent<T> {
@@ -98,6 +99,7 @@ impl<T: AgentTransport> PromptAgent<T> {
             ability_descriptions: std::collections::HashMap::new(),
             pending_restore_checkpoint: None,
             pending_mana_color: None,
+            pass_until_phase: None,
         }
     }
 
@@ -271,6 +273,16 @@ impl<T: AgentTransport> PlayerAgent for PromptAgent<T> {
         mana_pools: &[ManaPool],
     ) -> bool {
         forge_engine_core::spellability::choose_targets_by_kind(self, sa, game, mana_pools)
+    }
+
+    fn get_pass_until_phase(&self) -> Option<Option<&str>> {
+        self.pass_until_phase
+            .as_ref()
+            .map(|inner| inner.as_deref())
+    }
+
+    fn clear_pass_until(&mut self) {
+        self.pass_until_phase = None;
     }
 
     fn snapshot_state(&mut self, game: &GameState, mana_pools: &[ManaPool]) {
@@ -489,14 +501,20 @@ impl<T: AgentTransport> PlayerAgent for PromptAgent<T> {
         });
         match self.recv_action() {
             PlayerAction::EngineAction { action } => action,
+            PlayerAction::Pass { until_phase } => {
+                // Only store a fast-forward declaration when there's a target phase.
+                // None = atomic single pass, no fast-forward.
+                if until_phase.is_some() {
+                    self.pass_until_phase = Some(until_phase);
+                }
+                EnginePlayerAction::PassPriority
+            }
             PlayerAction::RestoreSnapshot { checkpoint_id } => {
                 self.pending_restore_checkpoint = Some(checkpoint_id);
                 EnginePlayerAction::PassPriority
             }
-            PlayerAction::PlayCard { card_id, mode } => card_id
-                .and_then(|id| {
-                    let cid = parse_card_id(&id)?;
-                    // If mode is specified, find the exact PlayOption matching card+mode.
+            PlayerAction::PlayCard { card_id, mode } => {
+                let resolved = parse_card_id(&card_id).and_then(|cid| {
                     if let Some(mode_str) = &mode {
                         if let Some(parsed_mode) = Self::parse_play_mode(mode_str) {
                             return playable
@@ -505,11 +523,12 @@ impl<T: AgentTransport> PlayerAgent for PromptAgent<T> {
                                 .find(|play| play.card_id == cid && play.mode == parsed_mode);
                         }
                     }
-                    // Fallback: first matching PlayOption for this card.
                     playable.iter().copied().find(|play| play.card_id == cid)
-                })
-                .map(EnginePlayerAction::CastSpell)
-                .unwrap_or(EnginePlayerAction::PassPriority),
+                });
+                resolved
+                    .map(EnginePlayerAction::CastSpell)
+                    .unwrap_or(EnginePlayerAction::PassPriority)
+            }
             PlayerAction::TapLand {
                 card_id,
                 ability_index,

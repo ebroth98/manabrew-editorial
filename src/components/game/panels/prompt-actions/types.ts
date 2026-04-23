@@ -12,10 +12,7 @@ export interface NoActionProps {
 }
 
 export interface ChooseActionProps extends PromptActionLayoutProps {
-  isMyTurn: boolean;
-  passToPhaseShort: string;
   onPassPriority: () => void;
-  onPassUntilEot: () => void;
 }
 
 export interface ChooseAttackersProps extends PromptActionLayoutProps {

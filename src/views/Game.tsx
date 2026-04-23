@@ -662,9 +662,11 @@ export default function Game() {
   }, [activePrompt, isWaitingForResponse, promptType, tapLand, untapLand]);
 
   // Prompt-driven effects: auto-pass, passUntilEot, library peek, zone target, spell stack
+  const _earlyMyPlayerId = gameView?.players?.find((p) => p.isHuman)?.id ?? gameView?.players?.[0]?.id ?? "";
   const {
     isAutoPassing,
     isPassingUntilEot,
+    unifiedPass,
     activatePassUntilEot,
     libraryPeekModal,
     setLibraryPeekModal,
@@ -677,10 +679,13 @@ export default function Game() {
     isWaitingForResponse,
     passPriority,
     myHand: gameView?.myHand ?? [],
+    myPlayerId: _earlyMyPlayerId,
     turn: gameView?.turn ?? 0,
     stackLength: gameView?.stack?.length ?? 0,
   });
 
+  const unifiedPassRef = useRef(unifiedPass);
+  unifiedPassRef.current = unifiedPass;
   const activatePassUntilEotRef = useRef(activatePassUntilEot);
   activatePassUntilEotRef.current = activatePassUntilEot;
 
@@ -774,7 +779,7 @@ export default function Game() {
       if (manualApi) return;
       if (e.code === "Space") {
         e.preventDefault();
-        passPriority();
+        unifiedPassRef.current();
       } else if (e.code === "F6") {
         e.preventDefault();
         activatePassUntilEotRef.current();
@@ -1132,7 +1137,7 @@ export default function Game() {
     <div
       ref={containerRef}
       className={cn(
-        "relative flex flex-col h-full min-h-0 gap-1.5 p-1.5 overflow-hidden select-none",
+        "relative flex flex-col h-full min-h-0 overflow-hidden select-none",
         hideOsCursor && "targeting-cursor-hidden",
       )}
       style={
@@ -1175,7 +1180,7 @@ export default function Game() {
             : null
         }
       />
-      <div className="flex gap-1 min-h-0 flex-1 overflow-visible">
+      <div className="flex min-h-0 flex-1 overflow-visible">
         <GameBoard
           pixiSceneRef={pixiSceneRef}
           pixiExternalBlockers={stackBlockerRect ? [stackBlockerRect] : []}
@@ -1312,7 +1317,7 @@ export default function Game() {
           isPassingUntilEot={isPassingUntilEot}
           availableAttackerIds={activePrompt?.availableAttackerIds ?? []}
           pendingAttackers={pendingAttackers}
-          onPassPriority={passPriority}
+          onPassPriority={unifiedPass}
           onPassUntilEot={activatePassUntilEot}
           selectedAttackDefenderId={attackDefenderId}
           selectedAttackDefenderLabel={selectedAttackDefender?.label}
@@ -1325,6 +1330,7 @@ export default function Game() {
           onConcede={concede}
           resolveCardName={(cardId) => cardNameById.get(cardId) ?? cardId}
           isMyPriority={gameView.priorityPlayerId === me.id}
+          manaPool={me.manaPool}
           turn={gameView.turn}
           activePlayerName={
             gameView.players.find((p) => p.id === gameView.activePlayerId)?.name ??

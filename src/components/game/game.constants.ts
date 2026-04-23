@@ -35,7 +35,8 @@ export const AVATAR_COLORS = [
   "bg-indigo-600 text-white",
 ] as const;
 
-export const ZONE_COLUMN_RESERVED_PX = 68;
+/** Width reserved for the Pixi player column on the left of the battlefield. */
+export const ZONE_COLUMN_RESERVED_PX = 120;
 
 import { PromptType } from "@/types/promptType";
 

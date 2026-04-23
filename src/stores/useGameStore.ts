@@ -15,6 +15,7 @@ import { useServerStore } from './useServerStore';
 import type { GameState, GameConfig } from './gameStore.types';
 import type { AgentPrompt } from './gameStore.types';
 import type { Card, Deck, GameView } from '@/types/openmagic';
+import { usePhaseStopStore } from '@/stores/usePhaseStopStore';
 import type { GameRuntime, ManualTabletopApi } from '@/game';
 
 export type { AgentPrompt, GameConfig, GameState, DisplayEvent, DeferredSnapshot } from './gameStore.types';
@@ -272,6 +273,10 @@ export const useGameStore = create<GameState>()(devtools((set, get) => ({
 
   respond: async (action) => {
     try {
+      // Only explicit player actions (not passes) cancel auto-pass.
+      if (action.type !== 'pass') {
+        usePhaseStopStore.getState().clearPassUntil();
+      }
       set({ isWaitingForResponse: true, debugInfo: `Responding: ${action.type}` });
       const { myPlayerSlot } = get();
       const runtime = getSelectedGameRuntime();
@@ -286,13 +291,13 @@ export const useGameStore = create<GameState>()(devtools((set, get) => ({
     get().respond({ type: 'playCard', cardId, mode: mode ?? null });
   },
 
-  passPriority: () => {
+  passPriority: (untilPhase: string | null = null) => {
     if (get().isWaitingForResponse) return;
     const prompt = get().currentPrompt;
     if (!prompt) return;
     switch (prompt.type) {
       case 'chooseAction':
-        get().respond({ type: 'playCard', cardId: null });
+        get().respond({ type: 'pass', untilPhase });
         break;
       case 'chooseAttackers':
         get().respond({ type: 'declareAttackers', assignments: [] });
@@ -301,7 +306,7 @@ export const useGameStore = create<GameState>()(devtools((set, get) => ({
         get().respond({ type: 'declareBlockers', assignments: [] });
         break;
       default:
-        get().respond({ type: 'playCard', cardId: null });
+        get().respond({ type: 'pass', untilPhase: null });
     }
   },
 

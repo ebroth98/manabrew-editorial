@@ -667,9 +667,16 @@ pub enum PlayerAction {
         #[serde(rename = "cardIds")]
         card_ids: Vec<String>,
     },
+    /// Unified pass action. Replaces the old "PlayCard with null cardId" convention.
+    /// `until_phase` is the phase id the player wants to auto-pass until (e.g. "main1").
+    /// None means atomic pass without passing any further
+    Pass {
+        #[serde(rename = "untilPhase")]
+        until_phase: Option<String>,
+    },
     PlayCard {
         #[serde(rename = "cardId")]
-        card_id: Option<String>,
+        card_id: String,
         /// Optional play mode, e.g. "normal", "alternative:spectacle"
         #[serde(default)]
         mode: Option<String>,

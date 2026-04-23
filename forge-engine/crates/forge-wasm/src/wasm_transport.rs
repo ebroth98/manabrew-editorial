@@ -100,10 +100,7 @@ impl AgentTransport for WasmTransport {
 
         js_sys::Atomics::store(&self.signal, 0, SIGNAL_IDLE).unwrap_or(0);
 
-        serde_json::from_slice(&json_bytes).unwrap_or(PlayerAction::PlayCard {
-            card_id: None,
-            mode: None,
-        })
+        serde_json::from_slice(&json_bytes).unwrap_or(PlayerAction::Pass { until_phase: None })
     }
 
     fn send_log(&self, _entry: GameLogEntryDto) {
@@ -134,10 +131,7 @@ impl AgentTransport for WasmAiTransport {
         let prompt = PENDING_AI_PROMPT.with(|cell| cell.borrow_mut().take());
         match prompt {
             Some(p) => ai_respond(&p.inner),
-            None => PlayerAction::PlayCard {
-                card_id: None,
-                mode: None,
-            },
+            None => PlayerAction::Pass { until_phase: None },
         }
     }
 
@@ -208,10 +202,7 @@ fn ai_respond(inner: &forge_agent_interface::prompt::AgentPromptInner) -> Player
             });
             action
                 .map(|a| PlayerAction::EngineAction { action: a })
-                .unwrap_or(PlayerAction::PlayCard {
-                    card_id: None,
-                    mode: None,
-                })
+                .unwrap_or(PlayerAction::Pass { until_phase: None })
         }
         AgentPromptInner::ChooseAttackers {
             available_attacker_ids,
@@ -433,10 +424,7 @@ fn ai_respond(inner: &forge_agent_interface::prompt::AgentPromptInner) -> Player
         AgentPromptInner::HelpPayAssist { .. } => PlayerAction::AssistDecision { amount_to_pay: 0 },
         AgentPromptInner::StateUpdate { .. } | AgentPromptInner::GameOver { .. } => {
             // No action needed for display-only prompts
-            PlayerAction::PlayCard {
-                card_id: None,
-                mode: None,
-            }
+            PlayerAction::Pass { until_phase: None }
         }
     }
 }

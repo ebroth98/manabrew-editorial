@@ -92,6 +92,58 @@ impl GameLoop {
                 return;
             }
 
+            // ── Fast-forward: skip prompt if player has a standing pass-until ──
+            // The declaration is consumed every time. The frontend re-sends it
+            // on the next prompt if still auto-passing. Prevents stale
+            // declarations from persisting across turns.
+            {
+                let pass_until = {
+                    let agent = agents[priority_player.index()].as_mut();
+                    let val = agent.get_pass_until_phase().map(|o| o.map(str::to_owned));
+                    agent.clear_pass_until();
+                    val
+                };
+                if let Some(until) = pass_until {
+                    let current_phase = game.turn.phase;
+                    // Never fast-forward through active combat phases (after
+                    // attackers are declared). BeginCombat is fine to skip.
+                    let is_active_combat = matches!(
+                        current_phase,
+                        forge_foundation::PhaseType::CombatDeclareAttackers
+                        | forge_foundation::PhaseType::CombatDeclareBlockers
+                        | forge_foundation::PhaseType::CombatFirstStrikeDamage
+                        | forge_foundation::PhaseType::CombatDamage
+                        | forge_foundation::PhaseType::CombatEnd
+                    );
+                    let should_skip = if is_active_combat {
+                        false
+                    } else if game.stack.is_empty() {
+                        match until.as_deref() {
+                            // None = atomic single pass, no fast-forward
+                            None => false,
+                            Some(step_str) => {
+                                match forge_foundation::PhaseType::from_step_string(step_str) {
+                                    Some(target) => current_phase.is_before(target),
+                                    None => false,
+                                }
+                            }
+                        }
+                    } else {
+                        false
+                    };
+
+                    if should_skip {
+                        self.log_priority_pass(game, priority_player);
+                        passed_count += 1;
+                        priority_player = game.next_player(priority_player);
+                        self.with_shared_state_mutation(game, agents, |_this, game, _agents| {
+                            game.turn.priority_player = priority_player;
+                        });
+                        continue;
+                    }
+                }
+            }
+
             // Refresh continuous static effects before enumerating the action
             // space. Otherwise granted keywords from statics (e.g. Ashling's
             // `AddKeyword$ Evoke:4 | AffectedZone$ Hand`) may be stale when a

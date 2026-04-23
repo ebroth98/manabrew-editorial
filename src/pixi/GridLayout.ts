@@ -70,12 +70,20 @@ export const computeGridLayout = (
   // whose footprint would intersect them.
   const usableW = Math.max(cardW, zone.width - leftPad);
   const usableH = Math.max(cardH, zone.height);
-  const cols = Math.max(1, Math.floor((usableW + GAP) / cellW));
+  let cols = Math.max(1, Math.floor((usableW + GAP) / cellW));
+  // Force odd column count so there's always a true center column,
+  // keeping the first card aligned with the board's visual center.
+  if (cols > 1 && cols % 2 === 0) cols -= 1;
   const rows = Math.max(1, Math.floor((usableH + GAP) / cellH));
 
-  const gridW = cols * cellW - GAP;
   const gridH = rows * cellH - GAP;
-  const originX = zone.x + leftPad + Math.max(0, (usableW - gridW) / 2);
+  // Center the middle column's card center on the zone's visual center
+  // (aligned with the phase strip combat cell). The middle column index
+  // is (cols-1)/2 since cols is always odd.
+  const zoneCenterX = zone.x + zone.width / 2;
+  const midCol = (cols - 1) / 2;
+  // Card center for midCol: originX + midCol * cellW + cardW/2 = zoneCenterX
+  const originX = zoneCenterX - midCol * cellW - cardW / 2;
   const originY = zone.y + Math.max(0, (usableH - gridH) / 2);
 
   const cells: GridCell[] = new Array(cols * rows);

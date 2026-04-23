@@ -212,7 +212,7 @@ export interface GameState {
   ) => Promise<void>;
   respond: (action: Record<string, unknown>) => Promise<void>;
   castSpell: (cardId: string, mode?: string) => void;
-  passPriority: () => void;
+  passPriority: (untilPhase?: string | null) => void;  // null = atomic pass, string = pass until phase
   declareAttackers: (attackerIds: string[], defenderId?: string) => void;
   declareBlockers: (assignments: { blockerId: string; attackerId: string }[]) => void;
   targetPlayer: (playerId: string | null) => void;

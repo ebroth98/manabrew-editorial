@@ -17,7 +17,10 @@ import type {
   HandState,
   ScreenBounds,
   PlayZoneRect,
+  PlayerColumnState,
+  PlayerColumnCallbacks,
 } from "./types";
+import type { PhaseStripState, PhaseStripCallbacks } from "./PhaseStripLayer";
 import { useHandScale } from "@/hooks/useHandScale";
 import { HandCardActions } from "@/components/game/zones/HandCardActions";
 import type { HandActionOption } from "@/stores/useGameUIStore";
@@ -59,6 +62,14 @@ interface PixiGameCanvasProps {
    */
   bottomRightReserved?: { width: number; height: number } | null;
   className?: string;
+  /** Player column state for the left-side info panel rendered in Pixi. */
+  playerColumn?: PlayerColumnState;
+  /** Callbacks for the player column (zone clicks, targeting). */
+  playerColumnCallbacks?: PlayerColumnCallbacks;
+  /** Phase strip state for the horizontal center strip. */
+  phaseStrip?: PhaseStripState;
+  /** Callbacks for the phase strip (toggle phase). */
+  phaseStripCallbacks?: PhaseStripCallbacks;
   getHandActions?: (card: Card) => HandActionOption[];
   onSelectHandAction?: (card: Card, action: HandActionOption) => void;
   /**
@@ -88,6 +99,10 @@ export function PixiGameCanvas({
   externalBlockers,
   bottomRightReserved,
   className,
+  playerColumn,
+  playerColumnCallbacks,
+  phaseStrip,
+  phaseStripCallbacks,
   getHandActions,
   onSelectHandAction,
   sceneOptions,
@@ -151,7 +166,6 @@ export function PixiGameCanvas({
         // the full range even on non-retina displays. On retina we inherit
         // devicePixelRatio (typically 2 or 3).
         resolution: Math.max(3, window.devicePixelRatio || 1),
-        resizeTo: canvasRef.current.parentElement ?? undefined,
       });
     } catch (err) {
       console.error("[pixi] Failed to initialize application:", err);
@@ -266,7 +280,9 @@ export function PixiGameCanvas({
     if (!scene) return;
     scene.setHandPreferences(handSize, vScale);
     scene.updateHand(hand ?? { cards: [] });
-  }, [scene, hand, handSize, vScale]);
+    // Hand dimensions changed → blocker rect changed → re-layout battlefield
+    scene.updateBattlefield(battlefield);
+  }, [scene, hand, handSize, vScale, battlefield]);
 
   useEffect(() => {
     if (!scene) return;
@@ -292,6 +308,26 @@ export function PixiGameCanvas({
     if (!scene) return;
     scene.setBottomRightReserved(bottomRightReserved ?? null);
   }, [scene, bottomRightReserved]);
+
+  useEffect(() => {
+    if (!scene || !playerColumn) return;
+    scene.updatePlayerColumn(playerColumn);
+  }, [scene, playerColumn]);
+
+  useEffect(() => {
+    if (!scene) return;
+    scene.setPlayerColumnCallbacks(playerColumnCallbacks ?? {});
+  }, [scene, playerColumnCallbacks]);
+
+  useEffect(() => {
+    if (!scene || !phaseStrip) return;
+    scene.updatePhaseStrip(phaseStrip);
+  }, [scene, phaseStrip]);
+
+  useEffect(() => {
+    if (!scene) return;
+    scene.setPhaseStripCallbacks(phaseStripCallbacks ?? {});
+  }, [scene, phaseStripCallbacks]);
 
   // Sample Pixi ticker FPS and push to the dev store for the FPS counter.
   useEffect(() => {

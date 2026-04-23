@@ -79,6 +79,12 @@ export interface PixiThemeColors {
     page: number;
   };
   cardRing: number;
+  playerColors: {
+    self: number;
+    opponent1: number;
+    opponent2: number;
+    opponent3: number;
+  };
 }
 
 function parseColor(value: string): { color: number; alpha: number } {
@@ -188,5 +194,11 @@ export function adaptTheme(theme: GameThemeColors): PixiThemeColors {
       page: parseHex(theme.counter.page),
     },
     cardRing: parseHex(theme.cardRing),
+    playerColors: {
+      self: parseHex(theme.playerColors.self),
+      opponent1: parseHex(theme.playerColors.opponent1),
+      opponent2: parseHex(theme.playerColors.opponent2),
+      opponent3: parseHex(theme.playerColors.opponent3),
+    },
   };
 }
