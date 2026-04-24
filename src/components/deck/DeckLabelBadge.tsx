@@ -35,7 +35,7 @@ export function DeckLabelBadge({ label, size = "sm", className }: DeckLabelBadge
             color: getContrastColor(label.color, themeColors.canvas.shadow, themeColors.canvas.neutral),
             borderColor: label.color,
           }
-        : { backgroundColor: "hsl(var(--muted))", color: "hsl(var(--muted-foreground))", borderColor: "hsl(var(--border))" }
+        : { backgroundColor: "var(--muted)", color: "var(--muted-foreground)", borderColor: "var(--border)" }
       }
     >
       {label.name}

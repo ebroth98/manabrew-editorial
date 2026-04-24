@@ -30,10 +30,10 @@ export function OpenMagicLogo({ size = 48, className }: { size?: number; classNa
       </defs>
 
       {/* Background — uses theme background via CSS variable */}
-      <rect width="512" height="512" rx="112" fill="hsl(var(--background))" />
+      <rect width="512" height="512" rx="112" fill="var(--background)" />
 
       {/* Outer ring */}
-      <circle cx="256" cy="256" r="180" fill="none" stroke="hsl(var(--border))" strokeWidth="2" strokeOpacity="0.3" strokeDasharray="12 12" />
+      <circle cx="256" cy="256" r="180" fill="none" stroke="var(--border)" strokeWidth="2" strokeOpacity="0.3" strokeDasharray="12 12" />
 
       {/* O + M mark */}
       <g transform="translate(156, 156)">
@@ -41,7 +41,7 @@ export function OpenMagicLogo({ size = 48, className }: { size?: number; classNa
         <path
           d="M 60 135 L 60 65 L 100 105 L 140 65 L 140 135"
           fill="none"
-          stroke="hsl(var(--foreground))"
+          stroke="var(--foreground)"
           strokeWidth="16"
           strokeLinecap="round"
           strokeLinejoin="round"

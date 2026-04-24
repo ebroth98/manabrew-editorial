@@ -1147,7 +1147,7 @@ export function DeckListView({
                 width: cardWidth,
                 height: sectionElRefs.current.get(dragSection)?.offsetHeight ?? 100,
                 transition: "left 150ms ease-out, top 150ms ease-out",
-                boxShadow: "0 0 14px hsl(var(--selection) / 0.5), inset 0 0 14px hsl(var(--selection) / 0.1)",
+                boxShadow: "0 0 14px color-mix(in srgb, var(--selection) 50%, transparent), inset 0 0 14px color-mix(in srgb, var(--selection) 10%, transparent)",
               }}
             />
           )}
@@ -1157,7 +1157,7 @@ export function DeckListView({
         {dragSection && dragPos && (
           <div
             className="fixed z-[200] pointer-events-none bg-selection text-selection-foreground rounded-md px-2.5 py-1 text-xs font-semibold"
-            style={{ left: dragPos.x + 12, top: dragPos.y - 8, boxShadow: "0 4px 16px hsl(var(--selection) / 0.4)" }}
+            style={{ left: dragPos.x + 12, top: dragPos.y - 8, boxShadow: "0 4px 16px color-mix(in srgb, var(--selection) 40%, transparent)" }}
           >
             Moving…
           </div>
