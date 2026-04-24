@@ -24,6 +24,12 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "resources": {
+      "../forge/forge-gui/res/cardsfolder": "cardsfolder",
+      "../forge/forge-gui/res/tokenscripts": "tokenscripts",
+      "../forge/forge-gui/res/editions": "editions",
+      "../preset_decks": "preset_decks"
+    },
     "icon": [
       "icons/icon.icns",
       "icons/icon.ico",

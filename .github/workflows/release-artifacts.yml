@@ -104,6 +104,32 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
+      # Fan out to n8n → Discord so subscribers see the new .dmg without
+      # having to watch the Actions tab. URL points at the workflow run
+      # page because Actions artifacts are not publicly downloadable.
+      - name: Notify n8n (macOS artifact)
+        if: ${{ success() }}
+        env:
+          N8N_WEBHOOK_URL: ${{ secrets.N8N_DEPLOY_WEBHOOK_URL }}
+        shell: bash
+        run: |
+          if [ -z "${N8N_WEBHOOK_URL:-}" ]; then
+            echo "N8N_DEPLOY_WEBHOOK_URL not set; skipping notification."
+            exit 0
+          fi
+          PAYLOAD=$(jq -n \
+            --arg event    "artifact" \
+            --arg platform "macos" \
+            --arg name     "macos-dmg-${{ github.sha }}" \
+            --arg url      "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
+            --arg sha      "${{ github.sha }}" \
+            --arg ref      "${{ github.ref }}" \
+            --arg repo     "${{ github.repository }}" \
+            --arg actor    "${{ github.actor }}" \
+            '{event:$event, platform:$platform, name:$name, url:$url, sha:$sha, ref:$ref, repo:$repo, actor:$actor}')
+          curl -fsS -X POST -H 'Content-Type: application/json' \
+            -d "$PAYLOAD" "$N8N_WEBHOOK_URL"
+
   # ── Windows .exe ───────────────────────────────────────────────────
   # NOTE: requires a self-hosted runner with the `windows` label
   # (Rust + MSVC toolchain + Node + Yarn installed).
@@ -149,6 +175,31 @@ jobs:
             target/release/bundle/msi/*.msi
           if-no-files-found: error
           retention-days: 30
+
+      # Fan out to n8n → Discord so subscribers see the new .exe without
+      # having to watch the Actions tab. URL points at the workflow run
+      # page because Actions artifacts are not publicly downloadable.
+      - name: Notify n8n (Windows artifact)
+        if: ${{ success() }}
+        env:
+          N8N_WEBHOOK_URL: ${{ secrets.N8N_DEPLOY_WEBHOOK_URL }}
+        shell: pwsh
+        run: |
+          if ([string]::IsNullOrEmpty($env:N8N_WEBHOOK_URL)) {
+            Write-Host "N8N_DEPLOY_WEBHOOK_URL not set; skipping notification."
+            exit 0
+          }
+          $payload = @{
+            event    = 'artifact'
+            platform = 'windows'
+            name     = 'windows-exe-${{ github.sha }}'
+            url      = '${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}'
+            sha      = '${{ github.sha }}'
+            ref      = '${{ github.ref }}'
+            repo     = '${{ github.repository }}'
+            actor    = '${{ github.actor }}'
+          } | ConvertTo-Json -Compress
+          Invoke-RestMethod -Uri $env:N8N_WEBHOOK_URL -Method Post -ContentType 'application/json' -Body $payload
 
   # ── Publish GitHub Release (tags only) ─────────────────────────────
   # Triggered only on `v*` tag pushes. Downloads the artifacts built

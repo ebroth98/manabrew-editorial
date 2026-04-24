@@ -122,7 +122,7 @@ export const usePreferencesStore = create<PreferencesState>()(
         })),
       resetAppThemeColorOverrides: () => set({ appThemeColorOverrides: {} }),
 
-      pixiEnabled: false,
+      pixiEnabled: true,
       setPixiEnabled: (pixiEnabled) => set({ pixiEnabled }),
 
       gameThemeColorOverrides: {},

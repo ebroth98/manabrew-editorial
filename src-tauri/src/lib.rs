@@ -11,46 +11,50 @@ mod server_client;
 mod server_commands;
 mod tauri_transport;
 
-use std::path::PathBuf;
-
 use client_bot::ClientBotManager;
 use forge_engine_core::game::TypeRegistry;
 use game_manager::GameManager;
 use server_client::ServerClient;
+use tauri::Manager;
 
-fn load_type_registry() -> Result<(), String> {
-    let project_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .ok_or_else(|| "Could not resolve project root".to_string())?
-        .to_path_buf();
-    let type_lists_path = project_root
-        .join("forge")
-        .join("forge-gui")
-        .join("res")
-        .join("lists")
-        .join("TypeLists.txt");
+// Embedded at compile time so packaged builds don't depend on the build
+// machine's source tree layout.
+const TYPE_LISTS: &str = include_str!("../../forge/forge-gui/res/lists/TypeLists.txt");
 
-    let contents = std::fs::read_to_string(&type_lists_path).map_err(|err| {
-        format!(
-            "Failed to read TypeLists.txt at {}: {}",
-            type_lists_path.display(),
-            err
-        )
-    })?;
-    TypeRegistry::load(&contents);
-    Ok(())
-}
+// Tauri copies these resource subdirs into the app's resource_dir at
+// install time (see tauri.conf.json bundle.resources). The card/token/
+// edition/preset loaders pick them up via env vars set before any
+// command runs.
+const RESOURCE_ENV_MAP: &[(&str, &str)] = &[
+    ("CARDS_DIR", "cardsfolder"),
+    ("TOKEN_SCRIPTS_DIR", "tokenscripts"),
+    ("EDITIONS_DIR", "editions"),
+    ("PRESET_DECKS_DIR", "preset_decks"),
+];
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_http::init())
-        .setup(|_app| {
-            load_type_registry().map_err(|err| {
-                eprintln!("[startup] {}", err);
-                Box::<dyn std::error::Error>::from(err)
-            })?;
+        .setup(|app| {
+            TypeRegistry::load(TYPE_LISTS);
+
+            if let Ok(resource_dir) = app.path().resource_dir() {
+                for (key, subdir) in RESOURCE_ENV_MAP {
+                    let path = resource_dir.join(subdir);
+                    if path.exists() {
+                        std::env::set_var(key, &path);
+                    } else {
+                        eprintln!(
+                            "[startup] bundled resource missing: {} (env {} left unset)",
+                            path.display(),
+                            key
+                        );
+                    }
+                }
+            }
+
             Ok(())
         })
         .manage(GameManager::new())
