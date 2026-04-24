@@ -179,12 +179,48 @@ for rc in "$RUNNER_HOME/.bashrc" "$RUNNER_HOME/.profile"; do
     fi
 done
 
-# ---------- 8. GitHub Actions runner service -----------------------------
+# ---------- 8. Cargo binaries on system PATH -----------------------------
 
-# On Linux the runner is typically installed per-user under
-# ~/actions-runner and registered as a systemd service via svc.sh. If
-# that service is active, restart it so it picks up the new PATH entries
-# (cargo, wasm-pack) from the updated shell profile.
+# The runner service executes step shells as non-login bash, so
+# ~/.bashrc / ~/.profile are NOT sourced and the cargo env from step 7
+# never reaches `cargo check` / `wasm-pack`. Two belt-and-suspenders
+# fixes:
+#   a) Symlink the toolchain binaries into /usr/local/bin (always on the
+#      service's default PATH — no env file needed).
+#   b) Write ~/actions-runner/.env with the cargo bin prepended to PATH.
+#      runsvc.sh sources this file before each job, so PATH sticks even
+#      if /usr/local/bin ever gets scrubbed.
+section "Cargo on system PATH (symlinks)"
+for bin in cargo rustc rustup rustdoc wasm-pack; do
+    src="$CARGO_BIN/$bin"
+    if [[ -x "$src" ]]; then
+        ln -sf "$src" "/usr/local/bin/$bin"
+        echo "Linked /usr/local/bin/$bin -> $src"
+    fi
+done
+
+section "actions-runner/.env PATH injection"
+RUNNER_ROOT="$RUNNER_HOME/actions-runner"
+if [[ -d "$RUNNER_ROOT" ]]; then
+    env_file="$RUNNER_ROOT/.env"
+    touch "$env_file"
+    chown "$RUNNER_USER:$RUNNER_USER" "$env_file"
+    # Remove any prior PATH= line this script wrote, then append a fresh
+    # one. Idempotent: re-running the script won't duplicate entries.
+    tmp=$(mktemp)
+    grep -v '^PATH=' "$env_file" > "$tmp" || true
+    echo "PATH=$CARGO_BIN:/usr/local/bin:/usr/bin:/bin:/usr/local/sbin:/usr/sbin:/sbin" >> "$tmp"
+    mv "$tmp" "$env_file"
+    chown "$RUNNER_USER:$RUNNER_USER" "$env_file"
+    echo "Wrote PATH= into $env_file"
+else
+    echo "Runner directory $RUNNER_ROOT not found — skipping .env injection."
+    echo "Install the runner first, then re-run this script."
+fi
+
+# ---------- 9. GitHub Actions runner service -----------------------------
+
+# Restart the unit so it re-reads .env and picks up the new PATH.
 section "GitHub Actions runner service"
 runner_units=$(systemctl list-units --type=service --all --no-legend 2>/dev/null \
     | awk '{print $1}' \
@@ -203,7 +239,7 @@ else
     systemctl --no-pager --no-legend status $runner_units | head -n 20 || true
 fi
 
-# ---------- 9. Sanity check ----------------------------------------------
+# ---------- 10. Sanity check ---------------------------------------------
 
 section "Versions"
 try_version() {
@@ -238,14 +274,11 @@ cat <<EOF
    Runners. It should show 'Idle'.
 2. Trigger a quick smoke test by re-running any job from
    .github/workflows/build-checks.yml (TypeScript, WASM build, Rust engine).
-3. If the runner still reports 'cargo: command not found', the runner
-   service environment did not inherit the shell profile. Either:
-     a) Edit ~/actions-runner/.env to append
-          PATH=$RUNNER_HOME/.cargo/bin:\$PATH
-        then restart the service, or
-     b) Move cargo/rustc onto the system PATH by symlinking into
-        /usr/local/bin:
-          sudo ln -sf $CARGO_BIN/{cargo,rustc,rustup,wasm-pack} /usr/local/bin/
+3. If the runner still reports 'cargo: command not found' after this
+   script finishes, verify both fixes landed:
+     a) ls -l /usr/local/bin/cargo   # should symlink to $CARGO_BIN/cargo
+     b) grep '^PATH=' $RUNNER_HOME/actions-runner/.env
+   Then restart the service: sudo systemctl restart 'actions.runner.*'.
 4. This script does NOT install Tauri bundling deps (webkit2gtk, libsoup,
    libayatana-appindicator, etc.) because the Linux workflows in this repo
    only run checks + WASM + release publish. Add them here if you later
