@@ -57,6 +57,8 @@ WORKDIR /build
 # Copy workspace manifests for dependency caching
 COPY Cargo.toml Cargo.lock ./
 COPY forge-engine/ forge-engine/
+COPY forge/forge-gui/res/tokenscripts/ forge/forge-gui/res/tokenscripts/
+COPY preset_decks/ preset_decks/
 COPY src-tauri/Cargo.toml src-tauri/Cargo.toml
 RUN mkdir -p src-tauri/src && echo "fn main() {}" > src-tauri/src/main.rs && touch src-tauri/src/lib.rs
 
