@@ -35,8 +35,9 @@ COPY scripts/ ./scripts/
 COPY src/ ./src/
 COPY public/ ./public/
 COPY index.html tsconfig*.json vite.config.ts ./
-# Card scripts + preset decks consumed by bundle-cards.mjs
+# Card + token scripts + preset decks consumed by bundle-cards.mjs
 COPY forge/forge-gui/res/cardsfolder/ ./forge/forge-gui/res/cardsfolder/
+COPY forge/forge-gui/res/tokenscripts/ ./forge/forge-gui/res/tokenscripts/
 COPY preset_decks/ ./preset_decks/
 
 # Build WASM + Vite bundle (outputs to dist/)
