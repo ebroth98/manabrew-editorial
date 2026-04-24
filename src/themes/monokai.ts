@@ -1,4 +1,4 @@
-import type { ThemePreset } from "./index";
+import type { ThemePreset } from "./presets";
 import { buildGameColors, type BasePalette } from "./buildGameColors";
 
 /** Monokai palette — high-contrast neon on near-black. */
@@ -27,6 +27,8 @@ const palette: BasePalette = {
   brown:    "#fd971f",
   paper:    "#f8f8f2",
   poison:   "#8bb82a",          // deeper olive version of monokai neon green
+  promptPass:    "#a6e22e",     // green
+  promptDefense: "#66d9ef",     // cyan
   manaW:    "#f8f8f2",
   manaU:    "#66d9ef",
   manaB:    "#49483e",
@@ -91,25 +93,7 @@ const preset: ThemePreset = {
     warning: "#ff780a",
     overlay: "#0a0b0a",
   },
-  gameColors: {
-    "activeAction.priority": "#ae81ff",
-    "activeAction.turnText": "#e6db74",
-    "activeAction.myTurnRing": "#e6db74",
-    "activeAction.opponentTurnRing": "#e6db74",
-    highlight: "#fd971f",
-    "hand.playableBorder": "rgba(248, 248, 242, 0.7)",
-    "promptAction.default": "#a6e22e",
-    "promptAction.passPriority": "#a6e22e",
-    "promptAction.passUntilEnd": "#66d9ef",
-    "promptAction.cancel": "#75715e",
-    "promptAction.pacificAction": "#66d9ef",
-    "arrow.attack": "rgba(253, 151, 31, 0.88)",
-    "arrow.block": "rgba(249, 38, 114, 0.88)",
-    "arrow.hostileTarget": "rgba(249, 38, 114, 0.88)",
-    "arrow.friendlyTarget": "rgba(102, 217, 239, 0.88)",
-    cardRing: "#fd971f",
-    ...buildGameColors(palette),
-  },
+  gameColors: buildGameColors(palette),
 };
 
 export default preset;

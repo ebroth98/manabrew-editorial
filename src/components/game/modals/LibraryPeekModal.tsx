@@ -90,7 +90,7 @@ export function LibraryPeekModal({
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const preview = useCardPreview();
 
-  const themeColors = useTheme().game;
+  const themeColors = useTheme().gameTheme;
   const ringColor = themeColors.cardRing;
 
   const config = MODE_CONFIG[mode];

@@ -20,7 +20,7 @@ import { Container, Graphics, Sprite, Texture } from "pixi.js";
 // so the pointer glyph stays visually neutral against any background.
 // The colored glow under + around it carries the per-intent semantics.
 import { TargetingIntent, intentIsHostile } from "@/types/promptType";
-import type { AppTheme } from "@/hooks/useTheme";
+import type { Theme } from "@/hooks/useTheme";
 import { getTheme } from "@/hooks/useTheme";
 import { hexToNum, colorAlpha } from "./colorUtils";
 
@@ -216,7 +216,7 @@ export class PointerLayer {
   private pool: IconEntry[] = [];
   // Seeded synchronously from the active preset so the first frame renders
   // in theme-correct colours; `setTheme` keeps it in sync afterwards.
-  private theme: AppTheme = getTheme();
+  private theme: Theme = getTheme();
   private textures: Partial<Record<TargetingIntent, Texture>> = {};
   private elapsedMs = 0;
   private ready = false;
@@ -231,7 +231,7 @@ export class PointerLayer {
     return this.root;
   }
 
-  setTheme(theme: AppTheme): void {
+  setTheme(theme: Theme): void {
     this.theme = theme;
   }
 
@@ -344,7 +344,14 @@ export class PointerLayer {
   private colorFor(intent: TargetingIntent): { color: number; alpha: number } {
     // Pointer palette is binary — the monochrome icon carries the
     // specific semantic; the glow colour only signals valence.
-    const raw = intentIsHostile(intent) ? this.theme.game.pointer.hostile : this.theme.game.pointer.friendly;
+    const raw = intentIsHostile(intent) ? this.theme.gameTheme.pointer.hostile : this.theme.gameTheme.pointer.friendly;
+    if (!raw || !raw.trim()) {
+      // Fallback: red for hostile, blue for friendly — prevents invisible pointers
+      // when theme colours haven't resolved yet.
+      return intentIsHostile(intent)
+        ? { color: 0xd22828, alpha: 0.88 }
+        : { color: 0x5a96ff, alpha: 0.88 };
+    }
     return { color: hexToNum(raw), alpha: colorAlpha(raw) };
   }
 

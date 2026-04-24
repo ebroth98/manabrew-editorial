@@ -3,9 +3,9 @@ import { usePreferencesStore, type ZonePanelItem } from "@/stores/usePreferences
 import { THEME_PRESETS, type ThemeColors } from "@/themes";
 import { useServerStore } from "@/stores/useServerStore";
 import { useGameStore } from "@/stores/useGameStore";
-import { toPickerHexColor } from "@/components/game/game.theme";
-import type { GameThemeColors } from "@/hooks/useTheme";
-import { useTheme, getDefaultGameThemeColorMap } from "@/hooks/useTheme";
+import { toPickerHexColor } from "@/themes/gameTheme";
+import type { GameThemeColors } from "@/themes/gameTheme";
+import { getDefaultGameThemeColorMap } from "@/hooks/useTheme";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
@@ -40,25 +40,6 @@ type GameThemePath = {
       : never;
 }[keyof GameThemeColors & string];
 
-/**
- * Legacy game colour keys that still live in preset `gameColors` maps
- * (consumed by `resolveGameThemeColors`' backwards-compatibility
- * fallbacks) but are not part of the `GameThemeColors` schema.
- * Kept out of the schema so runtime consumers don't grow new shapes,
- * but documented here so the Settings tooltip still has descriptions
- * for them when they appear in the picker list.
- */
-type LegacyGameThemePath =
-  | "highlight"
-  | "hand.playableBorder"
-  | "activeAction.turnText"
-  | "activeAction.myTurnRing"
-  | "activeAction.opponentTurnRing"
-  | "promptAction.default"
-  | "promptAction.passPriority"
-  | "promptAction.passUntilEnd"
-  | "promptAction.pacificAction";
-
 /** Human-readable description for each Radix (app chrome) colour token.
  *  Shown as the `title` attribute of a small `?` icon next to the label. */
 const APP_THEME_COLOR_DESCRIPTIONS: Record<AppThemeKey, string> = {
@@ -89,25 +70,15 @@ const APP_THEME_COLOR_DESCRIPTIONS: Record<AppThemeKey, string> = {
 };
 
 /** Human-readable description for each game-surface colour token.
- *  Keys are type-checked against the live `GameThemeColors` schema
- *  (plus the legacy alias set) — a typo or renamed schema field
- *  fails compilation here. */
-const GAME_THEME_COLOR_DESCRIPTIONS: Partial<Record<GameThemePath | LegacyGameThemePath, string>> = {
+ *  Keys are type-checked against the live `GameThemeColors` schema —
+ *  a typo or renamed schema field fails compilation here. */
+const GAME_THEME_COLOR_DESCRIPTIONS: Partial<Record<GameThemePath, string>> = {
   "activeAction.priority": "Highlight surrounding the player who currently has priority.",
   "activeAction.active": "Active-turn ring, turn-text colour, and general 'your turn' cue.",
-  "activeAction.turnText": "Legacy alias for `activeAction.active` (turn-banner text).",
-  "activeAction.myTurnRing": "Legacy alias — ring around cards on your turn.",
-  "activeAction.opponentTurnRing": "Legacy alias — ring around cards on opponent's turn.",
-  "highlight": "General-purpose highlight accent.",
-  "hand.playableBorder": "Glow border around playable cards in your hand.",
   "promptAction.passAction": "Pass priority / pass turn button fill.",
   "promptAction.attackAction": "Declare-attackers button fill.",
   "promptAction.defenseAction": "Defense / declare-blockers button fill.",
   "promptAction.cancel": "Cancel / decline button fill.",
-  "promptAction.default": "Legacy alias — primary prompt button.",
-  "promptAction.passPriority": "Legacy alias — pass priority button.",
-  "promptAction.passUntilEnd": "Legacy alias — pass until end-of-turn button.",
-  "promptAction.pacificAction": "Legacy alias — secondary (pacifist) prompt button.",
   "arrow.attack": "Attacker arrow from attacker to defender.",
   "arrow.block": "Blocker arrow from blocker to attacker.",
   "arrow.hostileTarget": "Legacy hostile-target arrow (Pixi fallback).",
@@ -333,9 +304,14 @@ const GAME_THEME_GROUPS: { heading: string; description: string; prefixes?: stri
     exactKeys: ["textOnTinted", "textMuted", "textGhost"],
   },
   {
-    heading: "Highlights",
-    description: "Player hand playable border + highlight accents.",
-    exactKeys: ["highlight", "hand.playableBorder"],
+    heading: "Player Colours",
+    description: "Per-seat colours for phase strip indicators and turn tint.",
+    prefixes: ["playerColors."],
+  },
+  {
+    heading: "Badges",
+    description: "Status chip icon colours rendered next to the mana pool.",
+    prefixes: ["badges."],
   },
   {
     heading: "Card Ring",
@@ -343,44 +319,6 @@ const GAME_THEME_GROUPS: { heading: string; description: string; prefixes?: stri
     exactKeys: ["cardRing"],
   },
 ];
-
-/**
- * Convert an HSL triplet (space-separated string) to a hex colour.
- * Returns the caller-supplied `fallback` when the input is unparseable —
- * callers are expected to pass a theme-resolved colour so no literal is
- * baked into this utility.
- */
-function hslToHex(hsl: string, fallback: string): string {
-  const parts = hsl.trim().split(/\s+/).map((s) => parseFloat(s));
-  if (parts.length < 3 || parts.some(isNaN)) return fallback;
-  const [h, s, l] = parts;
-  const sn = s / 100;
-  const ln = l / 100;
-  const a = sn * Math.min(ln, 1 - ln);
-  const f = (n: number) => {
-    const k = (n + h / 30) % 12;
-    const color = ln - a * Math.max(Math.min(k - 3, 9 - k, 1), -1);
-    return Math.round(255 * color).toString(16).padStart(2, "0");
-  };
-  return `#${f(0)}${f(8)}${f(4)}`;
-}
-
-function hexToHsl(hex: string): string {
-  const r = parseInt(hex.slice(1, 3), 16) / 255;
-  const g = parseInt(hex.slice(3, 5), 16) / 255;
-  const b = parseInt(hex.slice(5, 7), 16) / 255;
-  const max = Math.max(r, g, b);
-  const min = Math.min(r, g, b);
-  const l = (max + min) / 2;
-  if (max === min) return `0 0% ${Math.round(l * 100)}%`;
-  const d = max - min;
-  const s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
-  let h = 0;
-  if (max === r) h = ((g - b) / d + (g < b ? 6 : 0)) / 6;
-  else if (max === g) h = ((b - r) / d + 2) / 6;
-  else h = ((r - g) / d + 4) / 6;
-  return `${Math.round(h * 360)} ${Math.round(s * 100)}% ${Math.round(l * 100)}%`;
-}
 
 const FLASH_MIN = 200;
 const FLASH_MAX = 2000;
@@ -395,14 +333,11 @@ export default function Settings() {
   const { flashDurationMs, setFlashDurationMs } = prefs;
   const server = useServerStore();
   const { theme, setTheme, resolvedTheme } = useColorMode();
-  // Neutral used as the fallback swatch when the user edits an HSL value
-  // to something unparseable — derived from the active preset so it
-  // matches the rest of the UI instead of a hardcoded grey.
-  const neutralSwatchColor = useTheme().game.promptAction.cancel;
   const [activeTab, setActiveTab] = useState<"server" | "preferences" | "theme">("preferences");
   const [presetOpen, setPresetOpen] = useState(false);
   const [editingThemeColorPath, setEditingThemeColorPath] = useState<string | null>(null);
   const [editingThemeColorValue, setEditingThemeColorValue] = useState("");
+  const [themeColorFilter, setThemeColorFilter] = useState("");
   const DEFAULT_GAME_THEME_COLOR_MAP = getDefaultGameThemeColorMap();
 
   const zoneOrder = prefs.zonePanelOrder;
@@ -510,7 +445,7 @@ export default function Settings() {
         <section className="space-y-4">
           <h2 className="text-lg font-semibold">Server</h2>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-1">
               <Label htmlFor="server-host">Host</Label>
               <Input id="server-host" value={host} onChange={(e) => setHost(e.target.value)} placeholder="localhost" />
@@ -869,7 +804,7 @@ export default function Settings() {
                     {active && (
                       <div className="flex gap-1 shrink-0">
                         {[active[mode].background, active[mode].primary, active[mode].accent, active[mode].destructive].map((hsl, i) => (
-                          <div key={i} className="w-4 h-4 rounded-full border border-border/50" style={{ backgroundColor: `hsl(${hsl})` }} />
+                          <div key={i} className="w-4 h-4 rounded-full border border-border/50" style={{ backgroundColor: hsl }} />
                         ))}
                       </div>
                     )}
@@ -892,7 +827,7 @@ export default function Settings() {
                         >
                           <div className="flex gap-1 shrink-0">
                             {[preset[mode].background, preset[mode].primary, preset[mode].accent, preset[mode].destructive].map((hsl, i) => (
-                              <div key={i} className="w-3.5 h-3.5 rounded-full border border-border/50" style={{ backgroundColor: `hsl(${hsl})` }} />
+                              <div key={i} className="w-3.5 h-3.5 rounded-full border border-border/50" style={{ backgroundColor: hsl }} />
                             ))}
                           </div>
                           <div className="flex-1 min-w-0">
@@ -916,6 +851,15 @@ export default function Settings() {
 
           </div>{/* end top-level mode/preset grid */}
 
+          <div className="pt-2">
+            <Input
+              placeholder="Filter colors... (e.g. primary, counter, arrow)"
+              value={themeColorFilter}
+              onChange={(e) => setThemeColorFilter(e.target.value)}
+              className="max-w-sm"
+            />
+          </div>
+
           <div className="space-y-3 pt-2">
             <div className="flex items-center justify-between gap-2">
               <Label>App Theme Colors</Label>
@@ -932,6 +876,14 @@ export default function Settings() {
             {APP_THEME_GROUPS.map((group) => {
               const activePreset = THEME_PRESETS.find((p) => p.id === prefs.appThemePreset);
               const mode = resolvedTheme === "dark" ? "dark" : "light";
+              const q = themeColorFilter.toLowerCase();
+              const filteredKeys = q
+                ? group.keys.filter((k) =>
+                    k.toLowerCase().includes(q) ||
+                    (APP_THEME_COLOR_LABELS[k] ?? "").toLowerCase().includes(q) ||
+                    group.heading.toLowerCase().includes(q))
+                : group.keys;
+              if (filteredKeys.length === 0) return null;
               return (
                 <div key={group.heading} className="rounded-lg border bg-card/40 p-4 space-y-1.5">
                   <div className="flex items-baseline gap-2">
@@ -943,10 +895,9 @@ export default function Settings() {
                     </span>
                   </div>
                   <div className="space-y-1">
-                    {group.keys.map((key) => {
+                    {filteredKeys.map((key) => {
                       const presetValue = activePreset?.[mode]?.[key as keyof ThemeColors] ?? "";
                       const activeValue = prefs.appThemeColorOverrides[key] ?? presetValue;
-                      const hexValue = hslToHex(activeValue, neutralSwatchColor);
                       return (
                         <div key={key} className="flex flex-col gap-1 rounded-md border px-2 py-1.5 min-w-0">
                           <Label className="text-xs font-mono break-words flex items-center gap-1">
@@ -956,8 +907,8 @@ export default function Settings() {
                           <div className="flex items-center gap-2 min-w-0">
                             <input
                               type="color"
-                              value={hexValue}
-                              onChange={(e) => prefs.setAppThemeColorOverride(key, hexToHsl(e.target.value))}
+                              value={activeValue}
+                              onChange={(e) => prefs.setAppThemeColorOverride(key, e.target.value)}
                               className="h-8 w-10 shrink-0 rounded border border-input bg-transparent p-0.5"
                             />
                             <button
@@ -966,7 +917,7 @@ export default function Settings() {
                               onClick={() => beginThemeColorEdit(`app.${key}`, activeValue)}
                               title="Click to edit color value"
                             >
-                              {hexValue}
+                              {activeValue}
                             </button>
                           </div>
                         </div>
@@ -1027,7 +978,16 @@ export default function Settings() {
                   keys: miscKeys,
                 });
               }
+              const q = themeColorFilter.toLowerCase();
               return groups
+                .map((g) => {
+                  const filtered = q
+                    ? g.keys.filter((k) =>
+                        k.toLowerCase().includes(q) ||
+                        g.heading.toLowerCase().includes(q))
+                    : g.keys;
+                  return { ...g, keys: filtered };
+                })
                 .filter((g) => g.keys.length > 0)
                 .map((group) => (
                   <div key={group.heading} className="rounded-lg border bg-card/40 p-4 space-y-1.5">
@@ -1047,7 +1007,7 @@ export default function Settings() {
                           <div key={path} className="flex flex-col gap-1 rounded-md border px-2 py-1.5 min-w-0">
                             <Label htmlFor={`theme-color-${path}`} className="text-xs font-mono break-words flex items-center gap-1">
                               <span>{path}</span>
-                              <HelpMark description={GAME_THEME_COLOR_DESCRIPTIONS[path as GameThemePath | LegacyGameThemePath]} />
+                              <HelpMark description={GAME_THEME_COLOR_DESCRIPTIONS[path as GameThemePath]} />
                             </Label>
                             <div className="flex items-center gap-2 min-w-0">
                               <input

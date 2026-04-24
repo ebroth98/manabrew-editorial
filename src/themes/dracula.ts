@@ -1,4 +1,4 @@
-import type { ThemePreset } from "./index";
+import type { ThemePreset } from "./presets";
 import { buildGameColors, type BasePalette } from "./buildGameColors";
 
 /** Dracula canonical palette. `comment` (#6272a4) doubles as the muted
@@ -28,6 +28,8 @@ const palette: BasePalette = {
   brown:    "#ffb86c",
   paper:    "#f8f8f2",
   poison:   "#3fc562",            // deeper / less neon than dracula green
+  promptPass:    "#bd93f9",      // purple
+  promptDefense: "#8be9fd",      // cyan
   manaW:    "#f8f8f2",
   manaU:    "#bd93f9",
   manaB:    "#44475a",
@@ -92,25 +94,7 @@ const preset: ThemePreset = {
     warning: "#ff9c33",
     overlay: "#0d0e12",
   },
-  gameColors: {
-    "activeAction.priority": "#bd93f9",
-    "activeAction.turnText": "#f1fa8c",
-    "activeAction.myTurnRing": "#f1fa8c",
-    "activeAction.opponentTurnRing": "#f1fa8c",
-    "highlight": "#ffb86c",
-    "hand.playableBorder": "rgba(248, 248, 242, 0.7)",
-    "promptAction.default": "#bd93f9",
-    "promptAction.passPriority": "#bd93f9",
-    "promptAction.passUntilEnd": "#6272a4",
-    "promptAction.cancel": "#6272a4",
-    "promptAction.pacificAction": "#8be9fd",
-    "arrow.attack": "rgba(255, 184, 108, 0.88)",
-    "arrow.block": "rgba(255, 85, 85, 0.88)",
-    "arrow.hostileTarget": "rgba(255, 85, 85, 0.88)",
-    "arrow.friendlyTarget": "rgba(139, 233, 253, 0.88)",
-    "cardRing": "#f1fa8c",
-    ...buildGameColors(palette),
-  },
+  gameColors: buildGameColors(palette),
 };
 
 export default preset;

@@ -9,7 +9,6 @@ installPixiPatches();
 import { setPixiTextStyleTheme } from "./textStyles";
 import { getTheme } from "@/hooks/useTheme";
 import { usePreferencesStore } from "@/stores/usePreferencesStore";
-import { ZONE_COLUMN_RESERVED_PX } from "@/components/game/game.constants";
 import type {
   GameCanvasCallbacks,
   BattlefieldState,
@@ -50,6 +49,9 @@ interface PixiGameCanvasProps {
   callbacks: GameCanvasCallbacks;
   bottomReserved?: number;
   leftReserved?: number;
+  /** Keep-out size anchored to the bottom-left of the canvas — the player
+   *  panel cluster (avatar + zones + mana). */
+  bottomLeftReserved?: { width: number; height: number } | null;
   /** Keep-out rects in canvas-local coords (e.g. dynamic UI overlays). */
   externalBlockers?: ScreenBounds[];
   /**
@@ -83,7 +85,8 @@ export function PixiGameCanvas({
   isDropActive,
   callbacks,
   bottomReserved = 0,
-  leftReserved = ZONE_COLUMN_RESERVED_PX,
+  leftReserved = 0,
+  bottomLeftReserved,
   externalBlockers,
   bottomRightReserved,
   className,
@@ -255,8 +258,9 @@ export function PixiGameCanvas({
   useEffect(() => {
     if (!scene) return;
     scene.setReserved(bottomReserved, leftReserved);
+    scene.setBottomLeftReserved(bottomLeftReserved ?? null);
     scene.updateBattlefield(battlefield);
-  }, [scene, battlefield, bottomReserved, leftReserved]);
+  }, [scene, battlefield, bottomReserved, leftReserved, bottomLeftReserved]);
 
   useEffect(() => {
     if (!scene) return;

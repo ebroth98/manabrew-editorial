@@ -7,18 +7,22 @@ import {
   resolveGameThemeColors,
   flattenGameThemeToCssVars,
   resolveGameFontSizes,
+  getGameThemeColorPaths,
   type GameThemeColors,
-} from "@/components/game/game.theme";
+} from "@/themes/gameTheme";
 import type { GameFontSizes } from "@/themes";
-export type { GameThemeColors } from "@/components/game/game.theme";
+export type { GameThemeColors } from "@/themes/gameTheme";
 export type { GameFontSizes } from "@/themes";
 
-export interface AppTheme {
-  app: ThemeColors;
-  game: GameThemeColors;
+/** Resolved game theme — colours plus font sizes. */
+export interface GameTheme extends GameThemeColors {
   fontSizes: GameFontSizes;
-  /** Flat CSS-variable map for game theme colours (keys include `--` prefix). */
-  gameCssVars: Record<string, string>;
+}
+
+/** The single resolved theme object used across the entire app. */
+export interface Theme {
+  appTheme: ThemeColors;
+  gameTheme: GameTheme;
 }
 
 // ---------------------------------------------------------------------------
@@ -26,19 +30,25 @@ export interface AppTheme {
 // Used by Pixi and other non-React code that cannot call hooks.
 // ---------------------------------------------------------------------------
 
-function buildTheme(): AppTheme {
+/** Internal shape that also carries the CSS variable map for :root
+ *  injection. Consumers see only `Theme`; `gameCssVars` stays private. */
+interface ThemeInternal extends Theme {
+  gameCssVars: Record<string, string>;
+}
+
+function buildTheme(): ThemeInternal {
   const { appThemePreset, gameThemeColorOverrides } =
     usePreferencesStore.getState();
   const preset =
     THEME_PRESETS.find((p) => p.id === appThemePreset) ?? THEME_PRESETS[0]!;
-  const app = preset.dark;
-  const game = resolveGameThemeColors(gameThemeColorOverrides, appThemePreset);
+  const appTheme = preset.dark;
+  const gameColors = resolveGameThemeColors(gameThemeColorOverrides, appThemePreset);
   const fontSizes = resolveGameFontSizes(appThemePreset);
-  const gameCssVars = flattenGameThemeToCssVars(game);
-  return { app, game, fontSizes, gameCssVars };
+  const gameCssVars = flattenGameThemeToCssVars(gameColors);
+  return { appTheme, gameTheme: { ...gameColors, fontSizes }, gameCssVars };
 }
 
-let cachedTheme: AppTheme = buildTheme();
+let cachedTheme: ThemeInternal = buildTheme();
 let prevPreset = usePreferencesStore.getState().appThemePreset;
 let prevGameOverrides = usePreferencesStore.getState().gameThemeColorOverrides;
 
@@ -56,34 +66,51 @@ usePreferencesStore.subscribe(() => {
 });
 
 /** Non-reactive accessor for imperative / Pixi code. */
-export function getTheme(): AppTheme {
+export function getTheme(): Theme {
   return cachedTheme;
 }
+/** Return a flat map of every canonical game-theme path to its resolved
+ *  colour for the active preset.  Uses the schema-driven path list from
+ *  `getGameThemeColorPaths` so the Settings picker always shows exactly
+ *  the keys that `GameThemeColors` expects — no legacy aliases, no
+ *  missing tokens. */
 export function getDefaultGameThemeColorMap(): Record<string, string> {
   const presetId = usePreferencesStore.getState().appThemePreset;
-  const preset =
-    THEME_PRESETS.find((p) => p.id === presetId) ?? THEME_PRESETS[0]!;
+  const resolved = resolveGameThemeColors({}, presetId);
+  const paths = getGameThemeColorPaths();
   const out: Record<string, string> = {};
-  for (const [key, value] of Object.entries(preset.gameColors)) {
-    if (typeof value === "string") out[key] = value;
+  for (const path of paths) {
+    const segments = path.split(".");
+    let cursor: unknown = resolved;
+    for (const seg of segments) {
+      if (cursor != null && typeof cursor === "object") {
+        cursor = (cursor as Record<string, unknown>)[seg];
+      } else {
+        cursor = undefined;
+        break;
+      }
+    }
+    if (typeof cursor === "string" && cursor.trim()) {
+      out[path] = cursor;
+    }
   }
   return out;
 }
-export function useTheme(): AppTheme {
+export function useTheme(): Theme {
   const presetId = usePreferencesStore((s) => s.appThemePreset);
   const appOverrides = usePreferencesStore((s) => s.appThemeColorOverrides);
   const gameOverrides = usePreferencesStore((s) => s.gameThemeColorOverrides);
   const { resolvedTheme } = useNextTheme();
 
-  const theme = useMemo(() => {
+  const theme = useMemo((): ThemeInternal => {
     const preset =
       THEME_PRESETS.find((p) => p.id === presetId) ?? THEME_PRESETS[0]!;
     const mode = resolvedTheme === "dark" ? "dark" : "light";
-    const app = preset[mode];
-    const game = resolveGameThemeColors(gameOverrides, presetId);
+    const appTheme = preset[mode];
+    const gameColors = resolveGameThemeColors(gameOverrides, presetId);
     const fontSizes = resolveGameFontSizes(presetId);
-    const gameCssVars = flattenGameThemeToCssVars(game);
-    return { app, game, fontSizes, gameCssVars };
+    const gameCssVars = flattenGameThemeToCssVars(gameColors);
+    return { appTheme, gameTheme: { ...gameColors, fontSizes }, gameCssVars };
   }, [presetId, gameOverrides, resolvedTheme]);
 
   // Write CSS variables onto :root (idempotent — no cleanup needed since the

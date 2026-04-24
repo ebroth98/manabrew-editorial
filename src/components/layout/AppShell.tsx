@@ -3,8 +3,9 @@ import { usePanelRef } from "react-resizable-panels";
 import { Outlet, useLocation } from "react-router-dom";
 import { Sidebar } from "./Sidebar";
 import { useServerStore } from "@/stores/useServerStore";
+import { useGameStore } from "@/stores/useGameStore";
 import { Button } from "@/components/ui/button";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, Menu } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useDragToggle } from "@/hooks/useDragToggle";
 import {
@@ -12,13 +13,21 @@ import {
   ResizablePanel,
   ResizablePanelGroup,
 } from "@/components/ui/resizable";
+import {
+  Sheet,
+  SheetContent,
+  SheetTitle,
+} from "@/components/ui/sheet";
+import { OpenMagicLogo } from "./OpenMagicLogo";
 
 export function AppShell() {
   const sidebarRef = usePanelRef();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const setupListeners = useServerStore((s) => s.setupListeners);
   const location = useLocation();
-  const isGameRoute = location.pathname.startsWith("/game");
+  const isGameActive = useGameStore((s) => s.isGameActive);
+  const isGameRoute = location.pathname.startsWith("/game") || isGameActive;
 
   // Register Tauri event listeners at app level so they're always active
   useEffect(() => {
@@ -60,17 +69,62 @@ export function AppShell() {
     "right",
   );
 
+  // Close mobile nav on route change
   useEffect(() => {
-    if (location.pathname.startsWith("/game")) {
+    setMobileNavOpen(false);
+  }, [location.pathname]);
+
+  // Collapse sidebar when a game starts, expand when it ends (return
+  // to menu). The URL may stay at /play or /lobby, so watching the
+  // store flag is more reliable than the pathname alone.
+  useEffect(() => {
+    if (isGameActive || location.pathname.startsWith("/game")) {
       collapseSidebar();
+    } else {
+      expandSidebar();
     }
-  }, [location.pathname, collapseSidebar]);
+  }, [isGameActive, location.pathname, collapseSidebar, expandSidebar]);
 
   return (
-    <div className="h-screen overflow-hidden">
+    <div className="h-screen overflow-hidden flex flex-col">
+      {/* Mobile header — visible below md, hidden during game */}
+      <header className={cn(
+        "flex items-center gap-2 px-3 py-2 border-b bg-background md:hidden",
+        isGameRoute && "hidden",
+      )}>
+        <Button
+          size="icon"
+          variant="ghost"
+          className="h-8 w-8"
+          onClick={() => setMobileNavOpen(true)}
+        >
+          <Menu className="h-5 w-5" />
+        </Button>
+        <OpenMagicLogo size={28} className="rounded-lg shrink-0" />
+        <span className="text-sm font-semibold tracking-tight">OpenMagic</span>
+      </header>
+
+      {/* Mobile sidebar sheet */}
+      <Sheet open={mobileNavOpen} onOpenChange={setMobileNavOpen}>
+        <SheetContent side="left" className="p-0 w-64">
+          <SheetTitle className="sr-only">Navigation</SheetTitle>
+          <Sidebar onNavigate={() => setMobileNavOpen(false)} />
+        </SheetContent>
+      </Sheet>
+
+      {/* Mobile content — no resizable panels, just the page */}
+      <main className={cn(
+        "flex-1 overflow-auto md:hidden",
+        isGameRoute && "!p-0 !overflow-hidden",
+      )}>
+        <Outlet />
+      </main>
+
+      {/* Desktop resizable layout */}
+      <div className="hidden md:flex flex-1 min-h-0">
       <ResizablePanelGroup
         orientation="horizontal"
-        className="relative h-full min-h-0"
+        className="relative h-full"
       >
         <ResizablePanel
           panelRef={sidebarRef}
@@ -79,13 +133,12 @@ export function AppShell() {
           maxSize={300}
           collapsible
           collapsedSize={0}
-          className="hidden md:block"
         >
           <Sidebar />
         </ResizablePanel>
-        <ResizableHandle withHandle className={cn("hidden md:flex", isGameRoute && "md:hidden")} />
+        <ResizableHandle withHandle className={cn(isGameRoute && "hidden")} />
         <ResizablePanel minSize={40} className="relative">
-          <div className={cn("hidden md:block absolute left-0 top-1/2 -translate-y-1/2 z-30 group", isGameRoute && "md:hidden")}>
+          <div className={cn("absolute left-0 top-1/2 -translate-y-1/2 z-30 group", isGameRoute && "hidden")}>
             <Button
               size="icon"
               variant="ghost"
@@ -113,6 +166,7 @@ export function AppShell() {
           </main>
         </ResizablePanel>
       </ResizablePanelGroup>
+      </div>
     </div>
   );
 }

@@ -1,13 +1,13 @@
 import type { CSSProperties } from "react";
-import { withAlpha } from "@/components/game/game.theme";
+import { withAlpha } from "@/themes/gameTheme";
 import { useTheme, getTheme } from "@/hooks/useTheme";
 
 export function usePromptActionColors() {
-  return useTheme().game.promptAction;
+  return useTheme().gameTheme.promptAction;
 }
 
 export function getPromptActionButtonStyle(baseColor: string): CSSProperties {
-  const theme = getTheme().game;
+  const theme = getTheme().gameTheme;
   const resolved = baseColor || theme.promptAction.passAction;
   const shadow = `0 4px 14px ${withAlpha(resolved, 0.28)}`;
 

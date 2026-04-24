@@ -2,7 +2,7 @@ import { memo } from "react";
 import { cn } from "@/lib/utils";
 import { extractManaLetters } from "@/components/game/manaUtils";
 import { manaSymbolUrl } from "@/components/game/game.utils";
-import { withAlpha, type ManaLetter } from "@/components/game/game.theme";
+import { withAlpha, type ManaLetter } from "@/themes/gameTheme";
 import { useTheme } from "@/hooks/useTheme";
 
 /** Alpha applied to the mana-letter tint when used as the tap-button fill. */
@@ -24,7 +24,7 @@ export const ManaAbilityTapButton = memo(function ManaAbilityTapButton({
 }) {
   const letters = extractManaLetters(description);
   const letter = (letters[0] ?? null) as ManaLetter | null;
-  const themeColors = useTheme().game;
+  const themeColors = useTheme().gameTheme;
   const bgColor = letter
     ? withAlpha(themeColors.mana[letter], MANA_BUTTON_ALPHA)
     : withAlpha(themeColors.promptAction.cancel, MANA_BUTTON_FALLBACK_ALPHA);

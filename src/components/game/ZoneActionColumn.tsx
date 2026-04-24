@@ -1,6 +1,7 @@
 import type { CSSProperties, ReactNode } from "react";
 import { cn } from "@/lib/utils";
-import { withAlpha, type GameFontSizes } from "@/components/game/game.theme";
+import { withAlpha } from "@/themes/gameTheme";
+import type { GameFontSizes } from "@/themes";
 import { useTheme } from "@/hooks/useTheme";
 import { LibraryZoneTile } from "@/components/game/zones";
 import { CommandZoneTile } from "@/components/game/panels/CommandZoneTile";
@@ -164,8 +165,8 @@ export function ZoneActionColumn({
   orientation = "vertical",
   leading,
 }: ZoneActionColumnProps) {
-  const themeColors = useTheme().game;
-  const fontSizes = useTheme().fontSizes;
+  const themeColors = useTheme().gameTheme;
+  const fontSizes = useTheme().gameTheme.fontSizes;
   const graveyardTop = graveyard && graveyard.length > 0 ? graveyard[graveyard.length - 1] : undefined;
   const exileTop = exile && exile.length > 0 ? exile[exile.length - 1] : undefined;
   const items = {

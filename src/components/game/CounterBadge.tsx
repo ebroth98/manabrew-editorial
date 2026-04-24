@@ -1,5 +1,5 @@
 import { cn } from "@/lib/utils";
-import type { GameThemeColors } from "@/hooks/useTheme";
+import type { GameThemeColors } from "@/themes/gameTheme";
 
 // ---------------------------------------------------------------------------
 // Counter configuration registry

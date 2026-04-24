@@ -1,4 +1,4 @@
-import type { ThemePreset } from "./index";
+import type { ThemePreset } from "./presets";
 import { buildGameColors, type BasePalette } from "./buildGameColors";
 
 /** Atom One Dark palette. Comment grey doubles as the muted label. */
@@ -27,6 +27,8 @@ const palette: BasePalette = {
   brown:    "#d19a66",
   paper:    "#abb2bf",
   poison:   "#7a9c61",           // darker / mossier one-dark green
+  promptPass:    "#61afef",     // blue
+  promptDefense: "#56b6c2",     // teal
   manaW:    "#abb2bf",
   manaU:    "#61afef",
   manaB:    "#3b3f4c",
@@ -91,25 +93,7 @@ const preset: ThemePreset = {
     warning: "#df7c20",
     overlay: "#0d0f11",
   },
-  gameColors: {
-    "activeAction.priority": "#c678dd",
-    "activeAction.turnText": "#e5c07b",
-    "activeAction.myTurnRing": "#e5c07b",
-    "activeAction.opponentTurnRing": "#e5c07b",
-    "highlight": "#d19a66",
-    "hand.playableBorder": "rgba(171, 178, 191, 0.7)",
-    "promptAction.default": "#61afef",
-    "promptAction.passPriority": "#61afef",
-    "promptAction.passUntilEnd": "#528bff",
-    "promptAction.cancel": "#5c6370",
-    "promptAction.pacificAction": "#56b6c2",
-    "arrow.attack": "rgba(209, 154, 102, 0.88)",
-    "arrow.block": "rgba(224, 108, 117, 0.88)",
-    "arrow.hostileTarget": "rgba(224, 108, 117, 0.88)",
-    "arrow.friendlyTarget": "rgba(171, 178, 191, 0.88)",
-    "cardRing": "#e5c07b",
-    ...buildGameColors(palette),
-    },
-    };
+  gameColors: buildGameColors(palette),
+};
 
 export default preset;

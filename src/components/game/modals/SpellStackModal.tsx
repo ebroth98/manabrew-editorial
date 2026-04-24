@@ -22,7 +22,7 @@ interface SpellStackModalProps {
 export function SpellStackModal({ stack, validSpellIds, onTarget, onCancel }: SpellStackModalProps) {
   const preview = useCardPreview();
 
-  const themeColors = useTheme().game;
+  const themeColors = useTheme().gameTheme;
   const ringColor = themeColors.cardRing;
 
   const isTargeting = validSpellIds.length > 0;

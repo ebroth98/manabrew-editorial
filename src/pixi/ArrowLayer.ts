@@ -1,5 +1,5 @@
 import { Graphics } from "pixi.js";
-import type { AppTheme } from "@/hooks/useTheme";
+import type { Theme } from "@/hooks/useTheme";
 import { getTheme } from "@/hooks/useTheme";
 import { hexToNum, colorAlpha } from "./colorUtils";
 import type { ArrowType } from "./types";
@@ -90,18 +90,23 @@ function sampleQuadratic(
 }
 
 // ── Arrow colors from theme ────────────────────────────────────────────────
+function safeColor(raw: string, fallback: number, fallbackAlpha = 0.88): { color: number; alpha: number } {
+  if (!raw || !raw.trim()) return { color: fallback, alpha: fallbackAlpha };
+  return { color: hexToNum(raw), alpha: colorAlpha(raw) };
+}
+
 function getArrowColor(
   type: ArrowType,
-  theme: AppTheme,
+  theme: Theme,
 ): { color: number; alpha: number } {
-  const g = theme.game;
+  const g = theme.gameTheme;
   switch (type) {
     case "attack":
-      return { color: hexToNum(g.arrow.attack), alpha: colorAlpha(g.arrow.attack) };
+      return safeColor(g.arrow.attack, 0xff8a00);
     case "block":
-      return { color: hexToNum(g.arrow.block), alpha: colorAlpha(g.arrow.block) };
+      return safeColor(g.arrow.block, 0xd22828);
     case "placement":
-      return { color: hexToNum(g.activeAction.active), alpha: PLACEMENT_ARROW_ALPHA };
+      return safeColor(g.activeAction.active, 0xfb923c, PLACEMENT_ARROW_ALPHA);
   }
 }
 
@@ -117,7 +122,7 @@ export class ArrowLayer {
 
   // Seeded synchronously from the active preset so the first tick before
   // `setTheme` fires still draws theme-correct arrows.
-  private theme: AppTheme = getTheme();
+  private theme: Theme = getTheme();
   private arrows: ArrowDef[] = [];
   private dashOffset = 0;
 
@@ -140,7 +145,7 @@ export class ArrowLayer {
     return this.root;
   }
 
-  setTheme(theme: AppTheme): void {
+  setTheme(theme: Theme): void {
     this.theme = theme;
     if (this.arrows.length > 0) this.redraw();
   }
@@ -200,7 +205,7 @@ export class ArrowLayer {
     this.shadowGfx.moveTo(x1, y1 + SHADOW_OFFSET_Y);
     this.shadowGfx.quadraticCurveTo(cx, cy + SHADOW_OFFSET_Y, x2, y2 + SHADOW_OFFSET_Y);
     this.shadowGfx.stroke({
-      color: hexToNum(this.theme.game.canvas.shadow),
+      color: hexToNum(this.theme.gameTheme.canvas.shadow),
       width: SHADOW_WIDTH,
       alpha: alpha * SHADOW_ALPHA,
       cap: "round",
@@ -305,7 +310,7 @@ export class ArrowLayer {
     this.headGfx.lineTo(notchX, notchY + SHADOW_OFFSET_Y);
     this.headGfx.lineTo(rightX, rightY + SHADOW_OFFSET_Y);
     this.headGfx.closePath();
-    this.headGfx.fill({ color: this.theme.game.canvas.shadow, alpha: alpha * SHADOW_ALPHA });
+    this.headGfx.fill({ color: this.theme.gameTheme.canvas.shadow, alpha: alpha * SHADOW_ALPHA });
 
     // Filled arrowhead with a subtle concave base for a sleek silhouette.
     this.headGfx.moveTo(tipX, tipY);

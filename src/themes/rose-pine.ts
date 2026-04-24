@@ -1,4 +1,4 @@
-import type { ThemePreset } from "./index";
+import type { ThemePreset } from "./presets";
 import { buildGameColors, type BasePalette } from "./buildGameColors";
 
 /** Rose Pine palette — muted iris, rose, and pine tones.  The canonical
@@ -29,6 +29,8 @@ const palette: BasePalette = {
   brown:    "#f6c177",
   paper:    "#e0def4",
   poison:   "#70978a",           // darker mint sibling of rose-pine green
+  promptPass:    "#c4a7e7",     // iris
+  promptDefense: "#9ccfd8",     // foam
   manaW:    "#ebbcba",
   manaU:    "#31748f",
   manaB:    "#403d52",
@@ -93,25 +95,7 @@ const preset: ThemePreset = {
     warning: "#d98e26",
     overlay: "#0b0a10",
   },
-  gameColors: {
-    "activeAction.priority": "#c4a7e7",
-    "activeAction.turnText": "#f6c177",
-    "activeAction.myTurnRing": "#f6c177",
-    "activeAction.opponentTurnRing": "#f6c177",
-    "highlight": "#ea9a97",
-    "hand.playableBorder": "rgba(224, 222, 244, 0.7)",
-    "promptAction.default": "#c4a7e7",
-    "promptAction.passPriority": "#c4a7e7",
-    "promptAction.passUntilEnd": "#907aa9",
-    "promptAction.cancel": "#6e6a86",
-    "promptAction.pacificAction": "#9ccfd8",
-    "arrow.attack": "rgba(246, 193, 119, 0.88)",
-    "arrow.block": "rgba(235, 111, 146, 0.88)",
-    "arrow.hostileTarget": "rgba(235, 111, 146, 0.88)",
-    "arrow.friendlyTarget": "rgba(156, 207, 216, 0.88)",
-    "cardRing": "#f6c177",
-    ...buildGameColors(palette),
-  },
+  gameColors: buildGameColors(palette),
 };
 
 export default preset;

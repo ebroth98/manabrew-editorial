@@ -1,5 +1,5 @@
 import { cn } from "@/lib/utils";
-import { withAlpha } from "./game.theme";
+import { withAlpha } from "@/themes/gameTheme";
 import { useTheme } from "@/hooks/useTheme";
 
 interface TurnStateSectionProps {
@@ -10,7 +10,7 @@ interface TurnStateSectionProps {
 }
 
 export function TurnStateSection({ turn, activePlayerName, isMyTurn, isMyPriority }: TurnStateSectionProps) {
-  const themeColors = useTheme().game;
+  const themeColors = useTheme().gameTheme;
 
   return (
     <div className="rounded-lg px-2.5 py-2 bg-muted/25">

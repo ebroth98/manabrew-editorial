@@ -1,7 +1,7 @@
 import { cn } from "@/lib/utils";
 import type { HandActionOption } from "@/stores/useGameUIStore";
 import { TextWithMana } from "@/components/game/TextWithMana";
-import { withAlpha } from "../game.theme";
+import { withAlpha } from "@/themes/gameTheme";
 import { useTheme } from "@/hooks/useTheme";
 import { useEffect } from "react";
 
@@ -11,7 +11,7 @@ interface HandCardActionsProps {
 }
 
 export function HandCardActions({ actions, onSelectAction }: HandCardActionsProps) {
-  const themeColors = useTheme().game;
+  const themeColors = useTheme().gameTheme;
   const ringColor = themeColors.cardRing;
 
   useEffect(() => {

@@ -1,4 +1,4 @@
-import type { ThemePreset } from "./index";
+import type { ThemePreset } from "./presets";
 import { buildGameColors, type BasePalette } from "./buildGameColors";
 
 /** Solarized Dark palette by Ethan Schoonover. */
@@ -27,6 +27,8 @@ const palette: BasePalette = {
   brown:    "#cb4b16",
   paper:    "#93a1a1",
   poison:   "#657400",          // darker olive sibling of solarized green
+  promptPass:    "#6c71c4",     // violet
+  promptDefense: "#268bd2",     // blue
   manaW:    "#eee8d5",          // base2
   manaU:    "#268bd2",
   manaB:    "#073642",
@@ -91,25 +93,7 @@ const preset: ThemePreset = {
     warning: "#d05825",
     overlay: "#010b0e",
   },
-  gameColors: {
-    "activeAction.priority": "#6c71c4",
-    "activeAction.turnText": "#b58900",
-    "activeAction.myTurnRing": "#b58900",
-    "activeAction.opponentTurnRing": "#b58900",
-    "highlight": "#cb4b16",
-    "hand.playableBorder": "rgba(253, 246, 227, 0.7)",
-    "promptAction.default": "#6c71c4",
-    "promptAction.passPriority": "#6c71c4",
-    "promptAction.passUntilEnd": "#586e75",
-    "promptAction.cancel": "#657b83",
-    "promptAction.pacificAction": "#268bd2",
-    "arrow.attack": "rgba(181, 137, 0, 0.88)",
-    "arrow.block": "rgba(220, 50, 47, 0.88)",
-    "arrow.hostileTarget": "rgba(220, 50, 47, 0.88)",
-    "arrow.friendlyTarget": "rgba(38, 139, 210, 0.88)",
-    "cardRing": "#b58900",
-    ...buildGameColors(palette),
-  },
+  gameColors: buildGameColors(palette),
 };
 
 export default preset;

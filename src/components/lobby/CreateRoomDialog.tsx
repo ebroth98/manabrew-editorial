@@ -76,7 +76,7 @@ export function CreateRoomDialog({ open, onOpenChange }: CreateRoomDialogProps) 
           {/* Format */}
           <div className="space-y-1.5">
             <Label className="text-xs font-medium">Format</Label>
-            <div className="grid grid-cols-3 gap-2 max-h-[240px] overflow-y-auto">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-[240px] overflow-y-auto">
               {FORMATS.map((f) => {
                 const Icon = f.icon;
                 return (

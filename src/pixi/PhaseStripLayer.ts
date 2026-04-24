@@ -4,7 +4,7 @@
  */
 
 import { Container, Graphics, Text, TextStyle, Sprite } from "pixi.js";
-import type { AppTheme } from "@/hooks/useTheme";
+import type { Theme } from "@/hooks/useTheme";
 import { hexToNum } from "./colorUtils";
 import { applyIcon, ICON_COLORS } from "./panelIcons";
 
@@ -152,7 +152,7 @@ export interface PhaseStripCallbacks {
 
 export class PhaseStripLayer {
   readonly container: Container;
-  private theme: AppTheme;
+  private theme: Theme;
   private callbacks: PhaseStripCallbacks = {};
   private lastState: PhaseStripState | null = null;
   private cells: PhaseCell[];
@@ -168,7 +168,7 @@ export class PhaseStripLayer {
   private stripHitArea: Graphics;
   private hoveredCellIndex = -1;
 
-  constructor(theme: AppTheme) {
+  constructor(theme: Theme) {
     this.theme = theme;
     this.container = new Container();
     this.container.label = "phaseStrip";
@@ -262,12 +262,12 @@ export class PhaseStripLayer {
     }
   }
 
-  setTheme(theme: AppTheme): void {
+  setTheme(theme: Theme): void {
     this.theme = theme;
-    normalStyle.fill = theme.game.textMuted;
-    activeStyle.fill = theme.game.textOnTinted;
-    combatActiveStyle.fill = theme.game.textOnTinted;
-    enabledStyle.fill = theme.game.textGhost;
+    normalStyle.fill = theme.gameTheme.textMuted;
+    activeStyle.fill = theme.gameTheme.textOnTinted;
+    combatActiveStyle.fill = theme.gameTheme.textOnTinted;
+    enabledStyle.fill = theme.gameTheme.textGhost;
   }
 
   setCallbacks(cb: PhaseStripCallbacks): void {
@@ -281,8 +281,8 @@ export class PhaseStripLayer {
 
   update(state: PhaseStripState): void {
     this.lastState = state;
-    const t = this.theme.game;
-    const appTheme = this.theme.app;
+    const t = this.theme.gameTheme;
+    const appTheme = this.theme.appTheme;
     const y = (this.canvasHeight / 2) - CELL_H / 2;
     const centerX = this.canvasWidth / 2;
 

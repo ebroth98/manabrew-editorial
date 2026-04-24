@@ -2,7 +2,7 @@ import { Container, Sprite, Texture, Graphics, Text, TextStyle } from "pixi.js";
 import type { Card } from "@/types/openmagic";
 import { CARD_W, CARD_H } from "@/components/game/game.constants";
 import { loadCardTexture } from "./textureCache";
-import type { AppTheme } from "@/hooks/useTheme";
+import type { Theme } from "@/hooks/useTheme";
 import { getTheme } from "@/hooks/useTheme";
 import { hexToNum } from "./colorUtils";
 
@@ -15,17 +15,17 @@ import { hexToNum } from "./colorUtils";
 // Seeded from the active preset so every sprite can draw correctly from
 // construction time; `setCardSpriteTheme` then keeps it in sync with live
 // preset / overrides changes.
-let activeTheme: AppTheme = getTheme();
+let activeTheme: Theme = getTheme();
 
 /** TextStyle instances whose `fill` tracks the theme's `textOnTinted` colour.
  *  Each call to `setCardSpriteTheme` updates them in place so already-rendered
  *  Text objects repaint without needing to be replaced. */
 const TINTED_TEXT_STYLES: TextStyle[] = [];
 
-export function setCardSpriteTheme(theme: AppTheme): void {
+export function setCardSpriteTheme(theme: Theme): void {
   activeTheme = theme;
   for (const style of TINTED_TEXT_STYLES) {
-    style.fill = theme.game.textOnTinted;
+    style.fill = theme.gameTheme.textOnTinted;
   }
 }
 
@@ -42,7 +42,7 @@ const TEXT_RASTER_RESOLUTION = 5;
 // `tintedTextFill` is recomputed whenever the active theme changes; each
 // registered TextStyle has its `fill` rewritten in place so already-
 // rendered Text objects re-tint without being replaced.
-const tintedTextFill = (): string => activeTheme.game.textOnTinted;
+const tintedTextFill = (): string => activeTheme.gameTheme.textOnTinted;
 
 const PT_STYLE = registerTintedTextStyle(new TextStyle({
   fontFamily: "system-ui, -apple-system, sans-serif",
@@ -96,7 +96,7 @@ const MAX_VISIBLE_KEYWORDS = 4;
 // unobstructed regardless of hover scale.
 const BADGE_TITLE_BAND_FRAC = 0.1;
 
-type CardStatusKey = keyof AppTheme["game"]["cardStatus"];
+type CardStatusKey = keyof Theme["gameTheme"]["cardStatus"];
 
 interface BadgeRule {
   label: string;
@@ -116,13 +116,13 @@ const BADGE_RULES: BadgeRule[] = [
 ];
 
 function badgeColor(key: CardStatusKey): number {
-  return hexToNum(activeTheme.game.cardStatus[key]);
+  return hexToNum(activeTheme.gameTheme.cardStatus[key]);
 }
 
 /** Static mapping from counter-type string (as it appears on the card
- *  state) to the `AppTheme.game.counter` key. Any type not listed here
+ *  state) to the `Theme.gameTheme.counter` key. Any type not listed here
  *  falls through to `counter.default`. */
-const COUNTER_TYPE_KEYS: Record<string, keyof AppTheme["game"]["counter"]> = {
+const COUNTER_TYPE_KEYS: Record<string, keyof Theme["gameTheme"]["counter"]> = {
   P1P1:      "p1p1",
   M1M1:      "m1m1",
   Loyalty:   "loyalty",
@@ -142,7 +142,7 @@ const COUNTER_TYPE_KEYS: Record<string, keyof AppTheme["game"]["counter"]> = {
 };
 
 function getCounterColor(type: string): number {
-  const palette = activeTheme.game.counter;
+  const palette = activeTheme.gameTheme.counter;
   const key = COUNTER_TYPE_KEYS[type];
   return hexToNum(key ? palette[key] : palette.default);
 }
@@ -164,7 +164,7 @@ const parseStat = (value: string | undefined): number => {
 };
 
 const resolvePTBgColor = (card: Card): number => {
-  const pt = activeTheme.game.pt;
+  const pt = activeTheme.gameTheme.pt;
   const toughness = parseStat(card.toughness);
   if (card.damage != null && card.damage >= toughness) return hexToNum(pt.lethal);
   if (card.basePower == null) return hexToNum(pt.neutral);
@@ -207,8 +207,8 @@ export class CardSprite extends Container {
 
     this.placeholderGfx = new Graphics();
     this.placeholderGfx.roundRect(0, 0, CARD_W, CARD_H, CARD_RADIUS);
-    this.placeholderGfx.fill({ color: hexToNum(activeTheme.game.cardPlaceholder.fill), alpha: 0.8 });
-    this.placeholderGfx.stroke({ color: hexToNum(activeTheme.game.cardPlaceholder.stroke), width: 1 });
+    this.placeholderGfx.fill({ color: hexToNum(activeTheme.gameTheme.cardPlaceholder.fill), alpha: 0.8 });
+    this.placeholderGfx.stroke({ color: hexToNum(activeTheme.gameTheme.cardPlaceholder.stroke), width: 1 });
     this.addChild(this.placeholderGfx);
 
     this.nameText = new Text({ text: card.name, style: NAME_STYLE });
@@ -220,7 +220,7 @@ export class CardSprite extends Container {
 
     this.imageMask = new Graphics();
     this.imageMask.roundRect(0, 0, CARD_W, CARD_H, CARD_RADIUS);
-    this.imageMask.fill(hexToNum(activeTheme.game.canvas.neutral));
+    this.imageMask.fill(hexToNum(activeTheme.gameTheme.canvas.neutral));
     this.addChild(this.imageMask);
 
     this.imageSpr = new Sprite(Texture.EMPTY);
@@ -395,7 +395,7 @@ export class CardSprite extends Container {
       const bw = txt.width + 8;
       bg.roundRect(0, 0, bw, COUNTER_HEIGHT, COUNTER_RADIUS);
       bg.fill({ color, alpha: 0.9 });
-      bg.stroke({ color: hexToNum(activeTheme.game.canvas.shadow), width: 1, alpha: 0.2 });
+      bg.stroke({ color: hexToNum(activeTheme.gameTheme.canvas.shadow), width: 1, alpha: 0.2 });
 
       badge.addChild(bg);
       badge.addChild(txt);
@@ -437,7 +437,7 @@ export class CardSprite extends Container {
       }
 
       bg.roundRect(0, 0, cw, rowH, CHIP_RADIUS);
-      bg.fill({ color: hexToNum(activeTheme.game.canvas.shadow), alpha: 0.6 });
+      bg.fill({ color: hexToNum(activeTheme.gameTheme.canvas.shadow), alpha: 0.6 });
 
       chip.addChild(bg);
       chip.addChild(txt);
@@ -457,7 +457,7 @@ export class CardSprite extends Container {
     this.drawRingStroke(color, alpha);
   }
 
-  setHighlight(active: boolean, color = hexToNum(activeTheme.game.cardRing), alpha = 0.3): void {
+  setHighlight(active: boolean, color = hexToNum(activeTheme.gameTheme.cardRing), alpha = 0.3): void {
     this.ringGfx.clear();
     if (!active) return;
     this.drawRingStroke(color, 1);

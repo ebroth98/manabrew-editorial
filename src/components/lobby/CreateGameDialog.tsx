@@ -393,7 +393,7 @@ export function CreateGameDialog({
                   No preset decks match your search.
                 </p>
               ) : (
-              <div className="grid grid-cols-2 xl:grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
                 {filteredPresetEntries.map((deck) => (
                   <DeckSelectionCard
                     key={deck.id}
@@ -428,7 +428,7 @@ export function CreateGameDialog({
                   {searchLower ? "No saved decks match your search." : "No saved decks. Build one in the Deck Editor."}
                 </p>
               ) : (
-                <div className="grid grid-cols-2 xl:grid-cols-3 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
                   {filteredUserDecks.map((d) => {
                     const validation = validateDeckSections({
                       deckList: d.deckList,

@@ -3,7 +3,7 @@ import { MANA_COLORS } from "../game.constants";
 import { useTheme } from "@/hooks/useTheme";
 
 export function ManaPool({ pool }: { pool: Record<string, number> }) {
-  const fontSizes = useTheme().fontSizes;
+  const fontSizes = useTheme().gameTheme.fontSizes;
   return (
     <div className="flex flex-row items-center gap-1 flex-nowrap">
       {MANA_COLORS.flatMap(({ key }) => {

@@ -1,4 +1,4 @@
-import type { ThemePreset } from "./index";
+import type { ThemePreset } from "./presets";
 import { buildGameColors, type BasePalette } from "./buildGameColors";
 
 /** Nord aurora + frost + polar night hues, mapped to the shared game token
@@ -30,6 +30,8 @@ const palette: BasePalette = {
   brown:    "#d08770",
   paper:    "#d8dee9",           // snow storm 0
   poison:   "#8b9d6f",           // darker olive sibling of aurora green
+  promptPass:    "#5e81ac",      // frost 3 — pass priority
+  promptDefense: "#88c0d0",      // frost 1 — declare blockers
   manaW:    "#eceff4",
   manaU:    "#81a1c1",
   manaB:    "#434c5e",
@@ -94,25 +96,7 @@ const preset: ThemePreset = {
     warning: "#cc9933",
     overlay: "#090a0c",
   },
-  gameColors: {
-    "activeAction.priority": "#b48ead",
-    "activeAction.turnText": "#ebcb8b",
-    "activeAction.myTurnRing": "#ebcb8b",
-    "activeAction.opponentTurnRing": "#ebcb8b",
-    "highlight": "#d08770",
-    "hand.playableBorder": "rgba(236, 239, 244, 0.7)",
-    "promptAction.default": "#5e81ac",
-    "promptAction.passPriority": "#5e81ac",
-    "promptAction.passUntilEnd": "#4c6a93",
-    "promptAction.cancel": "#4c566a",
-    "promptAction.pacificAction": "#88c0d0",
-    "arrow.attack": "rgba(235, 203, 139, 0.88)",
-    "arrow.block": "rgba(191, 97, 106, 0.88)",
-    "arrow.hostileTarget": "rgba(191, 97, 106, 0.88)",
-    "arrow.friendlyTarget": "rgba(136, 192, 208, 0.88)",
-    "cardRing": "#ebcb8b",
-    ...buildGameColors(palette),
-  },
+  gameColors: buildGameColors(palette),
 };
 
 export default preset;

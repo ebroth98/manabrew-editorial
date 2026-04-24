@@ -37,7 +37,7 @@ export function DeckLabelsModal({ open, onClose }: DeckLabelsModalProps) {
   const [newLabel, setNewLabel] = useState("");
   const [newLabelColor, setNewLabelColor] = useState("");
   const { currentDeck, addDeckLabel, removeDeckLabel, updateDeckLabelColor, saveCurrentDeck } = useDeckStore();
-  const themeColors = useTheme().game;
+  const themeColors = useTheme().gameTheme;
   const defaultLabelColor = themeColors.promptAction.cancel;
   const labels = currentDeck.labels ?? [];
 

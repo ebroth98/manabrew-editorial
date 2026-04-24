@@ -10,14 +10,14 @@
 
 import { TextStyle } from "pixi.js";
 import { CARD_W } from "@/components/game/game.constants";
-import type { AppTheme } from "@/hooks/useTheme";
+import type { Theme } from "@/hooks/useTheme";
 import { getTheme } from "@/hooks/useTheme";
 
 const SYSTEM_FONT_FAMILY = "system-ui, -apple-system, sans-serif";
 // Resolve the current preset synchronously so the styles below have
 // concrete fill values from construction — `new TextStyle({ fill: "" })`
 // would otherwise fault Pixi's colour parser.
-const initialTheme = getTheme().game;
+const initialTheme = getTheme().gameTheme;
 
 export const OVERLAY_LABEL_STYLE = new TextStyle({
   fontFamily: SYSTEM_FONT_FAMILY,
@@ -53,9 +53,9 @@ export const SELECTION_BADGE_STYLE = new TextStyle({
  * Rewrite the `fill` of every shared Pixi text style so it tracks the
  * active theme. Call on each theme-change tick.
  */
-export function setPixiTextStyleTheme(theme: AppTheme): void {
-  OVERLAY_LABEL_STYLE.fill = theme.game.textOnTinted;
-  SELECTION_BADGE_STYLE.fill = theme.game.textOnTinted;
-  GHOST_LABEL_STYLE.fill = theme.game.textGhost;
-  EMPTY_LABEL_STYLE.fill = theme.game.textMuted;
+export function setPixiTextStyleTheme(theme: Theme): void {
+  OVERLAY_LABEL_STYLE.fill = theme.gameTheme.textOnTinted;
+  SELECTION_BADGE_STYLE.fill = theme.gameTheme.textOnTinted;
+  GHOST_LABEL_STYLE.fill = theme.gameTheme.textGhost;
+  EMPTY_LABEL_STYLE.fill = theme.gameTheme.textMuted;
 }

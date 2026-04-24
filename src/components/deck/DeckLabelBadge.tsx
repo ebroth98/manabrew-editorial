@@ -25,7 +25,7 @@ interface DeckLabelBadgeProps {
 }
 
 export function DeckLabelBadge({ label, size = "sm", className }: DeckLabelBadgeProps) {
-  const themeColors = useTheme().game;
+  const themeColors = useTheme().gameTheme;
   return (
     <span
       className={cn("rounded-full font-medium border leading-tight", SIZE_CLASSES[size], className)}

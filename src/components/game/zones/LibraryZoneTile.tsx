@@ -1,5 +1,5 @@
 import { cn } from "@/lib/utils";
-import { withAlpha } from "@/components/game/game.theme";
+import { withAlpha } from "@/themes/gameTheme";
 import { CARD_BACK_IMAGE_URL } from "@/components/game/game.constants";
 import { useTheme } from "@/hooks/useTheme";
 
@@ -14,8 +14,8 @@ export function LibraryZoneTile({
   onClick,
   label = "Lib",
 }: LibraryZoneTileProps) {
-  const themeColors = useTheme().game;
-  const fontSizes = useTheme().fontSizes;
+  const themeColors = useTheme().gameTheme;
+  const fontSizes = useTheme().gameTheme.fontSizes;
   const ringColor = themeColors.activeAction.active;
   const empty = count === 0;
 

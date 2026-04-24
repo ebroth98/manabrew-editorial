@@ -29,7 +29,7 @@ export class MarqueeHandler {
     this.gfx.zIndex = MARQUEE_Z_INDEX;
     // Seed the marquee colour from the current theme's `cardRing` when the
     // caller doesn't supply one; `setColor` keeps it in sync later.
-    this.color = color ?? hexToNum(getTheme().game.cardRing);
+    this.color = color ?? hexToNum(getTheme().gameTheme.cardRing);
     this.fillAlpha = fillAlpha;
   }
 

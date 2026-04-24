@@ -1,4 +1,4 @@
-import type { ThemePreset } from "./index";
+import type { ThemePreset } from "./presets";
 import { buildGameColors, type BasePalette } from "./buildGameColors";
 
 /** Gruvbox dark palette — warm earthy tones built around #282828 bg. */
@@ -27,6 +27,8 @@ const palette: BasePalette = {
   brown:    "#bdae93",
   paper:    "#ebdbb2",
   poison:   "#98971a",          // gruvbox dark-yellow — classic infect olive
+  promptPass:    "#83a598",     // blue
+  promptDefense: "#8ec07c",     // teal
   manaW:    "#ebdbb2",
   manaU:    "#83a598",
   manaB:    "#3c3836",
@@ -91,25 +93,7 @@ const preset: ThemePreset = {
     warning: "#e67519",
     overlay: "#0f0f0f",
   },
-  gameColors: {
-    "activeAction.priority": "#b8bb26",
-    "activeAction.turnText": "#fabd2f",
-    "activeAction.myTurnRing": "#fabd2f",
-    "activeAction.opponentTurnRing": "#fabd2f",
-    "highlight": "#fe8019",
-    "hand.playableBorder": "rgba(235, 219, 178, 0.7)",
-    "promptAction.default": "#83a598",
-    "promptAction.passPriority": "#83a598",
-    "promptAction.passUntilEnd": "#689d6a",
-    "promptAction.cancel": "#928374",
-    "promptAction.pacificAction": "#8ec07c",
-    "arrow.attack": "rgba(254, 128, 25, 0.88)",
-    "arrow.block": "rgba(251, 73, 52, 0.88)",
-    "arrow.hostileTarget": "rgba(251, 73, 52, 0.88)",
-    "arrow.friendlyTarget": "rgba(131, 165, 152, 0.88)",
-    "cardRing": "#fabd2f",
-    ...buildGameColors(palette),
-  },
+  gameColors: buildGameColors(palette),
 };
 
 export default preset;

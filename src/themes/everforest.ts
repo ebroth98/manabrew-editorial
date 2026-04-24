@@ -1,4 +1,4 @@
-import type { ThemePreset } from "./index";
+import type { ThemePreset } from "./presets";
 import { buildGameColors, type BasePalette } from "./buildGameColors";
 
 /** Everforest dark palette — warm greens and muted autumn tones. */
@@ -27,6 +27,8 @@ const palette: BasePalette = {
   brown:    "#e69875",
   paper:    "#d3c6aa",
   poison:   "#85a06a",           // mossy sibling of everforest green
+  promptPass:    "#a7c080",     // green
+  promptDefense: "#7fbbb3",     // blue
   manaW:    "#d3c6aa",
   manaU:    "#7fbbb3",
   manaB:    "#475258",
@@ -91,25 +93,7 @@ const preset: ThemePreset = {
     warning: "#d2772d",
     overlay: "#090b0a",
   },
-  gameColors: {
-    "activeAction.priority": "#a7c080",
-    "activeAction.turnText": "#dbbc7f",
-    "activeAction.myTurnRing": "#dbbc7f",
-    "activeAction.opponentTurnRing": "#dbbc7f",
-    "highlight": "#e69875",
-    "hand.playableBorder": "rgba(211, 198, 170, 0.7)",
-    "promptAction.default": "#a7c080",
-    "promptAction.passPriority": "#a7c080",
-    "promptAction.passUntilEnd": "#83c092",
-    "promptAction.cancel": "#859289",
-    "promptAction.pacificAction": "#7fbbb3",
-    "arrow.attack": "rgba(219, 188, 127, 0.88)",
-    "arrow.block": "rgba(230, 126, 128, 0.88)",
-    "arrow.hostileTarget": "rgba(230, 126, 128, 0.88)",
-    "arrow.friendlyTarget": "rgba(131, 192, 146, 0.88)",
-    "cardRing": "#dbbc7f",
-    ...buildGameColors(palette),
-    },
-    };
+  gameColors: buildGameColors(palette),
+};
 
 export default preset;

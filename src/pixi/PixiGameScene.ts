@@ -20,14 +20,13 @@ import type {
   ScreenPos,
   ScreenBounds,
 } from "./types";
-import type { AppTheme } from "@/hooks/useTheme";
+import type { Theme } from "@/hooks/useTheme";
 import { getTheme } from "@/hooks/useTheme";
 import { hexToNum } from "./colorUtils";
 import { CardSprite, setCardSpriteTheme } from "./CardSprite";
 import {
   CARD_W,
   CARD_H,
-  ZONE_COLUMN_RESERVED_PX,
 } from "@/components/game/game.constants";
 import { MarqueeHandler } from "./MarqueeHandler";
 import { DragHandler } from "./DragHandler";
@@ -209,8 +208,8 @@ export class PixiGameScene {
   // Seeded synchronously from the active preset so every draw call can
   // read theme colours without nullability checks — `setTheme` then keeps
   // it in sync with live preset / overrides changes.
-  private theme: AppTheme = getTheme();
-  private leftReserved = ZONE_COLUMN_RESERVED_PX;
+  private theme: Theme = getTheme();
+  private leftReserved = 0;
   private hoveredCardId: string | null = null;
   private battlefieldHoverClearTimer: number | null = null;
   /** Extra blocker rects (in canvas-local coords) — e.g. the PASS / phase-pass
@@ -219,6 +218,11 @@ export class PixiGameScene {
   /** Keep-out size anchored to the bottom-right of the canvas (recomputed
    * from current renderer dimensions so the rect stays valid after resize). */
   private bottomRightReserved: { width: number; height: number } | null = null;
+  /** Keep-out size anchored to the bottom-left of the canvas — the player
+   *  panel cluster (avatar + zones + mana). Replaces the old global
+   *  `leftReserved` approach so the grid can fill the full width for rows
+   *  above the panel. */
+  private bottomLeftReserved: { width: number; height: number } | null = null;
   /**
    * Set in `destroy()` so any late-firing effects (React unmount races) that
    * still hold a reference to this instance short-circuit instead of touching
@@ -417,7 +421,7 @@ export class PixiGameScene {
     };
   }
 
-  setTheme(theme: AppTheme): void {
+  setTheme(theme: Theme): void {
     if (this.destroyed) return;
     this.theme = theme;
     this.arrowLayer.setTheme(theme);
@@ -425,14 +429,10 @@ export class PixiGameScene {
     this.drawTableBackground();
   }
 
-  setReserved(bottom: number, left: number): void {
+  setReserved(bottom: number, left?: number): void {
     if (this.destroyed) return;
-    this.leftReserved = left;
-    // The drag handler still uses `bottom` to clamp free-drag Y so cards
-    // can't overlap the hand fan while the pointer is inside the hand strip;
-    // the grid itself ignores this because the hand blocker rect already
-    // marks those cells unusable.
-    this.dragHandler.setReserved(left, 0, bottom);
+    if (left !== undefined) this.leftReserved = left;
+    this.dragHandler.setReserved(this.leftReserved, 0, bottom);
   }
 
   /**
@@ -458,17 +458,34 @@ export class PixiGameScene {
     if (this.lastState) this.updateBattlefield(this.lastState);
   }
 
+  /**
+   * Reserve a fixed-size rectangle anchored to the canvas bottom-left for
+   * the player panel cluster (avatar + zones + mana). Pass `null` to clear.
+   */
+  setBottomLeftReserved(size: { width: number; height: number } | null): void {
+    if (this.destroyed) return;
+    this.bottomLeftReserved = size;
+    this.syncDragBlockers();
+    if (this.lastState) this.updateBattlefield(this.lastState);
+  }
+
   private syncDragBlockers(): void {
     this.dragHandler.setExtraBlockers(this.collectOverlayBlockers());
   }
 
-  /** External + bottom-right reserved rects resolved against current size. */
+  /** External + bottom reserved rects resolved against current size.
+   *  The bottom strip spans the full canvas width so no card can auto-
+   *  place in the UI row (hand fan, player panel, PASS button). */
   private collectOverlayBlockers(): BlockingRect[] {
     const rects = [...this.externalBlockers];
-    if (this.bottomRightReserved) {
+    // Merge bottom-left and bottom-right into a single full-width strip
+    // using the tallest reservation height.
+    const blH = this.bottomLeftReserved?.height ?? 0;
+    const brH = this.bottomRightReserved?.height ?? 0;
+    const bottomH = Math.max(blH, brH);
+    if (bottomH > 0) {
       const { width, height } = this.app.renderer;
-      const { width: w, height: h } = this.bottomRightReserved;
-      rects.push({ x: width - w, y: height - h, width: w, height: h });
+      rects.push({ x: 0, y: height - bottomH, width, height: bottomH });
     }
     return rects;
   }
@@ -795,14 +812,14 @@ export class PixiGameScene {
     const zone = this.getPlayZone();
     this.backgroundGfx.clear();
     this.backgroundGfx.roundRect(zone.x, zone.y, zone.width, zone.height, TABLE_RADIUS);
-    this.backgroundGfx.fill({ color: hexToNum(this.theme.game.canvas.background), alpha: BG_ALPHA_IDLE });
+    this.backgroundGfx.fill({ color: hexToNum(this.theme.gameTheme.canvas.background), alpha: BG_ALPHA_IDLE });
   }
 
   private drawDropTargetBackground(active: boolean): void {
     const zone = this.getPlayZone();
     this.backgroundGfx.clear();
     this.backgroundGfx.roundRect(zone.x, zone.y, zone.width, zone.height, TABLE_RADIUS);
-    this.backgroundGfx.fill({ color: hexToNum(this.theme.game.canvas.background), alpha: BG_ALPHA_DROP });
+    this.backgroundGfx.fill({ color: hexToNum(this.theme.gameTheme.canvas.background), alpha: BG_ALPHA_DROP });
     if (!active) {
       // Hide the grid skeleton when not dropping
       this.gridSkeletonGfx.visible = false;
@@ -817,7 +834,7 @@ export class PixiGameScene {
     const zone = this.getPlayZone();
     const blockers = [...this.collectOverlayBlockers(), ...this.collectHandBlockers()];
     const grid = computeGridLayout(zone, this.leftReserved, blockers, this.cardScale);
-    const color = hexToNum(this.theme.game.activeAction.active);
+    const color = hexToNum(this.theme.gameTheme.activeAction.active);
     const gfx = this.gridSkeletonGfx;
     gfx.clear();
 
@@ -859,7 +876,7 @@ export class PixiGameScene {
       return;
     }
     const grid = this.gridInfo;
-    const color = hexToNum(this.theme.game.activeAction.active);
+    const color = hexToNum(this.theme.gameTheme.activeAction.active);
     const occupied = new Map<string, string>();
     for (const [id, pos] of this.gridTargets) {
       if (draggingIds.has(id)) continue;
@@ -917,7 +934,7 @@ export class PixiGameScene {
     const h = CARD_H * this.cardScale;
     const cx = slot.x + w / 2;
     const cy = slot.y + h / 2;
-    const color = hexToNum(this.theme.game.activeAction.active);
+    const color = hexToNum(this.theme.gameTheme.activeAction.active);
 
     gfx.clear();
     gfx.roundRect(cx - w / 2, cy - h / 2, w, h, CARD_RADIUS);
@@ -1092,39 +1109,120 @@ export class PixiGameScene {
       this.pendingDropSlot = null;
     }
 
-    // Pass 2: auto-place remaining cards, biased toward the anchor for
-    // their card class.
+    // Pass 2: auto-place remaining cards following MTG tournament layout,
+    // grouped by permanent category:
+    //
+    //   Row 0  (closest to opponent): Creatures
+    //   Row 1  (middle):              Other non-lands (artifacts, enchantments, planeswalkers, …)
+    //   Row 2+ (closest to player):   Lands
+    //
+    // For mirrored (opponent) view the order flips — row 0 is their land
+    // zone (closest to them).  Each category first tries its preferred
+    // row(s), then overflows into any free cell.
+
     const centerX = zone.x + zone.width / 2;
-    const topAnchorY = zone.y + grid.cellH / 2;
-    const bottomAnchorY = zone.y + zone.height - grid.cellH / 2;
-    const nonLandAnchorY = this.mirrored ? bottomAnchorY : topAnchorY;
-    const landAnchorY = this.mirrored ? topAnchorY : bottomAnchorY;
-    for (const c of unplaced) {
-      const isLand = c.types.includes("Land");
-      const anchorX = centerX;
-      const anchorY = isLand ? landAnchorY : nonLandAnchorY;
-      const max = isLand ? MAX_LAND_SLOTS : MAX_GRID_SLOTS;
-      const sorted = cellsByDistance(grid, anchorX, anchorY);
+
+    // Find the last unblocked row — the bottom exclusion strip may block
+    // the geometrically last row(s).
+    let lastUsableRow = grid.rows - 1;
+    while (lastUsableRow > 0) {
+      const midCell = cellAt(grid, Math.floor(grid.cols / 2), lastUsableRow);
+      if (midCell && !midCell.blocked) break;
+      lastUsableRow--;
+    }
+
+    // Distribute usable rows across three zones. With ≥3 usable rows:
+    //   creatures = row 0, other = row 1, lands = row 2+
+    // With 2 usable rows: creatures = row 0, lands+other = row 1
+    // With 1 usable row: everything shares row 0
+    const usableRows = lastUsableRow + 1;
+    let creatureRows: number[];
+    let otherRows: number[];
+    let landRows: number[];
+    if (usableRows >= 3) {
+      creatureRows = [0];
+      otherRows = [];
+      for (let r = 1; r < lastUsableRow; r++) otherRows.push(r);
+      if (otherRows.length === 0) otherRows.push(1);
+      landRows = [lastUsableRow];
+    } else if (usableRows === 2) {
+      creatureRows = [0];
+      otherRows = [0, 1];
+      landRows = [lastUsableRow];
+    } else {
+      creatureRows = [0];
+      otherRows = [0];
+      landRows = [0];
+    }
+
+    // For mirrored (opponent) view, flip the row assignments so their
+    // creatures are at the bottom (furthest from us) and lands at the top.
+    if (this.mirrored) {
+      const flip = (rows: number[]) => rows.map((r) => lastUsableRow - r);
+      creatureRows = flip(creatureRows);
+      otherRows = flip(otherRows);
+      landRows = flip(landRows);
+    }
+
+    // Classify each permanent into a category.
+    type CardCategory = "creature" | "land" | "other";
+    const classify = (c: Card): CardCategory => {
+      if (c.types.includes("Creature")) return "creature";
+      if (c.types.includes("Land")) return "land";
+      return "other";
+    };
+
+    const categoryConfig: Record<CardCategory, { rows: number[]; anchorTop: boolean }> = {
+      creature: { rows: creatureRows, anchorTop: !this.mirrored },
+      other:    { rows: otherRows,    anchorTop: !this.mirrored },
+      land:     { rows: landRows,     anchorTop: this.mirrored },
+    };
+
+    // Sort unplaced cards so creatures are placed first (they get priority
+    // on row 0), then other non-lands, then lands.
+    const catOrder: CardCategory[] = ["creature", "other", "land"];
+    const sortedUnplaced = [...unplaced].sort(
+      (a, b) => catOrder.indexOf(classify(a)) - catOrder.indexOf(classify(b)),
+    );
+
+    for (const c of sortedUnplaced) {
+      const cat = classify(c);
+      const cfg = categoryConfig[cat];
+      const rowSet = new Set(cfg.rows);
+      const anchorY = cfg.anchorTop
+        ? zone.y + grid.cellH / 2
+        : zone.y + zone.height - grid.cellH / 2;
+      const sorted = cellsByDistance(grid, centerX, anchorY);
+      const max = cat === "land" ? MAX_LAND_SLOTS : MAX_GRID_SLOTS;
+
+      // First pass: restrict to preferred rows.
       let picked: GridCell | null = null;
       for (let i = 0; i < sorted.length && i < max; i++) {
         const cell = sorted[i]!;
         if (cell.blocked) continue;
         if (occupied.has(cellKey(cell.col, cell.row))) continue;
+        if (!rowSet.has(cell.row)) continue;
         picked = cell;
         break;
       }
+
+      // Overflow: if preferred rows are full, use any free cell.
+      if (!picked) {
+        for (let i = 0; i < sorted.length && i < max; i++) {
+          const cell = sorted[i]!;
+          if (cell.blocked) continue;
+          if (occupied.has(cellKey(cell.col, cell.row))) continue;
+          picked = cell;
+          break;
+        }
+      }
+
       if (picked) {
         positions.set(c.id, { x: picked.cx, y: picked.cy });
         occupied.add(cellKey(picked.col, picked.row));
-        // Persist the auto-assigned cell so subsequent layouts honor it
-        // via Pass 1 — prevents existing cards from shuffling when a new
-        // permanent enters the battlefield.
         this.userSlots.set(c.id, { col: picked.col, row: picked.row });
       } else {
-        // Fallback: `applyOverflowStacking` should have reparented the
-        // overflow already, so we rarely hit this. Drop at the anchor so
-        // the card is at least visible until the next layout pass.
-        positions.set(c.id, { x: anchorX, y: anchorY });
+        positions.set(c.id, { x: centerX, y: anchorY });
       }
     }
 
@@ -1161,6 +1259,8 @@ export class PixiGameScene {
     }
 
     const anchorX = zone.x + zone.width / 2;
+    // Placement ghost targets the creature zone (row 0 for local player)
+    // since most spells being cast are creatures.
     const anchorY = this.mirrored
       ? zone.y + zone.height - grid.cellH / 2
       : zone.y + grid.cellH / 2;
@@ -1397,23 +1497,23 @@ export class PixiGameScene {
     // re-render → prop change) overwrites the marquee selection glow
     // even though `selectedCardIds` is still populated.
     if (this.selectedCardIds.has(sprite.card.id)) {
-      sprite.setRing(hexToNum(this.theme.game.cardRing));
+      sprite.setRing(hexToNum(this.theme.gameTheme.cardRing));
       return;
     }
     const card = sprite.card;
     if (state.attackingCardIds?.includes(card.id)) {
-      sprite.setRing(hexToNum(this.theme.game.promptAction.attackAction));
+      sprite.setRing(hexToNum(this.theme.gameTheme.promptAction.attackAction));
     } else if (state.pendingCardIds?.includes(card.id)) {
-      sprite.setRing(hexToNum(this.theme.game.promptAction.passAction));
+      sprite.setRing(hexToNum(this.theme.gameTheme.promptAction.passAction));
     } else if (state.tappableLandIds?.includes(card.id)) {
-      sprite.setRing(hexToNum(this.theme.game.cardRing));
+      sprite.setRing(hexToNum(this.theme.gameTheme.cardRing));
     } else if (state.untappableLandIds?.includes(card.id)) {
-      sprite.setRing(hexToNum(this.theme.game.promptAction.cancel));
+      sprite.setRing(hexToNum(this.theme.gameTheme.promptAction.cancel));
     } else if (card.isChoosable) {
       sprite.setRing(
         state.hostileTargeting
-          ? hexToNum(this.theme.game.arrow.hostileTarget)
-          : hexToNum(this.theme.game.cardRing),
+          ? hexToNum(this.theme.gameTheme.arrow.hostileTarget)
+          : hexToNum(this.theme.gameTheme.cardRing),
       );
     } else {
       sprite.setRing(null);
@@ -1486,7 +1586,7 @@ export class PixiGameScene {
 
       const letters = extractManaLetters(ab.description);
       const letter = letters[0];
-      const color = manaColorFor(letter, this.theme, hexToNum(this.theme.game.canvas.shadow));
+      const color = manaColorFor(letter, this.theme, hexToNum(this.theme.gameTheme.canvas.shadow));
 
       const btn = new Graphics();
       const paintBtn = (highlighted: boolean) => {
@@ -1497,7 +1597,7 @@ export class PixiGameScene {
           alpha: highlighted ? MANA_BUTTON_HOVER_ALPHA : MANA_BUTTON_ALPHA,
         });
         btn.stroke({
-          color: hexToNum(this.theme.game.canvas.neutral),
+          color: hexToNum(this.theme.gameTheme.canvas.neutral),
           width: 1,
           alpha: highlighted
             ? MANA_BUTTON_STROKE_HOVER_ALPHA
@@ -1535,7 +1635,7 @@ export class PixiGameScene {
     state: BattlefieldState,
     kind: ActionKind,
   ): void {
-    const ring = hexToNum(this.theme.game.cardRing);
+    const ring = hexToNum(this.theme.gameTheme.cardRing);
     let label = OVERLAY_LABEL_SELECT;
     let symbol: string | null = null;
     let color = ring;
@@ -1550,7 +1650,7 @@ export class PixiGameScene {
     } else if (kind.isUntappable) {
       label = OVERLAY_LABEL_UNTAP;
       symbol = SYMBOL_UNTAP;
-      color = hexToNum(this.theme.game.promptAction.cancel);
+      color = hexToNum(this.theme.gameTheme.promptAction.cancel);
       idleAlpha = ACTION_BUTTON_ALPHA;
       hoverAlpha = ACTION_BUTTON_HOVER_ALPHA;
     }
@@ -1645,7 +1745,7 @@ export class PixiGameScene {
     icon.eventMode = "none";
     const circle = new Graphics();
     circle.circle(0, 0, radius);
-    circle.fill({ color: hexToNum(this.theme.game.canvas.shadow), alpha: ICON_BG_ALPHA });
+    circle.fill({ color: hexToNum(this.theme.gameTheme.canvas.shadow), alpha: ICON_BG_ALPHA });
     icon.addChild(circle);
 
     const tex = getManaSymbolTextureSync(label);
@@ -2058,7 +2158,7 @@ export class PixiGameScene {
     if (!this.lastState) return;
     for (const entry of this.entries.values()) {
       if (this.selectedCardIds.has(entry.sprite.card.id)) {
-        entry.sprite.setRing(hexToNum(this.theme.game.cardRing));
+        entry.sprite.setRing(hexToNum(this.theme.gameTheme.cardRing));
       } else {
         this.applyBattlefieldRing(entry.sprite, this.lastState);
       }
@@ -2087,11 +2187,14 @@ export class PixiGameScene {
    * Scale matches the current hand so the size lerp covers the same
    * distance as the position lerp.
    */
-  /** Single source of truth for the hand's vertical anchor point. */
+  /** Single source of truth for the hand's vertical anchor point.
+   *  The offset fraction controls how much of each hand card peeks above
+   *  the zone bottom — `0.45` means 55% of the card is visible and the
+   *  hand stays clear of the third battlefield row. */
   private handBottomY(): number {
     const zone = this.getPlayZone();
     const dims = this.computeHandDimensions();
-    return zone.y + zone.height + dims.cardH * 0.25;
+    return zone.y + zone.height + dims.cardH * 0.45;
   }
 
   private computeHandOriginSeed(): { x: number; y: number; scale: number } {
@@ -2249,7 +2352,7 @@ export class PixiGameScene {
       sprite.setRing(null);
       return;
     }
-    const ring = hexToNum(this.theme.game.cardRing);
+    const ring = hexToNum(this.theme.gameTheme.cardRing);
     if (isHovered) sprite.setHighlight(true, ring, PLAYABLE_HIGHLIGHT_ALPHA);
     else sprite.setRing(ring, PLAYABLE_RING_ALPHA);
   }

@@ -6,7 +6,7 @@
  * reads from a `GameThemeColors` and converts inline.
  */
 
-import type { AppTheme } from "@/hooks/useTheme";
+import type { Theme } from "@/hooks/useTheme";
 import { hexToNum } from "./colorUtils";
 
 export type ManaLetter = "W" | "U" | "B" | "R" | "G" | "C";
@@ -18,6 +18,6 @@ export const isManaLetter = (value: string | undefined): value is ManaLetter =>
 
 export const manaColorFor = (
   letter: string | undefined,
-  theme: AppTheme,
+  theme: Theme,
   fallback: number,
-): number => (isManaLetter(letter) ? hexToNum(theme.game.mana[letter]) : fallback);
+): number => (isManaLetter(letter) ? hexToNum(theme.gameTheme.mana[letter]) : fallback);

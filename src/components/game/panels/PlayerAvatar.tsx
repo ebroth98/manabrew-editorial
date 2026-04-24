@@ -4,7 +4,7 @@ import { cn } from "@/lib/utils";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Heart } from "lucide-react";
 import { getInitials } from "../game.utils";
-import { withAlpha } from "../game.theme";
+import { withAlpha } from "@/themes/gameTheme";
 import { useTheme } from "@/hooks/useTheme";
 import { BadgeOrbit, type OrbitBadge } from "./BadgeOrbit";
 
@@ -37,8 +37,8 @@ export function PlayerAvatar({
   className,
 }: PlayerAvatarProps) {
   const theme = useTheme();
-  const themeColors = theme.game;
-  const fontSizes = theme.fontSizes;
+  const themeColors = theme.gameTheme;
+  const fontSizes = theme.gameTheme.fontSizes;
   const targetableColor = withAlpha(themeColors.promptAction.attackAction, 0.9);
   const selectedTargetColor = themeColors.promptAction.attackAction;
 

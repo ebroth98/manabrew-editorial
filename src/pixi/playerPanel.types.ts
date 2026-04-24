@@ -4,7 +4,7 @@
  */
 
 import type { Container } from "pixi.js";
-import type { AppTheme } from "@/hooks/useTheme";
+import type { Theme } from "@/hooks/useTheme";
 
 export interface PlayerPanelState {
   playerName: string;
@@ -41,7 +41,7 @@ export interface PlayerPanelCallbacks {
 
 export interface PlayerPanel {
   readonly container: Container;
-  setTheme(theme: AppTheme): void;
+  setTheme(theme: Theme): void;
   setCallbacks(cb: PlayerPanelCallbacks): void;
   setPosition(x: number, y: number): void;
   setHeight(h: number): void;

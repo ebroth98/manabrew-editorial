@@ -5,7 +5,7 @@ import { ArrowLayer, type ArrowDef } from "./ArrowLayer";
 import { PointerLayer, type ResolvedPointer } from "./PointerLayer";
 
 installPixiPatches();
-import type { AppTheme } from "@/hooks/useTheme";
+import type { Theme } from "@/hooks/useTheme";
 import { getTheme } from "@/hooks/useTheme";
 import { usePreferencesStore } from "@/stores/usePreferencesStore";
 import { intentPrefersArrow, TargetingIntent } from "@/types/promptType";
@@ -67,7 +67,7 @@ export function PixiArrowsCanvas({
   const appRef = useRef<Application | null>(null);
   const arrowLayerRef = useRef<ArrowLayer | null>(null);
   const pointerLayerRef = useRef<PointerLayer | null>(null);
-  const themeRef = useRef<AppTheme | null>(null);
+  const themeRef = useRef<Theme | null>(null);
 
   // Latest inputs accessed inside the ticker callback without re-binding.
   const arrowSpecsRef = useRef<ArrowSpec[]>([]);
@@ -313,10 +313,11 @@ function resolveArrowsAndPointers(
   // target. Combat-intent casting (shouldn't happen here) would fall back
   // to the arrow layer.
   if (casting) {
-    const from = domCenter(
-      `[data-casting-card="${CSS.escape(casting.castingCardId)}"]`,
-      toLocal,
-    );
+    // Try the stack display element first, then fall back to the
+    // battlefield card sprite (activated abilities) or DOM card element.
+    const from =
+      domCenter(`[data-casting-card="${CSS.escape(casting.castingCardId)}"]`, toLocal) ??
+      resolveEndpoint({ kind: "card", id: casting.castingCardId });
     if (from) {
       let to: ScreenPos | null = null;
       if (casting.targetId) {

@@ -1,4 +1,4 @@
-import type { ThemePreset } from "./index";
+import type { ThemePreset } from "./presets";
 import { buildGameColors, type BasePalette } from "./buildGameColors";
 
 /** Tokyo Night palette — muted blues / magentas with warm accents. */
@@ -27,6 +27,8 @@ const palette: BasePalette = {
   brown:    "#ff9e64",
   paper:    "#c0caf5",
   poison:   "#7fb055",          // deeper olive version of tokyo-night green
+  promptPass:    "#7aa2f7",     // blue
+  promptDefense: "#7dcfff",     // sky
   manaW:    "#c0caf5",
   manaU:    "#7aa2f7",
   manaB:    "#414868",
@@ -91,25 +93,7 @@ const preset: ThemePreset = {
     warning: "#d99726",
     overlay: "#08090c",
   },
-  gameColors: {
-    "activeAction.priority": "#bb9af7",
-    "activeAction.turnText": "#e0af68",
-    "activeAction.myTurnRing": "#e0af68",
-    "activeAction.opponentTurnRing": "#e0af68",
-    "highlight": "#ff9e64",
-    "hand.playableBorder": "rgba(169, 177, 214, 0.7)",
-    "promptAction.default": "#7aa2f7",
-    "promptAction.passPriority": "#7aa2f7",
-    "promptAction.passUntilEnd": "#3d59a1",
-    "promptAction.cancel": "#565f89",
-    "promptAction.pacificAction": "#7dcfff",
-    "arrow.attack": "rgba(224, 175, 104, 0.88)",
-    "arrow.block": "rgba(247, 118, 142, 0.88)",
-    "arrow.hostileTarget": "rgba(247, 118, 142, 0.88)",
-    "arrow.friendlyTarget": "rgba(125, 207, 255, 0.88)",
-    "cardRing": "#e0af68",
-    ...buildGameColors(palette),
-  },
+  gameColors: buildGameColors(palette),
 };
 
 export default preset;

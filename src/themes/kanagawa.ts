@@ -1,4 +1,4 @@
-import type { ThemePreset } from "./index";
+import type { ThemePreset } from "./presets";
 import { buildGameColors, type BasePalette } from "./buildGameColors";
 
 /** Kanagawa palette — wave-inspired; muted autumn-meets-spring hues. */
@@ -27,6 +27,8 @@ const palette: BasePalette = {
   brown:    "#dca561",
   paper:    "#b8b4d0",           // waveAqua2
   poison:   "#5a7250",           // darker moss sibling of kanagawa green
+  promptPass:    "#7e9cd8",     // crystalBlue
+  promptDefense: "#7fb4ca",     // springBlue
   manaW:    "#dcd7ba",
   manaU:    "#7e9cd8",
   manaB:    "#454658",
@@ -91,25 +93,7 @@ const preset: ThemePreset = {
     warning: "#d2802d",
     overlay: "#08090c",
   },
-  gameColors: {
-    "activeAction.priority": "#957fb8",
-    "activeAction.turnText": "#dca561",
-    "activeAction.myTurnRing": "#dca561",
-    "activeAction.opponentTurnRing": "#dca561",
-    "highlight": "#ff5d62",
-    "hand.playableBorder": "rgba(192, 181, 162, 0.7)",
-    "promptAction.default": "#7e9cd8",
-    "promptAction.passPriority": "#7e9cd8",
-    "promptAction.passUntilEnd": "#658594",
-    "promptAction.cancel": "#727169",
-    "promptAction.pacificAction": "#7fb4ca",
-    "arrow.attack": "rgba(220, 165, 97, 0.88)",
-    "arrow.block": "rgba(255, 93, 98, 0.88)",
-    "arrow.hostileTarget": "rgba(255, 93, 98, 0.88)",
-    "arrow.friendlyTarget": "rgba(127, 180, 202, 0.88)",
-    "cardRing": "#dca561",
-    ...buildGameColors(palette),
-  },
+  gameColors: buildGameColors(palette),
 };
 
 export default preset;

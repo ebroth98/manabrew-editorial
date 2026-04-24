@@ -4,7 +4,7 @@ import { Card } from "@/components/game/Card";
 import { CardOverlayButton } from "@/components/game/CardOverlayButton";
 import type { BattlefieldZoneProps } from "../game.types";
 import { CARD_RING, BATTLEFIELD_CARD, ZONE_LABEL } from "../game.styles";
-import { withAlpha } from "../game.theme";
+import { withAlpha } from "@/themes/gameTheme";
 import { useTheme } from "@/hooks/useTheme";
 import type { Card as XMageCard } from "@/types/openmagic";
 import { extractManaLetters, getExpandedManaAbilities } from "@/components/game/manaUtils";
@@ -40,7 +40,7 @@ export function BattlefieldZone({
   hostileTargeting = false,
 }: BattlefieldZoneProps) {
   const [hoveredCardId, setHoveredCardId] = useState<string | null>(null);
-  const themeColors = useTheme().game;
+  const themeColors = useTheme().gameTheme;
 
   const cardMap = useMemo(() => {
     const m = new Map<string, XMageCard>();

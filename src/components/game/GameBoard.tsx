@@ -31,6 +31,12 @@ import { cn } from "@/lib/utils";
 // overlay now sits higher and doesn't block card placement.
 const PASS_BUTTON_RESERVED = { width: 312, height: 50 } as const;
 
+// Bottom-left player cluster (avatar + zone tiles + mana row). Sized to
+// cover the panel's natural footprint so cards auto-place around it, but
+// only the rows at the bottom are affected — the rest of the grid uses
+// the full canvas width.
+const PLAYER_CLUSTER_BLOCKER = { width: 420, height: 140 } as const;
+
 interface GameBoardProps {
   // Core game state
   me: Player;
@@ -199,7 +205,10 @@ export function GameBoard({
   const handSize = usePreferencesStore((s) => s.handSize);
   const pixiEnabled = usePreferencesStore((s) => s.pixiEnabled);
   const vScale = useHandScale();
-  const handBottomReserved = Math.round(HAND_CARD_BASES[handSize].containerH * vScale * 0.5);
+  // Reserve the visible portion of the hand for drag clamping. The hand
+  // now sits lower (45% of card clipped below zone), so the reserved
+  // strip is thinner — roughly 35% of the container height.
+  const handBottomReserved = Math.round(HAND_CARD_BASES[handSize].containerH * vScale * 0.35);
 
   // Measure the hand fan's live DOM width so the player cluster (anchored
   // bottom-left) can cap its own width to `(battlefield - hand)/2 - gap`
@@ -536,7 +545,7 @@ export function GameBoard({
                       isDropActive={isOverBattlefield}
                       callbacks={pixiCallbacks}
                       bottomReserved={handBottomReserved}
-                      leftReserved={PLAYER_CLUSTER_RESERVED_PX}
+                      bottomLeftReserved={PLAYER_CLUSTER_BLOCKER}
                       getHandActions={getHandActions}
                       onSelectHandAction={(_card, action) => onSelectHandAction?.(action)}
                       bottomRightReserved={PASS_BUTTON_RESERVED}

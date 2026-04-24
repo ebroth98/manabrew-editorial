@@ -33,7 +33,7 @@ export function CommandZoneTile({
   onHoverCard,
   draggingCardId,
 }: CommandZoneTileProps) {
-  const themeColors = useTheme().game;
+  const themeColors = useTheme().gameTheme;
   const first = commanders[0];
   const count = commanders.length;
   if (!first) return null;

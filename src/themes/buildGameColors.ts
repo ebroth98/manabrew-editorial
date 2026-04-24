@@ -51,6 +51,14 @@ export interface BasePalette {
    *  an infect pip reads as "ill" rather than a straight buff. */
   poison: string;
 
+  /** Pass-priority / pass-turn prompt button colour. Typically the
+   *  preset's primary cool accent (blue, violet, or green). */
+  promptPass: string;
+  /** Declare-blockers / defense prompt button colour. Typically a
+   *  lighter cool tone (cyan, blue, or teal). Also used for the
+   *  friendly-target arrow colour. */
+  promptDefense: string;
+
   /** Mana pip tints. Opaque hexes — consumers apply their own alpha. */
   manaW: string;
   manaU: string;
@@ -67,11 +75,26 @@ export interface BasePalette {
  */
 export function buildGameColors(p: BasePalette): Record<string, string> {
   return {
+    // ── Active action indicators ────────────────────────────────────
+    "activeAction.priority": p.violet,
+    "activeAction.active":   p.amber,
+
+    // ── Prompt action buttons ───────────────────────────────────────
+    "promptAction.passAction":    p.promptPass,
+    "promptAction.attackAction":  p.red,
+    "promptAction.defenseAction": p.promptDefense,
+    "promptAction.cancel":        p.slate,
+
+    // ── Combat / placement arrows ───────────────────────────────────
+    "arrow.attack":         rgbaFromHex(p.orange, 0.88),
+    "arrow.block":          rgbaFromHex(p.red, 0.88),
+    "arrow.hostileTarget":  rgbaFromHex(p.red, 0.88),
+    "arrow.friendlyTarget": rgbaFromHex(p.promptDefense, 0.88),
+
+    // ── Card selection ring ─────────────────────────────────────────
+    "cardRing": p.amber,
+
     // ── Targeting pointer colours ────────────────────────────────────
-    // Only two colours: `hostile` for intents that act against the
-    // target; `friendly` for supportive intents. The monochrome icon
-    // glyph carries the specific semantic. See `intentIsHostile()` in
-    // `@/types/promptType`.
     "pointer.hostile":  rgbaFromHex(p.red, 0.88),
     "pointer.friendly": rgbaFromHex(p.blue, 0.88),
 

@@ -1,4 +1,4 @@
-import type { ThemePreset } from "./index";
+import type { ThemePreset } from "./presets";
 import { buildGameColors, type BasePalette } from "./buildGameColors";
 
 /** Catppuccin Mocha palette — pastel warm; maps love → red, mauve →
@@ -28,6 +28,8 @@ const palette: BasePalette = {
   brown:    "#fab387",
   paper:    "#bac2de",          // subtext1
   poison:   "#8cc58a",          // muted sibling of Catppuccin green
+  promptPass:    "#cba6f7",     // mauve
+  promptDefense: "#89b4fa",     // blue
   manaW:    "#f5e0dc",          // rosewater
   manaU:    "#89b4fa",
   manaB:    "#45475a",
@@ -92,25 +94,7 @@ const preset: ThemePreset = {
     warning: "#d29e2d",
     overlay: "#08080c",
   },
-  gameColors: {
-    "activeAction.priority": "#cba6f7",
-    "activeAction.turnText": "#f9e2af",
-    "activeAction.myTurnRing": "#f9e2af",
-    "activeAction.opponentTurnRing": "#f9e2af",
-    "highlight": "#fab387",
-    "hand.playableBorder": "rgba(205, 214, 244, 0.7)",
-    "promptAction.default": "#cba6f7",
-    "promptAction.passPriority": "#cba6f7",
-    "promptAction.passUntilEnd": "#b4befe",
-    "promptAction.cancel": "#6c7086",
-    "promptAction.pacificAction": "#89b4fa",
-    "arrow.attack": "rgba(250, 179, 135, 0.88)",
-    "arrow.block": "rgba(243, 139, 168, 0.88)",
-    "arrow.hostileTarget": "rgba(243, 139, 168, 0.88)",
-    "arrow.friendlyTarget": "rgba(137, 180, 250, 0.88)",
-    "cardRing": "#f9e2af",
-    ...buildGameColors(palette),
-  },
+  gameColors: buildGameColors(palette),
 };
 
 export default preset;

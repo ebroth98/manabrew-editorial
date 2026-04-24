@@ -1,6 +1,6 @@
 
 import { Container, Graphics, Text, TextStyle, Sprite } from "pixi.js";
-import type { AppTheme } from "@/hooks/useTheme";
+import type { Theme } from "@/hooks/useTheme";
 import { hexToNum } from "./colorUtils";
 import type { PlayerPanelState, PlayerPanelCallbacks, PlayerPanel } from "./playerPanel.types";
 import { applyIcon, rasterIcon, ICON_COLORS } from "./panelIcons";
@@ -34,7 +34,7 @@ function makeStatCell(iconKey: string): StatCell {
 // ═══════════════════════════════════════════════════════════════════════
 export class PlayerSquarePanel implements PlayerPanel {
   readonly container: Container;
-  private theme: AppTheme;
+  private theme: Theme;
   private callbacks: PlayerPanelCallbacks = {};
   private lastState: PlayerPanelState | null = null;
   private canvasHeight = 0;
@@ -70,7 +70,7 @@ export class PlayerSquarePanel implements PlayerPanel {
   /** When true, panel anchors to the top instead of the bottom. */
   private readonly anchorTop: boolean;
 
-  constructor(theme: AppTheme, options?: { anchorTop?: boolean }) {
+  constructor(theme: Theme, options?: { anchorTop?: boolean }) {
     this.anchorTop = options?.anchorTop ?? false;
     this.theme = theme;
     this.container = new Container();
@@ -164,10 +164,10 @@ export class PlayerSquarePanel implements PlayerPanel {
     }
   }
 
-  setTheme(theme: AppTheme): void {
+  setTheme(theme: Theme): void {
     this.theme = theme;
-    statStyle.fill = theme.game.textOnTinted;
-    manaCountStyle.fill = theme.game.textOnTinted;
+    statStyle.fill = theme.gameTheme.textOnTinted;
+    manaCountStyle.fill = theme.gameTheme.textOnTinted;
     if (this.lastState) this.update(this.lastState);
   }
 
@@ -187,7 +187,7 @@ export class PlayerSquarePanel implements PlayerPanel {
 
   update(state: PlayerPanelState): void {
     this.lastState = state;
-    const t = this.theme.game;
+    const t = this.theme.gameTheme;
     const h = this.canvasHeight > 0 ? this.canvasHeight : 400;
 
     // ── Background — tinted with the player's seat colour ──

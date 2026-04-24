@@ -24,7 +24,7 @@ export function ZoneViewer({
 }: ZoneViewerProps) {
   const preview = useCardPreview();
 
-  const themeColors = useTheme().game;
+  const themeColors = useTheme().gameTheme;
   const ringColor = themeColors.cardRing;
 
   return (
