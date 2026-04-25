@@ -1,5 +1,5 @@
 use crate::ability::effects::{evaluate_svar, resolve_defined_player, EffectContext};
-use crate::parsing::keys;
+use crate::parsing::Params;
 use crate::spellability::SpellAbility;
 use crate::trigger::trigger::parse_trigger;
 
@@ -17,6 +17,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let Some(parsed) = parse_trigger(&sa.ability_text, &mut next_id) else {
         return;
     };
+    let trigger_params = Params::from_raw(&sa.ability_text);
     let mode = parsed.kind;
 
     let execute_svar = if let Some(exec) = sa.ir.execute.as_deref() {
@@ -96,7 +97,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let delayed = crate::trigger::handler::DelayedTrigger {
         mode,
         trigger_mode: parsed.mode,
-        params: parsed.params,
+        params: trigger_params,
         execute_svar,
         controller,
         source_card: source_id,

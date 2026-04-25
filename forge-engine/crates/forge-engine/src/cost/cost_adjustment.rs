@@ -13,6 +13,7 @@ use forge_foundation::ZoneType;
 use crate::agent::PlayerAgent;
 use crate::card::CounterType;
 use crate::card::{valid_filter, Card};
+use crate::card_trait_base::CardTraitIrOwner;
 use crate::cost::{parse_cost, Cost};
 use crate::event::RunParams;
 use crate::game::GameState;
@@ -275,13 +276,8 @@ fn compute_cost_adjustment_inner(
                 continue;
             }
 
-            // ── checkRequirement: IsPresent$ / PresentZone$ ──────────
-            if !valid_filter::check_is_present(game, &st_ab.params, source, source) {
-                continue;
-            }
-
-            // ── checkRequirement: CheckSVar$ / SVarCompare$ ──────────
-            if !valid_filter::check_svar_condition(game, &st_ab.params, source, source) {
+            // ── checkRequirement: common CardTraitBase requirements ──
+            if !st_ab.meets_card_trait_requirements(game, source, source) {
                 continue;
             }
 
@@ -291,11 +287,6 @@ fn compute_cost_adjustment_inner(
                 if game.player(caster).spells_cast_this_turn > 0 {
                     continue;
                 }
-            }
-
-            // ── checkRequirement: Condition$ ─────────────────────────
-            if !valid_filter::check_condition(game, &st_ab.params, source) {
-                continue;
             }
 
             // ── checkRequirement: ValidTarget$ ───────────────────────
@@ -479,19 +470,11 @@ pub fn compute_raise_cost_parts_with_targets(
                 continue;
             }
 
-            if !valid_filter::check_is_present(game, &st_ab.params, source, source) {
-                continue;
-            }
-
-            if !valid_filter::check_svar_condition(game, &st_ab.params, source, source) {
+            if !st_ab.meets_card_trait_requirements(game, source, source) {
                 continue;
             }
 
             if st_ab.ir.only_first_spell && game.player(caster).spells_cast_this_turn > 0 {
-                continue;
-            }
-
-            if !valid_filter::check_condition(game, &st_ab.params, source) {
                 continue;
             }
 

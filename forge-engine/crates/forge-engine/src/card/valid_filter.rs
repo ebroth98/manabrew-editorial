@@ -41,36 +41,9 @@ use crate::parsing::keys;
 use crate::parsing::{
     cached_compiled_selector, CardColorSelector, CardIdentitySelector, CardSelectorType,
     CardStateSelector, CardSupertypeSelector, CompiledSelector, ContextPredicate,
-    ControllerSelector, NumericSelectorProperty, Params, RelationPredicate, Selector,
+    ControllerSelector, NumericSelectorProperty, ParsedParams, RelationPredicate, Selector,
     SelectorCompareOperator, SelectorNumericOperand, SelectorPredicate, TargetRef,
 };
-
-const COMMON_REQUIREMENT_KEYS: &[&str] = &[
-    "Metalcraft",
-    "Delirium",
-    "Threshold",
-    "Hellbent",
-    "Bloodthirst",
-    "FatefulHour",
-    "Monarch",
-    "Revolt",
-    "Desert",
-    "Blessing",
-    "DayTime",
-    "Adamant",
-    "LifeTotal",
-    keys::IS_PRESENT,
-    "IsPresent2",
-    "CheckDefinedPlayer",
-    keys::CHECK_SVAR,
-    "CheckSecondSVar",
-    "ManaSpent",
-    "ManaNotSpent",
-    "WerewolfTransformCondition",
-    "WerewolfUntransformCondition",
-    "ClassLevel",
-    keys::CONDITION,
-];
 
 fn requirement_controller(game: &GameState, source: &Card) -> PlayerId {
     let mut controller = source.controller;
@@ -145,93 +118,154 @@ fn compare_requirement_amount(
     compare_expr(left, &format!("{operator}{operand}"))
 }
 
-#[derive(Default)]
-struct CommonRequirementRefs<'a> {
-    metalcraft: Option<&'a str>,
-    delirium: Option<&'a str>,
-    threshold: Option<&'a str>,
-    hellbent: Option<&'a str>,
-    bloodthirst: Option<&'a str>,
-    fateful_hour: Option<&'a str>,
-    monarch: Option<&'a str>,
-    revolt: Option<&'a str>,
-    desert: Option<&'a str>,
-    blessing: Option<&'a str>,
-    day_time: Option<&'a str>,
-    adamant: Option<&'a str>,
-    life_total: Option<&'a str>,
-    life_amount: Option<&'a str>,
-    is_present: Option<&'a str>,
-    is_present_selector: Option<&'a CompiledSelector>,
-    present_compare: Option<&'a str>,
-    present_player: Option<&'a str>,
-    present_zone: Option<&'a str>,
-    present_defined: Option<&'a str>,
-    is_present2: Option<&'a str>,
-    is_present2_selector: Option<&'a CompiledSelector>,
-    present_compare2: Option<&'a str>,
-    present_player2: Option<&'a str>,
-    present_zone2: Option<&'a str>,
-    check_defined_player: Option<&'a str>,
-    defined_player_compare: Option<&'a str>,
-    check_svar: Option<&'a str>,
-    svar_compare: Option<&'a str>,
-    check_second_svar: Option<&'a str>,
-    second_svar_compare: Option<&'a str>,
-    mana_spent: Option<&'a str>,
-    mana_not_spent: Option<&'a str>,
+/// Typed requirement bag for Java `CardTraitBase.meetsCommonRequirements(params)`.
+///
+/// Only params consumed by that Java method belong here. This keeps the shared
+/// requirement gate reusable across trigger, spell ability, static ability, and
+/// replacement IRs without passing the full legacy `Params` map at runtime.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct CardTraitRequirementsIr {
+    metalcraft: Option<String>,
+    delirium: Option<String>,
+    threshold: Option<String>,
+    hellbent: Option<String>,
+    bloodthirst: Option<String>,
+    fateful_hour: Option<String>,
+    monarch: Option<String>,
+    revolt: Option<String>,
+    desert: Option<String>,
+    blessing: Option<String>,
+    day_time: Option<String>,
+    adamant: Option<String>,
+    life_total: Option<String>,
+    life_amount: Option<String>,
+    is_present: Option<String>,
+    is_present_selector: Option<CompiledSelector>,
+    present_compare: Option<String>,
+    present_player: Option<String>,
+    present_zone: Option<String>,
+    present_defined: Option<String>,
+    is_present2: Option<String>,
+    is_present2_selector: Option<CompiledSelector>,
+    present_compare2: Option<String>,
+    present_player2: Option<String>,
+    present_zone2: Option<String>,
+    check_defined_player: Option<String>,
+    defined_player_compare: Option<String>,
+    check_svar: Option<String>,
+    svar_compare: Option<String>,
+    check_second_svar: Option<String>,
+    second_svar_compare: Option<String>,
+    mana_spent: Option<String>,
+    mana_not_spent: Option<String>,
     werewolf_transform_condition: bool,
     werewolf_untransform_condition: bool,
-    class_level: Option<&'a str>,
-    condition: Option<&'a str>,
+    class_level: Option<String>,
+    condition: Option<String>,
 }
 
-impl<'a> CommonRequirementRefs<'a> {
-    fn from_params(params: &'a Params) -> Self {
-        let mut refs = Self::default();
-        for (key, value) in params.iter() {
-            match key {
-                "Metalcraft" => refs.metalcraft = Some(value),
-                "Delirium" => refs.delirium = Some(value),
-                "Threshold" => refs.threshold = Some(value),
-                "Hellbent" => refs.hellbent = Some(value),
-                "Bloodthirst" => refs.bloodthirst = Some(value),
-                "FatefulHour" => refs.fateful_hour = Some(value),
-                "Monarch" => refs.monarch = Some(value),
-                "Revolt" => refs.revolt = Some(value),
-                "Desert" => refs.desert = Some(value),
-                "Blessing" => refs.blessing = Some(value),
-                "DayTime" => refs.day_time = Some(value),
-                "Adamant" => refs.adamant = Some(value),
-                "LifeTotal" => refs.life_total = Some(value),
-                "LifeAmount" => refs.life_amount = Some(value),
-                keys::IS_PRESENT => refs.is_present = Some(value),
-                keys::PRESENT_COMPARE => refs.present_compare = Some(value),
-                keys::PRESENT_PLAYER => refs.present_player = Some(value),
-                keys::PRESENT_ZONE => refs.present_zone = Some(value),
-                "PresentDefined" => refs.present_defined = Some(value),
-                "IsPresent2" => refs.is_present2 = Some(value),
-                "PresentCompare2" => refs.present_compare2 = Some(value),
-                "PresentPlayer2" => refs.present_player2 = Some(value),
-                "PresentZone2" => refs.present_zone2 = Some(value),
-                "CheckDefinedPlayer" => refs.check_defined_player = Some(value),
-                "DefinedPlayerCompare" => refs.defined_player_compare = Some(value),
-                keys::CHECK_SVAR => refs.check_svar = Some(value),
-                keys::SVAR_COMPARE => refs.svar_compare = Some(value),
-                "CheckSecondSVar" => refs.check_second_svar = Some(value),
-                "SecondSVarCompare" => refs.second_svar_compare = Some(value),
-                "ManaSpent" => refs.mana_spent = Some(value),
-                "ManaNotSpent" => refs.mana_not_spent = Some(value),
-                "WerewolfTransformCondition" => refs.werewolf_transform_condition = true,
-                "WerewolfUntransformCondition" => refs.werewolf_untransform_condition = true,
-                "ClassLevel" => refs.class_level = Some(value),
-                keys::CONDITION => refs.condition = Some(value),
-                _ => {}
-            }
+impl CardTraitRequirementsIr {
+    pub fn from_key_values<'a, I>(
+        entries: I,
+        is_present_selector: Option<CompiledSelector>,
+        is_present2_selector: Option<CompiledSelector>,
+    ) -> Self
+    where
+        I: IntoIterator<Item = (&'a str, &'a str)>,
+    {
+        let mut ir = Self::default();
+        for (key, value) in entries {
+            ir.set(key, value);
         }
-        refs.is_present_selector = params.selector_untracked(keys::IS_PRESENT);
-        refs.is_present2_selector = params.selector_untracked("IsPresent2");
-        refs
+        ir.is_present_selector = is_present_selector;
+        ir.is_present2_selector = is_present2_selector;
+        ir
+    }
+
+    pub fn from_parsed(params: &ParsedParams<'_>) -> Self {
+        let mut ir = Self::from_key_values(
+            params
+                .entries()
+                .iter()
+                .map(|entry| (entry.key, entry.value)),
+            None,
+            None,
+        );
+        ir.is_present_selector = ir.is_present.as_deref().map(cached_compiled_selector);
+        ir.is_present2_selector = ir.is_present2.as_deref().map(cached_compiled_selector);
+        ir
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.metalcraft.is_none()
+            && self.delirium.is_none()
+            && self.threshold.is_none()
+            && self.hellbent.is_none()
+            && self.bloodthirst.is_none()
+            && self.fateful_hour.is_none()
+            && self.monarch.is_none()
+            && self.revolt.is_none()
+            && self.desert.is_none()
+            && self.blessing.is_none()
+            && self.day_time.is_none()
+            && self.adamant.is_none()
+            && self.life_total.is_none()
+            && self.is_present.is_none()
+            && self.is_present2.is_none()
+            && self.check_defined_player.is_none()
+            && self.check_svar.is_none()
+            && self.check_second_svar.is_none()
+            && self.mana_spent.is_none()
+            && self.mana_not_spent.is_none()
+            && !self.werewolf_transform_condition
+            && !self.werewolf_untransform_condition
+            && self.class_level.is_none()
+            && self.condition.is_none()
+    }
+
+    pub fn meets(&self, game: &GameState, source: &Card, svar_source: &dyn HasSVars) -> bool {
+        meets_card_trait_requirements(self, game, source, svar_source)
+    }
+
+    fn set(&mut self, key: &str, value: &str) {
+        match key {
+            "Metalcraft" => self.metalcraft = Some(value.to_string()),
+            "Delirium" => self.delirium = Some(value.to_string()),
+            "Threshold" => self.threshold = Some(value.to_string()),
+            "Hellbent" => self.hellbent = Some(value.to_string()),
+            "Bloodthirst" => self.bloodthirst = Some(value.to_string()),
+            "FatefulHour" => self.fateful_hour = Some(value.to_string()),
+            "Monarch" => self.monarch = Some(value.to_string()),
+            "Revolt" => self.revolt = Some(value.to_string()),
+            "Desert" => self.desert = Some(value.to_string()),
+            "Blessing" => self.blessing = Some(value.to_string()),
+            "DayTime" => self.day_time = Some(value.to_string()),
+            "Adamant" => self.adamant = Some(value.to_string()),
+            "LifeTotal" => self.life_total = Some(value.to_string()),
+            "LifeAmount" => self.life_amount = Some(value.to_string()),
+            keys::IS_PRESENT => self.is_present = Some(value.to_string()),
+            keys::PRESENT_COMPARE => self.present_compare = Some(value.to_string()),
+            keys::PRESENT_PLAYER => self.present_player = Some(value.to_string()),
+            keys::PRESENT_ZONE => self.present_zone = Some(value.to_string()),
+            "PresentDefined" => self.present_defined = Some(value.to_string()),
+            "IsPresent2" => self.is_present2 = Some(value.to_string()),
+            "PresentCompare2" => self.present_compare2 = Some(value.to_string()),
+            "PresentPlayer2" => self.present_player2 = Some(value.to_string()),
+            "PresentZone2" => self.present_zone2 = Some(value.to_string()),
+            "CheckDefinedPlayer" => self.check_defined_player = Some(value.to_string()),
+            "DefinedPlayerCompare" => self.defined_player_compare = Some(value.to_string()),
+            keys::CHECK_SVAR => self.check_svar = Some(value.to_string()),
+            keys::SVAR_COMPARE => self.svar_compare = Some(value.to_string()),
+            "CheckSecondSVar" => self.check_second_svar = Some(value.to_string()),
+            "SecondSVarCompare" => self.second_svar_compare = Some(value.to_string()),
+            "ManaSpent" => self.mana_spent = Some(value.to_string()),
+            "ManaNotSpent" => self.mana_not_spent = Some(value.to_string()),
+            "WerewolfTransformCondition" => self.werewolf_transform_condition = true,
+            "WerewolfUntransformCondition" => self.werewolf_untransform_condition = true,
+            "ClassLevel" => self.class_level = Some(value.to_string()),
+            keys::CONDITION => self.condition = Some(value.to_string()),
+            _ => {}
+        }
     }
 }
 
@@ -2423,90 +2457,7 @@ fn check_toughness_condition(rest: &str, card: &Card) -> bool {
 // validation logic used by triggers, static abilities, replacement effects,
 // and cost adjustment. Previously duplicated in 4+ locations.
 
-/// Check the `IsPresent$` / `PresentCompare$` / `PresentPlayer$` /
-/// `PresentZone$` parameter group.
-///
-/// Counts cards matching the `IsPresent$` filter in the specified zone for
-/// the specified player(s), then compares the count against `PresentCompare$`.
-///
-/// Mirrors Java's `meetsCommonRequirements()` IsPresent block.
-pub fn check_is_present(
-    game: &GameState,
-    params: &Params,
-    source: &Card,
-    svar_source: &dyn HasSVars,
-) -> bool {
-    let Some(is_present) = params.get(keys::IS_PRESENT) else {
-        return true; // no IsPresent param — passes
-    };
-
-    let present_compare = params.get(keys::PRESENT_COMPARE).unwrap_or("GE1");
-    let present_player = params.get(keys::PRESENT_PLAYER).unwrap_or("Any");
-    let present_zone = params
-        .get(keys::PRESENT_ZONE)
-        .and_then(parse_zone_name)
-        .unwrap_or(ZoneType::Battlefield);
-    let present_defined = params.get("PresentDefined");
-
-    let selector = params
-        .selector_untracked(keys::IS_PRESENT)
-        .cloned()
-        .unwrap_or_else(|| cached_compiled_selector(is_present));
-    let count = collect_present_cards(game, source, present_defined, present_player, present_zone)
-        .into_iter()
-        .filter(|&cid| matches_valid_card_selector_in_game(&selector, game.card(cid), source, game))
-        .count() as i32;
-
-    compare_requirement_amount(source, svar_source, present_compare, game, count)
-}
-
-/// Check the `CheckSVar$` / `SVarCompare$` parameter group.
-///
-/// Resolves the named SVar on the source card and compares its value.
-/// Mirrors Java's `meetsCommonRequirements()` CheckSVar block.
-pub fn check_svar_condition(
-    game: &GameState,
-    params: &Params,
-    source: &Card,
-    svar_source: &dyn HasSVars,
-) -> bool {
-    let Some(check_name) = params.get(keys::CHECK_SVAR) else {
-        return true;
-    };
-    let compare = params.get(keys::SVAR_COMPARE).unwrap_or("GE1");
-
-    compare_svar(game, source, svar_source, check_name, compare)
-        && check_named_svar_condition(
-            game,
-            params,
-            source,
-            svar_source,
-            "CheckSecondSVar",
-            "SecondSVarCompare",
-        )
-}
-
-/// Check a named `Check*SVar` / `*SVarCompare` pair.
-///
-/// This is the generalized form of `check_svar_condition`, used by
-/// `StaticAbility.checkConditions()` for second/third/fourth SVar checks.
-pub fn check_named_svar_condition(
-    game: &GameState,
-    params: &Params,
-    source: &Card,
-    svar_source: &dyn HasSVars,
-    check_key: &str,
-    compare_key: &str,
-) -> bool {
-    let Some(check_name) = params.get(check_key) else {
-        return true;
-    };
-    let compare = params.get(compare_key).unwrap_or("GE1");
-
-    compare_svar(game, source, svar_source, check_name, compare)
-}
-
-fn compare_svar(
+pub fn check_svar_requirement(
     game: &GameState,
     source: &Card,
     svar_source: &dyn HasSVars,
@@ -2515,23 +2466,6 @@ fn compare_svar(
 ) -> bool {
     let value = requirement_amount(source, svar_source, check_name, game);
     compare_requirement_amount(source, svar_source, compare, game, value)
-}
-
-fn resolve_svar_requirement_value(
-    source: &Card,
-    svar_source: &dyn HasSVars,
-    expr: &str,
-    game: &GameState,
-) -> i32 {
-    requirement_amount(source, svar_source, expr, game)
-}
-
-/// Check the `Condition$` parameter for game-state conditions.
-///
-/// Supports: PlayerTurn, NotPlayerTurn, Metalcraft, Delirium.
-/// Mirrors Java's `meetsCommonRequirements()` condition checks.
-pub fn check_condition(game: &GameState, params: &Params, source: &Card) -> bool {
-    check_condition_value(game, params.get(keys::CONDITION), source)
 }
 
 fn check_condition_value(game: &GameState, condition: Option<&str>, source: &Card) -> bool {
@@ -2556,53 +2490,63 @@ fn check_condition_value(game: &GameState, condition: Option<&str>, source: &Car
     }
 }
 
-/// Convenience: run all common requirement checks from a `Params` instance.
-///
-/// Checks `IsPresent$`, `CheckSVar$`, and `Condition$` in sequence.
-/// Returns `false` if any check fails.
-///
-/// Mirrors Java's `CardTraitBase.meetsCommonRequirements()`.
-pub fn meets_common_requirements(game: &GameState, params: &Params, source: &Card) -> bool {
-    meets_common_requirements_with_svars(game, params, source, source)
-}
-
-pub fn meets_common_requirements_with_svars(
+fn meets_card_trait_requirements(
+    requirements: &CardTraitRequirementsIr,
     game: &GameState,
-    params: &Params,
     source: &Card,
     svar_source: &dyn HasSVars,
 ) -> bool {
-    if !params.contains_any_key(COMMON_REQUIREMENT_KEYS) {
+    if requirements.is_empty() {
         return true;
     }
 
     let _perf_scope =
         crate::perf::ParamsLookupScopeGuard::enter(crate::perf::ParamsLookupScope::ValidFilter);
     let controller = requirement_controller(game, source);
-    let reqs = CommonRequirementRefs::from_params(params);
 
-    if !check_boolean_requirement(reqs.metalcraft, game.player_has_metalcraft(controller)) {
+    if !check_boolean_requirement(
+        requirements.metalcraft.as_deref(),
+        game.player_has_metalcraft(controller),
+    ) {
         return false;
     }
-    if !check_boolean_requirement(reqs.delirium, game.player_has_delirium(controller)) {
+    if !check_boolean_requirement(
+        requirements.delirium.as_deref(),
+        game.player_has_delirium(controller),
+    ) {
         return false;
     }
-    if !check_boolean_requirement(reqs.threshold, game.player_has_threshold(controller)) {
+    if !check_boolean_requirement(
+        requirements.threshold.as_deref(),
+        game.player_has_threshold(controller),
+    ) {
         return false;
     }
-    if !check_boolean_requirement(reqs.hellbent, game.player_has_hellbent(controller)) {
+    if !check_boolean_requirement(
+        requirements.hellbent.as_deref(),
+        game.player_has_hellbent(controller),
+    ) {
         return false;
     }
-    if !check_boolean_requirement(reqs.bloodthirst, game.player_has_bloodthirst(controller)) {
+    if !check_boolean_requirement(
+        requirements.bloodthirst.as_deref(),
+        game.player_has_bloodthirst(controller),
+    ) {
         return false;
     }
-    if !check_boolean_requirement(reqs.fateful_hour, game.player(controller).life <= 5) {
+    if !check_boolean_requirement(
+        requirements.fateful_hour.as_deref(),
+        game.player(controller).life <= 5,
+    ) {
         return false;
     }
-    if !check_boolean_requirement(reqs.monarch, game.monarch == Some(controller)) {
+    if !check_boolean_requirement(
+        requirements.monarch.as_deref(),
+        game.monarch == Some(controller),
+    ) {
         return false;
     }
-    if let Some(revolt) = reqs.revolt {
+    if let Some(revolt) = requirements.revolt.as_deref() {
         if revolt.eq_ignore_ascii_case("True") != game.player_has_revolt(controller) {
             return false;
         } else if revolt.eq_ignore_ascii_case("None")
@@ -2614,14 +2558,20 @@ pub fn meets_common_requirements_with_svars(
             return false;
         }
     }
-    if !check_boolean_requirement(reqs.desert, game.player_has_desert(controller)) {
+    if !check_boolean_requirement(
+        requirements.desert.as_deref(),
+        game.player_has_desert(controller),
+    ) {
         return false;
     }
-    if !check_boolean_requirement(reqs.blessing, game.player_has_blessing(controller)) {
+    if !check_boolean_requirement(
+        requirements.blessing.as_deref(),
+        game.player_has_blessing(controller),
+    ) {
         return false;
     }
 
-    if let Some(day_time) = reqs.day_time {
+    if let Some(day_time) = requirements.day_time.as_deref() {
         if day_time.eq_ignore_ascii_case("Day") {
             if !game.is_day() {
                 return false;
@@ -2637,7 +2587,7 @@ pub fn meets_common_requirements_with_svars(
         }
     }
 
-    if let Some(adamant) = reqs.adamant {
+    if let Some(adamant) = requirements.adamant.as_deref() {
         let color_mask = ManaAtom::from_name(&adamant.to_ascii_lowercase());
         if adamant.eq_ignore_ascii_case("Any") {
             let has_three = [
@@ -2657,29 +2607,30 @@ pub fn meets_common_requirements_with_svars(
         }
     }
 
-    if let Some(life_total) = reqs.life_total {
-        let compare = reqs.life_amount.unwrap_or("GE1");
+    if let Some(life_total) = requirements.life_total.as_deref() {
+        let compare = requirements.life_amount.as_deref().unwrap_or("GE1");
         let life = player_life_for_requirement(game, source, life_total);
         if !compare_requirement_amount(source, svar_source, compare, game, life) {
             return false;
         }
     }
 
-    if let Some(is_present) = reqs.is_present {
-        let present_compare = reqs.present_compare.unwrap_or("GE1");
-        let present_player = reqs.present_player.unwrap_or("Any");
-        let present_zone = reqs
+    if let Some(is_present) = requirements.is_present.as_deref() {
+        let present_compare = requirements.present_compare.as_deref().unwrap_or("GE1");
+        let present_player = requirements.present_player.as_deref().unwrap_or("Any");
+        let present_zone = requirements
             .present_zone
+            .as_deref()
             .and_then(parse_zone_name)
             .unwrap_or(ZoneType::Battlefield);
-        let selector = reqs
+        let selector = requirements
             .is_present_selector
-            .cloned()
+            .clone()
             .unwrap_or_else(|| cached_compiled_selector(is_present));
         let count = collect_present_cards(
             game,
             source,
-            reqs.present_defined,
+            requirements.present_defined.as_deref(),
             present_player,
             present_zone,
         )
@@ -2691,16 +2642,17 @@ pub fn meets_common_requirements_with_svars(
         }
     }
 
-    if let Some(is_present) = reqs.is_present2 {
-        let present_compare = reqs.present_compare2.unwrap_or("GE1");
-        let present_player = reqs.present_player2.unwrap_or("Any");
-        let present_zone = reqs
+    if let Some(is_present) = requirements.is_present2.as_deref() {
+        let present_compare = requirements.present_compare2.as_deref().unwrap_or("GE1");
+        let present_player = requirements.present_player2.as_deref().unwrap_or("Any");
+        let present_zone = requirements
             .present_zone2
+            .as_deref()
             .and_then(parse_zone_name)
             .unwrap_or(ZoneType::Battlefield);
-        let selector = reqs
+        let selector = requirements
             .is_present2_selector
-            .cloned()
+            .clone()
             .unwrap_or_else(|| cached_compiled_selector(is_present));
         let count = collect_present_cards(game, source, None, present_player, present_zone)
             .into_iter()
@@ -2713,49 +2665,54 @@ pub fn meets_common_requirements_with_svars(
         }
     }
 
-    if let Some(defined_players) = reqs.check_defined_player {
+    if let Some(defined_players) = requirements.check_defined_player.as_deref() {
         let players = crate::ability::ability_utils::get_defined_players(
             game,
             Some(source.id),
             defined_players,
             Some(controller),
         );
-        let compare = reqs.defined_player_compare.unwrap_or("GE1");
+        let compare = requirements
+            .defined_player_compare
+            .as_deref()
+            .unwrap_or("GE1");
         if !compare_requirement_amount(source, svar_source, compare, game, players.len() as i32) {
             return false;
         }
     }
 
-    if let Some(check_name) = reqs.check_svar {
-        let compare = reqs.svar_compare.unwrap_or("GE1");
-        if !compare_svar(game, source, svar_source, check_name, compare) {
+    if let Some(check_name) = requirements.check_svar.as_deref() {
+        let compare = requirements.svar_compare.as_deref().unwrap_or("GE1");
+        if !check_svar_requirement(game, source, svar_source, check_name, compare) {
             return false;
         }
-        if let Some(check_name) = reqs.check_second_svar {
-            let compare = reqs.second_svar_compare.unwrap_or("GE1");
-            if !compare_svar(game, source, svar_source, check_name, compare) {
+        if let Some(check_name) = requirements.check_second_svar.as_deref() {
+            let compare = requirements.second_svar_compare.as_deref().unwrap_or("GE1");
+            if !check_svar_requirement(game, source, svar_source, check_name, compare) {
                 return false;
             }
         }
     }
 
-    if let Some(mana_spent) = reqs.mana_spent {
+    if let Some(mana_spent) = requirements.mana_spent.as_deref() {
         let colors = ManaAtom::from_name(&mana_spent.to_ascii_lowercase());
         if !has_all_spent_colors(source.colors_spent_to_cast, colors) {
             return false;
         }
     }
-    if let Some(mana_not_spent) = reqs.mana_not_spent {
+    if let Some(mana_not_spent) = requirements.mana_not_spent.as_deref() {
         let colors = ManaAtom::from_name(&mana_not_spent.to_ascii_lowercase());
         if has_all_spent_colors(source.colors_spent_to_cast, colors) {
             return false;
         }
     }
 
-    if reqs.werewolf_transform_condition && !game.stack.get_spells_cast_last_turn().is_empty() {
+    if requirements.werewolf_transform_condition
+        && !game.stack.get_spells_cast_last_turn().is_empty()
+    {
         return false;
     }
-    if reqs.werewolf_untransform_condition {
+    if requirements.werewolf_untransform_condition {
         let cast_last_turn = game.stack.get_spells_cast_last_turn();
         let mut condition_met = false;
         for pid in game.alive_players() {
@@ -2773,14 +2730,14 @@ pub fn meets_common_requirements_with_svars(
         }
     }
 
-    if let Some(class_level) = reqs.class_level {
+    if let Some(class_level) = requirements.class_level.as_deref() {
         let min = class_level.parse::<i32>().unwrap_or(0);
         if source.class_level < min {
             return false;
         }
     }
 
-    check_condition_value(game, reqs.condition, source)
+    check_condition_value(game, requirements.condition.as_deref(), source)
 }
 
 /// Parse a zone name string into ZoneType.

@@ -16,8 +16,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::ability::ability_factory::build_spell_ability;
 use crate::ability::AbilityKey;
+use crate::card::valid_filter::CardTraitRequirementsIr;
 use crate::card::Card;
-use crate::card_trait_base::{CardTrait, CardTraitBase};
+use crate::card_trait_base::{CardTrait, CardTraitBase, CardTraitIrOwner};
 use crate::core::HasSVars;
 use crate::game::GameState;
 use crate::game_loop::trigger_replacement_base::TriggerReplacementBase;
@@ -36,9 +37,6 @@ pub use super::replacement_type::ReplacementType;
 // ── ReplacementEffect ─────────────────────────────────────────────────────────
 
 /// A parsed replacement effect from an `R$` line in a card script.
-///
-/// Params are stored exactly as they appear in the script so new param types
-/// can be added without changing this struct.
 ///
 /// Reference: Java `ReplacementEffect.java` in `forge/game/replacement/`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -61,9 +59,6 @@ pub struct ReplacementEffect {
     pub event: ReplacementType,
     /// The CR 616 layer this effect belongs to.
     pub layer: ReplacementLayer,
-    /// Raw key→value pairs parsed from the pipe-separated script line.
-    /// Keys do NOT include the trailing `$`.
-    pub params: Params,
     /// Typed runtime view of lowered replacement semantics.
     pub ir: ReplacementEffectIr,
     /// Zones where this effect is active. Empty = active everywhere.
@@ -77,6 +72,8 @@ pub struct ReplacementEffect {
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ReplacementEffectIr {
+    #[serde(skip, default)]
+    pub card_trait_requirements: CardTraitRequirementsIr,
     pub replace_with: Option<String>,
     pub description_text: Option<String>,
     pub player_turn_text: Option<String>,
@@ -89,6 +86,7 @@ pub struct ReplacementEffectIr {
     pub exclude_destination_text: Option<String>,
     pub valid_card_text: Option<String>,
     pub valid_card_selector: Option<CompiledSelector>,
+    pub valid_player_text: Option<String>,
     pub valid_player_selector: Option<CompiledSelector>,
     pub valid_target_selector: Option<CompiledSelector>,
     pub valid_source_selector: Option<CompiledSelector>,
@@ -119,6 +117,7 @@ pub struct ReplacementEffectIr {
     pub replace_mana_text: Option<String>,
     pub replace_type_text: Option<String>,
     pub replace_color_text: Option<String>,
+    pub replace_only_text: Option<String>,
     pub replace_amount_text: Option<String>,
     pub valid_lki_text: Option<String>,
     pub counter_map: bool,
@@ -149,8 +148,20 @@ impl CardTrait for ReplacementEffect {
     }
 }
 
+impl CardTraitIrOwner for ReplacementEffect {
+    type Ir = ReplacementEffectIr;
+
+    fn ir(&self) -> &Self::Ir {
+        &self.ir
+    }
+
+    fn card_trait_requirements(&self) -> &CardTraitRequirementsIr {
+        &self.ir.card_trait_requirements
+    }
+}
+
 impl ReplacementEffect {
-    /// Attach the host card on the embedded trait base. Mirrors Java's
+    /// Attach the host card id on the embedded trait base. Mirrors Java's
     /// inherited `CardTraitBase.setHostCard(host)` — called from the
     /// `ReplacementEffect` constructor (`ReplacementEffect.java:107`) so
     /// a freshly-constructed effect is always host-bound.
@@ -162,12 +173,12 @@ impl ReplacementEffect {
     /// call, `CardTrait` machinery can stop threading explicit `host: &Card`
     /// args. `TriggerReplacementBase::set_host_card` also propagates the
     /// host into any cached overriding ability.
-    pub fn set_host_card(&mut self, host: Card) {
+    pub fn set_host_card(&mut self, host: &Card) {
         self.ir.replace_with_chain = self
             .replace_with()
             .and_then(|svar_name| host.get_svar(svar_name))
-            .and_then(|raw| parse_replacement_chain(raw, &host));
-        self.base.set_host_card(host);
+            .and_then(|raw| parse_replacement_chain(raw, host));
+        self.base.set_host_card_id(host.id);
     }
 }
 
@@ -183,11 +194,10 @@ impl ReplacementEffect {
             event,
             layer,
             ir: ReplacementEffectIr::from_params(&params),
-            params,
             active_zones,
             suppressed: false,
         };
-        effect.sync_trait_base_params();
+        effect.sync_trait_base_params(&params);
         effect
     }
 
@@ -207,9 +217,8 @@ impl ReplacementEffect {
         self.ir.active_phases.is_empty() || self.ir.active_phases.contains(&phase)
     }
 
-    fn sync_trait_base_params(&mut self) {
-        let map = self
-            .params
+    fn sync_trait_base_params(&mut self, params: &Params) {
+        let map = params
             .iter()
             .map(|(k, v)| (k.to_string(), v.to_string()))
             .collect();
@@ -310,7 +319,7 @@ impl ReplacementEffect {
             return false;
         }
 
-        crate::card::valid_filter::meets_common_requirements(game, &self.params, source)
+        self.meets_card_trait_requirements(game, source, source)
     }
 
     /// Clone this replacement effect. Since `ReplacementEffect` derives `Clone`,
@@ -364,10 +373,8 @@ impl ReplacementEffect {
     ) -> Option<&mut SpellAbility> {
         if self.base.get_overriding_ability().is_none() {
             let ability = self.ensure_ability(game, host_card, activating_player)?;
-            // Store directly — `TriggerReplacementBase::set_overriding_ability`
-            // re-binds host/keyword/state by reading `card_trait_base.get_host_card()`,
-            // which panics for replacement effects (host-binding gap #11). The
-            // built ability is already host-bound by `build_spell_ability`.
+            // Store directly. The built ability is already host-bound by
+            // `build_spell_ability`.
             self.base.overriding_ability = Some(ability);
         }
         self.base.overriding_ability.as_mut()
@@ -388,8 +395,9 @@ impl ReplacementEffect {
     /// just entered may still slip through in narrow nested ETB scenarios.
     pub fn can_replace_etb(&self, source: &Card, affected: &Card) -> bool {
         let targets_self_only = self
-            .params
-            .get(keys::VALID_CARD)
+            .ir
+            .valid_card_text
+            .as_deref()
             .map(|v| v.starts_with("Card.Self"))
             .unwrap_or(false);
         if !targets_self_only && source.id == affected.id {
@@ -673,6 +681,11 @@ impl ReplacementEffect {
 impl ReplacementEffectIr {
     fn from_params(params: &Params) -> Self {
         Self {
+            card_trait_requirements: CardTraitRequirementsIr::from_key_values(
+                params.iter(),
+                params.selector_untracked(keys::IS_PRESENT).cloned(),
+                params.selector_untracked("IsPresent2").cloned(),
+            ),
             replace_with: params.get(keys::REPLACE_WITH).map(str::to_string),
             description_text: params.get(keys::DESCRIPTION).map(str::to_string),
             player_turn_text: params.get(keys::PLAYER_TURN).map(str::to_string),
@@ -685,6 +698,7 @@ impl ReplacementEffectIr {
             exclude_destination_text: params.get("ExcludeDestination").map(str::to_string),
             valid_card_text: params.get(keys::VALID_CARD).map(str::to_string),
             valid_card_selector: params.selector_cloned(keys::VALID_CARD),
+            valid_player_text: params.get(keys::VALID_PLAYER).map(str::to_string),
             valid_player_selector: params.selector_cloned(keys::VALID_PLAYER),
             valid_target_selector: params.selector_cloned(keys::VALID_TARGET),
             valid_source_selector: params.selector_cloned(keys::VALID_SOURCE),
@@ -719,6 +733,7 @@ impl ReplacementEffectIr {
             replace_mana_text: params.get(keys::REPLACE_MANA).map(str::to_string),
             replace_type_text: params.get(keys::REPLACE_TYPE).map(str::to_string),
             replace_color_text: params.get(keys::REPLACE_COLOR).map(str::to_string),
+            replace_only_text: params.get(keys::REPLACE_ONLY).map(str::to_string),
             replace_amount_text: params.get(keys::REPLACE_AMOUNT).map(str::to_string),
             valid_lki_text: params.get("ValidLKI").map(str::to_string),
             counter_map: params.get("CounterMap").is_some(),
@@ -948,12 +963,9 @@ mod tests {
     fn parse_damage_prevention() {
         let raw = "R$ Event$ DamageDone | ActiveZones$ Battlefield | ValidCard$ Card.Self | Prevent$ True | Description$ Prevent all damage dealt to ~.";
         let re = parse_replacement_effect(raw).expect("should parse");
-        let ReplacementEffect {
-            params: raw_params, ..
-        } = &re;
         assert_eq!(re.event, ReplacementType::DamageDone);
         assert_eq!(re.layer, ReplacementLayer::Other);
-        assert_eq!(raw_params.get(keys::PREVENT).unwrap(), "True");
+        assert!(re.ir.prevent);
         assert_eq!(re.active_zones, vec![ZoneType::Battlefield]);
     }
 
@@ -961,14 +973,8 @@ mod tests {
     fn parse_draw_skip() {
         let raw = "R$ Event$ Draw | ValidPlayer$ You | Description$ Skip your draw step.";
         let re = parse_replacement_effect(raw).expect("should parse");
-        let ReplacementEffect {
-            params: raw_params, ..
-        } = &re;
         assert_eq!(re.event, ReplacementType::Draw);
-        assert_eq!(
-            raw_params.selector_value(keys::VALID_PLAYER).unwrap(),
-            "You"
-        );
+        assert_eq!(re.ir.valid_player_text.as_deref(), Some("You"));
         assert!(re.active_zones.is_empty());
     }
 
@@ -976,27 +982,18 @@ mod tests {
     fn parse_destroy_replacement() {
         let raw = "R$ Event$ Destroy | ValidCard$ Card.Self | Description$ ~ is indestructible.";
         let re = parse_replacement_effect(raw).expect("should parse");
-        let ReplacementEffect {
-            params: raw_params, ..
-        } = &re;
         assert_eq!(re.event, ReplacementType::Destroy);
-        assert_eq!(
-            raw_params.selector_value(keys::VALID_CARD).unwrap(),
-            "Card.Self"
-        );
+        assert_eq!(re.ir.valid_card_text.as_deref(), Some("Card.Self"));
     }
 
     #[test]
     fn parse_moved_exile_instead() {
         let raw = "R$ Event$ Moved | Destination$ Graveyard | Origin$ Battlefield | ValidCard$ Card.Self | NewDestination$ Exile | Description$ If ~ would die, exile it instead.";
         let re = parse_replacement_effect(raw).expect("should parse");
-        let ReplacementEffect {
-            params: raw_params, ..
-        } = &re;
         assert_eq!(re.event, ReplacementType::Moved);
-        assert_eq!(raw_params.get(keys::DESTINATION).unwrap(), "Graveyard");
-        assert_eq!(raw_params.get(keys::ORIGIN).unwrap(), "Battlefield");
-        assert_eq!(raw_params.get(keys::NEW_DESTINATION).unwrap(), "Exile");
+        assert_eq!(re.ir.destination_text.as_deref(), Some("Graveyard"));
+        assert_eq!(re.ir.origin_text.as_deref(), Some("Battlefield"));
+        assert_eq!(re.ir.new_destination_text.as_deref(), Some("Exile"));
     }
 
     #[test]

@@ -45,7 +45,7 @@ impl TriggerBehavior for TriggerManaAdded {
                 return false;
             }
         }
-        if !trigger.matches_optional_valid_player_filter(&self.player, params.player) {
+        if !trigger.matches_optional_valid_player_filter(&self.player, params.player, game) {
             return false;
         }
         if let Some(expected) = self.produced.as_ref() {
@@ -64,7 +64,7 @@ impl TriggerBehavior for TriggerManaAdded {
         _trigger: &Trigger,
         sa: &mut SpellAbility,
         params: &RunParams,
-        _game: &GameState,
+        game: &GameState,
     ) {
         if let Some(card) = params.card {
             sa.set_triggering_object(crate::ability::AbilityKey::Card, &card.0.to_string());

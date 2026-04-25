@@ -208,7 +208,7 @@ impl TriggerBehavior for TriggerAbilityTriggered {
         _trigger: &super::trigger::Trigger,
         sa: &mut SpellAbility,
         params: &RunParams,
-        _game: &GameState,
+        game: &GameState,
     ) {
         // Java: sa.setTriggeringObject(AbilityKey.Source, triggeredSA.getHostCard());
         // The source is the host card of the triggered SpellAbility

@@ -35,9 +35,9 @@ impl TriggerBehavior for TriggerMilledOnce {
         params: &RunParams,
         game: &GameState,
     ) -> bool {
-        let host_card = trigger.base.card_trait_base.get_host_card().id;
-        let host_controller = trigger.base.card_trait_base.get_host_card().controller;
-        if !trigger.matches_optional_valid_player_filter(&self.valid_player, params.player) {
+        let host_card = trigger.base.card_trait_base.host_card_id();
+        let host_controller = trigger.base.card_trait_base.host_controller(game);
+        if !trigger.matches_optional_valid_player_filter(&self.valid_player, params.player, game) {
             return false;
         }
         let Some(cards) = params.cards.as_ref() else {
@@ -53,7 +53,7 @@ impl TriggerBehavior for TriggerMilledOnce {
         _trigger: &super::trigger::Trigger,
         sa: &mut SpellAbility,
         params: &RunParams,
-        _game: &GameState,
+        game: &GameState,
     ) {
         // TODO: port ValidCard filtering from Java (CardLists.getValidCards)
         if let Some(cards) = params.cards.as_ref() {

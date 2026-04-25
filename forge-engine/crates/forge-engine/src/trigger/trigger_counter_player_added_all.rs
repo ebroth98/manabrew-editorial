@@ -98,7 +98,7 @@ impl TriggerBehavior for TriggerCounterPlayerAddedAll {
         _trigger: &super::trigger::Trigger,
         sa: &mut SpellAbility,
         params: &RunParams,
-        _game: &GameState,
+        game: &GameState,
     ) {
         // Java: sa.setTriggeringObjectsFrom(runParams, AbilityKey.Source, AbilityKey.Object, AbilityKey.CounterMap)
         // Java also sets Amount = sum of CounterMap values

@@ -720,7 +720,7 @@ pub fn has_trigger(card: &Card, trigger_id: u32) -> bool {
 }
 
 pub fn add_trigger(card: &mut Card, mut trig: Trigger) -> bool {
-    trig.bind_host_card(card.clone());
+    trig.bind_host_card_id(card.id);
     card.triggers.push(trig);
     true
 }
@@ -737,7 +737,7 @@ pub fn remove_static_ability(card: &mut Card, mode: crate::staticability::Static
 }
 
 pub fn add_replacement_effect(card: &mut Card, mut re: ReplacementEffect) -> bool {
-    re.set_host_card(card.clone());
+    re.set_host_card(card);
     card.replacement_effects.push(re);
     true
 }

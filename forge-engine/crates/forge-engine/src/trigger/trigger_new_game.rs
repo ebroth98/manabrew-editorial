@@ -27,7 +27,7 @@ impl TriggerBehavior for TriggerNewGame {
         &self,
         _trigger: &super::trigger::Trigger,
         _params: &RunParams,
-        _game: &GameState,
+        game: &GameState,
     ) -> bool {
         true
     }
@@ -37,7 +37,7 @@ impl TriggerBehavior for TriggerNewGame {
         _trigger: &super::trigger::Trigger,
         _sa: &mut SpellAbility,
         _params: &RunParams,
-        _game: &GameState,
+        game: &GameState,
     ) {
     }
 

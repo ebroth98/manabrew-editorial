@@ -32,6 +32,7 @@ use crate::ability::AbilityKey;
 use crate::agent::PlayerAgent;
 use crate::card::card_damage_map::CardDamageMap;
 use crate::card::card_zone_table::CardZoneTable;
+use crate::card_trait_base::CardTraitIrOwner;
 use crate::cost::{parse_cost, Cost};
 use crate::event::AbilityValue;
 use crate::game::GameState;
@@ -321,6 +322,18 @@ impl std::fmt::Display for SpellAbility {
             node = current.sub_ability.as_deref();
         }
         Ok(())
+    }
+}
+
+impl CardTraitIrOwner for SpellAbility {
+    type Ir = SpellAbilityIr;
+
+    fn ir(&self) -> &Self::Ir {
+        &self.ir
+    }
+
+    fn card_trait_requirements(&self) -> &crate::card::valid_filter::CardTraitRequirementsIr {
+        &self.ir.card_trait_requirements
     }
 }
 
@@ -1432,17 +1445,21 @@ impl SpellAbility {
 
     /// Java parity hook for `SpellAbility.setHostCard(Card)`.
     pub fn set_host_card(&mut self, card: crate::card::Card) {
-        self.source = Some(card.id);
+        self.set_host_card_id(card.id);
+    }
+
+    pub fn set_host_card_id(&mut self, card_id: CardId) {
+        self.source = Some(card_id);
         if self.original_host.is_none() {
-            self.original_host = Some(card.id);
+            self.original_host = Some(card_id);
         }
 
         if let Some(sub_ability) = self.sub_ability.as_deref_mut() {
-            sub_ability.set_host_card(card.clone());
+            sub_ability.set_host_card_id(card_id);
         }
 
         for ability in self.trigger_spell_abilities.values_mut() {
-            ability.set_host_card(card.clone());
+            ability.set_host_card_id(card_id);
         }
     }
 
@@ -1458,13 +1475,13 @@ impl SpellAbility {
     }
 
     /// Java parity hook for `SpellAbility.setCardState(CardState)`.
-    pub fn set_card_state(&mut self, state: crate::card::card_state::CardState) {
+    pub fn set_card_state(&mut self, state: &crate::card::card_state::CardState) {
         if let Some(sub_ability) = self.sub_ability.as_deref_mut() {
-            sub_ability.set_card_state(state.clone());
+            sub_ability.set_card_state(state);
         }
 
         for ability in self.trigger_spell_abilities.values_mut() {
-            ability.set_card_state(state.clone());
+            ability.set_card_state(state);
         }
     }
 

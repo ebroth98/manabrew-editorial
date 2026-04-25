@@ -29,9 +29,9 @@ impl TriggerBehavior for TriggerFlippedCoin {
         TriggerType::FlippedCoin
     }
 
-    fn perform_test(&self, trigger: &Trigger, params: &RunParams, _game: &GameState) -> bool {
-        let host_controller = trigger.base.card_trait_base.get_host_card().controller;
-        if !trigger.matches_optional_valid_player_filter(&self.valid_player, params.player) {
+    fn perform_test(&self, trigger: &Trigger, params: &RunParams, game: &GameState) -> bool {
+        let host_controller = trigger.base.card_trait_base.host_controller(game);
+        if !trigger.matches_optional_valid_player_filter(&self.valid_player, params.player, game) {
             return false;
         }
         if let Some(filter) = self.valid_result.as_ref() {
@@ -54,7 +54,7 @@ impl TriggerBehavior for TriggerFlippedCoin {
         _trigger: &Trigger,
         sa: &mut SpellAbility,
         params: &RunParams,
-        _game: &GameState,
+        game: &GameState,
     ) {
         if let Some(p) = params.player {
             sa.set_triggering_object(crate::ability::AbilityKey::Player, &p.0.to_string());

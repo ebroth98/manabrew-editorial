@@ -51,6 +51,7 @@ impl TriggerBehavior for TriggerSpellAbilityCastOrCopy {
             && trigger.matches_optional_valid_player_filter(
                 &self.valid_activating_player,
                 params.spell_controller,
+                game,
             )
     }
 
@@ -59,7 +60,7 @@ impl TriggerBehavior for TriggerSpellAbilityCastOrCopy {
         _trigger: &Trigger,
         sa: &mut SpellAbility,
         params: &RunParams,
-        _game: &GameState,
+        game: &GameState,
     ) {
         // Java: sa.setTriggeringObject(AbilityKey.Card, cause.getHostCard())
         if let Some(card) = params.spell_card {

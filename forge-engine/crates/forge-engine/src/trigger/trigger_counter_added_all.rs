@@ -62,7 +62,7 @@ impl TriggerBehavior for TriggerCounterAddedAll {
         _trigger: &super::trigger::Trigger,
         sa: &mut SpellAbility,
         params: &RunParams,
-        _game: &GameState,
+        game: &GameState,
     ) {
         if let Some(cards) = params.cards.as_ref() {
             let csv = cards

@@ -26,7 +26,7 @@ impl TriggerBehavior for TriggerBlockersDeclared {
         &self,
         _trigger: &super::trigger::Trigger,
         _params: &RunParams,
-        _game: &GameState,
+        game: &GameState,
     ) -> bool {
         true
     }
@@ -36,7 +36,7 @@ impl TriggerBehavior for TriggerBlockersDeclared {
         _trigger: &super::trigger::Trigger,
         sa: &mut SpellAbility,
         params: &RunParams,
-        _game: &GameState,
+        game: &GameState,
     ) {
         if let Some(blockers) = params.blocker_ids.as_ref() {
             let csv = blockers

@@ -48,7 +48,7 @@ impl TriggerBehavior for TriggerBlocks {
         _trigger: &super::trigger::Trigger,
         sa: &mut SpellAbility,
         params: &RunParams,
-        _game: &GameState,
+        game: &GameState,
     ) {
         if let Some(blocker) = params.blocker {
             sa.set_triggering_object(crate::ability::AbilityKey::Blocker, &blocker.0.to_string());

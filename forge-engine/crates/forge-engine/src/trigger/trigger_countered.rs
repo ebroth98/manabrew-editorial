@@ -72,7 +72,7 @@ impl TriggerBehavior for TriggerCountered {
         _trigger: &super::trigger::Trigger,
         sa: &mut SpellAbility,
         params: &RunParams,
-        _game: &GameState,
+        game: &GameState,
     ) {
         // Java: sa.setTriggeringObjectsFrom(runParams, AbilityKey.Card, AbilityKey.Cause, AbilityKey.CounteredSA)
         if let Some(card) = params.card {

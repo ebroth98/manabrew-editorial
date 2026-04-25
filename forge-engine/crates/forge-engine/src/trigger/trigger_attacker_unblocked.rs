@@ -43,7 +43,7 @@ impl TriggerBehavior for TriggerAttackerUnblocked {
         _trigger: &super::trigger::Trigger,
         sa: &mut SpellAbility,
         params: &RunParams,
-        _game: &GameState,
+        game: &GameState,
     ) {
         if let Some(attacker) = params.attacker {
             sa.set_triggering_object(

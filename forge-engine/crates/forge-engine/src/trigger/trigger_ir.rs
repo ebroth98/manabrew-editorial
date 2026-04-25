@@ -1,10 +1,12 @@
 use forge_foundation::{PhaseType, ZoneType};
 
+use crate::card::valid_filter::CardTraitRequirementsIr;
 use crate::parsing::{keys, CompiledSelector, Params};
 use crate::spellability::TriggerCondition;
 
 #[derive(Debug, Clone, Default)]
 pub struct TriggerIr {
+    pub card_trait_requirements: CardTraitRequirementsIr,
     pub trigger_description: Option<String>,
     pub phase_count: Option<i32>,
     pub player_turn: bool,
@@ -28,6 +30,7 @@ pub struct TriggerIr {
     pub valid_card_selector: Option<CompiledSelector>,
     pub valid_cause_selector: Option<CompiledSelector>,
     pub not_this_ability: bool,
+    pub fizzle: Option<bool>,
     pub condition_you_cast_this_turn: Option<String>,
     pub check_on_triggered_card: Option<String>,
     pub resolved_limit: Option<u32>,
@@ -40,6 +43,11 @@ pub struct TriggerIr {
 impl TriggerIr {
     pub fn from_params(params: &Params) -> Self {
         Self {
+            card_trait_requirements: CardTraitRequirementsIr::from_key_values(
+                params.iter(),
+                params.selector_untracked(keys::IS_PRESENT).cloned(),
+                params.selector_untracked("IsPresent2").cloned(),
+            ),
             trigger_description: params.get(keys::TRIGGER_DESCRIPTION).map(str::to_string),
             phase_count: params.get("PhaseCount").and_then(|v| v.parse().ok()),
             player_turn: params.has(keys::PLAYER_TURN),
@@ -97,6 +105,9 @@ impl TriggerIr {
             valid_card_selector: params.selector_cloned(keys::VALID_CARD),
             valid_cause_selector: params.selector_cloned(keys::VALID_CAUSE),
             not_this_ability: params.has("NotThisAbility"),
+            fizzle: params
+                .get("Fizzle")
+                .map(|value| value.eq_ignore_ascii_case("true")),
             condition_you_cast_this_turn: params
                 .get("ConditionYouCastThisTurn")
                 .map(str::to_string),

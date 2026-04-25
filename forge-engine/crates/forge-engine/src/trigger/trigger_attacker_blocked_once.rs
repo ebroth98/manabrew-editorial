@@ -46,7 +46,13 @@ impl TriggerBehavior for TriggerAttackerBlockedOnce {
             .map(|&attacker_id| MatchValidTarget::Card(game.card(attacker_id)))
             .collect();
 
-        trigger.matches_valid_param_host("ValidCard", &MatchValidTarget::Iter(&attackers))
+        self.valid_card.as_ref().is_none_or(|selector| {
+            trigger.matches_compiled_valid(
+                &MatchValidTarget::Iter(&attackers),
+                selector,
+                Some(trigger.base.card_trait_base.host_card(game)),
+            )
+        })
     }
 
     fn set_triggering_objects(
@@ -54,7 +60,7 @@ impl TriggerBehavior for TriggerAttackerBlockedOnce {
         _trigger: &super::trigger::Trigger,
         sa: &mut SpellAbility,
         params: &RunParams,
-        _game: &GameState,
+        game: &GameState,
     ) {
         if let Some(attackers) = params.attacker_ids.as_ref() {
             sa.set_triggering_object(AbilityKey::Attackers, attackers.clone());

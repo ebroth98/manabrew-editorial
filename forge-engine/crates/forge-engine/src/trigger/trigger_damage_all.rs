@@ -44,7 +44,7 @@ impl TriggerBehavior for TriggerDamageAll {
         _trigger: &super::trigger::Trigger,
         sa: &mut SpellAbility,
         params: &RunParams,
-        _game: &GameState,
+        game: &GameState,
     ) {
         // Java: sets DamageAmount (total), Sources (set of source cards), Targets (set of target entities)
         // from filtered CardDamageMap. We approximate with single source/target from params.

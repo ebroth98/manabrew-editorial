@@ -459,13 +459,13 @@ pub trait TokenEffectBase {
         let bound_host = ctx.game.card(token_id).clone();
         let token = ctx.game.card_mut(token_id);
         for trigger in &mut token.triggers {
-            trigger.bind_host_card(bound_host.clone());
+            trigger.bind_host_card_id(bound_host.id);
         }
         for static_ability in &mut token.static_abilities {
-            static_ability.base.set_host_card(bound_host.clone());
+            static_ability.base.set_host_card_id(bound_host.id);
         }
         for replacement_effect in &mut token.replacement_effects {
-            replacement_effect.base.set_host_card(bound_host.clone());
+            replacement_effect.base.set_host_card_id(bound_host.id);
         }
     }
 

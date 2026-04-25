@@ -34,7 +34,7 @@ impl TriggerBehavior for TriggerLifeGained {
     }
 
     fn perform_test(&self, trigger: &Trigger, params: &RunParams, game: &GameState) -> bool {
-        if !trigger.matches_optional_valid_player_filter(&self.valid_player, params.player) {
+        if !trigger.matches_optional_valid_player_filter(&self.valid_player, params.player, game) {
             return false;
         }
         if let Some(filter) = self.valid_source.as_ref() {
@@ -66,7 +66,7 @@ impl TriggerBehavior for TriggerLifeGained {
         _trigger: &Trigger,
         sa: &mut SpellAbility,
         params: &RunParams,
-        _game: &GameState,
+        game: &GameState,
     ) {
         if let Some(amount) = params.life_amount {
             sa.set_triggering_object(crate::ability::AbilityKey::LifeAmount, &amount.to_string());

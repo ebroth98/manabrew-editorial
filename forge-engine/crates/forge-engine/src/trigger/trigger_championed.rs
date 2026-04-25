@@ -49,7 +49,7 @@ impl TriggerBehavior for TriggerChampioned {
         _trigger: &super::trigger::Trigger,
         sa: &mut SpellAbility,
         params: &RunParams,
-        _game: &GameState,
+        game: &GameState,
     ) {
         if let Some(c) = params.championed_card {
             sa.set_triggering_object(crate::ability::AbilityKey::Championed, &c.0.to_string());

@@ -32,9 +32,9 @@ impl TriggerBehavior for TriggerTokenCreated {
     }
 
     fn perform_test(&self, trigger: &Trigger, params: &RunParams, game: &GameState) -> bool {
-        let host_card = trigger.base.card_trait_base.get_host_card().id;
-        let host_controller = trigger.base.card_trait_base.get_host_card().controller;
-        if !trigger.matches_optional_valid_player_filter(&self.valid_player, params.player) {
+        let host_card = trigger.base.card_trait_base.host_card_id();
+        let host_controller = trigger.base.card_trait_base.host_controller(game);
+        if !trigger.matches_optional_valid_player_filter(&self.valid_player, params.player, game) {
             return false;
         }
         trigger.matches_optional_valid_card_filter(&self.valid_card, params.card, game)
@@ -45,7 +45,7 @@ impl TriggerBehavior for TriggerTokenCreated {
         _trigger: &Trigger,
         sa: &mut SpellAbility,
         params: &RunParams,
-        _game: &GameState,
+        game: &GameState,
     ) {
         if let Some(p) = params.player {
             sa.set_triggering_object(crate::ability::AbilityKey::Player, &p.0.to_string());

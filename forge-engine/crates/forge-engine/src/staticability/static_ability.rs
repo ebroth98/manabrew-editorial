@@ -16,9 +16,10 @@ use forge_foundation::ColorSet;
 use forge_foundation::ZoneType;
 use serde::{Deserialize, Serialize};
 
+use crate::card::valid_filter::CardTraitRequirementsIr;
 use crate::card::Card;
 use crate::card::CounterType;
-use crate::card_trait_base::{CardTrait, CardTraitBase};
+use crate::card_trait_base::{CardTrait, CardTraitBase, CardTraitIrOwner};
 use crate::core::HasSVars;
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
@@ -218,6 +219,7 @@ pub struct StaticAbility {
 
 #[derive(Debug, Clone, Default)]
 pub struct StaticAbilityIr {
+    pub card_trait_requirements: CardTraitRequirementsIr,
     pub valid_card: Option<CompiledSelector>,
     pub valid_cards_text: Option<String>,
     pub valid_player: Option<CompiledSelector>,
@@ -327,6 +329,10 @@ pub struct StaticAbilityIr {
     pub player_turn_text: Option<String>,
     pub top_card_of_library_is: Option<String>,
     pub class_level_min: Option<i32>,
+    pub check_third_svar: Option<String>,
+    pub third_svar_compare: Option<String>,
+    pub check_fourth_svar: Option<String>,
+    pub fourth_svar_compare: Option<String>,
     pub add_power: bool,
     pub add_toughness: bool,
     pub set_power: bool,
@@ -344,6 +350,11 @@ impl StaticAbilityIr {
     fn from_params(params: &Params) -> Self {
         let raw = params.inner();
         Self {
+            card_trait_requirements: CardTraitRequirementsIr::from_key_values(
+                params.iter(),
+                params.selector_untracked(keys::IS_PRESENT).cloned(),
+                params.selector_untracked("IsPresent2").cloned(),
+            ),
             valid_card: params.selector_untracked(keys::VALID_CARD).cloned(),
             valid_cards_text: raw.get(keys::VALID_CARDS).map(String::to_string),
             valid_player: params.selector_untracked(keys::VALID_PLAYER).cloned(),
@@ -492,6 +503,10 @@ impl StaticAbilityIr {
             player_turn_text: raw.get(keys::PLAYER_TURN).map(String::to_string),
             top_card_of_library_is: raw.get("TopCardOfLibraryIs").map(String::to_string),
             class_level_min: raw.get("ClassLevel").and_then(|value| value.parse().ok()),
+            check_third_svar: raw.get("CheckThirdSVar").map(String::to_string),
+            third_svar_compare: raw.get("ThirdSVarCompare").map(String::to_string),
+            check_fourth_svar: raw.get("CheckFourthSVar").map(String::to_string),
+            fourth_svar_compare: raw.get("FourthSVarCompare").map(String::to_string),
             add_power: raw.contains_key(keys::ADD_POWER),
             add_toughness: raw.contains_key(keys::ADD_TOUGHNESS),
             set_power: raw.contains_key(keys::SET_POWER),
@@ -595,7 +610,7 @@ impl StaticAbility {
         if source.phased_out {
             return false;
         }
-        if !crate::card::valid_filter::meets_common_requirements(game, &self.params, source) {
+        if !self.meets_card_trait_requirements(game, source, self) {
             return false;
         }
 
@@ -655,35 +670,21 @@ impl StaticAbility {
             }
         }
 
-        if !crate::card::valid_filter::check_named_svar_condition(
-            game,
-            &self.params,
-            source,
-            source,
-            "CheckSecondSVar",
-            "SecondSVarCompare",
-        ) {
-            return false;
+        if let Some(check_name) = self.ir.check_third_svar.as_deref() {
+            let compare = self.ir.third_svar_compare.as_deref().unwrap_or("GE1");
+            if !crate::card::valid_filter::check_svar_requirement(
+                game, source, source, check_name, compare,
+            ) {
+                return false;
+            }
         }
-        if !crate::card::valid_filter::check_named_svar_condition(
-            game,
-            &self.params,
-            source,
-            source,
-            "CheckThirdSVar",
-            "ThirdSVarCompare",
-        ) {
-            return false;
-        }
-        if !crate::card::valid_filter::check_named_svar_condition(
-            game,
-            &self.params,
-            source,
-            source,
-            "CheckFourthSVar",
-            "FourthSVarCompare",
-        ) {
-            return false;
+        if let Some(check_name) = self.ir.check_fourth_svar.as_deref() {
+            let compare = self.ir.fourth_svar_compare.as_deref().unwrap_or("GE1");
+            if !crate::card::valid_filter::check_svar_requirement(
+                game, source, source, check_name, compare,
+            ) {
+                return false;
+            }
         }
 
         true
@@ -1095,6 +1096,18 @@ impl HasSVars for StaticAbility {
 impl CardTrait for StaticAbility {
     fn base(&self) -> &CardTraitBase {
         &self.base
+    }
+}
+
+impl CardTraitIrOwner for StaticAbility {
+    type Ir = StaticAbilityIr;
+
+    fn ir(&self) -> &Self::Ir {
+        &self.ir
+    }
+
+    fn card_trait_requirements(&self) -> &CardTraitRequirementsIr {
+        &self.ir.card_trait_requirements
     }
 }
 

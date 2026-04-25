@@ -103,9 +103,10 @@ pub fn execute(
             color_word_to_short(replace_color)
         };
         let replace_only = effect
-            .params
-            .get(keys::REPLACE_ONLY)
-            .map(|s| color_word_to_short(s));
+            .ir
+            .replace_only_text
+            .as_deref()
+            .map(color_word_to_short);
         let colored = ["W", "U", "B", "R", "G"];
         let replaced: Vec<String> = mana
             .split_whitespace()

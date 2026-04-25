@@ -29,9 +29,9 @@ impl TriggerBehavior for TriggerManaExpend {
         TriggerType::ManaExpend
     }
 
-    fn perform_test(&self, trigger: &Trigger, params: &RunParams, _game: &GameState) -> bool {
-        let host_controller = trigger.base.card_trait_base.get_host_card().controller;
-        trigger.matches_optional_valid_player_filter(&self.valid_player, params.player)
+    fn perform_test(&self, trigger: &Trigger, params: &RunParams, game: &GameState) -> bool {
+        let host_controller = trigger.base.card_trait_base.host_controller(game);
+        trigger.matches_optional_valid_player_filter(&self.valid_player, params.player, game)
             && params.mana_expend_amount == Some(self.amount)
     }
 
@@ -40,7 +40,7 @@ impl TriggerBehavior for TriggerManaExpend {
         _trigger: &Trigger,
         sa: &mut SpellAbility,
         params: &RunParams,
-        _game: &GameState,
+        game: &GameState,
     ) {
         if let Some(amount) = params.mana_expend_amount {
             sa.set_triggering_object(crate::ability::AbilityKey::Amount, &amount.to_string());

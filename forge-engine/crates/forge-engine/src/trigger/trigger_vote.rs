@@ -23,7 +23,7 @@ impl TriggerBehavior for TriggerVote {
         TriggerType::Vote
     }
 
-    fn perform_test(&self, _trigger: &Trigger, _params: &RunParams, _game: &GameState) -> bool {
+    fn perform_test(&self, _trigger: &Trigger, _params: &RunParams, game: &GameState) -> bool {
         true
     }
 
@@ -34,7 +34,7 @@ impl TriggerBehavior for TriggerVote {
         params: &RunParams,
         game: &GameState,
     ) {
-        let host_controller = trigger.base.card_trait_base.get_host_card().controller;
+        let host_controller = trigger.base.card_trait_base.host_controller(game);
         let Some(all_votes) = params.all_votes.as_ref() else {
             return;
         };

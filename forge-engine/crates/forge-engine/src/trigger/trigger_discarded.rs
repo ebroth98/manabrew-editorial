@@ -40,7 +40,7 @@ impl TriggerBehavior for TriggerDiscarded {
         if !trigger.matches_optional_valid_card_filter(&self.valid_card, params.card, game) {
             return false;
         }
-        if !trigger.matches_optional_valid_player_filter(&self.valid_player, params.player) {
+        if !trigger.matches_optional_valid_player_filter(&self.valid_player, params.player, game) {
             return false;
         }
         if let Some(filter) = self.valid_cause.as_ref() {
@@ -62,7 +62,7 @@ impl TriggerBehavior for TriggerDiscarded {
         _trigger: &super::trigger::Trigger,
         sa: &mut SpellAbility,
         params: &RunParams,
-        _game: &GameState,
+        game: &GameState,
     ) {
         // Java: sa.setTriggeringObjectsFrom(runParams, AbilityKey.Card, AbilityKey.Cause);
         if let Some(card) = params.card {

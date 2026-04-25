@@ -28,8 +28,8 @@ impl TriggerBehavior for TriggerUntapAll {
     }
 
     fn perform_test(&self, trigger: &Trigger, params: &RunParams, game: &GameState) -> bool {
-        let host_card = trigger.base.card_trait_base.get_host_card().id;
-        let host_controller = trigger.base.card_trait_base.get_host_card().controller;
+        let host_card = trigger.base.card_trait_base.host_card_id();
+        let host_controller = trigger.base.card_trait_base.host_controller(game);
         trigger.matches_optional_valid_card_filter(&self.valid_card, params.card, game)
     }
 
@@ -38,7 +38,7 @@ impl TriggerBehavior for TriggerUntapAll {
         _trigger: &Trigger,
         sa: &mut SpellAbility,
         params: &RunParams,
-        _game: &GameState,
+        game: &GameState,
     ) {
         // TODO: port Map<Player, CardCollection> iteration from Java (AbilityKey.Map + filteredMap)
         // Java sets: Map, Player (map.keySet()), Cards (all values combined), Amount (cards.size())

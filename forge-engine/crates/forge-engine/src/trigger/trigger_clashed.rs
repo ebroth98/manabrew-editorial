@@ -32,10 +32,10 @@ impl TriggerBehavior for TriggerClashed {
         &self,
         trigger: &super::trigger::Trigger,
         params: &RunParams,
-        _game: &GameState,
+        game: &GameState,
     ) -> bool {
-        let host_controller = trigger.base.card_trait_base.get_host_card().controller;
-        if !trigger.matches_optional_valid_player_filter(&self.valid_player, params.player) {
+        let host_controller = trigger.base.card_trait_base.host_controller(game);
+        if !trigger.matches_optional_valid_player_filter(&self.valid_player, params.player, game) {
             return false;
         }
         if let Some(expected) = self.won {
@@ -49,7 +49,7 @@ impl TriggerBehavior for TriggerClashed {
         _trigger: &super::trigger::Trigger,
         _sa: &mut SpellAbility,
         _params: &RunParams,
-        _game: &GameState,
+        game: &GameState,
     ) {
         // Clash has no triggered variables
     }

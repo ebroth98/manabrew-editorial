@@ -31,8 +31,8 @@ impl TriggerBehavior for TriggerChangesZone {
         params: &RunParams,
         game: &GameState,
     ) -> bool {
-        let host_card = trigger.base.card_trait_base.get_host_card().id;
-        let host_controller = trigger.base.card_trait_base.get_host_card().controller;
+        let host_card = trigger.base.card_trait_base.host_card_id();
+        let host_controller = trigger.base.card_trait_base.host_controller(game);
         let current_trigger_id = Some(trigger.id);
         let origin = trigger.ir.origin_zone;
         let destination = trigger.ir.destination_zone;
@@ -102,11 +102,7 @@ impl TriggerBehavior for TriggerChangesZone {
                 return false;
             }
         }
-        if let Some(expected_fizzle) = trigger
-            .params
-            .get("Fizzle")
-            .map(|value| value.eq_ignore_ascii_case("true"))
-        {
+        if let Some(expected_fizzle) = trigger.ir.fizzle {
             if params.fizzle != Some(expected_fizzle) {
                 return false;
             }
@@ -157,7 +153,7 @@ impl TriggerBehavior for TriggerChangesZone {
         trigger: &super::trigger::Trigger,
         sa: &mut SpellAbility,
         params: &RunParams,
-        _game: &GameState,
+        game: &GameState,
     ) {
         // Java: if origin == Battlefield, Card = CardLKI, NewCard = Card
         //        else: copy both Card and CardLKI from runParams

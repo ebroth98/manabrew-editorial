@@ -51,7 +51,7 @@ impl TriggerBehavior for TriggerDestroyed {
         _trigger: &super::trigger::Trigger,
         sa: &mut SpellAbility,
         params: &RunParams,
-        _game: &GameState,
+        game: &GameState,
     ) {
         // Java: sa.setTriggeringObjectsFrom(runParams, AbilityKey.Card, AbilityKey.Causer)
         if let Some(card_id) = params.card {

@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 
 use crate::card::counter_type::parse_counter_type;
+use crate::card::valid_filter::CardTraitRequirementsIr;
 use crate::card::CounterType;
 use crate::parsing::amount::AmountExpr;
 use crate::parsing::{
@@ -75,6 +76,7 @@ impl DebuffIr {
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct SpellAbilityIr {
+    pub card_trait_requirements: CardTraitRequirementsIr,
     pub effect: Option<EffectIr>,
     pub mode_text: Option<String>,
     pub produced: Option<String>,
@@ -519,6 +521,7 @@ impl SpellAbilityIr {
         params: &ParsedParams<'_>,
     ) -> Self {
         Self {
+            card_trait_requirements: CardTraitRequirementsIr::from_parsed(params),
             effect: lower_effect_ir(api, params),
             mode_text: params.get(keys::MODE).map(str::to_string),
             produced: params.get(keys::PRODUCED).map(str::to_string),

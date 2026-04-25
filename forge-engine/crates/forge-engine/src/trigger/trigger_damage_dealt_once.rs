@@ -51,7 +51,7 @@ impl TriggerBehavior for TriggerDamageDealtOnce {
         _trigger: &super::trigger::Trigger,
         sa: &mut SpellAbility,
         params: &RunParams,
-        _game: &GameState,
+        game: &GameState,
     ) {
         if let Some(src) = params.damage_source {
             sa.set_triggering_object(crate::ability::AbilityKey::Source, &src.0.to_string());

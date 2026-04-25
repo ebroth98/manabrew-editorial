@@ -49,7 +49,7 @@ impl TriggerBehavior for TriggerDamageDone {
         _trigger: &super::trigger::Trigger,
         sa: &mut SpellAbility,
         params: &RunParams,
-        _game: &GameState,
+        game: &GameState,
     ) {
         // Java: sa.setTriggeringObject(AbilityKey.Source, CardCopyService.getLKICopy(DamageSource))
         // TODO: Java uses CardCopyService.getLKICopy for the source. We just use the ID directly.

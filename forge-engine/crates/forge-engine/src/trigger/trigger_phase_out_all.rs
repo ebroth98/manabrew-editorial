@@ -33,8 +33,8 @@ impl TriggerBehavior for TriggerPhaseOutAll {
         params: &RunParams,
         game: &GameState,
     ) -> bool {
-        let host_card = trigger.base.card_trait_base.get_host_card().id;
-        let host_controller = trigger.base.card_trait_base.get_host_card().controller;
+        let host_card = trigger.base.card_trait_base.host_card_id();
+        let host_controller = trigger.base.card_trait_base.host_controller(game);
         let Some(cards) = params.cards.as_ref() else {
             return self.valid_cards.is_none();
         };
@@ -49,7 +49,7 @@ impl TriggerBehavior for TriggerPhaseOutAll {
         _trigger: &super::trigger::Trigger,
         sa: &mut SpellAbility,
         params: &RunParams,
-        _game: &GameState,
+        game: &GameState,
     ) {
         // TODO: port ValidCards filtering from Java (IterableUtil.filter with CardPredicates.restriction)
         if let Some(cards) = params.cards.as_ref() {

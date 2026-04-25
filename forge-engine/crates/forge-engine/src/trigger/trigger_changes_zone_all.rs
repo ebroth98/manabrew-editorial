@@ -52,8 +52,8 @@ impl TriggerBehavior for TriggerChangesZoneAll {
         params: &RunParams,
         game: &GameState,
     ) -> bool {
-        let host_card = trigger.base.card_trait_base.get_host_card().id;
-        let host_controller = trigger.base.card_trait_base.get_host_card().controller;
+        let host_card = trigger.base.card_trait_base.host_card_id();
+        let host_controller = trigger.base.card_trait_base.host_controller(game);
         let table = match params.get_value(AbilityKey::Cards) {
             Some(AbilityValue::CardZoneTable(table)) => Some(table),
             _ => None,
@@ -170,7 +170,7 @@ impl TriggerBehavior for TriggerChangesZoneAll {
         _trigger: &super::trigger::Trigger,
         sa: &mut SpellAbility,
         params: &RunParams,
-        _game: &GameState,
+        game: &GameState,
     ) {
         // TODO: Java calls this.filterCards(table) to filter by ValidCards param,
         // but we don't have access to the trigger params here. Passing through all cards.

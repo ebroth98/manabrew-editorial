@@ -74,13 +74,12 @@ impl DelayedTrigger {
         } = self;
         let mut base =
             crate::game_loop::trigger_replacement_base::TriggerReplacementBase::default();
-        base.set_host_card(game.card(self.source_card).clone());
+        base.set_host_card_id(self.source_card);
         crate::trigger::Trigger {
             id: u32::MAX, // Sentinel — delayed triggers have no real Trigger id
             base,
             kind: self.mode,
             mode: dyn_clone::clone_box(&*self.trigger_mode),
-            params: delayed_params.clone(),
             ir: crate::trigger::trigger_ir::TriggerIr::from_params(delayed_params),
             execute: self.execute_svar.clone(),
             optional: false,
@@ -1407,11 +1406,6 @@ impl TriggerHandler {
             }
         }
 
-        // Mirrors Java Trigger.requirementsCheck() -> meetsCommonRequirements():
-        // apply common IsPresent$/PresentCompare$/PresentPlayer$/PresentZone$ checks.
-        if !valid_filter::check_is_present(game, &trigger.params, card, card) {
-            return false;
-        }
         true
     }
 

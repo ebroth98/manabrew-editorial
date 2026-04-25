@@ -77,6 +77,7 @@ impl TriggerBehavior for TriggerAttackersDeclared {
         if !trigger.matches_optional_valid_player_filter(
             &self.valid_player,
             params.attacking_player.or(params.player),
+            game,
         ) {
             return false;
         }
@@ -113,7 +114,7 @@ impl TriggerBehavior for TriggerAttackersDeclared {
         _trigger: &super::trigger::Trigger,
         sa: &mut SpellAbility,
         params: &RunParams,
-        _game: &GameState,
+        game: &GameState,
     ) {
         // Java: sa.setTriggeringObject(AbilityKey.Attackers, attackers);
         if let Some(attacker_ids) = params.attacker_ids.as_ref() {

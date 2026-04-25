@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::ability::AbilityKey;
 use crate::card::{valid_filter, Card};
-use crate::card_trait_base::{CardTrait, CardTraitBase, MatchValidTarget};
+use crate::card_trait_base::{CardTrait, CardTraitBase, CardTraitIrOwner, MatchValidTarget};
 use crate::core::HasSVars;
 use crate::event::{AbilityValue, RunParams};
 use crate::game::GameState;
@@ -28,7 +28,6 @@ pub struct Trigger {
     #[serde(default)]
     pub kind: TriggerType,
     pub mode: Box<dyn TriggerBehavior>,
-    pub params: Params,
     #[serde(skip, default)]
     pub ir: TriggerIr,
     pub execute: String,
@@ -102,7 +101,7 @@ impl Trigger {
 
     /// Returns the host card's ID. Mirrors Java's `getHostCard().getId()`.
     pub fn host_card_id(&self) -> CardId {
-        self.base.card_trait_base.get_host_card().id
+        self.base.card_trait_base.host_card_id()
     }
 
     /// Returns the host card's current controller from live game state.
@@ -132,8 +131,8 @@ impl Trigger {
         &self.trigger_remembered
     }
 
-    pub fn bind_host_card(&mut self, host_card: crate::card::Card) {
-        self.base.set_host_card(host_card);
+    pub fn bind_host_card_id(&mut self, host_card: CardId) {
+        self.base.set_host_card_id(host_card);
     }
 
     pub fn get_active_zone(&self) -> &[ZoneType] {
@@ -188,6 +187,18 @@ impl CardTrait for Trigger {
     }
 }
 
+impl CardTraitIrOwner for Trigger {
+    type Ir = TriggerIr;
+
+    fn ir(&self) -> &Self::Ir {
+        &self.ir
+    }
+
+    fn card_trait_requirements(&self) -> &valid_filter::CardTraitRequirementsIr {
+        &self.ir.card_trait_requirements
+    }
+}
+
 impl Trigger {
     pub fn set_trigger_phases(&mut self, phases: Vec<PhaseType>) {
         self.ir.valid_phases = Some(phases);
@@ -206,7 +217,7 @@ impl Trigger {
         let mut desc = self.ir.trigger_description.clone().unwrap_or_default();
 
         if !desc.contains("ABILITY") {
-            let host_name = self.base.card_trait_base.get_host_card().card_name.clone();
+            let host_name = self.base.card_trait_base.host_card_id().0.to_string();
             desc = desc.replace("CARDNAME", &host_name);
             desc = desc.replace("NICKNAME", &host_name);
             if desc.contains("ORIGINALHOST") {
@@ -221,9 +232,9 @@ impl Trigger {
 
         if desc.contains("EFFECTSOURCE") {
             let replacement = if active {
-                self.base.card_trait_base.get_host_card().id.0.to_string()
+                self.base.card_trait_base.host_card_id().0.to_string()
             } else {
-                self.base.card_trait_base.get_host_card().card_name.clone()
+                self.base.card_trait_base.host_card_id().0.to_string()
             };
             desc = desc.replace("EFFECTSOURCE", &replacement);
         }
@@ -435,14 +446,7 @@ impl Trigger {
             }
         }
         let host = game.card(host_card);
-        if !self
-            .base
-            .card_trait_base
-            .meets_common_requirements(game, &self.params)
-        {
-            return false;
-        }
-        if !valid_filter::check_is_present(game, &self.params, host, host) {
+        if !self.meets_card_trait_requirements(game, host, &self.base.card_trait_base) {
             return false;
         }
         self.check_resolved_limit(game, host_card)
@@ -496,8 +500,11 @@ impl Trigger {
         match (filter.as_ref(), card_id) {
             (None, _) => true,
             (Some(_), None) => false,
-            (Some(selector), Some(card_id)) => self
-                .matches_compiled_valid_host(&MatchValidTarget::Card(game.card(card_id)), selector),
+            (Some(selector), Some(card_id)) => self.matches_compiled_valid(
+                &MatchValidTarget::Card(game.card(card_id)),
+                selector,
+                Some(self.base.card_trait_base.host_card(game)),
+            ),
         }
     }
 
@@ -507,13 +514,16 @@ impl Trigger {
         &self,
         filter: &Option<CompiledSelector>,
         player_id: Option<PlayerId>,
+        game: &GameState,
     ) -> bool {
         match (filter.as_ref(), player_id) {
             (None, _) => true,
             (Some(_), None) => false,
-            (Some(selector), Some(player_id)) => {
-                self.matches_compiled_valid_host(&MatchValidTarget::Player(player_id), selector)
-            }
+            (Some(selector), Some(player_id)) => self.matches_compiled_valid(
+                &MatchValidTarget::Player(player_id),
+                selector,
+                Some(self.base.card_trait_base.host_card(game)),
+            ),
         }
     }
 
@@ -524,7 +534,11 @@ impl Trigger {
         card_id: CardId,
         game: &GameState,
     ) -> bool {
-        self.matches_compiled_valid_host(&MatchValidTarget::Card(game.card(card_id)), filter)
+        self.matches_compiled_valid(
+            &MatchValidTarget::Card(game.card(card_id)),
+            filter,
+            Some(self.base.card_trait_base.host_card(game)),
+        )
     }
 
     /// Matches a required player against a `Valid...` player filter from this trigger's host context.
@@ -532,9 +546,13 @@ impl Trigger {
         &self,
         filter: &CompiledSelector,
         player: PlayerId,
-        _game: &GameState,
+        game: &GameState,
     ) -> bool {
-        self.matches_compiled_valid_host(&MatchValidTarget::Player(player), filter)
+        self.matches_compiled_valid(
+            &MatchValidTarget::Player(player),
+            filter,
+            Some(self.base.card_trait_base.host_card(game)),
+        )
     }
 
     /// Matches a required player against a `Valid...` player filter from an explicit source controller.
@@ -586,62 +604,6 @@ impl Trigger {
             return !sa.is_spell;
         }
         true
-    }
-
-    fn matches_valid_player_with_host(
-        &self,
-        filter: &str,
-        player: PlayerId,
-        game: &GameState,
-    ) -> bool {
-        let host_controller = self.host_controller(game);
-        fn matches_single_player_filter(
-            filter: &str,
-            player: PlayerId,
-            host_controller: PlayerId,
-            game: &GameState,
-        ) -> bool {
-            let token = filter.trim();
-            if token.is_empty() {
-                return true;
-            }
-            if token.eq_ignore_ascii_case("You") || token.eq_ignore_ascii_case("YouCtrl") {
-                return player == host_controller;
-            }
-            if token.eq_ignore_ascii_case("Opponent")
-                || token.eq_ignore_ascii_case("OppCtrl")
-                || token.eq_ignore_ascii_case("OpponentCtrl")
-            {
-                return player != host_controller;
-            }
-            if token.eq_ignore_ascii_case("DefendingPlayer")
-                || token.eq_ignore_ascii_case("AttackingPlayer")
-            {
-                return player == game.turn.active_player;
-            }
-            if token.eq_ignore_ascii_case("Any")
-                || token.eq_ignore_ascii_case("Each")
-                || token.eq_ignore_ascii_case("Player")
-                || token.eq_ignore_ascii_case("Player.InGame")
-            {
-                return true;
-            }
-            if token.eq_ignore_ascii_case("Active") {
-                return player == game.turn.active_player;
-            }
-            if token.eq_ignore_ascii_case("NonActive") {
-                return player != game.turn.active_player;
-            }
-            true
-        }
-
-        if filter.contains(',') {
-            filter
-                .split(',')
-                .any(|part| matches_single_player_filter(part, player, host_controller, game))
-        } else {
-            matches_single_player_filter(filter, player, host_controller, game)
-        }
     }
 
     /// Matches a damage target filter for either player or card targets.
@@ -876,23 +838,12 @@ impl Trigger {
             return Some(overriding_ability.clone());
         }
         let holder: &dyn HasSVars = if self.is_intrinsic() {
-            if let Some(state) = self.base.card_trait_base.get_card_state() {
-                state
-            } else {
-                game.card(host_card)
-            }
+            &self.base.card_trait_base
         } else {
             game.card(host_card)
         };
         if self.execute.is_empty() {
             return None;
-        }
-        if self.is_intrinsic() {
-            if let Some(state) = self.base.card_trait_base.get_card_state() {
-                if let Some(sa) = state.get_ability_for_trigger(self.execute.clone()) {
-                    return Some(sa);
-                }
-            }
         }
         let ability_text = holder.get_svar(&self.execute)?;
         Some(build_spell_ability(
@@ -925,12 +876,7 @@ impl Trigger {
     }
 
     pub fn is_last_chapter(&self) -> bool {
-        self.is_chapter()
-            && self
-                .base
-                .card_trait_base
-                .get_card_state()
-                .is_some_and(|state| self.get_chapter() == Some(state.get_final_chapter_nr()))
+        false
     }
 
     pub fn while_keyword_check(&self, _param: &str, _run_params: &RunParams) -> bool {
@@ -1336,7 +1282,6 @@ pub fn parse_trigger(raw: &str, next_id: &mut u32) -> Option<Trigger> {
         base,
         kind,
         mode,
-        params,
         ir,
         execute,
         optional,

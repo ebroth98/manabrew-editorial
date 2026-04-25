@@ -48,7 +48,7 @@ impl TriggerBehavior for TriggerBecomesTarget {
         params: &RunParams,
         game: &GameState,
     ) -> bool {
-        let host_controller = trigger.base.card_trait_base.get_host_card().controller;
+        let host_controller = trigger.base.card_trait_base.host_controller(game);
         if let Some(filter) = self.valid_source.as_ref() {
             let source_matches = if let Some(source_sa) = params.source_sa.as_ref() {
                 let raw_filter = filter.as_raw();
@@ -110,7 +110,7 @@ impl TriggerBehavior for TriggerBecomesTarget {
         _trigger: &super::trigger::Trigger,
         sa: &mut SpellAbility,
         params: &RunParams,
-        _game: &GameState,
+        game: &GameState,
     ) {
         if let Some(ref source_sa) = params.source_sa {
             if let Some(source_card) = source_sa.source {

@@ -3,9 +3,10 @@ use std::collections::HashMap;
 use forge_foundation::ZoneType;
 
 use crate::card::card_state::CardState;
-use crate::card::Card;
 use crate::card_trait_base::CardTraitBase;
 use crate::core::Identifiable;
+use crate::game::GameState;
+use crate::ids::CardId;
 use crate::keyword::keyword_interface::KeywordInterface;
 use crate::spellability::SpellAbility;
 use serde::{Deserialize, Serialize};
@@ -28,10 +29,10 @@ impl Identifiable for TriggerReplacementBase {
 }
 
 impl TriggerReplacementBase {
-    pub fn set_host_card(&mut self, c: Card) {
-        self.card_trait_base.set_host_card(c.clone());
+    pub fn set_host_card_id(&mut self, id: CardId) {
+        self.card_trait_base.set_host_card_id(id);
         if let Some(overriding_ability) = self.overriding_ability.as_mut() {
-            overriding_ability.set_host_card(c);
+            overriding_ability.set_host_card_id(id);
         }
     }
 
@@ -43,9 +44,9 @@ impl TriggerReplacementBase {
     }
 
     pub fn set_card_state(&mut self, state: CardState) {
-        self.card_trait_base.set_card_state(state.clone());
+        self.card_trait_base.set_card_state(&state);
         if let Some(overriding_ability) = self.overriding_ability.as_mut() {
-            overriding_ability.set_card_state(state);
+            overriding_ability.set_card_state(&state);
         }
     }
 
@@ -57,8 +58,8 @@ impl TriggerReplacementBase {
         self.valid_host_zones = Some(zones);
     }
 
-    pub fn zones_check(&self, host_card_zone: Option<ZoneType>) -> bool {
-        !self.card_trait_base.get_host_card().phased_out
+    pub fn zones_check(&self, game: &GameState, host_card_zone: Option<ZoneType>) -> bool {
+        !self.card_trait_base.host_card(game).phased_out
             && (self.valid_host_zones.is_none()
                 || self
                     .valid_host_zones
@@ -78,12 +79,9 @@ impl TriggerReplacementBase {
     pub fn set_overriding_ability(&mut self, overriding_ability: SpellAbility) {
         self.overriding_ability = Some(overriding_ability);
         if let Some(ability) = self.overriding_ability.as_mut() {
-            ability.set_host_card(self.card_trait_base.get_host_card().clone());
+            ability.set_host_card_id(self.card_trait_base.host_card_id());
             if let Some(keyword) = self.card_trait_base.get_keyword().cloned() {
                 ability.set_keyword(keyword);
-            }
-            if let Some(state) = self.card_trait_base.get_card_state().cloned() {
-                ability.set_card_state(state);
             }
             ability.set_intrinsic(self.card_trait_base.is_intrinsic());
         }

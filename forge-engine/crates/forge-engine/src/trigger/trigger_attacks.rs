@@ -43,7 +43,7 @@ impl TriggerBehavior for TriggerAttacks {
         _trigger: &super::trigger::Trigger,
         sa: &mut SpellAbility,
         params: &RunParams,
-        _game: &GameState,
+        game: &GameState,
     ) {
         // Java: sa.setTriggeringObject(AbilityKey.Defender, runParams.get(AbilityKey.Attacked));
         if let Some(p) = params.attacked_player {

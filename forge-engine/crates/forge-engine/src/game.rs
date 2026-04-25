@@ -246,7 +246,7 @@ impl GameState {
         card.id = id;
         let bound_host = card.clone();
         for trigger in &mut card.triggers {
-            trigger.bind_host_card(bound_host.clone());
+            trigger.bind_host_card_id(bound_host.id);
         }
         self.cards.push(card);
         id

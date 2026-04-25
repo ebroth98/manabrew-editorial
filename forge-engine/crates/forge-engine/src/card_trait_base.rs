@@ -18,21 +18,18 @@ use serde::{Deserialize, Serialize};
 
 use forge_foundation::CardStateName;
 
-use crate::ability::ability_utils::{
-    apply_ability_text_change_effects, apply_description_text_change_effects,
-    apply_text_change_effects,
-};
+use crate::ability::ability_utils::apply_text_change_effects;
 use crate::card::card_state::CardState;
-use crate::card::valid_filter::meets_common_requirements_with_svars;
-use crate::card::{valid_filter, Card};
+use crate::card::valid_filter::{self, CardTraitRequirementsIr};
+use crate::card::Card;
 use crate::core::{HasSVars, Identifiable};
 use crate::event::AbilityValue;
 use crate::game::GameState;
 use crate::game_object::GameObject;
-use crate::ids::PlayerId;
+use crate::ids::{CardId, PlayerId};
 use crate::keyword::keyword_instance::Keyword;
 use crate::keyword::keyword_interface::KeywordInterface;
-use crate::parsing::{CompiledSelector, Params};
+use crate::parsing::CompiledSelector;
 use crate::player::GameLossReason;
 
 // Keys of descriptive (text) parameters.
@@ -70,17 +67,17 @@ pub enum MatchValidTarget<'a> {
 ///
 /// The `Card` branch is pending `impl ITranslatable for Card`.
 pub enum HostName<'a> {
-    State(&'a CardState),
+    State(CardStateName),
     Card(&'a Card),
 }
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Default, Serialize, Deserialize)]
 pub struct CardTraitBase {
     id: i32,
     #[serde(skip)]
-    host_card: Option<Card>,
+    host_card_id: Option<CardId>,
     #[serde(skip)]
-    card_state: Option<CardState>,
+    card_state_name: Option<CardStateName>,
     #[serde(skip)]
     keyword: Option<KeywordInterface>,
 
@@ -96,6 +93,26 @@ pub struct CardTraitBase {
     intrinsic_changed_text_types: HashMap<String, String>,
     changed_text_colors: HashMap<String, String>,
     changed_text_types: HashMap<String, String>,
+}
+
+impl Clone for CardTraitBase {
+    fn clone(&self) -> Self {
+        Self {
+            id: self.id,
+            host_card_id: self.host_card_id,
+            card_state_name: self.card_state_name,
+            keyword: None,
+            original_map_params: self.original_map_params.clone(),
+            map_params: self.map_params.clone(),
+            intrinsic: self.intrinsic,
+            suppressed: self.suppressed,
+            svars: self.svars.clone(),
+            intrinsic_changed_text_colors: self.intrinsic_changed_text_colors.clone(),
+            intrinsic_changed_text_types: self.intrinsic_changed_text_types.clone(),
+            changed_text_colors: self.changed_text_colors.clone(),
+            changed_text_types: self.changed_text_types.clone(),
+        }
+    }
 }
 
 impl CardTraitBase {
@@ -159,14 +176,21 @@ impl CardTraitBase {
 
     // ── host card ───────────────────────────────────────────────────
 
-    pub fn get_host_card(&self) -> &Card {
-        self.host_card
-            .as_ref()
-            .expect("CardTraitBase host_card must be bound before use")
+    pub fn host_card_id(&self) -> CardId {
+        self.host_card_id
+            .expect("CardTraitBase host_card_id must be bound before use")
     }
 
-    pub fn set_host_card(&mut self, c: Card) {
-        self.host_card = Some(c);
+    pub fn set_host_card_id(&mut self, id: CardId) {
+        self.host_card_id = Some(id);
+    }
+
+    pub fn host_card<'a>(&self, game: &'a GameState) -> &'a Card {
+        game.card(self.host_card_id())
+    }
+
+    pub fn host_controller(&self, game: &GameState) -> PlayerId {
+        self.host_card(game).controller
     }
 
     // ── keyword ─────────────────────────────────────────────────────
@@ -312,16 +336,6 @@ impl CardTraitBase {
         self.suppressed
     }
 
-    // ── meetsCommonRequirements ─────────────────────────────────────
-
-    /// Mirrors Java `meetsCommonRequirements(Map<String, String> params)`.
-    /// The Rust codebase represents `Map<String, String>` uniformly as
-    /// `Params` (see `parsing::mod.rs` doc), so the argument type differs
-    /// while the semantics match.
-    pub fn meets_common_requirements(&self, game: &GameState, params: &Params) -> bool {
-        meets_common_requirements_with_svars(game, params, self.get_host_card(), self)
-    }
-
     // ── CardView ────────────────────────────────────────────────────
 
     /// TODO(port): `CardView` / `IHasCardView` not ported.
@@ -331,7 +345,7 @@ impl CardTraitBase {
 
     // ── SVar fallback / lookup ──────────────────────────────────────
 
-    /// Ordered SVar fallback chain: keyword-static → card-state → host card.
+    /// Ordered SVar fallback chain: keyword-static.
     /// Mirrors Java's chained `getSVar` walk in `CardTraitBase`.
     fn get_svar_fallback(&self, name: Option<&str>) -> Vec<&dyn HasSVars> {
         let mut result: Vec<&dyn HasSVars> = Vec::new();
@@ -348,12 +362,6 @@ impl CardTraitBase {
                 }
             }
         }
-        if let Some(state) = self.card_state.as_ref() {
-            result.push(state);
-        }
-        if let Some(host) = self.host_card.as_ref() {
-            result.push(host);
-        }
         result
     }
 
@@ -368,7 +376,7 @@ impl CardTraitBase {
         value.parse::<i32>().ok()
     }
 
-    /// Merged SVar map across keyword-static → card-state → host → self.
+    /// Merged SVar map across keyword-static → self.
     /// Local `svars` override fallbacks, matching Java `getSVars()` at line 613.
     pub fn get_all_svars(&self) -> HashMap<String, String> {
         let mut res: HashMap<String, String> = HashMap::new();
@@ -385,25 +393,30 @@ impl CardTraitBase {
 
     // ── card state / host name ─────────────────────────────────────
 
-    pub fn get_card_state(&self) -> Option<&CardState> {
-        self.card_state.as_ref()
-    }
-
-    pub fn set_card_state(&mut self, state: CardState) {
-        self.card_state = Some(state);
+    pub fn set_card_state(&mut self, state: &CardState) {
+        self.card_state_name = Some(state.get_state_name());
+        for (key, value) in HasSVars::get_svars(state) {
+            self.svars
+                .entry(key.clone())
+                .or_insert_with(|| value.clone());
+        }
     }
 
     pub fn get_card_state_name(&self) -> Option<CardStateName> {
-        self.card_state.as_ref().map(|s| s.get_state_name())
+        self.card_state_name
     }
 
     /// Mirrors `getHostName(CardTraitBase node)`.
     ///
     /// Returns the alternate card-state view when the node is intrinsic and
     /// its state differs from the host's current state; otherwise the host.
-    pub fn get_host_name<'a>(&'a self, node: &'a CardTraitBase) -> HostName<'a> {
+    pub fn get_host_name<'a>(
+        &'a self,
+        game: &'a GameState,
+        node: &'a CardTraitBase,
+    ) -> HostName<'a> {
         if node.is_intrinsic() {
-            if let Some(state) = node.card_state.as_ref() {
+            if let Some(state_name) = node.card_state_name {
                 // TODO(port): needs `Card::get_current_state_name()` for the
                 // comparison. For now assume the state differs when present
                 // and the host has no way to report its current state.
@@ -411,21 +424,14 @@ impl CardTraitBase {
                     "port: Card::get_current_state_name — required by CardTraitBase::get_host_name"
                 );
                 #[allow(unreachable_code)]
-                return HostName::State(state);
+                return HostName::State(state_name);
             }
         }
-        HostName::Card(node.get_host_card())
-    }
-
-    pub fn get_original_host(&self) -> Option<&Card> {
-        self.card_state.as_ref().map(|s| s.get_card())
+        HostName::Card(node.host_card(game))
     }
 
     pub fn is_copied_trait(&self) -> bool {
-        let Some(state) = self.card_state.as_ref() else {
-            return false;
-        };
-        self.get_host_card().id != state.get_card().id
+        false
     }
 
     // ── changed text ────────────────────────────────────────────────
@@ -477,7 +483,7 @@ impl CardTraitBase {
                     &color_tree,
                     &type_tree,
                 ))
-            } else if self.get_host_card().has_s_var(&value) {
+            } else if self.svars.contains_key(&value) {
                 // Don't change literal SVar names.
                 continue;
             } else {
@@ -507,28 +513,6 @@ impl CardTraitBase {
             "port: Card::get_changed_text_color_words / _type_words — \
              required by CardTraitBase::change_text"
         );
-        #[allow(unreachable_code)]
-        {
-            let host = self.get_host_card().clone();
-            let keys: Vec<String> = self.map_params.keys().cloned().collect();
-            for key in keys {
-                let Some(value) = self.original_map_params.get(&key).cloned() else {
-                    continue;
-                };
-                let new_value = if NO_CHANGE_KEYS.contains(&key.as_str()) {
-                    continue;
-                } else if DESCRIPTIVE_KEYS.contains(&key.as_str()) {
-                    Some(apply_description_text_change_effects(&value, &host))
-                } else if host.has_s_var(&value) {
-                    None
-                } else {
-                    Some(apply_ability_text_change_effects(&value, &host))
-                };
-                if let Some(nv) = new_value {
-                    self.map_params.insert(key, nv);
-                }
-            }
-        }
     }
 
     // ── copy ────────────────────────────────────────────────────────
@@ -550,9 +534,9 @@ impl CardTraitBase {
             self.original_map_params.clone()
         };
         copy.set_svars(self.svars.clone());
-        copy.card_state = self.card_state.clone();
+        copy.card_state_name = self.card_state_name;
         // Mirrors Java copyHelper: assign host directly instead of using set_host_card.
-        copy.host_card = Some(host);
+        copy.host_card_id = Some(host.id);
         copy.keyword = self.keyword.clone();
     }
 
@@ -612,16 +596,6 @@ impl HasSVars for CardTraitBase {
                         return Some(v);
                     }
                 }
-            }
-        }
-        if let Some(state) = self.card_state.as_ref() {
-            if let Some(v) = HasSVars::get_svar(state, name) {
-                return Some(v);
-            }
-        }
-        if let Some(host) = self.host_card.as_ref() {
-            if let Some(v) = host.get_s_var(name) {
-                return Some(v);
             }
         }
         None
@@ -699,21 +673,6 @@ pub trait CardTrait {
             .matches_compiled_valid_with_player(target, selector, src, player)
     }
 
-    /// Mirrors `matchesValid(Object, String[])` — defaults source card to host.
-    fn matches_valid_host(&self, target: &MatchValidTarget<'_>, valids: &[&str]) -> bool {
-        let host = self.base().get_host_card().clone();
-        self.matches_valid(target, valids, Some(&host))
-    }
-
-    fn matches_compiled_valid_host(
-        &self,
-        target: &MatchValidTarget<'_>,
-        selector: &CompiledSelector,
-    ) -> bool {
-        let host = self.base().get_host_card().clone();
-        self.matches_compiled_valid(target, selector, Some(&host))
-    }
-
     fn matches_valid_param(
         &self,
         param: &str,
@@ -731,11 +690,6 @@ pub trait CardTrait {
             }
         }
         !invert
-    }
-
-    fn matches_valid_param_host(&self, param: &str, target: &MatchValidTarget<'_>) -> bool {
-        let host = self.base().get_host_card().clone();
-        self.matches_valid_param(param, target, Some(&host))
     }
 
     /// Ergonomic comma-separated-expression wrapper over `matches_valid` for
@@ -776,5 +730,34 @@ pub trait CardTrait {
 impl CardTrait for CardTraitBase {
     fn base(&self) -> &CardTraitBase {
         self
+    }
+}
+
+/// Runtime objects that have a lowered card-trait IR.
+///
+/// This is the Rust equivalent of Java subclasses inheriting common
+/// `CardTraitBase` behavior while carrying their own concrete data. It is not
+/// limited to `CardTrait` implementors because `SpellAbility` also owns a
+/// lowered IR in Rust.
+///
+/// The associated type keeps each owner tied to its specific IR (`TriggerIr`,
+/// `StaticAbilityIr`, `ReplacementEffectIr`, `SpellAbilityIr`, ...). The
+/// requirement view is exposed directly here so shared checks only need this
+/// one trait.
+pub trait CardTraitIrOwner {
+    type Ir;
+
+    fn ir(&self) -> &Self::Ir;
+
+    fn card_trait_requirements(&self) -> &CardTraitRequirementsIr;
+
+    fn meets_card_trait_requirements(
+        &self,
+        game: &GameState,
+        source: &Card,
+        svar_source: &dyn HasSVars,
+    ) -> bool {
+        self.card_trait_requirements()
+            .meets(game, source, svar_source)
     }
 }

@@ -502,7 +502,6 @@ impl GameLoop {
                         },
                         kind: crate::trigger::TriggerType::ChangesZone,
                         mode: Box::new(crate::trigger::trigger_changes_zone::TriggerChangesZone),
-                        params: params.clone(),
                         ir: crate::trigger::TriggerIr::from_params(&params),
                         execute: "BlitzDiesDraw".to_string(),
                         optional: false,

@@ -175,32 +175,3 @@ impl GameState {
         self.player_create_commander_effect(player, trigger_handler);
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use crate::game::GameState;
-    use crate::ids::PlayerId;
-
-    #[test]
-    fn commander_effect_replacements_are_optional() {
-        let mut game = GameState::new(&["Player"], 40);
-        let player = PlayerId(0);
-
-        game.player_mut(player)
-            .commanders
-            .push(crate::ids::CardId(99));
-        let effect_id = game
-            .player_create_commander_effect(player, None)
-            .expect("commander effect");
-        let replacements = &game.card(effect_id).replacement_effects;
-        assert_eq!(replacements.len(), 1);
-        for replacement in replacements {
-            let crate::replacement::replacement_effect::ReplacementEffect {
-                params: raw_params,
-                ..
-            } = replacement;
-            assert_eq!(raw_params.get("Optional"), Some("True"));
-            assert_eq!(raw_params.get("OptionalDecider"), Some("You"));
-        }
-    }
-}

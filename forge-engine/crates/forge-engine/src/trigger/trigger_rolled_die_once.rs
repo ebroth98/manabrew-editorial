@@ -38,10 +38,10 @@ impl TriggerBehavior for TriggerRolledDieOnce {
         &self,
         trigger: &super::trigger::Trigger,
         params: &RunParams,
-        _game: &GameState,
+        game: &GameState,
     ) -> bool {
-        let host_controller = trigger.base.card_trait_base.get_host_card().controller;
-        if !trigger.matches_optional_valid_player_filter(&self.valid_player, params.player) {
+        let host_controller = trigger.base.card_trait_base.host_controller(game);
+        if !trigger.matches_optional_valid_player_filter(&self.valid_player, params.player, game) {
             return false;
         }
         if self.rolled_to_visit_attractions && params.rolled_to_visit_attractions != Some(true) {
@@ -71,7 +71,7 @@ impl TriggerBehavior for TriggerRolledDieOnce {
         _trigger: &super::trigger::Trigger,
         sa: &mut SpellAbility,
         params: &RunParams,
-        _game: &GameState,
+        game: &GameState,
     ) {
         if let Some(result) = params.die_result {
             sa.set_triggering_object(crate::ability::AbilityKey::Result, &result.to_string());
