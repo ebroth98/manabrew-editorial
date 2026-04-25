@@ -11,11 +11,9 @@ use forge_foundation::mana::ManaCost;
 use forge_foundation::ZoneType;
 
 use crate::agent::PlayerAgent;
-use crate::card::CounterType;
 use crate::card::{valid_filter, Card};
 use crate::card_trait_base::CardTraitIrOwner;
 use crate::cost::{parse_cost, Cost};
-use crate::event::RunParams;
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
 use crate::mana::mana_cost_being_paid::ManaCostBeingPaid;
@@ -23,7 +21,7 @@ use crate::mana::ManaPool;
 use crate::player::player_predicates;
 use crate::spellability::SpellAbility;
 use crate::staticability::StaticMode;
-use crate::trigger::{TriggerHandler, TriggerType};
+use crate::trigger::TriggerHandler;
 
 // ── CostAdjustment result struct ─────────────────────────────────────
 
@@ -1203,42 +1201,9 @@ pub fn commit_offerings_and_emerge(
     trigger_handler: &mut TriggerHandler,
     sa: &mut SpellAbility,
 ) {
-    let to_sacrifice = [sa.sacrificed_as_offering, sa.sacrificed_as_emerge];
-    for chosen in to_sacrifice.into_iter().flatten() {
-        if game.card(chosen).zone != ZoneType::Battlefield {
-            continue;
-        }
-        let owner = game.card(chosen).owner;
-        let lki_p1p1 = *game
-            .card(chosen)
-            .counters
-            .get(&CounterType::P1P1)
-            .unwrap_or(&0);
-        let lki_power = game.card(chosen).power();
-        let lki_toughness = game.card(chosen).toughness();
-        trigger_handler.run_trigger(
-            TriggerType::Sacrificed,
-            RunParams {
-                card: Some(chosen),
-                player: Some(sa.activating_player),
-                ..Default::default()
-            },
-            false,
-        );
-        {
-            let card = game.card_mut(chosen);
-            card.clear_pump_triggers();
-        }
-        crate::ability::effects::emit_zone_trigger_with_lki_counters(
-            trigger_handler,
-            chosen,
-            ZoneType::Battlefield,
-            ZoneType::Graveyard,
-            lki_p1p1,
-            lki_power,
-            lki_toughness,
-        );
-        trigger_handler.flush_waiting_triggers(game);
-        game.move_card_with_agents(chosen, ZoneType::Graveyard, owner, agents);
-    }
+    let to_sacrifice: Vec<_> = [sa.sacrificed_as_offering, sa.sacrificed_as_emerge]
+        .into_iter()
+        .flatten()
+        .collect();
+    crate::game_loop::perform_sacrifice(game, trigger_handler, agents, &to_sacrifice);
 }

@@ -15,7 +15,8 @@ pub mod mana_cost_being_paid;
 pub mod mana_pool;
 pub mod mana_refund_service;
 pub use auto_pay::{
-    pay_mana_cost_auto, pay_mana_cost_auto_with_callback, pay_mana_cost_auto_with_chooser,
+    pay_mana_cost_auto, pay_mana_cost_auto_with_callback,
+    pay_mana_cost_auto_with_callback_and_reserved_sacrifices, pay_mana_cost_auto_with_chooser,
     AutoPayResult,
 };
 

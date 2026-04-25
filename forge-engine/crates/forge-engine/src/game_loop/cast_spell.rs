@@ -1218,6 +1218,21 @@ impl GameLoop {
             }
         };
 
+        // Permanents already reserved by the spell's additional `Sac<1/X>` cost
+        // (and the static-alt-cost variant). The auto-payer must skip these when
+        // picking mana abilities, otherwise it would happily pick the same
+        // permanent for both the additional sacrifice AND a `Sac<1/CARDNAME>`
+        // mana ability — see the seed-62 Eviscerator's Insight divergence,
+        // where two Eldrazi Spawn tokens should be sacrificed (one for cost,
+        // one for mana) but Rust ended up pointing both sacrifices at the same
+        // token, firing only one Writhing Chrysalis trigger.
+        let combined_reserved_sacrifices: Vec<CardId> = prechosen_spell_sacrifices
+            .iter()
+            .flatten()
+            .chain(prechosen_static_alt_sacrifices.iter().flatten())
+            .copied()
+            .collect();
+
         // Check if mana conversion allows spending mana as any color
         let any_color_conversion = {
             let card = game.card(card_id);
@@ -1262,7 +1277,7 @@ impl GameLoop {
                 cost_display_str: &cost_display_str,
                 cost_checkpoint_str: &cost_checkpoint_str,
                 is_activated_ability: false,
-                reserved_sacrifices: &[],
+                reserved_sacrifices: &combined_reserved_sacrifices,
             };
             let mana_paid = self.pay_mana_cost_session(
                 game,
@@ -1281,7 +1296,7 @@ impl GameLoop {
                             agents,
                             session.player,
                         );
-                        mana::pay_mana_cost_auto_with_callback(
+                        mana::pay_mana_cost_auto_with_callback_and_reserved_sacrifices(
                             game,
                             slf.pool_mut(session.player),
                             session.player,
@@ -1290,6 +1305,7 @@ impl GameLoop {
                             0,
                             &payment_ctx,
                             any_color_conversion,
+                            session.reserved_sacrifices,
                             &mut callback,
                         )
                     };

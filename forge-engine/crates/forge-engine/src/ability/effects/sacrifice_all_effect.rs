@@ -126,6 +126,11 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
         }
     }
 
+    // Track per-controller batches to fire SacrificedOnce once per controller after
+    // the whole sweep (mirrors Java GameAction.sacrifice line 2133-2138).
+    let mut by_controller: std::collections::BTreeMap<crate::ids::PlayerId, Vec<CardId>> =
+        std::collections::BTreeMap::new();
+
     for card_id in to_sacrifice {
         if ctx.game.card(card_id).zone != ZoneType::Battlefield {
             continue;
@@ -175,5 +180,8 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
         );
         ctx.move_card(card_id, ZoneType::Graveyard, owner);
         ctx.trigger_handler.flush_waiting_triggers(ctx.game);
+        by_controller.entry(controller).or_default().push(card_id);
     }
+
+    crate::game_loop::fire_sacrificed_once_for_batch(ctx.game, ctx.trigger_handler, &by_controller);
 }
