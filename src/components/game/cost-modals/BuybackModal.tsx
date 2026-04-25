@@ -36,7 +36,9 @@ export function BuybackModal({ buybackCost, sourceCardName, onDecide }: BuybackM
         </div>
       </div>
       <Modal.Footer>
-        <Button variant="outline" onClick={() => onDecide(false)}>No</Button>
+        <Button variant="outline" onClick={() => onDecide(false)}>
+          No
+        </Button>
         <Button onClick={() => onDecide(true)}>Pay Buyback</Button>
       </Modal.Footer>
     </Modal>

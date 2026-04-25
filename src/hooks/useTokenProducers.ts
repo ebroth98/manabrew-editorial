@@ -21,7 +21,10 @@ export type { DeckToken };
  * @param cached Previously persisted tokens — returned while fresh fetch is in flight.
  * @returns Array of DeckToken sorted by name, plus loading state.
  */
-export function useTokenProducers(deckCards: Card[], cached?: DeckToken[]): {
+export function useTokenProducers(
+  deckCards: Card[],
+  cached?: DeckToken[],
+): {
   tokens: DeckToken[];
   isLoading: boolean;
 } {
@@ -51,10 +54,7 @@ export function useTokenProducers(deckCards: Card[], cached?: DeckToken[]): {
       return cached ?? [];
     }
 
-    const tokenMap = new Map<
-      string,
-      { name: string; typeLine: string; producers: Set<string> }
-    >();
+    const tokenMap = new Map<string, { name: string; typeLine: string; producers: Set<string> }>();
 
     for (const [, sc] of scryfallMap) {
       if (!sc.all_parts) continue;
@@ -78,11 +78,13 @@ export function useTokenProducers(deckCards: Card[], cached?: DeckToken[]): {
     const deckNameSet = new Set(uniqueNames.map((n) => n.toLowerCase()));
     return [...tokenMap.values()]
       .filter((t) => [...t.producers].some((p) => deckNameSet.has(p.toLowerCase())))
-      .map((t): DeckToken => ({
-        name: t.name,
-        typeLine: t.typeLine,
-        producers: [...t.producers].sort(),
-      }))
+      .map(
+        (t): DeckToken => ({
+          name: t.name,
+          typeLine: t.typeLine,
+          producers: [...t.producers].sort(),
+        }),
+      )
       .sort((a, b) => a.name.localeCompare(b.name));
   }, [scryfallMap, uniqueNames]); // NOT cached — avoids feedback loop with store
 

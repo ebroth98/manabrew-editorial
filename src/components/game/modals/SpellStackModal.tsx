@@ -22,7 +22,13 @@ interface SpellStackModalProps {
   playerColorMap?: Map<string, string>;
 }
 
-export function SpellStackModal({ stack, validSpellIds, onTarget, onCancel, playerColorMap }: SpellStackModalProps) {
+export function SpellStackModal({
+  stack,
+  validSpellIds,
+  onTarget,
+  onCancel,
+  playerColorMap,
+}: SpellStackModalProps) {
   const preview = useCardPreview();
 
   const themeColors = useTheme().gameTheme;
@@ -47,16 +53,12 @@ export function SpellStackModal({ stack, validSpellIds, onTarget, onCancel, play
               Top of stack is shown first
             </p>
           </div>
-          {isTargeting && (
-            <Badge variant="secondary">{validSpellIds.length} targetable</Badge>
-          )}
+          {isTargeting && <Badge variant="secondary">{validSpellIds.length} targetable</Badge>}
         </div>
       </Modal.Header>
 
       {isTargeting && (
-        <Modal.Instructions>
-          Click a highlighted spell to counter it.
-        </Modal.Instructions>
+        <Modal.Instructions>Click a highlighted spell to counter it.</Modal.Instructions>
       )}
 
       <Modal.Body>
@@ -70,10 +72,12 @@ export function SpellStackModal({ stack, validSpellIds, onTarget, onCancel, play
               const isTop = idx === 0;
               const seatColor = playerColorMap?.get(obj.controllerId);
               const glowStyle: CSSProperties = {
-                ...(seatColor ? {
-                  boxShadow: `0 0 0 2px ${withAlpha(seatColor, 0.7)}, 0 0 14px ${withAlpha(seatColor, 0.45)}`,
-                } : {}),
-                ...(isValid ? { "--tw-ring-color": ringColor } as CSSProperties : {}),
+                ...(seatColor
+                  ? {
+                      boxShadow: `0 0 0 2px ${withAlpha(seatColor, 0.7)}, 0 0 14px ${withAlpha(seatColor, 0.45)}`,
+                    }
+                  : {}),
+                ...(isValid ? ({ "--tw-ring-color": ringColor } as CSSProperties) : {}),
               };
               return (
                 <div
@@ -85,7 +89,6 @@ export function SpellStackModal({ stack, validSpellIds, onTarget, onCancel, play
                   )}
                   onMouseEnter={(e) => preview.handleMouseEnter(cardStub, e)}
                   onMouseLeave={preview.handleMouseLeave}
-
                   onClick={isValid ? () => onTarget(obj.id) : undefined}
                 >
                   <Card
@@ -98,14 +101,15 @@ export function SpellStackModal({ stack, validSpellIds, onTarget, onCancel, play
                     style={Object.keys(glowStyle).length > 0 ? glowStyle : undefined}
                   />
                   <div className="flex items-center gap-1">
-                    <Badge
-                      variant={isTop ? "default" : "outline"}
-                      className="text-[10px] h-4 px-1"
-                    >
+                    <Badge variant={isTop ? "default" : "outline"} className="text-[10px] h-4 px-1">
                       {isTop ? "TOP" : `+${idx}`}
                     </Badge>
                     {isValid && (
-                      <Badge variant="secondary" className="text-[10px] h-4 px-1" style={{ color: ringColor }}>
+                      <Badge
+                        variant="secondary"
+                        className="text-[10px] h-4 px-1"
+                        style={{ color: ringColor }}
+                      >
                         ← Counter
                       </Badge>
                     )}

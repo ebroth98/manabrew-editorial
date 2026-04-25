@@ -43,7 +43,9 @@ export function PlayerAvatar({
   const selectedTargetColor = themeColors.promptAction.attackAction;
 
   const ringStyle: CSSProperties = isSelectedTarget
-    ? { boxShadow: `0 0 0 3px ${selectedTargetColor}, 0 0 14px ${withAlpha(selectedTargetColor, 0.7)}` }
+    ? {
+        boxShadow: `0 0 0 3px ${selectedTargetColor}, 0 0 14px ${withAlpha(selectedTargetColor, 0.7)}`,
+      }
     : isTargetable
       ? { boxShadow: `0 0 0 2px ${targetableColor}` }
       : isActiveTurn
@@ -52,10 +54,7 @@ export function PlayerAvatar({
 
   return (
     <div
-      className={cn(
-        "relative inline-flex flex-col items-center gap-0.5",
-        className,
-      )}
+      className={cn("relative inline-flex flex-col items-center gap-0.5", className)}
       data-player-id={player.id}
     >
       <div
@@ -72,11 +71,12 @@ export function PlayerAvatar({
           )}
           style={{
             ...ringStyle,
-            ...(isFlashing
-              ? ({ "--turn-flash-color": seatColor } as CSSProperties)
-              : {}),
+            ...(isFlashing ? ({ "--turn-flash-color": seatColor } as CSSProperties) : {}),
             ...(isTargetable || isSelectedTarget
-              ? ({ "--targetable-color": targetableColor, "--tw-ring-color": selectedTargetColor } as CSSProperties)
+              ? ({
+                  "--targetable-color": targetableColor,
+                  "--tw-ring-color": selectedTargetColor,
+                } as CSSProperties)
               : {}),
           }}
         >

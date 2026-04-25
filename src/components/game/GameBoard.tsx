@@ -16,11 +16,7 @@ import { PLAYER_CLUSTER_RESERVED_PX } from "@/components/game/game.constants";
 import { useHandScale } from "@/hooks/useHandScale";
 import { HAND_CARD_BASES } from "@/components/game/game.styles";
 import type { HandActionOption } from "@/stores/useGameUIStore";
-import {
-  ResizablePanelGroup,
-  ResizablePanel,
-  ResizableHandle,
-} from "@/components/ui/resizable";
+import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/components/ui/resizable";
 import { cn } from "@/lib/utils";
 
 // Footprint of the bottom-right action cluster (PASS, Pass-Until-End,
@@ -92,7 +88,11 @@ interface GameBoardProps {
   // Callbacks
   onHandCardDragStart: (card: Card, e: React.MouseEvent) => void;
   onHandCardClick: (card: Card, e?: React.MouseEvent) => void;
-  onHoverCard: (card: Card | null, e?: React.MouseEvent, options?: { useAnchor?: boolean; placement?: "auto" | "top-center"; anchorOverride?: DOMRect }) => void;
+  onHoverCard: (
+    card: Card | null,
+    e?: React.MouseEvent,
+    options?: { useAnchor?: boolean; placement?: "auto" | "top-center"; anchorOverride?: DOMRect },
+  ) => void;
   onDismissHoverPreview?: () => void;
   getHandActions?: (card: Card) => HandActionOption[];
   onSelectHandAction?: (action: HandActionOption) => void;
@@ -248,61 +248,123 @@ export function GameBoard({
     (step === "main1" || step === "main2") &&
     (currentPrompt?.gameView.stack?.length ?? 0) === 0;
 
-  const pixiBattlefield = useMemo((): BattlefieldState => ({
-    cards: myPermanents,
-    pendingCardIds: promptType === PT.ChooseAttackers ? pendingAttackers : promptType === PT.ChooseBlockers ? blockAssignments.map((a) => a.blockerId) : undefined,
-    attackingCardIds: currentPrompt?.attackerIds,
-    tappableLandIds: (promptType === PT.ChooseAction || promptType === PT.PayCombatCost || promptType === PT.PayManaCost) ? (currentPrompt?.tappableLandIds ?? []) : undefined,
-    untappableLandIds: (promptType === PT.ChooseAction || promptType === PT.PayCombatCost || promptType === PT.PayManaCost) ? (currentPrompt?.untappableLandIds ?? []) : undefined,
-    manaAbilityOptions: (promptType === PT.ChooseAction || promptType === PT.PayManaCost) ? (currentPrompt?.manaAbilityOptions ?? []) : undefined,
-    hostileTargeting,
-  }), [myPermanents, promptType, pendingAttackers, blockAssignments, currentPrompt, hostileTargeting]);
+  const pixiBattlefield = useMemo(
+    (): BattlefieldState => ({
+      cards: myPermanents,
+      pendingCardIds:
+        promptType === PT.ChooseAttackers
+          ? pendingAttackers
+          : promptType === PT.ChooseBlockers
+            ? blockAssignments.map((a) => a.blockerId)
+            : undefined,
+      attackingCardIds: currentPrompt?.attackerIds,
+      tappableLandIds:
+        promptType === PT.ChooseAction ||
+        promptType === PT.PayCombatCost ||
+        promptType === PT.PayManaCost
+          ? (currentPrompt?.tappableLandIds ?? [])
+          : undefined,
+      untappableLandIds:
+        promptType === PT.ChooseAction ||
+        promptType === PT.PayCombatCost ||
+        promptType === PT.PayManaCost
+          ? (currentPrompt?.untappableLandIds ?? [])
+          : undefined,
+      manaAbilityOptions:
+        promptType === PT.ChooseAction || promptType === PT.PayManaCost
+          ? (currentPrompt?.manaAbilityOptions ?? [])
+          : undefined,
+      hostileTargeting,
+    }),
+    [myPermanents, promptType, pendingAttackers, blockAssignments, currentPrompt, hostileTargeting],
+  );
 
-  const pixiHand = useMemo((): import("@/pixi/types").HandState => ({
-    cards: myHand,
-    draggingCardId,
-    castingCardId,
-  }), [myHand, draggingCardId, castingCardId]);
+  const pixiHand = useMemo(
+    (): import("@/pixi/types").HandState => ({
+      cards: myHand,
+      draggingCardId,
+      castingCardId,
+    }),
+    [myHand, draggingCardId, castingCardId],
+  );
 
-  const pixiCallbacks = useMemo((): GameCanvasCallbacks => ({
-    onClickCard: (promptType === PT.ChooseAction || promptType === PT.ChooseAttackers || promptType === PT.ChooseBlockers || promptType === PT.ChooseTargetCard || promptType === PT.ChooseTargetAny) ? onBattlefieldClick : undefined,
-    onHoverCard: (card, bounds) => {
-      if (!card) { onHoverCard(null); return; }
-      if (bounds) {
-        const syntheticEvent = {
-          clientX: bounds.x + bounds.width / 2,
-          clientY: bounds.y,
-          buttons: 0,
-          currentTarget: document.createElement("div"),
-          shiftKey: false, altKey: false, ctrlKey: false, metaKey: false,
-        } as unknown as React.MouseEvent;
-        onHoverCard(card, syntheticEvent, {
-          useAnchor: true,
-          anchorOverride: {
-            left: bounds.x, right: bounds.x + bounds.width,
-            top: bounds.y, bottom: bounds.y + bounds.height,
-            width: bounds.width, height: bounds.height,
-            x: bounds.x, y: bounds.y,
-            toJSON: () => ({}),
-          } as DOMRect,
-        });
-      } else {
-        onHoverCard(null);
-      }
-    },
-    onStartDrag: (card, screenPos) => {
-      onHandCardDragStart(card, { clientX: screenPos.x, clientY: screenPos.y, preventDefault: () => {} } as React.MouseEvent);
-    },
-    onClickCard_Hand: (card) => onHandCardClick(card),
-    onDismissHoverPreview,
-    onTapLand,
-    onTapLands,
-    onTapLandAbility,
-    onUntapLand,
-    onUntapLands,
-    onFlipCard,
-    onAttackerClick,
-  }), [promptType, onBattlefieldClick, onHoverCard, onDismissHoverPreview, onHandCardDragStart, onHandCardClick, onTapLand, onTapLands, onTapLandAbility, onUntapLand, onUntapLands, onFlipCard, onAttackerClick]);
+  const pixiCallbacks = useMemo(
+    (): GameCanvasCallbacks => ({
+      onClickCard:
+        promptType === PT.ChooseAction ||
+        promptType === PT.ChooseAttackers ||
+        promptType === PT.ChooseBlockers ||
+        promptType === PT.ChooseTargetCard ||
+        promptType === PT.ChooseTargetAny
+          ? onBattlefieldClick
+          : undefined,
+      onHoverCard: (card, bounds) => {
+        if (!card) {
+          onHoverCard(null);
+          return;
+        }
+        if (bounds) {
+          const syntheticEvent = {
+            clientX: bounds.x + bounds.width / 2,
+            clientY: bounds.y,
+            buttons: 0,
+            currentTarget: document.createElement("div"),
+            shiftKey: false,
+            altKey: false,
+            ctrlKey: false,
+            metaKey: false,
+          } as unknown as React.MouseEvent;
+          onHoverCard(card, syntheticEvent, {
+            useAnchor: true,
+            anchorOverride: {
+              left: bounds.x,
+              right: bounds.x + bounds.width,
+              top: bounds.y,
+              bottom: bounds.y + bounds.height,
+              width: bounds.width,
+              height: bounds.height,
+              x: bounds.x,
+              y: bounds.y,
+              toJSON: () => ({}),
+            } as DOMRect,
+          });
+        } else {
+          onHoverCard(null);
+        }
+      },
+      onStartDrag: (card, screenPos) => {
+        onHandCardDragStart(card, {
+          clientX: screenPos.x,
+          clientY: screenPos.y,
+          preventDefault: () => {},
+        } as React.MouseEvent);
+      },
+      onClickCard_Hand: (card) => onHandCardClick(card),
+      onDismissHoverPreview,
+      onTapLand,
+      onTapLands,
+      onTapLandAbility,
+      onUntapLand,
+      onUntapLands,
+      onFlipCard,
+      onAttackerClick,
+    }),
+    [
+      promptType,
+      onBattlefieldClick,
+      onHoverCard,
+      onDismissHoverPreview,
+      onHandCardDragStart,
+      onHandCardClick,
+      onTapLand,
+      onTapLands,
+      onTapLandAbility,
+      onUntapLand,
+      onUntapLands,
+      onFlipCard,
+      onAttackerClick,
+    ],
+  );
 
   const opponentStopsMap = usePhaseStopStore((s) => s.opponentStops);
   const toggleOpponentStop = usePhaseStopStore((s) => s.toggleOpponentStop);
@@ -325,10 +387,13 @@ export function GameBoard({
     };
   }, [step, activePlayerId, me.id, selfStops, opponents, opponentStopsMap]);
 
-  const pixiPhaseStripCallbacks = useMemo((): import("@/pixi/PhaseStripLayer").PhaseStripCallbacks => ({
-    onToggleSelfPhase: toggleSelfStop,
-    onToggleOpponentPhase: toggleOpponentStop,
-  }), [toggleSelfStop, toggleOpponentStop]);
+  const pixiPhaseStripCallbacks = useMemo(
+    (): import("@/pixi/PhaseStripLayer").PhaseStripCallbacks => ({
+      onToggleSelfPhase: toggleSelfStop,
+      onToggleOpponentPhase: toggleOpponentStop,
+    }),
+    [toggleSelfStop, toggleOpponentStop],
+  );
 
   // ── Resizable split via custom drag handle on phase strip left edge ──
   const [splitPct, setSplitPct] = useState(45); // opponent % of total height
@@ -354,89 +419,96 @@ export function GameBoard({
   }, []);
 
   return (
-    <div ref={boardRef} className="game-board-surface relative flex flex-col min-h-0 flex-1 overflow-visible">
+    <div
+      ref={boardRef}
+      className="game-board-surface relative flex flex-col min-h-0 flex-1 overflow-visible"
+    >
       {/* ── Split: opponent (top) / phase strip / me (bottom) ─── */}
 
       {/* Opponent half */}
       <div style={{ flex: `${splitPct} 1 0%` }} className="min-h-0 overflow-visible">
-          {opponents.length <= 1 ? (
-            <OpponentHalf
-              player={opponents[0]!}
-              opponentIndex={0}
-              permanents={opponentPermanentsByPlayer.get(opponents[0]!.id) ?? []}
-              graveyard={opponentGraveyard}
-              exile={opponentExile}
-              commandZone={opponentCommandZone}
-              isTargetable={playerIsTargetable(opponents[0]!.id)}
-              isSelectedTarget={selectedAttackDefenderId === opponents[0]!.id}
-              onTarget={() => onTargetPlayer(opponents[0]!.id)}
-              isFlashing={turnFlashPlayerId === opponents[0]?.id}
-              isMonarch={monarchId === opponents[0]?.id}
-              hasInitiative={initiativeHolderId === opponents[0]?.id}
-              activePlayerId={activePlayerId}
-              priorityPlayerId={priorityPlayerId}
-              step={step}
-              promptType={promptType}
-              pendingAttacker={pendingAttacker}
-              attackerIds={currentPrompt?.attackerIds}
-              onClickCard={onBattlefieldClick}
-              onClickAnyCard={onAttackerClick}
-              onHoverCard={(card, e, opts) => onHoverCard(card, e, { useAnchor: true, ...opts })}
-              onFlipCard={onFlipCard}
-              showBackFace={showBackFace}
-              onOpenZone={onOpenZone}
-              zonePanelSide={zonePanelSide}
-              zonePanelOrder={zonePanelOrder}
-              placementGhost={placementGhost?.controllerId === opponents[0]!.id ? placementGhost : null}
-              hostileTargeting={hostileTargeting}
-              manaAbilityOptions={currentPrompt?.manaAbilityOptions}
-              onTapLandAbility={onTapLandAbility}
-              pixiSceneRef={getOpponentPixiSceneRef?.(opponents[0]!.id)}
-            />
-          ) : (
-            <ResizablePanelGroup orientation="horizontal">
-              {opponents.map((op, i) => (
-                <Fragment key={op.id}>
-                  {i > 0 && <ResizableHandle />}
-                  <ResizablePanel className="overflow-visible">
-                    <OpponentHalf
-                      player={op}
-                      opponentIndex={i}
-                      permanents={opponentPermanentsByPlayer.get(op.id) ?? []}
-                      graveyard={i === 0 ? opponentGraveyard : []}
-                      exile={i === 0 ? opponentExile : []}
-                      commandZone={i === 0 ? opponentCommandZone : undefined}
-                      isTargetable={playerIsTargetable(op.id)}
-                      isSelectedTarget={selectedAttackDefenderId === op.id}
-                      onTarget={() => onTargetPlayer(op.id)}
-                      isFlashing={turnFlashPlayerId === op.id}
-                      isMonarch={monarchId === op.id}
-                      hasInitiative={initiativeHolderId === op.id}
-                      activePlayerId={activePlayerId}
-                      priorityPlayerId={priorityPlayerId}
-                      step={step}
-                      promptType={promptType}
-                      pendingAttacker={pendingAttacker}
-                      attackerIds={currentPrompt?.attackerIds}
-                      onClickCard={onBattlefieldClick}
-                      onClickAnyCard={onAttackerClick}
-                      onHoverCard={(card, e, opts) => onHoverCard(card, e, { useAnchor: true, ...opts })}
-                      onFlipCard={onFlipCard}
-                      showBackFace={showBackFace}
-                      onOpenZone={onOpenZone}
-                      zonePanelSide={zonePanelSide}
-                      zonePanelOrder={zonePanelOrder}
-                      placementGhost={placementGhost?.controllerId === op.id ? placementGhost : null}
-                      hostileTargeting={hostileTargeting}
-                      manaAbilityOptions={currentPrompt?.manaAbilityOptions}
-                      onTapLandAbility={onTapLandAbility}
-                      pixiSceneRef={getOpponentPixiSceneRef?.(op.id)}
-                    />
-                  </ResizablePanel>
-                </Fragment>
-              ))}
-            </ResizablePanelGroup>
-          )}
+        {opponents.length <= 1 ? (
+          <OpponentHalf
+            player={opponents[0]!}
+            opponentIndex={0}
+            permanents={opponentPermanentsByPlayer.get(opponents[0]!.id) ?? []}
+            graveyard={opponentGraveyard}
+            exile={opponentExile}
+            commandZone={opponentCommandZone}
+            isTargetable={playerIsTargetable(opponents[0]!.id)}
+            isSelectedTarget={selectedAttackDefenderId === opponents[0]!.id}
+            onTarget={() => onTargetPlayer(opponents[0]!.id)}
+            isFlashing={turnFlashPlayerId === opponents[0]?.id}
+            isMonarch={monarchId === opponents[0]?.id}
+            hasInitiative={initiativeHolderId === opponents[0]?.id}
+            activePlayerId={activePlayerId}
+            priorityPlayerId={priorityPlayerId}
+            step={step}
+            promptType={promptType}
+            pendingAttacker={pendingAttacker}
+            attackerIds={currentPrompt?.attackerIds}
+            onClickCard={onBattlefieldClick}
+            onClickAnyCard={onAttackerClick}
+            onHoverCard={(card, e, opts) => onHoverCard(card, e, { useAnchor: true, ...opts })}
+            onFlipCard={onFlipCard}
+            showBackFace={showBackFace}
+            onOpenZone={onOpenZone}
+            zonePanelSide={zonePanelSide}
+            zonePanelOrder={zonePanelOrder}
+            placementGhost={
+              placementGhost?.controllerId === opponents[0]!.id ? placementGhost : null
+            }
+            hostileTargeting={hostileTargeting}
+            manaAbilityOptions={currentPrompt?.manaAbilityOptions}
+            onTapLandAbility={onTapLandAbility}
+            pixiSceneRef={getOpponentPixiSceneRef?.(opponents[0]!.id)}
+          />
+        ) : (
+          <ResizablePanelGroup orientation="horizontal">
+            {opponents.map((op, i) => (
+              <Fragment key={op.id}>
+                {i > 0 && <ResizableHandle />}
+                <ResizablePanel className="overflow-visible">
+                  <OpponentHalf
+                    player={op}
+                    opponentIndex={i}
+                    permanents={opponentPermanentsByPlayer.get(op.id) ?? []}
+                    graveyard={i === 0 ? opponentGraveyard : []}
+                    exile={i === 0 ? opponentExile : []}
+                    commandZone={i === 0 ? opponentCommandZone : undefined}
+                    isTargetable={playerIsTargetable(op.id)}
+                    isSelectedTarget={selectedAttackDefenderId === op.id}
+                    onTarget={() => onTargetPlayer(op.id)}
+                    isFlashing={turnFlashPlayerId === op.id}
+                    isMonarch={monarchId === op.id}
+                    hasInitiative={initiativeHolderId === op.id}
+                    activePlayerId={activePlayerId}
+                    priorityPlayerId={priorityPlayerId}
+                    step={step}
+                    promptType={promptType}
+                    pendingAttacker={pendingAttacker}
+                    attackerIds={currentPrompt?.attackerIds}
+                    onClickCard={onBattlefieldClick}
+                    onClickAnyCard={onAttackerClick}
+                    onHoverCard={(card, e, opts) =>
+                      onHoverCard(card, e, { useAnchor: true, ...opts })
+                    }
+                    onFlipCard={onFlipCard}
+                    showBackFace={showBackFace}
+                    onOpenZone={onOpenZone}
+                    zonePanelSide={zonePanelSide}
+                    zonePanelOrder={zonePanelOrder}
+                    placementGhost={placementGhost?.controllerId === op.id ? placementGhost : null}
+                    hostileTargeting={hostileTargeting}
+                    manaAbilityOptions={currentPrompt?.manaAbilityOptions}
+                    onTapLandAbility={onTapLandAbility}
+                    pixiSceneRef={getOpponentPixiSceneRef?.(op.id)}
+                  />
+                </ResizablePanel>
+              </Fragment>
+            ))}
+          </ResizablePanelGroup>
+        )}
       </div>
 
       {/* Phase strip — the center line with resize grip on the left */}
@@ -454,191 +526,187 @@ export function GameBoard({
         </div>
         {/* Phase strip — full width, centered */}
         <div className="absolute inset-0">
-          <PixiPhaseStripCanvas
-            state={pixiPhaseStrip}
-            callbacks={pixiPhaseStripCallbacks}
-          />
+          <PixiPhaseStripCanvas state={pixiPhaseStrip} callbacks={pixiPhaseStripCallbacks} />
         </div>
       </div>
 
       {/* Player half */}
       <div style={{ flex: `${100 - splitPct} 1 0%` }} className="min-h-0 overflow-visible">
-          <div className="flex flex-col h-full overflow-visible">
-            <div className="flex flex-1 min-h-0 overflow-visible">
-              <div
-                ref={battlefieldContainerRef}
-                className={cn(
-                  "relative flex flex-col flex-1 min-w-0 overflow-visible",
-                )}
-              >
-                {/* Cluster is given a `max-width` (not explicit width)
+        <div className="flex flex-col h-full overflow-visible">
+          <div className="flex flex-1 min-h-0 overflow-visible">
+            <div
+              ref={battlefieldContainerRef}
+              className={cn("relative flex flex-col flex-1 min-w-0 overflow-visible")}
+            >
+              {/* Cluster is given a `max-width` (not explicit width)
                     driven by a ResizeObserver on the hand container.
                     The container sizes to its content naturally, so
                     there's no empty gutter at the right — but the cap
                     triggers `flex-wrap` once the zones + avatar would
                     start overlapping the hand. */}
-                <div
-                  className="absolute bottom-2 left-2 z-30 pointer-events-none"
-                  style={{ maxWidth: clusterMaxWidthCss }}
-                >
-                  <PlayerPanel
-                    player={me}
-                    isOpponent={false}
-                    seat="self"
-                    verticalAlign="bottom"
-                    isActiveTurn={activePlayerId === me.id}
-                    isPriorityPlayer={priorityPlayerId === me.id}
-                    isTargetable={playerIsTargetable(me.id)}
-                    onTarget={() => onTargetPlayer(me.id)}
-                    isFlashing={turnFlashPlayerId === me.id}
-                    isMonarch={monarchId === me.id}
-                    hasInitiative={initiativeHolderId === me.id}
-                    commanders={myCommandZone}
-                    graveyard={graveyard}
-                    exile={exile}
-                    onCastCommander={onCastSpell}
-                    onCommanderDragStart={onHandCardDragStart}
-                    draggingCardId={draggingCardId}
-                    onHoverCard={(card, e) => onHoverCard(card, e, { useAnchor: true })}
-                    onOpenCommandZone={() => {
-                      if ((myCommandZone?.length ?? 0) > 0) {
-                        const hasPlayable = myCommandZone!.some((c) => c.isPlayable);
-                        if (hasPlayable && promptType === PT.ChooseAction) {
-                          onOpenZoneAndCast("Your Command Zone", myCommandZone!, (_cardId) => {});
-                        } else {
-                          onOpenZone("Your Command Zone", myCommandZone!);
-                        }
-                      }
-                    }}
-                    onOpenGraveyard={() => {
-                      const hasPlayable = graveyard.some((c) => c.isPlayable);
+              <div
+                className="absolute bottom-2 left-2 z-30 pointer-events-none"
+                style={{ maxWidth: clusterMaxWidthCss }}
+              >
+                <PlayerPanel
+                  player={me}
+                  isOpponent={false}
+                  seat="self"
+                  verticalAlign="bottom"
+                  isActiveTurn={activePlayerId === me.id}
+                  isPriorityPlayer={priorityPlayerId === me.id}
+                  isTargetable={playerIsTargetable(me.id)}
+                  onTarget={() => onTargetPlayer(me.id)}
+                  isFlashing={turnFlashPlayerId === me.id}
+                  isMonarch={monarchId === me.id}
+                  hasInitiative={initiativeHolderId === me.id}
+                  commanders={myCommandZone}
+                  graveyard={graveyard}
+                  exile={exile}
+                  onCastCommander={onCastSpell}
+                  onCommanderDragStart={onHandCardDragStart}
+                  draggingCardId={draggingCardId}
+                  onHoverCard={(card, e) => onHoverCard(card, e, { useAnchor: true })}
+                  onOpenCommandZone={() => {
+                    if ((myCommandZone?.length ?? 0) > 0) {
+                      const hasPlayable = myCommandZone!.some((c) => c.isPlayable);
                       if (hasPlayable && promptType === PT.ChooseAction) {
-                        onOpenZoneAndCast("Your Graveyard", graveyard, (_cardId) => {});
+                        onOpenZoneAndCast("Your Command Zone", myCommandZone!, (_cardId) => {});
                       } else {
-                        onOpenZone("Your Graveyard", graveyard);
+                        onOpenZone("Your Command Zone", myCommandZone!);
                       }
-                    }}
-                    onOpenExile={() => {
-                      const hasPlayable = exile.some((c) => c.isPlayable);
-                      if (hasPlayable && promptType === PT.ChooseAction) {
-                        onOpenZoneAndCast("Your Exile", exile, (_cardId) => {});
-                      } else {
-                        onOpenZone("Your Exile", exile);
-                      }
-                    }}
-                    hasPlayableInGraveyard={
-                      promptType === PT.ChooseAction && graveyard.some((c) => c.isPlayable)
                     }
-                    hasPlayableInExile={
-                      promptType === PT.ChooseAction && exile.some((c) => c.isPlayable)
+                  }}
+                  onOpenGraveyard={() => {
+                    const hasPlayable = graveyard.some((c) => c.isPlayable);
+                    if (hasPlayable && promptType === PT.ChooseAction) {
+                      onOpenZoneAndCast("Your Graveyard", graveyard, (_cardId) => {});
+                    } else {
+                      onOpenZone("Your Graveyard", graveyard);
                     }
-                    zonePanelOrder={zonePanelOrder}
+                  }}
+                  onOpenExile={() => {
+                    const hasPlayable = exile.some((c) => c.isPlayable);
+                    if (hasPlayable && promptType === PT.ChooseAction) {
+                      onOpenZoneAndCast("Your Exile", exile, (_cardId) => {});
+                    } else {
+                      onOpenZone("Your Exile", exile);
+                    }
+                  }}
+                  hasPlayableInGraveyard={
+                    promptType === PT.ChooseAction && graveyard.some((c) => c.isPlayable)
+                  }
+                  hasPlayableInExile={
+                    promptType === PT.ChooseAction && exile.some((c) => c.isPlayable)
+                  }
+                  zonePanelOrder={zonePanelOrder}
+                />
+              </div>
+              {pixiEnabled && (
+                <div className="absolute inset-0 z-10 overflow-hidden">
+                  <PixiGameCanvas
+                    battlefield={pixiBattlefield}
+                    hand={mulliganActive ? undefined : pixiHand}
+                    sceneRef={pixiSceneRef}
+                    placementGhostName={
+                      placementGhost?.controllerId === me.id ? placementGhost.cardName : null
+                    }
+                    isDropActive={isOverBattlefield}
+                    callbacks={pixiCallbacks}
+                    bottomReserved={handBottomReserved}
+                    bottomLeftReserved={PLAYER_CLUSTER_BLOCKER}
+                    getHandActions={getHandActions}
+                    onSelectHandAction={(_card, action) => onSelectHandAction?.(action)}
+                    bottomRightReserved={PASS_BUTTON_RESERVED}
+                    externalBlockers={pixiExternalBlockers}
                   />
                 </div>
-                {pixiEnabled && (
-                  <div className="absolute inset-0 z-10 overflow-hidden">
-                    <PixiGameCanvas
-                      battlefield={pixiBattlefield}
-                      hand={mulliganActive ? undefined : pixiHand}
-                      sceneRef={pixiSceneRef}
-                      placementGhostName={placementGhost?.controllerId === me.id ? placementGhost.cardName : null}
-                      isDropActive={isOverBattlefield}
-                      callbacks={pixiCallbacks}
-                      bottomReserved={handBottomReserved}
-                      bottomLeftReserved={PLAYER_CLUSTER_BLOCKER}
-                      getHandActions={getHandActions}
-                      onSelectHandAction={(_card, action) => onSelectHandAction?.(action)}
-                      bottomRightReserved={PASS_BUTTON_RESERVED}
-                      externalBlockers={pixiExternalBlockers}
-                    />
-                  </div>
-                )}
-                <FreeBattlefield
-                  cards={myPermanents}
-                  className={cn("flex-1", pixiEnabled && "invisible")}
-                  onClickCard={
-                    promptType === PT.ChooseAction ||
-                    promptType === PT.ChooseAttackers ||
-                    promptType === PT.ChooseBlockers ||
-                    promptType === PT.ChooseTargetCard ||
-                    promptType === PT.ChooseTargetAny
-                      ? onBattlefieldClick
+              )}
+              <FreeBattlefield
+                cards={myPermanents}
+                className={cn("flex-1", pixiEnabled && "invisible")}
+                onClickCard={
+                  promptType === PT.ChooseAction ||
+                  promptType === PT.ChooseAttackers ||
+                  promptType === PT.ChooseBlockers ||
+                  promptType === PT.ChooseTargetCard ||
+                  promptType === PT.ChooseTargetAny
+                    ? onBattlefieldClick
+                    : undefined
+                }
+                onHoverCard={(card, e, opts) => onHoverCard(card, e, { useAnchor: true, ...opts })}
+                onFlipCard={onFlipCard}
+                showBackFace={showBackFace}
+                pendingCardIds={
+                  promptType === PT.ChooseAttackers
+                    ? pendingAttackers
+                    : promptType === PT.ChooseBlockers
+                      ? blockAssignments.map((a) => a.blockerId)
                       : undefined
-                  }
-                  onHoverCard={(card, e, opts) => onHoverCard(card, e, { useAnchor: true, ...opts })}
+                }
+                actionableCardIds={actionableCardIds}
+                tappableLandIds={
+                  showChooseActionManaSources ||
+                  promptType === PT.PayCombatCost ||
+                  promptType === PT.PayManaCost
+                    ? (currentPrompt?.tappableLandIds ?? [])
+                    : undefined
+                }
+                onTapLand={onTapLand}
+                onTapLands={onTapLands}
+                manaAbilityOptions={
+                  showChooseActionManaSources || promptType === PT.PayManaCost
+                    ? (currentPrompt?.manaAbilityOptions ?? [])
+                    : undefined
+                }
+                onTapLandAbility={onTapLandAbility}
+                untappableLandIds={
+                  showChooseActionManaSources ||
+                  promptType === PT.PayCombatCost ||
+                  promptType === PT.PayManaCost
+                    ? (currentPrompt?.untappableLandIds ?? [])
+                    : undefined
+                }
+                onUntapLand={onUntapLand}
+                onUntapLands={onUntapLands}
+                bottomReserved={handBottomReserved}
+                leftReserved={PLAYER_CLUSTER_RESERVED_PX}
+                rightReserved={0}
+                isDropActive={isOverBattlefield}
+                placementGhost={placementGhost?.controllerId === me.id ? placementGhost : null}
+                hostileTargeting={hostileTargeting}
+              />
+              <div
+                ref={handContainerRef}
+                className={cn(
+                  "absolute bottom-0 left-1/2 -translate-x-1/2 z-20 w-max max-w-full",
+                  // Pixi normally owns the hand and hides the React
+                  // fan, but during the mulligan flow we swap: Pixi
+                  // skips the hand entirely (above) and the React fan
+                  // takes over so click-to-toggle / the keep prompt
+                  // have a single surface.
+                  pixiEnabled && !mulliganActive && "invisible pointer-events-none",
+                )}
+              >
+                <HandDisplay
+                  cards={myHand}
+                  onHoverCard={onHoverCard}
+                  onClickCard={onHandCardClick}
                   onFlipCard={onFlipCard}
                   showBackFace={showBackFace}
-                  pendingCardIds={
-                    promptType === PT.ChooseAttackers
-                      ? pendingAttackers
-                      : promptType === PT.ChooseBlockers
-                        ? blockAssignments.map((a) => a.blockerId)
-                        : undefined
-                  }
-                  actionableCardIds={actionableCardIds}
-                  tappableLandIds={
-                    showChooseActionManaSources ||
-                    promptType === PT.PayCombatCost ||
-                    promptType === PT.PayManaCost
-                      ? (currentPrompt?.tappableLandIds ?? [])
-                      : undefined
-                  }
-                  onTapLand={onTapLand}
-                  onTapLands={onTapLands}
-                  manaAbilityOptions={
-                    showChooseActionManaSources ||
-                    promptType === PT.PayManaCost
-                      ? (currentPrompt?.manaAbilityOptions ?? [])
-                      : undefined
-                  }
-                  onTapLandAbility={onTapLandAbility}
-                  untappableLandIds={
-                    showChooseActionManaSources ||
-                    promptType === PT.PayCombatCost ||
-                    promptType === PT.PayManaCost
-                      ? (currentPrompt?.untappableLandIds ?? [])
-                      : undefined
-                  }
-                  onUntapLand={onUntapLand}
-                  onUntapLands={onUntapLands}
-                  bottomReserved={handBottomReserved}
-                  leftReserved={PLAYER_CLUSTER_RESERVED_PX}
-                  rightReserved={0}
-                  isDropActive={isOverBattlefield}
-                  placementGhost={placementGhost?.controllerId === me.id ? placementGhost : null}
-                  hostileTargeting={hostileTargeting}
+                  onStartDrag={onHandCardDragStart}
+                  draggingCardId={draggingCardId}
+                  castingCardId={castingCardId}
+                  getActions={getHandActions}
+                  onSelectAction={onSelectHandAction}
+                  selectionMode={handSelectionMode}
+                  selectedIds={handSelectedIds}
+                  onCardToggle={onHandCardToggle}
                 />
-                <div
-                  ref={handContainerRef}
-                  className={cn(
-                    "absolute bottom-0 left-1/2 -translate-x-1/2 z-20 w-max max-w-full",
-                    // Pixi normally owns the hand and hides the React
-                    // fan, but during the mulligan flow we swap: Pixi
-                    // skips the hand entirely (above) and the React fan
-                    // takes over so click-to-toggle / the keep prompt
-                    // have a single surface.
-                    pixiEnabled && !mulliganActive && "invisible pointer-events-none",
-                  )}
-                >
-                  <HandDisplay
-                    cards={myHand}
-                    onHoverCard={onHoverCard}
-                    onClickCard={onHandCardClick}
-                    onFlipCard={onFlipCard}
-                    showBackFace={showBackFace}
-                    onStartDrag={onHandCardDragStart}
-                    draggingCardId={draggingCardId}
-                    castingCardId={castingCardId}
-                    getActions={getHandActions}
-                    onSelectAction={onSelectHandAction}
-                    selectionMode={handSelectionMode}
-                    selectedIds={handSelectedIds}
-                    onCardToggle={onHandCardToggle}
-                  />
-                </div>
               </div>
             </div>
           </div>
+        </div>
       </div>
     </div>
   );

@@ -122,8 +122,14 @@ const COLOR_SCHEMA: GameThemeColors = {
   pointer: { hostile: "", friendly: "" },
   mana: { W: "", U: "", B: "", R: "", G: "", C: "" },
   cardStatus: {
-    exerted: "", morph: "", bestow: "", token: "",
-    transformed: "", plotted: "", madness: "", warped: "",
+    exerted: "",
+    morph: "",
+    bestow: "",
+    token: "",
+    transformed: "",
+    plotted: "",
+    madness: "",
+    warped: "",
   },
   textOnTinted: "",
   textMuted: "",
@@ -135,16 +141,37 @@ const COLOR_SCHEMA: GameThemeColors = {
   poison: "",
   life: "",
   counter: {
-    default: "", p1p1: "", m1m1: "", loyalty: "", charge: "", quest: "",
-    study: "", lore: "", age: "", time: "", fade: "", level: "",
-    storage: "", mining: "", brick: "", depletion: "", page: "",
+    default: "",
+    p1p1: "",
+    m1m1: "",
+    loyalty: "",
+    charge: "",
+    quest: "",
+    study: "",
+    lore: "",
+    age: "",
+    time: "",
+    fade: "",
+    level: "",
+    storage: "",
+    mining: "",
+    brick: "",
+    depletion: "",
+    page: "",
   },
   cardRing: "",
   playerColors: { self: "", opponent1: "", opponent2: "", opponent3: "" },
   badges: {
-    monarch: "", initiative: "", poison: "", energy: "",
-    commanderDamage: "", hand: "", radiation: "", cityBlessing: "",
-    ring: "", speed: "",
+    monarch: "",
+    initiative: "",
+    poison: "",
+    energy: "",
+    commanderDamage: "",
+    hand: "",
+    radiation: "",
+    cityBlessing: "",
+    ring: "",
+    speed: "",
   },
 };
 
@@ -253,9 +280,7 @@ export function resolveGameThemeColors(
  *
  * Example: `{ pointer: { hostile: "red" } }` -> `{ "--pointer-hostile": "red" }`.
  */
-export function flattenGameThemeToCssVars(
-  theme: GameThemeColors,
-): Record<string, string> {
+export function flattenGameThemeToCssVars(theme: GameThemeColors): Record<string, string> {
   const out: Record<string, string> = {};
   const walk = (value: unknown, prefix: string): void => {
     if (typeof value === "string") {

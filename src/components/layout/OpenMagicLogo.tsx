@@ -33,11 +33,29 @@ export function OpenMagicLogo({ size = 48, className }: { size?: number; classNa
       <rect width="512" height="512" rx="112" fill="var(--background)" />
 
       {/* Outer ring */}
-      <circle cx="256" cy="256" r="180" fill="none" stroke="var(--border)" strokeWidth="2" strokeOpacity="0.3" strokeDasharray="12 12" />
+      <circle
+        cx="256"
+        cy="256"
+        r="180"
+        fill="none"
+        stroke="var(--border)"
+        strokeWidth="2"
+        strokeOpacity="0.3"
+        strokeDasharray="12 12"
+      />
 
       {/* O + M mark */}
       <g transform="translate(156, 156)">
-        <circle cx="100" cy="100" r="80" fill="none" stroke="url(#om-grad)" strokeWidth="16" strokeLinecap="round" filter="url(#subtle-glow)" />
+        <circle
+          cx="100"
+          cy="100"
+          r="80"
+          fill="none"
+          stroke="url(#om-grad)"
+          strokeWidth="16"
+          strokeLinecap="round"
+          filter="url(#subtle-glow)"
+        />
         <path
           d="M 60 135 L 60 65 L 100 105 L 140 65 L 140 135"
           fill="none"

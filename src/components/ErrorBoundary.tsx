@@ -1,5 +1,5 @@
-import { Component, type ReactNode } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Component, type ReactNode } from "react";
+import { useNavigate } from "react-router-dom";
 
 interface Props {
   children: ReactNode;
@@ -24,7 +24,7 @@ class ErrorBoundaryInner extends Component<Props & { onReset: () => void }, Stat
   }
 
   componentDidCatch(error: Error, info: React.ErrorInfo) {
-    console.error('[ErrorBoundary]', error, info.componentStack);
+    console.error("[ErrorBoundary]", error, info.componentStack);
   }
 
   render() {
@@ -37,7 +37,7 @@ class ErrorBoundaryInner extends Component<Props & { onReset: () => void }, Stat
             <p className="text-sm text-muted-foreground">in {this.props.context}</p>
           )}
           <p className="text-sm text-muted-foreground max-w-md">
-            {this.state.error?.message ?? 'An unexpected error occurred.'}
+            {this.state.error?.message ?? "An unexpected error occurred."}
           </p>
           <div className="flex gap-2">
             <button
@@ -60,7 +60,9 @@ class ErrorBoundaryInner extends Component<Props & { onReset: () => void }, Stat
           </div>
           {this.state.error?.stack && (
             <details className="mt-4 text-left w-full max-w-lg">
-              <summary className="text-xs text-muted-foreground cursor-pointer">Stack trace</summary>
+              <summary className="text-xs text-muted-foreground cursor-pointer">
+                Stack trace
+              </summary>
               <pre className="mt-2 text-xs bg-card p-3 rounded overflow-auto max-h-48 text-muted-foreground">
                 {this.state.error.stack}
               </pre>
@@ -73,14 +75,14 @@ class ErrorBoundaryInner extends Component<Props & { onReset: () => void }, Stat
   }
 }
 
-/** 
+/**
  * Error boundary wrapper with navigation support.
  * Use as: <ErrorBoundary context="Game"><Game /></ErrorBoundary>
  */
 export function ErrorBoundary({ children, context }: Props) {
   const navigate = useNavigate();
   return (
-    <ErrorBoundaryInner context={context} onReset={() => navigate('/')}>
+    <ErrorBoundaryInner context={context} onReset={() => navigate("/")}>
       {children}
     </ErrorBoundaryInner>
   );

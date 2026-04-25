@@ -1,23 +1,23 @@
 export type GameFormat =
-  | 'Standard'
-  | 'Pioneer'
-  | 'Modern'
-  | 'Legacy'
-  | 'Vintage'
-  | 'Pauper'
-  | 'Commander'
-  | 'Brawl'
-  | 'Oathbreaker'
-  | 'Draft'
-  | 'Sealed';
+  | "Standard"
+  | "Pioneer"
+  | "Modern"
+  | "Legacy"
+  | "Vintage"
+  | "Pauper"
+  | "Commander"
+  | "Brawl"
+  | "Oathbreaker"
+  | "Draft"
+  | "Sealed";
 export type DeckSection =
-  | 'main'
-  | 'sideboard'
-  | 'commander'
-  | 'attractions'
-  | 'contraptions'
-  | 'schemes'
-  | 'planes';
+  | "main"
+  | "sideboard"
+  | "commander"
+  | "attractions"
+  | "contraptions"
+  | "schemes"
+  | "planes";
 
 export interface CardIdentity {
   name: string;
@@ -33,7 +33,7 @@ export interface RoomInfo {
   players: RoomPlayerInfo[];
   max_players: number;
   format: GameFormat;
-  status: 'Lobby' | 'InGame';
+  status: "Lobby" | "InGame";
 }
 
 export interface RoomPlayerInfo {

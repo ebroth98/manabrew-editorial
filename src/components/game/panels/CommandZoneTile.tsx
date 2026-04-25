@@ -73,31 +73,17 @@ export function CommandZoneTile({
     >
       <Card
         card={first}
-        className={cn(
-          COMMANDER_CARD_SIZE,
-          canCast && "ring-2 cursor-grab playable-card",
-        )}
-        style={
-          canCast
-            ? ({ "--tw-ring-color": themeColors.cardRing } as CSSProperties)
-            : undefined
-        }
+        className={cn(COMMANDER_CARD_SIZE, canCast && "ring-2 cursor-grab playable-card")}
+        style={canCast ? ({ "--tw-ring-color": themeColors.cardRing } as CSSProperties) : undefined}
         onClick={handleClick}
       />
       {/* Invisible mousedown surface on top of the Card so the drag
           hook sees the original event (Card's onClick path can't carry
           the mouse-move subscription for us). Pointer events fall
           through onClick when canCast is false via handleClick. */}
-      {canCast && (
-        <div
-          className="absolute inset-0 cursor-grab"
-          onMouseDown={handleMouseDown}
-        />
-      )}
+      {canCast && <div className="absolute inset-0 cursor-grab" onMouseDown={handleMouseDown} />}
       {count > 1 && (
-        <span
-          className="absolute -right-1 -top-1 rounded-full bg-black/80 px-1 text-[10px] font-bold leading-none text-white shadow ring-1 ring-black/40"
-        >
+        <span className="absolute -right-1 -top-1 rounded-full bg-black/80 px-1 text-[10px] font-bold leading-none text-white shadow ring-1 ring-black/40">
           ×{count}
         </span>
       )}

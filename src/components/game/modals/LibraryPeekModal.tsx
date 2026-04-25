@@ -42,8 +42,7 @@ const MODE_CONFIG: Record<
   scry: {
     title: "Scry",
     subtitle: "Arrange the top cards of your library",
-    instructions:
-      "Click cards you want to put on the bottom. Unselected cards return to the top.",
+    instructions: "Click cards you want to put on the bottom. Unselected cards return to the top.",
     selectedLabel: "BOTTOM",
     unselectedLabel: "TOP",
     confirmLabel: (n, t) => `Confirm — ${n} on bottom, ${t - n} on top`,
@@ -60,8 +59,7 @@ const MODE_CONFIG: Record<
   dig: {
     title: "Dig",
     subtitle: "Choose cards to add to your hand",
-    instructions:
-      "Select cards to take to your hand. The rest go to the graveyard.",
+    instructions: "Select cards to take to your hand. The rest go to the graveyard.",
     selectedLabel: "HAND",
     unselectedLabel: "GRAVEYARD",
     confirmLabel: (n) => `Take ${n} to Hand`,
@@ -69,14 +67,11 @@ const MODE_CONFIG: Record<
   discard: {
     title: "Discard",
     subtitle: "Choose cards to discard from your hand",
-    instructions:
-      "Click cards to discard them. You must discard the required number.",
+    instructions: "Click cards to discard them. You must discard the required number.",
     selectedLabel: "DISCARD",
     unselectedLabel: "KEEP",
     confirmLabel: (n, _t, required) =>
-      n < (required ?? 0)
-        ? `Select ${(required ?? 0) - n} more to discard`
-        : `Discard ${n}`,
+      n < (required ?? 0) ? `Select ${(required ?? 0) - n} more to discard` : `Discard ${n}`,
   },
 };
 
@@ -95,7 +90,12 @@ export function LibraryPeekModal({
 
   const config = MODE_CONFIG[mode];
   const required = mode === "discard" ? (numToTake ?? 1) : undefined;
-  const max = mode === "dig" ? (numToTake ?? cards.length) : mode === "discard" ? (numToTake ?? cards.length) : cards.length;
+  const max =
+    mode === "dig"
+      ? (numToTake ?? cards.length)
+      : mode === "discard"
+        ? (numToTake ?? cards.length)
+        : cards.length;
   const canConfirm =
     mode === "dig"
       ? optional || selected.size > 0
@@ -120,10 +120,7 @@ export function LibraryPeekModal({
     onConfirm([...selected]);
   }
 
-  useModalKeyboard(
-    { onEnter: canConfirm ? handleConfirm : undefined },
-    [selected, canConfirm],
-  );
+  useModalKeyboard({ onEnter: canConfirm ? handleConfirm : undefined }, [selected, canConfirm]);
 
   return (
     <Modal maxWidth="max-w-4xl" maxHeight="max-h-[85vh]">
@@ -165,15 +162,15 @@ export function LibraryPeekModal({
                       "transition-transform group-hover:scale-105",
                       isSelected && "ring-2",
                     )}
-                    style={isSelected ? { "--tw-ring-color": ringColor } as CSSProperties : undefined}
+                    style={
+                      isSelected ? ({ "--tw-ring-color": ringColor } as CSSProperties) : undefined
+                    }
                   />
                   <Badge
                     variant={isSelected ? "default" : "outline"}
                     className="text-[10px] h-4 px-1"
                   >
-                    {isSelected
-                      ? config.selectedLabel
-                      : config.unselectedLabel}
+                    {isSelected ? config.selectedLabel : config.unselectedLabel}
                   </Badge>
                 </div>
               );
@@ -193,27 +190,17 @@ export function LibraryPeekModal({
             <Button
               variant="outline"
               size="sm"
-              onClick={() =>
-                setSelected(new Set(cards.map((c) => c.id)))
-              }
+              onClick={() => setSelected(new Set(cards.map((c) => c.id)))}
             >
               All to {config.selectedLabel}
             </Button>
           )}
           {mode !== "dig" && mode !== "discard" && selected.size > 0 && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setSelected(new Set())}
-            >
+            <Button variant="outline" size="sm" onClick={() => setSelected(new Set())}>
               Clear
             </Button>
           )}
-          <Button
-            size="sm"
-            disabled={!canConfirm}
-            onClick={handleConfirm}
-          >
+          <Button size="sm" disabled={!canConfirm} onClick={handleConfirm}>
             {config.confirmLabel(selected.size, cards.length, required)}
           </Button>
         </div>

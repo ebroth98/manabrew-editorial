@@ -55,7 +55,9 @@ export function PromptModals({
   onAssistDecision,
 }: PromptModalsProps) {
   const isActivePromptModal =
-    (promptType === PT.RevealCards && currentPrompt?.cards != null && currentPrompt?.message != null) ||
+    (promptType === PT.RevealCards &&
+      currentPrompt?.cards != null &&
+      currentPrompt?.message != null) ||
     // Mulligan + MulliganPutBack render in the same bottom-right slot
     // as Pass Priority (see `PromptActionController`), and the real
     // in-game hand drives card selection via `HandDisplayCool`'s
@@ -68,21 +70,20 @@ export function PromptModals({
     (promptType === PT.ChooseNumber && currentPrompt?.min != null && currentPrompt?.max != null) ||
     (promptType === PT.ChooseCardName && currentPrompt?.validNames != null) ||
     (promptType === PT.ChooseDamageAssignmentOrder && currentPrompt?.blockerIds != null) ||
-    (promptType === PT.ChooseCombatDamageAssignment
-      && currentPrompt?.attackerId != null
-      && currentPrompt?.blockerIds != null
-      && currentPrompt?.totalDamage != null
-      && currentPrompt?.gameView != null) ||
+    (promptType === PT.ChooseCombatDamageAssignment &&
+      currentPrompt?.attackerId != null &&
+      currentPrompt?.blockerIds != null &&
+      currentPrompt?.totalDamage != null &&
+      currentPrompt?.gameView != null) ||
     (promptType === PT.ReorderLibrary && currentPrompt?.cards != null) ||
-    (promptType === PT.SpecifyManaCombo && currentPrompt?.availableColors != null && currentPrompt?.amount != null) ||
+    (promptType === PT.SpecifyManaCombo &&
+      currentPrompt?.availableColors != null &&
+      currentPrompt?.amount != null) ||
     (promptType === PT.ExploreDecision && currentPrompt?.revealedCardName != null) ||
     (promptType === PT.HelpPayAssist && currentPrompt?.maxGeneric != null);
 
   return (
-    <PromptModalController
-      isActive={isActivePromptModal}
-      promptStateKey={currentPrompt}
-    >
+    <PromptModalController isActive={isActivePromptModal} promptStateKey={currentPrompt}>
       {promptType === PT.RevealCards && currentPrompt?.cards && currentPrompt?.message != null && (
         <RevealCardsModal
           cards={currentPrompt.cards}
@@ -143,14 +144,16 @@ export function PromptModals({
         />
       )}
 
-      {promptType === PT.ChooseNumber && currentPrompt?.min != null && currentPrompt?.max != null && (
-        <ChooseNumberModal
-          min={currentPrompt.min}
-          max={currentPrompt.max}
-          cardName={currentPrompt.sourceCardName}
-          onConfirm={onNumberDecision}
-        />
-      )}
+      {promptType === PT.ChooseNumber &&
+        currentPrompt?.min != null &&
+        currentPrompt?.max != null && (
+          <ChooseNumberModal
+            min={currentPrompt.min}
+            max={currentPrompt.max}
+            cardName={currentPrompt.sourceCardName}
+            onConfirm={onNumberDecision}
+          />
+        )}
 
       {promptType === PT.ChooseCardName && currentPrompt?.validNames != null && (
         <ChooseCardNameModal
@@ -170,11 +173,11 @@ export function PromptModals({
         />
       )}
 
-      {promptType === PT.ChooseCombatDamageAssignment
-        && currentPrompt?.attackerId
-        && currentPrompt?.blockerIds
-        && currentPrompt?.totalDamage != null
-        && currentPrompt?.gameView && (
+      {promptType === PT.ChooseCombatDamageAssignment &&
+        currentPrompt?.attackerId &&
+        currentPrompt?.blockerIds &&
+        currentPrompt?.totalDamage != null &&
+        currentPrompt?.gameView && (
           <VAssignCombatDamageModal
             attackerId={currentPrompt.attackerId}
             blockerIds={currentPrompt.blockerIds}
@@ -184,7 +187,7 @@ export function PromptModals({
             gameView={currentPrompt.gameView}
             onConfirm={onCombatDamageAssignmentDecision}
           />
-      )}
+        )}
 
       {promptType === PT.ReorderLibrary && currentPrompt?.cards != null && (
         <ReorderLibraryModal
@@ -194,14 +197,16 @@ export function PromptModals({
         />
       )}
 
-      {promptType === PT.SpecifyManaCombo && currentPrompt?.availableColors != null && currentPrompt?.amount != null && (
-        <SpecifyManaComboModal
-          availableColors={currentPrompt.availableColors}
-          amount={currentPrompt.amount}
-          sourceCardName={currentPrompt.sourceCardName}
-          onConfirm={onManaComboDecision}
-        />
-      )}
+      {promptType === PT.SpecifyManaCombo &&
+        currentPrompt?.availableColors != null &&
+        currentPrompt?.amount != null && (
+          <SpecifyManaComboModal
+            availableColors={currentPrompt.availableColors}
+            amount={currentPrompt.amount}
+            sourceCardName={currentPrompt.sourceCardName}
+            onConfirm={onManaComboDecision}
+          />
+        )}
 
       {promptType === PT.ExploreDecision && currentPrompt?.revealedCardName != null && (
         <ChooseOptionalTriggerModal

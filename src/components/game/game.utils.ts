@@ -33,7 +33,10 @@ export function isLethalDamage(card: CardType): boolean {
 export type ScryfallImageSize = "small" | "normal" | "large" | "png";
 
 /** Upgrade a Scryfall image URL to a higher resolution if it matches the Scryfall pattern. */
-export function upgradeScryfallUrl(url: string | undefined, size: ScryfallImageSize): string | undefined {
+export function upgradeScryfallUrl(
+  url: string | undefined,
+  size: ScryfallImageSize,
+): string | undefined {
   if (!url || !url.includes("cards.scryfall.io")) return url;
   // 1. Swap the size component (small/normal/large/png)
   const newUrl = url.replace(/\/(small|normal|large|png)\//, `/${size}/`);

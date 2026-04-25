@@ -14,12 +14,7 @@ interface ChooseNumberModalProps {
   onConfirm: (chosenNumber: number | null) => void;
 }
 
-export function ChooseNumberModal({
-  min,
-  max,
-  cardName,
-  onConfirm,
-}: ChooseNumberModalProps) {
+export function ChooseNumberModal({ min, max, cardName, onConfirm }: ChooseNumberModalProps) {
   const { data: imageUrl } = useCardImage(cardName ?? "");
   const range = max - min + 1;
   const useButtons = range <= 20;
@@ -39,14 +34,12 @@ export function ChooseNumberModal({
     }
   }, [inputValue, min, max, onConfirm]);
 
-  useModalKeyboard(
-    { onEnter: !useButtons ? handleInputConfirm : undefined },
-    [useButtons, handleInputConfirm],
-  );
+  useModalKeyboard({ onEnter: !useButtons ? handleInputConfirm : undefined }, [
+    useButtons,
+    handleInputConfirm,
+  ]);
 
-  const numbers = useButtons
-    ? Array.from({ length: range }, (_, i) => min + i)
-    : [];
+  const numbers = useButtons ? Array.from({ length: range }, (_, i) => min + i) : [];
 
   return (
     <Modal maxWidth="max-w-sm" maxHeight="" className="outline-none">
@@ -77,7 +70,11 @@ export function ChooseNumberModal({
         </Modal.Instructions>
 
         {useButtons ? (
-          <div className="p-4 flex flex-wrap gap-2 justify-center" role="group" aria-label="Number choices">
+          <div
+            className="p-4 flex flex-wrap gap-2 justify-center"
+            role="group"
+            aria-label="Number choices"
+          >
             {numbers.map((num) => (
               <button
                 key={num}

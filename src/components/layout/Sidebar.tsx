@@ -1,17 +1,9 @@
 import { NavLink } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import { useGameStore } from "@/stores/useGameStore";
-import {
-  Home,
-  Gamepad2,
-  Layers,
-  Settings,
-  Swords,
-  Search,
-} from "lucide-react";
+import { Home, Gamepad2, Layers, Settings, Swords, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { OpenMagicLogo } from "./OpenMagicLogo";
-
 
 interface SidebarProps extends React.HTMLAttributes<HTMLDivElement> {
   onNavigate?: () => void;
@@ -31,9 +23,7 @@ export function Sidebar({ className, onNavigate }: SidebarProps) {
         <div className="px-3 py-2">
           <div className="mb-2 px-4 flex items-center gap-2 overflow-hidden">
             <OpenMagicLogo size={48} className="rounded-xl shrink-0" />
-            <h2 className="text-lg font-semibold tracking-tight truncate">
-              OpenMagic
-            </h2>
+            <h2 className="text-lg font-semibold tracking-tight truncate">OpenMagic</h2>
           </div>
           <div className="space-y-1">
             <NavLink to="/play" onClick={onNavigate}>
@@ -94,9 +84,7 @@ export function Sidebar({ className, onNavigate }: SidebarProps) {
           </div>
         </div>
         <div className="px-3 py-2">
-          <h2 className="mb-2 px-4 text-lg font-semibold tracking-tight">
-            Settings
-          </h2>
+          <h2 className="mb-2 px-4 text-lg font-semibold tracking-tight">Settings</h2>
           <div className="space-y-1">
             {isGameActive ? (
               <Button

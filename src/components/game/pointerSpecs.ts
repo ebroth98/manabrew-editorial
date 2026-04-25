@@ -22,28 +22,32 @@ export interface BuildPointerSpecsOptions {
 
 function getAllTargets(obj: StackObject): StackTarget[] {
   const maybeObj = obj as unknown as Record<string, unknown>;
-  const targets = Array.isArray(maybeObj.targets)
-    ? (maybeObj.targets as StackTarget[])
-    : [];
+  const targets = Array.isArray(maybeObj.targets) ? (maybeObj.targets as StackTarget[]) : [];
   if (targets.length > 0) return targets;
   const legacy = typeof maybeObj.targetCardId === "string" ? maybeObj.targetCardId : null;
   if (!legacy) return [];
-  return [{
-    kind: "card",
-    id: legacy,
-    nodeIndex: 0,
-    targetIndex: 0,
-    hostile: true,
-    intent: TargetingIntent.Hostile,
-  }];
+  return [
+    {
+      kind: "card",
+      id: legacy,
+      nodeIndex: 0,
+      targetIndex: 0,
+      hostile: true,
+      intent: TargetingIntent.Hostile,
+    },
+  ];
 }
 
 function targetEndpoint(target: StackTarget): PointerSpec["to"] | null {
   switch (target.kind) {
-    case "card":   return { kind: "card", id: target.id };
-    case "player": return { kind: "player", id: target.id };
-    case "stack":  return { kind: "stack", id: target.id };
-    default:       return null;
+    case "card":
+      return { kind: "card", id: target.id };
+    case "player":
+      return { kind: "player", id: target.id };
+    case "stack":
+      return { kind: "stack", id: target.id };
+    default:
+      return null;
   }
 }
 

@@ -178,9 +178,12 @@ function expandDeckList(
 function choosePresetCoverCardName(
   cards: Array<{ name: string; count: number; set?: string }>,
 ): string | undefined {
-  return cards.find((card) => !/^([wburgc]|snow-)?basic land$/i.test(card.name))?.name
-    ?? cards.find((card) => !/^(plains|island|swamp|mountain|forest|wastes)$/i.test(card.name))?.name
-    ?? cards[0]?.name;
+  return (
+    cards.find((card) => !/^([wburgc]|snow-)?basic land$/i.test(card.name))?.name ??
+    cards.find((card) => !/^(plains|island|swamp|mountain|forest|wastes)$/i.test(card.name))
+      ?.name ??
+    cards[0]?.name
+  );
 }
 
 // ============================================================================
@@ -191,20 +194,15 @@ function choosePresetCoverCardName(
  * Start an interactive game. Sends the response to the main thread BEFORE
  * blocking on run_interactive_game(), so the UI can transition to the game view.
  */
-function runInteractiveGame(
-  requestId: string,
-  args?: Record<string, unknown>,
-): void {
+function runInteractiveGame(requestId: string, args?: Record<string, unknown>): void {
   if (gameRunning) {
     postError(requestId, "Game already active. End current game first.");
     return;
   }
 
-  const rawHumanDeck =
-    (args?.deckList as Array<{ name: string; count?: number }>) || [];
+  const rawHumanDeck = (args?.deckList as Array<{ name: string; count?: number }>) || [];
   const rawAiDeck =
-    (args?.opponentDeckList as Array<{ name: string; count?: number }>) ||
-    rawHumanDeck;
+    (args?.opponentDeckList as Array<{ name: string; count?: number }>) || rawHumanDeck;
 
   const humanDeck = { cards: expandDeckList(rawHumanDeck) };
   const aiDeck = { cards: expandDeckList(rawAiDeck) };
@@ -232,12 +230,7 @@ function runInteractiveGame(
 
   // Run the game — this BLOCKS the worker thread!
   try {
-    const result = run_interactive_game(
-      humanDeck,
-      aiDeck,
-      config,
-      gameSharedBuffer,
-    );
+    const result = run_interactive_game(humanDeck, aiDeck, config, gameSharedBuffer);
 
     console.log("[GameWorker] Game completed:", result);
     gameRunning = false;
@@ -256,10 +249,7 @@ function runInteractiveGame(
  * Start a multiplayer game as host. Two SABs: one for local player, one for
  * remote player. Main thread routes remote SAB prompts via WebSocket.
  */
-function runMultiplayerHostGame(
-  requestId: string,
-  args?: Record<string, unknown>,
-): void {
+function runMultiplayerHostGame(requestId: string, args?: Record<string, unknown>): void {
   if (gameRunning) {
     postError(requestId, "Game already active.");
     return;
@@ -275,7 +265,9 @@ function runMultiplayerHostGame(
 
   console.log(
     "[GameWorker] Starting multiplayer game as host:",
-    deck0.cards.length, "vs", deck1.cards.length,
+    deck0.cards.length,
+    "vs",
+    deck1.cards.length,
     "local=player-" + localPlayerIndex,
   );
 
@@ -291,7 +283,9 @@ function runMultiplayerHostGame(
 
   try {
     const result = run_multiplayer_game(
-      deck0, deck1, config,
+      deck0,
+      deck1,
+      config,
       gameSharedBuffer,
       remoteSharedBuffer,
       localPlayerIndex,
@@ -314,10 +308,7 @@ function runMultiplayerHostGame(
 // Command Handlers
 // ============================================================================
 
-async function handleCommand(
-  command: string,
-  args?: Record<string, unknown>
-): Promise<unknown> {
+async function handleCommand(command: string, args?: Record<string, unknown>): Promise<unknown> {
   await initWasm();
 
   switch (command) {
@@ -378,9 +369,13 @@ async function handleCommand(
     }
 
     case "validate_deck_availability": {
-      const rawDeck = (args?.deckList as Array<{ name?: string; count?: number }> | undefined) ?? [];
+      const rawDeck =
+        (args?.deckList as Array<{ name?: string; count?: number }> | undefined) ?? [];
       const normalizedDeck = rawDeck
-        .filter((card): card is { name: string; count?: number } => typeof card.name === "string" && card.name.trim().length > 0)
+        .filter(
+          (card): card is { name: string; count?: number } =>
+            typeof card.name === "string" && card.name.trim().length > 0,
+        )
         .map((card) => ({ name: card.name.trim(), count: card.count }));
       const expandedDeck = expandDeckList(normalizedDeck);
       const missingCards = Array.from(
@@ -471,8 +466,7 @@ self.onmessage = async (e: MessageEvent<WorkerCommand>) => {
     const result = await handleCommand(command, args);
     postResponse(requestId, result);
   } catch (error) {
-    const errorMessage =
-      error instanceof Error ? error.message : String(error);
+    const errorMessage = error instanceof Error ? error.message : String(error);
     console.error("[GameWorker] Command error:", command, errorMessage);
     postError(requestId, errorMessage);
   }

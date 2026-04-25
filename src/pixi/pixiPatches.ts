@@ -28,13 +28,8 @@ export function installPixiPatches(): void {
   const original = pool.returnTexture?.bind(pool);
   if (typeof original !== "function") return;
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  pool.returnTexture = function patchedReturnTexture(
-    renderTexture: unknown,
-    resetStyle?: boolean,
-  ) {
+  pool.returnTexture = function patchedReturnTexture(renderTexture: unknown, resetStyle?: boolean) {
     try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const rt = renderTexture as { uid?: number };
       const key = rt?.uid != null ? this._poolKeyHash?.[rt.uid] : undefined;
       if (key == null || !Array.isArray(this._texturePool?.[key])) {

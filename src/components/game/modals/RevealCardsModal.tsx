@@ -9,11 +9,7 @@ interface RevealCardsModalProps {
   onConfirm: () => void;
 }
 
-export function RevealCardsModal({
-  cards,
-  message,
-  onConfirm,
-}: RevealCardsModalProps) {
+export function RevealCardsModal({ cards, message, onConfirm }: RevealCardsModalProps) {
   return (
     <Modal maxWidth="max-w-4xl" maxHeight="">
       <Modal.Header>

@@ -37,10 +37,8 @@ interface ThemeInternal extends Theme {
 }
 
 function buildTheme(): ThemeInternal {
-  const { appThemePreset, gameThemeColorOverrides } =
-    usePreferencesStore.getState();
-  const preset =
-    THEME_PRESETS.find((p) => p.id === appThemePreset) ?? THEME_PRESETS[0]!;
+  const { appThemePreset, gameThemeColorOverrides } = usePreferencesStore.getState();
+  const preset = THEME_PRESETS.find((p) => p.id === appThemePreset) ?? THEME_PRESETS[0]!;
   const appTheme = preset.dark;
   const gameColors = resolveGameThemeColors(gameThemeColorOverrides, appThemePreset);
   const fontSizes = resolveGameFontSizes(appThemePreset);
@@ -53,12 +51,8 @@ let prevPreset = usePreferencesStore.getState().appThemePreset;
 let prevGameOverrides = usePreferencesStore.getState().gameThemeColorOverrides;
 
 usePreferencesStore.subscribe(() => {
-  const { appThemePreset, gameThemeColorOverrides } =
-    usePreferencesStore.getState();
-  if (
-    appThemePreset !== prevPreset ||
-    gameThemeColorOverrides !== prevGameOverrides
-  ) {
+  const { appThemePreset, gameThemeColorOverrides } = usePreferencesStore.getState();
+  if (appThemePreset !== prevPreset || gameThemeColorOverrides !== prevGameOverrides) {
     prevPreset = appThemePreset;
     prevGameOverrides = gameThemeColorOverrides;
     cachedTheme = buildTheme();
@@ -103,8 +97,7 @@ export function useTheme(): Theme {
   const { resolvedTheme } = useNextTheme();
 
   const theme = useMemo((): ThemeInternal => {
-    const preset =
-      THEME_PRESETS.find((p) => p.id === presetId) ?? THEME_PRESETS[0]!;
+    const preset = THEME_PRESETS.find((p) => p.id === presetId) ?? THEME_PRESETS[0]!;
     const mode = resolvedTheme === "dark" ? "dark" : "light";
     const appTheme = preset[mode];
     const gameColors = resolveGameThemeColors(gameOverrides, presetId);

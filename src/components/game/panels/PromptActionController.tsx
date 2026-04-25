@@ -12,10 +12,7 @@ import { Mulligan } from "./prompt-actions/Mulligan";
 import { MulliganPutBack } from "./prompt-actions/MulliganPutBack";
 import { PromptType } from "@/types/promptType";
 import type { PromptButtonLayout } from "./PromptActionButton";
-import {
-  type PromptActionViewKey,
-  useGameDevStore,
-} from "@/stores/useGameDevStore";
+import { type PromptActionViewKey, useGameDevStore } from "@/stores/useGameDevStore";
 import { useGameUIStore } from "@/stores/useGameUIStore";
 
 const PROMPT_TO_VIEW_KEY: Record<string, PromptActionViewKey> = {
@@ -193,10 +190,7 @@ export function PromptActionController({
       />
     ),
     passingUntilEot: () => (
-      <NoAction
-        buttonLayout={buttonLayout}
-        label={isMyTurn ? "End Turn" : "Pass Till End"}
-      />
+      <NoAction buttonLayout={buttonLayout} label={isMyTurn ? "End Turn" : "Pass Till End"} />
     ),
     autoPassing: () => <NoAction buttonLayout={buttonLayout} label="Auto Pass" />,
     promptLabel: () => {
@@ -210,7 +204,12 @@ export function PromptActionController({
         [PromptType.Dig]: "Choose cards",
         [PromptType.ChooseDiscard]: "Discard",
       };
-      return <PromptLabel buttonLayout={buttonLayout} label={(promptType && labels[promptType]) || "Waiting..."} />;
+      return (
+        <PromptLabel
+          buttonLayout={buttonLayout}
+          label={(promptType && labels[promptType]) || "Waiting..."}
+        />
+      );
     },
     noAction: () => <NoAction buttonLayout={buttonLayout} label="No Action" />,
     mulligan: () => (
@@ -235,16 +234,13 @@ export function PromptActionController({
     ? "passingUntilEot"
     : isAutoPassing
       ? "autoPassing"
-      : (promptType ? PROMPT_TO_VIEW_KEY[promptType] : undefined) ?? "noAction";
+      : ((promptType ? PROMPT_TO_VIEW_KEY[promptType] : undefined) ?? "noAction");
 
   const rendered = renderers[promptActionOverride ?? runtimeViewKey]();
 
   if (promptActionOverride) {
     return (
-      <div
-        className="contents [&_button]:pointer-events-none"
-        aria-disabled="true"
-      >
+      <div className="contents [&_button]:pointer-events-none" aria-disabled="true">
         {rendered}
       </div>
     );

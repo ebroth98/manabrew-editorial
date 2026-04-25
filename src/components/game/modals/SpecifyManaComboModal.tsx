@@ -12,11 +12,11 @@ interface SpecifyManaComboModalProps {
 /** Per-colour row tint — uses `mana-<letter>` theme tokens so the
  *  picker retones with the active preset. */
 const LETTER_INFO: Record<string, { label: string; bg: string }> = {
-  W: { label: "White",     bg: "bg-mana-w" },
-  U: { label: "Blue",      bg: "bg-mana-u" },
-  B: { label: "Black",     bg: "bg-mana-b" },
-  R: { label: "Red",       bg: "bg-mana-r" },
-  G: { label: "Green",     bg: "bg-mana-g" },
+  W: { label: "White", bg: "bg-mana-w" },
+  U: { label: "Blue", bg: "bg-mana-u" },
+  B: { label: "Black", bg: "bg-mana-b" },
+  R: { label: "Red", bg: "bg-mana-r" },
+  G: { label: "Green", bg: "bg-mana-g" },
   C: { label: "Colorless", bg: "bg-mana-c" },
 };
 
@@ -24,7 +24,12 @@ function manaSymbolUrl(symbol: string): string {
   return `https://svgs.scryfall.io/card-symbols/${encodeURIComponent(symbol)}.svg`;
 }
 
-export function SpecifyManaComboModal({ availableColors, amount, sourceCardName, onConfirm }: SpecifyManaComboModalProps) {
+export function SpecifyManaComboModal({
+  availableColors,
+  amount,
+  sourceCardName,
+  onConfirm,
+}: SpecifyManaComboModalProps) {
   const [counts, setCounts] = useState<Record<string, number>>(() => {
     const initial: Record<string, number> = {};
     for (const c of availableColors) initial[c] = 0;
@@ -38,11 +43,11 @@ export function SpecifyManaComboModal({ availableColors, amount, sourceCardName,
 
   const increment = (color: string) => {
     if (remaining <= 0) return;
-    setCounts(prev => ({ ...prev, [color]: (prev[color] ?? 0) + 1 }));
+    setCounts((prev) => ({ ...prev, [color]: (prev[color] ?? 0) + 1 }));
   };
 
   const decrement = (color: string) => {
-    setCounts(prev => {
+    setCounts((prev) => {
       const cur = prev[color] ?? 0;
       if (cur <= 0) return prev;
       return { ...prev, [color]: cur - 1 };
@@ -62,7 +67,9 @@ export function SpecifyManaComboModal({ availableColors, amount, sourceCardName,
       <Modal.Header>
         <div>
           <h2 className="font-semibold text-base">Choose Mana Colors</h2>
-          {sourceCardName && <p className="text-xs text-muted-foreground font-medium">{sourceCardName}</p>}
+          {sourceCardName && (
+            <p className="text-xs text-muted-foreground font-medium">{sourceCardName}</p>
+          )}
         </div>
       </Modal.Header>
 
@@ -71,13 +78,20 @@ export function SpecifyManaComboModal({ availableColors, amount, sourceCardName,
       </Modal.Instructions>
 
       <div className="p-4 flex flex-col gap-2">
-        {availableColors.map(color => {
+        {availableColors.map((color) => {
           const info = LETTER_INFO[color] ?? { label: color, bg: "bg-muted" };
           const count = counts[color] ?? 0;
           return (
             <div key={color} className="flex items-center gap-3">
               <img src={manaSymbolUrl(color)} alt={`{${color}}`} className="w-8 h-8" />
-              <span className={cn("text-sm font-medium w-16 px-2 py-0.5 rounded text-foreground", info.bg)}>{info.label}</span>
+              <span
+                className={cn(
+                  "text-sm font-medium w-16 px-2 py-0.5 rounded text-foreground",
+                  info.bg,
+                )}
+              >
+                {info.label}
+              </span>
               <div className="flex items-center gap-1">
                 <button
                   onClick={() => decrement(color)}
@@ -108,7 +122,7 @@ export function SpecifyManaComboModal({ availableColors, amount, sourceCardName,
             "px-4 py-1.5 rounded text-sm font-medium transition-colors",
             remaining > 0
               ? "bg-muted text-muted-foreground cursor-not-allowed"
-              : "bg-primary text-primary-foreground hover:bg-primary/90"
+              : "bg-primary text-primary-foreground hover:bg-primary/90",
           )}
         >
           Confirm

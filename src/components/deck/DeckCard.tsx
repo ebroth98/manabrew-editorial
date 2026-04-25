@@ -57,9 +57,7 @@ export function DeckCard({
       <div
         className={cn(
           "flex items-center gap-2 px-3 py-2 cursor-pointer group",
-          isSelected
-            ? "bg-secondary text-secondary-foreground"
-            : "hover:bg-muted/60",
+          isSelected ? "bg-secondary text-secondary-foreground" : "hover:bg-muted/60",
         )}
         onClick={onSelect}
       >
@@ -86,14 +84,18 @@ export function DeckCard({
               onClick={(e) => e.stopPropagation()}
             />
           ) : (
-            <p className={cn("text-sm font-medium truncate", titleColorClass, DECK_NAME_SHADOW_CLASS)}>
+            <p
+              className={cn(
+                "text-sm font-medium truncate",
+                titleColorClass,
+                DECK_NAME_SHADOW_CLASS,
+              )}
+            >
               {deck.deck.name}
             </p>
           )}
           <div className="flex items-center gap-1 flex-wrap">
-            <span className="text-xs text-muted-foreground">
-              {displayCards.length} cards
-            </span>
+            <span className="text-xs text-muted-foreground">{displayCards.length} cards</span>
             <FormatBadge formatId={deck.deck.format ?? "standard"} />
             {deck.deck.labels?.map((label) => (
               <DeckLabelBadge key={label.name} label={label} size="sm" />
@@ -104,9 +106,7 @@ export function DeckCard({
         <div
           className={cn(
             "flex gap-1 shrink-0 transition-opacity",
-            isSelected
-              ? "opacity-100"
-              : "opacity-0 group-hover:opacity-100",
+            isSelected ? "opacity-100" : "opacity-0 group-hover:opacity-100",
           )}
         >
           <Button
@@ -141,7 +141,8 @@ export function DeckCard({
           <DialogHeader>
             <DialogTitle>Delete Deck</DialogTitle>
             <DialogDescription>
-              Are you sure you want to delete &ldquo;{deck.deck.name}&rdquo;? This action cannot be undone.
+              Are you sure you want to delete &ldquo;{deck.deck.name}&rdquo;? This action cannot be
+              undone.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="gap-2">

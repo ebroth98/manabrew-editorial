@@ -83,8 +83,10 @@ const GAME_THEME_COLOR_DESCRIPTIONS: Partial<Record<GameThemePath, string>> = {
   "arrow.block": "Blocker arrow from blocker to attacker.",
   "arrow.hostileTarget": "Legacy hostile-target arrow (Pixi fallback).",
   "arrow.friendlyTarget": "Legacy friendly-target arrow (Pixi fallback).",
-  "pointer.hostile": "Glow around the cursor for hostile targeting — damage, destroy, sacrifice, exile, counter, etc. Also used for the mulligan-reject ring.",
-  "pointer.friendly": "Glow around the cursor for friendly / supportive targeting — buff, heal, draw, reveal, untap, attach, copy.",
+  "pointer.hostile":
+    "Glow around the cursor for hostile targeting — damage, destroy, sacrifice, exile, counter, etc. Also used for the mulligan-reject ring.",
+  "pointer.friendly":
+    "Glow around the cursor for friendly / supportive targeting — buff, heal, draw, reveal, untap, attach, copy.",
   "mana.W": "White mana pip and dual-land tap-button tint.",
   "mana.U": "Blue mana pip and dual-land tap-button tint.",
   "mana.B": "Black mana pip and dual-land tap-button tint.",
@@ -120,18 +122,18 @@ const GAME_THEME_COLOR_DESCRIPTIONS: Partial<Record<GameThemePath, string>> = {
   "pt.lethal": "P/T badge when incoming damage would be lethal.",
   "pt.buffed": "P/T badge when stats are above the printed base.",
   "pt.debuffed": "P/T badge when stats are below the printed base.",
-  "success": "Positive states — connected, saved, victory banner, good FPS.",
-  "poison": "Poison counter / skull icon — MTG infect-green.",
-  "life": "Life total / heart icon.",
+  success: "Positive states — connected, saved, victory banner, good FPS.",
+  poison: "Poison counter / skull icon — MTG infect-green.",
+  life: "Life total / heart icon.",
   "canvas.background": "Pixi canvas table background fill.",
   "canvas.shadow": "Drop-shadow ink (almost always black).",
   "canvas.neutral": "High-contrast stroke / outline colour for arrows and icons.",
   "cardPlaceholder.fill": "Loading-state card sprite fill.",
   "cardPlaceholder.stroke": "Loading-state card sprite border.",
-  "textOnTinted": "Text colour placed on tinted chips and badges.",
-  "textMuted": "Subdued label colour on empty-zone placeholders.",
-  "textGhost": "Ghost card-name colour shown while art loads.",
-  "cardRing": "Default card selection / focus ring.",
+  textOnTinted: "Text colour placed on tinted chips and badges.",
+  textMuted: "Subdued label colour on empty-zone placeholders.",
+  textGhost: "Ghost card-name colour shown while art loads.",
+  cardRing: "Default card selection / focus ring.",
 };
 
 /**
@@ -202,39 +204,36 @@ const APP_THEME_GROUPS: { heading: string; description: string; keys: AppThemeKe
   {
     heading: "Surfaces & Foregrounds",
     description: "Neutral page, card, and popover backgrounds plus their paired text colours.",
-    keys: [
-      "background", "foreground",
-      "card", "card-foreground",
-      "popover", "popover-foreground",
-    ],
+    keys: ["background", "foreground", "card", "card-foreground", "popover", "popover-foreground"],
   },
   {
     heading: "Brand & Accent",
     description: "Primary action colour and the softer accent / secondary tints.",
     keys: [
-      "primary", "primary-foreground",
-      "secondary", "secondary-foreground",
-      "accent", "accent-foreground",
+      "primary",
+      "primary-foreground",
+      "secondary",
+      "secondary-foreground",
+      "accent",
+      "accent-foreground",
     ],
   },
   {
     heading: "State Signals",
     description: "Destructive, warning, commander, and selection highlights.",
     keys: [
-      "destructive", "destructive-foreground",
+      "destructive",
+      "destructive-foreground",
       "warning",
       "commander",
-      "selection", "selection-foreground",
+      "selection",
+      "selection-foreground",
     ],
   },
   {
     heading: "Muted & Structure",
     description: "Subdued surfaces, borders, input fields, focus ring, and overlay dim.",
-    keys: [
-      "muted", "muted-foreground",
-      "border", "input", "ring",
-      "overlay",
-    ],
+    keys: ["muted", "muted-foreground", "border", "input", "ring", "overlay"],
   },
 ];
 
@@ -242,7 +241,12 @@ const APP_THEME_GROUPS: { heading: string; description: string; keys: AppThemeKe
  *  together (all `pointer.*` in one block, all `counter.*` in another,
  *  …). Keys are matched by prefix; anything not covered falls into
  *  the "Miscellaneous" group at the end. */
-const GAME_THEME_GROUPS: { heading: string; description: string; prefixes?: string[]; exactKeys?: string[] }[] = [
+const GAME_THEME_GROUPS: {
+  heading: string;
+  description: string;
+  prefixes?: string[];
+  exactKeys?: string[];
+}[] = [
   {
     heading: "Active Action",
     description: "Priority ring, turn glow, and related active-state cues.",
@@ -448,19 +452,41 @@ export default function Settings() {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-1">
               <Label htmlFor="server-host">Host</Label>
-              <Input id="server-host" value={host} onChange={(e) => setHost(e.target.value)} placeholder="localhost" />
+              <Input
+                id="server-host"
+                value={host}
+                onChange={(e) => setHost(e.target.value)}
+                placeholder="localhost"
+              />
             </div>
             <div className="space-y-1">
               <Label htmlFor="server-port">Port</Label>
-              <Input id="server-port" type="number" value={port} onChange={(e) => setPort(e.target.value)} placeholder="9443" />
+              <Input
+                id="server-port"
+                type="number"
+                value={port}
+                onChange={(e) => setPort(e.target.value)}
+                placeholder="9443"
+              />
             </div>
             <div className="space-y-1">
               <Label htmlFor="server-username">Username</Label>
-              <Input id="server-username" value={username} onChange={(e) => setUsername(e.target.value)} placeholder="Player1" />
+              <Input
+                id="server-username"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                placeholder="Player1"
+              />
             </div>
             <div className="space-y-1">
               <Label htmlFor="server-password">Password</Label>
-              <Input id="server-password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="forge" />
+              <Input
+                id="server-password"
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="forge"
+              />
             </div>
           </div>
           <div className="flex items-center gap-3">
@@ -476,12 +502,11 @@ export default function Settings() {
             {server.connecting && (
               <span className="text-xs text-muted-foreground">Connecting...</span>
             )}
-            {server.error && (
-              <span className="text-xs text-destructive">{server.error}</span>
-            )}
+            {server.error && <span className="text-xs text-destructive">{server.error}</span>}
           </div>
           <p className="text-xs text-muted-foreground">
-            Server connection settings. Saving will disconnect and reconnect with the new credentials.
+            Server connection settings. Saving will disconnect and reconnect with the new
+            credentials.
           </p>
         </section>
       )}
@@ -491,265 +516,263 @@ export default function Settings() {
           <h2 className="text-lg font-semibold">Preferences</h2>
 
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            <div className="rounded-lg border bg-card/40 p-4 flex items-start gap-3">
+              <input
+                id="auto-pass"
+                type="checkbox"
+                checked={prefs.autoPassEnabled}
+                onChange={(e) => prefs.setAutoPassEnabled(e.target.checked)}
+                className="mt-1 accent-primary h-4 w-4"
+              />
+              <div className="space-y-1">
+                <Label htmlFor="auto-pass">Auto-pass when no actions</Label>
+                <p className="text-xs text-muted-foreground">
+                  Automatically pass priority when you have no playable cards. Uses a random delay
+                  to prevent information leaking in multiplayer.
+                </p>
+              </div>
+            </div>
 
-          <div className="rounded-lg border bg-card/40 p-4 flex items-start gap-3">
-            <input
-              id="auto-pass"
-              type="checkbox"
-              checked={prefs.autoPassEnabled}
-              onChange={(e) => prefs.setAutoPassEnabled(e.target.checked)}
-              className="mt-1 accent-primary h-4 w-4"
-            />
-            <div className="space-y-1">
-              <Label htmlFor="auto-pass">Auto-pass when no actions</Label>
+            <div className="rounded-lg border bg-card/40 p-4 space-y-2">
+              <Label>Battlefield Zone Column Side</Label>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant={prefs.zonePanelSide === "left" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => prefs.setZonePanelSide("left")}
+                >
+                  Left
+                </Button>
+                <Button
+                  variant={prefs.zonePanelSide === "right" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => prefs.setZonePanelSide("right")}
+                >
+                  Right
+                </Button>
+              </div>
+            </div>
+
+            <div className="rounded-lg border bg-card/40 p-4 space-y-2">
+              <Label>Battlefield Zone Column Order</Label>
+              <div className="grid grid-cols-3 gap-2">
+                {(["Top", "Middle", "Bottom"] as const).map((slot, index) => (
+                  <div key={slot} className="space-y-1">
+                    <Label
+                      htmlFor={`zone-order-${index}`}
+                      className="text-xs text-muted-foreground"
+                    >
+                      {slot}
+                    </Label>
+                    <select
+                      id={`zone-order-${index}`}
+                      value={zoneOrder[index]}
+                      onChange={(e) => setZoneSlot(index, e.target.value as ZonePanelItem)}
+                      className="w-full h-9 rounded-md border border-input bg-background px-2 text-sm"
+                    >
+                      <option value="library">Library</option>
+                      <option value="graveyard">Graveyard</option>
+                      <option value="exile">Exile</option>
+                    </select>
+                  </div>
+                ))}
+              </div>
               <p className="text-xs text-muted-foreground">
-                Automatically pass priority when you have no playable cards.
-                Uses a random delay to prevent information leaking in multiplayer.
+                Controls placement of Library / Graveyard / Exile in the in-field zone column.
+              </p>
+            </div>
+
+            <div className="rounded-lg border bg-card/40 p-4 space-y-2">
+              <Label>Hand Display Mode</Label>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant={prefs.handDisplayMode === "cool" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => prefs.setHandDisplayMode("cool")}
+                >
+                  Cool
+                </Button>
+                <Button
+                  variant={prefs.handDisplayMode === "normal" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => prefs.setHandDisplayMode("normal")}
+                >
+                  Normal
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Switch between curved fan hand layout (Cool) and flat hand layout (Normal).
+              </p>
+            </div>
+
+            <div className="rounded-lg border bg-card/40 p-4 space-y-2">
+              <Label>GPU Canvas Renderer (Experimental)</Label>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant={prefs.pixiEnabled ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => prefs.setPixiEnabled(!prefs.pixiEnabled)}
+                >
+                  {prefs.pixiEnabled ? "Enabled" : "Disabled"}
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Uses PixiJS WebGL canvas for the game board. Enables GPU-accelerated rendering and
+                prepares for future particle effects. Requires page reload to take effect.
+              </p>
+            </div>
+
+            <div className="rounded-lg border bg-card/40 p-4 space-y-2">
+              <Label>Hand Card Size</Label>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant={prefs.handSize === "small" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => prefs.setHandSize("small")}
+                >
+                  Small
+                </Button>
+                <Button
+                  variant={prefs.handSize === "medium" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => prefs.setHandSize("medium")}
+                >
+                  Medium
+                </Button>
+                <Button
+                  variant={prefs.handSize === "large" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => prefs.setHandSize("large")}
+                >
+                  Large
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Controls the size of cards displayed in your hand.
+              </p>
+            </div>
+
+            <div className="rounded-lg border bg-card/40 p-4 space-y-2">
+              <Label>Battlefield Card Size ({Math.round(prefs.battlefieldCardScale * 100)}%)</Label>
+              <input
+                type="range"
+                min={80}
+                max={180}
+                step={5}
+                value={Math.round(prefs.battlefieldCardScale * 100)}
+                onChange={(e) => prefs.setBattlefieldCardScale(Number(e.target.value) / 100)}
+                className="w-full accent-primary"
+              />
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => prefs.setBattlefieldCardScale(1.0)}
+                >
+                  100%
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => prefs.setBattlefieldCardScale(1.15)}
+                >
+                  Default
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => prefs.setBattlefieldCardScale(1.4)}
+                >
+                  Large
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Controls the size of cards (and the grid they snap into) on the battlefield.
+              </p>
+            </div>
+
+            <div className="rounded-lg border bg-card/40 p-4 space-y-2">
+              <Label>Card Preview Trigger</Label>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant={prefs.cardPreviewMode === "hover" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => prefs.setCardPreviewMode("hover")}
+                >
+                  Hover
+                </Button>
+                <Button
+                  variant={prefs.cardPreviewMode === "shift" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => prefs.setCardPreviewMode("shift")}
+                >
+                  Shift + Hover
+                </Button>
+                <Button
+                  variant={prefs.cardPreviewMode === "alt" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => prefs.setCardPreviewMode("alt")}
+                >
+                  Alt + Hover
+                </Button>
+                <Button
+                  variant={prefs.cardPreviewMode === "ctrl" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => prefs.setCardPreviewMode("ctrl")}
+                >
+                  Ctrl + Hover
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Controls when the card preview and ability panel appears. "Hover" shows on mouse
+                over, others require holding a modifier key.
+              </p>
+            </div>
+
+            <div className="rounded-lg border bg-card/40 p-4 space-y-2">
+              <div className="flex items-center justify-between">
+                <Label htmlFor="hover-delay">Card Preview Delay</Label>
+                <span className="text-sm font-mono text-muted-foreground">
+                  {prefs.cardHoverDelayMs}ms
+                </span>
+              </div>
+              <input
+                id="hover-delay"
+                type="range"
+                min={HOVER_DELAY_MIN}
+                max={HOVER_DELAY_MAX}
+                step={HOVER_DELAY_STEP}
+                value={prefs.cardHoverDelayMs}
+                onChange={(e) => prefs.setCardHoverDelayMs(Number(e.target.value))}
+                className="w-full accent-primary"
+              />
+              <p className="text-xs text-muted-foreground">
+                How long to hover before the card preview appears. Lower values feel snappier,
+                higher values reduce accidental popups.
+              </p>
+            </div>
+
+            <div className="rounded-lg border bg-card/40 p-4 space-y-2">
+              <div className="flex items-center justify-between">
+                <Label htmlFor="flash-duration">Flash duration</Label>
+                <span className="text-sm font-mono text-muted-foreground">{flashDurationMs}ms</span>
+              </div>
+              <input
+                id="flash-duration"
+                type="range"
+                min={FLASH_MIN}
+                max={FLASH_MAX}
+                step={FLASH_STEP}
+                value={flashDurationMs}
+                onChange={(e) => setFlashDurationMs(Number(e.target.value))}
+                className="w-full accent-primary"
+              />
+              <p className="text-xs text-muted-foreground">
+                Card-play and turn-start flash duration.
               </p>
             </div>
           </div>
-
-          <div className="rounded-lg border bg-card/40 p-4 space-y-2">
-            <Label>Battlefield Zone Column Side</Label>
-            <div className="flex items-center gap-2">
-              <Button
-                variant={prefs.zonePanelSide === "left" ? "default" : "outline"}
-                size="sm"
-                onClick={() => prefs.setZonePanelSide("left")}
-              >
-                Left
-              </Button>
-              <Button
-                variant={prefs.zonePanelSide === "right" ? "default" : "outline"}
-                size="sm"
-                onClick={() => prefs.setZonePanelSide("right")}
-              >
-                Right
-              </Button>
-            </div>
-          </div>
-
-          <div className="rounded-lg border bg-card/40 p-4 space-y-2">
-            <Label>Battlefield Zone Column Order</Label>
-            <div className="grid grid-cols-3 gap-2">
-              {(["Top", "Middle", "Bottom"] as const).map((slot, index) => (
-                <div key={slot} className="space-y-1">
-                  <Label htmlFor={`zone-order-${index}`} className="text-xs text-muted-foreground">
-                    {slot}
-                  </Label>
-                  <select
-                    id={`zone-order-${index}`}
-                    value={zoneOrder[index]}
-                    onChange={(e) => setZoneSlot(index, e.target.value as ZonePanelItem)}
-                    className="w-full h-9 rounded-md border border-input bg-background px-2 text-sm"
-                  >
-                    <option value="library">Library</option>
-                    <option value="graveyard">Graveyard</option>
-                    <option value="exile">Exile</option>
-                  </select>
-                </div>
-              ))}
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Controls placement of Library / Graveyard / Exile in the in-field zone column.
-            </p>
-          </div>
-
-          <div className="rounded-lg border bg-card/40 p-4 space-y-2">
-            <Label>Hand Display Mode</Label>
-            <div className="flex items-center gap-2">
-              <Button
-                variant={prefs.handDisplayMode === "cool" ? "default" : "outline"}
-                size="sm"
-                onClick={() => prefs.setHandDisplayMode("cool")}
-              >
-                Cool
-              </Button>
-              <Button
-                variant={prefs.handDisplayMode === "normal" ? "default" : "outline"}
-                size="sm"
-                onClick={() => prefs.setHandDisplayMode("normal")}
-              >
-                Normal
-              </Button>
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Switch between curved fan hand layout (Cool) and flat hand layout (Normal).
-            </p>
-          </div>
-
-          <div className="rounded-lg border bg-card/40 p-4 space-y-2">
-            <Label>GPU Canvas Renderer (Experimental)</Label>
-            <div className="flex items-center gap-2">
-              <Button
-                variant={prefs.pixiEnabled ? "default" : "outline"}
-                size="sm"
-                onClick={() => prefs.setPixiEnabled(!prefs.pixiEnabled)}
-              >
-                {prefs.pixiEnabled ? "Enabled" : "Disabled"}
-              </Button>
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Uses PixiJS WebGL canvas for the game board. Enables GPU-accelerated rendering
-              and prepares for future particle effects. Requires page reload to take effect.
-            </p>
-          </div>
-
-          <div className="rounded-lg border bg-card/40 p-4 space-y-2">
-            <Label>Hand Card Size</Label>
-            <div className="flex items-center gap-2">
-              <Button
-                variant={prefs.handSize === "small" ? "default" : "outline"}
-                size="sm"
-                onClick={() => prefs.setHandSize("small")}
-              >
-                Small
-              </Button>
-              <Button
-                variant={prefs.handSize === "medium" ? "default" : "outline"}
-                size="sm"
-                onClick={() => prefs.setHandSize("medium")}
-              >
-                Medium
-              </Button>
-              <Button
-                variant={prefs.handSize === "large" ? "default" : "outline"}
-                size="sm"
-                onClick={() => prefs.setHandSize("large")}
-              >
-                Large
-              </Button>
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Controls the size of cards displayed in your hand.
-            </p>
-          </div>
-
-          <div className="rounded-lg border bg-card/40 p-4 space-y-2">
-            <Label>
-              Battlefield Card Size ({Math.round(prefs.battlefieldCardScale * 100)}%)
-            </Label>
-            <input
-              type="range"
-              min={80}
-              max={180}
-              step={5}
-              value={Math.round(prefs.battlefieldCardScale * 100)}
-              onChange={(e) =>
-                prefs.setBattlefieldCardScale(Number(e.target.value) / 100)
-              }
-              className="w-full accent-primary"
-            />
-            <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => prefs.setBattlefieldCardScale(1.0)}
-              >
-                100%
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => prefs.setBattlefieldCardScale(1.15)}
-              >
-                Default
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => prefs.setBattlefieldCardScale(1.4)}
-              >
-                Large
-              </Button>
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Controls the size of cards (and the grid they snap into) on the battlefield.
-            </p>
-          </div>
-
-          <div className="rounded-lg border bg-card/40 p-4 space-y-2">
-            <Label>Card Preview Trigger</Label>
-            <div className="flex items-center gap-2">
-              <Button
-                variant={prefs.cardPreviewMode === "hover" ? "default" : "outline"}
-                size="sm"
-                onClick={() => prefs.setCardPreviewMode("hover")}
-              >
-                Hover
-              </Button>
-              <Button
-                variant={prefs.cardPreviewMode === "shift" ? "default" : "outline"}
-                size="sm"
-                onClick={() => prefs.setCardPreviewMode("shift")}
-              >
-                Shift + Hover
-              </Button>
-              <Button
-                variant={prefs.cardPreviewMode === "alt" ? "default" : "outline"}
-                size="sm"
-                onClick={() => prefs.setCardPreviewMode("alt")}
-              >
-                Alt + Hover
-              </Button>
-              <Button
-                variant={prefs.cardPreviewMode === "ctrl" ? "default" : "outline"}
-                size="sm"
-                onClick={() => prefs.setCardPreviewMode("ctrl")}
-              >
-                Ctrl + Hover
-              </Button>
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Controls when the card preview and ability panel appears. "Hover" shows on mouse over, others require holding a modifier key.
-            </p>
-          </div>
-
-          <div className="rounded-lg border bg-card/40 p-4 space-y-2">
-            <div className="flex items-center justify-between">
-              <Label htmlFor="hover-delay">Card Preview Delay</Label>
-              <span className="text-sm font-mono text-muted-foreground">
-                {prefs.cardHoverDelayMs}ms
-              </span>
-            </div>
-            <input
-              id="hover-delay"
-              type="range"
-              min={HOVER_DELAY_MIN}
-              max={HOVER_DELAY_MAX}
-              step={HOVER_DELAY_STEP}
-              value={prefs.cardHoverDelayMs}
-              onChange={(e) => prefs.setCardHoverDelayMs(Number(e.target.value))}
-              className="w-full accent-primary"
-            />
-            <p className="text-xs text-muted-foreground">
-              How long to hover before the card preview appears. Lower values feel snappier, higher values reduce accidental popups.
-            </p>
-          </div>
-
-          <div className="rounded-lg border bg-card/40 p-4 space-y-2">
-            <div className="flex items-center justify-between">
-              <Label htmlFor="flash-duration">Flash duration</Label>
-              <span className="text-sm font-mono text-muted-foreground">
-                {flashDurationMs}ms
-              </span>
-            </div>
-            <input
-              id="flash-duration"
-              type="range"
-              min={FLASH_MIN}
-              max={FLASH_MAX}
-              step={FLASH_STEP}
-              value={flashDurationMs}
-              onChange={(e) => setFlashDurationMs(Number(e.target.value))}
-              className="w-full accent-primary"
-            />
-            <p className="text-xs text-muted-foreground">
-              Card-play and turn-start flash duration.
-            </p>
-          </div>
-
-          </div>{/* end preferences grid */}
+          {/* end preferences grid */}
         </section>
       )}
 
@@ -758,98 +781,132 @@ export default function Settings() {
           <h2 className="text-lg font-semibold">Theme</h2>
 
           <div className="grid gap-4 md:grid-cols-2">
-
-          <div className="rounded-lg border bg-card/40 p-4 space-y-2">
-            <Label>App Theme</Label>
-            <div className="flex items-center gap-2">
-              <Button
-                variant={theme === "light" ? "default" : "outline"}
-                size="sm"
-                onClick={() => setTheme("light")}
-              >
-                Light
-              </Button>
-              <Button
-                variant={theme === "dark" ? "default" : "outline"}
-                size="sm"
-                onClick={() => setTheme("dark")}
-              >
-                Dark
-              </Button>
-              <Button
-                variant={theme === "system" ? "default" : "outline"}
-                size="sm"
-                onClick={() => setTheme("system")}
-              >
-                System
-              </Button>
+            <div className="rounded-lg border bg-card/40 p-4 space-y-2">
+              <Label>App Theme</Label>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant={theme === "light" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setTheme("light")}
+                >
+                  Light
+                </Button>
+                <Button
+                  variant={theme === "dark" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setTheme("dark")}
+                >
+                  Dark
+                </Button>
+                <Button
+                  variant={theme === "system" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setTheme("system")}
+                >
+                  System
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">Controls app theme preference.</p>
             </div>
-            <p className="text-xs text-muted-foreground">
-              Controls app theme preference.
-            </p>
-          </div>
 
-          <div className="rounded-lg border bg-card/40 p-4 space-y-2">
-            <Label>Color Preset</Label>
-            {(() => {
-              const active = THEME_PRESETS.find((p) => p.id === prefs.appThemePreset);
-              const mode = resolvedTheme === "dark" ? "dark" : "light";
-              return (
-                <div className="relative">
-                  <button
-                    type="button"
-                    onClick={() => setPresetOpen((v) => !v)}
-                    className="w-full flex items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition-colors hover:bg-muted/30"
-                  >
-                    {active && (
-                      <div className="flex gap-1 shrink-0">
-                        {[active[mode].background, active[mode].primary, active[mode].accent, active[mode].destructive].map((hsl, i) => (
-                          <div key={i} className="w-4 h-4 rounded-full border border-border/50" style={{ backgroundColor: hsl }} />
+            <div className="rounded-lg border bg-card/40 p-4 space-y-2">
+              <Label>Color Preset</Label>
+              {(() => {
+                const active = THEME_PRESETS.find((p) => p.id === prefs.appThemePreset);
+                const mode = resolvedTheme === "dark" ? "dark" : "light";
+                return (
+                  <div className="relative">
+                    <button
+                      type="button"
+                      onClick={() => setPresetOpen((v) => !v)}
+                      className="w-full flex items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition-colors hover:bg-muted/30"
+                    >
+                      {active && (
+                        <div className="flex gap-1 shrink-0">
+                          {[
+                            active[mode].background,
+                            active[mode].primary,
+                            active[mode].accent,
+                            active[mode].destructive,
+                          ].map((hsl, i) => (
+                            <div
+                              key={i}
+                              className="w-4 h-4 rounded-full border border-border/50"
+                              style={{ backgroundColor: hsl }}
+                            />
+                          ))}
+                        </div>
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-medium">{active?.name ?? "Select preset"}</div>
+                      </div>
+                      <svg
+                        className="h-4 w-4 text-muted-foreground shrink-0"
+                        viewBox="0 0 16 16"
+                        fill="none"
+                      >
+                        <path
+                          d="M4 6l4 4 4-4"
+                          stroke="currentColor"
+                          strokeWidth="1.5"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                      </svg>
+                    </button>
+                    {presetOpen && (
+                      <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-popover border rounded-lg shadow-lg max-h-64 overflow-y-auto">
+                        {THEME_PRESETS.map((preset) => (
+                          <button
+                            key={preset.id}
+                            type="button"
+                            onClick={() => {
+                              prefs.setAppThemePreset(preset.id);
+                              setPresetOpen(false);
+                            }}
+                            className={
+                              "w-full flex items-center gap-3 px-3 py-2 text-left transition-colors hover:bg-muted/40 " +
+                              (prefs.appThemePreset === preset.id ? "bg-primary/5" : "")
+                            }
+                          >
+                            <div className="flex gap-1 shrink-0">
+                              {[
+                                preset[mode].background,
+                                preset[mode].primary,
+                                preset[mode].accent,
+                                preset[mode].destructive,
+                              ].map((hsl, i) => (
+                                <div
+                                  key={i}
+                                  className="w-3.5 h-3.5 rounded-full border border-border/50"
+                                  style={{ backgroundColor: hsl }}
+                                />
+                              ))}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="text-sm font-medium">{preset.name}</div>
+                              <div className="text-[11px] text-muted-foreground">
+                                {preset.description}
+                              </div>
+                            </div>
+                            {prefs.appThemePreset === preset.id && (
+                              <div className="text-[10px] text-primary font-medium shrink-0">
+                                Active
+                              </div>
+                            )}
+                          </button>
                         ))}
                       </div>
                     )}
-                    <div className="flex-1 min-w-0">
-                      <div className="text-sm font-medium">{active?.name ?? "Select preset"}</div>
-                    </div>
-                    <svg className="h-4 w-4 text-muted-foreground shrink-0" viewBox="0 0 16 16" fill="none"><path d="M4 6l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
-                  </button>
-                  {presetOpen && (
-                    <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-popover border rounded-lg shadow-lg max-h-64 overflow-y-auto">
-                      {THEME_PRESETS.map((preset) => (
-                        <button
-                          key={preset.id}
-                          type="button"
-                          onClick={() => { prefs.setAppThemePreset(preset.id); setPresetOpen(false); }}
-                          className={
-                            "w-full flex items-center gap-3 px-3 py-2 text-left transition-colors hover:bg-muted/40 " +
-                            (prefs.appThemePreset === preset.id ? "bg-primary/5" : "")
-                          }
-                        >
-                          <div className="flex gap-1 shrink-0">
-                            {[preset[mode].background, preset[mode].primary, preset[mode].accent, preset[mode].destructive].map((hsl, i) => (
-                              <div key={i} className="w-3.5 h-3.5 rounded-full border border-border/50" style={{ backgroundColor: hsl }} />
-                            ))}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="text-sm font-medium">{preset.name}</div>
-                            <div className="text-[11px] text-muted-foreground">{preset.description}</div>
-                          </div>
-                          {prefs.appThemePreset === preset.id && (
-                            <div className="text-[10px] text-primary font-medium shrink-0">Active</div>
-                          )}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              );
-            })()}
-            <p className="text-xs text-muted-foreground">
-              Choose a color preset. Works with both light and dark modes.
-            </p>
+                  </div>
+                );
+              })()}
+              <p className="text-xs text-muted-foreground">
+                Choose a color preset. Works with both light and dark modes.
+              </p>
+            </div>
           </div>
-
-          </div>{/* end top-level mode/preset grid */}
+          {/* end top-level mode/preset grid */}
 
           <div className="pt-2">
             <Input
@@ -873,123 +930,20 @@ export default function Settings() {
               </Button>
             </div>
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {APP_THEME_GROUPS.map((group) => {
-              const activePreset = THEME_PRESETS.find((p) => p.id === prefs.appThemePreset);
-              const mode = resolvedTheme === "dark" ? "dark" : "light";
-              const q = themeColorFilter.toLowerCase();
-              const filteredKeys = q
-                ? group.keys.filter((k) =>
-                    k.toLowerCase().includes(q) ||
-                    (APP_THEME_COLOR_LABELS[k] ?? "").toLowerCase().includes(q) ||
-                    group.heading.toLowerCase().includes(q))
-                : group.keys;
-              if (filteredKeys.length === 0) return null;
-              return (
-                <div key={group.heading} className="rounded-lg border bg-card/40 p-4 space-y-1.5">
-                  <div className="flex items-baseline gap-2">
-                    <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                      {group.heading}
-                    </h4>
-                    <span className="text-[10px] text-muted-foreground/70">
-                      {group.description}
-                    </span>
-                  </div>
-                  <div className="space-y-1">
-                    {filteredKeys.map((key) => {
-                      const presetValue = activePreset?.[mode]?.[key as keyof ThemeColors] ?? "";
-                      const activeValue = prefs.appThemeColorOverrides[key] ?? presetValue;
-                      return (
-                        <div key={key} className="flex flex-col gap-1 rounded-md border px-2 py-1.5 min-w-0">
-                          <Label className="text-xs font-mono break-words flex items-center gap-1">
-                            <span>{APP_THEME_COLOR_LABELS[key] ?? key}</span>
-                            <HelpMark description={APP_THEME_COLOR_DESCRIPTIONS[key]} />
-                          </Label>
-                          <div className="flex items-center gap-2 min-w-0">
-                            <input
-                              type="color"
-                              value={activeValue}
-                              onChange={(e) => prefs.setAppThemeColorOverride(key, e.target.value)}
-                              className="h-8 w-10 shrink-0 rounded border border-input bg-transparent p-0.5"
-                            />
-                            <button
-                              type="button"
-                              className="flex-1 min-w-0 text-right text-[11px] font-mono text-muted-foreground hover:text-foreground underline-offset-2 hover:underline truncate"
-                              onClick={() => beginThemeColorEdit(`app.${key}`, activeValue)}
-                              title="Click to edit color value"
-                            >
-                              {activeValue}
-                            </button>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              );
-            })}
-            </div>{/* end app theme grid */}
-            <p className="text-xs text-muted-foreground">
-              Override individual colors from the active preset.
-            </p>
-          </div>
-
-          <div className="space-y-3 pt-2">
-            <div className="flex items-center justify-between gap-2">
-              <Label>Game Theme Colors</Label>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={prefs.resetGameThemeColorOverrides}
-              >
-                Reset Colors
-              </Button>
-            </div>
-            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {(() => {
-              const allPaths = Object.keys(DEFAULT_GAME_THEME_COLOR_MAP);
-              const grouped = new Set<string>();
-              const groups = GAME_THEME_GROUPS.map((g) => {
-                const keys: string[] = [];
-                if (g.prefixes) {
-                  for (const prefix of g.prefixes) {
-                    for (const path of allPaths) {
-                      if (path.startsWith(prefix) && !grouped.has(path)) {
-                        keys.push(path);
-                        grouped.add(path);
-                      }
-                    }
-                  }
-                }
-                if (g.exactKeys) {
-                  for (const path of g.exactKeys) {
-                    if (path in DEFAULT_GAME_THEME_COLOR_MAP && !grouped.has(path)) {
-                      keys.push(path);
-                      grouped.add(path);
-                    }
-                  }
-                }
-                return { ...g, keys };
-              });
-              const miscKeys = allPaths.filter((p) => !grouped.has(p));
-              if (miscKeys.length > 0) {
-                groups.push({
-                  heading: "Other",
-                  description: "Tokens not covered by the groups above.",
-                  keys: miscKeys,
-                });
-              }
-              const q = themeColorFilter.toLowerCase();
-              return groups
-                .map((g) => {
-                  const filtered = q
-                    ? g.keys.filter((k) =>
+              {APP_THEME_GROUPS.map((group) => {
+                const activePreset = THEME_PRESETS.find((p) => p.id === prefs.appThemePreset);
+                const mode = resolvedTheme === "dark" ? "dark" : "light";
+                const q = themeColorFilter.toLowerCase();
+                const filteredKeys = q
+                  ? group.keys.filter(
+                      (k) =>
                         k.toLowerCase().includes(q) ||
-                        g.heading.toLowerCase().includes(q))
-                    : g.keys;
-                  return { ...g, keys: filtered };
-                })
-                .filter((g) => g.keys.length > 0)
-                .map((group) => (
+                        (APP_THEME_COLOR_LABELS[k] ?? "").toLowerCase().includes(q) ||
+                        group.heading.toLowerCase().includes(q),
+                    )
+                  : group.keys;
+                if (filteredKeys.length === 0) return null;
+                return (
                   <div key={group.heading} className="rounded-lg border bg-card/40 p-4 space-y-1.5">
                     <div className="flex items-baseline gap-2">
                       <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
@@ -1000,59 +954,180 @@ export default function Settings() {
                       </span>
                     </div>
                     <div className="space-y-1">
-                      {group.keys.map((path) => {
-                        const defaultColor = DEFAULT_GAME_THEME_COLOR_MAP[path] ?? "";
-                        const activeColor = prefs.gameThemeColorOverrides[path] ?? defaultColor;
+                      {filteredKeys.map((key) => {
+                        const presetValue = activePreset?.[mode]?.[key as keyof ThemeColors] ?? "";
+                        const activeValue = prefs.appThemeColorOverrides[key] ?? presetValue;
                         return (
-                          <div key={path} className="flex flex-col gap-1 rounded-md border px-2 py-1.5 min-w-0">
-                            <Label htmlFor={`theme-color-${path}`} className="text-xs font-mono break-words flex items-center gap-1">
-                              <span>{path}</span>
-                              <HelpMark description={GAME_THEME_COLOR_DESCRIPTIONS[path as GameThemePath]} />
+                          <div
+                            key={key}
+                            className="flex flex-col gap-1 rounded-md border px-2 py-1.5 min-w-0"
+                          >
+                            <Label className="text-xs font-mono break-words flex items-center gap-1">
+                              <span>{APP_THEME_COLOR_LABELS[key] ?? key}</span>
+                              <HelpMark description={APP_THEME_COLOR_DESCRIPTIONS[key]} />
                             </Label>
                             <div className="flex items-center gap-2 min-w-0">
                               <input
-                                id={`theme-color-${path}`}
                                 type="color"
-                                value={toPickerHexColor(activeColor)}
-                                onChange={(e) => prefs.setGameThemeColorOverride(path, e.target.value)}
+                                value={activeValue}
+                                onChange={(e) =>
+                                  prefs.setAppThemeColorOverride(key, e.target.value)
+                                }
                                 className="h-8 w-10 shrink-0 rounded border border-input bg-transparent p-0.5"
                               />
-                              {editingThemeColorPath === path ? (
-                                <input
-                                  autoFocus
-                                  value={editingThemeColorValue}
-                                  onChange={(e) => setEditingThemeColorValue(e.target.value)}
-                                  onBlur={() => commitThemeColorEdit(path, defaultColor)}
-                                  onKeyDown={(e) => {
-                                    if (e.key === "Enter") {
-                                      commitThemeColorEdit(path, defaultColor);
-                                    }
-                                    if (e.key === "Escape") {
-                                      setEditingThemeColorPath(null);
-                                      setEditingThemeColorValue("");
-                                    }
-                                  }}
-                                  className="flex-1 min-w-0 h-7 rounded border border-input bg-background px-1.5 text-right text-[11px] font-mono"
-                                />
-                              ) : (
-                                <button
-                                  type="button"
-                                  className="flex-1 min-w-0 text-right text-[11px] font-mono text-muted-foreground hover:text-foreground underline-offset-2 hover:underline truncate"
-                                  onClick={() => beginThemeColorEdit(path, activeColor)}
-                                  title="Click to edit color value"
-                                >
-                                  {activeColor}
-                                </button>
-                              )}
+                              <button
+                                type="button"
+                                className="flex-1 min-w-0 text-right text-[11px] font-mono text-muted-foreground hover:text-foreground underline-offset-2 hover:underline truncate"
+                                onClick={() => beginThemeColorEdit(`app.${key}`, activeValue)}
+                                title="Click to edit color value"
+                              >
+                                {activeValue}
+                              </button>
                             </div>
                           </div>
                         );
                       })}
                     </div>
                   </div>
-                ));
-            })()}
-            </div>{/* end game theme grid */}
+                );
+              })}
+            </div>
+            {/* end app theme grid */}
+            <p className="text-xs text-muted-foreground">
+              Override individual colors from the active preset.
+            </p>
+          </div>
+
+          <div className="space-y-3 pt-2">
+            <div className="flex items-center justify-between gap-2">
+              <Label>Game Theme Colors</Label>
+              <Button size="sm" variant="outline" onClick={prefs.resetGameThemeColorOverrides}>
+                Reset Colors
+              </Button>
+            </div>
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+              {(() => {
+                const allPaths = Object.keys(DEFAULT_GAME_THEME_COLOR_MAP);
+                const grouped = new Set<string>();
+                const groups = GAME_THEME_GROUPS.map((g) => {
+                  const keys: string[] = [];
+                  if (g.prefixes) {
+                    for (const prefix of g.prefixes) {
+                      for (const path of allPaths) {
+                        if (path.startsWith(prefix) && !grouped.has(path)) {
+                          keys.push(path);
+                          grouped.add(path);
+                        }
+                      }
+                    }
+                  }
+                  if (g.exactKeys) {
+                    for (const path of g.exactKeys) {
+                      if (path in DEFAULT_GAME_THEME_COLOR_MAP && !grouped.has(path)) {
+                        keys.push(path);
+                        grouped.add(path);
+                      }
+                    }
+                  }
+                  return { ...g, keys };
+                });
+                const miscKeys = allPaths.filter((p) => !grouped.has(p));
+                if (miscKeys.length > 0) {
+                  groups.push({
+                    heading: "Other",
+                    description: "Tokens not covered by the groups above.",
+                    keys: miscKeys,
+                  });
+                }
+                const q = themeColorFilter.toLowerCase();
+                return groups
+                  .map((g) => {
+                    const filtered = q
+                      ? g.keys.filter(
+                          (k) => k.toLowerCase().includes(q) || g.heading.toLowerCase().includes(q),
+                        )
+                      : g.keys;
+                    return { ...g, keys: filtered };
+                  })
+                  .filter((g) => g.keys.length > 0)
+                  .map((group) => (
+                    <div
+                      key={group.heading}
+                      className="rounded-lg border bg-card/40 p-4 space-y-1.5"
+                    >
+                      <div className="flex items-baseline gap-2">
+                        <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                          {group.heading}
+                        </h4>
+                        <span className="text-[10px] text-muted-foreground/70">
+                          {group.description}
+                        </span>
+                      </div>
+                      <div className="space-y-1">
+                        {group.keys.map((path) => {
+                          const defaultColor = DEFAULT_GAME_THEME_COLOR_MAP[path] ?? "";
+                          const activeColor = prefs.gameThemeColorOverrides[path] ?? defaultColor;
+                          return (
+                            <div
+                              key={path}
+                              className="flex flex-col gap-1 rounded-md border px-2 py-1.5 min-w-0"
+                            >
+                              <Label
+                                htmlFor={`theme-color-${path}`}
+                                className="text-xs font-mono break-words flex items-center gap-1"
+                              >
+                                <span>{path}</span>
+                                <HelpMark
+                                  description={GAME_THEME_COLOR_DESCRIPTIONS[path as GameThemePath]}
+                                />
+                              </Label>
+                              <div className="flex items-center gap-2 min-w-0">
+                                <input
+                                  id={`theme-color-${path}`}
+                                  type="color"
+                                  value={toPickerHexColor(activeColor)}
+                                  onChange={(e) =>
+                                    prefs.setGameThemeColorOverride(path, e.target.value)
+                                  }
+                                  className="h-8 w-10 shrink-0 rounded border border-input bg-transparent p-0.5"
+                                />
+                                {editingThemeColorPath === path ? (
+                                  <input
+                                    autoFocus
+                                    value={editingThemeColorValue}
+                                    onChange={(e) => setEditingThemeColorValue(e.target.value)}
+                                    onBlur={() => commitThemeColorEdit(path, defaultColor)}
+                                    onKeyDown={(e) => {
+                                      if (e.key === "Enter") {
+                                        commitThemeColorEdit(path, defaultColor);
+                                      }
+                                      if (e.key === "Escape") {
+                                        setEditingThemeColorPath(null);
+                                        setEditingThemeColorValue("");
+                                      }
+                                    }}
+                                    className="flex-1 min-w-0 h-7 rounded border border-input bg-background px-1.5 text-right text-[11px] font-mono"
+                                  />
+                                ) : (
+                                  <button
+                                    type="button"
+                                    className="flex-1 min-w-0 text-right text-[11px] font-mono text-muted-foreground hover:text-foreground underline-offset-2 hover:underline truncate"
+                                    onClick={() => beginThemeColorEdit(path, activeColor)}
+                                    title="Click to edit color value"
+                                  >
+                                    {activeColor}
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ));
+              })()}
+            </div>
+            {/* end game theme grid */}
             <p className="text-xs text-muted-foreground">
               Generated from game theme keys. Defaults come from the active preset.
             </p>

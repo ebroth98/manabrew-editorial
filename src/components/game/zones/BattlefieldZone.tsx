@@ -58,15 +58,13 @@ export function BattlefieldZone({
   }, [cards, cardMap]);
 
   // Top-level cards (not attached to anything on the battlefield)
-  const topLevel = useMemo(
-    () => cards.filter((c) => !attachedIds.has(c.id)),
-    [cards, attachedIds],
-  );
+  const topLevel = useMemo(() => cards.filter((c) => !attachedIds.has(c.id)), [cards, attachedIds]);
   const nonLands = useMemo(() => topLevel.filter((c) => !c.types.includes("Land")), [topLevel]);
   const lands = useMemo(() => topLevel.filter((c) => c.types.includes("Land")), [topLevel]);
 
   const expandedManaByCard = useMemo(() => {
-    if (!tappableLandIds?.length || !manaAbilityOptions?.length) return new Map<string, import("@/types/openmagic").ActivatableAbilityInfo[]>();
+    if (!tappableLandIds?.length || !manaAbilityOptions?.length)
+      return new Map<string, import("@/types/openmagic").ActivatableAbilityInfo[]>();
     const map = new Map<string, import("@/types/openmagic").ActivatableAbilityInfo[]>();
     for (const id of tappableLandIds) {
       map.set(id, getExpandedManaAbilities(id, manaAbilityOptions));
@@ -87,9 +85,12 @@ export function BattlefieldZone({
         ? themeColors.promptAction.passAction
         : isTappable
           ? themeColors.cardRing
-          : isUntappable            ? themeColors.promptAction.cancel
+          : isUntappable
+            ? themeColors.promptAction.cancel
             : isChoosableClick
-              ? (hostileTargeting ? themeColors.arrow.hostileTarget : themeColors.cardRing)
+              ? hostileTargeting
+                ? themeColors.arrow.hostileTarget
+                : themeColors.cardRing
               : null;
     return (
       <div
@@ -121,55 +122,62 @@ export function BattlefieldZone({
             isTappable && !isAttacking && CARD_RING.tappable,
             isUntappable && !isAttacking && !isTappable && CARD_RING.untappable,
           )}
-          style={ringColor ? ({
-            "--tw-ring-color": ringColor,
-            ...(card.isChoosable && onClickCard ? {
-              "--choosable-ring-color": ringColor,
-              "--choosable-glow-color": withAlpha(ringColor, 0.3),
-            } : {}),
-          } as CSSProperties) : undefined}
-        />
-        {isTappable && onTapLand && (() => {
-          const expanded = expandedManaByCard.get(card.id) ?? [];
-          if (expanded.length > 1 && onTapLandAbility) {
-            const isGrid = expanded.length > 2;
-            return (
-              <div
-                className={cn(
-                  "absolute inset-0 z-20 overflow-hidden rounded-lg opacity-0 group-hover:opacity-100 transition-opacity",
-                  isGrid ? "grid grid-cols-2 items-stretch" : "flex items-stretch justify-center",
-                )}
-              >
-                {expanded.map((ab, idx) => {
-                  const isLast = idx === expanded.length - 1;
-                  const isOdd = expanded.length % 2 !== 0;
-                  const shouldSpan = isGrid && isLast && isOdd;
-                  return (
-                    <ManaAbilityTapButton
-                      key={`${ab.abilityIndex}-${idx}`}
-                      description={ab.description}
-                      small={isGrid}
-                      className={shouldSpan ? "col-span-2" : ""}
-                      onClick={() => {
-                        const letters = extractManaLetters(ab.description);
-                        onTapLandAbility(card.id, ab.abilityIndex, letters[0]);
-                      }}
-                    />
-                  );
-                })}
-              </div>
-            );
+          style={
+            ringColor
+              ? ({
+                  "--tw-ring-color": ringColor,
+                  ...(card.isChoosable && onClickCard
+                    ? {
+                        "--choosable-ring-color": ringColor,
+                        "--choosable-glow-color": withAlpha(ringColor, 0.3),
+                      }
+                    : {}),
+                } as CSSProperties)
+              : undefined
           }
-          return (
-            <CardOverlayButton
-
-              variant="tap"
-              label="TAP"
-              onClick={() => onTapLand(card)}
-              title={`Tap ${card.name} for mana`}
-            />
-          );
-        })()}
+        />
+        {isTappable &&
+          onTapLand &&
+          (() => {
+            const expanded = expandedManaByCard.get(card.id) ?? [];
+            if (expanded.length > 1 && onTapLandAbility) {
+              const isGrid = expanded.length > 2;
+              return (
+                <div
+                  className={cn(
+                    "absolute inset-0 z-20 overflow-hidden rounded-lg opacity-0 group-hover:opacity-100 transition-opacity",
+                    isGrid ? "grid grid-cols-2 items-stretch" : "flex items-stretch justify-center",
+                  )}
+                >
+                  {expanded.map((ab, idx) => {
+                    const isLast = idx === expanded.length - 1;
+                    const isOdd = expanded.length % 2 !== 0;
+                    const shouldSpan = isGrid && isLast && isOdd;
+                    return (
+                      <ManaAbilityTapButton
+                        key={`${ab.abilityIndex}-${idx}`}
+                        description={ab.description}
+                        small={isGrid}
+                        className={shouldSpan ? "col-span-2" : ""}
+                        onClick={() => {
+                          const letters = extractManaLetters(ab.description);
+                          onTapLandAbility(card.id, ab.abilityIndex, letters[0]);
+                        }}
+                      />
+                    );
+                  })}
+                </div>
+              );
+            }
+            return (
+              <CardOverlayButton
+                variant="tap"
+                label="TAP"
+                onClick={() => onTapLand(card)}
+                title={`Tap ${card.name} for mana`}
+              />
+            );
+          })()}
         {isUntappable && onUntapLand && (
           <CardOverlayButton
             variant="untap"
@@ -180,7 +188,15 @@ export function BattlefieldZone({
         )}
         {!isTappable && isChoosableClick && (
           <CardOverlayButton
-            variant={isPending ? "pending" : isAttacking ? "attacking" : hostileTargeting ? "choosable-hostile" : "choosable"}
+            variant={
+              isPending
+                ? "pending"
+                : isAttacking
+                  ? "attacking"
+                  : hostileTargeting
+                    ? "choosable-hostile"
+                    : "choosable"
+            }
             onClick={() => {
               if (card.isChoosable && onClickCard) onClickCard(card);
               else if (isAttacking && onClickAnyCard) onClickAnyCard(card);
@@ -210,11 +226,7 @@ export function BattlefieldZone({
     // Stacked group: attachments peek out above the host
     const totalOffset = attachments.length * ATTACH_OFFSET_Y;
     return (
-      <div
-        key={card.id}
-        className="relative shrink-0"
-        style={{ paddingTop: totalOffset }}
-      >
+      <div key={card.id} className="relative shrink-0" style={{ paddingTop: totalOffset }}>
         {attachments.map((att, i) => (
           <div
             key={att.id}
@@ -272,9 +284,7 @@ export function BattlefieldZone({
             {landsAtTop ? (
               <>
                 {lands.length > 0 && (
-                  <div className="flex flex-wrap gap-2 pb-1">
-                    {lands.map(renderCard)}
-                  </div>
+                  <div className="flex flex-wrap gap-2 pb-1">{lands.map(renderCard)}</div>
                 )}
                 <div className="flex flex-wrap gap-2 mt-auto content-start">
                   {nonLands.map(renderCard)}
@@ -288,9 +298,7 @@ export function BattlefieldZone({
                   {ghostEl}
                 </div>
                 {lands.length > 0 && (
-                  <div className="flex flex-wrap gap-2 mt-auto pt-1">
-                    {lands.map(renderCard)}
-                  </div>
+                  <div className="flex flex-wrap gap-2 mt-auto pt-1">{lands.map(renderCard)}</div>
                 )}
               </>
             )}

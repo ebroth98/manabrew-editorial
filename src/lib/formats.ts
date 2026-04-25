@@ -24,13 +24,7 @@ export interface GameFormat {
 }
 
 /** Basic land names are exempt from the max-copies rule. */
-export const BASIC_LAND_NAMES = new Set([
-  "Plains",
-  "Island",
-  "Swamp",
-  "Mountain",
-  "Forest",
-]);
+export const BASIC_LAND_NAMES = new Set(["Plains", "Island", "Swamp", "Mountain", "Forest"]);
 
 /**
  * Returns true when a card's oracle text explicitly declares that a deck may
@@ -260,14 +254,10 @@ export function validateDeck(
   const { minDeckSize, maxDeckSize, maxCopies } = format.deckRules;
 
   if (cardNames.length < minDeckSize) {
-    errors.push(
-      `Deck must have at least ${minDeckSize} cards (has ${cardNames.length})`
-    );
+    errors.push(`Deck must have at least ${minDeckSize} cards (has ${cardNames.length})`);
   }
   if (maxDeckSize !== null && cardNames.length > maxDeckSize) {
-    errors.push(
-      `Deck must have at most ${maxDeckSize} cards (has ${cardNames.length})`
-    );
+    errors.push(`Deck must have at most ${maxDeckSize} cards (has ${cardNames.length})`);
   }
 
   // Count copies and check against limit
@@ -276,14 +266,8 @@ export function validateDeck(
     counts.set(name, (counts.get(name) ?? 0) + 1);
   }
   for (const [name, count] of counts) {
-    if (
-      !BASIC_LAND_NAMES.has(name) &&
-      !anyNumberNames?.has(name) &&
-      count > maxCopies
-    ) {
-      errors.push(
-        `Too many copies of "${name}": ${count} (max ${maxCopies})`
-      );
+    if (!BASIC_LAND_NAMES.has(name) && !anyNumberNames?.has(name) && count > maxCopies) {
+      errors.push(`Too many copies of "${name}": ${count} (max ${maxCopies})`);
     }
   }
 
@@ -365,10 +349,12 @@ export function canBePartners(a: Card, b: Card): boolean {
   const pwA = getPartnerWithName(a);
   const pwB = getPartnerWithName(b);
   if (
-    pwA && pwB &&
+    pwA &&
+    pwB &&
     pwA.toLowerCase() === b.name.toLowerCase() &&
     pwB.toLowerCase() === a.name.toLowerCase()
-  ) return true;
+  )
+    return true;
   // Background: one has "Choose a Background" text, the other is a Background
   if (hasChooseBackground(a) && isBackgroundCard(b)) return true;
   if (hasChooseBackground(b) && isBackgroundCard(a)) return true;
@@ -379,7 +365,11 @@ export function isCommanderEligible(card?: Card): boolean {
   if (!card) return false;
   const isLegendary = card.supertypes.includes("Legendary");
   if (isLegendary && card.types.includes("Creature")) return true;
-  if (isLegendary && card.subtypes?.some((s) => ["vehicle", "spacecraft"].includes(s.toLowerCase()))) return true;
+  if (
+    isLegendary &&
+    card.subtypes?.some((s) => ["vehicle", "spacecraft"].includes(s.toLowerCase()))
+  )
+    return true;
   // Also allow legendary planeswalkers that say "can be your commander"
   // and backgrounds (for "choose a background")
   const hasCommanderText = card.text.toLowerCase().includes("can be your commander");
@@ -426,12 +416,14 @@ export function validateDeckSections(
 
   // Build the set of card names whose text allows unlimited copies
   const anyNumberNames = new Set(
-    availableCards
-      .filter((c) => allowsAnyNumberOfCopies(c.text))
-      .map((c) => c.name),
+    availableCards.filter((c) => allowsAnyNumberOfCopies(c.text)).map((c) => c.name),
   );
 
-  const baseValidation = validateDeck(mainDeck.map((card) => card.name), format, anyNumberNames);
+  const baseValidation = validateDeck(
+    mainDeck.map((card) => card.name),
+    format,
+    anyNumberNames,
+  );
   errors.push(...baseValidation.errors);
 
   if (sideboard.length > format.deckRules.sideboardMax) {
@@ -481,9 +473,7 @@ export function validateDeckSections(
       const invalidCards = mainOnly
         .map((identity) => getCardByName(availableCards, identity.name))
         .filter((card): card is Card => Boolean(card))
-        .filter((card) =>
-          getCardIdentity(card).some((color) => !commanderIdentity.has(color)),
-        );
+        .filter((card) => getCardIdentity(card).some((color) => !commanderIdentity.has(color)));
       if (invalidCards.length > 0) {
         errors.push(
           `Deck contains cards outside commander color identity: ${invalidCards[0]!.name}`,
@@ -507,7 +497,7 @@ export function inferFormatsFromDeck(
   deckList: CardIdentity[],
   availableCards: Card[] = [],
 ): GameFormat[] {
-  return GAME_FORMATS.filter((format) =>
-    validateDeckSections({ deckList, availableCards }, format).legal,
+  return GAME_FORMATS.filter(
+    (format) => validateDeckSections({ deckList, availableCards }, format).legal,
   );
 }

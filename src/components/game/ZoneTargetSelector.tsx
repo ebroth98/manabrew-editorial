@@ -19,11 +19,11 @@ export function ZoneTargetSelector({
   cards,
   validCardIds,
   onSelect,
-  onCancel
+  onCancel,
 }: ZoneTargetSelectorProps) {
   const preview = useCardPreview();
 
-  const validCards = cards.filter(card => validCardIds.includes(card.id));
+  const validCards = cards.filter((card) => validCardIds.includes(card.id));
 
   return (
     <Modal onClose={onCancel} maxWidth="max-w-4xl" maxHeight="max-h-[85vh]">
@@ -48,7 +48,10 @@ export function ZoneTargetSelector({
               >
                 <Card
                   card={card}
-                  className={cn(MODAL_CARD_SIZE, "transition-transform group-hover:scale-105 group-hover:-translate-y-2")}
+                  className={cn(
+                    MODAL_CARD_SIZE,
+                    "transition-transform group-hover:scale-105 group-hover:-translate-y-2",
+                  )}
                 />
                 <div className="text-center mt-1">
                   <span className="text-xs text-muted-foreground">{card.name}</span>

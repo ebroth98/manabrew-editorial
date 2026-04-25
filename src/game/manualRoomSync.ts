@@ -11,10 +11,7 @@ export interface ManualRoomSyncOptions {
   api: ManualTabletopApi;
 }
 
-export function startManualRoomSync({
-  roomHost,
-  api,
-}: ManualRoomSyncOptions): void {
+export function startManualRoomSync({ roomHost, api }: ManualRoomSyncOptions): void {
   stopManualRoomSync();
   activeRoomHost = roomHost;
   activeUnsubscribe = roomHost.subscribe((envelope) => {

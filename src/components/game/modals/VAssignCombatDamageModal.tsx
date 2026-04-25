@@ -149,9 +149,7 @@ export function VAssignCombatDamageModal({
 
   function confirm() {
     if (remaining !== 0 || !isLegallyOrderedState(assigned)) return;
-    onConfirm(
-      assignees.map((assigneeId) => ({ assigneeId, damage: assigned[assigneeId] ?? 0 })),
-    );
+    onConfirm(assignees.map((assigneeId) => ({ assigneeId, damage: assigned[assigneeId] ?? 0 })));
   }
 
   return (
@@ -178,7 +176,9 @@ export function VAssignCombatDamageModal({
                   <div className="text-xs text-muted-foreground">Lethal: {lethal}</div>
                 )}
               </div>
-              <Button size="sm" variant="outline" onClick={() => addDamage(id, index, -1)}>-</Button>
+              <Button size="sm" variant="outline" onClick={() => addDamage(id, index, -1)}>
+                -
+              </Button>
               <div className="w-8 text-center text-sm font-semibold">{dmg}</div>
               <Button
                 size="sm"
@@ -192,15 +192,23 @@ export function VAssignCombatDamageModal({
           );
         })}
 
-        <div className="text-xs text-muted-foreground pt-1">
-          Remaining damage: {remaining}
-        </div>
+        <div className="text-xs text-muted-foreground pt-1">Remaining damage: {remaining}</div>
 
         <div className="flex justify-between pt-2">
-          <Button size="sm" variant="ghost" onClick={() => setAssigned({})}>Reset</Button>
+          <Button size="sm" variant="ghost" onClick={() => setAssigned({})}>
+            Reset
+          </Button>
           <div className="flex gap-2">
-            <Button size="sm" variant="outline" onClick={autoAssign}>Auto</Button>
-            <Button size="sm" onClick={confirm} disabled={remaining !== 0 || !isLegallyOrderedState(assigned)}>Confirm</Button>
+            <Button size="sm" variant="outline" onClick={autoAssign}>
+              Auto
+            </Button>
+            <Button
+              size="sm"
+              onClick={confirm}
+              disabled={remaining !== 0 || !isLegallyOrderedState(assigned)}
+            >
+              Confirm
+            </Button>
           </div>
         </div>
       </div>

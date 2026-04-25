@@ -2,7 +2,12 @@
 // Only direct deck fetch by public ID is supported — search is intentionally
 // omitted because Moxfield's public search ignores the query param.
 
-import type { ArchidektDeck, ArchidektDeckCard, ArchidektSearchResult, RequestOptions } from "./archidekt";
+import type {
+  ArchidektDeck,
+  ArchidektDeckCard,
+  ArchidektSearchResult,
+  RequestOptions,
+} from "./archidekt";
 
 const USER_AGENT = "bardidina-deck-importer";
 

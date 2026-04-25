@@ -3,38 +3,38 @@ import { buildGameColors, type BasePalette } from "./buildGameColors";
 
 /** Gruvbox dark palette — warm earthy tones built around #282828 bg. */
 const palette: BasePalette = {
-  foreground: "#ebdbb2",        // fg0
-  labelMuted: "#928374",        // gray
+  foreground: "#ebdbb2", // fg0
+  labelMuted: "#928374", // gray
   labelGhost: "#a89984",
-  placeholderFill: "#282828",   // bg0
+  placeholderFill: "#282828", // bg0
   placeholderStroke: "#3c3836", // bg1
   canvasBackground: "#282828",
-  red:      "#fb4934",
-  redDeep:  "#cc241d",
-  orange:   "#fe8019",
-  amber:    "#fabd2f",
-  yellow:   "#fabd2f",
-  green:    "#b8bb26",
-  teal:     "#8ec07c",
-  cyan:     "#8ec07c",
-  blue:     "#83a598",
-  sky:      "#83a598",
-  indigo:   "#458588",
-  violet:   "#d3869b",
-  purple:   "#d3869b",
-  pink:     "#d3869b",
-  slate:    "#928374",
-  brown:    "#bdae93",
-  paper:    "#ebdbb2",
-  poison:   "#98971a",          // gruvbox dark-yellow — classic infect olive
-  promptPass:    "#83a598",     // blue
-  promptDefense: "#8ec07c",     // teal
-  manaW:    "#ebdbb2",
-  manaU:    "#83a598",
-  manaB:    "#3c3836",
-  manaR:    "#fb4934",
-  manaG:    "#b8bb26",
-  manaC:    "#928374",
+  red: "#fb4934",
+  redDeep: "#cc241d",
+  orange: "#fe8019",
+  amber: "#fabd2f",
+  yellow: "#fabd2f",
+  green: "#b8bb26",
+  teal: "#8ec07c",
+  cyan: "#8ec07c",
+  blue: "#83a598",
+  sky: "#83a598",
+  indigo: "#458588",
+  violet: "#d3869b",
+  purple: "#d3869b",
+  pink: "#d3869b",
+  slate: "#928374",
+  brown: "#bdae93",
+  paper: "#ebdbb2",
+  poison: "#98971a", // gruvbox dark-yellow — classic infect olive
+  promptPass: "#83a598", // blue
+  promptDefense: "#8ec07c", // teal
+  manaW: "#ebdbb2",
+  manaU: "#83a598",
+  manaB: "#3c3836",
+  manaR: "#fb4934",
+  manaG: "#b8bb26",
+  manaC: "#928374",
 };
 
 const preset: ThemePreset = {

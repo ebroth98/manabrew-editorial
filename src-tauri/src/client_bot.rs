@@ -42,7 +42,10 @@ impl ClientBotManager {
         let bot_username_for_log = bot_username.clone();
         let handle = tauri::async_runtime::spawn(async move {
             if let Err(error) = run_client_bot(config).await {
-                eprintln!("[client_bot] bot '{}' exited: {}", bot_username_for_log, error);
+                eprintln!(
+                    "[client_bot] bot '{}' exited: {}",
+                    bot_username_for_log, error
+                );
             }
         });
         let mut bots = self.bots.lock().map_err(|e| e.to_string())?;

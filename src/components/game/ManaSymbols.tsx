@@ -25,7 +25,9 @@ export function parseManaSymbols(cost: string): string[] {
   if (cost.includes("{")) {
     const matches = cost.match(/\{[^}]+\}/g);
     if (!matches) return [];
-    return matches.map((m) => m.slice(1, -1).trim()).filter((s) => s.length > 0 && VALID_SYMBOL.test(s));
+    return matches
+      .map((m) => m.slice(1, -1).trim())
+      .filter((s) => s.length > 0 && VALID_SYMBOL.test(s));
   }
   return cost.split(/\s+/).filter((s) => s.length > 0 && VALID_SYMBOL.test(s));
 }

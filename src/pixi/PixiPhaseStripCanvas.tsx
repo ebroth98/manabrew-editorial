@@ -43,7 +43,10 @@ export function PixiPhaseStripCanvas({ state, callbacks, className }: Props) {
       appRef.current = null;
       return;
     }
-    if (!app.renderer) { appRef.current = null; return; }
+    if (!app.renderer) {
+      appRef.current = null;
+      return;
+    }
 
     const theme = getTheme();
     const strip = new PhaseStripLayer(theme);
@@ -112,10 +115,7 @@ export function PixiPhaseStripCanvas({ state, callbacks, className }: Props) {
 
   return (
     <div className={className} style={{ position: "relative", width: "100%", height: "100%" }}>
-      <canvas
-        ref={canvasRef}
-        style={{ width: "100%", height: "100%", display: "block" }}
-      />
+      <canvas ref={canvasRef} style={{ width: "100%", height: "100%", display: "block" }} />
     </div>
   );
 }

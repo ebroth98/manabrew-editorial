@@ -24,8 +24,7 @@ interface FormatBadgeProps {
 export function FormatBadge({ formatId, className }: FormatBadgeProps) {
   const format = getFormat(formatId);
   if (!format) return null;
-  const textColor =
-    COLOR_CLASSES[format.badgeColor] ?? "text-muted-foreground";
+  const textColor = COLOR_CLASSES[format.badgeColor] ?? "text-muted-foreground";
   return (
     <span
       className={cn(

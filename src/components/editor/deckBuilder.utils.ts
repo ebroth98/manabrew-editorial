@@ -28,23 +28,47 @@ export interface SectionDefinition {
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const TYPE_SECTIONS: Record<string, SectionDefinition> = {
-  creatures:     { id: "creatures",     label: "Creatures",      filter: (t) => t.includes("Creature") },
-  planeswalkers: { id: "planeswalkers", label: "Planeswalkers",  filter: (t) => t.includes("Planeswalker") && !t.includes("Creature") },
-  instants:      { id: "instants",      label: "Instants",       filter: (t) => t.includes("Instant") },
-  sorceries:     { id: "sorceries",     label: "Sorceries",      filter: (t) => t.includes("Sorcery") },
-  enchantments:  { id: "enchantments",  label: "Enchantments",   filter: (t) => t.includes("Enchantment") && !t.includes("Creature") },
-  artifacts:     { id: "artifacts",     label: "Artifacts",      filter: (t) => t.includes("Artifact") && !t.includes("Creature") },
-  lands:         { id: "lands",         label: "Lands",          filter: (t) => t.includes("Land") },
+  creatures: { id: "creatures", label: "Creatures", filter: (t) => t.includes("Creature") },
+  planeswalkers: {
+    id: "planeswalkers",
+    label: "Planeswalkers",
+    filter: (t) => t.includes("Planeswalker") && !t.includes("Creature"),
+  },
+  instants: { id: "instants", label: "Instants", filter: (t) => t.includes("Instant") },
+  sorceries: { id: "sorceries", label: "Sorceries", filter: (t) => t.includes("Sorcery") },
+  enchantments: {
+    id: "enchantments",
+    label: "Enchantments",
+    filter: (t) => t.includes("Enchantment") && !t.includes("Creature"),
+  },
+  artifacts: {
+    id: "artifacts",
+    label: "Artifacts",
+    filter: (t) => t.includes("Artifact") && !t.includes("Creature"),
+  },
+  lands: { id: "lands", label: "Lands", filter: (t) => t.includes("Land") },
 };
 
 const pick = (...keys: string[]) => keys.map((k) => TYPE_SECTIONS[k]);
 
 export const MAIN_SECTIONS: SectionDefinition[] = pick(
-  "creatures", "planeswalkers", "instants", "sorceries", "enchantments", "artifacts", "lands",
+  "creatures",
+  "planeswalkers",
+  "instants",
+  "sorceries",
+  "enchantments",
+  "artifacts",
+  "lands",
 );
 
 export const STACK_TYPE_COLS: SectionDefinition[] = pick(
-  "creatures", "instants", "sorceries", "enchantments", "artifacts", "planeswalkers", "lands",
+  "creatures",
+  "instants",
+  "sorceries",
+  "enchantments",
+  "artifacts",
+  "planeswalkers",
+  "lands",
 );
 
 export const CARD_WIDTH_MAP: Record<number, number> = { 1: 75, 2: 95, 3: 115, 4: 140, 5: 170 };
@@ -130,7 +154,7 @@ export function exportToArena(deck: {
  */
 export function computeSectionGroups(
   cards: Card[],
-  sections: SectionDefinition[]
+  sections: SectionDefinition[],
 ): Array<SectionDefinition & { groups: CardGroup[] }> {
   return sections.map((s) => ({
     ...s,
@@ -141,7 +165,10 @@ export function computeSectionGroups(
 /**
  * Computes "Other" group — cards that don't match any main section.
  */
-export function computeOtherGroups(cards: Card[], sectionGroups: Array<{ groups: CardGroup[] }>): CardGroup[] {
+export function computeOtherGroups(
+  cards: Card[],
+  sectionGroups: Array<{ groups: CardGroup[] }>,
+): CardGroup[] {
   const matchedNames = new Set(sectionGroups.flatMap((s) => s.groups.map((g) => g.card.name)));
   return groupCards(cards.filter((c) => !matchedNames.has(c.name)));
 }
@@ -151,7 +178,7 @@ export function computeOtherGroups(cards: Card[], sectionGroups: Array<{ groups:
  */
 export function computeStackColumns(
   cards: Card[],
-  columns: SectionDefinition[]
+  columns: SectionDefinition[],
 ): Array<SectionDefinition & { groups: CardGroup[] }> {
   const allGroups = groupCards(cards);
   const usedNames = new Set<string>();
@@ -159,12 +186,16 @@ export function computeStackColumns(
     ...col,
     groups: allGroups.filter((g) => {
       if (usedNames.has(g.card.name)) return false;
-      if (col.filter(g.card.types)) { usedNames.add(g.card.name); return true; }
+      if (col.filter(g.card.types)) {
+        usedNames.add(g.card.name);
+        return true;
+      }
       return false;
     }),
   }));
   const otherGroups = allGroups.filter((g) => !usedNames.has(g.card.name));
-  if (otherGroups.length > 0) cols.push({ id: "other", label: "Other", filter: () => false, groups: otherGroups });
+  if (otherGroups.length > 0)
+    cols.push({ id: "other", label: "Other", filter: () => false, groups: otherGroups });
   return cols.filter((c) => c.groups.length > 0);
 }
 
@@ -182,10 +213,18 @@ const CMC_SECTIONS: SectionDefinition[] = [
 ];
 
 const COLOR_ORDER = ["W", "U", "B", "R", "G"] as const;
-const COLOR_NAMES: Record<string, string> = { W: "White", U: "Blue", B: "Black", R: "Red", G: "Green" };
+const COLOR_NAMES: Record<string, string> = {
+  W: "White",
+  U: "Blue",
+  B: "Black",
+  R: "Red",
+  G: "Green",
+};
 
 function getCardColorKey(card: Card): string {
-  const colors = (card.color ?? "").split("").filter((c) => COLOR_ORDER.includes(c as typeof COLOR_ORDER[number]));
+  const colors = (card.color ?? "")
+    .split("")
+    .filter((c) => COLOR_ORDER.includes(c as (typeof COLOR_ORDER)[number]));
   if (colors.length === 0) return "Colorless";
   if (colors.length > 1) return "Multicolor";
   return COLOR_NAMES[colors[0]] ?? "Colorless";
@@ -200,9 +239,9 @@ function groupByCmc(cards: Card[]): Array<SectionDefinition & { groups: CardGrou
     arr.push(c);
     buckets.set(key, arr);
   }
-  return CMC_SECTIONS
-    .map((s) => ({ ...s, groups: groupCards(buckets.get(s.id) ?? []) }))
-    .filter((s) => s.groups.length > 0);
+  return CMC_SECTIONS.map((s) => ({ ...s, groups: groupCards(buckets.get(s.id) ?? []) })).filter(
+    (s) => s.groups.length > 0,
+  );
 }
 
 function groupByColor(cards: Card[]): Array<SectionDefinition & { groups: CardGroup[] }> {
@@ -241,9 +280,16 @@ function groupByCustomTags(
       groups,
     };
   });
-  const untagged = groupCards(cards.filter((c) => !taggedNames.has(c.name.toLowerCase()) && !taggedNames.has(c.name)));
+  const untagged = groupCards(
+    cards.filter((c) => !taggedNames.has(c.name.toLowerCase()) && !taggedNames.has(c.name)),
+  );
   if (untagged.length > 0) {
-    result.push({ id: "untagged", label: "Untagged", filter: (() => false) as SectionDefinition["filter"], groups: untagged });
+    result.push({
+      id: "untagged",
+      label: "Untagged",
+      filter: (() => false) as SectionDefinition["filter"],
+      groups: untagged,
+    });
   }
   return result.filter((s) => s.groups.length > 0);
 }

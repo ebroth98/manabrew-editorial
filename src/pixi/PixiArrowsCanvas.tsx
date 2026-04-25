@@ -9,13 +9,7 @@ import type { Theme } from "@/hooks/useTheme";
 import { getTheme } from "@/hooks/useTheme";
 import { usePreferencesStore } from "@/stores/usePreferencesStore";
 import { intentPrefersArrow, TargetingIntent } from "@/types/promptType";
-import type {
-  ArrowSpec,
-  ArrowEndpoint,
-  CastingArrowSpec,
-  PointerSpec,
-  ScreenPos,
-} from "./types";
+import type { ArrowSpec, ArrowEndpoint, CastingArrowSpec, PointerSpec, ScreenPos } from "./types";
 import type { PixiGameScene } from "./PixiGameScene";
 
 interface PixiArrowsCanvasProps {
@@ -73,9 +67,15 @@ export function PixiArrowsCanvas({
   const arrowSpecsRef = useRef<ArrowSpec[]>([]);
   const pointerSpecsRef = useRef<PointerSpec[]>([]);
   const castingArrowRef = useRef<CastingArrowSpec | null>(null);
-  useEffect(() => { arrowSpecsRef.current = arrowSpecs ?? []; }, [arrowSpecs]);
-  useEffect(() => { pointerSpecsRef.current = pointerSpecs ?? []; }, [pointerSpecs]);
-  useEffect(() => { castingArrowRef.current = castingArrow ?? null; }, [castingArrow]);
+  useEffect(() => {
+    arrowSpecsRef.current = arrowSpecs ?? [];
+  }, [arrowSpecs]);
+  useEffect(() => {
+    pointerSpecsRef.current = pointerSpecs ?? [];
+  }, [pointerSpecs]);
+  useEffect(() => {
+    castingArrowRef.current = castingArrow ?? null;
+  }, [castingArrow]);
 
   const cursorViewportRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
 
@@ -238,7 +238,10 @@ function resolveArrowsAndPointers(
   const canvasRect = canvas.getBoundingClientRect();
   const scenesWithRect: Array<{ scene: PixiGameScene; rect: DOMRect }> = [];
   if (mainScene) {
-    scenesWithRect.push({ scene: mainScene, rect: mainScene.canvasElement.getBoundingClientRect() });
+    scenesWithRect.push({
+      scene: mainScene,
+      rect: mainScene.canvasElement.getBoundingClientRect(),
+    });
   }
   for (const s of opponentScenes) {
     scenesWithRect.push({ scene: s, rect: s.canvasElement.getBoundingClientRect() });
@@ -290,8 +293,10 @@ function resolveArrowsAndPointers(
     const to = resolveEndpoint(spec.to);
     if (!from || !to) continue;
     arrows.push({
-      fromX: from.x, fromY: from.y,
-      toX: to.x, toY: to.y,
+      fromX: from.x,
+      fromY: from.y,
+      toX: to.x,
+      toY: to.y,
       type: spec.type,
     });
   }
@@ -302,8 +307,10 @@ function resolveArrowsAndPointers(
     const to = resolveEndpoint(spec.to);
     if (!from || !to) continue;
     pointers.push({
-      fromX: from.x, fromY: from.y,
-      toX: to.x, toY: to.y,
+      fromX: from.x,
+      fromY: from.y,
+      toX: to.x,
+      toY: to.y,
       intent: spec.intent,
       locked: true,
     });
@@ -328,18 +335,22 @@ function resolveArrowsAndPointers(
         to = toLocal(cursorViewport);
       }
       if (to) {
-        const intent = casting.intent
-          ?? (casting.hostile ? TargetingIntent.Hostile : TargetingIntent.Friendly);
+        const intent =
+          casting.intent ?? (casting.hostile ? TargetingIntent.Hostile : TargetingIntent.Friendly);
         if (intentPrefersArrow(intent)) {
           arrows.push({
-            fromX: from.x, fromY: from.y,
-            toX: to.x, toY: to.y,
+            fromX: from.x,
+            fromY: from.y,
+            toX: to.x,
+            toY: to.y,
             type: intent === TargetingIntent.Attack ? "attack" : "block",
           });
         } else {
           pointers.push({
-            fromX: from.x, fromY: from.y,
-            toX: to.x, toY: to.y,
+            fromX: from.x,
+            fromY: from.y,
+            toX: to.x,
+            toY: to.y,
             intent,
             locked: !!casting.targetId,
           });

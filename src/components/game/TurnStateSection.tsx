@@ -9,7 +9,12 @@ interface TurnStateSectionProps {
   isMyPriority: boolean;
 }
 
-export function TurnStateSection({ turn, activePlayerName, isMyTurn, isMyPriority }: TurnStateSectionProps) {
+export function TurnStateSection({
+  turn,
+  activePlayerName,
+  isMyTurn,
+  isMyPriority,
+}: TurnStateSectionProps) {
   const themeColors = useTheme().gameTheme;
 
   return (
@@ -21,7 +26,9 @@ export function TurnStateSection({ turn, activePlayerName, isMyTurn, isMyPriorit
         </p>
         {isMyPriority && (
           <span
-            className={cn("ml-1 text-[10px] font-bold px-1.5 py-0.5 rounded shrink-0 animate-pulse")}
+            className={cn(
+              "ml-1 text-[10px] font-bold px-1.5 py-0.5 rounded shrink-0 animate-pulse",
+            )}
             style={{
               backgroundColor: withAlpha(themeColors.activeAction.active, 0.2),
               color: themeColors.activeAction.active,

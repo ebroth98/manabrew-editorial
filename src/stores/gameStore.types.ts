@@ -1,8 +1,8 @@
-import type { GameView, Card, ActivatableAbilityInfo, Deck } from '@/types/openmagic';
-import type { GameLogEntry } from '@/types/gameLog';
-import type { GameSnapshotEntry } from '@/types/gameSnapshot';
-import type { PromptType, TargetingIntent } from '@/types/promptType';
-import type { CardIdentity } from '@/types/server';
+import type { GameView, Card, ActivatableAbilityInfo, Deck } from "@/types/openmagic";
+import type { GameLogEntry } from "@/types/gameLog";
+import type { GameSnapshotEntry } from "@/types/gameSnapshot";
+import type { PromptType, TargetingIntent } from "@/types/promptType";
+import type { CardIdentity } from "@/types/server";
 
 export interface DisplayEvent {
   kind: string;
@@ -197,10 +197,18 @@ export interface GameState {
   updateGameView: (view: GameView) => void;
   setGameConfig: (config: GameConfig) => void;
   // Actions
-  startGame: (deckList: CardIdentity[], formatId?: string, commanderName?: string, opponentDeckList?: CardIdentity[]) => Promise<void>;
+  startGame: (
+    deckList: CardIdentity[],
+    formatId?: string,
+    commanderName?: string,
+    opponentDeckList?: CardIdentity[],
+  ) => Promise<void>;
   startManualTabletopGame: (deck?: Deck) => Promise<void>;
   startManualRoomHost: (localPlayerSlot: string) => Promise<void>;
-  startManualRoomClient: (localPlayerSlot: string, initialGameView?: import('@/types/openmagic').GameView) => Promise<void>;
+  startManualRoomClient: (
+    localPlayerSlot: string,
+    initialGameView?: import("@/types/openmagic").GameView,
+  ) => Promise<void>;
   stopManualRoomSync: () => void;
   startMultiplayerGame: (
     playerNames: string[],
@@ -208,11 +216,11 @@ export interface GameState {
     commanderNames: Array<string | null>,
     enginePlayerIndex: number,
     localIsHost: boolean,
-    startingLife: number
+    startingLife: number,
   ) => Promise<void>;
   respond: (action: Record<string, unknown>) => Promise<void>;
   castSpell: (cardId: string, mode?: string) => void;
-  passPriority: (untilPhase?: string | null) => void;  // null = atomic pass, string = pass until phase
+  passPriority: (untilPhase?: string | null) => void; // null = atomic pass, string = pass until phase
   declareAttackers: (attackerIds: string[], defenderId?: string) => void;
   declareBlockers: (assignments: { blockerId: string; attackerId: string }[]) => void;
   targetPlayer: (playerId: string | null) => void;
@@ -253,6 +261,10 @@ export interface GameState {
   assistDecision: (amountToPay: number) => void;
   concede: () => void;
   endGame: () => Promise<void>;
-  setMultiplayerState: (isMultiplayer: boolean, isHost: boolean, myPlayerSlot: string | null) => void;
+  setMultiplayerState: (
+    isMultiplayer: boolean,
+    isHost: boolean,
+    myPlayerSlot: string | null,
+  ) => void;
   restoreSnapshot: (checkpointId: number) => Promise<void>;
 }

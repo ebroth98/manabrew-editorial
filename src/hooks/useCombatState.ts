@@ -49,10 +49,11 @@ export function useCombatState({
 
   const playerIsTargetable =
     promptType === PromptType.ChooseAttackers
-      ? (pid: string) => currentPrompt?.possibleDefenderIds?.some((defender) => defender.id === pid) ?? false
+      ? (pid: string) =>
+          currentPrompt?.possibleDefenderIds?.some((defender) => defender.id === pid) ?? false
       : promptType === PromptType.ChooseTargetPlayer || promptType === PromptType.ChooseTargetAny
-      ? (pid: string) => currentPrompt?.validPlayerIds?.includes(pid) ?? false
-      : () => false;
+        ? (pid: string) => currentPrompt?.validPlayerIds?.includes(pid) ?? false
+        : () => false;
 
   function handleTargetPlayer(pid: string) {
     if (promptType === PromptType.ChooseAttackers) {
@@ -69,9 +70,7 @@ export function useCombatState({
 
     if (promptType === PromptType.ChooseAttackers) {
       setPendingAttackers((prev) =>
-        prev.includes(card.id)
-          ? prev.filter((id) => id !== card.id)
-          : [...prev, card.id],
+        prev.includes(card.id) ? prev.filter((id) => id !== card.id) : [...prev, card.id],
       );
     } else if (promptType === PromptType.ChooseBlockers) {
       if (pendingAttacker) {

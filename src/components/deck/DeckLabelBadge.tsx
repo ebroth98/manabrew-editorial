@@ -29,13 +29,22 @@ export function DeckLabelBadge({ label, size = "sm", className }: DeckLabelBadge
   return (
     <span
       className={cn("rounded-full font-medium border leading-tight", SIZE_CLASSES[size], className)}
-      style={label.color
-        ? {
-            backgroundColor: label.color,
-            color: getContrastColor(label.color, themeColors.canvas.shadow, themeColors.canvas.neutral),
-            borderColor: label.color,
-          }
-        : { backgroundColor: "var(--muted)", color: "var(--muted-foreground)", borderColor: "var(--border)" }
+      style={
+        label.color
+          ? {
+              backgroundColor: label.color,
+              color: getContrastColor(
+                label.color,
+                themeColors.canvas.shadow,
+                themeColors.canvas.neutral,
+              ),
+              borderColor: label.color,
+            }
+          : {
+              backgroundColor: "var(--muted)",
+              color: "var(--muted-foreground)",
+              borderColor: "var(--border)",
+            }
       }
     >
       {label.name}

@@ -101,7 +101,6 @@ export const SELECT_BUTTON_HOVER_ALPHA = 0.55;
 export const ICON_BG_ALPHA = 0.4;
 export const ICON_HOVER_SCALE = 1.12;
 
-
 // ── Overlay labels ─────────────────────────────────────────────────────────
 export const OVERLAY_LABEL_TAP = "TAP";
 export const OVERLAY_LABEL_UNTAP = "UNTAP";

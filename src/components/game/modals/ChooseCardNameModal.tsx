@@ -13,11 +13,7 @@ interface ChooseCardNameModalProps {
   onConfirm: (chosenName: string | null) => void;
 }
 
-export function ChooseCardNameModal({
-  validNames,
-  cardName,
-  onConfirm,
-}: ChooseCardNameModalProps) {
+export function ChooseCardNameModal({ validNames, cardName, onConfirm }: ChooseCardNameModalProps) {
   const { data: imageUrl } = useCardImage(cardName ?? "");
   const [filter, setFilter] = useState("");
   const [textInput, setTextInput] = useState("");
@@ -29,9 +25,10 @@ export function ChooseCardNameModal({
     inputRef.current?.focus();
   }, [validNames]);
 
-  const filtered = hasList && filter
-    ? validNames.filter((n) => n.toLowerCase().includes(filter.toLowerCase()))
-    : validNames;
+  const filtered =
+    hasList && filter
+      ? validNames.filter((n) => n.toLowerCase().includes(filter.toLowerCase()))
+      : validNames;
 
   const handleTextConfirm = useCallback(() => {
     if (textInput.trim()) {
@@ -39,10 +36,10 @@ export function ChooseCardNameModal({
     }
   }, [textInput, onConfirm]);
 
-  useModalKeyboard(
-    { onEnter: !hasList ? handleTextConfirm : undefined },
-    [hasList, handleTextConfirm],
-  );
+  useModalKeyboard({ onEnter: !hasList ? handleTextConfirm : undefined }, [
+    hasList,
+    handleTextConfirm,
+  ]);
 
   return (
     <Modal maxWidth="max-w-md" maxHeight="" className="outline-none">
@@ -83,13 +80,13 @@ export function ChooseCardNameModal({
                 />
               </div>
             )}
-            <div className="p-4 flex flex-col gap-1.5 max-h-[50vh] overflow-y-auto" role="group" aria-label="Card name choices">
+            <div
+              className="p-4 flex flex-col gap-1.5 max-h-[50vh] overflow-y-auto"
+              role="group"
+              aria-label="Card name choices"
+            >
               {filtered.map((name) => (
-                <button
-                  key={name}
-                  onClick={() => onConfirm(name)}
-                  className={MODAL_LIST_BUTTON}
-                >
+                <button key={name} onClick={() => onConfirm(name)} className={MODAL_LIST_BUTTON}>
                   {name}
                 </button>
               ))}

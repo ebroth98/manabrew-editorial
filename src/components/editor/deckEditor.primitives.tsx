@@ -14,10 +14,13 @@ import type { LucideIcon } from "lucide-react";
 export function CardCountBadge({ count, className }: { count: number; className?: string }) {
   if (count <= 1) return null;
   return (
-    <div className={cn(
-      "absolute top-1 left-1 bg-overlay/80 text-white text-[10px] font-bold rounded-full w-5 h-5 flex items-center justify-center border border-white/20",
-      className,
-    )} style={{ zIndex: 10 }}>
+    <div
+      className={cn(
+        "absolute top-1 left-1 bg-overlay/80 text-white text-[10px] font-bold rounded-full w-5 h-5 flex items-center justify-center border border-white/20",
+        className,
+      )}
+      style={{ zIndex: 10 }}
+    >
       {count}
     </div>
   );
@@ -26,7 +29,11 @@ export function CardCountBadge({ count, className }: { count: number; className?
 // ─── Card Thumbnail (image or fallback) ──────────────────────────────────────
 
 export function CardThumbnail({
-  imageUrl, name, className, fallbackClassName, fallbackStyle,
+  imageUrl,
+  name,
+  className,
+  fallbackClassName,
+  fallbackStyle,
 }: {
   imageUrl?: string;
   name: string;
@@ -49,7 +56,10 @@ export function CardThumbnail({
   }
   return (
     <div
-      className={cn("w-full aspect-[2.5/3.5] rounded-lg border border-border bg-muted flex items-center justify-center p-2", fallbackClassName)}
+      className={cn(
+        "w-full aspect-[2.5/3.5] rounded-lg border border-border bg-muted flex items-center justify-center p-2",
+        fallbackClassName,
+      )}
       style={fallbackStyle}
     >
       <span className="text-[9px] text-muted-foreground leading-tight text-center">{name}</span>
@@ -67,7 +77,10 @@ export interface OverlayAction {
 }
 
 export function CardHoverOverlay({
-  actions, rounded = "rounded-lg", onMouseEnter, onMouseLeave,
+  actions,
+  rounded = "rounded-lg",
+  onMouseEnter,
+  onMouseLeave,
 }: {
   actions: OverlayAction[];
   rounded?: string;
@@ -94,7 +107,10 @@ export function CardHoverOverlay({
               "h-6 w-4/5 text-xs",
               a.variant !== "primary" && "text-white/80 hover:text-white hover:bg-white/10",
             )}
-            onClick={(e) => { e.stopPropagation(); a.onClick(); }}
+            onClick={(e) => {
+              e.stopPropagation();
+              a.onClick();
+            }}
           >
             <Icon className="h-3 w-3 mr-1" /> {a.label}
           </Button>
@@ -140,7 +156,11 @@ export function handleCardClick(
 // ─── Collapsible Section Header ──────────────────────────────────────────────
 
 export function CollapsibleHeader({
-  label, count, collapsed, onToggle, extraContent,
+  label,
+  count,
+  collapsed,
+  onToggle,
+  extraContent,
 }: {
   label: string;
   count: number;
@@ -155,7 +175,11 @@ export function CollapsibleHeader({
         className="flex items-center gap-1 flex-1 text-left hover:text-foreground text-muted-foreground"
         onClick={onToggle}
       >
-        {collapsed ? <ChevronRight className="h-3 w-3 shrink-0" /> : <ChevronDown className="h-3 w-3 shrink-0" />}
+        {collapsed ? (
+          <ChevronRight className="h-3 w-3 shrink-0" />
+        ) : (
+          <ChevronDown className="h-3 w-3 shrink-0" />
+        )}
         <span className="text-xs font-semibold uppercase tracking-wide">{label}</span>
         <span className="text-xs text-muted-foreground/60 ml-1">({count})</span>
       </button>

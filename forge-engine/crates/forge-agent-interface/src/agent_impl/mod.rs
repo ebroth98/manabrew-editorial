@@ -276,9 +276,7 @@ impl<T: AgentTransport> PlayerAgent for PromptAgent<T> {
     }
 
     fn get_pass_until_phase(&self) -> Option<Option<&str>> {
-        self.pass_until_phase
-            .as_ref()
-            .map(|inner| inner.as_deref())
+        self.pass_until_phase.as_ref().map(|inner| inner.as_deref())
     }
 
     fn clear_pass_until(&mut self) {

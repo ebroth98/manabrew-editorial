@@ -27,7 +27,13 @@ export function CombatSummarySection({
             <div key={attackerId} className="text-xs flex gap-1">
               <span className="font-semibold truncate">{resolveCardName(attackerId)}</span>
               <span className="text-muted-foreground">-&gt;</span>
-              <span className={blockerNames.length === 0 ? "text-destructive italic" : "text-muted-foreground truncate"}>
+              <span
+                className={
+                  blockerNames.length === 0
+                    ? "text-destructive italic"
+                    : "text-muted-foreground truncate"
+                }
+              >
                 {blockerNames.length === 0 ? "unblocked" : blockerNames.join(", ")}
               </span>
             </div>

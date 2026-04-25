@@ -60,8 +60,7 @@ function isTauriEnvironment(): boolean {
     typeof window !== "undefined" &&
     // Tauri v2 uses __TAURI_INTERNALS__, v1 used __TAURI__
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    ((window as any).__TAURI_INTERNALS__ !== undefined ||
-     (window as any).__TAURI__ !== undefined)
+    ((window as any).__TAURI_INTERNALS__ !== undefined || (window as any).__TAURI__ !== undefined)
   );
 }
 

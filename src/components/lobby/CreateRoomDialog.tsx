@@ -1,25 +1,63 @@
-import { useState } from 'react';
-import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { useServerStore } from '@/stores/useServerStore';
-import type { GameFormat } from '@/types/server';
-import { cn } from '@/lib/utils';
-import { Swords, Crown, Users, Loader2, Layers, Shield, Gem, Coins, Sparkles, Wand2, BookOpen, Package } from 'lucide-react';
+import { useState } from "react";
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { useServerStore } from "@/stores/useServerStore";
+import type { GameFormat } from "@/types/server";
+import { cn } from "@/lib/utils";
+import {
+  Swords,
+  Crown,
+  Users,
+  Loader2,
+  Layers,
+  Shield,
+  Gem,
+  Coins,
+  Sparkles,
+  Wand2,
+  BookOpen,
+  Package,
+} from "lucide-react";
 
 const FORMATS: { value: GameFormat; label: string; icon: typeof Swords; description: string }[] = [
-  { value: 'Standard', label: 'Standard', icon: Swords, description: '60-card constructed, rotating sets' },
-  { value: 'Pioneer', label: 'Pioneer', icon: Layers, description: '60-card, Return to Ravnica forward' },
-  { value: 'Modern', label: 'Modern', icon: Shield, description: '60-card, 8th Edition forward' },
-  { value: 'Legacy', label: 'Legacy', icon: Gem, description: '60-card, all sets, banned list' },
-  { value: 'Vintage', label: 'Vintage', icon: Sparkles, description: '60-card, all sets, restricted list' },
-  { value: 'Pauper', label: 'Pauper', icon: Coins, description: '60-card, commons only' },
-  { value: 'Commander', label: 'Commander', icon: Crown, description: '100-card singleton, 40 life' },
-  { value: 'Brawl', label: 'Brawl', icon: Wand2, description: '60-card singleton, 25 life' },
-  { value: 'Oathbreaker', label: 'Oathbreaker', icon: Wand2, description: '60-card singleton, planeswalker cmdr' },
-  { value: 'Draft', label: 'Draft', icon: BookOpen, description: '40-card limited, drafted cards' },
-  { value: 'Sealed', label: 'Sealed', icon: Package, description: '40-card limited, sealed pool' },
+  {
+    value: "Standard",
+    label: "Standard",
+    icon: Swords,
+    description: "60-card constructed, rotating sets",
+  },
+  {
+    value: "Pioneer",
+    label: "Pioneer",
+    icon: Layers,
+    description: "60-card, Return to Ravnica forward",
+  },
+  { value: "Modern", label: "Modern", icon: Shield, description: "60-card, 8th Edition forward" },
+  { value: "Legacy", label: "Legacy", icon: Gem, description: "60-card, all sets, banned list" },
+  {
+    value: "Vintage",
+    label: "Vintage",
+    icon: Sparkles,
+    description: "60-card, all sets, restricted list",
+  },
+  { value: "Pauper", label: "Pauper", icon: Coins, description: "60-card, commons only" },
+  {
+    value: "Commander",
+    label: "Commander",
+    icon: Crown,
+    description: "100-card singleton, 40 life",
+  },
+  { value: "Brawl", label: "Brawl", icon: Wand2, description: "60-card singleton, 25 life" },
+  {
+    value: "Oathbreaker",
+    label: "Oathbreaker",
+    icon: Wand2,
+    description: "60-card singleton, planeswalker cmdr",
+  },
+  { value: "Draft", label: "Draft", icon: BookOpen, description: "40-card limited, drafted cards" },
+  { value: "Sealed", label: "Sealed", icon: Package, description: "40-card limited, sealed pool" },
 ];
 
 const PLAYER_OPTIONS = [2, 3, 4] as const;
@@ -31,19 +69,19 @@ interface CreateRoomDialogProps {
 
 export function CreateRoomDialog({ open, onOpenChange }: CreateRoomDialogProps) {
   const { createRoom, username } = useServerStore();
-  const [roomName, setRoomName] = useState('');
+  const [roomName, setRoomName] = useState("");
   const [maxPlayers, setMaxPlayers] = useState(4);
-  const [format, setFormat] = useState<GameFormat>('Standard');
+  const [format, setFormat] = useState<GameFormat>("Standard");
   const [creating, setCreating] = useState(false);
 
-  const defaultName = `${username ?? 'Player'}'s Room`;
+  const defaultName = `${username ?? "Player"}'s Room`;
 
   async function handleCreate() {
     setCreating(true);
     try {
       await createRoom(roomName.trim() || defaultName, maxPlayers, format);
       onOpenChange(false);
-      setRoomName('');
+      setRoomName("");
     } finally {
       setCreating(false);
     }
@@ -62,14 +100,16 @@ export function CreateRoomDialog({ open, onOpenChange }: CreateRoomDialogProps) 
         <div className="px-6 pb-6 space-y-5">
           {/* Room name */}
           <div className="space-y-1.5">
-            <Label htmlFor="room-name" className="text-xs font-medium">Room Name</Label>
+            <Label htmlFor="room-name" className="text-xs font-medium">
+              Room Name
+            </Label>
             <Input
               id="room-name"
               value={roomName}
               onChange={(e) => setRoomName(e.target.value)}
               placeholder={defaultName}
               className="h-9"
-              onKeyDown={(e) => e.key === 'Enter' && handleCreate()}
+              onKeyDown={(e) => e.key === "Enter" && handleCreate()}
             />
           </div>
 
@@ -92,10 +132,17 @@ export function CreateRoomDialog({ open, onOpenChange }: CreateRoomDialogProps) 
                     )}
                   >
                     <div className="flex items-center gap-1.5">
-                      <Icon className={cn("h-3.5 w-3.5", format === f.value ? "text-primary" : "text-muted-foreground")} />
+                      <Icon
+                        className={cn(
+                          "h-3.5 w-3.5",
+                          format === f.value ? "text-primary" : "text-muted-foreground",
+                        )}
+                      />
                       <span className="text-xs font-medium">{f.label}</span>
                     </div>
-                    <span className="text-[10px] text-muted-foreground leading-tight">{f.description}</span>
+                    <span className="text-[10px] text-muted-foreground leading-tight">
+                      {f.description}
+                    </span>
                   </button>
                 );
               })}
@@ -131,13 +178,18 @@ export function CreateRoomDialog({ open, onOpenChange }: CreateRoomDialogProps) 
           <Button variant="ghost" size="sm" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button size="sm" onClick={handleCreate} disabled={creating} className="gap-1.5 min-w-[100px]">
+          <Button
+            size="sm"
+            onClick={handleCreate}
+            disabled={creating}
+            className="gap-1.5 min-w-[100px]"
+          >
             {creating ? (
               <Loader2 className="h-3.5 w-3.5 animate-spin" />
             ) : (
               <Swords className="h-3.5 w-3.5" />
             )}
-            {creating ? 'Creating...' : 'Create Room'}
+            {creating ? "Creating..." : "Create Room"}
           </Button>
         </div>
       </DialogContent>

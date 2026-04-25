@@ -9,10 +9,7 @@ interface ModalKeyboardHandlers {
  * Attaches Enter / Escape keyboard listeners for modal dialogs.
  * Automatically cleans up on unmount or dependency change.
  */
-export function useModalKeyboard(
-  handlers: ModalKeyboardHandlers,
-  deps: unknown[] = [],
-) {
+export function useModalKeyboard(handlers: ModalKeyboardHandlers, deps: unknown[] = []) {
   useEffect(() => {
     function handleKey(e: KeyboardEvent) {
       if (e.key === "Enter" && handlers.onEnter) {

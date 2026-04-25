@@ -1,9 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import {
-  getCardByName,
-  getTokenByName,
-  getTokenBySetAndNumber,
-} from "@/api/scryfall";
+import { getCardByName, getTokenByName, getTokenBySetAndNumber } from "@/api/scryfall";
 import type { ScryfallCard } from "@/types/scryfall";
 import {
   cardImageIdentity,
@@ -43,9 +39,7 @@ export async function fetchCardImageEntry(
   if (inflight) return inflight;
 
   const task = (async (): Promise<CachedCardImage | null> => {
-    await new Promise((resolve) =>
-      setTimeout(resolve, CARD_IMAGE_FETCH_DEBOUNCE_MS),
-    );
+    await new Promise((resolve) => setTimeout(resolve, CARD_IMAGE_FETCH_DEBOUNCE_MS));
     let card: ScryfallCard | null = null;
     if (isToken) {
       if (setCode && cardNumber) {
@@ -95,7 +89,7 @@ export function useCardImage(
   _color?: string,
   setCode?: string,
   cardNumber?: string,
-  size: ScryfallImageSize = "normal"
+  size: ScryfallImageSize = "normal",
 ) {
   const identity = cardImageIdentity(name, setCode, cardNumber, isToken);
   // `size` is intentionally *not* part of the query key. One API call

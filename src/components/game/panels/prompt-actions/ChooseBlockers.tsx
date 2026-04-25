@@ -34,7 +34,9 @@ export function ChooseBlockers({
           NO BLOCKERS
         </Button>
         {pendingAttacker && (
-          <p className="text-xs italic text-muted-foreground text-center">Attacker selected. Click your blocker.</p>
+          <p className="text-xs italic text-muted-foreground text-center">
+            Attacker selected. Click your blocker.
+          </p>
         )}
         {blockAssignments.length > 0 && (
           <Button
@@ -65,7 +67,9 @@ export function ChooseBlockers({
         disabled={isWaitingForResponse}
       />
       {pendingAttacker && (
-        <p className="text-xs italic text-muted-foreground">Attacker selected. Click your blocker.</p>
+        <p className="text-xs italic text-muted-foreground">
+          Attacker selected. Click your blocker.
+        </p>
       )}
       {blockAssignments.length > 0 && (
         <PromptActionButton

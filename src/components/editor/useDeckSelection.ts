@@ -35,7 +35,11 @@ export function useDeckSelection() {
     lastClickedRef.current = key;
 
     if (!last) {
-      setSelectedCards((prev) => { const next = new Set(prev); next.add(key); return next; });
+      setSelectedCards((prev) => {
+        const next = new Set(prev);
+        next.add(key);
+        return next;
+      });
       return;
     }
 
@@ -44,7 +48,11 @@ export function useDeckSelection() {
     const toIdx = lc.indexOf(key);
 
     if (fromIdx === -1 || toIdx === -1) {
-      setSelectedCards((prev) => { const next = new Set(prev); next.add(key); return next; });
+      setSelectedCards((prev) => {
+        const next = new Set(prev);
+        next.add(key);
+        return next;
+      });
       return;
     }
 

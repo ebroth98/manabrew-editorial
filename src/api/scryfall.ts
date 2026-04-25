@@ -1,4 +1,9 @@
-import type { ScryfallCard, ScryfallListResponse, ScryfallRulingsResponse, ScryfallSet } from "@/types/scryfall";
+import type {
+  ScryfallCard,
+  ScryfallListResponse,
+  ScryfallRulingsResponse,
+  ScryfallSet,
+} from "@/types/scryfall";
 
 const SCRYFALL_API = "https://api.scryfall.com";
 const COLLECTION_BATCH_SIZE = 75;
@@ -53,7 +58,11 @@ export function scryfallCardKey(name: string, setCode?: string): string {
   return setCode ? `${name.toLowerCase()}::${setCode.toLowerCase()}` : name.toLowerCase();
 }
 
-async function performScryfallFetch<T>(url: string, errorMsg: string, init?: RequestInit): Promise<T> {
+async function performScryfallFetch<T>(
+  url: string,
+  errorMsg: string,
+  init?: RequestInit,
+): Promise<T> {
   for (let attempt = 0; attempt <= SCRYFALL_MAX_RETRIES; attempt += 1) {
     const response = await fetch(url, init);
     if (response.status === 429 && attempt < SCRYFALL_MAX_RETRIES) {
@@ -73,7 +82,12 @@ async function scryfallFetch<T>(url: string, errorMsg: string, init?: RequestIni
   return queueScryfallCall(() => performScryfallFetch<T>(url, errorMsg, init));
 }
 
-export async function searchCards(query: string, page: number = 1, order?: string, dir?: string): Promise<ScryfallListResponse> {
+export async function searchCards(
+  query: string,
+  page: number = 1,
+  order?: string,
+  dir?: string,
+): Promise<ScryfallListResponse> {
   const orderParam = order || "cmc";
   const dirParam = dir && dir !== "auto" ? `&dir=${dir}` : "";
   return scryfallFetch(
@@ -101,7 +115,6 @@ export async function getCardByName(name: string, setCode?: string): Promise<Scr
   }
 }
 
-
 /**
  * Fetch a token card from Scryfall using its set code and collector number.
  * The backend resolves these from Forge edition files — each token has a
@@ -110,10 +123,13 @@ export async function getCardByName(name: string, setCode?: string): Promise<Scr
  *
  * Uses the /cards/:set/:number endpoint which is a direct, unambiguous lookup.
  */
-export async function getTokenBySetAndNumber(setCode: string, collectorNumber: string): Promise<ScryfallCard> {
-  const tokenUrl = `${SCRYFALL_API}/cards/${encodeURIComponent(setCode.toLowerCase())}/${encodeURIComponent(collectorNumber)}`
-  console.log({tokenUrl})
-  return scryfallFetch(tokenUrl,`Token not found: ${setCode}/${collectorNumber}`);
+export async function getTokenBySetAndNumber(
+  setCode: string,
+  collectorNumber: string,
+): Promise<ScryfallCard> {
+  const tokenUrl = `${SCRYFALL_API}/cards/${encodeURIComponent(setCode.toLowerCase())}/${encodeURIComponent(collectorNumber)}`;
+  console.log({ tokenUrl });
+  return scryfallFetch(tokenUrl, `Token not found: ${setCode}/${collectorNumber}`);
 }
 
 /**
@@ -146,12 +162,18 @@ export async function getTokenByName(name: string): Promise<ScryfallCard | null>
  * Batch-fetch cards by name using POST /cards/collection (up to 75 per request).
  * Returns a map keyed by lowercased card name → ScryfallCard.
  */
-export async function fetchCardCollection(cards: { name: string; setCode?: string }[]): Promise<Map<string, ScryfallCard>> {
+export async function fetchCardCollection(
+  cards: { name: string; setCode?: string }[],
+): Promise<Map<string, ScryfallCard>> {
   const result = new Map<string, ScryfallCard>();
-  const unique = Array.from(new Map(cards.map((c) => [scryfallCardKey(c.name, c.setCode), c])).values());
+  const unique = Array.from(
+    new Map(cards.map((c) => [scryfallCardKey(c.name, c.setCode), c])).values(),
+  );
   for (let i = 0; i < unique.length; i += COLLECTION_BATCH_SIZE) {
     const batch = unique.slice(i, i + COLLECTION_BATCH_SIZE);
-    const identifiers = batch.map((c) => (c.setCode ? { name: c.name, set: c.setCode.toLowerCase() } : { name: c.name }));
+    const identifiers = batch.map((c) =>
+      c.setCode ? { name: c.name, set: c.setCode.toLowerCase() } : { name: c.name },
+    );
     try {
       const data = await scryfallFetch<{ data: ScryfallCard[]; not_found: { name: string }[] }>(
         `${SCRYFALL_API}/cards/collection`,
@@ -182,7 +204,10 @@ export async function fetchCardCollection(cards: { name: string; setCode?: strin
  * Handles both single-faced cards (top-level image_uris) and double-faced cards
  * (image_uris in card_faces array).
  */
-export function getScryfallImageUrl(card: ScryfallCard, size: string = "normal"): string | undefined {
+export function getScryfallImageUrl(
+  card: ScryfallCard,
+  size: string = "normal",
+): string | undefined {
   const sc = card as unknown as {
     card_faces?: { image_uris?: Record<string, string> }[];
     image_uris?: Record<string, string>;

@@ -66,8 +66,7 @@ export function ChatComponent({ channelId }: ChatComponentProps) {
               key={msg.id}
               className={cn(
                 "text-xs rounded px-2 py-1",
-                msg.type === "system" &&
-                  "text-muted-foreground italic bg-muted/30",
+                msg.type === "system" && "text-muted-foreground italic bg-muted/30",
                 msg.type === "user" && "bg-transparent",
                 msg.type === "whisper" && "text-primary/80 bg-primary/5",
               )}

@@ -53,16 +53,11 @@ export function setCachedCardImage(key: string, value: CachedCardImage): void {
   cache.set(key, value);
 }
 
-export function getPendingCardImage(
-  key: string,
-): Promise<CachedCardImage | null> | undefined {
+export function getPendingCardImage(key: string): Promise<CachedCardImage | null> | undefined {
   return pending.get(key);
 }
 
-export function setPendingCardImage(
-  key: string,
-  p: Promise<CachedCardImage | null>,
-): void {
+export function setPendingCardImage(key: string, p: Promise<CachedCardImage | null>): void {
   pending.set(key, p);
 }
 
@@ -74,7 +69,10 @@ export function clearPendingCardImage(key: string): void {
  * Extract the cacheable view of a ScryfallCard: the top-level image_uris
  * plus the (optional) per-face uris for double-faced cards.
  */
-export function toCachedCardImage(card: ScryfallCard, { frontOnly }: { frontOnly: boolean}): CachedCardImage {
+export function toCachedCardImage(
+  card: ScryfallCard,
+  { frontOnly }: { frontOnly: boolean },
+): CachedCardImage {
   const entry: CachedCardImage = { faces: new Map() };
 
   const top = card.image_uris;

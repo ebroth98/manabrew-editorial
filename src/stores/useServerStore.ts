@@ -1,6 +1,6 @@
-import { create } from 'zustand';
-import { devtools } from 'zustand/middleware';
-import { getPlatform } from '@/platform';
+import { create } from "zustand";
+import { devtools } from "zustand/middleware";
+import { getPlatform } from "@/platform";
 import type {
   RoomInfo,
   PlayerInfo,
@@ -18,7 +18,7 @@ import type {
   ReadyChangedPayload,
   GameStartedPayload,
   ServerErrorPayload,
-} from '@/types/server';
+} from "@/types/server";
 
 interface ServerState {
   connected: boolean;
@@ -44,219 +44,54 @@ interface ServerState {
   joinRoom(roomId: string): Promise<void>;
   leaveRoom(): Promise<void>;
   setReady(ready: boolean): Promise<void>;
-  setDeckSelection(deckName: string, deckList: CardIdentity[], commanderName?: string): Promise<void>;
+  setDeckSelection(
+    deckName: string,
+    deckList: CardIdentity[],
+    commanderName?: string,
+  ): Promise<void>;
   startGame(): Promise<void>;
 
   setupListeners(): () => void;
 }
 
-export const useServerStore = create<ServerState>()(devtools((set, get) => ({
-  connected: false,
-  connecting: false,
-  error: null,
-  playerId: null,
-  username: null,
-  rooms: [],
-  currentRoom: null,
-  players: [],
-  gameStarted: false,
-  playerOrder: [],
-  playerDecks: [],
-  startingLife: 20,
-
-  async connect(host, port, username, password) {
-    const platform = getPlatform();
-    if (!platform.server) {
-      set({ connecting: false, error: 'Multiplayer not supported on this platform' });
-      return;
-    }
-    set({ username, connecting: true, error: null });
-    try {
-      await platform.server.connect({ host, port, username, password });
-    } catch (e) {
-      set({ connecting: false, error: String(e) });
-    }
-  },
-
-  async disconnect() {
-    const platform = getPlatform();
-    if (!platform.server) return;
-    await platform.server.disconnect();
-    set({
+export const useServerStore = create<ServerState>()(
+  devtools(
+    (set, get) => ({
       connected: false,
+      connecting: false,
+      error: null,
       playerId: null,
       username: null,
+      rooms: [],
       currentRoom: null,
+      players: [],
       gameStarted: false,
       playerOrder: [],
       playerDecks: [],
       startingLife: 20,
-      rooms: [],
-      players: [],
-    });
-  },
 
-  async listRooms() {
-    const platform = getPlatform();
-    if (!platform.server) return;
-    await platform.server.listRooms();
-  },
-
-  async listPlayers() {
-    const platform = getPlatform();
-    if (!platform.server) return;
-    await platform.server.listPlayers();
-  },
-
-  async createRoom(roomName, maxPlayers, format) {
-    const platform = getPlatform();
-    if (!platform.server) return;
-    await platform.server.createRoom({ roomName, maxPlayers, format });
-  },
-
-  async joinRoom(roomId) {
-    const platform = getPlatform();
-    if (!platform.server) return;
-    await platform.server.joinRoom({ roomId });
-  },
-
-  async leaveRoom() {
-    const platform = getPlatform();
-    if (!platform.server) return;
-    await platform.server.leaveRoom();
-    set({ currentRoom: null });
-    get().listRooms();
-  },
-
-  async setReady(ready) {
-    const platform = getPlatform();
-    if (!platform.server) return;
-    await platform.server.setReady({ ready });
-  },
-
-  async setDeckSelection(deckName, deckList, commanderName) {
-    const platform = getPlatform();
-    if (!platform.server) return;
-    await platform.server.setDeckSelection({ deckName, deckList, commanderName: commanderName ?? null });
-  },
-
-  async startGame() {
-    const platform = getPlatform();
-    if (!platform.server) return;
-    await platform.server.startGame();
-  },
-
-  setupListeners() {
-    // Server functionality requires a server API
-    const platform = getPlatform();
-    if (!platform.server) {
-      return () => {}; // No-op cleanup for platforms without server support
-    }
-
-    const unsubscribers: (() => void)[] = [];
-
-    unsubscribers.push(
-      platform.events.on<AuthResultPayload>('server:auth_result', (payload) => {
-        if (payload.success) {
-          set({ connected: true, connecting: false, error: null, playerId: payload.player_id });
-          get().listRooms();
-          get().listPlayers();
-        } else {
-          set({ connecting: false, error: payload.error ?? 'Authentication failed' });
+      async connect(host, port, username, password) {
+        const platform = getPlatform();
+        if (!platform.server) {
+          set({ connecting: false, error: "Multiplayer not supported on this platform" });
+          return;
         }
-      }),
-    );
-
-    unsubscribers.push(
-      platform.events.on<RoomListPayload>('server:room_list', (payload) => {
-        set({ rooms: payload.rooms });
-      }),
-    );
-
-    unsubscribers.push(
-      platform.events.on<PlayerListPayload>('server:player_list', (payload) => {
-        set({ players: payload.players });
-      }),
-    );
-
-    unsubscribers.push(
-      platform.events.on<RoomCreatedPayload>('server:room_created', () => {
-        get().listRooms();
-      }),
-    );
-
-    unsubscribers.push(
-      platform.events.on<RoomUpdatePayload>('server:room_update', (payload) => {
-        set({ currentRoom: payload.room });
-      }),
-    );
-
-    unsubscribers.push(
-      platform.events.on<PlayerJoinedPayload>('server:player_joined', () => {
-        get().listRooms();
-        get().listPlayers();
-      }),
-    );
-
-    unsubscribers.push(
-      platform.events.on<PlayerLeftPayload>('server:player_left', () => {
-        get().listRooms();
-        get().listPlayers();
-      }),
-    );
-
-    unsubscribers.push(
-      platform.events.on<PlayerConnectionPayload>('server:player_connected', () => {
-        get().listPlayers();
-      }),
-    );
-
-    unsubscribers.push(
-      platform.events.on<PlayerConnectionPayload>('server:player_disconnected', () => {
-        get().listPlayers();
-      }),
-    );
-
-    unsubscribers.push(
-      platform.events.on<ReadyChangedPayload>('server:ready_changed', () => {
-        // Room update will come separately with full state
-      }),
-    );
-
-    unsubscribers.push(
-      platform.events.on<GameStartedPayload>('server:game_started', (payload) => {
-        set({
-          gameStarted: true,
-          playerOrder: payload.player_order,
-          playerDecks: payload.player_decks,
-          startingLife: payload.starting_life,
-        });
-      }),
-    );
-
-    unsubscribers.push(
-      platform.events.on<ServerErrorPayload>('server:error', (payload) => {
-        console.error('[server] error:', payload.code, payload.message);
-        if (payload.code === 'not_in_room') {
-          set({
-            currentRoom: null,
-            gameStarted: false,
-            playerOrder: [],
-            playerDecks: [],
-            startingLife: 20,
-          });
-          void get().listRooms();
+        set({ username, connecting: true, error: null });
+        try {
+          await platform.server.connect({ host, port, username, password });
+        } catch (e) {
+          set({ connecting: false, error: String(e) });
         }
-      }),
-    );
+      },
 
-    unsubscribers.push(
-      platform.events.on('server:disconnected', () => {
+      async disconnect() {
+        const platform = getPlatform();
+        if (!platform.server) return;
+        await platform.server.disconnect();
         set({
           connected: false,
-          connecting: false,
-          error: 'Disconnected from server',
           playerId: null,
+          username: null,
           currentRoom: null,
           gameStarted: false,
           playerOrder: [],
@@ -265,19 +100,193 @@ export const useServerStore = create<ServerState>()(devtools((set, get) => ({
           rooms: [],
           players: [],
         });
-      }),
-    );
+      },
 
-    unsubscribers.push(
-      platform.events.on('server:state_update', () => {}),
-    );
+      async listRooms() {
+        const platform = getPlatform();
+        if (!platform.server) return;
+        await platform.server.listRooms();
+      },
 
-    unsubscribers.push(
-      platform.events.on('server:turn_changed', () => {}),
-    );
+      async listPlayers() {
+        const platform = getPlatform();
+        if (!platform.server) return;
+        await platform.server.listPlayers();
+      },
 
-    return () => {
-      unsubscribers.forEach((fn) => fn());
-    };
-  },
-}), { name: "server", enabled: import.meta.env.DEV }));
+      async createRoom(roomName, maxPlayers, format) {
+        const platform = getPlatform();
+        if (!platform.server) return;
+        await platform.server.createRoom({ roomName, maxPlayers, format });
+      },
+
+      async joinRoom(roomId) {
+        const platform = getPlatform();
+        if (!platform.server) return;
+        await platform.server.joinRoom({ roomId });
+      },
+
+      async leaveRoom() {
+        const platform = getPlatform();
+        if (!platform.server) return;
+        await platform.server.leaveRoom();
+        set({ currentRoom: null });
+        get().listRooms();
+      },
+
+      async setReady(ready) {
+        const platform = getPlatform();
+        if (!platform.server) return;
+        await platform.server.setReady({ ready });
+      },
+
+      async setDeckSelection(deckName, deckList, commanderName) {
+        const platform = getPlatform();
+        if (!platform.server) return;
+        await platform.server.setDeckSelection({
+          deckName,
+          deckList,
+          commanderName: commanderName ?? null,
+        });
+      },
+
+      async startGame() {
+        const platform = getPlatform();
+        if (!platform.server) return;
+        await platform.server.startGame();
+      },
+
+      setupListeners() {
+        // Server functionality requires a server API
+        const platform = getPlatform();
+        if (!platform.server) {
+          return () => {}; // No-op cleanup for platforms without server support
+        }
+
+        const unsubscribers: (() => void)[] = [];
+
+        unsubscribers.push(
+          platform.events.on<AuthResultPayload>("server:auth_result", (payload) => {
+            if (payload.success) {
+              set({ connected: true, connecting: false, error: null, playerId: payload.player_id });
+              get().listRooms();
+              get().listPlayers();
+            } else {
+              set({ connecting: false, error: payload.error ?? "Authentication failed" });
+            }
+          }),
+        );
+
+        unsubscribers.push(
+          platform.events.on<RoomListPayload>("server:room_list", (payload) => {
+            set({ rooms: payload.rooms });
+          }),
+        );
+
+        unsubscribers.push(
+          platform.events.on<PlayerListPayload>("server:player_list", (payload) => {
+            set({ players: payload.players });
+          }),
+        );
+
+        unsubscribers.push(
+          platform.events.on<RoomCreatedPayload>("server:room_created", () => {
+            get().listRooms();
+          }),
+        );
+
+        unsubscribers.push(
+          platform.events.on<RoomUpdatePayload>("server:room_update", (payload) => {
+            set({ currentRoom: payload.room });
+          }),
+        );
+
+        unsubscribers.push(
+          platform.events.on<PlayerJoinedPayload>("server:player_joined", () => {
+            get().listRooms();
+            get().listPlayers();
+          }),
+        );
+
+        unsubscribers.push(
+          platform.events.on<PlayerLeftPayload>("server:player_left", () => {
+            get().listRooms();
+            get().listPlayers();
+          }),
+        );
+
+        unsubscribers.push(
+          platform.events.on<PlayerConnectionPayload>("server:player_connected", () => {
+            get().listPlayers();
+          }),
+        );
+
+        unsubscribers.push(
+          platform.events.on<PlayerConnectionPayload>("server:player_disconnected", () => {
+            get().listPlayers();
+          }),
+        );
+
+        unsubscribers.push(
+          platform.events.on<ReadyChangedPayload>("server:ready_changed", () => {
+            // Room update will come separately with full state
+          }),
+        );
+
+        unsubscribers.push(
+          platform.events.on<GameStartedPayload>("server:game_started", (payload) => {
+            set({
+              gameStarted: true,
+              playerOrder: payload.player_order,
+              playerDecks: payload.player_decks,
+              startingLife: payload.starting_life,
+            });
+          }),
+        );
+
+        unsubscribers.push(
+          platform.events.on<ServerErrorPayload>("server:error", (payload) => {
+            console.error("[server] error:", payload.code, payload.message);
+            if (payload.code === "not_in_room") {
+              set({
+                currentRoom: null,
+                gameStarted: false,
+                playerOrder: [],
+                playerDecks: [],
+                startingLife: 20,
+              });
+              void get().listRooms();
+            }
+          }),
+        );
+
+        unsubscribers.push(
+          platform.events.on("server:disconnected", () => {
+            set({
+              connected: false,
+              connecting: false,
+              error: "Disconnected from server",
+              playerId: null,
+              currentRoom: null,
+              gameStarted: false,
+              playerOrder: [],
+              playerDecks: [],
+              startingLife: 20,
+              rooms: [],
+              players: [],
+            });
+          }),
+        );
+
+        unsubscribers.push(platform.events.on("server:state_update", () => {}));
+
+        unsubscribers.push(platform.events.on("server:turn_changed", () => {}));
+
+        return () => {
+          unsubscribers.forEach((fn) => fn());
+        };
+      },
+    }),
+    { name: "server", enabled: import.meta.env.DEV },
+  ),
+);

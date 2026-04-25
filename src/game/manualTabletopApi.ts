@@ -9,10 +9,7 @@ import type {
 } from "@/platform";
 import { PromptType } from "@/types/promptType";
 import type { Card, GameView, Player } from "@/types/openmagic";
-import type {
-  ManualTabletopApi,
-  ManualTabletopAction,
-} from "./runtime.types";
+import type { ManualTabletopApi, ManualTabletopAction } from "./runtime.types";
 
 const MANUAL_GAME_ID = "manual-tabletop";
 
@@ -134,11 +131,7 @@ function addCardToZone(
     if (position == null || position < 0 || position >= cards.length) {
       return [...cards, nextCard];
     }
-    return [
-      ...cards.slice(0, position),
-      nextCard,
-      ...cards.slice(position),
-    ];
+    return [...cards.slice(0, position), nextCard, ...cards.slice(position)];
   };
 
   switch (zoneId) {
@@ -182,9 +175,7 @@ function updatePlayer(
 ): GameView {
   return {
     ...gameView,
-    players: gameView.players.map((player) =>
-      player.id === playerId ? update(player) : player,
-    ),
+    players: gameView.players.map((player) => (player.id === playerId ? update(player) : player)),
   };
 }
 
@@ -231,9 +222,7 @@ export class ManualTabletopGameApi implements ManualTabletopApi {
     return MANUAL_GAME_ID;
   }
 
-  async startMultiplayerGame(
-    _params: StartMultiplayerGameParams,
-  ): Promise<void> {
+  async startMultiplayerGame(_params: StartMultiplayerGameParams): Promise<void> {
     throw new Error("Manual tabletop multiplayer is not implemented yet.");
   }
 
@@ -283,10 +272,7 @@ export class ManualTabletopGameApi implements ManualTabletopApi {
     return this.gameView;
   }
 
-  private applyAction(
-    gameView: GameView | null,
-    action: ManualTabletopAction,
-  ): GameView {
+  private applyAction(gameView: GameView | null, action: ManualTabletopAction): GameView {
     if (action.type === "replaceState") {
       this.libraries = action.libraries ?? {};
       return action.gameView;
@@ -297,12 +283,7 @@ export class ManualTabletopGameApi implements ManualTabletopApi {
       case "moveCard": {
         const removed = removeVisibleCard(gameView, action.cardId);
         if (!removed.card) return gameView;
-        return addCardToZone(
-          removed.gameView,
-          action.toZoneId,
-          removed.card,
-          action.position,
-        );
+        return addCardToZone(removed.gameView, action.toZoneId, removed.card, action.position);
       }
       case "tapCard":
         return updateVisibleCard(gameView, action.cardId, (card) => ({
@@ -333,17 +314,13 @@ export class ManualTabletopGameApi implements ManualTabletopApi {
           poison: action.poison,
         }));
       case "createCard":
-        return addCardToZone(
-          gameView,
-          action.zoneId ?? "battlefield",
-          {
-            ...action.card,
-            controllerId: action.controllerId,
-            ownerId: action.controllerId,
-            zoneId: action.zoneId ?? "battlefield",
-            isToken: action.card.isToken ?? false,
-          },
-        );
+        return addCardToZone(gameView, action.zoneId ?? "battlefield", {
+          ...action.card,
+          controllerId: action.controllerId,
+          ownerId: action.controllerId,
+          zoneId: action.zoneId ?? "battlefield",
+          isToken: action.card.isToken ?? false,
+        });
       case "createToken":
         return {
           ...gameView,
@@ -368,10 +345,7 @@ export class ManualTabletopGameApi implements ManualTabletopApi {
         if (drawn.length === 0 || action.playerId !== gameView.players[0]?.id) {
           return gameView;
         }
-        return drawn.reduce(
-          (nextView, card) => addCardToZone(nextView, "hand", card),
-          gameView,
-        );
+        return drawn.reduce((nextView, card) => addCardToZone(nextView, "hand", card), gameView);
       }
       case "putLibraryCardOntoBattlefield": {
         const library = this.libraries[action.playerId] ?? [];

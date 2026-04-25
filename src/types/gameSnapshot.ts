@@ -30,4 +30,3 @@ export function normalizeSnapshotPayload(payload: unknown): GameSnapshotEntry {
     gameView: gameView as GameView,
   };
 }
-

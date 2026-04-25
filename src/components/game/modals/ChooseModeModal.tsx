@@ -73,10 +73,11 @@ export function ChooseModeModal({
     });
   }
 
-  useModalKeyboard(
-    { onEnter: canConfirm && !isAutoConfirm ? handleConfirm : undefined },
-    [canConfirm, isAutoConfirm, handleConfirm],
-  );
+  useModalKeyboard({ onEnter: canConfirm && !isAutoConfirm ? handleConfirm : undefined }, [
+    canConfirm,
+    isAutoConfirm,
+    handleConfirm,
+  ]);
 
   const subtitle =
     minChoices === maxChoices
@@ -85,7 +86,14 @@ export function ChooseModeModal({
 
   return (
     <Modal maxWidth="max-w-md" maxHeight="" className="outline-none">
-      <div ref={dialogRef} tabIndex={-1} className="outline-none" role="dialog" aria-modal="true" aria-labelledby="choose-mode-title">
+      <div
+        ref={dialogRef}
+        tabIndex={-1}
+        className="outline-none"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="choose-mode-title"
+      >
         <Modal.Header>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
@@ -97,13 +105,12 @@ export function ChooseModeModal({
                 />
               )}
               <div>
-                <h2
-                  id="choose-mode-title"
-                  className="font-semibold text-base"
-                >
+                <h2 id="choose-mode-title" className="font-semibold text-base">
                   Choose Mode
                 </h2>
-                {cardName && <p className="text-xs text-muted-foreground font-medium">{cardName}</p>}
+                {cardName && (
+                  <p className="text-xs text-muted-foreground font-medium">{cardName}</p>
+                )}
                 <p className="text-xs text-muted-foreground">{subtitle}</p>
               </div>
             </div>
@@ -122,10 +129,15 @@ export function ChooseModeModal({
         </Modal.Instructions>
 
         {/* Mode list */}
-        <div className="p-4 flex flex-col gap-2 max-h-[60vh] overflow-y-auto" role="group" aria-label="Available modes">
+        <div
+          className="p-4 flex flex-col gap-2 max-h-[60vh] overflow-y-auto"
+          role="group"
+          aria-label="Available modes"
+        >
           {options.map((desc, idx) => {
             const isSelected = selected.has(idx);
-            const isDisabled = !isAutoConfirm && !isSelected && selected.size >= maxChoices && maxChoices > 1;
+            const isDisabled =
+              !isAutoConfirm && !isSelected && selected.size >= maxChoices && maxChoices > 1;
 
             return (
               <button
@@ -154,13 +166,21 @@ export function ChooseModeModal({
                       )}
                     >
                       {isSelected && (
-                        <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                        <svg
+                          className="w-3 h-3"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                          strokeWidth={3}
+                        >
                           <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
                         </svg>
                       )}
                     </span>
                   )}
-                  <span className="leading-tight"><TextWithMana text={desc} /></span>
+                  <span className="leading-tight">
+                    <TextWithMana text={desc} />
+                  </span>
                 </span>
               </button>
             );
@@ -171,7 +191,9 @@ export function ChooseModeModal({
         {!isAutoConfirm && (
           <div className={MODAL_FOOTER_BETWEEN}>
             <span className="text-xs text-muted-foreground text-left leading-tight max-w-[200px]">
-              {minChoices === 0 ? "Choosing a mode is optional." : `You must select at least ${minChoices}.`}
+              {minChoices === 0
+                ? "Choosing a mode is optional."
+                : `You must select at least ${minChoices}.`}
             </span>
             <Button
               size="sm"
@@ -179,7 +201,9 @@ export function ChooseModeModal({
               onClick={handleConfirm}
               className="min-w-[100px] shrink-0"
             >
-              {minChoices === 0 && selected.size === 0 ? "Skip" : `Confirm ${selected.size > 0 ? `(${selected.size})` : ""}`}
+              {minChoices === 0 && selected.size === 0
+                ? "Skip"
+                : `Confirm ${selected.size > 0 ? `(${selected.size})` : ""}`}
             </Button>
           </div>
         )}

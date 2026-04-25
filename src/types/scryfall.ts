@@ -58,7 +58,7 @@ export interface ScryfallCard {
   colors?: string[];
   color_identity: string[];
   keywords: string[];
-  legalities: Record<string, 'legal' | 'not_legal' | 'restricted' | 'banned'>;
+  legalities: Record<string, "legal" | "not_legal" | "restricted" | "banned">;
   games: string[];
   reserved: boolean;
   foil: boolean;
@@ -113,7 +113,7 @@ export interface ScryfallCard {
 }
 
 export interface ScryfallListResponse {
-  object: 'list';
+  object: "list";
   total_cards: number;
   has_more: boolean;
   next_page?: string;

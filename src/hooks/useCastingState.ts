@@ -117,7 +117,11 @@ export function useCastingState({
 
   // If the card is on the battlefield (activated ability), it should stay visible there
   const castingFromBattlefield = useMemo(
-    () => castingCardId ? !hand.some((c) => c.id === castingCardId) && battlefield.some((c) => c.id === castingCardId) : false,
+    () =>
+      castingCardId
+        ? !hand.some((c) => c.id === castingCardId) &&
+          battlefield.some((c) => c.id === castingCardId)
+        : false,
     [castingCardId, hand, battlefield],
   );
 
@@ -128,8 +132,8 @@ export function useCastingState({
 
   // Whether the engine says the current effect is hostile
   const promptHostile = currentPrompt?.hostile ?? true;
-  const promptIntent = currentPrompt?.intent
-    ?? (promptHostile ? TargetingIntent.Hostile : TargetingIntent.Friendly);
+  const promptIntent =
+    currentPrompt?.intent ?? (promptHostile ? TargetingIntent.Hostile : TargetingIntent.Friendly);
 
   // Clear target when casting card changes (new spell or cast finished)
   useEffect(() => {
@@ -146,33 +150,42 @@ export function useCastingState({
   const arrowIntent: TargetingIntent = targetId ? targetIntent : promptIntent;
 
   // Wrapped target actions that record the chosen target
-  const wrappedTargetCard = useCallback((cardId: string | null) => {
-    if (cardId && castingCardId) {
-      setTargetId(cardId);
-      setTargetHostile(promptHostile);
-      setTargetIntent(promptIntent);
-    }
-    targetCard(cardId);
-  }, [targetCard, castingCardId, promptHostile, promptIntent]);
+  const wrappedTargetCard = useCallback(
+    (cardId: string | null) => {
+      if (cardId && castingCardId) {
+        setTargetId(cardId);
+        setTargetHostile(promptHostile);
+        setTargetIntent(promptIntent);
+      }
+      targetCard(cardId);
+    },
+    [targetCard, castingCardId, promptHostile, promptIntent],
+  );
 
-  const wrappedTargetPlayer = useCallback((playerId: string) => {
-    if (castingCardId) {
-      setTargetId(playerId);
-      setTargetHostile(promptHostile);
-      setTargetIntent(promptIntent);
-    }
-    targetPlayer(playerId);
-  }, [targetPlayer, castingCardId, promptHostile, promptIntent]);
+  const wrappedTargetPlayer = useCallback(
+    (playerId: string) => {
+      if (castingCardId) {
+        setTargetId(playerId);
+        setTargetHostile(promptHostile);
+        setTargetIntent(promptIntent);
+      }
+      targetPlayer(playerId);
+    },
+    [targetPlayer, castingCardId, promptHostile, promptIntent],
+  );
 
-  const wrappedTargetAny = useCallback((target: { kind: string; playerId?: string; cardId?: string }) => {
-    const id = target.cardId ?? target.playerId ?? null;
-    if (castingCardId && id) {
-      setTargetId(id);
-      setTargetHostile(promptHostile);
-      setTargetIntent(promptIntent);
-    }
-    targetAny(target);
-  }, [targetAny, castingCardId, promptHostile, promptIntent]);
+  const wrappedTargetAny = useCallback(
+    (target: { kind: string; playerId?: string; cardId?: string }) => {
+      const id = target.cardId ?? target.playerId ?? null;
+      if (castingCardId && id) {
+        setTargetId(id);
+        setTargetHostile(promptHostile);
+        setTargetIntent(promptIntent);
+      }
+      targetAny(target);
+    },
+    [targetAny, castingCardId, promptHostile, promptIntent],
+  );
 
   return {
     /** The card ID being cast, or null. */

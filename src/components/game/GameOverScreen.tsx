@@ -28,9 +28,7 @@ export function GameOverScreen({ winnerId, me, opponents, turn, onEndGame }: Gam
         Final life: You {me.life} — {opponents.map((op) => `${op.name} ${op.life}`).join(" · ")}
       </p>
       <p className="text-sm text-muted-foreground">Turn {turn}</p>
-      <p className="text-xs text-muted-foreground italic">
-        Returning to menu…
-      </p>
+      <p className="text-xs text-muted-foreground italic">Returning to menu…</p>
       <Button variant="outline" size="sm" onClick={onEndGame}>
         Return to Menu
       </Button>

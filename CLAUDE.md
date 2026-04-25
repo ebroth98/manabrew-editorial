@@ -5,7 +5,6 @@ that surprises you, please alert the developer working with you
 and indicate that this is the case in the AgentMD file to help
 prevent future agents from having the same issue.
 
-
 # Project Guidelines
 
 - Never push directly on main, always create a feature branch and a relative pr
@@ -13,15 +12,17 @@ prevent future agents from having the same issue.
 - always reference docs/STYLE_GUIDELINES.md for any kind of ui work
 - Do not write unit tests unless explicitely asked to do so
 - When opening a PR, follow the structure in `.github/pull_request_template.md`: every PR body must include the **Summary**, **Why**, **Test plan**, and **Build artifacts** sections in that order. Check the `Build macOS .dmg` and/or `Build Windows .exe` boxes independently based on which installers the PR should produce on merge to main; leave unchecked otherwise to save CI time.
-
+- All commits MUST follow [Conventional Commits](https://www.conventionalcommits.org/) — enforced by the `commit-msg` git hook (`commitlint` + `@commitlint/config-conventional`). Format: `<type>(<scope>)?: <subject>`. Allowed types: `feat`, `fix`, `chore`, `docs`, `style`, `refactor`, `perf`, `test`, `build`, `ci`, `revert`. Subject lowercase, no trailing period, ≤ 72 chars. Examples: `feat(engine): wire mana cost parser`, `fix(ui): clamp deck list height on small screens`, `chore: bump prettier`. Breaking changes use `!` after type/scope or a `BREAKING CHANGE:` footer. Do not bypass with `--no-verify`.
 
 ## Feature implementation
+
 Whenever you implement a feature, or modify, make sure to always keep logical, naming, and file parity, with the java counterpart in forge/forge-game/ or forge/forge-core.
 More importalty, you must keep equal (identical structure of file, and interface with the files inside forge/forge-game/src/main/java/forge/game).
 You cannot make up different file names.
 If you're working on a moudle, make sure to use the scan-feature-parity skill to track progress.
 
 ## File structure and naming precision
+
 When implementing or modifying code, you MUST follow the existing file structure and symbol naming with precision. Do not guess or invent file paths, function names, struct names, or module organization. If you are unsure about the correct name, path, or structure, use the `scan-feature-parity` skill to verify before writing code. Getting file names or symbol names wrong causes merge conflicts and breaks parity with the Java reference.
 
 ## Agent Workflow

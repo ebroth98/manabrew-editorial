@@ -34,8 +34,7 @@ const AUTO_PASS_DELAY_MAX_MS = 650;
 
 function getAutoPassDelayMs(): number {
   return Math.floor(
-    AUTO_PASS_DELAY_MIN_MS +
-      Math.random() * (AUTO_PASS_DELAY_MAX_MS - AUTO_PASS_DELAY_MIN_MS + 1),
+    AUTO_PASS_DELAY_MIN_MS + Math.random() * (AUTO_PASS_DELAY_MAX_MS - AUTO_PASS_DELAY_MIN_MS + 1),
   );
 }
 
@@ -76,9 +75,7 @@ export function usePromptEffects({
     // Clean priority — determine which stop set applies
     const isMyTurn = gv.activePlayerId === myPlayerId;
     const store = usePhaseStopStore.getState();
-    const stops = isMyTurn
-      ? store.selfStops
-      : store.getOpponentStops(gv.activePlayerId);
+    const stops = isMyTurn ? store.selfStops : store.getOpponentStops(gv.activePlayerId);
 
     const nextStop = getNextStopPhase(gv.step, stops);
 
@@ -112,9 +109,7 @@ export function usePromptEffects({
     // Mandatory combat stops: after attackers or blockers are declared on
     // the opponent's turn, always stop so the player can respond (cast
     // instants, activate abilities, etc.) regardless of phase stop settings.
-    const MANDATORY_COMBAT_STOPS = new Set([
-      "declare_attackers", "declare_blockers",
-    ]);
+    const MANDATORY_COMBAT_STOPS = new Set(["declare_attackers", "declare_blockers"]);
 
     if (currentPrompt.type === PromptType.ChooseAction && stackLength === 0) {
       const gv = currentPrompt.gameView;
@@ -162,7 +157,10 @@ export function usePromptEffects({
       }
 
       // Still auto-passing — relay until-phase to engine
-      if (currentPrompt.type === PromptType.ChooseAction || currentPrompt.type === PromptType.ChooseAttackers) {
+      if (
+        currentPrompt.type === PromptType.ChooseAction ||
+        currentPrompt.type === PromptType.ChooseAttackers
+      ) {
         setIsAutoPassing(true);
         const timer = setTimeout(() => passPriority(passUntilPhase), getAutoPassDelayMs());
         return () => clearTimeout(timer);
@@ -180,9 +178,7 @@ export function usePromptEffects({
       const isMyTurn = gv.activePlayerId === myPlayerId;
 
       const store = usePhaseStopStore.getState();
-      const stops = isMyTurn
-        ? store.selfStops
-        : store.getOpponentStops(gv.activePlayerId);
+      const stops = isMyTurn ? store.selfStops : store.getOpponentStops(gv.activePlayerId);
 
       if (!stops.has(gv.step)) {
         const nextStop = getNextStopPhase(gv.step, stops);
@@ -202,25 +198,22 @@ export function usePromptEffects({
       const hasPlayableCards = (currentPrompt.playableCardIds ?? []).length > 0;
       const hasActivatableAbilities = (currentPrompt.activatableAbilityIds ?? []).length > 0;
       const isMyMainPhase =
-        currentPrompt.gameView.activePlayerId === currentPrompt.gameView.priorityPlayerId
-        && (currentPrompt.gameView.step === "main1" || currentPrompt.gameView.step === "main2")
-        && stackLength === 0;
+        currentPrompt.gameView.activePlayerId === currentPrompt.gameView.priorityPlayerId &&
+        (currentPrompt.gameView.step === "main1" || currentPrompt.gameView.step === "main2") &&
+        stackLength === 0;
       const priorityPlayer = currentPrompt.gameView.players.find(
         (player) => player.id === currentPrompt.gameView.priorityPlayerId,
       );
-      const hasFloatingMana = isMyMainPhase
-        && !!priorityPlayer
-        && Object.values(priorityPlayer.manaPool ?? {}).some((amount) => amount > 0);
-      const hasManaSources = isMyMainPhase
-        && (
-          (currentPrompt.tappableLandIds ?? []).length > 0
-          || (currentPrompt.manaAbilityOptions ?? []).length > 0
-        );
+      const hasFloatingMana =
+        isMyMainPhase &&
+        !!priorityPlayer &&
+        Object.values(priorityPlayer.manaPool ?? {}).some((amount) => amount > 0);
+      const hasManaSources =
+        isMyMainPhase &&
+        ((currentPrompt.tappableLandIds ?? []).length > 0 ||
+          (currentPrompt.manaAbilityOptions ?? []).length > 0);
       shouldAutoPass =
-        !hasPlayableCards
-        && !hasActivatableAbilities
-        && !hasManaSources
-        && !hasFloatingMana;
+        !hasPlayableCards && !hasActivatableAbilities && !hasManaSources && !hasFloatingMana;
     } else if (currentPrompt.type === PromptType.ChooseAttackers) {
       shouldAutoPass = (currentPrompt.availableAttackerIds ?? []).length === 0;
     } else if (currentPrompt.type === PromptType.ChooseBlockers) {
@@ -240,12 +233,24 @@ export function usePromptEffects({
     const timer = setTimeout(() => passPriority(autoNextStop), getAutoPassDelayMs());
 
     return () => clearTimeout(timer);
-  }, [currentPrompt, isWaitingForResponse, autoPassEnabled, passPriority, passUntilTurn, passUntilPhase, turn, stackLength, myPlayerId]);
+  }, [
+    currentPrompt,
+    isWaitingForResponse,
+    autoPassEnabled,
+    passPriority,
+    passUntilTurn,
+    passUntilPhase,
+    turn,
+    stackLength,
+    myPlayerId,
+  ]);
 
   // Open library-peek modal for Scry / Surveil / Dig / Discard prompts
   useEffect(() => {
     if (
-      (promptType === PromptType.Scry || promptType === PromptType.Surveil || promptType === PromptType.Dig) &&
+      (promptType === PromptType.Scry ||
+        promptType === PromptType.Surveil ||
+        promptType === PromptType.Dig) &&
       currentPrompt?.cards &&
       currentPrompt.cards.length > 0
     ) {
@@ -275,7 +280,7 @@ export function usePromptEffects({
     ) {
       setLibraryPeekModal(null);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [promptType, currentPrompt]);
 
   // Handle zone-based targeting prompts

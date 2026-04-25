@@ -91,10 +91,7 @@ function ZoneCardTile({
           disabled={!onClick}
           title={title}
         >
-          <span
-            className="font-bold leading-none"
-            style={{ fontSize: fontSizes.zoneCount }}
-          >
+          <span className="font-bold leading-none" style={{ fontSize: fontSizes.zoneCount }}>
             0
           </span>
         </button>
@@ -108,9 +105,7 @@ function ZoneCardTile({
     );
   }
 
-  const ringStyle: CSSProperties = highlighted
-    ? { boxShadow: `0 0 0 2px ${highlightColor}` }
-    : {};
+  const ringStyle: CSSProperties = highlighted ? { boxShadow: `0 0 0 2px ${highlightColor}` } : {};
 
   return (
     <div
@@ -167,12 +162,11 @@ export function ZoneActionColumn({
 }: ZoneActionColumnProps) {
   const themeColors = useTheme().gameTheme;
   const fontSizes = useTheme().gameTheme.fontSizes;
-  const graveyardTop = graveyard && graveyard.length > 0 ? graveyard[graveyard.length - 1] : undefined;
+  const graveyardTop =
+    graveyard && graveyard.length > 0 ? graveyard[graveyard.length - 1] : undefined;
   const exileTop = exile && exile.length > 0 ? exile[exile.length - 1] : undefined;
   const items = {
-    library: (
-      <LibraryZoneTile key="library" count={libraryCount} onClick={onOpenLibrary} />
-    ),
+    library: <LibraryZoneTile key="library" count={libraryCount} onClick={onOpenLibrary} />,
     graveyard: (
       <ZoneCardTile
         key="graveyard"

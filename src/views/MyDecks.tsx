@@ -20,17 +20,8 @@ import type { CardIdentity } from "@/types/server";
 import { fetchCardCollection } from "@/api/scryfall";
 import { scryfallCardToPartial } from "@/lib/scryfall.utils";
 import { ROUTES, DEFAULT_DECK_NAME } from "@/lib/constants";
-import {
-  ResizableHandle,
-  ResizablePanel,
-  ResizablePanelGroup,
-} from "@/components/ui/resizable";
-import {
-  extractColors,
-  groupCards,
-  categorize,
-  applyDeckFilters,
-} from "./myDecks.utils";
+import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
+import { extractColors, groupCards, categorize, applyDeckFilters } from "./myDecks.utils";
 import type { SortBy } from "./myDecks.utils";
 import { getDeckCardNames } from "@/lib/decks";
 import { useCardPreview } from "@/hooks/useCardPreview";
@@ -41,17 +32,9 @@ import { HoverCardPreview } from "@/components/game/HoverCardPreview";
 export default function MyDecks() {
   const navigate = useNavigate();
   const startGame = useGameStore((s) => s.startGame);
-  const {
-    savedDecks,
-    loadSavedDeck,
-    deleteSavedDeck,
-    clearDeck,
-    setDeckName,
-    enrichSavedDeck,
-  } = useDeckStore();
-  const [selectedId, setSelectedId] = useState<string | null>(
-    savedDecks[0]?.id ?? null,
-  );
+  const { savedDecks, loadSavedDeck, deleteSavedDeck, clearDeck, setDeckName, enrichSavedDeck } =
+    useDeckStore();
+  const [selectedId, setSelectedId] = useState<string | null>(savedDecks[0]?.id ?? null);
   const [playDialogOpen, setPlayDialogOpen] = useState(false);
   const [playDeckId, setPlayDeckId] = useState<string | undefined>(undefined);
   const [search, setSearch] = useState("");
@@ -61,19 +44,22 @@ export default function MyDecks() {
   const [cardFilter, setCardFilter] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
-  
+
   const preview = useCardPreview();
 
   const enrichedDecksRef = useRef(new Set<string>());
 
   function toggleColor(color: string) {
     setColorFilter((prev) =>
-      prev.includes(color) ? prev.filter((c) => c !== color) : [...prev, color]
+      prev.includes(color) ? prev.filter((c) => c !== color) : [...prev, color],
     );
   }
 
   const { valid: filteredValid, drafts: filteredDrafts } = applyDeckFilters(savedDecks, {
-    search, formatFilter, colorFilter, sortBy,
+    search,
+    formatFilter,
+    colorFilter,
+    sortBy,
   });
 
   const selected = savedDecks.find((s) => s.id === selectedId) ?? null;
@@ -280,9 +266,7 @@ export default function MyDecks() {
             {/* Deck header */}
             <div className="px-4 py-3 border-b flex items-center gap-3 shrink-0">
               <div className="flex-1 min-w-0">
-                <h2 className="text-lg font-bold truncate">
-                  {selected.deck.name}
-                </h2>
+                <h2 className="text-lg font-bold truncate">{selected.deck.name}</h2>
                 <div className="flex items-center gap-2 flex-wrap text-sm text-muted-foreground">
                   <span>{getDeckCardNames(selected.deck).length} main</span>
                   {selected.deck.sideboard.length > 0 && (
@@ -307,11 +291,7 @@ export default function MyDecks() {
                 </div>
               </div>
               <div className="flex gap-2 shrink-0">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => handleEdit(selected.id)}
-                >
+                <Button size="sm" variant="outline" onClick={() => handleEdit(selected.id)}>
                   <Pencil className="h-3.5 w-3.5 mr-1" />
                   Edit
                 </Button>
@@ -358,7 +338,9 @@ export default function MyDecks() {
                     </h3>
                     <div
                       className="flex items-center gap-2 py-0.5 px-1 rounded hover:bg-muted/40 group"
-                      onMouseEnter={(e) => preview.handleMouseEnter(selected.deck.commanders![0], e)}
+                      onMouseEnter={(e) =>
+                        preview.handleMouseEnter(selected.deck.commanders![0], e)
+                      }
                       onMouseLeave={preview.handleMouseLeave}
                     >
                       <Crown className="h-3 w-3 text-commander shrink-0" />
@@ -392,8 +374,7 @@ export default function MyDecks() {
                     </h3>
                     <div className="space-y-0.5">
                       {items.map(({ card, count }) => {
-                        const isCommander =
-                          selected.deck.commanders?.[0]?.name === card.name;
+                        const isCommander = selected.deck.commanders?.[0]?.name === card.name;
                         return (
                           <div
                             key={card.name}
@@ -404,21 +385,12 @@ export default function MyDecks() {
                             <span className="text-xs font-mono w-4 text-right text-muted-foreground shrink-0">
                               {count}
                             </span>
-                            <span className="text-sm flex-1 truncate">
-                              {card.name}
-                            </span>
+                            <span className="text-sm flex-1 truncate">{card.name}</span>
                             {card.manaCost && (
-                              <ManaSymbols
-                                cost={card.manaCost}
-                                size="sm"
-                                className="shrink-0"
-                              />
+                              <ManaSymbols cost={card.manaCost} size="sm" className="shrink-0" />
                             )}
                             {card.power && card.toughness && (
-                              <Badge
-                                variant="outline"
-                                className="text-xs h-4 px-1 shrink-0"
-                              >
+                              <Badge variant="outline" className="text-xs h-4 px-1 shrink-0">
                                 {card.power}/{card.toughness}
                               </Badge>
                             )}
@@ -430,11 +402,7 @@ export default function MyDecks() {
                                   ? "h-5 w-5 text-commander shrink-0"
                                   : "h-5 w-5 text-muted-foreground/40 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
                               }
-                              title={
-                                isCommander
-                                  ? "Remove commander"
-                                  : "Set as commander"
-                              }
+                              title={isCommander ? "Remove commander" : "Set as commander"}
                               onClick={() =>
                                 isCommander
                                   ? removeSavedCommander(selected.id)
@@ -451,7 +419,11 @@ export default function MyDecks() {
                 ))}
 
                 {/* Supplementary decks */}
-                {(sideGroups.length > 0 || attractionGroups.length > 0 || contraptionGroups.length > 0 || schemeGroups.length > 0 || planeGroups.length > 0) && (
+                {(sideGroups.length > 0 ||
+                  attractionGroups.length > 0 ||
+                  contraptionGroups.length > 0 ||
+                  schemeGroups.length > 0 ||
+                  planeGroups.length > 0) && (
                   <>
                     <Separator />
                     {[
@@ -477,9 +449,7 @@ export default function MyDecks() {
                                 <span className="text-xs font-mono w-4 text-right text-muted-foreground shrink-0">
                                   {copies}
                                 </span>
-                                <span className="text-sm flex-1 truncate">
-                                  {card.name}
-                                </span>
+                                <span className="text-sm flex-1 truncate">{card.name}</span>
                                 {card.manaCost && (
                                   <ManaSymbols
                                     cost={card.manaCost}
@@ -491,7 +461,7 @@ export default function MyDecks() {
                             ))}
                           </div>
                         </div>
-                      )
+                      ),
                     )}
                   </>
                 )}

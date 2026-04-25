@@ -16,8 +16,7 @@ export const PROMPT_ACTION_VIEW_KEYS = [
   "mulliganPutBack",
 ] as const;
 
-export type PromptActionViewKey =
-  (typeof PROMPT_ACTION_VIEW_KEYS)[number];
+export type PromptActionViewKey = (typeof PROMPT_ACTION_VIEW_KEYS)[number];
 
 export const DEV_PROMPT_ACTION_OVERRIDES = [
   "chooseAction",
@@ -28,8 +27,7 @@ export const DEV_PROMPT_ACTION_OVERRIDES = [
   "noAction",
 ] as const;
 
-export type DevPromptActionOverride =
-  (typeof DEV_PROMPT_ACTION_OVERRIDES)[number];
+export type DevPromptActionOverride = (typeof DEV_PROMPT_ACTION_OVERRIDES)[number];
 
 interface PixiPerfStats {
   fps: number;
@@ -88,25 +86,29 @@ interface GameDevState {
   resetDevSettings: () => void;
 }
 
-export const useGameDevStore = create<GameDevState>()(devtools((set) => ({
-  promptActionOverride: null,
-  devToolsEnabled: false,
-  pixiPerfStats: null,
-  playerOverrides: DEFAULT_DEV_PLAYER_OVERRIDES,
-  setPromptActionOverride: (value) => set({ promptActionOverride: value }),
-  setDevToolsEnabled: (value) => set({ devToolsEnabled: value }),
-  clearPromptActionOverride: () => set({ promptActionOverride: null }),
-  setPixiPerfStats: (stats) => set({ pixiPerfStats: stats }),
-  setPlayerOverride: (key, value) =>
-    set((state) => ({
-      playerOverrides: { ...state.playerOverrides, [key]: value },
-    })),
-  resetPlayerOverrides: () =>
-    set({ playerOverrides: DEFAULT_DEV_PLAYER_OVERRIDES }),
-  resetDevSettings: () =>
-    set({
+export const useGameDevStore = create<GameDevState>()(
+  devtools(
+    (set) => ({
       promptActionOverride: null,
       devToolsEnabled: false,
+      pixiPerfStats: null,
       playerOverrides: DEFAULT_DEV_PLAYER_OVERRIDES,
+      setPromptActionOverride: (value) => set({ promptActionOverride: value }),
+      setDevToolsEnabled: (value) => set({ devToolsEnabled: value }),
+      clearPromptActionOverride: () => set({ promptActionOverride: null }),
+      setPixiPerfStats: (stats) => set({ pixiPerfStats: stats }),
+      setPlayerOverride: (key, value) =>
+        set((state) => ({
+          playerOverrides: { ...state.playerOverrides, [key]: value },
+        })),
+      resetPlayerOverrides: () => set({ playerOverrides: DEFAULT_DEV_PLAYER_OVERRIDES }),
+      resetDevSettings: () =>
+        set({
+          promptActionOverride: null,
+          devToolsEnabled: false,
+          playerOverrides: DEFAULT_DEV_PLAYER_OVERRIDES,
+        }),
     }),
-}), { name: "gameDev", enabled: import.meta.env.DEV }));
+    { name: "gameDev", enabled: import.meta.env.DEV },
+  ),
+);

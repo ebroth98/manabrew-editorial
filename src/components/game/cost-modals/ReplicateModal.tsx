@@ -13,11 +13,18 @@ interface ReplicateModalProps {
   onDecide: (replicateCount: number) => void;
 }
 
-export function ReplicateModal({ cost, maxReplicates, sourceCardName, onDecide }: ReplicateModalProps) {
+export function ReplicateModal({
+  cost,
+  maxReplicates,
+  sourceCardName,
+  onDecide,
+}: ReplicateModalProps) {
   const { data: imageUrl } = useCardImage(sourceCardName ?? "");
   const [count, setCount] = useState(0);
 
-  useEffect(() => { setCount(0); }, [cost, maxReplicates]);
+  useEffect(() => {
+    setCount(0);
+  }, [cost, maxReplicates]);
 
   return (
     <Modal maxWidth="max-w-md" maxHeight="">
@@ -37,14 +44,30 @@ export function ReplicateModal({ cost, maxReplicates, sourceCardName, onDecide }
             Pay <ManaSymbols cost={cost} size="lg" /> per copy (max {maxReplicates})
           </p>
           <div className="flex items-center gap-3">
-            <Button variant="outline" size="sm" disabled={count <= 0} onClick={() => setCount(c => Math.max(0, c - 1))}>-</Button>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={count <= 0}
+              onClick={() => setCount((c) => Math.max(0, c - 1))}
+            >
+              -
+            </Button>
             <span className="text-xl font-bold w-8 text-center">{count}</span>
-            <Button variant="outline" size="sm" disabled={count >= maxReplicates} onClick={() => setCount(c => Math.min(maxReplicates, c + 1))}>+</Button>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={count >= maxReplicates}
+              onClick={() => setCount((c) => Math.min(maxReplicates, c + 1))}
+            >
+              +
+            </Button>
           </div>
         </div>
       </div>
       <Modal.Footer>
-        <Button variant="outline" onClick={() => onDecide(0)}>Skip</Button>
+        <Button variant="outline" onClick={() => onDecide(0)}>
+          Skip
+        </Button>
         <Button onClick={() => onDecide(count)}>Confirm ({count}x)</Button>
       </Modal.Footer>
     </Modal>

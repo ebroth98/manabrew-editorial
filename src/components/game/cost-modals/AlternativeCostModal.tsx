@@ -11,7 +11,11 @@ interface AlternativeCostModalProps {
   onDecide: (chosenIndex: number) => void;
 }
 
-export function AlternativeCostModal({ options, sourceCardName, onDecide }: AlternativeCostModalProps) {
+export function AlternativeCostModal({
+  options,
+  sourceCardName,
+  onDecide,
+}: AlternativeCostModalProps) {
   const { data: imageUrl } = useCardImage(sourceCardName ?? "");
   return (
     <Modal maxWidth="max-w-md" maxHeight="">

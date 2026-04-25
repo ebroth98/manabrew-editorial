@@ -29,7 +29,14 @@ interface ModalProps {
  *
  * Use the compound sub-components (Modal.Header, Modal.Body, etc.) for consistent layout.
  */
-export function Modal({ children, onClose, maxWidth = "max-w-2xl", maxHeight = "max-h-[80vh]", className, backdropClassName }: ModalProps) {
+export function Modal({
+  children,
+  onClose,
+  maxWidth = "max-w-2xl",
+  maxHeight = "max-h-[80vh]",
+  className,
+  backdropClassName,
+}: ModalProps) {
   const promptChrome = useContext(PromptModalChromeContext);
 
   useEffect(() => {
@@ -43,7 +50,10 @@ export function Modal({ children, onClose, maxWidth = "max-w-2xl", maxHeight = "
 
   return createPortal(
     <div
-      className={cn("fixed inset-0 z-[9000] flex items-center justify-center bg-black/60 backdrop-blur-sm", backdropClassName)}
+      className={cn(
+        "fixed inset-0 z-[9000] flex items-center justify-center bg-black/60 backdrop-blur-sm",
+        backdropClassName,
+      )}
       onClick={onClose}
     >
       <div
@@ -107,14 +117,11 @@ function ModalInstructions({ children, className }: ModalInstructionsProps) {
   const infoColor = themeColors.promptAction.defenseAction;
 
   return (
-    <div 
+    <div
       className={cn("px-4 py-2 border-b", className)}
       style={{ backgroundColor: withAlpha(infoColor, 0.08) }}
     >
-      <p 
-        className="text-sm font-semibold text-center"
-        style={{ color: infoColor }}
-      >
+      <p className="text-sm font-semibold text-center" style={{ color: infoColor }}>
         {children}
       </p>
     </div>
@@ -127,11 +134,7 @@ interface ModalBodyProps {
 }
 
 function ModalBody({ children, className }: ModalBodyProps) {
-  return (
-    <div className={cn("overflow-y-auto p-4 flex-1", className)}>
-      {children}
-    </div>
-  );
+  return <div className={cn("overflow-y-auto p-4 flex-1", className)}>{children}</div>;
 }
 
 interface ModalFooterProps {
@@ -152,9 +155,7 @@ interface ModalEmptyStateProps {
 }
 
 function ModalEmptyState({ message = "No cards" }: ModalEmptyStateProps) {
-  return (
-    <p className="text-sm text-muted-foreground italic text-center py-8">{message}</p>
-  );
+  return <p className="text-sm text-muted-foreground italic text-center py-8">{message}</p>;
 }
 
 Modal.Header = ModalHeader;

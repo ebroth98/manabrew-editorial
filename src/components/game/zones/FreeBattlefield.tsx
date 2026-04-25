@@ -8,10 +8,7 @@ import { CARD_RING, BATTLEFIELD_CARD } from "../game.styles";
 import { withAlpha } from "@/themes/gameTheme";
 import { useTheme } from "@/hooks/useTheme";
 import { useBattlefieldLayout } from "@/hooks/useBattlefieldLayout";
-import {
-  extractManaLetters,
-  getExpandedManaAbilities,
-} from "@/components/game/manaUtils";
+import { extractManaLetters, getExpandedManaAbilities } from "@/components/game/manaUtils";
 import { ManaAbilityTapButton } from "./ManaAbilityTapButton";
 
 const ATTACH_OFFSET_Y = 16;
@@ -28,7 +25,11 @@ interface FreeBattlefieldProps {
   onClickCard?: (card: XMageCard) => void;
   actionableCardIds?: string[];
   onClickAnyCard?: (card: XMageCard) => void;
-  onHoverCard?: (card: XMageCard | null, e?: React.MouseEvent, options?: { useAnchor?: boolean; placement?: "auto" | "top-center"; anchorOverride?: DOMRect }) => void;
+  onHoverCard?: (
+    card: XMageCard | null,
+    e?: React.MouseEvent,
+    options?: { useAnchor?: boolean; placement?: "auto" | "top-center"; anchorOverride?: DOMRect },
+  ) => void;
   onFlipCard?: () => void;
   showBackFace?: boolean;
   pendingCardIds?: string[];
@@ -118,10 +119,17 @@ export function FreeBattlefield({
     marqueeRect,
     handleCardMouseDown,
     handleContainerMouseDown,
-  } = useBattlefieldLayout({ cardIds: topLevelIds, bottomReserved, leftReserved, rightReserved, landCardIds });
+  } = useBattlefieldLayout({
+    cardIds: topLevelIds,
+    bottomReserved,
+    leftReserved,
+    rightReserved,
+    landCardIds,
+  });
 
   const expandedManaByCard = useMemo(() => {
-    if (!tappableLandIds?.length || !manaAbilityOptions?.length) return new Map<string, ActivatableAbilityInfo[]>();
+    if (!tappableLandIds?.length || !manaAbilityOptions?.length)
+      return new Map<string, ActivatableAbilityInfo[]>();
     const map = new Map<string, ActivatableAbilityInfo[]>();
     for (const id of tappableLandIds) {
       map.set(id, getExpandedManaAbilities(id, manaAbilityOptions));
@@ -130,10 +138,7 @@ export function FreeBattlefield({
   }, [tappableLandIds, manaAbilityOptions]);
 
   const isDraggingAnyCard = draggingCardIds.size > 0;
-  const actionableCardIdSet = useMemo(
-    () => new Set(actionableCardIds ?? []),
-    [actionableCardIds],
-  );
+  const actionableCardIdSet = useMemo(() => new Set(actionableCardIds ?? []), [actionableCardIds]);
 
   const onHoverCardRef = useRef(onHoverCard);
   onHoverCardRef.current = onHoverCard;
@@ -179,7 +184,9 @@ export function FreeBattlefield({
             : isUntappable
               ? themeColors.promptAction.cancel
               : isChoosableClick
-                ? (hostileTargeting ? themeColors.arrow.hostileTarget : themeColors.cardRing)
+                ? hostileTargeting
+                  ? themeColors.arrow.hostileTarget
+                  : themeColors.cardRing
                 : null;
 
     /** Render a TAP or UNTAP overlay with multi-selection support. */
@@ -199,7 +206,10 @@ export function FreeBattlefield({
           if (justDraggedCardIds.has(c.id)) return;
           if (selectedCardIds.has(c.id) && selectedCardIds.size > 1 && onBatch) {
             const batchIds = [...selectedCardIds].filter((id) => validIds?.includes(id));
-            if (batchIds.length > 1) { onBatch(batchIds); return; }
+            if (batchIds.length > 1) {
+              onBatch(batchIds);
+              return;
+            }
           }
           onSingle(c);
         }}
@@ -249,61 +259,89 @@ export function FreeBattlefield({
             !isSelected && isTappable && !isAttacking && CARD_RING.tappable,
             !isSelected && isUntappable && !isAttacking && !isTappable && CARD_RING.untappable,
           )}
-          style={ringColor ? ({
-            "--tw-ring-color": ringColor,
-            ...(isChoosableClick ? {
-              "--choosable-ring-color": ringColor,
-              "--choosable-glow-color": withAlpha(ringColor, 0.3),
-            } : {}),
-          } as React.CSSProperties) : undefined}
+          style={
+            ringColor
+              ? ({
+                  "--tw-ring-color": ringColor,
+                  ...(isChoosableClick
+                    ? {
+                        "--choosable-ring-color": ringColor,
+                        "--choosable-glow-color": withAlpha(ringColor, 0.3),
+                      }
+                    : {}),
+                } as React.CSSProperties)
+              : undefined
+          }
         />
 
-        {isTappable && onTapLand && (() => {
-          const expanded = expandedManaByCard.get(card.id) ?? [];
-          if (expanded.length > 1 && onTapLandAbility) {
-            const isGrid = expanded.length > 2;
-            return (
-              <div
-                className={cn(
-                  "absolute inset-0 z-20 overflow-hidden rounded-lg opacity-0 group-hover:opacity-100 transition-opacity",
-                  isGrid ? "grid grid-cols-2 items-stretch" : "flex items-stretch justify-center",
-                )}
-              >
-                {expanded.map((ab, idx) => {
-                  const isLast = idx === expanded.length - 1;
-                  const isOdd = expanded.length % 2 !== 0;
-                  const shouldSpan = isGrid && isLast && isOdd;
-                  return (
-                    <ManaAbilityTapButton
-                      key={`${ab.abilityIndex}-${idx}`}
-                      description={ab.description}
-                      small={isGrid}
-                      className={shouldSpan ? "col-span-2" : ""}
-                      onClick={() => {
-                        if (justDraggedCardIds.has(card.id)) return;
-                        const letters = extractManaLetters(ab.description);
-                        onTapLandAbility(card.id, ab.abilityIndex, letters[0]);
-                      }}
-                    />
-                  );
-                })}
-              </div>
+        {isTappable &&
+          onTapLand &&
+          (() => {
+            const expanded = expandedManaByCard.get(card.id) ?? [];
+            if (expanded.length > 1 && onTapLandAbility) {
+              const isGrid = expanded.length > 2;
+              return (
+                <div
+                  className={cn(
+                    "absolute inset-0 z-20 overflow-hidden rounded-lg opacity-0 group-hover:opacity-100 transition-opacity",
+                    isGrid ? "grid grid-cols-2 items-stretch" : "flex items-stretch justify-center",
+                  )}
+                >
+                  {expanded.map((ab, idx) => {
+                    const isLast = idx === expanded.length - 1;
+                    const isOdd = expanded.length % 2 !== 0;
+                    const shouldSpan = isGrid && isLast && isOdd;
+                    return (
+                      <ManaAbilityTapButton
+                        key={`${ab.abilityIndex}-${idx}`}
+                        description={ab.description}
+                        small={isGrid}
+                        className={shouldSpan ? "col-span-2" : ""}
+                        onClick={() => {
+                          if (justDraggedCardIds.has(card.id)) return;
+                          const letters = extractManaLetters(ab.description);
+                          onTapLandAbility(card.id, ab.abilityIndex, letters[0]);
+                        }}
+                      />
+                    );
+                  })}
+                </div>
+              );
+            }
+            return renderLandOverlay(
+              card,
+              "tap",
+              "TAP",
+              tappableLandIds,
+              onTapLand,
+              onTapLands,
+              (name) => `Tap ${name} for mana`,
             );
-          }
-          return renderLandOverlay(
-            card, "tap", "TAP", tappableLandIds, onTapLand, onTapLands,
-            (name) => `Tap ${name} for mana`,
-          );
-        })()}
+          })()}
 
-        {isUntappable && onUntapLand && renderLandOverlay(
-          card, "untap", "UNTAP", untappableLandIds, onUntapLand, onUntapLands,
-          (name) => `Untap ${name} (undo mana)`,
-        )}
+        {isUntappable &&
+          onUntapLand &&
+          renderLandOverlay(
+            card,
+            "untap",
+            "UNTAP",
+            untappableLandIds,
+            onUntapLand,
+            onUntapLands,
+            (name) => `Untap ${name} (undo mana)`,
+          )}
 
         {!isTappable && isChoosableClick && (
           <CardOverlayButton
-            variant={isPending ? "pending" : isAttacking ? "attacking" : hostileTargeting ? "choosable-hostile" : "choosable"}
+            variant={
+              isPending
+                ? "pending"
+                : isAttacking
+                  ? "attacking"
+                  : hostileTargeting
+                    ? "choosable-hostile"
+                    : "choosable"
+            }
             onClick={() => {
               if (justDraggedCardIds.has(card.id)) return;
               if ((card.isChoosable || isActionable) && onClickCard) onClickCard(card);
@@ -382,55 +420,57 @@ export function FreeBattlefield({
           );
         })}
 
-        {placementGhost && containerRef.current && (() => {
-          const cw = containerRef.current!.clientWidth;
-          const usableW = cw - leftReserved - rightReserved;
-          const cols = Math.max(1, Math.floor((usableW + GAP) / (CARD_W + GAP)));
-          const xMin = Math.max(0, leftReserved);
-          const xMax = Math.max(xMin, cw - CARD_W - Math.max(0, rightReserved));
+        {placementGhost &&
+          containerRef.current &&
+          (() => {
+            const cw = containerRef.current!.clientWidth;
+            const usableW = cw - leftReserved - rightReserved;
+            const cols = Math.max(1, Math.floor((usableW + GAP) / (CARD_W + GAP)));
+            const xMin = Math.max(0, leftReserved);
+            const xMax = Math.max(xMin, cw - CARD_W - Math.max(0, rightReserved));
 
-          const isOccupied = (x: number, y: number) => {
-            return Object.values(positions as any).some((pos: any) => {
-              return (
-                x < pos.x + CARD_W + GAP / 2 &&
-                x + CARD_W + GAP / 2 > pos.x &&
-                y < pos.y + CARD_H + GAP / 2 &&
-                y + CARD_H + GAP / 2 > pos.y
-              );
-            });
-          };
+            const isOccupied = (x: number, y: number) => {
+              return Object.values(positions as any).some((pos: any) => {
+                return (
+                  x < pos.x + CARD_W + GAP / 2 &&
+                  x + CARD_W + GAP / 2 > pos.x &&
+                  y < pos.y + CARD_H + GAP / 2 &&
+                  y + CARD_H + GAP / 2 > pos.y
+                );
+              });
+            };
 
-          let slot = 0;
-          let ghostX = 0;
-          let ghostY = 0;
-          while (true) {
-            ghostX = Math.min(xMax, xMin + (slot % cols) * (CARD_W + GAP) + GAP);
-            ghostY = Math.floor(slot / cols) * (CARD_H + GAP) + GAP;
-            if (!isOccupied(ghostX, ghostY) || slot > 200) break;
-            slot++;
-          }
-          return (
-            <div
-              data-placement-ghost
-              className="absolute pointer-events-none border-2 border-dashed rounded-lg"
-              style={{
-                left: ghostX,
-                top: ghostY,
-                width: CARD_W,
-                height: CARD_H,
-                borderColor: withAlpha(themeColors.activeAction.active, 0.55),
-                backgroundColor: withAlpha(themeColors.activeAction.active, 0.08),
-              }}
-            >
-              <span
-                className="absolute inset-0 flex items-center justify-center text-[9px] font-medium text-center px-1 leading-tight"
-                style={{ color: withAlpha(themeColors.activeAction.active, 0.7) }}
+            let slot = 0;
+            let ghostX = 0;
+            let ghostY = 0;
+            while (true) {
+              ghostX = Math.min(xMax, xMin + (slot % cols) * (CARD_W + GAP) + GAP);
+              ghostY = Math.floor(slot / cols) * (CARD_H + GAP) + GAP;
+              if (!isOccupied(ghostX, ghostY) || slot > 200) break;
+              slot++;
+            }
+            return (
+              <div
+                data-placement-ghost
+                className="absolute pointer-events-none border-2 border-dashed rounded-lg"
+                style={{
+                  left: ghostX,
+                  top: ghostY,
+                  width: CARD_W,
+                  height: CARD_H,
+                  borderColor: withAlpha(themeColors.activeAction.active, 0.55),
+                  backgroundColor: withAlpha(themeColors.activeAction.active, 0.08),
+                }}
               >
-                {placementGhost.cardName}
-              </span>
-            </div>
-          );
-        })()}
+                <span
+                  className="absolute inset-0 flex items-center justify-center text-[9px] font-medium text-center px-1 leading-tight"
+                  style={{ color: withAlpha(themeColors.activeAction.active, 0.7) }}
+                >
+                  {placementGhost.cardName}
+                </span>
+              </div>
+            );
+          })()}
 
         {marqueeRect && (
           <div

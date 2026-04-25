@@ -231,10 +231,7 @@ export function HandDisplayCool({
 
   const containerWidth = Math.max(
     cardW + 40,
-    (positions[positions.length - 1]?.x ?? 0) -
-      (positions[0]?.x ?? 0) +
-      cardW +
-      80,
+    (positions[positions.length - 1]?.x ?? 0) - (positions[0]?.x ?? 0) + cardW + 80,
   );
 
   return (
@@ -249,8 +246,7 @@ export function HandDisplayCool({
         {cards.map((card, idx) => {
           const pos = positions[idx];
           const isHov = hoveredId === card.id;
-          const isSelected =
-            !!selectionMode && (selectedIds?.has(card.id) ?? false);
+          const isSelected = !!selectionMode && (selectedIds?.has(card.id) ?? false);
 
           let pushX = 0;
           if (hovIdx >= 0 && idx !== hovIdx) {
@@ -259,10 +255,7 @@ export function HandDisplayCool({
             pushX = sign * Math.max(0, neighborPush - dist * 6);
           }
 
-          const isCasting =
-            !selectionMode &&
-            castingCardId != null &&
-            card.id === castingCardId;
+          const isCasting = !selectionMode && castingCardId != null && card.id === castingCardId;
           const isTugging = !selectionMode && tugId === card.id;
 
           // Use actual width/height changes instead of CSS scale() so the
@@ -276,26 +269,15 @@ export function HandDisplayCool({
           // Selected mulligan cards drop below the arc and straighten out
           // so it's obvious they're "going away". The offset scales with
           // vScale so it tracks the chosen hand size.
-          const selectionDrop = isSelected
-            ? Math.round(MULLIGAN_SELECTED_DROP_PX * vScale)
-            : 0;
+          const selectionDrop = isSelected ? Math.round(MULLIGAN_SELECTED_DROP_PX * vScale) : 0;
           const tx = Math.round(pos.x + pushX + (isTugging ? tugOffset.x : 0));
           const translateY = Math.round(
-            (isHov ? -hoverLift : pos.drop) +
-              (isTugging ? tugOffset.y : 0) +
-              selectionDrop,
+            (isHov ? -hoverLift : pos.drop) + (isTugging ? tugOffset.y : 0) + selectionDrop,
           );
           const rot = isHov || isSelected ? 0 : pos.rot;
-          const z = isTugging
-            ? 100
-            : isHov
-              ? 100
-              : isSelected
-                ? 5
-                : idx + 1;
+          const z = isTugging ? 100 : isHov ? 100 : isSelected ? 5 : idx + 1;
 
-          const actions =
-            !selectionMode && isHov && getActions ? getActions(card) : [];
+          const actions = !selectionMode && isHov && getActions ? getActions(card) : [];
 
           return (
             <div
@@ -305,9 +287,7 @@ export function HandDisplayCool({
                 "absolute isolate pointer-events-none",
                 !selectionMode && card.isPlayable && "cursor-grab",
                 selectionMode && "cursor-pointer",
-                !selectionMode &&
-                  (card.id === draggingCardId || isCasting) &&
-                  "opacity-0",
+                !selectionMode && (card.id === draggingCardId || isCasting) && "opacity-0",
               )}
               style={{
                 left: "50%",
@@ -344,27 +324,27 @@ export function HandDisplayCool({
                   className={cn(
                     "shadow-md !bg-card",
                     isHov && !isSelected && "shadow-xl shadow-black/40",
-                    !selectionMode &&
-                      card.isPlayable &&
-                      cn("playable-card", isHov && "is-hovered"),
+                    !selectionMode && card.isPlayable && cn("playable-card", isHov && "is-hovered"),
                     rejectedId === card.id && "animate-reject-flash",
                     isSelected && "opacity-85",
                   )}
-                  style={{
-                    width: curW,
-                    height: curH,
-                    ...(isSelected && {
-                      // Mulligan-rejected ring + glow — derived from the
-                      // theme's hostile-pointer colour via the CSS var
-                      // that `useTheme` writes on :root. `color-mix`
-                      // lets us apply a percent-alpha without parsing
-                      // the rgba string ourselves.
-                      outline: "2px solid var(--pointer-hostile)",
-                      outlineOffset: "0px",
-                      boxShadow:
-                        "0 12px 28px color-mix(in srgb, var(--pointer-hostile) 35%, transparent)",
-                    }),
-                  } as React.CSSProperties}
+                  style={
+                    {
+                      width: curW,
+                      height: curH,
+                      ...(isSelected && {
+                        // Mulligan-rejected ring + glow — derived from the
+                        // theme's hostile-pointer colour via the CSS var
+                        // that `useTheme` writes on :root. `color-mix`
+                        // lets us apply a percent-alpha without parsing
+                        // the rgba string ourselves.
+                        outline: "2px solid var(--pointer-hostile)",
+                        outlineOffset: "0px",
+                        boxShadow:
+                          "0 12px 28px color-mix(in srgb, var(--pointer-hostile) 35%, transparent)",
+                      }),
+                    } as React.CSSProperties
+                  }
                   isHovered={isHov}
                   onFlip={onFlipCard}
                   showBackFace={showBackFace}
@@ -372,9 +352,7 @@ export function HandDisplayCool({
                 />
 
                 {isSelected && (
-                  <div
-                    className="absolute left-1/2 -bottom-3 -translate-x-1/2 whitespace-nowrap rounded-full bg-pointer-hostile text-text-on-tinted text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 shadow-lg pointer-events-none"
-                  >
+                  <div className="absolute left-1/2 -bottom-3 -translate-x-1/2 whitespace-nowrap rounded-full bg-pointer-hostile text-text-on-tinted text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 shadow-lg pointer-events-none">
                     → Library bottom
                   </div>
                 )}
@@ -402,10 +380,7 @@ export function HandDisplayCool({
                     />
 
                     <div style={{ paddingLeft: 10 }}>
-                      <HandCardActions
-                        actions={actions}
-                        onSelectAction={onSelectAction}
-                      />
+                      <HandCardActions actions={actions} onSelectAction={onSelectAction} />
                     </div>
                   </div>
                 )}

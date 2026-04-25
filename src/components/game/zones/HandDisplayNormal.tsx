@@ -49,99 +49,128 @@ interface HandCardItemProps {
   onMouseLeave: () => void;
 }
 
-const HandCardItem = memo(function HandCardItem({
-  card, cardW, cardH, isHovered, isTugging, tugOffset,
-  isCasting, isDragging, isRejected, actions,
-  onFlipCard, showBackFace, onSelectAction,
-  onMouseDown, onMouseEnter, onMouseLeave,
-}: HandCardItemProps) {
-  const scale = isHovered ? HOVER_SCALE : 1;
+const HandCardItem = memo(
+  function HandCardItem({
+    card,
+    cardW,
+    cardH,
+    isHovered,
+    isTugging,
+    tugOffset,
+    isCasting,
+    isDragging,
+    isRejected,
+    actions,
+    onFlipCard,
+    showBackFace,
+    onSelectAction,
+    onMouseDown,
+    onMouseEnter,
+    onMouseLeave,
+  }: HandCardItemProps) {
+    const scale = isHovered ? HOVER_SCALE : 1;
 
-  return (
-    <div
-      className={cn(
-        "relative group shrink-0",
-        !isTugging && "transition-[transform,z-index] duration-250 ease-[cubic-bezier(0.23,0.63,0.32,1)]",
-        isHovered && !isTugging && "-translate-y-3 z-30",
-        card.isPlayable && "cursor-grab",
-        (isDragging || isCasting) && "opacity-0",
-      )}
-      style={{
-        width: cardW,
-        height: cardH,
-        ...(isTugging ? { transform: `translate(${tugOffset.x}px, ${tugOffset.y}px)`, zIndex: 100 } : {}),
-      }}
-      onMouseDown={(e) => onMouseDown(card, e)}
-      onMouseEnter={(e) => onMouseEnter(card, e)}
-      onMouseLeave={onMouseLeave}
-    >
-      <div className="w-full h-full relative" style={isHovered ? CARD_SCALE_HOVERED : CARD_SCALE_DEFAULT}>
-        <Card
-          card={card}
-          className={cn(
-            "w-full h-full",
-            card.isPlayable && cn("playable-card", isHovered && "is-hovered"),
-            isRejected && "animate-reject-flash",
-          )}
-          isHovered={isHovered}
-          onFlip={onFlipCard}
-          showBackFace={showBackFace}
-          resolution="large"
-        />
-        {card.isPlayable && (
-          <div
-            className="absolute inset-0 z-20 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none"
-            style={PLAYABLE_GLOW_STYLE}
-            title={`Play ${card.name}`}
-          />
+    return (
+      <div
+        className={cn(
+          "relative group shrink-0",
+          !isTugging &&
+            "transition-[transform,z-index] duration-250 ease-[cubic-bezier(0.23,0.63,0.32,1)]",
+          isHovered && !isTugging && "-translate-y-3 z-30",
+          card.isPlayable && "cursor-grab",
+          (isDragging || isCasting) && "opacity-0",
         )}
+        style={{
+          width: cardW,
+          height: cardH,
+          ...(isTugging
+            ? { transform: `translate(${tugOffset.x}px, ${tugOffset.y}px)`, zIndex: 100 }
+            : {}),
+        }}
+        onMouseDown={(e) => onMouseDown(card, e)}
+        onMouseEnter={(e) => onMouseEnter(card, e)}
+        onMouseLeave={onMouseLeave}
+      >
+        <div
+          className="w-full h-full relative"
+          style={isHovered ? CARD_SCALE_HOVERED : CARD_SCALE_DEFAULT}
+        >
+          <Card
+            card={card}
+            className={cn(
+              "w-full h-full",
+              card.isPlayable && cn("playable-card", isHovered && "is-hovered"),
+              isRejected && "animate-reject-flash",
+            )}
+            isHovered={isHovered}
+            onFlip={onFlipCard}
+            showBackFace={showBackFace}
+            resolution="large"
+          />
+          {card.isPlayable && (
+            <div
+              className="absolute inset-0 z-20 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none"
+              style={PLAYABLE_GLOW_STYLE}
+              title={`Play ${card.name}`}
+            />
+          )}
 
-        {isHovered && actions.length > 0 && onSelectAction && (
-          <div style={{
-            position: "absolute",
-            top: 0,
-            left: "100%",
-            transform: `scale(${1 / scale})`,
-            transformOrigin: "top left",
-          }}>
+          {isHovered && actions.length > 0 && onSelectAction && (
             <div
               style={{
                 position: "absolute",
                 top: 0,
-                left: -cardW * scale,
-                width: cardW * scale + 24 + 220,
-                height: cardH * scale,
-                backgroundColor: "transparent",
-                borderBottomRightRadius: "100%",
-                zIndex: -1,
+                left: "100%",
+                transform: `scale(${1 / scale})`,
+                transformOrigin: "top left",
               }}
-            />
-            <div style={{ paddingLeft: 24 }}>
-              <HandCardActions
-                actions={actions}
-                onSelectAction={onSelectAction}
+            >
+              <div
+                style={{
+                  position: "absolute",
+                  top: 0,
+                  left: -cardW * scale,
+                  width: cardW * scale + 24 + 220,
+                  height: cardH * scale,
+                  backgroundColor: "transparent",
+                  borderBottomRightRadius: "100%",
+                  zIndex: -1,
+                }}
               />
+              <div style={{ paddingLeft: 24 }}>
+                <HandCardActions actions={actions} onSelectAction={onSelectAction} />
+              </div>
             </div>
-          </div>
-        )}
+          )}
+        </div>
       </div>
-    </div>
-  );
-}, (prev, next) => {
-  if (prev.isHovered !== next.isHovered || prev.isTugging !== next.isTugging ||
-      prev.isCasting !== next.isCasting || prev.isDragging !== next.isDragging ||
+    );
+  },
+  (prev, next) => {
+    if (
+      prev.isHovered !== next.isHovered ||
+      prev.isTugging !== next.isTugging ||
+      prev.isCasting !== next.isCasting ||
+      prev.isDragging !== next.isDragging ||
       prev.isRejected !== next.isRejected ||
-      prev.cardW !== next.cardW || prev.cardH !== next.cardH ||
-      prev.onMouseDown !== next.onMouseDown || prev.onMouseEnter !== next.onMouseEnter ||
+      prev.cardW !== next.cardW ||
+      prev.cardH !== next.cardH ||
+      prev.onMouseDown !== next.onMouseDown ||
+      prev.onMouseEnter !== next.onMouseEnter ||
       prev.onMouseLeave !== next.onMouseLeave ||
-      prev.onFlipCard !== next.onFlipCard || prev.showBackFace !== next.showBackFace ||
-      prev.onSelectAction !== next.onSelectAction) return false;
-  if (prev.isTugging && prev.tugOffset !== next.tugOffset) return false;
-  if (prev.isHovered && prev.actions.length !== next.actions.length) return false;
-  const pc = prev.card, nc = next.card;
-  if (pc === nc) return true;
-  return pc.id === nc.id && pc.isPlayable === nc.isPlayable && pc.name === nc.name;
-});
+      prev.onFlipCard !== next.onFlipCard ||
+      prev.showBackFace !== next.showBackFace ||
+      prev.onSelectAction !== next.onSelectAction
+    )
+      return false;
+    if (prev.isTugging && prev.tugOffset !== next.tugOffset) return false;
+    if (prev.isHovered && prev.actions.length !== next.actions.length) return false;
+    const pc = prev.card,
+      nc = next.card;
+    if (pc === nc) return true;
+    return pc.id === nc.id && pc.isPlayable === nc.isPlayable && pc.name === nc.name;
+  },
+);
 
 export function HandDisplayNormal({
   cards,
@@ -173,36 +202,39 @@ export function HandDisplayNormal({
   const [tugId, setTugId] = useState<string | null>(null);
   const [tugOffset, setTugOffset] = useState({ x: 0, y: 0 });
 
-  const startTug = useCallback((cardId: string, startX: number, startY: number) => {
-    setTugId(cardId);
-    setTugOffset({ x: 0, y: 0 });
+  const startTug = useCallback(
+    (cardId: string, startX: number, startY: number) => {
+      setTugId(cardId);
+      setTugOffset({ x: 0, y: 0 });
 
-    const onMove = (me: MouseEvent) => {
-      const dx = me.clientX - startX;
-      const dy = me.clientY - startY;
-      const dist = Math.sqrt(dx * dx + dy * dy);
-      if (dist > TUG_LIMIT) {
+      const onMove = (me: MouseEvent) => {
+        const dx = me.clientX - startX;
+        const dy = me.clientY - startY;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist > TUG_LIMIT) {
+          document.removeEventListener("mousemove", onMove);
+          document.removeEventListener("mouseup", onUp);
+          setTugId(null);
+          setTugOffset({ x: 0, y: 0 });
+          rejectCard(cardId);
+        } else {
+          setTugOffset({ x: dx, y: dy });
+        }
+      };
+
+      const onUp = () => {
         document.removeEventListener("mousemove", onMove);
         document.removeEventListener("mouseup", onUp);
         setTugId(null);
         setTugOffset({ x: 0, y: 0 });
         rejectCard(cardId);
-      } else {
-        setTugOffset({ x: dx, y: dy });
-      }
-    };
+      };
 
-    const onUp = () => {
-      document.removeEventListener("mousemove", onMove);
-      document.removeEventListener("mouseup", onUp);
-      setTugId(null);
-      setTugOffset({ x: 0, y: 0 });
-      rejectCard(cardId);
-    };
-
-    document.addEventListener("mousemove", onMove);
-    document.addEventListener("mouseup", onUp);
-  }, [rejectCard]);
+      document.addEventListener("mousemove", onMove);
+      document.addEventListener("mouseup", onUp);
+    },
+    [rejectCard],
+  );
 
   const [hoveredCardId, setHoveredCardId] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -216,40 +248,46 @@ export function HandDisplayNormal({
   const onHoverCardRef = useRef(onHoverCard);
   onHoverCardRef.current = onHoverCard;
 
-  const handleCardMouseDown = useCallback((card: XMageCard, e: React.MouseEvent) => {
-    e.preventDefault();
-    if (card.isPlayable && onStartDragRef.current) {
-      onStartDragRef.current(card, e);
-    } else if (card.isPlayable) {
-      onClickCardRef.current?.(card, e);
-    } else {
-      startTug(card.id, e.clientX, e.clientY);
-    }
-  }, [startTug]);
+  const handleCardMouseDown = useCallback(
+    (card: XMageCard, e: React.MouseEvent) => {
+      e.preventDefault();
+      if (card.isPlayable && onStartDragRef.current) {
+        onStartDragRef.current(card, e);
+      } else if (card.isPlayable) {
+        onClickCardRef.current?.(card, e);
+      } else {
+        startTug(card.id, e.clientX, e.clientY);
+      }
+    },
+    [startTug],
+  );
 
-  const handleCardMouseEnter = useCallback((card: XMageCard, e: React.MouseEvent) => {
-    clearTimeout(hideTimerRef.current);
-    setHoveredCardId(card.id);
-    const el = e.currentTarget as HTMLElement;
-    const rect = el.getBoundingClientRect();
-    const finalTop = rect.top - 12 - (cardH * HOVER_SCALE - cardH);
+  const handleCardMouseEnter = useCallback(
+    (card: XMageCard, e: React.MouseEvent) => {
+      clearTimeout(hideTimerRef.current);
+      setHoveredCardId(card.id);
+      const el = e.currentTarget as HTMLElement;
+      const rect = el.getBoundingClientRect();
+      const finalTop = rect.top - 12 - (cardH * HOVER_SCALE - cardH);
 
-    onHoverCardRef.current?.(card, e, {
-      useAnchor: true,
-      placement: "top-center",
-      anchorOverride: {
-        left: rect.left,
-        right: rect.right,
-        top: finalTop,
-        bottom: finalTop + cardH * HOVER_SCALE,
-        width: cardW * HOVER_SCALE,
-        height: cardH * HOVER_SCALE,
-        x: rect.left,
-        y: finalTop,
-        toJSON: () => ({})
-      } as DOMRect,
-    });
-  }, [cardW, cardH]);
+      onHoverCardRef.current?.(card, e, {
+        useAnchor: true,
+        placement: "top-center",
+        anchorOverride: {
+          left: rect.left,
+          right: rect.right,
+          top: finalTop,
+          bottom: finalTop + cardH * HOVER_SCALE,
+          width: cardW * HOVER_SCALE,
+          height: cardH * HOVER_SCALE,
+          x: rect.left,
+          y: finalTop,
+          toJSON: () => ({}),
+        } as DOMRect,
+      });
+    },
+    [cardW, cardH],
+  );
 
   const handleCardMouseLeave = useCallback(() => {
     hideTimerRef.current = setTimeout(() => {

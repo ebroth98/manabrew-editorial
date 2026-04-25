@@ -165,38 +165,37 @@ export function PixiGameCanvas({
       return;
     }
 
-    const newScene = new PixiGameScene(app, {
-      // scene callbacks follow — the construction-time options are the
-      // third argument below.
-      onClickCard: (...args) => callbacksRef.current.onClickCard?.(...args),
-      onHoverCard: (...args) => callbacksRef.current.onHoverCard?.(...args),
-      onClickAnyCard: (...args) =>
-        callbacksRef.current.onClickAnyCard?.(...args),
-      onFlipCard: () => callbacksRef.current.onFlipCard?.(),
-      onTapLand: (...args) => callbacksRef.current.onTapLand?.(...args),
-      onTapLands: (...args) => callbacksRef.current.onTapLands?.(...args),
-      onUntapLand: (...args) => callbacksRef.current.onUntapLand?.(...args),
-      onUntapLands: (...args) => callbacksRef.current.onUntapLands?.(...args),
-      onTapLandAbility: (...args) =>
-        callbacksRef.current.onTapLandAbility?.(...args),
-      onAttackerClick: (...args) =>
-        callbacksRef.current.onAttackerClick?.(...args),
-      onTargetPlayer: (...args) =>
-        callbacksRef.current.onTargetPlayer?.(...args),
-      onStartDrag: (...args) => callbacksRef.current.onStartDrag?.(...args),
-      onClickCard_Hand: (...args) =>
-        callbacksRef.current.onClickCard_Hand?.(...args),
-      onCastSpell: (...args) => callbacksRef.current.onCastSpell?.(...args),
-      onDismissHoverPreview: () => callbacksRef.current.onDismissHoverPreview?.(),
-      onHoverHandCard: (card, bounds) => {
-        if (card && bounds) {
-          cancelHandHoverClear();
-          setHandHover({ card, bounds });
-        } else {
-          scheduleHandHoverClear();
-        }
+    const newScene = new PixiGameScene(
+      app,
+      {
+        // scene callbacks follow — the construction-time options are the
+        // third argument below.
+        onClickCard: (...args) => callbacksRef.current.onClickCard?.(...args),
+        onHoverCard: (...args) => callbacksRef.current.onHoverCard?.(...args),
+        onClickAnyCard: (...args) => callbacksRef.current.onClickAnyCard?.(...args),
+        onFlipCard: () => callbacksRef.current.onFlipCard?.(),
+        onTapLand: (...args) => callbacksRef.current.onTapLand?.(...args),
+        onTapLands: (...args) => callbacksRef.current.onTapLands?.(...args),
+        onUntapLand: (...args) => callbacksRef.current.onUntapLand?.(...args),
+        onUntapLands: (...args) => callbacksRef.current.onUntapLands?.(...args),
+        onTapLandAbility: (...args) => callbacksRef.current.onTapLandAbility?.(...args),
+        onAttackerClick: (...args) => callbacksRef.current.onAttackerClick?.(...args),
+        onTargetPlayer: (...args) => callbacksRef.current.onTargetPlayer?.(...args),
+        onStartDrag: (...args) => callbacksRef.current.onStartDrag?.(...args),
+        onClickCard_Hand: (...args) => callbacksRef.current.onClickCard_Hand?.(...args),
+        onCastSpell: (...args) => callbacksRef.current.onCastSpell?.(...args),
+        onDismissHoverPreview: () => callbacksRef.current.onDismissHoverPreview?.(),
+        onHoverHandCard: (card, bounds) => {
+          if (card && bounds) {
+            cancelHandHoverClear();
+            setHandHover({ card, bounds });
+          } else {
+            scheduleHandHoverClear();
+          }
+        },
       },
-    }, sceneOptionsRef.current);
+      sceneOptionsRef.current,
+    );
 
     const themeColors = getTheme();
     setPixiTextStyleTheme(themeColors);
@@ -335,32 +334,27 @@ export function PixiGameCanvas({
       // The Pixi app may already have been destroyed by the time this
       // cleanup fires (e.g. on game-over → unmount). Guard defensively.
       if (!scene.isDestroyed && app.ticker) {
-        try { app.ticker.remove(sample); } catch { /* ticker gone */ }
+        try {
+          app.ticker.remove(sample);
+        } catch {
+          /* ticker gone */
+        }
       }
       setPixiPerfStats(null);
     };
   }, [scene]);
 
-  const handActions =
-    handHover && getHandActions ? getHandActions(handHover.card) : [];
-  const showActionPanel =
-    handHover && handActions.length > 0 && !!onSelectHandAction;
+  const handActions = handHover && getHandActions ? getHandActions(handHover.card) : [];
+  const showActionPanel = handHover && handActions.length > 0 && !!onSelectHandAction;
 
   return (
-    <div
-      className={className}
-      style={{ position: "relative", width: "100%", height: "100%" }}
-    >
-      <canvas
-        ref={canvasRef}
-        style={{ width: "100%", height: "100%", display: "block" }}
-      />
+    <div className={className} style={{ position: "relative", width: "100%", height: "100%" }}>
+      <canvas ref={canvasRef} style={{ width: "100%", height: "100%", display: "block" }} />
       {showActionPanel && (
         <div
           style={{
             position: "absolute",
-            left:
-              handHover.bounds.x + handHover.bounds.width + HAND_ACTIONS_GAP_PX,
+            left: handHover.bounds.x + handHover.bounds.width + HAND_ACTIONS_GAP_PX,
             top: handHover.bounds.y,
             zIndex: Z_HAND_ACTIONS_MENU,
           }}

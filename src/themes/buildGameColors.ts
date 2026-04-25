@@ -30,23 +30,23 @@ export interface BasePalette {
 
   /** Core hue set — map each to the nearest match in the preset's
    *  canonical palette. */
-  red: string;         // hostile, destructive, lethal, counter
-  redDeep: string;     // sacrifice, loseLife, depletion, madness (deeper red)
-  orange: string;      // damage, fight, attack, exerted, level
-  amber: string;       // lore, tap, token, warning-ish warm yellow
-  yellow: string;      // quest
-  green: string;       // buff, p1p1, heal-alt
-  teal: string;        // attach, bestow, storage, untap warm
-  cyan: string;        // untap, warped, study
-  blue: string;        // draw, friendly, loyalty
-  sky: string;         // bounce
-  indigo: string;      // mill, time, plotted
-  violet: string;      // discard, charge
-  purple: string;      // exile, transformed, copy, gainControl
-  pink: string;        // heal
-  slate: string;       // destroy, morph, fade, pt-neutral, counter-default
-  brown: string;       // mining, age, brick
-  paper: string;       // page (near-white muted paper tone)
+  red: string; // hostile, destructive, lethal, counter
+  redDeep: string; // sacrifice, loseLife, depletion, madness (deeper red)
+  orange: string; // damage, fight, attack, exerted, level
+  amber: string; // lore, tap, token, warning-ish warm yellow
+  yellow: string; // quest
+  green: string; // buff, p1p1, heal-alt
+  teal: string; // attach, bestow, storage, untap warm
+  cyan: string; // untap, warped, study
+  blue: string; // draw, friendly, loyalty
+  sky: string; // bounce
+  indigo: string; // mill, time, plotted
+  violet: string; // discard, charge
+  purple: string; // exile, transformed, copy, gainControl
+  pink: string; // heal
+  slate: string; // destroy, morph, fade, pt-neutral, counter-default
+  brown: string; // mining, age, brick
+  paper: string; // page (near-white muted paper tone)
   /** Poison-counter / skull tint — cooler / more olive than `green` so
    *  an infect pip reads as "ill" rather than a straight buff. */
   poison: string;
@@ -77,25 +77,25 @@ export function buildGameColors(p: BasePalette): Record<string, string> {
   return {
     // ── Active action indicators ────────────────────────────────────
     "activeAction.priority": p.violet,
-    "activeAction.active":   p.amber,
+    "activeAction.active": p.amber,
 
     // ── Prompt action buttons ───────────────────────────────────────
-    "promptAction.passAction":    p.promptPass,
-    "promptAction.attackAction":  p.red,
+    "promptAction.passAction": p.promptPass,
+    "promptAction.attackAction": p.red,
     "promptAction.defenseAction": p.promptDefense,
-    "promptAction.cancel":        p.slate,
+    "promptAction.cancel": p.slate,
 
     // ── Combat / placement arrows ───────────────────────────────────
-    "arrow.attack":         rgbaFromHex(p.orange, 0.88),
-    "arrow.block":          rgbaFromHex(p.red, 0.88),
-    "arrow.hostileTarget":  rgbaFromHex(p.red, 0.88),
+    "arrow.attack": rgbaFromHex(p.orange, 0.88),
+    "arrow.block": rgbaFromHex(p.red, 0.88),
+    "arrow.hostileTarget": rgbaFromHex(p.red, 0.88),
     "arrow.friendlyTarget": rgbaFromHex(p.promptDefense, 0.88),
 
     // ── Card selection ring ─────────────────────────────────────────
-    "cardRing": p.amber,
+    cardRing: p.amber,
 
     // ── Targeting pointer colours ────────────────────────────────────
-    "pointer.hostile":  rgbaFromHex(p.red, 0.88),
+    "pointer.hostile": rgbaFromHex(p.red, 0.88),
     "pointer.friendly": rgbaFromHex(p.blue, 0.88),
 
     // ── Mana symbol tints ────────────────────────────────────────────
@@ -107,70 +107,70 @@ export function buildGameColors(p: BasePalette): Record<string, string> {
     "mana.C": p.manaC,
 
     // ── Card status ring / badge colours ─────────────────────────────
-    "cardStatus.exerted":     p.orange,
-    "cardStatus.morph":       p.slate,
-    "cardStatus.bestow":      p.teal,
-    "cardStatus.token":       p.amber,
+    "cardStatus.exerted": p.orange,
+    "cardStatus.morph": p.slate,
+    "cardStatus.bestow": p.teal,
+    "cardStatus.token": p.amber,
     "cardStatus.transformed": p.purple,
-    "cardStatus.plotted":     p.indigo,
-    "cardStatus.madness":     p.redDeep,
-    "cardStatus.warped":      p.cyan,
+    "cardStatus.plotted": p.indigo,
+    "cardStatus.madness": p.redDeep,
+    "cardStatus.warped": p.cyan,
 
     // ── Generic text / label colours ─────────────────────────────────
-    "textOnTinted": p.foreground,
-    "textMuted":    p.labelMuted,
-    "textGhost":    p.labelGhost,
+    textOnTinted: p.foreground,
+    textMuted: p.labelMuted,
+    textGhost: p.labelGhost,
 
     // ── Canvas-level neutrals ────────────────────────────────────────
     // Shadow stays a physics-black across all presets — dark-mode and
     // light-mode surfaces still drop black shadows.
     "canvas.background": p.canvasBackground,
-    "canvas.shadow":     "#000000",
-    "canvas.neutral":    p.foreground,
+    "canvas.shadow": "#000000",
+    "canvas.neutral": p.foreground,
 
     // ── Card placeholder ─────────────────────────────────────────────
-    "cardPlaceholder.fill":   p.placeholderFill,
+    "cardPlaceholder.fill": p.placeholderFill,
     "cardPlaceholder.stroke": p.placeholderStroke,
 
     // ── P/T badge backgrounds ────────────────────────────────────────
-    "pt.neutral":  p.slate,
-    "pt.lethal":   p.red,
-    "pt.buffed":   p.green,
+    "pt.neutral": p.slate,
+    "pt.lethal": p.red,
+    "pt.buffed": p.green,
     "pt.debuffed": p.red,
 
     // ── Generic status signals ───────────────────────────────────────
     // Semantic tokens for non-creature UI states. `poison` is a cooler
     // / more olive sibling of `green` so the infect pip reads as ill
     // rather than as a stat buff.
-    "success": p.green,
-    "poison":  p.poison,
-    "life":    p.red,
+    success: p.green,
+    poison: p.poison,
+    life: p.red,
 
     // ── Counter chip colours ─────────────────────────────────────────
-    "counter.default":   p.slate,
-    "counter.p1p1":      p.green,
-    "counter.m1m1":      p.red,
-    "counter.loyalty":   p.blue,
-    "counter.charge":    p.purple,
-    "counter.quest":     p.yellow,
-    "counter.study":     p.cyan,
-    "counter.lore":      p.amber,
-    "counter.age":       p.brown,
-    "counter.time":      p.indigo,
-    "counter.fade":      p.slate,
-    "counter.level":     p.orange,
-    "counter.storage":   p.teal,
-    "counter.mining":    p.brown,
-    "counter.brick":     p.brown,
+    "counter.default": p.slate,
+    "counter.p1p1": p.green,
+    "counter.m1m1": p.red,
+    "counter.loyalty": p.blue,
+    "counter.charge": p.purple,
+    "counter.quest": p.yellow,
+    "counter.study": p.cyan,
+    "counter.lore": p.amber,
+    "counter.age": p.brown,
+    "counter.time": p.indigo,
+    "counter.fade": p.slate,
+    "counter.level": p.orange,
+    "counter.storage": p.teal,
+    "counter.mining": p.brown,
+    "counter.brick": p.brown,
     "counter.depletion": p.redDeep,
-    "counter.page":      p.paper,
+    "counter.page": p.paper,
 
     // ── Player seat colours ──────────────────────────────────────────
     // Phase strip indicator + turn tint. Seat-to-hue mapping is fixed
     // across presets: self = green, opponents cycle amber → blue →
     // purple. Each preset's palette-native version of those hues keeps
     // the strip visually cohesive with the rest of its theme.
-    "playerColors.self":      p.green,
+    "playerColors.self": p.green,
     "playerColors.opponent1": p.amber,
     "playerColors.opponent2": p.blue,
     "playerColors.opponent3": p.purple,
@@ -180,25 +180,29 @@ export function buildGameColors(p: BasePalette): Record<string, string> {
     // the hue stains both the icon and its count. Kept semantically
     // stable across presets (monarch = regal amber, poison = infect,
     // damage = red) so icon meaning stays consistent everywhere.
-    "badges.monarch":         p.amber,
-    "badges.initiative":      p.blue,
-    "badges.poison":          p.poison,
-    "badges.energy":          p.yellow,
+    "badges.monarch": p.amber,
+    "badges.initiative": p.blue,
+    "badges.poison": p.poison,
+    "badges.energy": p.yellow,
     "badges.commanderDamage": p.red,
-    "badges.hand":            p.slate,
-    "badges.radiation":       p.green,
-    "badges.cityBlessing":    p.amber,
-    "badges.ring":            p.violet,
-    "badges.speed":           p.orange,
+    "badges.hand": p.slate,
+    "badges.radiation": p.green,
+    "badges.cityBlessing": p.amber,
+    "badges.ring": p.violet,
+    "badges.speed": p.orange,
   };
 }
 
 /** Convert a `#rrggbb` hex to an rgba() string with the given alpha. */
 function rgbaFromHex(hex: string, alpha: number): string {
   const clean = hex.replace("#", "");
-  const full = clean.length === 3
-    ? clean.split("").map((c) => c + c).join("")
-    : clean;
+  const full =
+    clean.length === 3
+      ? clean
+          .split("")
+          .map((c) => c + c)
+          .join("")
+      : clean;
   const r = parseInt(full.slice(0, 2), 16);
   const g = parseInt(full.slice(2, 4), 16);
   const b = parseInt(full.slice(4, 6), 16);

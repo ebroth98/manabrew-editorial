@@ -66,10 +66,10 @@ export function ChooseOptionalTriggerModal({
         : "Do you want this ability to trigger?";
   const metaBits = [mode, api].filter(Boolean).join(" • ");
 
-  useModalKeyboard(
-    { onEnter: handleAccept, onEscape: handleDecline },
-    [handleAccept, handleDecline],
-  );
+  useModalKeyboard({ onEnter: handleAccept, onEscape: handleDecline }, [
+    handleAccept,
+    handleDecline,
+  ]);
 
   return (
     <Modal maxWidth={cards && cards.length > 0 ? "max-w-4xl" : "max-w-md"} maxHeight="">
@@ -85,9 +85,7 @@ export function ChooseOptionalTriggerModal({
           <h2 id="optional-trigger-title" className="font-semibold text-base">
             {title}
           </h2>
-          <p className="text-xs text-muted-foreground">
-            {subtitle}
-          </p>
+          <p className="text-xs text-muted-foreground">{subtitle}</p>
           {metaBits && <p className="text-[11px] text-muted-foreground">{metaBits}</p>}
         </Modal.Header>
 
@@ -99,7 +97,9 @@ export function ChooseOptionalTriggerModal({
               className={MODAL_CARD_IMAGE}
             />
           )}
-          <p className="text-sm leading-relaxed self-center">{description || "A triggered ability would trigger. Do you want it to?"}</p>
+          <p className="text-sm leading-relaxed self-center">
+            {description || "A triggered ability would trigger. Do you want it to?"}
+          </p>
         </div>
 
         {cards && cards.length > 0 && (
@@ -116,19 +116,10 @@ export function ChooseOptionalTriggerModal({
         )}
 
         <Modal.Footer>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleDecline}
-            className="min-w-[80px]"
-          >
+          <Button variant="outline" size="sm" onClick={handleDecline} className="min-w-[80px]">
             {declineLabel}
           </Button>
-          <Button
-            size="sm"
-            onClick={handleAccept}
-            className="min-w-[80px]"
-          >
+          <Button size="sm" onClick={handleAccept} className="min-w-[80px]">
             {acceptLabel}
           </Button>
         </Modal.Footer>

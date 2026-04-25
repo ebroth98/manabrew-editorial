@@ -24,10 +24,7 @@ import type { Theme } from "@/hooks/useTheme";
 import { getTheme } from "@/hooks/useTheme";
 import { hexToNum } from "./colorUtils";
 import { CardSprite, setCardSpriteTheme } from "./CardSprite";
-import {
-  CARD_W,
-  CARD_H,
-} from "@/components/game/game.constants";
+import { CARD_W, CARD_H } from "@/components/game/game.constants";
 import { MarqueeHandler } from "./MarqueeHandler";
 import { DragHandler } from "./DragHandler";
 import {
@@ -42,10 +39,7 @@ import {
 import { computeHandLayout, SIZE_PARAMS } from "./HandLayout";
 import { ArrowLayer, type ArrowDef } from "./ArrowLayer";
 import { HAND_CARD_BASES } from "@/components/game/game.styles";
-import {
-  extractManaLetters,
-  getExpandedManaAbilities,
-} from "@/components/game/manaUtils";
+import { extractManaLetters, getExpandedManaAbilities } from "@/components/game/manaUtils";
 import {
   getManaSymbolTextureSync,
   loadManaSymbolTexture,
@@ -158,12 +152,7 @@ const safeDestroy = (obj: { destroy: (...args: never[]) => void }): void => {
   }
 };
 
-const lerp = (
-  current: number,
-  target: number,
-  speed: number,
-  snap: number,
-): number => {
+const lerp = (current: number, target: number, speed: number, snap: number): number => {
   const d = target - current;
   return Math.abs(d) > snap ? current + d * speed : target;
 };
@@ -174,7 +163,6 @@ export interface BlockingRect {
   width: number;
   height: number;
 }
-
 
 /**
  * Optional feature flags controlling which subsystems this scene runs.
@@ -296,16 +284,9 @@ export class PixiGameScene {
    * for a just-resolved spell can animate from its stack position instead
    * of from the hand.
    */
-  private stackCardSeeds = new Map<
-    string,
-    { x: number; y: number; scale: number; ts: number }
-  >();
+  private stackCardSeeds = new Map<string, { x: number; y: number; scale: number; ts: number }>();
 
-  constructor(
-    app: Application,
-    callbacks: GameCanvasCallbacks,
-    options: PixiSceneOptions = {},
-  ) {
+  constructor(app: Application, callbacks: GameCanvasCallbacks, options: PixiSceneOptions = {}) {
     this.app = app;
     this.callbacks = callbacks;
     this.mirrored = options.mirrored ?? false;
@@ -358,12 +339,8 @@ export class PixiGameScene {
     this.root.addChild(this.arrowLayer.graphics);
 
     this.backgroundGfx.eventMode = "static";
-    this.backgroundGfx.on("pointerdown", (e: FederatedPointerEvent) =>
-      this.onBackgroundDown(e),
-    );
-    app.stage.on("pointermove", (e: FederatedPointerEvent) =>
-      this.onGlobalMove(e),
-    );
+    this.backgroundGfx.on("pointerdown", (e: FederatedPointerEvent) => this.onBackgroundDown(e));
+    app.stage.on("pointermove", (e: FederatedPointerEvent) => this.onGlobalMove(e));
     app.stage.on("pointerup", () => this.onGlobalUp());
     app.stage.on("pointerupoutside", () => this.onGlobalUp());
     app.stage.eventMode = "static";
@@ -406,9 +383,7 @@ export class PixiGameScene {
     const handSprite = this.handSprites.get(cardId);
     if (!handSprite) return null;
     const target = this.handTargets.get(cardId);
-    return target
-      ? { x: target.x, y: target.y }
-      : { x: handSprite.x, y: handSprite.y };
+    return target ? { x: target.x, y: target.y } : { x: handSprite.x, y: handSprite.y };
   }
 
   /** Canvas-local center of the next free battlefield slot (placement
@@ -749,8 +724,7 @@ export class PixiGameScene {
         sprite.updateCardContent(card);
       }
 
-      const isHidden =
-        card.id === state.draggingCardId || card.id === state.castingCardId;
+      const isHidden = card.id === state.draggingCardId || card.id === state.castingCardId;
       sprite.alpha = isHidden ? 0 : 1;
       sprite.cursor = card.isPlayable ? "grab" : "default";
 
@@ -812,14 +786,20 @@ export class PixiGameScene {
     const zone = this.getPlayZone();
     this.backgroundGfx.clear();
     this.backgroundGfx.roundRect(zone.x, zone.y, zone.width, zone.height, TABLE_RADIUS);
-    this.backgroundGfx.fill({ color: hexToNum(this.theme.gameTheme.canvas.background), alpha: BG_ALPHA_IDLE });
+    this.backgroundGfx.fill({
+      color: hexToNum(this.theme.gameTheme.canvas.background),
+      alpha: BG_ALPHA_IDLE,
+    });
   }
 
   private drawDropTargetBackground(active: boolean): void {
     const zone = this.getPlayZone();
     this.backgroundGfx.clear();
     this.backgroundGfx.roundRect(zone.x, zone.y, zone.width, zone.height, TABLE_RADIUS);
-    this.backgroundGfx.fill({ color: hexToNum(this.theme.gameTheme.canvas.background), alpha: BG_ALPHA_DROP });
+    this.backgroundGfx.fill({
+      color: hexToNum(this.theme.gameTheme.canvas.background),
+      alpha: BG_ALPHA_DROP,
+    });
     if (!active) {
       // Hide the grid skeleton when not dropping
       this.gridSkeletonGfx.visible = false;
@@ -843,9 +823,8 @@ export class PixiGameScene {
     const localX = this.cursorViewportX - canvasRect.left;
     const localY = this.cursorViewportY - canvasRect.top;
     const hoveredCell = cellFromPoint(grid, localX, localY);
-    const hoveredKey = hoveredCell && !hoveredCell.blocked
-      ? cellKey(hoveredCell.col, hoveredCell.row)
-      : null;
+    const hoveredKey =
+      hoveredCell && !hoveredCell.blocked ? cellKey(hoveredCell.col, hoveredCell.row) : null;
 
     for (const cell of grid.cells) {
       if (cell.blocked) continue;
@@ -853,7 +832,11 @@ export class PixiGameScene {
       const isHover = key === hoveredKey;
       gfx.roundRect(cell.x, cell.y, grid.cardW, grid.cardH, CARD_RADIUS);
       gfx.fill({ color, alpha: isHover ? GRID_SKELETON_FILL_ALPHA * 5 : GRID_SKELETON_FILL_ALPHA });
-      gfx.stroke({ color, width: isHover ? 2 : 1, alpha: isHover ? GRID_SKELETON_HOVER_ALPHA : GRID_SKELETON_STROKE_ALPHA });
+      gfx.stroke({
+        color,
+        width: isHover ? 2 : 1,
+        alpha: isHover ? GRID_SKELETON_HOVER_ALPHA : GRID_SKELETON_STROKE_ALPHA,
+      });
     }
     gfx.visible = true;
   }
@@ -980,16 +963,8 @@ export class PixiGameScene {
   private applyOverflowStacking(topLevelCandidates: Card[]): void {
     if (topLevelCandidates.length === 0) return;
     const zone = this.getPlayZone();
-    const blockers = [
-      ...this.collectOverlayBlockers(),
-      ...this.collectHandBlockers(),
-    ];
-    const grid = computeGridLayout(
-      zone,
-      this.leftReserved,
-      blockers,
-      this.cardScale,
-    );
+    const blockers = [...this.collectOverlayBlockers(), ...this.collectHandBlockers()];
+    const grid = computeGridLayout(zone, this.leftReserved, blockers, this.cardScale);
     let freeCellCount = 0;
     for (const cell of grid.cells) {
       if (!cell.blocked) freeCellCount++;
@@ -1058,12 +1033,7 @@ export class PixiGameScene {
     const zone = this.getPlayZone();
     const handBlocker = this.collectHandBlockers();
     const blockers = [...this.collectOverlayBlockers(), ...handBlocker];
-    const grid = computeGridLayout(
-      zone,
-      this.leftReserved,
-      blockers,
-      this.cardScale,
-    );
+    const grid = computeGridLayout(zone, this.leftReserved, blockers, this.cardScale);
     this.gridInfo = grid;
 
     const occupied = new Set<string>();
@@ -1174,8 +1144,8 @@ export class PixiGameScene {
 
     const categoryConfig: Record<CardCategory, { rows: number[]; anchorTop: boolean }> = {
       creature: { rows: creatureRows, anchorTop: !this.mirrored },
-      other:    { rows: otherRows,    anchorTop: !this.mirrored },
-      land:     { rows: landRows,     anchorTop: this.mirrored },
+      other: { rows: otherRows, anchorTop: !this.mirrored },
+      land: { rows: landRows, anchorTop: this.mirrored },
     };
 
     // Sort unplaced cards so creatures are placed first (they get priority
@@ -1235,12 +1205,14 @@ export class PixiGameScene {
    */
   private findFirstFreeBattlefieldSlot(): Point {
     const zone = this.getPlayZone();
-    const grid = this.gridInfo ?? computeGridLayout(
-      zone,
-      this.leftReserved,
-      [...this.collectOverlayBlockers(), ...this.collectHandBlockers()],
-      this.cardScale,
-    );
+    const grid =
+      this.gridInfo ??
+      computeGridLayout(
+        zone,
+        this.leftReserved,
+        [...this.collectOverlayBlockers(), ...this.collectHandBlockers()],
+        this.cardScale,
+      );
     const occupied = new Set<string>();
     for (const id of this.gridTargets.keys()) {
       const pos = this.gridTargets.get(id);
@@ -1261,9 +1233,7 @@ export class PixiGameScene {
     const anchorX = zone.x + zone.width / 2;
     // Placement ghost targets the creature zone (row 0 for local player)
     // since most spells being cast are creatures.
-    const anchorY = this.mirrored
-      ? zone.y + zone.height - grid.cellH / 2
-      : zone.y + grid.cellH / 2;
+    const anchorY = this.mirrored ? zone.y + zone.height - grid.cellH / 2 : zone.y + grid.cellH / 2;
     const sorted = cellsByDistance(grid, anchorX, anchorY);
     for (const cell of sorted) {
       if (cell.blocked) continue;
@@ -1288,10 +1258,7 @@ export class PixiGameScene {
         ? 0
         : Math.max(
             dims.minSpread,
-            Math.min(
-              dims.maxSpread,
-              Math.floor((dims.spreadWidth - dims.cardW) / (count - 1)),
-            ),
+            Math.min(dims.maxSpread, Math.floor((dims.spreadWidth - dims.cardW) / (count - 1))),
           );
     const totalSpread = count <= 1 ? 0 : (count - 1) * spread;
     const handW = totalSpread + dims.cardW;
@@ -1316,7 +1283,6 @@ export class PixiGameScene {
       },
     ];
   }
-
 
   // ═══════════════════════════════════════════════════════════════
   // Battlefield entries
@@ -1488,10 +1454,7 @@ export class PixiGameScene {
   // Battlefield rings + overlays
   // ═══════════════════════════════════════════════════════════════
 
-  private applyBattlefieldRing(
-    sprite: CardSprite,
-    state: BattlefieldState,
-  ): void {
+  private applyBattlefieldRing(sprite: CardSprite, state: BattlefieldState): void {
     // Selected cards always wear the selection ring. Without this guard
     // any subsequent updateBattlefield (triggered by hover → React
     // re-render → prop change) overwrites the marquee selection glow
@@ -1520,10 +1483,7 @@ export class PixiGameScene {
     }
   }
 
-  private rebuildBattlefieldOverlay(
-    entry: SpriteEntry,
-    state: BattlefieldState,
-  ): void {
+  private rebuildBattlefieldOverlay(entry: SpriteEntry, state: BattlefieldState): void {
     const card = entry.sprite.card;
     const kind: ActionKind = {
       isTappable: state.tappableLandIds?.includes(card.id) ?? false,
@@ -1599,9 +1559,7 @@ export class PixiGameScene {
         btn.stroke({
           color: hexToNum(this.theme.gameTheme.canvas.neutral),
           width: 1,
-          alpha: highlighted
-            ? MANA_BUTTON_STROKE_HOVER_ALPHA
-            : MANA_BUTTON_STROKE_ALPHA,
+          alpha: highlighted ? MANA_BUTTON_STROKE_HOVER_ALPHA : MANA_BUTTON_STROKE_ALPHA,
         });
       };
       paintBtn(false);
@@ -1619,8 +1577,7 @@ export class PixiGameScene {
       this.wireOverlayButton(
         btn,
         card.id,
-        () =>
-          this.callbacks.onTapLandAbility?.(card.id, ab.abilityIndex, letter),
+        () => this.callbacks.onTapLandAbility?.(card.id, ab.abilityIndex, letter),
         (highlighted) => {
           paintBtn(highlighted);
           icon.scale.set(highlighted ? ICON_HOVER_SCALE : 1);
@@ -1666,9 +1623,7 @@ export class PixiGameScene {
 
     // Prefer the MTG card symbol (T / Q) when we have one — falls back to
     // the text label for generic SELECT or while the SVG is loading.
-    const centerIcon = symbol
-      ? this.createManaIcon(symbol, 14, 18)
-      : this.createLabelIcon(label);
+    const centerIcon = symbol ? this.createManaIcon(symbol, 14, 18) : this.createLabelIcon(label);
     centerIcon.x = CARD_W / 2;
     centerIcon.y = CARD_H / 2;
     overlay.addChild(centerIcon);
@@ -1735,11 +1690,7 @@ export class PixiGameScene {
     });
   }
 
-  private createManaIcon(
-    label: string,
-    fontSize: number,
-    radius: number,
-  ): Container {
+  private createManaIcon(label: string, fontSize: number, radius: number): Container {
     const icon = new Container();
     // Let pointer events pass through to the button graphic underneath.
     icon.eventMode = "none";
@@ -1786,11 +1737,7 @@ export class PixiGameScene {
     }
   }
 
-  private dispatchBattlefieldAction(
-    card: Card,
-    state: BattlefieldState,
-    kind: ActionKind,
-  ): void {
+  private dispatchBattlefieldAction(card: Card, state: BattlefieldState, kind: ActionKind): void {
     if (kind.isTappable) {
       const batch = this.selectedBatch(state.tappableLandIds, card.id);
       if (batch.length > 1) this.callbacks.onTapLands?.(batch);
@@ -1804,12 +1751,8 @@ export class PixiGameScene {
     }
   }
 
-  private selectedBatch(
-    eligibleIds: string[] | undefined,
-    cardId: string,
-  ): string[] {
-    if (!this.selectedCardIds.has(cardId) || this.selectedCardIds.size <= 1)
-      return [];
+  private selectedBatch(eligibleIds: string[] | undefined, cardId: string): string[] {
+    if (!this.selectedCardIds.has(cardId) || this.selectedCardIds.size <= 1) return [];
     return [...this.selectedCardIds].filter((id) => eligibleIds?.includes(id));
   }
 
@@ -1817,10 +1760,7 @@ export class PixiGameScene {
   // Interaction (battlefield)
   // ═══════════════════════════════════════════════════════════════
 
-  private onBattlefieldCardDown(
-    sprite: CardSprite,
-    e: FederatedPointerEvent,
-  ): void {
+  private onBattlefieldCardDown(sprite: CardSprite, e: FederatedPointerEvent): void {
     if (this.destroyed) return;
     // Opponent / read-only canvases never start a drag — the pointertap
     // handler on the sprite still fires and drives click-to-target.
@@ -2002,11 +1942,7 @@ export class PixiGameScene {
       const childId = children[i]!;
       const child = this.entries.get(childId);
       if (!child) continue;
-      const cy =
-        topLeftY +
-        totalOffset -
-        (children.length - i) * ATTACH_OFFSET_Y +
-        cardH / 2;
+      const cy = topLeftY + totalOffset - (children.length - i) * ATTACH_OFFSET_Y + cardH / 2;
       child.targetX = parentCenter.x;
       child.targetY = cy;
       child.sprite.x = parentCenter.x;
@@ -2022,10 +1958,7 @@ export class PixiGameScene {
    * Find a top-level battlefield card occupying `cell` whose id isn't in
    * `exclude`. Used during drag to detect a stack target under the cursor.
    */
-  private findStackTargetAt(
-    cell: GridCell,
-    exclude: Set<string>,
-  ): string | null {
+  private findStackTargetAt(cell: GridCell, exclude: Set<string>): string | null {
     if (!this.gridInfo) return null;
     for (const [id, pos] of this.gridTargets) {
       if (exclude.has(id)) continue;
@@ -2046,11 +1979,7 @@ export class PixiGameScene {
    * their existing slot. Clears any prior UI attachments on the dragged
    * cards so they visually detach from previous stacks.
    */
-  private commitCellDrop(
-    draggedIds: string[],
-    target: GridCell,
-    primaryId: string | null,
-  ): void {
+  private commitCellDrop(draggedIds: string[], target: GridCell, primaryId: string | null): void {
     if (!this.gridInfo || draggedIds.length === 0) return;
     const grid = this.gridInfo;
 
@@ -2093,11 +2022,7 @@ export class PixiGameScene {
       // out-of-bounds, spiral out from it for the nearest free cell.
       let placed: GridCell | null = null;
       const wantCell = cellAt(grid, wantCol, wantRow);
-      if (
-        wantCell &&
-        !wantCell.blocked &&
-        !reserved.has(cellKey(wantCell.col, wantCell.row))
-      ) {
+      if (wantCell && !wantCell.blocked && !reserved.has(cellKey(wantCell.col, wantCell.row))) {
         placed = wantCell;
       } else {
         const anchorX = wantCell?.cx ?? target.cx + dCol * grid.cellW;
@@ -2149,8 +2074,7 @@ export class PixiGameScene {
     this.selectionBadge.text = `${this.selectedCardIds.size} selected`;
     this.selectionBadge.visible = true;
     const zone = this.getPlayZone();
-    this.selectionBadge.x =
-      zone.x + zone.width - this.selectionBadge.width - 8;
+    this.selectionBadge.x = zone.x + zone.width - this.selectionBadge.width - 8;
     this.selectionBadge.y = zone.y + 6;
   }
 
@@ -2202,9 +2126,10 @@ export class PixiGameScene {
     const dims = this.computeHandDimensions();
     // Opponent (mirrored / showHand=false) sends cards in from the TOP
     // edge of their zone since their "hand" lives off the screen above.
-    const y = this.mirrored || !this.showHand
-      ? zone.y + dims.cardH / 2
-      : this.handBottomY() - dims.cardH / 2;
+    const y =
+      this.mirrored || !this.showHand
+        ? zone.y + dims.cardH / 2
+        : this.handBottomY() - dims.cardH / 2;
     return {
       x: zone.x + zone.width / 2,
       y,
@@ -2343,11 +2268,7 @@ export class PixiGameScene {
     return this.lastHandState?.cards.findIndex((c) => c.id === cardId) ?? -1;
   }
 
-  private applyHandCardHighlight(
-    sprite: CardSprite,
-    card: Card,
-    isHovered: boolean,
-  ): void {
+  private applyHandCardHighlight(sprite: CardSprite, card: Card, isHovered: boolean): void {
     if (!card.isPlayable) {
       sprite.setRing(null);
       return;
@@ -2366,8 +2287,7 @@ export class PixiGameScene {
   // ═══════════════════════════════════════════════════════════════
 
   private tick = (): void => {
-    for (const entry of this.entries.values())
-      this.animateBattlefieldSprite(entry);
+    for (const entry of this.entries.values()) this.animateBattlefieldSprite(entry);
     for (const [id, target] of this.handTargets) {
       const sprite = this.handSprites.get(id);
       if (sprite) this.animateHandSprite(sprite, target);
@@ -2386,9 +2306,7 @@ export class PixiGameScene {
   private captureStackSeeds(): void {
     const canvasRect = this.app.canvas.getBoundingClientRect();
     const now = performance.now();
-    const els = document.querySelectorAll<HTMLElement>(
-      "[data-stack-object-id][data-card-id]",
-    );
+    const els = document.querySelectorAll<HTMLElement>("[data-stack-object-id][data-card-id]");
     for (const el of els) {
       const cardId = el.dataset["cardId"];
       if (!cardId) continue;
@@ -2465,14 +2383,13 @@ export class PixiGameScene {
 
     // Casting arrow is rendered exclusively by the overlay `PointerLayer`
     // now — no matching arrow type exists on the main-scene arrow layer.
-    void from; void to; void spec;
+    void from;
+    void to;
+    void spec;
     return null;
   }
 
-  private resolveArrowEndpoint(
-    ep: ArrowEndpoint,
-    canvasRect: DOMRect,
-  ): ScreenPos | null {
+  private resolveArrowEndpoint(ep: ArrowEndpoint, canvasRect: DOMRect): ScreenPos | null {
     switch (ep.kind) {
       case "card": {
         const entry = this.entries.get(ep.id);
@@ -2483,20 +2400,12 @@ export class PixiGameScene {
           // Prefer the target position so arrows point at where the sprite
           // is heading during animations — prevents the arrow from lagging
           // behind a lifting hand card.
-          return target
-            ? { x: target.x, y: target.y }
-            : { x: handSprite.x, y: handSprite.y };
+          return target ? { x: target.x, y: target.y } : { x: handSprite.x, y: handSprite.y };
         }
-        return this.domCenterCanvasLocal(
-          `[data-card-id="${CSS.escape(ep.id)}"]`,
-          canvasRect,
-        );
+        return this.domCenterCanvasLocal(`[data-card-id="${CSS.escape(ep.id)}"]`, canvasRect);
       }
       case "player":
-        return this.domCenterCanvasLocal(
-          `[data-player-id="${CSS.escape(ep.id)}"]`,
-          canvasRect,
-        );
+        return this.domCenterCanvasLocal(`[data-player-id="${CSS.escape(ep.id)}"]`, canvasRect);
       case "stack":
         return this.domCenterCanvasLocal(
           `[data-stack-object-id="${CSS.escape(ep.id)}"]`,
@@ -2509,10 +2418,7 @@ export class PixiGameScene {
     }
   }
 
-  private domCenterCanvasLocal(
-    selector: string,
-    canvasRect: DOMRect,
-  ): ScreenPos | null {
+  private domCenterCanvasLocal(selector: string, canvasRect: DOMRect): ScreenPos | null {
     const el = document.querySelector(selector);
     if (!el) return null;
     const r = (el as HTMLElement).getBoundingClientRect();
@@ -2531,12 +2437,7 @@ export class PixiGameScene {
 
     const isHovered = this.hoveredCardId === s.card.id;
     const targetScale = this.cardScale * (isHovered ? HOVER_SCALE : 1);
-    const nextScale = lerp(
-      s.scale.x,
-      targetScale,
-      HOVER_SCALE_LERP,
-      SNAP_SCALE,
-    );
+    const nextScale = lerp(s.scale.x, targetScale, HOVER_SCALE_LERP, SNAP_SCALE);
     s.scale.set(nextScale);
 
     if (entry.overlay?.visible) {

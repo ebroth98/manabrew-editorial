@@ -1,12 +1,12 @@
-import { create } from 'zustand';
-import { persist, devtools } from 'zustand/middleware';
-import { STORAGE_KEYS } from '@/lib/constants';
+import { create } from "zustand";
+import { persist, devtools } from "zustand/middleware";
+import { STORAGE_KEYS } from "@/lib/constants";
 
-export type ZonePanelSide = 'left' | 'right';
-export type ZonePanelItem = 'library' | 'graveyard' | 'exile';
-export type HandDisplayMode = 'cool' | 'normal';
-export type HandSize = 'small' | 'medium' | 'large';
-export type CardPreviewMode = 'hover' | 'shift' | 'alt' | 'ctrl';
+export type ZonePanelSide = "left" | "right";
+export type ZonePanelItem = "library" | "graveyard" | "exile";
+export type HandDisplayMode = "cool" | "normal";
+export type HandSize = "small" | "medium" | "large";
+export type CardPreviewMode = "hover" | "shift" | "alt" | "ctrl";
 
 interface PreferencesState {
   /** App color theme preset id */
@@ -74,67 +74,71 @@ interface PreferencesState {
 }
 
 export const usePreferencesStore = create<PreferencesState>()(
-  devtools(persist(
-    (set) => ({
-      appThemePreset: "default",
-      setAppThemePreset: (appThemePreset) => set({ appThemePreset, appThemeColorOverrides: {}, gameThemeColorOverrides: {} }),
+  devtools(
+    persist(
+      (set) => ({
+        appThemePreset: "default",
+        setAppThemePreset: (appThemePreset) =>
+          set({ appThemePreset, appThemeColorOverrides: {}, gameThemeColorOverrides: {} }),
 
-      flashDurationMs: 1000,
-      setFlashDurationMs: (ms) => set({ flashDurationMs: ms }),
+        flashDurationMs: 1000,
+        setFlashDurationMs: (ms) => set({ flashDurationMs: ms }),
 
-      serverHost: 'localhost',
-      serverPort: 9443,
-      serverUsername: '',
-      serverPassword: 'forge',
-      setServerHost: (serverHost) => set({ serverHost }),
-      setServerPort: (serverPort) => set({ serverPort }),
-      setServerUsername: (serverUsername) => set({ serverUsername }),
-      setServerPassword: (serverPassword) => set({ serverPassword }),
+        serverHost: "localhost",
+        serverPort: 9443,
+        serverUsername: "",
+        serverPassword: "forge",
+        setServerHost: (serverHost) => set({ serverHost }),
+        setServerPort: (serverPort) => set({ serverPort }),
+        setServerUsername: (serverUsername) => set({ serverUsername }),
+        setServerPassword: (serverPassword) => set({ serverPassword }),
 
-      autoPassEnabled: true,
-      setAutoPassEnabled: (autoPassEnabled) => set({ autoPassEnabled }),
+        autoPassEnabled: true,
+        setAutoPassEnabled: (autoPassEnabled) => set({ autoPassEnabled }),
 
-      zonePanelSide: 'left',
-      zonePanelOrder: ['library', 'graveyard', 'exile'],
-      setZonePanelSide: (zonePanelSide) => set({ zonePanelSide }),
-      setZonePanelOrder: (zonePanelOrder) => set({ zonePanelOrder }),
+        zonePanelSide: "left",
+        zonePanelOrder: ["library", "graveyard", "exile"],
+        setZonePanelSide: (zonePanelSide) => set({ zonePanelSide }),
+        setZonePanelOrder: (zonePanelOrder) => set({ zonePanelOrder }),
 
-      handDisplayMode: 'cool',
-      setHandDisplayMode: (handDisplayMode) => set({ handDisplayMode }),
+        handDisplayMode: "cool",
+        setHandDisplayMode: (handDisplayMode) => set({ handDisplayMode }),
 
-      handSize: 'medium',
-      setHandSize: (handSize) => set({ handSize }),
+        handSize: "medium",
+        setHandSize: (handSize) => set({ handSize }),
 
-      battlefieldCardScale: 1.15,
-      setBattlefieldCardScale: (battlefieldCardScale) =>
-        set({ battlefieldCardScale: Math.max(0.8, Math.min(1.8, battlefieldCardScale)) }),
+        battlefieldCardScale: 1.15,
+        setBattlefieldCardScale: (battlefieldCardScale) =>
+          set({ battlefieldCardScale: Math.max(0.8, Math.min(1.8, battlefieldCardScale)) }),
 
-      cardPreviewMode: 'hover',
-      setCardPreviewMode: (cardPreviewMode) => set({ cardPreviewMode }),
+        cardPreviewMode: "hover",
+        setCardPreviewMode: (cardPreviewMode) => set({ cardPreviewMode }),
 
-      cardHoverDelayMs: 500,
-      setCardHoverDelayMs: (ms) => set({ cardHoverDelayMs: ms }),
+        cardHoverDelayMs: 500,
+        setCardHoverDelayMs: (ms) => set({ cardHoverDelayMs: ms }),
 
-      appThemeColorOverrides: {},
-      setAppThemeColorOverride: (key, hsl) =>
-        set((state) => ({
-          appThemeColorOverrides: { ...state.appThemeColorOverrides, [key]: hsl },
-        })),
-      resetAppThemeColorOverrides: () => set({ appThemeColorOverrides: {} }),
+        appThemeColorOverrides: {},
+        setAppThemeColorOverride: (key, hsl) =>
+          set((state) => ({
+            appThemeColorOverrides: { ...state.appThemeColorOverrides, [key]: hsl },
+          })),
+        resetAppThemeColorOverrides: () => set({ appThemeColorOverrides: {} }),
 
-      pixiEnabled: true,
-      setPixiEnabled: (pixiEnabled) => set({ pixiEnabled }),
+        pixiEnabled: true,
+        setPixiEnabled: (pixiEnabled) => set({ pixiEnabled }),
 
-      gameThemeColorOverrides: {},
-      setGameThemeColorOverride: (path, color) =>
-        set((state) => ({
-          gameThemeColorOverrides: {
-            ...state.gameThemeColorOverrides,
-            [path]: color,
-          },
-        })),
-      resetGameThemeColorOverrides: () => set({ gameThemeColorOverrides: {} }),
-    }),
-    { name: STORAGE_KEYS.PREFERENCES },
-  ), { name: "preferences", enabled: import.meta.env.DEV }),
+        gameThemeColorOverrides: {},
+        setGameThemeColorOverride: (path, color) =>
+          set((state) => ({
+            gameThemeColorOverrides: {
+              ...state.gameThemeColorOverrides,
+              [path]: color,
+            },
+          })),
+        resetGameThemeColorOverrides: () => set({ gameThemeColorOverrides: {} }),
+      }),
+      { name: STORAGE_KEYS.PREFERENCES },
+    ),
+    { name: "preferences", enabled: import.meta.env.DEV },
+  ),
 );

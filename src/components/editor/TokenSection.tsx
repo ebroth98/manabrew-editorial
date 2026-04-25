@@ -16,27 +16,16 @@ import type { DeckToken } from "@/types/openmagic";
 
 // ─── Scryfall fallback — only used when no stored imageUrl exists ───────────
 
-function ScryFallbackImage({
-  name,
-  className,
-}: {
-  name: string;
-  className?: string;
-}) {
+function ScryFallbackImage({ name, className }: { name: string; className?: string }) {
   const { data: url } = useCardImage(name, undefined, true);
   if (url) {
     return <img src={url} alt={name} className={className} draggable={false} />;
   }
   return (
     <div
-      className={cn(
-        "aspect-[2.5/3.5] bg-muted flex items-center justify-center p-2",
-        className,
-      )}
+      className={cn("aspect-[2.5/3.5] bg-muted flex items-center justify-center p-2", className)}
     >
-      <span className="text-[9px] text-muted-foreground leading-tight text-center">
-        {name}
-      </span>
+      <span className="text-[9px] text-muted-foreground leading-tight text-center">{name}</span>
     </div>
   );
 }
@@ -96,9 +85,7 @@ export function TokenSection({
               <MiniTokenPill key={t.name} token={t} />
             ))}
             {tokens.length > 6 && (
-              <span className="text-[10px] text-muted-foreground/50">
-                +{tokens.length - 6}
-              </span>
+              <span className="text-[10px] text-muted-foreground/50">+{tokens.length - 6}</span>
             )}
           </div>
         )}
@@ -110,9 +97,7 @@ export function TokenSection({
           {isLoading ? (
             <div className="flex items-center gap-2 py-2">
               <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground/40" />
-              <span className="text-xs text-muted-foreground/40">
-                Loading tokens...
-              </span>
+              <span className="text-xs text-muted-foreground/40">Loading tokens...</span>
             </div>
           ) : (
             <div className={cn("grid gap-2", gridCols)}>
@@ -217,9 +202,7 @@ function TokenGridCard({
       {showProducers && token.producers.length > 0 && (
         <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 z-30 pointer-events-none">
           <div className="bg-popover/95 backdrop-blur-sm border border-border rounded-md px-2 py-1.5 shadow-lg whitespace-nowrap">
-            <p className="text-[10px] font-semibold text-muted-foreground mb-0.5">
-              Produced by:
-            </p>
+            <p className="text-[10px] font-semibold text-muted-foreground mb-0.5">Produced by:</p>
             {token.producers.map((p) => (
               <p key={p} className="text-[10px] text-foreground">
                 {p}

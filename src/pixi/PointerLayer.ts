@@ -163,18 +163,18 @@ async function svgToTexture(svg: string, intent: string): Promise<Texture> {
 }
 
 // ── Visual tuning ──────────────────────────────────────────────────────────
-const POINTER_Z_INDEX = 8100;                // above arrows (8000)
-const ICON_SIZE = 40;                        // target sprite size in CSS px
-const ICON_FLOAT_AMPLITUDE = 3;              // px vertical bob
-const ICON_FLOAT_PERIOD_MS = 1800;           // one full bob cycle
-const ICON_PULSE_PERIOD_MS = 1400;           // glow ring pulse cycle
+const POINTER_Z_INDEX = 8100; // above arrows (8000)
+const ICON_SIZE = 40; // target sprite size in CSS px
+const ICON_FLOAT_AMPLITUDE = 3; // px vertical bob
+const ICON_FLOAT_PERIOD_MS = 1800; // one full bob cycle
+const ICON_PULSE_PERIOD_MS = 1400; // glow ring pulse cycle
 // Glyph centre sits exactly at the cursor position. Previously the icon
 // was lifted above the cursor so the OS arrow stayed visible, but the
 // OS cursor is now hidden during targeting — keeping the glyph off-axis
 // only confuses aiming, so clicks land where the glyph is drawn.
 const ICON_CURSOR_OFFSET_Y = 0;
-const GLOW_BASE_RADIUS = 22;                 // glow ring under the icon
-const GLOW_MAX_RADIUS = 30;                  // outer radius when fully pulsed
+const GLOW_BASE_RADIUS = 22; // glow ring under the icon
+const GLOW_MAX_RADIUS = 30; // outer radius when fully pulsed
 const GLOW_BASE_ALPHA = 0.45;
 const GLOW_PULSE_ALPHA = 0.25;
 
@@ -198,7 +198,7 @@ export interface ResolvedPointer {
 // as "this is acting on that".
 const SOURCE_GLOW_BASE_RADIUS = 38;
 const SOURCE_GLOW_MAX_RADIUS = 52;
-const SOURCE_GLOW_BASE_ALPHA = 0.30;
+const SOURCE_GLOW_BASE_ALPHA = 0.3;
 const SOURCE_GLOW_PULSE_ALPHA = 0.18;
 // Phase the source glow's pulse so it never peaks in sync with the target —
 // the two alternating creates a back-and-forth "tethered" feel.
@@ -303,14 +303,14 @@ export class PointerLayer {
     const { color, alpha } = this.colorFor(p.intent);
 
     // ── Float animation: small vertical bob relative to the anchor ─────
-    const bob = Math.sin((this.elapsedMs / ICON_FLOAT_PERIOD_MS) * Math.PI * 2)
-      * ICON_FLOAT_AMPLITUDE;
+    const bob =
+      Math.sin((this.elapsedMs / ICON_FLOAT_PERIOD_MS) * Math.PI * 2) * ICON_FLOAT_AMPLITUDE;
     const anchorY = p.toY + (p.locked ? 0 : ICON_CURSOR_OFFSET_Y) + bob;
 
     // ── Target glow (under the icon) ───────────────────────────────────
     const pulse = 0.5 + 0.5 * Math.sin((this.elapsedMs / ICON_PULSE_PERIOD_MS) * Math.PI * 2);
-    const radius = GLOW_BASE_RADIUS + pulse * (GLOW_MAX_RADIUS - GLOW_BASE_RADIUS)
-      * (p.locked ? 1.15 : 1.0);
+    const radius =
+      GLOW_BASE_RADIUS + pulse * (GLOW_MAX_RADIUS - GLOW_BASE_RADIUS) * (p.locked ? 1.15 : 1.0);
     const glowAlpha = alpha * (GLOW_BASE_ALPHA + pulse * GLOW_PULSE_ALPHA);
 
     entry.glow.clear();
@@ -320,16 +320,16 @@ export class PointerLayer {
     entry.glow.fill({ color, alpha: glowAlpha });
 
     // ── Source-card glow (counter-phased pulse around the source) ─────
-    const sourcePhase = (this.elapsedMs / ICON_PULSE_PERIOD_MS) * Math.PI * 2
-      + SOURCE_PULSE_PHASE_OFFSET;
+    const sourcePhase =
+      (this.elapsedMs / ICON_PULSE_PERIOD_MS) * Math.PI * 2 + SOURCE_PULSE_PHASE_OFFSET;
     const sourcePulse = 0.5 + 0.5 * Math.sin(sourcePhase);
-    const sourceRadius = SOURCE_GLOW_BASE_RADIUS
-      + sourcePulse * (SOURCE_GLOW_MAX_RADIUS - SOURCE_GLOW_BASE_RADIUS);
+    const sourceRadius =
+      SOURCE_GLOW_BASE_RADIUS + sourcePulse * (SOURCE_GLOW_MAX_RADIUS - SOURCE_GLOW_BASE_RADIUS);
     const sourceAlpha = alpha * (SOURCE_GLOW_BASE_ALPHA + sourcePulse * SOURCE_GLOW_PULSE_ALPHA);
 
     entry.sourceGlow.clear();
     entry.sourceGlow.circle(p.fromX, p.fromY, sourceRadius);
-    entry.sourceGlow.fill({ color, alpha: sourceAlpha * 0.30 });
+    entry.sourceGlow.fill({ color, alpha: sourceAlpha * 0.3 });
     entry.sourceGlow.circle(p.fromX, p.fromY, sourceRadius * 0.75);
     entry.sourceGlow.fill({ color, alpha: sourceAlpha });
 
@@ -344,7 +344,9 @@ export class PointerLayer {
   private colorFor(intent: TargetingIntent): { color: number; alpha: number } {
     // Pointer palette is binary — the monochrome icon carries the
     // specific semantic; the glow colour only signals valence.
-    const raw = intentIsHostile(intent) ? this.theme.gameTheme.pointer.hostile : this.theme.gameTheme.pointer.friendly;
+    const raw = intentIsHostile(intent)
+      ? this.theme.gameTheme.pointer.hostile
+      : this.theme.gameTheme.pointer.friendly;
     if (!raw || !raw.trim()) {
       // Fallback: red for hostile, blue for friendly — prevents invisible pointers
       // when theme colours haven't resolved yet.
@@ -372,4 +374,3 @@ export class PointerLayer {
     return this.ready;
   }
 }
-

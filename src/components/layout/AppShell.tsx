@@ -8,16 +8,8 @@ import { Button } from "@/components/ui/button";
 import { ChevronLeft, ChevronRight, Menu } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useDragToggle } from "@/hooks/useDragToggle";
-import {
-  ResizableHandle,
-  ResizablePanel,
-  ResizablePanelGroup,
-} from "@/components/ui/resizable";
-import {
-  Sheet,
-  SheetContent,
-  SheetTitle,
-} from "@/components/ui/sheet";
+import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
+import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { OpenMagicLogo } from "./OpenMagicLogo";
 
 export function AppShell() {
@@ -63,11 +55,7 @@ export function AppShell() {
     }
   }, [sidebarRef]);
 
-  const onDragMouseDown = useDragToggle(
-    expandSidebar,
-    collapseSidebar,
-    "right",
-  );
+  const onDragMouseDown = useDragToggle(expandSidebar, collapseSidebar, "right");
 
   // Close mobile nav on route change
   useEffect(() => {
@@ -88,10 +76,12 @@ export function AppShell() {
   return (
     <div className="h-screen overflow-hidden flex flex-col">
       {/* Mobile header — visible below md, hidden during game */}
-      <header className={cn(
-        "flex items-center gap-2 px-3 py-2 border-b bg-background md:hidden",
-        isGameRoute && "hidden",
-      )}>
+      <header
+        className={cn(
+          "flex items-center gap-2 px-3 py-2 border-b bg-background md:hidden",
+          isGameRoute && "hidden",
+        )}
+      >
         <Button
           size="icon"
           variant="ghost"
@@ -113,59 +103,57 @@ export function AppShell() {
       </Sheet>
 
       {/* Mobile content — no resizable panels, just the page */}
-      <main className={cn(
-        "flex-1 overflow-auto md:hidden",
-        isGameRoute && "!p-0 !overflow-hidden",
-      )}>
+      <main
+        className={cn("flex-1 overflow-auto md:hidden", isGameRoute && "!p-0 !overflow-hidden")}
+      >
         <Outlet />
       </main>
 
       {/* Desktop resizable layout */}
       <div className="hidden md:flex flex-1 min-h-0">
-      <ResizablePanelGroup
-        orientation="horizontal"
-        className="relative h-full"
-      >
-        <ResizablePanel
-          panelRef={sidebarRef}
-          defaultSize={260}
-          minSize={14}
-          maxSize={300}
-          collapsible
-          collapsedSize={0}
-        >
-          <Sidebar />
-        </ResizablePanel>
-        <ResizableHandle withHandle className={cn(isGameRoute && "hidden")} />
-        <ResizablePanel minSize={40} className="relative">
-          <div className={cn("absolute left-0 top-1/2 -translate-y-1/2 z-30 group", isGameRoute && "hidden")}>
-            <Button
-              size="icon"
-              variant="ghost"
+        <ResizablePanelGroup orientation="horizontal" className="relative h-full">
+          <ResizablePanel
+            panelRef={sidebarRef}
+            defaultSize={260}
+            minSize={14}
+            maxSize={300}
+            collapsible
+            collapsedSize={0}
+          >
+            <Sidebar />
+          </ResizablePanel>
+          <ResizableHandle withHandle className={cn(isGameRoute && "hidden")} />
+          <ResizablePanel minSize={40} className="relative">
+            <div
               className={cn(
-                "h-24 w-4 rounded-r-md rounded-l-none border border-l-0 border-border bg-card/90 px-0",
-                "translate-x-[-9px] group-hover:translate-x-0 group-hover:w-6 group-hover:h-28 transition-all duration-150",
-                "hover:bg-card",
+                "absolute left-0 top-1/2 -translate-y-1/2 z-30 group",
+                isGameRoute && "hidden",
               )}
-              onClick={toggleSidebar}
-              onMouseDown={onDragMouseDown}
-              title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
             >
-              {sidebarCollapsed ? (
-                <ChevronRight className="h-3 w-3" />
-              ) : (
-                <ChevronLeft className="h-3 w-3" />
-              )}
-            </Button>
-          </div>
-          <main className={cn(
-            "h-full overflow-auto",
-            isGameRoute && "!p-0 !overflow-hidden",
-          )}>
-            <Outlet />
-          </main>
-        </ResizablePanel>
-      </ResizablePanelGroup>
+              <Button
+                size="icon"
+                variant="ghost"
+                className={cn(
+                  "h-24 w-4 rounded-r-md rounded-l-none border border-l-0 border-border bg-card/90 px-0",
+                  "translate-x-[-9px] group-hover:translate-x-0 group-hover:w-6 group-hover:h-28 transition-all duration-150",
+                  "hover:bg-card",
+                )}
+                onClick={toggleSidebar}
+                onMouseDown={onDragMouseDown}
+                title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+              >
+                {sidebarCollapsed ? (
+                  <ChevronRight className="h-3 w-3" />
+                ) : (
+                  <ChevronLeft className="h-3 w-3" />
+                )}
+              </Button>
+            </div>
+            <main className={cn("h-full overflow-auto", isGameRoute && "!p-0 !overflow-hidden")}>
+              <Outlet />
+            </main>
+          </ResizablePanel>
+        </ResizablePanelGroup>
       </div>
     </div>
   );

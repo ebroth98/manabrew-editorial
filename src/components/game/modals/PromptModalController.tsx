@@ -25,10 +25,7 @@ export function PromptModalController({
   const showPromptModal = useGameUIStore((s) => s.showPromptModal);
   const hidePromptModal = useGameUIStore((s) => s.hidePromptModal);
 
-  const activeChildren = useMemo(
-    () => Children.toArray(children).filter(Boolean),
-    [children],
-  );
+  const activeChildren = useMemo(() => Children.toArray(children).filter(Boolean), [children]);
 
   const isOpen = !promptModalHidden;
 
@@ -43,7 +40,9 @@ export function PromptModalController({
   }
 
   if (activeChildren.length !== 1) {
-    throw new Error(`PromptModalController expected exactly 1 active modal child, got ${activeChildren.length}`);
+    throw new Error(
+      `PromptModalController expected exactly 1 active modal child, got ${activeChildren.length}`,
+    );
   }
 
   if (!isOpen) {
@@ -51,9 +50,7 @@ export function PromptModalController({
   }
 
   return (
-    <PromptModalChromeContext.Provider
-      value={{ showMinimize: true, onMinimize: hidePromptModal }}
-    >
+    <PromptModalChromeContext.Provider value={{ showMinimize: true, onMinimize: hidePromptModal }}>
       {activeChildren[0]}
     </PromptModalChromeContext.Provider>
   );

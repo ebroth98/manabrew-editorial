@@ -61,11 +61,25 @@ function samePlayers(left: string[], right: string[]) {
 export default function Lobby() {
   const navigate = useNavigate();
   const {
-    connected, connecting, error, username, rooms, currentRoom, players,
-    gameStarted, playerOrder, playerDecks, startingLife,
-    connect, listRooms, listPlayers, joinRoom, leaveRoom,
+    connected,
+    connecting,
+    error,
+    username,
+    rooms,
+    currentRoom,
+    players,
+    gameStarted,
+    playerOrder,
+    playerDecks,
+    startingLife,
+    connect,
+    listRooms,
+    listPlayers,
+    joinRoom,
+    leaveRoom,
     setDeckSelection,
-    setReady, startGame,
+    setReady,
+    startGame,
   } = useServerStore();
   const prefs = usePreferencesStore();
   const { currentDeck, savedDecks } = useDeckStore();
@@ -97,17 +111,23 @@ export default function Lobby() {
   useEffect(() => {
     if (gameStarted && playerOrder.length > 0) {
       const isHost = currentRoom?.host === username;
-      if (currentRoom && !samePlayers(playerOrder, currentRoom.players.map((player) => player.username))) {
+      if (
+        currentRoom &&
+        !samePlayers(
+          playerOrder,
+          currentRoom.players.map((player) => player.username),
+        )
+      ) {
         toast.error("Server player order does not match the current room.");
         return;
       }
-      const myIndex = playerOrder.indexOf(username ?? '');
+      const myIndex = playerOrder.indexOf(username ?? "");
       if (myIndex < 0) {
         toast.error("Could not determine your player slot for this game.");
         return;
       }
       useServerStore.setState({ gameStarted: false });
-      navigate('/play', {
+      navigate("/play", {
         state: {
           multiplayer: true,
           playerOrder,
@@ -160,7 +180,11 @@ export default function Lobby() {
     }
   }
 
-  async function handleDeckSelection(deckName: string, deckList: CardIdentity[], commanderName?: string) {
+  async function handleDeckSelection(
+    deckName: string,
+    deckList: CardIdentity[],
+    commanderName?: string,
+  ) {
     try {
       await setDeckSelection(deckName, deckList, commanderName);
       toast.success(`Selected deck: ${deckName}`);
@@ -203,7 +227,9 @@ export default function Lobby() {
       return;
     }
 
-    const myDeckName = room.players.find((player) => player.username === username)?.selected_deck_name;
+    const myDeckName = room.players.find(
+      (player) => player.username === username,
+    )?.selected_deck_name;
     const deck = findLocalDeckByName(myDeckName);
     if (!deck) {
       toast.error("Select one of your local decks before starting tabletop.");
@@ -214,20 +240,23 @@ export default function Lobby() {
       await startManualTabletopGame(deck);
       const initialGameView = useGameStore.getState().gameView;
       if (!initialGameView) throw new Error("Manual tabletop state did not initialize.");
-      const startingLife = getFormat(deck.format ?? room.format.toLowerCase())?.deckRules.startingLife ?? 20;
-      await getPlatform().server!.sendRoomMessage(createRoomRelayEnvelope({
-        protocol: MANUAL_TABLETOP_RELAY_PROTOCOL,
-        fromPlayer: `player-${myIndex}`,
-        roomId: room.room_id,
-        payload: {
-          type: "launch",
+      const startingLife =
+        getFormat(deck.format ?? room.format.toLowerCase())?.deckRules.startingLife ?? 20;
+      await getPlatform().server!.sendRoomMessage(
+        createRoomRelayEnvelope({
+          protocol: MANUAL_TABLETOP_RELAY_PROTOCOL,
+          fromPlayer: `player-${myIndex}`,
           roomId: room.room_id,
-          hostPlayer: username,
-          playerOrder,
-          startingLife,
-          initialGameView,
-        },
-      }));
+          payload: {
+            type: "launch",
+            roomId: room.room_id,
+            hostPlayer: username,
+            playerOrder,
+            startingLife,
+            initialGameView,
+          },
+        }),
+      );
       await startManualRoomHost(`player-${myIndex}`);
       navigate("/play", {
         state: {
@@ -290,12 +319,14 @@ export default function Lobby() {
         <div className="flex-1" />
 
         {/* Connection status */}
-        <div className={cn(
-          "flex items-center gap-2 text-xs px-2.5 py-1 rounded-full border",
-          connected && "text-primary border-primary/30 bg-primary/5",
-          !connected && error && "text-destructive border-destructive/30 bg-destructive/5",
-          !connected && !error && "text-muted-foreground border-border",
-        )}>
+        <div
+          className={cn(
+            "flex items-center gap-2 text-xs px-2.5 py-1 rounded-full border",
+            connected && "text-primary border-primary/30 bg-primary/5",
+            !connected && error && "text-destructive border-destructive/30 bg-destructive/5",
+            !connected && !error && "text-muted-foreground border-border",
+          )}
+        >
           {connecting ? (
             <Loader2 className="h-3 w-3 animate-spin" />
           ) : connected ? (
@@ -304,17 +335,40 @@ export default function Lobby() {
             <WifiOff className="h-3 w-3" />
           )}
           <span>
-            {connecting ? "Connecting..." : connected ? username : error ? "Disconnected" : "Not connected"}
+            {connecting
+              ? "Connecting..."
+              : connected
+                ? username
+                : error
+                  ? "Disconnected"
+                  : "Not connected"}
           </span>
         </div>
 
         {!connected && error && (
-          <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => connect(prefs.serverHost, prefs.serverPort, prefs.serverUsername, prefs.serverPassword)}>
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-7 text-xs"
+            onClick={() =>
+              connect(
+                prefs.serverHost,
+                prefs.serverPort,
+                prefs.serverUsername,
+                prefs.serverPassword,
+              )
+            }
+          >
             Retry
           </Button>
         )}
         {!connected && !connecting && (
-          <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => navigate('/settings')}>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-7 text-xs"
+            onClick={() => navigate("/settings")}
+          >
             <Settings className="h-3 w-3 mr-1" /> Settings
           </Button>
         )}
@@ -331,7 +385,12 @@ export default function Lobby() {
               <RefreshCw className={cn("h-3 w-3 mr-1", refreshingLobby && "animate-spin")} />
               Refresh
             </Button>
-            <Button size="sm" className="h-7 text-xs" onClick={() => setCreateRoomOpen(true)} disabled={currentRoom != null}>
+            <Button
+              size="sm"
+              className="h-7 text-xs"
+              onClick={() => setCreateRoomOpen(true)}
+              disabled={currentRoom != null}
+            >
               New Room
             </Button>
             <div className="w-px h-4 bg-border mx-1" />
@@ -340,7 +399,7 @@ export default function Lobby() {
               variant={sidePanel === "chat" ? "secondary" : "ghost"}
               className="h-7 w-7 relative"
               title="Toggle chat"
-              onClick={() => setSidePanel((v) => v === "chat" ? null : "chat")}
+              onClick={() => setSidePanel((v) => (v === "chat" ? null : "chat"))}
             >
               <MessageSquare className="h-3.5 w-3.5" />
             </Button>
@@ -349,7 +408,7 @@ export default function Lobby() {
               variant={sidePanel === "players" ? "secondary" : "ghost"}
               className="h-7 w-7 relative"
               title="Toggle online players"
-              onClick={() => setSidePanel((v) => v === "players" ? null : "players")}
+              onClick={() => setSidePanel((v) => (v === "players" ? null : "players"))}
             >
               <Users className="h-3.5 w-3.5" />
               {players.length > 0 && (

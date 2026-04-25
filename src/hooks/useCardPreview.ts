@@ -5,10 +5,14 @@ import { usePreferencesStore, type CardPreviewMode } from "@/stores/usePreferenc
 /** Check whether the required modifier key is held for the given preview mode. */
 function isModifierHeld(e: React.MouseEvent | MouseEvent, mode: CardPreviewMode): boolean {
   switch (mode) {
-    case "hover": return true;
-    case "shift": return e.shiftKey;
-    case "alt":   return e.altKey;
-    case "ctrl":  return e.ctrlKey || e.metaKey;
+    case "hover":
+      return true;
+    case "shift":
+      return e.shiftKey;
+    case "alt":
+      return e.altKey;
+    case "ctrl":
+      return e.ctrlKey || e.metaKey;
   }
 }
 
@@ -58,58 +62,61 @@ export function useCardPreview(dismissDeps: unknown[] = []) {
     setShowBackFace(false);
   }, []);
 
-  const handleMouseEnter = useCallback((card: Card, e?: React.MouseEvent, options: HoverOptions = {}) => {
-    // console.log("handleMouseEnter", card.name, { buttons: e?.buttons, mode: cardPreviewMode });
-    // Never schedule hover preview while the mouse button is held (e.g. drag).
-    if (e && e.buttons !== 0) {
-      dismiss();
-      return;
-    }
-
-    if (hoverTimerRef.current) {
-      clearTimeout(hoverTimerRef.current);
-      hoverTimerRef.current = null;
-    }
-
-    if (hideTimerRef.current) {
-      clearTimeout(hideTimerRef.current);
-      hideTimerRef.current = null;
-    }
-
-    // Check modifier key requirement
-    if (e && !isModifierHeld(e, cardPreviewMode)) {
-      return;
-    }
-
-    // Don't switch cards while sticky — dismiss first
-    if (isSticky) return;
-
-    if (e) {
-      setMousePos({ x: e.clientX, y: e.clientY });
-      if (options.anchorOverride) {
-        setAnchorRect(options.anchorOverride);
-      } else if (options.useAnchor) {
-        setAnchorRect((e.currentTarget as HTMLElement).getBoundingClientRect());
-      } else {
-        setAnchorRect(null);
+  const handleMouseEnter = useCallback(
+    (card: Card, e?: React.MouseEvent, options: HoverOptions = {}) => {
+      // console.log("handleMouseEnter", card.name, { buttons: e?.buttons, mode: cardPreviewMode });
+      // Never schedule hover preview while the mouse button is held (e.g. drag).
+      if (e && e.buttons !== 0) {
+        dismiss();
+        return;
       }
-      setPlacement(options.placement ?? "auto");
-    }
 
-    const delay = options.useDelay ? cardHoverDelayMs : 0;
+      if (hoverTimerRef.current) {
+        clearTimeout(hoverTimerRef.current);
+        hoverTimerRef.current = null;
+      }
 
-    // If a card is already showing, switch instantly; only debounce the initial show
-    if (hoveredCard || delay === 0) {
-      setHoveredCard(card);
-      setShowBackFace(false);
-    } else {
-      hoverTimerRef.current = setTimeout(() => {
+      if (hideTimerRef.current) {
+        clearTimeout(hideTimerRef.current);
+        hideTimerRef.current = null;
+      }
+
+      // Check modifier key requirement
+      if (e && !isModifierHeld(e, cardPreviewMode)) {
+        return;
+      }
+
+      // Don't switch cards while sticky — dismiss first
+      if (isSticky) return;
+
+      if (e) {
+        setMousePos({ x: e.clientX, y: e.clientY });
+        if (options.anchorOverride) {
+          setAnchorRect(options.anchorOverride);
+        } else if (options.useAnchor) {
+          setAnchorRect((e.currentTarget as HTMLElement).getBoundingClientRect());
+        } else {
+          setAnchorRect(null);
+        }
+        setPlacement(options.placement ?? "auto");
+      }
+
+      const delay = options.useDelay ? cardHoverDelayMs : 0;
+
+      // If a card is already showing, switch instantly; only debounce the initial show
+      if (hoveredCard || delay === 0) {
         setHoveredCard(card);
         setShowBackFace(false);
-        hoverTimerRef.current = null;
-      }, delay);
-    }
-  }, [cardHoverDelayMs, cardPreviewMode, dismiss, hoveredCard, isSticky]);
+      } else {
+        hoverTimerRef.current = setTimeout(() => {
+          setHoveredCard(card);
+          setShowBackFace(false);
+          hoverTimerRef.current = null;
+        }, delay);
+      }
+    },
+    [cardHoverDelayMs, cardPreviewMode, dismiss, hoveredCard, isSticky],
+  );
 
   const handleMouseLeave = useCallback(() => {
     if (isSticky) return;
@@ -184,8 +191,9 @@ export function useCardPreview(dismissDeps: unknown[] = []) {
   // but clearing timers MUST happen in an effect.
   const lastDepsRef = useRef(dismissDeps);
   useEffect(() => {
-    const changed = dismissDeps.length !== lastDepsRef.current.length || 
-                  dismissDeps.some((dep, i) => dep !== lastDepsRef.current[i]);
+    const changed =
+      dismissDeps.length !== lastDepsRef.current.length ||
+      dismissDeps.some((dep, i) => dep !== lastDepsRef.current[i]);
     if (changed) {
       setTimeout(() => dismiss(), 0);
       lastDepsRef.current = dismissDeps;

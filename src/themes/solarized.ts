@@ -3,38 +3,38 @@ import { buildGameColors, type BasePalette } from "./buildGameColors";
 
 /** Solarized Dark palette by Ethan Schoonover. */
 const palette: BasePalette = {
-  foreground: "#93a1a1",        // base1
-  labelMuted: "#586e75",        // base01
-  labelGhost: "#839496",        // base0
-  placeholderFill: "#002b36",   // base03
+  foreground: "#93a1a1", // base1
+  labelMuted: "#586e75", // base01
+  labelGhost: "#839496", // base0
+  placeholderFill: "#002b36", // base03
   placeholderStroke: "#073642", // base02
   canvasBackground: "#002b36",
-  red:      "#dc322f",
-  redDeep:  "#a62622",
-  orange:   "#cb4b16",
-  amber:    "#b58900",
-  yellow:   "#b58900",
-  green:    "#859900",
-  teal:     "#2aa198",
-  cyan:     "#2aa198",
-  blue:     "#268bd2",
-  sky:      "#268bd2",
-  indigo:   "#6c71c4",
-  violet:   "#6c71c4",
-  purple:   "#6c71c4",
-  pink:     "#d33682",
-  slate:    "#586e75",
-  brown:    "#cb4b16",
-  paper:    "#93a1a1",
-  poison:   "#657400",          // darker olive sibling of solarized green
-  promptPass:    "#6c71c4",     // violet
-  promptDefense: "#268bd2",     // blue
-  manaW:    "#eee8d5",          // base2
-  manaU:    "#268bd2",
-  manaB:    "#073642",
-  manaR:    "#dc322f",
-  manaG:    "#859900",
-  manaC:    "#839496",
+  red: "#dc322f",
+  redDeep: "#a62622",
+  orange: "#cb4b16",
+  amber: "#b58900",
+  yellow: "#b58900",
+  green: "#859900",
+  teal: "#2aa198",
+  cyan: "#2aa198",
+  blue: "#268bd2",
+  sky: "#268bd2",
+  indigo: "#6c71c4",
+  violet: "#6c71c4",
+  purple: "#6c71c4",
+  pink: "#d33682",
+  slate: "#586e75",
+  brown: "#cb4b16",
+  paper: "#93a1a1",
+  poison: "#657400", // darker olive sibling of solarized green
+  promptPass: "#6c71c4", // violet
+  promptDefense: "#268bd2", // blue
+  manaW: "#eee8d5", // base2
+  manaU: "#268bd2",
+  manaB: "#073642",
+  manaR: "#dc322f",
+  manaG: "#859900",
+  manaC: "#839496",
 };
 
 const preset: ThemePreset = {

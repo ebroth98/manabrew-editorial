@@ -21,7 +21,6 @@ import {
   getDeckNameColorClass,
 } from "@/components/deck/deckDisplay.utils";
 
-
 interface DeckGridCardProps {
   deck: SavedDeck;
   onOpen: () => void;
@@ -57,7 +56,10 @@ export function DeckGridCard({ deck, onOpen, onDelete, onRename }: DeckGridCardP
             variant="secondary"
             className="h-6 w-6 bg-background/80 backdrop-blur-sm hover:bg-background"
             title="Rename"
-            onClick={(e) => { e.stopPropagation(); onRename(); }}
+            onClick={(e) => {
+              e.stopPropagation();
+              onRename();
+            }}
           >
             <Pencil className="h-3 w-3" />
           </Button>
@@ -66,7 +68,10 @@ export function DeckGridCard({ deck, onOpen, onDelete, onRename }: DeckGridCardP
             variant="secondary"
             className="h-6 w-6 bg-background/80 backdrop-blur-sm hover:bg-background text-destructive hover:text-destructive"
             title="Delete"
-            onClick={(e) => { e.stopPropagation(); setConfirmDelete(true); }}
+            onClick={(e) => {
+              e.stopPropagation();
+              setConfirmDelete(true);
+            }}
           >
             <Trash2 className="h-3 w-3" />
           </Button>
@@ -74,7 +79,13 @@ export function DeckGridCard({ deck, onOpen, onDelete, onRename }: DeckGridCardP
 
         {/* Bottom info overlay */}
         <div className="absolute bottom-0 left-0 right-0 px-2 pt-6 pb-2 z-10">
-          <p className={cn("text-white text-sm font-semibold truncate leading-tight", titleColorClass, DECK_NAME_SHADOW_CLASS)}>
+          <p
+            className={cn(
+              "text-white text-sm font-semibold truncate leading-tight",
+              titleColorClass,
+              DECK_NAME_SHADOW_CLASS,
+            )}
+          >
             {deck.deck.name}
           </p>
           <div className="flex items-center gap-1 mt-1 flex-wrap">
@@ -83,9 +94,7 @@ export function DeckGridCard({ deck, onOpen, onDelete, onRename }: DeckGridCardP
             {deck.deck.labels?.map((label) => (
               <DeckLabelBadge key={label.name} label={label} size="sm" />
             ))}
-            <span className="ml-auto text-[10px] text-white/85">
-              {displayCards.length} cards
-            </span>
+            <span className="ml-auto text-[10px] text-white/85">{displayCards.length} cards</span>
           </div>
         </div>
       </div>
@@ -95,7 +104,8 @@ export function DeckGridCard({ deck, onOpen, onDelete, onRename }: DeckGridCardP
           <DialogHeader>
             <DialogTitle>Delete Deck</DialogTitle>
             <DialogDescription>
-              Are you sure you want to delete &ldquo;{deck.deck.name}&rdquo;? This action cannot be undone.
+              Are you sure you want to delete &ldquo;{deck.deck.name}&rdquo;? This action cannot be
+              undone.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="gap-2">
@@ -105,7 +115,10 @@ export function DeckGridCard({ deck, onOpen, onDelete, onRename }: DeckGridCardP
             <Button
               variant="destructive"
               size="sm"
-              onClick={() => { setConfirmDelete(false); onDelete(); }}
+              onClick={() => {
+                setConfirmDelete(false);
+                onDelete();
+              }}
             >
               Delete
             </Button>

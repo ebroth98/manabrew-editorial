@@ -27,10 +27,7 @@ export function resolveCoverCard(deck: Deck): Card | undefined {
   return deck.commanders?.[0] ?? deck.cards[0];
 }
 
-function resolveArtCropUrl(
-  card: ScryfallCard,
-  cover?: DeckCoverSource,
-): string | undefined {
+function resolveArtCropUrl(card: ScryfallCard, cover?: DeckCoverSource): string | undefined {
   const wantsBackFace = cover?.isDoubleFaced && cover.coverCardFace === 1;
   if (wantsBackFace) {
     return card.card_faces?.[1]?.image_uris?.art_crop;
@@ -70,12 +67,7 @@ export function useDeckCoverUrl(cover?: DeckCoverSource): string | undefined {
   return artUrl ?? undefined;
 }
 
-export function DeckCoverImage({
-  cover,
-  alt,
-  className,
-  fallbackClassName,
-}: DeckCoverImageProps) {
+export function DeckCoverImage({ cover, alt, className, fallbackClassName }: DeckCoverImageProps) {
   const [artError, setArtError] = useState(false);
   const artUrl = useDeckCoverUrl(cover);
 

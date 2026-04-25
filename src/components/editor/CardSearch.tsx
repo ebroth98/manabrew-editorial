@@ -242,7 +242,9 @@ function buildScryfallQuery(
   pushOrGroup(parts, adv.rarity, "r:");
   if (adv.format) parts.push(`f:${adv.format}`);
   if (adv.colorIdentity.size > 0) {
-    const clauses = [...adv.colorIdentity].map((id) => COLOR_IDENTITY_FILTERS.find((f) => f.id === id)!.scryfall);
+    const clauses = [...adv.colorIdentity].map(
+      (id) => COLOR_IDENTITY_FILTERS.find((f) => f.id === id)!.scryfall,
+    );
     parts.push(clauses.length === 1 ? clauses[0] : `(${clauses.join(" or ")})`);
   }
   if (adv.oracleText.trim()) parts.push(`o:"${adv.oracleText.trim()}"`);
@@ -316,7 +318,7 @@ function FilterBtn({
         active
           ? "bg-primary text-primary-foreground border-primary"
           : "bg-background text-muted-foreground border-border hover:bg-muted",
-        className
+        className,
       )}
     >
       {children}
@@ -359,15 +361,15 @@ function FilterLabel({ children }: { children: React.ReactNode }) {
 }
 
 function FilterRow({ children, className }: { children: React.ReactNode; className?: string }) {
-  return (
-    <div className={cn("flex items-center gap-1.5", className)}>{children}</div>
-  );
+  return <div className={cn("flex items-center gap-1.5", className)}>{children}</div>;
 }
 
 function FilterSeparator({ label }: { label: string }) {
   return (
     <div className="flex items-center gap-2 pt-2 pb-1">
-      <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/50">{label}</span>
+      <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/50">
+        {label}
+      </span>
       <div className="flex-1 border-t border-border/30" />
     </div>
   );
@@ -412,7 +414,10 @@ function DraggableCardGrid({
           size="sm"
           variant="secondary"
           className="w-4/5 gap-1"
-          onClick={(e) => { e.stopPropagation(); onMoreInfo(); }}
+          onClick={(e) => {
+            e.stopPropagation();
+            onMoreInfo();
+          }}
         >
           <Info className="h-3 w-3" />
           More Info
@@ -452,14 +457,19 @@ function DraggableCardRow({
       className={cn(
         "flex items-center gap-2 px-2 py-1.5 rounded hover:bg-muted/50 group border-b border-border/30 last:border-0",
         !standalone && "cursor-grab active:cursor-grabbing",
-        isDragging && "opacity-30"
+        isDragging && "opacity-30",
       )}
       onMouseEnter={(e) => onHover(card, e)}
       onMouseLeave={onLeave}
     >
       {card.imageUrl && (
         <div className="w-8 h-8 shrink-0 rounded overflow-hidden bg-muted">
-          <img src={card.imageUrl} alt="" className="w-full h-full object-cover object-top" draggable={false} />
+          <img
+            src={card.imageUrl}
+            alt=""
+            className="w-full h-full object-cover object-top"
+            draggable={false}
+          />
         </div>
       )}
       {!card.imageUrl && (
@@ -473,15 +483,16 @@ function DraggableCardRow({
         <div className="text-xs text-muted-foreground truncate leading-tight">{typeStr}</div>
       </div>
 
-      {card.manaCost && (
-        <ManaSymbols cost={card.manaCost} size="sm" className="shrink-0" />
-      )}
+      {card.manaCost && <ManaSymbols cost={card.manaCost} size="sm" className="shrink-0" />}
 
       <Button
         size="sm"
         variant="ghost"
         className="h-6 px-2 text-xs gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0 pointer-events-none group-hover:pointer-events-auto"
-        onClick={(e) => { e.stopPropagation(); onMoreInfo(); }}
+        onClick={(e) => {
+          e.stopPropagation();
+          onMoreInfo();
+        }}
       >
         <Info className="h-3 w-3" />
         Info
@@ -515,7 +526,13 @@ export function CardSearch({ standalone, onClose }: CardSearchProps) {
 
   const observerTarget = useRef(null);
 
-  const effectiveQuery = buildScryfallQuery(debouncedText, activeColors, activeTypes, activeCmc, advanced);
+  const effectiveQuery = buildScryfallQuery(
+    debouncedText,
+    activeColors,
+    activeTypes,
+    activeCmc,
+    advanced,
+  );
   const { data, fetchNextPage, hasNextPage, isFetchingNextPage, status } = useCardSearch(
     effectiveQuery,
     advanced.sort || undefined,
@@ -529,21 +546,35 @@ export function CardSearch({ standalone, onClose }: CardSearchProps) {
 
   useEffect(() => {
     const observer = new IntersectionObserver(
-      (entries) => { if (entries[0].isIntersecting && hasNextPage) fetchNextPage(); },
-      { threshold: 1.0 }
+      (entries) => {
+        if (entries[0].isIntersecting && hasNextPage) fetchNextPage();
+      },
+      { threshold: 1.0 },
     );
     if (observerTarget.current) observer.observe(observerTarget.current);
     return () => observer.disconnect();
   }, [hasNextPage, fetchNextPage]);
 
   function toggleColor(id: string) {
-    setActiveColors((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
+    setActiveColors((prev) => {
+      const n = new Set(prev);
+      n.has(id) ? n.delete(id) : n.add(id);
+      return n;
+    });
   }
   function toggleType(id: string) {
-    setActiveTypes((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
+    setActiveTypes((prev) => {
+      const n = new Set(prev);
+      n.has(id) ? n.delete(id) : n.add(id);
+      return n;
+    });
   }
   function toggleAdvSet(field: "rarity" | "is" | "colorIdentity" | "produces", id: string) {
-    setAdvanced((prev) => { const n = new Set(prev[field]); n.has(id) ? n.delete(id) : n.add(id); return { ...prev, [field]: n }; });
+    setAdvanced((prev) => {
+      const n = new Set(prev[field]);
+      n.has(id) ? n.delete(id) : n.add(id);
+      return { ...prev, [field]: n };
+    });
   }
   function setAdv<K extends keyof AdvancedFilters>(key: K, value: AdvancedFilters[K]) {
     setAdvanced((prev) => ({ ...prev, [key]: value }));
@@ -562,7 +593,13 @@ export function CardSearch({ standalone, onClose }: CardSearchProps) {
       <div className="p-3 border-b space-y-2 shrink-0">
         <div className="flex gap-2">
           {onClose && (
-            <Button size="icon" variant="ghost" className="h-8 w-8 shrink-0" title="Close search panel" onClick={onClose}>
+            <Button
+              size="icon"
+              variant="ghost"
+              className="h-8 w-8 shrink-0"
+              title="Close search panel"
+              onClick={onClose}
+            >
               <PanelRightClose className="h-4 w-4" />
             </Button>
           )}
@@ -575,7 +612,10 @@ export function CardSearch({ standalone, onClose }: CardSearchProps) {
           <Button
             size="sm"
             variant={showFilters || hasActiveFilters ? "secondary" : "outline"}
-            className={cn("h-8 px-2 gap-1 shrink-0", hasActiveFilters && !showFilters && "border-primary")}
+            className={cn(
+              "h-8 px-2 gap-1 shrink-0",
+              hasActiveFilters && !showFilters && "border-primary",
+            )}
             onClick={() => setShowFilters((v) => !v)}
           >
             <SlidersHorizontal className="h-3.5 w-3.5" />
@@ -593,7 +633,9 @@ export function CardSearch({ standalone, onClose }: CardSearchProps) {
               onClick={() => setViewMode("grid")}
               className={cn(
                 "px-2 py-1 text-xs transition-colors",
-                viewMode === "grid" ? "bg-primary text-primary-foreground" : "hover:bg-muted text-muted-foreground"
+                viewMode === "grid"
+                  ? "bg-primary text-primary-foreground"
+                  : "hover:bg-muted text-muted-foreground",
               )}
             >
               <LayoutGrid className="h-3.5 w-3.5" />
@@ -604,7 +646,9 @@ export function CardSearch({ standalone, onClose }: CardSearchProps) {
               onClick={() => setViewMode("list")}
               className={cn(
                 "px-2 py-1 text-xs transition-colors border-l",
-                viewMode === "list" ? "bg-primary text-primary-foreground" : "hover:bg-muted text-muted-foreground"
+                viewMode === "list"
+                  ? "bg-primary text-primary-foreground"
+                  : "hover:bg-muted text-muted-foreground",
               )}
             >
               <List className="h-3.5 w-3.5" />
@@ -620,13 +664,26 @@ export function CardSearch({ standalone, onClose }: CardSearchProps) {
             <FilterRow>
               <FilterLabel>Color</FilterLabel>
               <div className="flex items-center gap-0.5">
-                {COLOR_FILTERS.map((f) => (
+                {COLOR_FILTERS.map((f) =>
                   f.id === "M" ? (
-                    <FilterBtn key={f.id} active={activeColors.has(f.id)} onClick={() => toggleColor(f.id)} title={f.title}>M</FilterBtn>
+                    <FilterBtn
+                      key={f.id}
+                      active={activeColors.has(f.id)}
+                      onClick={() => toggleColor(f.id)}
+                      title={f.title}
+                    >
+                      M
+                    </FilterBtn>
                   ) : (
-                    <ManaFilterBtn key={f.id} symbol={f.id} active={activeColors.has(f.id)} onClick={() => toggleColor(f.id)} title={f.title} />
-                  )
-                ))}
+                    <ManaFilterBtn
+                      key={f.id}
+                      symbol={f.id}
+                      active={activeColors.has(f.id)}
+                      onClick={() => toggleColor(f.id)}
+                      title={f.title}
+                    />
+                  ),
+                )}
               </div>
             </FilterRow>
 
@@ -634,7 +691,13 @@ export function CardSearch({ standalone, onClose }: CardSearchProps) {
               <FilterLabel>Identity</FilterLabel>
               <div className="flex items-center gap-0.5">
                 {COLOR_IDENTITY_FILTERS.map((f) => (
-                  <ManaFilterBtn key={f.id} symbol={f.id} active={advanced.colorIdentity.has(f.id)} onClick={() => toggleAdvSet("colorIdentity", f.id)} title={`Color Identity: ${f.title}`} />
+                  <ManaFilterBtn
+                    key={f.id}
+                    symbol={f.id}
+                    active={advanced.colorIdentity.has(f.id)}
+                    onClick={() => toggleAdvSet("colorIdentity", f.id)}
+                    title={`Color Identity: ${f.title}`}
+                  />
                 ))}
               </div>
             </FilterRow>
@@ -643,14 +706,25 @@ export function CardSearch({ standalone, onClose }: CardSearchProps) {
               <FilterLabel>Produces</FilterLabel>
               <div className="flex items-center gap-0.5">
                 {PRODUCES_FILTERS.map((f) => (
-                  <ManaFilterBtn key={f.id} symbol={f.id} active={advanced.produces.has(f.id)} onClick={() => toggleAdvSet("produces", f.id)} title={`Produces ${f.title} mana`} />
+                  <ManaFilterBtn
+                    key={f.id}
+                    symbol={f.id}
+                    active={advanced.produces.has(f.id)}
+                    onClick={() => toggleAdvSet("produces", f.id)}
+                    title={`Produces ${f.title} mana`}
+                  />
                 ))}
               </div>
             </FilterRow>
 
             <FilterRow>
               <FilterLabel>Mana</FilterLabel>
-              <Input className="h-7 text-xs w-40" placeholder="e.g. {2}{W}{W}" value={advanced.manaCost} onChange={(e) => setAdv("manaCost", e.target.value)} />
+              <Input
+                className="h-7 text-xs w-40"
+                placeholder="e.g. {2}{W}{W}"
+                value={advanced.manaCost}
+                onChange={(e) => setAdv("manaCost", e.target.value)}
+              />
             </FilterRow>
 
             {/* ── Card Properties ── */}
@@ -659,7 +733,11 @@ export function CardSearch({ standalone, onClose }: CardSearchProps) {
             <FilterRow className="flex-wrap">
               <FilterLabel>Type</FilterLabel>
               {TYPE_FILTERS.map((f) => (
-                <FilterBtn key={f.id} active={activeTypes.has(f.id)} onClick={() => toggleType(f.id)}>
+                <FilterBtn
+                  key={f.id}
+                  active={activeTypes.has(f.id)}
+                  onClick={() => toggleType(f.id)}
+                >
                   {f.label}
                 </FilterBtn>
               ))}
@@ -668,7 +746,11 @@ export function CardSearch({ standalone, onClose }: CardSearchProps) {
             <FilterRow className="flex-wrap">
               <FilterLabel>CMC</FilterLabel>
               {CMC_FILTERS.map((f) => (
-                <FilterBtn key={f.id} active={activeCmc === f.id} onClick={() => setActiveCmc(f.id)}>
+                <FilterBtn
+                  key={f.id}
+                  active={activeCmc === f.id}
+                  onClick={() => setActiveCmc(f.id)}
+                >
                   {f.label}
                 </FilterBtn>
               ))}
@@ -677,7 +759,12 @@ export function CardSearch({ standalone, onClose }: CardSearchProps) {
             <FilterRow className="flex-wrap">
               <FilterLabel>Rarity</FilterLabel>
               {RARITY_FILTERS.map((f) => (
-                <FilterBtn key={f.id} active={advanced.rarity.has(f.id)} onClick={() => toggleAdvSet("rarity", f.id)} title={f.title}>
+                <FilterBtn
+                  key={f.id}
+                  active={advanced.rarity.has(f.id)}
+                  onClick={() => toggleAdvSet("rarity", f.id)}
+                  title={f.title}
+                >
                   {f.label}
                 </FilterBtn>
               ))}
@@ -687,24 +774,63 @@ export function CardSearch({ standalone, onClose }: CardSearchProps) {
               <FilterLabel>Stats</FilterLabel>
               <div className="flex items-center gap-1">
                 <span className="text-[10px] text-muted-foreground/60 uppercase">pow</span>
-                <select className="h-6 text-xs bg-background border rounded px-1" value={advanced.powerOp} onChange={(e) => setAdv("powerOp", e.target.value)}>
-                  {COMPARISON_OPS.map((op) => <option key={op} value={op}>{op}</option>)}
+                <select
+                  className="h-6 text-xs bg-background border rounded px-1"
+                  value={advanced.powerOp}
+                  onChange={(e) => setAdv("powerOp", e.target.value)}
+                >
+                  {COMPARISON_OPS.map((op) => (
+                    <option key={op} value={op}>
+                      {op}
+                    </option>
+                  ))}
                 </select>
-                <Input className="h-6 text-xs w-10" placeholder="—" value={advanced.power} onChange={(e) => setAdv("power", e.target.value)} />
+                <Input
+                  className="h-6 text-xs w-10"
+                  placeholder="—"
+                  value={advanced.power}
+                  onChange={(e) => setAdv("power", e.target.value)}
+                />
               </div>
               <div className="flex items-center gap-1">
                 <span className="text-[10px] text-muted-foreground/60 uppercase">tou</span>
-                <select className="h-6 text-xs bg-background border rounded px-1" value={advanced.toughnessOp} onChange={(e) => setAdv("toughnessOp", e.target.value)}>
-                  {COMPARISON_OPS.map((op) => <option key={op} value={op}>{op}</option>)}
+                <select
+                  className="h-6 text-xs bg-background border rounded px-1"
+                  value={advanced.toughnessOp}
+                  onChange={(e) => setAdv("toughnessOp", e.target.value)}
+                >
+                  {COMPARISON_OPS.map((op) => (
+                    <option key={op} value={op}>
+                      {op}
+                    </option>
+                  ))}
                 </select>
-                <Input className="h-6 text-xs w-10" placeholder="—" value={advanced.toughness} onChange={(e) => setAdv("toughness", e.target.value)} />
+                <Input
+                  className="h-6 text-xs w-10"
+                  placeholder="—"
+                  value={advanced.toughness}
+                  onChange={(e) => setAdv("toughness", e.target.value)}
+                />
               </div>
               <div className="flex items-center gap-1">
                 <span className="text-[10px] text-muted-foreground/60 uppercase">loy</span>
-                <select className="h-6 text-xs bg-background border rounded px-1" value={advanced.loyaltyOp} onChange={(e) => setAdv("loyaltyOp", e.target.value)}>
-                  {COMPARISON_OPS.map((op) => <option key={op} value={op}>{op}</option>)}
+                <select
+                  className="h-6 text-xs bg-background border rounded px-1"
+                  value={advanced.loyaltyOp}
+                  onChange={(e) => setAdv("loyaltyOp", e.target.value)}
+                >
+                  {COMPARISON_OPS.map((op) => (
+                    <option key={op} value={op}>
+                      {op}
+                    </option>
+                  ))}
                 </select>
-                <Input className="h-6 text-xs w-10" placeholder="—" value={advanced.loyalty} onChange={(e) => setAdv("loyalty", e.target.value)} />
+                <Input
+                  className="h-6 text-xs w-10"
+                  placeholder="—"
+                  value={advanced.loyalty}
+                  onChange={(e) => setAdv("loyalty", e.target.value)}
+                />
               </div>
             </FilterRow>
 
@@ -713,17 +839,32 @@ export function CardSearch({ standalone, onClose }: CardSearchProps) {
 
             <FilterRow>
               <FilterLabel>Oracle</FilterLabel>
-              <Input className="h-7 text-xs flex-1" placeholder="Card text contains…" value={advanced.oracleText} onChange={(e) => setAdv("oracleText", e.target.value)} />
+              <Input
+                className="h-7 text-xs flex-1"
+                placeholder="Card text contains…"
+                value={advanced.oracleText}
+                onChange={(e) => setAdv("oracleText", e.target.value)}
+              />
             </FilterRow>
 
             <FilterRow>
               <FilterLabel>Flavor</FilterLabel>
-              <Input className="h-7 text-xs flex-1" placeholder="Flavor text contains…" value={advanced.flavorText} onChange={(e) => setAdv("flavorText", e.target.value)} />
+              <Input
+                className="h-7 text-xs flex-1"
+                placeholder="Flavor text contains…"
+                value={advanced.flavorText}
+                onChange={(e) => setAdv("flavorText", e.target.value)}
+              />
             </FilterRow>
 
             <FilterRow>
               <FilterLabel>Keyword</FilterLabel>
-              <Input className="h-7 text-xs flex-1" placeholder="e.g. flying, haste, deathtouch" value={advanced.keyword} onChange={(e) => setAdv("keyword", e.target.value)} />
+              <Input
+                className="h-7 text-xs flex-1"
+                placeholder="e.g. flying, haste, deathtouch"
+                value={advanced.keyword}
+                onChange={(e) => setAdv("keyword", e.target.value)}
+              />
             </FilterRow>
 
             {/* ── Format & Legality ── */}
@@ -732,7 +873,11 @@ export function CardSearch({ standalone, onClose }: CardSearchProps) {
             <FilterRow className="flex-wrap">
               <FilterLabel>Format</FilterLabel>
               {FORMAT_FILTERS.map((f) => (
-                <FilterBtn key={f.id} active={advanced.format === f.id} onClick={() => toggleAdvString("format", f.id)}>
+                <FilterBtn
+                  key={f.id}
+                  active={advanced.format === f.id}
+                  onClick={() => toggleAdvString("format", f.id)}
+                >
                   {f.label}
                 </FilterBtn>
               ))}
@@ -745,33 +890,74 @@ export function CardSearch({ standalone, onClose }: CardSearchProps) {
               <FilterLabel>Set</FilterLabel>
               <SetSelect value={advanced.set} onChange={(v) => setAdv("set", v)} className="w-48" />
               <FilterLabel>Artist</FilterLabel>
-              <Input className="h-7 text-xs flex-1" placeholder="Artist name…" value={advanced.artist} onChange={(e) => setAdv("artist", e.target.value)} />
+              <Input
+                className="h-7 text-xs flex-1"
+                placeholder="Artist name…"
+                value={advanced.artist}
+                onChange={(e) => setAdv("artist", e.target.value)}
+              />
               <FilterLabel>Year</FilterLabel>
-              <Input className="h-7 text-xs w-16" placeholder="2024" value={advanced.year} onChange={(e) => setAdv("year", e.target.value)} />
+              <Input
+                className="h-7 text-xs w-16"
+                placeholder="2024"
+                value={advanced.year}
+                onChange={(e) => setAdv("year", e.target.value)}
+              />
             </FilterRow>
 
             <FilterRow className="flex-wrap gap-3">
               <div className="flex items-center gap-1">
-                <span className="text-[10px] text-muted-foreground/60 uppercase shrink-0">Frame</span>
+                <span className="text-[10px] text-muted-foreground/60 uppercase shrink-0">
+                  Frame
+                </span>
                 {FRAME_FILTERS.map((f) => (
-                  <FilterBtn key={f.id} active={advanced.frame === f.id} onClick={() => toggleAdvString("frame", f.id)}>{f.label}</FilterBtn>
+                  <FilterBtn
+                    key={f.id}
+                    active={advanced.frame === f.id}
+                    onClick={() => toggleAdvString("frame", f.id)}
+                  >
+                    {f.label}
+                  </FilterBtn>
                 ))}
               </div>
               <div className="flex items-center gap-1">
-                <span className="text-[10px] text-muted-foreground/60 uppercase shrink-0">Border</span>
+                <span className="text-[10px] text-muted-foreground/60 uppercase shrink-0">
+                  Border
+                </span>
                 {BORDER_FILTERS.map((f) => (
-                  <FilterBtn key={f.id} active={advanced.border === f.id} onClick={() => toggleAdvString("border", f.id)}>{f.label}</FilterBtn>
+                  <FilterBtn
+                    key={f.id}
+                    active={advanced.border === f.id}
+                    onClick={() => toggleAdvString("border", f.id)}
+                  >
+                    {f.label}
+                  </FilterBtn>
                 ))}
               </div>
               <div className="flex items-center gap-1">
-                <span className="text-[10px] text-muted-foreground/60 uppercase shrink-0">Game</span>
+                <span className="text-[10px] text-muted-foreground/60 uppercase shrink-0">
+                  Game
+                </span>
                 {GAME_FILTERS.map((f) => (
-                  <FilterBtn key={f.id} active={advanced.game === f.id} onClick={() => toggleAdvString("game", f.id)}>{f.label}</FilterBtn>
+                  <FilterBtn
+                    key={f.id}
+                    active={advanced.game === f.id}
+                    onClick={() => toggleAdvString("game", f.id)}
+                  >
+                    {f.label}
+                  </FilterBtn>
                 ))}
               </div>
               <div className="flex items-center gap-1">
-                <span className="text-[10px] text-muted-foreground/60 uppercase shrink-0">Lang</span>
-                <Input className="h-6 text-xs w-14" placeholder="en" value={advanced.language} onChange={(e) => setAdv("language", e.target.value)} />
+                <span className="text-[10px] text-muted-foreground/60 uppercase shrink-0">
+                  Lang
+                </span>
+                <Input
+                  className="h-6 text-xs w-14"
+                  placeholder="en"
+                  value={advanced.language}
+                  onChange={(e) => setAdv("language", e.target.value)}
+                />
               </div>
             </FilterRow>
 
@@ -781,7 +967,11 @@ export function CardSearch({ standalone, onClose }: CardSearchProps) {
             <FilterRow className="flex-wrap">
               <FilterLabel>Is</FilterLabel>
               {IS_FILTERS.map((f) => (
-                <FilterBtn key={f.id} active={advanced.is.has(f.id)} onClick={() => toggleAdvSet("is", f.id)}>
+                <FilterBtn
+                  key={f.id}
+                  active={advanced.is.has(f.id)}
+                  onClick={() => toggleAdvSet("is", f.id)}
+                >
                   {f.label}
                 </FilterBtn>
               ))}
@@ -792,11 +982,23 @@ export function CardSearch({ standalone, onClose }: CardSearchProps) {
 
             <FilterRow>
               <FilterLabel>Sort by</FilterLabel>
-              <select className="h-7 text-xs bg-background border rounded px-2" value={advanced.sort} onChange={(e) => setAdv("sort", e.target.value)}>
+              <select
+                className="h-7 text-xs bg-background border rounded px-2"
+                value={advanced.sort}
+                onChange={(e) => setAdv("sort", e.target.value)}
+              >
                 <option value="">Default (CMC)</option>
-                {SORT_OPTIONS.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
+                {SORT_OPTIONS.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.label}
+                  </option>
+                ))}
               </select>
-              <select className="h-7 text-xs bg-background border rounded px-2" value={advanced.sortDir} onChange={(e) => setAdv("sortDir", e.target.value)}>
+              <select
+                className="h-7 text-xs bg-background border rounded px-2"
+                value={advanced.sortDir}
+                onChange={(e) => setAdv("sortDir", e.target.value)}
+              >
                 <option value="auto">Auto</option>
                 <option value="asc">Ascending</option>
                 <option value="desc">Descending</option>
@@ -814,7 +1016,9 @@ export function CardSearch({ standalone, onClose }: CardSearchProps) {
             </div>
           )}
           {status === "error" && (
-            <div className="text-center p-8 text-destructive">Error fetching cards. Please try again.</div>
+            <div className="text-center p-8 text-destructive">
+              Error fetching cards. Please try again.
+            </div>
           )}
           {!effectiveQuery && (
             <p className="text-center text-sm text-muted-foreground py-12">
@@ -823,48 +1027,49 @@ export function CardSearch({ standalone, onClose }: CardSearchProps) {
           )}
 
           {viewMode === "grid" ? (
-            <div className={cn(
-              "grid gap-3 pb-4",
-              standalone
-                ? "grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8"
-                : "grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5",
-            )}>
+            <div
+              className={cn(
+                "grid gap-3 pb-4",
+                standalone
+                  ? "grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8"
+                  : "grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5",
+              )}
+            >
               {allCards.map((card, i) => (
-                  <DraggableCardGrid
-                    key={card.id}
-                    card={card}
-                    onMoreInfo={() => setDetailCard(rawCards[i])}
-                    standalone={standalone}
-                    onHover={preview.handleMouseEnter}
-                    onLeave={preview.handleMouseLeave}
-                  />
+                <DraggableCardGrid
+                  key={card.id}
+                  card={card}
+                  onMoreInfo={() => setDetailCard(rawCards[i])}
+                  standalone={standalone}
+                  onHover={preview.handleMouseEnter}
+                  onLeave={preview.handleMouseLeave}
+                />
               ))}
             </div>
           ) : (
             <div className="pb-4">
               {allCards.map((card, i) => (
-                  <DraggableCardRow
-                    key={card.id}
-                    card={card}
-                    onMoreInfo={() => setDetailCard(rawCards[i])}
-                    standalone={standalone}
-                    onHover={preview.handleMouseEnter}
-                    onLeave={preview.handleMouseLeave}
-                  />
+                <DraggableCardRow
+                  key={card.id}
+                  card={card}
+                  onMoreInfo={() => setDetailCard(rawCards[i])}
+                  standalone={standalone}
+                  onHover={preview.handleMouseEnter}
+                  onLeave={preview.handleMouseLeave}
+                />
               ))}
             </div>
           )}
 
           <div ref={observerTarget} className="h-10 flex justify-center items-center">
-            {isFetchingNextPage && <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />}
+            {isFetchingNextPage && (
+              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            )}
           </div>
         </div>
       </ScrollArea>
 
-      <CardDetailModal
-        card={detailCard}
-        onClose={() => setDetailCard(null)}
-      />
+      <CardDetailModal card={detailCard} onClose={() => setDetailCard(null)} />
 
       <HoverCardPreview preview={preview} />
     </div>

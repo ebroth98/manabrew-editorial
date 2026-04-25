@@ -79,7 +79,13 @@ export function ChooseAttackers({
       />
       <PromptActionButton
         layout={buttonLayout}
-        label={selectedDefenderLabel ? selectedAttackLabel : hasPendingAttackers ? `Attack (${pendingAttackers.length})` : "Attack"}
+        label={
+          selectedDefenderLabel
+            ? selectedAttackLabel
+            : hasPendingAttackers
+              ? `Attack (${pendingAttackers.length})`
+              : "Attack"
+        }
         icon={<Sword className="h-3.5 w-3.5" />}
         className={BUTTON_ATTACK}
         baseColor={promptActionColors.attackAction}

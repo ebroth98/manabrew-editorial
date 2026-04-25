@@ -44,43 +44,52 @@ const TEXT_RASTER_RESOLUTION = 5;
 // rendered Text objects re-tint without being replaced.
 const tintedTextFill = (): string => activeTheme.gameTheme.textOnTinted;
 
-const PT_STYLE = registerTintedTextStyle(new TextStyle({
-  fontFamily: "system-ui, -apple-system, sans-serif",
-  fontSize: 10,
-  fontWeight: "bold",
-  fill: tintedTextFill(),
-}));
+const PT_STYLE = registerTintedTextStyle(
+  new TextStyle({
+    fontFamily: "system-ui, -apple-system, sans-serif",
+    fontSize: 10,
+    fontWeight: "bold",
+    fill: tintedTextFill(),
+  }),
+);
 
-const BADGE_STYLE = registerTintedTextStyle(new TextStyle({
-  fontFamily: "system-ui, -apple-system, sans-serif",
-  fontSize: 6,
-  fontWeight: "bold",
-  fill: tintedTextFill(),
-}));
+const BADGE_STYLE = registerTintedTextStyle(
+  new TextStyle({
+    fontFamily: "system-ui, -apple-system, sans-serif",
+    fontSize: 6,
+    fontWeight: "bold",
+    fill: tintedTextFill(),
+  }),
+);
 
-const COUNTER_STYLE = registerTintedTextStyle(new TextStyle({
-  fontFamily: "system-ui, -apple-system, sans-serif",
-  fontSize: 8,
-  fontWeight: "bold",
-  fill: tintedTextFill(),
-}));
+const COUNTER_STYLE = registerTintedTextStyle(
+  new TextStyle({
+    fontFamily: "system-ui, -apple-system, sans-serif",
+    fontSize: 8,
+    fontWeight: "bold",
+    fill: tintedTextFill(),
+  }),
+);
 
-const CHIP_STYLE = registerTintedTextStyle(new TextStyle({
-  fontFamily: "system-ui, -apple-system, sans-serif",
-  fontSize: 7,
-  fontWeight: "bold",
-  fill: tintedTextFill(),
-}));
+const CHIP_STYLE = registerTintedTextStyle(
+  new TextStyle({
+    fontFamily: "system-ui, -apple-system, sans-serif",
+    fontSize: 7,
+    fontWeight: "bold",
+    fill: tintedTextFill(),
+  }),
+);
 
-const NAME_STYLE = registerTintedTextStyle(new TextStyle({
-  fontFamily: "system-ui, -apple-system, sans-serif",
-  fontSize: 8,
-  fill: tintedTextFill(),
-  wordWrap: true,
-  wordWrapWidth: CARD_W - 8,
-  align: "center",
-}));
-
+const NAME_STYLE = registerTintedTextStyle(
+  new TextStyle({
+    fontFamily: "system-ui, -apple-system, sans-serif",
+    fontSize: 8,
+    fill: tintedTextFill(),
+    wordWrap: true,
+    wordWrapWidth: CARD_W - 8,
+    align: "center",
+  }),
+);
 
 // ── Geometry ─────────────────────────────────────────────────────
 const CARD_RADIUS = 6;
@@ -105,14 +114,14 @@ interface BadgeRule {
 }
 
 const BADGE_RULES: BadgeRule[] = [
-  { label: "EXERTED",     test: (c) => !!c.exerted,        colorKey: "exerted" },
-  { label: "MORPH",       test: (c) => !!c.isFaceDown,     colorKey: "morph" },
-  { label: "BESTOW",      test: (c) => !!c.isBestowed,     colorKey: "bestow" },
-  { label: "TRANSFORMED", test: (c) => !!c.isTransformed,  colorKey: "transformed" },
-  { label: "PLOTTED",     test: (c) => !!c.isPlotted,      colorKey: "plotted" },
-  { label: "MADNESS",     test: (c) => !!c.isMadnessExiled, colorKey: "madness" },
-  { label: "WARPED",      test: (c) => !!c.isWarpExiled,   colorKey: "warped" },
-  { label: "TOKEN",       test: (c) => !!c.isToken,        colorKey: "token" },
+  { label: "EXERTED", test: (c) => !!c.exerted, colorKey: "exerted" },
+  { label: "MORPH", test: (c) => !!c.isFaceDown, colorKey: "morph" },
+  { label: "BESTOW", test: (c) => !!c.isBestowed, colorKey: "bestow" },
+  { label: "TRANSFORMED", test: (c) => !!c.isTransformed, colorKey: "transformed" },
+  { label: "PLOTTED", test: (c) => !!c.isPlotted, colorKey: "plotted" },
+  { label: "MADNESS", test: (c) => !!c.isMadnessExiled, colorKey: "madness" },
+  { label: "WARPED", test: (c) => !!c.isWarpExiled, colorKey: "warped" },
+  { label: "TOKEN", test: (c) => !!c.isToken, colorKey: "token" },
 ];
 
 function badgeColor(key: CardStatusKey): number {
@@ -123,22 +132,22 @@ function badgeColor(key: CardStatusKey): number {
  *  state) to the `Theme.gameTheme.counter` key. Any type not listed here
  *  falls through to `counter.default`. */
 const COUNTER_TYPE_KEYS: Record<string, keyof Theme["gameTheme"]["counter"]> = {
-  P1P1:      "p1p1",
-  M1M1:      "m1m1",
-  Loyalty:   "loyalty",
-  Charge:    "charge",
-  Quest:     "quest",
-  Study:     "study",
-  Lore:      "lore",
-  Age:       "age",
-  Time:      "time",
-  Fade:      "fade",
-  Level:     "level",
-  Storage:   "storage",
-  Mining:    "mining",
-  Brick:     "brick",
+  P1P1: "p1p1",
+  M1M1: "m1m1",
+  Loyalty: "loyalty",
+  Charge: "charge",
+  Quest: "quest",
+  Study: "study",
+  Lore: "lore",
+  Age: "age",
+  Time: "time",
+  Fade: "fade",
+  Level: "level",
+  Storage: "storage",
+  Mining: "mining",
+  Brick: "brick",
   Depletion: "depletion",
-  Page:      "page",
+  Page: "page",
 };
 
 function getCounterColor(type: string): number {
@@ -154,8 +163,7 @@ const COUNTER_LABEL_OVERRIDES: Record<string, string> = {
   Charge: "⚡",
 };
 
-const getCounterLabel = (type: string): string =>
-  COUNTER_LABEL_OVERRIDES[type] ?? type.slice(0, 3);
+const getCounterLabel = (type: string): string => COUNTER_LABEL_OVERRIDES[type] ?? type.slice(0, 3);
 
 const parseStat = (value: string | undefined): number => {
   if (!value) return 0;
@@ -207,8 +215,14 @@ export class CardSprite extends Container {
 
     this.placeholderGfx = new Graphics();
     this.placeholderGfx.roundRect(0, 0, CARD_W, CARD_H, CARD_RADIUS);
-    this.placeholderGfx.fill({ color: hexToNum(activeTheme.gameTheme.cardPlaceholder.fill), alpha: 0.8 });
-    this.placeholderGfx.stroke({ color: hexToNum(activeTheme.gameTheme.cardPlaceholder.stroke), width: 1 });
+    this.placeholderGfx.fill({
+      color: hexToNum(activeTheme.gameTheme.cardPlaceholder.fill),
+      alpha: 0.8,
+    });
+    this.placeholderGfx.stroke({
+      color: hexToNum(activeTheme.gameTheme.cardPlaceholder.stroke),
+      width: 1,
+    });
     this.addChild(this.placeholderGfx);
 
     this.nameText = new Text({ text: card.name, style: NAME_STYLE });
@@ -252,7 +266,9 @@ export class CardSprite extends Container {
     this.ptContainer.visible = false;
     this.addChild(this.ptContainer);
 
-    this.hitArea = { contains: (x: number, y: number) => x >= 0 && x <= CARD_W && y >= 0 && y <= CARD_H };
+    this.hitArea = {
+      contains: (x: number, y: number) => x >= 0 && x <= CARD_W && y >= 0 && y <= CARD_H,
+    };
 
     this.pivot.set(CARD_W / 2, CARD_H / 2);
     this.loadImage();
@@ -301,7 +317,10 @@ export class CardSprite extends Container {
    * every state update, causing a bumpy re-lerp back to the fan angle.
    */
   updateCardContent(card: Card): void {
-    const nameChanged = card.name !== this.card.name || card.imageUrl !== this.card.imageUrl || card.isFaceDown !== this.card.isFaceDown;
+    const nameChanged =
+      card.name !== this.card.name ||
+      card.imageUrl !== this.card.imageUrl ||
+      card.isFaceDown !== this.card.isFaceDown;
     this.card = card;
 
     if (nameChanged) {
@@ -371,7 +390,7 @@ export class CardSprite extends Container {
   }
 
   private updateCounters(): void {
-    this.counterContainer.removeChildren().forEach(c => c.destroy({ children: true }));
+    this.counterContainer.removeChildren().forEach((c) => c.destroy({ children: true }));
     const counters = this.card.counters;
     if (!counters) return;
 
@@ -407,7 +426,7 @@ export class CardSprite extends Container {
   }
 
   private updateKeywords(): void {
-    this.keywordsContainer.removeChildren().forEach(c => c.destroy({ children: true }));
+    this.keywordsContainer.removeChildren().forEach((c) => c.destroy({ children: true }));
     const keywords = this.card.keywords;
     if (!keywords || keywords.length === 0) return;
 
@@ -447,7 +466,7 @@ export class CardSprite extends Container {
       offsetX += cw + 2;
     };
 
-    visible.forEach(kw => addChip(kw.split(":")[0]!));
+    visible.forEach((kw) => addChip(kw.split(":")[0]!));
     if (hiddenCount > 0) addChip(`+${hiddenCount}`);
   }
 
@@ -457,7 +476,11 @@ export class CardSprite extends Container {
     this.drawRingStroke(color, alpha);
   }
 
-  setHighlight(active: boolean, color = hexToNum(activeTheme.gameTheme.cardRing), alpha = 0.3): void {
+  setHighlight(
+    active: boolean,
+    color = hexToNum(activeTheme.gameTheme.cardRing),
+    alpha = 0.3,
+  ): void {
     this.ringGfx.clear();
     if (!active) return;
     this.drawRingStroke(color, 1);

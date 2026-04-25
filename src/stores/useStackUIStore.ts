@@ -7,8 +7,13 @@ interface StackUIState {
   reset: () => void;
 }
 
-export const useStackUIStore = create<StackUIState>()(devtools((set) => ({
-  hoveredStackObjectId: null,
-  setHoveredStackObjectId: (id) => set({ hoveredStackObjectId: id }),
-  reset: () => set({ hoveredStackObjectId: null }),
-}), { name: "stackUI", enabled: import.meta.env.DEV }));
+export const useStackUIStore = create<StackUIState>()(
+  devtools(
+    (set) => ({
+      hoveredStackObjectId: null,
+      setHoveredStackObjectId: (id) => set({ hoveredStackObjectId: id }),
+      reset: () => set({ hoveredStackObjectId: null }),
+    }),
+    { name: "stackUI", enabled: import.meta.env.DEV },
+  ),
+);

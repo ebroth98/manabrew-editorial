@@ -10,10 +10,7 @@ export function ManaPool({ pool }: { pool: Record<string, number> }) {
         const count = pool[key] ?? 0;
         if (count === 0) return [];
         return [
-          <span
-            key={key}
-            className="inline-flex flex-row items-center gap-0.5 flex-nowrap"
-          >
+          <span key={key} className="inline-flex flex-row items-center gap-0.5 flex-nowrap">
             <span
               className="font-extrabold text-white leading-none tabular-nums"
               style={{ fontSize: fontSizes.manaCount }}

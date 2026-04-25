@@ -76,38 +76,35 @@ export function ImportDeckDialog({ open, onOpenChange, mode, onImport }: ImportD
       ? "Paste an Archidekt or Moxfield deck URL to preview and import it."
       : "Search Archidekt for a deck, then preview and import it.";
 
-  const runSearch = useCallback(
-    async (query: string, formatId: string) => {
-      const trimmed = query.trim();
-      if (!trimmed) return;
-      abortRef.current?.abort();
-      const controller = new AbortController();
-      abortRef.current = controller;
-      setStep("loading");
-      setError(null);
-      try {
-        const found = await searchArchidekt(trimmed, {
-          ...requestOpts,
-          signal: controller.signal,
-          formatId: formatId || undefined,
-        });
-        if (controller.signal.aborted) return;
-        if (found.length === 0) {
-          setError("No decks found.");
-          setStep("input");
-          return;
-        }
-        setResults(found);
-        setStep("results");
-      } catch (e) {
-        if (controller.signal.aborted) return;
-        const msg = e instanceof Error ? e.message : String(e);
-        setError(msg);
+  const runSearch = useCallback(async (query: string, formatId: string) => {
+    const trimmed = query.trim();
+    if (!trimmed) return;
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+    setStep("loading");
+    setError(null);
+    try {
+      const found = await searchArchidekt(trimmed, {
+        ...requestOpts,
+        signal: controller.signal,
+        formatId: formatId || undefined,
+      });
+      if (controller.signal.aborted) return;
+      if (found.length === 0) {
+        setError("No decks found.");
         setStep("input");
+        return;
       }
-    },
-    [],
-  );
+      setResults(found);
+      setStep("results");
+    } catch (e) {
+      if (controller.signal.aborted) return;
+      const msg = e instanceof Error ? e.message : String(e);
+      setError(msg);
+      setStep("input");
+    }
+  }, []);
 
   // Search flow: we already know the source is archidekt; fetch the deck body
   // only (result metadata already came back from the search call).
@@ -147,7 +144,10 @@ export function ImportDeckDialog({ open, onOpenChange, mode, onImport }: ImportD
     setError(null);
     try {
       const [result, fetched] = await Promise.all([
-        fetchResultBySource(parsed.source, parsed.id, { ...requestOpts, signal: controller.signal }),
+        fetchResultBySource(parsed.source, parsed.id, {
+          ...requestOpts,
+          signal: controller.signal,
+        }),
         fetchDeckBySource(parsed.source, parsed.id, { ...requestOpts, signal: controller.signal }),
       ]);
       if (controller.signal.aborted) return;
@@ -229,11 +229,7 @@ export function ImportDeckDialog({ open, onOpenChange, mode, onImport }: ImportD
           )}
 
           {step === "input" && mode === "url" && (
-            <UrlInput
-              value={urlInput}
-              onChange={setUrlInput}
-              onSubmit={handleUrlSubmit}
-            />
+            <UrlInput value={urlInput} onChange={setUrlInput} onSubmit={handleUrlSubmit} />
           )}
 
           {step === "input" && mode === "search" && (
@@ -254,9 +250,7 @@ export function ImportDeckDialog({ open, onOpenChange, mode, onImport }: ImportD
             />
           )}
 
-          {step === "preview" && deck && selected && (
-            <DeckPreview result={selected} deck={deck} />
-          )}
+          {step === "preview" && deck && selected && <DeckPreview result={selected} deck={deck} />}
         </div>
 
         <div className="flex items-center justify-between gap-2 pt-3 border-t">
@@ -420,7 +414,11 @@ function ResultList({
               </div>
               <div className="text-[11px] text-muted-foreground truncate">
                 by {r.author}
-                {r.description ? ` · ${r.description}` : r.tags.length ? ` · ${r.tags.join(", ")}` : ""}
+                {r.description
+                  ? ` · ${r.description}`
+                  : r.tags.length
+                    ? ` · ${r.tags.join(", ")}`
+                    : ""}
               </div>
             </button>
           </li>
@@ -430,19 +428,10 @@ function ResultList({
   );
 }
 
-function DeckPreview({
-  result,
-  deck,
-}: {
-  result: ArchidektSearchResult;
-  deck: ArchidektDeck;
-}) {
+function DeckPreview({ result, deck }: { result: ArchidektSearchResult; deck: ArchidektDeck }) {
   const totalCount = useMemo(() => deck.cards.reduce((s, c) => s + c.count, 0), [deck.cards]);
   const sorted = useMemo(
-    () =>
-      [...deck.cards].sort(
-        (a, b) => b.count - a.count || a.name.localeCompare(b.name),
-      ),
+    () => [...deck.cards].sort((a, b) => b.count - a.count || a.name.localeCompare(b.name)),
     [deck.cards],
   );
   const colors = deck.colors.join("") || "—";
@@ -502,9 +491,7 @@ function DeckPreview({
           {` · ${colors}`}
           {` · ${deck.cards.length} unique / ${totalCount} total`}
         </div>
-        {descFirst && (
-          <p className="text-[11px] text-muted-foreground line-clamp-2">{descFirst}</p>
-        )}
+        {descFirst && <p className="text-[11px] text-muted-foreground line-clamp-2">{descFirst}</p>}
       </div>
 
       <div className="rounded-md border">

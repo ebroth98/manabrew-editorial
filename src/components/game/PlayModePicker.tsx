@@ -17,12 +17,7 @@ interface PlayModePickerProps {
   onCancel: () => void;
 }
 
-export function PlayModePicker({
-  cardName,
-  options,
-  onSelect,
-  onCancel,
-}: PlayModePickerProps) {
+export function PlayModePicker({ cardName, options, onSelect, onCancel }: PlayModePickerProps) {
   const { data: imageUrl } = useCardImage(cardName);
 
   return (

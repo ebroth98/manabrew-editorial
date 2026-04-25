@@ -15,11 +15,7 @@ interface ReorderLibraryModalProps {
   onConfirm: (orderedCardIds: string[]) => void;
 }
 
-export function ReorderLibraryModal({
-  cards,
-  cardName,
-  onConfirm,
-}: ReorderLibraryModalProps) {
+export function ReorderLibraryModal({ cards, cardName, onConfirm }: ReorderLibraryModalProps) {
   const { data: imageUrl } = useCardImage(cardName ?? "");
   // unsorted = cards not yet placed; sorted = placed in chosen order
   const [sorted, setSorted] = useState<CardType[]>([]);
@@ -46,10 +42,7 @@ export function ReorderLibraryModal({
     }
   }, [allSorted, sorted, onConfirm]);
 
-  useModalKeyboard(
-    { onEnter: allSorted ? handleConfirm : undefined },
-    [allSorted, handleConfirm],
-  );
+  useModalKeyboard({ onEnter: allSorted ? handleConfirm : undefined }, [allSorted, handleConfirm]);
 
   return (
     <Modal maxWidth="max-w-lg" maxHeight="">
@@ -70,7 +63,8 @@ export function ReorderLibraryModal({
       </Modal.Header>
 
       <Modal.Instructions>
-        Click cards in the order you want them on your library. First clicked = bottom, last clicked = top.
+        Click cards in the order you want them on your library. First clicked = bottom, last clicked
+        = top.
       </Modal.Instructions>
 
       <div className="p-4 space-y-4">
@@ -95,16 +89,20 @@ export function ReorderLibraryModal({
         {/* Sorted cards */}
         {sorted.length > 0 && (
           <div>
-            <p className="text-xs text-muted-foreground mb-2">Library order (left = bottom, right = top):</p>
+            <p className="text-xs text-muted-foreground mb-2">
+              Library order (left = bottom, right = top):
+            </p>
             <div className="flex gap-2 flex-wrap justify-center items-end">
               {sorted.map((card, i) => (
                 <div key={card.id} className="flex flex-col items-center gap-1">
-                  <span className={cn(
-                    "text-[10px] font-bold px-1.5 py-0.5 rounded",
-                    i === sorted.length - 1
-                      ? "bg-primary text-primary-foreground"
-                      : "bg-muted text-muted-foreground"
-                  )}>
+                  <span
+                    className={cn(
+                      "text-[10px] font-bold px-1.5 py-0.5 rounded",
+                      i === sorted.length - 1
+                        ? "bg-primary text-primary-foreground"
+                        : "bg-muted text-muted-foreground",
+                    )}
+                  >
                     {i === sorted.length - 1 ? "TOP" : i === 0 ? "BTM" : `${i + 1}`}
                   </span>
                   <button

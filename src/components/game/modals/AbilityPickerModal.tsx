@@ -42,11 +42,13 @@ export function AbilityPickerModal({
         </div>
       </Modal.Header>
 
-      <Modal.Instructions>
-        Click an option to continue.
-      </Modal.Instructions>
+      <Modal.Instructions>Click an option to continue.</Modal.Instructions>
 
-      <div className="p-4 flex flex-col gap-2 max-h-[60vh] overflow-y-auto" role="group" aria-label="Available abilities">
+      <div
+        className="p-4 flex flex-col gap-2 max-h-[60vh] overflow-y-auto"
+        role="group"
+        aria-label="Available abilities"
+      >
         {abilities.map((ability, idx) => (
           <button
             key={idx}

@@ -56,54 +56,56 @@ export function OpponentHalf({
   const rightReserved = 0;
 
   const canTarget =
-    promptType === PromptType.ChooseTargetCard ||
-    promptType === PromptType.ChooseTargetAny;
+    promptType === PromptType.ChooseTargetCard || promptType === PromptType.ChooseTargetAny;
   const canPickForBlockers = promptType === PromptType.ChooseBlockers;
 
-  const pixiBattlefield = useMemo<BattlefieldState>(() => ({
-    cards: permanents,
-    attackingCardIds: canPickForBlockers ? attackerIds ?? [] : undefined,
-    pendingCardIds:
-      canPickForBlockers && pendingAttacker ? [pendingAttacker] : undefined,
-    hostileTargeting,
-    manaAbilityOptions,
-  }), [
-    permanents,
-    canPickForBlockers,
-    attackerIds,
-    pendingAttacker,
-    hostileTargeting,
-    manaAbilityOptions,
-  ]);
+  const pixiBattlefield = useMemo<BattlefieldState>(
+    () => ({
+      cards: permanents,
+      attackingCardIds: canPickForBlockers ? (attackerIds ?? []) : undefined,
+      pendingCardIds: canPickForBlockers && pendingAttacker ? [pendingAttacker] : undefined,
+      hostileTargeting,
+      manaAbilityOptions,
+    }),
+    [
+      permanents,
+      canPickForBlockers,
+      attackerIds,
+      pendingAttacker,
+      hostileTargeting,
+      manaAbilityOptions,
+    ],
+  );
 
-  const pixiCallbacks: GameCanvasCallbacks = useMemo(() => ({
-    onClickCard: (c) => {
-      if (canTarget) onClickCard(c);
-      else if (canPickForBlockers) onClickAnyCard(c);
-    },
-    onClickAnyCard: (c) => {
-      if (canPickForBlockers) onClickAnyCard(c);
-    },
-    onHoverCard: (c, bounds, opts) => {
-      if (c && bounds) {
-        const rect = new DOMRect(bounds.x, bounds.y, bounds.width, bounds.height);
-        onHoverCard(c, undefined, {
-          anchorOverride: rect,
-          useAnchor: opts?.useAnchor,
-          placement: opts?.placement,
-        });
-      } else {
-        onHoverCard(null);
-      }
-    },
-    onFlipCard,
-  }), [canTarget, canPickForBlockers, onClickCard, onClickAnyCard, onHoverCard, onFlipCard]);
+  const pixiCallbacks: GameCanvasCallbacks = useMemo(
+    () => ({
+      onClickCard: (c) => {
+        if (canTarget) onClickCard(c);
+        else if (canPickForBlockers) onClickAnyCard(c);
+      },
+      onClickAnyCard: (c) => {
+        if (canPickForBlockers) onClickAnyCard(c);
+      },
+      onHoverCard: (c, bounds, opts) => {
+        if (c && bounds) {
+          const rect = new DOMRect(bounds.x, bounds.y, bounds.width, bounds.height);
+          onHoverCard(c, undefined, {
+            anchorOverride: rect,
+            useAnchor: opts?.useAnchor,
+            placement: opts?.placement,
+          });
+        } else {
+          onHoverCard(null);
+        }
+      },
+      onFlipCard,
+    }),
+    [canTarget, canPickForBlockers, onClickCard, onClickAnyCard, onHoverCard, onFlipCard],
+  );
 
   return (
     <div
-      className={cn(
-        "flex flex-col h-full min-h-0 rounded-lg border border-transparent",
-      )}
+      className={cn("flex flex-col h-full min-h-0 rounded-lg border border-transparent")}
       style={
         priorityPlayerId === player.id
           ? {
@@ -173,9 +175,7 @@ export function OpponentHalf({
                 ? onClickCard
                 : undefined
             }
-            onClickAnyCard={
-              promptType === PromptType.ChooseBlockers ? onClickAnyCard : undefined
-            }
+            onClickAnyCard={promptType === PromptType.ChooseBlockers ? onClickAnyCard : undefined}
             onHoverCard={onHoverCard}
             pendingCardIds={
               promptType === PromptType.ChooseBlockers && pendingAttacker

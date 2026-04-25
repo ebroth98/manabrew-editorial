@@ -36,7 +36,8 @@ interface DeckLabelsModalProps {
 export function DeckLabelsModal({ open, onClose }: DeckLabelsModalProps) {
   const [newLabel, setNewLabel] = useState("");
   const [newLabelColor, setNewLabelColor] = useState("");
-  const { currentDeck, addDeckLabel, removeDeckLabel, updateDeckLabelColor, saveCurrentDeck } = useDeckStore();
+  const { currentDeck, addDeckLabel, removeDeckLabel, updateDeckLabelColor, saveCurrentDeck } =
+    useDeckStore();
   const themeColors = useTheme().gameTheme;
   const defaultLabelColor = themeColors.promptAction.cancel;
   const labels = currentDeck.labels ?? [];
@@ -157,9 +158,10 @@ export function DeckLabelsModal({ open, onClose }: DeckLabelsModalProps) {
       </Modal.Body>
 
       <Modal.Footer>
-        <Button size="sm" variant="ghost" onClick={onClose}>Done</Button>
+        <Button size="sm" variant="ghost" onClick={onClose}>
+          Done
+        </Button>
       </Modal.Footer>
     </Modal>
   );
 }
-

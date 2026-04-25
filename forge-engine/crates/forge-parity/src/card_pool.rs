@@ -11,8 +11,9 @@ use forge_carddb::{CardDatabase, CardFace};
 use forge_engine_core::ability::api_type::ApiType;
 use forge_engine_core::ability::effects::IMPLEMENTED_API_TYPES;
 use forge_engine_core::parsing::{
-    keys, ParamDiagnosticKind, Params, ParsedCardScript, ParsedParams, ScriptDiagnosticKind,
-    ScriptAbility, ScriptLineKind, ScriptParamRecord, ScriptSVarValue, SemanticParamValueKind,
+    keys, ParamDiagnosticKind, Params, ParsedCardScript, ParsedParams, ScriptAbility,
+    ScriptDiagnosticKind, ScriptLineKind, ScriptParamRecord, ScriptSVarValue,
+    SemanticParamValueKind,
 };
 use forge_engine_core::replacement::parse_replacement_effect;
 use forge_engine_core::staticability::parse_static_ability;
@@ -507,13 +508,23 @@ fn record_semantic_value_stats(
                         params: parsed_params,
                         ..
                     } = ability;
-                    record_semantic_params(parsed_params.semantic_entries(), path, line.line_no, stats);
+                    record_semantic_params(
+                        parsed_params.semantic_entries(),
+                        path,
+                        line.line_no,
+                        stats,
+                    );
                 }
                 ScriptSVarValue::Params(record) => {
                     let ScriptParamRecord {
                         params: parsed_params,
                     } = record;
-                    record_semantic_params(parsed_params.semantic_entries(), path, line.line_no, stats);
+                    record_semantic_params(
+                        parsed_params.semantic_entries(),
+                        path,
+                        line.line_no,
+                        stats,
+                    );
                 }
                 ScriptSVarValue::Raw(_) => {}
             },

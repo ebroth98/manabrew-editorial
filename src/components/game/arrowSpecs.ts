@@ -93,8 +93,9 @@ export function buildArrowSpecs(opts: BuildArrowSpecsOptions): ArrowSpec[] {
   // signals "drop here" rather than a targeting relationship.
   const activeObj = getActiveStackObject(stack, activeStackObjectId);
   if (activeObj && activeObj.isPermanentSpell === true) {
-    const hasTargets = Array.isArray((activeObj as unknown as Record<string, unknown>).targets)
-      && ((activeObj as unknown as { targets: unknown[] }).targets.length > 0);
+    const hasTargets =
+      Array.isArray((activeObj as unknown as Record<string, unknown>).targets) &&
+      (activeObj as unknown as { targets: unknown[] }).targets.length > 0;
     if (!hasTargets) {
       specs.push({
         from: { kind: "stack", id: activeObj.id },

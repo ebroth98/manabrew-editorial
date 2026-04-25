@@ -19,7 +19,9 @@ export function UserList({ players }: UserListProps) {
       <ScrollArea className="flex-1">
         <div className="p-3 space-y-1">
           {players.length === 0 ? (
-            <p className="text-xs text-muted-foreground italic text-center py-6">No players online</p>
+            <p className="text-xs text-muted-foreground italic text-center py-6">
+              No players online
+            </p>
           ) : (
             players.map((player) => (
               <div
@@ -35,14 +37,16 @@ export function UserList({ players }: UserListProps) {
                   <span
                     className={cn(
                       "absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full border-2 border-background",
-                      player.connected ? "bg-primary" : "bg-muted-foreground/40"
+                      player.connected ? "bg-primary" : "bg-muted-foreground/40",
                     )}
                   />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <span className="text-xs font-medium leading-none truncate block">{player.username}</span>
+                  <span className="text-xs font-medium leading-none truncate block">
+                    {player.username}
+                  </span>
                   <span className="text-[10px] text-muted-foreground">
-                    {player.room_id ? 'In room' : 'In lobby'}
+                    {player.room_id ? "In room" : "In lobby"}
                   </span>
                 </div>
               </div>

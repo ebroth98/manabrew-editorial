@@ -49,7 +49,7 @@ export function MainActionOverlay({
   const currentPhaseIndex = PHASES.findIndex((phase) => phase.id === step);
   const passToPhaseShort =
     currentPhaseIndex >= 0
-      ? PHASES[(currentPhaseIndex + 1) % PHASES.length]?.short ?? "NEXT"
+      ? (PHASES[(currentPhaseIndex + 1) % PHASES.length]?.short ?? "NEXT")
       : "NEXT";
 
   return (
@@ -105,7 +105,12 @@ export function MainActionOverlay({
       <div className="absolute bottom-4 right-4 z-50">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button size="icon" variant="ghost" className="h-8 w-8 bg-black/35 hover:bg-black/55 text-white" title="Prompt options">
+            <Button
+              size="icon"
+              variant="ghost"
+              className="h-8 w-8 bg-black/35 hover:bg-black/55 text-white"
+              title="Prompt options"
+            >
               <Settings className="h-3.5 w-3.5" />
             </Button>
           </DropdownMenuTrigger>

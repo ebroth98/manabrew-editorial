@@ -445,10 +445,7 @@ pub fn normalize_java_prompt(prompt: Value) -> Value {
 
 pub fn translate_java_player_action(action: &PlayerAction) -> Value {
     match action {
-        PlayerAction::PlayCard {
-            card_id,
-            mode,
-        } => mode
+        PlayerAction::PlayCard { card_id, mode } => mode
             .as_deref()
             .and_then(|mode| {
                 mode.strip_prefix("prompt-action-")

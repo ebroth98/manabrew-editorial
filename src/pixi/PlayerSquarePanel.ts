@@ -1,4 +1,3 @@
-
 import { Container, Graphics, Text, TextStyle, Sprite } from "pixi.js";
 import type { Theme } from "@/hooks/useTheme";
 import { hexToNum } from "./colorUtils";
@@ -16,11 +15,25 @@ const FONT = "system-ui, -apple-system, sans-serif";
 const MANA_SYM_SIZE = 11;
 
 // ── Text styles ───────────────────────────────────────────────────────
-const statStyle = new TextStyle({ fontFamily: FONT, fontSize: 12, fontWeight: "bold", fill: "#dddddd" });
-const manaCountStyle = new TextStyle({ fontFamily: FONT, fontSize: 9, fontWeight: "800", fill: "#ffffff" });
+const statStyle = new TextStyle({
+  fontFamily: FONT,
+  fontSize: 12,
+  fontWeight: "bold",
+  fill: "#dddddd",
+});
+const manaCountStyle = new TextStyle({
+  fontFamily: FONT,
+  fontSize: 9,
+  fontWeight: "800",
+  fill: "#ffffff",
+});
 
 // ── Stat cell ─────────────────────────────────────────────────────────
-interface StatCell { icon: Sprite; value: Text; iconKey: string }
+interface StatCell {
+  icon: Sprite;
+  value: Text;
+  iconKey: string;
+}
 
 function makeStatCell(iconKey: string): StatCell {
   const icon = new Sprite();
@@ -120,9 +133,15 @@ export class PlayerSquarePanel implements PlayerPanel {
     this.cmdDmgStat = makeStatCell("cmdsword");
     this.cmdZoneStat = makeStatCell("cmdsword");
     this.allStats = [
-      this.lifeStat, this.handStat, this.deckStat,
-      this.gyStat, this.exileStat,
-      this.poisonStat, this.energyStat, this.cmdDmgStat, this.cmdZoneStat,
+      this.lifeStat,
+      this.handStat,
+      this.deckStat,
+      this.gyStat,
+      this.exileStat,
+      this.poisonStat,
+      this.energyStat,
+      this.cmdDmgStat,
+      this.cmdZoneStat,
     ];
     for (const s of this.allStats) {
       this.statsContainer.addChild(s.icon);
@@ -152,7 +171,10 @@ export class PlayerSquarePanel implements PlayerPanel {
       this.manaContainer.addChild(sprite);
       const tex = getManaSymbolTextureSync(key);
       if (tex) sprite.texture = tex;
-      else loadManaSymbolTexture(key).then((t) => { sprite.texture = t; });
+      else
+        loadManaSymbolTexture(key).then((t) => {
+          sprite.texture = t;
+        });
       const count = new Text({ text: "", style: manaCountStyle });
       this.manaContainer.addChild(count);
       this.manaEntries.push({ sprite, count, key });
@@ -234,8 +256,12 @@ export class PlayerSquarePanel implements PlayerPanel {
     this.highlightedCells = [];
 
     const placeRadial = (
-      cell: StatCell, val: number, angle: number,
-      iconSize: number, fontSize: number, highlight: boolean,
+      cell: StatCell,
+      val: number,
+      angle: number,
+      iconSize: number,
+      fontSize: number,
+      highlight: boolean,
     ) => {
       cell.icon.visible = true;
       cell.value.visible = true;
@@ -264,14 +290,26 @@ export class PlayerSquarePanel implements PlayerPanel {
     // ── Radial stats — tweak START/END to rotate them all at once ──
     // Opponent (top-anchored) shifts the arc down; HP always on top
     const START_ANGLE = this.anchorTop ? -Math.PI * 0.14 : -Math.PI * 0.34;
-    const END_ANGLE   = this.anchorTop ?  Math.PI * 0.34 :  Math.PI * 0.14;
+    const END_ANGLE = this.anchorTop ? Math.PI * 0.34 : Math.PI * 0.14;
 
     const radialStats: { cell: StatCell; val: number; sz: number; font: number; hl: boolean }[] = [
-      { cell: this.lifeStat,  val: state.life,           sz: 24,          font: 16, hl: false },
-      { cell: this.handStat,  val: state.handCount,      sz: RADIAL_ICON, font: 13, hl: false },
-      { cell: this.deckStat,  val: state.libraryCount,   sz: RADIAL_ICON, font: 13, hl: false },
-      { cell: this.gyStat,    val: state.graveyardCount, sz: RADIAL_ICON, font: 13, hl: state.hasPlayableInGraveyard },
-      { cell: this.exileStat, val: state.exileCount,     sz: RADIAL_ICON, font: 13, hl: state.hasPlayableInExile },
+      { cell: this.lifeStat, val: state.life, sz: 24, font: 16, hl: false },
+      { cell: this.handStat, val: state.handCount, sz: RADIAL_ICON, font: 13, hl: false },
+      { cell: this.deckStat, val: state.libraryCount, sz: RADIAL_ICON, font: 13, hl: false },
+      {
+        cell: this.gyStat,
+        val: state.graveyardCount,
+        sz: RADIAL_ICON,
+        font: 13,
+        hl: state.hasPlayableInGraveyard,
+      },
+      {
+        cell: this.exileStat,
+        val: state.exileCount,
+        sz: RADIAL_ICON,
+        font: 13,
+        hl: state.hasPlayableInExile,
+      },
     ];
     for (let i = 0; i < radialStats.length; i++) {
       const frac = radialStats.length > 1 ? i / (radialStats.length - 1) : 0;
@@ -383,6 +421,10 @@ export class PlayerSquarePanel implements PlayerPanel {
   }
 
   destroy(): void {
-    try { this.container.destroy(); } catch { /* pixi teardown */ }
+    try {
+      this.container.destroy();
+    } catch {
+      /* pixi teardown */
+    }
   }
 }

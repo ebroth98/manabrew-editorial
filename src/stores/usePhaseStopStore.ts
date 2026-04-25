@@ -67,16 +67,21 @@ export const usePhaseStopStore = create<PhaseStopState>((set, get) => ({
  * stops remain in this turn (meaning pass through to end).
  */
 const PHASE_ORDER = [
-  "upkeep", "draw", "main1", "begin_combat",
-  "declare_attackers", "declare_blockers",
-  "first_strike_damage", "combat_damage", "end_combat",
-  "main2", "end", "cleanup",
+  "upkeep",
+  "draw",
+  "main1",
+  "begin_combat",
+  "declare_attackers",
+  "declare_blockers",
+  "first_strike_damage",
+  "combat_damage",
+  "end_combat",
+  "main2",
+  "end",
+  "cleanup",
 ];
 
-export function getNextStopPhase(
-  currentStep: string,
-  enabledStops: Set<string>,
-): string | null {
+export function getNextStopPhase(currentStep: string, enabledStops: Set<string>): string | null {
   const currentIdx = PHASE_ORDER.indexOf(currentStep);
   if (currentIdx === -1) return null;
   for (let i = currentIdx + 1; i < PHASE_ORDER.length; i++) {

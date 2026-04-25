@@ -335,8 +335,12 @@ pub fn targeting_intent_of(sa: &SpellAbility) -> TargetingIntent {
         ApiType::CopyPermanent | ApiType::CopySpellAbility | ApiType::Clone => {
             TargetingIntent::Copy
         }
-        ApiType::Pump | ApiType::PumpAll | ApiType::Animate | ApiType::AnimateAll
-        | ApiType::Protection | ApiType::ProtectionAll => TargetingIntent::Buff,
+        ApiType::Pump
+        | ApiType::PumpAll
+        | ApiType::Animate
+        | ApiType::AnimateAll
+        | ApiType::Protection
+        | ApiType::ProtectionAll => TargetingIntent::Buff,
         ApiType::PutCounter | ApiType::PutCounterAll => classify_put_counter(sa),
         ApiType::RemoveCounter | ApiType::RemoveCounterAll => TargetingIntent::Debuff,
         ApiType::Debuff => TargetingIntent::Debuff,
@@ -346,7 +350,9 @@ pub fn targeting_intent_of(sa: &SpellAbility) -> TargetingIntent {
         ApiType::Reveal | ApiType::RevealHand | ApiType::LookAt | ApiType::PeekAndReveal => {
             TargetingIntent::Reveal
         }
-        ApiType::GainControl | ApiType::GainControlVariant | ApiType::ExchangeControl
+        ApiType::GainControl
+        | ApiType::GainControlVariant
+        | ApiType::ExchangeControl
         | ApiType::ExchangeControlVariant => TargetingIntent::GainControl,
         ApiType::Fight => TargetingIntent::Fight,
         ApiType::Attach | ApiType::Unattach => TargetingIntent::Attach,

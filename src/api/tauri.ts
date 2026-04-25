@@ -1,7 +1,7 @@
 /**
  * Typed wrappers for Tauri backend commands.
  * Centralizes all invoke() calls for type safety and maintainability.
- * 
+ *
  * Note: These exports are the typed API layer for future migration.
  * They provide type-safe wrappers around Tauri invoke() calls.
  */
@@ -13,7 +13,7 @@ import type { CardIdentity, GameFormat } from "@/types/server";
  * This centralizes the object → Record<string, unknown> cast needed by Tauri's API.
  */
 function tauriInvoke<T>(cmd: string, args?: object): Promise<T> {
-  return invoke<T>(cmd, args ? { ...args } as Record<string, unknown> : undefined);
+  return invoke<T>(cmd, args ? ({ ...args } as Record<string, unknown>) : undefined);
 }
 
 // ============================================================================
@@ -50,8 +50,7 @@ export const gameCommands = {
    * Start a single-player game with specified deck and configuration.
    * @returns Game session identifier string
    */
-  startGame: (params: StartGameParams) =>
-    tauriInvoke<string>("start_game", params),
+  startGame: (params: StartGameParams) => tauriInvoke<string>("start_game", params),
 
   /**
    * Start a multiplayer game with multiple players and decks.
@@ -62,20 +61,17 @@ export const gameCommands = {
   /**
    * Send a player action/decision to the game engine.
    */
-  respond: (params: RespondParams) =>
-    tauriInvoke<void>("respond", params),
+  respond: (params: RespondParams) => tauriInvoke<void>("respond", params),
 
   /**
    * End the current game session.
    */
-  endGame: () =>
-    invoke<void>("end_game"),
+  endGame: () => invoke<void>("end_game"),
 
   /**
    * Restore game state to a specific checkpoint.
    */
-  restoreSnapshot: (params: RestoreSnapshotParams) =>
-    tauriInvoke<void>("restore_snapshot", params),
+  restoreSnapshot: (params: RestoreSnapshotParams) => tauriInvoke<void>("restore_snapshot", params),
 };
 
 // ============================================================================
@@ -116,55 +112,47 @@ export const serverCommands = {
    * Connect to an OpenMagic server.
    * Triggers 'server:auth_result' event on completion.
    */
-  connect: (params: ServerConnectParams) =>
-    tauriInvoke<void>("server_connect", params),
+  connect: (params: ServerConnectParams) => tauriInvoke<void>("server_connect", params),
 
   /**
    * Disconnect from the current OpenMagic server.
    */
-  disconnect: () =>
-    invoke<void>("server_disconnect"),
+  disconnect: () => invoke<void>("server_disconnect"),
 
   /**
    * Request list of available game rooms.
    * Triggers 'server:room_list' event with results.
    */
-  listRooms: () =>
-    invoke<void>("server_list_rooms"),
+  listRooms: () => invoke<void>("server_list_rooms"),
 
   /**
    * Request list of connected players.
    * Triggers 'server:player_list' event with results.
    */
-  listPlayers: () =>
-    invoke<void>("server_list_players"),
+  listPlayers: () => invoke<void>("server_list_players"),
 
   /**
    * Create a new game room.
    * Triggers 'server:room_created' event on success.
    */
-  createRoom: (params: CreateRoomParams) =>
-    tauriInvoke<void>("server_create_room", params),
+  createRoom: (params: CreateRoomParams) => tauriInvoke<void>("server_create_room", params),
 
   /**
    * Join an existing game room.
    * Triggers 'server:room_update' event with room state.
    */
-  joinRoom: (params: JoinRoomParams) =>
-    tauriInvoke<void>("server_join_room", params),
+  joinRoom: (params: JoinRoomParams) => tauriInvoke<void>("server_join_room", params),
 
   /**
    * Leave the current game room.
    */
-  leaveRoom: () =>
-    invoke<void>("server_leave_room"),
+  leaveRoom: () => invoke<void>("server_leave_room"),
 
   /**
    * Set ready status in current room.
    * Triggers 'server:ready_changed' event.
    */
-  setReady: (params: SetReadyParams) =>
-    tauriInvoke<void>("server_set_ready", params),
+  setReady: (params: SetReadyParams) => tauriInvoke<void>("server_set_ready", params),
 
   /**
    * Set deck selection for the current room.
@@ -176,8 +164,7 @@ export const serverCommands = {
    * Start the game in the current room (host only).
    * Triggers 'server:game_started' event on success.
    */
-  startGame: () =>
-    invoke<void>("server_start_game"),
+  startGame: () => invoke<void>("server_start_game"),
 };
 
 // ============================================================================
@@ -196,16 +183,14 @@ export const deckCommands = {
   /**
    * Get list of available preset decks.
    */
-  getPresetDecks: () =>
-    invoke<PresetDeckInfo[]>("get_preset_decks"),
+  getPresetDecks: () => invoke<PresetDeckInfo[]>("get_preset_decks"),
 };
 
 export const debugCommands = {
   /**
    * Get current game prompt (debug utility).
    */
-  getPrompt: () =>
-    invoke<unknown>("get_prompt"),
+  getPrompt: () => invoke<unknown>("get_prompt"),
 };
 
 // ============================================================================

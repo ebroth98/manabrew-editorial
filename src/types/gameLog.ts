@@ -1,10 +1,4 @@
-export type GameLogEntryType =
-  | "info"
-  | "action"
-  | "stack"
-  | "priority"
-  | "rule"
-  | "warning";
+export type GameLogEntryType = "info" | "action" | "stack" | "priority" | "rule" | "warning";
 
 export interface GameLogEntry {
   message: string;
@@ -30,18 +24,15 @@ export function normalizeGameLogPayload(payload: unknown): GameLogEntry {
     const obj = payload as Record<string, unknown>;
     const message = typeof obj.message === "string" ? obj.message : "";
     const entryType = normalizeEntryType(obj.entryType);
-    const timestampMs =
-      typeof obj.timestampMs === "number" ? obj.timestampMs : now;
+    const timestampMs = typeof obj.timestampMs === "number" ? obj.timestampMs : now;
     return {
       message,
       entryType,
       timestampMs,
       playerId: typeof obj.playerId === "string" ? obj.playerId : undefined,
       cardId: typeof obj.cardId === "string" ? obj.cardId : undefined,
-      sourceCardId:
-        typeof obj.sourceCardId === "string" ? obj.sourceCardId : undefined,
-      targetCardId:
-        typeof obj.targetCardId === "string" ? obj.targetCardId : undefined,
+      sourceCardId: typeof obj.sourceCardId === "string" ? obj.sourceCardId : undefined,
+      targetCardId: typeof obj.targetCardId === "string" ? obj.targetCardId : undefined,
     };
   }
 

@@ -49,9 +49,7 @@ export function useBattlefieldLayout({
           hits.add(id);
         }
       }
-      setSelectedCardIds(
-        additive ? new Set([...selectedCardIdsRef.current, ...hits]) : hits,
-      );
+      setSelectedCardIds(additive ? new Set([...selectedCardIdsRef.current, ...hits]) : hits);
     },
     [],
   );
@@ -83,7 +81,11 @@ export function useBattlefieldLayout({
         if (!cardIdSet.has(id)) delete next[id];
       }
 
-      const isOccupied = (x: number, y: number, currentPositions: Record<string, { x: number; y: number }>) => {
+      const isOccupied = (
+        x: number,
+        y: number,
+        currentPositions: Record<string, { x: number; y: number }>,
+      ) => {
         return Object.values(currentPositions).some((pos) => {
           return (
             x < pos.x + CARD_W + GAP / 2 &&
@@ -131,101 +133,110 @@ export function useBattlefieldLayout({
     });
   }, [cardIds, bottomReserved, leftReserved, rightReserved, landCardIds]);
 
-  const handleCardMouseDown = useCallback((e: React.MouseEvent, cardId: string) => {
-    if (e.button !== 0) return;
-    e.preventDefault();
-    e.stopPropagation();
+  const handleCardMouseDown = useCallback(
+    (e: React.MouseEvent, cardId: string) => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      e.stopPropagation();
 
-    if (e.shiftKey) {
-      setSelectedCardIds((prev) => {
-        const next = new Set(prev);
-        if (next.has(cardId)) next.delete(cardId);
-        else next.add(cardId);
-        return next;
-      });
-      return;
-    }
-
-    const pos = positionsRef.current[cardId];
-    if (!pos) return;
-
-    const inSelection = selectedCardIdsRef.current.has(cardId);
-    const cardsToDrag = inSelection ? [...selectedCardIdsRef.current] : [cardId];
-
-    if (!inSelection) setSelectedCardIds(new Set());
-
-    const startPositions: Record<string, { x: number; y: number }> = {};
-    for (const id of cardsToDrag) {
-      startPositions[id] = positionsRef.current[id] ?? { x: 0, y: 0 };
-    }
-
-    dragRef.current = {
-      cardIds: cardsToDrag,
-      startMouseX: e.clientX,
-      startMouseY: e.clientY,
-      startPositions,
-      moved: false,
-    };
-    setDraggingCardIds(new Set(cardsToDrag));
-
-    const handleMouseMove = (me: MouseEvent) => {
-      // Snapshot the mutable ref into a local ONCE — after this line,
-      // nothing in this handler reads dragRef.current again, so even if
-      // handleMouseUp nulls it before React processes queued updaters
-      // we are safe.
-      const drag = dragRef.current;
-      if (!drag) return;
-
-      const dx = me.clientX - drag.startMouseX;
-      const dy = me.clientY - drag.startMouseY;
-      if (!drag.moved && Math.sqrt(dx * dx + dy * dy) < 5) return;
-      drag.moved = true;
-
-      const el = containerRef.current;
-      if (!el) return;
-      const xMin = Math.max(0, leftReserved);
-      const xMax = Math.max(xMin, el.clientWidth - CARD_W - Math.max(0, rightReserved));
-
-      const dragCardIds = drag.cardIds;
-      const dragStartPositions = drag.startPositions;
-
-      setPositions((prev) => {
-        const next = { ...prev };
-        for (const id of dragCardIds) {
-          const start = dragStartPositions[id];
-          if (!start) continue;
-          next[id] = {
-            x: Math.max(xMin, Math.min(xMax, start.x + dx)),
-            y: Math.max(0, Math.min(el.clientHeight - CARD_H, start.y + dy)),
-          };
-        }
-        return next;
-      });
-    };
-
-    const handleMouseUp = () => {
-      document.removeEventListener("mousemove", handleMouseMove);
-      document.removeEventListener("mouseup", handleMouseUp);
-      const drag = dragRef.current;
-      dragRef.current = null;
-      const draggedIds = drag?.moved ? [...drag.cardIds] : [];
-      setDraggingCardIds(new Set());
-      if (draggedIds.length > 0) {
-        const draggedSet = new Set(draggedIds);
-        setJustDraggedCardIds(draggedSet);
-        setTimeout(() => setJustDraggedCardIds((prev) => (prev === draggedSet ? new Set() : prev)), 0);
+      if (e.shiftKey) {
+        setSelectedCardIds((prev) => {
+          const next = new Set(prev);
+          if (next.has(cardId)) next.delete(cardId);
+          else next.add(cardId);
+          return next;
+        });
+        return;
       }
-    };
 
-    document.addEventListener("mousemove", handleMouseMove);
-    document.addEventListener("mouseup", handleMouseUp);
-  }, [leftReserved, rightReserved]);
+      const pos = positionsRef.current[cardId];
+      if (!pos) return;
 
-  const wrappedHandleContainerMouseDown = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
-    // Clear selection on click/drag on empty space (shift preserves it)
-    if (!e.shiftKey) setSelectedCardIds(new Set());
-    handleContainerMouseDown(e);
-  }, [handleContainerMouseDown]);
+      const inSelection = selectedCardIdsRef.current.has(cardId);
+      const cardsToDrag = inSelection ? [...selectedCardIdsRef.current] : [cardId];
+
+      if (!inSelection) setSelectedCardIds(new Set());
+
+      const startPositions: Record<string, { x: number; y: number }> = {};
+      for (const id of cardsToDrag) {
+        startPositions[id] = positionsRef.current[id] ?? { x: 0, y: 0 };
+      }
+
+      dragRef.current = {
+        cardIds: cardsToDrag,
+        startMouseX: e.clientX,
+        startMouseY: e.clientY,
+        startPositions,
+        moved: false,
+      };
+      setDraggingCardIds(new Set(cardsToDrag));
+
+      const handleMouseMove = (me: MouseEvent) => {
+        // Snapshot the mutable ref into a local ONCE — after this line,
+        // nothing in this handler reads dragRef.current again, so even if
+        // handleMouseUp nulls it before React processes queued updaters
+        // we are safe.
+        const drag = dragRef.current;
+        if (!drag) return;
+
+        const dx = me.clientX - drag.startMouseX;
+        const dy = me.clientY - drag.startMouseY;
+        if (!drag.moved && Math.sqrt(dx * dx + dy * dy) < 5) return;
+        drag.moved = true;
+
+        const el = containerRef.current;
+        if (!el) return;
+        const xMin = Math.max(0, leftReserved);
+        const xMax = Math.max(xMin, el.clientWidth - CARD_W - Math.max(0, rightReserved));
+
+        const dragCardIds = drag.cardIds;
+        const dragStartPositions = drag.startPositions;
+
+        setPositions((prev) => {
+          const next = { ...prev };
+          for (const id of dragCardIds) {
+            const start = dragStartPositions[id];
+            if (!start) continue;
+            next[id] = {
+              x: Math.max(xMin, Math.min(xMax, start.x + dx)),
+              y: Math.max(0, Math.min(el.clientHeight - CARD_H, start.y + dy)),
+            };
+          }
+          return next;
+        });
+      };
+
+      const handleMouseUp = () => {
+        document.removeEventListener("mousemove", handleMouseMove);
+        document.removeEventListener("mouseup", handleMouseUp);
+        const drag = dragRef.current;
+        dragRef.current = null;
+        const draggedIds = drag?.moved ? [...drag.cardIds] : [];
+        setDraggingCardIds(new Set());
+        if (draggedIds.length > 0) {
+          const draggedSet = new Set(draggedIds);
+          setJustDraggedCardIds(draggedSet);
+          setTimeout(
+            () => setJustDraggedCardIds((prev) => (prev === draggedSet ? new Set() : prev)),
+            0,
+          );
+        }
+      };
+
+      document.addEventListener("mousemove", handleMouseMove);
+      document.addEventListener("mouseup", handleMouseUp);
+    },
+    [leftReserved, rightReserved],
+  );
+
+  const wrappedHandleContainerMouseDown = useCallback(
+    (e: React.MouseEvent<HTMLDivElement>) => {
+      // Clear selection on click/drag on empty space (shift preserves it)
+      if (!e.shiftKey) setSelectedCardIds(new Set());
+      handleContainerMouseDown(e);
+    },
+    [handleContainerMouseDown],
+  );
 
   return {
     containerRef,

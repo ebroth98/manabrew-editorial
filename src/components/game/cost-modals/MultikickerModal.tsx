@@ -13,11 +13,18 @@ interface MultikickerModalProps {
   onDecide: (kickCount: number) => void;
 }
 
-export function MultikickerModal({ cost, maxKicks, sourceCardName, onDecide }: MultikickerModalProps) {
+export function MultikickerModal({
+  cost,
+  maxKicks,
+  sourceCardName,
+  onDecide,
+}: MultikickerModalProps) {
   const { data: imageUrl } = useCardImage(sourceCardName ?? "");
   const [count, setCount] = useState(0);
 
-  useEffect(() => { setCount(0); }, [cost, maxKicks]);
+  useEffect(() => {
+    setCount(0);
+  }, [cost, maxKicks]);
 
   return (
     <Modal maxWidth="max-w-md" maxHeight="">
@@ -37,14 +44,30 @@ export function MultikickerModal({ cost, maxKicks, sourceCardName, onDecide }: M
             Pay <ManaSymbols cost={cost} size="lg" /> per kick (max {maxKicks})
           </p>
           <div className="flex items-center gap-3">
-            <Button variant="outline" size="sm" disabled={count <= 0} onClick={() => setCount(c => Math.max(0, c - 1))}>-</Button>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={count <= 0}
+              onClick={() => setCount((c) => Math.max(0, c - 1))}
+            >
+              -
+            </Button>
             <span className="text-xl font-bold w-8 text-center">{count}</span>
-            <Button variant="outline" size="sm" disabled={count >= maxKicks} onClick={() => setCount(c => Math.min(maxKicks, c + 1))}>+</Button>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={count >= maxKicks}
+              onClick={() => setCount((c) => Math.min(maxKicks, c + 1))}
+            >
+              +
+            </Button>
           </div>
         </div>
       </div>
       <Modal.Footer>
-        <Button variant="outline" onClick={() => onDecide(0)}>Skip</Button>
+        <Button variant="outline" onClick={() => onDecide(0)}>
+          Skip
+        </Button>
         <Button onClick={() => onDecide(count)}>Confirm ({count}x)</Button>
       </Modal.Footer>
     </Modal>

@@ -16,12 +16,7 @@ interface ZoneViewerProps {
   onClickCard?: (cardId: string) => void;
 }
 
-export function ZoneViewer({
-  title,
-  cards,
-  onClose,
-  onClickCard,
-}: ZoneViewerProps) {
+export function ZoneViewer({ title, cards, onClose, onClickCard }: ZoneViewerProps) {
   const preview = useCardPreview();
 
   const themeColors = useTheme().gameTheme;
@@ -44,32 +39,21 @@ export function ZoneViewer({
                 className="shrink-0 relative flex flex-col gap-1"
                 onMouseEnter={(e) => preview.handleMouseEnter(card, e)}
                 onMouseLeave={preview.handleMouseLeave}
-
               >
                 <Card
                   card={card}
-                  className={cn(
-                    HAND_CARD,
-                    card.isPlayable && onClickCard && "ring-2",
-                  )}
+                  className={cn(HAND_CARD, card.isPlayable && onClickCard && "ring-2")}
                   style={
                     card.isPlayable && onClickCard
                       ? ({ "--tw-ring-color": ringColor } as CSSProperties)
                       : undefined
                   }
-                  onClick={
-                    card.isPlayable && onClickCard
-                      ? () => onClickCard(card.id)
-                      : undefined
-                  }
+                  onClick={card.isPlayable && onClickCard ? () => onClickCard(card.id) : undefined}
                 />
                 {(card.effectiveManaCost || card.manaCost) && (
                   <div className="min-h-5 flex items-center justify-center">
                     <div className="inline-flex items-center rounded bg-muted/70 px-1.5 py-0.5">
-                      <ManaSymbols
-                        cost={card.effectiveManaCost ?? card.manaCost}
-                        size="sm"
-                      />
+                      <ManaSymbols cost={card.effectiveManaCost ?? card.manaCost} size="sm" />
                     </div>
                   </div>
                 )}

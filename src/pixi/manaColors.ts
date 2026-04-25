@@ -16,8 +16,5 @@ const MANA_LETTERS = new Set<ManaLetter>(["W", "U", "B", "R", "G", "C"]);
 export const isManaLetter = (value: string | undefined): value is ManaLetter =>
   value != null && MANA_LETTERS.has(value as ManaLetter);
 
-export const manaColorFor = (
-  letter: string | undefined,
-  theme: Theme,
-  fallback: number,
-): number => (isManaLetter(letter) ? hexToNum(theme.gameTheme.mana[letter]) : fallback);
+export const manaColorFor = (letter: string | undefined, theme: Theme, fallback: number): number =>
+  isManaLetter(letter) ? hexToNum(theme.gameTheme.mana[letter]) : fallback;

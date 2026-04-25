@@ -1,6 +1,6 @@
-import { create } from 'zustand';
-import { persist, devtools } from 'zustand/middleware';
-import type { User } from '@/types/openmagic';
+import { create } from "zustand";
+import { persist, devtools } from "zustand/middleware";
+import type { User } from "@/types/openmagic";
 
 interface AuthState {
   user: User | null;
@@ -14,24 +14,27 @@ interface AuthState {
 }
 
 export const useAuthStore = create<AuthState>()(
-  devtools(persist(
-    (set) => ({
-      user: null,
-      isAuthenticated: false,
-      token: null,
-      lastServer: '',
-      lastUsername: '',
-      login: (user, token) => set({ user, isAuthenticated: true, token }),
-      logout: () => set({ user: null, isAuthenticated: false, token: null }),
-      setLastConnection: (lastServer, lastUsername) => set({ lastServer, lastUsername }),
-    }),
-    {
-      name: 'openmagic-auth-storage',
-      partialize: (state) => ({
-        lastServer: state.lastServer,
-        lastUsername: state.lastUsername,
-        token: state.token, // Maybe don't persist token for security, but usually convenient
+  devtools(
+    persist(
+      (set) => ({
+        user: null,
+        isAuthenticated: false,
+        token: null,
+        lastServer: "",
+        lastUsername: "",
+        login: (user, token) => set({ user, isAuthenticated: true, token }),
+        logout: () => set({ user: null, isAuthenticated: false, token: null }),
+        setLastConnection: (lastServer, lastUsername) => set({ lastServer, lastUsername }),
       }),
-    }
-  ), { name: "auth", enabled: import.meta.env.DEV })
+      {
+        name: "openmagic-auth-storage",
+        partialize: (state) => ({
+          lastServer: state.lastServer,
+          lastUsername: state.lastUsername,
+          token: state.token, // Maybe don't persist token for security, but usually convenient
+        }),
+      },
+    ),
+    { name: "auth", enabled: import.meta.env.DEV },
+  ),
 );

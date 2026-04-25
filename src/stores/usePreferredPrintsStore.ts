@@ -16,20 +16,23 @@ interface PreferredPrintsState {
 }
 
 export const usePreferredPrintsStore = create<PreferredPrintsState>()(
-  devtools(persist(
-    (set, get) => ({
-      preferredPrints: {},
-      setPreferredPrint: (oracleId, print) =>
-        set((state) => ({
-          preferredPrints: { ...state.preferredPrints, [oracleId]: print },
-        })),
-      getPreferredPrint: (oracleId) => get().preferredPrints[oracleId],
-      clearPreferredPrint: (oracleId) =>
-        set((state) => {
-          const { [oracleId]: _, ...rest } = state.preferredPrints;
-          return { preferredPrints: rest };
-        }),
-    }),
-    { name: STORAGE_KEYS.PREFERRED_PRINTS },
-  ), { name: "preferredPrints", enabled: import.meta.env.DEV }),
+  devtools(
+    persist(
+      (set, get) => ({
+        preferredPrints: {},
+        setPreferredPrint: (oracleId, print) =>
+          set((state) => ({
+            preferredPrints: { ...state.preferredPrints, [oracleId]: print },
+          })),
+        getPreferredPrint: (oracleId) => get().preferredPrints[oracleId],
+        clearPreferredPrint: (oracleId) =>
+          set((state) => {
+            const { [oracleId]: _, ...rest } = state.preferredPrints;
+            return { preferredPrints: rest };
+          }),
+      }),
+      { name: STORAGE_KEYS.PREFERRED_PRINTS },
+    ),
+    { name: "preferredPrints", enabled: import.meta.env.DEV },
+  ),
 );

@@ -10,9 +10,7 @@ export function GameLoadingScreen({ debugInfo }: GameLoadingScreenProps) {
   return (
     <div className="flex flex-col items-center justify-center h-full gap-4">
       <p className="text-muted-foreground">Waiting for game state...</p>
-      {debugInfo && (
-        <p className="text-xs text-muted-foreground font-mono">{debugInfo}</p>
-      )}
+      {debugInfo && <p className="text-xs text-muted-foreground font-mono">{debugInfo}</p>}
       <Button
         variant="outline"
         size="sm"

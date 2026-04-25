@@ -115,7 +115,8 @@ class WorkerBridge {
       if (!this.gameSignal || !this.gameData || !this.gameBuffer) return;
 
       const current = Atomics.load(this.gameSignal, 0);
-      if (current === 1) { // SIGNAL_PROMPT_READY
+      if (current === 1) {
+        // SIGNAL_PROMPT_READY
         const len = Atomics.load(this.gameSignal, 1);
         const jsonBytes = this.gameData.slice(0, len);
         const jsonStr = new TextDecoder().decode(jsonBytes);
@@ -169,7 +170,8 @@ class WorkerBridge {
       if (!this.remoteSignal || !this.remoteData || !this.remoteBuffer) return;
 
       const current = Atomics.load(this.remoteSignal, 0);
-      if (current === 1) { // PROMPT_READY
+      if (current === 1) {
+        // PROMPT_READY
         const len = Atomics.load(this.remoteSignal, 1);
         const jsonBytes = this.remoteData.slice(0, len);
         const jsonStr = new TextDecoder().decode(jsonBytes);
@@ -230,10 +232,9 @@ class WorkerBridge {
     return new Promise((resolve, reject) => {
       try {
         // Create worker using Vite's worker import pattern
-        this.worker = new Worker(
-          new URL("../workers/game-engine.worker.ts", import.meta.url),
-          { type: "module" }
-        );
+        this.worker = new Worker(new URL("../workers/game-engine.worker.ts", import.meta.url), {
+          type: "module",
+        });
 
         this.worker.onmessage = this.handleMessage.bind(this);
         this.worker.onerror = (e) => {
@@ -276,10 +277,7 @@ class WorkerBridge {
   /**
    * Invoke a command on the worker.
    */
-  async invoke<T>(
-    command: string,
-    args?: Record<string, unknown>
-  ): Promise<T> {
+  async invoke<T>(command: string, args?: Record<string, unknown>): Promise<T> {
     await this.init();
 
     if (!this.worker) {
@@ -362,9 +360,7 @@ class WebGameApi implements IGameApi {
     });
   }
 
-  async startMultiplayerGame(
-    params: StartMultiplayerGameParams
-  ): Promise<void> {
+  async startMultiplayerGame(params: StartMultiplayerGameParams): Promise<void> {
     this.isMultiplayer = true;
     this.isHost = params.localIsHost;
     this.myPlayerSlot = `player-${params.enginePlayerIndex}`;
@@ -422,7 +418,9 @@ class WebGameApi implements IGameApi {
     return this.bridge.invoke<PresetDeckInfo[]>("get_preset_decks");
   }
 
-  async validateDeckAvailability(deckList: Array<{ name: string }>): Promise<DeckAvailabilityResult> {
+  async validateDeckAvailability(
+    deckList: Array<{ name: string }>,
+  ): Promise<DeckAvailabilityResult> {
     return this.bridge.invoke<DeckAvailabilityResult>("validate_deck_availability", {
       deckList,
     });
@@ -460,9 +458,7 @@ class WebStorageApi implements IStorageApi {
 
   async keys(): Promise<string[]> {
     const allKeys = Object.keys(localStorage);
-    return allKeys
-      .filter((k) => k.startsWith(this.prefix))
-      .map((k) => k.slice(this.prefix.length));
+    return allKeys.filter((k) => k.startsWith(this.prefix)).map((k) => k.slice(this.prefix.length));
   }
 }
 
@@ -686,30 +682,12 @@ class WebServerApi implements IServerApi {
       ],
       RoomList: ["server:room_list", { rooms: msg.rooms }],
       PlayerList: ["server:player_list", { players: msg.players }],
-      RoomCreated: [
-        "server:room_created",
-        { room_id: msg.room_id, room_name: msg.room_name },
-      ],
-      PlayerJoined: [
-        "server:player_joined",
-        { room_id: msg.room_id, username: msg.username },
-      ],
-      PlayerLeft: [
-        "server:player_left",
-        { room_id: msg.room_id, username: msg.username },
-      ],
-      PlayerConnected: [
-        "server:player_connected",
-        { username: msg.username },
-      ],
-      PlayerDisconnected: [
-        "server:player_disconnected",
-        { username: msg.username },
-      ],
-      ReadyStateChanged: [
-        "server:ready_changed",
-        { username: msg.username, ready: msg.ready },
-      ],
+      RoomCreated: ["server:room_created", { room_id: msg.room_id, room_name: msg.room_name }],
+      PlayerJoined: ["server:player_joined", { room_id: msg.room_id, username: msg.username }],
+      PlayerLeft: ["server:player_left", { room_id: msg.room_id, username: msg.username }],
+      PlayerConnected: ["server:player_connected", { username: msg.username }],
+      PlayerDisconnected: ["server:player_disconnected", { username: msg.username }],
+      ReadyStateChanged: ["server:ready_changed", { username: msg.username, ready: msg.ready }],
       RoomUpdate: ["server:room_update", { room: msg.room }],
       GameStarted: [
         "server:game_started",
@@ -720,10 +698,7 @@ class WebServerApi implements IServerApi {
           starting_life: msg.starting_life,
         },
       ],
-      StateUpdate: [
-        "server:state_update",
-        { from_player: msg.from_player, state: msg.state },
-      ],
+      StateUpdate: ["server:state_update", { from_player: msg.from_player, state: msg.state }],
       TurnChanged: [
         "server:turn_changed",
         {
@@ -732,10 +707,7 @@ class WebServerApi implements IServerApi {
           turn_number: msg.turn_number,
         },
       ],
-      Error: [
-        "server:error",
-        { code: msg.code, message: msg.message },
-      ],
+      Error: ["server:error", { code: msg.code, message: msg.message }],
     };
 
     const mapping = eventMap[type];

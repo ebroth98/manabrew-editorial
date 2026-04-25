@@ -35,9 +35,7 @@ export function useMulliganSelection(
 ): MulliganSelection {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const promptCount =
-    activePrompt?.type === PromptType.MulliganPutBack
-      ? (activePrompt.count ?? 0)
-      : 0;
+    activePrompt?.type === PromptType.MulliganPutBack ? (activePrompt.count ?? 0) : 0;
 
   useEffect(() => {
     setSelected(new Set());

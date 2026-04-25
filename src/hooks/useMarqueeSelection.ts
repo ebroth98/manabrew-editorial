@@ -24,62 +24,69 @@ export interface UseMarqueeOptions {
   externalContainerRef?: React.RefObject<HTMLDivElement | null>;
 }
 
-export function useMarquee({ onMarqueeComplete, minSize = 4, externalContainerRef }: UseMarqueeOptions = {}) {
+export function useMarquee({
+  onMarqueeComplete,
+  minSize = 4,
+  externalContainerRef,
+}: UseMarqueeOptions = {}) {
   const internalRef = useRef<HTMLDivElement>(null);
   const containerRef = externalContainerRef ?? internalRef;
   const [marquee, setMarquee] = useState<Marquee | null>(null);
   const marqueeRef = useRef<Marquee | null>(null);
 
-  const handleContainerMouseDown = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
-    if (e.button !== 0) return;
+  const handleContainerMouseDown = useCallback(
+    (e: React.MouseEvent<HTMLDivElement>) => {
+      if (e.button !== 0) return;
 
-    const el = containerRef.current;
-    if (!el) return;
+      const el = containerRef.current;
+      if (!el) return;
 
-    e.preventDefault();
-    const rect = el.getBoundingClientRect();
-    const startX = e.clientX - rect.left;
-    const startY = e.clientY - rect.top;
-    const additive = e.shiftKey;
+      e.preventDefault();
+      const rect = el.getBoundingClientRect();
+      const startX = e.clientX - rect.left;
+      const startY = e.clientY - rect.top;
+      const additive = e.shiftKey;
 
-    const initial: Marquee = { startX, startY, currentX: startX, currentY: startY, additive };
-    marqueeRef.current = initial;
-    setMarquee(initial);
+      const initial: Marquee = { startX, startY, currentX: startX, currentY: startY, additive };
+      marqueeRef.current = initial;
+      setMarquee(initial);
 
-    const handleMouseMove = (me: MouseEvent) => {
-      const currentX = Math.max(0, Math.min(el.clientWidth, me.clientX - rect.left));
-      const currentY = Math.max(0, Math.min(el.clientHeight, me.clientY - rect.top));
-      const updated = { ...marqueeRef.current!, currentX, currentY };
-      marqueeRef.current = updated;
-      setMarquee(updated);
-    };
+      const handleMouseMove = (me: MouseEvent) => {
+        const currentX = Math.max(0, Math.min(el.clientWidth, me.clientX - rect.left));
+        const currentY = Math.max(0, Math.min(el.clientHeight, me.clientY - rect.top));
+        const updated = { ...marqueeRef.current!, currentX, currentY };
+        marqueeRef.current = updated;
+        setMarquee(updated);
+      };
 
-    const handleMouseUp = () => {
-      document.removeEventListener("mousemove", handleMouseMove);
-      document.removeEventListener("mouseup", handleMouseUp);
+      const handleMouseUp = () => {
+        document.removeEventListener("mousemove", handleMouseMove);
+        document.removeEventListener("mouseup", handleMouseUp);
 
-      const m = marqueeRef.current;
-      marqueeRef.current = null;
-      setMarquee(null);
+        const m = marqueeRef.current;
+        marqueeRef.current = null;
+        setMarquee(null);
 
-      if (!m) return;
-      const selX = Math.min(m.startX, m.currentX);
-      const selY = Math.min(m.startY, m.currentY);
-      const selW = Math.abs(m.currentX - m.startX);
-      const selH = Math.abs(m.currentY - m.startY);
+        if (!m) return;
+        const selX = Math.min(m.startX, m.currentX);
+        const selY = Math.min(m.startY, m.currentY);
+        const selW = Math.abs(m.currentX - m.startX);
+        const selH = Math.abs(m.currentY - m.startY);
 
-      if (selW > minSize || selH > minSize) {
-        onMarqueeComplete?.(
-          { left: selX, top: selY, width: selW, height: selH },
-          m.additive,
-          new Set(),
-        );
-      }
-    };
+        if (selW > minSize || selH > minSize) {
+          onMarqueeComplete?.(
+            { left: selX, top: selY, width: selW, height: selH },
+            m.additive,
+            new Set(),
+          );
+        }
+      };
 
-    document.addEventListener("mousemove", handleMouseMove);
-    document.addEventListener("mouseup", handleMouseUp);
-  }, [onMarqueeComplete, minSize]);
+      document.addEventListener("mousemove", handleMouseMove);
+      document.addEventListener("mouseup", handleMouseUp);
+    },
+    [onMarqueeComplete, minSize],
+  );
 
   const marqueeRect: MarqueeRect | null = marquee
     ? {

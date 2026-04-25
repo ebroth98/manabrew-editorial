@@ -60,7 +60,15 @@ export function CardPreview({
   const hasActions = actions && actions.length > 0 && onSelectAction;
   const themeColors = useTheme().gameTheme;
   const ringColor = themeColors.cardRing; // matches battlefield playable color
-  const { data: fetchedUrl, isLoading } = useCardImage(card.name, card.imageUrl, card.isToken, card.color, card.setCode, card.cardNumber, "large");
+  const { data: fetchedUrl, isLoading } = useCardImage(
+    card.name,
+    card.imageUrl,
+    card.isToken,
+    card.color,
+    card.setCode,
+    card.cardNumber,
+    "large",
+  );
   const imageUrl = upgradeScryfallUrl(card.imageUrl ?? fetchedUrl, "large");
 
   // Fetch double-faced card data if needed
@@ -90,7 +98,10 @@ export function CardPreview({
   useEffect(() => {
     if (!hasActions || !onDismiss) return;
     function handleKey(e: KeyboardEvent) {
-      if (e.key === "Escape") { onDismiss!(); return; }
+      if (e.key === "Escape") {
+        onDismiss!();
+        return;
+      }
       // Number keys 1-9 activate the corresponding action
       const num = parseInt(e.key);
       if (num >= 1 && num <= actions!.length) {
@@ -148,19 +159,18 @@ export function CardPreview({
     const spaceAfterCard = window.innerWidth - (cardLeft + cardWidth);
     actionsOnRight = spaceAfterCard >= ACTIONS_PANEL_W + 16;
 
-    top = Math.min(
-      Math.max(anchorY - cardHeight / 2, 8),
-      window.innerHeight - cardHeight - 8
-    );
+    top = Math.min(Math.max(anchorY - cardHeight / 2, 8), window.innerHeight - cardHeight - 8);
   }
 
   const hasDoubleFace = !!card.isDoubleFaced && !!doubleFacedData?.backImageUrl;
-  const currentImageUrl = hasDoubleFace && showBackFace
-    ? doubleFacedData.backImageUrl
-    : (imageUrl || fetchedUrl);
-  const currentCardName = hasDoubleFace && showBackFace
-    ? doubleFacedData.backName
-    : (hasDoubleFace && !showBackFace ? doubleFacedData.frontName : card.name);
+  const currentImageUrl =
+    hasDoubleFace && showBackFace ? doubleFacedData.backImageUrl : imageUrl || fetchedUrl;
+  const currentCardName =
+    hasDoubleFace && showBackFace
+      ? doubleFacedData.backName
+      : hasDoubleFace && !showBackFace
+        ? doubleFacedData.frontName
+        : card.name;
 
   return createPortal(
     <>
@@ -185,10 +195,14 @@ export function CardPreview({
               "w-full h-full rounded-xl shadow-2xl overflow-hidden bg-black transition-shadow duration-200",
               hasActions ? "ring-2" : "ring-1 ring-black/20",
             )}
-            style={hasActions ? {
-              "--tw-ring-color": ringColor,
-              boxShadow: `0 0 20px ${ringColor}`,
-            } as CSSProperties : undefined}
+            style={
+              hasActions
+                ? ({
+                    "--tw-ring-color": ringColor,
+                    boxShadow: `0 0 20px ${ringColor}`,
+                  } as CSSProperties)
+                : undefined
+            }
           >
             {isLoading && !currentImageUrl ? (
               <div className="w-full h-full flex flex-col items-center justify-center gap-2 p-4">
@@ -215,13 +229,13 @@ export function CardPreview({
               <div className="w-full h-full p-4 flex flex-col gap-2 bg-card">
                 <div className="flex justify-between items-start">
                   <span className="font-bold text-sm leading-tight">{currentCardName}</span>
-                  {!hasDoubleFace && (
-                    card.effectiveManaCost ? (
+                  {!hasDoubleFace &&
+                    (card.effectiveManaCost ? (
                       <div className="flex flex-col items-end">
                         <span className="line-through opacity-50">
                           <ManaSymbols cost={card.manaCost} size="md" />
                         </span>
-                        <span 
+                        <span
                           className="rounded px-0.5"
                           style={{ backgroundColor: withAlpha(ringColor, 0.2) }}
                         >
@@ -230,8 +244,7 @@ export function CardPreview({
                       </div>
                     ) : (
                       <ManaSymbols cost={card.manaCost} size="md" />
-                    )
-                  )}
+                    ))}
                 </div>
                 {!hasDoubleFace && (
                   <div className="text-xs text-muted-foreground">{card.types?.join(" ")}</div>
@@ -239,13 +252,11 @@ export function CardPreview({
                 <div className="flex-1 text-xs text-foreground/80 whitespace-pre-wrap">
                   {hasDoubleFace && showBackFace
                     ? `Back face: ${doubleFacedData!.backName}`
-                    : (hasDoubleFace && !showBackFace
+                    : hasDoubleFace && !showBackFace
                       ? `Front face: ${doubleFacedData!.frontName}`
-                      : card.text)}
+                      : card.text}
                 </div>
-                {card.counters && (
-                  <CounterDisplay counters={card.counters} size="md" />
-                )}
+                {card.counters && <CounterDisplay counters={card.counters} size="md" />}
                 {card.power && card.toughness && (
                   <div className="text-right font-bold text-sm">
                     {card.power}/{card.toughness}
@@ -259,9 +270,10 @@ export function CardPreview({
           {hasActions && (
             <div
               className="absolute top-0 flex flex-col gap-1.5"
-              style={actionsOnRight
-                ? { left: cardWidth + 10, width: ACTIONS_PANEL_W }
-                : { right: cardWidth + 10, width: ACTIONS_PANEL_W }
+              style={
+                actionsOnRight
+                  ? { left: cardWidth + 10, width: ACTIONS_PANEL_W }
+                  : { right: cardWidth + 10, width: ACTIONS_PANEL_W }
               }
             >
               {/* Curved invisible bridge to maintain hover without blocking cards below */}
@@ -301,7 +313,9 @@ export function CardPreview({
                   }}
                 >
                   <span className="flex items-center justify-between w-full mb-0.5">
-                    <span className="text-xs font-bold min-w-[22px] h-5 flex items-center justify-center rounded border border-border bg-muted shadow-[0_1px_0_rgba(0,0,0,0.1)]">{idx + 1}</span>
+                    <span className="text-xs font-bold min-w-[22px] h-5 flex items-center justify-center rounded border border-border bg-muted shadow-[0_1px_0_rgba(0,0,0,0.1)]">
+                      {idx + 1}
+                    </span>
                     {action.cost && (
                       <span className="flex items-center gap-0.5 text-[11px] opacity-90">
                         <TextWithMana text={action.cost} manaSize="sm" />
@@ -318,6 +332,6 @@ export function CardPreview({
         </div>
       </div>
     </>,
-    document.body
+    document.body,
   );
 }

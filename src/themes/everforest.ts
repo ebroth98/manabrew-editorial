@@ -6,35 +6,35 @@ const palette: BasePalette = {
   foreground: "#d3c6aa",
   labelMuted: "#859289",
   labelGhost: "#a3adb0",
-  placeholderFill: "#2d353b",   // bg0
+  placeholderFill: "#2d353b", // bg0
   placeholderStroke: "#475258", // bg3
   canvasBackground: "#2d353b",
-  red:      "#e67e80",
-  redDeep:  "#b15d5e",
-  orange:   "#e69875",
-  amber:    "#dbbc7f",
-  yellow:   "#dbbc7f",
-  green:    "#a7c080",
-  teal:     "#83c092",
-  cyan:     "#83c092",
-  blue:     "#7fbbb3",
-  sky:      "#7fbbb3",
-  indigo:   "#7fbbb3",
-  violet:   "#d699b6",
-  purple:   "#d699b6",
-  pink:     "#d699b6",
-  slate:    "#859289",
-  brown:    "#e69875",
-  paper:    "#d3c6aa",
-  poison:   "#85a06a",           // mossy sibling of everforest green
-  promptPass:    "#a7c080",     // green
-  promptDefense: "#7fbbb3",     // blue
-  manaW:    "#d3c6aa",
-  manaU:    "#7fbbb3",
-  manaB:    "#475258",
-  manaR:    "#e67e80",
-  manaG:    "#a7c080",
-  manaC:    "#859289",
+  red: "#e67e80",
+  redDeep: "#b15d5e",
+  orange: "#e69875",
+  amber: "#dbbc7f",
+  yellow: "#dbbc7f",
+  green: "#a7c080",
+  teal: "#83c092",
+  cyan: "#83c092",
+  blue: "#7fbbb3",
+  sky: "#7fbbb3",
+  indigo: "#7fbbb3",
+  violet: "#d699b6",
+  purple: "#d699b6",
+  pink: "#d699b6",
+  slate: "#859289",
+  brown: "#e69875",
+  paper: "#d3c6aa",
+  poison: "#85a06a", // mossy sibling of everforest green
+  promptPass: "#a7c080", // green
+  promptDefense: "#7fbbb3", // blue
+  manaW: "#d3c6aa",
+  manaU: "#7fbbb3",
+  manaB: "#475258",
+  manaR: "#e67e80",
+  manaG: "#a7c080",
+  manaC: "#859289",
 };
 
 const preset: ThemePreset = {

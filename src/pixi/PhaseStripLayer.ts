@@ -17,8 +17,12 @@ interface PhaseSpec {
 }
 
 const COMBAT_SUB_PHASES = [
-  "begin_combat", "declare_attackers", "declare_blockers",
-  "first_strike_damage", "combat_damage", "end_combat",
+  "begin_combat",
+  "declare_attackers",
+  "declare_blockers",
+  "first_strike_damage",
+  "combat_damage",
+  "end_combat",
 ];
 
 const COMBAT_LABELS: Record<string, string> = {
@@ -61,7 +65,6 @@ const INDICATOR_SIZE = 13;
 const INDICATOR_GAP = 3;
 const INDICATOR_MARGIN = 4; // distance from cell edge
 
-
 type ShapeKind = "triangle" | "diamond" | "circle";
 
 function drawShape(
@@ -99,10 +102,34 @@ function drawShape(
 }
 
 // Text styles — fill is updated from theme in setTheme()
-const normalStyle = new TextStyle({ fontFamily: FONT, fontSize: 11, fontWeight: "600", fill: "#555555", align: "center" });
-const activeStyle = new TextStyle({ fontFamily: FONT, fontSize: 11, fontWeight: "bold", fill: "#ffffff", align: "center" });
-const combatActiveStyle = new TextStyle({ fontFamily: FONT, fontSize: 11, fontWeight: "bold", fill: "#ffffff", align: "center" });
-const enabledStyle = new TextStyle({ fontFamily: FONT, fontSize: 11, fontWeight: "600", fill: "#aaaaaa", align: "center" });
+const normalStyle = new TextStyle({
+  fontFamily: FONT,
+  fontSize: 11,
+  fontWeight: "600",
+  fill: "#555555",
+  align: "center",
+});
+const activeStyle = new TextStyle({
+  fontFamily: FONT,
+  fontSize: 11,
+  fontWeight: "bold",
+  fill: "#ffffff",
+  align: "center",
+});
+const combatActiveStyle = new TextStyle({
+  fontFamily: FONT,
+  fontSize: 11,
+  fontWeight: "bold",
+  fill: "#ffffff",
+  align: "center",
+});
+const enabledStyle = new TextStyle({
+  fontFamily: FONT,
+  fontSize: 11,
+  fontWeight: "600",
+  fill: "#aaaaaa",
+  align: "center",
+});
 
 interface PhaseCell {
   bg: Graphics;
@@ -209,8 +236,12 @@ export class PhaseStripLayer {
       hitArea.eventMode = "static";
       hitArea.cursor = "default";
       const cellIndex = this.cells.length; // index for this cell (before push)
-      hitArea.on("pointerover", () => { this.hoveredCellIndex = cellIndex; });
-      hitArea.on("pointerout", () => { if (this.hoveredCellIndex === cellIndex) this.hoveredCellIndex = -1; });
+      hitArea.on("pointerover", () => {
+        this.hoveredCellIndex = cellIndex;
+      });
+      hitArea.on("pointerout", () => {
+        if (this.hoveredCellIndex === cellIndex) this.hoveredCellIndex = -1;
+      });
       this.container.addChild(hitArea);
 
       // Self indicator (bottom — my turn toggle)
@@ -224,8 +255,12 @@ export class PhaseStripLayer {
         const phases = p.subPhases ?? [p.id];
         for (const ph of phases) this.callbacks.onToggleSelfPhase?.(ph);
       });
-      selfHitArea.on("pointerover", () => { cellRef.selfHovered = true; });
-      selfHitArea.on("pointerout", () => { cellRef.selfHovered = false; });
+      selfHitArea.on("pointerover", () => {
+        cellRef.selfHovered = true;
+      });
+      selfHitArea.on("pointerout", () => {
+        cellRef.selfHovered = false;
+      });
       this.container.addChild(selfHitArea);
 
       const oppIndicators = new Graphics();
@@ -245,17 +280,33 @@ export class PhaseStripLayer {
           const phases = p.subPhases ?? [p.id];
           for (const ph of phases) this.callbacks.onToggleOpponentPhase?.(opp.id, ph);
         });
-        oha.on("pointerover", () => { cellRef.oppHovered[oi] = true; });
-        oha.on("pointerout", () => { cellRef.oppHovered[oi] = false; });
+        oha.on("pointerover", () => {
+          cellRef.oppHovered[oi] = true;
+        });
+        oha.on("pointerout", () => {
+          cellRef.oppHovered[oi] = false;
+        });
         this.container.addChild(oha);
         oppHitAreas.push(oha);
       }
 
       const cellRef: PhaseCell = {
-        bg, flashGfx, hoverBg, hitArea, text, icon,
-        id: p.id, defaultLabel: p.short, subPhases: p.subPhases, flashStart: 0,
-        selfIndicator, selfHitArea, selfHovered,
-        oppIndicators, oppHitAreas, oppHovered,
+        bg,
+        flashGfx,
+        hoverBg,
+        hitArea,
+        text,
+        icon,
+        id: p.id,
+        defaultLabel: p.short,
+        subPhases: p.subPhases,
+        flashStart: 0,
+        selfIndicator,
+        selfHitArea,
+        selfHovered,
+        oppIndicators,
+        oppHitAreas,
+        oppHovered,
       };
       const cell = cellRef;
       this.cells.push(cell);
@@ -283,7 +334,7 @@ export class PhaseStripLayer {
     this.lastState = state;
     const t = this.theme.gameTheme;
     const appTheme = this.theme.appTheme;
-    const y = (this.canvasHeight / 2) - CELL_H / 2;
+    const y = this.canvasHeight / 2 - CELL_H / 2;
     const centerX = this.canvasWidth / 2;
 
     // Find combat cell index
@@ -341,7 +392,6 @@ export class PhaseStripLayer {
       stepChanged = true;
     }
     this.prevStep = state.currentStep;
-
 
     // Determine the active player's color for the bar tint
     const pc = t.playerColors;
@@ -422,8 +472,12 @@ export class PhaseStripLayer {
 
       // Text position (non-combat cells; combat text is positioned with the icon above)
       cell.text.style = isActive
-        ? (isCombatCell ? combatActiveStyle : activeStyle)
-        : isEnabled ? enabledStyle : normalStyle;
+        ? isCombatCell
+          ? combatActiveStyle
+          : activeStyle
+        : isEnabled
+          ? enabledStyle
+          : normalStyle;
       if (!isCombatCell) {
         cell.text.x = cx + cellW / 2;
         cell.text.y = y + CELL_H / 2;
@@ -456,7 +510,12 @@ export class PhaseStripLayer {
       const indCx = cx + cellW / 2;
       const selfIndCy = y + CELL_H + INDICATOR_MARGIN + INDICATOR_SIZE / 2;
       cell.selfHitArea.clear();
-      cell.selfHitArea.rect(indCx - INDICATOR_SIZE, selfIndCy - INDICATOR_SIZE, INDICATOR_SIZE * 2, INDICATOR_SIZE * 2);
+      cell.selfHitArea.rect(
+        indCx - INDICATOR_SIZE,
+        selfIndCy - INDICATOR_SIZE,
+        INDICATOR_SIZE * 2,
+        INDICATOR_SIZE * 2,
+      );
       cell.selfHitArea.fill({ color: 0x000000, alpha: 0.001 });
 
       const oppRowCy = y - INDICATOR_MARGIN - INDICATOR_SIZE / 2;
@@ -465,11 +524,19 @@ export class PhaseStripLayer {
       const oppStartX = indCx - oppTotalW / 2 + INDICATOR_SIZE / 2;
       for (let oi = 0; oi < 3; oi++) {
         const oha = cell.oppHitAreas[oi]!;
-        if (oi >= oppCount) { oha.visible = false; continue; }
+        if (oi >= oppCount) {
+          oha.visible = false;
+          continue;
+        }
         oha.visible = true;
         const shapeX = oppStartX + oi * (INDICATOR_SIZE + INDICATOR_GAP);
         oha.clear();
-        oha.rect(shapeX - INDICATOR_SIZE, oppRowCy - INDICATOR_SIZE, INDICATOR_SIZE * 2, INDICATOR_SIZE * 2);
+        oha.rect(
+          shapeX - INDICATOR_SIZE,
+          oppRowCy - INDICATOR_SIZE,
+          INDICATOR_SIZE * 2,
+          INDICATOR_SIZE * 2,
+        );
         oha.fill({ color: 0x000000, alpha: 0.001 });
       }
 
@@ -501,7 +568,16 @@ export class PhaseStripLayer {
       cell.selfIndicator.clear();
       if (d.selfEnabled || showEmpty) {
         const sz = cell.selfHovered ? INDICATOR_SIZE * 1.25 : INDICATOR_SIZE;
-        drawShape(cell.selfIndicator, "circle", d.cx, d.selfCy, sz, d.selfColor, d.selfEnabled, false);
+        drawShape(
+          cell.selfIndicator,
+          "circle",
+          d.cx,
+          d.selfCy,
+          sz,
+          d.selfColor,
+          d.selfEnabled,
+          false,
+        );
       }
 
       // Opponent indicators
@@ -524,7 +600,10 @@ export class PhaseStripLayer {
       cell.flashGfx.clear();
       if (cell.flashStart === 0) continue;
       const elapsed = now - cell.flashStart;
-      if (elapsed >= FLASH_DURATION_MS) { cell.flashStart = 0; continue; }
+      if (elapsed >= FLASH_DURATION_MS) {
+        cell.flashStart = 0;
+        continue;
+      }
 
       const p = elapsed / FLASH_DURATION_MS;
       const e = easeOut(p);
@@ -536,7 +615,13 @@ export class PhaseStripLayer {
 
       const cw = ((cell as any)._fw as number) ?? CELL_W;
       const expand = fade * FLASH_MAX_EXPAND;
-      cell.flashGfx.roundRect(cx - expand, cy - expand, cw + expand * 2, CELL_H + expand * 2, CELL_R + expand * 0.5);
+      cell.flashGfx.roundRect(
+        cx - expand,
+        cy - expand,
+        cw + expand * 2,
+        CELL_H + expand * 2,
+        CELL_R + expand * 0.5,
+      );
       cell.flashGfx.stroke({ color, width: 1.5 + fade * 2, alpha: fade * 0.85, alignment: 0.5 });
       cell.flashGfx.roundRect(cx, cy, cw, CELL_H, CELL_R);
       cell.flashGfx.fill({ color, alpha: fade * fade * 0.25 });
@@ -544,6 +629,10 @@ export class PhaseStripLayer {
   }
 
   destroy(): void {
-    try { this.container.destroy(); } catch { /* pixi teardown */ }
+    try {
+      this.container.destroy();
+    } catch {
+      /* pixi teardown */
+    }
   }
 }

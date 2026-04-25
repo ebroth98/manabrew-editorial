@@ -6,38 +6,38 @@ import { buildGameColors, type BasePalette } from "./buildGameColors";
  *  for the game surface since the game is always rendered against the
  *  Pixi canvas background which is part of the theme. */
 const palette: BasePalette = {
-  foreground: "#eceff4",         // snow storm
-  labelMuted: "#4c566a",         // polar night 4
+  foreground: "#eceff4", // snow storm
+  labelMuted: "#4c566a", // polar night 4
   labelGhost: "#6f7b93",
-  placeholderFill: "#2e3440",    // polar night 0
-  placeholderStroke: "#434c5e",  // polar night 2
+  placeholderFill: "#2e3440", // polar night 0
+  placeholderStroke: "#434c5e", // polar night 2
   canvasBackground: "#2e3440",
-  red:      "#bf616a",           // aurora red
-  redDeep:  "#8b3d44",
-  orange:   "#d08770",           // aurora orange
-  amber:    "#ebcb8b",           // aurora yellow
-  yellow:   "#ebcb8b",
-  green:    "#a3be8c",           // aurora green
-  teal:     "#8fbcbb",           // frost 0
-  cyan:     "#88c0d0",           // frost 1
-  blue:     "#5e81ac",           // frost 3
-  sky:      "#81a1c1",           // frost 2
-  indigo:   "#5e81ac",
-  violet:   "#b48ead",           // aurora purple
-  purple:   "#b48ead",
-  pink:     "#d08770",
-  slate:    "#4c566a",
-  brown:    "#d08770",
-  paper:    "#d8dee9",           // snow storm 0
-  poison:   "#8b9d6f",           // darker olive sibling of aurora green
-  promptPass:    "#5e81ac",      // frost 3 — pass priority
-  promptDefense: "#88c0d0",      // frost 1 — declare blockers
-  manaW:    "#eceff4",
-  manaU:    "#81a1c1",
-  manaB:    "#434c5e",
-  manaR:    "#bf616a",
-  manaG:    "#a3be8c",
-  manaC:    "#d8dee9",
+  red: "#bf616a", // aurora red
+  redDeep: "#8b3d44",
+  orange: "#d08770", // aurora orange
+  amber: "#ebcb8b", // aurora yellow
+  yellow: "#ebcb8b",
+  green: "#a3be8c", // aurora green
+  teal: "#8fbcbb", // frost 0
+  cyan: "#88c0d0", // frost 1
+  blue: "#5e81ac", // frost 3
+  sky: "#81a1c1", // frost 2
+  indigo: "#5e81ac",
+  violet: "#b48ead", // aurora purple
+  purple: "#b48ead",
+  pink: "#d08770",
+  slate: "#4c566a",
+  brown: "#d08770",
+  paper: "#d8dee9", // snow storm 0
+  poison: "#8b9d6f", // darker olive sibling of aurora green
+  promptPass: "#5e81ac", // frost 3 — pass priority
+  promptDefense: "#88c0d0", // frost 1 — declare blockers
+  manaW: "#eceff4",
+  manaU: "#81a1c1",
+  manaB: "#434c5e",
+  manaR: "#bf616a",
+  manaG: "#a3be8c",
+  manaC: "#d8dee9",
 };
 
 const preset: ThemePreset = {

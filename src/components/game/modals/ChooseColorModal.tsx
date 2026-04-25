@@ -11,11 +11,11 @@ interface ChooseColorModalProps {
 /** Per-colour picker cell — each uses its `mana-<letter>` theme token for
  *  the background so a preset can retone the whole set at once.  */
 const COLOR_INFO: Record<string, { symbol: string; bg: string }> = {
-  White:     { symbol: "W", bg: "bg-mana-w" },
-  Blue:      { symbol: "U", bg: "bg-mana-u" },
-  Black:     { symbol: "B", bg: "bg-mana-b" },
-  Red:       { symbol: "R", bg: "bg-mana-r" },
-  Green:     { symbol: "G", bg: "bg-mana-g" },
+  White: { symbol: "W", bg: "bg-mana-w" },
+  Blue: { symbol: "U", bg: "bg-mana-u" },
+  Black: { symbol: "B", bg: "bg-mana-b" },
+  Red: { symbol: "R", bg: "bg-mana-r" },
+  Green: { symbol: "G", bg: "bg-mana-g" },
   Colorless: { symbol: "C", bg: "bg-mana-c" },
 };
 
@@ -23,7 +23,11 @@ function manaSymbolUrl(symbol: string): string {
   return `https://svgs.scryfall.io/card-symbols/${encodeURIComponent(symbol)}.svg`;
 }
 
-export function ChooseColorModal({ validColors, sourceCardName, onConfirm }: ChooseColorModalProps) {
+export function ChooseColorModal({
+  validColors,
+  sourceCardName,
+  onConfirm,
+}: ChooseColorModalProps) {
   const dialogRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -36,7 +40,9 @@ export function ChooseColorModal({ validColors, sourceCardName, onConfirm }: Cho
         <Modal.Header>
           <div>
             <h2 className="font-semibold text-base">Choose a Color</h2>
-            {sourceCardName && <p className="text-xs text-muted-foreground font-medium">{sourceCardName}</p>}
+            {sourceCardName && (
+              <p className="text-xs text-muted-foreground font-medium">{sourceCardName}</p>
+            )}
           </div>
         </Modal.Header>
 

@@ -3,38 +3,38 @@ import { buildGameColors, type BasePalette } from "./buildGameColors";
 
 /** Kanagawa palette — wave-inspired; muted autumn-meets-spring hues. */
 const palette: BasePalette = {
-  foreground: "#dcd7ba",         // fujiWhite
-  labelMuted: "#727169",         // fujiGray
+  foreground: "#dcd7ba", // fujiWhite
+  labelMuted: "#727169", // fujiGray
   labelGhost: "#9e9b93",
-  placeholderFill: "#1f1f28",    // sumiInk1
+  placeholderFill: "#1f1f28", // sumiInk1
   placeholderStroke: "#454658",
   canvasBackground: "#1f1f28",
-  red:      "#c34043",           // autumnRed
-  redDeep:  "#8b2d30",
-  orange:   "#dca561",           // carpYellow (warm orange-ish)
-  amber:    "#e6c384",           // boatYellow2
-  yellow:   "#e6c384",
-  green:    "#76946a",           // autumnGreen
-  teal:     "#7aa89f",
-  cyan:     "#7fb4ca",           // springBlue
-  blue:     "#7e9cd8",           // crystalBlue
-  sky:      "#7fb4ca",
-  indigo:   "#957fb8",           // oniViolet
-  violet:   "#957fb8",
-  purple:   "#957fb8",
-  pink:     "#d27e99",           // sakuraPink
-  slate:    "#54546d",
-  brown:    "#dca561",
-  paper:    "#b8b4d0",           // waveAqua2
-  poison:   "#5a7250",           // darker moss sibling of kanagawa green
-  promptPass:    "#7e9cd8",     // crystalBlue
-  promptDefense: "#7fb4ca",     // springBlue
-  manaW:    "#dcd7ba",
-  manaU:    "#7e9cd8",
-  manaB:    "#454658",
-  manaR:    "#c34043",
-  manaG:    "#76946a",
-  manaC:    "#9e9b93",
+  red: "#c34043", // autumnRed
+  redDeep: "#8b2d30",
+  orange: "#dca561", // carpYellow (warm orange-ish)
+  amber: "#e6c384", // boatYellow2
+  yellow: "#e6c384",
+  green: "#76946a", // autumnGreen
+  teal: "#7aa89f",
+  cyan: "#7fb4ca", // springBlue
+  blue: "#7e9cd8", // crystalBlue
+  sky: "#7fb4ca",
+  indigo: "#957fb8", // oniViolet
+  violet: "#957fb8",
+  purple: "#957fb8",
+  pink: "#d27e99", // sakuraPink
+  slate: "#54546d",
+  brown: "#dca561",
+  paper: "#b8b4d0", // waveAqua2
+  poison: "#5a7250", // darker moss sibling of kanagawa green
+  promptPass: "#7e9cd8", // crystalBlue
+  promptDefense: "#7fb4ca", // springBlue
+  manaW: "#dcd7ba",
+  manaU: "#7e9cd8",
+  manaB: "#454658",
+  manaR: "#c34043",
+  manaG: "#76946a",
+  manaC: "#9e9b93",
 };
 
 const preset: ThemePreset = {

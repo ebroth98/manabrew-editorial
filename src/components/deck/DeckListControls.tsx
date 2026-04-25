@@ -8,7 +8,12 @@ const COLORS = ["W", "U", "B", "R", "G", "C"] as const;
 type Color = (typeof COLORS)[number];
 
 const COLOR_LABEL: Record<Color, string> = {
-  W: "White", U: "Blue", B: "Black", R: "Red", G: "Green", C: "Colorless",
+  W: "White",
+  U: "Blue",
+  B: "Black",
+  R: "Red",
+  G: "Green",
+  C: "Colorless",
 };
 
 function symbolUrl(color: Color) {
@@ -16,9 +21,9 @@ function symbolUrl(color: Color) {
 }
 
 const SORT_OPTIONS: { value: SortBy; label: string }[] = [
-  { value: "name",    label: "A→Z"   },
-  { value: "color",   label: "Color" },
-  { value: "updated", label: "Date"  },
+  { value: "name", label: "A→Z" },
+  { value: "color", label: "Color" },
+  { value: "updated", label: "Date" },
 ];
 
 const SELECT_CLS = "h-6 text-xs rounded border bg-background px-1 cursor-pointer flex-1 min-w-0";
@@ -35,10 +40,14 @@ interface DeckListControlsProps {
 }
 
 export function DeckListControls({
-  search, onSearchChange,
-  formatFilter, onFormatChange,
-  colorFilter, onColorToggle,
-  sortBy, onSortChange,
+  search,
+  onSearchChange,
+  formatFilter,
+  onFormatChange,
+  colorFilter,
+  onColorToggle,
+  sortBy,
+  onSortChange,
 }: DeckListControlsProps) {
   const hasActiveFilters = search || formatFilter || colorFilter.length > 0;
 
@@ -81,7 +90,9 @@ export function DeckListControls({
         >
           <option value="">All</option>
           {GAME_FORMATS.map((f) => (
-            <option key={f.id} value={f.id}>{f.shortName}</option>
+            <option key={f.id} value={f.id}>
+              {f.shortName}
+            </option>
           ))}
         </select>
 
@@ -93,7 +104,9 @@ export function DeckListControls({
           className={SELECT_CLS}
         >
           {SORT_OPTIONS.map((o) => (
-            <option key={o.value} value={o.value}>{o.label}</option>
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
           ))}
         </select>
 

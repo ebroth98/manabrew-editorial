@@ -51,9 +51,7 @@ export class DragHandler {
   }
 
   setHandExclusion(rect: { x: number; y: number; width: number; height: number } | null): void {
-    this.handExclusion = rect
-      ? { xStart: rect.x, xEnd: rect.x + rect.width, topY: rect.y }
-      : null;
+    this.handExclusion = rect ? { xStart: rect.x, xEnd: rect.x + rect.width, topY: rect.y } : null;
   }
 
   /**
@@ -62,7 +60,9 @@ export class DragHandler {
    * cell on drop) instead of mid-drag Y clamps, which used to make any gap
    * between two stacked blockers unreachable during a drag.
    */
-  setExtraBlockers(_rects: ReadonlyArray<{ x: number; y: number; width: number; height: number }>): void {
+  setExtraBlockers(
+    _rects: ReadonlyArray<{ x: number; y: number; width: number; height: number }>,
+  ): void {
     // intentional no-op
   }
 

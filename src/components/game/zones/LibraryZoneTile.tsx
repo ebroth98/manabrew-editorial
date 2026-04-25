@@ -9,11 +9,7 @@ interface LibraryZoneTileProps {
   label?: string;
 }
 
-export function LibraryZoneTile({
-  count,
-  onClick,
-  label = "Lib",
-}: LibraryZoneTileProps) {
+export function LibraryZoneTile({ count, onClick, label = "Lib" }: LibraryZoneTileProps) {
   const themeColors = useTheme().gameTheme;
   const fontSizes = useTheme().gameTheme.fontSizes;
   const ringColor = themeColors.activeAction.active;

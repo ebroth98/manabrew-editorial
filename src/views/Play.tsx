@@ -36,7 +36,10 @@ export default function Play() {
   } = useGameStore();
   const multiplayerStarted = useRef(false);
 
-  const routeState = location.state as MultiplayerLocationState | ManualTabletopLocationState | null;
+  const routeState = location.state as
+    | MultiplayerLocationState
+    | ManualTabletopLocationState
+    | null;
   const mpState = routeState && "multiplayer" in routeState ? routeState : null;
   const tabletopState = routeState && "manualTabletop" in routeState ? routeState : null;
 
@@ -46,7 +49,7 @@ export default function Play() {
     multiplayerStarted.current = true;
 
     const { playerOrder, playerDecks, isHost, startingLife, myPlayerSlot } = mpState;
-    const engineIndex = parseInt(myPlayerSlot.replace('player-', ''), 10);
+    const engineIndex = parseInt(myPlayerSlot.replace("player-", ""), 10);
     if (Number.isNaN(engineIndex) || engineIndex < 0) return;
     const deckListsByPlayer = playerOrder.map((playerName) => {
       const selected = (playerDecks ?? []).find((entry) => entry.username === playerName);
@@ -91,11 +94,11 @@ export default function Play() {
       <div className="flex flex-col items-center justify-center h-full gap-4">
         <div className="text-center space-y-2">
           <h1 className="text-2xl font-bold">
-            {tabletopState?.manualTabletop ? "Starting tabletop room..." : "Starting multiplayer game..."}
+            {tabletopState?.manualTabletop
+              ? "Starting tabletop room..."
+              : "Starting multiplayer game..."}
           </h1>
-          <p className="text-muted-foreground">
-            Waiting for game synchronization...
-          </p>
+          <p className="text-muted-foreground">Waiting for game synchronization...</p>
         </div>
       </div>
     );

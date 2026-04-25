@@ -25,8 +25,7 @@ export function PlayerBadgeDevControls() {
   const setOverride = useGameDevStore((s) => s.setPlayerOverride);
   const reset = useGameDevStore((s) => s.resetPlayerOverrides);
 
-  const toggleBool = (key: BoolOverrideKey) =>
-    setOverride(key, !overrides[key]);
+  const toggleBool = (key: BoolOverrideKey) => setOverride(key, !overrides[key]);
 
   const bumpNumeric = (key: NumericOverrideKey, base: number, delta: number) => {
     const curr = overrides[key] ?? base;
@@ -178,9 +177,7 @@ function BadgeCounter({
       >
         −
       </button>
-      <span className="text-xs font-mono tabular-nums w-8 text-center">
-        {value ?? "—"}
-      </span>
+      <span className="text-xs font-mono tabular-nums w-8 text-center">{value ?? "—"}</span>
       <button
         className="px-1.5 py-0.5 rounded text-[10px] border border-border/70 hover:bg-accent/50"
         onClick={() => onBump(1)}

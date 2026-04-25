@@ -21,13 +21,7 @@ interface MulliganButtonProps {
   disabled?: boolean;
 }
 
-export function MulliganButton({
-  color,
-  label,
-  icon,
-  onClick,
-  disabled,
-}: MulliganButtonProps) {
+export function MulliganButton({ color, label, icon, onClick, disabled }: MulliganButtonProps) {
   return (
     <Button
       size="sm"

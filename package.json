@@ -9,9 +9,13 @@
     "build": "tauri build",
     "vite:dev": "vite",
     "vite:build": "tsc -b && vite build",
-    "lint": "eslint .",
+    "lint": "eslint . && prettier --check src",
+    "lint:rust": "cargo fmt --all -- --check && cargo clippy --workspace --all-targets -- -D warnings",
+    "lint:all": "yarn lint && yarn lint:rust",
     "format": "prettier --write src",
     "format:check": "prettier --check src",
+    "format:all": "prettier --write src && cargo fmt --all",
+    "fix:all": "eslint . --fix && prettier --write src && cargo fmt --all",
     "preview": "vite preview",
     "ios": "tauri ios dev",
     "android": "tauri android dev",
@@ -27,7 +31,20 @@
     "test:forge-engine": "cargo test --release -p forge-engine-core --lib --test cards",
     "build:wasm": "node scripts/build-wasm.mjs",
     "dev:web": "npm run build:wasm && vite",
-    "build:web": "npm run build:wasm && tsc -b && vite build"
+    "build:web": "npm run build:wasm && tsc -b && vite build",
+    "prepare": "husky"
+  },
+  "lint-staged": {
+    "*.{ts,tsx,js,jsx}": [
+      "eslint --fix",
+      "prettier --write"
+    ],
+    "*.{json,md,css,html,yml,yaml}": [
+      "prettier --write"
+    ],
+    "*.rs": [
+      "rustfmt --edition 2021"
+    ]
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
@@ -63,6 +80,8 @@
     "zustand": "^5.0.11"
   },
   "devDependencies": {
+    "@commitlint/cli": "^20.5.2",
+    "@commitlint/config-conventional": "^20.5.0",
     "@eslint/js": "^9.39.1",
     "@iconify-json/game-icons": "^1.2.3",
     "@iconify/utils": "^3.1.0",
@@ -79,6 +98,8 @@
     "eslint-plugin-react-hooks": "^7.0.1",
     "eslint-plugin-react-refresh": "^0.4.24",
     "globals": "^16.5.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^16.4.0",
     "postcss": "^8.5.6",
     "prettier": "^3.8.3",
     "redux": "^5.0.1",

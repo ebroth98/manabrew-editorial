@@ -117,7 +117,11 @@ pub fn load_token_bundle(json_str: &str) -> Result<u32, JsError> {
 
     if result.failed > 0 {
         web_sys::console::warn_1(
-            &format!("[card_loader] {} token scripts failed to parse", result.failed).into(),
+            &format!(
+                "[card_loader] {} token scripts failed to parse",
+                result.failed
+            )
+            .into(),
         );
         for (file, err) in result.errors.iter().take(5) {
             web_sys::console::warn_1(&format!("  - {}: {}", file, err).into());

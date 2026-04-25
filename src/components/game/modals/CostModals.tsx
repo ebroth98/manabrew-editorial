@@ -60,10 +60,7 @@ export function CostModals({
     (promptType === PT.ChooseImprovise && currentPrompt?.validCardIds != null);
 
   return (
-    <PromptModalController
-      isActive={isActiveCostModal}
-      promptStateKey={currentPrompt}
-    >
+    <PromptModalController isActive={isActiveCostModal} promptStateKey={currentPrompt}>
       {promptType === PT.ChoosePhyrexian && currentPrompt?.phyrexianColor != null && (
         <PhyrexianModal
           phyrexianColor={currentPrompt.phyrexianColor}
@@ -137,26 +134,38 @@ export function CostModals({
 
       {promptType === PT.ChooseConvoke && currentPrompt?.validCardIds != null && (
         <ChooseCardsModal
-          cards={currentPrompt.gameView?.battlefield?.filter(
-            (c) => currentPrompt.validCardIds?.includes(c.id)
-          ) ?? []}
+          cards={
+            currentPrompt.gameView?.battlefield?.filter((c) =>
+              currentPrompt.validCardIds?.includes(c.id),
+            ) ?? []
+          }
           minChoices={0}
           maxChoices={currentPrompt.validCardIds?.length ?? 0}
           sourceCardName={currentPrompt.sourceCardName}
-          description={currentPrompt.remainingCost ? `Remaining cost: ${currentPrompt.remainingCost}` : undefined}
+          description={
+            currentPrompt.remainingCost
+              ? `Remaining cost: ${currentPrompt.remainingCost}`
+              : undefined
+          }
           onConfirm={onConvokeDecision}
         />
       )}
 
       {promptType === PT.ChooseImprovise && currentPrompt?.validCardIds != null && (
         <ChooseCardsModal
-          cards={currentPrompt.gameView?.battlefield?.filter(
-            (c) => currentPrompt.validCardIds?.includes(c.id)
-          ) ?? []}
+          cards={
+            currentPrompt.gameView?.battlefield?.filter((c) =>
+              currentPrompt.validCardIds?.includes(c.id),
+            ) ?? []
+          }
           minChoices={0}
           maxChoices={currentPrompt.validCardIds?.length ?? 0}
           sourceCardName={currentPrompt.sourceCardName}
-          description={currentPrompt.remainingCost ? `Remaining cost: ${currentPrompt.remainingCost}` : undefined}
+          description={
+            currentPrompt.remainingCost
+              ? `Remaining cost: ${currentPrompt.remainingCost}`
+              : undefined
+          }
           onConfirm={onImproviseDecision}
         />
       )}

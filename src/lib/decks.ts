@@ -1,10 +1,7 @@
 import type { Card, Deck } from "@/types/openmagic";
 import type { CardIdentity, DeckSection } from "@/types/server";
 
-export function deckSectionForCard(
-  card: Card,
-  fallback: DeckSection,
-): DeckSection {
+export function deckSectionForCard(card: Card, fallback: DeckSection): DeckSection {
   if (card.subtypes.some((subtype) => subtype.toLowerCase() === "attraction")) {
     return "attractions";
   }
@@ -20,10 +17,7 @@ export function deckSectionForCard(
   return fallback;
 }
 
-export function toCardIdentity(
-  card: Card,
-  section: DeckSection,
-): CardIdentity {
+export function toCardIdentity(card: Card, section: DeckSection): CardIdentity {
   return {
     name: card.name,
     setCode: card.setCode || "",

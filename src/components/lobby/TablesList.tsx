@@ -43,9 +43,11 @@ export function TablesList({
 
   const inRoom = currentRoom != null;
   const myPlayer = currentRoom?.players.find((p) => p.username === username);
-  const myPlayerHasDeck = !!(myPlayer?.selected_deck_name);
+  const myPlayerHasDeck = !!myPlayer?.selected_deck_name;
   const isHost = currentRoom?.host === username;
-  const allReady = currentRoom ? currentRoom.players.length >= 2 && currentRoom.players.every((p) => p.ready) : false;
+  const allReady = currentRoom
+    ? currentRoom.players.length >= 2 && currentRoom.players.every((p) => p.ready)
+    : false;
 
   const orderedPlayers = currentRoom
     ? [...currentRoom.players].sort((a, b) => {
@@ -77,9 +79,11 @@ export function TablesList({
                 <span className="font-semibold text-sm truncate">{currentRoom.room_name}</span>
               </div>
               <div className="flex items-center gap-1.5 shrink-0">
-                <Badge variant="outline" className="text-[10px]">{currentRoom.format}</Badge>
+                <Badge variant="outline" className="text-[10px]">
+                  {currentRoom.format}
+                </Badge>
                 <Badge
-                  variant={currentRoom.status === 'Lobby' ? 'outline' : 'secondary'}
+                  variant={currentRoom.status === "Lobby" ? "outline" : "secondary"}
                   className="text-[10px]"
                 >
                   {currentRoom.status}
@@ -99,10 +103,12 @@ export function TablesList({
                       p.ready ? "border-primary/30 bg-primary/5" : "bg-muted/30",
                     )}
                   >
-                    <div className={cn(
-                      "h-2 w-2 rounded-full shrink-0",
-                      p.ready ? "bg-primary" : "bg-muted-foreground/30",
-                    )} />
+                    <div
+                      className={cn(
+                        "h-2 w-2 rounded-full shrink-0",
+                        p.ready ? "bg-primary" : "bg-muted-foreground/30",
+                      )}
+                    />
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-1.5">
                         {isBot && <Bot className="h-3 w-3 text-muted-foreground shrink-0" />}
@@ -130,7 +136,8 @@ export function TablesList({
                         variant={p.ready ? "default" : "outline"}
                         className={cn(
                           "text-[9px] px-1.5 shrink-0",
-                          p.ready && "bg-primary border-primary text-primary-foreground hover:bg-primary",
+                          p.ready &&
+                            "bg-primary border-primary text-primary-foreground hover:bg-primary",
                         )}
                       >
                         {p.ready ? "Ready" : "Waiting"}
@@ -157,19 +164,37 @@ export function TablesList({
                 <Shield className="h-3 w-3" /> Select Deck
               </Button>
               {myPlayer && !myPlayer.ready ? (
-                <Button size="sm" className="gap-1" onClick={() => onSetReady(true)} disabled={!myPlayerHasDeck}>
+                <Button
+                  size="sm"
+                  className="gap-1"
+                  onClick={() => onSetReady(true)}
+                  disabled={!myPlayerHasDeck}
+                >
                   Ready Up
                 </Button>
               ) : myPlayer?.ready ? (
-                <Button size="sm" variant="outline" onClick={() => onSetReady(false)}>Unready</Button>
+                <Button size="sm" variant="outline" onClick={() => onSetReady(false)}>
+                  Unready
+                </Button>
               ) : null}
-              <Button size="sm" variant="ghost" className="gap-1 text-muted-foreground" onClick={onLeaveRoom}>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="gap-1 text-muted-foreground"
+                onClick={onLeaveRoom}
+              >
                 <LogOut className="h-3 w-3" /> Leave
               </Button>
               {isHost && (
                 <div className="ml-auto flex items-center gap-2">
                   {onStartTabletop && (
-                    <Button size="sm" variant="outline" className="gap-1" onClick={onStartTabletop} disabled={!allReady}>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="gap-1"
+                      onClick={onStartTabletop}
+                      disabled={!allReady}
+                    >
                       <Hand className="h-3 w-3" /> Tabletop
                     </Button>
                   )}
@@ -190,13 +215,16 @@ export function TablesList({
             <div className="flex flex-col items-center justify-center py-16 text-center">
               <div className="text-4xl mb-3 opacity-20">🎮</div>
               <p className="text-sm text-muted-foreground">No rooms available</p>
-              <p className="text-xs text-muted-foreground/60 mt-1">Create a new room to start playing</p>
+              <p className="text-xs text-muted-foreground/60 mt-1">
+                Create a new room to start playing
+              </p>
             </div>
           ) : (
             <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
               {rooms.map((room) => {
                 const isMyRoom = room.room_id === currentRoom?.room_id;
-                const canJoin = !inRoom && room.status === 'Lobby' && room.players.length < room.max_players;
+                const canJoin =
+                  !inRoom && room.status === "Lobby" && room.players.length < room.max_players;
                 const isFull = room.players.length >= room.max_players;
 
                 return (
@@ -205,43 +233,56 @@ export function TablesList({
                     className={cn(
                       "rounded-lg border p-3 transition-colors",
                       isMyRoom && "border-primary/40 bg-primary/5",
-                      !isMyRoom && canJoin && "hover:border-primary/30 hover:bg-muted/20 cursor-pointer",
+                      !isMyRoom &&
+                        canJoin &&
+                        "hover:border-primary/30 hover:bg-muted/20 cursor-pointer",
                     )}
-                    onClick={() => { if (canJoin) void handleJoinRoom(room.room_id); }}
+                    onClick={() => {
+                      if (canJoin) void handleJoinRoom(room.room_id);
+                    }}
                   >
                     <div className="flex items-start justify-between gap-2 mb-2">
                       <div className="min-w-0">
                         <div className="font-medium text-sm truncate">{room.room_name}</div>
                         <div className="text-[11px] text-muted-foreground">by {room.host}</div>
                       </div>
-                      <Badge variant="outline" className="text-[10px] shrink-0">{room.format}</Badge>
+                      <Badge variant="outline" className="text-[10px] shrink-0">
+                        {room.format}
+                      </Badge>
                     </div>
 
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
                         <Users className="h-3 w-3" />
-                        <span>{room.players.length}/{room.max_players}</span>
+                        <span>
+                          {room.players.length}/{room.max_players}
+                        </span>
                         <Badge
-                          variant={room.status === 'Lobby' ? 'outline' : 'secondary'}
+                          variant={room.status === "Lobby" ? "outline" : "secondary"}
                           className="text-[9px] ml-1"
                         >
-                          {room.status === 'InGame' ? 'In Game' : room.status}
+                          {room.status === "InGame" ? "In Game" : room.status}
                         </Badge>
                       </div>
 
                       {isMyRoom ? (
-                        <Badge variant="secondary" className="text-[10px]">Joined</Badge>
+                        <Badge variant="secondary" className="text-[10px]">
+                          Joined
+                        </Badge>
                       ) : canJoin ? (
                         <Button
                           size="sm"
                           variant="secondary"
                           className="h-6 text-[11px] px-2"
                           disabled={joiningRoomId === room.room_id}
-                          onClick={(e) => { e.stopPropagation(); void handleJoinRoom(room.room_id); }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            void handleJoinRoom(room.room_id);
+                          }}
                         >
                           {joiningRoomId === room.room_id ? "Joining..." : "Join"}
                         </Button>
-                      ) : room.status === 'InGame' ? (
+                      ) : room.status === "InGame" ? (
                         <span className="text-[10px] text-muted-foreground">Playing</span>
                       ) : isFull ? (
                         <span className="text-[10px] text-muted-foreground">Full</span>

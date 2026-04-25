@@ -60,9 +60,7 @@ export class BroadcastRoomHost {
     });
   }
 
-  subscribe(
-    handler: (envelope: RoomHostEnvelope) => void,
-  ): () => void {
+  subscribe(handler: (envelope: RoomHostEnvelope) => void): () => void {
     return getPlatform().events.on<RoomMessagePayload<RoomHostPayload>>(
       "server:room_message",
       (payload) => {
@@ -79,17 +77,17 @@ export class BroadcastRoomHost {
     if (!server) {
       throw new Error("Room hosting requires a server connection.");
     }
-    await server.sendRoomMessage(createRoomRelayEnvelope({
-      protocol: MANUAL_TABLETOP_RELAY_PROTOCOL,
-      fromPlayer: this.localPlayerSlot,
-      payload,
-    }));
+    await server.sendRoomMessage(
+      createRoomRelayEnvelope({
+        protocol: MANUAL_TABLETOP_RELAY_PROTOCOL,
+        fromPlayer: this.localPlayerSlot,
+        payload,
+      }),
+    );
   }
 }
 
-export function isRoomHostEnvelope(
-  value: unknown,
-): value is RoomHostEnvelope {
+export function isRoomHostEnvelope(value: unknown): value is RoomHostEnvelope {
   if (!isRoomRelayProtocol<RoomHostPayload>(value, MANUAL_TABLETOP_RELAY_PROTOCOL)) return false;
   const candidate = value as Partial<RoomHostEnvelope>;
   const payload = candidate.payload as Partial<RoomHostPayload> | undefined;
@@ -98,7 +96,6 @@ export function isRoomHostEnvelope(
     !!payload &&
     typeof payload === "object" &&
     (payload.type === "manualState" || payload.type === "manualAction") &&
-    (payload.mode === "authoritative-host" ||
-      payload.mode === "relay-client")
+    (payload.mode === "authoritative-host" || payload.mode === "relay-client")
   );
 }

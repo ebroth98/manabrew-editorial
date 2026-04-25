@@ -4,7 +4,7 @@ import type { ScryfallSet } from "@/types/scryfall";
 
 export function useCardSearch(query: string, order?: string, dir?: string) {
   return useInfiniteQuery({
-    queryKey: ['cards', 'search', query, order, dir],
+    queryKey: ["cards", "search", query, order, dir],
     queryFn: ({ pageParam = 1 }) => searchCards(query, pageParam as number, order, dir),
     getNextPageParam: (lastPage, allPages) => {
       if (lastPage.has_more) {
@@ -19,7 +19,7 @@ export function useCardSearch(query: string, order?: string, dir?: string) {
 
 export function useCardRulings(rulingsUri: string | undefined) {
   return useQuery({
-    queryKey: ['cards', 'rulings', rulingsUri],
+    queryKey: ["cards", "rulings", rulingsUri],
     queryFn: () => getRulings(rulingsUri!),
     enabled: !!rulingsUri,
   });
@@ -27,7 +27,7 @@ export function useCardRulings(rulingsUri: string | undefined) {
 
 export function useCardPrints(printsSearchUri: string | undefined, enabled: boolean = true) {
   return useQuery({
-    queryKey: ['cards', 'prints', printsSearchUri],
+    queryKey: ["cards", "prints", printsSearchUri],
     queryFn: () => getCardPrints(printsSearchUri!),
     enabled: !!printsSearchUri && enabled,
   });
@@ -36,7 +36,7 @@ export function useCardPrints(printsSearchUri: string | undefined, enabled: bool
 /** Fetches all Scryfall sets, cached for 1 hour. */
 export function useScryfallSets() {
   return useQuery({
-    queryKey: ['scryfall', 'sets'],
+    queryKey: ["scryfall", "sets"],
     queryFn: fetchSets,
     staleTime: 60 * 60 * 1000,
     gcTime: 2 * 60 * 60 * 1000,

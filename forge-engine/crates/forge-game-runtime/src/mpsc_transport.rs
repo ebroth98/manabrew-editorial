@@ -99,7 +99,9 @@ impl AgentTransport for MpscTransport {
         if let Some(timeout) = self.response_timeout {
             match self.response_rx.recv_timeout(timeout) {
                 Ok(action) => action,
-                Err(std::sync::mpsc::RecvTimeoutError::Timeout) => PlayerAction::Pass { until_phase: None },
+                Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+                    PlayerAction::Pass { until_phase: None }
+                }
                 Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => PlayerAction::Concede,
             }
         } else {

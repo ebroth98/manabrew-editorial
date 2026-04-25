@@ -64,9 +64,7 @@ export function RightActionPanel({
   }
 
   return (
-    <aside
-      className="absolute right-1.5 top-1.5 bottom-1.5 z-50 w-72 rounded-lg bg-card/95 backdrop-blur-sm transition-colors overflow-visible border border-border/70 shadow-[0_20px_60px_rgba(0,0,0,0.45)]"
-    >
+    <aside className="absolute right-1.5 top-1.5 bottom-1.5 z-50 w-72 rounded-lg bg-card/95 backdrop-blur-sm transition-colors overflow-visible border border-border/70 shadow-[0_20px_60px_rgba(0,0,0,0.45)]">
       <div className="h-full p-3 flex flex-col gap-3 overflow-y-auto">
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-4">
@@ -129,9 +127,7 @@ export function RightActionPanel({
                 aria-checked={devToolsEnabled}
                 className={cn(
                   "relative inline-flex h-6 w-11 shrink-0 items-center rounded-full border transition-colors",
-                  devToolsEnabled
-                    ? "border-primary bg-primary"
-                    : "border-border/70 bg-muted",
+                  devToolsEnabled ? "border-primary bg-primary" : "border-border/70 bg-muted",
                 )}
                 onClick={() => setDevToolsEnabled(!devToolsEnabled)}
               >
@@ -143,9 +139,7 @@ export function RightActionPanel({
                 />
               </button>
             </div>
-            <p className="text-xs text-muted-foreground">
-              Force prompt action view (UI only).
-            </p>
+            <p className="text-xs text-muted-foreground">Force prompt action view (UI only).</p>
             <div className="grid grid-cols-2 gap-1.5">
               <button
                 className={cn(
@@ -200,11 +194,7 @@ function PixiFpsCounter() {
   const range = `${stats.minFps.toFixed(0)}–${stats.maxFps.toFixed(0)}`;
   const frameMs = stats.deltaMs.toFixed(1);
   const color =
-    stats.fps >= 55
-      ? "text-success"
-      : stats.fps >= 40
-        ? "text-warning"
-        : "text-destructive";
+    stats.fps >= 55 ? "text-success" : stats.fps >= 40 ? "text-warning" : "text-destructive";
 
   return (
     <div className="flex items-center justify-between gap-3 rounded-md border border-border/70 px-3 py-2">
@@ -214,9 +204,7 @@ function PixiFpsCounter() {
           frame {frameMs}ms · range {range}
         </span>
       </div>
-      <span className={cn("font-mono text-lg font-semibold tabular-nums", color)}>
-        {fps}
-      </span>
+      <span className={cn("font-mono text-lg font-semibold tabular-nums", color)}>{fps}</span>
     </div>
   );
 }

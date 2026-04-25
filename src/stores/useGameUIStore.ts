@@ -60,37 +60,41 @@ interface GameUIState {
 
 // ── Store Implementation ──────────────────────────────────────────────────────
 
-export const useGameUIStore = create<GameUIState>()(devtools((set) => ({
-  // Initial state
-  abilityPicker: null,
-  playModePicker: null,
-  viewingZone: null,
-  isActionPanelCollapsed: true,
-  promptModalHidden: false,
-
-  // Actions
-  openAbilityPicker: (state) => set({ abilityPicker: state }),
-  closeAbilityPicker: () => set({ abilityPicker: null }),
-
-  openPlayModePicker: (state) => set({ playModePicker: state }),
-  closePlayModePicker: () => set({ playModePicker: null }),
-
-  openZoneViewer: (state) => set({ viewingZone: state }),
-  closeZoneViewer: () => set({ viewingZone: null }),
-
-  toggleActionPanel: () =>
-    set((state) => ({ isActionPanelCollapsed: !state.isActionPanelCollapsed })),
-  setActionPanelCollapsed: (collapsed) =>
-    set({ isActionPanelCollapsed: collapsed }),
-  hidePromptModal: () => set({ promptModalHidden: true }),
-  showPromptModal: () => set({ promptModalHidden: false }),
-
-  resetAll: () =>
-    set({
+export const useGameUIStore = create<GameUIState>()(
+  devtools(
+    (set) => ({
+      // Initial state
       abilityPicker: null,
       playModePicker: null,
       viewingZone: null,
       isActionPanelCollapsed: true,
       promptModalHidden: false,
+
+      // Actions
+      openAbilityPicker: (state) => set({ abilityPicker: state }),
+      closeAbilityPicker: () => set({ abilityPicker: null }),
+
+      openPlayModePicker: (state) => set({ playModePicker: state }),
+      closePlayModePicker: () => set({ playModePicker: null }),
+
+      openZoneViewer: (state) => set({ viewingZone: state }),
+      closeZoneViewer: () => set({ viewingZone: null }),
+
+      toggleActionPanel: () =>
+        set((state) => ({ isActionPanelCollapsed: !state.isActionPanelCollapsed })),
+      setActionPanelCollapsed: (collapsed) => set({ isActionPanelCollapsed: collapsed }),
+      hidePromptModal: () => set({ promptModalHidden: true }),
+      showPromptModal: () => set({ promptModalHidden: false }),
+
+      resetAll: () =>
+        set({
+          abilityPicker: null,
+          playModePicker: null,
+          viewingZone: null,
+          isActionPanelCollapsed: true,
+          promptModalHidden: false,
+        }),
     }),
-}), { name: "gameUI", enabled: import.meta.env.DEV }));
+    { name: "gameUI", enabled: import.meta.env.DEV },
+  ),
+);

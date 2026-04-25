@@ -9,7 +9,18 @@ import { applyManualTabletopAction, type ManualTabletopApi } from "@/game";
 import { useGameStore } from "@/stores/useGameStore";
 import type { Card, GameView } from "@/types/openmagic";
 import type { ScryfallCard } from "@/types/scryfall";
-import { Archive, Hand, Heart, Plus, Search, Shuffle, Skull, Sparkles, Sword, Trash2 } from "lucide-react";
+import {
+  Archive,
+  Hand,
+  Heart,
+  Plus,
+  Search,
+  Shuffle,
+  Skull,
+  Sparkles,
+  Sword,
+  Trash2,
+} from "lucide-react";
 
 interface ManualTabletopControlsProps {
   gameView: GameView;
@@ -63,18 +74,13 @@ function createManualCard(
   };
 }
 
-export function ManualTabletopControls({
-  gameView,
-  api,
-}: ManualTabletopControlsProps) {
+export function ManualTabletopControls({ gameView, api }: ManualTabletopControlsProps) {
   const [cardName, setCardName] = useState("");
   const [searchResults, setSearchResults] = useState<ScryfallCard[]>([]);
   const [selectedCard, setSelectedCard] = useState<ScryfallCard | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searching, setSearching] = useState(false);
-  const [controllerId, setControllerId] = useState(
-    gameView.players[0]?.id ?? "",
-  );
+  const [controllerId, setControllerId] = useState(gameView.players[0]?.id ?? "");
   const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const searchContainerRef = useRef<HTMLDivElement>(null);
 
@@ -88,9 +94,7 @@ export function ManualTabletopControls({
     [controllerId, gameView.players],
   );
 
-  const applyAction = async (
-    action: Parameters<typeof applyManualTabletopAction>[1],
-  ) => {
+  const applyAction = async (action: Parameters<typeof applyManualTabletopAction>[1]) => {
     const nextView = await applyManualTabletopAction(api, action);
     if (nextView) useGameStore.setState({ gameView: nextView });
   };
@@ -422,7 +426,12 @@ export function ManualTabletopControls({
                     size="icon"
                     className="h-6 w-6"
                     title="Move to exile"
-                    onClick={() => void moveCard(card, card.controllerId === humanPlayerId ? "exile" : "opponentExile")}
+                    onClick={() =>
+                      void moveCard(
+                        card,
+                        card.controllerId === humanPlayerId ? "exile" : "opponentExile",
+                      )
+                    }
                   >
                     <Archive className="h-3 w-3" />
                   </Button>
@@ -432,7 +441,12 @@ export function ManualTabletopControls({
                     size="icon"
                     className="h-6 w-6"
                     title="Move to graveyard"
-                    onClick={() => void moveCard(card, card.controllerId === humanPlayerId ? "graveyard" : "opponentGraveyard")}
+                    onClick={() =>
+                      void moveCard(
+                        card,
+                        card.controllerId === humanPlayerId ? "graveyard" : "opponentGraveyard",
+                      )
+                    }
                   >
                     <Trash2 className="h-3 w-3" />
                   </Button>

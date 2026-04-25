@@ -11,10 +11,7 @@ import {
   resolvePresetDeckCoverSource,
 } from "@/components/deck/deckCover";
 import type { DeckCoverSource } from "@/components/deck/deckCover";
-import {
-  DECK_NAME_SHADOW_CLASS,
-  getDeckNameColorClass,
-} from "@/components/deck/deckDisplay.utils";
+import { DECK_NAME_SHADOW_CLASS, getDeckNameColorClass } from "@/components/deck/deckDisplay.utils";
 import { cn } from "@/lib/utils";
 import { GAME_FORMATS } from "@/lib/formats";
 import { getDeckFingerprint, serializeDeck } from "@/lib/decks";
@@ -59,11 +56,10 @@ export function DeckVsSelector({ onStart, onStartTabletop }: DeckVsSelectorProps
 
   useEffect(() => {
     const runtime = getDefaultGameRuntime();
-    runtime.api.getPresetDecks()
+    runtime.api
+      .getPresetDecks()
       .then(setPresetDecks)
-      .catch((e) =>
-        console.error("[DeckVsSelector] Failed to load preset decks:", e),
-      );
+      .catch((e) => console.error("[DeckVsSelector] Failed to load preset decks:", e));
   }, []);
 
   const searchLower = deckSearch.toLowerCase();
@@ -119,7 +115,11 @@ export function DeckVsSelector({ onStart, onStartTabletop }: DeckVsSelectorProps
   }
 
   function selectDeck(deck: PresetDeckInfo) {
-    if (selectedFormat === "commander" || selectedFormat === "brawl" || selectedFormat === "oathbreaker") {
+    if (
+      selectedFormat === "commander" ||
+      selectedFormat === "brawl" ||
+      selectedFormat === "oathbreaker"
+    ) {
       return;
     }
 
@@ -139,7 +139,11 @@ export function DeckVsSelector({ onStart, onStartTabletop }: DeckVsSelectorProps
   }
 
   function handleRandomOpponent() {
-    if (selectedFormat === "commander" || selectedFormat === "brawl" || selectedFormat === "oathbreaker") {
+    if (
+      selectedFormat === "commander" ||
+      selectedFormat === "brawl" ||
+      selectedFormat === "oathbreaker"
+    ) {
       return;
     }
     if (presetDecks.length === 0) return;
@@ -197,9 +201,7 @@ export function DeckVsSelector({ onStart, onStartTabletop }: DeckVsSelectorProps
         />
 
         <div className="flex flex-col items-center justify-center px-4 flex-shrink-0 bg-muted/30 border-x">
-          <span className="text-2xl font-black tracking-tighter text-muted-foreground/60">
-            VS
-          </span>
+          <span className="text-2xl font-black tracking-tighter text-muted-foreground/60">VS</span>
         </div>
 
         <FighterPanel
@@ -211,7 +213,7 @@ export function DeckVsSelector({ onStart, onStartTabletop }: DeckVsSelectorProps
           isActive={pickingSide === "opponent"}
           onClick={() => setPickingSide("opponent")}
           onClear={() => setOpponentDeck(null)}
-          extra={(
+          extra={
             <button
               type="button"
               onClick={(e) => {
@@ -223,7 +225,7 @@ export function DeckVsSelector({ onStart, onStartTabletop }: DeckVsSelectorProps
               <Shuffle className="h-3 w-3" />
               Random
             </button>
-          )}
+          }
         />
       </div>
 
@@ -235,15 +237,19 @@ export function DeckVsSelector({ onStart, onStartTabletop }: DeckVsSelectorProps
             onClick={() => setPickingSide("player")}
             className={cn(
               "px-2.5 py-1 rounded-md text-xs font-medium transition-colors",
-              pickingSide === "player"
-                ? "ring-1"
-                : "text-muted-foreground hover:bg-muted/60",
+              pickingSide === "player" ? "ring-1" : "text-muted-foreground hover:bg-muted/60",
             )}
-            style={pickingSide === "player" ? {
-              color: "var(--player-colors-self)",
-              backgroundColor: "color-mix(in srgb, var(--player-colors-self) 10%, transparent)",
-              boxShadow: "inset 0 0 0 1px color-mix(in srgb, var(--player-colors-self) 30%, transparent)",
-            } : undefined}
+            style={
+              pickingSide === "player"
+                ? {
+                    color: "var(--player-colors-self)",
+                    backgroundColor:
+                      "color-mix(in srgb, var(--player-colors-self) 10%, transparent)",
+                    boxShadow:
+                      "inset 0 0 0 1px color-mix(in srgb, var(--player-colors-self) 30%, transparent)",
+                  }
+                : undefined
+            }
           >
             <User className="h-3 w-3 inline mr-1" />
             You
@@ -253,15 +259,19 @@ export function DeckVsSelector({ onStart, onStartTabletop }: DeckVsSelectorProps
             onClick={() => setPickingSide("opponent")}
             className={cn(
               "px-2.5 py-1 rounded-md text-xs font-medium transition-colors",
-              pickingSide === "opponent"
-                ? "ring-1"
-                : "text-muted-foreground hover:bg-muted/60",
+              pickingSide === "opponent" ? "ring-1" : "text-muted-foreground hover:bg-muted/60",
             )}
-            style={pickingSide === "opponent" ? {
-              color: "var(--player-colors-opponent1)",
-              backgroundColor: "color-mix(in srgb, var(--player-colors-opponent1) 10%, transparent)",
-              boxShadow: "inset 0 0 0 1px color-mix(in srgb, var(--player-colors-opponent1) 30%, transparent)",
-            } : undefined}
+            style={
+              pickingSide === "opponent"
+                ? {
+                    color: "var(--player-colors-opponent1)",
+                    backgroundColor:
+                      "color-mix(in srgb, var(--player-colors-opponent1) 10%, transparent)",
+                    boxShadow:
+                      "inset 0 0 0 1px color-mix(in srgb, var(--player-colors-opponent1) 30%, transparent)",
+                  }
+                : undefined
+            }
           >
             <Bot className="h-3 w-3 inline mr-1" />
             AI
@@ -320,7 +330,9 @@ export function DeckVsSelector({ onStart, onStartTabletop }: DeckVsSelectorProps
                   ...(entry.sourceDeck?.cards ?? []),
                   ...(entry.sourceDeck?.commanders ?? []),
                 ];
-                const cover = entry.sourceDeck ? resolveDeckCoverSource(entry.sourceDeck) : undefined;
+                const cover = entry.sourceDeck
+                  ? resolveDeckCoverSource(entry.sourceDeck)
+                  : undefined;
                 return (
                   <DeckSelectionCard
                     key={entry.id}
@@ -350,14 +362,15 @@ export function DeckVsSelector({ onStart, onStartTabletop }: DeckVsSelectorProps
               Preset Decks
             </p>
           )}
-          {selectedFormat === "commander" || selectedFormat === "brawl" || selectedFormat === "oathbreaker" ? (
+          {selectedFormat === "commander" ||
+          selectedFormat === "brawl" ||
+          selectedFormat === "oathbreaker" ? (
             <p className="text-xs text-muted-foreground italic py-4">
-              Preset AI decks are not available for singleton formats. Pick a saved deck for the AI side.
+              Preset AI decks are not available for singleton formats. Pick a saved deck for the AI
+              side.
             </p>
           ) : filteredDecks.length === 0 ? (
-            <p className="text-xs text-muted-foreground italic py-4">
-              No decks match your search.
-            </p>
+            <p className="text-xs text-muted-foreground italic py-4">No decks match your search.</p>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 pt-1">
               {filteredDecks.map((deck) => (
@@ -397,15 +410,11 @@ export function DeckVsSelector({ onStart, onStartTabletop }: DeckVsSelectorProps
                   {opponentDeck.name}
                 </span>
               ) : (
-                <span className="text-muted-foreground italic">
-                  Pick opponent...
-                </span>
+                <span className="text-muted-foreground italic">Pick opponent...</span>
               )}
             </span>
           ) : (
-            <span className="text-xs text-muted-foreground italic">
-              Pick your deck to start
-            </span>
+            <span className="text-xs text-muted-foreground italic">Pick your deck to start</span>
           )}
         </div>
         <div className="flex items-center gap-2">
@@ -421,12 +430,7 @@ export function DeckVsSelector({ onStart, onStartTabletop }: DeckVsSelectorProps
               Tabletop
             </Button>
           )}
-          <Button
-            size="sm"
-            onClick={handleFight}
-            disabled={!isReady}
-            className="gap-1.5"
-          >
+          <Button size="sm" onClick={handleFight} disabled={!isReady} className="gap-1.5">
             <Swords className="h-3.5 w-3.5" />
             Fight!
           </Button>
@@ -460,9 +464,8 @@ function FighterPanel({
   extra,
 }: FighterPanelProps) {
   const sideStyleVars: React.CSSProperties = {
-    "--fighter-color": side === "player"
-      ? "var(--player-colors-self)"
-      : "var(--player-colors-opponent1)",
+    "--fighter-color":
+      side === "player" ? "var(--player-colors-self)" : "var(--player-colors-opponent1)",
   } as React.CSSProperties;
 
   return (
@@ -496,20 +499,23 @@ function FighterPanel({
         <div className="flex items-center gap-2 mb-2">
           <Badge
             variant="outline"
-            className={cn(
-              "text-[10px] font-bold gap-1",
-              cover ? "text-white border-white/30" : "",
-            )}
-            style={!cover ? { color: "var(--fighter-color)", borderColor: "var(--fighter-color)" } : undefined}
+            className={cn("text-[10px] font-bold gap-1", cover ? "text-white border-white/30" : "")}
+            style={
+              !cover
+                ? { color: "var(--fighter-color)", borderColor: "var(--fighter-color)" }
+                : undefined
+            }
           >
             {icon}
             {label}
           </Badge>
           {isActive && (
-            <span className={cn(
-              "text-[9px] animate-pulse",
-              cover ? "text-white/70" : "text-muted-foreground",
-            )}>
+            <span
+              className={cn(
+                "text-[9px] animate-pulse",
+                cover ? "text-white/70" : "text-muted-foreground",
+              )}
+            >
               selecting...
             </span>
           )}
@@ -524,10 +530,7 @@ function FighterPanel({
                   ? "text-white"
                   : deck.sourceDeck
                     ? getDeckNameColorClass(
-                        [
-                          ...deck.sourceDeck.cards,
-                          ...(deck.sourceDeck.commanders ?? []),
-                        ],
+                        [...deck.sourceDeck.cards, ...(deck.sourceDeck.commanders ?? [])],
                         deck.color,
                       )
                     : deck.color,
@@ -536,10 +539,12 @@ function FighterPanel({
             >
               {deck.name}
             </p>
-            <p className={cn(
-              "text-[10px] leading-tight mt-0.5 line-clamp-2",
-              cover ? "text-white/80" : "text-muted-foreground",
-            )}>
+            <p
+              className={cn(
+                "text-[10px] leading-tight mt-0.5 line-clamp-2",
+                cover ? "text-white/80" : "text-muted-foreground",
+              )}
+            >
               {deck.desc}
             </p>
             <button
@@ -550,7 +555,9 @@ function FighterPanel({
               }}
               className={cn(
                 "text-[10px] transition-colors mt-1 underline",
-                cover ? "text-white/70 hover:text-white" : "text-muted-foreground hover:text-destructive",
+                cover
+                  ? "text-white/70 hover:text-white"
+                  : "text-muted-foreground hover:text-destructive",
               )}
             >
               Clear
@@ -558,9 +565,7 @@ function FighterPanel({
           </div>
         ) : (
           <div>
-            <p className="text-xs text-muted-foreground italic">
-              No deck selected
-            </p>
+            <p className="text-xs text-muted-foreground italic">No deck selected</p>
             {extra}
           </div>
         )}

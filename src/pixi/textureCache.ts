@@ -1,10 +1,6 @@
 import { Texture, ImageSource } from "pixi.js";
 import { platformFetch } from "@/lib/platformFetch";
-import {
-  getCardByName,
-  getTokenByName,
-  getTokenBySetAndNumber,
-} from "@/api/scryfall";
+import { getCardByName, getTokenByName, getTokenBySetAndNumber } from "@/api/scryfall";
 import type { ScryfallCard } from "@/types/scryfall";
 import { upgradeScryfallUrl } from "@/components/game/game.utils";
 import { CARD_BACK_IMAGE_URL as CARD_BACK_URL } from "@/components/game/game.constants";
@@ -55,7 +51,11 @@ async function drainApiQueue(): Promise<void> {
 function queueApiCall<T>(fn: () => Promise<T>): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     apiQueue.push(async () => {
-      try { resolve(await fn()); } catch (e) { reject(e); }
+      try {
+        resolve(await fn());
+      } catch (e) {
+        reject(e);
+      }
     });
     drainApiQueue();
   });
@@ -98,7 +98,7 @@ async function fetchCardImageEntry(
       return null;
     }
     if (!card) return null;
-    const entry = toCachedCardImage(card, { frontOnly: !!isToken});
+    const entry = toCachedCardImage(card, { frontOnly: !!isToken });
     setCachedCardImage(key, entry);
     return entry;
   })().finally(() => clearPendingCardImage(key));
@@ -117,7 +117,6 @@ async function resolveScryfallUrl(
   if (!entry) return null;
   return pickImageUrl(pickUrisForName(entry, name), size) ?? null;
 }
-
 
 /**
  * Fetch image via Tauri's native HTTP on desktop (bypasses browser CORS) or
@@ -186,16 +185,18 @@ export async function resolveCardImageUrl(
   if (pending) return pending;
 
   // 4. New lookup — queue it and deduplicate
-  const promise = resolveScryfallUrl(name, setCode, cardNumber, isToken, size).then((resolved) => {
-    pendingUrls.delete(cacheKey);
-    if (!resolved) return null;
-    const upgraded = upgradeScryfallUrl(resolved, size) ?? resolved;
-    resolvedUrls.set(cacheKey, upgraded);
-    return upgraded;
-  }).catch(() => {
-    pendingUrls.delete(cacheKey);
-    return null;
-  });
+  const promise = resolveScryfallUrl(name, setCode, cardNumber, isToken, size)
+    .then((resolved) => {
+      pendingUrls.delete(cacheKey);
+      if (!resolved) return null;
+      const upgraded = upgradeScryfallUrl(resolved, size) ?? resolved;
+      resolvedUrls.set(cacheKey, upgraded);
+      return upgraded;
+    })
+    .catch(() => {
+      pendingUrls.delete(cacheKey);
+      return null;
+    });
   pendingUrls.set(cacheKey, promise);
   return promise;
 }
@@ -214,9 +215,9 @@ export async function loadCardTexture(
   }
   const url = await resolveCardImageUrl(name, existingUrl, isToken, setCode, cardNumber, size);
   if (!url) {
-    console.log(`MADONNA DIO - Texture.EMPTY for [${name}](setcode: ${setCode}))`)
-    return Texture.EMPTY
-  };
+    console.log(`MADONNA DIO - Texture.EMPTY for [${name}](setcode: ${setCode}))`);
+    return Texture.EMPTY;
+  }
 
   const cached = textureCache.get(url);
   if (cached && !cached.destroyed) return cached;
@@ -224,14 +225,16 @@ export async function loadCardTexture(
   const existing = loadingPromises.get(url);
   if (existing) return existing;
 
-  const promise = fetchImage(url).then((img) => {
-    loadingPromises.delete(url);
-    return createTextureFromImage(url, img);
-  }).catch((err) => {
-    console.warn(`[pixi] ${err.message} (${name})`);
-    loadingPromises.delete(url);
-    return Texture.EMPTY;
-  });
+  const promise = fetchImage(url)
+    .then((img) => {
+      loadingPromises.delete(url);
+      return createTextureFromImage(url, img);
+    })
+    .catch((err) => {
+      console.warn(`[pixi] ${err.message} (${name})`);
+      loadingPromises.delete(url);
+      return Texture.EMPTY;
+    });
   loadingPromises.set(url, promise);
   return promise;
 }

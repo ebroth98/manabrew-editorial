@@ -101,11 +101,7 @@ export const computeGridLayout = (
       // corridors narrower than a card width, but it guarantees no card
       // ever lands under the hand, stack panel, or PASS cluster.
       const blocked = blockers.some(
-        (b) =>
-          x < b.x + b.width &&
-          x + cardW > b.x &&
-          y < b.y + b.height &&
-          y + cardH > b.y,
+        (b) => x < b.x + b.width && x + cardW > b.x && y < b.y + b.height && y + cardH > b.y,
       );
       cells[col * rows + row] = {
         col,
@@ -133,20 +129,12 @@ export const computeGridLayout = (
   };
 };
 
-export const cellAt = (
-  info: GridLayoutInfo,
-  col: number,
-  row: number,
-): GridCell | null => {
+export const cellAt = (info: GridLayoutInfo, col: number, row: number): GridCell | null => {
   if (col < 0 || col >= info.cols || row < 0 || row >= info.rows) return null;
   return info.cells[col * info.rows + row] ?? null;
 };
 
-export const cellFromPoint = (
-  info: GridLayoutInfo,
-  px: number,
-  py: number,
-): GridCell | null => {
+export const cellFromPoint = (info: GridLayoutInfo, px: number, py: number): GridCell | null => {
   if (info.cols === 0 || info.rows === 0) return null;
   const rawCol = Math.round((px - info.originX - info.cardW / 2) / info.cellW);
   const rawRow = Math.round((py - info.originY - info.cardH / 2) / info.cellH);
@@ -160,11 +148,7 @@ export const cellFromPoint = (
  * by the caller. Used to pick the nearest-free slot to a preferred anchor
  * (center, bottom-center, etc).
  */
-export const cellsByDistance = (
-  info: GridLayoutInfo,
-  tx: number,
-  ty: number,
-): GridCell[] =>
+export const cellsByDistance = (info: GridLayoutInfo, tx: number, ty: number): GridCell[] =>
   [...info.cells].sort((a, b) => {
     const da = (a.cx - tx) * (a.cx - tx) + (a.cy - ty) * (a.cy - ty);
     const db = (b.cx - tx) * (b.cx - tx) + (b.cy - ty) * (b.cy - ty);

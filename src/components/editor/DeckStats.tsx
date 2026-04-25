@@ -10,13 +10,13 @@ import { ManaSymbols } from "@/components/game/ManaSymbols";
 // CMC 1–7+ buckets — cool→warm progression using theme counter / signal
 // tokens so the curve retones with the active preset.
 const BUCKETS = [
-  { label: "1",  bar: "bg-pt-buffed"       }, // +1 growth green
-  { label: "2",  bar: "bg-counter-storage" }, // teal
-  { label: "3",  bar: "bg-counter-study"   }, // cyan
-  { label: "4",  bar: "bg-counter-charge"  }, // purple
-  { label: "5",  bar: "bg-warning"         }, // amber
-  { label: "6",  bar: "bg-counter-level"   }, // orange
-  { label: "7+", bar: "bg-pt-lethal"       }, // red
+  { label: "1", bar: "bg-pt-buffed" }, // +1 growth green
+  { label: "2", bar: "bg-counter-storage" }, // teal
+  { label: "3", bar: "bg-counter-study" }, // cyan
+  { label: "4", bar: "bg-counter-charge" }, // purple
+  { label: "5", bar: "bg-warning" }, // amber
+  { label: "6", bar: "bg-counter-level" }, // orange
+  { label: "7+", bar: "bg-pt-lethal" }, // red
 ];
 
 const BAR_MAX_PX = 72;
@@ -51,7 +51,10 @@ export function DeckStats({ cards: propCards }: DeckStatsProps) {
   const spells: { card: Card; cmc: number }[] = [];
 
   for (const card of cards) {
-    if (isLand(card.types)) { lands.push(card); continue; }
+    if (isLand(card.types)) {
+      lands.push(card);
+      continue;
+    }
     const cmc = resolveCmc(card);
     if (cmc === undefined) unknown.push(card);
     else spells.push({ card, cmc });
@@ -89,10 +92,11 @@ export function DeckStats({ cards: propCards }: DeckStatsProps) {
         className="flex items-center gap-1.5 w-full px-3 py-2 hover:bg-muted/30 transition-colors text-left"
         onClick={() => setCollapsed((v) => !v)}
       >
-        {collapsed
-          ? <ChevronRight className="h-3 w-3 text-muted-foreground shrink-0" />
-          : <ChevronDown  className="h-3 w-3 text-muted-foreground shrink-0" />
-        }
+        {collapsed ? (
+          <ChevronRight className="h-3 w-3 text-muted-foreground shrink-0" />
+        ) : (
+          <ChevronDown className="h-3 w-3 text-muted-foreground shrink-0" />
+        )}
         <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
           Mana Curve
         </span>
@@ -100,9 +104,11 @@ export function DeckStats({ cards: propCards }: DeckStatsProps) {
         {/* Summary pills — always visible */}
         <div className="flex gap-1.5 ml-1 text-xs text-muted-foreground/70">
           {spells.length > 0 && <span>{spells.length} spells</span>}
-          {lands.length > 0  && <span>{lands.length} lands</span>}
+          {lands.length > 0 && <span>{lands.length} lands</span>}
           {unknown.length > 0 && (
-            <span className="text-warning" title="CMC unknown">{unknown.length} ?</span>
+            <span className="text-warning" title="CMC unknown">
+              {unknown.length} ?
+            </span>
           )}
         </div>
 
@@ -129,10 +135,12 @@ export function DeckStats({ cards: propCards }: DeckStatsProps) {
               <div className="flex gap-1 mb-0.5">
                 {counts.map((count, i) => (
                   <div key={i} className="flex-1 text-center">
-                    <span className={cn(
-                      "text-xs font-mono tabular-nums leading-none",
-                      count > 0 ? "text-foreground" : "text-transparent select-none"
-                    )}>
+                    <span
+                      className={cn(
+                        "text-xs font-mono tabular-nums leading-none",
+                        count > 0 ? "text-foreground" : "text-transparent select-none",
+                      )}
+                    >
                       {count}
                     </span>
                   </div>
@@ -147,9 +155,11 @@ export function DeckStats({ cards: propCards }: DeckStatsProps) {
                     className={cn(
                       "flex-1 rounded-t-sm transition-all duration-300",
                       BUCKETS[i].bar,
-                      count === 0 && "opacity-15"
+                      count === 0 && "opacity-15",
                     )}
-                    style={{ height: count > 0 ? `${Math.max((count / max) * BAR_MAX_PX, 3)}px` : "3px" }}
+                    style={{
+                      height: count > 0 ? `${Math.max((count / max) * BAR_MAX_PX, 3)}px` : "3px",
+                    }}
                   />
                 ))}
               </div>
@@ -172,11 +182,16 @@ export function DeckStats({ cards: propCards }: DeckStatsProps) {
                   <div className="mt-1.5 space-y-1">
                     {genericTotal > 0 && (
                       <div className="flex items-center gap-2">
-                        <span className="inline-block w-3.5 h-3.5 rounded-sm shrink-0 border border-border bg-muted-foreground/40" title="Generic" />
+                        <span
+                          className="inline-block w-3.5 h-3.5 rounded-sm shrink-0 border border-border bg-muted-foreground/40"
+                          title="Generic"
+                        />
                         <div className="flex-1 h-2 rounded-full bg-muted overflow-hidden">
                           <div
                             className="h-full rounded-full transition-all duration-300 bg-muted-foreground/60"
-                            style={{ width: `${totalAll > 0 ? (genericTotal / totalAll) * 100 : 0}%` }}
+                            style={{
+                              width: `${totalAll > 0 ? (genericTotal / totalAll) * 100 : 0}%`,
+                            }}
                           />
                         </div>
                         <span className="text-xs font-mono tabular-nums text-muted-foreground w-8 text-right shrink-0">
@@ -191,7 +206,10 @@ export function DeckStats({ cards: propCards }: DeckStatsProps) {
                         <div key={color} className="flex items-center gap-2">
                           <ManaSymbols cost={`{${color}}`} size="sm" />
                           <div className="flex-1 h-2 rounded-full bg-muted overflow-hidden">
-                            <div className={cn("h-full rounded-full transition-all duration-300", bar)} style={{ width: `${pct}%` }} />
+                            <div
+                              className={cn("h-full rounded-full transition-all duration-300", bar)}
+                              style={{ width: `${pct}%` }}
+                            />
                           </div>
                           <span className="text-xs font-mono tabular-nums text-muted-foreground w-8 text-right shrink-0">
                             {Math.round(pct)}%

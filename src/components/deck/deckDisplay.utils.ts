@@ -40,12 +40,9 @@ const MULTI_COLOR_CLASSES: Record<string, string> = {
   WUBRG: "text-foreground",
 };
 
-export const DECK_NAME_SHADOW_CLASS =
-  "drop-shadow-[0_1px_2px_rgba(0,0,0,0.35)]" as const;
+export const DECK_NAME_SHADOW_CLASS = "drop-shadow-[0_1px_2px_rgba(0,0,0,0.35)]" as const;
 
-export function getDeckColors(
-  cards: Pick<Card, "color" | "manaCost">[],
-): string[] {
+export function getDeckColors(cards: Pick<Card, "color" | "manaCost">[]): string[] {
   const seen = new Set<string>();
   for (const card of cards) {
     for (const ch of card.color ?? "") {
@@ -58,9 +55,7 @@ export function getDeckColors(
   return VALID_COLORS.filter((color) => seen.has(color));
 }
 
-export function getDeckColorCost(
-  cards: Pick<Card, "color" | "manaCost">[],
-): string {
+export function getDeckColorCost(cards: Pick<Card, "color" | "manaCost">[]): string {
   return getDeckColors(cards)
     .map((color) => `{${color}}`)
     .join("");

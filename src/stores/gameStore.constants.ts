@@ -1,7 +1,7 @@
-import type { AgentPrompt, GameState, DeferredSnapshot } from './gameStore.types';
-import type { GameView } from '@/types/openmagic';
-import type { GameLogEntry } from '@/types/gameLog';
-import { PromptType } from '@/types/promptType';
+import type { AgentPrompt, GameState, DeferredSnapshot } from "./gameStore.types";
+import type { GameView } from "@/types/openmagic";
+import type { GameLogEntry } from "@/types/gameLog";
+import { PromptType } from "@/types/promptType";
 
 /** Prompt types the UI knows how to render a modal/interaction for. */
 export const HANDLED_PROMPT_TYPES = new Set<PromptType>([
@@ -51,10 +51,7 @@ export const HANDLED_PROMPT_TYPES = new Set<PromptType>([
   PromptType.HelpPayAssist,
 ]);
 
-function normalizeGameView(
-  nextView: GameView,
-  currentView: GameView | null,
-): GameView {
+function normalizeGameView(nextView: GameView, currentView: GameView | null): GameView {
   const incoming = (nextView ?? {}) as Partial<GameView>;
   const current = currentView ?? null;
 
@@ -74,9 +71,7 @@ function normalizeGameView(
       : (current?.battlefield ?? []),
     stack: Array.isArray(incoming.stack) ? incoming.stack : (current?.stack ?? []),
     exile: Array.isArray(incoming.exile) ? incoming.exile : (current?.exile ?? []),
-    graveyard: Array.isArray(incoming.graveyard)
-      ? incoming.graveyard
-      : (current?.graveyard ?? []),
+    graveyard: Array.isArray(incoming.graveyard) ? incoming.graveyard : (current?.graveyard ?? []),
     opponentGraveyard: Array.isArray(incoming.opponentGraveyard)
       ? incoming.opponentGraveyard
       : (current?.opponentGraveyard ?? []),
@@ -92,12 +87,16 @@ function normalizeGameView(
     gameOver: incoming.gameOver ?? current?.gameOver,
     winnerId: incoming.winnerId ?? current?.winnerId ?? null,
     monarchId: incoming.monarchId ?? current?.monarchId ?? null,
-    initiativeHolderId:
-      incoming.initiativeHolderId ?? current?.initiativeHolderId ?? null,
+    initiativeHolderId: incoming.initiativeHolderId ?? current?.initiativeHolderId ?? null,
   };
 }
 
-export function applyPrompt(prompt: AgentPrompt, source: string, set: (partial: Partial<GameState>) => void, get: () => GameState) {
+export function applyPrompt(
+  prompt: AgentPrompt,
+  source: string,
+  set: (partial: Partial<GameState>) => void,
+  get: () => GameState,
+) {
   const displayEvents = [...(prompt.displayEvents ?? [])];
   // Don't mutate the original payload (listeners may fire more than once).
 
@@ -124,7 +123,11 @@ export function applyPrompt(prompt: AgentPrompt, source: string, set: (partial: 
 
   if (displayEvents.length > 0 && currentGameView !== null) {
     // Enqueue this snapshot — the flash processor will play the events then apply the state.
-    const snapshot: DeferredSnapshot = { displayEvents, gameView: normalizedGameView, prompt: isStateUpdate ? null : prompt };
+    const snapshot: DeferredSnapshot = {
+      displayEvents,
+      gameView: normalizedGameView,
+      prompt: isStateUpdate ? null : prompt,
+    };
     set({
       deferredQueue: [...get().deferredQueue, snapshot],
       debugInfo: `${source}: ${prompt.type} (queued #${queueLen + 1})`,
@@ -132,7 +135,11 @@ export function applyPrompt(prompt: AgentPrompt, source: string, set: (partial: 
   } else if (queueLen > 0 || get().isFlashing) {
     // Flashes are in progress but this prompt has no display events — enqueue with empty events
     // so it gets applied after the current flash sequence finishes.
-    const snapshot: DeferredSnapshot = { displayEvents: [], gameView: normalizedGameView, prompt: isStateUpdate ? null : prompt };
+    const snapshot: DeferredSnapshot = {
+      displayEvents: [],
+      gameView: normalizedGameView,
+      prompt: isStateUpdate ? null : prompt,
+    };
     set({
       deferredQueue: [...get().deferredQueue, snapshot],
       debugInfo: `${source}: ${prompt.type} (queued-passthrough #${queueLen + 1})`,

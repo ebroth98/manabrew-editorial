@@ -66,7 +66,11 @@ export function ChooseTypeModal({
           </div>
         )}
 
-        <div className="p-4 flex flex-wrap gap-2 max-h-[50vh] overflow-y-auto" role="group" aria-label="Available types">
+        <div
+          className="p-4 flex flex-wrap gap-2 max-h-[50vh] overflow-y-auto"
+          role="group"
+          aria-label="Available types"
+        >
           {filtered.map((typeName) => (
             <button
               key={typeName}

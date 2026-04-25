@@ -48,10 +48,10 @@ export function DamageOrderModal({
     onConfirm(blockerIds);
   }, [blockerIds, onConfirm]);
 
-  useModalKeyboard(
-    { onEnter: isComplete ? handleConfirm : undefined },
-    [isComplete, handleConfirm],
-  );
+  useModalKeyboard({ onEnter: isComplete ? handleConfirm : undefined }, [
+    isComplete,
+    handleConfirm,
+  ]);
 
   function addToOrder(id: string) {
     setOrdered((prev) => [...prev, id]);
@@ -62,8 +62,7 @@ export function DamageOrderModal({
   }
 
   function getCardInfo(id: string): { name: string; power: string; toughness: string } {
-    const card = blockerCards.find((c) => c.id === id)
-      ?? gameViewCards?.find((c) => c.id === id);
+    const card = blockerCards.find((c) => c.id === id) ?? gameViewCards?.find((c) => c.id === id);
     if (card) {
       return {
         name: card.name,
@@ -79,14 +78,16 @@ export function DamageOrderModal({
       <div ref={dialogRef} tabIndex={-1} className="outline-none" role="dialog" aria-modal="true">
         <Modal.Header>
           <h2 className="font-semibold text-base">Damage Assignment Order</h2>
-          {attackerId && (() => {
-            const attacker = gameViewCards?.find((c) => c.id === attackerId);
-            return attacker ? (
-              <p className="text-xs text-muted-foreground">
-                Order blockers for <span className="font-semibold text-foreground">{attacker.name}</span>
-              </p>
-            ) : null;
-          })()}
+          {attackerId &&
+            (() => {
+              const attacker = gameViewCards?.find((c) => c.id === attackerId);
+              return attacker ? (
+                <p className="text-xs text-muted-foreground">
+                  Order blockers for{" "}
+                  <span className="font-semibold text-foreground">{attacker.name}</span>
+                </p>
+              ) : null;
+            })()}
           <p className="text-xs text-muted-foreground">
             Click blockers in the order damage should be assigned (first receives damage first).
           </p>
@@ -156,7 +157,12 @@ export function DamageOrderModal({
               Default
             </Button>
           </div>
-          <Button size="sm" disabled={!isComplete} onClick={handleConfirm} className="min-w-[100px]">
+          <Button
+            size="sm"
+            disabled={!isComplete}
+            onClick={handleConfirm}
+            className="min-w-[100px]"
+          >
             Confirm
           </Button>
         </div>

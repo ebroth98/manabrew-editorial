@@ -19,7 +19,9 @@ export const router = createBrowserRouter([
         <div className="text-center">
           <h1 className="text-2xl font-bold">Page Not Found</h1>
           <p className="mt-2 text-muted-foreground">The page you're looking for doesn't exist.</p>
-          <a href="/" className="mt-4 inline-block text-primary hover:underline">Go Home</a>
+          <a href="/" className="mt-4 inline-block text-primary hover:underline">
+            Go Home
+          </a>
         </div>
       </div>
     ),
@@ -82,7 +84,9 @@ export const router = createBrowserRouter([
           <div className="flex flex-col items-center justify-center h-full text-center gap-3">
             <div className="text-4xl opacity-20">🚧</div>
             <h2 className="text-lg font-semibold">Active Matches</h2>
-            <p className="text-sm text-muted-foreground">This feature is currently under development.</p>
+            <p className="text-sm text-muted-foreground">
+              This feature is currently under development.
+            </p>
           </div>
         ),
       },

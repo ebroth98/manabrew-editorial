@@ -16,7 +16,7 @@ export function HandCardActions({ actions, onSelectAction }: HandCardActionsProp
 
   useEffect(() => {
     if (!actions || actions.length === 0) return;
-    
+
     function handleKey(e: KeyboardEvent) {
       // Number keys 1-9 activate the corresponding action
       const num = parseInt(e.key);
@@ -25,7 +25,7 @@ export function HandCardActions({ actions, onSelectAction }: HandCardActionsProp
         onSelectAction(actions[num - 1]);
       }
     }
-    
+
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
   }, [actions, onSelectAction]);
@@ -65,7 +65,9 @@ export function HandCardActions({ actions, onSelectAction }: HandCardActionsProp
           }}
         >
           <span className="flex items-center justify-between w-full pointer-events-none mb-0.5">
-            <span className="text-[12px] font-bold min-w-[22px] h-5 flex items-center justify-center rounded border border-border bg-muted shadow-[0_1px_0_rgba(0,0,0,0.1)]">{idx + 1}</span>
+            <span className="text-[12px] font-bold min-w-[22px] h-5 flex items-center justify-center rounded border border-border bg-muted shadow-[0_1px_0_rgba(0,0,0,0.1)]">
+              {idx + 1}
+            </span>
             {action.cost && (
               <span className="flex items-center gap-0.5 text-[11px] opacity-90">
                 <TextWithMana text={action.cost} manaSize="sm" />

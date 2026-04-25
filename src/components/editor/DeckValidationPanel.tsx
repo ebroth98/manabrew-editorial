@@ -41,17 +41,16 @@ export function DeckValidationPanel() {
         className="flex items-center gap-1.5 w-full px-3 py-2 hover:bg-destructive/10 transition-colors text-left"
         onClick={() => setCollapsed((v) => !v)}
       >
-        {collapsed
-          ? <ChevronRight className="h-3 w-3 text-destructive/60 shrink-0" />
-          : <ChevronDown className="h-3 w-3 text-destructive/60 shrink-0" />
-        }
+        {collapsed ? (
+          <ChevronRight className="h-3 w-3 text-destructive/60 shrink-0" />
+        ) : (
+          <ChevronDown className="h-3 w-3 text-destructive/60 shrink-0" />
+        )}
         <AlertTriangle className="h-3.5 w-3.5 text-destructive shrink-0" />
         <span className="text-xs font-semibold text-destructive uppercase tracking-wide">
           {count} {count === 1 ? "issue" : "issues"}
         </span>
-        <span className="text-xs text-destructive/60">
-          for {format.name}
-        </span>
+        <span className="text-xs text-destructive/60">for {format.name}</span>
       </button>
       {!collapsed && (
         <ul className="px-3 pb-2 space-y-0.5 ml-5">

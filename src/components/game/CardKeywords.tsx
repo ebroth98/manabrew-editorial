@@ -1,7 +1,8 @@
 import { ManaSymbols } from "@/components/game/ManaSymbols";
 import { cn } from "@/lib/utils";
 
-const CHIP_BASE = "text-[8px] font-bold uppercase bg-black/60 text-white px-1 py-px rounded leading-none";
+const CHIP_BASE =
+  "text-[8px] font-bold uppercase bg-black/60 text-white px-1 py-px rounded leading-none";
 
 /** Render a keyword chip — if it contains a colon, the part after is a mana cost. */
 export function KeywordChip({ kw }: { kw: string }) {
@@ -30,9 +31,7 @@ export function KeywordChips({ keywords }: { keywords: string[] }) {
       {visible.map((kw) => (
         <KeywordChip key={kw} kw={kw} />
       ))}
-      {hidden > 0 && (
-        <span className={CHIP_BASE}>+{hidden}</span>
-      )}
+      {hidden > 0 && <span className={CHIP_BASE}>+{hidden}</span>}
     </div>
   );
 }

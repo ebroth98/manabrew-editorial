@@ -28,22 +28,22 @@ export interface CounterConfig {
  * and a matching `counter.<name>` key to the theme.
  */
 export const COUNTER_CONFIG: Record<string, CounterConfig> = {
-  P1P1:      { label: "+1",  colorKey: "p1p1",      title: "+1/+1"     },
-  M1M1:      { label: "−1",  colorKey: "m1m1",      title: "−1/−1"     },
-  Loyalty:   { label: "♦",   colorKey: "loyalty",   title: "Loyalty"   },
-  Charge:    { label: "⚡",   colorKey: "charge",    title: "Charge"    },
-  Quest:     { label: "◎",   colorKey: "quest",     title: "Quest"     },
-  Study:     { label: "✎",   colorKey: "study",     title: "Study"     },
-  Lore:      { label: "✦",   colorKey: "lore",      title: "Lore"      },
-  Age:       { label: "⌛",   colorKey: "age",       title: "Age"       },
-  Time:      { label: "⏳",   colorKey: "time",      title: "Time"      },
-  Fade:      { label: "✕",   colorKey: "fade",      title: "Fade"      },
-  Level:     { label: "★",   colorKey: "level",     title: "Level"     },
-  Storage:   { label: "▲",   colorKey: "storage",   title: "Storage"   },
-  Mining:    { label: "⛏",   colorKey: "mining",    title: "Mining"    },
-  Brick:     { label: "▪",   colorKey: "brick",     title: "Brick"     },
-  Depletion: { label: "▼",   colorKey: "depletion", title: "Depletion" },
-  Page:      { label: "📄",  colorKey: "page",      title: "Page"      },
+  P1P1: { label: "+1", colorKey: "p1p1", title: "+1/+1" },
+  M1M1: { label: "−1", colorKey: "m1m1", title: "−1/−1" },
+  Loyalty: { label: "♦", colorKey: "loyalty", title: "Loyalty" },
+  Charge: { label: "⚡", colorKey: "charge", title: "Charge" },
+  Quest: { label: "◎", colorKey: "quest", title: "Quest" },
+  Study: { label: "✎", colorKey: "study", title: "Study" },
+  Lore: { label: "✦", colorKey: "lore", title: "Lore" },
+  Age: { label: "⌛", colorKey: "age", title: "Age" },
+  Time: { label: "⏳", colorKey: "time", title: "Time" },
+  Fade: { label: "✕", colorKey: "fade", title: "Fade" },
+  Level: { label: "★", colorKey: "level", title: "Level" },
+  Storage: { label: "▲", colorKey: "storage", title: "Storage" },
+  Mining: { label: "⛏", colorKey: "mining", title: "Mining" },
+  Brick: { label: "▪", colorKey: "brick", title: "Brick" },
+  Depletion: { label: "▼", colorKey: "depletion", title: "Depletion" },
+  Page: { label: "📄", colorKey: "page", title: "Page" },
 };
 
 /** Returns the config for a known counter type, or a sensible generic fallback. */
@@ -60,23 +60,23 @@ export function getCounterConfig(type: string): CounterConfig {
 /** Static `bg-counter-*` class per counter colour key — Tailwind JIT
  *  needs the full class name in source, so we can't string-build it. */
 const COUNTER_BG_CLASS: Record<CounterColorKey, string> = {
-  default:   "bg-counter-default",
-  p1p1:      "bg-counter-p1p1",
-  m1m1:      "bg-counter-m1m1",
-  loyalty:   "bg-counter-loyalty",
-  charge:    "bg-counter-charge",
-  quest:     "bg-counter-quest",
-  study:     "bg-counter-study",
-  lore:      "bg-counter-lore",
-  age:       "bg-counter-age",
-  time:      "bg-counter-time",
-  fade:      "bg-counter-fade",
-  level:     "bg-counter-level",
-  storage:   "bg-counter-storage",
-  mining:    "bg-counter-mining",
-  brick:     "bg-counter-brick",
+  default: "bg-counter-default",
+  p1p1: "bg-counter-p1p1",
+  m1m1: "bg-counter-m1m1",
+  loyalty: "bg-counter-loyalty",
+  charge: "bg-counter-charge",
+  quest: "bg-counter-quest",
+  study: "bg-counter-study",
+  lore: "bg-counter-lore",
+  age: "bg-counter-age",
+  time: "bg-counter-time",
+  fade: "bg-counter-fade",
+  level: "bg-counter-level",
+  storage: "bg-counter-storage",
+  mining: "bg-counter-mining",
+  brick: "bg-counter-brick",
   depletion: "bg-counter-depletion",
-  page:      "bg-counter-page",
+  page: "bg-counter-page",
 };
 
 // ---------------------------------------------------------------------------
@@ -86,15 +86,15 @@ const COUNTER_BG_CLASS: Record<CounterColorKey, string> = {
 export type CounterSize = "sm" | "md" | "lg";
 
 interface SizeTokens {
-  pill: string;   // outer element classes
+  pill: string; // outer element classes
   symbol: string; // symbol text size
-  count: string;  // count text size
+  count: string; // count text size
 }
 
 const SIZE_TOKENS: Record<CounterSize, SizeTokens> = {
-  sm: { pill: "h-4 min-w-[1rem] px-0.5 gap-px",  symbol: "text-[8px]",  count: "text-[7px]"  },
-  md: { pill: "h-5 min-w-[1.25rem] px-1 gap-0.5", symbol: "text-[10px]", count: "text-[9px]"  },
-  lg: { pill: "h-6 min-w-[1.5rem] px-1.5 gap-1",  symbol: "text-xs",     count: "text-[10px]" },
+  sm: { pill: "h-4 min-w-[1rem] px-0.5 gap-px", symbol: "text-[8px]", count: "text-[7px]" },
+  md: { pill: "h-5 min-w-[1.25rem] px-1 gap-0.5", symbol: "text-[10px]", count: "text-[9px]" },
+  lg: { pill: "h-6 min-w-[1.5rem] px-1.5 gap-1", symbol: "text-xs", count: "text-[10px]" },
 };
 
 // ---------------------------------------------------------------------------
@@ -125,14 +125,13 @@ export function CounterBadge({ type, count, size = "sm", className }: CounterBad
         "select-none shadow-sm ring-1 ring-black/20",
         COUNTER_BG_CLASS[cfg.colorKey],
         "text-text-on-tinted",
-        sz.pill, className,
+        sz.pill,
+        className,
       )}
       title={`${count} ${cfg.title} counter${count !== 1 ? "s" : ""}`}
     >
       <span className={sz.symbol}>{cfg.label}</span>
-      {count > 1 && (
-        <span className={cn(sz.count, "opacity-90")}>{count}</span>
-      )}
+      {count > 1 && <span className={cn(sz.count, "opacity-90")}>{count}</span>}
     </span>
   );
 }

@@ -72,9 +72,12 @@ function shortenLine(x1: number, y1: number, x2: number, y2: number) {
 }
 
 function sampleQuadratic(
-  x1: number, y1: number,
-  cx: number, cy: number,
-  x2: number, y2: number,
+  x1: number,
+  y1: number,
+  cx: number,
+  cy: number,
+  x2: number,
+  y2: number,
   steps: number,
 ) {
   const points: { x: number; y: number }[] = [];
@@ -90,15 +93,16 @@ function sampleQuadratic(
 }
 
 // ── Arrow colors from theme ────────────────────────────────────────────────
-function safeColor(raw: string, fallback: number, fallbackAlpha = 0.88): { color: number; alpha: number } {
+function safeColor(
+  raw: string,
+  fallback: number,
+  fallbackAlpha = 0.88,
+): { color: number; alpha: number } {
   if (!raw || !raw.trim()) return { color: fallback, alpha: fallbackAlpha };
   return { color: hexToNum(raw), alpha: colorAlpha(raw) };
 }
 
-function getArrowColor(
-  type: ArrowType,
-  theme: Theme,
-): { color: number; alpha: number } {
+function getArrowColor(type: ArrowType, theme: Theme): { color: number; alpha: number } {
   const g = theme.gameTheme;
   switch (type) {
     case "attack":
@@ -156,8 +160,7 @@ export class ArrowLayer {
    * same rate as the ticker regardless of frame rate.
    */
   update(arrows: ArrowDef[], deltaMs = 0): void {
-    this.dashOffset =
-      (this.dashOffset + (deltaMs / 1000) * DASH_SPEED_PX_PER_SEC) % DASH_CYCLE;
+    this.dashOffset = (this.dashOffset + (deltaMs / 1000) * DASH_SPEED_PX_PER_SEC) % DASH_CYCLE;
     this.arrows = arrows;
     this.redraw();
   }
@@ -185,10 +188,14 @@ export class ArrowLayer {
   }
 
   private strokeSolidPath(
-    x1: number, y1: number,
-    cx: number, cy: number,
-    x2: number, y2: number,
-    color: number, alpha: number,
+    x1: number,
+    y1: number,
+    cx: number,
+    cy: number,
+    x2: number,
+    y2: number,
+    color: number,
+    alpha: number,
   ): void {
     // Soft outer glow — widest, most transparent
     this.glowGfx.moveTo(x1, y1);
@@ -225,16 +232,20 @@ export class ArrowLayer {
   }
 
   private strokePlacementPath(
-    x1: number, y1: number,
-    cx: number, cy: number,
-    x2: number, y2: number,
-    color: number, alpha: number,
+    x1: number,
+    y1: number,
+    cx: number,
+    cy: number,
+    x2: number,
+    y2: number,
+    color: number,
+    alpha: number,
   ): void {
     const points = sampleQuadratic(x1, y1, cx, cy, x2, y2, DASH_BEZIER_STEPS);
 
     // Shadow-less placement: just the animated dash. Start past `dashOffset`
     // pixels so the pattern visibly marches toward the target.
-    let drawing = (this.dashOffset % DASH_CYCLE) < DASH_LEN;
+    let drawing = this.dashOffset % DASH_CYCLE < DASH_LEN;
     let remaining = drawing
       ? DASH_LEN - (this.dashOffset % DASH_CYCLE)
       : DASH_CYCLE - (this.dashOffset % DASH_CYCLE);
@@ -283,9 +294,12 @@ export class ArrowLayer {
   }
 
   private drawArrowhead(
-    tipX: number, tipY: number,
-    ctrlX: number, ctrlY: number,
-    color: number, alpha: number,
+    tipX: number,
+    tipY: number,
+    ctrlX: number,
+    ctrlY: number,
+    color: number,
+    alpha: number,
   ): void {
     const { ux, uy, len } = unit(tipX - ctrlX, tipY - ctrlY);
     if (len === 0) return;

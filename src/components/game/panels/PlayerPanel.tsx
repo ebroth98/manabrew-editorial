@@ -84,35 +84,34 @@ export function PlayerPanel({
   // can inspect every badge/visual state without a real game driving it.
   const applyOverride = !isOpponent;
   const effectiveIsMonarch = applyOverride && devOverrides.forceMonarch ? true : isMonarch;
-  const effectiveHasInitiative = applyOverride && devOverrides.forceInitiative ? true : hasInitiative;
-  const effectiveCityBlessing = applyOverride && devOverrides.forceCityBlessing
-    ? true
-    : (player.hasCityBlessing ?? false);
-  const effectivePoison = applyOverride && devOverrides.poison != null ? devOverrides.poison : player.poison;
-  const effectiveEnergy = applyOverride && devOverrides.energy != null
-    ? devOverrides.energy
-    : (player.energyCounters ?? 0);
-  const effectiveRadiation = applyOverride && devOverrides.radiation != null
-    ? devOverrides.radiation
-    : (player.radiationCounters ?? 0);
-  const effectiveRingLevel = applyOverride && devOverrides.ringLevel != null
-    ? devOverrides.ringLevel
-    : (player.ringLevel ?? 0);
-  const effectiveSpeed = applyOverride && devOverrides.speed != null
-    ? devOverrides.speed
-    : (player.speed ?? 0);
-  const effectiveLife = applyOverride && devOverrides.life != null ? devOverrides.life : player.life;
-  const effectiveHandCount = applyOverride && devOverrides.handCount != null
-    ? devOverrides.handCount
-    : player.handCount;
+  const effectiveHasInitiative =
+    applyOverride && devOverrides.forceInitiative ? true : hasInitiative;
+  const effectiveCityBlessing =
+    applyOverride && devOverrides.forceCityBlessing ? true : (player.hasCityBlessing ?? false);
+  const effectivePoison =
+    applyOverride && devOverrides.poison != null ? devOverrides.poison : player.poison;
+  const effectiveEnergy =
+    applyOverride && devOverrides.energy != null
+      ? devOverrides.energy
+      : (player.energyCounters ?? 0);
+  const effectiveRadiation =
+    applyOverride && devOverrides.radiation != null
+      ? devOverrides.radiation
+      : (player.radiationCounters ?? 0);
+  const effectiveRingLevel =
+    applyOverride && devOverrides.ringLevel != null
+      ? devOverrides.ringLevel
+      : (player.ringLevel ?? 0);
+  const effectiveSpeed =
+    applyOverride && devOverrides.speed != null ? devOverrides.speed : (player.speed ?? 0);
+  const effectiveLife =
+    applyOverride && devOverrides.life != null ? devOverrides.life : player.life;
+  const effectiveHandCount =
+    applyOverride && devOverrides.handCount != null ? devOverrides.handCount : player.handCount;
 
-  const realCmdDmg = Object.values(player.commanderDamage ?? {}).reduce(
-    (a, b) => a + b,
-    0,
-  );
-  const totalCmdDmg = applyOverride && devOverrides.cmdDamage != null
-    ? devOverrides.cmdDamage
-    : realCmdDmg;
+  const realCmdDmg = Object.values(player.commanderDamage ?? {}).reduce((a, b) => a + b, 0);
+  const totalCmdDmg =
+    applyOverride && devOverrides.cmdDamage != null ? devOverrides.cmdDamage : realCmdDmg;
 
   // Effective player view — dev overrides flow into PlayerAvatar (life)
   // + ManaPoolDisplay (handCount) without mutating the upstream object.
@@ -131,15 +130,18 @@ export function PlayerPanel({
   //
   // Hand is the only badge that orbits the avatar — the rest move to a
   // row below (next to the mana pool) so the avatar stays uncluttered.
-  const orbitBadges = useMemo<OrbitBadge[]>(() => ([
-    {
-      id: "hand",
-      icon: <GameIcon name="card-pickup" className="h-3.5 w-3.5" />,
-      label: "Cards in Hand",
-      count: effectiveHandCount,
-      color: withAlpha(themeColors.promptAction.cancel, 0.85),
-    },
-  ]), [effectiveHandCount, themeColors]);
+  const orbitBadges = useMemo<OrbitBadge[]>(
+    () => [
+      {
+        id: "hand",
+        icon: <GameIcon name="card-pickup" className="h-3.5 w-3.5" />,
+        label: "Cards in Hand",
+        count: effectiveHandCount,
+        color: withAlpha(themeColors.promptAction.cancel, 0.85),
+      },
+    ],
+    [effectiveHandCount, themeColors],
+  );
 
   const rowBadges = useMemo<OrbitBadge[]>(() => {
     const out: OrbitBadge[] = [];

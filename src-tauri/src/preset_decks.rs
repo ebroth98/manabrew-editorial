@@ -232,7 +232,8 @@ fn get_preset_by_id(id: &str) -> Option<&'static LoadedPreset> {
 }
 
 fn choose_cover_card_name(cards: &[DeckCardEntry]) -> Option<String> {
-    cards.iter()
+    cards
+        .iter()
         .find(|card| {
             !matches!(
                 card.name.as_str(),

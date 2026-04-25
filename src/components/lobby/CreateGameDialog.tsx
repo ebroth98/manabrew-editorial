@@ -2,26 +2,15 @@ import { useState, useEffect } from "react";
 import { getDefaultGameRuntime } from "@/game";
 import type { PresetDeckInfo } from "@/platform";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { useDeckStore } from "@/stores/useDeckStore";
 import type { CardIdentity } from "@/types/server";
-import {
-  GAME_FORMATS,
-  validateDeckSections,
-  type GameFormat,
-} from "@/lib/formats";
+import { GAME_FORMATS, validateDeckSections, type GameFormat } from "@/lib/formats";
 import { FormatBadge } from "@/components/game/FormatBadge";
 import { DeckSelectionCard } from "./DeckSelectionCard";
-import {
-  resolveDeckCoverSource,
-  resolvePresetDeckCoverSource,
-} from "@/components/deck/deckCover";
+import { resolveDeckCoverSource, resolvePresetDeckCoverSource } from "@/components/deck/deckCover";
 import { cn } from "@/lib/utils";
 import { Search, Shuffle, Swords } from "lucide-react";
 import { getDeckFingerprint, serializeDeck } from "@/lib/decks";
@@ -41,7 +30,7 @@ interface CreateGameDialogProps {
     formatId: string,
     commanderName?: string,
     playerCount?: number,
-    deckName?: string
+    deckName?: string,
   ) => void;
 }
 
@@ -56,12 +45,11 @@ export function CreateGameDialog({
   const { savedDecks, currentDeck } = useDeckStore();
   const isLobbyMode = mode === "lobby";
 
-  const initialFormat =
-    GAME_FORMATS.find((f) => f.id === forcedFormatId) ?? GAME_FORMATS[0];
+  const initialFormat = GAME_FORMATS.find((f) => f.id === forcedFormatId) ?? GAME_FORMATS[0];
   const [selectedFormat, setSelectedFormat] = useState<GameFormat>(initialFormat);
   const [selectedDeck, setSelectedDeck] = useState<string>(preSelectedDeckId ?? "current");
   const [selectedCommander, setSelectedCommander] = useState<string>(
-    currentDeck.commanders?.[0]?.name ?? ""
+    currentDeck.commanders?.[0]?.name ?? "",
   );
   const [presetDecks, setPresetDecks] = useState<PresetDeckInfo[]>([]);
   const [playerCount, setPlayerCount] = useState(2);
@@ -69,7 +57,8 @@ export function CreateGameDialog({
 
   useEffect(() => {
     const runtime = getDefaultGameRuntime();
-    runtime.api.getPresetDecks()
+    runtime.api
+      .getPresetDecks()
       .then(setPresetDecks)
       .catch((e) => console.error("[CreateGameDialog] Failed to load preset decks:", e));
   }, []);
@@ -86,26 +75,30 @@ export function CreateGameDialog({
   );
 
   // User-built decks (exclude drafts)
-  const currentDeckEntry = currentDeck.draft ? [] : [{
-    id: "current",
-    name: currentDeck.name,
-    badge: "editing",
-    labels: currentDeck.labels,
-    deckList: serializeDeck(currentDeck),
-    isPreset: false as const,
-    cover: resolveDeckCoverSource(currentDeck),
-    cards: [
-      ...currentDeck.cards,
-      ...currentDeck.sideboard,
-      ...(currentDeck.attractions ?? []),
-      ...(currentDeck.contraptions ?? []),
-      ...(currentDeck.schemes ?? []),
-      ...(currentDeck.planes ?? []),
-      ...(currentDeck.commanders ?? []),
-    ],
-    formatId: currentDeck.format ?? "standard",
-    commanderName: currentDeck.commanders?.[0]?.name,
-  }];
+  const currentDeckEntry = currentDeck.draft
+    ? []
+    : [
+        {
+          id: "current",
+          name: currentDeck.name,
+          badge: "editing",
+          labels: currentDeck.labels,
+          deckList: serializeDeck(currentDeck),
+          isPreset: false as const,
+          cover: resolveDeckCoverSource(currentDeck),
+          cards: [
+            ...currentDeck.cards,
+            ...currentDeck.sideboard,
+            ...(currentDeck.attractions ?? []),
+            ...(currentDeck.contraptions ?? []),
+            ...(currentDeck.schemes ?? []),
+            ...(currentDeck.planes ?? []),
+            ...(currentDeck.commanders ?? []),
+          ],
+          formatId: currentDeck.format ?? "standard",
+          commanderName: currentDeck.commanders?.[0]?.name,
+        },
+      ];
   const userDecks = [
     ...currentDeckEntry,
     ...distinctSavedDecks.map((s) => ({
@@ -150,8 +143,7 @@ export function CreateGameDialog({
   const filteredPresetEntries = searchLower
     ? presetDeckEntries.filter(
         (d) =>
-          d.name.toLowerCase().includes(searchLower) ||
-          d.desc?.toLowerCase().includes(searchLower),
+          d.name.toLowerCase().includes(searchLower) || d.desc?.toLowerCase().includes(searchLower),
       )
     : presetDeckEntries;
   const formatUserDecks = userDecks.filter((d) => d.formatId === selectedFormat.id);
@@ -170,25 +162,30 @@ export function CreateGameDialog({
   const selectedDeckList = selectedDeckEntry?.deckList ?? [];
   const selectedDeckValidation = selectedDeckEntry?.isPreset
     ? { legal: true, errors: [] as string[] }
-    : validateDeckSections({
-        deckList: selectedDeckList,
-        availableCards: selectedDeckEntry?.cards ?? [],
-        commanderName: selectedCommander || selectedDeckEntry?.commanderName,
-      }, selectedFormat);
+    : validateDeckSections(
+        {
+          deckList: selectedDeckList,
+          availableCards: selectedDeckEntry?.cards ?? [],
+          commanderName: selectedCommander || selectedDeckEntry?.commanderName,
+        },
+        selectedFormat,
+      );
 
   const legendaryCreatures = selectedDeckEntry
     ? Array.from(
         new Map([
           ...(selectedDeckEntry.commanderName
-            ? [[selectedDeckEntry.commanderName, selectedDeckEntry.commanderName] as [string, string]]
+            ? [
+                [selectedDeckEntry.commanderName, selectedDeckEntry.commanderName] as [
+                  string,
+                  string,
+                ],
+              ]
             : []),
           ...selectedDeckEntry.cards
-            .filter(
-              (c) =>
-                c.supertypes?.includes("Legendary") && c.types?.includes("Creature")
-            )
+            .filter((c) => c.supertypes?.includes("Legendary") && c.types?.includes("Creature"))
             .map((c) => [c.name, c.name] as [string, string]),
-        ]).values()
+        ]).values(),
       )
     : [];
 
@@ -214,7 +211,9 @@ export function CreateGameDialog({
       selectedDeckList,
       selectedFormat.id,
       selectedFormat.deckRules.requiresCommander
-        ? (needsCommander ? selectedCommander : selectedDeckEntry.commanderName)
+        ? needsCommander
+          ? selectedCommander
+          : selectedDeckEntry.commanderName
         : undefined,
       playerCount,
       selectedDeckEntry.name,
@@ -224,7 +223,6 @@ export function CreateGameDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="w-[min(96vw,84rem)] max-w-6xl p-0 gap-0 overflow-hidden">
-
         {/* ── Header ── */}
         <div className="px-6 py-4 border-b">
           <DialogTitle className="text-lg font-semibold">
@@ -239,135 +237,129 @@ export function CreateGameDialog({
 
         {/* ── Body: left panel (settings) + right panel (deck picker) ── */}
         <div className="flex overflow-hidden" style={{ maxHeight: "78vh" }}>
-
           {/* Left panel — Format & options */}
           {!isLobbyMode && (
             <div className="w-48 border-r flex-shrink-0 p-4 space-y-5 overflow-y-auto bg-muted/20">
-
-            {/* Format */}
-            <div>
-              <SectionLabel>Format</SectionLabel>
-              <div className="mt-2 space-y-2">
-                {GAME_FORMATS.map((f) => (
-                  <button
-                    key={f.id}
-                    type="button"
-                    onClick={() => setSelectedFormat(f)}
-                    className={cn(
-                      "w-full rounded-lg border p-2.5 text-left transition-colors",
-                      selectedFormat.id === f.id
-                        ? "border-primary bg-primary/5"
-                        : "border-border hover:bg-muted/60"
-                    )}
-                  >
-                    <div className="mb-1">
-                      <FormatBadge formatId={f.id} />
-                    </div>
-                    <p className="font-medium text-xs">{f.name}</p>
-                    <p className="text-[10px] text-muted-foreground mt-0.5 leading-tight">
-                      {f.description}
-                    </p>
-                  </button>
-                ))}
+              {/* Format */}
+              <div>
+                <SectionLabel>Format</SectionLabel>
+                <div className="mt-2 space-y-2">
+                  {GAME_FORMATS.map((f) => (
+                    <button
+                      key={f.id}
+                      type="button"
+                      onClick={() => setSelectedFormat(f)}
+                      className={cn(
+                        "w-full rounded-lg border p-2.5 text-left transition-colors",
+                        selectedFormat.id === f.id
+                          ? "border-primary bg-primary/5"
+                          : "border-border hover:bg-muted/60",
+                      )}
+                    >
+                      <div className="mb-1">
+                        <FormatBadge formatId={f.id} />
+                      </div>
+                      <p className="font-medium text-xs">{f.name}</p>
+                      <p className="text-[10px] text-muted-foreground mt-0.5 leading-tight">
+                        {f.description}
+                      </p>
+                    </button>
+                  ))}
+                </div>
               </div>
-            </div>
 
-            {/* Rules summary */}
-            <div>
-              <SectionLabel>Rules</SectionLabel>
-              <div className="mt-2 space-y-1.5">
-                <RulePill
-                  label="Deck"
-                  value={
-                    selectedFormat.deckRules.minDeckSize +
-                    (selectedFormat.deckRules.maxDeckSize
-                      ? `–${selectedFormat.deckRules.maxDeckSize}`
-                      : "+") +
-                    " cards"
-                  }
-                />
-                <RulePill
-                  label="Copies"
-                  value={
-                    selectedFormat.deckRules.maxCopies === 1
-                      ? "Singleton"
-                      : `Max ${selectedFormat.deckRules.maxCopies}`
-                  }
-                />
-                <RulePill
-                  label="Life"
-                  value={`${selectedFormat.deckRules.startingLife}`}
-                />
+              {/* Rules summary */}
+              <div>
+                <SectionLabel>Rules</SectionLabel>
+                <div className="mt-2 space-y-1.5">
+                  <RulePill
+                    label="Deck"
+                    value={
+                      selectedFormat.deckRules.minDeckSize +
+                      (selectedFormat.deckRules.maxDeckSize
+                        ? `–${selectedFormat.deckRules.maxDeckSize}`
+                        : "+") +
+                      " cards"
+                    }
+                  />
+                  <RulePill
+                    label="Copies"
+                    value={
+                      selectedFormat.deckRules.maxCopies === 1
+                        ? "Singleton"
+                        : `Max ${selectedFormat.deckRules.maxCopies}`
+                    }
+                  />
+                  <RulePill label="Life" value={`${selectedFormat.deckRules.startingLife}`} />
+                </div>
               </div>
-            </div>
 
               {/* Commander picker — only for Commander format */}
               {needsCommander && (
-              <div>
-                <SectionLabel>Commander</SectionLabel>
-                <div className="mt-2 space-y-1.5">
-                  {legendaryCreatures.length === 0 && (
-                    <p className="text-[10px] text-muted-foreground italic">
-                      No legendaries in deck — type a name below.
-                    </p>
-                  )}
-                  {legendaryCreatures.length > 0 ? (
-                    <select
-                      className="w-full rounded border border-border bg-background px-2 py-1.5 text-xs"
-                      value={selectedCommander}
-                      onChange={(e) => setSelectedCommander(e.target.value)}
-                    >
-                      <option value="">— Choose —</option>
-                      {legendaryCreatures.map((name) => (
-                        <option key={name} value={name}>
-                          {name}
-                        </option>
-                      ))}
-                    </select>
-                  ) : (
-                    <input
-                      className="w-full rounded border border-border bg-background px-2 py-1.5 text-xs"
-                      placeholder="Card name"
-                      value={selectedCommander}
-                      onChange={(e) => setSelectedCommander(e.target.value)}
-                    />
-                  )}
+                <div>
+                  <SectionLabel>Commander</SectionLabel>
+                  <div className="mt-2 space-y-1.5">
+                    {legendaryCreatures.length === 0 && (
+                      <p className="text-[10px] text-muted-foreground italic">
+                        No legendaries in deck — type a name below.
+                      </p>
+                    )}
+                    {legendaryCreatures.length > 0 ? (
+                      <select
+                        className="w-full rounded border border-border bg-background px-2 py-1.5 text-xs"
+                        value={selectedCommander}
+                        onChange={(e) => setSelectedCommander(e.target.value)}
+                      >
+                        <option value="">— Choose —</option>
+                        {legendaryCreatures.map((name) => (
+                          <option key={name} value={name}>
+                            {name}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <input
+                        className="w-full rounded border border-border bg-background px-2 py-1.5 text-xs"
+                        placeholder="Card name"
+                        value={selectedCommander}
+                        onChange={(e) => setSelectedCommander(e.target.value)}
+                      />
+                    )}
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
 
               {/* DEV: player count */}
               <div>
-              <SectionLabel>
-                Opponents
-                <span className="ml-1 text-[9px] font-mono text-warning bg-warning/10 px-1 rounded">
-                  DEV
-                </span>
-              </SectionLabel>
-              <div className="mt-2 flex gap-1">
-                {[2, 3, 4].map((n) => (
-                  <button
-                    key={n}
-                    type="button"
-                    onClick={() => setPlayerCount(n)}
-                    className={cn(
-                      "flex-1 py-1 rounded border text-xs transition-colors",
-                      playerCount === n
-                        ? "border-warning bg-warning/10 text-warning font-semibold"
-                        : "border-border hover:bg-muted/60"
-                    )}
-                  >
-                    {n - 1}v1
-                  </button>
-                ))}
-              </div>
+                <SectionLabel>
+                  Opponents
+                  <span className="ml-1 text-[9px] font-mono text-warning bg-warning/10 px-1 rounded">
+                    DEV
+                  </span>
+                </SectionLabel>
+                <div className="mt-2 flex gap-1">
+                  {[2, 3, 4].map((n) => (
+                    <button
+                      key={n}
+                      type="button"
+                      onClick={() => setPlayerCount(n)}
+                      className={cn(
+                        "flex-1 py-1 rounded border text-xs transition-colors",
+                        playerCount === n
+                          ? "border-warning bg-warning/10 text-warning font-semibold"
+                          : "border-border hover:bg-muted/60",
+                      )}
+                    >
+                      {n - 1}v1
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
           )}
 
           {/* Right panel — Deck picker */}
           <div className="flex-1 overflow-y-auto">
-
             {/* Search bar */}
             <div className="px-4 pt-4 pb-2 sticky top-0 bg-background z-10">
               <div className="relative">
@@ -393,24 +385,24 @@ export function CreateGameDialog({
                   No preset decks match your search.
                 </p>
               ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
-                {filteredPresetEntries.map((deck) => (
-                  <DeckSelectionCard
-                    key={deck.id}
-                    id={deck.id}
-                    name={deck.name}
-                    desc={deck.desc}
-                    color={deck.color}
-                    deckList={deck.deckList}
-                    cards={deck.cards}
-                    cover={deck.cover}
-                    isPreset={deck.isPreset}
-                    isSelected={selectedDeck === deck.id}
-                    isLegal={true}
-                    onSelect={() => setSelectedDeck(deck.id)}
-                  />
-                ))}
-              </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+                  {filteredPresetEntries.map((deck) => (
+                    <DeckSelectionCard
+                      key={deck.id}
+                      id={deck.id}
+                      name={deck.name}
+                      desc={deck.desc}
+                      color={deck.color}
+                      deckList={deck.deckList}
+                      cards={deck.cards}
+                      cover={deck.cover}
+                      isPreset={deck.isPreset}
+                      isSelected={selectedDeck === deck.id}
+                      isLegal={true}
+                      onSelect={() => setSelectedDeck(deck.id)}
+                    />
+                  ))}
+                </div>
               )}
             </div>
 
@@ -425,18 +417,25 @@ export function CreateGameDialog({
               </p>
               {filteredUserDecks.length === 0 ? (
                 <p className="text-xs text-muted-foreground italic">
-                  {searchLower ? "No saved decks match your search." : "No saved decks. Build one in the Deck Editor."}
+                  {searchLower
+                    ? "No saved decks match your search."
+                    : "No saved decks. Build one in the Deck Editor."}
                 </p>
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
                   {filteredUserDecks.map((d) => {
-                    const validation = validateDeckSections({
-                      deckList: d.deckList,
-                      availableCards: d.cards,
-                      commanderName: selectedFormat.deckRules.requiresCommander
-                        ? (d.id === selectedDeck ? selectedCommander || d.commanderName : d.commanderName)
-                        : undefined,
-                    }, selectedFormat);
+                    const validation = validateDeckSections(
+                      {
+                        deckList: d.deckList,
+                        availableCards: d.cards,
+                        commanderName: selectedFormat.deckRules.requiresCommander
+                          ? d.id === selectedDeck
+                            ? selectedCommander || d.commanderName
+                            : d.commanderName
+                          : undefined,
+                      },
+                      selectedFormat,
+                    );
                     return (
                       <DeckSelectionCard
                         key={d.id}
@@ -477,7 +476,8 @@ export function CreateGameDialog({
               </>
             ) : selectedDeckEntry ? (
               <span className="text-sm text-muted-foreground truncate">
-                Selected: <span className="font-medium text-foreground">{selectedDeckEntry.name}</span>
+                Selected:{" "}
+                <span className="font-medium text-foreground">{selectedDeckEntry.name}</span>
               </span>
             ) : (
               <span className="text-muted-foreground italic text-xs">No deck selected</span>
@@ -493,7 +493,6 @@ export function CreateGameDialog({
             </Button>
           </div>
         </div>
-
       </DialogContent>
     </Dialog>
   );

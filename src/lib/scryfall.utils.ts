@@ -4,13 +4,7 @@ import { getScryfallImageUrl, getScryfallManaCost } from "@/api/scryfall";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-export const MTG_SUPERTYPES = new Set([
-  "Basic",
-  "Legendary",
-  "Snow",
-  "World",
-  "Ongoing",
-]);
+export const MTG_SUPERTYPES = new Set(["Basic", "Legendary", "Snow", "World", "Ongoing"]);
 
 // ─── Type Line Parsing ────────────────────────────────────────────────────────
 

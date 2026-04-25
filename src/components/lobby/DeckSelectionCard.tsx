@@ -115,11 +115,7 @@ export function DeckSelectionCard({
       )}
       style={sideStyle}
     >
-      <DeckCoverImage
-        cover={cover}
-        alt={name}
-        fallbackClassName={coverFallbackClassName}
-      />
+      <DeckCoverImage cover={cover} alt={name} fallbackClassName={coverFallbackClassName} />
 
       <div className="absolute inset-0 z-[1] bg-gradient-to-t from-black/80 via-black/20 to-black/10" />
 

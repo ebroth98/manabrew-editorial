@@ -35,9 +35,7 @@ export function SetSelect({
     const filtered = showAll
       ? sets
       : sets.filter((s) => MAIN_SET_TYPES.has(s.set_type) && !s.digital && !s.parent_set_code);
-    return [...filtered].sort(
-      (a, b) => (b.released_at ?? "").localeCompare(a.released_at ?? ""),
-    );
+    return [...filtered].sort((a, b) => (b.released_at ?? "").localeCompare(a.released_at ?? ""));
   }, [sets, showAll]);
 
   const filtered = useMemo(() => {
@@ -79,12 +77,19 @@ export function SetSelect({
       >
         {selected ? (
           <>
-            <img src={selected.icon_svg_uri} alt="" className={cn("h-3.5 w-3.5 shrink-0", SET_ICON_CLASS)} />
+            <img
+              src={selected.icon_svg_uri}
+              alt=""
+              className={cn("h-3.5 w-3.5 shrink-0", SET_ICON_CLASS)}
+            />
             <span className="flex-1 truncate">{selected.name}</span>
             <button
               type="button"
               className="shrink-0 text-muted-foreground hover:text-foreground"
-              onClick={(e) => { e.stopPropagation(); onChange(""); }}
+              onClick={(e) => {
+                e.stopPropagation();
+                onChange("");
+              }}
             >
               <X className="h-3 w-3" />
             </button>
@@ -111,7 +116,9 @@ export function SetSelect({
           <ScrollArea className="flex-1">
             <div className="py-1">
               {filtered.length === 0 && (
-                <div className="px-3 py-2 text-xs text-muted-foreground text-center">No sets found</div>
+                <div className="px-3 py-2 text-xs text-muted-foreground text-center">
+                  No sets found
+                </div>
               )}
               {filtered.map((s) => (
                 <button
@@ -121,11 +128,20 @@ export function SetSelect({
                     "w-full text-left px-2 py-1 text-xs hover:bg-muted flex items-center gap-1.5",
                     value === s.code && "bg-muted",
                   )}
-                  onClick={() => { onChange(s.code); setIsOpen(false); }}
+                  onClick={() => {
+                    onChange(s.code);
+                    setIsOpen(false);
+                  }}
                 >
-                  <img src={s.icon_svg_uri} alt="" className={cn("h-3.5 w-3.5 shrink-0", SET_ICON_CLASS)} />
+                  <img
+                    src={s.icon_svg_uri}
+                    alt=""
+                    className={cn("h-3.5 w-3.5 shrink-0", SET_ICON_CLASS)}
+                  />
                   <span className="flex-1 truncate">{s.name}</span>
-                  <span className="text-[10px] text-muted-foreground uppercase shrink-0">{s.code}</span>
+                  <span className="text-[10px] text-muted-foreground uppercase shrink-0">
+                    {s.code}
+                  </span>
                 </button>
               ))}
             </div>
@@ -137,13 +153,7 @@ export function SetSelect({
 }
 
 /** Display a set name from its code, with icon. */
-export function SetName({
-  code,
-  className,
-}: {
-  code: string;
-  className?: string;
-}) {
+export function SetName({ code, className }: { code: string; className?: string }) {
   const { data: sets } = useScryfallSets();
   const set = sets?.find((s) => s.code === code.toLowerCase());
 

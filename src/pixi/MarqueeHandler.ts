@@ -64,10 +64,7 @@ export class MarqueeHandler {
     this.redraw();
   }
 
-  end(
-    cardPositions: Map<string, ScreenPos>,
-    existingSelection: Set<string>,
-  ): Set<string> {
+  end(cardPositions: Map<string, ScreenPos>, existingSelection: Set<string>): Set<string> {
     this.active = false;
     this.gfx.visible = false;
     this.gfx.clear();

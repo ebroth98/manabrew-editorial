@@ -29,11 +29,29 @@ export interface ArchidektDeck {
 }
 
 export const ARCHIDEKT_FORMATS: Record<number, string> = {
-  1: "Standard", 2: "Modern", 3: "Commander / EDH", 4: "Legacy", 5: "Vintage",
-  6: "Pauper", 7: "Custom", 8: "Frontier", 9: "Future Standard", 10: "Penny Dreadful",
-  11: "Historic", 12: "Pioneer", 13: "Brawl", 14: "Commander 1v1", 15: "Duel Commander",
-  16: "Oathbreaker", 17: "Pauper EDH", 18: "Alchemy", 19: "Explorer", 20: "Historic Brawl",
-  21: "Premodern", 22: "Predh", 23: "Timeless",
+  1: "Standard",
+  2: "Modern",
+  3: "Commander / EDH",
+  4: "Legacy",
+  5: "Vintage",
+  6: "Pauper",
+  7: "Custom",
+  8: "Frontier",
+  9: "Future Standard",
+  10: "Penny Dreadful",
+  11: "Historic",
+  12: "Pioneer",
+  13: "Brawl",
+  14: "Commander 1v1",
+  15: "Duel Commander",
+  16: "Oathbreaker",
+  17: "Pauper EDH",
+  18: "Alchemy",
+  19: "Explorer",
+  20: "Historic Brawl",
+  21: "Premodern",
+  22: "Predh",
+  23: "Timeless",
 };
 
 /** Map our local GAME_FORMATS ids to Archidekt's numeric `deckFormat` codes. */

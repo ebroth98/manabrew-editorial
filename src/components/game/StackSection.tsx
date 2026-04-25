@@ -22,12 +22,12 @@ export function StackSection({ stack, promptType, onOpenStack }: StackSectionPro
   if (!show) return null;
 
   return (
-    <div 
+    <div
       className={cn("rounded-lg p-2", !isCounterPrompt && "bg-muted/20")}
       style={isCounterPrompt ? { backgroundColor: withAlpha(accentColor, 0.08) } : undefined}
     >
       <div className="flex items-center justify-between gap-2">
-        <p 
+        <p
           className={cn("text-xs font-semibold", !isCounterPrompt && "text-muted-foreground")}
           style={isCounterPrompt ? { color: accentColor } : undefined}
         >
@@ -39,12 +39,15 @@ export function StackSection({ stack, promptType, onOpenStack }: StackSectionPro
       </div>
       {stack.length > 0 && (
         <div className="mt-1 flex flex-col gap-0.5">
-          {[...stack].reverse().slice(0, 5).map((obj, idx) => (
-            <span key={obj.id} className="text-[11px] text-muted-foreground truncate">
-              {idx === 0 ? "[TOP] " : ""}
-              {obj.name}
-            </span>
-          ))}
+          {[...stack]
+            .reverse()
+            .slice(0, 5)
+            .map((obj, idx) => (
+              <span key={obj.id} className="text-[11px] text-muted-foreground truncate">
+                {idx === 0 ? "[TOP] " : ""}
+                {obj.name}
+              </span>
+            ))}
         </div>
       )}
     </div>

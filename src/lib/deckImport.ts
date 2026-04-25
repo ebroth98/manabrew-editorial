@@ -10,11 +10,7 @@ import {
   type ArchidektSearchResult,
   type RequestOptions,
 } from "./archidekt";
-import {
-  fetchMoxfieldDeck,
-  fetchMoxfieldResult,
-  parseMoxfieldUrl,
-} from "./moxfield";
+import { fetchMoxfieldDeck, fetchMoxfieldResult, parseMoxfieldUrl } from "./moxfield";
 
 export type DeckSource = "archidekt" | "moxfield";
 

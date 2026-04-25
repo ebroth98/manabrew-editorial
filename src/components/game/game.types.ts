@@ -50,7 +50,11 @@ export interface OpponentHalfProps {
   attackerIds?: string[];
   onClickCard: (card: XMageCard) => void;
   onClickAnyCard: (card: XMageCard) => void;
-  onHoverCard: (card: XMageCard | null, e?: React.MouseEvent, options?: { useAnchor?: boolean; placement?: "auto" | "top-center"; anchorOverride?: DOMRect }) => void;
+  onHoverCard: (
+    card: XMageCard | null,
+    e?: React.MouseEvent,
+    options?: { useAnchor?: boolean; placement?: "auto" | "top-center"; anchorOverride?: DOMRect },
+  ) => void;
   onFlipCard: () => void;
   showBackFace: boolean;
   onOpenZone: (title: string, cards: XMageCard[], onClickCard?: (cardId: string) => void) => void;
@@ -78,7 +82,11 @@ export interface BattlefieldZoneProps {
   topReserved?: number;
   onClickCard?: (card: XMageCard) => void;
   onClickAnyCard?: (card: XMageCard) => void;
-  onHoverCard?: (card: XMageCard | null, e?: React.MouseEvent, options?: { useAnchor?: boolean; placement?: "auto" | "top-center"; anchorOverride?: DOMRect }) => void;
+  onHoverCard?: (
+    card: XMageCard | null,
+    e?: React.MouseEvent,
+    options?: { useAnchor?: boolean; placement?: "auto" | "top-center"; anchorOverride?: DOMRect },
+  ) => void;
   onFlipCard?: () => void;
   showBackFace?: boolean;
   pendingCardIds?: string[];
@@ -100,7 +108,11 @@ export interface BattlefieldZoneProps {
 
 export interface HandDisplayProps {
   cards: XMageCard[];
-  onHoverCard?: (card: XMageCard | null, e?: React.MouseEvent, options?: { useAnchor?: boolean; placement?: "auto" | "top-center"; anchorOverride?: DOMRect }) => void;
+  onHoverCard?: (
+    card: XMageCard | null,
+    e?: React.MouseEvent,
+    options?: { useAnchor?: boolean; placement?: "auto" | "top-center"; anchorOverride?: DOMRect },
+  ) => void;
   onStartDrag?: (card: XMageCard, e: React.MouseEvent) => void;
   onClickCard?: (card: XMageCard, e?: React.MouseEvent) => void;
   onFlipCard?: () => void;
@@ -126,7 +138,11 @@ export interface RightActionPanelProps {
   collapsed: boolean;
   onToggleCollapse: () => void;
   gameLog: GameLogEntry[];
-  onHoverLogCard: (cardId: string | null, e?: React.MouseEvent, options?: { useAnchor?: boolean; placement?: "auto" | "top-center"; anchorOverride?: DOMRect }) => void;
+  onHoverLogCard: (
+    cardId: string | null,
+    e?: React.MouseEvent,
+    options?: { useAnchor?: boolean; placement?: "auto" | "top-center"; anchorOverride?: DOMRect },
+  ) => void;
   resolveCardName: (cardId: string) => string;
   resolvePlayerName: (playerId: string) => string;
   snapshots: GameSnapshotEntry[];

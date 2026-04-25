@@ -31,7 +31,9 @@ export function KickerModal({ kickerCost, sourceCardName, onDecide }: KickerModa
         </p>
       </div>
       <Modal.Footer>
-        <Button variant="outline" onClick={() => onDecide(false)}>No</Button>
+        <Button variant="outline" onClick={() => onDecide(false)}>
+          No
+        </Button>
         <Button onClick={() => onDecide(true)}>Pay Kicker</Button>
       </Modal.Footer>
     </Modal>

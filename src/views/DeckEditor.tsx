@@ -1,4 +1,8 @@
-import { DeckBuilder, useDeckUnsavedChanges, revertDeckToLastSaved } from "@/components/editor/DeckBuilder";
+import {
+  DeckBuilder,
+  useDeckUnsavedChanges,
+  revertDeckToLastSaved,
+} from "@/components/editor/DeckBuilder";
 import { CardSearch } from "@/components/editor/CardSearch";
 import {
   DndContext,
@@ -35,9 +39,18 @@ import type { SortBy } from "@/views/myDecks.utils";
 
 export default function DeckEditor() {
   const {
-    addToMain, addToSide, removeFromMain, removeFromSide,
-    currentDeck, tagCard, untagCard,
-    savedDecks, loadSavedDeck, clearDeck, setDeckName, deleteSavedDeck,
+    addToMain,
+    addToSide,
+    removeFromMain,
+    removeFromSide,
+    currentDeck,
+    tagCard,
+    untagCard,
+    savedDecks,
+    loadSavedDeck,
+    clearDeck,
+    setDeckName,
+    deleteSavedDeck,
     currentDeckId: _currentDeckId,
   } = useDeckStore();
   const [draggedCard, setDraggedCard] = useState<XMageCard | null>(null);
@@ -46,7 +59,7 @@ export default function DeckEditor() {
   const location = useLocation();
 
   const [view, setView] = useState<"list" | "editor">(() =>
-    (location.state as { directToEditor?: boolean } | null)?.directToEditor ? "editor" : "list"
+    (location.state as { directToEditor?: boolean } | null)?.directToEditor ? "editor" : "list",
   );
   const [showBackConfirm, setShowBackConfirm] = useState(false);
 
@@ -62,9 +75,7 @@ export default function DeckEditor() {
 
   const blocker = useBlocker(hasUnsavedChanges && view === "editor");
 
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 6 } })
-  );
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
 
   const supplementaryCards = [
     ...currentDeck.sideboard,
@@ -78,12 +89,15 @@ export default function DeckEditor() {
 
   function toggleColor(color: string) {
     setColorFilter((prev) =>
-      prev.includes(color) ? prev.filter((c) => c !== color) : [...prev, color]
+      prev.includes(color) ? prev.filter((c) => c !== color) : [...prev, color],
     );
   }
 
   const { valid: filteredValid, drafts: filteredDrafts } = applyDeckFilters(savedDecks, {
-    search, formatFilter, colorFilter, sortBy,
+    search,
+    formatFilter,
+    colorFilter,
+    sortBy,
   });
 
   function handleSelectDeck(id: string) {
@@ -249,17 +263,24 @@ export default function DeckEditor() {
               )}
 
               {/* Empty state */}
-              {filteredValid.length === 0 && filteredDrafts.length === 0 && savedDecks.length > 0 && (
-                <p className="col-span-5 pt-6 text-center text-sm text-muted-foreground">
-                  No decks match your filters.
-                </p>
-              )}
+              {filteredValid.length === 0 &&
+                filteredDrafts.length === 0 &&
+                savedDecks.length > 0 && (
+                  <p className="col-span-5 pt-6 text-center text-sm text-muted-foreground">
+                    No decks match your filters.
+                  </p>
+                )}
             </div>
           </ScrollArea>
         </div>
 
         {/* Rename dialog */}
-        <Dialog open={renamingId !== null} onOpenChange={(open) => { if (!open) setRenamingId(null); }}>
+        <Dialog
+          open={renamingId !== null}
+          onOpenChange={(open) => {
+            if (!open) setRenamingId(null);
+          }}
+        >
           <DialogContent className="max-w-sm">
             <DialogHeader>
               <DialogTitle>Rename Deck</DialogTitle>
@@ -267,7 +288,9 @@ export default function DeckEditor() {
             <Input
               value={renameInput}
               onChange={(e) => setRenameInput(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter") confirmRename(); }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") confirmRename();
+              }}
               placeholder="Deck name"
               autoFocus
             />
@@ -296,11 +319,10 @@ export default function DeckEditor() {
         onDragEnd={handleDragEnd}
       >
         <div className="h-full w-full overflow-hidden flex">
-          <div className={cn("h-full overflow-hidden transition-all", showSearch ? "w-1/2" : "w-full")}>
-            <DeckBuilder
-              onToggleSearch={() => setShowSearch((v) => !v)}
-              onBack={handleBack}
-            />
+          <div
+            className={cn("h-full overflow-hidden transition-all", showSearch ? "w-1/2" : "w-full")}
+          >
+            <DeckBuilder onToggleSearch={() => setShowSearch((v) => !v)} onBack={handleBack} />
           </div>
           {showSearch && (
             <div className="w-1/2 h-full border-l overflow-hidden">
@@ -358,7 +380,14 @@ export default function DeckEditor() {
               <Button variant="outline" size="sm" onClick={() => blocker.reset()}>
                 Stay
               </Button>
-              <Button variant="destructive" size="sm" onClick={() => { revertDeckToLastSaved(); blocker.proceed(); }}>
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={() => {
+                  revertDeckToLastSaved();
+                  blocker.proceed();
+                }}
+              >
                 Leave Without Saving
               </Button>
             </div>

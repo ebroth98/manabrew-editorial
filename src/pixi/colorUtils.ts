@@ -21,14 +21,18 @@ export function hexToNum(color: string): number {
   // #hex
   const bare = trimmed.replace("#", "");
   if (/^[\da-fA-F]{3}$/.test(bare)) {
-    return parseInt(bare.split("").map((c) => c + c).join(""), 16);
+    return parseInt(
+      bare
+        .split("")
+        .map((c) => c + c)
+        .join(""),
+      16,
+    );
   }
   if (/^[\da-fA-F]{6}$/.test(bare)) return parseInt(bare, 16);
 
   // rgb(r, g, b) / rgba(r, g, b, a)
-  const rgbaMatch = trimmed.match(
-    /^rgba?\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})/i,
-  );
+  const rgbaMatch = trimmed.match(/^rgba?\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})/i);
   if (rgbaMatch) {
     const r = Math.min(255, parseInt(rgbaMatch[1]!, 10));
     const g = Math.min(255, parseInt(rgbaMatch[2]!, 10));
@@ -37,11 +41,9 @@ export function hexToNum(color: string): number {
   }
 
   // HSL: "210 40% 98%" or "hsl(210, 40%, 98%)"
-  const hslMatch = trimmed.match(
-    /^(?:hsl\(\s*)?(\d+(?:\.\d+)?)\s+(\d+(?:\.\d+)?)%\s+(\d+(?:\.\d+)?)%\s*\)?$/i,
-  ) ?? trimmed.match(
-    /^hsl\(\s*(\d+(?:\.\d+)?)\s*,\s*(\d+(?:\.\d+)?)%\s*,\s*(\d+(?:\.\d+)?)%\s*\)$/i,
-  );
+  const hslMatch =
+    trimmed.match(/^(?:hsl\(\s*)?(\d+(?:\.\d+)?)\s+(\d+(?:\.\d+)?)%\s+(\d+(?:\.\d+)?)%\s*\)?$/i) ??
+    trimmed.match(/^hsl\(\s*(\d+(?:\.\d+)?)\s*,\s*(\d+(?:\.\d+)?)%\s*,\s*(\d+(?:\.\d+)?)%\s*\)$/i);
   if (hslMatch) {
     const [r, g, b] = hslToRgb(
       parseFloat(hslMatch[1]!),
@@ -55,9 +57,7 @@ export function hexToNum(color: string): number {
 }
 
 export function colorAlpha(hex: string): number {
-  const rgbaMatch = hex.match(
-    /^rgba?\(\s*\d+\s*,\s*\d+\s*,\s*\d+\s*(?:,\s*([\d.]+))?\s*\)$/i,
-  );
+  const rgbaMatch = hex.match(/^rgba?\(\s*\d+\s*,\s*\d+\s*,\s*\d+\s*(?:,\s*([\d.]+))?\s*\)$/i);
   if (rgbaMatch && rgbaMatch[1] != null) return parseFloat(rgbaMatch[1]);
   return 1;
 }
