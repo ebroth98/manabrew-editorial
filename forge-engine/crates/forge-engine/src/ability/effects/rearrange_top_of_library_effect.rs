@@ -2,6 +2,7 @@ use forge_foundation::ZoneType;
 
 use super::{resolve_defined_player, resolve_numeric_svar, EffectContext};
 use crate::event::RunParams;
+use crate::parsing::keys;
 use crate::spellability::SpellAbility;
 use crate::trigger::TriggerType;
 
@@ -18,17 +19,12 @@ use crate::trigger::TriggerType;
 /// `RearrangeTopOfLibraryEffect` class extending `SpellAbilityEffect`.
 #[forge_engine_macros::spell_effect(RearrangeTopOfLibraryEffect)]
 fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
-    let num = resolve_numeric_svar(ctx.game, sa, "NumCards", 3).max(0) as usize;
-    let may_shuffle = sa
-        .params
-        .get("MayShuffle")
-        .map(|s| s.eq_ignore_ascii_case("True"))
-        .unwrap_or(false);
+    let num = resolve_numeric_svar(ctx.game, sa, keys::NUM_CARDS, 3).max(0) as usize;
+    let may_shuffle = sa.ir.may_shuffle;
 
     let target = sa
-        .params
-        .get("Defined")
-        .and_then(|d| resolve_defined_player(d, sa.activating_player, ctx.game))
+        .defined()
+        .and_then(|defined| resolve_defined_player(defined, sa.activating_player, ctx.game))
         .unwrap_or(sa.activating_player);
 
     let lib_len = ctx.game.cards_in_zone(ZoneType::Library, target).len();

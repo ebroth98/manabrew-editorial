@@ -1,9 +1,11 @@
 use forge_foundation::ZoneType;
 
+use super::resolve_numeric_svar;
 use super::EffectContext;
 use crate::agent::BinaryChoiceKind;
 use crate::card::CounterType;
 use crate::ids::CardId;
+use crate::parsing::keys;
 use crate::spellability::SpellAbility;
 
 /// `SP$ TimeTravel` — for chosen cards, add or remove a time counter.
@@ -18,11 +20,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let Some(source_id) = sa.source else { return };
     let source_name = ctx.game.card(source_id).card_name.clone();
 
-    let amount = sa
-        .params
-        .get("Amount")
-        .and_then(|s| s.parse::<i32>().ok())
-        .unwrap_or(1);
+    let amount = resolve_numeric_svar(ctx.game, sa, keys::AMOUNT, 1);
     if amount <= 0 {
         return;
     }

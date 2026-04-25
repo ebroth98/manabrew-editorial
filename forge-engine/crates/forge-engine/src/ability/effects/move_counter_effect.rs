@@ -1,7 +1,9 @@
 use forge_foundation::ZoneType;
 
-use super::{parse_counter_type, resolve_numeric_svar, EffectContext};
+use super::{resolve_numeric_svar, EffectContext};
+use crate::card::CounterType;
 use crate::event::RunParams;
+use crate::parsing::keys;
 use crate::spellability::SpellAbility;
 use crate::trigger::TriggerType;
 
@@ -23,12 +25,8 @@ use crate::trigger::TriggerType;
 /// `MoveCounterEffect` class extending `SpellAbilityEffect`.
 #[forge_engine_macros::spell_effect(MoveCounterEffect)]
 fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
-    let counter_type = sa
-        .params
-        .get(crate::parsing::keys::COUNTER_TYPE)
-        .map(parse_counter_type)
-        .unwrap_or(crate::card::CounterType::P1P1);
-    let count = resolve_numeric_svar(ctx.game, sa, "CounterNum", 1);
+    let counter_type = sa.ir.counter_type.clone().unwrap_or(CounterType::P1P1);
+    let count = resolve_numeric_svar(ctx.game, sa, keys::COUNTER_NUM, 1);
     if count <= 0 {
         return;
     }
@@ -41,12 +39,10 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     };
 
     // Determine destination for counters
-    let to_id = sa.target_chosen.target_card.or_else(|| {
-        match sa.defined() {
-            Some("Self") => sa.source,
-            Some("ParentTarget") => ctx.parent_target_card,
-            _ => None,
-        }
+    let to_id = sa.target_chosen.target_card.or_else(|| match sa.defined() {
+        Some("Self") => sa.source,
+        Some("ParentTarget") => ctx.parent_target_card,
+        _ => None,
     });
 
     let from = match from_id {

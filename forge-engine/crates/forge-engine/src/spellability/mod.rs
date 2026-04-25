@@ -25,6 +25,7 @@ use std::sync::atomic::{AtomicU32, Ordering};
 
 use serde::{Deserialize, Serialize};
 
+use crate::ability::ability_factory::AbilityRecordType;
 use crate::ability::ability_ir::SpellAbilityIr;
 use crate::ability::api_type::ApiType;
 use crate::ability::AbilityKey;
@@ -112,8 +113,9 @@ pub struct SpellAbility {
     pub targeting_player: Option<PlayerId>,
     /// The raw ability text (pipe-delimited params).
     pub ability_text: String,
-    /// Parsed pipe-delimited parameters.
-    pub params: Params,
+    /// Java parity: AB/SP/ST/DB record kind used to distinguish sub-abilities.
+    #[serde(default)]
+    pub record_type: AbilityRecordType,
     /// Incrementally compiled Forge script IR. This is currently metadata for
     /// parser migration and diagnostics; resolution still follows Java-parity
     /// params until each API is explicitly wired.
@@ -388,6 +390,12 @@ impl SpellAbility {
             keys::REMOVE_CREATURE_TYPES => self.ir.animate_remove_creature_types,
             keys::REMOVE_ALL_ABILITIES => self.ir.animate_remove_all_abilities,
             keys::REMEMBER_REMOVED_CARDS => self.ir.remember_removed_cards,
+            keys::TOKEN_TAPPED => self.ir.token_tapped,
+            keys::REMEMBER_TOKENS => self.ir.remember_tokens,
+            keys::REMEMBER_ORIGINAL_TOKENS => self.ir.remember_original_tokens,
+            keys::IMPRINT_TOKENS => self.ir.imprint_tokens,
+            keys::REMEMBER_SOURCE => self.ir.remember_source,
+            keys::CLEANUP_FOR_EACH => self.ir.cleanup_for_each,
             "Morph" => self.ir.morph,
             "MorphUp" => self.ir.morph_up,
             "Megamorph" => self.ir.megamorph,
@@ -408,22 +416,37 @@ impl SpellAbility {
             keys::VALID_TARGET => self.ir.valid_target_text.as_deref(),
             keys::DEFINED => self.ir.defined_text.as_deref(),
             keys::DEFINED_PLAYER => self.ir.defined_player_text.as_deref(),
+            keys::CONTROLLER => self.ir.controller_text.as_deref(),
             keys::ORIGIN => self.ir.origin_text.as_deref(),
             keys::DESTINATION => self.ir.destination_text.as_deref(),
             keys::CHOICES => self.ir.choices.as_deref(),
+            keys::FOR_EACH => self.ir.for_each_text.as_deref(),
             keys::TRIGGERS => self.ir.triggers.as_deref(),
             keys::COUNTER_TYPE => self.ir.counter_type_text.as_deref(),
             keys::TOKEN_SCRIPT => self.ir.token_script.as_deref(),
             keys::TOKEN_OWNER => self.ir.token_owner.as_deref(),
+            keys::TOKEN_NAME => self.ir.token_name_text.as_deref(),
+            keys::TOKEN_TYPES => self.ir.token_types_text.as_deref(),
+            keys::TOKEN_COLORS => self.ir.token_colors_text.as_deref(),
+            keys::TOKEN_KEYWORDS => self.ir.token_keywords_text.as_deref(),
+            keys::TOKEN_ATTACKING => self.ir.token_attacking_text.as_deref(),
+            keys::TOKEN_BLOCKING => self.ir.token_blocking_text.as_deref(),
+            keys::TOKEN_REMEMBERED => self.ir.token_remembered.as_deref(),
+            keys::ADD_TRIGGERS_FROM => self.ir.add_triggers_from_text.as_deref(),
+            keys::AT_EOT => self.ir.at_eot.as_deref(),
+            keys::AT_EOT_TRIG => self.ir.at_eot_trig_text.as_deref(),
+            keys::ATTACHED_TO => self.ir.attached_to.as_deref(),
+            keys::ATTACH_AFTER => self.ir.attach_after_text.as_deref(),
+            keys::WITH_COUNTERS_TYPE => self.ir.with_counters_type_text.as_deref(),
+            keys::WITH_COUNTERS_AMOUNT => self.ir.with_counters_amount_text.as_deref(),
+            keys::PUMP_KEYWORDS => self.ir.pump_keywords.as_deref(),
+            keys::PUMP_DURATION => self.ir.pump_duration_text.as_deref(),
             "Keyword" => self.ir.keyword_text.as_deref(),
             keys::CHOOSER => self.ir.chooser.as_deref(),
             keys::NAME => self.ir.name_text.as_deref(),
             keys::NAMES => self.ir.names_text.as_deref(),
             keys::CHOOSE_FROM_LIST => self.ir.choose_from_list_text.as_deref(),
-            keys::GAIN_CONTROL => self
-                .ir
-                .gain_control
-                .then_some("True"),
+            keys::GAIN_CONTROL => self.ir.gain_control.then_some("True"),
             keys::SPELLBOOK => self.ir.spellbook_text.as_deref(),
             keys::VOTE_MESSAGE => self.ir.vote_message_text.as_deref(),
             keys::DEFINED_MAGNET => self.ir.defined_magnet_text.as_deref(),
@@ -537,6 +560,8 @@ impl SpellAbility {
             .or_else(|| parsed.get(keys::DB))
             .or_else(|| parsed.get(keys::AB))
             .and_then(|s| ApiType::smart_value_of(s));
+        let record_type = crate::ability::ability_factory::AbilityRecordType::from_parsed(&parsed)
+            .unwrap_or_default();
         let target_restrictions = if parsed.has(keys::VALID_TGTS) {
             TargetRestrictions::new_from_parsed(&parsed, &params)
         } else {
@@ -554,7 +579,7 @@ impl SpellAbility {
             activating_player: player,
             targeting_player: None,
             ability_text: ability_text.to_string(),
-            params,
+            record_type,
             ir,
             target_restrictions,
             target_chosen: TargetChoices::default(),

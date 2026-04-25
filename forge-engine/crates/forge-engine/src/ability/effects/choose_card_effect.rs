@@ -35,11 +35,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
 
     let zone = sa.ir.choice_zone.unwrap_or(ZoneType::Battlefield);
 
-    let filter = sa
-        .ir
-        .choices
-        .clone()
-        .unwrap_or_else(|| "Card".to_string());
+    let filter = sa.ir.choices.clone().unwrap_or_else(|| "Card".to_string());
     let filter_selector = sa.ir.choices_selector.clone();
 
     let remember = sa.ir.remember_chosen;

@@ -1317,6 +1317,10 @@ dependencies = [
 [[package]]
 name = "forge-engine-macros"
 version = "0.1.0"
+dependencies = [
+ "quote",
+ "syn 2.0.116",
+]
 
 [[package]]
 name = "forge-foundation"

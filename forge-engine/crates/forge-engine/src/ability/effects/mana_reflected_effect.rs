@@ -12,12 +12,7 @@ use crate::spellability::SpellAbility;
 pub fn build_spell_ability(sa: &mut crate::spellability::SpellAbility) {
     // Set up the mana part from Produced$ parameter
     let produced = sa.ir.produced.as_deref().unwrap_or("Any").to_string();
-    let restriction = sa
-        .ir
-        .restrict_valid
-        .as_deref()
-        .unwrap_or("")
-        .to_string();
+    let restriction = sa.ir.restrict_valid.as_deref().unwrap_or("").to_string();
     sa.mana_part = Some(crate::spellability::AbilityManaPart::new(
         &produced,
         &restriction,

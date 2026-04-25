@@ -1,8 +1,8 @@
 use forge_foundation::ZoneType;
 
-use super::{emit_zone_trigger, EffectContext};
+use super::{emit_zone_trigger, resolve_numeric_svar, EffectContext};
 use crate::event::RunParams;
-use crate::spellability::SpellAbility;
+use crate::parsing::keys;
 use crate::trigger::TriggerType;
 
 /// `DB$ Connive` — target creature connives N times.
@@ -20,11 +20,7 @@ use crate::trigger::TriggerType;
 /// `ConniveEffect` class extending `SpellAbilityEffect`.
 #[forge_engine_macros::spell_effect(ConniveEffect)]
 fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
-    let num: usize = sa
-        .params
-        .get("ConniveNum")
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(1);
+    let num = resolve_numeric_svar(ctx.game, sa, keys::CONNIVE_NUM, 1).max(0) as usize;
 
     // Resolve the conniving creature: source card by default.
     let conniver_id = if let Some(target) = sa.target_chosen.target_card {

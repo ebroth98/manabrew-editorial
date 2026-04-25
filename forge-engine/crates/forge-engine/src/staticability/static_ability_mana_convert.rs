@@ -74,7 +74,9 @@ pub fn check_mana_convert(
     ) {
         return false;
     }
-    st_ab.ir.mana_conversion.as_deref().is_some_and(|conversion| {
-        conversion.contains("AnyColor") || conversion.contains("AnyType")
-    })
+    st_ab
+        .ir
+        .mana_conversion
+        .as_deref()
+        .is_some_and(|conversion| conversion.contains("AnyColor") || conversion.contains("AnyType"))
 }

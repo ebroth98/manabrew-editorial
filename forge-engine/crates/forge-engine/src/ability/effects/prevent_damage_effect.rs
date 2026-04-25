@@ -46,7 +46,12 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     }
 
     // Defined$ resolution
-    match sa.ir.defined.as_ref().and_then(|defined| defined.refs.first()) {
+    match sa
+        .ir
+        .defined
+        .as_ref()
+        .and_then(|defined| defined.refs.first())
+    {
         Some(DefinedRef::SelfCard) => {
             if let Some(source) = sa.source {
                 if ctx.game.card(source).zone == ZoneType::Battlefield {

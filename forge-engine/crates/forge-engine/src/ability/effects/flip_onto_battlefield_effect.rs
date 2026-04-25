@@ -7,8 +7,10 @@
 
 use forge_foundation::ZoneType;
 
+use super::resolve_numeric_svar;
 use super::EffectContext;
 use crate::ids::CardId;
+use crate::parsing::keys;
 use crate::spellability::SpellAbility;
 
 /// Struct form of this effect so it can participate in the
@@ -34,11 +36,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
 
     // In digital: randomly select which permanents get "hit"
     // Java uses actual physics simulation — we use RNG
-    let hit_count = sa
-        .params
-        .get("HitCount")
-        .and_then(|s| s.parse::<usize>().ok())
-        .unwrap_or(1);
+    let hit_count = resolve_numeric_svar(ctx.game, sa, keys::HIT_COUNT, 1).max(0) as usize;
 
     let mut pool = targets;
     ctx.rng.shuffle_cards(&mut pool);

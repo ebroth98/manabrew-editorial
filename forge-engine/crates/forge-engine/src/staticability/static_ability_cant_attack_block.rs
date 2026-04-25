@@ -715,11 +715,8 @@ pub fn get_block_cost(
     attacker_player: PlayerId,
     source: &Card,
 ) -> Option<String> {
-    if !valid_filter::matches_valid_card_selector_opt(
-        st_ab.ir.valid_card.as_ref(),
-        blocker,
-        source,
-    ) {
+    if !valid_filter::matches_valid_card_selector_opt(st_ab.ir.valid_card.as_ref(), blocker, source)
+    {
         return None;
     }
 

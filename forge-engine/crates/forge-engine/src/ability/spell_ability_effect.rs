@@ -519,10 +519,7 @@ pub fn get_stack_description_with_subs(
         sa.api,
         Some(ApiType::PermanentCreature) | Some(ApiType::PermanentNoncreature)
     );
-    let is_sub = matches!(
-        AbilityRecordType::from_params(&sa.params),
-        Some(AbilityRecordType::SubAbility)
-    );
+    let is_sub = matches!(sa.record_type, AbilityRecordType::SubAbility);
 
     if !is_permanent_api {
         if !is_sub {
@@ -657,11 +654,10 @@ fn calculate_amount_for_sa(game: &GameState, sa: &SpellAbility, svar: &str) -> i
     let Some(src) = sa.source else {
         return 0;
     };
-    let Some(expr) = sa
-        .params
-        .get(svar)
-        .or_else(|| game.card(src).get_s_var(svar))
-    else {
+    if sa.ir.semantic_numeric_params.contains_key(svar) {
+        return crate::svar::resolve_numeric_svar(game, sa, svar, 0);
+    }
+    let Some(expr) = game.card(src).get_s_var(svar) else {
         return 0;
     };
     crate::svar::resolve_count_svar_for_sa(expr, game, src, sa.activating_player, sa)
@@ -777,6 +773,50 @@ pub fn register_at_eot(
         remembered_lki_cards: remembered,
         sort_after_active: false,
     });
+}
+
+pub fn add_self_trigger_at_eot(
+    trigger_handler: &mut crate::trigger::handler::TriggerHandler,
+    game: &mut crate::game::GameState,
+    location: &str,
+    card_id: CardId,
+) {
+    let mut player = "";
+    let mut action = location;
+    let mut whose = " the ";
+    if let Some((prefix, suffix)) = location.split_once('_') {
+        player = prefix;
+        action = suffix;
+        if player.eq_ignore_ascii_case("You") {
+            whose = " your next ";
+        }
+    }
+
+    let mut trigger_raw = format!(
+        "Mode$ Phase | Phase$ End of Turn | TriggerZones$ Battlefield | TriggerDescription$ At the beginning of{}end step, {} CARDNAME.",
+        whose,
+        action.to_ascii_lowercase()
+    );
+    if !player.is_empty() {
+        trigger_raw.push_str(" | Player$ ");
+        trigger_raw.push_str(player);
+    }
+
+    let Some(mut trigger) = trigger_handler.parse_trigger(&trigger_raw) else {
+        return;
+    };
+
+    let effect = match action {
+        "Sacrifice" => "DB$ Sacrifice | SacValid$ Self",
+        "Exile" => "DB$ ChangeZone | Origin$ Battlefield | Destination$ Exile | Defined$ Self",
+        _ => "",
+    };
+    if !effect.is_empty() {
+        trigger.execute = "EndOfTurnLeavePlay".to_string();
+        game.card_mut(card_id)
+            .set_s_var("EndOfTurnLeavePlay", effect);
+    }
+    game.card_mut(card_id).add_trigger(trigger);
 }
 
 /// Validate a `Duration$` param against the host card's current state.

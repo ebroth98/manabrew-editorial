@@ -191,11 +191,7 @@ pub(super) fn resolve_destination(
     let lib_position = sa.library_position().unwrap_or("").to_string();
     if let Some(alt_dest_str) = sa.destination_alternative() {
         if let Some(alt_zone) = parse_zone_type(alt_dest_str) {
-            let alt_lib_pos = sa
-                .params
-                .get(keys::LIBRARY_POSITION_ALTERNATIVE)
-                .unwrap_or("0")
-                .to_string();
+            let alt_lib_pos = sa.library_position_alternative().unwrap_or("0").to_string();
             let chooser = sa.activating_player;
             ctx.agents[chooser.index()].snapshot_state(ctx.game, ctx.mana_pools);
             let options = vec![format!("{:?}", dest_zone), format!("{:?}", alt_zone)];

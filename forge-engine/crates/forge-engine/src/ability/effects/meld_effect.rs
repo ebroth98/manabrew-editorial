@@ -22,21 +22,9 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     };
     let controller = sa.activating_player;
 
-    let prim_name = sa
-        .params
-        .get(keys::PRIMARY)
-        .map(|s| s.to_string())
-        .unwrap_or_default();
-    let sec_name = sa
-        .params
-        .get(keys::SECONDARY)
-        .map(|s| s.to_string())
-        .unwrap_or_default();
-    let sec_type = sa
-        .params
-        .get(keys::SECONDARY_TYPE)
-        .map(|s| s.to_string())
-        .unwrap_or_else(|| "Creature".to_string());
+    let prim_name = sa.ir.primary_text.as_deref().unwrap_or_default();
+    let sec_name = sa.ir.secondary_text.as_deref().unwrap_or_default();
+    let sec_type = sa.ir.secondary_type_text.as_deref().unwrap_or("Creature");
 
     // Find a permanent you control and own named "Secondary" matching SecondaryType
     let candidates: Vec<CardId> = ctx

@@ -49,11 +49,7 @@ pub fn any_cant_put_counter_on_player(
             if !counter_type_matches(st_ab.ir.counter_type.as_ref(), &counter_type) {
                 continue;
             }
-            if !matches_valid_player(
-                st_ab.ir.valid_player.as_ref(),
-                player,
-                source.controller,
-            ) {
+            if !matches_valid_player(st_ab.ir.valid_player.as_ref(), player, source.controller) {
                 continue;
             }
             if st_ab.ir.has_valid_card {
@@ -102,11 +98,7 @@ pub fn apply_cant_put_counter(
         if st_ab.ir.has_valid_card {
             return false;
         }
-        return matches_valid_player(
-            st_ab.ir.valid_player.as_ref(),
-            player,
-            source.controller,
-        );
+        return matches_valid_player(st_ab.ir.valid_player.as_ref(), player, source.controller);
     }
     false
 }

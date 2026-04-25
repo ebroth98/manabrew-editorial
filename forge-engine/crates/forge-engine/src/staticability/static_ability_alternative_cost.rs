@@ -266,11 +266,7 @@ fn apply(
     }
 
     // Check ValidCard — mirrors Java's stAb.matchesValidParam("ValidCard", source)
-    if !valid_filter::matches_valid_card_selector_opt(
-        st_ab.ir.valid_card.as_ref(),
-        source,
-        host,
-    ) {
+    if !valid_filter::matches_valid_card_selector_opt(st_ab.ir.valid_card.as_ref(), source, host) {
         return false;
     }
 

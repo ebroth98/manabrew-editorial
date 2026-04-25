@@ -188,11 +188,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
 
 /// Resolve the target card from `Defined$` parameter.
 fn resolve_target_card(sa: &SpellAbility) -> Option<CardId> {
-    let defined = sa
-        .ir
-        .defined_text
-        .clone()
-        .unwrap_or_default();
+    let defined = sa.ir.defined_text.clone().unwrap_or_default();
     if let Some(uid_str) = defined.strip_prefix("CardUID_") {
         uid_str.parse::<u32>().ok().map(CardId)
     } else {

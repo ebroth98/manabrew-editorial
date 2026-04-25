@@ -14,12 +14,7 @@ use crate::spellability::SpellAbility;
 #[forge_engine_macros::spell_effect(ReorderZoneEffect)]
 fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let controller = sa.activating_player;
-    let zone_str = sa
-        .params
-        .get(crate::parsing::keys::ZONE)
-        .unwrap_or("Library")
-        .to_string();
-    let zone = super::parse_zone_type(&zone_str).unwrap_or(ZoneType::Library);
+    let zone = sa.ir.zone.unwrap_or(ZoneType::Library);
 
     let players = if let Some(def) = sa.defined_player() {
         super::resolve_defined_players(def, controller, ctx.game)

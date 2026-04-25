@@ -1057,11 +1057,12 @@ impl TriggerHandler {
                 .ir
                 .origin_zones
                 .contains(&forge_foundation::ZoneType::Battlefield)
-                || trigger
-                    .ir
-                    .destination_zones
-                    .iter()
-                    .any(|zone| matches!(zone, forge_foundation::ZoneType::Library | forge_foundation::ZoneType::Hand));
+                || trigger.ir.destination_zones.iter().any(|zone| {
+                    matches!(
+                        zone,
+                        forge_foundation::ZoneType::Library | forge_foundation::ZoneType::Hand
+                    )
+                });
         }
         false
     }
@@ -1244,7 +1245,7 @@ impl TriggerHandler {
                         .destination
                         .is_some_and(|zone| sa.ir.destination_zones.contains(&zone))
                 {
-                        continue;
+                    continue;
                 }
 
                 // All conditions matched — trigger is disabled.

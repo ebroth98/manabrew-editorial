@@ -638,6 +638,11 @@ impl GameLoop {
             game.player_cleanup_turn_state(player);
         }
 
+        for i in 0..game.cards.len() {
+            let card_id = game.cards[i].id;
+            crate::ability::effects::change_text_effect::run(game, card_id);
+        }
+
         // Remove damage and reset until-end-of-turn effects on all battlefield permanents
         for i in 0..game.cards.len() {
             if game.cards[i].zone == ZoneType::Battlefield {

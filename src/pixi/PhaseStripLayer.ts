@@ -410,8 +410,6 @@ export class PhaseStripLayer {
       cell.hitArea.rect(cx, y, cellW, CELL_H);
       cell.hitArea.fill({ color: 0x000000, alpha: 0.001 });
 
-      console.log({DIOPORCO: appTheme.foreground})
-      console.log({DIOPORCO2: appTheme.accent})
       cell.bg.clear();
       cell.bg.roundRect(cx, y, cellW, CELL_H, CELL_R);
       cell.bg.fill({ color: hexToNum(appTheme.secondary) });

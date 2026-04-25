@@ -78,12 +78,10 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let controller = sa.activating_player;
 
     // Determine target
-    let target = sa.target_chosen.target_card.or_else(|| {
-        match sa.defined() {
-            Some("Self") => sa.source,
-            Some("ParentTarget") => ctx.parent_target_card,
-            _ => sa.source,
-        }
+    let target = sa.target_chosen.target_card.or_else(|| match sa.defined() {
+        Some("Self") => sa.source,
+        Some("ParentTarget") => ctx.parent_target_card,
+        _ => sa.source,
     });
 
     let gains = sa.ir.gains.clone().unwrap_or_default();

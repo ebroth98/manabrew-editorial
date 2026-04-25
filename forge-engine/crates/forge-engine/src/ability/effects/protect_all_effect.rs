@@ -39,12 +39,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
         .unwrap_or("Creature.YouCtrl")
         .to_string();
     let valid_selector = sa.ir.valid_cards_selector.as_ref();
-    let gains = sa
-        .ir
-        .gains
-        .as_deref()
-        .unwrap_or("")
-        .to_string();
+    let gains = sa.ir.gains.as_deref().unwrap_or("").to_string();
 
     // If choosing a color, do it once for all targets
     let prot_keyword = if gains.contains("chosen color") {

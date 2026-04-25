@@ -99,6 +99,8 @@ pub const TRIGGERS_WHEN_SPENT: &str = "TriggersWhenSpent";
 
 pub const AMOUNT: &str = "Amount";
 pub const ADDITIONAL: &str = "Additional";
+pub const CONNIVE_NUM: &str = "ConniveNum";
+pub const HIT_COUNT: &str = "HitCount";
 pub const NUM_DMG: &str = "NumDmg";
 pub const LIFE_AMOUNT: &str = "LifeAmount";
 pub const DAMAGE_AMOUNT: &str = "DamageAmount";
@@ -137,6 +139,7 @@ pub const CHANGE_VALID: &str = "ChangeValid";
 // ── Keywords ───────────────────────────────────────────────────────────
 
 pub const KEYWORDS: &str = "Keywords";
+pub const ALL_SUFFIX_KEYWORDS: &str = "AllSuffixKeywords";
 pub const ADD_KEYWORD: &str = "AddKeyword";
 pub const ADD_KEYWORDS: &str = "AddKeywords";
 pub const ADD_ABILITY: &str = "AddAbility";
@@ -144,6 +147,11 @@ pub const ADD_TRIGGER: &str = "AddTrigger";
 pub const ADD_KWS: &str = "AddKWs";
 pub const PUMP_KEYWORDS: &str = "PumpKeywords";
 pub const GAINS: &str = "Gains";
+
+// ── Attribute params ─────────────────────────────────────────────────────
+
+pub const ACTIVATE: &str = "Activate";
+pub const ATTRIBUTES: &str = "Attributes";
 
 // ── Counter params ─────────────────────────────────────────────────────
 
@@ -239,6 +247,18 @@ pub const REPLACEMENT: &str = "Replacement";
 
 pub const TOKEN_SCRIPT: &str = "TokenScript";
 pub const TOKEN_OWNER: &str = "TokenOwner";
+pub const TOKEN_TAPPED: &str = "TokenTapped";
+pub const TOKEN_ATTACKING: &str = "TokenAttacking";
+pub const TOKEN_BLOCKING: &str = "TokenBlocking";
+pub const TOKEN_REMEMBERED: &str = "TokenRemembered";
+pub const REMEMBER_TOKENS: &str = "RememberTokens";
+pub const REMEMBER_ORIGINAL_TOKENS: &str = "RememberOriginalTokens";
+pub const IMPRINT_TOKENS: &str = "ImprintTokens";
+pub const REMEMBER_SOURCE: &str = "RememberSource";
+pub const CLEANUP_FOR_EACH: &str = "CleanupForEach";
+pub const ADD_TRIGGERS_FROM: &str = "AddTriggersFrom";
+pub const AT_EOT_TRIG: &str = "AtEOTTrig";
+pub const PUMP_DURATION: &str = "PumpDuration";
 
 // ── Choice/Selection params ────────────────────────────────────────────
 
@@ -247,6 +267,8 @@ pub const CHOICE_ZONE: &str = "ChoiceZone";
 pub const CHOOSER: &str = "Chooser";
 pub const CHOOSE_FROM_DEFINED_CARDS: &str = "ChooseFromDefinedCards";
 pub const CHOOSE_FROM_LIST: &str = "ChooseFromList";
+pub const FOR_EACH: &str = "ForEach";
+pub const PILES: &str = "Piles";
 pub const SELECT_PROMPT: &str = "SelectPrompt";
 pub const VOTE_MESSAGE: &str = "VoteMessage";
 
@@ -257,6 +279,9 @@ pub const SPELL_DESCRIPTION: &str = "SpellDescription";
 pub const NAME: &str = "Name";
 pub const NAMES: &str = "Names";
 pub const ORIGINAL: &str = "Original";
+pub const CHANGE_COLOR_WORD: &str = "ChangeColorWord";
+pub const CHANGE_TYPE_WORD: &str = "ChangeTypeWord";
+pub const FORBIDDEN_NEW_TYPES: &str = "ForbiddenNewTypes";
 
 // ── Trigger params ─────────────────────────────────────────────────────
 
@@ -336,6 +361,9 @@ pub const SPELLBOOK: &str = "Spellbook";
 pub const STACK_ID: &str = "StackId";
 pub const TOGGLE: &str = "Toggle";
 pub const WARP: &str = "Warp";
+pub const DUNGEON: &str = "Dungeon";
+pub const MAY_SHUFFLE: &str = "MayShuffle";
+pub const VAR_NAME: &str = "VarName";
 
 // ── Static ability keys ─────────────────────────────────────────────────────
 pub const CHARACTERISTIC_DEFINING: &str = "CharacteristicDefining";

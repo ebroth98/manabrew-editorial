@@ -12,13 +12,9 @@ use crate::spellability::SpellAbility;
 /// `DiscardEffect` class extending `SpellAbilityEffect`.
 #[forge_engine_macros::spell_effect(DiscardEffect)]
 fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
-    let num = super::resolve_numeric_svar(ctx.game, sa, crate::parsing::keys::NUM_CARDS, 1)
-        .max(0) as usize;
-    let mode = sa
-        .ir
-        .mode_text
-        .as_deref()
-        .unwrap_or("TgtChoose");
+    let num = super::resolve_numeric_svar(ctx.game, sa, crate::parsing::keys::NUM_CARDS, 1).max(0)
+        as usize;
+    let mode = sa.ir.mode_text.as_deref().unwrap_or("TgtChoose");
 
     // AnyNumber$ True — the discarder may pick 0..=hand.len cards (e.g.
     // Cavalier of Flame, Careful Study). Routed through a distinct agent

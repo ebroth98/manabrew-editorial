@@ -10,11 +10,7 @@ pub fn apply_limit_increase(
     card: &Card,
     source: &Card,
 ) -> bool {
-    if !valid_filter::matches_valid_card_selector_opt(
-        st_ab.ir.valid_card.as_ref(),
-        card,
-        source,
-    ) {
+    if !valid_filter::matches_valid_card_selector_opt(st_ab.ir.valid_card.as_ref(), card, source) {
         return false;
     }
     st_ab.ir.twice

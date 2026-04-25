@@ -158,11 +158,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
 
     // Overload: apply pump to ALL valid creatures instead of the chosen target.
     if sa.overloaded {
-        let valid_tgts = sa
-            .ir
-            .valid_tgts_text
-            .clone()
-            .unwrap_or_default();
+        let valid_tgts = sa.ir.valid_tgts_text.clone().unwrap_or_default();
         let valid_tgts_selector = sa.ir.valid_tgts_selector.as_ref();
         let all_bf: Vec<crate::ids::CardId> = ctx
             .game

@@ -4,16 +4,12 @@
 //! Investigate: Create a colorless Clue artifact token with
 //! "{2}, Sacrifice this artifact: Draw a card."
 
-use forge_foundation::{CardTypeLine, ColorSet, ManaCost, ZoneType};
-
-use super::{emit_zone_trigger, EffectContext};
+use super::token_effect_base::{TokenEffectBase, TOKEN_EFFECT_BASE};
+use super::EffectContext;
 use crate::card::card_zone_table::CardZoneTable;
-use crate::card::Card;
-use crate::event::RunParams;
-use crate::ids::CardId;
+use crate::ids::{CardId, PlayerId};
 use crate::parsing::keys;
 use crate::spellability::SpellAbility;
-use crate::trigger::TriggerType;
 
 /// Struct form of this effect so it can participate in the
 /// `SpellAbilityEffect` trait hierarchy — mirrors Java's
@@ -30,9 +26,10 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     };
 
     let mut created_tokens: Vec<CardId> = Vec::new();
+    let mut trigger_list = CardZoneTable::default();
     for _ in 0..amount {
         for &pid in &players {
-            if let Some(tid) = create_clue_token(ctx, sa, pid) {
+            if let Some(tid) = create_clue_token(ctx, sa, pid, &mut trigger_list) {
                 created_tokens.push(tid);
             }
         }
@@ -41,11 +38,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     // Fire ChangesZoneAll for the batch of tokens entering the battlefield.
     // Needed for triggers like Woodland Champion (Mode$ ChangesZoneAll).
     if !created_tokens.is_empty() {
-        let mut table = CardZoneTable::default();
-        for &tid in &created_tokens {
-            table.put(Some(ZoneType::None), Some(ZoneType::Battlefield), tid);
-        }
-        table.trigger_changes_zone_all(ctx.trigger_handler, ctx.game, Some(sa));
+        trigger_list.trigger_changes_zone_all(ctx.trigger_handler, ctx.game, Some(sa));
     }
 }
 
@@ -53,80 +46,18 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
 fn create_clue_token(
     ctx: &mut EffectContext,
     sa: &SpellAbility,
-    player: crate::ids::PlayerId,
+    player: PlayerId,
+    trigger_list: &mut CardZoneTable,
 ) -> Option<CardId> {
-    let token_id;
-    // Try to use the registered token template first
-    if let Some(template) = ctx.token_templates.get("c_a_clue_draw").cloned() {
-        ctx.sync_token_art_rng("c_a_clue_draw", sa);
-
-        let mut token = template;
-        token.set_owner(player);
-        token.set_controller(player);
-        token.set_is_token(true);
-
-        token_id = ctx.game.create_card(token);
-        ctx.move_card(token_id, ZoneType::Battlefield, player);
-        ctx.trigger_handler
-            .register_active_trigger(ctx.game, token_id);
-
-        ctx.trigger_handler.run_trigger(
-            TriggerType::TokenCreated,
-            RunParams {
-                card: Some(token_id),
-                player: Some(player),
-                ..Default::default()
-            },
-            false,
-        );
-
-        emit_zone_trigger(
-            ctx.trigger_handler,
-            token_id,
-            ZoneType::None,
-            ZoneType::Battlefield,
-        );
-    } else {
-        // Fallback: create inline Clue token
-        ctx.sync_token_art_rng("c_a_clue_draw", sa);
-
-        let mut token = Card::new(
-            CardId(0),
-            "Clue Token".to_string(),
-            player,
-            CardTypeLine::parse("Artifact - Clue"),
-            ManaCost::parse(""),
-            ColorSet::COLORLESS,
-            None,
-            None,
-            vec![],
-            vec![],
-        );
-        token.set_controller(player);
-        token.set_is_token(true);
-
-        token_id = ctx.game.create_card(token);
-        ctx.move_card(token_id, ZoneType::Battlefield, player);
-        ctx.trigger_handler
-            .register_active_trigger(ctx.game, token_id);
-
-        ctx.trigger_handler.run_trigger(
-            TriggerType::TokenCreated,
-            RunParams {
-                card: Some(token_id),
-                player: Some(player),
-                ..Default::default()
-            },
-            false,
-        );
-
-        emit_zone_trigger(
-            ctx.trigger_handler,
-            token_id,
-            ZoneType::None,
-            ZoneType::Battlefield,
-        );
-    }
+    let token_table = TOKEN_EFFECT_BASE.make_token_table_internal_from_script(
+        ctx,
+        player,
+        "c_a_clue_draw",
+        1,
+        sa,
+    );
+    let result = TOKEN_EFFECT_BASE.make_token_table(ctx, token_table, false, trigger_list, sa);
+    let token_id = result.created.first().copied()?;
 
     // RememberInvestigatingPlayers$
     if sa.param_is_true(keys::REMEMBER_INVESTIGATING_PLAYERS) {

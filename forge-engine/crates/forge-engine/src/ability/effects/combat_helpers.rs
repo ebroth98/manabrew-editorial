@@ -129,7 +129,7 @@ pub(crate) fn add_to_combat(
     let attacking = match attacking_param {
         crate::parsing::keys::ATTACKING => sa.ir.attacking_text.as_deref(),
         crate::parsing::keys::NINJUTSU => sa.ir.ninjutsu_text.as_deref(),
-        "TokenAttacking" => sa.ir.token_attacking_text.as_deref(),
+        crate::parsing::keys::TOKEN_ATTACKING => sa.ir.token_attacking_text.as_deref(),
         _ => None,
     };
     let Some(attacking) = attacking else {

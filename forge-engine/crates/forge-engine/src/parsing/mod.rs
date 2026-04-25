@@ -745,6 +745,11 @@ impl Params {
         self.0.get(key).cloned()
     }
 
+    /// Split a delimited parameter value into trimmed, non-empty owned parts.
+    pub fn split_param_list<K: AsRef<str>>(&self, key: K, delimiter: &str) -> Vec<String> {
+        split_param_list_value(self.get(key), delimiter)
+    }
+
     /// Get a parameter value lowered through the semantic Forge DSL classifier.
     ///
     /// This borrows the stored value and falls back to `SemanticParamValue::Raw`
@@ -784,6 +789,19 @@ impl Params {
     pub fn iter(&self) -> impl Iterator<Item = (&str, &str)> {
         self.0.iter().map(|(k, v)| (k.as_str(), v.as_str()))
     }
+}
+
+pub fn split_param_list_value(value: Option<&str>, delimiter: &str) -> Vec<String> {
+    value
+        .map(|value| {
+            value
+                .split(delimiter)
+                .map(str::trim)
+                .filter(|part| !part.is_empty())
+                .map(str::to_owned)
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 fn semantic_i32(key: &str, value: &str) -> Option<i32> {

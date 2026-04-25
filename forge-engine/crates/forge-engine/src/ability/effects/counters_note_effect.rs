@@ -3,8 +3,8 @@
 //! Ported from Java's `CountersNoteEffect.java`.
 //! Store counter amounts for later use (e.g. "noted P1P1 counters").
 
-use super::{parse_counter_type, EffectContext};
-use crate::parsing::keys;
+use super::EffectContext;
+use crate::card::CounterType;
 use crate::spellability::SpellAbility;
 
 /// Note the number of counters of a specific type on a card.
@@ -57,12 +57,7 @@ pub fn load_counters(
 #[forge_engine_macros::spell_effect(CountersNoteEffect)]
 fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let Some(source_id) = sa.source else { return };
-    let counter_type_str = sa
-        .params
-        .get(keys::COUNTER_TYPE)
-        .map(|s| s.to_string())
-        .unwrap_or_else(|| "P1P1".to_string());
-    let counter_type = parse_counter_type(&counter_type_str);
+    let counter_type = sa.ir.counter_type.clone().unwrap_or(CounterType::P1P1);
 
     let targets: Vec<crate::ids::CardId> = if sa.uses_targeting() {
         sa.target_chosen.target_card.into_iter().collect()

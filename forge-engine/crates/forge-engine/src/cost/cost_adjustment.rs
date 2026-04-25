@@ -381,11 +381,8 @@ fn compute_cost_adjustment_inner(
                 for token in color_str.split_whitespace() {
                     if let Some(color) = Color::from_name(token) {
                         if is_reduce {
-                            adj.color_reductions.push((
-                                color,
-                                amount,
-                                st_ab.ir.ignore_generic,
-                            ));
+                            adj.color_reductions
+                                .push((color, amount, st_ab.ir.ignore_generic));
                         } else {
                             adj.color_increases.push((color, amount));
                         }

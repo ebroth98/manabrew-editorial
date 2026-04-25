@@ -72,7 +72,7 @@ pub fn can_replace(
     }
     // FlashbackCast$ True — only match when the card was cast via Flashback.
     if effect.ir.flashback_cast == Some(true) && !moving_card.cast_with_flashback {
-            return false;
+        return false;
     }
     if let Some(valid_lki) = effect.ir.valid_lki_text.as_deref() {
         if !effect.matches_valid_card(valid_lki, moving_card, source_card) {

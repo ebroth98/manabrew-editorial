@@ -71,7 +71,7 @@ export async function fetchCardImageEntry(
       }
     }
     if (!card) return null;
-    const entry = toCachedCardImage(card);
+    const entry = toCachedCardImage(card, { frontOnly: !!isToken });
     setCachedCardImage(key, entry);
     return entry;
   })().finally(() => clearPendingCardImage(key));

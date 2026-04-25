@@ -1,10 +1,11 @@
 use forge_foundation::color::ColorSet;
 use forge_foundation::ZoneType;
 
-use super::{emit_zone_trigger, EffectContext};
+use super::token_effect_base::{TokenCreateTable, TokenEffectBase, TOKEN_EFFECT_BASE};
+use super::EffectContext;
+use crate::card::card_zone_table::CardZoneTable;
 use crate::card::Card;
 use crate::ids::CardId;
-use crate::parsing::keys;
 use crate::spellability::SpellAbility;
 
 /// Struct form of this effect so it can participate in the
@@ -12,58 +13,61 @@ use crate::spellability::SpellAbility;
 /// `CopyPermanentEffect` class extending `SpellAbilityEffect`.
 #[forge_engine_macros::spell_effect(CopyPermanentEffect)]
 fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
-    // Clone a permanent onto the battlefield under the controller's control.
-    // Mirrors Java CopyPermanentEffect.
-    // Supports: Defined$, SetColor$, AddTypes$, PumpKeywords$.
-
-    // Resolve the card to copy: Defined$ first, then targeting.
-    let original_id = resolve_original(sa);
-    let Some(original_id) = original_id else {
-        return;
-    };
-
-    // For targeted copies, require the original on the battlefield.
-    // For Defined$ Self (Embalm/Eternalize), the card may be in any zone.
-    let is_defined = sa.ir.defined.is_some();
-    if !is_defined && ctx.game.card(original_id).zone != ZoneType::Battlefield {
+    let amount = super::resolve_numeric_svar(ctx.game, sa, "NumCopies", 1).max(0) as usize;
+    let controllers = resolve_copy_controllers(ctx, sa);
+    if controllers.is_empty() {
         return;
     }
 
-    let original = ctx.game.card(original_id).clone();
-    let copy = get_proto_type(sa, &original, sa.activating_player);
-    let copy_id = ctx.game.create_card(copy);
-    rebind_copied_traits(ctx.game, copy_id);
-    ctx.game
-        .move_card(copy_id, ZoneType::Battlefield, sa.activating_player);
-    ctx.trigger_handler
-        .register_active_trigger(ctx.game, copy_id);
-    emit_zone_trigger(
-        ctx.trigger_handler,
-        copy_id,
-        ZoneType::None,
-        ZoneType::Battlefield,
-    );
-    ctx.trigger_handler.flush_waiting_triggers(ctx.game);
-
-    // `AtEOT$ <action>` — register an end-of-turn delayed trigger targeting
-    // the created copy (Java CopyPermanentEffect → registerDelayedTrigger).
-    if let Some(action) = sa.ir.at_eot.as_deref() {
-        crate::ability::spell_ability_effect::register_at_eot(
-            ctx.trigger_handler,
-            ctx.game,
-            sa,
-            action,
-            vec![copy_id],
-        );
-    }
-
-    // `RememberTokens$ True` — track each created token on the source card so
-    // a downstream SubAbility (e.g. Ashling's `DelTrig` with
-    // `RememberObjects$ Remembered`) can find it later.
-    if sa.ir.remember_tokens {
-        if let Some(sid) = sa.source {
-            ctx.game.card_mut(sid).add_remembered_card(copy_id);
+    let mut token_table = TokenCreateTable::default();
+    for controller in controllers {
+        if !ctx.game.player(controller).is_alive() {
+            continue;
         }
+
+        let originals = resolve_originals(ctx, sa, controller);
+        for original_id in originals {
+            if ctx.game.card(original_id).type_line.is_instant()
+                || ctx.game.card(original_id).type_line.is_sorcery()
+            {
+                continue;
+            }
+            if sa.ir.defined_text.is_none()
+                && sa.ir.choices.is_none()
+                && ctx.game.card(original_id).zone != ZoneType::Battlefield
+            {
+                continue;
+            }
+
+            if let Some(for_each) = sa.ir.for_each_text.as_deref() {
+                let players = crate::ability::ability_utils::resolve_defined_players_with_sa(
+                    for_each,
+                    sa,
+                    sa.activating_player,
+                    ctx.game,
+                );
+                for player in players {
+                    let mut proto = get_proto_type(sa, ctx.game.card(original_id), controller);
+                    proto.copied_permanent = Some(original_id);
+                    proto.add_remembered_player(player);
+                    token_table.put(controller, proto, amount);
+                }
+            } else {
+                let mut proto = get_proto_type(sa, ctx.game.card(original_id), controller);
+                proto.copied_permanent = Some(original_id);
+                token_table.put(controller, proto, amount);
+            }
+        }
+    }
+
+    if token_table.is_empty() {
+        return;
+    }
+
+    let mut trigger_list = CardZoneTable::default();
+    let result = TOKEN_EFFECT_BASE.make_token_table(ctx, token_table, true, &mut trigger_list, sa);
+    if !result.created.is_empty() {
+        trigger_list.trigger_changes_zone_all(ctx.trigger_handler, ctx.game, Some(sa));
     }
 }
 
@@ -73,11 +77,9 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
 ///
 /// Returned `Card` carries a placeholder `CardId(0)`; callers must invoke
 /// `GameState::create_card` to receive the real id. Mana-cost strip,
-/// `SetColor`, `AddTypes`, `SetPower/Toughness`, `PumpKeywords`, `AddKeywords`
-/// are all applied here. Transformable / back-side handling and
-/// `DefinedName` image re-keying are Java-only today (Rust doesn't have a
-/// paper-card backing store to rebind); see the Java impl at L275 for the
-/// full prototype pipeline.
+/// `SetColor`, `AddTypes`, `SetPower/Toughness`, and `AddKeywords` are applied
+/// here. Shared token lifecycle params such as `PumpKeywords` are applied by
+/// `TokenEffectBase` after the token receives its real id.
 pub fn get_proto_type(sa: &SpellAbility, original: &Card, new_owner: crate::ids::PlayerId) -> Card {
     let mut copy = Card::new(
         CardId(0),
@@ -115,10 +117,20 @@ pub fn get_proto_type(sa: &SpellAbility, original: &Card, new_owner: crate::ids:
     }
 
     // Apply SetPower$/SetToughness$ (e.g. Eternalize sets to 4/4).
-    if let Some(p) = sa.ir.set_power {
+    if let Some(p) = sa
+        .ir
+        .set_power
+        .as_deref()
+        .and_then(|value| value.parse().ok())
+    {
         copy.set_base_power(Some(p));
     }
-    if let Some(t) = sa.ir.set_toughness {
+    if let Some(t) = sa
+        .ir
+        .set_toughness
+        .as_deref()
+        .and_then(|value| value.parse().ok())
+    {
         copy.set_base_toughness(Some(t));
     }
 
@@ -155,46 +167,94 @@ pub fn get_proto_type(sa: &SpellAbility, original: &Card, new_owner: crate::ids:
     copy
 }
 
-fn rebind_copied_traits(game: &mut crate::game::GameState, copy_id: CardId) {
-    {
-        // Rebuild activated/spell abilities after create_card assigns the real
-        // CardId so copied abilities don't keep the placeholder id from
-        // Card::new(CardId(0), ...).
-        let copy = game.card_mut(copy_id);
-        copy.update_spell_abilities();
-    }
-
-    let bound_host = game.card(copy_id).clone();
-    let copy = game.card_mut(copy_id);
-
-    for trigger in &mut copy.triggers {
-        trigger.bind_host_card(bound_host.clone());
-    }
-    for static_ability in &mut copy.static_abilities {
-        static_ability.base.set_host_card(bound_host.clone());
-    }
-    for replacement_effect in &mut copy.replacement_effects {
-        replacement_effect.base.set_host_card(bound_host.clone());
-    }
-}
-
-fn resolve_original(sa: &SpellAbility) -> Option<CardId> {
-    // Check Defined$ parameter first.
-    if let Some(defined) = sa.defined() {
-        match defined {
-            "Self" => return sa.source,
-            "ParentTarget" => return sa.target_chosen.target_card,
-            "TriggeredCard" | "TriggeredCardLKICopy" | "TriggeredSacrificedCard" => {
-                // The triggering object for a Sacrificed/ChangesZone trigger
-                // is stored under the "Card" key; read it back as a CardId.
-                if let Some(card) = sa.get_triggering_card(crate::ability::AbilityKey::Card) {
-                    return Some(card);
-                }
-                return None;
-            }
-            _ => {}
+fn resolve_copy_controllers(ctx: &EffectContext, sa: &SpellAbility) -> Vec<crate::ids::PlayerId> {
+    if let Some(controller) = sa.ir.controller_text.as_deref() {
+        let players = crate::ability::ability_utils::resolve_defined_players_with_sa(
+            controller,
+            sa,
+            sa.activating_player,
+            ctx.game,
+        );
+        if !players.is_empty() {
+            return players;
         }
     }
+    vec![sa.activating_player]
+}
+
+fn resolve_originals(
+    ctx: &mut EffectContext,
+    sa: &SpellAbility,
+    controller: crate::ids::PlayerId,
+) -> Vec<CardId> {
+    if let Some(choices) = sa.ir.choices.as_deref() {
+        let candidates: Vec<CardId> = ctx
+            .game
+            .cards
+            .iter()
+            .filter(|card| card.zone == ZoneType::Battlefield)
+            .map(|card| card.id)
+            .filter(|&card_id| {
+                let Some(source_id) = sa.source else {
+                    return false;
+                };
+                crate::card::valid_filter::matches_valid(
+                    choices,
+                    Some(ctx.game.card(card_id)),
+                    None,
+                    ctx.game.card(source_id),
+                    sa.activating_player,
+                )
+            })
+            .collect();
+        if candidates.is_empty() {
+            return Vec::new();
+        }
+
+        let chooser = sa
+            .ir
+            .chooser
+            .as_deref()
+            .and_then(|defined| {
+                crate::ability::ability_utils::resolve_defined_players_with_sa(
+                    defined,
+                    sa,
+                    sa.activating_player,
+                    ctx.game,
+                )
+                .into_iter()
+                .next()
+            })
+            .unwrap_or(sa.activating_player);
+        ctx.agents[chooser.index()].snapshot_state(ctx.game, ctx.mana_pools);
+        return ctx.agents[chooser.index()]
+            .choose_single_card_for_zone_change(chooser, &candidates, "Choose a card", false)
+            .into_iter()
+            .collect();
+    }
+
+    if let Some(defined) = sa.defined() {
+        match defined {
+            "Self" => return sa.source.into_iter().collect(),
+            "ParentTarget" => return sa.target_chosen.target_card.into_iter().collect(),
+            "TriggeredCard" | "TriggeredCardLKICopy" | "TriggeredSacrificedCard" => {
+                return sa
+                    .get_triggering_card(crate::ability::AbilityKey::Card)
+                    .into_iter()
+                    .collect();
+            }
+            _ => {
+                return crate::ability::ability_utils::get_defined_cards(
+                    ctx.game,
+                    sa.source,
+                    defined,
+                    Some(controller),
+                );
+            }
+        }
+    }
+
+    // Check Defined$ parameter first.
     // Fall back to targeting.
-    sa.target_chosen.target_card
+    sa.target_chosen.target_card.into_iter().collect()
 }

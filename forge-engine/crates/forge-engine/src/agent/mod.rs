@@ -103,13 +103,7 @@ pub trait PlayerAgent {
     }
 
     /// Fire the put-back prompt without blocking. Default: no-op.
-    fn choose_cards_to_bottom_send(
-        &mut self,
-        _player: PlayerId,
-        _hand: &[CardId],
-        _count: usize,
-    ) {
-    }
+    fn choose_cards_to_bottom_send(&mut self, _player: PlayerId, _hand: &[CardId], _count: usize) {}
 
     /// Block waiting for the put-back response. Default falls back to the
     /// blocking `choose_cards_to_bottom`.

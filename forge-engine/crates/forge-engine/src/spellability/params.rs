@@ -76,6 +76,16 @@ impl SpellAbility {
         self.ir.library_position.as_deref()
     }
 
+    /// Get the `LibraryPosition2$` string for secondary zone placement.
+    pub fn library_position_2(&self) -> Option<&str> {
+        self.ir.library_position_2.as_deref()
+    }
+
+    /// Get the `LibraryPositionAlternative$` string for `DestinationAlternative$`.
+    pub fn library_position_alternative(&self) -> Option<&str> {
+        self.ir.library_position_alternative.as_deref()
+    }
+
     // ── Mana/cost params ───────────────────────────────────────────────────
 
     /// Get the `Produced$` mana type string.

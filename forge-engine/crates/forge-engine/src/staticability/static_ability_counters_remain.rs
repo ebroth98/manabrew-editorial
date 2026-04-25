@@ -20,8 +20,7 @@ pub fn counters_remain(cards: &[Card], card: &Card, destination: ZoneType) -> bo
             .filter(|sa| sa.mode == StaticMode::CountersRemain)
         {
             let active = source.zone == ZoneType::Battlefield
-                || (source.id == card.id
-                    && st_ab.ir.effect_zone_all);
+                || (source.id == card.id && st_ab.ir.effect_zone_all);
             if !active {
                 continue;
             }
@@ -47,8 +46,8 @@ pub fn apply_counters_remain_ability(
     ) {
         return false;
     }
-    let active = source.zone == ZoneType::Battlefield
-        || (source.id == card.id && st_ab.ir.effect_zone_all);
+    let active =
+        source.zone == ZoneType::Battlefield || (source.id == card.id && st_ab.ir.effect_zone_all);
     active && matches_valid_card(st_ab.ir.valid_card.as_ref(), card, source)
 }
 

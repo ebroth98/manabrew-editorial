@@ -72,11 +72,7 @@ pub fn apply_cant_be_cast_ability(
     game: Option<&GameState>,
 ) -> bool {
     // ValidCard check
-    if !valid_filter::matches_valid_card_selector_opt(
-        st_ab.ir.valid_card.as_ref(),
-        card,
-        source,
-    ) {
+    if !valid_filter::matches_valid_card_selector_opt(st_ab.ir.valid_card.as_ref(), card, source) {
         return false;
     }
 
@@ -210,11 +206,7 @@ pub fn apply_cant_be_activated_ability(
     activator: PlayerId,
 ) -> bool {
     // ValidCard check
-    if !valid_filter::matches_valid_card_selector_opt(
-        st_ab.ir.valid_card.as_ref(),
-        card,
-        source,
-    ) {
+    if !valid_filter::matches_valid_card_selector_opt(st_ab.ir.valid_card.as_ref(), card, source) {
         return false;
     }
 
@@ -277,11 +269,7 @@ pub fn apply_cant_play_land_ability(
     player: PlayerId,
 ) -> bool {
     // ValidCard check
-    if !valid_filter::matches_valid_card_selector_opt(
-        st_ab.ir.valid_card.as_ref(),
-        card,
-        source,
-    ) {
+    if !valid_filter::matches_valid_card_selector_opt(st_ab.ir.valid_card.as_ref(), card, source) {
         return false;
     }
 

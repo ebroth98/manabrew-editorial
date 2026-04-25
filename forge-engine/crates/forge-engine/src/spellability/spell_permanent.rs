@@ -7,7 +7,6 @@ use std::collections::HashMap;
 
 use crate::ability::api_type::ApiType;
 use crate::ids::{CardId, PlayerId};
-use crate::parsing::Params;
 use crate::spellability::target_choices::TargetChoices;
 use crate::spellability::{SpellAbility, SpellAbilityCondition, SpellAbilityRestriction};
 
@@ -37,7 +36,7 @@ pub fn create_permanent_spell(
         activating_player: player,
         targeting_player: None,
         ability_text: String::new(),
-        params: Params::default(),
+        record_type: crate::ability::ability_factory::AbilityRecordType::Spell,
         ir: crate::ability::ability_ir::SpellAbilityIr::default(),
         target_restrictions: None,
         target_chosen: TargetChoices::default(),

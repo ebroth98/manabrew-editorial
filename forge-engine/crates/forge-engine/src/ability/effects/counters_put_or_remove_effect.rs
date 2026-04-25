@@ -28,16 +28,12 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
         return;
     }
 
-    let counter_type = sa
-        .ir
-        .counter_type
-        .clone()
-        .or_else(|| {
-            // Sort keys for deterministic fallback (HashMap iteration is random).
-            let mut keys: Vec<_> = ctx.game.card(target_id).counters.keys().cloned().collect();
-            keys.sort_by(|a, b| format!("{:?}", a).cmp(&format!("{:?}", b)));
-            keys.into_iter().next()
-        });
+    let counter_type = sa.ir.counter_type.clone().or_else(|| {
+        // Sort keys for deterministic fallback (HashMap iteration is random).
+        let mut keys: Vec<_> = ctx.game.card(target_id).counters.keys().cloned().collect();
+        keys.sort_by(|a, b| format!("{:?}", a).cmp(&format!("{:?}", b)));
+        keys.into_iter().next()
+    });
     let Some(counter_type) = counter_type else {
         return;
     };

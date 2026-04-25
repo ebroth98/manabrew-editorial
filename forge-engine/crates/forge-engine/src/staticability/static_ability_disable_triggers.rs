@@ -95,7 +95,7 @@ fn mode_specific_matches(
             if !st_ab.ir.destination_zones.is_empty()
                 && !matches_zones(&st_ab.ir.destination_zones, run_params.destination)
             {
-                    return false;
+                return false;
             }
             true
         }

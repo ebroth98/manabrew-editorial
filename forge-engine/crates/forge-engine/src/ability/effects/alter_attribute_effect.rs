@@ -7,8 +7,6 @@ use forge_foundation::ZoneType;
 use super::EffectContext;
 use crate::event::RunParams;
 use crate::ids::CardId;
-use crate::parsing::keys;
-use crate::spellability::SpellAbility;
 use crate::trigger::TriggerType;
 
 /// Struct form of this effect so it can participate in the
@@ -16,16 +14,8 @@ use crate::trigger::TriggerType;
 /// `AlterAttributeEffect` class extending `SpellAbilityEffect`.
 #[forge_engine_macros::spell_effect(AlterAttributeEffect)]
 fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
-    let activate = sa
-        .params
-        .get("Activate")
-        .map_or(true, |v| v.eq_ignore_ascii_case("true"));
-
-    let attributes: Vec<String> = sa
-        .params
-        .get("Attributes")
-        .map(|a: &str| a.split(',').map(|s| s.trim().to_string()).collect())
-        .unwrap_or_default();
+    let activate = sa.ir.alter_attribute_activate;
+    let attributes = &sa.ir.alter_attribute_attributes;
 
     let targets: Vec<CardId> = if let Some(target) = sa.target_chosen.target_card {
         vec![target]
@@ -48,7 +38,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
             continue;
         }
 
-        for attr in &attributes {
+        for attr in attributes {
             match attr.as_str() {
                 "Harnessed" => {
                     let val = if activate { "True" } else { "False" };
@@ -114,7 +104,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
                 _ => {}
             }
 
-            if sa.param_is_true(keys::REMEMBER_ALTERED) {
+            if sa.ir.remember_altered {
                 if let Some(source) = sa.source {
                     ctx.game.card_mut(source).add_remembered_card(card_id);
                 }

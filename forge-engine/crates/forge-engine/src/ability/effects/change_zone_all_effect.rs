@@ -155,17 +155,13 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
 
     // For Duration$ UntilHostLeavesPlay, track the source card so we can return
     // exiled permanents when the source leaves the battlefield (e.g. Deputy of Detention).
-    let until_host_leaves = sa
-        .ir
-        .duration
-        .as_ref()
-        .is_some_and(|duration| {
-            matches!(
-                duration,
-                crate::spellability::AbilityDuration::UntilHostLeavesPlay
-                    | crate::spellability::AbilityDuration::UntilHostLeavesPlayOrEot
-            )
-        });
+    let until_host_leaves = sa.ir.duration.as_ref().is_some_and(|duration| {
+        matches!(
+            duration,
+            crate::spellability::AbilityDuration::UntilHostLeavesPlay
+                | crate::spellability::AbilityDuration::UntilHostLeavesPlayOrEot
+        )
+    });
     let exile_source = if until_host_leaves { sa.source } else { None };
 
     {

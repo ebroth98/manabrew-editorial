@@ -610,7 +610,13 @@ pub(crate) fn execute_replace_effect_ir(
         ReplacementChainIr::ReplaceToken {
             token_type,
             amount_expr,
-        } => execute_replace_token_chain(token_type.as_deref(), amount_expr.as_deref(), event, game, source_card_id),
+        } => execute_replace_token_chain(
+            token_type.as_deref(),
+            amount_expr.as_deref(),
+            event,
+            game,
+            source_card_id,
+        ),
         ReplacementChainIr::ReplaceCounter { amount_expr } => {
             execute_replace_counter_chain(amount_expr, event, game, source_card_id)
         }
@@ -625,67 +631,70 @@ pub(crate) fn execute_replace_effect_ir(
             if let Some(var_name) = var_name.as_deref() {
                 if required_var_name.is_none_or(|required| required == var_name) {
                     match var_name {
-                "DicePTExchanges" => {
-                    if var_type.as_deref() == Some("CardSet") {
-                        if let Some(var_value) = var_value.as_deref() {
-                            if let Some(card_id) =
-                                resolve_replace_card_key(var_value, source_card_id)
-                            {
-                                if let ReplacementEvent::RollDice {
-                                    dice_pt_exchanges, ..
-                                } = event
-                                {
-                                    dice_pt_exchanges.insert(card_id);
-                                    updated = true;
+                        "DicePTExchanges" => {
+                            if var_type.as_deref() == Some("CardSet") {
+                                if let Some(var_value) = var_value.as_deref() {
+                                    if let Some(card_id) =
+                                        resolve_replace_card_key(var_value, source_card_id)
+                                    {
+                                        if let ReplacementEvent::RollDice {
+                                            dice_pt_exchanges,
+                                            ..
+                                        } = event
+                                        {
+                                            dice_pt_exchanges.insert(card_id);
+                                            updated = true;
+                                        }
+                                    }
                                 }
                             }
                         }
-                    }
-                }
-                _ => {
-                    if let Some(var_value) = var_value.as_deref() {
-                        if let Some(value) =
-                            resolve_replace_value(var_value, game, source_card_id, event)
-                        {
-                            match var_name {
-                                "Ignore" => {
-                                    if let ReplacementEvent::RollDice { ignore, .. } = event {
-                                        *ignore = value.max(0);
-                                        updated = true;
-                                    }
-                                }
-                                "IgnoreChosen" => {
-                                    if var_type.as_deref() == Some("Map") {
-                                        if let Some(var_key) = var_key.as_deref() {
-                                            if let Some(player) = resolve_replace_player_key(
-                                                var_key,
-                                                game,
-                                                source_card_id,
-                                                event,
-                                            ) {
-                                                if let ReplacementEvent::RollDice {
-                                                    ignore_chosen,
-                                                    ..
-                                                } = event
-                                                {
-                                                    ignore_chosen.insert(player, value.max(0));
-                                                    updated = true;
+                        _ => {
+                            if let Some(var_value) = var_value.as_deref() {
+                                if let Some(value) =
+                                    resolve_replace_value(var_value, game, source_card_id, event)
+                                {
+                                    match var_name {
+                                        "Ignore" => {
+                                            if let ReplacementEvent::RollDice { ignore, .. } = event
+                                            {
+                                                *ignore = value.max(0);
+                                                updated = true;
+                                            }
+                                        }
+                                        "IgnoreChosen" => {
+                                            if var_type.as_deref() == Some("Map") {
+                                                if let Some(var_key) = var_key.as_deref() {
+                                                    if let Some(player) = resolve_replace_player_key(
+                                                        var_key,
+                                                        game,
+                                                        source_card_id,
+                                                        event,
+                                                    ) {
+                                                        if let ReplacementEvent::RollDice {
+                                                            ignore_chosen,
+                                                            ..
+                                                        } = event
+                                                        {
+                                                            ignore_chosen
+                                                                .insert(player, value.max(0));
+                                                            updated = true;
+                                                        }
+                                                    }
                                                 }
+                                            }
+                                        }
+                                        _ => {
+                                            if set_replacement_event_amount(event, value) {
+                                                updated = true;
                                             }
                                         }
                                     }
                                 }
-                                _ => {
-                                    if set_replacement_event_amount(event, value) {
-                                        updated = true;
-                                    }
-                                }
                             }
                         }
                     }
                 }
-            }
-        }
             }
 
             if let Some(sub_ability) = sub_ability.as_deref() {

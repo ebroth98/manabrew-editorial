@@ -58,10 +58,14 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let overwrite_types = anim_params.overwrite_types;
     let incorporate_cost = sa.ir.animate_incorporate_text.clone();
     let mana_cost_override = sa.ir.animate_mana_cost_override_text.clone();
-    let is_perpetual =
-        matches!(sa.ir.duration, Some(crate::spellability::AbilityDuration::Perpetual));
-    let is_permanent_duration =
-        matches!(sa.ir.duration, Some(crate::spellability::AbilityDuration::Permanent));
+    let is_perpetual = matches!(
+        sa.ir.duration,
+        Some(crate::spellability::AbilityDuration::Perpetual)
+    );
+    let is_permanent_duration = matches!(
+        sa.ir.duration,
+        Some(crate::spellability::AbilityDuration::Permanent)
+    );
     let resolve_ts = ctx.game.next_effect_timestamp();
 
     // Resolve Triggers$ SVars from the source card into parsed Trigger objects.

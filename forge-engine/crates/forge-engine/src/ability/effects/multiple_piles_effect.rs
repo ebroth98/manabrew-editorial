@@ -4,7 +4,7 @@
 
 use forge_foundation::ZoneType;
 
-use super::EffectContext;
+use super::{resolve_numeric_svar, EffectContext};
 use crate::ids::CardId;
 use crate::parsing::keys;
 use crate::spellability::SpellAbility;
@@ -20,26 +20,12 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     };
     let controller = sa.activating_player;
 
-    let pile_count = sa
-        .params
-        .get("Piles")
-        .and_then(|s| s.parse::<usize>().ok())
-        .unwrap_or(2);
+    let pile_count = resolve_numeric_svar(ctx.game, sa, keys::PILES, 2).max(0) as usize;
 
-    let random_chosen = sa.param_is_true(keys::RANDOM_CHOSEN);
+    let random_chosen = sa.ir.random_chosen;
 
     // Get the zone to pull cards from
-    let zone = sa
-        .params
-        .get(keys::ZONE)
-        .map(|z| match z {
-            "Hand" => ZoneType::Hand,
-            "Graveyard" => ZoneType::Graveyard,
-            "Library" => ZoneType::Library,
-            "Exile" => ZoneType::Exile,
-            _ => ZoneType::Battlefield,
-        })
-        .unwrap_or(ZoneType::Battlefield);
+    let zone = sa.ir.zone.unwrap_or(ZoneType::Battlefield);
 
     // Get cards in the zone for the controller
     let pool: Vec<CardId> = ctx

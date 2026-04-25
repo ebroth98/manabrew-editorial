@@ -216,9 +216,10 @@ pub fn get_radiance(game: &GameState, sa: &SpellAbility) -> CardCollection {
     };
 
     let valid_tokens: Vec<&str> = targeted
-        .params
-        .get("ValidTgts")
-        .map(|s| s.split(',').map(|t| t.trim()).collect())
+        .ir
+        .valid_tgts_text
+        .as_deref()
+        .map(|value| value.split(',').map(str::trim).collect())
         .unwrap_or_default();
     let valid_selectors: Vec<_> = valid_tokens
         .iter()

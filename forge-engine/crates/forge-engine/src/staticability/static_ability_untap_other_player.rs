@@ -24,11 +24,7 @@ pub fn apply_untap_ability(
     source: &Card,
     player: PlayerId,
 ) -> bool {
-    if !valid_filter::matches_valid_card_selector_opt(
-        st_ab.ir.valid_card.as_ref(),
-        card,
-        source,
-    ) {
+    if !valid_filter::matches_valid_card_selector_opt(st_ab.ir.valid_card.as_ref(), card, source) {
         return false;
     }
     if !valid_filter::matches_valid_player_selector_opt(

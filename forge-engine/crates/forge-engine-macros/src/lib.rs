@@ -1,4 +1,6 @@
 use proc_macro::TokenStream;
+use quote::quote;
+use syn::{parse_macro_input, Ident, ItemFn};
 
 /// Generate the stateless `SpellAbilityEffect` unit struct and trait impl
 /// around a resolve function body.
@@ -7,25 +9,14 @@ use proc_macro::TokenStream;
 /// `#[spell_effect(FooEffect)] fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) { ... }`
 #[proc_macro_attribute]
 pub fn spell_effect(attr: TokenStream, item: TokenStream) -> TokenStream {
-    let effect_name = attr.to_string();
-    if effect_name.trim().is_empty() || effect_name.contains(',') {
-        return compile_error("expected a single effect type name");
+    let effect_name = parse_macro_input!(attr as Ident);
+    let item = parse_macro_input!(item as ItemFn);
+
+    quote! {
+        pub struct #effect_name;
+        impl crate::ability::spell_ability_effect::SpellAbilityEffect for #effect_name {
+            #item
+        }
     }
-
-    let item = item.to_string();
-    let expanded = format!(
-        "pub struct {effect_name};
-         impl crate::ability::spell_ability_effect::SpellAbilityEffect for {effect_name} {{
-             {item}
-         }}"
-    );
-    expanded
-        .parse()
-        .unwrap_or_else(|_| compile_error("failed to generate SpellAbilityEffect implementation"))
-}
-
-fn compile_error(message: &str) -> TokenStream {
-    format!("compile_error!({message:?});")
-        .parse()
-        .expect("compile_error output should parse")
+    .into()
 }

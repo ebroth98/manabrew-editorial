@@ -1,6 +1,7 @@
+use forge_carddb::parse_card_script;
+use forge_engine_core::ability::AbilityKey;
 /// Integration tests for Token Creation and Copy Effects (Issue #14).
 use forge_engine_core::agent::{PassAgent, PlayerAgent};
-use forge_engine_core::ability::AbilityKey;
 use forge_engine_core::card::CardInstance;
 use forge_engine_core::game::GameState;
 use forge_engine_core::game_loop::GameLoop;
@@ -9,7 +10,6 @@ use forge_engine_core::mana::ManaPool;
 use forge_engine_core::player::actions::PlayerAction;
 use forge_engine_core::spellability::{SpellAbility, StackEntry};
 use forge_engine_core::trigger::parse_trigger;
-use forge_carddb::parse_card_script;
 use forge_foundation::{CardTypeLine, ColorSet, ManaCost, ZoneType};
 
 // ── Helpers ──────────────────────────────────────────────────────────
@@ -112,7 +112,12 @@ fn pass_agents() -> Vec<Box<dyn PlayerAgent>> {
 struct DiscardOneAgent;
 
 impl PlayerAgent for DiscardOneAgent {
-    fn mulligan_decision(&mut self, _player: PlayerId, _hand: &[CardId], _mulligan_count: u32) -> bool {
+    fn mulligan_decision(
+        &mut self,
+        _player: PlayerId,
+        _hand: &[CardId],
+        _mulligan_count: u32,
+    ) -> bool {
         true
     }
 
@@ -613,7 +618,9 @@ fn test_copy_permanent_triggered_card_lki_copy_keeps_cavalier_etb() {
     game_loop.step_with_priority(&mut game, &mut agents, true);
 
     assert!(
-        game.zone(ZoneType::Graveyard, p0).cards.contains(&hand_card),
+        game.zone(ZoneType::Graveyard, p0)
+            .cards
+            .contains(&hand_card),
         "Copied Cavalier ETB should discard a card"
     );
 }
@@ -663,7 +670,9 @@ fn test_copy_permanent_with_ashling_wrapper_keeps_cavalier_etb() {
     game_loop.step_with_priority(&mut game, &mut agents, true);
 
     assert!(
-        game.zone(ZoneType::Graveyard, p0).cards.contains(&hand_card),
+        game.zone(ZoneType::Graveyard, p0)
+            .cards
+            .contains(&hand_card),
         "Ashling-style CopyPermanent wrapper should still allow copied Cavalier ETB to resolve"
     );
 }

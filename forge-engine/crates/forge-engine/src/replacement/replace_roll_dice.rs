@@ -7,8 +7,8 @@ use crate::game::GameState;
 use crate::ids::CardId;
 use crate::parsing::keys;
 
-use super::replacement_effect::ReplacementEffect;
 use super::replacement_effect::resolve_replace_with_chain;
+use super::replacement_effect::ReplacementEffect;
 use super::replacement_handler::{
     execute_replace_effect_ir, execute_replace_with_numeric_update, resolve_replace_value,
     ReplacementEvent,

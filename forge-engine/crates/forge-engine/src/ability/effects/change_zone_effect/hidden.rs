@@ -126,9 +126,6 @@ pub(super) fn resolve_hidden_origin(
             // (line 1509), so Defined moves never trigger a search shuffle.
             // The shuffle is handled separately by a SubAbility$ DBShuffle if needed.
             let mut sa_no_shuffle = sa.clone();
-            sa_no_shuffle
-                .params
-                .put("NoShuffle".to_string(), "True".to_string());
             sa_no_shuffle.ir.no_shuffle = true;
             move_cards(
                 ctx,

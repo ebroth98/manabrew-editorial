@@ -74,16 +74,15 @@ export function clearPendingCardImage(key: string): void {
  * Extract the cacheable view of a ScryfallCard: the top-level image_uris
  * plus the (optional) per-face uris for double-faced cards.
  */
-export function toCachedCardImage(card: ScryfallCard): CachedCardImage {
+export function toCachedCardImage(card: ScryfallCard, { frontOnly }: { frontOnly: boolean}): CachedCardImage {
   const entry: CachedCardImage = { faces: new Map() };
-  const top = (card as unknown as { image_uris?: ScryfallImageUris }).image_uris;
+
+  const top = card.image_uris;
   if (top) entry.imageUris = top;
-  const faces = (card as unknown as {
-    card_faces?: { name?: string; image_uris?: ScryfallImageUris }[];
-  }).card_faces;
+  const faces = card.card_faces;
   if (faces) {
     for (const f of faces) {
-      if (f.name && f.image_uris) {
+      if (f.name && f.image_uris && (!frontOnly || f.image_uris.small.includes("/front/"))) {
         entry.faces.set(f.name.toLowerCase(), f.image_uris);
       }
     }
@@ -99,7 +98,7 @@ export function pickUrisForName(
   entry: CachedCardImage,
   name: string,
 ): ScryfallImageUris | undefined {
-  const face = entry.faces.get(name.toLowerCase());
+  const face = entry.faces.get(name.toLowerCase()) ?? entry.faces.values().next().value;
   if (face) return face;
   return entry.imageUris;
 }

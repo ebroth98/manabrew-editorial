@@ -5,19 +5,13 @@
 //! The controlled player's decisions are made by the controller.
 
 use super::EffectContext;
-use crate::parsing::keys;
-use crate::spellability::SpellAbility;
 
 /// Struct form of this effect so it can participate in the
 /// `SpellAbilityEffect` trait hierarchy — mirrors Java's
 /// `ControlPlayerEffect` class extending `SpellAbilityEffect`.
 #[forge_engine_macros::spell_effect(ControlPlayerEffect)]
 fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
-    let controller_def = sa
-        .params
-        .get(keys::CONTROLLER)
-        .map(|s| s.to_string())
-        .unwrap_or_else(|| "You".to_string());
+    let controller_def = sa.ir.controller_text.as_deref().unwrap_or("You");
     let controller =
         super::resolve_defined_players(&controller_def, sa.activating_player, ctx.game)
             .into_iter()

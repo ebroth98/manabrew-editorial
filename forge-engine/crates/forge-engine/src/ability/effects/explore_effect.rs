@@ -29,12 +29,10 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let controller = sa.activating_player;
 
     // Determine the exploring creature
-    let explorer = sa.target_chosen.target_card.or_else(|| {
-        match sa.defined() {
-            Some("Self") => sa.source,
-            Some("ParentTarget") => ctx.parent_target_card,
-            _ => sa.source,
-        }
+    let explorer = sa.target_chosen.target_card.or_else(|| match sa.defined() {
+        Some("Self") => sa.source,
+        Some("ParentTarget") => ctx.parent_target_card,
+        _ => sa.source,
     });
 
     let explorer_id = match explorer {

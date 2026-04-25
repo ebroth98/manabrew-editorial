@@ -9,8 +9,13 @@ export function platformFetch(input: string, init?: RequestInit): Promise<Respon
   if (!cached) {
     cached =
       getPlatformType() === "tauri"
-        ? (tauriFetch as unknown as FetchFn)
+        ? ((url, requestInit) =>
+            tauriFetch(url, {
+              ...requestInit,
+              redirect: requestInit?.redirect ?? "follow",
+              maxRedirections: 10,
+            }) as Promise<Response>)
         : (fetch.bind(globalThis) as FetchFn);
   }
-  return cached(input, init);
+  return cached(input, { ...init, redirect: init?.redirect ?? "follow" });
 }

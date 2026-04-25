@@ -21,15 +21,15 @@ pub fn get_stack_description(game: &GameState, sa: &SpellAbility) -> String {
     };
     let card = game.card(src_id);
     let power = sa
-        .params
-        .get("SetPower")
-        .map(str::to_string)
+        .ir
+        .set_power
+        .clone()
         .or_else(|| card.base_power.map(|p| p.to_string()))
         .unwrap_or_else(|| "*".to_string());
     let toughness = sa
-        .params
-        .get("SetToughness")
-        .map(str::to_string)
+        .ir
+        .set_toughness
+        .clone()
         .or_else(|| card.base_toughness.map(|t| t.to_string()))
         .unwrap_or_else(|| "*".to_string());
     format!("{} - Creature {}/{}", card.card_name, power, toughness)

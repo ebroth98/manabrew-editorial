@@ -79,12 +79,6 @@ impl EffectContext<'_> {
             .and_then(|cid| self.game.card(cid).set_code.as_deref())
             .unwrap_or("");
         let art_count = self.token_art_variant_count(token_script, host_edition);
-        if std::env::var("FORGE_TOKEN_DEBUG").is_ok() {
-            eprintln!(
-                "[TOKEN_DBG] sync_token_art_rng script={:?} host_edition={:?} art_count={}",
-                token_script, host_edition, art_count
-            );
-        }
         // Java's Aggregates.random(Collection<PaperToken>) uses min-random
         // selection: for each element, call nextInt() (unbounded). Collection
         // size = number of art variants in the resolved edition.

@@ -23,11 +23,7 @@ pub fn apply_with_adapt(
     card: &Card,
     source: &Card,
 ) -> bool {
-    if !valid_filter::matches_valid_card_selector_opt(
-        st_ab.ir.valid_card.as_ref(),
-        card,
-        source,
-    ) {
+    if !valid_filter::matches_valid_card_selector_opt(st_ab.ir.valid_card.as_ref(), card, source) {
         return false;
     }
     if !matches_valid_sa(st_ab.ir.valid_sa.as_deref(), sa) {

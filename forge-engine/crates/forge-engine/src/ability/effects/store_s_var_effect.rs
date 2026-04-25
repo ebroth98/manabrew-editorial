@@ -14,21 +14,9 @@ use crate::spellability::SpellAbility;
 fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let Some(source_id) = sa.source else { return };
 
-    let svar_name = sa
-        .ir
-        .svar_name_text
-        .clone()
-        .unwrap_or_default();
-    let svar_type = sa
-        .ir
-        .svar_type_text
-        .clone()
-        .unwrap_or_default();
-    let expression = sa
-        .ir
-        .svar_expression_text
-        .clone()
-        .unwrap_or_default();
+    let svar_name = sa.ir.svar_name_text.clone().unwrap_or_default();
+    let svar_type = sa.ir.svar_type_text.clone().unwrap_or_default();
+    let expression = sa.ir.svar_expression_text.clone().unwrap_or_default();
 
     if svar_name.is_empty() || svar_type.is_empty() || expression.is_empty() {
         return;

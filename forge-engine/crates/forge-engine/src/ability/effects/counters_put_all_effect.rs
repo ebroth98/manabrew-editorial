@@ -26,11 +26,7 @@ use crate::trigger::TriggerType;
 /// `CountersPutAllEffect` class extending `SpellAbilityEffect`.
 #[forge_engine_macros::spell_effect(CountersPutAllEffect)]
 fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
-    let counter_type = sa
-        .ir
-        .counter_type
-        .clone()
-        .unwrap_or(CounterType::P1P1);
+    let counter_type = sa.ir.counter_type.clone().unwrap_or(CounterType::P1P1);
     let count = resolve_numeric_svar(ctx.game, sa, "CounterNum", 1);
     if count == 0 {
         return;

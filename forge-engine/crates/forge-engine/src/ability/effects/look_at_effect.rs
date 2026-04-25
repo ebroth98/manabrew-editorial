@@ -22,15 +22,15 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     }
     .max(0) as usize;
 
-    let source_zone = sa
-        .ir
-        .source_zone
-        .unwrap_or(ZoneType::Library);
+    let source_zone = sa.ir.source_zone.unwrap_or(ZoneType::Library);
 
     let look_player = sa
         .target_chosen
         .target_player
-        .or_else(|| sa.defined().and_then(|d| resolve_defined_player(d, sa.activating_player, ctx.game)))
+        .or_else(|| {
+            sa.defined()
+                .and_then(|d| resolve_defined_player(d, sa.activating_player, ctx.game))
+        })
         .unwrap_or(sa.activating_player);
 
     let zone_cards = ctx.game.cards_in_zone(source_zone, look_player).to_vec();

@@ -7,6 +7,7 @@ import {
 } from "@/api/scryfall";
 import type { ScryfallCard } from "@/types/scryfall";
 import { upgradeScryfallUrl } from "@/components/game/game.utils";
+import { CARD_BACK_IMAGE_URL as CARD_BACK_URL } from "@/components/game/game.constants";
 import {
   cardImageIdentity,
   clearPendingCardImage,
@@ -78,12 +79,6 @@ async function fetchCardImageEntry(
   if (inflight) return inflight;
 
   const task = (async (): Promise<CachedCardImage | null> => {
-    // Tokens follow a strict lookup cascade so we never fall through to
-    // the normal /cards/named endpoint (which returns the legendary
-    // creature with the same name, not the token print):
-    //   1. set_code + collector_number — direct token print.
-    //   2. Scryfall search with `type:token` — newest matching token print.
-    //   3. Only as a last resort, generic /cards/named.
     let card: ScryfallCard | null = null;
     try {
       if (isToken) {
@@ -103,7 +98,7 @@ async function fetchCardImageEntry(
       return null;
     }
     if (!card) return null;
-    const entry = toCachedCardImage(card);
+    const entry = toCachedCardImage(card, { frontOnly: !!isToken});
     setCachedCardImage(key, entry);
     return entry;
   })().finally(() => clearPendingCardImage(key));
@@ -123,14 +118,13 @@ async function resolveScryfallUrl(
   return pickImageUrl(pickUrisForName(entry, name), size) ?? null;
 }
 
-import { CARD_BACK_IMAGE_URL as CARD_BACK_URL } from "@/components/game/game.constants";
 
 /**
  * Fetch image via Tauri's native HTTP on desktop (bypasses browser CORS) or
  * the browser's fetch on web, convert to blob URL, then load into an
  * HTMLImageElement for WebGL use.
  */
-async function loadImageViaTauri(url: string): Promise<HTMLImageElement> {
+async function fetchImage(url: string): Promise<HTMLImageElement> {
   const response = await platformFetch(url);
   if (!response.ok) throw new Error(`HTTP ${response.status} for ${url}`);
   const blob = await response.blob();
@@ -158,7 +152,7 @@ export async function getCardBackTexture(): Promise<Texture> {
   if (cached && !cached.destroyed) return cached;
 
   try {
-    const img = await loadImageViaTauri(CARD_BACK_URL);
+    const img = await fetchImage(CARD_BACK_URL);
     return createTextureFromImage(CARD_BACK_URL, img);
   } catch {
     return Texture.EMPTY;
@@ -180,7 +174,7 @@ export async function resolveCardImageUrl(
   if (cached) return cached;
 
   // 2. Have a direct URL — skip API entirely
-  let url = existingUrl ?? null;
+  const url = existingUrl ?? null;
   if (url) {
     const upgraded = upgradeScryfallUrl(url, size) ?? url;
     resolvedUrls.set(cacheKey, upgraded);
@@ -218,9 +212,11 @@ export async function loadCardTexture(
   if (isFaceDown) {
     return getCardBackTexture();
   }
-
   const url = await resolveCardImageUrl(name, existingUrl, isToken, setCode, cardNumber, size);
-  if (!url) return Texture.EMPTY;
+  if (!url) {
+    console.log(`MADONNA DIO - Texture.EMPTY for [${name}](setcode: ${setCode}))`)
+    return Texture.EMPTY
+  };
 
   const cached = textureCache.get(url);
   if (cached && !cached.destroyed) return cached;
@@ -228,7 +224,7 @@ export async function loadCardTexture(
   const existing = loadingPromises.get(url);
   if (existing) return existing;
 
-  const promise = loadImageViaTauri(url).then((img) => {
+  const promise = fetchImage(url).then((img) => {
     loadingPromises.delete(url);
     return createTextureFromImage(url, img);
   }).catch((err) => {

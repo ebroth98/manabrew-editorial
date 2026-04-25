@@ -16,8 +16,9 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
 
     // Get choices (sub-ability names from Choices$ param)
     let choice_names: Vec<String> = sa
-        .params
-        .get("Choices")
+        .ir
+        .choices
+        .as_deref()
         .map(|s| s.split(',').map(|c| c.trim().to_string()).collect())
         .unwrap_or_default();
 

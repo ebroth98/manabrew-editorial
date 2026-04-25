@@ -17,9 +17,9 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
         .target_chosen
         .target_player
         .or_else(|| {
-            sa.params
-                .get("Defined")
-                .and_then(|d| resolve_defined_player_with_sa(d, sa, sa.activating_player, ctx.game))
+            sa.defined().and_then(|defined| {
+                resolve_defined_player_with_sa(defined, sa, sa.activating_player, ctx.game)
+            })
         })
         .unwrap_or(sa.activating_player);
     if crate::staticability::static_ability_cant_gain_lose_pay_life::cant_lose_life(

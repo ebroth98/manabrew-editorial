@@ -12,11 +12,11 @@
 //! The main entry point is `resolve_numeric_svar()` which takes a parameter name
 //! from a SpellAbility and returns an integer value.
 
+use crate::ability::ability_ir::NumericParamIr;
 use crate::card::card_damage_history::TrackedEntity;
 use crate::card::filter_constants as fc;
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
-use crate::ability::ability_ir::NumericParamIr;
 use crate::parsing::compare::compare_expr;
 use crate::parsing::SemanticAmount;
 use crate::spellability::SpellAbility;

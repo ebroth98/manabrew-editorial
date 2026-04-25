@@ -11,8 +11,9 @@ use crate::spellability::SpellAbility;
 
 /// Stack text override. Mirrors Java `RestartGameEffect.getStackDescription`.
 pub fn get_stack_description(sa: &SpellAbility) -> String {
-    sa.params
-        .get_cloned(keys::SPELL_DESCRIPTION)
+    sa.ir
+        .spell_description_text
+        .clone()
         .unwrap_or_else(|| "Restart the game.".to_string())
 }
 
@@ -35,17 +36,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     ];
 
     // Optional: RestrictFromZone — leave some cards in a zone
-    let leave_zone = sa
-        .params
-        .get(keys::RESTRICT_FROM_ZONE)
-        .and_then(|z| match z {
-            "Battlefield" => Some(ZoneType::Battlefield),
-            "Hand" => Some(ZoneType::Hand),
-            "Graveyard" => Some(ZoneType::Graveyard),
-            "Exile" => Some(ZoneType::Exile),
-            "Library" => Some(ZoneType::Library),
-            _ => None,
-        });
+    let leave_zone = sa.ir.restrict_from_zone;
 
     for &player_id in &player_ids {
         // Reset player state

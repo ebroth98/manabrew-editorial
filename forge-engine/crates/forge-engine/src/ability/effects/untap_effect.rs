@@ -1,10 +1,10 @@
 use forge_foundation::ZoneType;
 
 use super::EffectContext;
+use crate::ability::ability_ir::DefinedRef;
 use crate::card::card_util;
 use crate::event::RunParams;
 use crate::ids::CardId;
-use crate::ability::ability_ir::DefinedRef;
 use crate::spellability::SpellAbility;
 use crate::trigger::TriggerType;
 
@@ -49,7 +49,12 @@ fn resolve_untap_targets(ctx: &EffectContext, sa: &SpellAbility) -> Vec<CardId> 
     if let Some(c) = sa.target_chosen.target_card {
         return vec![c];
     }
-    match sa.ir.defined.as_ref().and_then(|defined| defined.refs.first()) {
+    match sa
+        .ir
+        .defined
+        .as_ref()
+        .and_then(|defined| defined.refs.first())
+    {
         Some(DefinedRef::SelfCard) => sa.source.into_iter().collect(),
         Some(DefinedRef::ParentTarget) => ctx.parent_target_card.into_iter().collect(),
         Some(DefinedRef::Remembered) => sa

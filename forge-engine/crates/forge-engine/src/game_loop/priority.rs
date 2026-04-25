@@ -110,10 +110,10 @@ impl GameLoop {
                     let is_active_combat = matches!(
                         current_phase,
                         forge_foundation::PhaseType::CombatDeclareAttackers
-                        | forge_foundation::PhaseType::CombatDeclareBlockers
-                        | forge_foundation::PhaseType::CombatFirstStrikeDamage
-                        | forge_foundation::PhaseType::CombatDamage
-                        | forge_foundation::PhaseType::CombatEnd
+                            | forge_foundation::PhaseType::CombatDeclareBlockers
+                            | forge_foundation::PhaseType::CombatFirstStrikeDamage
+                            | forge_foundation::PhaseType::CombatDamage
+                            | forge_foundation::PhaseType::CombatEnd
                     );
                     let should_skip = if is_active_combat {
                         false

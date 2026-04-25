@@ -388,6 +388,10 @@ pub struct Card {
     pub remembered_cmc: Vec<i32>,
     /// Source card that created this effect card (for Card.EffectSource checks).
     pub effect_source: Option<CardId>,
+    #[serde(default)]
+    pub clone_origin: Option<CardId>,
+    #[serde(default)]
+    pub copied_permanent: Option<CardId>,
     /// The spell ability used to cast this card instance onto the stack.
     /// Mirrors Java `Card.getCastSA()`. Populated when the card hits the stack,
     /// cleared when it leaves the battlefield.
@@ -751,6 +755,8 @@ impl Card {
             chosen_map: HashMap::new(),
             remembered_cmc: Vec::new(),
             effect_source: None,
+            clone_origin: None,
+            copied_permanent: None,
             cast_sa: None,
             chosen_charm_modes: HashMap::new(),
             remembered_lki_cards: Vec::new(),
@@ -2532,7 +2538,9 @@ impl Card {
             let Some(sp_kind) = parsed.get(keys::SP) else {
                 continue;
             };
-            let cost_contains_x = parsed.get(keys::COST).is_some_and(|cost| cost.contains('X'));
+            let cost_contains_x = parsed
+                .get(keys::COST)
+                .is_some_and(|cost| cost.contains('X'));
             if spell_cost.is_none() {
                 spell_cost = parsed.get(keys::COST).map(parse_cost);
             }

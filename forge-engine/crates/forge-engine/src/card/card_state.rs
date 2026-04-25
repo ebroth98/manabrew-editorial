@@ -799,9 +799,9 @@ pub fn change_text_intrinsic(card: &mut Card) {
 }
 
 pub fn has_chapter(card: &Card) -> bool {
-    card.triggers.iter().any(|t| {
-        t.ir.chapter.is_some() || t.description.to_ascii_lowercase().contains("chapter")
-    })
+    card.triggers
+        .iter()
+        .any(|t| t.ir.chapter.is_some() || t.description.to_ascii_lowercase().contains("chapter"))
 }
 
 pub fn set_type(card: &mut Card, type_line: &str) {

@@ -17,10 +17,11 @@ use crate::parsing::{keys, Params, ParsedParams};
 use crate::spellability::target_restrictions::TargetRestrictions;
 use crate::spellability::{AbilityManaPart, SpellAbility, TargetChoices};
 use forge_foundation::ZoneType;
+use serde::{Deserialize, Serialize};
 
 /// The record type prefix for an ability definition.
 /// Mirrors Java's `AbilityFactory.AbilityRecordType`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum AbilityRecordType {
     /// AB$ — activated ability
     Ability,
@@ -104,6 +105,12 @@ impl AbilityRecordType {
     pub fn get_api_type_of(&self, params: &Params) -> Option<crate::ability::api_type::ApiType> {
         self.api_type_of(params)
             .and_then(crate::ability::api_type::ApiType::smart_value_of)
+    }
+}
+
+impl Default for AbilityRecordType {
+    fn default() -> Self {
+        Self::Spell
     }
 }
 
@@ -330,7 +337,7 @@ pub fn build_spell_ability_for_card_cast(
         activating_player: player,
         targeting_player: None,
         ability_text: String::new(),
-        params: Params::from_raw(""),
+        record_type: AbilityRecordType::Spell,
         ir: crate::ability::ability_ir::SpellAbilityIr::default(),
         target_restrictions,
         target_chosen: TargetChoices::default(),
@@ -491,7 +498,7 @@ fn build_spell_ability_of_type_with_params(
         activating_player: player,
         targeting_player: None,
         ability_text: ability_text.to_string(),
-        params,
+        record_type,
         ir,
         target_restrictions,
         target_chosen: TargetChoices::default(),

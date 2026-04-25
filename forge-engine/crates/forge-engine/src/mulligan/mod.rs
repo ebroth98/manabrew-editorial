@@ -100,7 +100,14 @@ pub fn run_london_mulligans(
         }
     }
 
-    run_put_back_phase(game, agents, &ordered, &mulligan_count, mana_pools, game_log);
+    run_put_back_phase(
+        game,
+        agents,
+        &ordered,
+        &mulligan_count,
+        mana_pools,
+        game_log,
+    );
 }
 
 /// After all players have kept, fan out put-back prompts in parallel and

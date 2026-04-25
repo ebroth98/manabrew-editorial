@@ -37,7 +37,10 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let target_player = sa
         .target_chosen
         .target_player
-        .or_else(|| sa.defined().and_then(|d| resolve_defined_player(d, sa.activating_player, ctx.game)))
+        .or_else(|| {
+            sa.defined()
+                .and_then(|d| resolve_defined_player(d, sa.activating_player, ctx.game))
+        })
         .unwrap_or(sa.activating_player);
 
     let lib_len = ctx

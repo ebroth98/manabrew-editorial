@@ -21,25 +21,24 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let controller = sa.activating_player;
 
     // Build the valid names list
-    let valid_names: Vec<String> =
-        if let Some(list) = sa.ir.choose_from_list_text.as_deref() {
-            list.split(',').map(|s| s.trim().to_string()).collect()
-        } else if sa.param_is_true(crate::parsing::keys::CHOOSE_FROM_DEFINED_CARDS) {
-            // Use remembered cards from source
-            if let Some(source_id) = sa.source {
-                ctx.game
-                    .card(source_id)
-                    .remembered_cards
-                    .iter()
-                    .map(|&cid| ctx.game.card(cid).card_name.clone())
-                    .collect()
-            } else {
-                vec![]
-            }
+    let valid_names: Vec<String> = if let Some(list) = sa.ir.choose_from_list_text.as_deref() {
+        list.split(',').map(|s| s.trim().to_string()).collect()
+    } else if sa.param_is_true(crate::parsing::keys::CHOOSE_FROM_DEFINED_CARDS) {
+        // Use remembered cards from source
+        if let Some(source_id) = sa.source {
+            ctx.game
+                .card(source_id)
+                .remembered_cards
+                .iter()
+                .map(|&cid| ctx.game.card(cid).card_name.clone())
+                .collect()
         } else {
-            // Open naming — for now provide an empty list (frontend handles free text input)
             vec![]
-        };
+        }
+    } else {
+        // Open naming — for now provide an empty list (frontend handles free text input)
+        vec![]
+    };
 
     let chosen = ctx.agents[controller.index()].choose_card_name(controller, &valid_names);
 

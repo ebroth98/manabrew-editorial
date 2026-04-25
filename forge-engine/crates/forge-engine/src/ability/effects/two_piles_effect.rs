@@ -1,7 +1,8 @@
 use forge_foundation::ZoneType;
 
-use super::{emit_zone_trigger, EffectContext};
+use super::{emit_zone_trigger, resolve_numeric_svar, EffectContext};
 use crate::ids::CardId;
+use crate::parsing::keys;
 use crate::spellability::SpellAbility;
 
 /// `SP$ TwoPiles` — divide cards into two piles and an opponent chooses one.
@@ -22,22 +23,10 @@ use crate::spellability::SpellAbility;
 #[forge_engine_macros::spell_effect(TwoPilesEffect)]
 fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let controller = sa.activating_player;
-    let num_cards = sa
-        .params
-        .get("NumCards")
-        .and_then(|s| s.parse::<usize>().ok())
-        .unwrap_or(5);
+    let num_cards = resolve_numeric_svar(ctx.game, sa, keys::NUM_CARDS, 5).max(0) as usize;
 
-    let zone1 = sa
-        .params
-        .get("Zone1")
-        .and_then(|z| super::parse_zone_type(z))
-        .unwrap_or(ZoneType::Hand);
-    let zone2 = sa
-        .params
-        .get("Zone2")
-        .and_then(|z| super::parse_zone_type(z))
-        .unwrap_or(ZoneType::Graveyard);
+    let zone1 = sa.ir.zone1.unwrap_or(ZoneType::Hand);
+    let zone2 = sa.ir.zone2.unwrap_or(ZoneType::Graveyard);
 
     // Get top N cards from library
     let lib = ctx

@@ -100,7 +100,7 @@ export async function getCardByName(name: string, setCode?: string): Promise<Scr
     throw new Error(`Card not found: ${name}`);
   }
 }
-  
+
 
 /**
  * Fetch a token card from Scryfall using its set code and collector number.
@@ -111,10 +111,9 @@ export async function getCardByName(name: string, setCode?: string): Promise<Scr
  * Uses the /cards/:set/:number endpoint which is a direct, unambiguous lookup.
  */
 export async function getTokenBySetAndNumber(setCode: string, collectorNumber: string): Promise<ScryfallCard> {
-  return scryfallFetch(
-    `${SCRYFALL_API}/cards/${encodeURIComponent(setCode.toLowerCase())}/${encodeURIComponent(collectorNumber)}`,
-    `Token not found: ${setCode}/${collectorNumber}`,
-  );
+  const tokenUrl = `${SCRYFALL_API}/cards/${encodeURIComponent(setCode.toLowerCase())}/${encodeURIComponent(collectorNumber)}`
+  console.log({tokenUrl})
+  return scryfallFetch(tokenUrl,`Token not found: ${setCode}/${collectorNumber}`);
 }
 
 /**
@@ -184,7 +183,7 @@ export async function fetchCardCollection(cards: { name: string; setCode?: strin
  * (image_uris in card_faces array).
  */
 export function getScryfallImageUrl(card: ScryfallCard, size: string = "normal"): string | undefined {
-  const sc = card as unknown as { 
+  const sc = card as unknown as {
     card_faces?: { image_uris?: Record<string, string> }[];
     image_uris?: Record<string, string>;
   };

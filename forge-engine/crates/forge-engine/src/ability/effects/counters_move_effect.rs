@@ -4,8 +4,6 @@
 //! Move N counters of a type from one permanent to another.
 
 use super::{parse_counter_type, EffectContext};
-use crate::parsing::keys;
-use crate::spellability::SpellAbility;
 use forge_foundation::ZoneType;
 
 /// Struct form of this effect so it can participate in the
@@ -14,8 +12,9 @@ use forge_foundation::ZoneType;
 #[forge_engine_macros::spell_effect(CountersMoveEffect)]
 fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let counter_type_str = sa
-        .params
-        .get(keys::COUNTER_TYPE)
+        .ir
+        .counter_type
+        .as_ref()
         .map(|s| s.to_string())
         .unwrap_or_else(|| "P1P1".to_string());
     let counter_type = parse_counter_type(&counter_type_str);

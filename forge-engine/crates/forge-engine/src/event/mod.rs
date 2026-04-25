@@ -11,7 +11,6 @@ use strum_macros::Display;
 // `TriggerType` was moved to `crate::trigger::trigger_type`. Nothing in this
 // module references it directly — callers must use `crate::trigger::TriggerType`.
 
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ZoneChangeRecord {
     pub origin: ZoneType,

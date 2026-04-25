@@ -1,5 +1,4 @@
 use super::{resolve_numeric_svar, EffectContext};
-use crate::spellability::SpellAbility;
 
 /// `SP$ ChooseNumber` — the activating player chooses a number.
 /// Stores the result in `source.chosen_number` for subsequent effects.
@@ -23,12 +22,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let min = resolve_numeric_svar(ctx.game, sa, "Min", 0);
     let max = resolve_numeric_svar(ctx.game, sa, "Max", 10);
 
-    let is_random = sa
-        .params
-        .get("Random")
-        .map(|s| s.eq_ignore_ascii_case("True"))
-        .unwrap_or(false);
-
+    let is_random = sa.ir.random;
     let chosen = if is_random {
         let range = max - min + 1;
         Some(ctx.rng.next_int(range) + min)

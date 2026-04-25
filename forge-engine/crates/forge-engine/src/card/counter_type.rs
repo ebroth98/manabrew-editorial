@@ -1,9 +1,12 @@
 use serde::{Deserialize, Serialize};
+use strum_macros::{Display, EnumString};
 
 /// Counter types commonly used in MTG.
 /// Note: `Copy` is intentionally absent because the `Named(String)` variant
 /// holds heap-allocated data. Use `.clone()` when an owned copy is needed.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[derive(
+    Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, EnumString, Display,
+)]
 pub enum CounterType {
     P1P1,
     M1M1,

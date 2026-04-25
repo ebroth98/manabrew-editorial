@@ -5,7 +5,6 @@ use super::{
     EffectContext,
 };
 use crate::parsing::keys;
-use crate::spellability::SpellAbility;
 
 /// Mirrors Java's `DigEffect.java`.
 ///
@@ -41,14 +40,16 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
 
     let dest_zone1 = sa.destination_zone().unwrap_or(ZoneType::Hand);
     let lib_position1: i32 = sa
-        .params
-        .get(keys::LIBRARY_POSITION)
+        .library_position()
         .and_then(|s| s.parse().ok())
         .unwrap_or(-1);
     let dest_zone2 = sa.ir.destination_zone_2.unwrap_or(ZoneType::Library);
 
     // Library position for zone2 placement: -1 = bottom, 0 = top
-    let lib_position2: i32 = sa.ir.library_position_2.unwrap_or(-1);
+    let lib_position2: i32 = sa
+        .library_position_2()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(-1);
 
     let change_valid = sa
         .ir
@@ -61,7 +62,10 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let dig_player = sa
         .target_chosen
         .target_player
-        .or_else(|| sa.defined().and_then(|d| resolve_defined_player(d, sa.activating_player, ctx.game)))
+        .or_else(|| {
+            sa.defined()
+                .and_then(|d| resolve_defined_player(d, sa.activating_player, ctx.game))
+        })
         .unwrap_or(sa.activating_player);
 
     let lib_len = ctx.game.cards_in_zone(ZoneType::Library, dig_player).len();

@@ -67,8 +67,10 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     } else {
         ctx.game.card(c2).power()
     };
-    let is_perpetual =
-        matches!(sa.ir.duration, Some(crate::spellability::AbilityDuration::Perpetual));
+    let is_perpetual = matches!(
+        sa.ir.duration,
+        Some(crate::spellability::AbilityDuration::Perpetual)
+    );
 
     if is_perpetual {
         let ts = ctx.game.next_effect_timestamp();

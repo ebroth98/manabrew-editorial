@@ -4,7 +4,8 @@ use crate::card::counter_type::parse_counter_type;
 use crate::card::CounterType;
 use crate::parsing::amount::AmountExpr;
 use crate::parsing::{
-    keys, parse_semantic_param_value, CompiledSelector, Params, ParsedParams, SemanticParamValue,
+    keys, parse_semantic_param_value, split_param_list_value, CompiledSelector, Params,
+    ParsedParams, SemanticParamValue,
 };
 use crate::spellability::{AbilityDuration, ReplaceDyingCondition, SpellAbilityMode};
 use forge_foundation::ZoneType;
@@ -19,6 +20,57 @@ pub enum EffectIr {
     LoseLife(NumericAmountIr),
     Mill(NumericAmountIr),
     Poison(NumericAmountIr),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DayTimeValue {
+    Day,
+    Night,
+    Switch,
+}
+
+impl DayTimeValue {
+    pub fn parse(raw: &str) -> Option<Self> {
+        match raw {
+            "Day" => Some(Self::Day),
+            "Night" => Some(Self::Night),
+            "Switch" => Some(Self::Switch),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DebuffAllSuffixKeywords {
+    Walk,
+}
+
+impl DebuffAllSuffixKeywords {
+    pub fn parse(raw: &str) -> Option<Self> {
+        match raw {
+            "walk" => Some(Self::Walk),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct DebuffIr {
+    pub num_present: bool,
+    pub keywords: Vec<String>,
+    pub all_suffix_keywords: Option<DebuffAllSuffixKeywords>,
+}
+
+impl DebuffIr {
+    pub fn from_parsed(params: &ParsedParams<'_>) -> Self {
+        Self {
+            num_present: params.has(keys::NUM),
+            keywords: split_param_list_value(params.get(keys::KEYWORDS), " & "),
+            all_suffix_keywords: params
+                .get(keys::ALL_SUFFIX_KEYWORDS)
+                .and_then(DebuffAllSuffixKeywords::parse),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -69,6 +121,7 @@ pub struct SpellAbilityIr {
     pub defined_player: Option<DefinedExpr>,
     pub defined_text: Option<String>,
     pub defined_player_text: Option<String>,
+    pub controller_text: Option<String>,
     pub effect_owner: Option<DefinedExpr>,
     pub effect_owner_text: Option<String>,
     pub origin_text: Option<String>,
@@ -80,8 +133,12 @@ pub struct SpellAbilityIr {
     pub zone1: Option<ZoneType>,
     pub zone2: Option<ZoneType>,
     pub change_type: Option<String>,
+    pub primary_text: Option<String>,
+    pub secondary_text: Option<String>,
+    pub secondary_type_text: Option<String>,
     pub library_position: Option<String>,
-    pub library_position_2: Option<i32>,
+    pub library_position_2: Option<String>,
+    pub library_position_alternative: Option<String>,
     pub shuffle_raw: Option<String>,
     pub no_shuffle: bool,
     pub mandatory: bool,
@@ -109,6 +166,8 @@ pub struct SpellAbilityIr {
     pub gains: Option<String>,
     pub choices: Option<String>,
     pub choices_selector: Option<CompiledSelector>,
+    pub debuff: DebuffIr,
+    pub for_each_text: Option<String>,
     pub exclude: Option<String>,
     pub object_text: Option<String>,
     pub source_text: Option<String>,
@@ -136,6 +195,7 @@ pub struct SpellAbilityIr {
     pub with_counters_type_text: Option<String>,
     pub with_counters_type: Option<CounterType>,
     pub with_counters_amount: Option<i32>,
+    pub with_counters_amount_text: Option<String>,
     pub change_num: usize,
     pub hidden: bool,
     pub skip_reorder: bool,
@@ -155,7 +215,10 @@ pub struct SpellAbilityIr {
     pub remember_removed_cards: bool,
     pub remember_destroyed: bool,
     pub remember_abandoned: bool,
+    pub may_shuffle: bool,
     pub remember_altered: bool,
+    pub alter_attribute_activate: bool,
+    pub alter_attribute_attributes: Vec<String>,
     pub remember_amass: bool,
     pub remember_flag: bool,
     pub remember_chosen: bool,
@@ -236,8 +299,8 @@ pub struct SpellAbilityIr {
     pub types_text: Option<String>,
     pub add_types: Option<String>,
     pub set_color: Option<String>,
-    pub set_power: Option<i32>,
-    pub set_toughness: Option<i32>,
+    pub set_power: Option<String>,
+    pub set_toughness: Option<String>,
     pub set_mana_cost: Option<String>,
     pub clone_target: Option<String>,
     pub kw: Option<String>,
@@ -268,6 +331,7 @@ pub struct SpellAbilityIr {
     pub zone: Option<ZoneType>,
     pub valid_zone: Option<ZoneType>,
     pub source_zone: Option<ZoneType>,
+    pub restrict_from_zone: Option<ZoneType>,
     pub choice_zone: Option<ZoneType>,
     pub with_total_cmc: Option<i32>,
     pub with_total_power: Option<i32>,
@@ -304,10 +368,16 @@ pub struct SpellAbilityIr {
     pub with_noted_counters: bool,
     pub exiled_with_effect_source: bool,
     pub token_tapped: bool,
+    pub token_blocking_text: Option<String>,
     pub remember_tokens: bool,
+    pub remember_original_tokens: bool,
     pub imprint_tokens: bool,
     pub remember_source: bool,
     pub token_remembered: Option<String>,
+    pub cleanup_for_each: bool,
+    pub add_triggers_from_text: Option<String>,
+    pub at_eot_trig_text: Option<String>,
+    pub pump_duration_text: Option<String>,
     pub searched: bool,
     pub reorder: bool,
     pub exactly: bool,
@@ -339,6 +409,8 @@ pub struct SpellAbilityIr {
     pub chosen_svar_text: Option<String>,
     pub other_svar_text: Option<String>,
     pub spellbook_text: Option<String>,
+    pub dungeon_text: Option<String>,
+    pub var_name_text: Option<String>,
     pub animate_power: Option<i32>,
     pub animate_toughness: Option<i32>,
     pub animate_types_text: Option<String>,
@@ -384,6 +456,9 @@ pub struct SpellAbilityIr {
     pub svar_name_text: Option<String>,
     pub svar_type_text: Option<String>,
     pub svar_expression_text: Option<String>,
+    pub change_color_word_text: Option<String>,
+    pub change_type_word_text: Option<String>,
+    pub forbidden_new_types_text: Option<String>,
     pub cost_has_x: bool,
     pub targeting_player: bool,
     pub targeting_player_text: Option<String>,
@@ -394,6 +469,7 @@ pub struct SpellAbilityIr {
     pub mode: Option<SpellAbilityMode>,
     pub duration: Option<AbilityDuration>,
     pub replace_dying_condition: Option<ReplaceDyingCondition>,
+    pub day_time_value: Option<DayTimeValue>,
     pub choice_restriction_text: Option<String>,
     pub phase_text: Option<String>,
     pub step_text: Option<String>,
@@ -489,6 +565,7 @@ impl SpellAbilityIr {
             defined_player: params.get(keys::DEFINED_PLAYER).map(DefinedExpr::parse),
             defined_text: params.get(keys::DEFINED).map(str::to_string),
             defined_player_text: params.get(keys::DEFINED_PLAYER).map(str::to_string),
+            controller_text: params.get(keys::CONTROLLER).map(str::to_string),
             effect_owner: params.get(keys::EFFECT_OWNER).map(DefinedExpr::parse),
             effect_owner_text: params.get(keys::EFFECT_OWNER).map(str::to_string),
             origin_text: params.get(keys::ORIGIN).map(str::to_string),
@@ -507,8 +584,14 @@ impl SpellAbilityIr {
             zone1: parsed_zone_type(params.get(keys::ZONE1)),
             zone2: parsed_zone_type(params.get(keys::ZONE2)),
             change_type: params.get(keys::CHANGE_TYPE).map(str::to_string),
+            primary_text: params.get(keys::PRIMARY).map(str::to_string),
+            secondary_text: params.get(keys::SECONDARY).map(str::to_string),
+            secondary_type_text: params.get(keys::SECONDARY_TYPE).map(str::to_string),
             library_position: params.get(keys::LIBRARY_POSITION).map(str::to_string),
-            library_position_2: parsed_i32(params.get(keys::LIBRARY_POSITION_2)),
+            library_position_2: params.get(keys::LIBRARY_POSITION_2).map(str::to_string),
+            library_position_alternative: params
+                .get(keys::LIBRARY_POSITION_ALTERNATIVE)
+                .map(str::to_string),
             shuffle_raw: params.get(keys::SHUFFLE).map(str::to_string),
             no_shuffle: parsed_true(params.get(keys::NO_SHUFFLE)),
             mandatory: parsed_true(params.get(keys::MANDATORY)),
@@ -536,6 +619,8 @@ impl SpellAbilityIr {
             gains: params.get(keys::GAINS).map(str::to_string),
             choices: params.get(keys::CHOICES).map(str::to_string),
             choices_selector: params.get(keys::CHOICES).map(CompiledSelector::parse),
+            debuff: DebuffIr::from_parsed(params),
+            for_each_text: params.get(keys::FOR_EACH).map(str::to_string),
             exclude: params.get("Exclude").map(str::to_string),
             object_text: params.get(keys::OBJECT).map(str::to_string),
             source_text: params.get(keys::SOURCE).map(str::to_string),
@@ -551,7 +636,9 @@ impl SpellAbilityIr {
             names_text: params.get(keys::NAMES).map(str::to_string),
             choose_from_list_text: params.get(keys::CHOOSE_FROM_LIST).map(str::to_string),
             choose_from_defined_cards: params.has(keys::CHOOSE_FROM_DEFINED_CARDS),
-            stack_id: params.get(keys::STACK_ID).and_then(|value| value.parse().ok()),
+            stack_id: params
+                .get(keys::STACK_ID)
+                .and_then(|value| value.parse().ok()),
             token_script: params.get(keys::TOKEN_SCRIPT).map(str::to_string),
             token_owner: params.get(keys::TOKEN_OWNER).map(str::to_string),
             token_name_text: params.get(keys::TOKEN_NAME).map(str::to_string),
@@ -565,6 +652,7 @@ impl SpellAbilityIr {
             with_counters_type_text: params.get(keys::WITH_COUNTERS_TYPE).map(str::to_string),
             with_counters_type: params.get(keys::WITH_COUNTERS_TYPE).map(parse_counter_type),
             with_counters_amount: parsed_i32(params.get(keys::WITH_COUNTERS_AMOUNT)),
+            with_counters_amount_text: params.get(keys::WITH_COUNTERS_AMOUNT).map(str::to_string),
             change_num: parsed_usize(params.get(keys::CHANGE_NUM)).unwrap_or(1),
             hidden: parsed_true(params.get(keys::HIDDEN)),
             skip_reorder: parsed_true(params.get("SkipReorder")),
@@ -584,7 +672,10 @@ impl SpellAbilityIr {
             remember_removed_cards: parsed_true(params.get(keys::REMEMBER_REMOVED_CARDS)),
             remember_destroyed: parsed_true(params.get("RememberDestroyed")),
             remember_abandoned: params.get("RememberAbandoned").is_some(),
+            may_shuffle: params.has(keys::MAY_SHUFFLE),
             remember_altered: parsed_true(params.get(keys::REMEMBER_ALTERED)),
+            alter_attribute_activate: parsed_bool_default(params.get(keys::ACTIVATE), true),
+            alter_attribute_attributes: split_param_list_value(params.get(keys::ATTRIBUTES), ","),
             remember_amass: parsed_true(params.get(keys::REMEMBER_AMASS)),
             remember_flag: parsed_true(params.get(keys::REMEMBER)),
             remember_chosen: parsed_true(params.get(keys::REMEMBER_CHOSEN)),
@@ -688,8 +779,8 @@ impl SpellAbilityIr {
                 .map(str::to_string),
             add_types: params.get(keys::ADD_TYPES).map(str::to_string),
             set_color: params.get(keys::SET_COLOR).map(str::to_string),
-            set_power: parsed_i32(params.get(keys::SET_POWER)),
-            set_toughness: parsed_i32(params.get(keys::SET_TOUGHNESS)),
+            set_power: params.get(keys::SET_POWER).map(str::to_string),
+            set_toughness: params.get(keys::SET_TOUGHNESS).map(str::to_string),
             set_mana_cost: params.get(keys::SET_MANA_COST).map(str::to_string),
             clone_target: params.get(keys::CLONE_TARGET).map(str::to_string),
             kw: params.get(keys::KW).map(str::to_string),
@@ -723,6 +814,7 @@ impl SpellAbilityIr {
             zone: parsed_zone_type(params.get(keys::ZONE)),
             valid_zone: parsed_zone_type(params.get(keys::VALID_ZONE)),
             source_zone: parsed_zone_type(params.get("SourceZone")),
+            restrict_from_zone: parsed_zone_type(params.get(keys::RESTRICT_FROM_ZONE)),
             choice_zone: parsed_zone_type(params.get(keys::CHOICE_ZONE)),
             with_total_cmc: parsed_i32(params.get(keys::WITH_TOTAL_CMC)),
             with_total_power: parsed_i32(params.get(keys::WITH_TOTAL_POWER)),
@@ -760,11 +852,17 @@ impl SpellAbilityIr {
             champion: parsed_true(params.get(keys::CHAMPION)),
             with_noted_counters: parsed_true(params.get(keys::WITH_NOTED_COUNTERS)),
             exiled_with_effect_source: params.has("ExiledWithEffectSource"),
-            token_tapped: parsed_true(params.get("TokenTapped")),
-            remember_tokens: params.has("RememberTokens"),
-            imprint_tokens: params.has("ImprintTokens"),
-            remember_source: params.has("RememberSource"),
-            token_remembered: params.get("TokenRemembered").map(str::to_string),
+            token_tapped: params.has(keys::TOKEN_TAPPED),
+            token_blocking_text: params.get(keys::TOKEN_BLOCKING).map(str::to_string),
+            remember_tokens: params.has(keys::REMEMBER_TOKENS),
+            remember_original_tokens: params.has(keys::REMEMBER_ORIGINAL_TOKENS),
+            imprint_tokens: params.has(keys::IMPRINT_TOKENS),
+            remember_source: params.has(keys::REMEMBER_SOURCE),
+            token_remembered: params.get(keys::TOKEN_REMEMBERED).map(str::to_string),
+            cleanup_for_each: params.has(keys::CLEANUP_FOR_EACH),
+            add_triggers_from_text: params.get(keys::ADD_TRIGGERS_FROM).map(str::to_string),
+            at_eot_trig_text: params.get(keys::AT_EOT_TRIG).map(str::to_string),
+            pump_duration_text: params.get(keys::PUMP_DURATION).map(str::to_string),
             searched: parsed_true(params.get(keys::SEARCHED)),
             reorder: parsed_true(params.get("Reorder")),
             exactly: parsed_true(params.get(keys::EXACTLY)),
@@ -791,13 +889,13 @@ impl SpellAbilityIr {
             num_dmg_text: params.get("NumDmg").map(str::to_string),
             num_cards_text: params.get("NumCards").map(str::to_string),
             sides: parsed_i32(params.get(keys::SIDES)),
-            result_sub_abilities_text: params
-                .get(keys::RESULT_SUB_ABILITIES)
-                .map(str::to_string),
+            result_sub_abilities_text: params.get(keys::RESULT_SUB_ABILITIES).map(str::to_string),
             result_svar_text: params.get("ResultSVar").map(str::to_string),
             chosen_svar_text: params.get("ChosenSVar").map(str::to_string),
             other_svar_text: params.get("OtherSVar").map(str::to_string),
             spellbook_text: params.get(keys::SPELLBOOK).map(str::to_string),
+            dungeon_text: params.get(keys::DUNGEON).map(str::to_string),
+            var_name_text: params.get(keys::VAR_NAME).map(str::to_string),
             animate_power: parsed_i32(params.get(keys::POWER)),
             animate_toughness: parsed_i32(params.get(keys::TOUGHNESS)),
             animate_types_text: params.get(keys::TYPES).map(str::to_string),
@@ -814,7 +912,7 @@ impl SpellAbilityIr {
             sneak: parsed_true(params.get(keys::SNEAK)),
             attacking_text: params.get(keys::ATTACKING).map(str::to_string),
             ninjutsu_text: params.get(keys::NINJUTSU).map(str::to_string),
-            token_attacking_text: params.get("TokenAttacking").map(str::to_string),
+            token_attacking_text: params.get(keys::TOKEN_ATTACKING).map(str::to_string),
             without_mana_cost: params.has("WithoutManaCost"),
             cast_from_play_effect: params.has("CastFromPlayEffect"),
             store_vote_num: parsed_true(params.get(keys::STORE_VOTE_NUM)),
@@ -839,7 +937,9 @@ impl SpellAbilityIr {
             condition_description_text: params.get("ConditionDescription").map(str::to_string),
             after_description_text: params.get("AfterDescription").map(str::to_string),
             announce_text: params.get("Announce").map(str::to_string),
-            optional_ability_prompt: params.get(keys::OPTIONAL_ABILITY_PROMPT).map(str::to_string),
+            optional_ability_prompt: params
+                .get(keys::OPTIONAL_ABILITY_PROMPT)
+                .map(str::to_string),
             svar_name_text: params
                 .get("SVar")
                 .or_else(|| params.get(keys::SVAR_NAME))
@@ -849,7 +949,12 @@ impl SpellAbilityIr {
                 .get("Expression")
                 .or_else(|| params.get(keys::SVAR_VALUE))
                 .map(str::to_string),
-            cost_has_x: params.get(keys::COST).is_some_and(|cost| cost.contains('X')),
+            change_color_word_text: params.get(keys::CHANGE_COLOR_WORD).map(str::to_string),
+            change_type_word_text: params.get(keys::CHANGE_TYPE_WORD).map(str::to_string),
+            forbidden_new_types_text: params.get(keys::FORBIDDEN_NEW_TYPES).map(str::to_string),
+            cost_has_x: params
+                .get(keys::COST)
+                .is_some_and(|cost| cost.contains('X')),
             targeting_player: params.has(keys::TARGETING_PLAYER),
             targeting_player_text: params.get(keys::TARGETING_PLAYER).map(str::to_string),
             effect_source: params.has(keys::EFFECT_SOURCE),
@@ -863,6 +968,7 @@ impl SpellAbilityIr {
             replace_dying_condition: params
                 .get("ReplaceDyingCondition")
                 .map(ReplaceDyingCondition::parse),
+            day_time_value: params.get(keys::VALUE).and_then(DayTimeValue::parse),
             choice_restriction_text: params.get("ChoiceRestriction").map(str::to_string),
             phase_text: params.get(keys::PHASE).map(str::to_string),
             step_text: params.get(keys::STEP).map(str::to_string),
@@ -1018,7 +1124,9 @@ impl NumericParamIr {
     fn from_semantic(value: &SemanticParamValue<'_>) -> Option<Self> {
         match value {
             SemanticParamValue::Integer(value) => Some(Self::Integer(*value)),
-            SemanticParamValue::Amount(amount) => Some(Self::Amount(AmountExpr::from_semantic(amount))),
+            SemanticParamValue::Amount(amount) => {
+                Some(Self::Amount(AmountExpr::from_semantic(amount)))
+            }
             SemanticParamValue::SVarReference(names) => Some(Self::SVarReference(
                 names.iter().map(|name| (*name).to_string()).collect(),
             )),
@@ -1144,6 +1252,12 @@ fn parsed_i32(value: Option<&str>) -> Option<i32> {
 
 fn parsed_usize(value: Option<&str>) -> Option<usize> {
     value?.parse().ok()
+}
+
+fn parsed_bool_default(value: Option<&str>, default: bool) -> bool {
+    value
+        .map(|value| value.eq_ignore_ascii_case("True"))
+        .unwrap_or(default)
 }
 
 fn parsed_true(value: Option<&str>) -> bool {
