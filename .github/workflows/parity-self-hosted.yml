@@ -2,12 +2,20 @@ name: Parity regression
 
 on:
   pull_request:
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - labeled
+      - unlabeled
     paths:
       - "forge/**"
       - "forge-engine/**"
       - "Cargo.toml"
       - "Cargo.lock"
       - ".github/workflows/parity-self-hosted.yml"
+      - "scripts/parity-rust-vs-rust.mjs"
+      - "scripts/parity-classify-entries.mjs"
   workflow_dispatch:
 
 permissions:
@@ -31,14 +39,145 @@ jobs:
       - name: Run forge-engine unit tests
         run: yarn test:forge-engine
 
+  classify:
+    # Splits regression.json into `new` (added or changed vs main) and `existing`
+    # entries. Also records whether the PR asked for a full Java reverify.
+    runs-on: [self-hosted, Linux]
+    timeout-minutes: 5
+    outputs:
+      new_count: ${{ steps.split.outputs.new_count }}
+      existing_count: ${{ steps.split.outputs.existing_count }}
+      force_full_java: ${{ steps.label.outputs.force_full_java }}
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          clean: true
+          fetch-depth: 0
+
+      - name: Fetch main regression.json
+        run: |
+          git fetch --depth=1 origin main
+          mkdir -p main-ref
+          git show origin/main:forge-engine/crates/forge-parity/regression.json > main-ref/regression.json
+
+      - name: Classify entries
+        id: split
+        run: |
+          node scripts/parity-classify-entries.mjs \
+            --branch forge-engine/crates/forge-parity/regression.json \
+            --main main-ref/regression.json \
+            --out-new new-entries.json \
+            --out-existing existing-entries.json
+          echo "new_count=$(jq 'length' new-entries.json)" >> "$GITHUB_OUTPUT"
+          echo "existing_count=$(jq 'length' existing-entries.json)" >> "$GITHUB_OUTPUT"
+
+      - name: Detect force-full-java label
+        id: label
+        env:
+          LABELS: ${{ toJson(github.event.pull_request.labels.*.name) }}
+        run: |
+          if echo "$LABELS" | jq -e 'any(. == "parity-reverify-java")' >/dev/null; then
+            echo "force_full_java=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "force_full_java=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Upload partitioned entries
+        uses: actions/upload-artifact@v4
+        with:
+          name: regression-partitions
+          path: |
+            new-entries.json
+            existing-entries.json
+          retention-days: 7
+
+  rust-vs-rust:
+    # Fast path: for entries that are byte-identical to main, run rust-branch and
+    # rust-main over the same seeds and diff the emitted GameTrace JSONs. No JVM.
+    needs: classify
+    if: needs.classify.outputs.existing_count != '0' && needs.classify.outputs.force_full_java != 'true'
+    runs-on: [self-hosted, Linux]
+    timeout-minutes: 45
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          clean: true
+          path: branch
+          fetch-depth: 0
+
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          clean: true
+          path: main-ref
+
+      - name: Build forge-parity (branch)
+        working-directory: branch
+        run: cargo build -p forge-parity --release
+
+      - name: Build forge-parity (main)
+        working-directory: main-ref
+        run: cargo build -p forge-parity --release
+
+      - name: Download partitioned entries
+        uses: actions/download-artifact@v4
+        with:
+          name: regression-partitions
+          path: partitions
+
+      - name: Diff traces
+        working-directory: branch
+        run: |
+          node scripts/parity-rust-vs-rust.mjs \
+            --branch-bin ../branch/target/release/forge-parity \
+            --main-bin   ../main-ref/target/release/forge-parity \
+            --entries    ../partitions/existing-entries.json \
+            --cards-dir  ../branch/forge/forge-gui/res/cardsfolder \
+            --decks-dir  ../branch/preset_decks \
+            --out-dir    ../rust-vs-rust-out
+
+      - name: Upload rust-vs-rust artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rust-vs-rust-out
+          path: rust-vs-rust-out
+          if-no-files-found: ignore
+          retention-days: 7
+
   parity-regression:
-    runs-on: [self-hosted, Linux, run_parity]
+    # Java path: runs on the `new` entries only (or the full list if the reverify
+    # label is set). Unchanged entries are validated by the rust-vs-rust job.
+    needs: classify
+    if: needs.classify.outputs.new_count != '0' || needs.classify.outputs.force_full_java == 'true'
+    runs-on: [self-hosted, Linux]
     timeout-minutes: 90
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           clean: true
+
+      - name: Download partitioned entries
+        uses: actions/download-artifact@v4
+        with:
+          name: regression-partitions
+          path: partitions
+
+      - name: Pick entries for Java run
+        id: pick
+        run: |
+          if [ "${{ needs.classify.outputs.force_full_java }}" = "true" ]; then
+            cp forge-engine/crates/forge-parity/regression.json java-entries.json
+            echo "source=full" >> "$GITHUB_OUTPUT"
+          else
+            cp partitions/new-entries.json java-entries.json
+            echo "source=new-only" >> "$GITHUB_OUTPUT"
+          fi
+          echo "Java harness will process $(jq 'length' java-entries.json) entries"
 
       - name: Restore Java cache
         uses: actions/cache@v4
@@ -57,7 +196,7 @@ jobs:
         run: |
           (
             ./target/release/forge-parity \
-              --ci --serve --port 8080 --verbose --java-workers 16 \
+              --ci --serve --port 8080 --verbose \
               --java-jar forge/forge-harness/target/forge-harness-jar-with-dependencies.jar \
               --db-path parity-ci.db \
               > parity-server.log 2>&1
@@ -74,7 +213,7 @@ jobs:
         run: |
           BATCH_ID=$(./target/release/parity-ci submit \
             --server http://localhost:8080 \
-            --file forge-engine/crates/forge-parity/regression.json)
+            --file java-entries.json)
           echo "batch_id=$BATCH_ID" >> "$GITHUB_OUTPUT"
 
       - name: Poll for results
