@@ -153,7 +153,7 @@ jobs:
     # label is set). Unchanged entries are validated by the rust-vs-rust job.
     needs: classify
     if: needs.classify.outputs.new_count != '0' || needs.classify.outputs.force_full_java == 'true'
-    runs-on: [self-hosted, Linux]
+    runs-on: [self-hosted, Linux, run_parity]
     timeout-minutes: 90
     steps:
       - name: Checkout

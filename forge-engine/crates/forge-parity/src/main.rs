@@ -598,49 +598,52 @@ fn run_multi_game_mode(cli: &Cli) {
             }
         }
     } else {
-        let mut results: Vec<MatchupResult> = Vec::with_capacity(total);
-        for (i, seed) in seeds.iter().copied().enumerate() {
-            let config = build_config(cli, &cli.deck1, &cli.deck2, seed);
-
-            let result = run_single_matchup_rust_only(&config, &data);
-            if cli.is_verbose() {
-                let n = i + 1;
-                match result.status {
-                    MatchupStatus::Pass => {
-                        eprintln!(
-                            "[parity] [{}/{}] seed={} ... PASS ({} snapshots)",
-                            n, total, seed, result.snapshots_compared
-                        );
-                    }
-                    MatchupStatus::Skipped => {
-                        eprintln!(
-                            "[parity] [{}/{}] seed={} ... SKIPPED: {}",
-                            n,
-                            total,
-                            seed,
-                            result.skip_reason.as_deref().unwrap_or("ignored")
-                        );
-                    }
-                    MatchupStatus::Fail => {
-                        eprintln!(
-                            "[parity] [{}/{}] seed={} ... FAIL ({} divergences)",
-                            n, total, seed, result.divergence_count
-                        );
-                    }
-                    MatchupStatus::Error => {
-                        eprintln!(
-                            "[parity] [{}/{}] seed={} ... ERROR: {}",
-                            n,
-                            total,
-                            seed,
-                            result.error_message.as_deref().unwrap_or("unknown")
-                        );
+        let completed = AtomicUsize::new(0);
+        let verbose = cli.is_verbose();
+        seeds
+            .par_iter()
+            .copied()
+            .map(|seed| {
+                let config = build_config(cli, &cli.deck1, &cli.deck2, seed);
+                let result = run_single_matchup_rust_only(&config, &data);
+                if verbose {
+                    let n = completed.fetch_add(1, Ordering::Relaxed) + 1;
+                    match result.status {
+                        MatchupStatus::Pass => {
+                            eprintln!(
+                                "[parity] [{}/{}] seed={} ... PASS ({} snapshots)",
+                                n, total, seed, result.snapshots_compared
+                            );
+                        }
+                        MatchupStatus::Skipped => {
+                            eprintln!(
+                                "[parity] [{}/{}] seed={} ... SKIPPED: {}",
+                                n,
+                                total,
+                                seed,
+                                result.skip_reason.as_deref().unwrap_or("ignored")
+                            );
+                        }
+                        MatchupStatus::Fail => {
+                            eprintln!(
+                                "[parity] [{}/{}] seed={} ... FAIL ({} divergences)",
+                                n, total, seed, result.divergence_count
+                            );
+                        }
+                        MatchupStatus::Error => {
+                            eprintln!(
+                                "[parity] [{}/{}] seed={} ... ERROR: {}",
+                                n,
+                                total,
+                                seed,
+                                result.error_message.as_deref().unwrap_or("unknown")
+                            );
+                        }
                     }
                 }
-            }
-            results.push(result);
-        }
-        results
+                result
+            })
+            .collect()
     };
 
     let passed = results
@@ -1077,7 +1080,9 @@ fn run_single_matchup_rust_only(config: &RunConfig, data: &LoadedData) -> Matchu
                 rust_snapshot: None,
                 java_snapshot: None,
                 covered_cards: trace.covered_cards,
-                rust_log: vec![],
+                // Populate rust_log (matches Java-mode behavior) so downstream
+                // consumers can diff full traces across runs, not just counts.
+                rust_log: trace.log,
                 java_log: vec![],
                 finished_turn,
             }

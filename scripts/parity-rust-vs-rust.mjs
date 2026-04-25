@@ -1,6 +1,10 @@
 #!/usr/bin/env node
 // Runs a filtered regression.json through two forge-parity binaries (branch vs main)
-// in rust-only mode and diffs the emitted JSON GameTrace per (entry, seed).
+// in rust-only mode and diffs the emitted JSON per entry.
+//
+// One invocation per (entry, side): the binary's own multi-game / matrix mode
+// runs all seeds in parallel via rayon (see run_multi_game_mode rust-only
+// branch). We just pass entry.args through verbatim and compare outputs.
 //
 // Usage:
 //   node scripts/parity-rust-vs-rust.mjs \
@@ -10,10 +14,6 @@
 //     --cards-dir  forge/forge-gui/res/cardsfolder \
 //     --decks-dir  preset_decks \
 //     --out-dir    rust-vs-rust-out
-//
-// `entries` is a subset of regression.json (same shape): array of {name, args}.
-// Each entry's `args` is re-parsed; `--games N --seed S` is expanded into N single-seed
-// runs so each invocation produces one GameTrace JSON for byte-level comparison.
 //
 // Exit codes: 0 = all match, 1 = at least one divergence, 2 = harness error.
 
@@ -35,7 +35,6 @@ function parseArgs(argv) {
 }
 
 function shellSplit(s) {
-  // Minimal POSIX-ish tokenizer: handles single/double quotes, no $var expansion.
   const out = [];
   let cur = "";
   let quote = null;
@@ -56,16 +55,7 @@ function shellSplit(s) {
   return out;
 }
 
-function pullFlag(argv, flag) {
-  const idx = argv.indexOf(flag);
-  if (idx === -1) return null;
-  const val = argv[idx + 1];
-  argv.splice(idx, 2);
-  return val;
-}
-
 // Fields that are wall-clock or otherwise non-deterministic debugging metadata.
-// Stripped before hashing so rust-vs-rust comparisons only see game state.
 const IGNORED_FIELDS = new Set(["timestamp_ms"]);
 
 function stripIgnored(value) {
@@ -82,15 +72,18 @@ function stripIgnored(value) {
 function hashTrace(path) {
   const parsed = JSON.parse(readFileSync(path, "utf8"));
   stripIgnored(parsed);
-  const h = createHash("sha256");
-  h.update(JSON.stringify(parsed));
-  return h.digest("hex");
+  return createHash("sha256").update(JSON.stringify(parsed)).digest("hex");
 }
 
 function runBin(binPath, args, outJson) {
   const finalArgs = [...args, "--format", "json", "--output", outJson];
-  const res = spawnSync(binPath, finalArgs, { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
-  return { status: res.status, stderr: res.stderr, stdout: res.stdout };
+  // Silence stdout (binary prints progress to stderr); capture stderr for failures.
+  const res = spawnSync(binPath, finalArgs, {
+    encoding: "utf8",
+    stdio: ["ignore", "ignore", "pipe"],
+    maxBuffer: 64 * 1024 * 1024,
+  });
+  return { status: res.status, stderr: res.stderr ?? "" };
 }
 
 function main() {
@@ -114,63 +107,60 @@ function main() {
   mkdirSync(outDir, { recursive: true });
   const entries = JSON.parse(readFileSync(entriesPath, "utf8"));
 
+  console.log(`rust-vs-rust: ${entries.length} entries × 2 sides`);
+
   const divergences = [];
-  let runs = 0;
+  const t0 = Date.now();
 
-  for (const entry of entries) {
+  for (let i = 0; i < entries.length; i++) {
+    const entry = entries[i];
     const argv = shellSplit(entry.args);
+    if (cardsDir) argv.push("--cards-dir", cardsDir);
+    if (decksDir) argv.push("--decks-dir", decksDir);
 
-    // Expand --games N into N single-seed runs.
-    const seedStr = pullFlag(argv, "--seed");
-    const gamesStr = pullFlag(argv, "--games");
-    const baseSeed = seedStr ? Number(seedStr) : 42;
-    const games = gamesStr ? Number(gamesStr) : 1;
+    const branchOut = join(outDir, `${entry.name}.branch.json`);
+    const mainOut = join(outDir, `${entry.name}.main.json`);
 
-    for (let i = 0; i < games; i++) {
-      const seed = baseSeed + i;
-      const perRunArgs = [...argv, "--seed", String(seed), "--games", "1"];
-      if (cardsDir) perRunArgs.push("--cards-dir", cardsDir);
-      if (decksDir) perRunArgs.push("--decks-dir", decksDir);
+    const elapsed = ((Date.now() - t0) / 1000).toFixed(0);
+    process.stdout.write(`[${i + 1}/${entries.length}] (${elapsed}s) ${entry.name} ... `);
 
-      const tag = `${entry.name}_seed${seed}`;
-      const branchOut = join(outDir, `${tag}.branch.json`);
-      const mainOut = join(outDir, `${tag}.main.json`);
+    const tStart = Date.now();
+    const b = runBin(branchBin, argv, branchOut);
+    const m = runBin(mainBin, argv, mainOut);
+    const dt = ((Date.now() - tStart) / 1000).toFixed(1);
 
-      const b = runBin(branchBin, perRunArgs, branchOut);
-      const m = runBin(mainBin, perRunArgs, mainOut);
-      runs++;
+    if (b.status !== 0 || m.status !== 0) {
+      divergences.push({
+        name: entry.name,
+        kind: "run_failed",
+        branch_exit: b.status,
+        main_exit: m.status,
+        branch_stderr: b.stderr.slice(-2000),
+        main_stderr: m.stderr.slice(-2000),
+      });
+      console.log(`FAIL (${dt}s, branch exit=${b.status}, main exit=${m.status})`);
+      continue;
+    }
 
-      if (b.status !== 0 || m.status !== 0) {
-        divergences.push({
-          tag,
-          kind: "run_failed",
-          branch_exit: b.status,
-          main_exit: m.status,
-          branch_stderr: b.stderr.slice(-2000),
-          main_stderr: m.stderr.slice(-2000),
-        });
-        continue;
-      }
-
-      const bh = hashTrace(branchOut);
-      const mh = hashTrace(mainOut);
-      if (bh !== mh) {
-        divergences.push({ tag, kind: "trace_mismatch", branch_sha: bh, main_sha: mh });
-      }
+    const bh = hashTrace(branchOut);
+    const mh = hashTrace(mainOut);
+    if (bh !== mh) {
+      divergences.push({ name: entry.name, kind: "output_mismatch", branch_sha: bh, main_sha: mh });
+      console.log(`DIVERGED (${dt}s)`);
+    } else {
+      console.log(`ok (${dt}s)`);
     }
   }
 
-  const summary = { runs, divergences };
+  const wallSec = ((Date.now() - t0) / 1000).toFixed(1);
+  const summary = { entries: entries.length, wall_seconds: Number(wallSec), divergences };
   writeFileSync(join(outDir, "summary.json"), JSON.stringify(summary, null, 2));
 
   if (divergences.length > 0) {
-    console.error(`rust-vs-rust: ${divergences.length}/${runs} runs diverged`);
-    for (const d of divergences.slice(0, 10)) {
-      console.error(`  - ${d.tag}: ${d.kind}`);
-    }
+    console.error(`rust-vs-rust: ${divergences.length}/${entries.length} entries diverged in ${wallSec}s`);
     process.exit(1);
   }
-  console.log(`rust-vs-rust: all ${runs} runs matched`);
+  console.log(`rust-vs-rust: all ${entries.length} entries matched in ${wallSec}s`);
 }
 
 main();
