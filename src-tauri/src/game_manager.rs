@@ -22,6 +22,8 @@ use forge_agent_interface::java_prompt_normalizer::{
 };
 use forge_agent_interface::prompt::{AgentPrompt, AgentPromptInner, PlayerAction};
 
+const GAME_THREAD_STACK_SIZE: usize = 64 * 1024 * 1024;
+
 pub struct GameManager {
     pub session: Mutex<Option<GameSession>>,
     pub latest_prompt: Arc<Mutex<Option<AgentPrompt>>>,
@@ -118,50 +120,55 @@ impl GameManager {
         spawn_notify_forwarder(app.clone(), notify_rx, None);
         spawn_snapshot_forwarder(app.clone(), snapshot_rx, None);
 
-        let handle = thread::spawn(move || {
-            eprintln!(
-                "[game_thread] Starting game: {} with backend={} deck={:?}",
-                game_id_clone,
-                backend.label(),
-                deck
-            );
-            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| match backend {
-                EngineBackendKind::Rust => rust_backend::run_game(
-                    game_id_clone.clone(),
-                    deck,
-                    starting_life,
-                    commander_name,
-                    opponent_deck_list,
-                    prompt_tx,
-                    response_rx,
-                    notify_tx,
-                    snapshot_tx,
-                    abort_signal_for_thread,
-                ),
-                EngineBackendKind::JavaForge => java_backend::run_game(
-                    game_id_clone.clone(),
-                    deck,
-                    starting_life,
-                    commander_name,
-                    opponent_deck_list,
-                    java_prompt_tx,
-                    java_response_rx,
-                ),
-            }));
-            match result {
-                Ok(()) => eprintln!("[game_thread] Game {} finished normally", game_id_clone),
-                Err(e) => {
-                    let msg = if let Some(s) = e.downcast_ref::<String>() {
-                        s.clone()
-                    } else if let Some(s) = e.downcast_ref::<&str>() {
-                        s.to_string()
-                    } else {
-                        "Unknown panic".to_string()
-                    };
-                    eprintln!("[game_thread] PANIC in game {}: {}", game_id_clone, msg);
+        let handle = thread::Builder::new()
+            .name(format!("game-thread-{}", game_id))
+            .stack_size(GAME_THREAD_STACK_SIZE)
+            .spawn(move || {
+                eprintln!(
+                    "[game_thread] Starting game: {} with backend={} deck={:?}",
+                    game_id_clone,
+                    backend.label(),
+                    deck
+                );
+                let result =
+                    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| match backend {
+                        EngineBackendKind::Rust => rust_backend::run_game(
+                            game_id_clone.clone(),
+                            deck,
+                            starting_life,
+                            commander_name,
+                            opponent_deck_list,
+                            prompt_tx,
+                            response_rx,
+                            notify_tx,
+                            snapshot_tx,
+                            abort_signal_for_thread,
+                        ),
+                        EngineBackendKind::JavaForge => java_backend::run_game(
+                            game_id_clone.clone(),
+                            deck,
+                            starting_life,
+                            commander_name,
+                            opponent_deck_list,
+                            java_prompt_tx,
+                            java_response_rx,
+                        ),
+                    }));
+                match result {
+                    Ok(()) => eprintln!("[game_thread] Game {} finished normally", game_id_clone),
+                    Err(e) => {
+                        let msg = if let Some(s) = e.downcast_ref::<String>() {
+                            s.clone()
+                        } else if let Some(s) = e.downcast_ref::<&str>() {
+                            s.to_string()
+                        } else {
+                            "Unknown panic".to_string()
+                        };
+                        eprintln!("[game_thread] PANIC in game {}: {}", game_id_clone, msg);
+                    }
                 }
-            }
-        });
+            })
+            .map_err(|e| format!("Failed to spawn game thread: {}", e))?;
 
         *session_guard = Some(GameSession {
             game_id: game_id.clone(),
@@ -350,47 +357,52 @@ impl GameManager {
         let selected_commander_names = commander_names.clone();
         let abort_signal = Arc::new(AtomicBool::new(false));
         let abort_signal_for_thread = abort_signal.clone();
-        let handle = thread::spawn(move || {
-            eprintln!(
-                "[game_thread] Starting multiplayer game: {} with backend={} players={}",
-                game_id_clone,
-                backend.label(),
-                num_players
-            );
-            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| match backend {
-                EngineBackendKind::Rust => rust_backend::run_multiplayer_game(
-                    game_id_clone.clone(),
-                    player_name_strs,
-                    selected_deck_lists,
-                    selected_commander_names,
-                    engine_player_index,
-                    starting_life,
-                    game_engine_prompt_tx,
-                    engine_response_rx,
-                    engine_notify_tx,
-                    engine_snapshot_tx,
-                    game_remote_prompt_tx,
-                    remote_response_rxs,
-                    abort_signal_for_thread,
-                ),
-                EngineBackendKind::JavaForge => {
-                    unreachable!("unsupported backend rejected before thread start")
+        let handle = thread::Builder::new()
+            .name(format!("game-thread-{}", game_id))
+            .stack_size(GAME_THREAD_STACK_SIZE)
+            .spawn(move || {
+                eprintln!(
+                    "[game_thread] Starting multiplayer game: {} with backend={} players={}",
+                    game_id_clone,
+                    backend.label(),
+                    num_players
+                );
+                let result =
+                    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| match backend {
+                        EngineBackendKind::Rust => rust_backend::run_multiplayer_game(
+                            game_id_clone.clone(),
+                            player_name_strs,
+                            selected_deck_lists,
+                            selected_commander_names,
+                            engine_player_index,
+                            starting_life,
+                            game_engine_prompt_tx,
+                            engine_response_rx,
+                            engine_notify_tx,
+                            engine_snapshot_tx,
+                            game_remote_prompt_tx,
+                            remote_response_rxs,
+                            abort_signal_for_thread,
+                        ),
+                        EngineBackendKind::JavaForge => {
+                            unreachable!("unsupported backend rejected before thread start")
+                        }
+                    }));
+                match result {
+                    Ok(()) => eprintln!("[game_thread] Game {} finished normally", game_id_clone),
+                    Err(e) => {
+                        let msg = if let Some(s) = e.downcast_ref::<String>() {
+                            s.clone()
+                        } else if let Some(s) = e.downcast_ref::<&str>() {
+                            s.to_string()
+                        } else {
+                            "Unknown panic".to_string()
+                        };
+                        eprintln!("[game_thread] PANIC in game {}: {}", game_id_clone, msg);
+                    }
                 }
-            }));
-            match result {
-                Ok(()) => eprintln!("[game_thread] Game {} finished normally", game_id_clone),
-                Err(e) => {
-                    let msg = if let Some(s) = e.downcast_ref::<String>() {
-                        s.clone()
-                    } else if let Some(s) = e.downcast_ref::<&str>() {
-                        s.to_string()
-                    } else {
-                        "Unknown panic".to_string()
-                    };
-                    eprintln!("[game_thread] PANIC in game {}: {}", game_id_clone, msg);
-                }
-            }
-        });
+            })
+            .map_err(|e| format!("Failed to spawn game thread: {}", e))?;
 
         *session_guard = Some(GameSession {
             game_id: game_id.clone(),

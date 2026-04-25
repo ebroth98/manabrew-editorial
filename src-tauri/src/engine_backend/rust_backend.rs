@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::sync::atomic::AtomicBool;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
 use std::sync::Arc;
 
@@ -86,7 +86,7 @@ pub fn run_game(
 
     let mut agents: Vec<Box<dyn PlayerAgent>> = vec![Box::new(human), Box::new(ai)];
     let mut game_loop = GameLoop::new(2);
-    game_loop.set_abort_signal(abort_signal);
+    game_loop.set_abort_signal(abort_signal.clone());
     if std::env::var("FORGE_ENGINE_GAME_LOG").is_err() {
         game_loop.game_log.set_enabled(true);
     }
@@ -110,6 +110,10 @@ pub fn run_game(
     let mut rng = rand::rngs::StdRng::from_entropy();
 
     let winner = game_loop.run(&mut game, &mut agents, &mut rng, 5000);
+
+    if abort_signal.load(Ordering::Relaxed) {
+        return;
+    }
 
     let final_view = GameViewDto::from_engine(&game, &game_loop.mana_pools, p0, &game_id, &[], &[]);
     let _ = prompt_tx.send(AgentPrompt {
@@ -192,7 +196,7 @@ pub fn run_multiplayer_game(
     }
 
     let mut game_loop = GameLoop::new(num_players);
-    game_loop.set_abort_signal(abort_signal);
+    game_loop.set_abort_signal(abort_signal.clone());
     if std::env::var("FORGE_ENGINE_GAME_LOG").is_err() {
         game_loop.game_log.set_enabled(true);
     }
@@ -214,6 +218,10 @@ pub fn run_multiplayer_game(
     let mut rng = rand::rngs::StdRng::from_entropy();
 
     let _winner = game_loop.run(&mut game, &mut agents, &mut rng, 5000);
+
+    if abort_signal.load(Ordering::Relaxed) {
+        return;
+    }
 
     let engine_pid = PlayerId(engine_player_index as u32);
     let engine_final_view =
