@@ -8,6 +8,7 @@ pub mod land_ability;
 pub mod optional_cost;
 pub mod optional_cost_value;
 pub mod params;
+pub mod runtime_types;
 pub mod spell;
 pub mod spell_ability_condition;
 pub mod spell_ability_predicates;
@@ -24,7 +25,7 @@ use std::sync::atomic::{AtomicU32, Ordering};
 
 use serde::{Deserialize, Serialize};
 
-use crate::ability::ability_ir::AbilityIr;
+use crate::ability::ability_ir::SpellAbilityIr;
 use crate::ability::api_type::ApiType;
 use crate::ability::AbilityKey;
 use crate::agent::PlayerAgent;
@@ -35,12 +36,16 @@ use crate::event::AbilityValue;
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
 use crate::mana::ManaPool;
-use crate::parsing::{keys, Params};
+use crate::parsing::{keys, Params, ParsedParams};
+use forge_foundation::ZoneType;
 
 pub use ability_mana_part::AbilityManaPart;
 pub use alternative_cost::{AlternativeCost, MORPH_GENERIC_COST, MORPH_PT};
 pub use optional_cost::OptionalCost;
 pub use optional_cost_value::OptionalCostValue;
+pub use runtime_types::{
+    AbilityDuration, ReplaceDyingCondition, SpellAbilityMode, TriggerCondition,
+};
 pub use spell_ability_condition::SpellAbilityCondition;
 pub use spell_ability_predicates::{has_sub_ability_api, is_api, is_valid};
 pub use spell_ability_restriction::SpellAbilityRestriction;
@@ -113,7 +118,7 @@ pub struct SpellAbility {
     /// parser migration and diagnostics; resolution still follows Java-parity
     /// params until each API is explicitly wired.
     #[serde(skip)]
-    pub compiled_ir: Option<AbilityIr>,
+    pub ir: SpellAbilityIr,
     /// Targeting restrictions parsed from `ValidTgts$`.
     /// `None` means this ability doesn't use targeting.
     /// Mirrors Java's `targetRestrictions` field.
@@ -249,6 +254,9 @@ pub struct SpellAbility {
     /// Mirrors Java's `LandAbility` subclass flag.
     #[serde(default)]
     pub is_land_ability: bool,
+    /// Runtime-only face-down cast state used by morph/disguise-style spells.
+    #[serde(default)]
+    pub cast_face_down: bool,
     /// Trigger objects map for tracking trigger context.
     #[serde(default)]
     pub trigger_objects: HashMap<AbilityKey, AbilityValue>,
@@ -324,7 +332,106 @@ impl SpellAbility {
     /// Check if a parameter is set to "True" (case-insensitive).
     /// Common pattern for boolean params like `Ninjutsu$ True`, `Mega$ True`, etc.
     pub fn param_is_true(&self, key: &str) -> bool {
-        self.params.is_true(key)
+        match key {
+            keys::OPTIONAL => self.ir.optional,
+            keys::MANDATORY => self.ir.mandatory,
+            keys::TAPPED => self.ir.tapped,
+            keys::HIDDEN => self.ir.hidden,
+            keys::IMPRINT => self.ir.imprint,
+            keys::CHOOSE_FROM_DEFINED_CARDS => self.ir.choose_from_defined_cards,
+            keys::FACE_DOWN => self.ir.face_down,
+            keys::EXILE_FACE_DOWN => self.ir.exile_face_down,
+            keys::TRANSFORMED => self.ir.transformed,
+            keys::AT_RANDOM => self.ir.at_random,
+            keys::REMEMBER_ALTERED => self.ir.remember_altered,
+            keys::REMEMBER_AMASS => self.ir.remember_amass,
+            keys::REMEMBER => self.ir.remember_flag,
+            keys::REMOVE_FROM_COMBAT => self.ir.remove_from_combat,
+            keys::RANDOM_TARGET => self.ir.random_target,
+            keys::REMEMBER_CHOSEN => self.ir.remember_chosen,
+            keys::REMEMBER_CLASHER => self.ir.remember_clasher,
+            keys::REMEMBER_CLOAKED => self.ir.remember_cloaked,
+            keys::REMEMBER_DISCOVERED => self.ir.remember_discovered,
+            keys::REMEMBER_DRAFTED => self.ir.remember_drafted,
+            keys::REMEMBER_EXCHANGED => self.ir.remember_exchanged,
+            keys::REMEMBER_INVESTIGATING_PLAYERS => self.ir.remember_investigating_players,
+            keys::REMEMBER_MADE => self.ir.remember_made,
+            keys::IMPRINT_MADE => self.ir.imprint_made,
+            keys::RANDOM_CHOSEN => self.ir.random_chosen,
+            keys::SNEAK => self.ir.sneak,
+            keys::MEGA => self.ir.mega,
+            keys::STORE_VOTE_NUM => self.ir.store_vote_num,
+            keys::REMEMBER_VOTED_OBJECTS => self.ir.remember_voted_objects,
+            "ToVisitYourAttractions" => self.ir.to_visit_your_attractions,
+            "RememberHighestPlayer" => self.ir.remember_highest_player,
+            "UseHighestRoll" => self.ir.use_highest_roll,
+            "UseDifferenceBetweenRolls" => self.ir.use_difference_between_rolls,
+            "StoreResults" => self.ir.store_results,
+            "EvenOddResults" => self.ir.even_odd_results,
+            "DifferentResults" => self.ir.different_results,
+            "MaxRollsResults" => self.ir.max_rolls_results,
+            "NoteDoubles" => self.ir.note_doubles,
+            "SubsForEach" => self.ir.subs_for_each,
+            "RerollResults" => self.ir.reroll_results,
+            keys::NINJUTSU => self.ir.ninjutsu,
+            keys::UNEARTH => self.ir.unearth,
+            keys::ATTACKING => self.ir.attacking,
+            keys::OVERWRITE_COLORS => self.ir.overwrite_colors,
+            keys::FORETOLD => self.ir.foretold,
+            keys::FORETOLD_COST => self.ir.foretold_cost,
+            keys::IMPRINT_LAST => self.ir.imprint_last,
+            keys::RANDOM_ORDER => self.ir.random_order,
+            keys::SHUFFLE_CHANGED_PILE => self.ir.shuffle_changed_pile,
+            keys::WARP => self.ir.warp,
+            keys::CAN_REPEAT_MODES => self.ir.can_repeat_modes,
+            keys::ENTWINE => self.ir.entwine,
+            keys::REMOVE_CREATURE_TYPES => self.ir.animate_remove_creature_types,
+            keys::REMOVE_ALL_ABILITIES => self.ir.animate_remove_all_abilities,
+            keys::REMEMBER_REMOVED_CARDS => self.ir.remember_removed_cards,
+            "Morph" => self.ir.morph,
+            "MorphUp" => self.ir.morph_up,
+            "Megamorph" => self.ir.megamorph,
+            "RememberAbandoned" => self.ir.remember_abandoned,
+            _ => false,
+        }
+    }
+
+    pub fn param_value(&self, key: &str) -> Option<&str> {
+        match key {
+            keys::MODE => self.ir.mode_text.as_deref(),
+            keys::PRODUCED => self.ir.produced.as_deref(),
+            keys::VALID_CARDS => self.ir.valid_cards_text.as_deref(),
+            keys::VALID_CARD => self.ir.valid_card_text.as_deref(),
+            keys::VALID_PLAYERS => self.ir.valid_players_text.as_deref(),
+            keys::VALID_PLAYER => self.ir.valid_player_text.as_deref(),
+            keys::VALID_TGTS => self.ir.valid_tgts_text.as_deref(),
+            keys::VALID_TARGET => self.ir.valid_target_text.as_deref(),
+            keys::DEFINED => self.ir.defined_text.as_deref(),
+            keys::DEFINED_PLAYER => self.ir.defined_player_text.as_deref(),
+            keys::ORIGIN => self.ir.origin_text.as_deref(),
+            keys::DESTINATION => self.ir.destination_text.as_deref(),
+            keys::CHOICES => self.ir.choices.as_deref(),
+            keys::TRIGGERS => self.ir.triggers.as_deref(),
+            keys::COUNTER_TYPE => self.ir.counter_type_text.as_deref(),
+            keys::TOKEN_SCRIPT => self.ir.token_script.as_deref(),
+            keys::TOKEN_OWNER => self.ir.token_owner.as_deref(),
+            "Keyword" => self.ir.keyword_text.as_deref(),
+            keys::CHOOSER => self.ir.chooser.as_deref(),
+            keys::NAME => self.ir.name_text.as_deref(),
+            keys::NAMES => self.ir.names_text.as_deref(),
+            keys::CHOOSE_FROM_LIST => self.ir.choose_from_list_text.as_deref(),
+            keys::GAIN_CONTROL => self
+                .ir
+                .gain_control
+                .then_some("True"),
+            keys::SPELLBOOK => self.ir.spellbook_text.as_deref(),
+            keys::VOTE_MESSAGE => self.ir.vote_message_text.as_deref(),
+            keys::DEFINED_MAGNET => self.ir.defined_magnet_text.as_deref(),
+            "PhaseInOrOut" => self.ir.phase_in_or_out_text.as_deref(),
+            "ExtraPhase" => self.ir.extra_phase_text.as_deref(),
+            "CardState" => self.ir.card_state_name.as_deref(),
+            _ => None,
+        }
     }
 
     /// Get the chosen targets. Mirrors Java's `getTargets()`.
@@ -423,17 +530,21 @@ impl SpellAbility {
         let _perf_scope = crate::perf::ParamsLookupScopeGuard::enter(
             crate::perf::ParamsLookupScope::AbilityBuild,
         );
-        let params = Params::from_raw(ability_text);
-        let api = crate::parsing::raw_get(ability_text, keys::SP)
-            .or_else(|| crate::parsing::raw_get(ability_text, keys::DB))
-            .or_else(|| crate::parsing::raw_get(ability_text, keys::AB))
+        let parsed = ParsedParams::parse(ability_text);
+        let params = Params::from_parsed(&parsed);
+        let api = parsed
+            .get(keys::SP)
+            .or_else(|| parsed.get(keys::DB))
+            .or_else(|| parsed.get(keys::AB))
             .and_then(|s| ApiType::smart_value_of(s));
-        let target_restrictions = if crate::parsing::raw_has_key(ability_text, keys::VALID_TGTS) {
-            TargetRestrictions::new(&params)
+        let target_restrictions = if parsed.has(keys::VALID_TGTS) {
+            TargetRestrictions::new_from_parsed(&parsed, &params)
         } else {
             None
         };
-        let cost = crate::parsing::raw_get(ability_text, keys::COST).map(parse_cost);
+        let cost = parsed.get(keys::COST).map(parse_cost);
+        let mut ir = crate::ability::ability_ir::SpellAbilityIr::from_parsed(api, &parsed);
+        ir.compile_numeric_params_from_runtime(&params);
 
         SpellAbility {
             id: next_spell_ability_id(),
@@ -444,7 +555,7 @@ impl SpellAbility {
             targeting_player: None,
             ability_text: ability_text.to_string(),
             params,
-            compiled_ir: None,
+            ir,
             target_restrictions,
             target_chosen: TargetChoices::default(),
             pay_costs: cost,
@@ -488,6 +599,7 @@ impl SpellAbility {
             stack_description: String::new(),
             is_mana_ability: false,
             is_land_ability: false,
+            cast_face_down: false,
             trigger_objects: HashMap::new(),
             trigger_spell_abilities: HashMap::new(),
             additional_ability_lists: HashMap::new(),
@@ -577,13 +689,13 @@ impl SpellAbility {
     /// Whether paying with shard mana is allowed.
     /// Mirrors Java's `SpellAbility.allowsPayingWithShard()`.
     pub fn allows_paying_with_shard(&self) -> bool {
-        self.params.is_true("AllowsPayingWithShard")
+        self.ir.allows_paying_with_shard
     }
 
     /// Whether this ability cannot be copied.
     /// Mirrors Java's `SpellAbility.cantBeCopied()`.
     pub fn cant_be_copied(&self) -> bool {
-        self.params.is_true("CantBeCopied")
+        self.ir.cant_be_copied_ability
     }
 
     /// Whether this ability can be played (checks restrictions).
@@ -606,7 +718,7 @@ impl SpellAbility {
     /// Whether to prompt even if this is the only possible ability.
     /// Mirrors Java's `SpellAbility.promptIfOnlyPossibleAbility()`.
     pub fn prompt_if_only_possible_ability(&self) -> bool {
-        self.params.is_true("PromptIfOnlyPossible")
+        self.ir.prompt_if_only_possible_ability
     }
 
     /// Add an optional cost to this ability.
@@ -620,14 +732,13 @@ impl SpellAbility {
     /// Whether the mana cost contains X.
     /// Mirrors Java's `SpellAbility.costHasX()`.
     pub fn cost_has_x(&self) -> bool {
-        self.ability_text.contains("X")
-            || self.params.get("Cost").map_or(false, |c| c.contains('X'))
+        self.ir.cost_has_x
     }
 
     /// Whether the mana cost contains X (mana-specific check).
     /// Mirrors Java's `SpellAbility.costHasManaX()`.
     pub fn cost_has_mana_x(&self) -> bool {
-        self.params.get("Cost").map_or(false, |c| c.contains('X'))
+        self.ir.cost_has_x
     }
 
     /// Whether conditions are met for this ability.
@@ -776,7 +887,7 @@ impl SpellAbility {
         if !self.description.is_empty() {
             return self.description.clone();
         }
-        if let Some(desc) = self.params.get("SpDesc") {
+        if let Some(desc) = self.ir.sp_desc_text.as_deref() {
             return desc.to_string();
         }
         self.ability_text.clone()
@@ -1008,8 +1119,9 @@ impl SpellAbility {
         if let Some(ref tr) = self.target_restrictions {
             tr.has_candidates(game, self.activating_player, self.source)
                 && self
-                    .params
-                    .get("TargetsWithDefinedController")
+                    .ir
+                    .targets_with_defined_controller_text
+                    .as_deref()
                     .map(|defined| {
                         crate::ability::ability_utils::resolve_defined_players_with_sa(
                             defined,
@@ -1216,29 +1328,34 @@ impl SpellAbility {
     /// Check if this ability has a specific property.
     /// Mirrors Java's `SpellAbility.hasProperty(String)`.
     pub fn has_property(&self, property: &str) -> bool {
-        // Check if the property matches a param key or ability characteristic
-        if self.params.is_true(property) {
-            return true;
+        match property {
+            "Spell" => self.is_spell,
+            "Trigger" => self.is_trigger,
+            "Activated" => self.is_activated,
+            "ManaAbility" => self.is_mana_ability,
+            "Optional" => self.ir.optional,
+            "Mandatory" => self.ir.mandatory,
+            "Tapped" => self.ir.tapped,
+            "Hidden" => self.ir.hidden,
+            "FaceDown" => self.ir.face_down,
+            "ExileFaceDown" => self.ir.exile_face_down,
+            "Transformed" => self.ir.transformed,
+            "AtRandom" => self.ir.at_random,
+            "Imprint" => self.ir.imprint,
+            "Morph" => self.ir.morph,
+            "MorphUp" => self.ir.morph_up,
+            "Megamorph" => self.ir.megamorph,
+            "PwAbility" => self.ir.pw_ability,
+            "Flash" => self.ir.flash,
+            "SplitSecond" => self.ir.split_second,
+            _ => false,
         }
-        if property.eq_ignore_ascii_case("Spell") && self.is_spell {
-            return true;
-        }
-        if property.eq_ignore_ascii_case("Trigger") && self.is_trigger {
-            return true;
-        }
-        if property.eq_ignore_ascii_case("Activated") && self.is_activated {
-            return true;
-        }
-        if property.eq_ignore_ascii_case("ManaAbility") && self.is_mana_ability {
-            return true;
-        }
-        false
     }
 
     /// Whether this ability tracks mana spent.
     /// Mirrors Java's `SpellAbility.tracksManaSpent()`.
     pub fn tracks_mana_spent(&self) -> bool {
-        self.params.is_true("TrackManaSpent")
+        self.ir.track_mana_spent
     }
 
     // ── Text changes ──────────────────────────────────────────────────────
@@ -1401,8 +1518,7 @@ impl SpellAbility {
         // Activated abilities are instant-speed by default except for explicit
         // sorcery-speed restrictions and planeswalker abilities.
         if self.is_activated {
-            return !self.params.is_true("PwAbility")
-                && !self.restriction.variables.sorcery_speed();
+            return !self.ir.pw_ability && !self.restriction.variables.sorcery_speed();
         }
 
         true
@@ -1414,7 +1530,7 @@ impl SpellAbility {
         if self.restriction.variables.instant_speed() {
             return true;
         }
-        if self.params.is_true("Flash") {
+        if self.ir.flash {
             return true;
         }
         if let Some(card_id) = self.source {
@@ -1424,11 +1540,10 @@ impl SpellAbility {
             {
                 return true;
             }
-            return crate::staticability::static_ability_cast_with_flash::any_with_flash(
+            return crate::staticability::static_ability_cast_with_flash::any_with_flash_for_card(
                 &game.cards,
                 card,
                 self.activating_player,
-                &card.abilities,
             );
         }
         false
@@ -1551,74 +1666,97 @@ impl SpellAbility {
     /// Get variable operand 1.
     /// Mirrors Java's `SpellAbility.getSVar("Operand")`.
     pub fn gets_var_operand(&self) -> Option<&str> {
-        self.params.get("Operand")
+        self.condition
+            .variables
+            .gets_var_operand()
+            .or_else(|| self.restriction.variables.gets_var_operand())
     }
 
     /// Get variable operand 2.
     /// Mirrors Java's `SpellAbility.getSVar("Operand2")`.
     pub fn gets_var_operand2(&self) -> Option<&str> {
-        self.params.get("Operand2")
+        self.condition
+            .variables
+            .gets_var_operand2()
+            .or_else(|| self.restriction.variables.gets_var_operand2())
     }
 
     /// Set variable operand 1.
     /// Mirrors Java's `SpellAbility.setSVar("Operand", val)`.
     pub fn sets_var_operand(&mut self, value: &str) {
-        self.params.put("Operand".to_string(), value.to_string());
+        self.condition.variables.sets_var_operand(value);
+        self.restriction.variables.sets_var_operand(value);
     }
 
     /// Set variable operand 2.
     /// Mirrors Java's `SpellAbility.setSVar("Operand2", val)`.
     pub fn sets_var_operand2(&mut self, value: &str) {
-        self.params.put("Operand2".to_string(), value.to_string());
+        self.condition.variables.sets_var_operand2(value);
+        self.restriction.variables.sets_var_operand2(value);
     }
 
     /// Get variable to check 1.
     /// Mirrors Java's `SpellAbility.getSVar("VarToCheck")`.
     pub fn gets_var_to_check(&self) -> Option<&str> {
-        self.params.get("VarToCheck")
+        self.condition
+            .variables
+            .gets_var_to_check()
+            .or_else(|| self.restriction.variables.gets_var_to_check())
     }
 
     /// Get variable to check 2.
     /// Mirrors Java's `SpellAbility.getSVar("VarToCheck2")`.
     pub fn gets_var_to_check2(&self) -> Option<&str> {
-        self.params.get("VarToCheck2")
+        self.condition
+            .variables
+            .gets_var_to_check2()
+            .or_else(|| self.restriction.variables.gets_var_to_check2())
     }
 
     /// Set variable to check 1.
     /// Mirrors Java's `SpellAbility.setSVar("VarToCheck", val)`.
     pub fn sets_var_to_check(&mut self, value: &str) {
-        self.params.put("VarToCheck".to_string(), value.to_string());
+        self.condition.variables.sets_var_to_check(value);
+        self.restriction.variables.sets_var_to_check(value);
     }
 
     /// Set variable to check 2.
     /// Mirrors Java's `SpellAbility.setSVar("VarToCheck2", val)`.
     pub fn sets_var_to_check2(&mut self, value: &str) {
-        self.params
-            .put("VarToCheck2".to_string(), value.to_string());
+        self.condition.variables.sets_var_to_check2(value);
+        self.restriction.variables.sets_var_to_check2(value);
     }
 
     /// Get variable operator 1.
     /// Mirrors Java's `SpellAbility.getSVar("Operator")`.
     pub fn gets_var_operator(&self) -> Option<&str> {
-        self.params.get("Operator")
+        self.condition
+            .variables
+            .gets_var_operator()
+            .or_else(|| self.restriction.variables.gets_var_operator())
     }
 
     /// Get variable operator 2.
     /// Mirrors Java's `SpellAbility.getSVar("Operator2")`.
     pub fn gets_var_operator2(&self) -> Option<&str> {
-        self.params.get("Operator2")
+        self.condition
+            .variables
+            .gets_var_operator2()
+            .or_else(|| self.restriction.variables.gets_var_operator2())
     }
 
     /// Set variable operator 1.
     /// Mirrors Java's `SpellAbility.setSVar("Operator", val)`.
     pub fn sets_var_operator(&mut self, value: &str) {
-        self.params.put("Operator".to_string(), value.to_string());
+        self.condition.variables.sets_var_operator(value);
+        self.restriction.variables.sets_var_operator(value);
     }
 
     /// Set variable operator 2.
     /// Mirrors Java's `SpellAbility.setSVar("Operator2", val)`.
     pub fn sets_var_operator2(&mut self, value: &str) {
-        self.params.put("Operator2".to_string(), value.to_string());
+        self.condition.variables.sets_var_operator2(value);
+        self.restriction.variables.sets_var_operator2(value);
     }
 }
 
@@ -1634,7 +1772,7 @@ pub use crate::ability::ability_factory::build_spell_ability_from_host_card;
 /// Single source of truth — used by spell, ability, and ability_activated modules.
 pub fn has_split_second_on_stack(game: &GameState) -> bool {
     for entry in game.stack.iter() {
-        if entry.spell_ability.params.is_true("SplitSecond") {
+        if entry.spell_ability.ir.split_second {
             return true;
         }
         if let Some(card_id) = entry.spell_ability.source {
@@ -1843,7 +1981,7 @@ fn target_allowed_by_defined_controller(
     sa: &SpellAbility,
     card_id: CardId,
 ) -> bool {
-    let Some(defined) = sa.params.get("TargetsWithDefinedController") else {
+    let Some(defined) = sa.ir.targets_with_defined_controller_text.as_deref() else {
         return true;
     };
     let players = crate::ability::ability_utils::resolve_defined_players_with_sa(
@@ -1860,7 +1998,7 @@ fn choose_targeting_player(
     game: &GameState,
     agents: &mut [Box<dyn PlayerAgent>],
 ) -> Option<PlayerId> {
-    if let Some(defined) = sa.params.get(keys::TARGETING_PLAYER) {
+    if let Some(defined) = sa.ir.targeting_player_text.as_deref() {
         let candidates = crate::ability::ability_utils::resolve_defined_players_with_sa(
             defined,
             sa,

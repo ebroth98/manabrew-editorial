@@ -10,19 +10,21 @@ pub fn any_cant_put_counter_on_card(
     target: &Card,
     counter_type: &CounterType,
 ) -> bool {
+    let _perf_scope =
+        crate::perf::ParamsLookupScopeGuard::enter(crate::perf::ParamsLookupScope::StaticAbility);
     for source in cards.iter().filter(|c| c.zone == ZoneType::Battlefield) {
         for st_ab in source
             .static_abilities
             .iter()
             .filter(|sa| sa.mode == StaticMode::CantPutCounter)
         {
-            if !counter_type_matches(st_ab.params.get(keys::COUNTER_TYPE), &counter_type) {
+            if !counter_type_matches(st_ab.ir.counter_type.as_ref(), &counter_type) {
                 continue;
             }
-            if !matches_valid_card(st_ab.params.selector(keys::VALID_CARD), target, source) {
+            if !matches_valid_card(st_ab.ir.valid_card.as_ref(), target, source) {
                 continue;
             }
-            if st_ab.params.has(keys::VALID_PLAYER) {
+            if st_ab.ir.has_valid_player {
                 continue;
             }
             return true;
@@ -36,23 +38,25 @@ pub fn any_cant_put_counter_on_player(
     player: PlayerId,
     counter_type: &CounterType,
 ) -> bool {
+    let _perf_scope =
+        crate::perf::ParamsLookupScopeGuard::enter(crate::perf::ParamsLookupScope::StaticAbility);
     for source in cards.iter().filter(|c| c.zone == ZoneType::Battlefield) {
         for st_ab in source
             .static_abilities
             .iter()
             .filter(|sa| sa.mode == StaticMode::CantPutCounter)
         {
-            if !counter_type_matches(st_ab.params.get(keys::COUNTER_TYPE), &counter_type) {
+            if !counter_type_matches(st_ab.ir.counter_type.as_ref(), &counter_type) {
                 continue;
             }
             if !matches_valid_player(
-                st_ab.params.selector(keys::VALID_PLAYER),
+                st_ab.ir.valid_player.as_ref(),
                 player,
                 source.controller,
             ) {
                 continue;
             }
-            if st_ab.params.has(keys::VALID_CARD) {
+            if st_ab.ir.has_valid_card {
                 continue;
             }
             return true;
@@ -83,21 +87,23 @@ pub fn apply_cant_put_counter(
     target_player: Option<PlayerId>,
     counter_type: &CounterType,
 ) -> bool {
-    if !counter_type_matches(st_ab.params.get(keys::COUNTER_TYPE), counter_type) {
+    let _perf_scope =
+        crate::perf::ParamsLookupScopeGuard::enter(crate::perf::ParamsLookupScope::StaticAbility);
+    if !counter_type_matches(st_ab.ir.counter_type.as_ref(), counter_type) {
         return false;
     }
     if let Some(card) = target_card {
-        if st_ab.params.has(keys::VALID_PLAYER) {
+        if st_ab.ir.has_valid_player {
             return false;
         }
-        return matches_valid_card(st_ab.params.selector(keys::VALID_CARD), card, source);
+        return matches_valid_card(st_ab.ir.valid_card.as_ref(), card, source);
     }
     if let Some(player) = target_player {
-        if st_ab.params.has(keys::VALID_CARD) {
+        if st_ab.ir.has_valid_card {
             return false;
         }
         return matches_valid_player(
-            st_ab.params.selector(keys::VALID_PLAYER),
+            st_ab.ir.valid_player.as_ref(),
             player,
             source.controller,
         );
@@ -105,10 +111,10 @@ pub fn apply_cant_put_counter(
     false
 }
 
-fn counter_type_matches(param: Option<&str>, ct: &CounterType) -> bool {
+fn counter_type_matches(param: Option<&CounterType>, ct: &CounterType) -> bool {
     match param {
         None => true,
-        Some(s) => parse_counter_type_opt(s).map(|p| p == *ct).unwrap_or(true),
+        Some(p) => *p == *ct,
     }
 }
 
@@ -126,29 +132,4 @@ fn matches_valid_card(
     source: &Card,
 ) -> bool {
     valid_filter::matches_valid_card_selector_opt(valid, card, source)
-}
-
-fn parse_counter_type_opt(s: &str) -> Option<CounterType> {
-    let upper = s.to_uppercase();
-    match upper.as_str() {
-        "POISON" => Some(CounterType::Poison),
-        "P1P1" | "+1/+1" => Some(CounterType::P1P1),
-        "M1M1" | "-1/-1" => Some(CounterType::M1M1),
-        "LOYALTY" => Some(CounterType::Loyalty),
-        "CHARGE" => Some(CounterType::Charge),
-        "QUEST" => Some(CounterType::Quest),
-        "STUDY" => Some(CounterType::Study),
-        "AGE" => Some(CounterType::Age),
-        "FADE" => Some(CounterType::Fade),
-        "TIME" => Some(CounterType::Time),
-        "DEPLETION" => Some(CounterType::Depletion),
-        "STORAGE" => Some(CounterType::Storage),
-        "MINING" => Some(CounterType::Mining),
-        "BRICK" => Some(CounterType::Brick),
-        "LEVEL" => Some(CounterType::Level),
-        "LORE" => Some(CounterType::Lore),
-        "PAGE" => Some(CounterType::Page),
-        "DREAM" => Some(CounterType::Dream),
-        _ => Some(CounterType::Named(upper)),
-    }
 }

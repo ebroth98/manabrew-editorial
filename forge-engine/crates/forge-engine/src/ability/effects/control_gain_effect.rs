@@ -204,24 +204,22 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     // variant. Only record original_controller on the first steal so repeated
     // steal → steal-back → EOT reverts to the pre-chain controller.
     let already_scheduled = ctx.game.card(target_card).original_controller_eot.is_some();
-    if let Some(raw) = sa.params.get(keys::LOSE_CONTROL) {
-        if let Ok(cond) = raw.parse::<crate::card::LoseControlCondition>() {
-            if !already_scheduled {
-                ctx.game
-                    .card_mut(target_card)
-                    .set_original_controller_eot(Some(old_controller));
-            }
-            ctx.game.card_mut(target_card).lose_control_condition = Some(cond);
+    if let Some(cond) = sa.ir.lose_control {
+        if !already_scheduled {
+            ctx.game
+                .card_mut(target_card)
+                .set_original_controller_eot(Some(old_controller));
         }
+        ctx.game.card_mut(target_card).lose_control_condition = Some(cond);
     }
 
     // Handle Untap parameter
-    if sa.params.has(keys::UNTAP) {
+    if sa.ir.untap_on_resolve {
         ctx.game.untap(target_card);
     }
 
     // Handle AddKWs parameter (add keywords)
-    if let Some(kws_str) = sa.params.get(keys::ADD_KWS) {
+    if let Some(kws_str) = sa.ir.add_kws.as_deref() {
         let keywords: Vec<String> = kws_str.split(" & ").map(|s| s.to_string()).collect();
         for kw in keywords {
             ctx.game.card_mut(target_card).add_granted_keyword(&kw);

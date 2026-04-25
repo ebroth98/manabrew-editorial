@@ -12,12 +12,7 @@ use crate::spellability::SpellAbility;
 /// `CleanupEffect` class extending `SpellAbilityEffect`.
 #[forge_engine_macros::spell_effect(CleanupEffect)]
 fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
-    let clear_remembered = sa
-        .params
-        .get("ClearRemembered")
-        .map_or(false, |v| v.eq_ignore_ascii_case("True"));
-
-    if clear_remembered {
+    if sa.ir.clear_remembered {
         if let Some(source_id) = sa.source {
             ctx.game.card_mut(source_id).clear_remembered();
         }

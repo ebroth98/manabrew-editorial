@@ -331,7 +331,7 @@ pub fn build_spell_ability_for_card_cast(
         targeting_player: None,
         ability_text: String::new(),
         params: Params::from_raw(""),
-        compiled_ir: None,
+        ir: crate::ability::ability_ir::SpellAbilityIr::default(),
         target_restrictions,
         target_chosen: TargetChoices::default(),
         pay_costs: Some(Cost {
@@ -386,6 +386,7 @@ pub fn build_spell_ability_for_card_cast(
         stack_description: String::new(),
         is_mana_ability: false,
         is_land_ability: false,
+        cast_face_down: false,
         trigger_objects: std::collections::HashMap::new(),
         trigger_spell_abilities: std::collections::HashMap::new(),
         additional_ability_lists: std::collections::HashMap::new(),
@@ -433,17 +434,18 @@ fn build_spell_ability_of_type_with_params(
     parsed: &ParsedParams<'_>,
     params: Params,
 ) -> SpellAbility {
-    let api = record_type
-        .api_type_of(&params)
+    let api = parsed
+        .get(record_type.prefix())
         .and_then(ApiType::smart_value_of);
-    let compiled_ir = crate::ability::ability_ir::lower_ability_ir(api, parsed);
+    let mut ir = crate::ability::ability_ir::SpellAbilityIr::from_parsed(api, parsed);
+    ir.compile_numeric_params_from_runtime(&params);
     let target_restrictions = if parsed.has(keys::VALID_TGTS) {
-        TargetRestrictions::new(&params)
+        TargetRestrictions::new_from_parsed(parsed, &params)
     } else {
         None
     };
-    let cost = if record_type != AbilityRecordType::SubAbility && parsed.has(keys::COST) {
-        parse_ability_cost(host, &params, record_type)
+    let cost = if record_type != AbilityRecordType::SubAbility {
+        parsed.get(keys::COST).map(parse_cost)
     } else {
         None
     };
@@ -457,14 +459,14 @@ fn build_spell_ability_of_type_with_params(
         | AbilityRecordType::SubAbility => restriction.variables.set_zone(ZoneType::Battlefield),
     }
     if parsed.has_any(RESTRICTION_KEYS) {
-        restriction.set_restrictions(&params);
+        restriction.set_restrictions_parsed(parsed);
     }
     if parsed.has_any(CONDITION_KEYS) {
-        condition.set_conditions(&params);
+        condition.set_conditions_parsed(parsed);
     }
 
     // Recursively build sub-ability chain from SVars
-    let sub_ability = if let Some(sub_svar_name) = params.get(keys::SUB_ABILITY) {
+    let sub_ability = if let Some(sub_svar_name) = parsed.get(keys::SUB_ABILITY) {
         if let Some(sub_text) = host.get_s_var(sub_svar_name).map(str::to_string) {
             Some(Box::new(build_spell_ability_from_host_card(
                 host, &sub_text, player,
@@ -477,11 +479,10 @@ fn build_spell_ability_of_type_with_params(
     };
 
     let mana_part = if parsed.has(keys::PRODUCED) {
-        build_mana_part(&params)
+        build_mana_part_from_parsed(parsed)
     } else {
         None
     };
-
     let mut sa = SpellAbility {
         id: 0,
         api,
@@ -491,7 +492,7 @@ fn build_spell_ability_of_type_with_params(
         targeting_player: None,
         ability_text: ability_text.to_string(),
         params,
-        compiled_ir,
+        ir,
         target_restrictions,
         target_chosen: TargetChoices::default(),
         pay_costs: cost,
@@ -535,6 +536,7 @@ fn build_spell_ability_of_type_with_params(
         stack_description: String::new(),
         is_mana_ability: false,
         is_land_ability: false,
+        cast_face_down: false,
         trigger_objects: std::collections::HashMap::new(),
         trigger_spell_abilities: std::collections::HashMap::new(),
         additional_ability_lists: std::collections::HashMap::new(),
@@ -558,6 +560,16 @@ fn build_spell_ability_of_type_with_params(
 }
 
 fn build_mana_part(params: &Params) -> Option<AbilityManaPart> {
+    let produced = params.get(keys::PRODUCED)?;
+    let mut mana_part = AbilityManaPart::new(produced, params.get(keys::RESTRICTION).unwrap_or(""));
+    mana_part.set_adds_keywords(params.get(keys::ADDS_KEYWORDS).map(str::to_string));
+    mana_part.set_triggers_when_spent(params.get(keys::TRIGGERS_WHEN_SPENT).map(str::to_string));
+    mana_part.set_persistent_mana(params.has("PersistentMana"));
+    mana_part.set_combat_mana(params.has("CombatMana"));
+    Some(mana_part)
+}
+
+fn build_mana_part_from_parsed(params: &ParsedParams<'_>) -> Option<AbilityManaPart> {
     let produced = params.get(keys::PRODUCED)?;
     let mut mana_part = AbilityManaPart::new(produced, params.get(keys::RESTRICTION).unwrap_or(""));
     mana_part.set_adds_keywords(params.get(keys::ADDS_KEYWORDS).map(str::to_string));
@@ -591,7 +603,7 @@ pub fn parse_ability_cost(
 /// the standard Defined$/Targeted resolution.
 pub fn adjust_change_zone_target(sa: &mut SpellAbility, game: &GameState) {
     // If the SA has ChangeZoneTable, apply table-based targeting
-    if sa.params.has("ChangeZoneTable") {
+    if sa.ir.change_zone_table {
         // The change_zone_table is populated during resolution by the effect.
         // This function sets up the SA to use table-based targeting by
         // ensuring the table exists.
@@ -602,11 +614,14 @@ pub fn adjust_change_zone_target(sa: &mut SpellAbility, game: &GameState) {
 
     // Handle "Hidden" origin — if the origin zone is hidden (Library, Hand),
     // adjust the target validation accordingly
-    if let Some(origin) = sa.params.get("Origin") {
+    if let Some(origin) = sa.ir.origin_zone {
         let _ = game; // May need game state for validation in future
-        if origin == "Library" || origin == "Hand" {
+        if matches!(
+            origin,
+            forge_foundation::ZoneType::Library | forge_foundation::ZoneType::Hand
+        ) {
             // Hidden zones use different targeting rules
-            sa.params.put("Hidden".to_string(), "True".to_string());
+            sa.ir.hidden = true;
         }
     }
 }

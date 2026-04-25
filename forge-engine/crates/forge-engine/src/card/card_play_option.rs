@@ -21,9 +21,9 @@ pub struct CardPlayOption {
 impl CardPlayOption {
     /// Java parity: whether this option permits spending mana as any type/color.
     pub fn apply_mana_convert(&self) -> bool {
-        self.static_ability.params.has("MayPlayIgnoreType")
-            || self.static_ability.params.has("MayPlayIgnoreColor")
-            || self.static_ability.params.has("MayPlaySnowIgnoreColor")
+        self.static_ability.ir.may_play_ignore_type
+            || self.static_ability.ir.may_play_ignore_color
+            || self.static_ability.ir.may_play_snow_ignore_color
     }
 
     /// Java parity accessor (`grantsZonePermissions`).

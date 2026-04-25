@@ -27,7 +27,7 @@ pub fn can_replace(
         ReplacementEvent::Mill { player, .. } => *player,
         _ => return false,
     };
-    if let Some(valid) = effect.params.selector(keys::VALID_PLAYER) {
+    if let Some(valid) = effect.ir.valid_player_selector.as_ref() {
         if !effect.matches_compiled_valid_player(valid, player, source_card) {
             return false;
         }
@@ -46,12 +46,7 @@ pub fn execute(
         ReplacementEvent::Mill { .. } => {}
         _ => return ReplacementResult::NotReplaced,
     }
-    if effect
-        .params
-        .get(keys::PREVENT)
-        .map(|s| s == "True")
-        .unwrap_or(false)
-    {
+    if effect.prevents() {
         if let ReplacementEvent::Mill { count, .. } = event {
             *count = 0;
         }

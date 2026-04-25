@@ -23,11 +23,11 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     }
 
     let controller = sa.activating_player;
-    let without_mana_cost = sa.params.has("WithoutManaCost");
-    let play_cost = sa.params.get(keys::PLAY_COST).map(|s| s.to_string());
-    let remember = sa.param_is_true("RememberPlayed");
-    let optional = sa.param_is_true(keys::OPTIONAL);
-    let is_madness = sa.params.get(keys::PLAY_COST).is_some()
+    let without_mana_cost = sa.ir.without_mana_cost;
+    let play_cost = sa.ir.play_cost_text.clone();
+    let remember = sa.ir.remember_played;
+    let optional = sa.ir.optional;
+    let is_madness = sa.ir.play_cost_text.is_some()
         && sa
             .source
             .map_or(false, |src| ctx.game.card(src).has_keyword("Madness"));
@@ -120,9 +120,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     }
 
     // Remove zone restriction — allow casting from exile/library/etc.
-    spell_sa
-        .params
-        .put("CastFromPlayEffect".to_string(), "True".to_string());
+    spell_sa.ir.cast_from_play_effect = true;
 
     // ── Step 5: Pay mana ────────────────────────────────────────────
     if !without_mana_cost {
@@ -191,9 +189,9 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
 /// Resolve the target card from `Defined$` parameter.
 fn resolve_target_card(sa: &SpellAbility) -> Option<CardId> {
     let defined = sa
-        .params
-        .get(keys::DEFINED)
-        .map(|s| s.to_string())
+        .ir
+        .defined_text
+        .clone()
         .unwrap_or_default();
     if let Some(uid_str) = defined.strip_prefix("CardUID_") {
         uid_str.parse::<u32>().ok().map(CardId)

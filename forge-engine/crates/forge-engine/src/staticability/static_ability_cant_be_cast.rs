@@ -73,7 +73,7 @@ pub fn apply_cant_be_cast_ability(
 ) -> bool {
     // ValidCard check
     if !valid_filter::matches_valid_card_selector_opt(
-        st_ab.params.selector(keys::VALID_CARD),
+        st_ab.ir.valid_card.as_ref(),
         card,
         source,
     ) {
@@ -81,8 +81,8 @@ pub fn apply_cant_be_cast_ability(
     }
 
     // Caster check
-    if !valid_filter::matches_valid_player_opt(
-        st_ab.params.get(keys::CASTER),
+    if !valid_filter::matches_valid_player_selector_opt(
+        st_ab.ir.caster.as_ref(),
         activator,
         source.controller,
     ) {
@@ -96,7 +96,7 @@ pub fn apply_cant_be_cast_ability(
 
     // OnlySorcerySpeed — if the activator can cast at sorcery speed, this
     // restriction does not apply.
-    if st_ab.params.has(keys::SORCERY_SPEED) || st_ab.params.has("OnlySorcerySpeed") {
+    if st_ab.ir.sorcery_speed || st_ab.ir.only_sorcery_speed {
         if let Some(g) = game {
             let can_cast_sorcery =
                 activator == g.active_player() && g.turn.is_main_phase() && g.stack.is_empty();
@@ -107,21 +107,17 @@ pub fn apply_cant_be_cast_ability(
     }
 
     // Origin — the zone the card is being cast from must be in the listed zones.
-    if let Some(origin) = st_ab.params.get(keys::ORIGIN) {
-        let src_zones: Vec<ZoneType> = origin
-            .split(',')
-            .filter_map(|s| ZoneType::from_str_compat(s.trim()))
-            .collect();
+    if !st_ab.ir.origin_zones.is_empty() {
         // Java uses card.getCastFrom().getZoneType().
         // Rust currently uses the card's current pre-stack zone as cast-from.
         let cast_from = card.zone;
-        if !src_zones.contains(&cast_from) {
+        if !st_ab.ir.origin_zones.contains(&cast_from) {
             return false;
         }
     }
 
     // cmcGT — card's CMC must be greater than a threshold
-    if let Some(cmc_gt) = st_ab.params.get("cmcGT") {
+    if let Some(cmc_gt) = st_ab.ir.cmc_gt.as_deref() {
         if let Some(g) = game {
             let threshold = if cmc_gt.eq_ignore_ascii_case("Turns") {
                 g.turn.turn_number as i32
@@ -150,10 +146,9 @@ pub fn apply_cant_be_cast_ability(
     }
 
     // NumLimitEachTurn — limits how many matching spells can be cast per turn
-    if let Some(num_limit_str) = st_ab.params.get("NumLimitEachTurn") {
+    if let Some(limit) = st_ab.ir.num_limit_each_turn {
         if let Some(g) = game {
-            let limit: i32 = num_limit_str.parse().unwrap_or(0);
-            let valid = st_ab.params.selector(keys::VALID_CARD);
+            let valid = st_ab.ir.valid_card.as_ref();
             let count = g
                 .player(activator)
                 .cards_cast_this_turn
@@ -216,7 +211,7 @@ pub fn apply_cant_be_activated_ability(
 ) -> bool {
     // ValidCard check
     if !valid_filter::matches_valid_card_selector_opt(
-        st_ab.params.selector(keys::VALID_CARD),
+        st_ab.ir.valid_card.as_ref(),
         card,
         source,
     ) {
@@ -229,24 +224,22 @@ pub fn apply_cant_be_activated_ability(
     }
 
     // ValidSA — check the spell ability itself against a filter
-    if let Some(valid_sa) = st_ab.params.get(keys::VALID_SA) {
+    if let Some(valid_sa) = st_ab.ir.valid_sa.as_deref() {
         if !matches_valid_sa(valid_sa, spell) {
             return false;
         }
     }
 
     // AffectedZone — the card must be in the specified zone
-    if let Some(zone_str) = st_ab.params.get(keys::AFFECTED_ZONE) {
-        if let Some(zone) = ZoneType::from_str_compat(zone_str) {
-            if card.zone != zone {
-                return false;
-            }
+    if let Some(zone) = st_ab.ir.affected_zone {
+        if card.zone != zone {
+            return false;
         }
     }
 
     // Activator check
-    if !valid_filter::matches_valid_player_opt(
-        st_ab.params.get(keys::ACTIVATOR),
+    if !valid_filter::matches_valid_player_selector_opt(
+        st_ab.ir.activator.as_ref(),
         activator,
         source.controller,
     ) {
@@ -285,7 +278,7 @@ pub fn apply_cant_play_land_ability(
 ) -> bool {
     // ValidCard check
     if !valid_filter::matches_valid_card_selector_opt(
-        st_ab.params.selector(keys::VALID_CARD),
+        st_ab.ir.valid_card.as_ref(),
         card,
         source,
     ) {
@@ -293,21 +286,17 @@ pub fn apply_cant_play_land_ability(
     }
 
     // Origin — the zone the land is being played from
-    if let Some(origin) = st_ab.params.get(keys::ORIGIN) {
-        let src_zones: Vec<ZoneType> = origin
-            .split(',')
-            .filter_map(|s| ZoneType::from_str_compat(s.trim()))
-            .collect();
+    if !st_ab.ir.origin_zones.is_empty() {
         // Java: card.getLastKnownZone().getZoneType()
         // In Rust we use card.zone as the best proxy for last-known zone.
-        if !src_zones.contains(&card.zone) {
+        if !st_ab.ir.origin_zones.contains(&card.zone) {
             return false;
         }
     }
 
     // Player check
-    if !valid_filter::matches_valid_player_opt(
-        st_ab.params.get(keys::PLAYER),
+    if !valid_filter::matches_valid_player_selector_opt(
+        st_ab.ir.player.as_ref(),
         player,
         source.controller,
     ) {

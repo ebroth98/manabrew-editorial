@@ -46,7 +46,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
         None => return,
     };
 
-    let choices_str = sa.params.get_cloned(keys::CHOICES).unwrap_or_default();
+    let choices_str = sa.ir.choices.clone().unwrap_or_default();
     if choices_str.is_empty() {
         return;
     }
@@ -87,8 +87,9 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     // `Card.chosenModesThisGame` etc.; Rust stores a {mode_svar → turn_number}
     // map on the Card keyed by the scope enum below.
     let restriction = sa
-        .params
-        .get("ChoiceRestriction")
+        .ir
+        .choice_restriction_text
+        .as_deref()
         .and_then(|s| s.parse::<ChoiceRestriction>().ok());
     let current_turn = ctx.game.turn.turn_number as i32;
     let last_combat_turn = ctx
@@ -132,7 +133,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
         .collect();
 
     // Check if Entwine was paid (SA flag) — if so, auto-select all modes
-    let entwine_paid = sa.params.has(keys::ENTWINE) || sa.kicked; // Entwine is sometimes represented as kicked
+    let entwine_paid = sa.ir.entwine || sa.kicked; // Entwine is sometimes represented as kicked
 
     // Check source card for Entwine/Escalate keywords
     let has_entwine = ctx.game.card(source_id).get_entwine_cost().is_some();
@@ -236,7 +237,7 @@ pub fn make_choices_precast(
         None => return true,
     };
 
-    let choices_str = sa.params.get_cloned(keys::CHOICES).unwrap_or_default();
+    let choices_str = sa.ir.choices.clone().unwrap_or_default();
     if choices_str.is_empty() {
         return true;
     }
@@ -279,7 +280,7 @@ pub fn make_choices_precast(
 
     let has_entwine = game.card(source_id).get_entwine_cost().is_some();
     let has_escalate = game.card(source_id).get_escalate_cost().is_some();
-    let can_repeat = sa.params.has(keys::CAN_REPEAT_MODES);
+    let can_repeat = sa.ir.can_repeat_modes;
 
     let mut charm_num = resolve_numeric_svar(game, sa, keys::CHARM_NUM, 1).max(0) as usize;
     let min_charm_num =
@@ -300,7 +301,7 @@ pub fn make_choices_precast(
     };
     let mut chosen_indices: Vec<usize> = if let Some(pre) = pre_selected {
         pre
-    } else if sa.params.has(keys::ENTWINE) || (has_entwine && sa.kicked) {
+    } else if sa.ir.entwine || (has_entwine && sa.kicked) {
         valid_mode_indices.clone()
     } else {
         let card_name = game.card(source_id).card_name.clone();

@@ -505,12 +505,12 @@ fn land_pain_damage(card: &Card, chosen_atom: u16) -> i32 {
             continue;
         }
         // Skip abilities without SubAbility (no pain)
-        let sub_svar_name = match ab.params.get(keys::SUB_ABILITY) {
+        let sub_svar_name = match ab.sub_ability.as_deref() {
             Some(name) => name,
             None => continue,
         };
         // Check if this ability produces the chosen atom
-        if let Some(produced) = ab.params.get(keys::PRODUCED) {
+        if let Some(produced) = ab.produced.as_deref() {
             let atoms = produced_to_atoms(produced, &card.chosen_colors);
             if atoms.contains(&chosen_atom) {
                 // Look up the SVar to find damage amount
@@ -582,7 +582,7 @@ pub fn land_mana_atoms(card: &Card) -> Vec<u16> {
         {
             continue;
         }
-        if let Some(produced) = ab.params.get(keys::PRODUCED) {
+        if let Some(produced) = ab.produced.as_deref() {
             if produced == "Combo ColorIdentity" {
                 // In a non-Commander game there is no commander identity, so this land
                 // produces no mana — matches Java Forge's ManaEffect which skips
@@ -683,8 +683,7 @@ pub fn determine_mana_production(
                             .iter()
                             .find(|valid| valid.eq_ignore_ascii_case(forced_name))
                             .cloned()
-                    })
-                {
+                    }) {
                     // Java calls chooseColor even when expressChoice is set,
                     // presenting the forced color as a single-option choice.
                     // Consume the RNG pick for parity.
@@ -1017,11 +1016,10 @@ fn calculate_available_mana_excluding_with_reserved_impl(
             .activated_abilities
             .iter()
             .filter(|ab| {
-                let activation_zone = ab.params.get(keys::ACTIVATION_ZONE);
                 ab.is_mana_ability
                     && match card.zone {
-                        ZoneType::Battlefield => activation_zone != Some("Hand"),
-                        ZoneType::Hand => activation_zone == Some("Hand"),
+                        ZoneType::Battlefield => ab.activation_zone != Some(ZoneType::Hand),
+                        ZoneType::Hand => ab.activation_zone == Some(ZoneType::Hand),
                         _ => false,
                     }
                     && !ab.cost.parts.iter().any(|p| matches!(p, CostPart::Mana { .. }))
@@ -1045,7 +1043,7 @@ fn calculate_available_mana_excluding_with_reserved_impl(
                     // type (e.g. Unclaimed Territory).
                     && {
                         if let Some(ctx) = payment_ctx {
-                            match ab.params.get(keys::RESTRICT_VALID) {
+                            match ab.restrict_valid.as_deref() {
                                 Some(raw) => {
                                     let resolved = if raw.contains("ChosenType") {
                                         let chosen = card
@@ -1056,14 +1054,7 @@ fn calculate_available_mana_excluding_with_reserved_impl(
                                     } else {
                                         raw.to_string()
                                     };
-                                    let allowed = mana_meets_restriction(&resolved, ctx);
-                                    if card.card_name == "Secluded Courtyard" {
-                                        eprintln!(
-                                            "[restrict-debug] card={} ctx_card={:?} chosen={:?} raw={:?} resolved={:?} allowed={}",
-                                            card.card_name, ctx.card_name, card.chosen_type, raw, resolved, allowed
-                                        );
-                                    }
-                                    allowed
+                                    mana_meets_restriction(&resolved, ctx)
                                 }
                                 None => true,
                             }
@@ -1126,7 +1117,7 @@ fn calculate_available_mana_excluding_with_reserved_impl(
             // ManaReflected: check what colors other permanents can produce.
             // For playability purposes, optimistically add all colors that
             // matching permanents could produce.
-            if ab.params.get(keys::AB) == Some("ManaReflected") {
+            if ab.is_mana_reflected {
                 let reflected_atoms = compute_reflected_atoms(game, player, card_id, ab);
                 // Resolve Amount parameter (e.g. Incubation Druid produces 3 when adapted).
                 let amount = resolve_mana_ability_amount(game, card_id, player, ab);
@@ -1152,7 +1143,7 @@ fn calculate_available_mana_excluding_with_reserved_impl(
                         source_colors.push(src_mask);
                     }
                 }
-            } else if let Some(produced) = ab.params.get(keys::PRODUCED) {
+            } else if let Some(produced) = ab.produced.as_deref() {
                 if produced == "Combo ColorIdentity" {
                     // Commander Color Identity support: in non-commander games this remains empty.
                     let colors = game.player_commander_color_identity(player);
@@ -1355,7 +1346,7 @@ fn resolve_mana_ability_amount(
     player: PlayerId,
     ab: &crate::ability::activated::ActivatedAbility,
 ) -> i32 {
-    let amount_str = match ab.params.get(keys::AMOUNT) {
+    let amount_str = match ab.amount.as_deref() {
         Some(v) if !v.is_empty() => v,
         _ => return 1,
     };

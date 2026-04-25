@@ -28,7 +28,7 @@ pub fn can_replace(
         _ => return false,
     };
     let target_card = &game.cards[target_id.index()];
-    if let Some(valid) = effect.params.selector(keys::VALID_CARD) {
+    if let Some(valid) = effect.ir.valid_card_selector.as_ref() {
         if !effect.matches_compiled_valid_card(valid, target_card, source_card) {
             return false;
         }

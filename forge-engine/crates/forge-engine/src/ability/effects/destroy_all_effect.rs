@@ -27,7 +27,7 @@ use crate::trigger::TriggerType;
 /// `DestroyAllEffect` class extending `SpellAbilityEffect`.
 #[forge_engine_macros::spell_effect(DestroyAllEffect)]
 fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
-    let valid_cards = sa.params.selector(keys::VALID_CARDS);
+    let valid_cards = sa.ir.valid_cards_selector.as_ref();
 
     // Pass 1 — collect matching battlefield cards
     let player_ids = ctx.game.player_order.clone();

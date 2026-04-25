@@ -38,7 +38,7 @@ pub fn is_valid<'a>(restrictions: &'a [&'a str]) -> impl Fn(&SpellAbility) -> bo
             if restriction.starts_with('!') {
                 // Negated restriction: must NOT have the param
                 let key = &restriction[1..];
-                if sa.params.is_true(key) {
+                if sa.param_is_true(key) {
                     return false;
                 }
             } else if restriction.contains('$') {
@@ -47,14 +47,14 @@ pub fn is_valid<'a>(restrictions: &'a [&'a str]) -> impl Fn(&SpellAbility) -> bo
                 if parts.len() == 2 {
                     let key = parts[0].trim();
                     let expected = parts[1].trim();
-                    match sa.params.get(key) {
+                    match sa.param_value(key) {
                         Some(val) if val.eq_ignore_ascii_case(expected) => {}
                         _ => return false,
                     }
                 }
             } else {
                 // Simple flag restriction: param must be "True"
-                if !sa.params.is_true(restriction) {
+                if !sa.param_is_true(restriction) {
                     return false;
                 }
             }

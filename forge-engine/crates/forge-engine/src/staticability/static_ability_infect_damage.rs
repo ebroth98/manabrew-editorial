@@ -4,7 +4,7 @@ use crate::card::{valid_filter, Card};
 use crate::game::GameState;
 use crate::ids::PlayerId;
 use crate::parsing::compare::compare_expr;
-use crate::parsing::{keys, CompiledSelector};
+use crate::parsing::CompiledSelector;
 use crate::staticability::StaticMode;
 
 pub fn is_infect_damage(
@@ -37,7 +37,7 @@ pub fn is_infect_damage_with_life_override(
             if !condition_matches(game, source, st_ab, life_override) {
                 continue;
             }
-            let valid = st_ab.params.selector(keys::VALID_TARGET);
+            let valid = st_ab.ir.valid_target.as_ref();
             // ValidTarget is evaluated relative to the static ability source
             // (e.g. Phyrexian Unlife's controller), not the damage source.
             if matches_valid_player(valid, target, source.controller) {
@@ -54,10 +54,10 @@ fn condition_matches(
     st_ab: &crate::staticability::StaticAbility,
     life_override: Option<i32>,
 ) -> bool {
-    let Some(check_svar) = st_ab.params.get(keys::CHECK_SVAR) else {
+    let Some(check_svar) = st_ab.ir.check_svar_text.as_deref() else {
         return true;
     };
-    let Some(compare) = st_ab.params.get(keys::SVAR_COMPARE) else {
+    let Some(compare) = st_ab.ir.svar_compare_text.as_deref() else {
         return true;
     };
     let Some(expr) = source.svars.get(check_svar) else {

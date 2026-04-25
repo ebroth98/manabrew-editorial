@@ -4,7 +4,7 @@ use crate::card::{valid_filter, Card};
 use crate::event::RunParams;
 use crate::game::GameState;
 use crate::ids::CardId;
-use crate::parsing::{keys, CompiledSelector};
+use crate::parsing::CompiledSelector;
 use crate::trigger::Trigger;
 use crate::trigger::TriggerType;
 
@@ -25,19 +25,19 @@ pub fn is_disabled(
             .iter()
             .filter(|sa| sa.mode == crate::staticability::StaticMode::DisableTriggers)
         {
-            if let Some(valid_mode) = st_ab.params.get(keys::VALID_MODE) {
+            if let Some(valid_mode) = st_ab.ir.valid_mode.as_deref() {
                 let modes = valid_mode.split(',').map(|s| s.trim());
                 let trig_mode = regtrig.kind.name();
                 if !modes.clone().any(|m| m.eq_ignore_ascii_case(trig_mode)) {
                     continue;
                 }
             }
-            if let Some(valid_card) = st_ab.params.selector(keys::VALID_CARD) {
+            if let Some(valid_card) = st_ab.ir.valid_card.as_ref() {
                 if !matches_valid_card(valid_card, host, source) {
                     continue;
                 }
             }
-            if let Some(valid_trigger) = st_ab.params.get(keys::VALID_TRIGGER) {
+            if let Some(valid_trigger) = st_ab.ir.valid_trigger.as_deref() {
                 if !trigger_matches(valid_trigger, game, trigger_host, regtrig) {
                     continue;
                 }
@@ -75,7 +75,7 @@ fn mode_specific_matches(
             } else {
                 run_params.card
             };
-            if let Some(valid_cause) = st_ab.params.selector(keys::VALID_CAUSE) {
+            if let Some(valid_cause) = st_ab.ir.valid_cause.as_ref() {
                 let Some(cid) = moved else {
                     return false;
                 };
@@ -87,20 +87,20 @@ fn mode_specific_matches(
                     return false;
                 }
             }
-            if let Some(origin_filter) = st_ab.params.get(keys::ORIGIN) {
-                if !matches_zone(origin_filter, run_params.origin) {
-                    return false;
-                }
+            if !st_ab.ir.origin_zones.is_empty()
+                && !matches_zones(&st_ab.ir.origin_zones, run_params.origin)
+            {
+                return false;
             }
-            if let Some(dest_filter) = st_ab.params.get(keys::DESTINATION) {
-                if !matches_zone(dest_filter, run_params.destination) {
+            if !st_ab.ir.destination_zones.is_empty()
+                && !matches_zones(&st_ab.ir.destination_zones, run_params.destination)
+            {
                     return false;
-                }
             }
             true
         }
         TriggerType::ChangesZoneAll => {
-            if let Some(valid_cause) = st_ab.params.selector(keys::VALID_CAUSE) {
+            if let Some(valid_cause) = st_ab.ir.valid_cause.as_ref() {
                 let Some(cause_sa) = run_params.cause.as_ref() else {
                     return false;
                 };
@@ -132,7 +132,7 @@ fn mode_specific_matches(
         | TriggerType::SpellCopied
         | TriggerType::SpellCopy
         | TriggerType::SpellAbilityCopy => {
-            if let Some(valid_cause) = st_ab.params.selector(keys::VALID_CAUSE) {
+            if let Some(valid_cause) = st_ab.ir.valid_cause.as_ref() {
                 let Some(cid) = run_params.spell_card else {
                     return false;
                 };
@@ -144,7 +144,7 @@ fn mode_specific_matches(
                     return false;
                 }
             }
-            if let Some(valid_activator) = st_ab.params.selector(keys::VALID_ACTIVATOR) {
+            if let Some(valid_activator) = st_ab.ir.valid_activator.as_ref() {
                 let Some(pid) = run_params.spell_controller else {
                     return false;
                 };
@@ -155,7 +155,7 @@ fn mode_specific_matches(
             true
         }
         TriggerType::Attacks => {
-            if let Some(valid_cause) = st_ab.params.selector(keys::VALID_CAUSE) {
+            if let Some(valid_cause) = st_ab.ir.valid_cause.as_ref() {
                 let Some(attacker) = run_params.attacker else {
                     return false;
                 };
@@ -170,13 +170,12 @@ fn mode_specific_matches(
             true
         }
         TriggerType::DamageDone | TriggerType::DamageDealtOnce => {
-            if let Some(combat_damage) = st_ab.params.get(keys::COMBAT_DAMAGE) {
-                let wanted = combat_damage.eq_ignore_ascii_case("True");
+            if let Some(wanted) = st_ab.ir.combat_damage {
                 if run_params.is_combat_damage != Some(wanted) {
                     return false;
                 }
             }
-            if let Some(valid_source) = st_ab.params.selector(keys::VALID_SOURCE) {
+            if let Some(valid_source) = st_ab.ir.valid_source.as_ref() {
                 let Some(source_id) = run_params.damage_source else {
                     return false;
                 };
@@ -188,7 +187,7 @@ fn mode_specific_matches(
                     return false;
                 }
             }
-            if let Some(valid_target) = st_ab.params.selector(keys::VALID_TARGET) {
+            if let Some(valid_target) = st_ab.ir.valid_target.as_ref() {
                 if let Some(target_card) = run_params.damage_target_card {
                     if !matches_valid_card_for_controller(
                         valid_target,
@@ -241,14 +240,16 @@ fn trigger_matches(
     let Some(exec_text) = host.svars.get(&regtrig.execute) else {
         return false;
     };
-    let params = crate::parsing::Params::from_raw(exec_text);
     valid_trigger
         .split(',')
         .map(|s| s.trim())
         .filter(|s| !s.is_empty())
         .all(|tok| match tok.to_ascii_lowercase().as_str() {
-            "spell" => params.has(keys::SP),
-            "ability" => params.has(keys::AB) || params.has(keys::DB),
+            "spell" => exec_text.trim_start().starts_with("SP$"),
+            "ability" => {
+                let trimmed = exec_text.trim_start();
+                trimmed.starts_with("AB$") || trimmed.starts_with("DB$")
+            }
             "trigger" => true,
             _ => true,
         })
@@ -269,4 +270,11 @@ fn matches_zone(filter: &str, zone: Option<ZoneType>) -> bool {
         "any" => true,
         _ => true,
     }
+}
+
+fn matches_zones(filters: &[ZoneType], zone: Option<ZoneType>) -> bool {
+    let Some(zone) = zone else {
+        return false;
+    };
+    filters.contains(&zone)
 }

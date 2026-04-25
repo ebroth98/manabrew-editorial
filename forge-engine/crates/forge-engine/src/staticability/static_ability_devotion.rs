@@ -18,7 +18,7 @@ pub fn get_devotion_mod(game: &GameState, player: PlayerId) -> i32 {
             .filter(|sa| sa.mode == StaticMode::Devotion && sa.zones_check(card.zone))
         {
             if !valid_filter::matches_valid_player_selector_opt(
-                st_ab.params.selector(keys::VALID_PLAYER),
+                st_ab.ir.valid_player.as_ref(),
                 player,
                 card.controller,
             ) {

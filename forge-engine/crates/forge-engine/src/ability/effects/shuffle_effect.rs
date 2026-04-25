@@ -21,7 +21,7 @@ use crate::trigger::TriggerType;
 fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let defined = sa.defined().unwrap_or("You");
     let players = resolve_defined_players(defined, sa.activating_player, ctx.game);
-    let optional = sa.params.has(keys::OPTIONAL);
+    let optional = sa.ir.optional;
     let source_name = sa.source.map(|cid| ctx.game.card(cid).card_name.clone());
 
     for pid in players {

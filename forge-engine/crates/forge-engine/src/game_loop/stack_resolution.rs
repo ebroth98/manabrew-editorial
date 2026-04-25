@@ -8,16 +8,8 @@ impl GameLoop {
         if let Some(api) = sa.api {
             return api.name().to_string();
         }
-        if let Some(kind) = sa
-            .params
-            .get(keys::SP)
-            .or_else(|| sa.params.get(keys::DB))
-            .or_else(|| sa.params.get(keys::AB))
-        {
-            return kind.to_string();
-        }
         if sa.is_trigger {
-            if let Some(mode) = sa.params.get(keys::MODE) {
+            if let Some(mode) = sa.ir.mode.as_ref() {
                 return format!("Trigger({mode})");
             }
             return "Trigger".to_string();
@@ -256,8 +248,9 @@ impl GameLoop {
             if entry.spell_ability.is_activated {
                 let is_cycling = entry
                     .spell_ability
-                    .params
-                    .get(keys::PRECOST_DESC)
+                    .ir
+                    .precost_desc
+                    .as_deref()
                     .map_or(false, |d| d.to_lowercase().contains("cycling"));
                 if is_cycling {
                     if let Some(source_card) = entry.spell_ability.source {
@@ -494,6 +487,9 @@ impl GameLoop {
                 if alt_cost == Some(crate::spellability::AlternativeCost::Blitz) {
                     game.card_mut(card_id).pump_keywords.add("Haste");
                     let trig_id = game.card(card_id).triggers.len() as u32;
+                    let params = crate::parsing::Params::from_raw(
+                        "Mode$ ChangesZone | Origin$ Battlefield | Destination$ Graveyard | ValidCard$ Card.Self"
+                    );
                     let dies_trigger = crate::trigger::Trigger {
                         id: trig_id,
                         base: {
@@ -506,15 +502,13 @@ impl GameLoop {
                         },
                         kind: crate::trigger::TriggerType::ChangesZone,
                         mode: Box::new(crate::trigger::trigger_changes_zone::TriggerChangesZone),
-                        params: crate::parsing::Params::from_raw(
-                            "Mode$ ChangesZone | Origin$ Battlefield | Destination$ Graveyard | ValidCard$ Card.Self"
-                        ),
+                        params: params.clone(),
+                        ir: crate::trigger::TriggerIr::from_params(&params),
                         execute: "BlitzDiesDraw".to_string(),
                         optional: false,
                         description: "When this creature dies, draw a card.".to_string(),
                         static_trigger: false,
                         trigger_remembered: Vec::new(),
-                        valid_phases: None,
                         spawning_ability: None,
                     };
                     game.card_mut(card_id).add_trigger(dies_trigger);
@@ -588,7 +582,7 @@ impl GameLoop {
                                     crate::trigger::trigger_phase::TriggerPhase {
                                         phase: Some(forge_foundation::PhaseType::Upkeep),
                                         valid_player: Some(
-                                            crate::parsing::CompiledSelector::parse("You"),
+                                            crate::parsing::cached_compiled_selector("You"),
                                         ),
                                     },
                                 )
@@ -787,7 +781,7 @@ impl GameLoop {
                 }
 
                 // CantFizzle param (e.g. Gilded Drake) overrides fizzle
-                if sa.params.has(keys::CANT_FIZZLE) {
+                if sa.ir.cant_fizzle {
                     fizzle = Some(false);
                 }
             }

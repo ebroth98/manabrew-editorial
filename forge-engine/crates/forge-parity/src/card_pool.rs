@@ -12,7 +12,7 @@ use forge_engine_core::ability::api_type::ApiType;
 use forge_engine_core::ability::effects::IMPLEMENTED_API_TYPES;
 use forge_engine_core::parsing::{
     keys, ParamDiagnosticKind, Params, ParsedCardScript, ParsedParams, ScriptDiagnosticKind,
-    ScriptLineKind, ScriptSVarValue, SemanticParamValueKind,
+    ScriptAbility, ScriptLineKind, ScriptParamRecord, ScriptSVarValue, SemanticParamValueKind,
 };
 use forge_engine_core::replacement::parse_replacement_effect;
 use forge_engine_core::staticability::parse_static_ability;
@@ -487,34 +487,33 @@ fn record_semantic_value_stats(
     for line in script.lines() {
         match &line.kind {
             ScriptLineKind::Ability(ability) => {
-                record_semantic_params(
-                    ability.params.semantic_entries(),
-                    path,
-                    line.line_no,
-                    stats,
-                );
+                let ScriptAbility {
+                    params: parsed_params,
+                    ..
+                } = ability;
+                record_semantic_params(parsed_params.semantic_entries(), path, line.line_no, stats);
             }
             ScriptLineKind::Trigger(record)
             | ScriptLineKind::StaticAbility(record)
             | ScriptLineKind::Replacement(record) => {
-                record_semantic_params(record.params.semantic_entries(), path, line.line_no, stats);
+                let ScriptParamRecord {
+                    params: parsed_params,
+                } = record;
+                record_semantic_params(parsed_params.semantic_entries(), path, line.line_no, stats);
             }
             ScriptLineKind::SVar(svar) => match &svar.value_kind {
                 ScriptSVarValue::Ability(ability) => {
-                    record_semantic_params(
-                        ability.params.semantic_entries(),
-                        path,
-                        line.line_no,
-                        stats,
-                    );
+                    let ScriptAbility {
+                        params: parsed_params,
+                        ..
+                    } = ability;
+                    record_semantic_params(parsed_params.semantic_entries(), path, line.line_no, stats);
                 }
                 ScriptSVarValue::Params(record) => {
-                    record_semantic_params(
-                        record.params.semantic_entries(),
-                        path,
-                        line.line_no,
-                        stats,
-                    );
+                    let ScriptParamRecord {
+                        params: parsed_params,
+                    } = record;
+                    record_semantic_params(parsed_params.semantic_entries(), path, line.line_no, stats);
                 }
                 ScriptSVarValue::Raw(_) => {}
             },

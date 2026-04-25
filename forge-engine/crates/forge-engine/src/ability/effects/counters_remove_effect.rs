@@ -38,7 +38,7 @@ use crate::trigger::TriggerType;
 #[forge_engine_macros::spell_effect(CountersRemoveEffect)]
 fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     // Parse counter type — skip unsupported "Any" / "All" type modes.
-    let counter_type_str = sa.params.get("CounterType").unwrap_or("P1P1");
+    let counter_type_str = sa.ir.counter_type_text.as_deref().unwrap_or("P1P1");
     if counter_type_str.eq_ignore_ascii_case("Any") || counter_type_str.eq_ignore_ascii_case("All")
     {
         // Interactive counter type selection — not yet supported.
@@ -48,15 +48,16 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
 
     // Parse amount: integer or "All" (resolve per-card).
     let remove_all = sa
-        .params
-        .get("CounterNum")
-        .map(|s| s.eq_ignore_ascii_case("All"))
-        .unwrap_or(false);
+        .ir
+        .counter_num_text
+        .as_deref()
+        .is_some_and(|s| s.eq_ignore_ascii_case("All"));
     let requested_count = if remove_all {
         i32::MAX // will be clamped per-card
     } else {
-        sa.params
-            .get("CounterNum")
+        sa.ir
+            .counter_num_text
+            .as_deref()
             .and_then(|s| s.parse::<i32>().ok())
             .unwrap_or(1)
     };

@@ -18,7 +18,7 @@ use crate::spellability::SpellAbility;
 /// `AddPhaseEffect` class extending `SpellAbilityEffect`.
 #[forge_engine_macros::spell_effect(AddPhaseEffect)]
 fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
-    let extra_phase = sa.params.get("ExtraPhase").unwrap_or("Combat");
+    let extra_phase = sa.ir.extra_phase_text.as_deref().unwrap_or("Combat");
 
     let amount = resolve_numeric_svar(ctx.game, sa, keys::AMOUNT, 1).max(0) as u32;
 

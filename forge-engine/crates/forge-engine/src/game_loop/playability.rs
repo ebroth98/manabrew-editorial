@@ -27,11 +27,10 @@ impl GameLoop {
             card.type_line.is_instant()
                 || card.has_keyword("Flash")
                 || card.get_offering_type().is_some()
-                || crate::staticability::static_ability_cast_with_flash::any_with_flash(
+                || crate::staticability::static_ability_cast_with_flash::any_with_flash_for_card(
                     &game.cards,
                     card,
                     player,
-                    &card.abilities,
                 )
         };
         let can_may_play_from_static = |card_id: CardId| {
@@ -130,7 +129,11 @@ impl GameLoop {
 
                 if let Some(ref tr) = cast_sa.target_restrictions {
                     let min_targets = tr.get_min_targets(game, &cast_sa);
-                    if min_targets > 0 && !tr.has_candidates(game, player, Some(card_id)) {
+                    if min_targets > 0
+                        && !target_restrictions::has_candidates_in_spell_ability_chain(
+                            game, player, &cast_sa,
+                        )
+                    {
                         continue;
                     }
                 }
@@ -198,11 +201,7 @@ impl GameLoop {
                     // simulation matching Java's ComputerUtilMana behavior.
                     let has_phyrexian = payable_base.shards().iter().any(|s| s.is_phyrexian());
                     if has_phyrexian {
-                        let ai_phy_param = card
-                            .abilities
-                            .iter()
-                            .find_map(|ab| crate::parsing::raw_get(ab, keys::AI_PHYREXIAN_PAYMENT));
-                        let phyrexian_life_allowed = match ai_phy_param {
+                        let phyrexian_life_allowed = match card.ai_phyrexian_payment.as_deref() {
                             Some("Never") => false,
                             Some(s) if s.starts_with("OnFatalDamage.") => {
                                 let dmg: i32 = s[14..].parse().unwrap_or(0);
@@ -372,21 +371,7 @@ impl GameLoop {
 
                 // Spree: base cost + cheapest ModeCost must be affordable
                 let normal_ok = if card.has_keyword("Spree") && normal_ok {
-                    let ability_text = card.abilities.first().cloned().unwrap_or_default();
-                    let ability_params = Params::from_raw(&ability_text);
-                    if let Some(choices_str) = ability_params.get(keys::CHOICES) {
-                        let min_mode_cost = choices_str
-                            .split(',')
-                            .filter_map(|name| {
-                                card.svars.get(name).and_then(|svar_val| {
-                                    let params = Params::from_raw(svar_val);
-                                    params
-                                        .get(keys::MODE_COST)
-                                        .map(|c| forge_foundation::ManaCost::parse(c).cmc())
-                                })
-                            })
-                            .min()
-                            .unwrap_or(0);
+                    if let Some(min_mode_cost) = card.spree_min_mode_cost {
                         let base = cost_adj.apply(&card.mana_cost);
                         let spree_min =
                             base.add(&forge_foundation::ManaCost::generic(min_mode_cost));
@@ -480,8 +465,7 @@ impl GameLoop {
                 // BeholdExile<...>) through shared cost payability logic.
                 // Use the _for_spell variant so CantSacrifice statics (e.g. Yasharn)
                 // can properly evaluate ValidCause$ Spell restrictions.
-                let spell_cost = Self::parse_spell_cost(&card.abilities);
-                let sp_additional_ok = if let Some(ref sc) = spell_cost {
+                let sp_additional_ok = if let Some(sc) = card.action_spell_cost.as_ref() {
                     crate::cost::can_pay_ignoring_mana_for_spell(sc, game, card_id, player)
                 } else {
                     true
@@ -499,18 +483,31 @@ impl GameLoop {
                     // can be cast from hand. Otherwise cards with target-dependent
                     // activated abilities (e.g. Walking Bulwark) become incorrectly
                     // uncastable when no valid AB$ target exists.
-                    let all_valid = card
-                        .abilities
-                        .iter()
-                        .filter(|ab| crate::parsing::raw_has_key(ab, keys::SP))
-                        .all(|ab| {
-                            target_restrictions::has_candidates_in_chain(
-                                game,
-                                player,
-                                ab,
-                                Some(card_id),
-                            )
-                        });
+                    let all_valid = card.action_spell_specs.iter().all(|spec| {
+                        let dynamic_target_count = spec
+                            .target_chain
+                            .iter()
+                            .any(|target| target.min_targets.is_none());
+                        if dynamic_target_count {
+                            return card.abilities.get(spec.ability_index).is_none_or(|ab| {
+                                target_restrictions::has_candidates_in_chain(
+                                    game,
+                                    player,
+                                    ab,
+                                    Some(card_id),
+                                )
+                            });
+                        }
+
+                        spec.target_chain.iter().all(|target| {
+                            target.min_targets.unwrap_or(1) <= 0
+                                || target.target_restrictions.has_candidates(
+                                    game,
+                                    player,
+                                    Some(card_id),
+                                )
+                        })
+                    });
                     if all_valid {
                         if normal_ok {
                             playable.push(crate::agent::PlayOption {
@@ -698,24 +695,14 @@ impl GameLoop {
                     continue;
                 }
                 // Find the synthetic UnlockDoor activated ability
-                let has_unlock_ab = card.activated_abilities.iter().any(|ab| {
-                    ab.params
-                        .get(crate::parsing::keys::AB)
-                        .map(|v| v.eq_ignore_ascii_case("UnlockDoor"))
-                        .unwrap_or(false)
-                });
+                let has_unlock_ab = card.activated_abilities.iter().any(|ab| ab.is_unlock_door);
                 if !has_unlock_ab {
                     continue;
                 }
                 // Check if the ability can actually be activated (cost, etc.)
                 // We reuse the same checks from get_activatable_abilities inline.
                 for ab in &card.activated_abilities {
-                    let is_unlock = ab
-                        .params
-                        .get(crate::parsing::keys::AB)
-                        .map(|v| v.eq_ignore_ascii_case("UnlockDoor"))
-                        .unwrap_or(false);
-                    if !is_unlock {
+                    if !ab.is_unlock_door {
                         continue;
                     }
                     let mana_cost = Self::mana_from_cost(&ab.cost);
@@ -747,8 +734,7 @@ impl GameLoop {
                 player,
                 Some(card_id),
             );
-            let spell_cost = Self::parse_spell_cost(&card.abilities);
-            let sp_additional_ok = if let Some(ref sc) = spell_cost {
+            let sp_additional_ok = if let Some(sc) = card.action_spell_cost.as_ref() {
                 crate::cost::can_pay_ignoring_mana_for_spell(sc, game, card_id, player)
             } else {
                 true
@@ -832,7 +818,11 @@ impl GameLoop {
                 }
                 if let Some(ref tr) = cast_sa.target_restrictions {
                     let min_targets = tr.get_min_targets(game, &cast_sa);
-                    if min_targets > 0 && !tr.has_candidates(game, player, Some(card_id)) {
+                    if min_targets > 0
+                        && !target_restrictions::has_candidates_in_spell_ability_chain(
+                            game, player, &cast_sa,
+                        )
+                    {
                         continue;
                     }
                 }

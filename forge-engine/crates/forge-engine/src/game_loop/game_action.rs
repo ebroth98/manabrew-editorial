@@ -111,11 +111,10 @@ impl GameLoop {
             if let Some(tr) = sa_for_target_check.target_restrictions.as_ref() {
                 let min_targets = tr.get_min_targets(game, &sa_for_target_check);
                 if min_targets > 0
-                    && !crate::spellability::target_restrictions::has_candidates_in_chain(
+                    && !crate::spellability::target_restrictions::has_candidates_in_spell_ability_chain(
                         game,
                         player,
-                        &ab.ability_text,
-                        Some(card_id),
+                        &sa_for_target_check,
                     )
                 {
                     return false;
@@ -273,17 +272,13 @@ impl GameLoop {
         ab: &crate::ability::activated::ActivatedAbility,
     ) -> bool {
         // Pay costs
-        let api = ab
-            .params
-            .get(keys::AB)
-            .and_then(crate::ability::api_type::ApiType::smart_value_of);
         if !self.pay_ability_cost(
             game,
             agents,
             player,
             card_id,
             &ab.cost,
-            api,
+            ab.ability_api,
             ab.cost.mandatory,
             CostPaymentContext::ActivatedAbility,
             None,
@@ -292,7 +287,11 @@ impl GameLoop {
         }
 
         let card_name = game.card(card_id).card_name.clone();
-        let ability_kind = ab.params.get(keys::AB).unwrap_or("Unknown").to_string();
+        let ability_kind = if ab.ability_kind.is_empty() {
+            "Unknown"
+        } else {
+            ab.ability_kind.as_str()
+        };
         crate::agent::notify_all_agents(
             agents,
             crate::agent::GameLogEvent::action(format!(
@@ -334,10 +333,7 @@ impl GameLoop {
         ab: &crate::ability::activated::ActivatedAbility,
         express_choice: Option<u16>,
     ) {
-        let api = ab
-            .params
-            .get(keys::AB)
-            .and_then(crate::ability::api_type::ApiType::smart_value_of);
+        let api = crate::ability::api_type::ApiType::smart_value_of(ab.ability_kind.as_str());
         if !self.pay_ability_cost(
             game,
             agents,
@@ -353,7 +349,7 @@ impl GameLoop {
         }
 
         // If this is a ManaReflected ability, delegate to the effect resolver
-        if ab.params.get(keys::AB) == Some("ManaReflected") {
+        if ab.is_mana_reflected {
             let mut sa =
                 crate::spellability::build_spell_ability(game, card_id, &ab.ability_text, player);
             sa.express_mana_choice = express_choice;
@@ -387,16 +383,16 @@ impl GameLoop {
         let mana_params = crate::mana::ManaProductionParams {
             source_card: card_id,
             is_snow: source_is_snow,
-            restriction: ab.params.get_cloned(keys::RESTRICT_VALID),
-            adds_no_counter: ab.params.is_true(keys::ADDS_NO_COUNTER),
-            adds_keywords: ab.params.get_cloned(keys::ADDS_KEYWORDS),
-            adds_keywords_valid: ab.params.get_cloned(keys::ADDS_KEYWORDS_VALID),
-            adds_counters: ab.params.get_cloned(keys::ADDS_COUNTERS),
-            adds_counters_valid: ab.params.get_cloned(keys::ADDS_COUNTERS_VALID),
-            triggers_when_spent: ab.params.get_cloned(keys::TRIGGERS_WHEN_SPENT),
+            restriction: ab.restrict_valid.as_deref().map(str::to_string),
+            adds_no_counter: ab.adds_no_counter,
+            adds_keywords: ab.adds_keywords.clone(),
+            adds_keywords_valid: ab.adds_keywords_valid.clone(),
+            adds_counters: ab.adds_counters.clone(),
+            adds_counters_valid: ab.adds_counters_valid.clone(),
+            triggers_when_spent: ab.triggers_when_spent.clone(),
         };
 
-        if let Some(produced) = ab.params.get(keys::PRODUCED) {
+        if let Some(produced) = ab.produced.as_deref() {
             if produced.starts_with("Special") {
                 // Delegate to the special mana handler in mana_effect
                 let special = produced.strip_prefix("Special ").unwrap_or("");
@@ -459,7 +455,7 @@ impl GameLoop {
             }
 
             // Determine mana production (color choice, Amount$, replacement effects)
-            let amount_param = ab.params.get(keys::AMOUNT);
+            let amount_param = ab.amount.as_deref();
             let mana_string = crate::mana::determine_mana_production(
                 game,
                 agents,
@@ -477,7 +473,7 @@ impl GameLoop {
         }
 
         // Resolve SubAbility chain (e.g. DealDamage on pain lands)
-        if let Some(sub_svar_name) = ab.params.get(keys::SUB_ABILITY) {
+        if let Some(sub_svar_name) = ab.sub_ability.as_deref() {
             if let Some(sub_text) = game.card(card_id).svars.get(sub_svar_name).cloned() {
                 let sub_sa =
                     crate::spellability::build_spell_ability(game, card_id, &sub_text, player);
@@ -550,9 +546,7 @@ impl GameLoop {
         );
 
         // PowerUp: reduce cost by card's mana cost if it entered the battlefield this turn
-        let adjusted_cost = if ab.params.is_true(keys::POWER_UP)
-            && game.card(card_id).entered_battlefield_this_turn
-        {
+        let adjusted_cost = if ab.power_up && game.card(card_id).entered_battlefield_this_turn {
             let mut cost = ab.cost.clone();
             // Subtract the card's mana cost from the ability's mana cost
             let card_mc = game.card(card_id).mana_cost.clone();
@@ -570,11 +564,7 @@ impl GameLoop {
             ab.cost.clone()
         };
         let host_before_payment = game.card(card_id).clone();
-        let spell_desc = ab
-            .params
-            .get(keys::SPELL_DESCRIPTION)
-            .unwrap_or("")
-            .to_ascii_lowercase();
+        let spell_desc = ab.spell_description_lower.as_str();
         let is_vehicle_crew = host_before_payment.type_line.has_subtype("Vehicle")
             && (host_before_payment
                 .has_keyword_enum(crate::keyword::keyword_instance::Keyword::Crew)
@@ -600,17 +590,13 @@ impl GameLoop {
             .collect();
 
         // Pay costs
-        let api = ab
-            .params
-            .get(keys::AB)
-            .and_then(crate::ability::api_type::ApiType::smart_value_of);
         if !self.pay_ability_cost(
             game,
             agents,
             player,
             card_id,
             &adjusted_cost,
-            api,
+            ab.ability_api,
             adjusted_cost.mandatory,
             CostPaymentContext::ActivatedAbility,
             Some(&sa),
@@ -647,7 +633,11 @@ impl GameLoop {
             optional_trigger_description: None,
             optional_trigger_source_name: None,
         };
-        let ability_kind = ab.params.get(keys::AB).unwrap_or("Unknown");
+        let ability_kind = if ab.ability_kind.is_empty() {
+            "Unknown"
+        } else {
+            ab.ability_kind.as_str()
+        };
         let stack_message = format!("Activated ability: {} | source={}", ability_kind, card_name);
         let sa_for_trigger = self.push_spell_ability_to_stack(
             game,

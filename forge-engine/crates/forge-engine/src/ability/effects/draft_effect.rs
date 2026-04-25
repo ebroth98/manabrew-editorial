@@ -18,7 +18,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let controller = sa.activating_player;
 
     // Get spellbook names
-    let spellbook = match sa.params.get(keys::SPELLBOOK) {
+    let spellbook = match sa.ir.spellbook_text.as_deref() {
         Some(sb) => sb
             .split(',')
             .map(|s| s.trim().replace(';', ","))

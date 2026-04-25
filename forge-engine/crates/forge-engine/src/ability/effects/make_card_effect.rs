@@ -21,20 +21,10 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let controller = sa.activating_player;
 
     // Determine target zone
-    let zone = sa
-        .params
-        .get(keys::ZONE)
-        .map(|z| match z {
-            "Hand" => ZoneType::Hand,
-            "Battlefield" => ZoneType::Battlefield,
-            "Graveyard" => ZoneType::Graveyard,
-            "Exile" => ZoneType::Exile,
-            _ => ZoneType::Library,
-        })
-        .unwrap_or(ZoneType::Library);
+    let zone = sa.ir.zone.unwrap_or(ZoneType::Library);
 
     // Get card name(s) to conjure
-    let names: Vec<String> = if let Some(name) = sa.params.get(keys::NAME) {
+    let names: Vec<String> = if let Some(name) = sa.ir.name_text.as_deref() {
         if name == "ChosenName" {
             // Use named card from source
             if let Some(chosen) = ctx.game.card(source).get_s_var("ChosenName") {
@@ -45,7 +35,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
         } else {
             vec![name.to_string()]
         }
-    } else if let Some(names_str) = sa.params.get(keys::NAMES) {
+    } else if let Some(names_str) = sa.ir.names_text.as_deref() {
         names_str
             .split(',')
             .map(|s| s.trim().replace(';', ","))
@@ -96,7 +86,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     }
 
     // Shuffle library if cards went there without a specific position
-    if zone == ZoneType::Library && !sa.params.has(keys::LIBRARY_POSITION) {
+    if zone == ZoneType::Library && sa.library_position().is_none() {
         ctx.game
             .shuffle_zone_cards(ZoneType::Library, controller, ctx.rng);
     }

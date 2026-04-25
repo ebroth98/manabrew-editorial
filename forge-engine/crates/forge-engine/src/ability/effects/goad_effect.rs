@@ -39,7 +39,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     }
 
     // Mass goad: ValidCards$ filter
-    if let Some(valid_filter) = sa.params.selector(keys::VALID_CARDS) {
+    if let Some(valid_filter) = sa.ir.valid_cards_selector.as_ref() {
         let player_ids = ctx.game.player_order.clone();
         let mut targets: Vec<CardId> = Vec::new();
         for &pid in &player_ids {

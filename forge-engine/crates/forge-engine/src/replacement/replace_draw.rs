@@ -28,19 +28,14 @@ pub fn can_replace(
         ReplacementEvent::Draw { player, .. } => *player,
         _ => return false,
     };
-    if let Some(valid) = effect.params.selector(keys::VALID_PLAYER) {
+    if let Some(valid) = effect.ir.valid_player_selector.as_ref() {
         if !effect.matches_compiled_valid_player(valid, player, source_card) {
             return false;
         }
     }
     // NotFirstCardInDrawStep$ True: only replace draws that are NOT the first in the draw step.
     // Used by Alhammarret's Archive to skip its first draw in the draw step.
-    if effect
-        .params
-        .get("NotFirstCardInDrawStep")
-        .map(|v| v == "True")
-        .unwrap_or(false)
-    {
+    if effect.ir.not_first_card_in_draw_step {
         if let ReplacementEvent::Draw {
             is_first_in_draw_step,
             ..
@@ -53,8 +48,7 @@ pub fn can_replace(
     }
     // Dredge: check that the player's library has enough cards to mill.
     // Mirrors Java's CheckSVar$ DredgeCheckLib | SVarCompare$ GE{N}.
-    if let Some(amount_str) = effect.params.get("DredgeAmount") {
-        let amount = amount_str.parse::<usize>().unwrap_or(0);
+    if let Some(amount) = effect.ir.dredge_amount {
         let lib_size = game.cards_in_zone(ZoneType::Library, player).len();
         if lib_size < amount {
             return false;
@@ -70,17 +64,11 @@ pub fn execute(
     game: &mut GameState,
     source_card_id: CardId,
 ) -> ReplacementResult {
-    if effect
-        .params
-        .get(keys::PREVENT)
-        .map(|s| s == "True")
-        .unwrap_or(false)
-        || effect.params.has(keys::SKIP)
-    {
+    if effect.prevents() || effect.has_skip() {
         return ReplacementResult::Skipped;
     }
     // ReplaceWith$ DrawTwo — draw an extra card (Alhammarret's Archive).
-    if let Some(replace) = effect.params.get(keys::REPLACE_WITH) {
+    if let Some(replace) = effect.replace_with() {
         if replace == "DrawTwo" || replace == "DrawExtra" {
             if let ReplacementEvent::Draw { extra_draws, .. } = _event {
                 *extra_draws += 1;
@@ -90,8 +78,7 @@ pub fn execute(
     }
     // Dredge: mill N cards from library, return this card from graveyard to hand.
     // Mirrors Java's overriding ability: DB$ Mill + DB$ ChangeZone.
-    if let Some(amount_str) = effect.params.get("DredgeAmount") {
-        let amount = amount_str.parse::<usize>().unwrap_or(0);
+    if let Some(amount) = effect.ir.dredge_amount {
         let player = match _event {
             ReplacementEvent::Draw { player, .. } => *player,
             _ => return ReplacementResult::Replaced,

@@ -22,7 +22,7 @@
     "scan": "node scan_structure.cjs",
     "import-deck": "tsx scripts/import-deck.ts",
     "format-engine": "cargo fmt --manifest-path Cargo.toml -p forge-foundation -p forge-carddb -p forge-engine-core -p forge-server -p forge-parity -p forge-wasm -p forge-agent-interface",
-    "test:forge-engine": "cargo test -p forge-engine-core --lib --test cards",
+    "test:forge-engine": "cargo test --release -p forge-engine-core --lib --test cards",
     "build:wasm": "node scripts/build-wasm.mjs",
     "dev:web": "npm run build:wasm && vite",
     "build:web": "npm run build:wasm && tsc -b && vite build"

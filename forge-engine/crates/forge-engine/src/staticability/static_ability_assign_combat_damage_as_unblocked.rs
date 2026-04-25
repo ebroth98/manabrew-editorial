@@ -1,7 +1,6 @@
 use forge_foundation::ZoneType;
 
 use crate::card::{valid_filter, Card};
-use crate::parsing::keys;
 use crate::staticability::StaticMode;
 
 pub fn assign_as_unblocked(cards: &[Card], card: &Card, optional: bool) -> bool {
@@ -11,13 +10,13 @@ pub fn assign_as_unblocked(cards: &[Card], card: &Card, optional: bool) -> bool 
             .iter()
             .filter(|sa| sa.mode == StaticMode::AssignCombatDamageAsUnblocked)
         {
-            let has_optional = st_ab.params.has(keys::OPTIONAL);
+            let has_optional = st_ab.ir.optional;
             if has_optional && !optional {
                 continue;
             } else if !has_optional && optional {
                 continue;
             }
-            if matches_valid_card(st_ab.params.selector(keys::VALID_CARD), card, source) {
+            if matches_valid_card(st_ab.ir.valid_card.as_ref(), card, source) {
                 return true;
             }
         }
@@ -37,8 +36,7 @@ pub fn has_optional_assign_as_unblocked(cards: &[Card], card: &Card) -> bool {
                 .map(move |sa| (source, sa))
         })
         .any(|(source, sa)| {
-            sa.params.has(keys::OPTIONAL)
-                && matches_valid_card(sa.params.selector(keys::VALID_CARD), card, source)
+            sa.ir.optional && matches_valid_card(sa.ir.valid_card.as_ref(), card, source)
         })
 }
 
@@ -54,8 +52,7 @@ pub fn has_mandatory_assign_as_unblocked(cards: &[Card], card: &Card) -> bool {
                 .map(move |sa| (source, sa))
         })
         .any(|(source, sa)| {
-            !sa.params.has(keys::OPTIONAL)
-                && matches_valid_card(sa.params.selector(keys::VALID_CARD), card, source)
+            !sa.ir.optional && matches_valid_card(sa.ir.valid_card.as_ref(), card, source)
         })
 }
 

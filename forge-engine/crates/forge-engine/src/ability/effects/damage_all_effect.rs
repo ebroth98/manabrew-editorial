@@ -1,7 +1,7 @@
 use forge_foundation::ZoneType;
 
 use super::{matches_valid_cards_selector_opt, resolve_numeric_svar, EffectContext};
-use crate::ability::ability_ir::AbilityIr;
+use crate::ability::ability_ir::EffectIr;
 use crate::card::card_damage_map::DamageTarget;
 use crate::card::valid_filter;
 use crate::ids::CardId;
@@ -30,11 +30,11 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
         return;
     }
 
-    let valid_cards_filter = sa.params.selector(keys::VALID_CARDS);
-    let valid_players = sa.params.selector(keys::VALID_PLAYERS);
+    let valid_cards_filter = sa.ir.valid_cards_selector.as_ref();
+    let valid_players = sa.ir.valid_players_selector.as_ref();
     let activating_player = sa.activating_player;
-    let use_damage_map = ctx.game.pending_damage_map.is_some() || sa.params.has("DamageMap");
-    if sa.params.has("DamageMap") {
+    let use_damage_map = ctx.game.pending_damage_map.is_some() || sa.ir.damage_map;
+    if sa.ir.damage_map {
         ctx.game.ensure_pending_damage_maps();
     }
 
@@ -209,7 +209,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
 }
 
 fn resolve_damage_all_amount(ctx: &EffectContext, sa: &SpellAbility) -> i32 {
-    if let Some(AbilityIr::DamageAll(ir)) = &sa.compiled_ir {
+    if let Some(EffectIr::DamageAll(ir)) = &sa.ir.effect {
         if let Some(amount) = &ir.amount {
             let resolved = amount.resolve_for_spell_ability(ctx.game, sa, 0);
             #[cfg(debug_assertions)]

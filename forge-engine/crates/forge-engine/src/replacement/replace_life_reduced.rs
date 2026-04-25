@@ -35,19 +35,18 @@ pub fn can_replace(
     if amount <= 0 {
         return false;
     }
-    if let Some(valid) = effect.params.selector(keys::VALID_PLAYER) {
+    if let Some(valid) = effect.ir.valid_player_selector.as_ref() {
         if !effect.matches_compiled_valid_player(valid, player, source_card) {
             return false;
         }
     }
     // Check IsDamage filter if present.
-    if let Some(is_dmg) = effect.params.get(keys::IS_DAMAGE) {
-        let expected = is_dmg.eq_ignore_ascii_case("True");
+    if let Some(expected) = effect.ir.is_damage {
         if is_damage != expected {
             return false;
         }
     }
-    if let Some(result_cmp) = effect.params.get(keys::RESULT) {
+    if let Some(result_cmp) = effect.ir.result_text.as_deref() {
         let final_life = _game.player(player).life - amount;
         let rhs = result_cmp
             .get(2..)
@@ -72,12 +71,7 @@ pub fn execute(
         ReplacementEvent::LifeReduced { .. } => {}
         _ => return ReplacementResult::NotReplaced,
     }
-    if effect
-        .params
-        .get(keys::PREVENT)
-        .map(|s| s == "True")
-        .unwrap_or(false)
-    {
+    if effect.prevents() {
         if let ReplacementEvent::LifeReduced { amount, .. } = event {
             *amount = 0;
         }

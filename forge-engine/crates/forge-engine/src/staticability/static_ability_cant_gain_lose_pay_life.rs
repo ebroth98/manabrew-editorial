@@ -2,7 +2,7 @@ use forge_foundation::ZoneType;
 
 use crate::game::GameState;
 use crate::ids::PlayerId;
-use crate::parsing::{keys, CompiledSelector};
+use crate::parsing::CompiledSelector;
 use crate::spellability::SpellAbility;
 use crate::staticability::StaticMode;
 
@@ -70,13 +70,13 @@ pub fn apply_common_ability(
     player: PlayerId,
     is_cost: bool,
 ) -> bool {
-    if let Some(for_cost) = st_ab.params.get(keys::FOR_COST) {
-        if for_cost.eq_ignore_ascii_case("True") != is_cost {
+    if let Some(for_cost) = st_ab.ir.for_cost {
+        if for_cost != is_cost {
             return false;
         }
     }
     matches_valid_player(
-        st_ab.params.selector(keys::VALID_PLAYER),
+        st_ab.ir.valid_player.as_ref(),
         player,
         source_id,
         source_controller,
@@ -100,13 +100,13 @@ fn any_common(
             if !modes.iter().any(|m| st_ab.mode == *m) {
                 continue;
             }
-            if let Some(for_cost) = st_ab.params.get(keys::FOR_COST) {
-                if for_cost.eq_ignore_ascii_case("True") != is_cost {
+            if let Some(for_cost) = st_ab.ir.for_cost {
+                if for_cost != is_cost {
                     continue;
                 }
             }
             if !matches_valid_player(
-                st_ab.params.selector(keys::VALID_PLAYER),
+                st_ab.ir.valid_player.as_ref(),
                 player,
                 card.id,
                 card.controller,

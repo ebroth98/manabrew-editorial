@@ -1,5 +1,5 @@
 use super::{resolve_defined_player_with_sa, resolve_numeric_svar, EffectContext};
-use crate::ability::ability_ir::AbilityIr;
+use crate::ability::ability_ir::EffectIr;
 use crate::event::RunParams;
 use crate::parsing::keys;
 use crate::replacement::replacement_handler::{apply_replacements, ReplacementEvent};
@@ -14,8 +14,7 @@ use crate::trigger::TriggerType;
 fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let num = resolve_draw_amount(ctx, sa);
     let target = sa
-        .params
-        .get("Defined")
+        .defined()
         .and_then(|d| resolve_defined_player_with_sa(d, sa, sa.activating_player, ctx.game))
         .unwrap_or(sa.activating_player);
 
@@ -31,7 +30,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
         }
     }
 
-    if sa.params.has(crate::parsing::keys::OPTIONAL) {
+    if sa.ir.optional_present {
         let source_name = sa.source.map(|cid| ctx.game.card(cid).card_name.as_str());
         let accepted = ctx.agents[target.index()].confirm_action(
             target,
@@ -48,8 +47,8 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     // Draw cards one at a time and fire Drawn trigger after each draw.
     // This ensures `drawn_this_turn` is correct for triggers with `Number$ N`
     // (e.g. Sneaky Snacker: "When you draw your third card in a turn...").
-    let remember_drawn = sa.params.is_true("RememberDrawn");
-    let should_reveal = sa.params.is_true("Reveal");
+    let remember_drawn = sa.ir.remember_drawn;
+    let should_reveal = sa.ir.reveal_true;
     let mut drawn: Vec<crate::ids::CardId> = Vec::new();
     for _ in 0..num {
         if let Some(card_id) = ctx.game.draw_card_with_agents(target, ctx.agents) {
@@ -99,7 +98,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
 }
 
 fn resolve_draw_amount(ctx: &EffectContext, sa: &SpellAbility) -> i32 {
-    if let Some(AbilityIr::Draw(ir)) = &sa.compiled_ir {
+    if let Some(EffectIr::Draw(ir)) = &sa.ir.effect {
         if let Some(amount) = &ir.amount {
             let resolved = amount.resolve_for_spell_ability(ctx.game, sa, 1);
             #[cfg(debug_assertions)]

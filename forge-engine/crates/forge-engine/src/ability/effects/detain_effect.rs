@@ -28,8 +28,8 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     }
 
     // Defined$ mode (e.g. DetainAll pattern)
-    if let Some(valid_filter) = sa.params.get(crate::parsing::keys::VALID_CARDS) {
-        let valid_selector = sa.params.selector(crate::parsing::keys::VALID_CARDS);
+    if let Some(valid_filter) = sa.ir.valid_cards_text.as_deref() {
+        let valid_selector = sa.ir.valid_cards_selector.as_ref();
         let player_ids = ctx.game.player_order.clone();
         let mut targets: Vec<CardId> = Vec::new();
         for &pid in &player_ids {

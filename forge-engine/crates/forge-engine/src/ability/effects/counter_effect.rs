@@ -50,7 +50,7 @@ pub fn check_for_condition_would_destroy(
                     return game.card(target_card).controller == controller;
                 }
                 // For DestroyAll, check the ValidCards filter
-                if let Some(valid) = targeted_sa.params.selector("ValidCards") {
+                if let Some(valid) = targeted_sa.ir.valid_cards_selector.as_ref() {
                     let our_permanents =
                         game.cards_in_zone(forge_foundation::ZoneType::Battlefield, controller);
                     return our_permanents.iter().any(|&cid| {
@@ -87,11 +87,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     };
 
     // Determine destination (default: graveyard).
-    let dest_zone = sa
-        .params
-        .get(keys::DESTINATION)
-        .and_then(|d| super::parse_zone_type(d))
-        .unwrap_or(ZoneType::Graveyard);
+    let dest_zone = sa.ir.destination_zone.unwrap_or(ZoneType::Graveyard);
 
     // Check if the spell has a "can't be countered" replacement effect.
     // Find the source card of the targeted stack entry.
@@ -114,12 +110,12 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
             let owner = ctx.game.card(source_card).owner;
 
             // Remember parameters if needed
-            if sa.params.has(keys::REMEMBER_COUNTERED) {
+            if sa.ir.remember_countered {
                 ctx.game
                     .card_mut(sa.source.unwrap())
                     .add_remembered_card(source_card);
             }
-            if sa.params.has(keys::REMEMBER_COUNTERED_CMC) {
+            if sa.ir.remember_countered_cmc {
                 // Store CMC value
                 let cmc = ctx.game.card(source_card).mana_cost.cmc();
                 ctx.game

@@ -17,12 +17,13 @@ use forge_foundation::ZoneType;
 use serde::{Deserialize, Serialize};
 
 use crate::card::Card;
+use crate::card::CounterType;
 use crate::card_trait_base::{CardTrait, CardTraitBase};
 use crate::core::HasSVars;
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
 use crate::parsing::keys;
-use crate::parsing::Params;
+use crate::parsing::{CompiledSelector, Params};
 
 const STATIC_ZONE_KEYS: &[&str] = &[keys::ACTIVE_ZONES, keys::EFFECT_ZONE];
 
@@ -211,6 +212,309 @@ pub struct StaticAbility {
     /// mapParams).
     #[serde(default)]
     pub svars: HashMap<String, String>,
+    #[serde(skip)]
+    pub ir: StaticAbilityIr,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct StaticAbilityIr {
+    pub valid_card: Option<CompiledSelector>,
+    pub valid_cards_text: Option<String>,
+    pub valid_player: Option<CompiledSelector>,
+    pub affected: Option<CompiledSelector>,
+    pub affected_text: Option<String>,
+    pub affected_zone: Option<ZoneType>,
+    pub affected_zones: Vec<ZoneType>,
+    pub valid_zone: Vec<ZoneType>,
+    pub may_play: bool,
+    pub counter_type_text: Option<String>,
+    pub counter_type: Option<CounterType>,
+    pub caster: Option<CompiledSelector>,
+    pub activator: Option<CompiledSelector>,
+    pub player: Option<CompiledSelector>,
+    pub valid_sa: Option<String>,
+    pub valid_mode: Option<String>,
+    pub valid_trigger: Option<String>,
+    pub valid_cause: Option<CompiledSelector>,
+    pub valid_cause_text: Option<String>,
+    pub valid_source: Option<CompiledSelector>,
+    pub valid_activator: Option<CompiledSelector>,
+    pub for_cost: Option<bool>,
+    pub is_combat: Option<bool>,
+    pub origin_zones: Vec<ZoneType>,
+    pub destination_zones: Vec<ZoneType>,
+    pub combat_damage: Option<bool>,
+    pub sorcery_speed: bool,
+    pub only_sorcery_speed: bool,
+    pub cmc_gt: Option<String>,
+    pub num_limit_each_turn: Option<i32>,
+    pub activator_raw: Option<String>,
+    pub cost: Option<String>,
+    pub type_filter: Option<String>,
+    pub mana_conversion: Option<String>,
+    pub except_cause_text: Option<String>,
+    pub restriction_text: Option<String>,
+    pub x_alternative_text: Option<String>,
+    pub announce_text: Option<String>,
+    pub mana_restriction_text: Option<String>,
+    pub stack_description_text: Option<String>,
+    pub cost_desc_text: Option<String>,
+    pub description_text: Option<String>,
+    pub named_text: Option<String>,
+    pub trigger_text: Option<String>,
+    pub valid_defender: Option<CompiledSelector>,
+    pub valid_defender_text: Option<String>,
+    pub max_attackers: Option<String>,
+    pub max_blockers: Option<String>,
+    pub valid_attacked: Option<CompiledSelector>,
+    pub valid_creature: Option<CompiledSelector>,
+    pub valid_entity: Option<CompiledSelector>,
+    pub is_present: Option<CompiledSelector>,
+    pub valid_attacker: Option<CompiledSelector>,
+    pub valid_blocker: Option<CompiledSelector>,
+    pub valid_attacker_relative: Option<CompiledSelector>,
+    pub has_valid_attacker_relative: bool,
+    pub valid_blocker_relative: Option<CompiledSelector>,
+    pub has_valid_blocker_relative: bool,
+    pub unless_defender_text: Option<String>,
+    pub kw_text: Option<String>,
+    pub valid_keyword_text: Option<String>,
+    pub value_text: Option<String>,
+    pub mana_type_text: Option<String>,
+    pub result_text: Option<String>,
+    pub new_time_text: Option<String>,
+    pub present_compare_text: Option<String>,
+    pub check_svar_text: Option<String>,
+    pub svar_compare_text: Option<String>,
+    pub min_text: Option<String>,
+    pub max_text: Option<String>,
+    pub additional_text: Option<String>,
+    pub attacker_text: Option<String>,
+    pub target_text: Option<String>,
+    pub trigger: bool,
+    pub twice: bool,
+    pub only_source_abs: bool,
+    pub optional: bool,
+    pub num_value: Option<i32>,
+    pub defender_not_nearest_to_you_in_chosen_direction: bool,
+    pub effect_zone_all: bool,
+    pub effect_zones: Vec<ZoneType>,
+    pub valid_target: Option<CompiledSelector>,
+    pub valid_target_text: Option<String>,
+    pub valid_spell: Option<String>,
+    pub for_each_shard: Option<String>,
+    pub amount: Option<String>,
+    pub min_mana: Option<i32>,
+    pub raise_to: bool,
+    pub may_play_ignore_type: bool,
+    pub may_play_ignore_color: bool,
+    pub may_play_snow_ignore_color: bool,
+    pub color: Option<String>,
+    pub ignore_generic: bool,
+    pub only_first_spell: bool,
+    pub unless_valid_target: bool,
+    pub relative: bool,
+    pub target: Option<CompiledSelector>,
+    pub valid_card_to_target: Option<CompiledSelector>,
+    pub exception_sba: bool,
+    pub exceptions: Option<CompiledSelector>,
+    pub has_valid_card: bool,
+    pub has_valid_player: bool,
+    pub max_num: Option<i32>,
+    pub active_zones: Vec<ZoneType>,
+    pub phases_text: Option<String>,
+    pub condition_text: Option<String>,
+    pub player_turn_text: Option<String>,
+    pub top_card_of_library_is: Option<String>,
+    pub class_level_min: Option<i32>,
+    pub add_power: bool,
+    pub add_toughness: bool,
+    pub set_power: bool,
+    pub set_toughness: bool,
+    pub add_keyword: bool,
+    pub gain_control_param: bool,
+    pub add_type: bool,
+    pub remove_type: bool,
+    pub add_color: bool,
+    pub has_zone_keys: bool,
+    pub has_condition_keys: bool,
+}
+
+impl StaticAbilityIr {
+    fn from_params(params: &Params) -> Self {
+        let raw = params.inner();
+        Self {
+            valid_card: params.selector_untracked(keys::VALID_CARD).cloned(),
+            valid_cards_text: raw.get(keys::VALID_CARDS).map(String::to_string),
+            valid_player: params.selector_untracked(keys::VALID_PLAYER).cloned(),
+            affected: params.selector_untracked(keys::AFFECTED).cloned(),
+            affected_text: raw.get(keys::AFFECTED).map(String::to_string),
+            affected_zone: raw
+                .get(keys::AFFECTED_ZONE)
+                .map(String::as_str)
+                .and_then(ZoneType::from_str_compat),
+            affected_zones: zone_list(raw.get(keys::AFFECTED_ZONE).map(String::as_str)),
+            valid_zone: zone_list(raw.get(keys::VALID_ZONE).map(String::as_str)),
+            may_play: raw
+                .get("MayPlay")
+                .is_some_and(|value| value.eq_ignore_ascii_case("True")),
+            counter_type_text: raw.get(keys::COUNTER_TYPE).map(String::to_string),
+            counter_type: raw
+                .get(keys::COUNTER_TYPE)
+                .map(|value| crate::card::counter_type::parse_counter_type(value)),
+            caster: params.selector_untracked(keys::CASTER).cloned(),
+            activator: params.selector_untracked(keys::ACTIVATOR).cloned(),
+            player: params.selector_untracked(keys::PLAYER).cloned(),
+            valid_sa: raw.get(keys::VALID_SA).map(String::to_string),
+            valid_mode: raw.get(keys::VALID_MODE).map(String::to_string),
+            valid_trigger: raw.get(keys::VALID_TRIGGER).map(String::to_string),
+            valid_cause: params.selector_untracked(keys::VALID_CAUSE).cloned(),
+            valid_cause_text: raw.get(keys::VALID_CAUSE).map(String::to_string),
+            valid_source: params.selector_untracked(keys::VALID_SOURCE).cloned(),
+            valid_activator: params.selector_untracked(keys::VALID_ACTIVATOR).cloned(),
+            for_cost: raw
+                .get(keys::FOR_COST)
+                .map(|value| value.eq_ignore_ascii_case("True")),
+            is_combat: raw
+                .get(keys::IS_COMBAT)
+                .map(|value| value.eq_ignore_ascii_case("True")),
+            origin_zones: zone_list(raw.get(keys::ORIGIN).map(String::as_str)),
+            destination_zones: zone_list(raw.get(keys::DESTINATION).map(String::as_str)),
+            combat_damage: raw
+                .get(keys::COMBAT_DAMAGE)
+                .map(|value| value.eq_ignore_ascii_case("True")),
+            sorcery_speed: raw.get(keys::SORCERY_SPEED).is_some(),
+            only_sorcery_speed: raw.get("OnlySorcerySpeed").is_some(),
+            cmc_gt: raw.get("cmcGT").map(String::to_string),
+            num_limit_each_turn: raw
+                .get("NumLimitEachTurn")
+                .and_then(|value| value.parse().ok()),
+            activator_raw: raw.get(keys::ACTIVATOR).map(String::to_string),
+            cost: raw.get(keys::COST).map(String::to_string),
+            type_filter: raw.get(keys::TYPE).map(String::to_string),
+            mana_conversion: raw.get(keys::MANA_CONVERSION).map(String::to_string),
+            except_cause_text: raw.get(keys::EXCEPT_CAUSE).map(String::to_string),
+            restriction_text: raw.get(keys::RESTRICTION).map(String::to_string),
+            x_alternative_text: raw.get("XAlternative").map(String::to_string),
+            announce_text: raw.get("Announce").map(String::to_string),
+            mana_restriction_text: raw.get("ManaRestriction").map(String::to_string),
+            stack_description_text: raw.get("StackDescription").map(String::to_string),
+            cost_desc_text: raw.get("CostDesc").map(String::to_string),
+            description_text: raw.get(keys::DESCRIPTION).map(String::to_string),
+            named_text: raw.get("Named").map(String::to_string),
+            trigger_text: raw.get(keys::TRIGGER).map(String::to_string),
+            valid_defender: params.selector_untracked(keys::VALID_DEFENDER).cloned(),
+            valid_defender_text: raw.get(keys::VALID_DEFENDER).map(String::to_string),
+            max_attackers: raw.get(keys::MAX_ATTACKERS).map(String::to_string),
+            max_blockers: raw.get(keys::MAX_BLOCKERS).map(String::to_string),
+            valid_attacked: params.selector_untracked(keys::VALID_ATTACKED).cloned(),
+            valid_creature: params.selector_untracked(keys::VALID_CREATURE).cloned(),
+            valid_entity: params.selector_untracked(keys::VALID_ENTITY).cloned(),
+            is_present: params.selector_untracked(keys::IS_PRESENT).cloned(),
+            valid_attacker: params.selector_untracked(keys::VALID_ATTACKER).cloned(),
+            valid_blocker: params.selector_untracked(keys::VALID_BLOCKER).cloned(),
+            valid_attacker_relative: params
+                .selector_untracked(keys::VALID_ATTACKER_RELATIVE)
+                .cloned(),
+            has_valid_attacker_relative: raw.contains_key(keys::VALID_ATTACKER_RELATIVE),
+            valid_blocker_relative: params
+                .selector_untracked(keys::VALID_BLOCKER_RELATIVE)
+                .cloned(),
+            has_valid_blocker_relative: raw.contains_key(keys::VALID_BLOCKER_RELATIVE),
+            unless_defender_text: raw.get(keys::UNLESS_DEFENDER).map(String::to_string),
+            kw_text: raw.get(keys::KW).map(String::to_string),
+            valid_keyword_text: raw.get(keys::VALID_KEYWORD).map(String::to_string),
+            value_text: raw.get(keys::VALUE).map(String::to_string),
+            mana_type_text: raw.get(keys::MANA_TYPE).map(String::to_string),
+            result_text: raw.get(keys::RESULT).map(String::to_string),
+            new_time_text: raw.get(keys::NEW_TIME).map(String::to_string),
+            present_compare_text: raw.get(keys::PRESENT_COMPARE).map(String::to_string),
+            check_svar_text: raw.get(keys::CHECK_SVAR).map(String::to_string),
+            svar_compare_text: raw.get(keys::SVAR_COMPARE).map(String::to_string),
+            min_text: raw.get(keys::MIN).map(String::to_string),
+            max_text: raw.get(keys::MAX).map(String::to_string),
+            additional_text: raw.get(keys::ADDITIONAL).map(String::to_string),
+            attacker_text: raw.get(keys::ATTACKER).map(String::to_string),
+            target_text: raw.get(keys::TARGET).map(String::to_string),
+            trigger: raw.contains_key(keys::TRIGGER),
+            twice: raw.contains_key(keys::TWICE),
+            only_source_abs: raw.contains_key(keys::ONLY_SOURCE_ABS),
+            optional: raw.contains_key(keys::OPTIONAL),
+            num_value: raw.get(keys::NUM).and_then(|value| value.parse().ok()),
+            defender_not_nearest_to_you_in_chosen_direction: raw
+                .contains_key(keys::DEFENDER_NOT_NEAREST_TO_YOU_IN_CHOSEN_DIRECTION),
+            effect_zone_all: raw
+                .get(keys::EFFECT_ZONE)
+                .or_else(|| raw.get(keys::AFFECTED_ZONE))
+                .is_some_and(|value| value.eq_ignore_ascii_case("All")),
+            effect_zones: zone_list(
+                raw.get(keys::EFFECT_ZONE)
+                    .or_else(|| raw.get(keys::AFFECTED_ZONE))
+                    .map(String::as_str),
+            ),
+            valid_target: params.selector_untracked(keys::VALID_TARGET).cloned(),
+            valid_target_text: raw.get(keys::VALID_TARGET).map(String::to_string),
+            valid_spell: raw.get(keys::VALID_SPELL).map(String::to_string),
+            for_each_shard: raw.get(keys::FOR_EACH_SHARD).map(String::to_string),
+            amount: raw.get(keys::AMOUNT).map(String::to_string),
+            min_mana: raw.get(keys::MIN_MANA).and_then(|value| value.parse().ok()),
+            raise_to: raw
+                .get("RaiseTo")
+                .is_some_and(|value| value.eq_ignore_ascii_case("True")),
+            may_play_ignore_type: raw.contains_key("MayPlayIgnoreType"),
+            may_play_ignore_color: raw.contains_key("MayPlayIgnoreColor"),
+            may_play_snow_ignore_color: raw.contains_key("MayPlaySnowIgnoreColor"),
+            color: raw.get(keys::COLOR).map(String::to_string),
+            ignore_generic: raw
+                .get("IgnoreGeneric")
+                .is_some_and(|value| value.eq_ignore_ascii_case("True")),
+            only_first_spell: raw
+                .get("OnlyFirstSpell")
+                .is_some_and(|value| value.eq_ignore_ascii_case("True")),
+            unless_valid_target: raw
+                .get("UnlessValidTarget")
+                .is_some_and(|value| value.eq_ignore_ascii_case("True")),
+            relative: raw
+                .get("Relative")
+                .is_some_and(|value| value.eq_ignore_ascii_case("True")),
+            target: params.selector_untracked(keys::TARGET).cloned(),
+            valid_card_to_target: params
+                .selector_untracked(keys::VALID_CARD_TO_TARGET)
+                .cloned(),
+            exception_sba: raw.get(keys::EXCEPTION_SBA).is_some(),
+            exceptions: params.selector_untracked(keys::EXCEPTIONS).cloned(),
+            has_valid_card: raw.contains_key(keys::VALID_CARD),
+            has_valid_player: raw.contains_key(keys::VALID_PLAYER),
+            max_num: raw.get(keys::MAX_NUM).and_then(|value| value.parse().ok()),
+            active_zones: zone_list(raw.get(keys::ACTIVE_ZONES).map(String::as_str)),
+            phases_text: raw.get(keys::PHASES).map(String::to_string),
+            condition_text: raw.get(keys::CONDITION).map(String::to_string),
+            player_turn_text: raw.get(keys::PLAYER_TURN).map(String::to_string),
+            top_card_of_library_is: raw.get("TopCardOfLibraryIs").map(String::to_string),
+            class_level_min: raw.get("ClassLevel").and_then(|value| value.parse().ok()),
+            add_power: raw.contains_key(keys::ADD_POWER),
+            add_toughness: raw.contains_key(keys::ADD_TOUGHNESS),
+            set_power: raw.contains_key(keys::SET_POWER),
+            set_toughness: raw.contains_key(keys::SET_TOUGHNESS),
+            add_keyword: raw.contains_key(keys::ADD_KEYWORD),
+            gain_control_param: raw.contains_key(keys::GAIN_CONTROL),
+            add_type: raw.contains_key(keys::ADD_TYPE),
+            remove_type: raw.contains_key(keys::REMOVE_TYPE),
+            add_color: raw.contains_key(keys::ADD_COLOR),
+            has_zone_keys: params.contains_any_key(STATIC_ZONE_KEYS),
+            has_condition_keys: params.contains_any_key(STATIC_CONDITION_KEYS),
+        }
+    }
+}
+
+fn zone_list(raw: Option<&str>) -> Vec<ZoneType> {
+    raw.map(|zones| {
+        zones
+            .split(',')
+            .filter_map(|zone| ZoneType::from_str_compat(zone.trim()))
+            .collect()
+    })
+    .unwrap_or_default()
 }
 
 impl StaticAbility {
@@ -234,17 +538,17 @@ impl StaticAbility {
         }
         // Presence of specific params determines the layer (mirrors Java
         // `StaticAbilityContinuous.getLayer()`).
-        if self.params.has(keys::ADD_POWER) || self.params.has(keys::ADD_TOUGHNESS) {
+        if self.ir.add_power || self.ir.add_toughness {
             Some(Layer::ModifyPT)
-        } else if self.params.has(keys::SET_POWER) || self.params.has(keys::SET_TOUGHNESS) {
+        } else if self.ir.set_power || self.ir.set_toughness {
             Some(Layer::SetPT)
-        } else if self.params.has(keys::ADD_KEYWORD) {
+        } else if self.ir.add_keyword {
             Some(Layer::Ability)
-        } else if self.params.has(keys::GAIN_CONTROL) {
+        } else if self.ir.gain_control_param {
             Some(Layer::Control)
-        } else if self.params.has(keys::ADD_TYPE) || self.params.has(keys::REMOVE_TYPE) {
+        } else if self.ir.add_type || self.ir.remove_type {
             Some(Layer::Type)
-        } else if self.params.has(keys::ADD_COLOR) {
+        } else if self.ir.add_color {
             Some(Layer::Color)
         } else {
             None
@@ -262,35 +566,21 @@ impl StaticAbility {
     }
 
     pub fn zones_check(&self, source_zone: ZoneType) -> bool {
-        if !self.params.contains_any_key(STATIC_ZONE_KEYS) {
+        if !self.ir.has_zone_keys {
             return source_zone == ZoneType::Battlefield;
         }
 
         let _perf_scope = crate::perf::ParamsLookupScopeGuard::enter(
             crate::perf::ParamsLookupScope::StaticAbility,
         );
-        if let Some(active) = self.params.get(keys::ACTIVE_ZONES) {
-            let zones: Vec<ZoneType> = active
-                .split(',')
-                .filter_map(|z| ZoneType::from_str_compat(z.trim()))
-                .collect();
-            if zones.is_empty() {
-                return false;
-            }
-            return zones.contains(&source_zone);
+        if !self.ir.active_zones.is_empty() {
+            return self.ir.active_zones.contains(&source_zone);
         }
-        if let Some(effect_zone) = self.params.get(keys::EFFECT_ZONE) {
-            if effect_zone.eq_ignore_ascii_case("All") {
-                return true;
-            }
-            let zones: Vec<ZoneType> = effect_zone
-                .split(',')
-                .filter_map(|z| ZoneType::from_str_compat(z.trim()))
-                .collect();
-            if zones.is_empty() {
-                return false;
-            }
-            return zones.contains(&source_zone);
+        if self.ir.effect_zone_all {
+            return true;
+        }
+        if !self.ir.effect_zones.is_empty() {
+            return self.ir.effect_zones.contains(&source_zone);
         }
         source_zone == ZoneType::Battlefield
     }
@@ -309,11 +599,11 @@ impl StaticAbility {
             return false;
         }
 
-        if !self.params.contains_any_key(STATIC_CONDITION_KEYS) {
+        if !self.ir.has_condition_keys {
             return true;
         }
 
-        if let Some(phases) = self.params.get(keys::PHASES) {
+        if let Some(phases) = self.ir.phases_text.as_deref() {
             let current = format!("{:?}", game.turn.phase);
             if !phases
                 .split(',')
@@ -324,7 +614,7 @@ impl StaticAbility {
             }
         }
 
-        if let Some(condition) = self.params.get(keys::CONDITION) {
+        if let Some(condition) = self.ir.condition_text.as_deref() {
             if condition.eq_ignore_ascii_case("MaxSpeed")
                 && game.player(source.controller).speed != 4
             {
@@ -332,7 +622,7 @@ impl StaticAbility {
             }
         }
 
-        if let Some(player_turn) = self.params.get(keys::PLAYER_TURN) {
+        if let Some(player_turn) = self.ir.player_turn_text.as_deref() {
             let active = game.turn.active_player;
             let defined = crate::ability::effects::helpers::resolve_defined_players(
                 player_turn,
@@ -345,7 +635,7 @@ impl StaticAbility {
             }
         }
 
-        if let Some(valid_top) = self.params.get("TopCardOfLibraryIs") {
+        if let Some(valid_top) = self.ir.top_card_of_library_is.as_deref() {
             let top = game
                 .zone(ZoneType::Library, source.controller)
                 .peek_top()
@@ -359,8 +649,7 @@ impl StaticAbility {
             }
         }
 
-        if let Some(class_level) = self.params.get("ClassLevel") {
-            let min = class_level.parse::<i32>().unwrap_or(0);
+        if let Some(min) = self.ir.class_level_min {
             if source.class_level < min {
                 return false;
             }
@@ -674,7 +963,7 @@ pub fn parse_static_ability(raw: &str) -> Option<StaticAbility> {
     // Parse "|"-separated "Key$ Value" pairs using central parser.
     let params = Params::from_raw(body);
 
-    let mode = match params.get(keys::MODE) {
+    let mode = match params.inner().get(keys::MODE).map(String::as_str) {
         Some("Continuous") => StaticMode::Continuous,
         Some("CantAttack") => StaticMode::CantAttack,
         Some("CantBlock") => StaticMode::CantBlock,
@@ -763,6 +1052,7 @@ pub fn parse_static_ability(raw: &str) -> Option<StaticAbility> {
         None => return None,
     };
 
+    let ir = StaticAbilityIr::from_params(&params);
     let mut st_ab = StaticAbility {
         base: Box::new(CardTraitBase::default()),
         mode,
@@ -771,6 +1061,7 @@ pub fn parse_static_ability(raw: &str) -> Option<StaticAbility> {
         ignore_effect_players: Vec::new(),
         may_play_turn: 0,
         svars: HashMap::new(),
+        ir,
     };
     st_ab.sync_trait_base_params();
     Some(st_ab)
@@ -858,9 +1149,12 @@ mod tests {
     fn parse_continuous_anthem() {
         let raw = "S$ Mode$ Continuous | Affected$ Creature.YouControl | AddPower$ 1 | AddToughness$ 1 | Description$ Creatures you control get +1/+1.";
         let sa = parse_static_ability(raw).expect("should parse");
+        let StaticAbility {
+            params: raw_params, ..
+        } = &sa;
         assert_eq!(sa.mode, StaticMode::Continuous);
-        assert_eq!(sa.params.get("AddPower"), Some("1"));
-        assert_eq!(sa.params.get("AddToughness"), Some("1"));
+        assert_eq!(raw_params.get("AddPower"), Some("1"));
+        assert_eq!(raw_params.get("AddToughness"), Some("1"));
         assert_eq!(sa.continuous_layer(), Some(Layer::ModifyPT));
     }
 
@@ -883,8 +1177,11 @@ mod tests {
     fn parse_keyword_grant() {
         let raw = "S$ Mode$ Continuous | Affected$ Creature.YouControl | AddKeyword$ Flying | Description$ Creatures you control have flying.";
         let sa = parse_static_ability(raw).expect("should parse");
+        let StaticAbility {
+            params: raw_params, ..
+        } = &sa;
         assert_eq!(sa.continuous_layer(), Some(Layer::Ability));
-        assert_eq!(sa.params.get("AddKeyword"), Some("Flying"));
+        assert_eq!(raw_params.get("AddKeyword"), Some("Flying"));
     }
 
     #[test]

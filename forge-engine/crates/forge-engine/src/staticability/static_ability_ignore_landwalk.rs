@@ -1,5 +1,4 @@
 use crate::card::{valid_filter, Card};
-use crate::parsing::keys;
 use crate::staticability::StaticMode;
 use forge_foundation::ZoneType;
 
@@ -37,20 +36,20 @@ fn apply_ignore_landwalk(
     source: &Card,
 ) -> bool {
     if !valid_filter::matches_valid_card_selector_opt(
-        st_ab.params.selector(keys::VALID_ATTACKER),
+        st_ab.ir.valid_attacker.as_ref(),
         attacker,
         source,
     ) {
         return false;
     }
     if !valid_filter::matches_valid_card_selector_opt(
-        st_ab.params.selector(keys::VALID_BLOCKER),
+        st_ab.ir.valid_blocker.as_ref(),
         blocker,
         source,
     ) {
         return false;
     }
-    if let Some(valid_kw) = st_ab.params.get(keys::VALID_KEYWORD) {
+    if let Some(valid_kw) = st_ab.ir.valid_keyword_text.as_deref() {
         if !valid_kw.eq_ignore_ascii_case(keyword) {
             return false;
         }

@@ -2,7 +2,6 @@ use forge_foundation::ZoneType;
 
 use crate::card::{valid_filter, Card};
 use crate::ids::PlayerId;
-use crate::parsing::keys;
 use crate::staticability::StaticMode;
 
 pub fn can_attack_defender(cards: &[Card], card: &Card, defender: PlayerId) -> bool {
@@ -15,11 +14,11 @@ pub fn can_attack_defender(cards: &[Card], card: &Card, defender: PlayerId) -> b
             .iter()
             .filter(|sa| sa.mode == StaticMode::CanAttackDefender)
         {
-            if !matches_valid_card(st_ab.params.selector(keys::VALID_CARD), card, source) {
+            if !matches_valid_card(st_ab.ir.valid_card.as_ref(), card, source) {
                 continue;
             }
-            if !matches_valid_attacked(
-                st_ab.params.get(keys::VALID_ATTACKED),
+            if !valid_filter::matches_valid_player_selector_opt(
+                st_ab.ir.valid_attacked.as_ref(),
                 defender,
                 source.controller,
             ) {
@@ -37,22 +36,4 @@ fn matches_valid_card(
     source: &Card,
 ) -> bool {
     valid_filter::matches_valid_card_selector_opt(valid, card, source)
-}
-
-fn matches_valid_attacked(
-    valid: Option<&str>,
-    defender: PlayerId,
-    source_controller: PlayerId,
-) -> bool {
-    match valid {
-        None => true,
-        Some(v) if v.eq_ignore_ascii_case("Player") => true,
-        Some(v) if v.eq_ignore_ascii_case("You") || v.eq_ignore_ascii_case("YouCtrl") => {
-            defender == source_controller
-        }
-        Some(v) if v.eq_ignore_ascii_case("Opponent") || v.eq_ignore_ascii_case("OppCtrl") => {
-            defender != source_controller
-        }
-        _ => true,
-    }
 }

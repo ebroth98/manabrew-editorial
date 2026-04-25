@@ -19,7 +19,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
 
     // Collect SVar names for each choice — mirrors Java's
     // sa.getAdditionalAbilityList("Choices")
-    let choices_str = sa.params.get_cloned(keys::CHOICES).unwrap_or_default();
+    let choices_str = sa.ir.choices.clone().unwrap_or_default();
     if choices_str.is_empty() {
         return;
     }
@@ -37,11 +37,12 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     }
 
     let amount = sa
-        .params
-        .get("ChoiceAmount")
+        .ir
+        .amount
+        .as_deref()
         .and_then(|s| s.parse::<usize>().ok())
         .unwrap_or(1);
-    let temp_remember = sa.params.has("TempRemember");
+    let temp_remember = sa.ir.temp_remember;
     let choosers = get_defined_players_or_targeted(ctx.game, sa);
     for chooser in choosers {
         let mut abilities: Vec<SpellAbility> = choice_texts
@@ -54,7 +55,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
             })
             .collect();
 
-        if let Some(n_str) = sa.params.get("NumRandomChoices") {
+        if let Some(n_str) = sa.ir.num_random_choices.as_deref() {
             let n = crate::ability::ability_utils::calculate_amount(n_str) as usize;
             while abilities.len() > n {
                 let idx = ctx.rng.next_int(abilities.len() as i32) as usize;
@@ -63,7 +64,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
         }
 
         abilities.retain(|choice_sa| {
-            if let Some(unless_cost_str) = choice_sa.params.get(keys::UNLESS_COST) {
+            if let Some(unless_cost_str) = choice_sa.ir.unless_cost.as_deref() {
                 let cost = crate::cost::parse_cost(unless_cost_str);
                 crate::cost::can_pay_with_ability(
                     &cost,
@@ -79,7 +80,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
         });
 
         if abilities.is_empty() {
-            if let Some(fallback_name) = sa.params.get("FallbackAbility") {
+            if let Some(fallback_name) = sa.ir.fallback_ability.as_deref() {
                 if let Some(fallback_text) = svars.get(fallback_name) {
                     let mut fallback_sa =
                         build_spell_ability(ctx.game, source_id, fallback_text, player);
@@ -92,7 +93,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
 
         let mut chosen_sas: Vec<SpellAbility>;
 
-        if sa.params.has(keys::AT_RANDOM) {
+        if sa.ir.at_random {
             chosen_sas = Vec::new();
             for _ in 0..amount.min(abilities.len()) {
                 if abilities.is_empty() {
@@ -102,7 +103,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
                 chosen_sas.push(abilities.remove(idx));
             }
 
-            if sa.params.get(keys::AT_RANDOM) == Some("Urza") {
+            if sa.ir.at_random_text.as_deref() == Some("Urza") {
                 let mut i = 0;
                 while i < chosen_sas.len() {
                     if !chosen_sas[i].uses_targeting() {
@@ -165,7 +166,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
                     break;
                 }
             }
-        } else if let Some(fallback_name) = sa.params.get("FallbackAbility") {
+        } else if let Some(fallback_name) = sa.ir.fallback_ability.as_deref() {
             if let Some(fallback_text) = svars.get(fallback_name) {
                 let mut fallback_sa =
                     build_spell_ability(ctx.game, source_id, fallback_text, player);

@@ -1,6 +1,5 @@
 use super::EffectContext;
 use crate::game::TypeRegistry;
-use crate::parsing::keys;
 use crate::spellability::SpellAbility;
 
 /// `SP$ ChooseType` — the activating player chooses a creature type, card type, etc.
@@ -22,13 +21,13 @@ use crate::spellability::SpellAbility;
 fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let controller = sa.activating_player;
     let type_category = sa
-        .params
-        .get(keys::TYPE)
-        .map(|s| s.to_string())
+        .ir
+        .type_filter
+        .clone()
         .unwrap_or_else(|| "Creature".to_string());
 
     // Build the valid types list
-    let valid_types: Vec<String> = if let Some(vt) = sa.params.get(keys::VALID_TYPES) {
+    let valid_types: Vec<String> = if let Some(vt) = sa.ir.valid_types_text.as_deref() {
         vt.split(',').map(|s| s.trim().to_string()).collect()
     } else {
         match type_category.as_str() {

@@ -16,7 +16,7 @@ pub fn any_cant_become_monarch(game: &GameState, player: PlayerId) -> bool {
             .filter(|sa| sa.mode == StaticMode::CantBecomeMonarch && sa.zones_check(card.zone))
         {
             if valid_filter::matches_valid_player_selector_opt(
-                st_ab.params.selector(keys::VALID_PLAYER),
+                st_ab.ir.valid_player.as_ref(),
                 player,
                 card.controller,
             ) {

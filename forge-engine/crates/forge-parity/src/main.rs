@@ -863,6 +863,24 @@ struct ServedMatchup {
     cache_hit: bool,
 }
 
+#[cfg(feature = "serve")]
+fn run_rust_trace_with_parity_stack(
+    config: &RunConfig,
+    data: &LoadedData,
+) -> Result<forge_parity::protocol::GameTrace, String> {
+    std::thread::scope(|s| {
+        let rust_handle = std::thread::Builder::new()
+            .name("parity-rust".to_string())
+            .stack_size(PARITY_THREAD_STACK_SIZE)
+            .spawn_scoped(s, || runner::run_with_data(config, data))
+            .expect("Failed to spawn Rust parity thread");
+        rust_handle
+            .join()
+            .expect("Rust engine thread panicked")
+            .map_err(|e| e.to_string())
+    })
+}
+
 /// Run a matchup using a pool, consulting the Java cache first. On miss, runs
 /// Rust and Java concurrently (like `run_single_matchup_pool`) and stores the
 /// Java output so subsequent identical runs short-circuit.
@@ -886,7 +904,7 @@ fn run_matchup_cached(
             &config.variant,
             &config.commanders,
         ) {
-            let rust_trace = match runner::run_with_data(config, data) {
+            let rust_trace = match run_rust_trace_with_parity_stack(config, data) {
                 Ok(t) => t,
                 Err(e) => {
                     return ServedMatchup {

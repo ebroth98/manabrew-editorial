@@ -1,10 +1,12 @@
 use forge_foundation::ZoneType;
 
 use crate::card::{valid_filter, Card, CounterType};
-use crate::parsing::{keys, CompiledSelector};
+use crate::parsing::CompiledSelector;
 use crate::staticability::StaticMode;
 
 pub fn max_counter(cards: &[Card], target: &Card, counter_type: &CounterType) -> Option<i32> {
+    let _perf_scope =
+        crate::perf::ParamsLookupScopeGuard::enter(crate::perf::ParamsLookupScope::StaticAbility);
     let mut result: Option<i32> = None;
     for source in cards.iter().filter(|c| c.zone == ZoneType::Battlefield) {
         for st_ab in source
@@ -12,21 +14,15 @@ pub fn max_counter(cards: &[Card], target: &Card, counter_type: &CounterType) ->
             .iter()
             .filter(|sa| sa.mode == StaticMode::MaxCounter)
         {
-            if let Some(s) = st_ab.params.get(keys::COUNTER_TYPE) {
-                if let Some(parsed) = parse_counter_type_opt(s) {
-                    if parsed != *counter_type {
-                        continue;
-                    }
+            if let Some(parsed) = st_ab.ir.counter_type.as_ref() {
+                if *parsed != *counter_type {
+                    continue;
                 }
             }
-            if !matches_valid_card(st_ab.params.selector(keys::VALID_CARD), target, source) {
+            if !matches_valid_card(st_ab.ir.valid_card.as_ref(), target, source) {
                 continue;
             }
-            let value = st_ab
-                .params
-                .get(keys::MAX_NUM)
-                .and_then(|s| s.parse::<i32>().ok())
-                .unwrap_or(0);
+            let value = st_ab.ir.max_num.unwrap_or(0);
             result = Some(result.map_or(value, |v| v.min(value)));
         }
     }
@@ -35,29 +31,4 @@ pub fn max_counter(cards: &[Card], target: &Card, counter_type: &CounterType) ->
 
 fn matches_valid_card(valid: Option<&CompiledSelector>, card: &Card, source: &Card) -> bool {
     valid_filter::matches_valid_card_selector_opt(valid, card, source)
-}
-
-fn parse_counter_type_opt(s: &str) -> Option<CounterType> {
-    let upper = s.to_uppercase();
-    match upper.as_str() {
-        "POISON" => Some(CounterType::Poison),
-        "P1P1" | "+1/+1" => Some(CounterType::P1P1),
-        "M1M1" | "-1/-1" => Some(CounterType::M1M1),
-        "LOYALTY" => Some(CounterType::Loyalty),
-        "CHARGE" => Some(CounterType::Charge),
-        "QUEST" => Some(CounterType::Quest),
-        "STUDY" => Some(CounterType::Study),
-        "AGE" => Some(CounterType::Age),
-        "FADE" => Some(CounterType::Fade),
-        "TIME" => Some(CounterType::Time),
-        "DEPLETION" => Some(CounterType::Depletion),
-        "STORAGE" => Some(CounterType::Storage),
-        "MINING" => Some(CounterType::Mining),
-        "BRICK" => Some(CounterType::Brick),
-        "LEVEL" => Some(CounterType::Level),
-        "LORE" => Some(CounterType::Lore),
-        "PAGE" => Some(CounterType::Page),
-        "DREAM" => Some(CounterType::Dream),
-        _ => Some(CounterType::Named(upper)),
-    }
 }

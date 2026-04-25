@@ -1,5 +1,4 @@
 use crate::card::{valid_filter, Card};
-use crate::parsing::keys;
 use crate::spellability::SpellAbility;
 use crate::staticability::StaticMode;
 
@@ -25,14 +24,14 @@ pub fn apply_cant_transform_ability(
     cause: Option<&SpellAbility>,
 ) -> bool {
     if !valid_filter::matches_valid_card_selector_opt(
-        st_ab.params.selector(keys::VALID_CARD),
+        st_ab.ir.valid_card.as_ref(),
         card,
         source,
     ) {
         return false;
     }
     // Java: if stAb.hasParam("ExceptCause") { if stAb.matchesValidParam("ExceptCause", cause) return false }
-    if let Some(except_cause) = st_ab.params.get(keys::EXCEPT_CAUSE) {
+    if let Some(except_cause) = st_ab.ir.except_cause_text.as_deref() {
         if let Some(cause) = cause {
             if matches_except_cause(except_cause, cause) {
                 return false;

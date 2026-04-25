@@ -30,12 +30,12 @@ pub fn can_replace(
         ReplacementEvent::PayLife { player, amount } => (*player, *amount),
         _ => return false,
     };
-    if let Some(valid) = effect.params.selector(keys::VALID_PLAYER) {
+    if let Some(valid) = effect.ir.valid_player_selector.as_ref() {
         if !effect.matches_compiled_valid_player(valid, player, source_card) {
             return false;
         }
     }
-    if let Some(amount_cmp) = effect.params.get(keys::AMOUNT) {
+    if let Some(amount_cmp) = effect.ir.amount_text.as_deref() {
         let threshold = amount_cmp.get(2..).unwrap_or("");
         let rhs = resolve_replace_value(threshold, _game, source_card.id, event)
             .or_else(|| threshold.parse::<i32>().ok())
@@ -59,12 +59,7 @@ pub fn execute(
         ReplacementEvent::PayLife { .. } => {}
         _ => return ReplacementResult::NotReplaced,
     }
-    if effect
-        .params
-        .get(keys::PREVENT)
-        .map(|s| s == "True")
-        .unwrap_or(false)
-    {
+    if effect.prevents() {
         if let ReplacementEvent::PayLife { amount, .. } = event {
             *amount = 0;
         }

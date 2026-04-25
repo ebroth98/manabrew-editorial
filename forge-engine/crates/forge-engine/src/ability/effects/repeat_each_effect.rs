@@ -1,7 +1,6 @@
 use forge_foundation::ZoneType;
 
-use super::{matches_valid_cards_for_sa, parse_zone_type, resolve_defined_players, EffectContext};
-use crate::parsing::keys;
+use super::{matches_valid_cards_for_sa, resolve_defined_players, EffectContext};
 use crate::spellability::{build_spell_ability, SpellAbility};
 
 /// `SP$ RepeatEach` — loop a sub-ability over cards or players.
@@ -24,8 +23,8 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     };
 
     let controller = sa.activating_player;
-    let use_damage_map = sa.params.has("DamageMap");
-    let use_change_zone_table = sa.params.has("ChangeZoneTable");
+    let use_damage_map = sa.ir.damage_map;
+    let use_change_zone_table = sa.ir.change_zone_table;
 
     if use_damage_map {
         ctx.game.ensure_pending_damage_maps();
@@ -35,7 +34,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     }
 
     // Get the sub-ability SVar name
-    let sub_svar_name = match sa.params.get_cloned(keys::REPEAT_SUB_ABILITY) {
+    let sub_svar_name = match sa.ir.repeat_sub_ability.as_deref() {
         Some(name) => name,
         None => return,
     };
@@ -52,14 +51,10 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     };
 
     // Determine iteration mode: cards or players
-    if let Some(repeat_cards_filter) = sa.params.get_cloned(keys::REPEAT_CARDS) {
-        let repeat_cards_selector = sa.params.selector_cloned(keys::REPEAT_CARDS);
+    if let Some(repeat_cards_filter) = sa.ir.repeat_cards_text.as_deref() {
+        let repeat_cards_selector = sa.ir.repeat_cards_selector.as_ref();
         // Card iteration path
-        let zone = sa
-            .params
-            .get(keys::ZONE)
-            .and_then(|s| parse_zone_type(s))
-            .unwrap_or(ZoneType::Battlefield);
+        let zone = sa.ir.zone.unwrap_or(ZoneType::Battlefield);
 
         // Collect matching cards
         let matching: Vec<crate::ids::CardId> = {
@@ -71,8 +66,8 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
                         ctx.game,
                         sa,
                         ctx.game.card(cid),
-                        repeat_cards_selector.as_ref(),
-                        &repeat_cards_filter,
+                        repeat_cards_selector,
+                        repeat_cards_filter,
                     ) {
                         result.push(cid);
                     }
@@ -97,9 +92,9 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
 
         // Clean up remembered cards
         ctx.game.card_mut(source_id).clear_remembered();
-    } else if let Some(repeat_players) = sa.params.get_cloned(keys::REPEAT_PLAYERS) {
+    } else if let Some(repeat_players) = sa.ir.repeat_players.as_deref() {
         // Player iteration path
-        let players = resolve_defined_players(&repeat_players, controller, ctx.game);
+        let players = resolve_defined_players(repeat_players, controller, ctx.game);
 
         for pid in players {
             ctx.game.card_mut(source_id).clear_remembered();

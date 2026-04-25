@@ -767,7 +767,7 @@ pub fn matches_exile_from_stack_filter(
             continue;
         }
         let normalized = normalize_stack_clause_for_valid_cards(clause);
-        let selector = crate::parsing::CompiledSelector::parse(&normalized);
+        let selector = crate::parsing::cached_compiled_selector(&normalized);
         if crate::card::valid_filter::matches_valid_card_selector_in_game(
             &selector,
             card,

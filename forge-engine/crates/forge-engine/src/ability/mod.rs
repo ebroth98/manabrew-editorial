@@ -12,7 +12,7 @@ pub mod spell_ability_effect;
 pub mod spell_api_based;
 pub mod static_ability_api_based;
 
-pub use ability_ir::{AbilityIr, DealDamageIr};
+pub use ability_ir::{DealDamageIr, EffectIr, SpellAbilityIr};
 pub use ability_key::AbilityKey;
 pub use activated::*;
 pub use api_type::ApiType;

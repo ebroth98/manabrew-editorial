@@ -226,19 +226,20 @@ pub mod targeting_triggers;
 pub mod zone_triggers;
 
 // ── Re-exports so external callers keep the `effects::X` path ──────
+pub(crate) use combat_helpers::add_to_combat;
+pub(crate) use cost_payment::{try_pay_cumulative_upkeep, try_pay_unless_cost};
 pub use effect_context::EffectContext;
+pub(crate) use effect_resolver::{build_spell_ability_for_api, sub_ability_handled_internally};
 pub use effect_resolver::{
     resolve_effect, resolve_effect_chain, resolve_effect_chain_with_parent, IMPLEMENTED_API_TYPES,
 };
-pub(crate) use effect_resolver::{build_spell_ability_for_api, sub_ability_handled_internally};
 pub(crate) use targeting_triggers::{emit_targeting_triggers, emit_targeting_triggers_for_sa};
-pub(crate) use combat_helpers::add_to_combat;
-pub(crate) use cost_payment::{try_pay_cumulative_upkeep, try_pay_unless_cost};
 
 // Re-exports so effect files can use short paths like `super::parse_counter_type()`.
 pub use crate::mana::mana_atom_from_produced;
 pub use crate::svar::{
     evaluate_svar, resolve_count_svar, resolve_count_svar_for_sa, resolve_numeric_svar,
+    resolve_numeric_value,
 };
 pub use helpers::*;
 pub use zone_triggers::*;

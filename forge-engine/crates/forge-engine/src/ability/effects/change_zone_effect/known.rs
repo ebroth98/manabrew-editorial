@@ -33,7 +33,7 @@ pub(super) fn resolve_known_origin(
     let controller = sa.activating_player;
 
     // Unimprint$ — clear before processing (Java line 506)
-    if sa.param_is_true(keys::UNIMPRINT) {
+    if sa.ir.unimprint {
         if let Some(source_id) = sa.source {
             ctx.game.card_mut(source_id).clear_imprinted_cards();
         }

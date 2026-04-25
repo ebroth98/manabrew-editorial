@@ -1053,8 +1053,9 @@ impl GameLoop {
             };
             let name = game.card(card_id).card_name.clone();
             agents[player.index()].snapshot_state(game, &self.mana_pools);
-            let chosen_x = agents[player.index()].choose_x_value(player, max_x, Some(&name));
-            x_value = chosen_x.min(max_x);
+            x_value = agents[player.index()]
+                .choose_x_value(player, max_x, Some(&name))
+                .min(max_x);
             non_x_cost.add(&forge_foundation::ManaCost::generic(
                 (x_value * x_count as u32) as i32,
             ))

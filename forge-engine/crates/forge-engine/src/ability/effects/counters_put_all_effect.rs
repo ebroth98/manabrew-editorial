@@ -1,6 +1,6 @@
 use forge_foundation::ZoneType;
 
-use super::{matches_valid_cards_for_sa, parse_counter_type, resolve_numeric_svar, EffectContext};
+use super::{matches_valid_cards_for_sa, resolve_numeric_svar, EffectContext};
 use crate::card::CounterType;
 use crate::event::RunParams;
 use crate::ids::CardId;
@@ -27,21 +27,17 @@ use crate::trigger::TriggerType;
 #[forge_engine_macros::spell_effect(CountersPutAllEffect)]
 fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let counter_type = sa
-        .params
-        .get("CounterType")
-        .map(|s| parse_counter_type(s))
+        .ir
+        .counter_type
+        .clone()
         .unwrap_or(CounterType::P1P1);
     let count = resolve_numeric_svar(ctx.game, sa, "CounterNum", 1);
     if count == 0 {
         return;
     }
 
-    let valid_cards = sa.params.selector(keys::VALID_CARDS);
-    let zone = sa
-        .params
-        .get("ValidZone")
-        .and_then(|z| super::parse_zone_type(z))
-        .unwrap_or(ZoneType::Battlefield);
+    let valid_cards = sa.ir.valid_cards_selector.as_ref();
+    let zone = sa.ir.valid_zone.unwrap_or(ZoneType::Battlefield);
 
     let player_ids = ctx.game.player_order.clone();
     let mut targets: Vec<CardId> = Vec::new();

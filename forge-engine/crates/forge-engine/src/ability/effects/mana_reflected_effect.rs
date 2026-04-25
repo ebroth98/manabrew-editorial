@@ -3,7 +3,6 @@ use forge_foundation::mana::ManaAtom;
 use super::EffectContext;
 use crate::card::card_util;
 use crate::mana::{color_name_to_mana_atom, Mana};
-use crate::parsing::keys;
 use crate::spellability::SpellAbility;
 
 /// Configure the spell ability during construction.
@@ -12,10 +11,11 @@ use crate::spellability::SpellAbility;
 /// has no parent ability.
 pub fn build_spell_ability(sa: &mut crate::spellability::SpellAbility) {
     // Set up the mana part from Produced$ parameter
-    let produced = sa.params.get(keys::PRODUCED).unwrap_or("Any").to_string();
+    let produced = sa.ir.produced.as_deref().unwrap_or("Any").to_string();
     let restriction = sa
-        .params
-        .get(keys::RESTRICT_VALID)
+        .ir
+        .restrict_valid
+        .as_deref()
         .unwrap_or("")
         .to_string();
     sa.mana_part = Some(crate::spellability::AbilityManaPart::new(
@@ -51,7 +51,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
 
     let mut available_colors =
         colors_from_names(card_util::get_reflectable_mana_colors(ctx.game, sa));
-    let color_or_type = sa.params.get(keys::COLOR_OR_TYPE).unwrap_or("Color");
+    let color_or_type = sa.ir.color_or_type.as_deref().unwrap_or("Color");
     if color_or_type == "Type" && !available_colors.contains(&ManaAtom::COLORLESS) {
         available_colors.push(ManaAtom::COLORLESS);
     }
@@ -61,7 +61,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     }
 
     // Read metadata from the ability
-    let restriction = sa.params.get(keys::RESTRICT_VALID).map(|s| s.to_string());
+    let restriction = sa.ir.restrict_valid.clone();
     let source_is_snow = ctx.game.card(source_id).type_line.is_snow();
 
     // Sort available colors in WUBRG(C) order to match Java's ColorSet iteration.

@@ -4,7 +4,7 @@ use crate::ability::ability_utils;
 use crate::card::valid_filter;
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
-use crate::parsing::CompiledSelector;
+use crate::parsing::{cached_compiled_selector, CompiledSelector};
 use crate::spellability::SpellAbility;
 
 /// Port of common `CardLists` utilities used by card filtering/counting code.
@@ -173,7 +173,7 @@ impl CardLists {
         restriction: &str,
         source: CardId,
     ) -> Vec<CardId> {
-        let selector = CompiledSelector::parse(restriction);
+        let selector = cached_compiled_selector(restriction);
         cards
             .iter()
             .copied()

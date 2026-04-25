@@ -21,7 +21,7 @@ use crate::card_trait_base::CardTrait;
 ///
 /// Mirrors Java `ReplaceAddCounter.hasAnyInCounterMap()`.
 pub fn has_any_in_counter_map(effect: &ReplacementEffect, counter_type: Option<&str>) -> bool {
-    match effect.params.get(keys::VALID_COUNTER_TYPE) {
+    match effect.ir.valid_counter_type_text.as_deref() {
         None => true, // No restriction — matches any counter type
         Some(valid) => match counter_type {
             None => false, // Effect requires a specific type but none given
@@ -39,7 +39,7 @@ pub fn has_any_in_counter_map(effect: &ReplacementEffect, counter_type: Option<&
 pub fn mode_check(effect: &ReplacementEffect, event: &ReplacementType) -> bool {
     match event {
         ReplacementType::AddCounter => true,
-        ReplacementType::Moved => effect.params.get("CounterMap").is_some(),
+        ReplacementType::Moved => effect.ir.counter_map,
         _ => false,
     }
 }
@@ -61,23 +61,17 @@ pub fn can_replace(
         _ => return false,
     };
     // EffectOnly$ True: only apply to counters placed by effects, not ETB keywords/game rules
-    if effect
-        .params
-        .get("EffectOnly")
-        .map(|v| v == "True")
-        .unwrap_or(false)
-        && !is_effect
-    {
+    if effect.ir.effect_only && !is_effect {
         return false;
     }
     let target_card = &game.cards[target.index()];
-    if let Some(valid) = effect.params.selector(keys::VALID_CARD) {
+    if let Some(valid) = effect.ir.valid_card_selector.as_ref() {
         if !effect.matches_compiled_valid_card(valid, target_card, source_card) {
             return false;
         }
     }
     // Check ValidCounterType$ — e.g. Hardened Scales only applies to P1P1 counters.
-    if let Some(valid_ct) = effect.params.get(keys::VALID_COUNTER_TYPE) {
+    if let Some(valid_ct) = effect.ir.valid_counter_type_text.as_deref() {
         let counter_type = match event {
             ReplacementEvent::AddCounter { counter_type, .. } => counter_type,
             _ => return false,
@@ -101,7 +95,7 @@ pub fn execute(
         ReplacementEvent::AddCounter { count, .. } => count,
         _ => return ReplacementResult::NotReplaced,
     };
-    if let Some(replace) = effect.params.get(keys::REPLACE_WITH) {
+    if let Some(replace) = effect.replace_with() {
         match replace {
             "AddOneMoreCounter" | "AddOneMoreCounters" => {
                 *count += 1;

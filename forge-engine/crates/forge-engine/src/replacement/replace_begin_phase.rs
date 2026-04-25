@@ -6,7 +6,6 @@ use crate::card::Card;
 use crate::game::GameState;
 use crate::ids::CardId;
 use crate::parsing::keys;
-use forge_foundation::PhaseType;
 
 use super::replacement_effect::ReplacementEffect;
 use super::replacement_handler::ReplacementEvent;
@@ -28,23 +27,13 @@ pub fn can_replace(
         ReplacementEvent::BeginPhase { player, phase } => (*player, *phase),
         _ => return false,
     };
-    if let Some(valid) = effect.params.selector(keys::VALID_PLAYER) {
+    if let Some(valid) = effect.ir.valid_player_selector.as_ref() {
         if !effect.matches_compiled_valid_player(valid, player, source_card) {
             return false;
         }
     }
-    if let Some(phases) = effect
-        .params
-        .get(keys::PHASE)
-        .or_else(|| effect.params.get(keys::ACTIVE_PHASES))
-    {
-        let matches_phase = phases
-            .split(',')
-            .filter_map(|name| PhaseType::from_script_name(name.trim()))
-            .any(|candidate| candidate == phase);
-        if !matches_phase {
-            return false;
-        }
+    if !effect.matches_phase(phase) {
+        return false;
     }
     true
 }
@@ -56,13 +45,7 @@ pub fn execute(
     _game: &GameState,
     _source_card_id: CardId,
 ) -> ReplacementResult {
-    if effect
-        .params
-        .get(keys::PREVENT)
-        .map(|s| s == "True")
-        .unwrap_or(false)
-        || effect.params.has(keys::SKIP)
-    {
+    if effect.prevents() || effect.has_skip() {
         return ReplacementResult::Skipped;
     }
     ReplacementResult::Replaced

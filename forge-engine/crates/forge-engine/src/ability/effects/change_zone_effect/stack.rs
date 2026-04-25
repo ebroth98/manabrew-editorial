@@ -4,7 +4,7 @@
 
 use forge_foundation::ZoneType;
 
-use super::super::{emit_zone_trigger, parse_counter_type, EffectContext};
+use super::super::{emit_zone_trigger, EffectContext};
 use crate::ids::PlayerId;
 use crate::spellability::SpellAbility;
 
@@ -40,7 +40,7 @@ pub(super) fn resolve_stack_removal(
     // ExiledWith for exile
     if dest_zone == ZoneType::Exile {
         if let Some(source_id) = sa.source {
-            if sa.params.has("ExiledWithEffectSource") {
+            if sa.ir.exiled_with_effect_source {
                 let exile_source = ctx.game.card(source_id).effect_source.unwrap_or(source_id);
                 ctx.game.card_mut(card_id).set_exiled_by(Some(exile_source));
                 ctx.game.card_mut(exile_source).add_remembered_card(card_id);
@@ -62,11 +62,10 @@ pub(super) fn resolve_stack_removal(
     }
 
     // Counters
-    if let Some(ct_str) = sa.with_counters_type() {
-        let ct = parse_counter_type(ct_str);
+    if let Some(ct) = sa.with_counters_type_enum() {
         ctx.game
             .card_mut(card_id)
-            .add_counter(&ct, sa.with_counters_amount().unwrap_or(1));
+            .add_counter(ct, sa.with_counters_amount().unwrap_or(1));
     }
 
     // Remember/Imprint

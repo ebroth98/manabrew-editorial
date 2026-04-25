@@ -75,7 +75,7 @@ fn cause_cards_for_trigger(
         TriggerType::Attacks => params.attacker.into_iter().collect(),
         TriggerType::AttackersDeclared | TriggerType::AttackersDeclaredOneTarget => {
             let attackers = params.attacker_ids.clone().unwrap_or_default();
-            if let Some(valid_attackers) = trigger.params.selector("ValidAttackers") {
+            if let Some(valid_attackers) = trigger.ir.valid_attackers_selector.as_ref() {
                 attackers
                     .into_iter()
                     .filter(|&card_id| {

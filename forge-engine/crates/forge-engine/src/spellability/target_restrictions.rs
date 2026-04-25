@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use crate::card::{card_property, valid_filter};
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
-use crate::parsing::{keys, CompiledSelector, Params};
+use crate::parsing::{cached_compiled_selector, keys, CompiledSelector, Params, ParsedParams};
 use crate::spellability::SpellAbility;
 
 /// What kinds of targets a spell can select.
@@ -62,6 +62,49 @@ pub struct TargetRestrictions {
 }
 
 impl TargetRestrictions {
+    pub fn new_from_parsed(parsed: &ParsedParams<'_>, params: &Params) -> Option<Self> {
+        let valid_tgts_str = parsed.get(keys::VALID_TGTS)?;
+        let valid_tgts: Vec<String> = valid_tgts_str
+            .split(',')
+            .map(|s| s.trim().to_string())
+            .collect();
+        let origin_zone = parsed_zone_type(parsed.get(keys::ORIGIN));
+        let enhanced_input = if origin_zone.is_some_and(|z| z != ZoneType::Battlefield) {
+            valid_tgts_str
+        } else {
+            &valid_tgts[0]
+        };
+        let mut target_kind = parse_target_kind_enhanced(enhanced_input, origin_zone);
+        let min_targets = parsed.get(keys::TARGET_MIN).unwrap_or("1").to_string();
+        let max_targets = parsed.get(keys::TARGET_MAX).unwrap_or("1").to_string();
+        let target_type_filter = parsed.get(keys::TARGET_TYPE).map(str::to_string);
+
+        if let Some(ref target_type) = target_type_filter {
+            if target_type
+                .split('.')
+                .next()
+                .is_some_and(|kind| kind.eq_ignore_ascii_case("Spell"))
+            {
+                target_kind = TargetKind::Spell;
+            }
+        }
+
+        Some(TargetRestrictions {
+            valid_tgts,
+            valid_tgts_selector: params
+                .selector_untracked(keys::VALID_TGTS)
+                .cloned()
+                .unwrap_or_else(|| cached_compiled_selector(valid_tgts_str)),
+            target_kind,
+            target_type_filter,
+            min_targets,
+            max_targets,
+            tgt_zone: origin_zone
+                .map(|zone| vec![zone])
+                .unwrap_or_else(|| vec![ZoneType::Battlefield]),
+        })
+    }
+
     /// Construct from parsed pipe params. Returns `None` if no `ValidTgts$`
     /// parameter exists (mirrors Java: null targetRestrictions means no targeting).
     pub fn new(params: &Params) -> Option<Self> {
@@ -109,7 +152,7 @@ impl TargetRestrictions {
             valid_tgts_selector: params
                 .selector(keys::VALID_TGTS)
                 .cloned()
-                .unwrap_or_else(|| CompiledSelector::parse(valid_tgts_str)),
+                .unwrap_or_else(|| cached_compiled_selector(valid_tgts_str)),
             target_kind,
             target_type_filter,
             min_targets,
@@ -255,14 +298,23 @@ impl TargetRestrictions {
         if let Some(first) = self.valid_tgts.first() {
             self.target_kind = parse_target_kind_legacy(first);
         }
-        self.valid_tgts_selector = CompiledSelector::parse(&self.valid_tgts.join(","));
+        self.valid_tgts_selector = cached_compiled_selector(&self.valid_tgts.join(","));
+    }
+}
+
+fn parsed_zone_type(value: Option<&str>) -> Option<ZoneType> {
+    let value = value?.trim();
+    if value.eq_ignore_ascii_case("Deck") {
+        Some(ZoneType::Library)
+    } else {
+        ZoneType::from_str_compat(value)
     }
 }
 
 impl TargetRestrictions {
     fn compiled_valid_tgts(&self) -> CompiledSelector {
         if self.valid_tgts_selector.alternatives.is_empty() {
-            CompiledSelector::parse(&self.valid_tgts.join(","))
+            cached_compiled_selector(&self.valid_tgts.join(","))
         } else {
             self.valid_tgts_selector.clone()
         }
@@ -307,12 +359,7 @@ fn resolve_target_count_expr(expr: &str, game: &GameState, sa: &SpellAbility) ->
         return n;
     }
 
-    // Reuse shared numeric/SVar resolver by injecting a temporary param.
-    let mut sa_tmp = sa.clone();
-    sa_tmp
-        .params
-        .put("__target_count__".to_string(), expr.to_string());
-    crate::ability::effects::resolve_numeric_svar(game, &sa_tmp, "__target_count__", 1)
+    crate::svar::resolve_numeric_value(game, sa, expr, 1)
 }
 
 fn parse_literal_target_count(expr: &str) -> Option<i32> {
@@ -515,6 +562,30 @@ pub fn has_candidates_in_chain(
         }
     }
 
+    true
+}
+
+/// Check target availability for an already-built spell ability chain.
+///
+/// This avoids reparsing the raw ability text in hot action-space paths that
+/// already have a `SpellAbility` and its precompiled `TargetRestrictions`.
+pub fn has_candidates_in_spell_ability_chain(
+    game: &GameState,
+    player: PlayerId,
+    sa: &SpellAbility,
+) -> bool {
+    let _perf_scope =
+        crate::perf::ParamsLookupScopeGuard::enter(crate::perf::ParamsLookupScope::Target);
+    let mut current = Some(sa);
+    while let Some(node) = current {
+        if let Some(tr) = node.target_restrictions.as_ref() {
+            let min_targets = tr.get_min_targets(game, node);
+            if min_targets > 0 && !tr.has_candidates(game, player, node.source) {
+                return false;
+            }
+        }
+        current = node.sub_ability.as_deref();
+    }
     true
 }
 

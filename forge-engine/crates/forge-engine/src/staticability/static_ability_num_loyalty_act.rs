@@ -1,5 +1,4 @@
 use crate::card::{valid_filter, Card};
-use crate::parsing::keys;
 use crate::spellability::SpellAbility;
 use crate::staticability::StaticMode;
 
@@ -12,13 +11,13 @@ pub fn apply_limit_increase(
     source: &Card,
 ) -> bool {
     if !valid_filter::matches_valid_card_selector_opt(
-        st_ab.params.selector(keys::VALID_CARD),
+        st_ab.ir.valid_card.as_ref(),
         card,
         source,
     ) {
         return false;
     }
-    st_ab.params.has(keys::TWICE)
+    st_ab.ir.twice
 }
 
 /// Check if a planeswalker can activate loyalty abilities twice per turn.
@@ -52,16 +51,16 @@ pub fn additional_activations(cards: &[Card], card: &Card, sa: Option<&SpellAbil
             .filter(|s| s.mode == StaticMode::NumLoyaltyAct && s.zones_check(source.zone))
         {
             if !valid_filter::matches_valid_card_selector_opt(
-                st_ab.params.selector(keys::VALID_CARD),
+                st_ab.ir.valid_card.as_ref(),
                 card,
                 source,
             ) {
                 continue;
             }
-            if let Some(additional) = st_ab.params.get(keys::ADDITIONAL) {
+            if let Some(additional) = st_ab.ir.additional_text.as_deref() {
                 // OnlySourceAbs$ — if present, only count if the SA being activated
                 // is the original ability from the effect source card.
-                if st_ab.params.has(keys::ONLY_SOURCE_ABS) {
+                if st_ab.ir.only_source_abs {
                     // Java: stAb.getHostCard().getEffectSourceAbility().getRootAbility()
                     //       .getOriginalAbility().equals(sa)
                     // In Rust, we approximate by checking if the SA's source card matches

@@ -1,6 +1,6 @@
 use forge_foundation::ZoneType;
 
-use super::{matches_valid_cards_for_sa, resolve_numeric_svar, EffectContext};
+use super::{matches_valid_cards_for_sa, EffectContext};
 use crate::card::perpetual::perpetual_interface::PerpetualInterface;
 use crate::card::perpetual::{perpetual_keywords, perpetual_pt_boost};
 use crate::ids::CardId;
@@ -53,13 +53,24 @@ pub fn run(
 fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     // parse_param strips leading '+' sign via Rust's i32::from_str which accepts it.
     // Fall back to SVar resolution for Count$Kicked etc.
-    let att_bonus = resolve_numeric_svar(ctx.game, sa, "NumAtt", 0);
-    let def_bonus = resolve_numeric_svar(ctx.game, sa, "NumDef", 0);
+    let att_bonus = sa
+        .ir
+        .num_att
+        .as_deref()
+        .map(|raw| super::resolve_numeric_value(ctx.game, sa, raw, 0))
+        .unwrap_or(0);
+    let def_bonus = sa
+        .ir
+        .num_def
+        .as_deref()
+        .map(|raw| super::resolve_numeric_value(ctx.game, sa, raw, 0))
+        .unwrap_or(0);
 
     // Parse KW$ parameter for keyword grants (e.g. "KW$ Haste" or "KW$ Flying & Trample")
     let keywords: Vec<String> = sa
-        .params
-        .get("KW")
+        .ir
+        .kw
+        .as_deref()
         .map(|kw_str| {
             kw_str
                 .split('&')
@@ -73,21 +84,17 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
         return;
     }
 
-    let valid_cards = sa.params.selector(keys::VALID_CARDS);
+    let valid_cards = sa.ir.valid_cards_selector.as_ref();
 
     // Determine the zone to look for cards in (default: Battlefield).
-    let pump_zone_str = sa.params.get("PumpZone").unwrap_or("Battlefield");
+    let pump_zone_str = sa.ir.pump_zone.as_deref().unwrap_or("Battlefield");
     let pump_zone = match pump_zone_str {
         s if s.eq_ignore_ascii_case("Hand") => ZoneType::Hand,
         _ => ZoneType::Battlefield,
     };
 
     // Perpetual effects persist across zone changes (stored in perpetual_*_modifier).
-    let is_perpetual = sa
-        .params
-        .get("Duration")
-        .map(|d| d.eq_ignore_ascii_case("Perpetual"))
-        .unwrap_or(false);
+    let is_perpetual = sa.ir.perpetual_duration;
     let resolve_ts = if is_perpetual {
         Some(ctx.game.next_effect_timestamp())
     } else {

@@ -2,7 +2,6 @@ use forge_foundation::ZoneType;
 
 use crate::card::{valid_filter, Card};
 use crate::ids::PlayerId;
-use crate::parsing::keys;
 use crate::staticability::StaticMode;
 
 /// Check if a player can spend mana as though it were any color/type
@@ -24,7 +23,7 @@ pub fn can_spend_mana_as_any_color(cards: &[Card], player: PlayerId, spell_card:
         {
             // Check ValidPlayer$
             if !valid_filter::matches_valid_player_selector_opt(
-                st_ab.params.selector(keys::VALID_PLAYER),
+                st_ab.ir.valid_player.as_ref(),
                 player,
                 source.controller,
             ) {
@@ -33,7 +32,7 @@ pub fn can_spend_mana_as_any_color(cards: &[Card], player: PlayerId, spell_card:
 
             // Check ValidCard$ (what spell this applies to)
             if !valid_filter::matches_valid_card_selector_opt(
-                st_ab.params.selector(keys::VALID_CARD),
+                st_ab.ir.valid_card.as_ref(),
                 spell_card,
                 source,
             ) {
@@ -41,7 +40,7 @@ pub fn can_spend_mana_as_any_color(cards: &[Card], player: PlayerId, spell_card:
             }
 
             // Check ManaConversion$ — we support the dominant pattern
-            if let Some(conversion) = st_ab.params.get(keys::MANA_CONVERSION) {
+            if let Some(conversion) = st_ab.ir.mana_conversion.as_deref() {
                 if conversion.contains("AnyColor") || conversion.contains("AnyType") {
                     return true;
                 }
@@ -62,21 +61,20 @@ pub fn check_mana_convert(
     spell_card: &Card,
 ) -> bool {
     if !valid_filter::matches_valid_player_selector_opt(
-        st_ab.params.selector(keys::VALID_PLAYER),
+        st_ab.ir.valid_player.as_ref(),
         player,
         source.controller,
     ) {
         return false;
     }
     if !valid_filter::matches_valid_card_selector_opt(
-        st_ab.params.selector(keys::VALID_CARD),
+        st_ab.ir.valid_card.as_ref(),
         spell_card,
         source,
     ) {
         return false;
     }
-    st_ab
-        .params
-        .get(keys::MANA_CONVERSION)
-        .is_some_and(|conversion| conversion.contains("AnyColor") || conversion.contains("AnyType"))
+    st_ab.ir.mana_conversion.as_deref().is_some_and(|conversion| {
+        conversion.contains("AnyColor") || conversion.contains("AnyType")
+    })
 }

@@ -34,12 +34,12 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     }
 
     // Get vote choices (from Choices$ param or VoteMessage$)
-    let choices: Vec<String> = if let Some(choices_str) = sa.params.get(keys::CHOICES) {
+    let choices: Vec<String> = if let Some(choices_str) = sa.ir.choices.as_deref() {
         choices_str
             .split(',')
             .map(|s| s.trim().to_string())
             .collect()
-    } else if let Some(msg) = sa.params.get(keys::VOTE_MESSAGE) {
+    } else if let Some(msg) = sa.ir.vote_message_text.as_deref() {
         // Parse choice names from message — usually "A or B"
         msg.split(" or ").map(|s| s.trim().to_string()).collect()
     } else {

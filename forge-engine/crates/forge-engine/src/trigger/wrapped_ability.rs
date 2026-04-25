@@ -14,6 +14,7 @@ pub struct WrappedAbility {
     /// The trigger that created this wrapped ability.
     /// Used by `get_stack_description` and similar methods.
     pub trigger: Option<Trigger>,
+    additional_ability_lists: HashMap<String, Vec<String>>,
 }
 
 impl WrappedAbility {
@@ -21,6 +22,7 @@ impl WrappedAbility {
         Self {
             wrapped,
             trigger: None,
+            additional_ability_lists: HashMap::new(),
         }
     }
 
@@ -28,11 +30,12 @@ impl WrappedAbility {
         Self {
             wrapped,
             trigger: Some(trigger),
+            additional_ability_lists: HashMap::new(),
         }
     }
 
     pub fn has_param(&self, key: &str) -> bool {
-        self.wrapped.params.has(key)
+        self.get_param(key).is_some() || self.wrapped.has_additional_ability(key)
     }
 
     pub fn add_cost_to_hash_list(&mut self, cost_key: &str, value: String) {
@@ -93,7 +96,9 @@ impl WrappedAbility {
     }
 
     pub fn has_additional_ability(&self, key: &str) -> bool {
-        self.wrapped.params.has(key)
+        self.wrapped.has_additional_ability(key)
+            || self.additional_ability_lists.contains_key(key)
+            || self.get_param(key).is_some()
     }
 
     pub fn reset_targets(&mut self) {
@@ -109,13 +114,17 @@ impl WrappedAbility {
     /// Mirrors Java's `WrappedAbility.getParam(String)`.
     /// Delegates to `sa.getParam(key)`.
     pub fn get_param(&self, key: &str) -> Option<&str> {
-        self.wrapped.params.get(key)
+        if self.wrapped.param_is_true(key) {
+            Some("True")
+        } else {
+            self.wrapped.param_value(key)
+        }
     }
 
     /// Mirrors Java's `WrappedAbility.getParamOrDefault(String, String)`.
     /// Delegates to `sa.getParamOrDefault(key, defaultValue)`.
     pub fn get_param_or_default<'a>(&'a self, key: &str, default: &'a str) -> &'a str {
-        self.wrapped.params.get_or_default(key, default)
+        self.get_param(key).unwrap_or(default)
     }
 
     /// Mirrors Java's `WrappedAbility.setPaidHash(...)`.
@@ -209,16 +218,17 @@ impl WrappedAbility {
     /// In Java this returns a SpellAbility parsed from the named param;
     /// in Rust we return the raw param value which callers can parse.
     pub fn get_additional_ability(&self, key: &str) -> Option<&str> {
-        self.wrapped.params.get(key)
+        self.get_param(key)
     }
 
     /// Mirrors Java's `WrappedAbility.getAdditionalAbilityList(String)`.
     /// Returns the param value split by `&` (the Java list separator for
     /// additional ability lists in card scripts).
     pub fn get_additional_ability_list(&self, name: &str) -> Vec<String> {
-        self.wrapped
-            .params
-            .get(name)
+        if let Some(list) = self.additional_ability_lists.get(name) {
+            return list.clone();
+        }
+        self.get_param(name)
             .map(|v| v.split('&').map(|s| s.trim().to_string()).collect())
             .unwrap_or_default()
     }
@@ -226,8 +236,7 @@ impl WrappedAbility {
     /// Mirrors Java's `WrappedAbility.setAdditionalAbilityList(String, List)`.
     /// Stores the list as an `&`-joined param value.
     pub fn set_additional_ability_list(&mut self, name: &str, list: Vec<String>) {
-        let joined = list.join(" & ");
-        self.wrapped.params.put(name.to_string(), joined);
+        self.additional_ability_lists.insert(name.to_string(), list);
     }
 
     /// Mirrors Java's `WrappedAbility.isAlternativeCost(AlternativeCost)`.
@@ -241,8 +250,7 @@ impl WrappedAbility {
     /// matching the given keyword.
     pub fn is_keyword(&self, kw: Keyword) -> bool {
         self.wrapped
-            .params
-            .get("Keyword")
+            .param_value("Keyword")
             .map(|v| {
                 let kw_str = format!("{:?}", kw);
                 v.eq_ignore_ascii_case(&kw_str)

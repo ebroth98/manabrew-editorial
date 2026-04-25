@@ -1,5 +1,4 @@
 use crate::card::{valid_filter, Card};
-use crate::parsing::keys;
 use crate::spellability::SpellAbility;
 use crate::staticability::StaticMode;
 
@@ -25,13 +24,13 @@ pub fn apply_with_adapt(
     source: &Card,
 ) -> bool {
     if !valid_filter::matches_valid_card_selector_opt(
-        st_ab.params.selector(keys::VALID_CARD),
+        st_ab.ir.valid_card.as_ref(),
         card,
         source,
     ) {
         return false;
     }
-    if !matches_valid_sa(st_ab.params.get(keys::VALID_SA), sa) {
+    if !matches_valid_sa(st_ab.ir.valid_sa.as_deref(), sa) {
         return false;
     }
     true

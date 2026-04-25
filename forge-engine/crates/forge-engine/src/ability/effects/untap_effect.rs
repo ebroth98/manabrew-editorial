@@ -4,6 +4,7 @@ use super::EffectContext;
 use crate::card::card_util;
 use crate::event::RunParams;
 use crate::ids::CardId;
+use crate::ability::ability_ir::DefinedRef;
 use crate::spellability::SpellAbility;
 use crate::trigger::TriggerType;
 
@@ -24,7 +25,7 @@ use crate::trigger::TriggerType;
 #[forge_engine_macros::spell_effect(UntapEffect)]
 fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let controller = sa.activating_player;
-    let etb = sa.params.has(crate::parsing::keys::ETB);
+    let etb = sa.ir.etb;
 
     let mut targets = resolve_untap_targets(ctx, sa);
     if targets.is_empty() {
@@ -48,10 +49,10 @@ fn resolve_untap_targets(ctx: &EffectContext, sa: &SpellAbility) -> Vec<CardId> 
     if let Some(c) = sa.target_chosen.target_card {
         return vec![c];
     }
-    match sa.params.get(crate::parsing::keys::DEFINED) {
-        Some("Self") => sa.source.into_iter().collect(),
-        Some("ParentTarget") => ctx.parent_target_card.into_iter().collect(),
-        Some("Remembered") => sa
+    match sa.ir.defined.as_ref().and_then(|defined| defined.refs.first()) {
+        Some(DefinedRef::SelfCard) => sa.source.into_iter().collect(),
+        Some(DefinedRef::ParentTarget) => ctx.parent_target_card.into_iter().collect(),
+        Some(DefinedRef::Remembered) => sa
             .source
             .map(|sid| ctx.game.card(sid).remembered_cards.clone())
             .unwrap_or_default(),
@@ -64,7 +65,7 @@ fn choose_untap_type_targets(
     sa: &SpellAbility,
     controller: crate::ids::PlayerId,
 ) -> Vec<CardId> {
-    let Some(untap_type) = sa.params.get("UntapType") else {
+    let Some(untap_type) = sa.ir.untap_type.as_deref() else {
         return Vec::new();
     };
 
@@ -73,7 +74,7 @@ fn choose_untap_type_targets(
     } else {
         format!("{untap_type}.YouCtrl")
     };
-    let valid_selector = crate::parsing::CompiledSelector::parse(&valid_filter);
+    let valid_selector = crate::parsing::cached_compiled_selector(&valid_filter);
     let valid: Vec<CardId> = ctx
         .game
         .cards_in_zone(ZoneType::Battlefield, controller)
@@ -94,15 +95,13 @@ fn choose_untap_type_targets(
     }
 
     let amount = sa
-        .params
-        .as_usize(crate::parsing::keys::AMOUNT)
+        .ir
+        .amount
+        .as_deref()
+        .and_then(|s| s.parse::<usize>().ok())
         .unwrap_or(valid.len());
     let max = amount.min(valid.len());
-    let min = if sa.params.is_true("UntapUpTo") {
-        0
-    } else {
-        max
-    };
+    let min = if sa.ir.untap_up_to { 0 } else { max };
     ctx.agents[controller.index()].choose_cards_for_effect(controller, &valid, min, max)
 }
 

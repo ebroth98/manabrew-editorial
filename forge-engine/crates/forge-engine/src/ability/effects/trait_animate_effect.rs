@@ -24,25 +24,18 @@ pub struct AnimateParams {
 pub fn parse_animate_params(sa: &SpellAbility) -> AnimateParams {
     let mut params = AnimateParams::default();
 
-    if let Some(p) = sa.params.get(keys::POWER) {
-        params.power = p.parse::<i32>().ok();
-    }
-    if let Some(t) = sa.params.get(keys::TOUGHNESS) {
-        params.toughness = t.parse::<i32>().ok();
-    }
-    if let Some(types) = sa.params.get("Types") {
+    params.power = sa.ir.animate_power;
+    params.toughness = sa.ir.animate_toughness;
+    if let Some(types) = sa.ir.animate_types_text.as_deref() {
         params.add_types = types.split(',').map(|s| s.trim().to_string()).collect();
     }
-    if let Some(kws) = sa.params.get(keys::KEYWORDS) {
+    if let Some(kws) = sa.ir.animate_keywords_text.as_deref() {
         params.add_keywords = kws.split(',').map(|s| s.trim().to_string()).collect();
     }
-    if let Some(colors) = sa.params.get("Colors") {
+    if let Some(colors) = sa.ir.animate_colors_text.as_deref() {
         params.colors = Some(colors.split(',').map(|s| s.trim().to_string()).collect());
     }
-    params.overwrite_types = sa
-        .params
-        .get("OverwriteTypes")
-        .map_or(false, |v| v.eq_ignore_ascii_case("True"));
+    params.overwrite_types = sa.ir.animate_overwrite_types;
 
     params
 }

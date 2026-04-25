@@ -17,7 +17,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let Some(source_id) = sa.source else {
         return;
     };
-    let Some(sub_svar_name) = sa.params.get_cloned(keys::REPEAT_SUB_ABILITY) else {
+    let Some(sub_svar_name) = sa.ir.repeat_sub_ability.clone() else {
         return;
     };
     let Some(sub_text) = ctx
@@ -30,8 +30,9 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     };
 
     let max_repeat = sa
-        .params
-        .get("MaxRepeat")
+        .ir
+        .max_repeat
+        .as_ref()
         .map(|_| super::resolve_numeric_svar(ctx.game, sa, "MaxRepeat", 0).max(0));
     if max_repeat == Some(0) {
         return;
@@ -71,18 +72,18 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
 }
 
 fn check_repeat_conditions(ctx: &mut EffectContext, sa: &SpellAbility) -> bool {
-    if sa.params.has("RepeatCheckSVar") {
+    if sa.ir.repeat_check_svar {
         let svar_value = super::resolve_numeric_svar(ctx.game, sa, "RepeatCheckSVar", 0);
-        let compare = sa.params.get("RepeatSVarCompare").unwrap_or("GE1");
+        let compare = sa.ir.repeat_svar_compare.as_deref().unwrap_or("GE1");
         if !compare_expr(svar_value, compare) {
             return false;
         }
     }
 
     if let (Some(defined), Some(present), Some(compare)) = (
-        sa.params.get("RepeatDefined"),
-        sa.params.get("RepeatPresent"),
-        sa.params.get("RepeatCompare"),
+        sa.ir.repeat_defined.as_deref(),
+        sa.ir.repeat_present.as_deref(),
+        sa.ir.repeat_compare.as_deref(),
     ) {
         let Some(source_id) = sa.source else {
             return false;
@@ -107,7 +108,7 @@ fn check_repeat_conditions(ctx: &mut EffectContext, sa: &SpellAbility) -> bool {
                 .filter(|&cid| remembered_names.contains(&ctx.game.card(cid).card_name))
                 .count() as i32
         } else {
-            let selector = crate::parsing::CompiledSelector::parse(present);
+            let selector = crate::parsing::cached_compiled_selector(present);
             cards
                 .into_iter()
                 .filter(|&cid| {
@@ -127,10 +128,11 @@ fn check_repeat_conditions(ctx: &mut EffectContext, sa: &SpellAbility) -> bool {
         }
     }
 
-    if sa.params.has("RepeatOptional") {
+    if sa.ir.repeat_optional {
         let decider = sa
-            .params
-            .get("RepeatOptionalDecider")
+            .ir
+            .repeat_optional_decider
+            .as_deref()
             .and_then(|defined| {
                 crate::ability::ability_utils::resolve_defined_players_with_sa(
                     defined,

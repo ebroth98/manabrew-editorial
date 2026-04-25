@@ -1,7 +1,6 @@
 use crate::card::valid_filter;
 use crate::game::GameState;
 use crate::ids::PlayerId;
-use crate::parsing::keys;
 use crate::staticability::StaticMode;
 
 /// Returns the fixed coin flip result if any static forces it, or None.
@@ -19,7 +18,7 @@ pub fn fixed_result(game: &GameState, player: PlayerId) -> Option<bool> {
             .filter(|sa| sa.mode == StaticMode::FlipCoinMod && sa.zones_check(card.zone))
         {
             if !valid_filter::matches_valid_player_selector_opt(
-                st_ab.params.selector(keys::VALID_PLAYER),
+                st_ab.ir.valid_player.as_ref(),
                 player,
                 card.controller,
             ) {
@@ -28,7 +27,7 @@ pub fn fixed_result(game: &GameState, player: PlayerId) -> Option<bool> {
             // Java: return Boolean.valueOf(stAb.getParam("Result"));
             // If Result param is absent, Boolean.valueOf(null) returns false.
             // We mirror that: absent param -> Some(false).
-            match st_ab.params.get(keys::RESULT) {
+            match st_ab.ir.result_text.as_deref() {
                 Some(result) => return Some(result.eq_ignore_ascii_case("True")),
                 None => return Some(false),
             }

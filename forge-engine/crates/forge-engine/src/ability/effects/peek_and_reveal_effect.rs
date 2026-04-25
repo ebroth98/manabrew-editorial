@@ -16,27 +16,17 @@ use crate::spellability::SpellAbility;
 /// `PeekAndRevealEffect` class extending `SpellAbilityEffect`.
 #[forge_engine_macros::spell_effect(PeekAndRevealEffect)]
 fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
-    let num = if sa.params.has("PeekAmount") {
+    let num = if sa.ir.peek_amount_text.is_some() {
         resolve_numeric_svar(ctx.game, sa, "PeekAmount", 1)
     } else {
         resolve_numeric_svar(ctx.game, sa, "NumCards", 1)
     }
     .max(0) as usize;
-    let remember_revealed = sa
-        .params
-        .get("RememberPeeked")
-        .or(sa.params.get("RememberRevealed"))
-        .map_or(false, |v| v.eq_ignore_ascii_case("True"));
-    let remember_peeked = sa
-        .params
-        .get("RememberPeeked")
-        .map_or(false, |v| v.eq_ignore_ascii_case("True"));
+    let remember_revealed = sa.ir.remember_peeked || sa.ir.remember_revealed;
+    let remember_peeked = sa.ir.remember_peeked;
 
     let controller = sa.activating_player;
-    let no_peek = sa
-        .params
-        .get("NoPeek")
-        .map_or(false, |v| v.eq_ignore_ascii_case("True"));
+    let no_peek = sa.ir.no_peek;
 
     // Collect the top N card IDs from the library (last N entries = top of library).
     let peeked: Vec<_> = {

@@ -21,7 +21,7 @@ pub fn can_draw_amount(game: &GameState, player: PlayerId, start_amount: i32) ->
             .iter()
             .filter(|sa| sa.mode == StaticMode::CantDraw)
         {
-            let valid_player = st_ab.params.selector(keys::VALID_PLAYER);
+            let valid_player = st_ab.ir.valid_player.as_ref();
             if !matches_valid_player(valid_player, player, card.controller) {
                 continue;
             }

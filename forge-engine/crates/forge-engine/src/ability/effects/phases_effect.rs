@@ -21,15 +21,13 @@ use crate::trigger::TriggerType;
 /// `PhasesEffect` class extending `SpellAbilityEffect`.
 #[forge_engine_macros::spell_effect(PhasesEffect)]
 fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
-    let phase_mode = sa.params.get("PhaseInOrOut").unwrap_or("Out");
+    let phase_mode = sa.ir.phase_in_or_out_text.as_deref().unwrap_or("Out");
 
     // Defined$ DelayTriggerRememberedLKI / Remembered — phase the cards
     // remembered by the parent delayed trigger (e.g. Teferi's Veil's
     // "creature phases out at end of combat" queues the attacker's LKI).
-    match sa.params.get(crate::parsing::keys::DEFINED) {
-        Some("DelayTriggerRememberedLKI")
-        | Some("DelayTriggerRemembered")
-        | Some("Remembered") => {
+    match sa.defined() {
+        Some("DelayTriggerRememberedLKI") | Some("DelayTriggerRemembered") | Some("Remembered") => {
             let ids: Vec<crate::ids::CardId> = sa
                 .trigger_remembered
                 .iter()

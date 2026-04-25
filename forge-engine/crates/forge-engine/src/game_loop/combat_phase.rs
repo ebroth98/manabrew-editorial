@@ -208,7 +208,7 @@ impl GameLoop {
                     if st.mode != crate::staticability::StaticMode::OptionalAttackCost {
                         continue;
                     }
-                    let Some(cost_raw) = st.params.get(keys::COST) else {
+                    let Some(cost_raw) = st.ir.cost.as_deref() else {
                         continue;
                     };
                     let parsed = crate::cost::parse_cost(cost_raw);
@@ -1222,7 +1222,7 @@ impl GameLoop {
             }
             for re in &card.replacement_effects {
                 if re.event == ReplacementType::DamageDone {
-                    if re.params.is_true(keys::PREVENT) {
+                    if re.ir.prevent {
                         count += 1;
                     }
                 }

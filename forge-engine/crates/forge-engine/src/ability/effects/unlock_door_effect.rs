@@ -8,7 +8,7 @@ use super::EffectContext;
 use crate::event::RunParams;
 use crate::ids::CardId;
 use crate::parsing::keys;
-use crate::spellability::SpellAbility;
+use crate::spellability::{SpellAbility, SpellAbilityMode};
 use crate::trigger::TriggerType;
 
 fn unlocked_room_count(ctx: &EffectContext, card_id: CardId) -> i32 {
@@ -45,7 +45,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
         return;
     };
 
-    let mode = sa.params.get(keys::MODE).unwrap_or("ThisDoor");
+    let mode = sa.ir.mode.as_ref().unwrap_or(&SpellAbilityMode::ThisDoor);
 
     for card_id in targets {
         if ctx.game.card(card_id).zone != ZoneType::Battlefield {
@@ -56,21 +56,21 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
         let mut after = before;
         let mut unlocked = false;
         match mode {
-            "ThisDoor" => {
+            SpellAbilityMode::ThisDoor => {
                 ctx.game.card_mut(card_id).set_s_var("DoorUnlocked", "True");
                 if before < 2 {
                     after = before + 1;
                     unlocked = true;
                 }
             }
-            "Unlock" => {
+            SpellAbilityMode::Unlock => {
                 ctx.game.card_mut(card_id).set_s_var("DoorUnlocked", "True");
                 if before < 2 {
                     after = before + 1;
                     unlocked = true;
                 }
             }
-            "LockOrUnlock" => {
+            SpellAbilityMode::LockOrUnlock => {
                 let is_locked = ctx
                     .game
                     .card(card_id)
@@ -103,7 +103,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
                 RunParams {
                     card: Some(card_id),
                     player: Some(sa.activating_player),
-                    card_state_name: sa.params.get("CardState").map(str::to_string),
+                    card_state_name: sa.ir.card_state_name.clone(),
                     ..Default::default()
                 },
                 true,

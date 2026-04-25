@@ -56,17 +56,25 @@ use serde::{Deserialize, Serialize};
 
 use crate::ability::activated::{parse_activated_ability, ActivatedAbility};
 use crate::card::perpetual::perpetual_record::PerpetualRecord;
+use crate::cost::{parse_cost, Cost};
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
-use crate::parsing::parse_or_warn;
+use crate::parsing::{keys, parse_or_warn, Params, ParsedParams};
 use crate::replacement::{parse_replacement_effect, ReplacementEffect};
-use crate::spellability::SpellAbility;
+use crate::spellability::{SpellAbility, TargetRestrictions};
 use crate::staticability::{parse_static_ability, StaticAbility};
 use crate::trigger::Trigger;
 
 /// Build the full `"Plotted:{turn}"` keyword string.
 fn colorless_color_set() -> ColorSet {
     ColorSet::COLORLESS
+}
+
+fn parse_literal_target_count(expr: &str) -> Option<i32> {
+    if let Ok(n) = expr.trim().parse::<i32>() {
+        return Some(n);
+    }
+    expr.trim().strip_prefix('+')?.parse::<i32>().ok()
 }
 
 pub fn make_plotted_keyword(turn: u32) -> String {
@@ -94,6 +102,21 @@ pub struct CardOtherPart {
     pub abilities: Vec<String>,
     pub triggers: Vec<Trigger>,
     pub svars: BTreeMap<String, String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct CardActionSpellSpec {
+    pub ability_index: usize,
+    pub has_valid_tgts: bool,
+    pub cost_contains_x: bool,
+    #[serde(default)]
+    pub target_chain: Vec<CardActionTargetSpec>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CardActionTargetSpec {
+    pub target_restrictions: TargetRestrictions,
+    pub min_targets: Option<i32>,
 }
 
 /// When a `SP$ GainControl` steals a permanent, the revert trigger is stored
@@ -253,6 +276,18 @@ pub struct Card {
 
     // Abilities (raw strings from card definition)
     pub abilities: Vec<String>,
+    /// Prebound SP$ ability metadata used by action-space filters.
+    #[serde(default)]
+    pub action_spell_specs: Vec<CardActionSpellSpec>,
+    /// Prebound first SP$ Cost used by action-space non-mana cost checks.
+    #[serde(default)]
+    pub action_spell_cost: Option<Cost>,
+    /// Prebound AIPhyrexianPayment$ policy from printed ability text.
+    #[serde(default)]
+    pub ai_phyrexian_payment: Option<String>,
+    /// Prebound minimum Spree mode cost from Choices$ -> SVar ModeCost$.
+    #[serde(default)]
+    pub spree_min_mode_cost: Option<i32>,
 
     // Parsed activated abilities (from AB$ lines in abilities)
     pub activated_abilities: Vec<ActivatedAbility>,
@@ -676,6 +711,10 @@ impl Card {
             pump_keywords: crate::keyword::keyword_collection::KeywordCollection::new(),
             pump_trigger_count: 0,
             abilities,
+            action_spell_specs: Vec::new(),
+            action_spell_cost: None,
+            ai_phyrexian_payment: None,
+            spree_min_mode_cost: None,
             activated_abilities,
             base_ability_count: 0,
             base_trigger_count: 0,
@@ -807,6 +846,7 @@ impl Card {
         crate::card::card_state::update_types(&mut card);
         crate::card::card_state::update_keywords_cache(&mut card);
         crate::card::card_state::calculate_perpetual_adjusted_mana_cost(&mut card);
+        card.refresh_action_specs();
         // Record base ability count so continuous effects can truncate granted abilities.
         card.base_ability_count = card.activated_abilities.len();
         card.base_trigger_count = card.triggers.len();
@@ -818,7 +858,16 @@ impl Card {
         out.abilities.clear();
         out.activated_abilities.clear();
         out.triggers.clear();
+        for static_ability in &mut out.static_abilities {
+            static_ability.base = Box::new(crate::card_trait_base::CardTraitBase::default());
+        }
+        out.replacement_effects.clear();
         out.cast_sa = None;
+        out.trait_base_activated_abilities = None;
+        out.trait_base_triggers = None;
+        out.trait_base_replacement_effects = None;
+        out.trait_base_static_abilities = None;
+        out.trait_base_keywords = None;
         out
     }
 
@@ -1042,6 +1091,7 @@ impl Card {
 
     pub fn set_svars_map(&mut self, svars: BTreeMap<String, String>) {
         self.svars = svars;
+        self.refresh_action_specs();
     }
 
     pub fn copy_from_card_state(&mut self, source: &Card) {
@@ -2182,6 +2232,7 @@ impl Card {
     pub fn set_abilities(&mut self, abilities: Vec<String>) {
         self.abilities = abilities;
         self.update_spell_abilities();
+        self.refresh_action_specs();
     }
 
     pub fn set_static_abilities(&mut self, abilities: Vec<StaticAbility>) {
@@ -2465,6 +2516,78 @@ impl Card {
                 self.activated_abilities.push(parsed);
             }
         }
+    }
+
+    pub fn refresh_action_specs(&mut self) {
+        let mut spell_specs = Vec::new();
+        let mut spell_cost = None;
+        let mut ai_phyrexian_payment = None;
+        let mut spree_min_mode_cost = None;
+
+        for (ability_index, raw) in self.abilities.iter().enumerate() {
+            let parsed = ParsedParams::parse(raw);
+            if ai_phyrexian_payment.is_none() {
+                ai_phyrexian_payment = parsed.get(keys::AI_PHYREXIAN_PAYMENT).map(str::to_string);
+            }
+            let Some(sp_kind) = parsed.get(keys::SP) else {
+                continue;
+            };
+            let cost_contains_x = parsed.get(keys::COST).is_some_and(|cost| cost.contains('X'));
+            if spell_cost.is_none() {
+                spell_cost = parsed.get(keys::COST).map(parse_cost);
+            }
+            spell_specs.push(CardActionSpellSpec {
+                ability_index,
+                has_valid_tgts: parsed.has(keys::VALID_TGTS),
+                cost_contains_x,
+                target_chain: self.collect_action_target_chain(raw),
+            });
+
+            if sp_kind.eq_ignore_ascii_case("Charm") {
+                if let Some(choices) = parsed.get(keys::CHOICES) {
+                    let min_mode_cost = choices
+                        .split(',')
+                        .filter_map(|name| {
+                            self.svars.get(name.trim()).and_then(|svar_val| {
+                                ParsedParams::parse(svar_val)
+                                    .get(keys::MODE_COST)
+                                    .map(|cost| forge_foundation::ManaCost::parse(cost).cmc())
+                            })
+                        })
+                        .min();
+                    spree_min_mode_cost = spree_min_mode_cost.or(min_mode_cost);
+                }
+            }
+        }
+
+        self.action_spell_specs = spell_specs;
+        self.action_spell_cost = spell_cost;
+        self.ai_phyrexian_payment = ai_phyrexian_payment;
+        self.spree_min_mode_cost = spree_min_mode_cost;
+    }
+
+    fn collect_action_target_chain(&self, ability_text: &str) -> Vec<CardActionTargetSpec> {
+        let mut specs = Vec::new();
+        let mut current = Some(ability_text.to_string());
+
+        while let Some(text) = current {
+            let parsed = ParsedParams::parse(&text);
+            let params = Params::from_parsed(&parsed);
+            if let Some(target_restrictions) = TargetRestrictions::new_from_parsed(&parsed, &params)
+            {
+                specs.push(CardActionTargetSpec {
+                    min_targets: parse_literal_target_count(&target_restrictions.min_targets),
+                    target_restrictions,
+                });
+            }
+
+            current = parsed
+                .get(keys::SUB_ABILITY)
+                .and_then(|name| self.svars.get(name.trim()))
+                .cloned();
+        }
+
+        specs
     }
 
     pub fn inc_shield_count(&mut self) {
@@ -3127,7 +3250,7 @@ impl Card {
         if let Some(ability) = ability {
             self.number_turn_activations.add(ability);
             self.number_game_activations.add(ability);
-            if ability.params.is_true("PwAbility") {
+            if ability.ir.pw_ability {
                 self.add_planeswalker_ability_activated();
             }
         }

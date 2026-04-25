@@ -1,5 +1,4 @@
 use crate::card::{valid_filter, Card};
-use crate::parsing::keys;
 use crate::spellability::SpellAbility;
 use crate::staticability::StaticMode;
 
@@ -15,14 +14,14 @@ pub fn with_toughness(cards: &[Card], card: &Card, _sa: Option<&SpellAbility>) -
             .filter(|s| s.mode == StaticMode::TapPowerValue && s.zones_check(source.zone))
         {
             // Value$ must equal "Toughness" (case-insensitive to match Java .equals behavior)
-            match st_ab.params.get(keys::VALUE) {
+            match st_ab.ir.value_text.as_deref() {
                 Some(val) if val.eq_ignore_ascii_case("Toughness") => {}
                 _ => continue,
             }
 
             // ValidCard$
             if !valid_filter::matches_valid_card_selector_opt(
-                st_ab.params.selector(keys::VALID_CARD),
+                st_ab.ir.valid_card.as_ref(),
                 card,
                 source,
             ) {
@@ -53,7 +52,7 @@ pub fn get_mod(cards: &[Card], card: &Card, _sa: Option<&SpellAbility>) -> i32 {
         {
             // ValidCard$
             if !valid_filter::matches_valid_card_selector_opt(
-                st_ab.params.selector(keys::VALID_CARD),
+                st_ab.ir.valid_card.as_ref(),
                 card,
                 source,
             ) {
@@ -62,7 +61,7 @@ pub fn get_mod(cards: &[Card], card: &Card, _sa: Option<&SpellAbility>) -> i32 {
 
             // ValidSA$ — same TODO as above
 
-            if let Some(val) = st_ab.params.get(keys::VALUE) {
+            if let Some(val) = st_ab.ir.value_text.as_deref() {
                 total += val.parse::<i32>().unwrap_or(0);
             }
         }

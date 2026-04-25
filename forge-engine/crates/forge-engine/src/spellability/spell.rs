@@ -88,7 +88,7 @@ pub fn can_play_from_host(sa: &SpellAbility, game: &GameState) -> Option<CardId>
 /// A spell is counterable unless it has "can't be countered" (e.g. Abrupt Decay).
 pub fn is_counterable_by(sa: &SpellAbility, _counter_sa: &SpellAbility) -> bool {
     // Check if the spell has the "CantBeCountered" flag in params
-    if sa.params.is_true("CantBeCountered") {
+    if sa.ir.cant_be_countered {
         return false;
     }
 
@@ -101,10 +101,5 @@ pub fn is_counterable_by(sa: &SpellAbility, _counter_sa: &SpellAbility) -> bool 
 /// Set whether this spell is cast face down (Morph).
 /// Mirrors Java's `Spell.setCastFaceDown(boolean)`.
 pub fn set_cast_face_down(sa: &mut SpellAbility, face_down: bool) {
-    if face_down {
-        sa.params
-            .put("CastFaceDown".to_string(), "True".to_string());
-    } else {
-        sa.params.remove("CastFaceDown");
-    }
+    sa.cast_face_down = face_down;
 }

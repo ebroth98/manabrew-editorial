@@ -20,7 +20,9 @@ use crate::game_rng::GameRng;
 use crate::ids::{CardId, PlayerId};
 use crate::mana::ManaPool;
 use crate::parsing::{keys, Params};
-use crate::replacement::replacement_effect::{GameLossReason, ReplacementEffect};
+use crate::replacement::replacement_effect::{
+    resolve_replace_with_chain, GameLossReason, ReplacementChainIr, ReplacementEffect,
+};
 use crate::replacement::replacement_layer::ReplacementLayer;
 use crate::replacement::replacement_result::ReplacementResult;
 use crate::replacement::replacement_type::ReplacementType;
@@ -593,44 +595,39 @@ pub(crate) fn execute_replace_with_numeric_update(
     source_card_id: CardId,
     var_name: &str,
 ) -> Option<ReplacementResult> {
-    let replace_with = effect.params.get(keys::REPLACE_WITH)?;
-    execute_replace_effect_chain(replace_with, event, game, source_card_id, Some(var_name))
+    let chain = resolve_replace_with_chain(effect, game.card(source_card_id))?;
+    execute_replace_effect_ir(&chain, event, game, source_card_id, Some(var_name))
 }
 
-pub(crate) fn execute_replace_effect_chain(
-    svar_name: &str,
+pub(crate) fn execute_replace_effect_ir(
+    chain: &ReplacementChainIr,
     event: &mut ReplacementEvent,
     game: &GameState,
     source_card_id: CardId,
     required_var_name: Option<&str>,
 ) -> Option<ReplacementResult> {
-    let raw = game.card(source_card_id).svars.get(svar_name)?;
-    let params = Params::from_raw(raw);
-    let db = params.get(keys::DB)?;
-
-    // DB$ ReplaceToken — mirrors Java ReplaceTokenEffect.resolve()
-    // Type$ Amount: multiply token count (default "Twice")
-    if db == "ReplaceToken" {
-        return execute_replace_token_chain(&params, event, game, source_card_id);
-    }
-
-    // DB$ ReplaceCounter — mirrors Java ReplaceCounterEffect.resolve()
-    // Amount$ X where X resolves through SVar chain
-    if db == "ReplaceCounter" {
-        return execute_replace_counter_chain(&params, event, game, source_card_id);
-    }
-
-    if db != "ReplaceEffect" {
-        return None;
-    }
-
-    let mut updated = false;
-    if let Some(var_name) = params.get("VarName") {
-        if required_var_name.is_none_or(|required| required == var_name) {
-            match var_name {
+    match chain {
+        ReplacementChainIr::ReplaceToken {
+            token_type,
+            amount_expr,
+        } => execute_replace_token_chain(token_type.as_deref(), amount_expr.as_deref(), event, game, source_card_id),
+        ReplacementChainIr::ReplaceCounter { amount_expr } => {
+            execute_replace_counter_chain(amount_expr, event, game, source_card_id)
+        }
+        ReplacementChainIr::ReplaceEffect {
+            var_name,
+            var_type,
+            var_key,
+            var_value,
+            sub_ability,
+        } => {
+            let mut updated = false;
+            if let Some(var_name) = var_name.as_deref() {
+                if required_var_name.is_none_or(|required| required == var_name) {
+                    match var_name {
                 "DicePTExchanges" => {
-                    if params.get("VarType") == Some("CardSet") {
-                        if let Some(var_value) = params.get("VarValue") {
+                    if var_type.as_deref() == Some("CardSet") {
+                        if let Some(var_value) = var_value.as_deref() {
                             if let Some(card_id) =
                                 resolve_replace_card_key(var_value, source_card_id)
                             {
@@ -646,7 +643,7 @@ pub(crate) fn execute_replace_effect_chain(
                     }
                 }
                 _ => {
-                    if let Some(var_value) = params.get("VarValue") {
+                    if let Some(var_value) = var_value.as_deref() {
                         if let Some(value) =
                             resolve_replace_value(var_value, game, source_card_id, event)
                         {
@@ -658,8 +655,8 @@ pub(crate) fn execute_replace_effect_chain(
                                     }
                                 }
                                 "IgnoreChosen" => {
-                                    if params.get("VarType") == Some("Map") {
-                                        if let Some(var_key) = params.get("VarKey") {
+                                    if var_type.as_deref() == Some("Map") {
+                                        if let Some(var_key) = var_key.as_deref() {
                                             if let Some(player) = resolve_replace_player_key(
                                                 var_key,
                                                 game,
@@ -689,14 +686,17 @@ pub(crate) fn execute_replace_effect_chain(
                 }
             }
         }
-    }
+            }
 
-    if let Some(sub_ability) = params.get(keys::SUB_ABILITY) {
-        updated |=
-            execute_replace_effect_chain(sub_ability, event, game, source_card_id, None).is_some();
-    }
+            if let Some(sub_ability) = sub_ability.as_deref() {
+                updated |=
+                    execute_replace_effect_ir(sub_ability, event, game, source_card_id, None)
+                        .is_some();
+            }
 
-    updated.then_some(ReplacementResult::Updated)
+            updated.then_some(ReplacementResult::Updated)
+        }
+    }
 }
 
 /// Handle `DB$ ReplaceToken` SVars.
@@ -704,18 +704,19 @@ pub(crate) fn execute_replace_effect_chain(
 /// Mirrors Java `ReplaceTokenEffect.resolve()`.
 /// - `Type$ Amount`: multiplies token count using `Amount$` param (default `Twice`).
 fn execute_replace_token_chain(
-    params: &Params,
+    token_type: Option<&str>,
+    amount_expr: Option<&str>,
     event: &mut ReplacementEvent,
     game: &GameState,
     source_card_id: CardId,
 ) -> Option<ReplacementResult> {
-    let token_type = params.get("Type").unwrap_or("Amount");
+    let token_type = token_type.unwrap_or("Amount");
     match token_type {
         "Amount" => {
             // Get current count from event
             let current = replacement_event_amount(event)?;
             // Amount$ param, defaults to "Twice" per Java
-            let amount_expr = params.get("Amount").unwrap_or("Twice");
+            let amount_expr = amount_expr.unwrap_or("Twice");
             let new_value = do_x_math(current, amount_expr, game, source_card_id, event);
             set_replacement_event_amount(event, new_value);
             Some(ReplacementResult::Updated)
@@ -732,12 +733,11 @@ fn execute_replace_token_chain(
 /// Mirrors Java `ReplaceCounterEffect.resolve()`.
 /// Applies `Amount$` expression to the counter count.
 fn execute_replace_counter_chain(
-    params: &Params,
+    amount_expr: &str,
     event: &mut ReplacementEvent,
     game: &GameState,
     source_card_id: CardId,
 ) -> Option<ReplacementResult> {
-    let amount_expr = params.get("Amount")?;
     // Ensure event has a valid amount before resolving
     let _current = replacement_event_amount(event)?;
     let value = resolve_replace_value(amount_expr, game, source_card_id, event)?;
@@ -853,21 +853,11 @@ pub fn would_phase_be_skipped(game: &GameState, player: PlayerId, phase: PhaseTy
                 continue;
             }
             // Check ActivePhases$ matches the target phase
-            if let Some(phases_str) = re
-                .params
-                .get(keys::ACTIVE_PHASES)
-                .or_else(|| re.params.get(keys::PHASE))
-            {
-                let matches_phase = phases_str
-                    .split(',')
-                    .filter_map(|s| PhaseType::from_script_name(s.trim()))
-                    .any(|p| p == phase);
-                if !matches_phase {
-                    continue;
-                }
+            if !re.matches_phase(phase) {
+                continue;
             }
             // Check ValidPlayer$ matches the player
-            if let Some(vp) = re.params.selector(keys::VALID_PLAYER) {
+            if let Some(vp) = re.ir.valid_player_selector.as_ref() {
                 if !re.matches_compiled_valid_player(vp, player, card) {
                     continue;
                 }
@@ -895,7 +885,7 @@ pub fn would_extra_turn_be_skipped(game: &GameState, player: PlayerId) -> bool {
                 continue;
             }
             // Check ValidPlayer$ matches the player
-            if let Some(vp) = re.params.selector(keys::VALID_PLAYER) {
+            if let Some(vp) = re.ir.valid_player_selector.as_ref() {
                 if !re.matches_compiled_valid_player(vp, player, card) {
                     continue;
                 }
@@ -1015,7 +1005,6 @@ fn collect_effects(
     };
 
     let mut result = Vec::new();
-
     for (i, card) in game.cards.iter().enumerate() {
         let card_id = CardId(i as u32);
 
@@ -1175,7 +1164,7 @@ fn execute_effect(
         replace_untap,
     };
 
-    if effect.params.get(keys::OPTIONAL) == Some("True") {
+    if effect.ir.optional {
         let decider = optional_decider_for_effect(effect, game, card_id, event)
             .unwrap_or_else(|| affected_player_for_event(event, game));
         let host = game.card(card_id);
@@ -1262,7 +1251,7 @@ fn optional_decider_for_effect(
     source_card_id: CardId,
     event: &ReplacementEvent,
 ) -> Option<PlayerId> {
-    let expr = effect.params.get(keys::OPTIONAL_DECIDER)?.trim();
+    let expr = effect.ir.optional_decider_text.as_deref()?.trim();
     match expr {
         "You" | "Controller" => Some(game.card(source_card_id).controller),
         "Owner" => Some(game.card(source_card_id).owner),

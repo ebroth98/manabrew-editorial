@@ -52,22 +52,16 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     } else {
         Some(anim_params.add_keywords.join(","))
     };
-    let remove_keywords_str = sa.params.get_cloned("RemoveKeywords");
+    let remove_keywords_str = sa.ir.animate_remove_keywords_text.clone();
     let colors_str = anim_params.colors.map(|c| c.join(","));
-    let triggers_str = sa.params.get_cloned(keys::TRIGGERS);
+    let triggers_str = sa.ir.animate_triggers_text.clone();
     let overwrite_types = anim_params.overwrite_types;
-    let incorporate_cost = sa.params.get_cloned("Incorporate");
-    let mana_cost_override = sa.params.get_cloned("ManaCost");
-    let is_perpetual = sa
-        .params
-        .get(keys::DURATION)
-        .map(|d| d.eq_ignore_ascii_case("Perpetual"))
-        .unwrap_or(false);
-    let is_permanent_duration = sa
-        .params
-        .get(keys::DURATION)
-        .map(|d| d.eq_ignore_ascii_case("Permanent"))
-        .unwrap_or(false);
+    let incorporate_cost = sa.ir.animate_incorporate_text.clone();
+    let mana_cost_override = sa.ir.animate_mana_cost_override_text.clone();
+    let is_perpetual =
+        matches!(sa.ir.duration, Some(crate::spellability::AbilityDuration::Perpetual));
+    let is_permanent_duration =
+        matches!(sa.ir.duration, Some(crate::spellability::AbilityDuration::Permanent));
     let resolve_ts = ctx.game.next_effect_timestamp();
 
     // Resolve Triggers$ SVars from the source card into parsed Trigger objects.
@@ -312,7 +306,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
 
     // `AtEOT$ <action>` — register an end-of-turn delayed trigger on the
     // animated cards still on the battlefield.
-    if let Some(action) = sa.params.get(keys::AT_EOT) {
+    if let Some(action) = sa.ir.at_eot.as_deref() {
         let remembered: Vec<crate::ids::CardId> = eot_targets
             .iter()
             .copied()

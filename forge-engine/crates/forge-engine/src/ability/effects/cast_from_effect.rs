@@ -12,10 +12,10 @@ use forge_foundation::ZoneType;
 
 use super::EffectContext;
 use crate::agent::GameLogEvent;
-use crate::event::{RunParams};
-use crate::trigger::TriggerType;
+use crate::event::RunParams;
 use crate::ids::{CardId, PlayerId};
 use crate::spellability::{build_spell_ability, SpellAbility, StackEntry};
+use crate::trigger::TriggerType;
 
 /// Cast a card from a play effect, optionally without paying its mana cost.
 ///

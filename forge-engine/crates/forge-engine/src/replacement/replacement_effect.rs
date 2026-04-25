@@ -22,7 +22,7 @@ use crate::core::HasSVars;
 use crate::game::GameState;
 use crate::game_loop::trigger_replacement_base::TriggerReplacementBase;
 use crate::ids::{CardId, PlayerId};
-use crate::parsing::{keys, Params};
+use crate::parsing::{keys, CompiledSelector, Params};
 pub use crate::player::GameLossReason;
 
 use super::replacement_handler::ReplacementEvent;
@@ -64,6 +64,8 @@ pub struct ReplacementEffect {
     /// Raw key→value pairs parsed from the pipe-separated script line.
     /// Keys do NOT include the trailing `$`.
     pub params: Params,
+    /// Typed runtime view of lowered replacement semantics.
+    pub ir: ReplacementEffectIr,
     /// Zones where this effect is active. Empty = active everywhere.
     /// Parsed from `ActiveZones$` parameter.
     /// TODO(java-parity): collapse into `base.valid_host_zones`.
@@ -71,6 +73,74 @@ pub struct ReplacementEffect {
     /// Temporary suppression flag used by effects like commander replacement.
     #[serde(default)]
     pub suppressed: bool,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ReplacementEffectIr {
+    pub replace_with: Option<String>,
+    pub description_text: Option<String>,
+    pub player_turn_text: Option<String>,
+    pub new_destination_text: Option<String>,
+    pub new_destination_zone: Option<ZoneType>,
+    pub origin_text: Option<String>,
+    pub origin_zone: Option<ZoneType>,
+    pub destination_text: Option<String>,
+    pub destination_zone: Option<ZoneType>,
+    pub exclude_destination_text: Option<String>,
+    pub valid_card_text: Option<String>,
+    pub valid_card_selector: Option<CompiledSelector>,
+    pub valid_player_selector: Option<CompiledSelector>,
+    pub valid_target_selector: Option<CompiledSelector>,
+    pub valid_source_selector: Option<CompiledSelector>,
+    pub valid_activator_text: Option<String>,
+    pub valid_explorer_text: Option<String>,
+    pub valid_counter_type_text: Option<String>,
+    pub valid_lose_reason_text: Option<String>,
+    pub valid_sides_text: Option<String>,
+    pub active_phases: Vec<PhaseType>,
+    pub amount_text: Option<String>,
+    pub damage_amount_text: Option<String>,
+    pub result_text: Option<String>,
+    pub number_text: Option<String>,
+    pub dredge_amount: Option<usize>,
+    pub skip: bool,
+    pub prevent: bool,
+    pub optional: bool,
+    pub effect_only: bool,
+    pub discard: Option<bool>,
+    pub flashback_cast: Option<bool>,
+    pub not_first_card_in_draw_step: bool,
+    pub exiled_with_effect_source: bool,
+    pub is_combat: Option<bool>,
+    pub is_damage: Option<bool>,
+    pub max_speed: Option<bool>,
+    pub replacement_result: Option<String>,
+    pub optional_decider_text: Option<String>,
+    pub replace_mana_text: Option<String>,
+    pub replace_type_text: Option<String>,
+    pub replace_color_text: Option<String>,
+    pub replace_amount_text: Option<String>,
+    pub valid_lki_text: Option<String>,
+    pub counter_map: bool,
+    pub replace_with_chain: Option<ReplacementChainIr>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum ReplacementChainIr {
+    ReplaceToken {
+        token_type: Option<String>,
+        amount_expr: Option<String>,
+    },
+    ReplaceCounter {
+        amount_expr: String,
+    },
+    ReplaceEffect {
+        var_name: Option<String>,
+        var_type: Option<String>,
+        var_key: Option<String>,
+        var_value: Option<String>,
+        sub_ability: Option<Box<ReplacementChainIr>>,
+    },
 }
 
 impl CardTrait for ReplacementEffect {
@@ -93,6 +163,10 @@ impl ReplacementEffect {
     /// args. `TriggerReplacementBase::set_host_card` also propagates the
     /// host into any cached overriding ability.
     pub fn set_host_card(&mut self, host: Card) {
+        self.ir.replace_with_chain = self
+            .replace_with()
+            .and_then(|svar_name| host.get_svar(svar_name))
+            .and_then(|raw| parse_replacement_chain(raw, &host));
         self.base.set_host_card(host);
     }
 }
@@ -108,12 +182,29 @@ impl ReplacementEffect {
             base: Box::new(TriggerReplacementBase::default()),
             event,
             layer,
+            ir: ReplacementEffectIr::from_params(&params),
             params,
             active_zones,
             suppressed: false,
         };
         effect.sync_trait_base_params();
         effect
+    }
+
+    pub fn replace_with(&self) -> Option<&str> {
+        self.ir.replace_with.as_deref()
+    }
+
+    pub fn has_skip(&self) -> bool {
+        self.ir.skip
+    }
+
+    pub fn prevents(&self) -> bool {
+        self.ir.prevent
+    }
+
+    pub fn matches_phase(&self, phase: PhaseType) -> bool {
+        self.ir.active_phases.is_empty() || self.ir.active_phases.contains(&phase)
     }
 
     fn sync_trait_base_params(&mut self) {
@@ -152,7 +243,7 @@ impl ReplacementEffect {
         if self.suppressed || self.base.card_trait_base.is_suppressed() {
             return String::new();
         }
-        let Some(raw) = self.params.get(keys::DESCRIPTION) else {
+        let Some(raw) = self.ir.description_text.as_deref() else {
             return String::new();
         };
         let mut desc =
@@ -197,7 +288,7 @@ impl ReplacementEffect {
             return false;
         }
 
-        if let Some(pt) = self.params.get(keys::PLAYER_TURN) {
+        if let Some(pt) = self.ir.player_turn_text.as_deref() {
             if pt == "True" {
                 if game.active_player() != source.controller {
                     return false;
@@ -215,15 +306,8 @@ impl ReplacementEffect {
         }
 
         // ActivePhases$ — current phase must be in the listed phases.
-        if let Some(phases_str) = self.params.get(keys::ACTIVE_PHASES) {
-            let current = game.turn.phase;
-            let any_match = phases_str
-                .split(',')
-                .filter_map(|s| PhaseType::from_script_name(s.trim()))
-                .any(|p| p == current);
-            if !any_match {
-                return false;
-            }
+        if !self.matches_phase(game.turn.phase) {
+            return false;
         }
 
         crate::card::valid_filter::meets_common_requirements(game, &self.params, source)
@@ -257,7 +341,7 @@ impl ReplacementEffect {
         if let Some(overriding) = self.base.get_overriding_ability() {
             return Some(overriding.clone());
         }
-        let svar_name = self.params.get(keys::REPLACE_WITH)?;
+        let svar_name = self.replace_with()?;
         let host = game.card(host_card);
         let script = host.get_svar(svar_name)?;
         Some(build_spell_ability(
@@ -557,9 +641,66 @@ impl ReplacementEffect {
         // AddCounter effects can also intercept Moved events when they
         // involve a counter map (e.g. moving counters with the card).
         if self.event == ReplacementType::AddCounter && *event == ReplacementType::Moved {
-            return self.params.get("CounterMap").is_some();
+            return self.ir.counter_map;
         }
         false
+    }
+}
+
+impl ReplacementEffectIr {
+    fn from_params(params: &Params) -> Self {
+        Self {
+            replace_with: params.get(keys::REPLACE_WITH).map(str::to_string),
+            description_text: params.get(keys::DESCRIPTION).map(str::to_string),
+            player_turn_text: params.get(keys::PLAYER_TURN).map(str::to_string),
+            new_destination_text: params.get(keys::NEW_DESTINATION).map(str::to_string),
+            new_destination_zone: parsed_zone_type(params.get(keys::NEW_DESTINATION)),
+            origin_text: params.get(keys::ORIGIN).map(str::to_string),
+            origin_zone: parsed_zone_type(params.get(keys::ORIGIN)),
+            destination_text: params.get(keys::DESTINATION).map(str::to_string),
+            destination_zone: parsed_zone_type(params.get(keys::DESTINATION)),
+            exclude_destination_text: params.get("ExcludeDestination").map(str::to_string),
+            valid_card_text: params.get(keys::VALID_CARD).map(str::to_string),
+            valid_card_selector: params.selector_cloned(keys::VALID_CARD),
+            valid_player_selector: params.selector_cloned(keys::VALID_PLAYER),
+            valid_target_selector: params.selector_cloned(keys::VALID_TARGET),
+            valid_source_selector: params.selector_cloned(keys::VALID_SOURCE),
+            valid_activator_text: params.get(keys::VALID_ACTIVATOR).map(str::to_string),
+            valid_explorer_text: params.get(keys::VALID_EXPLORER).map(str::to_string),
+            valid_counter_type_text: params.get(keys::VALID_COUNTER_TYPE).map(str::to_string),
+            valid_lose_reason_text: params.get(keys::VALID_LOSE_REASON).map(str::to_string),
+            valid_sides_text: params.get(keys::VALID_SIDES).map(str::to_string),
+            active_phases: parsed_phase_types(
+                params
+                    .get(keys::PHASE)
+                    .or_else(|| params.get(keys::ACTIVE_PHASES)),
+            ),
+            amount_text: params.get(keys::AMOUNT).map(str::to_string),
+            damage_amount_text: params.get(keys::DAMAGE_AMOUNT).map(str::to_string),
+            result_text: params.get(keys::RESULT).map(str::to_string),
+            number_text: params.get(keys::NUMBER).map(str::to_string),
+            dredge_amount: params.get("DredgeAmount").and_then(|s| s.parse().ok()),
+            skip: params.has(keys::SKIP),
+            prevent: parsed_true(params.get(keys::PREVENT)),
+            optional: parsed_true(params.get(keys::OPTIONAL)),
+            effect_only: parsed_true(params.get("EffectOnly")),
+            discard: parsed_bool(params.get("Discard")),
+            flashback_cast: parsed_bool(params.get("FlashbackCast")),
+            not_first_card_in_draw_step: parsed_true(params.get("NotFirstCardInDrawStep")),
+            exiled_with_effect_source: params.has("ExiledWithEffectSource"),
+            is_combat: parsed_bool(params.get(keys::IS_COMBAT)),
+            is_damage: parsed_bool(params.get(keys::IS_DAMAGE)),
+            max_speed: parsed_bool(params.get("MaxSpeed")),
+            replacement_result: params.get("ReplacementResult").map(str::to_string),
+            optional_decider_text: params.get(keys::OPTIONAL_DECIDER).map(str::to_string),
+            replace_mana_text: params.get(keys::REPLACE_MANA).map(str::to_string),
+            replace_type_text: params.get(keys::REPLACE_TYPE).map(str::to_string),
+            replace_color_text: params.get(keys::REPLACE_COLOR).map(str::to_string),
+            replace_amount_text: params.get(keys::REPLACE_AMOUNT).map(str::to_string),
+            valid_lki_text: params.get("ValidLKI").map(str::to_string),
+            counter_map: params.get("CounterMap").is_some(),
+            replace_with_chain: None,
+        }
     }
 }
 
@@ -579,7 +720,7 @@ fn append_shield_remaining(mut desc: String, rep_sa: &SpellAbility, host: &Card)
     };
 
     let (param_value, default_one) = match api {
-        ApiType::ReplaceDamage => match rep_sa.params.get("Amount") {
+        ApiType::ReplaceDamage => match rep_sa.ir.amount.as_deref() {
             Some(v) => (v.to_string(), false),
             None => return desc,
         },
@@ -700,6 +841,79 @@ pub(super) fn parse_zone_list(s: &str) -> Vec<ZoneType> {
         .collect()
 }
 
+fn parsed_zone_type(value: Option<&str>) -> Option<ZoneType> {
+    match value? {
+        "Battlefield" => Some(ZoneType::Battlefield),
+        "Graveyard" => Some(ZoneType::Graveyard),
+        "Hand" => Some(ZoneType::Hand),
+        "Library" => Some(ZoneType::Library),
+        "Exile" => Some(ZoneType::Exile),
+        "Command" => Some(ZoneType::Command),
+        "Stack" => Some(ZoneType::Stack),
+        _ => None,
+    }
+}
+
+pub(crate) fn parse_replacement_chain(
+    raw: &str,
+    svars: &impl HasSVars,
+) -> Option<ReplacementChainIr> {
+    let params = Params::from_raw(raw);
+    let db = params.get(keys::DB)?;
+    match db {
+        "ReplaceToken" => Some(ReplacementChainIr::ReplaceToken {
+            token_type: params.get("Type").map(str::to_string),
+            amount_expr: params.get("Amount").map(str::to_string),
+        }),
+        "ReplaceCounter" => Some(ReplacementChainIr::ReplaceCounter {
+            amount_expr: params.get("Amount")?.to_string(),
+        }),
+        "ReplaceEffect" => {
+            let sub_ability = params
+                .get(keys::SUB_ABILITY)
+                .and_then(|name| svars.get_svar(name))
+                .and_then(|sub_raw| parse_replacement_chain(sub_raw, svars))
+                .map(Box::new);
+            Some(ReplacementChainIr::ReplaceEffect {
+                var_name: params.get("VarName").map(str::to_string),
+                var_type: params.get("VarType").map(str::to_string),
+                var_key: params.get("VarKey").map(str::to_string),
+                var_value: params.get("VarValue").map(str::to_string),
+                sub_ability,
+            })
+        }
+        _ => None,
+    }
+}
+
+pub(crate) fn resolve_replace_with_chain(
+    effect: &ReplacementEffect,
+    source_card: &Card,
+) -> Option<ReplacementChainIr> {
+    effect.ir.replace_with_chain.clone().or_else(|| {
+        effect
+            .replace_with()
+            .and_then(|svar_name| source_card.get_svar(svar_name))
+            .and_then(|raw| parse_replacement_chain(raw, source_card))
+    })
+}
+
+fn parsed_phase_types(value: Option<&str>) -> Vec<PhaseType> {
+    value
+        .into_iter()
+        .flat_map(|raw| raw.split(','))
+        .filter_map(|phase| PhaseType::from_script_name(phase.trim()))
+        .collect()
+}
+
+fn parsed_true(value: Option<&str>) -> bool {
+    matches!(value, Some("True") | Some("true"))
+}
+
+fn parsed_bool(value: Option<&str>) -> Option<bool> {
+    value.map(|raw| matches!(raw, "True" | "true"))
+}
+
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -712,9 +926,12 @@ mod tests {
     fn parse_damage_prevention() {
         let raw = "R$ Event$ DamageDone | ActiveZones$ Battlefield | ValidCard$ Card.Self | Prevent$ True | Description$ Prevent all damage dealt to ~.";
         let re = parse_replacement_effect(raw).expect("should parse");
+        let ReplacementEffect {
+            params: raw_params, ..
+        } = &re;
         assert_eq!(re.event, ReplacementType::DamageDone);
         assert_eq!(re.layer, ReplacementLayer::Other);
-        assert_eq!(re.params.get(keys::PREVENT).unwrap(), "True");
+        assert_eq!(raw_params.get(keys::PREVENT).unwrap(), "True");
         assert_eq!(re.active_zones, vec![ZoneType::Battlefield]);
     }
 
@@ -722,8 +939,11 @@ mod tests {
     fn parse_draw_skip() {
         let raw = "R$ Event$ Draw | ValidPlayer$ You | Description$ Skip your draw step.";
         let re = parse_replacement_effect(raw).expect("should parse");
+        let ReplacementEffect {
+            params: raw_params, ..
+        } = &re;
         assert_eq!(re.event, ReplacementType::Draw);
-        assert_eq!(re.params.selector_value(keys::VALID_PLAYER).unwrap(), "You");
+        assert_eq!(raw_params.selector_value(keys::VALID_PLAYER).unwrap(), "You");
         assert!(re.active_zones.is_empty());
     }
 
@@ -731,18 +951,24 @@ mod tests {
     fn parse_destroy_replacement() {
         let raw = "R$ Event$ Destroy | ValidCard$ Card.Self | Description$ ~ is indestructible.";
         let re = parse_replacement_effect(raw).expect("should parse");
+        let ReplacementEffect {
+            params: raw_params, ..
+        } = &re;
         assert_eq!(re.event, ReplacementType::Destroy);
-        assert_eq!(re.params.selector_value(keys::VALID_CARD).unwrap(), "Card.Self");
+        assert_eq!(raw_params.selector_value(keys::VALID_CARD).unwrap(), "Card.Self");
     }
 
     #[test]
     fn parse_moved_exile_instead() {
         let raw = "R$ Event$ Moved | Destination$ Graveyard | Origin$ Battlefield | ValidCard$ Card.Self | NewDestination$ Exile | Description$ If ~ would die, exile it instead.";
         let re = parse_replacement_effect(raw).expect("should parse");
+        let ReplacementEffect {
+            params: raw_params, ..
+        } = &re;
         assert_eq!(re.event, ReplacementType::Moved);
-        assert_eq!(re.params.get(keys::DESTINATION).unwrap(), "Graveyard");
-        assert_eq!(re.params.get(keys::ORIGIN).unwrap(), "Battlefield");
-        assert_eq!(re.params.get(keys::NEW_DESTINATION).unwrap(), "Exile");
+        assert_eq!(raw_params.get(keys::DESTINATION).unwrap(), "Graveyard");
+        assert_eq!(raw_params.get(keys::ORIGIN).unwrap(), "Battlefield");
+        assert_eq!(raw_params.get(keys::NEW_DESTINATION).unwrap(), "Exile");
     }
 
     #[test]

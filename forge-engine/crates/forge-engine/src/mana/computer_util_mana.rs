@@ -1360,7 +1360,7 @@ fn group_sources_by_mana_color(
                 continue;
             }
             // Handle ManaReflected abilities (e.g. Incubation Druid)
-            if ab.params.get(keys::AB) == Some("ManaReflected") {
+            if ab.is_mana_reflected {
                 let reflected_atoms = compute_reflected_atoms(game, player, card_id, ab);
                 if !reflected_atoms.is_empty() {
                     explicit_mana_added = true;
@@ -1377,9 +1377,9 @@ fn group_sources_by_mana_color(
                         // Java's manaPart.mana() for ManaReflected returns origProduced
                         // (typically "1"), NOT "Any"/"Reflected". Match for scoring parity.
                         mana_text: ab
-                            .params
-                            .get(keys::PRODUCED)
-                            .map(|s| s.to_string())
+                            .produced
+                            .as_deref()
+                            .map(str::to_string)
                             .unwrap_or_else(|| "1".to_string()),
                         source_order,
                     };
@@ -1389,7 +1389,7 @@ fn group_sources_by_mana_color(
                 continue;
             }
 
-            let Some(produced) = ab.params.get(keys::PRODUCED) else {
+            let Some(produced) = ab.produced.as_deref() else {
                 continue;
             };
             // Combo ColorIdentity (e.g. Arcane Signet): atoms come from the
@@ -1586,17 +1586,11 @@ pub fn can_pay_mana_cost_with_reserved_sacrifices(
             {
                 continue;
             }
-            if !is_payable_mana_ability(
-                game,
-                player,
-                card_id,
-                ab,
-                reserved_sacrifices,
-                payment_ctx,
-            ) {
+            if !is_payable_mana_ability(game, player, card_id, ab, reserved_sacrifices, payment_ctx)
+            {
                 continue;
             }
-            if let Some(produced) = ab.params.get(keys::PRODUCED) {
+            if let Some(produced) = ab.produced.as_deref() {
                 if produced == "Combo ColorIdentity" {
                     let colors = game.player_commander_color_identity(player);
                     if !colors.is_empty() {
@@ -1606,7 +1600,8 @@ pub fn can_pay_mana_cost_with_reserved_sacrifices(
                         }
                         source_mask |= combo;
                     }
-                } else if let Some(fixed_atoms) = fixed_produced_atoms(produced, &card.chosen_colors)
+                } else if let Some(fixed_atoms) =
+                    fixed_produced_atoms(produced, &card.chosen_colors)
                 {
                     for atom in fixed_atoms {
                         source_masks.push(atom);
@@ -1811,15 +1806,14 @@ fn is_payable_mana_ability(
         return false;
     }
     let card = game.card(card_id);
-    let activation_zone = ab.params.get(keys::ACTIVATION_ZONE);
     match card.zone {
         ZoneType::Battlefield => {
-            if activation_zone == Some("Hand") {
+            if ab.activation_zone == Some(ZoneType::Hand) {
                 return false;
             }
         }
         ZoneType::Hand => {
-            if activation_zone != Some("Hand") {
+            if ab.activation_zone != Some(ZoneType::Hand) {
                 return false;
             }
         }
@@ -1837,7 +1831,7 @@ fn is_payable_mana_ability(
         return false;
     }
     if let Some(ctx) = payment_ctx {
-        if let Some(raw) = ab.params.get(keys::RESTRICT_VALID) {
+        if let Some(raw) = ab.restrict_valid.as_deref() {
             let card = game.card(card_id);
             let resolved = if raw.contains("ChosenType") {
                 let chosen = card.chosen_type.clone().unwrap_or_default();
@@ -1959,7 +1953,7 @@ fn score_mana_producing_card(game: &GameState, card_id: CardId, player: PlayerId
 
     for ab in &card.activated_abilities {
         if ab.is_mana_ability {
-            let produced = ab.params.get(keys::PRODUCED);
+            let produced = ab.produced.as_deref();
             score += score_mana_ability(game, card_id, ab, produced);
             has_mana_ability = true;
         } else if can_pay_ignoring_mana(&ab.cost, game, card_id, player) {
@@ -2012,7 +2006,7 @@ fn score_mana_ability(
     //      so Java scores these with the default "1" instead of the resolved
     //      reflectable colors — yielding a low intrinsic score (+2) that
     //      keeps Orchard ahead of multi-color combo sources like Arcane Signet.
-    let orig_produced = ab.params.get(keys::PRODUCED);
+    let orig_produced = ab.produced.as_deref();
     let is_any_mana = orig_produced.is_some_and(|p| p.contains("Any"));
     if is_any_mana {
         score += 7;
@@ -2242,7 +2236,7 @@ fn parse_mana_ability_amount_with_game(
     card_id: Option<CardId>,
     player: Option<PlayerId>,
 ) -> i32 {
-    let Some(amount_str) = ab.params.get(keys::AMOUNT) else {
+    let Some(amount_str) = ab.amount.as_deref() else {
         return 1;
     };
     // Try direct integer parse first

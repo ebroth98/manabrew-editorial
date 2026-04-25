@@ -19,32 +19,11 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let controller = sa.activating_player;
 
     // Determine the two zones
-    let zone1 = sa
-        .params
-        .get(keys::ZONE1)
-        .map(|z| match z {
-            "Hand" => ZoneType::Hand,
-            "Graveyard" => ZoneType::Graveyard,
-            "Library" => ZoneType::Library,
-            "Exile" => ZoneType::Exile,
-            _ => ZoneType::Battlefield,
-        })
-        .unwrap_or(ZoneType::Battlefield);
-
-    let zone2 = sa
-        .params
-        .get(keys::ZONE2)
-        .map(|z| match z {
-            "Battlefield" => ZoneType::Battlefield,
-            "Graveyard" => ZoneType::Graveyard,
-            "Library" => ZoneType::Library,
-            "Exile" => ZoneType::Exile,
-            _ => ZoneType::Hand,
-        })
-        .unwrap_or(ZoneType::Hand);
+    let zone1 = sa.ir.zone1.unwrap_or(ZoneType::Battlefield);
+    let zone2 = sa.ir.zone2.unwrap_or(ZoneType::Hand);
 
     // Object 1: defined card or source
-    let object1 = if let Some(def) = sa.params.get(keys::OBJECT) {
+    let object1 = if let Some(def) = sa.ir.object_text.as_deref() {
         if def == "Self" {
             sa.source
         } else {

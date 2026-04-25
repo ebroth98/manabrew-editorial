@@ -19,7 +19,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     ctx.agents[controller.index()].snapshot_state(ctx.game, ctx.mana_pools);
 
     // Use the agent's name_card method if available, otherwise store from param
-    let named = if let Some(defined_name) = sa.params.reference_value(keys::DEFINED_NAME) {
+    let named = if let Some(defined_name) = sa.ir.defined_name_text.as_deref() {
         defined_name.to_string()
     } else {
         // Agent chooses a card name — default implementation picks from known cards

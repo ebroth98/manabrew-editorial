@@ -2,7 +2,7 @@ use forge_foundation::ZoneType;
 
 use crate::card::{valid_filter, Card};
 use crate::ids::PlayerId;
-use crate::parsing::{keys, CompiledSelector};
+use crate::parsing::CompiledSelector;
 use crate::staticability::StaticMode;
 
 pub fn block_restrict_num(cards: &[Card], defender: PlayerId) -> i32 {
@@ -13,13 +13,14 @@ pub fn block_restrict_num(cards: &[Card], defender: PlayerId) -> i32 {
             .iter()
             .filter(|sa| sa.mode == StaticMode::BlockRestrict)
         {
-            let valid = st_ab.params.selector(keys::VALID_DEFENDER);
+            let valid = st_ab.ir.valid_defender.as_ref();
             if !matches_valid_player(valid, defender, source.controller) {
                 continue;
             }
             let n = st_ab
-                .params
-                .get(keys::MAX_BLOCKERS)
+                .ir
+                .max_blockers
+                .as_deref()
                 .map(|s| eval_amount(source, s))
                 .unwrap_or(1);
             if n < num {

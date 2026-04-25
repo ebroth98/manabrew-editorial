@@ -78,7 +78,7 @@ pub(super) fn resolve_single_search(
 
     // Java's one-at-a-time search path asks for a follow-up confirmation when
     // the chooser returns null but legal cards still exist.
-    if !sa.param_is_true("SkipCancelPrompt") {
+    if !sa.ir.skip_cancel_prompt {
         let source_name = sa.source.map(|cid| ctx.game.card(cid).card_name.as_str());
         ctx.agents[chooser.index()].snapshot_state(ctx.game, ctx.mana_pools);
         let _ = ctx.agents[chooser.index()].confirm_action(
@@ -107,12 +107,12 @@ pub(super) fn resolve_multi_search(
         return Vec::new();
     }
 
-    let diff_names = sa.param_is_true(keys::DIFFERENT_NAMES);
-    let diff_cmc = sa.param_is_true(keys::DIFFERENT_CMC);
-    let diff_power = sa.param_is_true(keys::DIFFERENT_POWER);
-    let share_land = sa.param_is_true(keys::SHARE_LAND_TYPE);
-    let budget_cmc: Option<i32> = sa.param_as_i32(keys::WITH_TOTAL_CMC);
-    let budget_power: Option<i32> = sa.param_as_i32(keys::WITH_TOTAL_POWER);
+    let diff_names = sa.ir.different_names;
+    let diff_cmc = sa.ir.different_cmc;
+    let diff_power = sa.ir.different_power;
+    let share_land = sa.ir.share_land_type;
+    let budget_cmc = sa.ir.with_total_cmc;
+    let budget_power = sa.ir.with_total_power;
 
     if diff_names
         || diff_cmc

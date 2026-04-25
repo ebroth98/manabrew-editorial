@@ -151,7 +151,7 @@ fn collect_from_card(
         }
 
         // Parse and substitute Cost$ param
-        let Some(cost_template_raw) = st_ab.params.get(keys::COST) else {
+        let Some(cost_template_raw) = st_ab.ir.cost.as_deref() else {
             continue;
         };
 
@@ -165,38 +165,30 @@ fn collect_from_card(
         let cost = parse_cost(&cost_template);
 
         // Propagate XAlternative param
-        let x_alternative = st_ab.params.get("XAlternative").map(|s| s.to_string());
+        let x_alternative = st_ab.ir.x_alternative_text.clone();
 
         // Propagate Announce param
-        let announce = st_ab.params.get("Announce").map(|s| s.to_string());
+        let announce = st_ab.ir.announce_text.clone();
 
         // Propagate ManaRestriction param
-        let mana_restriction = st_ab.params.get("ManaRestriction").map(|s| s.to_string());
+        let mana_restriction = st_ab.ir.mana_restriction_text.clone();
 
         // Zone restriction from ActiveZones — only if host card is not immutable
         // (Rust Card has no is_immutable field yet, so we skip that guard)
         // TODO: Add is_immutable check when Card gains that field
-        let zone_restriction = {
-            if let Some(zones_str) = st_ab.params.get(keys::ACTIVE_ZONES) {
-                let zones: Vec<&str> = zones_str.split(',').map(str::trim).collect();
-                if zones.len() == 1 {
-                    parse_zone_type(zones[0])
-                } else {
-                    None
-                }
-            } else {
-                None
-            }
+        let zone_restriction = match st_ab.ir.active_zones.as_slice() {
+            [zone] => Some(*zone),
+            _ => None,
         };
 
         // StackDescription override
-        let stack_description = st_ab.params.get("StackDescription").map(|s| s.to_string());
+        let stack_description = st_ab.ir.stack_description_text.clone();
 
         // Build description — mirrors Java's SpellDescription construction
         let mut desc = String::new();
         let cost_desc = if is_ability {
             // CostDesc for abilities
-            let cd = if let Some(cd_param) = st_ab.params.get("CostDesc") {
+            let cd = if let Some(cd_param) = st_ab.ir.cost_desc_text.as_deref() {
                 // Java: ManaCostParser.parse(stAb.getParam("CostDesc"))
                 // For now, pass through as-is
                 // TODO: implement ManaCostParser.parse() equivalent
@@ -218,7 +210,7 @@ fn collect_from_card(
             // Check if source card is the host card of the static ability
             if source.id == ca.id {
                 // Same card — use the Description param
-                if let Some(alt_desc) = st_ab.params.get(keys::DESCRIPTION) {
+                if let Some(alt_desc) = st_ab.ir.description_text.as_deref() {
                     desc.push_str(" (");
                     desc.push_str(alt_desc);
                     desc.push_str(") ");
@@ -235,7 +227,7 @@ fn collect_from_card(
         let is_own_alt_cost = is_spell && source.id == ca.id;
 
         // Named param override for custom cards
-        let named = st_ab.params.get("Named").map(|s| s.to_string());
+        let named = st_ab.ir.named_text.clone();
 
         result.push(AlternativeCostEntry {
             cost,
@@ -267,7 +259,7 @@ fn apply(
     player: PlayerId,
 ) -> bool {
     // Check ValidSA — mirrors Java's stAb.matchesValidParam("ValidSA", sa)
-    if let Some(valid_sa) = st_ab.params.get(keys::VALID_SA) {
+    if let Some(valid_sa) = st_ab.ir.valid_sa.as_deref() {
         if !spell_ability_matches(valid_sa, sa, source, host) {
             return false;
         }
@@ -275,7 +267,7 @@ fn apply(
 
     // Check ValidCard — mirrors Java's stAb.matchesValidParam("ValidCard", source)
     if !valid_filter::matches_valid_card_selector_opt(
-        st_ab.params.selector(keys::VALID_CARD),
+        st_ab.ir.valid_card.as_ref(),
         source,
         host,
     ) {
@@ -284,7 +276,7 @@ fn apply(
 
     // Check ValidPlayer — mirrors Java's stAb.matchesValidParam("ValidPlayer", pl)
     if !valid_filter::matches_valid_player_selector_opt(
-        st_ab.params.selector(keys::VALID_PLAYER),
+        st_ab.ir.valid_player.as_ref(),
         player,
         host.controller,
     ) {
@@ -322,7 +314,7 @@ fn spell_ability_matches(valid_sa: &str, sa: &SpellAbility, source: &Card, host:
         let lower = primary.to_ascii_lowercase();
 
         let base_ok = match lower.as_str() {
-            "spell" => sa.is_spell || sa.params.has(keys::SP),
+            "spell" => sa.is_spell,
             "ability" => sa.is_activated || sa.is_trigger,
             _ => {
                 if let Some(ref api) = sa.api {
@@ -352,21 +344,6 @@ fn spell_ability_matches(valid_sa: &str, sa: &SpellAbility, source: &Card, host:
     })
 }
 
-/// Parse a zone type string into a `ZoneType`.
-fn parse_zone_type(s: &str) -> Option<ZoneType> {
-    let lower = s.trim().to_ascii_lowercase();
-    match lower.as_str() {
-        "battlefield" => Some(ZoneType::Battlefield),
-        "hand" => Some(ZoneType::Hand),
-        "graveyard" => Some(ZoneType::Graveyard),
-        "library" => Some(ZoneType::Library),
-        "exile" => Some(ZoneType::Exile),
-        "command" => Some(ZoneType::Command),
-        "stack" => Some(ZoneType::Stack),
-        _ => None,
-    }
-}
-
 /// Apply an `AlternativeCostEntry` to a `SpellAbility`, mutating it in place
 /// to reflect the alternative cost. This is a partial implementation of Java's
 /// `sa.copyWithDefinedCost(cost)` / `sa.copyWithManaCostReplaced(pl, cost)`.
@@ -383,29 +360,23 @@ pub fn apply_alternative_cost_to_sa(sa: &mut SpellAbility, entry: &AlternativeCo
     // Mark as not a basic spell
     // TODO: sa.setBasicSpell(false) — no field yet
 
-    // Propagate params
-    if let Some(ref x_alt) = entry.x_alternative {
-        sa.params.put("XAlternative".to_string(), x_alt.clone());
-    }
     if let Some(ref announce) = entry.announce {
-        sa.params.put("Announce".to_string(), announce.clone());
-    }
-    if let Some(ref mana_restriction) = entry.mana_restriction {
-        sa.params
-            .put("ManaRestriction".to_string(), mana_restriction.clone());
+        sa.ir.announce_text = Some(announce.clone());
     }
     if let Some(ref stack_desc) = entry.stack_description {
-        sa.params
-            .put("StackDescription".to_string(), stack_desc.clone());
+        sa.ir.stack_description_text = Some(stack_desc.clone());
     }
     if let Some(ref cost_desc) = entry.cost_desc {
-        sa.params.put("CostDesc".to_string(), cost_desc.clone());
+        sa.ir.precost_desc = Some(cost_desc.clone());
     }
 
     // Apply Named override
     if let Some(ref named) = entry.named {
-        sa.params.put(keys::NAME.to_string(), named.clone());
+        sa.ir.name_text = Some(named.clone());
     }
+
+    let _ = &entry.x_alternative;
+    let _ = &entry.mana_restriction;
 
     // TODO: Zone restriction on sa.restrictions when SpellAbilityRestriction is ported
     // TODO: addOptionalCost(OptionalCost.AltCost) for is_own_alt_cost

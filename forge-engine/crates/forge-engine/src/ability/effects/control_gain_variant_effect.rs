@@ -16,17 +16,17 @@ use crate::spellability::SpellAbility;
 #[forge_engine_macros::spell_effect(ControlGainVariantEffect)]
 fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let mode = sa
-        .params
-        .get("ChangeController")
-        .map(|s| s.to_string())
+        .ir
+        .change_type
+        .clone()
         .unwrap_or_else(|| "CardOwner".to_string());
 
     let filter = sa
-        .params
-        .get("AllValid")
-        .map(|s| s.to_string())
+        .ir
+        .all_valid_text
+        .clone()
         .unwrap_or_else(|| "Permanent".to_string());
-    let filter_selector = sa.params.selector_cloned("AllValid");
+    let filter_selector = sa.ir.all_valid_selector.clone();
 
     // Collect all matching permanents on the battlefield
     let matching: Vec<crate::ids::CardId> = {

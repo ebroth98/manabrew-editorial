@@ -1,6 +1,5 @@
 use crate::card::{valid_filter, Card};
 use crate::ids::PlayerId;
-use crate::parsing::keys;
 use crate::staticability::StaticMode;
 use forge_foundation::ZoneType;
 
@@ -26,14 +25,14 @@ pub fn apply_untap_ability(
     player: PlayerId,
 ) -> bool {
     if !valid_filter::matches_valid_card_selector_opt(
-        st_ab.params.selector(keys::VALID_CARD),
+        st_ab.ir.valid_card.as_ref(),
         card,
         source,
     ) {
         return false;
     }
     if !valid_filter::matches_valid_player_selector_opt(
-        st_ab.params.selector(keys::VALID_PLAYER),
+        st_ab.ir.valid_player.as_ref(),
         player,
         source.controller,
     ) {

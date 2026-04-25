@@ -33,22 +33,25 @@ pub fn run(game: &mut crate::game::GameState, card_id: crate::ids::CardId, keywo
 fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let controller = sa.activating_player;
     let valid_filter = sa
-        .params
-        .get(crate::parsing::keys::VALID_CARDS)
+        .ir
+        .valid_cards_text
+        .as_deref()
         .unwrap_or("Creature.YouCtrl")
         .to_string();
-    let valid_selector = sa.params.selector(crate::parsing::keys::VALID_CARDS);
+    let valid_selector = sa.ir.valid_cards_selector.as_ref();
     let gains = sa
-        .params
-        .get(crate::parsing::keys::GAINS)
+        .ir
+        .gains
+        .as_deref()
         .unwrap_or("")
         .to_string();
 
     // If choosing a color, do it once for all targets
     let prot_keyword = if gains.contains("chosen color") {
         let choices = sa
-            .params
-            .get(crate::parsing::keys::CHOICES)
+            .ir
+            .choices
+            .as_deref()
             .map(|s| {
                 s.split(',')
                     .map(|c| c.trim().to_string())

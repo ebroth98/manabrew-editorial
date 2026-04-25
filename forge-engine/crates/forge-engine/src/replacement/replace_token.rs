@@ -21,7 +21,7 @@ use crate::card_trait_base::CardTrait;
 ///
 /// Mirrors Java `ReplaceToken.filterAmount()`.
 pub fn filter_amount(effect: &ReplacementEffect, base_amount: i32) -> i32 {
-    match effect.params.get(keys::REPLACE_WITH) {
+    match effect.replace_with() {
         Some(s) if s == "AddOneMoreToken" || s == "AddOneMoreTokens" => base_amount + 1,
         Some(s) if s == "DoubleTokens" => base_amount * 2,
         _ => base_amount,
@@ -45,16 +45,10 @@ pub fn can_replace(
         _ => return false,
     };
     // EffectOnly$ True: only apply to tokens created by effects, not game rules
-    if effect
-        .params
-        .get("EffectOnly")
-        .map(|v| v == "True")
-        .unwrap_or(false)
-        && !is_effect
-    {
+    if effect.ir.effect_only && !is_effect {
         return false;
     }
-    if let Some(valid) = effect.params.selector(keys::VALID_PLAYER) {
+    if let Some(valid) = effect.ir.valid_player_selector.as_ref() {
         if !effect.matches_compiled_valid_player(valid, player, source_card) {
             return false;
         }

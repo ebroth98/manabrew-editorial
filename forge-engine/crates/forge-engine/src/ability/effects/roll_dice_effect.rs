@@ -26,12 +26,12 @@ pub fn make_formated_description(game: &GameState, sa: &SpellAbility) -> String 
         None => return "Roll a die.".to_string(),
     };
 
-    let sides = sa.params.as_i32(crate::parsing::keys::SIDES).unwrap_or(6);
+    let sides = sa.ir.sides.unwrap_or(6);
     let card_name = game.card(source_id).card_name.clone();
 
     let mut desc = format!("{} — Roll a d{}.", card_name, sides);
 
-    if let Some(result_str) = sa.params.get(crate::parsing::keys::RESULT_SUB_ABILITIES) {
+    if let Some(result_str) = sa.ir.result_sub_abilities_text.as_deref() {
         desc.push('\n');
         for entry in result_str.split(',') {
             let parts: Vec<&str> = entry.splitn(2, ':').collect();
@@ -166,7 +166,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
         Some(id) => id,
         None => return,
     };
-    let sides = sa.params.as_i32(crate::parsing::keys::SIDES).unwrap_or(6);
+    let sides = sa.ir.sides.unwrap_or(6);
     let amount = resolve_numeric_svar(ctx.game, sa, "Amount", 1).max(0);
     let players = if let Some(player) = sa.target_chosen.target_player {
         vec![player]
@@ -282,7 +282,7 @@ fn roll_for_player(
         kept_rolls.iter().sum()
     };
 
-    if let Some(result_svar) = sa.params.get("ResultSVar") {
+    if let Some(result_svar) = sa.ir.result_svar_text.as_deref() {
         ctx.game
             .card_mut(source_id)
             .set_s_var(result_svar, format!("Number${final_result}"));
@@ -316,7 +316,7 @@ fn roll_for_player(
             .card_mut(source_id)
             .set_s_var("MaxRolls", format!("Number${max_rolls}"));
     }
-    if let Some(chosen_svar) = sa.params.get("ChosenSVar") {
+    if let Some(chosen_svar) = sa.ir.chosen_svar_text.as_deref() {
         if !kept_rolls.is_empty() {
             let chosen = ctx.agents[player.index()]
                 .choose_number_from_list(
@@ -329,7 +329,7 @@ fn roll_for_player(
             ctx.game
                 .card_mut(source_id)
                 .set_s_var(chosen_svar, format!("Number${chosen}"));
-            if let Some(other_svar) = sa.params.get("OtherSVar") {
+            if let Some(other_svar) = sa.ir.other_svar_text.as_deref() {
                 let other = kept_rolls
                     .iter()
                     .copied()
@@ -402,12 +402,12 @@ fn roll_for_player(
     }
 
     if sa.param_is_true("SubsForEach") {
-        if let Some(result_str) = sa.params.get(crate::parsing::keys::RESULT_SUB_ABILITIES) {
+        if let Some(result_str) = sa.ir.result_sub_abilities_text.as_deref() {
             for roll in &kept_rolls {
                 resolve_result_sub_ability(ctx, sa, source_id, player, *roll, result_str);
             }
         }
-    } else if let Some(result_str) = sa.params.get(crate::parsing::keys::RESULT_SUB_ABILITIES) {
+    } else if let Some(result_str) = sa.ir.result_sub_abilities_text.as_deref() {
         resolve_result_sub_ability(ctx, sa, source_id, player, final_result, result_str);
     }
 
@@ -1830,9 +1830,11 @@ mod tests {
         let source_id = game.create_card(source);
         game.add_card_to_zone(forge_foundation::ZoneType::Battlefield, player, source_id);
 
-        let mut sa = SpellAbility::new_empty(Some(source_id), player);
-        sa.params.put("IgnoreLower".to_string(), "1".to_string());
-        sa.params.put("Modifier".to_string(), "2".to_string());
+        let sa = SpellAbility::new_simple(
+            Some(source_id),
+            player,
+            "DB$ Internal | IgnoreLower$ 1 | Modifier$ 2",
+        );
         let mut trigger_handler = TriggerHandler::new();
         let mut agents: Vec<Box<dyn PlayerAgent>> =
             vec![Box::new(ModifyAgent), Box::new(ModifyAgent)];

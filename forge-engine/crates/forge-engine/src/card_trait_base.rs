@@ -235,7 +235,7 @@ impl CardTraitBase {
     ) -> bool {
         match target {
             MatchValidTarget::Card(card) => {
-                let selector = crate::parsing::CompiledSelector::parse(&valids.join(","));
+                let selector = crate::parsing::cached_compiled_selector(&valids.join(","));
                 valid_filter::matches_valid_card_selector(&selector, card, src_card)
             }
             MatchValidTarget::Player(player) => {

@@ -19,7 +19,7 @@ use crate::spellability::SpellAbility;
 /// `UntapAllEffect` class extending `SpellAbilityEffect`.
 #[forge_engine_macros::spell_effect(UntapAllEffect)]
 fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
-    let valid_cards = sa.params.selector(keys::VALID_CARDS);
+    let valid_cards = sa.ir.valid_cards_selector.as_ref();
 
     let player_ids = ctx.game.player_order.clone();
     let mut to_untap: Vec<CardId> = Vec::new();

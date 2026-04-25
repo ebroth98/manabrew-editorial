@@ -44,40 +44,37 @@ pub fn can_replace(
     };
     // Discard$ True — only match when the move is from a discard action.
     // Mirrors Java ReplaceMoved.canReplace() Discard$ check.
-    if let Some(discard_param) = effect.params.get("Discard") {
-        let requires_discard = discard_param.eq_ignore_ascii_case("True");
+    if let Some(requires_discard) = effect.ir.discard {
         if requires_discard != is_discard {
             return false;
         }
     }
-    if let Some(dest) = effect.params.get(keys::DESTINATION) {
+    if let Some(dest) = effect.ir.destination_text.as_deref() {
         if !zone_matches(dest, destination) {
             return false;
         }
     }
-    if let Some(exclude) = effect.params.get("ExcludeDestination") {
+    if let Some(exclude) = effect.ir.exclude_destination_text.as_deref() {
         if zone_matches(exclude, destination) {
             return false;
         }
     }
-    if let Some(orig) = effect.params.get(keys::ORIGIN) {
+    if let Some(orig) = effect.ir.origin_text.as_deref() {
         if !zone_matches(orig, origin) {
             return false;
         }
     }
     let moving_card = &game.cards[moving_id.index()];
-    if let Some(valid) = effect.params.selector(keys::VALID_CARD) {
+    if let Some(valid) = effect.ir.valid_card_selector.as_ref() {
         if !effect.matches_compiled_valid_card(valid, moving_card, source_card) {
             return false;
         }
     }
     // FlashbackCast$ True — only match when the card was cast via Flashback.
-    if let Some(fb) = effect.params.get("FlashbackCast") {
-        if fb.eq_ignore_ascii_case("True") && !moving_card.cast_with_flashback {
+    if effect.ir.flashback_cast == Some(true) && !moving_card.cast_with_flashback {
             return false;
-        }
     }
-    if let Some(valid_lki) = effect.params.get("ValidLKI") {
+    if let Some(valid_lki) = effect.ir.valid_lki_text.as_deref() {
         if !effect.matches_valid_card(valid_lki, moving_card, source_card) {
             return false;
         }
@@ -107,9 +104,10 @@ pub fn execute(
     // Check NewDestination$ first (explicit redirect), then ReplaceWith$ (common alias).
     // Rest in Peace uses "ReplaceWith$ Exile", while other cards use "NewDestination$ Exile".
     let redirect = effect
-        .params
-        .get(keys::NEW_DESTINATION)
-        .or_else(|| effect.params.get(keys::REPLACE_WITH));
+        .ir
+        .new_destination_text
+        .as_deref()
+        .or(effect.replace_with());
 
     if let Some(new_dest) = redirect {
         let new_zone = match new_dest.trim() {
@@ -125,7 +123,7 @@ pub fn execute(
             if let ReplacementEvent::Moved { destination, .. } = event {
                 *destination = z;
             }
-            if z == ZoneType::Exile && effect.params.has("ExiledWithEffectSource") {
+            if z == ZoneType::Exile && effect.ir.exiled_with_effect_source {
                 let exile_source = game
                     .card(source_card_id)
                     .effect_source
@@ -137,7 +135,7 @@ pub fn execute(
         }
     }
     // If the redirect value wasn't a zone name, try executing it as an SVar spell ability.
-    if let Some(replace_with_key) = effect.params.get(keys::REPLACE_WITH) {
+    if let Some(replace_with_key) = effect.replace_with() {
         let succeeded = execute_replace_with(
             effect,
             replace_with_key,
@@ -151,7 +149,7 @@ pub fn execute(
             return ReplacementResult::NotReplaced;
         }
     }
-    if let Some(result) = effect.params.get("ReplacementResult") {
+    if let Some(result) = effect.ir.replacement_result.as_deref() {
         return match result {
             "Updated" => ReplacementResult::Updated,
             "Replaced" => ReplacementResult::Replaced,

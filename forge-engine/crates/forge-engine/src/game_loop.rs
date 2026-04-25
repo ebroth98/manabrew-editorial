@@ -420,8 +420,9 @@ impl GameLoop {
                 agents[takes_action.index()].snapshot_state(game, &self.mana_pools);
                 let card_name = game.card(source_id).card_name.clone();
                 let prompt = sa
-                    .params
-                    .get(keys::SPELL_DESCRIPTION)
+                    .ir
+                    .spell_description_text
+                    .as_deref()
                     .unwrap_or("Use opening hand effect?");
                 let accepted = agents[takes_action.index()].confirm_action(
                     takes_action,
@@ -439,7 +440,7 @@ impl GameLoop {
                     continue;
                 }
 
-                let becomes_starting_player = sa.params.has("BecomeStartingPlayer");
+                let becomes_starting_player = sa.ir.become_starting_player;
                 let entry = StackEntry {
                     id: 0,
                     spell_ability: sa,

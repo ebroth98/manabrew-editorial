@@ -6,7 +6,6 @@
 use crate::ability::api_type::ApiType;
 use crate::ability::spell_ability_effect::SpellAbilityEffect;
 use crate::ids::{CardId, PlayerId};
-use crate::parsing::keys;
 use crate::spellability::SpellAbility;
 
 use super::condition::{check_condition, check_condition_present};
@@ -300,7 +299,7 @@ pub fn resolve_effect(ctx: &mut EffectContext, sa: &SpellAbility) {
 
     // Handle Repeat$ — repeat the effect N times (for Multikicker/Replicate-like scaling).
     // Mirrors Java's AbilityUtils.handleRepeatParam().
-    let repeat_count = if let Some(repeat_val) = sa.params.get(keys::REPEAT) {
+    let repeat_count = if let Some(repeat_val) = sa.ir.repeat.as_deref() {
         match repeat_val {
             "KickerNum" => sa.kick_count as i32,
             _ => 1,
@@ -311,8 +310,9 @@ pub fn resolve_effect(ctx: &mut EffectContext, sa: &SpellAbility) {
 
     for _ in 0..repeat_count {
         if let Some(unless_cost) = sa
-            .params
-            .get(keys::UNLESS_COST)
+            .ir
+            .unless_cost
+            .as_deref()
             .map(|s: &str| s.trim())
             .filter(|s| !s.is_empty())
         {
@@ -375,5 +375,5 @@ pub fn resolve_effect_chain(ctx: &mut EffectContext, initial: SpellAbility) {
 }
 
 pub(crate) fn sub_ability_handled_internally(sa: &SpellAbility) -> bool {
-    sa.params.has(keys::UNLESS_COST)
+    sa.ir.unless_cost.is_some()
 }

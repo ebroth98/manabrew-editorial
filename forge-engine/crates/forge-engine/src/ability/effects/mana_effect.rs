@@ -44,14 +44,14 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
         None => return,
     };
 
-    let produced = match sa.params.get(keys::PRODUCED) {
+    let produced = match sa.produced() {
         Some(p) => p.to_string(),
         None => return,
     };
 
     // `Optional$` — activator confirms before producing (Java ManaEffect
     // optional-prompt branch).
-    if sa.params.is_true("Optional") {
+    if sa.ir.optional {
         let card_name = ctx.game.card(source_id).card_name.clone();
         if !ctx.agents[player.index()].confirm_action(
             player,
@@ -68,15 +68,14 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     // `Chooser$` — delegate the color / combo choice to a specific player
     // (e.g. Mirari's Wake: owner chooses mana type but opponent votes).
     let chooser = sa
-        .params
-        .get("Chooser")
+        .chooser()
         .and_then(|d| super::resolve_defined_player(d, player, ctx.game))
         .unwrap_or(player);
 
     // Read metadata params from the ability. Substitute "ChosenType" with
     // the source card's chosen type so the restriction stored on the Mana
     // can be checked without needing the source card later.
-    let restriction = sa.params.get_cloned(keys::RESTRICT_VALID).map(|r| {
+    let restriction = sa.ir.restrict_valid.clone().map(|r| {
         if r.contains("ChosenType") {
             let chosen = ctx
                 .game
@@ -89,15 +88,12 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
             r
         }
     });
-    let adds_no_counter = sa
-        .params
-        .get(keys::ADDS_NO_COUNTER)
-        .map_or(false, |v| v == "True");
-    let adds_keywords = sa.params.get_cloned(keys::ADDS_KEYWORDS);
-    let adds_keywords_valid = sa.params.get_cloned(keys::ADDS_KEYWORDS_VALID);
-    let adds_counters = sa.params.get_cloned(keys::ADDS_COUNTERS);
-    let adds_counters_valid = sa.params.get_cloned(keys::ADDS_COUNTERS_VALID);
-    let triggers_when_spent = sa.params.get_cloned(keys::TRIGGERS_WHEN_SPENT);
+    let adds_no_counter = sa.ir.adds_no_counter;
+    let adds_keywords = sa.ir.adds_keywords.clone();
+    let adds_keywords_valid = sa.ir.adds_keywords_valid.clone();
+    let adds_counters = sa.ir.adds_counters.clone();
+    let adds_counters_valid = sa.ir.adds_counters_valid.clone();
+    let triggers_when_spent = sa.ir.triggers_when_spent.clone();
 
     // Handle Special mana production types (mirrors Java handleSpecialMana)
     if produced.starts_with("Special") {

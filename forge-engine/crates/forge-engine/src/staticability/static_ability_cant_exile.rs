@@ -1,7 +1,6 @@
 use forge_foundation::ZoneType;
 
 use crate::card::{valid_filter, Card};
-use crate::parsing::keys;
 use crate::spellability::SpellAbility;
 use crate::staticability::StaticMode;
 
@@ -17,15 +16,18 @@ pub fn cant_exile(
             .iter()
             .filter(|sa| sa.mode == StaticMode::CantExile)
         {
-            if let Some(for_cost) = st_ab.params.get(keys::FOR_COST) {
-                if for_cost.eq_ignore_ascii_case("True") != is_cost {
+            if let Some(for_cost) = st_ab.ir.for_cost {
+                if for_cost != is_cost {
                     continue;
                 }
             }
-            if !matches_valid_card(st_ab.params.selector(keys::VALID_CARD), card, source) {
+            if !matches_valid_card(st_ab.ir.valid_card.as_ref(), card, source) {
                 continue;
             }
-            if !matches_valid_cause(st_ab.params.get(keys::VALID_CAUSE), cause) {
+            if !super::static_ability_cant_sacrifice::matches_valid_cause(
+                st_ab.ir.valid_cause_text.as_deref(),
+                cause,
+            ) {
                 continue;
             }
             return true;
@@ -41,13 +43,16 @@ pub fn apply_cant_exile_ability(
     cause: Option<&SpellAbility>,
     is_cost: bool,
 ) -> bool {
-    if let Some(for_cost) = st_ab.params.get(keys::FOR_COST) {
-        if for_cost.eq_ignore_ascii_case("True") != is_cost {
+    if let Some(for_cost) = st_ab.ir.for_cost {
+        if for_cost != is_cost {
             return false;
         }
     }
-    matches_valid_card(st_ab.params.selector(keys::VALID_CARD), card, source)
-        && matches_valid_cause(st_ab.params.get(keys::VALID_CAUSE), cause)
+    matches_valid_card(st_ab.ir.valid_card.as_ref(), card, source)
+        && super::static_ability_cant_sacrifice::matches_valid_cause(
+            st_ab.ir.valid_cause_text.as_deref(),
+            cause,
+        )
 }
 
 fn matches_valid_card(
@@ -56,46 +61,4 @@ fn matches_valid_card(
     source: &Card,
 ) -> bool {
     valid_filter::matches_valid_card_selector_opt(valid, card, source)
-}
-
-fn matches_valid_cause(valid: Option<&str>, cause: Option<&SpellAbility>) -> bool {
-    let Some(valid) = valid else {
-        return true;
-    };
-    let Some(cause) = cause else {
-        return false;
-    };
-
-    valid.split(',').any(|token| {
-        let token = token.trim();
-        if token.is_empty() {
-            return false;
-        }
-
-        let mut segments = token.split('.');
-        let head = segments.next().unwrap_or("");
-        let base_ok = if head.eq_ignore_ascii_case("SpellAbility") {
-            true
-        } else if head.eq_ignore_ascii_case("Spell") {
-            cause.is_spell
-        } else if head.eq_ignore_ascii_case("Ability") {
-            !cause.is_spell
-        } else {
-            false
-        };
-        if !base_ok {
-            return false;
-        }
-
-        for qualifier in segments {
-            let q = qualifier.trim();
-            if q.eq_ignore_ascii_case("EffectSource") && !cause.params.has(keys::EFFECT_SOURCE) {
-                return false;
-            }
-            if q.eq_ignore_ascii_case("!EffectSource") && cause.params.has(keys::EFFECT_SOURCE) {
-                return false;
-            }
-        }
-        true
-    })
 }

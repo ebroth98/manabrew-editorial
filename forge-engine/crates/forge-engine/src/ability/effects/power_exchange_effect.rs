@@ -56,7 +56,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
         return;
     }
 
-    let base_power = sa.params.get("BasePower").is_some();
+    let base_power = sa.ir.base_power;
     let p1 = if base_power {
         ctx.game.card(c1).base_power.unwrap_or(0)
     } else {
@@ -67,11 +67,8 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     } else {
         ctx.game.card(c2).power()
     };
-    let is_perpetual = sa
-        .params
-        .get("Duration")
-        .map(|d| d.eq_ignore_ascii_case("Perpetual"))
-        .unwrap_or(false);
+    let is_perpetual =
+        matches!(sa.ir.duration, Some(crate::spellability::AbilityDuration::Perpetual));
 
     if is_perpetual {
         let ts = ctx.game.next_effect_timestamp();

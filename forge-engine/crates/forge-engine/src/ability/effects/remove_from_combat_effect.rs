@@ -21,7 +21,7 @@ use crate::spellability::SpellAbility;
 #[forge_engine_macros::spell_effect(RemoveFromCombatEffect)]
 fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let target = sa.target_chosen.target_card.or_else(|| {
-        match sa.params.get(crate::parsing::keys::DEFINED) {
+        match sa.defined() {
             Some("Self") => sa.source,
             Some("ParentTarget") => ctx.parent_target_card,
             _ => None,

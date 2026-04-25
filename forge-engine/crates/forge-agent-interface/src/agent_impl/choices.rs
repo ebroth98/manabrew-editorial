@@ -53,10 +53,12 @@ fn ability_label<T: AgentTransport>(
 ) -> String {
     let source_name = ability.source.map(|source| card_name(agent, source));
     let description = ability
-        .params
-        .get("SpellDescription")
-        .or_else(|| ability.params.get("PrecostDesc"))
-        .or_else(|| ability.params.get("Description"))
+        .ir
+        .spell_description_text
+        .as_deref()
+        .or(ability.ir.precost_desc.as_deref())
+        .or(ability.ir.stack_description_text.as_deref())
+        .or(ability.ir.sp_desc_text.as_deref())
         .unwrap_or(ability.ability_text.as_str());
     match source_name {
         Some(name) if !description.is_empty() => description.replace("CARDNAME", &name),
@@ -1088,7 +1090,7 @@ pub(super) fn choose_single_replacement_effect<T: AgentTransport>(
     _player: PlayerId,
     descriptions: &[String],
 ) -> usize {
-    if descriptions.len() <= 1 {
+    if descriptions.is_empty() {
         return 0;
     }
     agent.send_prompt(AgentPromptInner::ChooseMode {

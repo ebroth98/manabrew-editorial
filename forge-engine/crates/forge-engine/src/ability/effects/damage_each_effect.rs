@@ -3,7 +3,6 @@ use forge_foundation::ZoneType;
 use super::{matches_valid_cards_for_sa, resolve_numeric_svar, EffectContext};
 use crate::card::card_damage_map::DamageTarget;
 use crate::ids::CardId;
-use crate::parsing::keys;
 use crate::spellability::SpellAbility;
 
 /// `SP$ EachDamage` — each matching creature/player deals damage.
@@ -22,15 +21,15 @@ use crate::spellability::SpellAbility;
 /// `DamageEachEffect` class extending `SpellAbilityEffect`.
 #[forge_engine_macros::spell_effect(DamageEachEffect)]
 fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
-    let use_damage_map = ctx.game.pending_damage_map.is_some() || sa.params.has("DamageMap");
-    if sa.params.has("DamageMap") {
+    let use_damage_map = ctx.game.pending_damage_map.is_some() || sa.ir.damage_map;
+    if sa.ir.damage_map {
         ctx.game.ensure_pending_damage_maps();
     }
 
-    let valid_cards = sa.params.selector(keys::VALID_CARDS);
+    let valid_cards = sa.ir.valid_cards_selector.as_ref();
     let fixed_dmg = sa
-        .params
-        .has("NumDmg")
+        .ir
+        .num_dmg_present
         .then(|| {
             let v = resolve_numeric_svar(ctx.game, sa, "NumDmg", -1);
             if v == -1 {

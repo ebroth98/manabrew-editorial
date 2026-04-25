@@ -20,7 +20,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let defined = sa.defined().unwrap_or("You");
     let choosers = resolve_defined_players(defined, controller, ctx.game);
 
-    let valid_players: Vec<_> = if let Some(choices) = sa.params.get(keys::CHOICES) {
+    let valid_players: Vec<_> = if let Some(choices) = sa.ir.choices.as_deref() {
         resolve_defined_players(choices, controller, ctx.game)
             .into_iter()
             .filter(|&pid| ctx.game.player(pid).is_alive())
@@ -48,7 +48,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
                 ctx.game.card_mut(source_id).set_chosen_player(
                     Some(chosen_pid),
                     Some(chooser),
-                    !sa.params.is_true(keys::SECRETLY),
+                    !sa.ir.secretly,
                 );
             }
         }

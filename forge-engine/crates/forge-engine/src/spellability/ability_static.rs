@@ -26,8 +26,7 @@ pub fn can_play(sa: &SpellAbility, game: &GameState) -> bool {
     let card = game.card(card_id);
 
     // For morph turn-face-up: card must be face-down on the battlefield
-    if sa.params.is_true("Morph") || sa.params.is_true("MorphUp") || sa.params.is_true("Megamorph")
-    {
+    if sa.ir.morph || sa.ir.morph_up || sa.ir.megamorph {
         // Must be on the battlefield
         if !game.card_is_in_zone(card_id, ZoneType::Battlefield) {
             return false;

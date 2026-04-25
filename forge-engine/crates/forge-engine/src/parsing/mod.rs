@@ -11,6 +11,7 @@ pub mod compare;
 pub mod keys;
 
 use std::collections::BTreeMap;
+use std::sync::{Mutex, OnceLock};
 
 use forge_foundation::ZoneType;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -109,6 +110,73 @@ impl CompiledSelector {
                 _ => None,
             })
     }
+}
+
+pub fn cached_compiled_selector(raw: &str) -> CompiledSelector {
+    static CACHE: OnceLock<Mutex<BTreeMap<String, CompiledSelector>>> = OnceLock::new();
+    let key = raw.trim().to_string();
+    if let Some(selector) = common_compiled_selector(&key) {
+        return selector;
+    }
+    let cache = CACHE.get_or_init(|| Mutex::new(BTreeMap::new()));
+    if let Some(selector) = cache
+        .lock()
+        .expect("selector cache poisoned")
+        .get(&key)
+        .cloned()
+    {
+        return selector;
+    }
+    let selector = CompiledSelector::parse(&key);
+    cache
+        .lock()
+        .expect("selector cache poisoned")
+        .insert(key, selector.clone());
+    selector
+}
+
+fn common_compiled_selector(raw: &str) -> Option<CompiledSelector> {
+    match raw {
+        "Card.Self" => {
+            static SELECTOR: OnceLock<CompiledSelector> = OnceLock::new();
+            Some(
+                SELECTOR
+                    .get_or_init(|| selector_from_parts("Card.Self", &["Card", "Self"]))
+                    .clone(),
+            )
+        }
+        "Creature.Self" => {
+            static SELECTOR: OnceLock<CompiledSelector> = OnceLock::new();
+            Some(
+                SELECTOR
+                    .get_or_init(|| selector_from_parts("Creature.Self", &["Creature", "Self"]))
+                    .clone(),
+            )
+        }
+        "You" => {
+            static SELECTOR: OnceLock<CompiledSelector> = OnceLock::new();
+            Some(
+                SELECTOR
+                    .get_or_init(|| selector_from_parts("You", &["You"]))
+                    .clone(),
+            )
+        }
+        _ => None,
+    }
+}
+
+fn selector_from_parts(raw: &str, parts: &[&str]) -> CompiledSelector {
+    CompiledSelector::from_alternatives(vec![CompiledSelectorAlternative {
+        raw: raw.to_string(),
+        parts: parts
+            .iter()
+            .enumerate()
+            .map(|(index, value)| CompiledSelectorPart {
+                separator: (index > 0).then_some('.'),
+                value: (*value).to_string(),
+            })
+            .collect(),
+    }])
 }
 
 impl Serialize for CompiledSelector {
@@ -613,6 +681,11 @@ impl Params {
     pub fn selector<K: AsRef<str>>(&self, key: K) -> Option<&CompiledSelector> {
         crate::perf::increment_params_lookup();
         let key = key.as_ref();
+        self.selector_untracked(key)
+    }
+
+    pub fn selector_untracked<K: AsRef<str>>(&self, key: K) -> Option<&CompiledSelector> {
+        let key = key.as_ref();
         match self.1.get(key) {
             Some(CompiledParamValue::Selector(selector))
             | Some(CompiledParamValue::Reference(selector)) => Some(selector),
@@ -629,9 +702,11 @@ impl Params {
     pub fn selector_cloned<K: AsRef<str>>(&self, key: K) -> Option<CompiledSelector> {
         crate::perf::increment_params_lookup();
         let key = key.as_ref();
-        self.selector(key)
-            .cloned()
-            .or_else(|| self.0.get(key).map(|value| CompiledSelector::parse(value)))
+        match self.1.get(key) {
+            Some(CompiledParamValue::Selector(selector))
+            | Some(CompiledParamValue::Reference(selector)) => Some(selector.clone()),
+            None => self.0.get(key).map(|value| cached_compiled_selector(value)),
+        }
     }
 
     pub fn selector_cloned_any(&self, keys: &[&str]) -> Option<CompiledSelector> {
@@ -816,15 +891,57 @@ fn lower_compiled_selector(alternatives: &[CompiledSelectorAlternative]) -> Sele
     Selector {
         alternatives: alternatives
             .iter()
-            .map(|alternative| SelectorAlt {
-                predicates: alternative
+            .map(|alternative| {
+                let mut predicates: Vec<_> = alternative
                     .parts
                     .iter()
                     .enumerate()
                     .map(|(idx, part)| lower_selector_part(&part.value, idx == 0))
-                    .collect(),
+                    .collect();
+                predicates.sort_by_key(selector_predicate_order);
+                SelectorAlt { predicates }
             })
             .collect(),
+    }
+}
+
+fn selector_predicate_order(predicate: &SelectorPredicate) -> u8 {
+    match predicate {
+        SelectorPredicate::Any
+        | SelectorPredicate::CardType(_)
+        | SelectorPredicate::CardSupertype(_)
+        | SelectorPredicate::Zone(_)
+        | SelectorPredicate::CardController(_)
+        | SelectorPredicate::CardOwner(_)
+        | SelectorPredicate::Tapped(_)
+        | SelectorPredicate::StartedTurnTapped(_)
+        | SelectorPredicate::Token(_)
+        | SelectorPredicate::Color(_)
+        | SelectorPredicate::Multicolor
+        | SelectorPredicate::Colorless
+        | SelectorPredicate::Commander
+        | SelectorPredicate::Legendary
+        | SelectorPredicate::Kicked => 0,
+        SelectorPredicate::CardIdentity(_) | SelectorPredicate::PlayerController(_) => 1,
+        SelectorPredicate::NumericComparison { .. }
+        | SelectorPredicate::NumericParity { .. }
+        | SelectorPredicate::CounterComparison { .. }
+        | SelectorPredicate::Keyword { .. }
+        | SelectorPredicate::CardState(_)
+        | SelectorPredicate::ChosenType
+        | SelectorPredicate::WasCast { .. }
+        | SelectorPredicate::SourceColor(_)
+        | SelectorPredicate::SourceColorless
+        | SelectorPredicate::ChosenColorSource => 2,
+        SelectorPredicate::Context(_) => 3,
+        SelectorPredicate::Relation(_) => 4,
+        SelectorPredicate::RememberedCard
+        | SelectorPredicate::EffectSource
+        | SelectorPredicate::DamagedBy
+        | SelectorPredicate::AttachedBy => 5,
+        SelectorPredicate::Not(inner) => selector_predicate_order(inner).saturating_add(1),
+        SelectorPredicate::Player => 6,
+        SelectorPredicate::Raw(_) => 7,
     }
 }
 
@@ -911,6 +1028,9 @@ fn lower_selector_part(value: &str, is_first_part: bool) -> SelectorPredicate {
         "permanent" => SelectorPredicate::CardType(CardSelectorType::Permanent),
         "noncreature" => SelectorPredicate::CardType(CardSelectorType::NonCreature),
         "nonland" => SelectorPredicate::CardType(CardSelectorType::NonLand),
+        "time lord" => {
+            SelectorPredicate::CardType(CardSelectorType::Subtype("Time Lord".to_string()))
+        }
         "white" => SelectorPredicate::Color(CardColorSelector::White),
         "blue" => SelectorPredicate::Color(CardColorSelector::Blue),
         "black" => SelectorPredicate::Color(CardColorSelector::Black),
@@ -968,6 +1088,9 @@ fn lower_selector_part(value: &str, is_first_part: bool) -> SelectorPredicate {
         "promisedgift" => SelectorPredicate::CardState(CardStateSelector::PromisedGift),
         "wascast" => SelectorPredicate::WasCast { by_you: false },
         "wascastbyyou" => SelectorPredicate::WasCast { by_you: true },
+        named if named.starts_with("named") => {
+            SelectorPredicate::CardType(CardSelectorType::Named(normalized[5..].trim().to_string()))
+        }
         cast_origin if cast_origin.starts_with("wascastfrom") => {
             lower_cast_origin_predicate(normalized)
                 .unwrap_or_else(|| SelectorPredicate::Raw(normalized.to_string()))

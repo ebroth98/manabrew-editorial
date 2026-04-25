@@ -22,7 +22,13 @@ pub struct TokenCreateParams {
 
 /// Parse common token creation parameters from a spell ability.
 pub fn parse_token_params(ctx: &EffectContext, sa: &SpellAbility) -> Option<TokenCreateParams> {
-    let amount = super::resolve_numeric_svar(ctx.game, sa, "TokenAmount", 1).max(0) as usize;
+    let amount = sa
+        .ir
+        .token_amount
+        .as_deref()
+        .map(|raw| super::resolve_numeric_value(ctx.game, sa, raw, 1))
+        .unwrap_or(1)
+        .max(0) as usize;
 
     let scripts: Vec<String> = sa
         .token_script()
@@ -69,7 +75,7 @@ pub fn add_pump_until(
     sa: &crate::spellability::SpellAbility,
 ) {
     // Read pump keywords from SA parameters
-    if let Some(kws) = sa.params.get("TokenKeywords") {
+    if let Some(kws) = sa.ir.token_keywords_text.as_deref() {
         for kw in kws.split(',').map(|s| s.trim()) {
             if !kw.is_empty() {
                 game.card_mut(token_id).granted_keywords.add(kw);
@@ -78,20 +84,14 @@ pub fn add_pump_until(
     }
 
     // Read pump power/toughness from SA parameters
-    if let Some(power_str) = sa.params.get("TokenPower") {
-        if let Ok(power) = power_str.parse::<i32>() {
-            let current_t = game.card(token_id).toughness();
-            let toughness = sa
-                .params
-                .get("TokenToughness")
-                .and_then(|s| s.parse::<i32>().ok())
-                .unwrap_or(current_t);
-            game.card_mut(token_id).add_new_pt(power, toughness);
-        }
+    if let Some(power) = sa.ir.token_power {
+        let current_t = game.card(token_id).toughness();
+        let toughness = sa.ir.token_toughness.unwrap_or(current_t);
+        game.card_mut(token_id).add_new_pt(power, toughness);
     }
 
     // If there's an "Until" parameter, mark the token for cleanup
-    if let Some(until) = sa.params.get("TokenUntil") {
+    if let Some(until) = sa.ir.token_until_text.as_deref() {
         game.card_mut(token_id).set_s_var("TokenUntil", until);
     }
 }
@@ -102,20 +102,20 @@ pub fn add_pump_until(
 /// Parses the token script, looks up the template, creates the specified
 /// number of copies, and places them on the battlefield.
 pub fn run(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
-    let params = match parse_token_params(ctx, sa) {
+    let token_spec = match parse_token_params(ctx, sa) {
         Some(p) => p,
         None => return,
     };
 
     let controller = sa.activating_player;
 
-    for script in &params.scripts {
+    for script in &token_spec.scripts {
         let template = match get_token_template(ctx.token_templates, script) {
             Some(t) => t.clone(),
             None => continue,
         };
 
-        for _ in 0..params.amount {
+        for _ in 0..token_spec.amount {
             let mut token = template.clone();
             token.owner = controller;
             token.controller = controller;

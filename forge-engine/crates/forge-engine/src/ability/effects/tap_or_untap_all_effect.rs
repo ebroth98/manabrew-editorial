@@ -30,16 +30,17 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     );
 
     let valid_filter = sa
-        .params
-        .get(crate::parsing::keys::VALID_CARDS)
+        .ir
+        .valid_cards_text
+        .as_deref()
         .unwrap_or("Permanent")
         .to_string();
-    let valid_selector = sa.params.selector(crate::parsing::keys::VALID_CARDS);
+    let valid_selector = sa.ir.valid_cards_selector.as_ref();
 
     let restrict_controllers: Option<Vec<PlayerId>> =
         if let Some(pid) = sa.target_chosen.target_player {
             Some(vec![pid])
-        } else if let Some(defined) = sa.params.get(crate::parsing::keys::DEFINED) {
+        } else if let Some(defined) = sa.ir.defined_text.as_deref() {
             Some(resolve_defined_players(defined, controller, ctx.game))
         } else {
             None

@@ -1,5 +1,4 @@
 use crate::game::GameState;
-use crate::parsing::keys;
 use crate::staticability::StaticMode;
 
 /// Check if day/night cannot change to the given value.
@@ -40,7 +39,7 @@ pub fn cant_change_day(game: &GameState, value: Option<bool>) -> bool {
 /// - `NewTime = "Night"` → returns false unless `value == true`
 /// - No `NewTime` param → returns true (no restriction)
 fn cant_change_day_check(st_ab: &crate::staticability::StaticAbility, value: bool) -> bool {
-    if let Some(new_time) = st_ab.params.get(keys::NEW_TIME) {
+    if let Some(new_time) = st_ab.ir.new_time_text.as_deref() {
         match new_time {
             "Day" => {
                 // Fall-through: Day case runs both checks.

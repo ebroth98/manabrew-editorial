@@ -15,15 +15,16 @@ use forge_foundation::{CardTypeLine, ColorSet, ManaCost, ZoneType};
 
 use crate::card::Card;
 use crate::ids::{CardId, PlayerId};
+use crate::replacement::replacement_effect::parse_replacement_effect;
 use crate::spellability::{build_spell_ability_from_host_card, SpellAbility};
 use crate::staticability::parse_static_ability;
 use crate::trigger::trigger::parse_trigger;
-use crate::replacement::replacement_effect::parse_replacement_effect;
 
 use super::{resolve_defined_player, resolve_defined_players, EffectContext};
 use crate::ability::ability_utils;
 use crate::ability::spell_ability_effect::{check_valid_duration, SpellAbilityEffect};
 use crate::parsing::keys;
+use crate::spellability::AbilityDuration;
 
 /// Stateless marker type — mirrors Java's `class EffectEffect extends SpellAbilityEffect`.
 pub struct EffectEffect;
@@ -39,7 +40,7 @@ fn resolve_impl(ctx: &mut EffectContext, sa: &SpellAbility) {
         return;
     };
 
-    let duration = sa.params.get(keys::DURATION);
+    let duration = sa.ir.duration.as_ref();
     if !check_valid_duration(ctx.game, sa, duration) {
         return;
     }
@@ -53,17 +54,17 @@ fn resolve_impl(ctx: &mut EffectContext, sa: &SpellAbility) {
         )
     };
 
-    let abilities = split_csv_param(sa, "Abilities");
-    let triggers = split_csv_param(sa, keys::TRIGGERS);
-    let static_refs = split_csv_param(sa, keys::STATIC_ABILITIES);
-    let replacement_refs = split_csv_param(sa, "ReplacementEffects");
+    let abilities = split_csv_value(sa.ir.abilities.as_deref());
+    let triggers = split_csv_value(sa.ir.triggers.as_deref());
+    let static_refs = split_csv_value(sa.ir.static_abilities.as_deref());
+    let replacement_refs = split_csv_value(sa.ir.replacement_effects.as_deref());
 
     let effect_name = resolve_effect_name(sa, &host_name);
-    let effect_owner_defined = sa.params.get(keys::EFFECT_OWNER).unwrap_or("You");
+    let effect_owner_defined = sa.ir.effect_owner_text.as_deref().unwrap_or("You");
     let mut owners = resolve_defined_players(effect_owner_defined, sa.activating_player, ctx.game);
 
     // `Unique$` — drop owners that already have an effect with this name in command.
-    if sa.params.has("Unique") {
+    if sa.ir.unique {
         owners.retain(|pid| !player_has_effect_named(ctx, *pid, &effect_name));
     }
     if owners.is_empty() {
@@ -86,17 +87,17 @@ fn resolve_impl(ctx: &mut EffectContext, sa: &SpellAbility) {
 
     // Early exit — Java skips effect creation when forget/exile triggers would fire
     // without any remembered objects to track.
-    let needs_nonempty_remember = sa.params.has(keys::FORGET_ON_MOVED)
-        || sa.params.has("ExileOnMoved")
-        || sa.params.has("ForgetOnPhasedIn")
-        || sa.params.has("ForgetCounter");
+    let needs_nonempty_remember = sa.ir.forget_on_moved_text.is_some()
+        || sa.ir.exile_on_moved
+        || sa.ir.forget_on_phased_in
+        || sa.ir.forget_counter;
     if needs_nonempty_remember
         && remember_cards.is_empty()
         && remember_players.is_empty()
         && remember_lki_cards.is_empty()
-        && (sa.params.has(keys::REMEMBER_OBJECTS)
-            || sa.params.has("RememberSpell")
-            || sa.params.has("RememberLKI"))
+        && (sa.ir.remember_objects.is_some()
+            || sa.ir.remember_spell.is_some()
+            || sa.ir.remember_lki.is_some())
     {
         return;
     }
@@ -117,8 +118,9 @@ fn resolve_impl(ctx: &mut EffectContext, sa: &SpellAbility) {
 
     // Imprint snapshot — `ImprintCards$` defines cards to imprint on the effect.
     let imprint_cards: Vec<CardId> = sa
-        .params
-        .get("ImprintCards")
+        .ir
+        .imprint_cards
+        .as_deref()
         .map(|defined| {
             ability_utils::get_defined_cards(
                 ctx.game,
@@ -133,8 +135,9 @@ fn resolve_impl(ctx: &mut EffectContext, sa: &SpellAbility) {
     let chosen_snapshot = ChosenSnapshot::capture(ctx.game.card(source_id));
 
     let chosen_number_override = sa
-        .params
-        .get("SetChosenNumber")
+        .ir
+        .set_chosen_number
+        .as_deref()
         .map(ability_utils::calculate_amount);
 
     for owner in owners {
@@ -172,8 +175,7 @@ fn resolve_impl(ctx: &mut EffectContext, sa: &SpellAbility) {
             }
         }
         for ability_text in &ability_svars {
-            let sa_granted =
-                build_spell_ability_from_host_card(&effect, ability_text, owner);
+            let sa_granted = build_spell_ability_from_host_card(&effect, ability_text, owner);
             effect.add_spell_ability(&sa_granted);
         }
 
@@ -204,7 +206,7 @@ fn resolve_impl(ctx: &mut EffectContext, sa: &SpellAbility) {
     // `AtEOT$ <action>` — register an end-of-turn delayed trigger targeting the
     // host card (the "effect source"), not the created effect-card. Mirrors
     // Java EffectEffect → registerDelayedTrigger with the host card as target.
-    if let Some(action) = sa.params.get(keys::AT_EOT) {
+    if let Some(action) = sa.ir.at_eot.as_deref() {
         crate::ability::spell_ability_effect::register_at_eot(
             ctx.trigger_handler,
             ctx.game,
@@ -215,9 +217,8 @@ fn resolve_impl(ctx: &mut EffectContext, sa: &SpellAbility) {
     }
 }
 
-fn split_csv_param(sa: &SpellAbility, key: &str) -> Vec<String> {
-    sa.params
-        .get(key)
+fn split_csv_value(value: Option<&str>) -> Vec<String> {
+    value
         .map(|v| {
             v.split(',')
                 .map(str::trim)
@@ -229,10 +230,14 @@ fn split_csv_param(sa: &SpellAbility, key: &str) -> Vec<String> {
 }
 
 fn resolve_effect_name(sa: &SpellAbility, host_name: &str) -> String {
-    if let Some(name) = sa.params.get_cloned(keys::NAME) {
-        return name;
+    if let Some(name) = sa.ir.name_text.as_deref() {
+        return name.to_string();
     }
-    let suffix = if sa.params.has("Boon") { "'s Boon" } else { "'s Effect" };
+    let suffix = if sa.ir.boon {
+        "'s Boon"
+    } else {
+        "'s Effect"
+    };
     format!("{}{}", host_name, suffix)
 }
 
@@ -260,7 +265,7 @@ fn populate_remember_lists(
     out_players: &mut Vec<PlayerId>,
     out_lki_cards: &mut Vec<Card>,
 ) {
-    if let Some(remember) = sa.params.get(keys::REMEMBER_OBJECTS) {
+    if let Some(remember) = sa.ir.remember_objects.as_deref() {
         for token in remember.split(',').map(str::trim).filter(|s| !s.is_empty()) {
             match token {
                 "Remembered" => {
@@ -268,20 +273,16 @@ fn populate_remember_lists(
                     out_players.extend(host_remembered_players.iter().copied());
                 }
                 "RememberedCard" => out_cards.extend(host_remembered_cards.iter().copied()),
-                "RememberedPlayer" => {
-                    out_players.extend(host_remembered_players.iter().copied())
-                }
+                "RememberedPlayer" => out_players.extend(host_remembered_players.iter().copied()),
                 "RememberedLKI" => {
                     for &cid in host_remembered_cards {
-                        out_lki_cards.push(
-                            crate::card::card_copy_service::get_lki_copy(ctx.game.card(cid)),
-                        );
+                        out_lki_cards.push(crate::card::card_copy_service::get_lki_copy(
+                            ctx.game.card(cid),
+                        ));
                     }
                 }
                 "Targeted" => {
-                    if let Some(cid) =
-                        sa.target_chosen.target_card.or(ctx.parent_target_card)
-                    {
+                    if let Some(cid) = sa.target_chosen.target_card.or(ctx.parent_target_card) {
                         out_cards.push(cid);
                     }
                 }
@@ -292,8 +293,7 @@ fn populate_remember_lists(
                 }
                 other => {
                     // Try player resolution first, then fall through to defined-cards.
-                    if let Some(pid) =
-                        resolve_defined_player(other, sa.activating_player, ctx.game)
+                    if let Some(pid) = resolve_defined_player(other, sa.activating_player, ctx.game)
                     {
                         out_players.push(pid);
                     } else {
@@ -313,10 +313,9 @@ fn populate_remember_lists(
     // `RememberSpell$` — Java resolves to spell abilities; Rust snapshots the
     // source cards of those stack entries (closest approximation given we don't
     // serialize `SpellAbility` onto effect cards).
-    if let Some(defined) = sa.params.get("RememberSpell") {
+    if let Some(defined) = sa.ir.remember_spell.as_deref() {
         for token in defined.split(',').map(str::trim).filter(|s| !s.is_empty()) {
-            let spells =
-                ability_utils::get_defined_spell_abilities(token, sa, ctx.game);
+            let spells = ability_utils::get_defined_spell_abilities(token, sa, ctx.game);
             for spell in spells {
                 if let Some(src) = spell.source {
                     out_cards.push(src);
@@ -328,7 +327,7 @@ fn populate_remember_lists(
     // `RememberLKI$` — snapshot the defined cards via CardCopyService so the
     // effect card sees them as they were at resolution time, even after those
     // cards leave their zone or have their stats modified.
-    if let Some(defined) = sa.params.get("RememberLKI") {
+    if let Some(defined) = sa.ir.remember_lki.as_deref() {
         for token in defined.split(',').map(str::trim).filter(|s| !s.is_empty()) {
             let cards = ability_utils::get_defined_cards(
                 ctx.game,
@@ -337,7 +336,9 @@ fn populate_remember_lists(
                 Some(sa.activating_player),
             );
             for cid in cards {
-                out_lki_cards.push(crate::card::card_copy_service::get_lki_copy(ctx.game.card(cid)));
+                out_lki_cards.push(crate::card::card_copy_service::get_lki_copy(
+                    ctx.game.card(cid),
+                ));
             }
         }
     }
@@ -418,10 +419,15 @@ pub enum EffectDuration {
     UntilHostLeavesPlayOrEOT,
 }
 
-fn apply_duration_flags(effect: &mut Card, duration: Option<&str>, source_id: CardId) {
-    let d = duration
-        .and_then(|s| s.parse::<EffectDuration>().ok())
-        .unwrap_or_default();
+fn apply_duration_flags(effect: &mut Card, duration: Option<&AbilityDuration>, source_id: CardId) {
+    let d = match duration {
+        Some(AbilityDuration::UntilHostLeavesPlay) => EffectDuration::UntilHostLeavesPlay,
+        Some(AbilityDuration::UntilHostLeavesPlayOrEot) => EffectDuration::UntilHostLeavesPlayOrEOT,
+        Some(AbilityDuration::Unsupported(raw)) if raw.eq_ignore_ascii_case("Permanent") => {
+            EffectDuration::Permanent
+        }
+        _ => EffectDuration::EndOfTurn,
+    };
     match d {
         EffectDuration::Permanent => {}
         EffectDuration::UntilHostLeavesPlay => {
@@ -438,35 +444,18 @@ fn apply_duration_flags(effect: &mut Card, duration: Option<&str>, source_id: Ca
 }
 
 fn apply_forget_on_moved_flags(effect: &mut Card, sa: &SpellAbility) {
-    if let Some(zone) = sa
-        .params
-        .get(keys::FORGET_ON_MOVED)
-        .and_then(|z| parse_zone_name(z))
-    {
+    if let Some(zone) = sa.ir.forget_on_moved_zone {
         effect.set_forget_on_moved_origin(Some(zone));
         // Java forget flow exiles effect when no remembered objects remain.
         effect.set_exile_when_no_remembered(true);
     }
 }
 
-fn parse_zone_name(s: &str) -> Option<ZoneType> {
-    match s.trim() {
-        "Battlefield" => Some(ZoneType::Battlefield),
-        "Graveyard" => Some(ZoneType::Graveyard),
-        "Hand" => Some(ZoneType::Hand),
-        "Library" => Some(ZoneType::Library),
-        "Exile" => Some(ZoneType::Exile),
-        "Stack" => Some(ZoneType::Stack),
-        "Command" => Some(ZoneType::Command),
-        _ => None,
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ability::spell_ability_effect::SpellAbilityEffect;
     use crate::ability::effects::EffectContext;
+    use crate::ability::spell_ability_effect::SpellAbilityEffect;
     use crate::agent::{PassAgent, PlayerAgent};
     use crate::card::Card;
     use crate::game::GameState;

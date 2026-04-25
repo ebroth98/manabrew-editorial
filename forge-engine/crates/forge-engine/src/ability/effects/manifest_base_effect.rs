@@ -21,8 +21,9 @@ pub struct ManifestParams {
 pub fn parse_manifest_params(ctx: &EffectContext, sa: &SpellAbility) -> ManifestParams {
     let amount = super::resolve_numeric_svar(ctx.game, sa, "Amount", 1).max(1) as usize;
     let from_library = sa
-        .params
-        .get("Defined")
+        .ir
+        .defined_text
+        .as_deref()
         .map_or(true, |d| d == "TopOfLibrary");
     ManifestParams {
         amount,
@@ -54,9 +55,9 @@ pub fn default_cloak_message() -> &'static str {
 /// Cloak grants the face-down card special turn-face-up abilities).
 pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility, is_cloak: bool) {
     let player = sa.activating_player;
-    let params = parse_manifest_params(ctx, sa);
+    let manifest = parse_manifest_params(ctx, sa);
 
-    for _ in 0..params.amount {
+    for _ in 0..manifest.amount {
         let library = ctx
             .game
             .cards_in_zone(forge_foundation::ZoneType::Library, player);

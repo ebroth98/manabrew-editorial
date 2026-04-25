@@ -2,14 +2,14 @@
 //! Ported from Java's ChangeSpeedEffect.
 
 use super::EffectContext;
-use crate::spellability::SpellAbility;
+use crate::spellability::{SpellAbility, SpellAbilityMode};
 
 /// Struct form of this effect so it can participate in the
 /// `SpellAbilityEffect` trait hierarchy — mirrors Java's
 /// `ChangeSpeedEffect` class extending `SpellAbilityEffect`.
 #[forge_engine_macros::spell_effect(ChangeSpeedEffect)]
 fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
-    let mode = sa.params.get("Mode").unwrap_or("Increase");
+    let mode = sa.ir.mode.as_ref().unwrap_or(&SpellAbilityMode::Increase);
     let players = if let Some(defined) = sa.defined() {
         crate::ability::ability_utils::resolve_defined_players_with_sa(
             defined,
@@ -27,7 +27,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
         if !ctx.game.player(player).is_alive() {
             continue;
         }
-        if mode.eq_ignore_ascii_case("Decrease") {
+        if matches!(mode, SpellAbilityMode::Decrease) {
             ctx.game
                 .decrease_player_speed(player, Some(ctx.trigger_handler));
         } else {

@@ -24,7 +24,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     if let Some(target) = sa.target_chosen.target_card {
         candidates.push(target);
     } else if let Some(source) = sa.source {
-        if sa.params.get(crate::parsing::keys::DEFINED) == Some("Self") {
+        if sa.defined() == Some("Self") {
             candidates.push(source);
         }
     }
@@ -33,7 +33,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
         if ctx.game.card(card_id).zone != ZoneType::Battlefield {
             continue;
         }
-        let should_tap = if sa.params.is_true(keys::TOGGLE) {
+        let should_tap = if sa.ir.toggle {
             !ctx.game.card(card_id).tapped
         } else {
             let prompt = format!("Tap or untap {}?", ctx.game.card(card_id).card_name);

@@ -27,29 +27,22 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let controller = sa.activating_player;
 
     let amount: usize = sa
-        .params
-        .get("Amount")
+        .ir
+        .amount
+        .as_deref()
         .and_then(|s| s.parse().ok())
         .unwrap_or(1);
 
-    let zone = sa
-        .params
-        .get("ChoiceZone")
-        .and_then(|s| parse_zone_type(s))
-        .unwrap_or(ZoneType::Battlefield);
+    let zone = sa.ir.choice_zone.unwrap_or(ZoneType::Battlefield);
 
     let filter = sa
-        .params
-        .get("Choices")
-        .map(|s| s.to_string())
+        .ir
+        .choices
+        .clone()
         .unwrap_or_else(|| "Card".to_string());
-    let filter_selector = sa.params.selector_cloned("Choices");
+    let filter_selector = sa.ir.choices_selector.clone();
 
-    let remember = sa
-        .params
-        .get("RememberChosen")
-        .map(|s| s.eq_ignore_ascii_case("True"))
-        .unwrap_or(false);
+    let remember = sa.ir.remember_chosen;
 
     // Collect valid cards in zone matching filter
     let mut valid = Vec::new();

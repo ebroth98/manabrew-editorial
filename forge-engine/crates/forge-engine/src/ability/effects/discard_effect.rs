@@ -12,41 +12,33 @@ use crate::spellability::SpellAbility;
 /// `DiscardEffect` class extending `SpellAbilityEffect`.
 #[forge_engine_macros::spell_effect(DiscardEffect)]
 fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
-    let num: usize = sa
-        .params
-        .as_usize(crate::parsing::keys::NUM_CARDS)
-        .unwrap_or(1);
+    let num = super::resolve_numeric_svar(ctx.game, sa, crate::parsing::keys::NUM_CARDS, 1)
+        .max(0) as usize;
     let mode = sa
-        .params
-        .get(crate::parsing::keys::MODE)
-        .map(|s| s.as_ref())
+        .ir
+        .mode_text
+        .as_deref()
         .unwrap_or("TgtChoose");
 
     // AnyNumber$ True — the discarder may pick 0..=hand.len cards (e.g.
     // Cavalier of Flame, Careful Study). Routed through a distinct agent
     // method so deterministic agents can sample a count + selection with the
     // same RNG trajectory Java uses via its AnyNumber chooser.
-    let any_number = sa
-        .params
-        .get("AnyNumber")
-        .map_or(false, |v| v.eq_ignore_ascii_case("True"));
+    let any_number = sa.ir.any_number;
 
     // Mode$ Random — discard at random (e.g. Hypnotic Specter).
     // Mirrors Java's DiscardEffect which calls Aggregates.random() bypassing the controller.
     // We route through the agent's choose_random_discard so deterministic agents can
     // use their seeded RNG for parity testing.
-    let is_random = sa
-        .params
-        .get(crate::parsing::keys::MODE)
-        .map_or(false, |m| m.eq_ignore_ascii_case("Random"));
+    let is_random = mode.eq_ignore_ascii_case("Random");
 
     for target_player in get_target_players(ctx.game, sa) {
         let mut hand: Vec<_> = ctx
             .game
             .cards_in_zone(ZoneType::Hand, target_player)
             .to_vec();
-        if let Some(valid_filter) = sa.params.get("DiscardValid") {
-            let valid_selector = sa.params.selector("DiscardValid");
+        if let Some(valid_filter) = sa.ir.discard_valid_text.as_deref() {
+            let valid_selector = sa.ir.discard_valid_selector.as_ref();
             hand.retain(|&card_id| {
                 super::matches_valid_cards_for_sa(
                     ctx.game,
@@ -67,7 +59,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
             "TgtChoose" | "YouChoose" | "RevealYouChoose" | "RevealTgtChoose"
         );
 
-        if sa.params.has(crate::parsing::keys::OPTIONAL) && !any_number && !chooser_style_optional {
+        if sa.ir.optional && !any_number && !chooser_style_optional {
             let source_name = sa.source.map(|cid| ctx.game.card(cid).card_name.as_str());
             let accepted = ctx.agents[target_player.index()].confirm_action(
                 target_player,
@@ -91,7 +83,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
                 0,
                 hand.len(),
             )
-        } else if sa.params.has(crate::parsing::keys::OPTIONAL) && chooser_style_optional {
+        } else if sa.ir.optional && chooser_style_optional {
             ctx.agents[target_player.index()].choose_discard_any_number(
                 target_player,
                 &hand,
@@ -105,10 +97,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
         // RememberDiscarded$ — source remembers each card actually discarded
         // so downstream SubAbility effects (e.g. Cavalier of Flame's
         // `NumCards$ Y` where Y = Remembered count) can compute amounts.
-        let remember_discarded = sa
-            .params
-            .get("RememberDiscarded")
-            .map_or(false, |v| v.eq_ignore_ascii_case("True"));
+        let remember_discarded = sa.ir.remember_discarded;
 
         let to_discard = if to_discard.len() > 1 {
             let reordered = ctx.agents[target_player.index()]

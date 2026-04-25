@@ -18,7 +18,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
 
     // Some Replace effects store values for their replacement:
     if let Some(source_id) = sa.source {
-        if let Some(val) = sa.params.get(crate::parsing::keys::REPLACE_WITH) {
+        if let Some(val) = sa.ir.replace_with_text.as_deref() {
             ctx.game
                 .card_mut(source_id)
                 .svars

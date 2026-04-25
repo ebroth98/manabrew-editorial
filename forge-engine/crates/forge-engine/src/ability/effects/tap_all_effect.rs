@@ -2,7 +2,6 @@ use forge_foundation::ZoneType;
 
 use super::{matches_valid_cards_for_sa, EffectContext};
 use crate::ids::CardId;
-use crate::parsing::keys;
 use crate::spellability::SpellAbility;
 
 /// `SP$ TapAll` — tap all matching permanents.
@@ -20,7 +19,7 @@ use crate::spellability::SpellAbility;
 /// `TapAllEffect` class extending `SpellAbilityEffect`.
 #[forge_engine_macros::spell_effect(TapAllEffect)]
 fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
-    let valid_cards = sa.params.selector(keys::VALID_CARDS);
+    let valid_cards = sa.ir.valid_cards_selector.as_ref();
 
     let player_ids = ctx.game.player_order.clone();
     let mut to_tap: Vec<CardId> = Vec::new();

@@ -7,7 +7,7 @@ use crate::card::valid_filter::matches_valid_card_selector_in_game;
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
 use crate::parsing::compare::compare_expr;
-use crate::parsing::CompiledSelector;
+use crate::parsing::{cached_compiled_selector, CompiledSelector};
 use crate::spellability::SpellAbility;
 use crate::zone::zone_type::smart_value_of as parse_zone_type;
 
@@ -15,9 +15,7 @@ fn eval_amount(game: &GameState, _source_id: CardId, sa: &SpellAbility, expr: &s
     if let Ok(value) = expr.trim().parse::<i32>() {
         return value;
     }
-    let mut sa = sa.clone();
-    sa.params.put("Amount".to_string(), expr.trim().to_string());
-    crate::svar::resolve_numeric_svar(game, &sa, "Amount", 0)
+    crate::svar::resolve_numeric_value(game, sa, expr.trim(), 0)
 }
 
 fn split_escaped_underscores(text: &str) -> Vec<String> {
@@ -61,7 +59,7 @@ fn count_type(
     card_type: &str,
     source_id: CardId,
 ) -> usize {
-    let selector = CompiledSelector::parse(card_type);
+    let selector = cached_compiled_selector(card_type);
     let source = game.card(source_id);
     cards
         .into_iter()
@@ -538,7 +536,7 @@ pub fn player_has_property(
             .attacked_players_this_turn
             .contains(&controller);
     } else if let Some(card_type) = property.strip_prefix("attackedYouCtrlTheirCurrentTurn_") {
-        let selector = CompiledSelector::parse(card_type);
+        let selector = cached_compiled_selector(card_type);
         return game
             .cards_in_zone(ZoneType::Battlefield, controller)
             .iter()

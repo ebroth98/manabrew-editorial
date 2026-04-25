@@ -27,7 +27,7 @@ pub fn can_replace(
         ReplacementEvent::RollPlanarDice { player } => *player,
         _ => return false,
     };
-    if let Some(valid) = effect.params.selector(keys::VALID_PLAYER) {
+    if let Some(valid) = effect.ir.valid_player_selector.as_ref() {
         if !effect.matches_compiled_valid_player(valid, player, source_card) {
             return false;
         }
@@ -42,13 +42,7 @@ pub fn execute(
     _game: &GameState,
     _source_card_id: CardId,
 ) -> ReplacementResult {
-    if effect
-        .params
-        .get(keys::PREVENT)
-        .map(|s| s == "True")
-        .unwrap_or(false)
-        || effect.params.has(keys::SKIP)
-    {
+    if effect.prevents() || effect.has_skip() {
         return ReplacementResult::Skipped;
     }
     ReplacementResult::Replaced

@@ -21,11 +21,11 @@ use crate::spellability::SpellAbility;
 fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let controller = sa.activating_player;
     let choices_filter = sa
-        .params
-        .get("Choices")
-        .map(|s| s.to_string())
+        .ir
+        .choices
+        .clone()
         .unwrap_or_else(|| "Permanent".to_string());
-    let choices_selector = sa.params.selector("Choices");
+    let choices_selector = sa.ir.choices_selector.as_ref();
 
     let player_ids = ctx.game.player_order.clone();
     let mut valid: Vec<CardId> = Vec::new();

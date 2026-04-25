@@ -1,5 +1,4 @@
 use crate::card::{valid_filter, Card};
-use crate::parsing::keys;
 use crate::staticability::StaticMode;
 
 pub fn cant_crew(cards: &[Card], card: &Card) -> bool {
@@ -25,9 +24,5 @@ pub fn apply_cant_crew(
     card: &Card,
     source: &Card,
 ) -> bool {
-    valid_filter::matches_valid_card_selector_opt(
-        st_ab.params.selector(keys::VALID_CARD),
-        card,
-        source,
-    )
+    valid_filter::matches_valid_card_selector_opt(st_ab.ir.valid_card.as_ref(), card, source)
 }

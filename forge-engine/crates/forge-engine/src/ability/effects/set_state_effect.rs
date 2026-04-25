@@ -3,7 +3,7 @@ use crate::ids::CardId;
 use crate::parsing::keys;
 use crate::replacement::replacement_handler::{apply_replacements, ReplacementEvent};
 use crate::replacement::ReplacementResult;
-use crate::spellability::SpellAbility;
+use crate::spellability::{SpellAbility, SpellAbilityMode};
 
 /// Mirrors Java's `SetStateEffect.java`.
 ///
@@ -18,7 +18,7 @@ use crate::spellability::SpellAbility;
 /// `SetStateEffect` class extending `SpellAbilityEffect`.
 #[forge_engine_macros::spell_effect(SetStateEffect)]
 fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
-    let mode = sa.params.get(keys::MODE).unwrap_or("");
+    let mode = sa.ir.mode.as_ref();
 
     let source_id = match sa.source {
         Some(id) => id,
@@ -26,20 +26,14 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     };
 
     match mode {
-        "Transform" => {
+        Some(SpellAbilityMode::Transform) => {
             // Evaluate optional condition.
-            if let Some(cond_defined) = sa.params.get(keys::CONDITION_DEFINED) {
-                if cond_defined.eq_ignore_ascii_case("Remembered") {
-                    let cond_present = sa
-                        .params
-                        .get(keys::CONDITION_PRESENT)
-                        .map(|s| s.to_string())
-                        .unwrap_or_default();
-                    let cond_compare = sa
-                        .params
-                        .get(keys::CONDITION_COMPARE)
-                        .map(|s| s.to_string())
-                        .unwrap_or_default();
+            if let Some(cond_defined) = sa.ir.condition_defined.as_ref() {
+                if cond_defined.refs.first().is_some_and(|defined| {
+                    matches!(defined, crate::ability::ability_ir::DefinedRef::Remembered)
+                }) {
+                    let cond_present = sa.ir.condition_present.clone().unwrap_or_default();
+                    let cond_compare = sa.ir.condition_compare.clone().unwrap_or_default();
 
                     let remembered: Vec<CardId> = ctx.game.card(source_id).remembered_cards.clone();
                     let match_count = remembered
@@ -78,12 +72,12 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
             // Re-scan active triggers so the new face's trigger list takes effect.
             ctx.trigger_handler.reset_active_triggers(ctx.game);
         }
-        "Flip" => {
+        Some(SpellAbilityMode::Flip) => {
             // Toggle the flipped state.
             let card = ctx.game.card_mut(source_id);
             card.set_flipped(!card.flipped);
         }
-        "TurnFaceUp" => {
+        Some(SpellAbilityMode::TurnFaceUp) => {
             // Run TurnFaceUp replacement effects before turning face up.
             let mut faceup_event = ReplacementEvent::TurnFaceUp { card: source_id };
             let faceup_result = apply_replacements(ctx.game, &mut faceup_event);
@@ -122,7 +116,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
                 ctx.trigger_handler.reset_active_triggers(ctx.game);
             }
         }
-        "TurnFaceDown" => {
+        Some(SpellAbilityMode::TurnFaceDown) => {
             let card = ctx.game.card_mut(source_id);
             if !card.face_down {
                 card.set_face_down(true);
@@ -131,7 +125,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
         _ => {
             let err = crate::ability::IllegalAbilityException::new(format!(
                 "Unknown SetState mode: {:?}",
-                mode
+                mode.map(ToString::to_string)
             ));
             eprintln!("{}", err);
         }

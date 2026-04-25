@@ -25,7 +25,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
         if ctx.game.card(card_id).zone != ZoneType::Battlefield {
             continue;
         }
-        if sa.params.has(keys::OPTIONAL) {
+        if sa.ir.optional_present {
             let card_name = ctx.game.card(card_id).card_name.clone();
             let accepted = ctx.agents[sa.activating_player.index()].confirm_action(
                 sa.activating_player,

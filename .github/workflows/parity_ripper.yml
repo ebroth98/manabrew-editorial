@@ -63,6 +63,6 @@ jobs:
       - name: Run parity regression (${{ matrix.name }})
         run: |
           timeout --signal=TERM --kill-after=30s 10m \
-            cargo run -p forge-parity --bin forge-parity -- \
+            cargo run --release -p forge-parity --bin forge-parity -- \
               ${{ matrix.args }} \
               --java-jar forge/forge-harness/target/forge-harness-jar-with-dependencies.jar

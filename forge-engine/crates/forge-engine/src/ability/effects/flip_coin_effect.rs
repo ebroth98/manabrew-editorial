@@ -20,11 +20,7 @@ use crate::spellability::{build_spell_ability, SpellAbility};
 #[forge_engine_macros::spell_effect(FlipCoinEffect)]
 fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let controller = sa.activating_player;
-    let no_call = sa
-        .params
-        .get("NoCall")
-        .map(|s| s.eq_ignore_ascii_case("True"))
-        .unwrap_or(false);
+    let no_call = sa.ir.no_call;
 
     // Flip the coin (random)
     let is_heads = ctx.rng.next_int(2) == 0;
@@ -41,16 +37,8 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
         } else {
             "TailsSubAbility"
         };
-        if let Some(sub_svar) = sa.params.get(sub_key) {
-            if let Some(sub_text) = ctx
-                .game
-                .card(source_id)
-                .get_s_var(sub_svar)
-                .map(str::to_string)
-            {
-                let sub_sa = build_spell_ability(ctx.game, source_id, &sub_text, controller);
-                resolve_sub_chain(ctx, sub_sa);
-            }
+        if let Some(sub_sa) = sa.get_additional_ability(sub_key).cloned() {
+            resolve_sub_chain(ctx, sub_sa);
         }
     } else {
         // Call mode: player calls heads/tails
@@ -70,16 +58,8 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
         } else {
             "LoseSubAbility"
         };
-        if let Some(sub_svar) = sa.params.get(sub_key) {
-            if let Some(sub_text) = ctx
-                .game
-                .card(source_id)
-                .get_s_var(sub_svar)
-                .map(str::to_string)
-            {
-                let sub_sa = build_spell_ability(ctx.game, source_id, &sub_text, controller);
-                resolve_sub_chain(ctx, sub_sa);
-            }
+        if let Some(sub_sa) = sa.get_additional_ability(sub_key).cloned() {
+            resolve_sub_chain(ctx, sub_sa);
         }
     }
 }
@@ -96,11 +76,7 @@ pub fn flip_coins(
     sa: &SpellAbility,
     amount: i32,
 ) -> i32 {
-    let flip_until_lose = sa
-        .params
-        .get("FlipUntilYouLose")
-        .map(|s| s.eq_ignore_ascii_case("True"))
-        .unwrap_or(false);
+    let flip_until_lose = sa.ir.flip_until_you_lose;
 
     // Get flip multiplier (Krark's Thumb: "If you would flip a coin, instead
     // flip two coins and ignore one.")

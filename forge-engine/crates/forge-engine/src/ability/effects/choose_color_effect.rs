@@ -16,14 +16,10 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     };
 
     let controller = sa.activating_player;
-    let defined = sa
-        .params
-        .get(keys::DEFINED)
-        .map(|s| s.to_string())
-        .unwrap_or_else(|| "You".to_string());
+    let defined = sa.defined().unwrap_or("You").to_string();
     let players = resolve_defined_players(&defined, controller, ctx.game);
 
-    let mut valid_colors: Vec<String> = if let Some(choices) = sa.params.get(keys::CHOICES) {
+    let mut valid_colors: Vec<String> = if let Some(choices) = sa.ir.choices.as_deref() {
         choices
             .split(',')
             .map(|s| s.trim().to_string())
@@ -39,7 +35,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
         ]
     };
 
-    if let Some(exclude) = sa.params.get("Exclude") {
+    if let Some(exclude) = sa.ir.exclude.as_deref() {
         for excluded in exclude.split(',').map(|s| s.trim()) {
             valid_colors.retain(|c| !c.eq_ignore_ascii_case(excluded));
         }
@@ -49,16 +45,16 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
         return;
     }
 
-    let count_min = if sa.params.has("UpTo") {
+    let count_min = if sa.ir.up_to {
         0
-    } else if sa.params.has("TwoColors") {
+    } else if sa.ir.two_colors {
         2
     } else {
         1
     };
-    let count_max = if sa.params.has("TwoColors") {
+    let count_max = if sa.ir.two_colors {
         2
-    } else if sa.params.has("OrColors") {
+    } else if sa.ir.or_colors {
         valid_colors.len()
     } else {
         1

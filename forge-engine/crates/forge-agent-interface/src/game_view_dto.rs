@@ -356,11 +356,11 @@ pub fn targeting_intent_of(sa: &SpellAbility) -> TargetingIntent {
 
 /// Distinguish Exile vs Bounce vs generic Hostile for ChangeZone effects.
 fn classify_change_zone(sa: &SpellAbility) -> TargetingIntent {
-    match sa.params.get("Destination").unwrap_or("") {
-        "Exile" => TargetingIntent::Exile,
-        "Hand" | "Library" => TargetingIntent::Bounce,
-        "Graveyard" => TargetingIntent::Destroy,
-        "Battlefield" => TargetingIntent::Friendly,
+    match sa.ir.destination_zone {
+        Some(ZoneType::Exile) => TargetingIntent::Exile,
+        Some(ZoneType::Hand) | Some(ZoneType::Library) => TargetingIntent::Bounce,
+        Some(ZoneType::Graveyard) => TargetingIntent::Destroy,
+        Some(ZoneType::Battlefield) => TargetingIntent::Friendly,
         _ => TargetingIntent::Hostile,
     }
 }
@@ -369,11 +369,17 @@ fn classify_change_zone(sa: &SpellAbility) -> TargetingIntent {
 /// the counter type. Default to Buff since most targeted put-counter
 /// effects place positive counters.
 fn classify_put_counter(sa: &SpellAbility) -> TargetingIntent {
-    let counter_type = sa.params.get("CounterType").unwrap_or("");
-    if counter_type.starts_with("M1M1") || counter_type.contains("-1/-1") {
-        TargetingIntent::Debuff
-    } else {
-        TargetingIntent::Buff
+    match sa.ir.counter_type.as_ref() {
+        Some(forge_engine_core::card::CounterType::M1M1) => TargetingIntent::Debuff,
+        Some(_) => TargetingIntent::Buff,
+        None => {
+            let counter_type = sa.ir.counter_type_text.as_deref().unwrap_or("");
+            if counter_type.starts_with("M1M1") || counter_type.contains("-1/-1") {
+                TargetingIntent::Debuff
+            } else {
+                TargetingIntent::Buff
+            }
+        }
     }
 }
 

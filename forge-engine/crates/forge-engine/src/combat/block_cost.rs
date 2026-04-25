@@ -29,7 +29,7 @@ pub fn get_block_cost(cards: &[Card], blocker: &Card, _attacker: &Card) -> i32 {
 
             // Check ValidCard$ matches the blocker
             if !valid_filter::matches_valid_card_selector_opt(
-                sa.params.selector(keys::VALID_CARD),
+                sa.ir.valid_card.as_ref(),
                 blocker,
                 source,
             ) {
@@ -37,7 +37,7 @@ pub fn get_block_cost(cards: &[Card], blocker: &Card, _attacker: &Card) -> i32 {
             }
 
             // Parse Cost$ parameter as generic mana amount
-            if let Some(cost_str) = sa.params.get(keys::COST) {
+            if let Some(cost_str) = sa.ir.cost.as_deref() {
                 if let Ok(cost) = cost_str.trim().parse::<i32>() {
                     total_cost += cost;
                 }

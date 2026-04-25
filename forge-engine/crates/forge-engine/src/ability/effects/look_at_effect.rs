@@ -1,6 +1,6 @@
 use forge_foundation::ZoneType;
 
-use super::{parse_zone_type, resolve_defined_player, resolve_numeric_svar, EffectContext};
+use super::{resolve_defined_player, resolve_numeric_svar, EffectContext};
 use crate::agent::GameLogEvent;
 use crate::spellability::SpellAbility;
 
@@ -15,7 +15,7 @@ use crate::spellability::SpellAbility;
 /// `LookAtEffect` class extending `SpellAbilityEffect`.
 #[forge_engine_macros::spell_effect(LookAtEffect)]
 fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
-    let num = if sa.params.has("NumCards") {
+    let num = if sa.ir.num_cards_text.is_some() {
         resolve_numeric_svar(ctx.game, sa, "NumCards", 1)
     } else {
         resolve_numeric_svar(ctx.game, sa, "ScryNum", 1)
@@ -23,19 +23,14 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     .max(0) as usize;
 
     let source_zone = sa
-        .params
-        .get("SourceZone")
-        .and_then(|s| parse_zone_type(s))
+        .ir
+        .source_zone
         .unwrap_or(ZoneType::Library);
 
     let look_player = sa
         .target_chosen
         .target_player
-        .or_else(|| {
-            sa.params
-                .get("Defined")
-                .and_then(|d| resolve_defined_player(d, sa.activating_player, ctx.game))
-        })
+        .or_else(|| sa.defined().and_then(|d| resolve_defined_player(d, sa.activating_player, ctx.game)))
         .unwrap_or(sa.activating_player);
 
     let zone_cards = ctx.game.cards_in_zone(source_zone, look_player).to_vec();

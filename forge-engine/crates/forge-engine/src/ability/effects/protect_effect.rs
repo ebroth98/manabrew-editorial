@@ -12,7 +12,7 @@ use crate::spellability::SpellAbility;
 /// implemented here (no `CardType::all()` enumerator). Everything else is a
 /// comma-separated list.
 pub fn get_protection_list(sa: &SpellAbility) -> Vec<String> {
-    let gains = sa.params.get(crate::parsing::keys::GAINS).unwrap_or("");
+    let gains = sa.ir.gains.as_deref().unwrap_or("");
     if gains != "Choice" && !gains.contains("chosen color") {
         return gains
             .split(',')
@@ -22,7 +22,7 @@ pub fn get_protection_list(sa: &SpellAbility) -> Vec<String> {
     }
 
     let mut out = Vec::new();
-    let choices = sa.params.get(crate::parsing::keys::CHOICES).unwrap_or("");
+    let choices = sa.ir.choices.as_deref().unwrap_or("");
     let mut choices_mut = choices.to_string();
     if choices_mut.contains("AnyColor") {
         out.extend(
@@ -79,18 +79,14 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
 
     // Determine target
     let target = sa.target_chosen.target_card.or_else(|| {
-        match sa.params.get(crate::parsing::keys::DEFINED) {
+        match sa.defined() {
             Some("Self") => sa.source,
             Some("ParentTarget") => ctx.parent_target_card,
             _ => sa.source,
         }
     });
 
-    let gains = sa
-        .params
-        .get(crate::parsing::keys::GAINS)
-        .unwrap_or("")
-        .to_string();
+    let gains = sa.ir.gains.clone().unwrap_or_default();
 
     // Mirrors Java ProtectEffect: `isChoice = sa.getParam("Gains").contains("Choice")`
     // Handles both `Gains$ Choice` (Gods Willing) and `Gains$ Protection from chosen color`.

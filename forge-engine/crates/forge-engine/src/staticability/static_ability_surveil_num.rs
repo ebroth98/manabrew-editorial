@@ -1,7 +1,6 @@
 use crate::card::valid_filter;
 use crate::game::GameState;
 use crate::ids::PlayerId;
-use crate::parsing::keys;
 use crate::staticability::StaticMode;
 
 /// Total surveil modifier for a player from all active SurveilNum statics.
@@ -35,7 +34,7 @@ fn get_surveil_mod(
 ) -> i32 {
     // ValidPlayer$
     if !valid_filter::matches_valid_player_selector_opt(
-        st_ab.params.selector(keys::VALID_PLAYER),
+        st_ab.ir.valid_player.as_ref(),
         player,
         source_controller,
     ) {
@@ -45,15 +44,11 @@ fn get_surveil_mod(
     // Optional$ — in Java, prompts the player for confirmation.
     // The engine doesn't yet have a confirm callback, so we auto-accept.
     // TODO: implement player confirmation for optional surveil modifier.
-    if st_ab.params.has(keys::OPTIONAL) {
+    if st_ab.ir.optional {
         // Java: if (!p.getController().confirmStaticApplication(
         //     stAb.getHostCard(), null, stAb.toString() + "?", null)) return 0;
     }
 
     // Num$
-    st_ab
-        .params
-        .get(keys::NUM)
-        .and_then(|s| s.parse::<i32>().ok())
-        .unwrap_or(0)
+    st_ab.ir.num_value.unwrap_or(0)
 }

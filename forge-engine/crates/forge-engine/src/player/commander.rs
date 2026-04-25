@@ -195,8 +195,12 @@ mod tests {
         let replacements = &game.card(effect_id).replacement_effects;
         assert_eq!(replacements.len(), 1);
         for replacement in replacements {
-            assert_eq!(replacement.params.get("Optional"), Some("True"));
-            assert_eq!(replacement.params.get("OptionalDecider"), Some("You"));
+            let crate::replacement::replacement_effect::ReplacementEffect {
+                params: raw_params,
+                ..
+            } = replacement;
+            assert_eq!(raw_params.get("Optional"), Some("True"));
+            assert_eq!(raw_params.get("OptionalDecider"), Some("You"));
         }
     }
 }

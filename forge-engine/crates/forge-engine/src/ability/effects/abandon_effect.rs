@@ -33,7 +33,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
         }
     }
 
-    if sa.params.get("RememberAbandoned").is_some() {
+    if sa.ir.remember_abandoned {
         ctx.game.card_mut(source_id).add_remembered(source_id);
     }
 

@@ -17,15 +17,15 @@ pub fn cant_sacrifice(
             .iter()
             .filter(|sa| sa.mode == StaticMode::CantSacrifice)
         {
-            if let Some(for_cost) = st_ab.params.get(keys::FOR_COST) {
-                if for_cost.eq_ignore_ascii_case("True") != is_cost {
+            if let Some(for_cost) = st_ab.ir.for_cost {
+                if for_cost != is_cost {
                     continue;
                 }
             }
-            if !matches_valid_card(st_ab.params.selector(keys::VALID_CARD), card, source) {
+            if !matches_valid_card(st_ab.ir.valid_card.as_ref(), card, source) {
                 continue;
             }
-            if !matches_valid_cause(st_ab.params.get(keys::VALID_CAUSE), cause) {
+            if !matches_valid_cause(st_ab.ir.valid_cause_text.as_deref(), cause) {
                 continue;
             }
             return true;
@@ -41,13 +41,13 @@ pub fn apply_cant_sacrifice_ability(
     cause: Option<&SpellAbility>,
     is_cost: bool,
 ) -> bool {
-    if let Some(for_cost) = st_ab.params.get(keys::FOR_COST) {
-        if for_cost.eq_ignore_ascii_case("True") != is_cost {
+    if let Some(for_cost) = st_ab.ir.for_cost {
+        if for_cost != is_cost {
             return false;
         }
     }
-    matches_valid_card(st_ab.params.selector(keys::VALID_CARD), card, source)
-        && matches_valid_cause(st_ab.params.get(keys::VALID_CAUSE), cause)
+    matches_valid_card(st_ab.ir.valid_card.as_ref(), card, source)
+        && matches_valid_cause(st_ab.ir.valid_cause_text.as_deref(), cause)
 }
 
 fn matches_valid_card(
@@ -93,10 +93,10 @@ pub(crate) fn matches_valid_cause(valid: Option<&str>, cause: Option<&SpellAbili
 
         for qualifier in segments {
             let q = qualifier.trim();
-            if q.eq_ignore_ascii_case("EffectSource") && !cause.params.has(keys::EFFECT_SOURCE) {
+            if q.eq_ignore_ascii_case("EffectSource") && !cause.ir.effect_source {
                 return false;
             }
-            if q.eq_ignore_ascii_case("!EffectSource") && cause.params.has(keys::EFFECT_SOURCE) {
+            if q.eq_ignore_ascii_case("!EffectSource") && cause.ir.effect_source {
                 return false;
             }
         }

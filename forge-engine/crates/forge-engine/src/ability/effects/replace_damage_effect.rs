@@ -13,7 +13,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     // Damage replacement is handled by the replacement handler system.
     // This effect registers or configures the replacement.
     if let Some(source_id) = sa.source {
-        if let Some(val) = sa.params.get(crate::parsing::keys::DAMAGE_AMOUNT) {
+        if let Some(val) = sa.ir.damage_amount_text.as_deref() {
             ctx.game
                 .card_mut(source_id)
                 .set_s_var("ReplaceDamageAmount", val);

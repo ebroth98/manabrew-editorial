@@ -1,5 +1,4 @@
 use crate::card::{valid_filter, Card};
-use crate::parsing::keys;
 use crate::staticability::StaticMode;
 
 pub fn cant_phase_in(cards: &[Card], card: &Card) -> bool {
@@ -18,7 +17,7 @@ fn cant_phase(cards: &[Card], card: &Card, mode: StaticMode) -> bool {
             .filter(|sa| sa.mode == mode && sa.zones_check(source.zone))
         {
             if valid_filter::matches_valid_card_selector_opt(
-                st_ab.params.selector(keys::VALID_CARD),
+                st_ab.ir.valid_card.as_ref(),
                 card,
                 source,
             ) {

@@ -1,4 +1,5 @@
 use super::{resolve_defined_players, EffectContext};
+use crate::ability::ability_ir::DefinedRef;
 use crate::parsing::keys;
 use crate::replacement::replacement_handler::{apply_replacements, ReplacementEvent};
 use crate::replacement::ReplacementResult;
@@ -12,9 +13,12 @@ use crate::spellability::SpellAbility;
 fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let controller = sa.activating_player;
     let defined = sa
-        .params
-        .get(crate::parsing::keys::DEFINED)
-        .unwrap_or("You");
+        .ir
+        .defined
+        .as_ref()
+        .and_then(|defined| defined.refs.first())
+        .unwrap_or(&DefinedRef::You)
+        .as_legacy_str();
 
     let mut drained_total = 0i32;
     // Collect drained mana colors for DrainMana transfer
@@ -48,14 +52,14 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
         pool.reset_pool();
     }
 
-    if sa.params.is_true(keys::DRAIN_MANA) && drained_total > 0 {
+    if sa.ir.drain_mana && drained_total > 0 {
         // Preserve original colors (mirrors Java behavior)
         for &color in &drained_mana {
             ctx.mana_pools[controller.index()].add_mana(crate::mana::Mana::simple(color));
         }
     }
 
-    if sa.params.is_true(keys::REMEMBER_DRAINED_MANA) {
+    if sa.ir.remember_drained_mana {
         if let Some(source_id) = sa.source {
             ctx.game
                 .card_mut(source_id)

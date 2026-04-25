@@ -8,8 +8,9 @@ use crate::ids::CardId;
 use crate::parsing::keys;
 
 use super::replacement_effect::ReplacementEffect;
+use super::replacement_effect::resolve_replace_with_chain;
 use super::replacement_handler::{
-    execute_replace_effect_chain, execute_replace_with_numeric_update, resolve_replace_value,
+    execute_replace_effect_ir, execute_replace_with_numeric_update, resolve_replace_value,
     ReplacementEvent,
 };
 use super::replacement_result::ReplacementResult;
@@ -30,12 +31,12 @@ pub fn can_replace(
         ReplacementEvent::RollDice { player, sides, .. } => (*player, *sides),
         _ => return false,
     };
-    if let Some(valid) = effect.params.selector(keys::VALID_PLAYER) {
+    if let Some(valid) = effect.ir.valid_player_selector.as_ref() {
         if !effect.matches_compiled_valid_player(valid, player, source_card) {
             return false;
         }
     }
-    if let Some(valid_sides) = effect.params.get(keys::VALID_SIDES) {
+    if let Some(valid_sides) = effect.ir.valid_sides_text.as_deref() {
         let rhs = resolve_replace_value(valid_sides, _game, source_card.id, event)
             .or_else(|| valid_sides.parse::<i32>().ok())
             .unwrap_or(0);
@@ -53,13 +54,7 @@ pub fn execute(
     _game: &GameState,
     _source_card_id: CardId,
 ) -> ReplacementResult {
-    if effect
-        .params
-        .get(keys::PREVENT)
-        .map(|s| s == "True")
-        .unwrap_or(false)
-        || effect.params.has(keys::SKIP)
-    {
+    if effect.prevents() || effect.has_skip() {
         return ReplacementResult::Skipped;
     }
     if let Some(result) =
@@ -72,9 +67,9 @@ pub fn execute(
     {
         return result;
     }
-    if let Some(replace_with) = effect.params.get(keys::REPLACE_WITH) {
-        if let Some(result) = execute_replace_effect_chain(
-            replace_with,
+    if let Some(replace_with) = resolve_replace_with_chain(effect, _game.card(_source_card_id)) {
+        if let Some(result) = execute_replace_effect_ir(
+            &replace_with,
             _event,
             _game,
             _source_card_id,
@@ -82,8 +77,8 @@ pub fn execute(
         ) {
             return result;
         }
-        if let Some(result) = execute_replace_effect_chain(
-            replace_with,
+        if let Some(result) = execute_replace_effect_ir(
+            &replace_with,
             _event,
             _game,
             _source_card_id,

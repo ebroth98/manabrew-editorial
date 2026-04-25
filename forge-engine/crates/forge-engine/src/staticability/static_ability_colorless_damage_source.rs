@@ -1,7 +1,6 @@
 use forge_foundation::ZoneType;
 
 use crate::card::{valid_filter, Card};
-use crate::parsing::keys;
 use crate::parsing::CompiledSelector;
 use crate::staticability::StaticMode;
 
@@ -12,7 +11,7 @@ pub fn colorless_damage_source(cards: &[Card], source_card: &Card) -> bool {
             .iter()
             .filter(|sa| sa.mode == StaticMode::ColorlessDamageSource)
         {
-            if matches_valid_card(st_ab.params.selector(keys::VALID_CARD), source_card, source) {
+            if matches_valid_card(st_ab.ir.valid_card.as_ref(), source_card, source) {
                 return true;
             }
         }
@@ -25,7 +24,7 @@ pub fn apply_colorless_damage_source(
     source_card: &Card,
     source: &Card,
 ) -> bool {
-    matches_valid_card(st_ab.params.selector(keys::VALID_CARD), source_card, source)
+    matches_valid_card(st_ab.ir.valid_card.as_ref(), source_card, source)
 }
 
 pub fn source_has_color(cards: &[Card], source_card: &Card, color_name: &str) -> bool {

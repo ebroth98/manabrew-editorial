@@ -248,12 +248,7 @@ impl GameLoop {
                             .card(play.card_id)
                             .activated_abilities
                             .iter()
-                            .find(|ab| {
-                                ab.params
-                                    .get(crate::parsing::keys::AB)
-                                    .map(|v| v.eq_ignore_ascii_case("UnlockDoor"))
-                                    .unwrap_or(false)
-                            })
+                            .find(|ab| ab.is_unlock_door)
                             .map(|ab| ab.ability_index);
                         if let Some(ability_idx) = unlock_ab_idx {
                             let played = self.with_shared_state_mutation(
@@ -448,9 +443,7 @@ impl GameLoop {
                                 // Multiple tap-cost abilities — ask the player to choose a color.
                                 let mut color_options: Vec<(String, usize)> = Vec::new();
                                 for (i, ab) in tap_abs.iter().enumerate() {
-                                    if let Some(produced) =
-                                        ab.params.get(crate::parsing::keys::PRODUCED)
-                                    {
+                                    if let Some(produced) = ab.produced.as_deref() {
                                         let chosen_colors =
                                             game.card(land_id).chosen_colors.clone();
                                         let names = crate::mana::produced_to_color_names(

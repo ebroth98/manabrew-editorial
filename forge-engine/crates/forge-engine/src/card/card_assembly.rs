@@ -103,12 +103,13 @@ pub(crate) fn synthesize_derived(components: &mut ParsedComponents, existing_tri
             continue;
         }
         let has_exert = sa
-            .params
-            .get(keys::COST)
+            .ir
+            .cost
+            .as_deref()
             .map(|c| c.contains("Exert"))
             .unwrap_or(false);
         if has_exert {
-            if let Some(svar_name) = sa.params.get(keys::TRIGGER) {
+            if let Some(svar_name) = sa.ir.trigger_text.as_deref() {
                 let raw = format!(
                     "Mode$ Exerted | ValidCard$ Card.Self | Execute$ {} | TriggerZones$ Battlefield",
                     svar_name
@@ -163,6 +164,7 @@ pub(crate) fn assemble_card(
     for (k, v) in &face.svars {
         card.svars.entry(k.clone()).or_insert_with(|| v.clone());
     }
+    card.refresh_action_specs();
 
     // Java parity: convert ETBReplacement keywords into intrinsic
     // Event$ Moved replacement effects after SVars are available.

@@ -68,6 +68,10 @@ impl DelayedTrigger {
     /// Build a temporary `Trigger` wrapper for calling `TriggerBehavior` trait methods
     /// that require a `&Trigger` reference (Java's `this`).
     pub fn as_trigger(&self, game: &crate::game::GameState) -> crate::trigger::Trigger {
+        let Self {
+            params: delayed_params,
+            ..
+        } = self;
         let mut base =
             crate::game_loop::trigger_replacement_base::TriggerReplacementBase::default();
         base.set_host_card(game.card(self.source_card).clone());
@@ -76,13 +80,13 @@ impl DelayedTrigger {
             base,
             kind: self.mode,
             mode: dyn_clone::clone_box(&*self.trigger_mode),
-            params: self.params.clone(),
+            params: delayed_params.clone(),
+            ir: crate::trigger::trigger_ir::TriggerIr::from_params(delayed_params),
             execute: self.execute_svar.clone(),
             optional: false,
             description: String::new(),
             static_trigger: false,
             trigger_remembered: Vec::new(),
-            valid_phases: None,
             spawning_ability: None,
         }
     }
@@ -254,13 +258,7 @@ impl TriggerHandler {
         if self.waiting_triggers.is_empty() && self.delayed_triggers.is_empty() {
             return;
         }
-        let waiting_count = self.waiting_triggers.len();
         let matched = self.match_waiting_triggers(game);
-        eprintln!(
-            "[flush-debug] T{} {:?} flush waiting={} matched={} pre_matched_total={}",
-            game.turn.turn_number, game.turn.phase, waiting_count, matched.len(),
-            self.pre_matched_triggers.len() + matched.len()
-        );
         self.pre_matched_triggers.extend(matched);
     }
 
@@ -268,15 +266,6 @@ impl TriggerHandler {
     /// Drains waiting queue, matches triggers, returns PendingTriggers.
     /// The caller (game_loop) handles OptionalDecider$ prompting.
     pub fn run_waiting_triggers(&mut self, game: &GameState) -> Vec<PendingTrigger> {
-        let pre_matched_count = self.pre_matched_triggers.len();
-        let waiting_count = self.waiting_triggers.len();
-        let delayed_count = self.delayed_triggers.len();
-        if game.turn.turn_number == 15 && matches!(game.turn.phase, forge_foundation::PhaseType::Main1) {
-            eprintln!(
-                "[run-waiting-debug] T15 Main1 run_waiting pre_matched={} waiting={} delayed={}",
-                pre_matched_count, waiting_count, delayed_count
-            );
-        }
         // Start with any triggers that were pre-matched (flushed before SBA).
         let mut entries: Vec<(PendingTrigger, PlayerId, u64)> =
             std::mem::take(&mut self.pre_matched_triggers);
@@ -330,18 +319,6 @@ impl TriggerHandler {
         agents: &mut [Box<dyn PlayerAgent>],
         pending: Vec<PendingTrigger>,
     ) -> Vec<TriggerPushLog> {
-        if game.turn.turn_number == 15 && matches!(game.turn.phase, forge_foundation::PhaseType::Main1) {
-            eprintln!(
-                "[process-pending-debug] T15 Main1 processing {} pending triggers",
-                pending.len()
-            );
-            for pt in &pending {
-                let name = pt.entry.spell_ability.source
-                    .and_then(|id| game.cards.get(id.index()).map(|c| c.card_name.clone()))
-                    .unwrap_or_else(|| "?".to_string());
-                eprintln!("[process-pending-debug]   pending: source={:?} name={}", pt.entry.spell_ability.source, name);
-            }
-        }
         let mut push_logs = Vec::new();
         for mut pt in pending {
             let source_name = pt
@@ -365,38 +342,10 @@ impl TriggerHandler {
                 }
             }
 
-            if game.turn.turn_number == 15 && matches!(game.turn.phase, forge_foundation::PhaseType::Main1) && source_name == "Aethersnipe" {
-                let uses = pt.entry.spell_ability.uses_targeting();
-                let sub_chain: String = {
-                    let mut names = vec![];
-                    let mut cur = pt.entry.spell_ability.sub_ability.as_deref();
-                    while let Some(sa) = cur {
-                        let uses = sa.uses_targeting();
-                        names.push(format!("sub(api={:?},uses_targeting={},ability_text={:.80})", sa.api, uses, sa.ability_text));
-                        cur = sa.sub_ability.as_deref();
-                    }
-                    names.join(" | ")
-                };
-                eprintln!(
-                    "[pt-aether-debug] T15 Main1 Aethersnipe pt.source={:?} api={:?} uses_targeting={} ability_text={:.200} {}",
-                    pt.entry.spell_ability.source, pt.entry.spell_ability.api, uses,
-                    pt.entry.spell_ability.ability_text, sub_chain
-                );
-            }
             let setup_result = pt
                 .entry
                 .spell_ability
                 .setup_targets(game, agents, mana_pools);
-            if game.turn.turn_number == 15 && matches!(game.turn.phase, forge_foundation::PhaseType::Main1) {
-                let tc_name = pt.entry.spell_ability.target_chosen.target_card
-                    .and_then(|cid| game.cards.get(cid.index()).map(|c| c.card_name.clone()))
-                    .unwrap_or_else(|| "None".to_string());
-                eprintln!(
-                    "[process-pending-debug] T15 Main1 setup_targets for source={}(src_id={:?}) -> {} target_card={:?} target_name={}",
-                    source_name, pt.entry.spell_ability.source, setup_result,
-                    pt.entry.spell_ability.target_chosen.target_card, tc_name
-                );
-            }
             if !setup_result {
                 continue;
             }
@@ -577,14 +526,6 @@ impl TriggerHandler {
                     &event.mode,
                     &event.params,
                 );
-                if card.card_name == "Aethersnipe" {
-                    eprintln!(
-                        "[aether-trig-debug] T{} {:?} aethersnipe@{:?}(zone={:?}, is_token={}) trigger_idx={} event_mode={:?} event.card={:?} event.dest={:?} can_run={}",
-                        game.turn.turn_number, game.turn.phase, card_id, card.zone, card.is_token,
-                        trigger_index, event.mode,
-                        event.params.card, event.params.destination, can_run
-                    );
-                }
                 if can_run {
                     let sa = trigger.build_triggered_spell_ability(
                         game,
@@ -615,10 +556,10 @@ impl TriggerHandler {
                         .map(|c| !c.mandatory && !c.is_zero_cost())
                         .unwrap_or(false);
                     let effect_optional_decider =
-                        entry.spell_ability.params.has(keys::OPTIONAL_DECIDER);
+                        entry.spell_ability.ir.optional_decider_text.is_some();
                     let description_lower = trigger.description.to_ascii_lowercase();
                     let description_implies_optional = description_lower.starts_with("you may")
-                        && !entry.spell_ability.params.has(keys::OPTIONAL)
+                        && !entry.spell_ability.ir.optional
                         && !effect_optional_decider;
                     let pending = PendingTrigger {
                         ability_triggered: Some(
@@ -669,7 +610,7 @@ impl TriggerHandler {
                             .map(|c| !c.mandatory && !c.is_zero_cost())
                             .unwrap_or(false);
                         let effect_optional_decider =
-                            extra_entry.spell_ability.params.has(keys::OPTIONAL_DECIDER);
+                            extra_entry.spell_ability.ir.optional_decider_text.is_some();
                         entries.push((
                             PendingTrigger {
                                 ability_triggered: Some(
@@ -707,19 +648,23 @@ impl TriggerHandler {
             let mut delayed_insert_offset = 0usize;
             let mut fired_indices = Vec::new();
             for (idx, delayed) in self.delayed_triggers.iter().enumerate() {
+                let TriggerWaiting {
+                    params: event_payload,
+                    ..
+                } = &event;
                 if delayed.mode != event.mode {
                     continue;
                 }
                 if delayed.mode == TriggerType::Phase
                     && delayed.created_turn == game.turn.turn_number
-                    && event.params.phase == Some(delayed.created_phase)
+                    && event_payload.phase == Some(delayed.created_phase)
                 {
                     continue;
                 }
                 let tmp_trigger = delayed.as_trigger(game);
                 if !delayed
                     .trigger_mode
-                    .perform_test(&tmp_trigger, &event.params, game)
+                    .perform_test(&tmp_trigger, event_payload, game)
                 {
                     continue;
                 }
@@ -772,7 +717,7 @@ impl TriggerHandler {
                         crate::trigger::trigger_ability_triggered::build_run_params(
                             &tmp_trigger,
                             &entry.spell_ability,
-                            &event.params,
+                            event_payload,
                             game,
                         ),
                     ),
@@ -795,7 +740,7 @@ impl TriggerHandler {
                         game,
                         delayed.source_card,
                         &tmp_trigger,
-                        &event.params,
+                        event_payload,
                     );
                 if delayed.sort_after_active {
                     // Push to end of entries (above active triggers → resolves first).
@@ -1020,12 +965,6 @@ impl TriggerHandler {
     /// Registers a single card's triggers.
     pub fn register_active_trigger(&mut self, game: &GameState, card_id: CardId) {
         let card = game.card(card_id);
-        if card.card_name == "Aethersnipe" {
-            eprintln!(
-                "[aether-reg-debug] T{} {:?} register_active_trigger card={:?} is_token={} triggers_count={} zone={:?}",
-                game.turn.turn_number, game.turn.phase, card_id, card.is_token, card.triggers.len(), card.zone
-            );
-        }
         for (trig_idx, _) in card.triggers.iter().enumerate() {
             self.register_one_trigger(game, card_id, trig_idx);
         }
@@ -1114,11 +1053,15 @@ impl TriggerHandler {
             trigger.kind,
             TriggerType::ChangesZone | TriggerType::ChangesZoneAll
         ) {
-            let origin = trigger.params.get(keys::ORIGIN).unwrap_or("");
-            let destination = trigger.params.get(keys::DESTINATION).unwrap_or("");
-            return origin.contains("Battlefield")
-                || destination.contains("Library")
-                || destination.contains("Hand");
+            return trigger
+                .ir
+                .origin_zones
+                .contains(&forge_foundation::ZoneType::Battlefield)
+                || trigger
+                    .ir
+                    .destination_zones
+                    .iter()
+                    .any(|zone| matches!(zone, forge_foundation::ZoneType::Library | forge_foundation::ZoneType::Hand));
         }
         false
     }
@@ -1128,10 +1071,14 @@ impl TriggerHandler {
         game: &GameState,
         event: &TriggerWaiting,
     ) -> Vec<(CardId, usize)> {
+        let TriggerWaiting {
+            params: event_payload,
+            ..
+        } = event;
         match event.mode {
             TriggerType::ChangesZone => {
-                let destination = event.params.destination;
-                if event.params.origin != Some(forge_foundation::ZoneType::Battlefield)
+                let destination = event_payload.destination;
+                if event_payload.origin != Some(forge_foundation::ZoneType::Battlefield)
                     && !matches!(
                         destination,
                         Some(
@@ -1141,7 +1088,7 @@ impl TriggerHandler {
                 {
                     return Vec::new();
                 }
-                let Some(card_id) = event.params.card_lki.or(event.params.card) else {
+                let Some(card_id) = event_payload.card_lki.or(event_payload.card) else {
                     return Vec::new();
                 };
                 let mut refs: Vec<(CardId, usize)> = game
@@ -1162,7 +1109,7 @@ impl TriggerHandler {
                 // triggerChangesZoneAll which re-registers LTB triggers from
                 // lastStateBattlefield. Scoping via pre_sba_battlefield prevents
                 // stale hosts from earlier batches firing for later deaths.
-                if event.params.origin == Some(forge_foundation::ZoneType::Battlefield) {
+                if event_payload.origin == Some(forge_foundation::ZoneType::Battlefield) {
                     for &ltb_id in &game.pre_sba_battlefield {
                         if ltb_id == card_id {
                             continue;
@@ -1261,7 +1208,7 @@ impl TriggerHandler {
                 }
 
                 // ValidCause$ — must match the card changing zones
-                if let Some(valid_cause) = sa.params.selector(keys::VALID_CAUSE) {
+                if let Some(valid_cause) = sa.ir.valid_cause.as_ref() {
                     let context = valid_filter::MatchContext::from_source(card)
                         .with_game(game)
                         .with_triggering(cause_card_id.into(), params.player);
@@ -1275,7 +1222,7 @@ impl TriggerHandler {
                 }
 
                 // ValidMode$ — must match the trigger's mode
-                if let Some(valid_mode) = sa.params.get(keys::VALID_MODE) {
+                if let Some(valid_mode) = sa.ir.valid_mode.as_deref() {
                     let modes: Vec<&str> = valid_mode.split(',').collect();
                     if !modes.iter().any(|m| *m == "ChangesZone") {
                         continue;
@@ -1283,25 +1230,21 @@ impl TriggerHandler {
                 }
 
                 // Origin$ — the event's origin zone must match
-                if let Some(origin) = sa.params.get(keys::ORIGIN) {
-                    let event_origin = params
+                if !sa.ir.origin_zones.is_empty()
+                    && !params
                         .origin
-                        .map(|z| format!("{:?}", z))
-                        .unwrap_or_default();
-                    if !origin.eq_ignore_ascii_case(&event_origin) {
-                        continue;
-                    }
+                        .is_some_and(|zone| sa.ir.origin_zones.contains(&zone))
+                {
+                    continue;
                 }
 
                 // Destination$ — the event's destination zone must match
-                if let Some(dest) = sa.params.get(keys::DESTINATION) {
-                    let event_dest = params
+                if !sa.ir.destination_zones.is_empty()
+                    && !params
                         .destination
-                        .map(|z| format!("{:?}", z))
-                        .unwrap_or_default();
-                    if !dest.eq_ignore_ascii_case(&event_dest) {
+                        .is_some_and(|zone| sa.ir.destination_zones.contains(&zone))
+                {
                         continue;
-                    }
                 }
 
                 // All conditions matched — trigger is disabled.
@@ -1455,7 +1398,7 @@ impl TriggerHandler {
         // Mirrors Java's TriggerSpellAbilityCast.checkActivatorThisTurnCast():
         // "EQ2" means the activating player must have cast exactly 2 spells
         // this turn (including the one triggering).
-        if let Some(cond) = trigger.params.get(keys::ACTIVATOR_THIS_TURN_CAST) {
+        if let Some(cond) = trigger.ir.activator_this_turn_cast.as_deref() {
             let caster = params.spell_controller.unwrap_or(host_controller);
             let count = game.player(caster).spells_cast_this_turn;
             if !compare_expr(count, cond.trim()) {

@@ -32,7 +32,7 @@ fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
 /// Mirrors Java `ChangeZoneEffect.buildSpellAbility` — calls
 /// `adjustChangeZoneTarget` to set the target zone to the origin zone.
 pub fn build_spell_ability(sa: &mut SpellAbility) {
-    if let Some(zone) = sa.params.zone_type(crate::parsing::keys::ORIGIN) {
+    if let Some(zone) = sa.origin_zone() {
         if let Some(ref mut tr) = sa.target_restrictions {
             if !tr.can_tgt_player() {
                 tr.tgt_zone = vec![zone];
@@ -59,7 +59,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     let primary_origin = origins[0];
 
     // Java parity: sa.isHidden() && !sa.isNinjutsu() → hidden path
-    if (primary_origin.is_hidden() || sa.is_hidden()) && !sa.param_is_true(keys::NINJUTSU) {
+    if (primary_origin.is_hidden() || sa.is_hidden()) && !sa.ir.ninjutsu {
         hidden::resolve_hidden_origin(ctx, sa, primary_origin, dest_zone);
     } else {
         known::resolve_known_origin(ctx, sa, primary_origin, dest_zone);

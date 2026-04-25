@@ -52,7 +52,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     } else {
         let stack_entries: Vec<_> = ctx.game.stack.iter().collect();
         stack_entries.iter().rev().find_map(|entry| {
-            if Some(entry.id) != sa.params.get(keys::STACK_ID).and_then(|s| s.parse().ok()) {
+            if Some(entry.id) != sa.ir.stack_id {
                 Some((*entry).spell_ability.clone())
             } else {
                 None

@@ -5,10 +5,10 @@
 
 use forge_foundation::ZoneType;
 
-use crate::event::{RunParams};
-use crate::trigger::TriggerType;
+use crate::event::RunParams;
 use crate::ids::CardId;
 use crate::trigger::handler::TriggerHandler;
+use crate::trigger::TriggerType;
 
 /// Emit a ChangesZone trigger event. Used by multiple zone-moving effects.
 pub fn emit_zone_trigger(

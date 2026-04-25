@@ -34,7 +34,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
 
     // Remember winners/losers if requested
     if let Some(source) = sa.source {
-        if let Some(remember) = sa.params.get(keys::REMEMBER_PLAYERS) {
+        if let Some(remember) = sa.ir.remember_players_text.as_deref() {
             for (i, &pid) in player_ids.iter().enumerate() {
                 let is_winner = i != loser_idx;
                 if (remember == "Win" && is_winner) || (remember == "NotWin" && !is_winner) {

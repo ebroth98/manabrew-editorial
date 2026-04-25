@@ -1672,7 +1672,7 @@ fn card_constructor_parses_activated_abilities() {
     let ab = &card.activated_abilities[0];
     assert!(ab.is_mana_ability);
     assert!(ab.cost.has_tap);
-    assert_eq!(ab.params.get("Produced").unwrap(), "G");
+    assert_eq!(ab.produced.as_deref(), Some("G"));
 }
 
 /// Test: Grizzly Bears has no activated abilities.

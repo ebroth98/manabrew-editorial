@@ -30,7 +30,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
 
     // Determine the exploring creature
     let explorer = sa.target_chosen.target_card.or_else(|| {
-        match sa.params.get(crate::parsing::keys::DEFINED) {
+        match sa.defined() {
             Some("Self") => sa.source,
             Some("ParentTarget") => ctx.parent_target_card,
             _ => sa.source,
@@ -51,7 +51,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
 
     // Parse Num parameter for multiple explores (e.g. Jadelight Ranger explores twice).
     // Mirrors Java's `AbilityUtils.calculateAmount(host, sa.getParamOrDefault("Num", "1"), sa)`.
-    let amount: i32 = sa.params.as_i32(keys::NUM).unwrap_or(1);
+    let amount = super::resolve_numeric_svar(ctx.game, sa, keys::NUM, 1).max(1);
 
     for _ in 0..amount {
         // Re-check explorer is still on battlefield (may have been removed by a trigger)

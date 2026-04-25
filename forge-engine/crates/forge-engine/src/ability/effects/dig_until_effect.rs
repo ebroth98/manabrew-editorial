@@ -28,28 +28,16 @@ use crate::spellability::SpellAbility;
 fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let amount = resolve_numeric_svar(ctx.game, sa, keys::AMOUNT, 1).max(0) as usize;
 
-    let valid_selector = sa.params.selector(keys::VALID);
-    let valid_filter = sa.params.get(keys::VALID).unwrap_or("Card");
+    let valid_selector = sa.ir.valid_filter_selector.as_ref();
+    let valid_filter = sa.ir.valid_filter_text.as_deref().unwrap_or("Card");
 
-    let found_dest = sa
-        .params
-        .get("FoundDestination")
-        .and_then(|s| parse_zone_type(s))
-        .unwrap_or(ZoneType::Hand);
-    let revealed_dest = sa
-        .params
-        .get("RevealedDestination")
-        .and_then(|s| parse_zone_type(s))
-        .unwrap_or(ZoneType::Library);
+    let found_dest = sa.ir.found_destination_zone.unwrap_or(ZoneType::Hand);
+    let revealed_dest = sa.ir.revealed_destination_zone.unwrap_or(ZoneType::Library);
 
     let target_player = sa
         .target_chosen
         .target_player
-        .or_else(|| {
-            sa.params
-                .get("Defined")
-                .and_then(|d| resolve_defined_player(d, sa.activating_player, ctx.game))
-        })
+        .or_else(|| sa.defined().and_then(|d| resolve_defined_player(d, sa.activating_player, ctx.game)))
         .unwrap_or(sa.activating_player);
 
     let lib_len = ctx

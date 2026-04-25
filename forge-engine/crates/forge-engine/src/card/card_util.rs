@@ -13,7 +13,7 @@ use crate::card::valid_filter;
 use crate::card::Card;
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
-use crate::parsing::CompiledSelector;
+use crate::parsing::{cached_compiled_selector, CompiledSelector};
 use crate::spellability::target_restrictions;
 use crate::spellability::SpellAbility;
 
@@ -204,7 +204,7 @@ pub fn get_radiance(game: &GameState, sa: &SpellAbility) -> CardCollection {
     let Some(targeted) = find_sa_targeting_card(sa) else {
         return CardCollection::new();
     };
-    if !targeted.uses_targeting() || !targeted.params.has("Radiance") {
+    if !targeted.uses_targeting() || !targeted.ir.radiance {
         return CardCollection::new();
     }
 
@@ -222,7 +222,7 @@ pub fn get_radiance(game: &GameState, sa: &SpellAbility) -> CardCollection {
         .unwrap_or_default();
     let valid_selectors: Vec<_> = valid_tokens
         .iter()
-        .map(|token| CompiledSelector::parse(token))
+        .map(|token| cached_compiled_selector(token))
         .collect();
 
     let combined = game.card(target).color;
@@ -313,8 +313,8 @@ fn get_reflectable_mana_colors_inner(
         return colors;
     }
 
-    let color_or_type = root_sa.params.get("ColorOrType").unwrap_or("Color");
-    let reflect_property = root_sa.params.get("ReflectProperty").unwrap_or("Is");
+    let color_or_type = root_sa.ir.color_or_type.as_deref().unwrap_or("Color");
+    let reflect_property = root_sa.ir.reflect_property.as_deref().unwrap_or("Is");
     let max_choices = if color_or_type.eq_ignore_ascii_case("Type") {
         6
     } else {
@@ -322,7 +322,7 @@ fn get_reflectable_mana_colors_inner(
     };
 
     let cards = collect_reflectable_cards(game, ab_mana, root_sa, &parents);
-    if root_sa.params.has("Valid") && cards.is_empty() {
+    if root_sa.ir.valid_filter_text.is_some() && cards.is_empty() {
         return colors;
     }
 
@@ -374,7 +374,7 @@ fn get_reflectable_mana_colors_inner(
                         parents.push(card.id);
                     }
                     if ab.api == Some(ApiType::ManaReflected)
-                        && ab.params.get("ReflectProperty").unwrap_or("") != "Produced"
+                        && ab.ir.reflect_property.as_deref().unwrap_or("") != "Produced"
                     {
                         reflect_abilities.push_back(ab);
                     } else {
@@ -397,7 +397,7 @@ fn get_reflectable_mana_colors_inner(
                     }
                     trig_sa.activating_player = card.controller;
                     if trig_sa.api == Some(ApiType::ManaReflected)
-                        && trig_sa.params.get("ReflectProperty").unwrap_or("") != "Produced"
+                        && trig_sa.ir.reflect_property.as_deref().unwrap_or("") != "Produced"
                     {
                         reflect_abilities.push_back(trig_sa);
                     } else {
@@ -434,14 +434,18 @@ fn collect_reflectable_cards(
     let Some(host) = ab_mana.source else {
         return Vec::new();
     };
-    let Some(valid_card) = root_sa.params.selector_value("Valid") else {
+    let Some(valid_card) = root_sa.ir.valid_filter_text.as_deref() else {
         return Vec::new();
     };
 
     let mut cards = if let Some(defined) = valid_card.strip_prefix("Defined.") {
         ability_utils::get_defined_cards(game, Some(host), defined, Some(ab_mana.activating_player))
     } else {
-        let valid_selector = CompiledSelector::parse(valid_card);
+        let valid_selector = root_sa
+            .ir
+            .valid_filter_selector
+            .clone()
+            .unwrap_or_else(|| cached_compiled_selector(valid_card));
         game.player_order
             .iter()
             .flat_map(|&pid| {
@@ -639,19 +643,6 @@ pub fn get_valid_cards_to_target(game: &GameState, ability: &SpellAbility) -> Ve
 
     candidates.sort_unstable_by_key(|cid| cid.0);
     candidates.dedup();
-    if game.turn.turn_number == 15
-        && matches!(game.turn.phase, forge_foundation::PhaseType::Main1)
-        && ability.source.map(|sid| game.card(sid).card_name.as_str()) == Some("Aethersnipe")
-    {
-        let names: Vec<String> = candidates
-            .iter()
-            .map(|&cid| format!("{}@{:?}", game.card(cid).card_name, cid))
-            .collect();
-        eprintln!(
-            "[aether-tgt-debug] T15 Main1 Aethersnipe src={:?} valid_tgts={:?} candidates={:?}",
-            ability.source, tgt.valid_tgts, names
-        );
-    }
     candidates
 }
 
@@ -694,7 +685,7 @@ fn color_short_name(color: &str) -> &'static str {
 fn find_sa_targeting_card(sa: &SpellAbility) -> Option<&SpellAbility> {
     let mut current = Some(sa);
     while let Some(node) = current {
-        if node.uses_targeting() && node.params.has("Radiance") {
+        if node.uses_targeting() && node.ir.radiance {
             return Some(node);
         }
         current = node.get_sub_ability();

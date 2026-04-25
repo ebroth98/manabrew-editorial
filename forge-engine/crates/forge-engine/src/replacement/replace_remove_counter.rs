@@ -28,7 +28,7 @@ pub fn can_replace(
         _ => return false,
     };
     let target_card = &game.cards[target.index()];
-    if let Some(valid) = effect.params.selector(keys::VALID_CARD) {
+    if let Some(valid) = effect.ir.valid_card_selector.as_ref() {
         if !effect.matches_compiled_valid_card(valid, target_card, source_card) {
             return false;
         }
@@ -47,12 +47,7 @@ pub fn execute(
         ReplacementEvent::RemoveCounter { count, .. } => count,
         _ => return ReplacementResult::NotReplaced,
     };
-    if effect
-        .params
-        .get(keys::PREVENT)
-        .map(|s| s == "True")
-        .unwrap_or(false)
-    {
+    if effect.prevents() {
         *count = 0;
         return ReplacementResult::Prevented;
     }

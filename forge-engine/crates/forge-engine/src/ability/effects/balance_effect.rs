@@ -1,8 +1,7 @@
 use forge_foundation::ZoneType;
 
-use super::{emit_zone_trigger, matches_valid_cards_for_sa, parse_zone_type, EffectContext};
+use super::{emit_zone_trigger, matches_valid_cards_for_sa, EffectContext};
 use crate::event::RunParams;
-use crate::spellability::SpellAbility;
 use crate::trigger::TriggerType;
 
 /// `SP$ Balance` — equalize resources across all players.
@@ -20,17 +19,13 @@ use crate::trigger::TriggerType;
 #[forge_engine_macros::spell_effect(BalanceEffect)]
 fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let filter = sa
-        .params
-        .get("Valid")
-        .map(|s| s.to_string())
+        .ir
+        .valid_filter_text
+        .clone()
         .unwrap_or_else(|| "Card".to_string());
-    let filter_selector = sa.params.selector_cloned("Valid");
+    let filter_selector = sa.ir.valid_filter_selector.clone();
 
-    let zone = sa
-        .params
-        .get("Zone")
-        .and_then(|s| parse_zone_type(s))
-        .unwrap_or(ZoneType::Battlefield);
+    let zone = sa.ir.zone.unwrap_or(ZoneType::Battlefield);
 
     let player_order = ctx.game.player_order.clone();
 

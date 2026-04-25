@@ -35,9 +35,10 @@ use std::collections::BTreeMap;
 
 use forge_foundation::ZoneType;
 
+use crate::agent::PlayerAgent;
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
-use crate::parsing::keys;
+use crate::parsing::{keys, Params};
 use crate::replacement::replacement_effect::ReplacementType;
 use crate::staticability::{CardFilter, Layer, StaticMode};
 
@@ -78,6 +79,64 @@ enum EffectKind {
         text: String,
         svars: BTreeMap<String, String>,
     },
+}
+
+struct ContinuousParamRefs<'a> {
+    characteristic_defining: Option<&'a str>,
+    affected: Option<&'a str>,
+    valid_cards: Option<&'a str>,
+    valid_card: Option<&'a str>,
+    affected_zone: Option<&'a str>,
+    gain_control: Option<&'a str>,
+    add_power: Option<&'a str>,
+    add_toughness: Option<&'a str>,
+    add_type: Option<&'a str>,
+    set_power: Option<&'a str>,
+    set_toughness: Option<&'a str>,
+    add_keyword: Option<&'a str>,
+    add_ability: Option<&'a str>,
+    add_trigger: Option<&'a str>,
+}
+
+impl<'a> ContinuousParamRefs<'a> {
+    fn from_params(params: &'a Params) -> Self {
+        let mut refs = Self {
+            characteristic_defining: None,
+            affected: None,
+            valid_cards: None,
+            valid_card: None,
+            affected_zone: None,
+            gain_control: None,
+            add_power: None,
+            add_toughness: None,
+            add_type: None,
+            set_power: None,
+            set_toughness: None,
+            add_keyword: None,
+            add_ability: None,
+            add_trigger: None,
+        };
+        for (key, value) in params.iter() {
+            match key {
+                keys::CHARACTERISTIC_DEFINING => refs.characteristic_defining = Some(value),
+                keys::AFFECTED => refs.affected = Some(value),
+                keys::VALID_CARDS => refs.valid_cards = Some(value),
+                keys::VALID_CARD => refs.valid_card = Some(value),
+                keys::AFFECTED_ZONE => refs.affected_zone = Some(value),
+                keys::GAIN_CONTROL => refs.gain_control = Some(value),
+                keys::ADD_POWER => refs.add_power = Some(value),
+                keys::ADD_TOUGHNESS => refs.add_toughness = Some(value),
+                keys::ADD_TYPE => refs.add_type = Some(value),
+                keys::SET_POWER => refs.set_power = Some(value),
+                keys::SET_TOUGHNESS => refs.set_toughness = Some(value),
+                keys::ADD_KEYWORD => refs.add_keyword = Some(value),
+                keys::ADD_ABILITY => refs.add_ability = Some(value),
+                keys::ADD_TRIGGER => refs.add_trigger = Some(value),
+                _ => {}
+            }
+        }
+        refs
+    }
 }
 
 // ── Public API ───────────────────────────────────────────────────────────────
@@ -162,20 +221,20 @@ pub fn apply_continuous_effects(game: &mut GameState) {
                     continue;
                 }
 
+                let params = ContinuousParamRefs::from_params(&sa.params);
+
                 // CharacteristicDefining statics always affect only the host card.
                 // Mirrors Java StaticAbilityContinuous.getAffectedCards() line 1036.
-                let is_cda = sa
-                    .params
-                    .get(keys::CHARACTERISTIC_DEFINING)
+                let is_cda = params
+                    .characteristic_defining
                     .map(|v| v.eq_ignore_ascii_case("True"))
                     .unwrap_or(false);
 
                 // Determine which cards are affected by this static ability.
-                let affected_str = sa
-                    .params
-                    .get(keys::AFFECTED)
-                    .or_else(|| sa.params.selector_value(keys::VALID_CARDS))
-                    .or_else(|| sa.params.selector_value(keys::VALID_CARD))
+                let affected_str = params
+                    .affected
+                    .or(params.valid_cards)
+                    .or(params.valid_card)
                     .unwrap_or("Creature.YouControl");
 
                 let mut apply_to_target = |target: CardId| match sa.mode {
@@ -183,7 +242,7 @@ pub fn apply_continuous_effects(game: &mut GameState) {
                 StaticMode::Continuous => {
                     // Java parity: one continuous static can contribute effects in
                     // multiple layers (e.g. Brothers Yamazaki adds both +2/+2 and Haste).
-                    if let Some(gain_control) = sa.params.get(keys::GAIN_CONTROL) {
+                    if let Some(gain_control) = params.gain_control {
                         let new_controller = match gain_control {
                             "You" | "YouCtrl" => Some(source_card.controller),
                             "Opponent" => Some(game.opponent_of(source_card.controller)),
@@ -198,8 +257,8 @@ pub fn apply_continuous_effects(game: &mut GameState) {
                         }
                     }
 
-                    let add_power = sa.params.get(keys::ADD_POWER);
-                    let add_toughness = sa.params.get(keys::ADD_TOUGHNESS);
+                    let add_power = params.add_power;
+                    let add_toughness = params.add_toughness;
                     if add_power.is_some() || add_toughness.is_some() {
                         let p = resolve_add_pt_value(game, source_id, add_power);
                         let t = resolve_add_pt_value(game, source_id, add_toughness);
@@ -213,7 +272,7 @@ pub fn apply_continuous_effects(game: &mut GameState) {
                         });
                     }
 
-                    let add_type = sa.params.get(keys::ADD_TYPE);
+                    let add_type = params.add_type;
                     let source = game.card(source_id);
                     for added_type in resolve_added_types(source, add_type) {
                         pending.push(PendingEffect {
@@ -223,8 +282,8 @@ pub fn apply_continuous_effects(game: &mut GameState) {
                         });
                     }
 
-                    let set_power = sa.params.get(keys::SET_POWER);
-                    let set_toughness = sa.params.get(keys::SET_TOUGHNESS);
+                    let set_power = params.set_power;
+                    let set_toughness = params.set_toughness;
                     if set_power.is_some() || set_toughness.is_some() {
                         let sp = resolve_set_pt_value(game, source_id, set_power);
                         let st = resolve_set_pt_value(game, source_id, set_toughness);
@@ -238,7 +297,7 @@ pub fn apply_continuous_effects(game: &mut GameState) {
                         });
                     }
 
-                    if let Some(kws) = sa.params.get(keys::ADD_KEYWORD) {
+                    if let Some(kws) = params.add_keyword {
                         // AddKeyword$ supports multiple keywords separated by " & ".
                         for kw in kws.split('&').map(str::trim).filter(|s| !s.is_empty()) {
                             pending.push(PendingEffect {
@@ -269,7 +328,7 @@ pub fn apply_continuous_effects(game: &mut GameState) {
                     // The value is an SVar name on the source card containing the ability text.
                     // E.g. Abundant Growth: AddAbility$ AbundantGrowthTap
                     //   SVar:AbundantGrowthTap:AB$ Mana | Cost$ T | Produced$ Any
-                    if let Some(svar_name) = sa.params.get(keys::ADD_ABILITY) {
+                    if let Some(svar_name) = params.add_ability {
                         let source = game.card(source_id);
                         if let Some(ab_text) = source.svars.get(svar_name).cloned() {
                             pending.push(PendingEffect {
@@ -283,7 +342,7 @@ pub fn apply_continuous_effects(game: &mut GameState) {
                         }
                     }
 
-                    if let Some(add_trigger) = sa.params.get(keys::ADD_TRIGGER) {
+                    if let Some(add_trigger) = params.add_trigger {
                         let source = game.card(source_id);
                         for svar_name in add_trigger
                             .split(" & ")
@@ -454,12 +513,11 @@ pub fn apply_continuous_effects(game: &mut GameState) {
                     let filter = CardFilter::parse(affected_str);
                     // AffectedZone$ overrides the default Battlefield filter (e.g.
                     // Ashling, the Limitless grants Evoke:4 to Elementals in Hand).
-                    let affected_zones: Option<Vec<ZoneType>> =
-                        sa.params.get(keys::AFFECTED_ZONE).map(|s| {
-                            s.split(',')
-                                .filter_map(|z| ZoneType::from_str_compat(z.trim()))
-                                .collect()
-                        });
+                    let affected_zones: Option<Vec<ZoneType>> = params.affected_zone.map(|s| {
+                        s.split(',')
+                            .filter_map(|z| ZoneType::from_str_compat(z.trim()))
+                            .collect()
+                    });
                     for card in &game.cards {
                         let zone_matches = match &affected_zones {
                             Some(zones) => zones.contains(&card.zone),
@@ -598,6 +656,76 @@ pub fn apply_continuous_effects(game: &mut GameState) {
 /// Call this immediately after [`GameState::move_card`] resolves a
 /// `Battlefield` destination and before triggers are fired.
 pub fn apply_etb_tapped(game: &mut GameState, entering_card: CardId) {
+    apply_etb_tapped_with_agents(game, entering_card, None);
+}
+
+fn applicable_etb_tapped_replacement_sources(
+    game: &GameState,
+    entering_card: CardId,
+) -> Vec<(CardId, String)> {
+    let mut repl_sources: Vec<(CardId, String, String)> = Vec::new();
+    for c in &game.cards {
+        if c.zone != ZoneType::Battlefield {
+            continue;
+        }
+        for re in &c.replacement_effects {
+            if re.event == ReplacementType::Moved
+                && re.replace_with() == Some("ETBTapped")
+                && re.ir.destination_zone == Some(ZoneType::Battlefield)
+                && re.active_in_zone(ZoneType::Battlefield)
+            {
+                let filter = re
+                    .ir
+                    .valid_card_text
+                    .as_deref()
+                    .unwrap_or("Card.Self")
+                    .to_string();
+                let desc = re.description(c, game);
+                repl_sources.push((c.id, filter, desc));
+            }
+        }
+    }
+
+    repl_sources
+        .into_iter()
+        .filter_map(|(source_id, filter_str, desc)| {
+            let tapped = if filter_str == "Card.Self" || filter_str.is_empty() {
+                source_id == entering_card
+            } else {
+                let source = &game.cards[source_id.index()];
+                let filter = CardFilter::parse(&filter_str);
+                filter.matches_with_game(&game.cards[entering_card.index()], source, game)
+            };
+            tapped.then_some((source_id, desc))
+        })
+        .collect()
+}
+
+pub fn prompt_etb_tapped_replacement_with_agents(
+    game: &mut GameState,
+    entering_card: CardId,
+    agents: &mut [Box<dyn PlayerAgent>],
+) {
+    let applicable = applicable_etb_tapped_replacement_sources(game, entering_card);
+    if applicable.is_empty() {
+        return;
+    }
+
+    let affected_player = game.cards[entering_card.index()].controller;
+    let descriptions: Vec<String> = applicable
+        .iter()
+        .map(|(source_id, desc)| format!("{}: {}", game.card(*source_id).card_name, desc))
+        .collect();
+    let _chosen = agents[affected_player.index()]
+        .choose_single_replacement_effect(affected_player, &descriptions)
+        .min(applicable.len().saturating_sub(1));
+}
+
+pub fn apply_etb_tapped_with_agents(
+    game: &mut GameState,
+    entering_card: CardId,
+    mut agents: Option<&mut [Box<dyn PlayerAgent>]>,
+) {
     // Collect all ETBTapped sources: (source_id, filter_str).
     // We need owned data to avoid aliasing the cards slice while mutating.
     let etb_sources: Vec<(CardId, String)> = game
@@ -608,9 +736,10 @@ pub fn apply_etb_tapped(game: &mut GameState, entering_card: CardId) {
             c.static_abilities.iter().filter_map(move |sa| {
                 if sa.mode == StaticMode::ETBTapped {
                     let filter_str = sa
-                        .params
-                        .get_cloned(keys::VALID_CARDS)
-                        .or_else(|| sa.params.get_cloned(keys::AFFECTED))
+                        .ir
+                        .valid_cards_text
+                        .clone()
+                        .or_else(|| sa.ir.affected_text.clone())
                         // Default: the card itself (intrinsic self-ETBTapped).
                         .unwrap_or_else(|| "Card.Self".to_string());
                     Some((c.id, filter_str))
@@ -641,44 +770,16 @@ pub fn apply_etb_tapped(game: &mut GameState, entering_card: CardId) {
     // Many cards (e.g. Path of Ancestry, Temple of Mystery) use:
     //   R:Event$ Moved | Destination$ Battlefield | ValidCard$ Card.Self | ReplaceWith$ ETBTapped
     // Extrinsic sources (e.g. Kismet) may use broader ValidCard filters.
-    let repl_sources: Vec<(CardId, String)> = game
-        .cards
-        .iter()
-        .filter(|c| c.zone == ZoneType::Battlefield)
-        .flat_map(|c| {
-            c.replacement_effects.iter().filter_map(move |re| {
-                if re.event == ReplacementType::Moved
-                    && re.params.get(keys::REPLACE_WITH) == Some("ETBTapped")
-                    && re.params.get(keys::DESTINATION) == Some("Battlefield")
-                    && re.active_in_zone(ZoneType::Battlefield)
-                {
-                    let filter = re
-                        .params
-                        .get("ValidCard")
-                        .unwrap_or("Card.Self")
-                        .to_string();
-                    Some((c.id, filter))
-                } else {
-                    None
-                }
-            })
-        })
-        .collect();
-
-    for (source_id, filter_str) in repl_sources {
-        let tapped = if filter_str == "Card.Self" || filter_str.is_empty() {
-            source_id == entering_card
-        } else {
-            let source = &game.cards[source_id.index()];
-            let filter = CardFilter::parse(&filter_str);
-            filter.matches_with_game(&game.cards[entering_card.index()], source, game)
-        };
-
-        if tapped {
-            game.cards[entering_card.index()].tapped = true;
-            return;
-        }
+    let applicable = applicable_etb_tapped_replacement_sources(game, entering_card);
+    if applicable.is_empty() {
+        return;
     }
+
+    if let Some(agents) = agents.as_deref_mut() {
+        prompt_etb_tapped_replacement_with_agents(game, entering_card, agents);
+    }
+
+    game.cards[entering_card.index()].tapped = true;
 }
 
 /// Check if a card has a shock-land-style "enters tapped unless you pay life" effect.
@@ -693,10 +794,10 @@ pub fn get_etb_unless_life_cost(card: &crate::card::Card) -> Option<i32> {
         if re.event != ReplacementType::Moved {
             continue;
         }
-        if re.params.get(keys::DESTINATION) != Some("Battlefield") {
+        if re.ir.destination_zone != Some(ZoneType::Battlefield) {
             continue;
         }
-        if let Some(svar_name) = re.params.get(keys::REPLACE_WITH) {
+        if let Some(svar_name) = re.replace_with() {
             if svar_name == "ETBTapped" {
                 continue;
             }
@@ -729,10 +830,10 @@ pub fn get_etb_unless_reveal_cost(card: &crate::card::Card) -> Option<(i32, Stri
         if re.event != ReplacementType::Moved {
             continue;
         }
-        if re.params.get(keys::DESTINATION) != Some("Battlefield") {
+        if re.ir.destination_zone != Some(ZoneType::Battlefield) {
             continue;
         }
-        if let Some(svar_name) = re.params.get(keys::REPLACE_WITH) {
+        if let Some(svar_name) = re.replace_with() {
             if svar_name == "ETBTapped" {
                 continue;
             }
@@ -1225,7 +1326,7 @@ mod tests {
             assert!(
                 land.activated_abilities
                     .iter()
-                    .any(|ab| { ab.is_mana_ability && ab.params.get(keys::PRODUCED) == Some("B") }),
+                    .any(|ab| ab.is_mana_ability && ab.produced.as_deref() == Some("B")),
                 "{} should gain an intrinsic black mana ability from Swamp",
                 land.card_name
             );

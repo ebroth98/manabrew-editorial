@@ -24,12 +24,12 @@ pub fn resolve(sa: &SpellAbility) -> String {
     }
 
     // Try SpDesc param
-    if let Some(desc) = sa.params.get("SpDesc") {
+    if let Some(desc) = sa.ir.sp_desc_text.as_deref() {
         return desc.to_string();
     }
 
     // Try StackDescription param
-    if let Some(desc) = sa.params.get("StackDescription") {
+    if let Some(desc) = sa.ir.stack_description_text.as_deref() {
         return desc.to_string();
     }
 

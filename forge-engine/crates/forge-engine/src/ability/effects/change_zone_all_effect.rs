@@ -2,8 +2,6 @@ use forge_foundation::ZoneType;
 
 use super::{emit_zone_trigger, matches_change_type, EffectContext};
 use crate::ids::{CardId, PlayerId};
-use crate::parsing::keys;
-use crate::spellability::SpellAbility;
 
 fn matches_change_zone_all_filter(
     cid: CardId,
@@ -110,7 +108,7 @@ pub fn build_spell_ability(sa: &mut crate::spellability::SpellAbility) {
     // If the SA has an Origin$ parameter and uses targeting, set the
     // target restriction zone to the origin zone so that targeting
     // looks in the correct zone (not just Battlefield).
-    if let Some(zone) = sa.params.zone_type(crate::parsing::keys::ORIGIN) {
+    if let Some(zone) = sa.origin_zone() {
         if let Some(ref mut tr) = sa.target_restrictions {
             if !tr.can_tgt_player() {
                 tr.tgt_zone = vec![zone];
@@ -125,31 +123,24 @@ pub fn build_spell_ability(sa: &mut crate::spellability::SpellAbility) {
 #[forge_engine_macros::spell_effect(ChangeZoneAllEffect)]
 fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let Some(origin_zone) = sa
-        .params
-        .zone_type(keys::ORIGIN)
-        .or_else(|| (!sa.params.has(keys::ORIGIN)).then_some(ZoneType::Battlefield))
+        .origin_zone()
+        .or_else(|| sa.origin().is_none().then_some(ZoneType::Battlefield))
     else {
         return;
     };
     let Some(dest_zone) = sa
-        .params
-        .zone_type(keys::DESTINATION)
-        .or_else(|| (!sa.params.has(keys::DESTINATION)).then_some(ZoneType::Graveyard))
+        .destination_zone()
+        .or_else(|| sa.destination().is_none().then_some(ZoneType::Graveyard))
     else {
         return;
     };
     // Forge uses ChangeType$ as the primary filter for ChangeZoneAll; fall back to ValidCards$.
     let valid_cards_filter = sa
-        .params
-        .get(keys::CHANGE_TYPE)
-        .or_else(|| sa.params.selector_value(keys::VALID_CARDS))
+        .change_type()
+        .or(sa.ir.valid_cards_text.as_deref())
         .map(|s| s.to_string())
         .unwrap_or_else(|| "Card".to_string());
-    let tapped = sa
-        .params
-        .get(keys::TAPPED)
-        .map(|s| s.eq_ignore_ascii_case("True"))
-        .unwrap_or(false);
+    let tapped = sa.ir.tapped;
 
     // Resolve source card's chosen_colors for ChosenColor qualifier support.
     let source_chosen_colors: Vec<String> = sa
@@ -165,13 +156,16 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     // For Duration$ UntilHostLeavesPlay, track the source card so we can return
     // exiled permanents when the source leaves the battlefield (e.g. Deputy of Detention).
     let until_host_leaves = sa
-        .params
-        .get(keys::DURATION)
-        .map(|d| {
-            d.eq_ignore_ascii_case("UntilHostLeavesPlay")
-                || d.eq_ignore_ascii_case("UntilHostLeavesPlayOrEOT")
-        })
-        .unwrap_or(false);
+        .ir
+        .duration
+        .as_ref()
+        .is_some_and(|duration| {
+            matches!(
+                duration,
+                crate::spellability::AbilityDuration::UntilHostLeavesPlay
+                    | crate::spellability::AbilityDuration::UntilHostLeavesPlayOrEot
+            )
+        });
     let exile_source = if until_host_leaves { sa.source } else { None };
 
     {
@@ -228,7 +222,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
         }
 
         // Handle Shuffle$ True (e.g. Nihil Spellbomb shuffles the target player's library).
-        if sa.params.is_true(keys::SHUFFLE) {
+        if sa.ir.shuffle {
             for &pid in &player_ids {
                 ctx.game.shuffle_zone_cards(ZoneType::Library, pid, ctx.rng);
             }

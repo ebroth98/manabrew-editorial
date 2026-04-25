@@ -101,7 +101,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     // Mirrors Java SacrificeEffect lines 52-75: when CumulativeUpkeep$ is set,
     // add an Age counter, build merged cost (base cost × age counters),
     // ask player to pay, sacrifice if not paid.
-    if let Some(cum_cost_str) = sa.params.get_cloned(keys::CUMULATIVE_UPKEEP) {
+    if let Some(cum_cost_str) = sa.ir.cumulative_upkeep.as_deref() {
         let source_id = match sa.source {
             Some(cid) if ctx.game.card(cid).zone == ZoneType::Battlefield => cid,
             _ => return,
@@ -124,7 +124,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
 
         // 3. Build merged cost: N copies of the base cost
         //    Mirrors Java Cost.mergeTo(cumCost, n, sa)
-        let base_cost = crate::cost::parse_cost(&cum_cost_str);
+        let base_cost = crate::cost::parse_cost(cum_cost_str);
         let mut merged_parts = Vec::new();
         let mut merged_mana: Option<(
             forge_foundation::ManaCost,
@@ -223,27 +223,25 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     }
 
     let sac_valid = sa
-        .params
-        .get_cloned(keys::SAC_VALID)
+        .ir
+        .sac_valid
+        .clone()
         .unwrap_or_else(|| "Self".to_string());
     // How many permanents to sacrifice (e.g. Annihilator N).
     let amount: usize = sa
-        .params
-        .get(keys::AMOUNT)
+        .ir
+        .amount
+        .as_deref()
         .and_then(|s| s.parse().ok())
         .unwrap_or(1);
 
     // Detect Exploit keyword sacrifice — fires TriggerType::Exploited after each sacrifice.
-    let is_exploit = sa.params.is_true(keys::EXPLOIT);
+    let is_exploit = sa.ir.exploit;
     let exploit_source = if is_exploit { sa.source } else { None };
 
-    let optional = sa.params.has(keys::OPTIONAL);
-    let is_strict = sa.params.has(keys::STRICT_AMOUNT);
-    let defined = sa
-        .params
-        .get(keys::DEFINED)
-        .map(|s| s.to_lowercase())
-        .unwrap_or_default();
+    let optional = sa.ir.optional_present;
+    let is_strict = sa.ir.strict_amount;
+    let defined = sa.defined().map(|s| s.to_lowercase()).unwrap_or_default();
 
     let sacrificing_players = get_target_players(ctx.game, sa);
 
@@ -300,7 +298,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
 
             for card_id in chosen {
                 do_sacrifice(ctx, sa, card_id, sacrificing_player, exploit_source);
-                if sa.params.is_true(keys::REMEMBER_SACRIFICED) {
+                if sa.ir.remember_sacrificed {
                     if let Some(source_id) = sa.source {
                         ctx.game.card_mut(source_id).add_remembered_card(card_id);
                     }
@@ -334,7 +332,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
 
                 if valid.is_empty() {
                     None
-                } else if sa.params.is_true("Random") {
+                } else if sa.ir.random {
                     // Random$ True — reservoir-sample a single element, matching
                     // Java's `Aggregates.random(Iterable, 1)` at
                     // `forge-core/.../Aggregates.java`. The reservoir form consumes
@@ -368,7 +366,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
                 do_sacrifice(ctx, sa, card_id, sacrificing_player, exploit_source);
                 // RememberSacrificed$ True — remember the sacrificed card on the source
                 // so downstream ConditionDefined$ Remembered checks can find it.
-                if sa.params.is_true(keys::REMEMBER_SACRIFICED) {
+                if sa.ir.remember_sacrificed {
                     if let Some(source_id) = sa.source {
                         ctx.game.card_mut(source_id).add_remembered_card(card_id);
                     }

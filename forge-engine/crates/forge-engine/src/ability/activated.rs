@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 
+use crate::ability::api_type::ApiType;
 use crate::cost::{parse_cost, Cost};
 use crate::parsing::keys;
 use crate::parsing::Params;
@@ -17,16 +18,72 @@ pub struct ActivatedAbility {
     pub ability_text: String,
     /// Whether this is a mana ability (resolves without using the stack).
     pub is_mana_ability: bool,
+    /// Parsed AB$ API name.
+    #[serde(default)]
+    pub ability_kind: String,
+    /// Parsed AB$ API type when recognized by the engine.
+    #[serde(default)]
+    pub ability_api: Option<ApiType>,
     /// Parsed ActivationZone$ override. Activated abilities default to battlefield.
+    #[serde(default)]
     pub activation_zone: Option<ZoneType>,
+    /// Parsed Produced$ value for mana abilities.
+    #[serde(default)]
+    pub produced: Option<String>,
+    /// Parsed RestrictValid$ value for mana abilities.
+    #[serde(default)]
+    pub restrict_valid: Option<String>,
+    /// Parsed Amount$ value for mana abilities.
+    #[serde(default)]
+    pub amount: Option<String>,
+    /// Parsed SpellDescription$ value for UI prompts.
+    #[serde(default)]
+    pub spell_description: Option<String>,
+    /// Parsed PrecostDesc$ value for UI prompts.
+    #[serde(default)]
+    pub precost_desc: Option<String>,
+    /// Parsed Description$ value for UI prompts.
+    #[serde(default)]
+    pub description: Option<String>,
+    /// Parsed AddNoCounter$ flag for produced mana metadata.
+    #[serde(default)]
+    pub adds_no_counter: bool,
+    /// Parsed AddsKeywords$ value for produced mana metadata.
+    #[serde(default)]
+    pub adds_keywords: Option<String>,
+    /// Parsed AddsKeywordsValid$ value for produced mana metadata.
+    #[serde(default)]
+    pub adds_keywords_valid: Option<String>,
+    /// Parsed AddsCounters$ value for produced mana metadata.
+    #[serde(default)]
+    pub adds_counters: Option<String>,
+    /// Parsed AddsCountersValid$ value for produced mana metadata.
+    #[serde(default)]
+    pub adds_counters_valid: Option<String>,
+    /// Parsed TriggersWhenSpent$ value for produced mana metadata.
+    #[serde(default)]
+    pub triggers_when_spent: Option<String>,
+    /// Parsed SubAbility$ SVar name.
+    #[serde(default)]
+    pub sub_ability: Option<String>,
+    /// Lowercased SpellDescription$ for activation keyword routing.
+    #[serde(default)]
+    pub spell_description_lower: String,
     /// Parsed GameActivationLimit$ for cheap action-space gating.
+    #[serde(default)]
     pub game_activation_limit: Option<u32>,
     /// Whether this ability has PowerUp$ True.
+    #[serde(default)]
     pub power_up: bool,
     /// Whether this ability has SorcerySpeed$ True.
+    #[serde(default)]
     pub sorcery_speed: bool,
     /// Whether this is the synthetic Room UnlockDoor ability.
+    #[serde(default)]
     pub is_unlock_door: bool,
+    /// Whether this is a ManaReflected ability.
+    #[serde(default)]
+    pub is_mana_reflected: bool,
     /// Parsed pipe-delimited parameters.
     pub params: Params,
 }
@@ -71,17 +128,54 @@ pub fn parse_activated_ability(raw: &str, index: usize) -> Option<ActivatedAbili
     let power_up = params.is_true(keys::POWER_UP);
     let sorcery_speed = params.is_true(keys::SORCERY_SPEED);
     let is_unlock_door = ab_type.eq_ignore_ascii_case("UnlockDoor");
+    let is_mana_reflected = ab_type.eq_ignore_ascii_case("ManaReflected");
+    let ability_kind = ab_type.to_string();
+    let ability_api = ApiType::smart_value_of(ab_type);
+    let produced = params.get(keys::PRODUCED).map(str::to_string);
+    let restrict_valid = params.get(keys::RESTRICT_VALID).map(str::to_string);
+    let amount = params.get(keys::AMOUNT).map(str::to_string);
+    let spell_description = params.get(keys::SPELL_DESCRIPTION).map(str::to_string);
+    let precost_desc = params.get(keys::PRECOST_DESC).map(str::to_string);
+    let description = params.get(keys::DESCRIPTION).map(str::to_string);
+    let adds_no_counter = params.is_true(keys::ADDS_NO_COUNTER);
+    let adds_keywords = params.get(keys::ADDS_KEYWORDS).map(str::to_string);
+    let adds_keywords_valid = params.get(keys::ADDS_KEYWORDS_VALID).map(str::to_string);
+    let adds_counters = params.get(keys::ADDS_COUNTERS).map(str::to_string);
+    let adds_counters_valid = params.get(keys::ADDS_COUNTERS_VALID).map(str::to_string);
+    let triggers_when_spent = params.get(keys::TRIGGERS_WHEN_SPENT).map(str::to_string);
+    let sub_ability = params.get(keys::SUB_ABILITY).map(str::to_string);
+    let spell_description_lower = params
+        .get(keys::SPELL_DESCRIPTION)
+        .unwrap_or("")
+        .to_ascii_lowercase();
 
     Some(ActivatedAbility {
         ability_index: index,
         cost,
         ability_text: raw.to_string(),
         is_mana_ability,
+        ability_kind,
+        ability_api,
         activation_zone,
+        produced,
+        restrict_valid,
+        amount,
+        spell_description,
+        precost_desc,
+        description,
+        adds_no_counter,
+        adds_keywords,
+        adds_keywords_valid,
+        adds_counters,
+        adds_counters_valid,
+        triggers_when_spent,
+        sub_ability,
+        spell_description_lower,
         game_activation_limit,
         power_up,
         sorcery_speed,
         is_unlock_door,
+        is_mana_reflected,
         params,
     })
 }
@@ -96,26 +190,32 @@ mod tests {
         let ab = parse_activated_ability(raw, 0).unwrap();
         assert!(ab.is_mana_ability);
         assert!(ab.cost.has_tap);
-        assert_eq!(ab.params.get(keys::PRODUCED).unwrap(), "G");
+        assert_eq!(ab.produced.as_deref(), Some("G"));
     }
 
     #[test]
     fn parse_prodigal_sorcerer_non_mana() {
         let raw = "AB$ DealDamage | Cost$ T | ValidTgts$ Any | NumDmg$ 1 | SpellDescription$ CARDNAME deals 1 damage to any target.";
         let ab = parse_activated_ability(raw, 0).unwrap();
+        let ActivatedAbility {
+            params: raw_params, ..
+        } = &ab;
         assert!(!ab.is_mana_ability);
         assert!(ab.cost.has_tap);
-        assert_eq!(ab.params.get(keys::NUM_DMG).unwrap(), "1");
+        assert_eq!(raw_params.get(keys::NUM_DMG).unwrap(), "1");
     }
 
     #[test]
     fn parse_sakura_tribe_elder_sacrifice() {
         let raw = "AB$ ChangeZone | Cost$ Sac<1/CARDNAME> | Origin$ Library | Destination$ Battlefield | Tapped$ True | ChangeType$ Land.Basic | SpellDescription$ Search for a basic land.";
         let ab = parse_activated_ability(raw, 0).unwrap();
+        let ActivatedAbility {
+            params: raw_params, ..
+        } = &ab;
         assert!(!ab.is_mana_ability);
         assert!(!ab.cost.has_tap);
-        assert_eq!(ab.params.get(keys::ORIGIN).unwrap(), "Library");
-        assert_eq!(ab.params.get(keys::DESTINATION).unwrap(), "Battlefield");
+        assert_eq!(raw_params.get(keys::ORIGIN).unwrap(), "Library");
+        assert_eq!(raw_params.get(keys::DESTINATION).unwrap(), "Battlefield");
     }
 
     #[test]

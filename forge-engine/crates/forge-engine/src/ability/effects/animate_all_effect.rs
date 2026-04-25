@@ -34,10 +34,11 @@ use forge_foundation::ManaCost;
 #[forge_engine_macros::spell_effect(AnimateAllEffect)]
 fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let valid_filter = sa
-        .params
-        .get_cloned(keys::VALID_CARDS)
+        .ir
+        .valid_cards_text
+        .clone()
         .unwrap_or_else(|| "Card".to_string());
-    let valid_selector = sa.params.selector_cloned(keys::VALID_CARDS);
+    let valid_selector = sa.ir.valid_cards_selector.clone();
 
     // Use shared base-class parsing for common animate params
     let anim_params = parse_animate_params(sa);
@@ -50,31 +51,15 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     };
     // AnimateAll uses " & " as keyword separator (unlike Animate which uses ",")
     // parse_animate_params splits on "," so we also split on "&" for AnimateAll-specific handling
-    let keywords_str = sa.params.get_cloned(keys::KEYWORDS);
-    let triggers_str = sa.params.get_cloned(keys::TRIGGERS);
+    let keywords_str = sa.ir.animate_keywords_text.clone();
+    let triggers_str = sa.ir.animate_triggers_text.clone();
     let colors_str = anim_params.colors.map(|c| c.join(","));
-    let overwrite_colors = sa
-        .params
-        .get(keys::OVERWRITE_COLORS)
-        .map(|s| s.eq_ignore_ascii_case("True"))
-        .unwrap_or(false);
-    let remove_creature_types = sa
-        .params
-        .get(keys::REMOVE_CREATURE_TYPES)
-        .map(|s| s.eq_ignore_ascii_case("True"))
-        .unwrap_or(false);
-    let remove_all_abilities = sa
-        .params
-        .get(keys::REMOVE_ALL_ABILITIES)
-        .map(|s| s.eq_ignore_ascii_case("True"))
-        .unwrap_or(false);
-    let incorporate_cost = sa.params.get_cloned("Incorporate");
-    let mana_cost_override = sa.params.get_cloned("ManaCost");
-    let is_perpetual = sa
-        .params
-        .get(keys::DURATION)
-        .map(|d| d.eq_ignore_ascii_case("Perpetual"))
-        .unwrap_or(false);
+    let overwrite_colors = sa.param_is_true(keys::OVERWRITE_COLORS);
+    let remove_creature_types = sa.ir.animate_remove_creature_types;
+    let remove_all_abilities = sa.ir.animate_remove_all_abilities;
+    let incorporate_cost = sa.ir.animate_incorporate_text.clone();
+    let mana_cost_override = sa.ir.animate_mana_cost_override_text.clone();
+    let is_perpetual = matches!(sa.ir.duration, Some(crate::spellability::AbilityDuration::Perpetual));
     let resolve_ts = ctx.game.next_effect_timestamp();
 
     // Resolve Triggers$ SVars from source into parsed Trigger objects.

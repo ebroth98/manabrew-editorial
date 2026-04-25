@@ -37,9 +37,9 @@ pub(super) fn move_cards(
     // Card ordering for library destination (Java lines 529-539)
     let mut ordered = cards.to_vec();
     if dest_zone == ZoneType::Library && ordered.len() > 1 && !sa.is_shuffle() {
-        if sa.param_is_true(keys::RANDOM_ORDER) {
+        if sa.ir.random_order {
             ctx.rng.shuffle_cards(&mut ordered);
-        } else if sa.param_is_true(keys::SHUFFLE_CHANGED_PILE) {
+        } else if sa.ir.shuffle_changed_pile {
             ctx.rng.shuffle_cards(&mut ordered);
         }
     }
@@ -47,7 +47,7 @@ pub(super) fn move_cards(
     let mut searched_owners: Vec<PlayerId> = Vec::new();
 
     // ForgetOtherRemembered$ — clear before processing (Java line 510)
-    if sa.param_is_true(keys::FORGET_OTHER_REMEMBERED) {
+    if sa.ir.forget_other_remembered {
         if let Some(sid) = sa.source {
             ctx.game.card_mut(sid).clear_remembered();
         }
@@ -61,8 +61,7 @@ pub(super) fn move_cards(
     // Java; the subsequent per-card move then re-positions the chosen cards.
     let pre_move_shuffle = origin_zone == ZoneType::Library && dest_zone == ZoneType::Library;
     if pre_move_shuffle {
-        let shuffle_param = sa.params.get(keys::SHUFFLE);
-        let no_shuffle = shuffle_param == Some("False") || sa.param_is_true(keys::NO_SHUFFLE);
+        let no_shuffle = sa.ir.shuffle_raw.as_deref() == Some("False") || sa.ir.no_shuffle;
         if !no_shuffle {
             let mut shuffled_owners: Vec<PlayerId> = Vec::new();
             for &card_id in &ordered {
@@ -139,7 +138,7 @@ pub(super) fn move_cards(
     }
 
     // Searched$ — force trigger even without Library origin
-    if sa.param_is_true(keys::SEARCHED) && origin_zone != ZoneType::Library {
+    if sa.ir.searched && origin_zone != ZoneType::Library {
         ctx.trigger_handler.run_trigger(
             TriggerType::SearchedLibrary,
             RunParams {
@@ -151,7 +150,7 @@ pub(super) fn move_cards(
     }
 
     // AtEOT$ delayed triggers
-    if let Some(eot_svar) = sa.params.get(keys::AT_EOT) {
+    if let Some(eot_svar) = sa.ir.at_eot.as_deref() {
         for &cid in &moved {
             ctx.trigger_handler
                 .register_delayed_trigger(crate::trigger::handler::DelayedTrigger {
@@ -174,10 +173,12 @@ pub(super) fn move_cards(
     }
 
     // Duration$ UntilHostLeavesPlay — mark exiled cards for return
-    if let Some(duration) = sa.params.get(keys::DURATION) {
-        if duration.eq_ignore_ascii_case("UntilHostLeavesPlay")
-            || duration.eq_ignore_ascii_case("UntilHostLeavesPlayOrEOT")
-        {
+    if let Some(duration) = sa.ir.duration.as_ref() {
+        if matches!(
+            duration,
+            crate::spellability::AbilityDuration::UntilHostLeavesPlay
+                | crate::spellability::AbilityDuration::UntilHostLeavesPlayOrEot
+        ) {
             if let Some(sid) = sa.source {
                 for &cid in &moved {
                     ctx.game.card_mut(cid).set_exiled_by(Some(sid));
@@ -190,8 +191,7 @@ pub(super) fn move_cards(
     // e.g. Tutor a card to hand). The Library→Library case was already
     // handled above (pre-move shuffle), so skip it here to avoid a second
     // shuffle that would consume extra RNG and diverge from Java.
-    let shuffle_param = sa.params.get(keys::SHUFFLE);
-    let no_shuffle = shuffle_param == Some("False") || sa.param_is_true(keys::NO_SHUFFLE);
+    let no_shuffle = sa.ir.shuffle_raw.as_deref() == Some("False") || sa.ir.no_shuffle;
     let force_shuffle = sa.is_shuffle();
     let already_shuffled = pre_move_shuffle;
     if !already_shuffled && !no_shuffle && (origin_zone == ZoneType::Library || force_shuffle) {
@@ -204,33 +204,7 @@ pub(super) fn move_cards(
             if ctx.game.cards_in_zone(ZoneType::Library, pid).is_empty() {
                 continue;
             }
-            if std::env::var("FORGE_LIB_DUMP").is_ok() {
-                let lib_ref = ctx.game.zone(ZoneType::Library, pid);
-                let first5: Vec<String> = lib_ref
-                    .cards
-                    .iter()
-                    .rev()
-                    .take(5)
-                    .map(|&cid| ctx.game.card(cid).card_name.clone())
-                    .collect();
-                eprintln!(
-                    "[LIB_DUMP] pre-shuffle pid={:?} len={} rng_calls={} top5={:?}",
-                    pid,
-                    lib_ref.cards.len(),
-                    ctx.rng.call_count(),
-                    first5
-                );
-            }
             ctx.game.shuffle_zone_cards(ZoneType::Library, pid, ctx.rng);
-            if std::env::var("FORGE_LIB_DUMP").is_ok() {
-                let lib_ref = ctx.game.zone(ZoneType::Library, pid);
-                let ids: Vec<CardId> = lib_ref.cards.iter().rev().take(5).copied().collect();
-                let names: Vec<String> = ids
-                    .iter()
-                    .map(|&cid| ctx.game.card(cid).card_name.clone())
-                    .collect();
-                eprintln!("[LIB_DUMP] post-shuffle pid={:?} top5={:?}", pid, names);
-            }
             ctx.trigger_handler.run_trigger(
                 TriggerType::Shuffled,
                 RunParams {
@@ -272,7 +246,11 @@ fn apply_hand_library_replacement(
     };
     let mut handler = ReplacementHandler::new();
     handler.run(ctx.game, Some(ctx.agents), None, &mut event);
-    if let ReplacementEvent::Moved { destination: new_dest, .. } = event {
+    if let ReplacementEvent::Moved {
+        destination: new_dest,
+        ..
+    } = event
+    {
         new_dest
     } else {
         destination

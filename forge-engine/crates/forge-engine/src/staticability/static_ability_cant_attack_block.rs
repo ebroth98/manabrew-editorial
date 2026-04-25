@@ -94,7 +94,7 @@ pub fn apply_cant_attack_ability(
     cards: &[Card],
 ) -> bool {
     if !valid_filter::matches_valid_card_selector_opt_in_game(
-        st_ab.params.selector(keys::VALID_CARD),
+        st_ab.ir.valid_card.as_ref(),
         card,
         source,
         game,
@@ -111,7 +111,7 @@ pub fn apply_cant_attack_ability(
     // In Java, `Target` is validated against the GameEntity (defender).
     // We use player validation since defender is a PlayerId in our model.
     if !valid_filter::matches_valid_player_opt(
-        st_ab.params.get(keys::TARGET),
+        st_ab.ir.target_text.as_deref(),
         defender,
         source.controller,
     ) {
@@ -121,8 +121,9 @@ pub fn apply_cant_attack_ability(
     // Check for "can attack as if didn't have Defender" static.
     // In Java: if (stAb.isKeyword(Keyword.DEFENDER) && canAttackDefender(card, target))
     if st_ab
-        .params
-        .get(keys::KW)
+        .ir
+        .kw_text
+        .as_deref()
         .is_some_and(|v| v.eq_ignore_ascii_case("Defender"))
     {
         if can_attack_defender(game, cards, card, defender) {
@@ -130,10 +131,7 @@ pub fn apply_cant_attack_ability(
         }
     }
 
-    if st_ab
-        .params
-        .has(keys::DEFENDER_NOT_NEAREST_TO_YOU_IN_CHOSEN_DIRECTION)
-    {
+    if st_ab.ir.defender_not_nearest_to_you_in_chosen_direction {
         // Mirrors Java: if no chosen direction exists, this restriction does not apply.
         let Some(direction) = source.svars.get("ChosenDirection") else {
             return false;
@@ -144,7 +142,7 @@ pub fn apply_cant_attack_ability(
     }
 
     // UnlessDefender — if the defending player matches the filter, allow the attack.
-    if let Some(unless_type) = st_ab.params.get(keys::UNLESS_DEFENDER) {
+    if let Some(unless_type) = st_ab.ir.unless_defender_text.as_deref() {
         if valid_filter::matches_valid_player(unless_type, defender, source.controller) {
             return false;
         }
@@ -186,7 +184,7 @@ pub fn apply_can_attack_defender_ability(
     defender: PlayerId,
 ) -> bool {
     if !valid_filter::matches_valid_card_selector_opt_in_game(
-        st_ab.params.selector(keys::VALID_CARD),
+        st_ab.ir.valid_card.as_ref(),
         card,
         source,
         game,
@@ -196,7 +194,7 @@ pub fn apply_can_attack_defender_ability(
 
     // In Java: matchesValidParam("ValidAttacked", target) — target is the defender entity.
     if !valid_filter::matches_valid_player_selector_opt(
-        st_ab.params.selector(keys::VALID_ATTACKED),
+        st_ab.ir.valid_attacked.as_ref(),
         defender,
         source.controller,
     ) {
@@ -242,7 +240,7 @@ pub fn apply_cant_block_ability(
     source: &Card,
 ) -> bool {
     if !valid_filter::matches_valid_card_selector_opt_in_game(
-        st_ab.params.selector(keys::VALID_CARD),
+        st_ab.ir.valid_card.as_ref(),
         blocker,
         source,
         game,
@@ -298,7 +296,7 @@ pub fn apply_cant_block_by_ability(
     cards: &[Card],
 ) -> bool {
     if !valid_filter::matches_valid_card_selector_opt_in_game(
-        st_ab.params.selector(keys::VALID_ATTACKER),
+        st_ab.ir.valid_attacker.as_ref(),
         attacker,
         source,
         game,
@@ -307,7 +305,7 @@ pub fn apply_cant_block_by_ability(
     }
 
     // ValidBlocker — complex logic matching Java's comma-split + withoutReach check
-    if let Some(valid_blocker_param) = st_ab.params.selector(keys::VALID_BLOCKER) {
+    if let Some(valid_blocker_param) = st_ab.ir.valid_blocker.as_ref() {
         let mut still_block = true;
         for alternative in &valid_blocker_param.alternatives {
             if let Some(b) = blocker {
@@ -344,35 +342,35 @@ pub fn apply_cant_block_by_ability(
     // ValidAttackerRelative — relative to blocker
     if let Some(blocker_card) = blocker {
         if !valid_filter::matches_valid_card_selector_opt_in_game(
-            st_ab.params.selector(keys::VALID_ATTACKER_RELATIVE),
+            st_ab.ir.valid_attacker_relative.as_ref(),
             attacker,
             blocker_card,
             game,
         ) {
             return false;
         }
-    } else if st_ab.params.has(keys::VALID_ATTACKER_RELATIVE) {
+    } else if st_ab.ir.has_valid_attacker_relative {
         return false;
     }
 
     // ValidBlockerRelative — relative to attacker
     if let Some(blocker_card) = blocker {
         if !valid_filter::matches_valid_card_selector_opt_in_game(
-            st_ab.params.selector(keys::VALID_BLOCKER_RELATIVE),
+            st_ab.ir.valid_blocker_relative.as_ref(),
             blocker_card,
             attacker,
             game,
         ) {
             return false;
         }
-    } else if st_ab.params.has(keys::VALID_BLOCKER_RELATIVE) {
+    } else if st_ab.ir.has_valid_blocker_relative {
         return false;
     }
 
     // ValidDefender — checks blocker's controller
     if let Some(blocker_card) = blocker {
         if !valid_filter::matches_valid_player_selector_opt(
-            st_ab.params.selector(keys::VALID_DEFENDER),
+            st_ab.ir.valid_defender.as_ref(),
             blocker_card.controller,
             source.controller,
         ) {
@@ -384,7 +382,7 @@ pub fn apply_cant_block_by_ability(
     }
 
     // Landwalk check
-    if let Some(kw_val) = st_ab.params.get(keys::KW) {
+    if let Some(kw_val) = st_ab.ir.kw_text.as_deref() {
         if kw_val.contains("Landwalk") || kw_val.contains("landwalk") {
             if let Some(blocker_card) = blocker {
                 if crate::staticability::static_ability_ignore_landwalk::ignore_land_walk(
@@ -435,7 +433,7 @@ pub fn apply_can_block_if_reach_ability(
     source: &Card,
 ) -> bool {
     if !valid_filter::matches_valid_card_selector_opt_in_game(
-        st_ab.params.selector(keys::VALID_ATTACKER),
+        st_ab.ir.valid_attacker.as_ref(),
         attacker,
         source,
         game,
@@ -443,7 +441,7 @@ pub fn apply_can_block_if_reach_ability(
         return false;
     }
     if !valid_filter::matches_valid_card_selector_opt_in_game(
-        st_ab.params.selector(keys::VALID_BLOCKER),
+        st_ab.ir.valid_blocker.as_ref(),
         blocker,
         source,
         game,
@@ -475,7 +473,7 @@ pub fn can_block_tapped(game: &GameState, cards: &[Card], card: &Card) -> bool {
 /// Mirrors Java's `StaticAbilityCantAttackBlock.applyBlockTapped()`.
 fn apply_block_tapped(game: &GameState, st_ab: &StaticAbility, card: &Card, source: &Card) -> bool {
     if !valid_filter::matches_valid_card_selector_opt_in_game(
-        st_ab.params.selector(keys::VALID_CARD),
+        st_ab.ir.valid_card.as_ref(),
         card,
         source,
         game,
@@ -523,7 +521,7 @@ pub fn apply_can_attack_haste_ability(
     source: &Card,
 ) -> bool {
     if !valid_filter::matches_valid_card_selector_opt_in_game(
-        st_ab.params.selector(keys::VALID_CARD),
+        st_ab.ir.valid_card.as_ref(),
         card,
         source,
         game,
@@ -533,7 +531,7 @@ pub fn apply_can_attack_haste_ability(
 
     // ValidTarget — in Java this validates the target entity (defender).
     if !valid_filter::matches_valid_player_selector_opt(
-        st_ab.params.selector(keys::VALID_TARGET),
+        st_ab.ir.valid_target.as_ref(),
         defender,
         source.controller,
     ) {
@@ -588,7 +586,7 @@ pub fn apply_min_max_blocker_ability(
     max: &mut i32,
 ) {
     if !valid_filter::matches_valid_card_selector_opt_in_game(
-        st_ab.params.selector(keys::VALID_CARD),
+        st_ab.ir.valid_card.as_ref(),
         attacker,
         source,
         game,
@@ -596,7 +594,7 @@ pub fn apply_min_max_blocker_ability(
         return;
     }
 
-    if let Some(min_val) = st_ab.params.get(keys::MIN) {
+    if let Some(min_val) = st_ab.ir.min_text.as_deref() {
         if min_val == "All" {
             // In Java: defender.getCreaturesInPlay().size()
             // Count creatures controlled by the defending player
@@ -614,7 +612,7 @@ pub fn apply_min_max_blocker_ability(
         }
     }
 
-    if let Some(max_val) = st_ab.params.get(keys::MAX) {
+    if let Some(max_val) = st_ab.ir.max_text.as_deref() {
         if let Some(val) = resolve_amount_expr(None, source, max_val) {
             *max = val;
         }
@@ -648,7 +646,7 @@ pub fn apply_attack_vigilance_ability(
     source: &Card,
 ) -> bool {
     if !valid_filter::matches_valid_card_selector_opt_in_game(
-        st_ab.params.selector(keys::VALID_CARD),
+        st_ab.ir.valid_card.as_ref(),
         card,
         source,
         game,
@@ -670,7 +668,7 @@ pub fn get_attack_cost(
     source: &Card,
 ) -> Option<String> {
     if !valid_filter::matches_valid_card_selector_opt(
-        st_ab.params.selector(keys::VALID_CARD),
+        st_ab.ir.valid_card.as_ref(),
         attacker,
         source,
     ) {
@@ -678,14 +676,14 @@ pub fn get_attack_cost(
     }
 
     if !valid_filter::matches_valid_player_opt(
-        st_ab.params.get(keys::TARGET),
+        st_ab.ir.target_text.as_deref(),
         target,
         source.controller,
     ) {
         return None;
     }
 
-    let mut cost_string = st_ab.params.get(keys::COST)?.to_string();
+    let mut cost_string = st_ab.ir.cost.clone()?;
     if let Some(svar_expr) = source.svars.get(&cost_string) {
         let add_x = cost_string.starts_with('X');
         let amount = crate::svar::evaluate_svar(
@@ -698,7 +696,7 @@ pub fn get_attack_cost(
         }
     }
 
-    if st_ab.params.has(keys::TRIGGER) {
+    if st_ab.ir.trigger {
         // TODO: cost.getCostParts().get(0).setTrigger(stAb.getPayingTrigSA())
         // Trigger-based cost parts not yet modelled.
     }
@@ -718,7 +716,7 @@ pub fn get_block_cost(
     source: &Card,
 ) -> Option<String> {
     if !valid_filter::matches_valid_card_selector_opt(
-        st_ab.params.selector(keys::VALID_CARD),
+        st_ab.ir.valid_card.as_ref(),
         blocker,
         source,
     ) {
@@ -728,14 +726,14 @@ pub fn get_block_cost(
     // Attacker validation — in Java this is matchesValidParam("Attacker", attacker)
     // where attacker is a GameEntity. We validate as a player for now.
     if !valid_filter::matches_valid_player_opt(
-        st_ab.params.get(keys::ATTACKER),
+        st_ab.ir.attacker_text.as_deref(),
         attacker_player,
         source.controller,
     ) {
         return None;
     }
 
-    let mut cost_string = st_ab.params.get(keys::COST)?.to_string();
+    let mut cost_string = st_ab.ir.cost.clone()?;
     if let Some(svar_expr) = source.svars.get(&cost_string) {
         let add_x = cost_string.starts_with('X');
         let amount = crate::svar::evaluate_svar(

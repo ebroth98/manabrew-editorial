@@ -5,13 +5,16 @@
 //! in Rust we keep the trait for interface parity and provide the utility
 //! methods as free functions that take `(&GameState, &SpellAbility)`.
 
+use crate::ability::ability_ir::{DefinedExpr, DefinedRef};
 use crate::ability::api_type::ApiType;
 use crate::ability::AbilityKey;
 use crate::agent::PlayerAgent;
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
+use crate::parsing::keys;
 use crate::player::player_factory_util::add_replacement_effect;
 use crate::spellability::SpellAbility;
+use crate::spellability::{AbilityDuration, ReplaceDyingCondition};
 
 use super::ability_factory::AbilityRecordType;
 use super::ability_utils;
@@ -58,12 +61,7 @@ pub trait SpellAbilityEffect {
 
     /// Create a temporary effect card in the command zone.
     /// Mirrors Java's `SpellAbilityEffect.createEffect(SpellAbility, Player, String, String)`.
-    fn create_effect(
-        game: &mut GameState,
-        sa: &SpellAbility,
-        name: &str,
-        image: &str,
-    ) -> CardId {
+    fn create_effect(game: &mut GameState, sa: &SpellAbility, name: &str, image: &str) -> CardId {
         create_effect(game, sa, name, image)
     }
 
@@ -146,21 +144,24 @@ fn get_cards(
     defined_first: bool,
     defined_param: &str,
 ) -> Vec<CardId> {
-    let use_targets = sa.uses_targeting() && (!defined_first || !sa.params.has(defined_param));
+    let ir_defined = ir_defined_param(sa, defined_param);
+    let has_defined = ir_defined.is_some_and(|defined| defined.is_some());
+    let use_targets = sa.uses_targeting() && (!defined_first || !has_defined);
 
     if use_targets {
         // Return targeted card(s)
         sa.target_chosen.target_card.into_iter().collect()
     } else {
         // Resolve Defined$ (or default to "Self")
-        let defined = sa.params.get(defined_param).unwrap_or("Self");
-
-        // Handle " & "-separated definitions (e.g. "Self & Targeted")
+        let defined = ir_defined;
         let mut result = Vec::new();
-        for d in defined.split(" & ") {
-            let d = d.trim();
-            let cards = resolve_defined_cards_for_sa(game, sa, d);
-            result.extend(cards);
+        if let Some(Some(defined)) = defined {
+            for d in &defined.refs {
+                let cards = resolve_defined_cards_for_sa_ref(game, sa, d);
+                result.extend(cards);
+            }
+        } else {
+            result.extend(resolve_defined_cards_for_sa(game, sa, "Self"));
         }
         result
     }
@@ -208,8 +209,9 @@ fn get_players(
 
     fn sort_in_turn_order(game: &GameState, sa: &SpellAbility, players: &mut [PlayerId]) {
         let starter = sa
-            .params
-            .get("StartingWith")
+            .ir
+            .starting_with
+            .as_deref()
             .and_then(|defined| {
                 ability_utils::resolve_defined_players_with_sa(
                     defined,
@@ -231,27 +233,62 @@ fn get_players(
         });
     }
 
-    let use_targets = sa.uses_targeting() && (!defined_first || !sa.params.has(defined_param));
+    let ir_defined = ir_defined_param(sa, defined_param);
+    let has_defined = ir_defined.is_some_and(|defined| defined.is_some());
+    let use_targets = sa.uses_targeting() && (!defined_first || !has_defined);
 
     if use_targets {
         let mut result = sa.target_chosen.all_target_players();
         sort_in_turn_order(game, sa, &mut result);
         result
     } else {
-        let defined = sa.params.get(defined_param).unwrap_or("You");
-
         let mut result = Vec::new();
-        for d in defined.split(" & ") {
-            let d = d.trim();
-            let players =
-                ability_utils::resolve_defined_players_with_sa(d, sa, sa.activating_player, game);
-            for player in players {
+        if let Some(Some(defined)) = ir_defined {
+            for d in &defined.refs {
+                let players = ability_utils::resolve_defined_players_with_sa(
+                    d.as_legacy_str(),
+                    sa,
+                    sa.activating_player,
+                    game,
+                );
+                for player in players {
+                    unique_push(&mut result, player);
+                }
+            }
+        } else {
+            for player in ability_utils::resolve_defined_players_with_sa(
+                "You",
+                sa,
+                sa.activating_player,
+                game,
+            ) {
                 unique_push(&mut result, player);
             }
         }
         sort_in_turn_order(game, sa, &mut result);
         result
     }
+}
+
+fn ir_defined_param<'a>(
+    sa: &'a SpellAbility,
+    defined_param: &str,
+) -> Option<Option<&'a DefinedExpr>> {
+    if defined_param == keys::DEFINED {
+        Some(sa.ir.defined.as_ref())
+    } else if defined_param == keys::DEFINED_PLAYER {
+        Some(sa.ir.defined_player.as_ref())
+    } else {
+        None
+    }
+}
+
+fn resolve_defined_cards_for_sa_ref(
+    game: &GameState,
+    sa: &SpellAbility,
+    defined: &DefinedRef,
+) -> Vec<CardId> {
+    resolve_defined_cards_for_sa(game, sa, defined.as_legacy_str())
 }
 
 /// Resolve a `Defined$` string to card IDs in the context of a spell ability.
@@ -327,16 +364,12 @@ pub fn tokenize_string(game: &GameState, sa: &SpellAbility, desc: &str) -> Strin
     result = result.replace("NICKNAME", &card_name);
 
     // Replace DAMAGE with the NumDmg parameter if present
-    if let Some(num_dmg) = sa.params.get("NumDmg") {
+    if let Some(num_dmg) = sa.ir.num_dmg_text.as_deref() {
         result = result.replace("DAMAGE", num_dmg);
     }
 
     // Replace AMOUNT with relevant numeric parameter
-    if let Some(amount) = sa
-        .params
-        .get("Amount")
-        .or_else(|| sa.params.get("NumCards"))
-    {
+    if let Some(amount) = sa.ir.amount.as_deref().or(sa.ir.num_cards_text.as_deref()) {
         result = result.replace("AMOUNT", amount);
     }
 
@@ -462,7 +495,7 @@ pub fn exile_effect_command(
     handle_exiled_with(game, sa, card_id);
 
     // Remember the exiled card if requested
-    if sa.params.has("RememberExiled") {
+    if sa.ir.remember_exiled {
         if let Some(source_id) = sa.source {
             game.card_mut(source_id).add_remembered_card(card_id);
         }
@@ -502,7 +535,7 @@ pub fn get_stack_description_with_subs(
     }
 
     // Own description
-    if let Some(raw_stack_desc) = sa.params.get("StackDescription") {
+    if let Some(raw_stack_desc) = sa.ir.stack_description_text.as_deref() {
         let (stack_desc, reps): (&str, Option<Vec<(String, String)>>) =
             if let Some(rest) = raw_stack_desc.strip_prefix("REP") {
                 let pairs = rest
@@ -519,7 +552,7 @@ pub fn get_stack_description_with_subs(
             };
 
         if stack_desc.eq_ignore_ascii_case("SpellDescription") {
-            if let Some(raw_sdesc) = sa.params.get("SpellDescription") {
+            if let Some(raw_sdesc) = sa.ir.spell_description_text.as_deref() {
                 let mut spell_desc = raw_sdesc.replace(",,,,,,", " ").replace(",,,", " ");
                 // Strip reminder text `(...)`.
                 if let (Some(l), Some(r)) = (spell_desc.find(" ("), spell_desc.find(')')) {
@@ -548,8 +581,8 @@ pub fn get_stack_description_with_subs(
             sb.push_str(&tokenize_string(game, sa, stack_desc));
         }
     } else {
-        let cond_desc = sa.params.get("ConditionDescription");
-        let after_desc = sa.params.get("AfterDescription");
+        let cond_desc = sa.ir.condition_description_text.as_deref();
+        let after_desc = sa.ir.after_description_text.as_deref();
         let base_desc = stack_desc_fallback.to_string();
         if let Some(cd) = cond_desc {
             sb.push_str(cd);
@@ -583,7 +616,7 @@ pub fn get_stack_description_with_subs(
     }
 
     // Announce/X value suffix.
-    if let Some(svar) = sa.params.get("Announce") {
+    if let Some(svar) = sa.ir.announce_text.as_deref() {
         let amount = calculate_amount_for_sa(game, sa, svar);
         sb.push_str(&format!(" ({svar}={amount})"));
     } else if sa.cost_has_mana_x() {
@@ -752,7 +785,11 @@ pub fn register_at_eot(
 /// Returns `true` when the duration is either absent or its prerequisites
 /// (host in play, tapped, controlled by activator, ...) are still satisfied
 /// at resolution time.
-pub fn check_valid_duration(game: &GameState, sa: &SpellAbility, duration: Option<&str>) -> bool {
+pub fn check_valid_duration(
+    game: &GameState,
+    sa: &SpellAbility,
+    duration: Option<&AbilityDuration>,
+) -> bool {
     let Some(duration) = duration else {
         return true;
     };
@@ -765,27 +802,19 @@ pub fn check_valid_duration(game: &GameState, sa: &SpellAbility, duration: Optio
         forge_foundation::ZoneType::Battlefield | forge_foundation::ZoneType::Stack
     );
 
-    if (duration.starts_with("UntilHostLeavesPlay")
-        || duration == "UntilLoseControlOfHost"
-        || duration == "UntilUntaps"
-        || duration == "AsLongAsControl"
-        || duration == "AsLongAsInPlay")
-        && !in_play_or_stack
-    {
+    if duration.needs_host_in_play_or_stack() && !in_play_or_stack {
         return false;
     }
-    if (duration == "AsLongAsControl" || duration == "AsLongAsInPlay") && host.phased_out {
+    if duration.needs_host_not_phased_out() && host.phased_out {
         return false;
     }
-    if (duration == "UntilLoseControlOfHost" || duration == "AsLongAsControl")
-        && host.controller != sa.activating_player
-    {
+    if duration.needs_host_control() && host.controller != sa.activating_player {
         return false;
     }
-    if duration == "UntilUntaps" && !host.tapped {
+    if duration.needs_host_tapped() && !host.tapped {
         return false;
     }
-    if duration == "UntilTargetedUntaps" {
+    if duration.needs_targeted_card_tapped() {
         if let Some(tgt_id) = sa.target_chosen.target_card {
             let tgt = game.card(tgt_id);
             if !tgt.tapped || tgt.phased_out {
@@ -801,18 +830,18 @@ pub fn check_valid_duration(game: &GameState, sa: &SpellAbility, duration: Optio
 ///
 /// Mirrors Java's `SpellAbilityEffect.replaceDying(sa)`.
 pub fn replace_dying(game: &mut GameState, sa: &SpellAbility) -> Vec<CardId> {
-    if !sa.params.has("ReplaceDyingDefined") && !sa.params.has("ReplaceDyingValid") {
+    if sa.ir.replace_dying_defined.is_none() && sa.ir.replace_dying_valid.is_none() {
         return Vec::new();
     }
 
     // Check condition (currently only Kicked)
-    if let Some(cond) = sa.params.get("ReplaceDyingCondition") {
-        if cond == "Kicked" && !sa.kicked {
+    if let Some(cond) = sa.ir.replace_dying_condition.as_ref() {
+        if matches!(cond, ReplaceDyingCondition::Kicked) && !sa.kicked {
             return Vec::new();
         }
     }
 
-    let cards = if let Some(defined) = sa.params.get("ReplaceDyingDefined") {
+    let cards = if let Some(defined) = sa.ir.replace_dying_defined_text.as_deref() {
         let cards = resolve_defined_cards_for_sa(game, sa, defined);
         if cards.is_empty() {
             return Vec::new();
@@ -836,15 +865,16 @@ pub fn replace_dying(game: &mut GameState, sa: &SpellAbility) -> Vec<CardId> {
     }
 
     let valid = sa
-        .params
-        .get("ReplaceDyingValid")
+        .ir
+        .replace_dying_valid
+        .as_deref()
         .unwrap_or("Card.IsRemembered");
-    let zone = sa.params.get("ReplaceDyingZone").unwrap_or("Exile");
+    let zone = sa.ir.replace_dying_zone_text.as_deref().unwrap_or("Exile");
     let mut replacement_raw = format!(
         "R$ Event$ Moved | ValidLKI$ {} | Origin$ Battlefield | Destination$ Graveyard | NewDestination$ {} | Description$ If that permanent would die this turn, exile it instead.",
         valid, zone
     );
-    if sa.params.has("ReplaceDyingExiledWith") {
+    if sa.ir.replace_dying_exiled_with {
         replacement_raw.push_str(" | ExiledWithEffectSource$ True");
     }
 

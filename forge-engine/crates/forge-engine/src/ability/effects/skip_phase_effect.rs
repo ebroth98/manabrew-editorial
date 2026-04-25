@@ -52,9 +52,10 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let controller = sa.activating_player;
 
     let phase = sa
-        .params
-        .get(keys::PHASE)
-        .or_else(|| sa.params.get(keys::STEP))
+        .ir
+        .phase_text
+        .as_deref()
+        .or(sa.ir.step_text.as_deref())
         .unwrap_or("");
 
     let defined = sa.defined().unwrap_or("You");

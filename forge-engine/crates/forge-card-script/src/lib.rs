@@ -669,8 +669,12 @@ fn parse_script_ability<'a>(
 ) -> ScriptAbility<'a> {
     let report = ParsedParams::parse_with_diagnostics(raw);
     record_param_report_diagnostics(&report, line_no, value_span.start, diagnostics);
+    let ParsedParamsReport {
+        params: parsed_params,
+        diagnostics: _,
+    } = report;
 
-    let record = ability_record(&report.params);
+    let record = ability_record(&parsed_params);
     if record.is_none() && !raw.trim().is_empty() {
         diagnostics.push(ScriptDiagnostic {
             kind: ScriptDiagnosticKind::MissingAbilityRecord,
@@ -683,12 +687,12 @@ fn parse_script_ability<'a>(
         });
     }
 
-    let api_raw = record.and_then(|record| report.params.get(record.key()));
+    let api_raw = record.and_then(|record| parsed_params.get(record.key()));
 
     ScriptAbility {
         record,
         api_raw,
-        params: report.params,
+        params: parsed_params,
     }
 }
 
@@ -700,8 +704,12 @@ fn parse_script_param_record<'a>(
 ) -> ScriptParamRecord<'a> {
     let report = ParsedParams::parse_with_diagnostics(raw);
     record_param_report_diagnostics(&report, line_no, value_span.start, diagnostics);
+    let ParsedParamsReport {
+        params: parsed_params,
+        diagnostics: _,
+    } = report;
     ScriptParamRecord {
-        params: report.params,
+        params: parsed_params,
     }
 }
 

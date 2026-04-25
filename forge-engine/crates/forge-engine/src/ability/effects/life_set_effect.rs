@@ -1,5 +1,5 @@
 use super::{resolve_defined_players, resolve_numeric_svar, EffectContext};
-use crate::ability::ability_ir::AbilityIr;
+use crate::ability::ability_ir::EffectIr;
 use crate::event::RunParams;
 use crate::spellability::SpellAbility;
 use crate::trigger::TriggerType;
@@ -67,7 +67,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
 }
 
 fn resolve_life_set_amount(ctx: &EffectContext, sa: &SpellAbility) -> i32 {
-    if let Some(AbilityIr::LifeSet(ir)) = &sa.compiled_ir {
+    if let Some(EffectIr::LifeSet(ir)) = &sa.ir.effect {
         if let Some(amount) = &ir.amount {
             let resolved = amount.resolve_for_spell_ability(ctx.game, sa, 0);
             #[cfg(debug_assertions)]

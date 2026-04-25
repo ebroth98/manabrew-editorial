@@ -307,10 +307,11 @@ impl<T: AgentTransport> PlayerAgent for PromptAgent<T> {
                 let card = game.card(card_id);
                 for ab in &card.activated_abilities {
                     let desc = ab
-                        .params
-                        .get("SpellDescription")
-                        .or_else(|| ab.params.get("PrecostDesc"))
-                        .map(|s| s.to_string())
+                        .spell_description
+                        .as_deref()
+                        .or(ab.precost_desc.as_deref())
+                        .or(ab.description.as_deref())
+                        .map(str::to_string)
                         .unwrap_or_else(|| ab.ability_text.clone())
                         .replace("CARDNAME", &card.card_name);
                     let cost_str = ab.cost.to_simple_string();

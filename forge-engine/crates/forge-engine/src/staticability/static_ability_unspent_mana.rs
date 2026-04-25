@@ -6,7 +6,6 @@ use forge_foundation::ZoneType;
 use crate::card::valid_filter;
 use crate::game::GameState;
 use crate::ids::PlayerId;
-use crate::parsing::keys;
 use crate::staticability::StaticMode;
 
 /// All mana type atoms, matching Java's `ManaAtom.MANATYPES`.
@@ -63,7 +62,7 @@ pub fn has_mana_burn(game: &GameState, player: PlayerId) -> bool {
             // if (!stAb.matchesValidParam("ValidPlayer", player)) return false;
             // return true;
             return valid_filter::matches_valid_player_selector_opt(
-                st_ab.params.selector(keys::VALID_PLAYER),
+                st_ab.ir.valid_player.as_ref(),
                 player,
                 card.controller,
             );
@@ -82,14 +81,14 @@ fn apply_unspent_mana_ability(
     result: &mut HashSet<u16>,
 ) {
     if !valid_filter::matches_valid_player_selector_opt(
-        st_ab.params.selector(keys::VALID_PLAYER),
+        st_ab.ir.valid_player.as_ref(),
         player,
         source_controller,
     ) {
         return;
     }
 
-    if let Some(mana_type) = st_ab.params.get(keys::MANA_TYPE) {
+    if let Some(mana_type) = st_ab.ir.mana_type_text.as_deref() {
         // Java: result.add(MagicColor.fromName(stAb.getParam("ManaType")))
         let atom = ManaAtom::from_name(&mana_type.to_ascii_lowercase());
         if atom != 0 {

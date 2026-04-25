@@ -418,9 +418,8 @@ impl CardState {
         self.get_replacement_effect(id).is_some()
     }
     pub fn get_replacement_effect(&self, id: i32) -> Option<ReplacementEffect> {
-        self.get_replacement_effects()
-            .into_iter()
-            .find(|r| false || id == 0 && r.params.is_empty())
+        let _ = id;
+        None
     }
     pub fn get_foil(&self) -> i32 {
         self.get_svar("Foil")
@@ -469,7 +468,7 @@ impl CardState {
     ) {
     }
     pub fn has_chapter(&self) -> bool {
-        self.get_triggers().iter().any(|t| t.params.has("Chapter"))
+        self.get_triggers().iter().any(|t| t.ir.chapter.is_some())
     }
     pub fn get_final_chapter_nr(&self) -> i32 {
         0
@@ -801,12 +800,7 @@ pub fn change_text_intrinsic(card: &mut Card) {
 
 pub fn has_chapter(card: &Card) -> bool {
     card.triggers.iter().any(|t| {
-        t.params.has("Chapter")
-            || t.params
-                .get("Mode")
-                .map(|m| m.eq_ignore_ascii_case("Chapter"))
-                .unwrap_or(false)
-            || t.description.to_ascii_lowercase().contains("chapter")
+        t.ir.chapter.is_some() || t.description.to_ascii_lowercase().contains("chapter")
     })
 }
 

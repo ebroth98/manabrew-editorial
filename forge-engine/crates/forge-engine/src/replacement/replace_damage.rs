@@ -43,7 +43,7 @@ pub fn can_replace(
     if amount <= 0 {
         return false;
     }
-    if let Some(valid_source) = effect.params.selector(keys::VALID_SOURCE) {
+    if let Some(valid_source) = effect.ir.valid_source_selector.as_ref() {
         let Some(source_id) = damage_source else {
             return false;
         };
@@ -51,7 +51,7 @@ pub fn can_replace(
             return false;
         }
     }
-    if let Some(valid_target) = effect.params.selector(keys::VALID_TARGET) {
+    if let Some(valid_target) = effect.ir.valid_target_selector.as_ref() {
         let target_matches = if let Some(target) = target_player {
             effect.matches_compiled_valid_player(valid_target, target, source_card)
         } else if let Some(target) = target_card {
@@ -63,19 +63,17 @@ pub fn can_replace(
             return false;
         }
     }
-    if let Some(max_speed) = effect.params.get("MaxSpeed") {
-        let wants_max_speed = max_speed.eq_ignore_ascii_case("true");
+    if let Some(wants_max_speed) = effect.ir.max_speed {
         if wants_max_speed != (game.player(source_card.controller).speed == 4) {
             return false;
         }
     }
-    if let Some(is_combat_param) = effect.params.get(keys::IS_COMBAT) {
-        let wants_combat = is_combat_param.eq_ignore_ascii_case("true");
+    if let Some(wants_combat) = effect.ir.is_combat {
         if wants_combat != is_combat {
             return false;
         }
     }
-    if let Some(damage_amount) = effect.params.get(keys::DAMAGE_AMOUNT) {
+    if let Some(damage_amount) = effect.ir.damage_amount_text.as_deref() {
         let threshold = damage_amount.get(2..).unwrap_or("");
         let rhs = resolve_replace_value(threshold, game, source_card.id, event)
             .or_else(|| threshold.parse::<i32>().ok())
@@ -99,12 +97,7 @@ pub fn execute(
         ReplacementEvent::DamageToCard { .. } | ReplacementEvent::DamageToPlayer { .. } => {}
         _ => return ReplacementResult::NotReplaced,
     }
-    if effect
-        .params
-        .get(keys::PREVENT)
-        .map(|s| s == "True")
-        .unwrap_or(false)
-    {
+    if effect.prevents() {
         match event {
             ReplacementEvent::DamageToCard { amount, .. } => *amount = 0,
             ReplacementEvent::DamageToPlayer { amount, .. } => *amount = 0,
@@ -113,7 +106,7 @@ pub fn execute(
         return ReplacementResult::Prevented;
     }
     // Handle built-in replacement modes before SVar chain.
-    if let Some(replace) = effect.params.get(keys::REPLACE_WITH) {
+    if let Some(replace) = effect.replace_with() {
         match replace {
             "DmgTwice" | "DoubleDamage" => {
                 match event {

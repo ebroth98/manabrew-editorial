@@ -2,8 +2,7 @@ use forge_foundation::ZoneType;
 
 use crate::card::{valid_filter, Card};
 use crate::ids::PlayerId;
-use crate::parsing::keys;
-use crate::parsing::Params;
+use crate::parsing::{keys, raw_get};
 use crate::staticability::StaticMode;
 
 pub fn any_with_flash(
@@ -21,14 +20,13 @@ pub fn any_with_flash(
             .iter()
             .filter(|sa| sa.mode == StaticMode::CastWithFlash)
         {
-            if !matches_valid_card(st_ab.params.selector(keys::VALID_CARD), spell_card, source) {
+            if !matches_valid_card(st_ab.ir.valid_card.as_ref(), spell_card, source) {
                 continue;
             }
-            let caster_filter = st_ab.params.selector_cloned(keys::CASTER);
-            if !matches_valid_player(caster_filter.as_ref(), caster, source.controller) {
+            if !matches_valid_player(st_ab.ir.caster.as_ref(), caster, source.controller) {
                 continue;
             }
-            if let Some(valid_sa) = st_ab.params.get(keys::VALID_SA) {
+            if let Some(valid_sa) = st_ab.ir.valid_sa.as_deref() {
                 // "Spell" matches any card being cast as a spell (creatures,
                 // sorceries, etc.) — not just cards with explicit SP$ lines.
                 // Java treats the inherent spell ability of a card as matching.
@@ -39,6 +37,44 @@ pub fn any_with_flash(
                     || spell_abilities
                         .iter()
                         .any(|line| spell_ability_matches(valid_sa, line));
+                if !sa_matches {
+                    continue;
+                }
+            }
+            return true;
+        }
+    }
+    false
+}
+
+pub fn any_with_flash_for_card(cards: &[Card], spell_card: &Card, caster: PlayerId) -> bool {
+    for source in cards.iter().filter(|c| {
+        c.zone == ZoneType::Battlefield || c.zone == ZoneType::Command || c.id == spell_card.id
+    }) {
+        for st_ab in source
+            .static_abilities
+            .iter()
+            .filter(|sa| sa.mode == StaticMode::CastWithFlash)
+        {
+            if !matches_valid_card(st_ab.ir.valid_card.as_ref(), spell_card, source) {
+                continue;
+            }
+            if !matches_valid_player(st_ab.ir.caster.as_ref(), caster, source.controller) {
+                continue;
+            }
+            if let Some(valid_sa) = st_ab.ir.valid_sa.as_deref() {
+                let sa_matches = if spell_card.action_spell_specs.is_empty() {
+                    valid_sa
+                        .split(',')
+                        .map(str::trim)
+                        .filter(|tok| !tok.is_empty())
+                        .all(|tok| tok.eq_ignore_ascii_case("Spell"))
+                } else {
+                    spell_card
+                        .action_spell_specs
+                        .iter()
+                        .any(|spec| spell_ability_spec_matches(valid_sa, spec))
+                };
                 if !sa_matches {
                     continue;
                 }
@@ -65,14 +101,13 @@ pub fn apply_with_flash_needs_info(
     caster: PlayerId,
     spell_abilities: &[String],
 ) -> bool {
-    if !matches_valid_card(st_ab.params.selector(keys::VALID_CARD), spell_card, source) {
+    if !matches_valid_card(st_ab.ir.valid_card.as_ref(), spell_card, source) {
         return false;
     }
-    let caster_filter = st_ab.params.selector_cloned(keys::CASTER);
-    if !matches_valid_player(caster_filter.as_ref(), caster, source.controller) {
+    if !matches_valid_player(st_ab.ir.caster.as_ref(), caster, source.controller) {
         return false;
     }
-    if let Some(valid_sa) = st_ab.params.get(keys::VALID_SA) {
+    if let Some(valid_sa) = st_ab.ir.valid_sa.as_deref() {
         let sa_matches = valid_sa
             .split(',')
             .map(str::trim)
@@ -93,12 +128,8 @@ pub fn apply_with_flash_ability(
     source: &Card,
     caster: PlayerId,
 ) -> bool {
-    matches_valid_card(st_ab.params.selector(keys::VALID_CARD), spell_card, source)
-        && matches_valid_player(
-            st_ab.params.selector_cloned(keys::CASTER).as_ref(),
-            caster,
-            source.controller,
-        )
+    matches_valid_card(st_ab.ir.valid_card.as_ref(), spell_card, source)
+        && matches_valid_player(st_ab.ir.caster.as_ref(), caster, source.controller)
 }
 
 fn matches_valid_player(
@@ -118,8 +149,8 @@ fn matches_valid_card(
 }
 
 fn spell_ability_matches(valid_sa: &str, ability_line: &str) -> bool {
-    let params = Params::from_raw(ability_line);
-    if !params.has(keys::SP) {
+    let is_spell = ability_line.trim_start().starts_with("SP$");
+    if !is_spell {
         return false;
     }
     let tokens: Vec<&str> = valid_sa
@@ -135,14 +166,28 @@ fn spell_ability_matches(valid_sa: &str, ability_line: &str) -> bool {
         .iter()
         .all(|tok| match tok.to_ascii_lowercase().as_str() {
             "spell" => true,
-            "istargeting" => params.has(keys::VALID_TGTS),
-            "xcost" => {
-                params
-                    .get(keys::COST)
-                    .map(|c| c.contains('X'))
-                    .unwrap_or(false)
-                    || ability_line.contains("X")
-            }
+            "istargeting" => ability_line.contains("ValidTgts$"),
+            "xcost" => raw_get(ability_line, keys::COST).is_some_and(|cost| cost.contains('X')),
+            _ => false,
+        })
+}
+
+fn spell_ability_spec_matches(valid_sa: &str, spec: &crate::card::CardActionSpellSpec) -> bool {
+    let tokens: Vec<&str> = valid_sa
+        .split(',')
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+        .collect();
+    if tokens.is_empty() {
+        return true;
+    }
+
+    tokens
+        .iter()
+        .all(|tok| match tok.to_ascii_lowercase().as_str() {
+            "spell" => true,
+            "istargeting" => spec.has_valid_tgts,
+            "xcost" => spec.cost_contains_x,
             _ => false,
         })
 }

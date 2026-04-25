@@ -24,7 +24,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let controller = sa.activating_player;
 
     let num_turns = resolve_numeric_svar(ctx.game, sa, keys::NUM_TURNS, 1);
-    let skip_untap = sa.params.has(keys::SKIP_UNTAP);
+    let skip_untap = sa.ir.skip_untap;
 
     let defined = sa.defined().unwrap_or("You");
 

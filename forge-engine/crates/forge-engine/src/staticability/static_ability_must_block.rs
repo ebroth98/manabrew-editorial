@@ -1,7 +1,7 @@
 use forge_foundation::ZoneType;
 
 use crate::card::{valid_filter, Card};
-use crate::parsing::{keys, CompiledSelector};
+use crate::parsing::CompiledSelector;
 use crate::staticability::StaticMode;
 
 pub fn blocks_each_combat_if_able(cards: &[Card], creature: &Card) -> bool {
@@ -11,11 +11,7 @@ pub fn blocks_each_combat_if_able(cards: &[Card], creature: &Card) -> bool {
             .iter()
             .filter(|sa| sa.mode == StaticMode::MustBlock)
         {
-            if matches_valid_creature(
-                st_ab.params.selector(keys::VALID_CREATURE),
-                creature,
-                source,
-            ) {
+            if matches_valid_creature(st_ab.ir.valid_creature.as_ref(), creature, source) {
                 return true;
             }
         }
@@ -28,11 +24,7 @@ pub fn apply_blocks_each_combat_if_able(
     creature: &Card,
     source: &Card,
 ) -> bool {
-    matches_valid_creature(
-        st_ab.params.selector(keys::VALID_CREATURE),
-        creature,
-        source,
-    )
+    matches_valid_creature(st_ab.ir.valid_creature.as_ref(), creature, source)
 }
 
 fn matches_valid_creature(valid: Option<&CompiledSelector>, card: &Card, source: &Card) -> bool {

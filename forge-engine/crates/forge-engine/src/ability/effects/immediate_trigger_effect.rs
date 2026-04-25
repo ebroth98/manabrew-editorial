@@ -15,7 +15,7 @@ use crate::trigger::TriggerType;
 /// `ImmediateTriggerEffect` class extending `SpellAbilityEffect`.
 #[forge_engine_macros::spell_effect(ImmediateTriggerEffect)]
 fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
-    if let Some(remember_def) = sa.params.get(keys::REMEMBER_OBJECTS) {
+    if let Some(remember_def) = sa.ir.remember_objects.as_deref() {
         if let Some(source_id) = sa.source {
             if remember_def.eq_ignore_ascii_case("Targeted") {
                 if let Some(target) = sa.target_chosen.target_card {
@@ -25,7 +25,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
         }
     }
 
-    if let Some(execute_name) = sa.params.get(keys::EXECUTE) {
+    if let Some(execute_name) = sa.ir.execute.as_deref() {
         if let Some(source_id) = sa.source {
             let svar_text = ctx
                 .game

@@ -31,7 +31,7 @@ pub fn get_attack_cost(cards: &[Card], attacker: &Card, defender: DefenderId) ->
 
             // Check ValidCard$ matches the attacker
             if !valid_filter::matches_valid_card_selector_opt(
-                sa.params.selector(keys::VALID_CARD),
+                sa.ir.valid_card.as_ref(),
                 attacker,
                 source,
             ) {
@@ -39,7 +39,7 @@ pub fn get_attack_cost(cards: &[Card], attacker: &Card, defender: DefenderId) ->
             }
 
             // Check Target$ — who is being defended
-            if let Some(target_param) = sa.params.get(keys::TARGET) {
+            if let Some(target_param) = sa.ir.target_text.as_deref() {
                 match target_param {
                     "You" => {
                         // Only applies when attacking the source's controller
@@ -60,7 +60,7 @@ pub fn get_attack_cost(cards: &[Card], attacker: &Card, defender: DefenderId) ->
             }
 
             // Parse Cost$ parameter as generic mana amount
-            if let Some(cost_str) = sa.params.get(keys::COST) {
+            if let Some(cost_str) = sa.ir.cost.as_deref() {
                 if let Ok(cost) = cost_str.trim().parse::<i32>() {
                     total_cost += cost;
                 }

@@ -28,13 +28,13 @@ pub fn can_replace(
         _ => return false,
     };
     let attach_card = &game.cards[card.index()];
-    if let Some(valid) = effect.params.selector(keys::VALID_CARD) {
+    if let Some(valid) = effect.ir.valid_card_selector.as_ref() {
         if !effect.matches_compiled_valid_card(valid, attach_card, source_card) {
             return false;
         }
     }
     let target_card = &game.cards[target.index()];
-    if let Some(valid_target) = effect.params.selector(keys::VALID_TARGET) {
+    if let Some(valid_target) = effect.ir.valid_target_selector.as_ref() {
         if !effect.matches_compiled_valid_card(valid_target, target_card, source_card) {
             return false;
         }
@@ -49,13 +49,7 @@ pub fn execute(
     _game: &GameState,
     _source_card_id: CardId,
 ) -> ReplacementResult {
-    if effect
-        .params
-        .get(keys::PREVENT)
-        .map(|s| s == "True")
-        .unwrap_or(false)
-        || effect.params.has(keys::SKIP)
-    {
+    if effect.prevents() || effect.has_skip() {
         return ReplacementResult::Skipped;
     }
     ReplacementResult::Replaced

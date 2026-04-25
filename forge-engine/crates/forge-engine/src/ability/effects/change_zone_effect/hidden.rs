@@ -110,7 +110,7 @@ pub(super) fn resolve_hidden_origin(
             .collect();
         if !valid.is_empty() {
             let mut ordered = valid;
-            if sa.param_is_true("Reorder") && ordered.len() > 1 {
+            if sa.ir.reorder && ordered.len() > 1 {
                 ctx.agents[controller.index()].snapshot_state(ctx.game, ctx.mana_pools);
                 ctx.agents[controller.index()].on_library_peek(ctx.game, &ordered);
                 let reordered =
@@ -129,6 +129,7 @@ pub(super) fn resolve_hidden_origin(
             sa_no_shuffle
                 .params
                 .put("NoShuffle".to_string(), "True".to_string());
+            sa_no_shuffle.ir.no_shuffle = true;
             move_cards(
                 ctx,
                 &sa_no_shuffle,
@@ -252,7 +253,7 @@ pub(super) fn resolve_hidden_origin(
                 }
             };
 
-            if sa.param_is_true("Reorder") && cards_to_move.len() > 1 {
+            if sa.ir.reorder && cards_to_move.len() > 1 {
                 ctx.agents[effective_chooser.index()].snapshot_state(ctx.game, ctx.mana_pools);
                 ctx.agents[effective_chooser.index()].on_library_peek(ctx.game, &cards_to_move);
                 let reordered = ctx.agents[effective_chooser.index()]
@@ -346,7 +347,7 @@ pub(super) fn resolve_hidden_origin(
     }
 
     // RememberSearched$
-    if sa.param_is_true(keys::REMEMBER_SEARCHED) {
+    if sa.ir.remember_searched {
         if let Some(sid) = sa.source {
             ctx.game.card_mut(sid).add_remembered_player(search_player);
         }
@@ -376,7 +377,7 @@ pub(super) fn resolve_hidden_origin(
             Vec::new()
         } else if sa.is_at_random() {
             resolve_random_selection(ctx, &candidates, change_num)
-        } else if sa.param_is_true("Reorder")
+        } else if sa.ir.reorder
             && !is_optional
             && origin_zone == ZoneType::Library
             && dest_zone == ZoneType::Library
@@ -400,7 +401,7 @@ pub(super) fn resolve_hidden_origin(
         }
     };
 
-    if sa.param_is_true("Reorder") && cards_to_move.len() > 1 {
+    if sa.ir.reorder && cards_to_move.len() > 1 {
         ctx.agents[effective_chooser.index()].snapshot_state(ctx.game, ctx.mana_pools);
         ctx.agents[effective_chooser.index()].on_library_peek(ctx.game, &cards_to_move);
         let reordered = ctx.agents[effective_chooser.index()]
@@ -413,7 +414,7 @@ pub(super) fn resolve_hidden_origin(
     }
 
     // Exactly$ — must find exactly ChangeNum or fail
-    if sa.param_is_true(keys::EXACTLY) && cards_to_move.len() != change_num {
+    if sa.ir.exactly && cards_to_move.len() != change_num {
         if origin_zone == ZoneType::Library {
             ctx.game
                 .shuffle_zone_cards(ZoneType::Library, search_player, ctx.rng);
@@ -422,7 +423,7 @@ pub(super) fn resolve_hidden_origin(
     }
 
     // Reveal chosen cards (NoLooking$ suppresses)
-    if !sa.param_is_true(keys::NO_LOOKING)
+    if !sa.ir.no_looking
         && sa.is_reveal()
         && !cards_to_move.is_empty()
         && origin_zone == ZoneType::Library
@@ -433,7 +434,7 @@ pub(super) fn resolve_hidden_origin(
     }
 
     // RememberLKI$
-    if sa.param_is_true(keys::REMEMBER_LKI) {
+    if sa.ir.remember_lki_flag {
         if let Some(sid) = sa.source {
             for &cid in &cards_to_move {
                 ctx.game.card_mut(sid).add_remembered_card(cid);

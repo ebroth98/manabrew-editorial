@@ -15,7 +15,8 @@ use crate::game_loop::trigger_replacement_base::TriggerReplacementBase;
 use crate::ids::{CardId, PlayerId};
 use crate::parsing::{keys, CompiledSelector, Params};
 use crate::player::PlayerCollection;
-use crate::spellability::{build_spell_ability, SpellAbility};
+use crate::spellability::{build_spell_ability, SpellAbility, TriggerCondition};
+use crate::trigger::trigger_ir::TriggerIr;
 use crate::trigger::TriggerType;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -28,14 +29,14 @@ pub struct Trigger {
     pub kind: TriggerType,
     pub mode: Box<dyn TriggerBehavior>,
     pub params: Params,
+    #[serde(skip, default)]
+    pub ir: TriggerIr,
     pub execute: String,
     pub optional: bool,
     pub description: String,
     pub static_trigger: bool,
     #[serde(default)]
     pub trigger_remembered: Vec<AbilityValue>,
-    #[serde(default)]
-    pub valid_phases: Option<Vec<PhaseType>>,
     #[serde(default)]
     pub spawning_ability: Option<SpellAbility>,
 }
@@ -115,17 +116,11 @@ impl Trigger {
     }
 
     pub fn origin_zone(&self) -> Option<ZoneType> {
-        self.params
-            .get(keys::ORIGIN)
-            .and_then(|s| s.split(',').next())
-            .and_then(|s| ZoneType::from_str_compat(s.trim()))
+        self.ir.origin_zone
     }
 
     pub fn destination_zone(&self) -> Option<ZoneType> {
-        self.params
-            .get(keys::DESTINATION)
-            .and_then(|s| s.split(',').next())
-            .and_then(|s| ZoneType::from_str_compat(s.trim()))
+        self.ir.destination_zone
     }
 
     pub fn set_mode(&mut self, mode: Box<dyn TriggerBehavior>) {
@@ -195,7 +190,7 @@ impl CardTrait for Trigger {
 
 impl Trigger {
     pub fn set_trigger_phases(&mut self, phases: Vec<PhaseType>) {
-        self.valid_phases = Some(phases);
+        self.ir.valid_phases = Some(phases);
     }
 
     /// Java parity shim for Trigger.resetIDs().
@@ -204,16 +199,11 @@ impl Trigger {
     }
 
     pub fn to_string_with_active(&self, active: bool) -> String {
-        if !self.params.has(keys::TRIGGER_DESCRIPTION) || self.base.card_trait_base.is_suppressed()
-        {
+        if self.ir.trigger_description.is_none() || self.base.card_trait_base.is_suppressed() {
             return String::new();
         }
 
-        let mut desc = self
-            .params
-            .get(keys::TRIGGER_DESCRIPTION)
-            .unwrap_or_default()
-            .to_string();
+        let mut desc = self.ir.trigger_description.clone().unwrap_or_default();
 
         if !desc.contains("ABILITY") {
             let host_name = self.base.card_trait_base.get_host_card().card_name.clone();
@@ -309,7 +299,7 @@ impl Trigger {
                 match current.api {
                     Some(crate::ability::api_type::ApiType::Charm) => {
                         let source_id = current.source.unwrap_or(host_card);
-                        let choices = current.params.get("Choices").unwrap_or("");
+                        let choices = current.ir.choices.as_deref().unwrap_or("");
                         sa_desc = crate::ability::effects::charm_effect::make_formated_description(
                             game, source_id, choices,
                         );
@@ -367,12 +357,11 @@ impl Trigger {
         let phase = event_phase.unwrap_or(game.turn.phase);
         let host_controller = game.card(host_card).controller;
 
-        if let Some(valid_phases) = self.valid_phases.as_ref() {
+        if let Some(valid_phases) = self.ir.valid_phases.as_ref() {
             if !valid_phases.contains(&phase) {
                 return false;
             }
-            if let Some(phase_count) = self.params.get("PhaseCount") {
-                let expected = phase_count.parse::<i32>().unwrap_or(1);
+            if let Some(expected) = self.ir.phase_count {
                 let current = if phase == PhaseType::Main2 { 2 } else { 1 };
                 if current != expected {
                     return false;
@@ -380,34 +369,31 @@ impl Trigger {
             }
         }
 
-        if self.params.has(keys::PLAYER_TURN) && game.turn.active_player != host_controller {
+        if self.ir.player_turn && game.turn.active_player != host_controller {
             return false;
         }
-        if self.params.has("NotPlayerTurn") && game.turn.active_player == host_controller {
+        if self.ir.not_player_turn && game.turn.active_player == host_controller {
             return false;
         }
-        if self.params.has("OpponentTurn") {
+        if self.ir.opponent_turn {
             let active = game.turn.active_player;
             let is_opponent_turn = active != host_controller;
             if !is_opponent_turn {
                 return false;
             }
         }
-        if self.params.has("FirstUpkeep")
-            && !(phase == PhaseType::Upkeep && game.turn.turn_number >= 1)
-        {
+        if self.ir.first_upkeep && !(phase == PhaseType::Upkeep && game.turn.turn_number >= 1) {
             return false;
         }
-        if self.params.has("FirstUpkeepThisGame")
+        if self.ir.first_upkeep_this_game
             && !(phase == PhaseType::Upkeep && game.turn.turn_number == 1)
         {
             return false;
         }
-        if self.params.has("FirstCombat") && phase != PhaseType::CombatBegin {
+        if self.ir.first_combat && phase != PhaseType::CombatBegin {
             return false;
         }
-        if let Some(turn_count) = self.params.get("TurnCount") {
-            let expected = turn_count.parse::<u32>().unwrap_or(game.turn.turn_number);
+        if let Some(expected) = self.ir.turn_count {
             if game.turn.turn_number != expected {
                 return false;
             }
@@ -417,7 +403,7 @@ impl Trigger {
 
     /// Mirrors Java Trigger.requirementsCheck() subset used in current engine.
     pub fn requirements_check(&self, game: &GameState, host_card: CardId) -> bool {
-        if self.params.has("APlayerHasMoreLifeThanEachOther") {
+        if self.ir.a_player_has_more_life_than_each_other {
             let mut highest = i32::MIN;
             let mut count = 0;
             for p in &game.players {
@@ -432,7 +418,7 @@ impl Trigger {
                 return false;
             }
         }
-        if self.params.has("APlayerHasMostCardsInHand") {
+        if self.ir.a_player_has_most_cards_in_hand {
             let mut largest = i32::MIN;
             let mut count = 0;
             for p in &game.players {
@@ -464,11 +450,7 @@ impl Trigger {
 
     /// Mirrors Java Trigger.checkResolvedLimit() (approximation with per-card counter).
     pub fn check_resolved_limit(&self, game: &GameState, host_card: CardId) -> bool {
-        if let Some(limit) = self
-            .params
-            .get("ResolvedLimit")
-            .and_then(|v| v.parse::<u32>().ok())
-        {
+        if let Some(limit) = self.ir.resolved_limit {
             return (game
                 .card(host_card)
                 .get_ability_resolved_this_turn_activators(self.get_overriding_ability())
@@ -480,20 +462,12 @@ impl Trigger {
 
     /// Mirrors Java Trigger.checkActivationLimit().
     pub fn check_activation_limit(&self, game: &GameState, host_card: CardId) -> bool {
-        if let Some(limit) = self
-            .params
-            .get("ActivationLimit")
-            .and_then(|v| v.parse::<u32>().ok())
-        {
+        if let Some(limit) = self.ir.activation_limit {
             if self.get_activations_this_turn(game, host_card) >= limit {
                 return false;
             }
         }
-        if let Some(limit) = self
-            .params
-            .get(keys::GAME_ACTIVATION_LIMIT)
-            .and_then(|v| v.parse::<u32>().ok())
-        {
+        if let Some(limit) = self.ir.game_activation_limit {
             let used = self.get_activations_this_game(game, host_card);
             if used >= limit {
                 return false;
@@ -722,13 +696,13 @@ impl Trigger {
         run_params: &RunParams,
         host_card: CardId,
     ) -> bool {
-        let condition = self.params.get(keys::CONDITION);
+        let condition = self.ir.condition.as_ref();
 
         if self
             .base
             .card_trait_base
             .is_keyword(crate::keyword::keyword_instance::Keyword::Evolve)
-            || condition == Some("Evolve")
+            || matches!(condition, Some(TriggerCondition::Evolve))
         {
             let Some(moved) = run_params.card else {
                 return false;
@@ -748,14 +722,14 @@ impl Trigger {
         };
 
         match condition {
-            "LifePaid" => {
+            TriggerCondition::LifePaid => {
                 if let Some(sa) = run_params.spell_ability.as_ref() {
                     sa.get_amount_life_paid() > 0
                 } else {
                     true
                 }
             }
-            "NoOpponentHasMoreLifeThanAttacked" => {
+            TriggerCondition::NoOpponentHasMoreLifeThanAttacked => {
                 let attacked = run_params
                     .get_player(AbilityKey::Attacked)
                     .or_else(|| run_params.get_player(AbilityKey::Defender));
@@ -768,7 +742,7 @@ impl Trigger {
                     .filter(|opp| *opp != attacked_player)
                     .any(|opp| game.player(opp).life > life)
             }
-            "Sacrificed" => run_params
+            TriggerCondition::Sacrificed => run_params
                 .spell_ability
                 .as_ref()
                 .map(|sa| {
@@ -779,7 +753,7 @@ impl Trigger {
                         .is_empty()
                 })
                 .unwrap_or(true),
-            "AttackedPlayerWithMostLife" => {
+            TriggerCondition::AttackedPlayerWithMostLife => {
                 let attacked = run_params
                     .get_player(AbilityKey::Attacked)
                     .or_else(|| run_params.get_player(AbilityKey::Defender));
@@ -791,7 +765,7 @@ impl Trigger {
                     .into_iter()
                     .all(|pid| game.player(pid).life <= attacked_life)
             }
-            "AttackerHasUnattackedOpp" => {
+            TriggerCondition::AttackerHasUnattackedOpp => {
                 let Some(attacking_player) = run_params.attacking_player else {
                     return false;
                 };
@@ -801,7 +775,7 @@ impl Trigger {
                     .into_iter()
                     .all(|opp| attacked_this_combat.contains(&opp))
             }
-            _ => true,
+            TriggerCondition::Evolve | TriggerCondition::Unsupported(_) => true,
         }
     }
 
@@ -876,7 +850,7 @@ impl Trigger {
             *next_id = next_id.saturating_add(1);
         }
 
-        if let Some(valid_phases) = self.valid_phases.clone() {
+        if let Some(valid_phases) = self.ir.valid_phases.clone() {
             copy.set_trigger_phases(valid_phases);
         }
         copy.base.valid_host_zones = self.base.valid_host_zones.clone();
@@ -943,13 +917,11 @@ impl Trigger {
     }
 
     pub fn is_chapter(&self) -> bool {
-        self.params.has("Chapter")
+        self.ir.chapter.is_some()
     }
 
     pub fn get_chapter(&self) -> Option<i32> {
-        self.params
-            .get("Chapter")
-            .and_then(|chapter| chapter.parse().ok())
+        self.ir.chapter
     }
 
     pub fn is_last_chapter(&self) -> bool {
@@ -1057,6 +1029,8 @@ impl Trigger {
 /// Mirrors Java's TriggerHandler.parseTrigger().
 /// Parses raw "Mode$ ChangesZone | Origin$ Any | ..." into Trigger struct.
 pub fn parse_trigger(raw: &str, next_id: &mut u32) -> Option<Trigger> {
+    let _perf_scope =
+        crate::perf::ParamsLookupScopeGuard::enter(crate::perf::ParamsLookupScope::Trigger);
     let params = Params::from_raw(raw);
 
     let mode_str = params.get(keys::MODE)?;
@@ -1342,16 +1316,11 @@ pub fn parse_trigger(raw: &str, next_id: &mut u32) -> Option<Trigger> {
         }
     }
 
+    let ir = TriggerIr::from_params(&params);
     let execute = params.get_cloned(keys::EXECUTE).unwrap_or_default();
     let description = params
         .get_cloned(keys::TRIGGER_DESCRIPTION)
         .unwrap_or_default();
-    let valid_phases = params.get(keys::PHASE).map(|phase_text| {
-        phase_text
-            .split(',')
-            .filter_map(|token| PhaseType::from_script_name(token.trim()))
-            .collect::<Vec<_>>()
-    });
 
     let id = *next_id;
     *next_id += 1;
@@ -1368,12 +1337,12 @@ pub fn parse_trigger(raw: &str, next_id: &mut u32) -> Option<Trigger> {
         kind,
         mode,
         params,
+        ir,
         execute,
         optional,
         description,
         static_trigger,
         trigger_remembered: Vec::new(),
-        valid_phases,
         spawning_ability: None,
     })
 }

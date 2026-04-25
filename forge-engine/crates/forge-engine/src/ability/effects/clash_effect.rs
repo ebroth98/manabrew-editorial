@@ -9,7 +9,7 @@ use forge_foundation::ZoneType;
 use super::EffectContext;
 use crate::ids::{CardId, PlayerId};
 use crate::parsing::keys;
-use crate::spellability::{build_spell_ability, SpellAbility};
+use crate::spellability::SpellAbility;
 
 /// Struct form of this effect so it can participate in the
 /// `SpellAbilityEffect` trait hierarchy — mirrors Java's
@@ -82,18 +82,8 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     } else {
         "OtherwiseSubAbility"
     };
-    if let Some(source_id) = sa.source {
-        if let Some(sub_svar) = sa.params.get(sub_key) {
-            if let Some(sub_text) = ctx
-                .game
-                .card(source_id)
-                .get_s_var(sub_svar)
-                .map(str::to_string)
-            {
-                let sub_sa = build_spell_ability(ctx.game, source_id, &sub_text, controller);
-                super::resolve_effect(ctx, &sub_sa);
-            }
-        }
+    if let Some(sub_sa) = sa.get_additional_ability(sub_key).cloned() {
+        super::resolve_effect(ctx, &sub_sa);
     }
 }
 

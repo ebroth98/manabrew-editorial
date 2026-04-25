@@ -31,12 +31,12 @@ pub fn can_replace(
     if amount <= 0 {
         return false;
     }
-    if let Some(valid) = effect.params.selector(keys::VALID_PLAYER) {
+    if let Some(valid) = effect.ir.valid_player_selector.as_ref() {
         if !effect.matches_compiled_valid_player(valid, player, source_card) {
             return false;
         }
     }
-    if let Some(amount_cmp) = effect.params.get(keys::AMOUNT) {
+    if let Some(amount_cmp) = effect.ir.amount_text.as_deref() {
         let rhs = amount_cmp
             .get(2..)
             .and_then(|n| n.parse::<i32>().ok())
@@ -60,19 +60,14 @@ pub fn execute(
         ReplacementEvent::GainLife { .. } => {}
         _ => return ReplacementResult::NotReplaced,
     }
-    if effect
-        .params
-        .get(keys::PREVENT)
-        .map(|s| s == "True")
-        .unwrap_or(false)
-    {
+    if effect.prevents() {
         if let ReplacementEvent::GainLife { amount, .. } = event {
             *amount = 0;
         }
         return ReplacementResult::Skipped;
     }
     // Handle built-in replacement modes before SVar chain.
-    if let Some(replace) = effect.params.get(keys::REPLACE_WITH) {
+    if let Some(replace) = effect.replace_with() {
         match replace {
             "GainDouble" => {
                 if let ReplacementEvent::GainLife { amount, .. } = event {

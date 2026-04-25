@@ -34,27 +34,24 @@ impl TriggerBehavior for TriggerChangesZone {
         let host_card = trigger.base.card_trait_base.get_host_card().id;
         let host_controller = trigger.base.card_trait_base.get_host_card().controller;
         let current_trigger_id = Some(trigger.id);
-        let origin = trigger.params.zone_type(keys::ORIGIN);
-        let destination = trigger.params.zone_type(keys::DESTINATION);
+        let origin = trigger.ir.origin_zone;
+        let destination = trigger.ir.destination_zone;
         if !super::trigger::Trigger::matches_zone_filter(&origin, params.origin)
             || !super::trigger::Trigger::matches_zone_filter(&destination, params.destination)
         {
             return false;
         }
-        if trigger.params.has("ExcludedOrigins") {
-            let excluded = trigger.params.zone_types("ExcludedOrigins");
-            if params.origin.is_some_and(|zone| excluded.contains(&zone)) {
-                return false;
-            }
+        if params
+            .origin
+            .is_some_and(|zone| trigger.ir.excluded_origins.contains(&zone))
+        {
+            return false;
         }
-        if trigger.params.has("ExcludedDestinations") {
-            let excluded = trigger.params.zone_types("ExcludedDestinations");
-            if params
-                .destination
-                .is_some_and(|zone| excluded.contains(&zone))
-            {
-                return false;
-            }
+        if params
+            .destination
+            .is_some_and(|zone| trigger.ir.excluded_destinations.contains(&zone))
+        {
+            return false;
         }
         let mut moved_card = params.card;
         if params.origin == Some(forge_foundation::ZoneType::Battlefield)
@@ -87,11 +84,11 @@ impl TriggerBehavior for TriggerChangesZone {
         {
             return false;
         }
-        let valid_card = trigger.params.selector_cloned(keys::VALID_CARD);
+        let valid_card = trigger.ir.valid_card_selector.clone();
         if !trigger.matches_optional_valid_card_filter(&valid_card, moved_card, game) {
             return false;
         }
-        if let Some(filter) = trigger.params.selector(keys::VALID_CAUSE) {
+        if let Some(filter) = trigger.ir.valid_cause_selector.as_ref() {
             let cause_matches = params
                 .cause
                 .as_ref()
@@ -114,7 +111,7 @@ impl TriggerBehavior for TriggerChangesZone {
                 return false;
             }
         }
-        if trigger.params.has("NotThisAbility")
+        if trigger.ir.not_this_ability
             && params
                 .cause
                 .as_ref()
@@ -124,7 +121,7 @@ impl TriggerBehavior for TriggerChangesZone {
         {
             return false;
         }
-        if let Some(cast_expr) = trigger.params.get("ConditionYouCastThisTurn") {
+        if let Some(cast_expr) = trigger.ir.condition_you_cast_this_turn.as_deref() {
             let casting_player = params
                 .spell_controller
                 .or(params.player)
@@ -133,7 +130,7 @@ impl TriggerBehavior for TriggerChangesZone {
                 return false;
             }
         }
-        if let Some(check_expr) = trigger.params.get("CheckOnTriggeredCard") {
+        if let Some(check_expr) = trigger.ir.check_on_triggered_card.as_deref() {
             let moved = game.card(moved_card.unwrap_or(host_card));
             let mut parts = check_expr.split_whitespace();
             let lhs = parts.next().unwrap_or("");
@@ -164,7 +161,7 @@ impl TriggerBehavior for TriggerChangesZone {
     ) {
         // Java: if origin == Battlefield, Card = CardLKI, NewCard = Card
         //        else: copy both Card and CardLKI from runParams
-        if trigger.params.get(keys::ORIGIN) == Some("Battlefield") {
+        if trigger.ir.origin_zone == Some(forge_foundation::ZoneType::Battlefield) {
             if let Some(card_id) = params.card_lki.or(params.card) {
                 sa.set_triggering_object(crate::ability::AbilityKey::Card, card_id);
                 if let Some(power) = params.lki_power {

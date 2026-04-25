@@ -21,8 +21,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
         None => return,
     };
     let chooser = sa
-        .params
-        .get("Chooser")
+        .chooser()
         .and_then(|defined| {
             crate::ability::ability_utils::resolve_defined_players_with_sa(
                 defined,

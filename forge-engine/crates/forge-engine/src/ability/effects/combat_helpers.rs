@@ -126,7 +126,13 @@ pub(crate) fn add_to_combat(
 
     let controller = ctx.game.card(card_id).controller;
 
-    let Some(attacking) = sa.params.get(attacking_param) else {
+    let attacking = match attacking_param {
+        crate::parsing::keys::ATTACKING => sa.ir.attacking_text.as_deref(),
+        crate::parsing::keys::NINJUTSU => sa.ir.ninjutsu_text.as_deref(),
+        "TokenAttacking" => sa.ir.token_attacking_text.as_deref(),
+        _ => None,
+    };
+    let Some(attacking) = attacking else {
         return false;
     };
     let defenders = resolve_attack_defenders(ctx, sa, card_id, attacking);

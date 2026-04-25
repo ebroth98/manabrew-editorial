@@ -48,16 +48,16 @@ jobs:
           submodules: recursive
           clean: true
 
-      - name: Check engine crates
+      - name: Build engine crates (release)
         run: >
-          cargo check
+          cargo build --release
           -p forge-foundation
           -p forge-carddb
           -p forge-engine-core
           -p forge-agent-interface
 
-      - name: Run engine tests
-        run: cargo test -p forge-engine-core --lib
+      - name: Run engine tests (release)
+        run: cargo test --release -p forge-engine-core --lib
 
   # ── Rust server ────────────────────────────────────────────────────
   rust-server:
@@ -69,8 +69,8 @@ jobs:
           submodules: recursive
           clean: true
 
-      - name: Check forge-server
-        run: cargo check -p forge-server
+      - name: Build forge-server (release)
+        run: cargo build --release -p forge-server
 
   # ── Rust parity dashboard ─────────────────────────────────────────
   rust-parity:
@@ -82,8 +82,8 @@ jobs:
           submodules: recursive
           clean: true
 
-      - name: Check forge-parity (with serve feature)
-        run: cargo check -p forge-parity --features serve
+      - name: Build forge-parity (with serve feature, release)
+        run: cargo build --release -p forge-parity --features serve
 
   # ── Full web build (wasm + tsc + vite) ─────────────────────────────
   web-build:

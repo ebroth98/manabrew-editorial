@@ -3,7 +3,6 @@
 
 use crate::card::Card;
 use crate::game::GameState;
-use crate::parsing::keys;
 use crate::staticability::{Layer, StaticAbility};
 
 pub fn apply_continuous_ability(
@@ -26,24 +25,20 @@ pub fn resolve(st_ab: &StaticAbility, source: &Card, game: &GameState) {
 }
 
 pub fn can_play(st_ab: &StaticAbility, source: &Card, card: &Card, _game: &GameState) -> bool {
-    if !matches!(st_ab.params.get("MayPlay"), Some(v) if v.eq_ignore_ascii_case("True")) {
+    if !st_ab.ir.may_play {
         return false;
     }
     // Check AffectedZone$ — the zone where the affected cards must be.
     // Default is Hand if not specified (normal MayPlay like casting from hand).
-    if let Some(affected_zone) = st_ab.params.get(keys::AFFECTED_ZONE) {
-        let zones: Vec<forge_foundation::ZoneType> = affected_zone
-            .split(',')
-            .filter_map(|z| forge_foundation::ZoneType::from_str_compat(z.trim()))
-            .collect();
-        if !zones.is_empty() && !zones.contains(&card.zone) {
+    if !st_ab.ir.affected_zones.is_empty() {
+        if !st_ab.ir.affected_zones.contains(&card.zone) {
             return false;
         }
     } else if card.zone != forge_foundation::ZoneType::Hand {
         return false;
     }
-    crate::card::valid_filter::matches_valid_card_opt(
-        st_ab.params.get(keys::AFFECTED),
+    crate::card::valid_filter::matches_valid_card_selector_opt(
+        st_ab.ir.affected.as_ref(),
         card,
         source,
     )

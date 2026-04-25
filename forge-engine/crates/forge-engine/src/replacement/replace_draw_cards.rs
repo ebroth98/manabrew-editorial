@@ -31,12 +31,12 @@ pub fn can_replace(
     if count <= 0 {
         return false;
     }
-    if let Some(valid) = effect.params.selector(keys::VALID_PLAYER) {
+    if let Some(valid) = effect.ir.valid_player_selector.as_ref() {
         if !effect.matches_compiled_valid_player(valid, player, source_card) {
             return false;
         }
     }
-    if let Some(number_cmp) = effect.params.get(keys::NUMBER) {
+    if let Some(number_cmp) = effect.ir.number_text.as_deref() {
         let rhs = number_cmp
             .get(2..)
             .and_then(|n| n.parse::<i32>().ok())
@@ -60,12 +60,7 @@ pub fn execute(
         ReplacementEvent::DrawCards { .. } => {}
         _ => return ReplacementResult::NotReplaced,
     }
-    if effect
-        .params
-        .get(keys::PREVENT)
-        .map(|s| s == "True")
-        .unwrap_or(false)
-    {
+    if effect.prevents() {
         if let ReplacementEvent::DrawCards { count, .. } = event {
             *count = 0;
         }

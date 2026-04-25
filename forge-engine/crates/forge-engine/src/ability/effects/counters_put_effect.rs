@@ -1,6 +1,7 @@
 use forge_foundation::ZoneType;
 
 use super::{parse_counter_type, resolve_defined_player, resolve_numeric_svar, EffectContext};
+use crate::card::CounterType;
 use crate::event::RunParams;
 use crate::parsing::keys;
 use crate::replacement::replacement_handler::{apply_replacements_with_agents, ReplacementEvent};
@@ -12,7 +13,7 @@ use crate::trigger::TriggerType;
 /// `CountersPutEffect` class extending `SpellAbilityEffect`.
 #[forge_engine_macros::spell_effect(CountersPutEffect)]
 fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
-    let counter_type_str = sa.params.get(keys::COUNTER_TYPE).unwrap_or("P1P1");
+    let counter_type_str = sa.ir.counter_type_text.as_deref().unwrap_or("P1P1");
     // Mirror Java CountersPutEffect.java:625-636 — when none of the multi-type
     // dispatch params are present, route the type through the player controller's
     // chooseCounterType prompt (Java's chooseTypeFromList → pc.chooseCounterType).
@@ -43,14 +44,17 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
             None => return,
         }
     } else {
-        parse_counter_type(counter_type_str)
+        sa.ir
+            .counter_type
+            .clone()
+            .unwrap_or_else(|| parse_counter_type(counter_type_str))
     };
     // Support SVar references for CounterNum (e.g. Count$Kicked.4.0 for kicker cards)
     let mut count = resolve_numeric_svar(ctx.game, sa, keys::COUNTER_NUM, 1);
     // Modular death triggers: override the static Modular N with the
     // actual LKI +1/+1 counter count from the dying creature (CR 702.43b).
     // trigger_remembered_amount is set by the death path's LKI capture.
-    if sa.params.is_true(keys::MODULAR) && sa.trigger_remembered_amount > 0 {
+    if sa.ir.modular && sa.trigger_remembered_amount > 0 {
         count = sa.trigger_remembered_amount;
     }
 
@@ -63,8 +67,8 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     // handle player-level counters like ENERGY instead of card counters.
     if let Some(defined) = sa.defined() {
         if let Some(target_player) = resolve_defined_player(defined, source_controller, ctx.game) {
-            match counter_type_str.to_uppercase().as_str() {
-                "ENERGY" => {
+            match &counter_type {
+                CounterType::Named(name) if name == "ENERGY" => {
                     ctx.game.player_add_energy(target_player, count);
                     return;
                 }
@@ -80,8 +84,8 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     // Resolve target card: mirror Java's getDefinedEntitiesOrTargeted().
     // When the SA uses targeting (ValidTgts$), use the chosen target.
     // Otherwise fall back to the Defined$ parameter (default "Self").
-    let uses_targeting = sa.params.has(keys::VALID_TGTS);
-    let target_id = if uses_targeting && !sa.params.has(keys::DEFINED) {
+    let uses_targeting = sa.target_restrictions.is_some();
+    let target_id = if uses_targeting && sa.ir.defined.is_none() {
         // Targeting mode — use the actual chosen target (Necropede death trigger, etc.)
         sa.target_chosen.target_card
     } else {
@@ -111,11 +115,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
 
     // Adapt gate: if Adapt$ True, only place counters if creature has no +1/+1 counters.
     // Mirrors Java CountersPutEffect lines 498-501.
-    let is_adapt = sa
-        .params
-        .get(keys::ADAPT)
-        .map(|s| s.eq_ignore_ascii_case("True"))
-        .unwrap_or(false);
+    let is_adapt = sa.ir.adapt;
     if is_adapt {
         let current = ctx
             .game
@@ -126,20 +126,12 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
         }
     }
 
-    let is_monstrosity = sa
-        .params
-        .get(keys::MONSTROSITY)
-        .map(|s| s.eq_ignore_ascii_case("True"))
-        .unwrap_or(false);
+    let is_monstrosity = sa.ir.monstrosity;
     if is_monstrosity && ctx.game.card(card_id).monstrous {
         return;
     }
 
-    let is_bloodthirst = sa
-        .params
-        .get("Bloodthirst")
-        .map(|s| s.eq_ignore_ascii_case("True"))
-        .unwrap_or(false);
+    let is_bloodthirst = sa.ir.bloodthirst;
     if is_bloodthirst && !ctx.game.player_has_bloodthirst(source_controller) {
         return;
     }
@@ -181,12 +173,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     ctx.game.card_mut(card_id).add_counter(&counter_type, count);
 
     // Mark creature as renowned after successfully placing counters.
-    if sa
-        .params
-        .get(keys::RENOWN)
-        .map(|s| s.eq_ignore_ascii_case("True"))
-        .unwrap_or(false)
-    {
+    if sa.ir.renown {
         ctx.game.card_mut(card_id).set_renowned(true);
     }
 
@@ -249,10 +236,7 @@ fn matches_choose_from_list_path(sa: &SpellAbility) -> bool {
         "TriggeredCounterMap",
         "SharedKeywords",
     ];
-    if !sa.params.has(keys::COUNTER_TYPE) {
-        return false;
-    }
-    !SKIP_PARAMS.iter().any(|k| sa.params.has(k))
+    sa.ir.simple_counter_type_choice_path
 }
 
 #[cfg(test)]

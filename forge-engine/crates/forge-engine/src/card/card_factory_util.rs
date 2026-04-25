@@ -15,12 +15,12 @@ pub fn ability_cast_face_down(card: &Card, _intrinsic: bool, key: &str) -> Spell
 }
 
 pub fn resolve(sa: &SpellAbility, card: &mut Card) {
-    if let Some(raw) = sa.params.get("AddKeyword") {
+    if let Some(raw) = sa.ir.add_keywords.as_deref() {
         for kw in raw.split('&').map(str::trim).filter(|s| !s.is_empty()) {
             card.add_intrinsic_keyword(kw);
         }
     }
-    if let Some(raw) = sa.params.get("AddType") {
+    if let Some(raw) = sa.ir.add_types.as_deref() {
         for ty in raw.split(',').map(str::trim).filter(|s| !s.is_empty()) {
             card.add_type(ty);
         }

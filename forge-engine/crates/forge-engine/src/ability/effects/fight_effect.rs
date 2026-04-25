@@ -20,8 +20,8 @@ use crate::trigger::TriggerType;
 /// `FightEffect` class extending `SpellAbilityEffect`.
 #[forge_engine_macros::spell_effect(FightEffect)]
 fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
-    let use_damage_map = ctx.game.pending_damage_map.is_some() || sa.params.has("DamageMap");
-    if sa.params.has("DamageMap") {
+    let use_damage_map = ctx.game.pending_damage_map.is_some() || sa.ir.damage_map;
+    if sa.ir.damage_map {
         ctx.game.ensure_pending_damage_maps();
     }
 
@@ -33,11 +33,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
 
     // Determine the "source" fighter based on Defined$ ParentTarget vs direct source.
     // Prey Upon: `DB$ Fight | Defined$ ParentTarget` — controlled creature from parent SA.
-    let is_defined_parent = sa
-        .params
-        .get("Defined")
-        .map(|s| s == "ParentTarget")
-        .unwrap_or(false);
+    let is_defined_parent = matches!(sa.defined(), Some("ParentTarget"));
     let source = if is_defined_parent {
         match ctx.parent_target_card {
             Some(c) => c,
@@ -60,7 +56,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
         return;
     }
 
-    if sa.params.has("Optional") {
+    if sa.ir.optional {
         let decider = sa
             .source
             .map(|cid| ctx.game.card(cid).controller)

@@ -49,9 +49,8 @@ fn manifest_for_player(
         // Default: top N cards of library
         let lib = ctx.game.cards_in_zone(ZoneType::Library, player).to_vec();
         lib.into_iter().rev().take(amount).collect()
-    } else if let Some(choice_zone_str) = sa.params.get(crate::parsing::keys::CHOICE_ZONE) {
+    } else if let Some(zone) = sa.ir.choice_zone {
         // Player chooses from a specific zone
-        let zone = super::parse_zone_type(choice_zone_str).unwrap_or(ZoneType::Hand);
         let zone_cards = ctx.game.cards_in_zone(zone, player).to_vec();
         if zone_cards.is_empty() {
             return;
@@ -100,7 +99,7 @@ fn manifest_single_card(
         .register_active_trigger(ctx.game, card_id);
 
     // RememberManifested$
-    if sa.param_is_true(keys::REMEMBER_MANIFESTED) {
+    if sa.ir.remember_manifested {
         if let Some(source_id) = sa.source {
             ctx.game.card_mut(source_id).add_remembered_card(card_id);
         }

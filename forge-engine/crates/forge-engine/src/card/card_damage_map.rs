@@ -11,7 +11,7 @@ use crate::card::valid_filter;
 use crate::event::RunParams;
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
-use crate::parsing::CompiledSelector;
+use crate::parsing::{cached_compiled_selector, CompiledSelector};
 use crate::spellability::SpellAbility;
 use crate::trigger::TriggerHandler;
 use crate::trigger::TriggerType;
@@ -60,8 +60,8 @@ impl CardDamageMap {
         host: CardId,
     ) -> CardDamageMap {
         let host_card = game.card(host);
-        let valid_source = valid_source.map(CompiledSelector::parse);
-        let valid_target = valid_target.map(CompiledSelector::parse);
+        let valid_source = valid_source.map(cached_compiled_selector);
+        let valid_target = valid_target.map(cached_compiled_selector);
         let mut out = CardDamageMap::default();
 
         for (&source, targets) in &self.data {

@@ -1,7 +1,6 @@
 use forge_foundation::ZoneType;
 
 use crate::card::{valid_filter, Card};
-use crate::parsing::keys;
 use crate::staticability::StaticMode;
 
 pub fn cant_regenerate(cards: &[Card], target: &Card) -> bool {
@@ -14,7 +13,7 @@ pub fn cant_regenerate(cards: &[Card], target: &Card) -> bool {
             .iter()
             .filter(|sa| sa.mode == StaticMode::CantRegenerate)
         {
-            let valid = st_ab.params.selector(keys::VALID_CARD);
+            let valid = st_ab.ir.valid_card.as_ref();
             if matches_valid_card(valid, target, source) {
                 return true;
             }
@@ -28,7 +27,7 @@ pub fn apply_cant_regenerate_ability(
     target: &Card,
     source: &Card,
 ) -> bool {
-    matches_valid_card(st_ab.params.selector(keys::VALID_CARD), target, source)
+    matches_valid_card(st_ab.ir.valid_card.as_ref(), target, source)
 }
 
 fn matches_valid_card(

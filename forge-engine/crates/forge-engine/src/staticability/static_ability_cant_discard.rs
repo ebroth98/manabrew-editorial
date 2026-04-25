@@ -1,7 +1,6 @@
 use crate::card::valid_filter;
 use crate::game::GameState;
 use crate::ids::PlayerId;
-use crate::parsing::keys;
 use crate::spellability::SpellAbility;
 use crate::staticability::StaticMode;
 
@@ -37,21 +36,21 @@ pub fn apply_cant_discard_ability(
     is_effect: bool,
 ) -> bool {
     if !valid_filter::matches_valid_player_selector_opt(
-        st_ab.params.selector(keys::VALID_PLAYER),
+        st_ab.ir.valid_player.as_ref(),
         player,
         source_controller,
     ) {
         return false;
     }
-    if let Some(for_cost) = st_ab.params.get(keys::FOR_COST) {
+    if let Some(for_cost) = st_ab.ir.for_cost {
         // ForCost=True means it applies to costs, not effects
         // Java: "True".equalsIgnoreCase(ForCost) == effect → return false
-        if for_cost.eq_ignore_ascii_case("True") == is_effect {
+        if for_cost == is_effect {
             return false;
         }
     }
     if !super::static_ability_cant_sacrifice::matches_valid_cause(
-        st_ab.params.get(keys::VALID_CAUSE),
+        st_ab.ir.valid_cause_text.as_deref(),
         cause,
     ) {
         return false;

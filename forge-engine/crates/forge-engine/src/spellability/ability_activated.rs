@@ -18,7 +18,7 @@ use crate::spellability::SpellAbility;
 /// 5. General restrictions pass.
 pub fn can_play(sa: &SpellAbility, game: &GameState) -> bool {
     // Unpayable cost check
-    if sa.params.is_true("Unpayable") {
+    if sa.ir.unpayable {
         return false;
     }
 

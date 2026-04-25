@@ -10,7 +10,10 @@ use crate::replacement::replacement_handler::{
 };
 use crate::replacement::GameLossReason;
 use crate::replacement::ReplacementResult;
-use crate::staticability::layer::{apply_continuous_effects, apply_etb_tapped};
+use crate::staticability::layer::{
+    apply_continuous_effects, apply_etb_tapped_with_agents,
+    prompt_etb_tapped_replacement_with_agents,
+};
 use crate::trigger::handler::TriggerHandler;
 use crate::trigger::TriggerType;
 
@@ -94,7 +97,7 @@ impl GameState {
 
         // RememberDiscarded
         if let Some(sa) = sa {
-            if sa.params.has("RememberDiscarded") {
+            if sa.ir.remember_discarded {
                 if let Some(source_id) = sa.source {
                     self.card_mut(source_id).add_remembered_card(card_id);
                 }
@@ -274,8 +277,15 @@ impl GameState {
                 if was_land {
                     self.player_record_landfall(dest_owner);
                 }
+                if replacement_marked_etb_tapped {
+                    if let Some(agents) = agents.as_deref_mut() {
+                        prompt_etb_tapped_replacement_with_agents(self, card_id, agents);
+                    }
+                }
                 // Apply ETB-tapped effects (intrinsic + extrinsic).
-                apply_etb_tapped(self, card_id);
+                if !replacement_marked_etb_tapped {
+                    apply_etb_tapped_with_agents(self, card_id, agents.as_deref_mut());
+                }
                 // Keyword ETB counters: K:etbCounter:TYPE:N
                 // N can be a literal integer or an SVar name (e.g. "X" for X-cost spells).
                 let etb_keywords = self.cards[card_id.index()].keywords.as_string_list();

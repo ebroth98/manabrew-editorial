@@ -1,6 +1,7 @@
 use forge_foundation::ZoneType;
 
-use super::{resolve_numeric_svar, EffectContext};
+use super::EffectContext;
+use crate::ability::ability_ir::DefinedRef;
 use crate::spellability::SpellAbility;
 
 /// `SP$ PreventDamage` — prevent the next N damage that would be dealt to
@@ -20,7 +21,12 @@ use crate::spellability::SpellAbility;
 /// `PreventDamageEffect` class extending `SpellAbilityEffect`.
 #[forge_engine_macros::spell_effect(PreventDamageEffect)]
 fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
-    let amount = resolve_numeric_svar(ctx.game, sa, "Amount", 1);
+    let amount = sa
+        .ir
+        .amount
+        .as_deref()
+        .map(|raw| super::resolve_numeric_value(ctx.game, sa, raw, 1))
+        .unwrap_or(1);
     if amount <= 0 {
         return;
     }
@@ -40,26 +46,26 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     }
 
     // Defined$ resolution
-    match sa.params.get(crate::parsing::keys::DEFINED) {
-        Some("Self") => {
+    match sa.ir.defined.as_ref().and_then(|defined| defined.refs.first()) {
+        Some(DefinedRef::SelfCard) => {
             if let Some(source) = sa.source {
                 if ctx.game.card(source).zone == ZoneType::Battlefield {
                     ctx.game.card_mut(source).damage_prevention += amount;
                 }
             }
         }
-        Some("ParentTarget") => {
+        Some(DefinedRef::ParentTarget) => {
             if let Some(parent_target) = ctx.parent_target_card {
                 if ctx.game.card(parent_target).zone == ZoneType::Battlefield {
                     ctx.game.card_mut(parent_target).damage_prevention += amount;
                 }
             }
         }
-        Some("You") => {
+        Some(DefinedRef::You) => {
             let controller = sa.activating_player;
             ctx.game.player_add_damage_prevention(controller, amount);
         }
-        Some("Opponent") => {
+        Some(DefinedRef::Opponent) => {
             let opp = ctx.game.opponent_of(sa.activating_player);
             ctx.game.player_add_damage_prevention(opp, amount);
         }

@@ -1,7 +1,6 @@
 use forge_foundation::ZoneType;
 
-use super::{matches_valid_cards_for_sa, parse_zone_type, EffectContext};
-use crate::parsing::keys;
+use super::{matches_valid_cards_for_sa, EffectContext};
 use crate::spellability::SpellAbility;
 
 /// `SP$ Clone` — one card becomes a copy of another.
@@ -34,7 +33,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     };
 
     // Step 2: Determine the clone target (what to copy ONTO)
-    let clone_target_id = if let Some(defined) = sa.params.get(keys::CLONE_TARGET) {
+    let clone_target_id = if let Some(defined) = sa.ir.clone_target.as_deref() {
         match defined {
             "Self" => source_id,
             "ParentTarget" => ctx.parent_target_card.unwrap_or(source_id),
@@ -62,7 +61,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     target.set_perpetual(&src, false);
 
     // Step 4: Apply PumpKeywords$ (extra keywords on the copy)
-    if let Some(pump_kws) = sa.params.get(keys::PUMP_KEYWORDS) {
+    if let Some(pump_kws) = sa.ir.pump_keywords.as_deref() {
         for kw in pump_kws.split(',') {
             let kw = kw.trim();
             if !kw.is_empty() {
@@ -121,13 +120,9 @@ fn resolve_clone_source(
     }
 
     // Check Choices — player selects from valid cards
-    if let Some(filter) = sa.params.get(keys::CHOICES).map(|s| s.to_string()) {
-        let filter_selector = sa.params.selector(keys::CHOICES);
-        let zone = sa
-            .params
-            .get(keys::CHOICE_ZONE)
-            .and_then(|s| parse_zone_type(s))
-            .unwrap_or(ZoneType::Battlefield);
+    if let Some(filter) = sa.ir.choices.as_deref().map(str::to_string) {
+        let filter_selector = sa.ir.choices_selector.as_ref();
+        let zone = sa.ir.choice_zone.unwrap_or(ZoneType::Battlefield);
 
         let mut valid = Vec::new();
         for &pid in &ctx.game.player_order.clone() {

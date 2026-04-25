@@ -34,7 +34,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     }
 
     // Determine source of counters
-    let from_id = match sa.params.get(crate::parsing::keys::SOURCE) {
+    let from_id = match sa.ir.source_text.as_deref() {
         Some("Targeted") => sa.target_chosen.target_card,
         Some("ParentTarget") => ctx.parent_target_card,
         _ => sa.source, // Default: Self
@@ -42,7 +42,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
 
     // Determine destination for counters
     let to_id = sa.target_chosen.target_card.or_else(|| {
-        match sa.params.get(crate::parsing::keys::DEFINED) {
+        match sa.defined() {
             Some("Self") => sa.source,
             Some("ParentTarget") => ctx.parent_target_card,
             _ => None,

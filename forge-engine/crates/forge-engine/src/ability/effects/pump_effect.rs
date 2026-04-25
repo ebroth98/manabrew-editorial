@@ -1,6 +1,6 @@
 use forge_foundation::ZoneType;
 
-use super::{resolve_numeric_svar, EffectContext};
+use super::EffectContext;
 use crate::card::card_util;
 use crate::card::perpetual::perpetual_interface::PerpetualInterface;
 use crate::card::perpetual::{perpetual_keywords, perpetual_pt_boost};
@@ -63,11 +63,12 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let mut pumped_targets: Vec<crate::ids::CardId> = Vec::new();
 
     // `Optional$` — activator confirms before any pump applies (Java L283–L292).
-    if sa.params.has("Optional") {
+    if sa.ir.optional_present {
         let card_name = sa.source.map(|cid| ctx.game.card(cid).card_name.clone());
         let prompt = sa
-            .params
-            .get("OptionQuestion")
+            .ir
+            .option_question
+            .as_deref()
             .unwrap_or("Apply pump to target?");
         let activator = sa.activating_player;
         if !ctx.agents[activator.index()].confirm_action(
@@ -82,17 +83,24 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
         }
     }
 
-    let att_bonus = PtBonus::parse(sa.params.get("NumAtt"), || {
-        resolve_numeric_svar(ctx.game, sa, keys::NUM_ATT, 0)
+    let att_bonus = PtBonus::parse(sa.ir.num_att.as_deref(), || {
+        match sa.ir.num_att.as_deref() {
+            Some(raw) => super::resolve_numeric_value(ctx.game, sa, raw, 0),
+            None => 0,
+        }
     });
-    let def_bonus = PtBonus::parse(sa.params.get("NumDef"), || {
-        resolve_numeric_svar(ctx.game, sa, keys::NUM_DEF, 0)
+    let def_bonus = PtBonus::parse(sa.ir.num_def.as_deref(), || {
+        match sa.ir.num_def.as_deref() {
+            Some(raw) => super::resolve_numeric_value(ctx.game, sa, raw, 0),
+            None => 0,
+        }
     });
 
     // Parse KW$ parameter for keyword grants (e.g. "KW$ Haste" or "KW$ Flying & Trample")
     let mut keywords: Vec<String> = sa
-        .params
-        .get(keys::KW)
+        .ir
+        .kw
+        .as_deref()
         .map(|kw_str| {
             kw_str
                 .split('&')
@@ -105,7 +113,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     // `KWChoice$` — activator picks one keyword from a comma-separated list
     // (Java L297–L302). Reuses `choose_mode` which maps to a pick-one dialog
     // in concrete agents.
-    if let Some(kw_choice) = sa.params.get("KWChoice") {
+    if let Some(kw_choice) = sa.ir.kw_choice.as_deref() {
         let options: Vec<String> = kw_choice
             .split(',')
             .map(|s| s.trim().to_string())
@@ -134,18 +142,14 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     // encode the permission as pump keywords that block-restriction code can
     // match on ("CanBlockAny" / "CanBlock:N"). Full block-amount support lands
     // once the combat module reads these markers.
-    if sa.params.is_true("CanBlockAny") {
+    if sa.ir.can_block_any {
         keywords.push("CanBlockAny".to_string());
     }
-    if let Some(amt) = sa.params.get("CanBlockAmount") {
+    if let Some(amt) = sa.ir.can_block_amount.as_deref() {
         keywords.push(format!("CanBlock:{}", amt));
     }
 
-    let is_perpetual = sa
-        .params
-        .get("Duration")
-        .map(|d| d.eq_ignore_ascii_case("Perpetual"))
-        .unwrap_or(false);
+    let is_perpetual = sa.ir.perpetual_duration;
     let resolve_ts = if is_perpetual {
         Some(ctx.game.next_effect_timestamp())
     } else {
@@ -155,11 +159,11 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     // Overload: apply pump to ALL valid creatures instead of the chosen target.
     if sa.overloaded {
         let valid_tgts = sa
-            .params
-            .get(keys::VALID_TGTS)
-            .map(|s| s.to_string())
+            .ir
+            .valid_tgts_text
+            .clone()
             .unwrap_or_default();
-        let valid_tgts_selector = sa.params.selector(keys::VALID_TGTS);
+        let valid_tgts_selector = sa.ir.valid_tgts_selector.as_ref();
         let all_bf: Vec<crate::ids::CardId> = ctx
             .game
             .player_order
@@ -226,7 +230,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
 
     // `AtEOT$ <action>` — register an end-of-turn delayed trigger that performs
     // `action` on the pumped targets (Java PumpEffect L486).
-    if let Some(action) = sa.params.get(keys::AT_EOT) {
+    if let Some(action) = sa.ir.at_eot.as_deref() {
         crate::ability::spell_ability_effect::register_at_eot(
             ctx.trigger_handler,
             ctx.game,

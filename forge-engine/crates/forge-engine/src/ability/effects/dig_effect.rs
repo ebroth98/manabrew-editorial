@@ -1,10 +1,11 @@
 use forge_foundation::ZoneType;
 
 use super::{
-    emit_zone_trigger, matches_change_type, parse_zone_type, resolve_defined_player,
-    resolve_numeric_svar, EffectContext,
+    emit_zone_trigger, matches_change_type, resolve_defined_player, resolve_numeric_svar,
+    EffectContext,
 };
 use crate::agent::{notify_all_agents, GameLogEvent};
+use crate::card::card_zone_table::CardZoneTable;
 use crate::parsing::keys;
 use crate::spellability::SpellAbility;
 
@@ -21,17 +22,19 @@ use crate::spellability::SpellAbility;
 #[forge_engine_macros::spell_effect(DigEffect)]
 fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let dig_num = resolve_numeric_svar(ctx.game, sa, "DigNum", 1).max(0) as usize;
-    let optional = sa.params.has(keys::OPTIONAL);
-    let skip_reorder = sa.param_is_true("SkipReorder");
-    let rest_random_order = sa.param_is_true("RestRandomOrder");
+    let optional = sa.ir.optional;
+    let skip_reorder = sa.ir.skip_reorder;
+    let rest_random_order = sa.ir.rest_random_order;
     let change_all = sa
-        .params
-        .get(keys::CHANGE_NUM)
+        .ir
+        .change_num_text
+        .as_deref()
         .map(|s| s.eq_ignore_ascii_case("All"))
         .unwrap_or(false);
     let any_number = sa
-        .params
-        .get(keys::CHANGE_NUM)
+        .ir
+        .change_num_text
+        .as_deref()
         .map(|s| s.eq_ignore_ascii_case("Any"))
         .unwrap_or(false);
     let change_num = if change_all || any_number {
@@ -40,32 +43,21 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
         resolve_numeric_svar(ctx.game, sa, keys::CHANGE_NUM, 1).max(0) as usize
     };
 
-    let dest_zone1 = sa
-        .params
-        .get(keys::DESTINATION_ZONE)
-        .and_then(|s| parse_zone_type(s))
-        .unwrap_or(ZoneType::Hand);
+    let dest_zone1 = sa.destination_zone().unwrap_or(ZoneType::Hand);
     let lib_position1: i32 = sa
         .params
         .get(keys::LIBRARY_POSITION)
         .and_then(|s| s.parse().ok())
         .unwrap_or(-1);
-    let dest_zone2 = sa
-        .params
-        .get(keys::DESTINATION_ZONE_2)
-        .and_then(|s| parse_zone_type(s))
-        .unwrap_or(ZoneType::Library);
+    let dest_zone2 = sa.ir.destination_zone_2.unwrap_or(ZoneType::Library);
 
     // Library position for zone2 placement: -1 = bottom, 0 = top
-    let lib_position2: i32 = sa
-        .params
-        .get(keys::LIBRARY_POSITION_2)
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(-1);
+    let lib_position2: i32 = sa.ir.library_position_2.unwrap_or(-1);
 
     let change_valid = sa
-        .params
-        .get(keys::CHANGE_VALID)
+        .ir
+        .change_valid
+        .as_deref()
         .map(|s| s.to_string())
         .unwrap_or_default();
 
@@ -73,11 +65,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let dig_player = sa
         .target_chosen
         .target_player
-        .or_else(|| {
-            sa.params
-                .get(keys::DEFINED)
-                .and_then(|d| resolve_defined_player(d, sa.activating_player, ctx.game))
-        })
+        .or_else(|| sa.defined().and_then(|d| resolve_defined_player(d, sa.activating_player, ctx.game)))
         .unwrap_or(sa.activating_player);
 
     let lib_len = ctx.game.cards_in_zone(ZoneType::Library, dig_player).len();
@@ -109,12 +97,13 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
 
     // Java DigEffect only prompts for optional skip when PromptToSkipOptionalAbility is set.
     // Otherwise Optional$ True is modeled by allowing 0 selected cards in choose_dig.
-    let may_be_skipped = sa.params.has(keys::PROMPT_TO_SKIP_OPTIONAL_ABILITY);
+    let may_be_skipped = sa.ir.prompt_to_skip_optional_ability;
     if optional && may_be_skipped && !valid.is_empty() {
         let source_name = sa.source.map(|cid| ctx.game.card(cid).card_name.clone());
         let prompt = sa
-            .params
-            .get(keys::OPTIONAL_ABILITY_PROMPT)
+            .ir
+            .optional_ability_prompt
+            .as_deref()
             .unwrap_or("Would you like to proceed with this optional ability?");
         let accepted = ctx.agents[dig_player.index()].confirm_action(
             dig_player,
@@ -137,7 +126,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
 
     // Let UI agents pre-build card info for the revealed cards.
     ctx.agents[sa.activating_player.index()].on_library_peek(ctx.game, &top_n);
-    if sa.params.is_true(keys::REVEAL) {
+    if sa.ir.reveal_true {
         for &card_id in &top_n {
             notify_all_agents(
                 ctx.agents,
@@ -208,6 +197,8 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
         }
     }
 
+    let mut zone_movements = CardZoneTable::default();
+
     // Move chosen cards to dest_zone1.
     for &id in &chosen {
         let owner = ctx.game.card(id).owner;
@@ -217,6 +208,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
             owner
         };
         ctx.move_card(id, dest_zone1, dest_owner);
+        zone_movements.put(Some(ZoneType::Library), Some(dest_zone1), id);
         if dest_zone1 == ZoneType::Library {
             match lib_position1 {
                 pos if pos < 0 => {
@@ -244,6 +236,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
             }
         }
         if dest_zone1 == ZoneType::Battlefield {
+            ctx.trigger_handler.register_active_trigger(ctx.game, id);
             let _ = super::add_to_combat(ctx, sa, id, keys::ATTACKING);
         }
         emit_zone_trigger(ctx.trigger_handler, id, ZoneType::Library, dest_zone1);
@@ -265,6 +258,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
                     .add_card_to_zone_bottom(ZoneType::Library, owner, id);
                 ctx.game.card_mut(id).set_zone(ZoneType::Library);
             }
+            zone_movements.put(Some(ZoneType::Library), Some(ZoneType::Library), id);
         } else {
             let dest_owner = if dest_zone2 == ZoneType::Battlefield {
                 sa.activating_player
@@ -272,8 +266,16 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
                 owner
             };
             ctx.move_card(id, dest_zone2, dest_owner);
+            zone_movements.put(Some(ZoneType::Library), Some(dest_zone2), id);
+            if dest_zone2 == ZoneType::Battlefield {
+                ctx.trigger_handler.register_active_trigger(ctx.game, id);
+            }
             emit_zone_trigger(ctx.trigger_handler, id, ZoneType::Library, dest_zone2);
         }
+    }
+
+    if !zone_movements.all_cards().is_empty() {
+        zone_movements.trigger_changes_zone_all(ctx.trigger_handler, ctx.game, Some(sa));
     }
 }
 

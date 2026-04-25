@@ -13,8 +13,8 @@ use crate::trigger::TriggerType;
 /// `SacrificeAllEffect` class extending `SpellAbilityEffect`.
 #[forge_engine_macros::spell_effect(SacrificeAllEffect)]
 fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
-    let valid_cards = sa.params.selector(keys::VALID_CARDS);
-    let valid_cards_filter = sa.params.get(keys::VALID_CARDS).unwrap_or("Creature");
+    let valid_cards = sa.ir.valid_cards_selector.as_ref();
+    let valid_cards_filter = sa.ir.valid_cards_text.as_deref().unwrap_or("Creature");
 
     // When Defined$ narrows the sacrifice to specific cards (e.g. Ashling's
     // `DelayTriggerRememberedLKI` targets the token created by the parent
@@ -36,11 +36,11 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     // UnlessCost$ X | UnlessPayer$ You — offer the payer a chance to pay a
     // cost to prevent the sacrifice entirely. Java's deterministic AI pays
     // unless-costs when able (auto-tapping lands for mana).
-    if let Some(unless_cost_str) = sa.params.get(keys::UNLESS_COST) {
+    if let Some(unless_cost_str) = sa.ir.unless_cost.as_deref() {
         let source = sa.source.unwrap_or(CardId(0));
         let cost = crate::cost::parse_cost(unless_cost_str);
         let payers = super::helpers::resolve_defined_players(
-            sa.params.get(keys::UNLESS_PAYER).unwrap_or("You"),
+            sa.ir.unless_payer_text.as_deref().unwrap_or("You"),
             sa.activating_player,
             ctx.game,
         );
@@ -61,23 +61,34 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
                 payer,
                 Some(sa),
             );
-            let paid = if can_pay {
-                super::try_pay_unless_cost(ctx, sa, source, payer, &cost)
-            } else {
-                false
-            };
-            // Always emit the callback to match Java's decision stream, which
-            // logs the unless-cost prompt regardless of whether the payer could
-            // afford it. Without this, a commander-tax-bound cost that a player
-            // can never pay silently drops the callback and shifts RNG parity.
             let card_name = sa.source.map(|cid| ctx.game.card(cid).card_name.clone());
-            ctx.agents[payer.index()].pay_cost_to_prevent_effect(
+            let cost_kind = cost.to_simple_string();
+            let prompt = format!(
+                "Pay {} to prevent {}?",
+                if cost_kind.is_empty() {
+                    "this cost".to_string()
+                } else {
+                    cost_kind.clone()
+                },
+                card_name
+                    .clone()
+                    .unwrap_or_else(|| "this effect".to_string())
+            );
+            ctx.agents[payer.index()].snapshot_state(ctx.game, ctx.mana_pools);
+            let wants_to_pay = ctx.agents[payer.index()].pay_cost_to_prevent_effect(
                 payer,
-                "UnlessCost",
-                if paid { "true" } else { "false" },
+                if cost_kind.is_empty() {
+                    "UnlessCost"
+                } else {
+                    cost_kind.as_str()
+                },
+                &prompt,
                 card_name.as_deref(),
                 sa.api,
             );
+            let paid = wants_to_pay
+                && can_pay
+                && super::try_pay_unless_cost(ctx, sa, source, payer, &cost);
             if paid {
                 return; // Cost paid — sacrifice prevented
             }

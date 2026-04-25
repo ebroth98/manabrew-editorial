@@ -12,7 +12,7 @@ use crate::card::filter_constants as fc;
 use crate::card::{valid_filter, Card, CounterType};
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
-use crate::parsing::CompiledSelector;
+use crate::parsing::{cached_compiled_selector, CompiledSelector};
 use crate::spellability::SpellAbility;
 
 fn push_unique_player(players: &mut Vec<PlayerId>, player: PlayerId) {
@@ -956,7 +956,7 @@ pub fn matches_valid_cards_for_sa(
             matches_valid_cards_selector_opt(Some(selector), card, sa.activating_player)
         }
         (None, Some(source_id)) => valid_filter::matches_valid_card_selector_in_game(
-            &CompiledSelector::parse(default_filter),
+            &cached_compiled_selector(default_filter),
             card,
             game.card(source_id),
             game,
@@ -977,7 +977,7 @@ pub fn matches_valid_cards_for_source(
     let selector = match selector {
         Some(selector) => selector,
         None => {
-            parsed = CompiledSelector::parse(default_filter);
+            parsed = cached_compiled_selector(default_filter);
             &parsed
         }
     };
@@ -1556,8 +1556,8 @@ pub fn handle_remembering(game: &mut GameState, sa: &SpellAbility) {
         None => return,
     };
 
-    if sa.params.has("RememberTargets") && sa.uses_targeting() {
-        if sa.params.has("ForgetOtherTargets") {
+    if sa.ir.remember_targets && sa.uses_targeting() {
+        if sa.ir.forget_other_targets {
             game.card_mut(host_id).clear_remembered();
         }
         if let Some(target_card) = sa.target_chosen.target_card {
@@ -1571,7 +1571,7 @@ pub fn handle_remembering(game: &mut GameState, sa: &SpellAbility) {
     // RememberCostMana — store the mana colors used to pay
     // In the Rust engine this is simplified since we don't track individual mana objects.
     // We store a count in remembered_cmc.
-    if sa.params.has("RememberCostMana") {
+    if sa.ir.remember_cost_mana {
         game.card_mut(host_id).clear_remembered();
     }
 }
@@ -1803,7 +1803,7 @@ pub fn filter_list_by_type(
         (sa.source, filter_type.to_string())
     };
 
-    let selector = CompiledSelector::parse(&effective_filter);
+    let selector = cached_compiled_selector(&effective_filter);
     cards
         .iter()
         .copied()

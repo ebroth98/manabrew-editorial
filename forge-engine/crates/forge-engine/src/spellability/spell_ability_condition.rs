@@ -7,7 +7,7 @@ use forge_foundation::ZoneType;
 use serde::{Deserialize, Serialize};
 
 use crate::game::GameState;
-use crate::parsing::Params;
+use crate::parsing::{Params, ParsedParams};
 use crate::spellability::SpellAbility;
 
 use super::spell_ability_variables::SpellAbilityVariables;
@@ -37,8 +37,21 @@ impl SpellAbilityCondition {
     /// Parse conditions from ability params.
     /// Mirrors Java's `SpellAbilityCondition.setConditions(SpellAbility)`.
     pub fn set_conditions(&mut self, params: &Params) {
+        self.set_conditions_from(|key| params.get(key));
+    }
+
+    pub fn set_conditions_parsed(&mut self, params: &ParsedParams<'_>) {
+        self.set_conditions_from(|key| params.get(key));
+    }
+
+    fn set_conditions_from<'a, F>(&mut self, get: F)
+    where
+        F: Fn(&str) -> Option<&'a str>,
+    {
+        let is_true = |key| get(key).is_some_and(|value| value.eq_ignore_ascii_case("True"));
+
         // Parse condition phase
-        if let Some(phases_str) = params.get("ConditionPhases") {
+        if let Some(phases_str) = get("ConditionPhases") {
             for phase_name in phases_str.split(',') {
                 if let Some(phase) =
                     forge_foundation::PhaseType::from_script_name(phase_name.trim())
@@ -49,48 +62,48 @@ impl SpellAbilityCondition {
         }
 
         // Parse turn conditions
-        if params.is_true("ConditionPlayerTurn") {
+        if is_true("ConditionPlayerTurn") {
             self.variables.set_player_turn(true);
         }
-        if params.is_true("ConditionOpponentTurn") {
+        if is_true("ConditionOpponentTurn") {
             self.variables.set_opponent_turn(true);
         }
 
         // Parse condition flags
-        if params.is_true("ConditionThreshold") {
+        if is_true("ConditionThreshold") {
             self.variables.set_threshold(true);
         }
-        if params.is_true("ConditionMetalcraft") {
+        if is_true("ConditionMetalcraft") {
             self.variables.set_metalcraft(true);
         }
-        if params.is_true("ConditionDelirium") {
+        if is_true("ConditionDelirium") {
             self.variables.set_delirium(true);
         }
-        if params.is_true("ConditionHellbent") {
+        if is_true("ConditionHellbent") {
             self.variables.set_hellbent(true);
         }
-        if params.is_true("ConditionRevolt") {
+        if is_true("ConditionRevolt") {
             self.variables.set_revolt(true);
         }
-        if params.is_true("ConditionDesert") {
+        if is_true("ConditionDesert") {
             self.variables.set_desert(true);
         }
-        if params.is_true("ConditionBlessing") {
+        if is_true("ConditionBlessing") {
             self.variables.set_blessing(true);
         }
-        if params.is_true("ConditionSolved") {
+        if is_true("ConditionSolved") {
             self.variables.set_solved(true);
         }
 
         // Parse presence check
-        if let Some(present) = params.get("ConditionPresent") {
+        if let Some(present) = get("ConditionPresent") {
             self.variables.set_is_present(Some(present.to_string()));
         }
-        if let Some(compare) = params.get("ConditionCompare") {
+        if let Some(compare) = get("ConditionCompare") {
             self.variables
                 .set_present_compare(Some(compare.to_string()));
         }
-        if let Some(zone_str) = params.get("ConditionPresentZone") {
+        if let Some(zone_str) = get("ConditionPresentZone") {
             match zone_str.to_lowercase().as_str() {
                 "battlefield" => self.variables.set_present_zone(ZoneType::Battlefield),
                 "graveyard" => self.variables.set_present_zone(ZoneType::Graveyard),
@@ -100,7 +113,7 @@ impl SpellAbilityCondition {
                 _ => {}
             }
         }
-        if let Some(defined) = params.get("ConditionDefined") {
+        if let Some(defined) = get("ConditionDefined") {
             self.variables
                 .set_present_defined(Some(defined.to_string()));
         }

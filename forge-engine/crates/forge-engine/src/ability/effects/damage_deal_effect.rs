@@ -1,7 +1,7 @@
 use forge_foundation::ZoneType;
 
 use super::{resolve_numeric_svar, EffectContext};
-use crate::ability::ability_ir::AbilityIr;
+use crate::ability::ability_ir::EffectIr;
 use crate::card::card_damage_map::DamageTarget;
 use crate::card::card_util;
 use crate::parsing::amount::AmountExpr;
@@ -14,8 +14,8 @@ use crate::spellability::SpellAbility;
 #[forge_engine_macros::spell_effect(DamageDealEffect)]
 fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let damage = resolve_damage_amount(ctx, sa);
-    let use_damage_map = ctx.game.pending_damage_map.is_some() || sa.params.has("DamageMap");
-    if sa.params.has("DamageMap") {
+    let use_damage_map = ctx.game.pending_damage_map.is_some() || sa.ir.damage_map;
+    if sa.ir.damage_map {
         ctx.game.ensure_pending_damage_maps();
     }
 
@@ -53,11 +53,15 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     // Overload: deal damage to ALL valid creatures instead of the chosen target.
     if sa.overloaded {
         let valid_tgts = sa
-            .params
-            .get(keys::VALID_TGTS)
-            .map(|s| s.to_string())
+            .target_restrictions
+            .as_ref()
+            .and_then(|restrictions| restrictions.valid_tgts.first())
+            .map(String::as_str)
             .unwrap_or_default();
-        let valid_tgts_selector = sa.params.selector(keys::VALID_TGTS);
+        let valid_tgts_selector = sa
+            .target_restrictions
+            .as_ref()
+            .map(|restrictions| &restrictions.valid_tgts_selector);
         let all_bf: Vec<crate::ids::CardId> = ctx
             .game
             .player_order
@@ -321,7 +325,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
                 ctx.trigger_handler.flush_waiting_triggers(ctx.game);
             }
 
-            if sa.params.is_true(keys::REMEMBER_DAMAGED_CREATURE) {
+            if sa.ir.remember_damaged_creature {
                 if let Some(src_id) = sa.source {
                     let src = ctx.game.card_mut(src_id);
                     src.add_remembered_card(target_card);
@@ -337,7 +341,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
 /// references (e.g. `NumDmg$ X` where `SVar:X:ParentTargeted$CardPower`).
 /// Mirrors Java's `AbilityUtils.calculateAmount(sa, "NumDmg", sa)`.
 fn resolve_damage_amount(ctx: &EffectContext, sa: &SpellAbility) -> i32 {
-    if let Some(AbilityIr::DealDamage(ir)) = &sa.compiled_ir {
+    if let Some(EffectIr::DealDamage(ir)) = &sa.ir.effect {
         if let Some(amount) = &ir.amount {
             if let Some(value) = resolve_amount_expr(ctx, sa, amount) {
                 #[cfg(debug_assertions)]

@@ -23,12 +23,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     }
 
     // Parse seek types — can be comma-separated
-    let types_str = sa
-        .params
-        .get(crate::parsing::keys::TYPES)
-        .or_else(|| sa.params.get(crate::parsing::keys::TYPE))
-        .unwrap_or("Card")
-        .to_string();
+    let types_str = sa.ir.types_text.as_deref().unwrap_or("Card").to_string();
     let seek_types: Vec<&str> = types_str.split(',').map(str::trim).collect();
 
     let players = if let Some(def) = sa.defined_player() {
@@ -76,14 +71,14 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
 
         // RememberFound$ / ImprintFound$
         if !sought.is_empty() {
-            if sa.param_is_true(keys::REMEMBER_FOUND) {
+            if sa.ir.remember_found {
                 if let Some(sid) = sa.source {
                     for &cid in &sought {
                         ctx.game.card_mut(sid).add_remembered_card(cid);
                     }
                 }
             }
-            if sa.param_is_true(keys::IMPRINT_FOUND) {
+            if sa.ir.imprint_found {
                 if let Some(sid) = sa.source {
                     for &cid in &sought {
                         ctx.game.card_mut(sid).add_imprinted_card(cid);

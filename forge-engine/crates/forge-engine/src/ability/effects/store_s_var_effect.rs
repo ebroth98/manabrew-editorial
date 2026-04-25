@@ -15,21 +15,19 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let Some(source_id) = sa.source else { return };
 
     let svar_name = sa
-        .params
-        .get("SVar")
-        .or_else(|| sa.params.get(keys::SVAR_NAME))
-        .map(|s| s.to_string())
+        .ir
+        .svar_name_text
+        .clone()
         .unwrap_or_default();
     let svar_type = sa
-        .params
-        .get("Type")
-        .map(|s| s.to_string())
+        .ir
+        .svar_type_text
+        .clone()
         .unwrap_or_default();
     let expression = sa
-        .params
-        .get("Expression")
-        .or_else(|| sa.params.get(keys::SVAR_VALUE))
-        .map(|s| s.to_string())
+        .ir
+        .svar_expression_text
+        .clone()
         .unwrap_or_default();
 
     if svar_name.is_empty() || svar_type.is_empty() || expression.is_empty() {

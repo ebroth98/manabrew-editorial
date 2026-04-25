@@ -2,7 +2,7 @@ use forge_foundation::ZoneType;
 
 use crate::card::{valid_filter, Card};
 use crate::ids::PlayerId;
-use crate::parsing::{keys, CompiledSelector};
+use crate::parsing::CompiledSelector;
 use crate::staticability::StaticMode;
 
 pub fn cant_attach(cards: &[Card], attachment: &Card, target: &Card, check_sba: bool) -> bool {
@@ -12,23 +12,19 @@ pub fn cant_attach(cards: &[Card], attachment: &Card, target: &Card, check_sba: 
             .iter()
             .filter(|sa| sa.mode == StaticMode::CantAttach)
         {
-            if !matches_valid_card(st_ab.params.selector(keys::VALID_CARD), attachment, source) {
+            if !matches_valid_card(st_ab.ir.valid_card.as_ref(), attachment, source) {
                 continue;
             }
-            let target_selector = st_ab.params.selector_cloned(keys::TARGET);
-            if !matches_valid_card(target_selector.as_ref(), target, source) {
+            if !matches_valid_card(st_ab.ir.target.as_ref(), target, source) {
                 continue;
             }
-            if let Some(valid_card_to_target) = st_ab.params.selector(keys::VALID_CARD_TO_TARGET) {
+            if let Some(valid_card_to_target) = st_ab.ir.valid_card_to_target.as_ref() {
                 if !matches_valid_card_for_target(attachment, valid_card_to_target, target) {
                     continue;
                 }
             }
-            if (check_sba || !st_ab.params.has(keys::EXCEPTION_SBA))
-                && st_ab.params.has(keys::EXCEPTIONS)
-            {
-                let exception_selector = st_ab.params.selector_cloned(keys::EXCEPTIONS);
-                if matches_valid_card(exception_selector.as_ref(), attachment, source) {
+            if (check_sba || !st_ab.ir.exception_sba) && st_ab.ir.exceptions.is_some() {
+                if matches_valid_card(st_ab.ir.exceptions.as_ref(), attachment, source) {
                     continue;
                 }
             }
@@ -46,11 +42,10 @@ pub fn apply_cant_attach_ability(
     target: &Card,
     activator: PlayerId,
 ) -> bool {
-    let target_selector = st_ab.params.selector_cloned(keys::TARGET);
-    matches_valid_card(st_ab.params.selector(keys::VALID_CARD), attachment, source)
-        && matches_valid_card(target_selector.as_ref(), target, source)
+    matches_valid_card(st_ab.ir.valid_card.as_ref(), attachment, source)
+        && matches_valid_card(st_ab.ir.target.as_ref(), target, source)
         && valid_filter::matches_valid_player_opt(
-            st_ab.params.get(keys::ACTIVATOR),
+            st_ab.ir.activator_raw.as_deref(),
             activator,
             source.controller,
         )

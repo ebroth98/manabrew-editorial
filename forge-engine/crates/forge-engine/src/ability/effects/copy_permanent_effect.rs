@@ -16,23 +16,15 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     // Mirrors Java CopyPermanentEffect.
     // Supports: Defined$, SetColor$, AddTypes$, PumpKeywords$.
 
-    eprintln!(
-        "[copyperm-debug] T{} {:?} resolve source={:?} defined={:?} trigger_remembered_len={}",
-        ctx.game.turn.turn_number, ctx.game.turn.phase, sa.source,
-        sa.params.get(keys::DEFINED), sa.trigger_remembered.len()
-    );
-
     // Resolve the card to copy: Defined$ first, then targeting.
     let original_id = resolve_original(sa);
     let Some(original_id) = original_id else {
-        eprintln!("[copyperm-debug]   resolve_original returned None - BAILING");
         return;
     };
-    eprintln!("[copyperm-debug]   original_id={:?} name={}", original_id, ctx.game.card(original_id).card_name);
 
     // For targeted copies, require the original on the battlefield.
     // For Defined$ Self (Embalm/Eternalize), the card may be in any zone.
-    let is_defined = sa.params.has(keys::DEFINED);
+    let is_defined = sa.ir.defined.is_some();
     if !is_defined && ctx.game.card(original_id).zone != ZoneType::Battlefield {
         return;
     }
@@ -40,14 +32,11 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let original = ctx.game.card(original_id).clone();
     let copy = get_proto_type(sa, &original, sa.activating_player);
     let copy_id = ctx.game.create_card(copy);
-    eprintln!("[copyperm-debug]   created copy_id={:?} name={} triggers_count={}",
-        copy_id, ctx.game.card(copy_id).card_name, ctx.game.card(copy_id).triggers.len());
     rebind_copied_traits(ctx.game, copy_id);
     ctx.game
         .move_card(copy_id, ZoneType::Battlefield, sa.activating_player);
     ctx.trigger_handler
         .register_active_trigger(ctx.game, copy_id);
-    eprintln!("[copyperm-debug]   moved to battlefield, emitting ETB trigger");
     emit_zone_trigger(
         ctx.trigger_handler,
         copy_id,
@@ -55,11 +44,10 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
         ZoneType::Battlefield,
     );
     ctx.trigger_handler.flush_waiting_triggers(ctx.game);
-    eprintln!("[copyperm-debug]   flushed waiting triggers");
 
     // `AtEOT$ <action>` — register an end-of-turn delayed trigger targeting
     // the created copy (Java CopyPermanentEffect → registerDelayedTrigger).
-    if let Some(action) = sa.params.get(keys::AT_EOT) {
+    if let Some(action) = sa.ir.at_eot.as_deref() {
         crate::ability::spell_ability_effect::register_at_eot(
             ctx.trigger_handler,
             ctx.game,
@@ -72,11 +60,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     // `RememberTokens$ True` — track each created token on the source card so
     // a downstream SubAbility (e.g. Ashling's `DelTrig` with
     // `RememberObjects$ Remembered`) can find it later.
-    let remember_tokens = sa
-        .params
-        .get("RememberTokens")
-        .map_or(false, |v| v.eq_ignore_ascii_case("True"));
-    if remember_tokens {
+    if sa.ir.remember_tokens {
         if let Some(sid) = sa.source {
             ctx.game.card_mut(sid).add_remembered_card(copy_id);
         }
@@ -116,12 +100,12 @@ pub fn get_proto_type(sa: &SpellAbility, original: &Card, new_owner: crate::ids:
     copy.set_is_token(true);
 
     // Apply SetColor$ (e.g. Embalm sets color to White).
-    if let Some(set_color) = sa.params.get(keys::SET_COLOR) {
+    if let Some(set_color) = sa.ir.set_color.as_deref() {
         copy.set_color(ColorSet::from_names(set_color));
     }
 
     // Apply AddTypes$ (e.g. Embalm adds "Zombie").
-    if let Some(add_types) = sa.params.get(keys::ADD_TYPES) {
+    if let Some(add_types) = sa.ir.add_types.as_deref() {
         for t in add_types.split(" & ") {
             let t = t.trim();
             if !t.is_empty() {
@@ -131,23 +115,15 @@ pub fn get_proto_type(sa: &SpellAbility, original: &Card, new_owner: crate::ids:
     }
 
     // Apply SetPower$/SetToughness$ (e.g. Eternalize sets to 4/4).
-    if let Some(p) = sa
-        .params
-        .get(keys::SET_POWER)
-        .and_then(|v| v.parse::<i32>().ok())
-    {
+    if let Some(p) = sa.ir.set_power {
         copy.set_base_power(Some(p));
     }
-    if let Some(t) = sa
-        .params
-        .get(keys::SET_TOUGHNESS)
-        .and_then(|v| v.parse::<i32>().ok())
-    {
+    if let Some(t) = sa.ir.set_toughness {
         copy.set_base_toughness(Some(t));
     }
 
     // Apply PumpKeywords$ (e.g. "Haste" added temporarily to the copy).
-    if let Some(pump_kws) = sa.params.get(keys::PUMP_KEYWORDS) {
+    if let Some(pump_kws) = sa.ir.pump_keywords.as_deref() {
         for kw in pump_kws.split(',') {
             let kw = kw.trim();
             if !kw.is_empty() {
@@ -157,7 +133,7 @@ pub fn get_proto_type(sa: &SpellAbility, original: &Card, new_owner: crate::ids:
     }
 
     // Apply AddKeywords$ (e.g. additional keywords on the copy).
-    if let Some(add_kws) = sa.params.get(keys::ADD_KEYWORDS) {
+    if let Some(add_kws) = sa.ir.add_keywords.as_deref() {
         for kw in add_kws.split(" & ") {
             let kw = kw.trim();
             if !kw.is_empty() {
@@ -168,9 +144,10 @@ pub fn get_proto_type(sa: &SpellAbility, original: &Card, new_owner: crate::ids:
 
     // Strip mana cost for Embalm/Eternalize copies (they have no mana cost).
     if sa
-        .params
-        .get(keys::SET_MANA_COST)
-        .map_or(false, |v| v == "0" || v.is_empty())
+        .ir
+        .set_mana_cost
+        .as_deref()
+        .is_some_and(|v| v == "0" || v.is_empty())
     {
         copy.set_mana_cost(forge_foundation::mana::ManaCost::no_cost());
     }

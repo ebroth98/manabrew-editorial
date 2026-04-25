@@ -19,9 +19,9 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     targets.sort_unstable_by_key(|cid| cid.0);
     targets.dedup();
 
-    let no_regen = sa.params.is_true("NoRegen");
-    let remember_destroyed = sa.params.is_true("RememberDestroyed");
-    let always_remember = sa.params.is_true("AlwaysRemember");
+    let no_regen = sa.ir.no_regen;
+    let remember_destroyed = sa.ir.remember_destroyed;
+    let always_remember = sa.ir.always_remember;
 
     for target_card in targets {
         if ctx.game.card(target_card).zone == ZoneType::Battlefield {

@@ -20,8 +20,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let num = resolve_numeric_svar(ctx.game, sa, "ScryNum", 1).max(0) as usize;
 
     let target = sa
-        .params
-        .get("Defined")
+        .defined()
         .and_then(|d| resolve_defined_player(d, sa.activating_player, ctx.game))
         .unwrap_or(sa.activating_player);
 
@@ -40,7 +39,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
         num
     };
 
-    if sa.params.has(crate::parsing::keys::OPTIONAL) {
+    if sa.ir.optional {
         let source_name = sa.source.map(|cid| ctx.game.card(cid).card_name.as_str());
         let accepted = ctx.agents[target.index()].confirm_action(
             target,

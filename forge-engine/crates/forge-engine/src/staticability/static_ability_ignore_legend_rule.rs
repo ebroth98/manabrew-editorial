@@ -1,7 +1,7 @@
 use forge_foundation::ZoneType;
 
 use crate::card::{valid_filter, Card};
-use crate::parsing::{keys, CompiledSelector};
+use crate::parsing::CompiledSelector;
 use crate::staticability::StaticMode;
 
 pub fn ignore_legend_rule(cards: &[Card], card: &Card) -> bool {
@@ -11,7 +11,7 @@ pub fn ignore_legend_rule(cards: &[Card], card: &Card) -> bool {
             .iter()
             .filter(|sa| sa.mode == StaticMode::IgnoreLegendRule)
         {
-            if !matches_valid_card(st_ab.params.selector(keys::VALID_CARD), card, source) {
+            if !matches_valid_card(st_ab.ir.valid_card.as_ref(), card, source) {
                 continue;
             }
             if !is_present_condition_met(cards, st_ab, source) {
@@ -32,15 +32,15 @@ fn is_present_condition_met(
     st_ab: &crate::staticability::StaticAbility,
     source: &Card,
 ) -> bool {
-    let Some(is_present) = st_ab.params.selector_cloned(keys::IS_PRESENT) else {
+    let Some(is_present) = st_ab.ir.is_present.as_ref() else {
         return true;
     };
     let count = cards
         .iter()
         .filter(|c| c.zone == ZoneType::Battlefield)
-        .filter(|c| matches_valid_card(Some(&is_present), c, source))
+        .filter(|c| matches_valid_card(Some(is_present), c, source))
         .count() as i32;
-    let cmp = st_ab.params.get(keys::PRESENT_COMPARE).unwrap_or("GE1");
+    let cmp = st_ab.ir.present_compare_text.as_deref().unwrap_or("GE1");
     match cmp {
         "EQ2" => count == 2,
         "EQ1" => count == 1,

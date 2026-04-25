@@ -22,12 +22,9 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
 
     // Build the valid names list
     let valid_names: Vec<String> =
-        if let Some(list) = sa.params.get(crate::parsing::keys::CHOOSE_FROM_LIST) {
+        if let Some(list) = sa.ir.choose_from_list_text.as_deref() {
             list.split(',').map(|s| s.trim().to_string()).collect()
-        } else if sa
-            .params
-            .has(crate::parsing::keys::CHOOSE_FROM_DEFINED_CARDS)
-        {
+        } else if sa.param_is_true(crate::parsing::keys::CHOOSE_FROM_DEFINED_CARDS) {
             // Use remembered cards from source
             if let Some(source_id) = sa.source {
                 ctx.game

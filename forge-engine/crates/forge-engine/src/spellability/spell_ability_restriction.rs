@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
 use crate::parsing::compare::compare_expr;
-use crate::parsing::Params;
+use crate::parsing::{Params, ParsedParams};
 
 use super::spell_ability_variables::SpellAbilityVariables;
 
@@ -38,15 +38,28 @@ impl SpellAbilityRestriction {
     /// Parse activation restrictions from ability params.
     /// Mirrors Java's `SpellAbilityRestriction.setRestrictions(SpellAbility)`.
     pub fn set_restrictions(&mut self, params: &Params) {
+        self.set_restrictions_from(|key| params.get(key));
+    }
+
+    pub fn set_restrictions_parsed(&mut self, params: &ParsedParams<'_>) {
+        self.set_restrictions_from(|key| params.get(key));
+    }
+
+    fn set_restrictions_from<'a, F>(&mut self, get: F)
+    where
+        F: Fn(&str) -> Option<&'a str>,
+    {
+        let is_true = |key| get(key).is_some_and(|value| value.eq_ignore_ascii_case("True"));
+
         // Parse activation zone
-        if let Some(zone_str) = params.get("ActivationZone") {
+        if let Some(zone_str) = get("ActivationZone") {
             if let Some(zone) = parse_zone(zone_str) {
                 self.variables.set_zone(zone);
             }
         }
 
         // Parse phase restrictions
-        if let Some(phases_str) = params.get("ActivationPhases") {
+        if let Some(phases_str) = get("ActivationPhases") {
             for phase_name in phases_str.split(',') {
                 if let Some(phase) = PhaseType::from_script_name(phase_name.trim()) {
                     self.variables.add_phase(phase);
@@ -55,82 +68,82 @@ impl SpellAbilityRestriction {
         }
 
         // Parse sorcery speed restriction
-        if params.is_true("SorcerySpeed") {
+        if is_true("SorcerySpeed") {
             self.variables.set_sorcery_speed(true);
         }
 
         // Parse instant speed
-        if params.is_true("InstantSpeed") {
+        if is_true("InstantSpeed") {
             self.variables.set_instant_speed(true);
         }
 
         // Parse activator
-        if let Some(activator) = params.get("Activator") {
+        if let Some(activator) = get("Activator") {
             self.variables.set_activator(activator.to_string());
         }
 
         // Parse turn restrictions
-        if params.is_true("PlayerTurn") {
+        if is_true("PlayerTurn") {
             self.variables.set_player_turn(true);
         }
-        if params.is_true("OpponentTurn") {
+        if is_true("OpponentTurn") {
             self.variables.set_opponent_turn(true);
         }
 
         // Parse activation limits
-        if let Some(limit) = params.get("ActivationLimit") {
+        if let Some(limit) = get("ActivationLimit") {
             self.variables.set_limit_to_check(Some(limit.to_string()));
         }
-        if let Some(game_limit) = params.get("GameActivationLimit") {
+        if let Some(game_limit) = get("GameActivationLimit") {
             self.variables
                 .set_game_limit_to_check(Some(game_limit.to_string()));
         }
 
         // Parse condition flags
-        if params.is_true("Threshold") {
+        if is_true("Threshold") {
             self.variables.set_threshold(true);
         }
-        if params.is_true("Metalcraft") {
+        if is_true("Metalcraft") {
             self.variables.set_metalcraft(true);
         }
-        if params.is_true("Delirium") {
+        if is_true("Delirium") {
             self.variables.set_delirium(true);
         }
-        if params.is_true("Hellbent") {
+        if is_true("Hellbent") {
             self.variables.set_hellbent(true);
         }
-        if params.is_true("Revolt") {
+        if is_true("Revolt") {
             self.variables.set_revolt(true);
         }
-        if params.is_true("Desert") {
+        if is_true("Desert") {
             self.variables.set_desert(true);
         }
-        if params.is_true("Blessing") {
+        if is_true("Blessing") {
             self.variables.set_blessing(true);
         }
-        if params.is_true("Solved") {
+        if is_true("Solved") {
             self.variables.set_solved(true);
         }
 
         // Parse presence check
-        if let Some(present) = params.get("IsPresent") {
+        if let Some(present) = get("IsPresent") {
             self.variables.set_is_present(Some(present.to_string()));
         }
-        if let Some(compare) = params.get("PresentCompare") {
+        if let Some(compare) = get("PresentCompare") {
             self.variables
                 .set_present_compare(Some(compare.to_string()));
         }
-        if let Some(zone_str) = params.get("PresentZone") {
+        if let Some(zone_str) = get("PresentZone") {
             if let Some(zone) = parse_zone(zone_str) {
                 self.variables.set_present_zone(zone);
             }
         }
-        if let Some(defined) = params.get("PresentDefined") {
+        if let Some(defined) = get("PresentDefined") {
             self.variables
                 .set_present_defined(Some(defined.to_string()));
         }
 
-        if let Some(class_level) = params.get("ClassLevel") {
+        if let Some(class_level) = get("ClassLevel") {
             if class_level.len() >= 2 {
                 self.variables
                     .set_class_level_operator(Some(class_level[..2].to_string()));
@@ -140,7 +153,7 @@ impl SpellAbilityRestriction {
         }
 
         // Parse cards in hand requirement
-        if let Some(count_str) = params.get("ActivateCardsInHand") {
+        if let Some(count_str) = get("ActivateCardsInHand") {
             if let Ok(count) = count_str.parse::<i32>() {
                 self.variables.set_cards_in_hand(count);
             }

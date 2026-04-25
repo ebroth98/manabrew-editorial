@@ -27,12 +27,12 @@ pub fn can_replace(
         ReplacementEvent::GameLoss { player, reason } => (*player, *reason),
         _ => return false,
     };
-    if let Some(valid) = effect.params.selector(keys::VALID_PLAYER) {
+    if let Some(valid) = effect.ir.valid_player_selector.as_ref() {
         if !effect.matches_compiled_valid_player(valid, player, source_card) {
             return false;
         }
     }
-    if let Some(valid_reason) = effect.params.get(keys::VALID_LOSE_REASON) {
+    if let Some(valid_reason) = effect.ir.valid_lose_reason_text.as_deref() {
         let matches_reason = valid_reason.split(',').map(str::trim).any(|r| {
             r.eq_ignore_ascii_case(match reason {
                 GameLossReason::LifeReachedZero => "LifeReachedZero",

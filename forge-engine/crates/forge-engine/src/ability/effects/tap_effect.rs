@@ -24,9 +24,9 @@ use crate::trigger::TriggerType;
 #[forge_engine_macros::spell_effect(TapEffect)]
 fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let controller = sa.activating_player;
-    let etb = sa.params.has(crate::parsing::keys::ETB);
-    let remember_tapped = sa.params.has(crate::parsing::keys::REMEMBER_TAPPED);
-    let always_remember = sa.params.has(crate::parsing::keys::ALWAYS_REMEMBER);
+    let etb = sa.ir.etb;
+    let remember_tapped = sa.ir.remember_tapped;
+    let always_remember = sa.ir.always_remember;
 
     // Mirrors Java TapEffect.getTargetCards(sa), including non-targeting
     // Defined$ cases like ReplacedCard and defaulting to Self.

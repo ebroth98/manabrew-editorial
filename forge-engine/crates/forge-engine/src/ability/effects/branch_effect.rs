@@ -16,7 +16,12 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
         keys::FALSE_SUB_ABILITY
     };
 
-    let Some(sub_svar_name) = sa.params.get(key) else {
+    let sub_svar_name = match key {
+        keys::TRUE_SUB_ABILITY => sa.ir.true_sub_ability.as_deref(),
+        keys::FALSE_SUB_ABILITY => sa.ir.false_sub_ability.as_deref(),
+        _ => None,
+    };
+    let Some(sub_svar_name) = sub_svar_name else {
         return;
     };
     let Some(source_id) = sa.source else {
@@ -63,7 +68,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
 }
 
 fn evaluate_branch_condition(ctx: &EffectContext, sa: &SpellAbility) -> bool {
-    let Some(condition_svar) = sa.params.get(keys::BRANCH_CONDITION_SVAR) else {
+    let Some(condition_svar) = sa.ir.branch_condition_svar.as_deref() else {
         return true;
     };
     let Some(source_id) = sa.source else {

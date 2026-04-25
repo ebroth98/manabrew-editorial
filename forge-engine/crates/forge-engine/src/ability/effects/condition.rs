@@ -23,53 +23,53 @@ pub(super) fn check_condition(game: &GameState, sa: &SpellAbility) -> bool {
     let activator = sa.activating_player;
 
     // Player-state gates (SpellAbilityCondition.areMet L263–L269).
-    if sa.params.is_true("ConditionHellbent") && !crate::player::has_hellbent(game, activator) {
+    if sa.ir.condition_hellbent && !crate::player::has_hellbent(game, activator) {
         return false;
     }
-    if sa.params.is_true("ConditionThreshold") && !crate::player::has_threshold(game, activator) {
+    if sa.ir.condition_threshold && !crate::player::has_threshold(game, activator) {
         return false;
     }
-    if sa.params.is_true("ConditionMetalcraft") && !crate::player::has_metalcraft(game, activator) {
+    if sa.ir.condition_metalcraft && !crate::player::has_metalcraft(game, activator) {
         return false;
     }
-    if sa.params.is_true("ConditionDelirium") && !crate::player::has_delirium(game, activator) {
+    if sa.ir.condition_delirium && !crate::player::has_delirium(game, activator) {
         return false;
     }
-    if sa.params.is_true("ConditionRevolt") && !crate::player::has_revolt(game, activator) {
+    if sa.ir.condition_revolt && !crate::player::has_revolt(game, activator) {
         return false;
     }
-    if sa.params.is_true("ConditionDesert") && !crate::player::has_desert(game, activator) {
+    if sa.ir.condition_desert && !crate::player::has_desert(game, activator) {
         return false;
     }
-    if sa.params.is_true("ConditionBlessing") && !crate::player::has_blessing(game, activator) {
+    if sa.ir.condition_blessing && !crate::player::has_blessing(game, activator) {
         return false;
     }
 
     // Kicked-related flags (L271–L280).
-    if sa.params.is_true("ConditionKicked") && !sa.kicked {
+    if sa.ir.condition_kicked && !sa.kicked {
         return false;
     }
-    if sa.params.is_true("ConditionOptionalPaid") && !sa.optional_generic_cost_paid {
+    if sa.ir.condition_optional_paid && !sa.optional_generic_cost_paid {
         return false;
     }
-    if sa.params.is_true("ConditionOptionalNotPaid") && sa.optional_generic_cost_paid {
+    if sa.ir.condition_optional_not_paid && sa.optional_generic_cost_paid {
         return false;
     }
 
     // Turn-owner gates (L300–L311).
-    if let Some(raw) = sa.params.get("ConditionPlayerTurn") {
+    if let Some(raw) = sa.ir.condition_player_turn.as_deref() {
         let expect_self_turn = !raw.eq_ignore_ascii_case("False");
         let is_self_turn = game.turn.active_player == activator;
         if expect_self_turn != is_self_turn {
             return false;
         }
     }
-    if sa.params.is_true("ConditionOpponentTurn") && game.turn.active_player == activator {
+    if sa.ir.condition_opponent_turn && game.turn.active_player == activator {
         return false;
     }
 
     // Hand-size gate: `ConditionCardsInHand$ N` or `ConditionCardsInHand$ GE3`.
-    if let Some(raw) = sa.params.get("ConditionCardsInHand") {
+    if let Some(raw) = sa.ir.condition_cards_in_hand.as_deref() {
         let size = game
             .cards_in_zone(forge_foundation::ZoneType::Hand, activator)
             .len() as i32;
@@ -83,7 +83,7 @@ pub(super) fn check_condition(game: &GameState, sa: &SpellAbility) -> bool {
     }
 
     // Phase gate: `ConditionPhases$ End Of Turn,Upkeep` (comma-separated).
-    if let Some(phases) = sa.params.get("ConditionPhases") {
+    if let Some(phases) = sa.ir.condition_phases.as_deref() {
         let current = game.turn.phase;
         let ok = phases
             .split(',')
@@ -96,24 +96,24 @@ pub(super) fn check_condition(game: &GameState, sa: &SpellAbility) -> bool {
     }
 
     // Life-compare gate: `ConditionLifeCompare$ GE20`.
-    if let Some(cmp) = sa.params.get("ConditionLifeCompare") {
+    if let Some(cmp) = sa.ir.condition_life_compare.as_deref() {
         if !compare_expr(game.player(activator).life, cmp) {
             return false;
         }
     }
 
     // Check Condition$ Kicked (most common pattern: simple kicked gate)
-    if let Some(cond) = sa.params.get(keys::CONDITION) {
+    if let Some(cond) = sa.ir.condition.as_deref() {
         if cond == "Kicked" {
             return sa.kicked;
         }
     }
     // Check ConditionCheckSVar$ Kicked (SVar-based kicked gate)
-    if let Some(cond) = sa.params.get(keys::CONDITION_CHECK_SVAR) {
+    if let Some(cond) = sa.ir.condition_check_svar.as_deref() {
         if cond == "Kicked" || cond == "X:Kicked" {
             return sa.kicked;
         }
-        let compare = sa.params.get("ConditionSVarCompare").unwrap_or("GE1");
+        let compare = sa.ir.condition_svar_compare.as_deref().unwrap_or("GE1");
         let Some(source_id) = sa.source else {
             return false;
         };
@@ -161,7 +161,7 @@ pub(super) fn check_condition_present(
     player: PlayerId,
     source_id: CardId,
 ) -> bool {
-    let condition = match sa.params.get_cloned(keys::CONDITION_PRESENT) {
+    let condition = match sa.ir.condition_present.as_deref() {
         Some(c) => c,
         None => return true, // No condition — always passes
     };
@@ -170,15 +170,28 @@ pub(super) fn check_condition_present(
     let alternatives: Vec<&str> = condition.split(',').map(|s| s.trim()).collect();
 
     // ── ConditionDefined$ — check specific defined cards, not a zone ──
-    if let Some(cond_defined) = sa.params.get(keys::CONDITION_DEFINED) {
-        let defined_cards: Vec<CardId> = match cond_defined {
-            "Targeted" => sa.target_chosen.target_card.into_iter().collect(),
-            "Self" => sa.source.into_iter().collect(),
-            "Remembered" => sa
+    if let Some(cond_defined) = sa.ir.condition_defined.as_ref() {
+        let defined_cards: Vec<CardId> = match cond_defined.refs.first() {
+            Some(crate::ability::ability_ir::DefinedRef::Targeted) => {
+                sa.target_chosen.target_card.into_iter().collect()
+            }
+            Some(crate::ability::ability_ir::DefinedRef::SelfCard) => {
+                sa.source.into_iter().collect()
+            }
+            Some(crate::ability::ability_ir::DefinedRef::Remembered) => sa
                 .source
                 .map(|sid| game.card(sid).remembered_cards.clone())
                 .unwrap_or_default(),
-            _ => Vec::new(),
+            Some(other) => match other.as_legacy_str() {
+                "Targeted" => sa.target_chosen.target_card.into_iter().collect(),
+                "Self" => sa.source.into_iter().collect(),
+                "Remembered" => sa
+                    .source
+                    .map(|sid| game.card(sid).remembered_cards.clone())
+                    .unwrap_or_default(),
+                _ => Vec::new(),
+            },
+            None => Vec::new(),
         };
 
         // ConditionDefined$ cards are explicitly defined — don't exclude self.
@@ -196,22 +209,14 @@ pub(super) fn check_condition_present(
             })
             .count() as i32;
 
-        return if let Some(compare) = sa.params.get(keys::CONDITION_COMPARE) {
+        return if let Some(compare) = sa.ir.condition_compare.as_deref() {
             compare_expr(count, compare)
         } else {
             count > 0
         };
     }
 
-    let zone_str = sa.params.get(keys::CONDITION_ZONE).unwrap_or("Battlefield");
-
-    let zone = match zone_str.to_ascii_lowercase().as_str() {
-        "graveyard" => ZoneType::Graveyard,
-        "hand" => ZoneType::Hand,
-        "exile" => ZoneType::Exile,
-        "library" => ZoneType::Library,
-        _ => ZoneType::Battlefield,
-    };
+    let zone = sa.ir.condition_zone.unwrap_or(ZoneType::Battlefield);
 
     // Count matching cards in zone
     let cards = game.cards_in_zone(zone, player);
@@ -221,7 +226,7 @@ pub(super) fn check_condition_present(
         .count() as i32;
 
     // Check ConditionCompare$ (e.g. "GE2", "EQ0")
-    if let Some(compare) = sa.params.get(keys::CONDITION_COMPARE) {
+    if let Some(compare) = sa.ir.condition_compare.as_deref() {
         compare_expr(count, compare)
     } else {
         count > 0
@@ -375,15 +380,11 @@ mod tests {
             vec![],
         ));
 
-        let mut sa = SpellAbility::new_simple(Some(spell_source), player, "DB$ DealDamage");
-        sa.params
-            .put(keys::CONDITION_DEFINED.to_string(), "Targeted".to_string());
-        sa.params.put(
-            keys::CONDITION_PRESENT.to_string(),
-            "Land.Basic".to_string(),
+        let mut sa = SpellAbility::new_simple(
+            Some(spell_source),
+            player,
+            "DB$ DealDamage | ConditionDefined$ Targeted | ConditionPresent$ Land.Basic | ConditionCompare$ EQ0",
         );
-        sa.params
-            .put(keys::CONDITION_COMPARE.to_string(), "EQ0".to_string());
         sa.target_chosen.target_card = Some(target);
 
         assert!(check_condition_present(&game, &sa, player, spell_source));

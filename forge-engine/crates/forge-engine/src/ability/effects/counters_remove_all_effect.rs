@@ -14,9 +14,9 @@ use forge_foundation::ZoneType;
 #[forge_engine_macros::spell_effect(CountersRemoveAllEffect)]
 fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let counter_type_str = sa
-        .params
-        .get(keys::COUNTER_TYPE)
-        .map(|s| s.to_string())
+        .ir
+        .counter_type_text
+        .clone()
         .unwrap_or_else(|| "P1P1".to_string());
     let counter_type = parse_counter_type(&counter_type_str);
 

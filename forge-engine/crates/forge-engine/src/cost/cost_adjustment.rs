@@ -19,7 +19,6 @@ use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
 use crate::mana::mana_cost_being_paid::ManaCostBeingPaid;
 use crate::mana::ManaPool;
-use crate::parsing::keys;
 use crate::player::player_predicates;
 use crate::spellability::SpellAbility;
 use crate::staticability::StaticMode;
@@ -232,12 +231,12 @@ fn compute_cost_adjustment_inner(
             // Java `CostAdjustment.applyRaiseCostAbility` merges `Cost$...` directly
             // into the spell's payable cost, not into generic mana deltas.
             // Those parts are handled by `compute_raise_cost_parts`; skip here.
-            if st_ab.params.has(keys::COST) {
+            if st_ab.ir.cost.is_some() {
                 continue;
             }
 
             // ── checkRequirement: Type$ filter ───────────────────────
-            if let Some(type_filter) = st_ab.params.get(keys::TYPE) {
+            if let Some(type_filter) = st_ab.ir.type_filter.as_deref() {
                 match type_filter.to_ascii_lowercase().as_str() {
                     "spell" => { /* casting a spell — ok */ }
                     _ => continue,
@@ -245,7 +244,7 @@ fn compute_cost_adjustment_inner(
             }
 
             // ── checkRequirement: Activator$ ─────────────────────────
-            if let Some(activator) = st_ab.params.get(keys::ACTIVATOR) {
+            if let Some(activator) = st_ab.ir.activator_raw.as_deref() {
                 if !matches_cost_adjustment_activator(game, source, caster, activator) {
                     continue;
                 }
@@ -259,7 +258,7 @@ fn compute_cost_adjustment_inner(
 
             // ── checkRequirement: ValidCard$ ─────────────────────────
             if !matches_valid_card(
-                st_ab.params.selector(keys::VALID_CARD),
+                st_ab.ir.valid_card.as_ref(),
                 spell_card,
                 source,
                 game,
@@ -269,17 +268,11 @@ fn compute_cost_adjustment_inner(
             }
 
             // ── checkRequirement: EffectZone$ / AffectedZone$ ────────
-            if let Some(zone_str) = st_ab
-                .params
-                .get("EffectZone")
-                .or_else(|| st_ab.params.get(keys::AFFECTED_ZONE))
+            if !st_ab.ir.effect_zone_all
+                && !st_ab.ir.effect_zones.is_empty()
+                && !st_ab.ir.effect_zones.contains(&cast_zone)
             {
-                if !zone_str.eq_ignore_ascii_case("All") {
-                    let zones: Vec<&str> = zone_str.split(',').map(|s| s.trim()).collect();
-                    if !zones.iter().any(|z| zone_name_matches(cast_zone, z)) {
-                        continue;
-                    }
-                }
+                continue;
             }
 
             // ── checkRequirement: IsPresent$ / PresentZone$ ──────────
@@ -293,12 +286,7 @@ fn compute_cost_adjustment_inner(
             }
 
             // ── checkRequirement: OnlyFirstSpell$ ────────────────────
-            if st_ab
-                .params
-                .get("OnlyFirstSpell")
-                .map(|v| v.eq_ignore_ascii_case("True"))
-                .unwrap_or(false)
-            {
+            if st_ab.ir.only_first_spell {
                 // Only applies if no matching spells have been cast yet this turn
                 if game.player(caster).spells_cast_this_turn > 0 {
                     continue;
@@ -311,7 +299,7 @@ fn compute_cost_adjustment_inner(
             }
 
             // ── checkRequirement: ValidTarget$ ───────────────────────
-            if let Some(valid_target) = st_ab.params.selector(keys::VALID_TARGET) {
+            if let Some(valid_target) = st_ab.ir.valid_target.as_ref() {
                 let target_valid = if targets.is_empty() {
                     false
                 } else {
@@ -320,12 +308,7 @@ fn compute_cost_adjustment_inner(
                         matches_valid_card(Some(valid_target), target, source, game, targets)
                     })
                 };
-                let unless = st_ab
-                    .params
-                    .get("UnlessValidTarget")
-                    .map(|v| v.eq_ignore_ascii_case("True"))
-                    .unwrap_or(false);
-                if unless {
+                if st_ab.ir.unless_valid_target {
                     if target_valid {
                         continue;
                     }
@@ -335,14 +318,14 @@ fn compute_cost_adjustment_inner(
             }
 
             // ── checkRequirement: ValidSpell$ ────────────────────────
-            if let Some(valid_spell) = st_ab.params.get(keys::VALID_SPELL) {
+            if let Some(valid_spell) = st_ab.ir.valid_spell.as_deref() {
                 if !check_valid_spell(valid_spell, spell_card) {
                     continue;
                 }
             }
 
             // ── applyReduceCostAbility / increase: ForEachShard$ ─────
-            if let Some(shard_color) = st_ab.params.get(keys::FOR_EACH_SHARD) {
+            if let Some(shard_color) = st_ab.ir.for_each_shard.as_deref() {
                 let atom =
                     forge_foundation::mana::ManaAtom::from_name(&shard_color.to_ascii_lowercase());
                 let count = spell_card
@@ -367,7 +350,7 @@ fn compute_cost_adjustment_inner(
             // `Amount$ N` — literal integer; `Amount$ X` where `X` is an SVar
             // like `Count$CardCounters.P1P1` resolves against the host card
             // (e.g. Animar, Soul of Elements cost reduction by counters).
-            let amount_str = st_ab.params.get(keys::AMOUNT).unwrap_or("1");
+            let amount_str = st_ab.ir.amount.as_deref().unwrap_or("1");
             let amount: i32 = if let Ok(n) = amount_str.parse::<i32>() {
                 n
             } else {
@@ -375,23 +358,16 @@ fn compute_cost_adjustment_inner(
             };
 
             // ── applyReduceCostAbility: MinMana$ ─────────────────────
-            if let Some(min_str) = st_ab.params.get(keys::MIN_MANA) {
-                if let Ok(min_val) = min_str.parse::<i32>() {
-                    adj.min_mana = Some(match adj.min_mana {
-                        Some(existing) => existing.max(min_val),
-                        None => min_val,
-                    });
-                }
+            if let Some(min_val) = st_ab.ir.min_mana {
+                adj.min_mana = Some(match adj.min_mana {
+                    Some(existing) => existing.max(min_val),
+                    None => min_val,
+                });
             }
 
             // ── applySetCostAbility: SetCost + RaiseTo$ (Trinisphere) ──
             if is_set_cost {
-                if st_ab
-                    .params
-                    .get("RaiseTo")
-                    .map(|v| v.eq_ignore_ascii_case("True"))
-                    .unwrap_or(false)
-                {
+                if st_ab.ir.raise_to {
                     adj.raise_to = Some(match adj.raise_to {
                         Some(existing) => existing.max(amount),
                         None => amount,
@@ -401,17 +377,15 @@ fn compute_cost_adjustment_inner(
             }
 
             // ── applyReduceCostAbility: Color$ parameter ─────────────
-            if let Some(color_str) = st_ab.params.get(keys::COLOR) {
-                let ignore_generic = st_ab
-                    .params
-                    .get("IgnoreGeneric")
-                    .map(|v| v.eq_ignore_ascii_case("True"))
-                    .unwrap_or(false);
-
+            if let Some(color_str) = st_ab.ir.color.as_deref() {
                 for token in color_str.split_whitespace() {
                     if let Some(color) = Color::from_name(token) {
                         if is_reduce {
-                            adj.color_reductions.push((color, amount, ignore_generic));
+                            adj.color_reductions.push((
+                                color,
+                                amount,
+                                st_ab.ir.ignore_generic,
+                            ));
                         } else {
                             adj.color_increases.push((color, amount));
                         }
@@ -471,19 +445,19 @@ pub fn compute_raise_cost_parts_with_targets(
                 continue;
             }
 
-            let Some(scost) = st_ab.params.get(keys::COST) else {
+            let Some(scost) = st_ab.ir.cost.as_deref() else {
                 continue;
             };
 
             // ── checkRequirement ─────────────────────────────────────
-            if let Some(type_filter) = st_ab.params.get(keys::TYPE) {
+            if let Some(type_filter) = st_ab.ir.type_filter.as_deref() {
                 match type_filter.to_ascii_lowercase().as_str() {
                     "spell" => {}
                     _ => continue,
                 }
             }
 
-            if let Some(activator) = st_ab.params.get(keys::ACTIVATOR) {
+            if let Some(activator) = st_ab.ir.activator_raw.as_deref() {
                 if !matches_cost_adjustment_activator(game, source, caster, activator) {
                     continue;
                 }
@@ -492,7 +466,7 @@ pub fn compute_raise_cost_parts_with_targets(
             }
 
             if !matches_valid_card(
-                st_ab.params.selector(keys::VALID_CARD),
+                st_ab.ir.valid_card.as_ref(),
                 spell_card,
                 source,
                 game,
@@ -501,17 +475,11 @@ pub fn compute_raise_cost_parts_with_targets(
                 continue;
             }
 
-            if let Some(zone_str) = st_ab
-                .params
-                .get("EffectZone")
-                .or_else(|| st_ab.params.get(keys::AFFECTED_ZONE))
+            if !st_ab.ir.effect_zone_all
+                && !st_ab.ir.effect_zones.is_empty()
+                && !st_ab.ir.effect_zones.contains(&cast_zone)
             {
-                if !zone_str.eq_ignore_ascii_case("All") {
-                    let zones: Vec<&str> = zone_str.split(',').map(|s| s.trim()).collect();
-                    if !zones.iter().any(|z| zone_name_matches(cast_zone, z)) {
-                        continue;
-                    }
-                }
+                continue;
             }
 
             if !valid_filter::check_is_present(game, &st_ab.params, source, source) {
@@ -522,13 +490,7 @@ pub fn compute_raise_cost_parts_with_targets(
                 continue;
             }
 
-            if st_ab
-                .params
-                .get("OnlyFirstSpell")
-                .map(|v| v.eq_ignore_ascii_case("True"))
-                .unwrap_or(false)
-                && game.player(caster).spells_cast_this_turn > 0
-            {
+            if st_ab.ir.only_first_spell && game.player(caster).spells_cast_this_turn > 0 {
                 continue;
             }
 
@@ -536,7 +498,7 @@ pub fn compute_raise_cost_parts_with_targets(
                 continue;
             }
 
-            if let Some(valid_target) = st_ab.params.selector(keys::VALID_TARGET) {
+            if let Some(valid_target) = st_ab.ir.valid_target.as_ref() {
                 let target_valid = if targets.is_empty() {
                     false
                 } else {
@@ -545,24 +507,21 @@ pub fn compute_raise_cost_parts_with_targets(
                         matches_valid_card(Some(valid_target), target, source, game, targets)
                     })
                 };
-                let unless = st_ab
-                    .params
-                    .get("UnlessValidTarget")
-                    .map(|v| v.eq_ignore_ascii_case("True"))
-                    .unwrap_or(false);
-                if (unless && target_valid) || (!unless && !target_valid) {
+                if (st_ab.ir.unless_valid_target && target_valid)
+                    || (!st_ab.ir.unless_valid_target && !target_valid)
+                {
                     continue;
                 }
             }
 
-            if let Some(valid_spell) = st_ab.params.get(keys::VALID_SPELL) {
+            if let Some(valid_spell) = st_ab.ir.valid_spell.as_deref() {
                 if !check_valid_spell(valid_spell, spell_card) {
                     continue;
                 }
             }
 
             // ── applyRaiseCostAbility: compute count ─────────────────
-            let count: i32 = if let Some(shard_color) = st_ab.params.get(keys::FOR_EACH_SHARD) {
+            let count: i32 = if let Some(shard_color) = st_ab.ir.for_each_shard.as_deref() {
                 let atom =
                     forge_foundation::mana::ManaAtom::from_name(&shard_color.to_ascii_lowercase());
                 spell_card
@@ -571,18 +530,14 @@ pub fn compute_raise_cost_parts_with_targets(
                     .iter()
                     .filter(|s| (s.shard() & atom) != 0)
                     .count() as i32
-            } else if st_ab
-                .params
-                .get("Relative")
-                .map(|v| v.eq_ignore_ascii_case("True"))
-                .unwrap_or(false)
-            {
-                let amount_str = st_ab.params.get(keys::AMOUNT).unwrap_or("1");
+            } else if st_ab.ir.relative {
+                let amount_str = st_ab.ir.amount.as_deref().unwrap_or("1");
                 resolve_svar_for_cost(game, source, amount_str, caster)
             } else {
                 st_ab
-                    .params
-                    .get(keys::AMOUNT)
+                    .ir
+                    .amount
+                    .as_deref()
                     .and_then(|a| a.parse().ok())
                     .unwrap_or(1)
             };
@@ -696,7 +651,7 @@ fn evaluate_count_expr(game: &GameState, source: &Card, expr: &str, caster: Play
     // (max CMC). Add more here as parity tests surface them.
     if let Some(rest) = expr.strip_prefix("Count$Valid ") {
         if let Some((filter, aggregator)) = rest.split_once('$') {
-            let selector = crate::parsing::CompiledSelector::parse(filter);
+            let selector = crate::parsing::cached_compiled_selector(filter);
             let matches: Vec<&Card> = game
                 .cards
                 .iter()
@@ -737,22 +692,6 @@ fn evaluate_count_expr(game: &GameState, source: &Card, expr: &str, caster: Play
     expr.strip_prefix("Count$")
         .and_then(|s| s.parse::<i32>().ok())
         .unwrap_or(0)
-}
-
-// ── Helper: zone name matching ────────────────────────────────────────
-
-fn zone_name_matches(zone: ZoneType, name: &str) -> bool {
-    match name.to_ascii_lowercase().as_str() {
-        "hand" => zone == ZoneType::Hand,
-        "command" => zone == ZoneType::Command,
-        "graveyard" => zone == ZoneType::Graveyard,
-        "exile" => zone == ZoneType::Exile,
-        "battlefield" => zone == ZoneType::Battlefield,
-        "library" => zone == ZoneType::Library,
-        "stack" => zone == ZoneType::Stack,
-        "all" => true,
-        _ => true,
-    }
 }
 
 // ── ValidCard$ matching (mirrors Java's checkRequirement ValidCard) ──
@@ -940,7 +879,7 @@ pub fn adjust(
             );
         }
     }
-    if sa.params.has("TapCreaturesForMana") {
+    if sa.ir.tap_creatures_for_mana {
         let max_reduction = cost.get_generic_mana_amount();
         apply_convoke_or_improvise_reduction(
             game,

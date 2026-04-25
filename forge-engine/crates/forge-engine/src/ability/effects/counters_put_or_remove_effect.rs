@@ -1,6 +1,6 @@
 use forge_foundation::ZoneType;
 
-use super::{parse_counter_type, resolve_numeric_svar, EffectContext};
+use super::{resolve_numeric_svar, EffectContext};
 use crate::agent::BinaryChoiceKind;
 use crate::parsing::keys;
 use crate::spellability::SpellAbility;
@@ -29,9 +29,9 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     }
 
     let counter_type = sa
-        .params
-        .get(keys::COUNTER_TYPE)
-        .map(|s| parse_counter_type(s))
+        .ir
+        .counter_type
+        .clone()
         .or_else(|| {
             // Sort keys for deterministic fallback (HashMap iteration is random).
             let mut keys: Vec<_> = ctx.game.card(target_id).counters.keys().cloned().collect();
@@ -101,7 +101,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
             },
             false,
         );
-        if sa.params.has(keys::REMEMBER_REMOVED_CARDS) {
+        if sa.ir.remember_removed_cards {
             ctx.game.card_mut(source_id).add_remembered_card(target_id);
         }
     }

@@ -1,7 +1,7 @@
 use forge_foundation::ZoneType;
 
 use super::{emit_zone_trigger, resolve_defined_player, resolve_numeric_svar, EffectContext};
-use crate::ability::ability_ir::AbilityIr;
+use crate::ability::ability_ir::EffectIr;
 use crate::event::RunParams;
 use crate::parsing::keys;
 use crate::replacement::replacement_handler::{apply_replacements, ReplacementEvent};
@@ -24,11 +24,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let target = sa
         .target_chosen
         .target_player
-        .or_else(|| {
-            sa.params
-                .get("Defined")
-                .and_then(|d| resolve_defined_player(d, sa.activating_player, ctx.game))
-        })
+        .or_else(|| sa.defined().and_then(|d| resolve_defined_player(d, sa.activating_player, ctx.game)))
         .unwrap_or(sa.activating_player);
 
     // Run Mill replacement effects before milling.
@@ -83,14 +79,14 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
         );
     }
 
-    if sa.params.has("RememberMilled") {
+    if sa.ir.remember_milled {
         if let Some(source_id) = sa.source {
             ctx.game
                 .card_mut(source_id)
                 .add_remembered_cards(milled_cards.iter().copied());
         }
     }
-    if sa.params.has("Imprint") {
+    if sa.ir.imprint {
         if let Some(source_id) = sa.source {
             ctx.game
                 .card_mut(source_id)
@@ -120,7 +116,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
 }
 
 fn resolve_mill_amount(ctx: &EffectContext, sa: &SpellAbility) -> i32 {
-    if let Some(AbilityIr::Mill(ir)) = &sa.compiled_ir {
+    if let Some(EffectIr::Mill(ir)) = &sa.ir.effect {
         if let Some(amount) = &ir.amount {
             let resolved = amount.resolve_for_spell_ability(ctx.game, sa, 1);
             #[cfg(debug_assertions)]

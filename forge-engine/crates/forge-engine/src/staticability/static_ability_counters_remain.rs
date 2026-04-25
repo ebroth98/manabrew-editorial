@@ -5,6 +5,8 @@ use crate::parsing::keys;
 use crate::staticability::StaticMode;
 
 pub fn counters_remain(cards: &[Card], card: &Card, destination: ZoneType) -> bool {
+    let _perf_scope =
+        crate::perf::ParamsLookupScopeGuard::enter(crate::perf::ParamsLookupScope::StaticAbility);
     if matches!(
         destination,
         ZoneType::Library | ZoneType::Hand | ZoneType::None
@@ -19,14 +21,11 @@ pub fn counters_remain(cards: &[Card], card: &Card, destination: ZoneType) -> bo
         {
             let active = source.zone == ZoneType::Battlefield
                 || (source.id == card.id
-                    && st_ab
-                        .params
-                        .get(keys::EFFECT_ZONE)
-                        .is_some_and(|z| z.eq_ignore_ascii_case("All")));
+                    && st_ab.ir.effect_zone_all);
             if !active {
                 continue;
             }
-            if matches_valid_card(st_ab.params.selector(keys::VALID_CARD), card, source) {
+            if matches_valid_card(st_ab.ir.valid_card.as_ref(), card, source) {
                 return true;
             }
         }
@@ -40,6 +39,8 @@ pub fn apply_counters_remain_ability(
     card: &Card,
     destination: ZoneType,
 ) -> bool {
+    let _perf_scope =
+        crate::perf::ParamsLookupScopeGuard::enter(crate::perf::ParamsLookupScope::StaticAbility);
     if matches!(
         destination,
         ZoneType::Library | ZoneType::Hand | ZoneType::None
@@ -47,12 +48,8 @@ pub fn apply_counters_remain_ability(
         return false;
     }
     let active = source.zone == ZoneType::Battlefield
-        || (source.id == card.id
-            && st_ab
-                .params
-                .get(keys::EFFECT_ZONE)
-                .is_some_and(|z| z.eq_ignore_ascii_case("All")));
-    active && matches_valid_card(st_ab.params.selector(keys::VALID_CARD), card, source)
+        || (source.id == card.id && st_ab.ir.effect_zone_all);
+    active && matches_valid_card(st_ab.ir.valid_card.as_ref(), card, source)
 }
 
 fn matches_valid_card(

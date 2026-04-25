@@ -12,7 +12,7 @@ pub fn apply_with_exhaust(
     source_controller: PlayerId,
 ) -> bool {
     valid_filter::matches_valid_player_selector_opt(
-        st_ab.params.selector(keys::VALID_PLAYER),
+        st_ab.ir.valid_player.as_ref(),
         player,
         source_controller,
     )
@@ -30,7 +30,7 @@ pub fn any_with_exhaust(game: &GameState, player: PlayerId) -> bool {
             .filter(|sa| sa.mode == StaticMode::CanExhaust && sa.zones_check(card.zone))
         {
             if valid_filter::matches_valid_player_selector_opt(
-                st_ab.params.selector(keys::VALID_PLAYER),
+                st_ab.ir.valid_player.as_ref(),
                 player,
                 card.controller,
             ) {

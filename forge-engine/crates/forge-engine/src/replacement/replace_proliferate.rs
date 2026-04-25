@@ -30,7 +30,7 @@ pub fn can_replace(
     if count <= 0 {
         return false;
     }
-    if let Some(valid) = effect.params.selector(keys::VALID_PLAYER) {
+    if let Some(valid) = effect.ir.valid_player_selector.as_ref() {
         if !effect.matches_compiled_valid_player(valid, player, source_card) {
             return false;
         }
@@ -49,12 +49,7 @@ pub fn execute(
         ReplacementEvent::Proliferate { count, .. } => count,
         _ => return ReplacementResult::NotReplaced,
     };
-    if effect
-        .params
-        .get(keys::PREVENT)
-        .map(|s| s == "True")
-        .unwrap_or(false)
-    {
+    if effect.prevents() {
         *count = 0;
         return ReplacementResult::Prevented;
     }

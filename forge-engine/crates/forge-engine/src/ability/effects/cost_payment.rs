@@ -51,17 +51,17 @@ pub(super) fn resolve_mana_ability_for_effect_payment(
     let mana_params = crate::mana::ManaProductionParams {
         source_card: card_id,
         is_snow: source_is_snow,
-        restriction: ab.params.get_cloned(keys::RESTRICT_VALID),
-        adds_no_counter: ab.params.is_true(keys::ADDS_NO_COUNTER),
-        adds_keywords: ab.params.get_cloned(keys::ADDS_KEYWORDS),
-        adds_keywords_valid: ab.params.get_cloned(keys::ADDS_KEYWORDS_VALID),
-        adds_counters: ab.params.get_cloned(keys::ADDS_COUNTERS),
-        adds_counters_valid: ab.params.get_cloned(keys::ADDS_COUNTERS_VALID),
-        triggers_when_spent: ab.params.get_cloned(keys::TRIGGERS_WHEN_SPENT),
+        restriction: ab.restrict_valid.as_deref().map(str::to_string),
+        adds_no_counter: ab.adds_no_counter,
+        adds_keywords: ab.adds_keywords.clone(),
+        adds_keywords_valid: ab.adds_keywords_valid.clone(),
+        adds_counters: ab.adds_counters.clone(),
+        adds_counters_valid: ab.adds_counters_valid.clone(),
+        triggers_when_spent: ab.triggers_when_spent.clone(),
     };
 
-    if let Some(produced) = ab.params.get(keys::PRODUCED) {
-        let amount_param = ab.params.get(keys::AMOUNT);
+    if let Some(produced) = ab.produced.as_deref() {
+        let amount_param = ab.amount.as_deref();
         let mana_string = crate::mana::determine_mana_production(
             ctx.game,
             ctx.agents,
@@ -80,7 +80,7 @@ pub(super) fn resolve_mana_ability_for_effect_payment(
         }
     }
 
-    if let Some(sub_svar_name) = ab.params.get(keys::SUB_ABILITY) {
+    if let Some(sub_svar_name) = ab.sub_ability.as_deref() {
         if let Some(sub_text) = ctx
             .game
             .card(card_id)
@@ -665,7 +665,7 @@ pub(super) fn resolve_effect_with_unless_cost(
         return;
     };
     let payers = resolve_unless_payers(sa, ctx.game);
-    let resolve_subs = sa.params.get("UnlessResolveSubs");
+    let resolve_subs = sa.ir.unless_resolve_subs.as_deref();
     let exec_subs_when_paid = resolve_subs.is_none_or(|value| value == "WhenPaid");
     let exec_subs_when_not_paid = resolve_subs.is_none_or(|value| value == "WhenNotPaid");
     // Java parity: payCostToPreventEffect → payWithDeterministicDecision →
@@ -721,12 +721,13 @@ pub(super) fn resolve_effect_with_unless_cost(
         }
     }
 
-    let is_switched = sa.params.has(keys::UNLESS_SWITCHED);
+    let is_switched = sa.ir.unless_switched;
     if already_paid == is_switched {
-        if sa.params.has(keys::OPTIONAL_DECIDER) {
+        if sa.ir.optional_decider_text.is_some() {
             let decider = sa
-                .params
-                .get(keys::OPTIONAL_DECIDER)
+                .ir
+                .optional_decider_text
+                .as_deref()
                 .and_then(|defined| {
                     crate::ability::ability_utils::resolve_defined_players_with_sa(
                         defined,
@@ -740,8 +741,9 @@ pub(super) fn resolve_effect_with_unless_cost(
                 .unwrap_or(sa.activating_player);
             let card_name = sa.source.map(|cid| ctx.game.card(cid).card_name.clone());
             let prompt = sa
-                .params
-                .get(keys::SPELL_DESCRIPTION)
+                .ir
+                .spell_description_text
+                .as_deref()
                 .unwrap_or("Use this optional effect?");
             ctx.agents[decider.index()].snapshot_state(ctx.game, ctx.mana_pools);
             if !ctx.agents[decider.index()].confirm_action(
@@ -772,8 +774,9 @@ pub(super) fn resolve_effect_with_unless_cost(
 
 fn resolve_unless_payers(sa: &SpellAbility, game: &GameState) -> Vec<PlayerId> {
     let pays = sa
-        .params
-        .get(keys::UNLESS_PAYER)
+        .ir
+        .unless_payer_text
+        .as_deref()
         .unwrap_or("TargetedController");
     if pays.eq_ignore_ascii_case("TargetedController") {
         if let Some(pid) = sa.target_chosen.target_player {

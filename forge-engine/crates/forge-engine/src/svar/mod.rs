@@ -16,8 +16,9 @@ use crate::card::card_damage_history::TrackedEntity;
 use crate::card::filter_constants as fc;
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
+use crate::ability::ability_ir::NumericParamIr;
 use crate::parsing::compare::compare_expr;
-use crate::parsing::{SemanticAmount, SemanticParamValue};
+use crate::parsing::SemanticAmount;
 use crate::spellability::SpellAbility;
 
 fn parse_trigger_card_object(sa: &SpellAbility, key: &str) -> Option<CardId> {
@@ -265,7 +266,7 @@ fn player_x_property(
                 };
                 (zones, restrictions)
             };
-            let selector = crate::parsing::CompiledSelector::parse(restrictions);
+            let selector = crate::parsing::cached_compiled_selector(restrictions);
             let source = game.card(source_id);
             game.cards
                 .iter()
@@ -631,45 +632,22 @@ pub fn resolve_numeric_svar(
     param_name: &str,
     default: i32,
 ) -> i32 {
-    let Some(value) = sa.params.semantic_value(param_name) else {
+    let Some(value) = sa.ir.semantic_numeric_params.get(param_name) else {
         return default;
     };
-
-    let resolved = resolve_semantic_numeric_value(game, sa, &value, default);
-    #[cfg(debug_assertions)]
-    debug_assert_eq!(
-        resolved,
-        resolve_numeric_svar_from_params(game, sa, param_name, default),
-        "semantic numeric param {} diverged from string params: raw={:?} semantic={:?}",
-        param_name,
-        sa.params.get(param_name),
-        value
-    );
-    resolved
-}
-
-fn resolve_numeric_svar_from_params(
-    game: &GameState,
-    sa: &SpellAbility,
-    param_name: &str,
-    default: i32,
-) -> i32 {
-    match sa.params.get(param_name) {
-        Some(v) if !v.is_empty() => resolve_numeric_value(game, sa, v, default),
-        _ => default,
-    }
+    resolve_semantic_numeric_value(game, sa, value, default)
 }
 
 fn resolve_semantic_numeric_value(
     game: &GameState,
     sa: &SpellAbility,
-    value: &SemanticParamValue<'_>,
+    value: &NumericParamIr,
     default: i32,
 ) -> i32 {
     match value {
-        SemanticParamValue::Integer(value) => *value,
-        SemanticParamValue::Amount(amount) => resolve_semantic_amount(game, sa, amount, default),
-        SemanticParamValue::SVarReference(names) => match names.as_slice() {
+        NumericParamIr::Integer(value) => *value,
+        NumericParamIr::Amount(amount) => amount.resolve_for_spell_ability(game, sa, default),
+        NumericParamIr::SVarReference(names) => match names.as_slice() {
             [name] => resolve_numeric_value(game, sa, name, default),
             [] => default,
             _ => names
@@ -677,37 +655,7 @@ fn resolve_semantic_numeric_value(
                 .map(|name| resolve_numeric_value(game, sa, name, default))
                 .sum(),
         },
-        SemanticParamValue::Raw(raw)
-        | SemanticParamValue::Expression(raw)
-        | SemanticParamValue::Text(raw)
-        | SemanticParamValue::Symbol(raw) => resolve_numeric_value(game, sa, raw, default),
-        _ => default,
-    }
-}
-
-fn resolve_semantic_amount(
-    game: &GameState,
-    sa: &SpellAbility,
-    amount: &SemanticAmount<'_>,
-    default: i32,
-) -> i32 {
-    match amount {
-        SemanticAmount::Literal(value) => *value,
-        SemanticAmount::X => resolve_numeric_value(game, sa, "X", default),
-        SemanticAmount::SVar(name) | SemanticAmount::Expression(name) => {
-            resolve_numeric_value(game, sa, name, default)
-        }
-        SemanticAmount::Any | SemanticAmount::All => {
-            resolve_numeric_value(game, sa, semantic_amount_raw(amount), default)
-        }
-    }
-}
-
-fn semantic_amount_raw(amount: &SemanticAmount<'_>) -> &'static str {
-    match amount {
-        SemanticAmount::Any => "Any",
-        SemanticAmount::All => "All",
-        _ => "",
+        NumericParamIr::Raw(raw) => resolve_numeric_value(game, sa, raw, default),
     }
 }
 
@@ -1215,7 +1163,7 @@ pub fn resolve_count_svar_for_sa(
             };
             if !zones.is_empty() {
                 let source = game.card(source_id);
-                let selector = crate::parsing::CompiledSelector::parse(restrictions);
+                let selector = crate::parsing::cached_compiled_selector(restrictions);
                 let count = game
                     .cards
                     .iter()
@@ -1278,7 +1226,7 @@ pub fn resolve_count_svar_for_sa(
         };
 
         let source = game.card(source_id);
-        let selector = crate::parsing::CompiledSelector::parse(filter_str);
+        let selector = crate::parsing::cached_compiled_selector(filter_str);
         if greatest_power {
             // Return the greatest power among matching creatures
             let mut max_power = 0;
