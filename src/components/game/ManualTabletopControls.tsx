@@ -13,6 +13,7 @@ import {
   Archive,
   Hand,
   Heart,
+  LogOut,
   Plus,
   Search,
   Shuffle,
@@ -175,15 +176,27 @@ export function ManualTabletopControls({ gameView, api }: ManualTabletopControls
   const humanPlayerId = gameView.players[0]?.id;
 
   return (
-    <div className="absolute right-2 top-2 z-40 w-[320px] max-w-[calc(100%-1rem)] rounded-md border bg-background/95 shadow-sm backdrop-blur">
+    <div className="absolute right-2 bottom-2 z-30 w-[320px] max-h-[60%] overflow-y-auto rounded-md border bg-background/95 shadow-sm backdrop-blur">
       <div className="flex items-center justify-between gap-2 border-b px-3 py-2">
         <Badge variant="outline" className="gap-1.5">
           <Sparkles className="h-3 w-3" />
           Tabletop
         </Badge>
-        <span className="text-[10px] text-muted-foreground">
-          {gameView.battlefield.length} permanents
-        </span>
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] text-muted-foreground">
+            {gameView.battlefield.length} permanents
+          </span>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="h-6 w-6 text-destructive hover:text-destructive"
+            title="Exit tabletop"
+            onClick={() => void useGameStore.getState().endGame()}
+          >
+            <LogOut className="h-3.5 w-3.5" />
+          </Button>
+        </div>
       </div>
 
       <div className="space-y-2 p-3">

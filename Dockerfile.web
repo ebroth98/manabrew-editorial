@@ -23,8 +23,8 @@ RUN rustup target add wasm32-unknown-unknown && \
 WORKDIR /build
 
 # Install JS deps first for layer caching
-COPY package.json package-lock.json ./
-RUN npm ci --no-audit --no-fund
+COPY package.json yarn.lock ./
+RUN corepack enable && yarn install --frozen-lockfile
 
 # Copy the rest of the sources needed for the web build
 COPY Cargo.toml Cargo.lock ./
@@ -41,7 +41,7 @@ COPY forge/forge-gui/res/tokenscripts/ ./forge/forge-gui/res/tokenscripts/
 COPY preset_decks/ ./preset_decks/
 
 # Build WASM + Vite bundle (outputs to dist/)
-RUN npm run build:web
+RUN yarn build:web
 
 # --- Runtime: nginx serving the static bundle. Sets COOP/COEP at the origin
 # so the app becomes cross-origin-isolated (required for SharedArrayBuffer) ---

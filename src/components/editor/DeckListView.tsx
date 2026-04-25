@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef, useMemo } from "react";
+import { useState, useCallback, useRef, useMemo } from "react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
 import { ManaSymbols } from "@/components/game/ManaSymbols";
@@ -1050,88 +1050,54 @@ export function DeckListView({
   const SNAP_W = cardWidth + GAP; // horizontal snap unit
   const SNAP_H = 40; // vertical snap unit (fine-grained)
 
-  const [positions, setPositions] = useState<Map<string, { x: number; y: number }>>(new Map());
+  const positionsRef = useRef<Map<string, { x: number; y: number }>>(new Map());
+  const [posVersion, setPosVersion] = useState(0);
 
-  // Sync positions when the natural section list changes (add/remove sections,
-  // seed from saved layout). Uses the prev-key pattern to recompute during render.
+  // Sync positions when natural IDs change.
+  const prevNaturalRef = useRef<string[]>([]);
   const naturalKey = naturalSectionIds.join(",");
-  const [prevNaturalKey, setPrevNaturalKey] = useState<string | null>(null);
-  if (prevNaturalKey !== naturalKey) {
-    setPrevNaturalKey(naturalKey);
-    const next = new Map(positions);
+  if (naturalKey !== prevNaturalRef.current.join(",")) {
+    prevNaturalRef.current = naturalSectionIds;
+    const positions = positionsRef.current;
 
     // On first load, seed from saved positions if available.
-    if (next.size === 0 && savedStackPositions) {
+    if (positions.size === 0 && savedStackPositions) {
       for (const [id, pos] of Object.entries(savedStackPositions)) {
         if (naturalSectionIds.includes(id)) {
-          next.set(id, { ...pos });
+          positions.set(id, { ...pos });
         }
       }
     }
 
     // Remove stale.
-    for (const id of [...next.keys()]) {
-      if (!naturalSectionIds.includes(id)) next.delete(id);
+    for (const id of positions.keys()) {
+      if (!naturalSectionIds.includes(id)) positions.delete(id);
     }
     // Place new sections in a row at y=0.
     let nextX = 0;
-    for (const pos of next.values()) {
+    for (const pos of positions.values()) {
       nextX = Math.max(nextX, pos.x + SNAP_W);
     }
     for (const id of naturalSectionIds) {
-      if (!next.has(id)) {
-        next.set(id, { x: nextX, y: 0 });
+      if (!positions.has(id)) {
+        positions.set(id, { x: nextX, y: 0 });
         nextX += SNAP_W;
       }
     }
     // First load with no saved positions: lay out all in a single row.
     if (
       !savedStackPositions &&
-      next.size === naturalSectionIds.length &&
-      ![...next.values()].some((p) => p.y > 0)
+      positions.size === naturalSectionIds.length &&
+      ![...positions.values()].some((p) => p.y > 0)
     ) {
-      naturalSectionIds.forEach((id, i) => next.set(id, { x: i * SNAP_W, y: 0 }));
+      naturalSectionIds.forEach((id, i) => positions.set(id, { x: i * SNAP_W, y: 0 }));
     }
-    setPositions(next);
+    setPosVersion((v) => v + 1);
   }
 
-  // Compute container size from positions + rendered section heights.
-  // Heights are tracked via ResizeObserver on each section's root element so the
-  // estimate stays reactive without reading refs during render.
-  const [sectionEls, setSectionEls] = useState<Map<string, HTMLElement>>(new Map());
-  const setSectionEl = useCallback((id: string, el: HTMLElement | null) => {
-    setSectionEls((prev) => {
-      const existing = prev.get(id);
-      if (existing === el || (!existing && !el)) return prev;
-      const next = new Map(prev);
-      if (el) next.set(id, el);
-      else next.delete(id);
-      return next;
-    });
-  }, []);
-  const [sectionHeights, setSectionHeights] = useState<Map<string, number>>(new Map());
-  useEffect(() => {
-    if (sectionEls.size === 0) return;
-    const observers: ResizeObserver[] = [];
-    for (const [id, el] of sectionEls) {
-      const observer = new ResizeObserver((entries) => {
-        const entry = entries[0];
-        if (!entry) return;
-        const h = Math.round(entry.contentRect.height);
-        setSectionHeights((prev) => {
-          if (prev.get(id) === h) return prev;
-          const next = new Map(prev);
-          next.set(id, h);
-          return next;
-        });
-      });
-      observer.observe(el);
-      observers.push(observer);
-    }
-    return () => {
-      for (const obs of observers) obs.disconnect();
-    };
-  }, [sectionEls]);
+  // Track section DOM elements and heights via refs (not state) to avoid
+  // re-render loops with the ResizeObserver.
+  const sectionElRefs = useRef<Map<string, HTMLElement>>(new Map());
   const stackContainerRef = useRef<HTMLDivElement>(null);
 
   // Drag state
@@ -1178,24 +1144,24 @@ export function DeckListView({
 
         const snap = dropSnapRef.current;
         if (snap) {
-          const next = new Map(positions);
+          const positions = positionsRef.current;
           // If another section occupies the snap position, swap with the dragged one.
-          const srcPos = next.get(sectionId);
-          for (const [id, pos] of next) {
+          const srcPos = positions.get(sectionId);
+          for (const [id, pos] of positions) {
             if (id !== sectionId && pos.x === snap.x && pos.y === snap.y && srcPos) {
-              next.set(id, { ...srcPos });
+              positions.set(id, { ...srcPos });
               break;
             }
           }
-          next.set(sectionId, { x: snap.x, y: snap.y });
-          setPositions(next);
+          positions.set(sectionId, { x: snap.x, y: snap.y });
+          setPosVersion((v) => v + 1);
           setJustSnapped(true);
           setTimeout(() => setJustSnapped(false), 300);
 
           // Persist to deck store.
           if (onStackPositionsChange) {
             const record: Record<string, { x: number; y: number }> = {};
-            for (const [id, pos] of next) record[id] = pos;
+            for (const [id, pos] of positions) record[id] = pos;
             onStackPositionsChange(record);
           }
         }
@@ -1209,7 +1175,7 @@ export function DeckListView({
       window.addEventListener("mousemove", handleMouseMove);
       window.addEventListener("mouseup", handleMouseUp);
     },
-    [snapToGrid, positions, onStackPositionsChange],
+    [snapToGrid, onStackPositionsChange],
   );
 
   const makeDragHandleProps = useCallback(
@@ -1420,18 +1386,21 @@ export function DeckListView({
   const containerSize = useMemo(() => {
     let maxX = 0,
       maxY = 0;
-    for (const pos of positions.values()) {
+    for (const pos of positionsRef.current.values()) {
       maxX = Math.max(maxX, pos.x + SNAP_W);
     }
-    // Estimate max Y from positions + measured section heights.
-    for (const [id, pos] of positions) {
-      const h = sectionHeights.get(id) ?? 300;
+    // Estimate max Y from positions + a generous section height.
+    for (const [id, pos] of positionsRef.current) {
+      const el = sectionElRefs.current.get(id);
+      const h = el ? el.offsetHeight : 300;
       maxY = Math.max(maxY, pos.y + h + GAP);
     }
     return { width: maxX + GAP, height: maxY + GAP };
-  }, [positions, sectionHeights, SNAP_W]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [posVersion, SNAP_W]);
 
   if (viewMode === "stack") {
+    const positions = positionsRef.current;
     const allPlacements = naturalSectionIds.filter((id) => positions.has(id));
 
     return (
@@ -1453,16 +1422,23 @@ export function DeckListView({
         >
           {allPlacements.map((id) => {
             const pos = positions.get(id)!;
-            return renderStackSection(id, (el) => setSectionEl(id, el), {
-              position: "absolute",
-              left: pos.x,
-              top: pos.y,
-              width: cardWidth,
-              transition:
-                justSnapped && dragSection !== id
-                  ? "all 300ms cubic-bezier(0.34,1.56,0.64,1)"
-                  : undefined,
-            });
+            return renderStackSection(
+              id,
+              (el) => {
+                if (el) sectionElRefs.current.set(id, el);
+                else sectionElRefs.current.delete(id);
+              },
+              {
+                position: "absolute",
+                left: pos.x,
+                top: pos.y,
+                width: cardWidth,
+                transition:
+                  justSnapped && dragSection !== id
+                    ? "all 300ms cubic-bezier(0.34,1.56,0.64,1)"
+                    : undefined,
+              },
+            );
           })}
 
           {/* Drop indicator — ghost outline at snap position */}
@@ -1473,7 +1449,7 @@ export function DeckListView({
                 left: dropSnap.x,
                 top: dropSnap.y,
                 width: cardWidth,
-                height: sectionHeights.get(dragSection) ?? 100,
+                height: sectionElRefs.current.get(dragSection)?.offsetHeight ?? 100,
                 transition: "left 150ms ease-out, top 150ms ease-out",
                 boxShadow:
                   "0 0 14px color-mix(in srgb, var(--selection) 50%, transparent), inset 0 0 14px color-mix(in srgb, var(--selection) 10%, transparent)",

@@ -19,7 +19,9 @@ export function AppShell() {
   const setupListeners = useServerStore((s) => s.setupListeners);
   const location = useLocation();
   const isGameActive = useGameStore((s) => s.isGameActive);
+  const isTabletopRoute = location.pathname.startsWith("/tabletop");
   const isGameRoute = location.pathname.startsWith("/game") || isGameActive;
+  const hideNavChrome = isGameRoute && !isTabletopRoute;
 
   // Register Tauri event listeners at app level so they're always active.
   useEffect(() => {
@@ -82,7 +84,7 @@ export function AppShell() {
       <header
         className={cn(
           "flex items-center gap-2 px-3 py-2 border-b bg-background md:hidden",
-          isGameRoute && "hidden",
+          hideNavChrome && "hidden",
         )}
       >
         <Button
@@ -125,12 +127,12 @@ export function AppShell() {
           >
             <Sidebar />
           </ResizablePanel>
-          <ResizableHandle withHandle className={cn(isGameRoute && "hidden")} />
+          <ResizableHandle withHandle className={cn(hideNavChrome && "hidden")} />
           <ResizablePanel minSize={40} className="relative">
             <div
               className={cn(
                 "absolute left-0 top-1/2 -translate-y-1/2 z-30 group",
-                isGameRoute && "hidden",
+                hideNavChrome && "hidden",
               )}
             >
               <Button

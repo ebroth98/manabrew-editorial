@@ -494,9 +494,13 @@ export function DeckBuilder({
     : false;
 
   const filterLc = deckFilter.toLowerCase();
-  const filteredMain = filterLc
-    ? currentDeck.cards.filter((c) => c.name.toLowerCase().includes(filterLc))
-    : currentDeck.cards;
+  const filteredMain = useMemo(
+    () =>
+      filterLc
+        ? currentDeck.cards.filter((c) => c.name.toLowerCase().includes(filterLc))
+        : currentDeck.cards,
+    [filterLc, currentDeck.cards],
+  );
   // Compute groups
   const { sections: sectionGroups, otherGroups } = computeGroupedSections(
     filteredMain,
@@ -540,11 +544,15 @@ export function DeckBuilder({
     { id: "schemes", label: "Schemes", groups: schemeGroups },
     { id: "planes", label: "Planes", groups: planeGroups },
   ].filter((section) => section.groups.length > 0);
-  const stackColsData = computeGroupedStackColumns(
-    filteredMain,
-    groupBy,
-    currentDeck.customTags,
-    currentDeck.cardTags,
+  const stackColsData = useMemo(
+    () =>
+      computeGroupedStackColumns(
+        filteredMain,
+        groupBy,
+        currentDeck.customTags,
+        currentDeck.cardTags,
+      ),
+    [filteredMain, groupBy, currentDeck.customTags, currentDeck.cardTags],
   );
 
   const allDeckCardsForTokens = useMemo(

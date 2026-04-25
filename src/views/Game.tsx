@@ -66,7 +66,12 @@ function isManualTabletopApi(
   return runtime.capabilities.manualTabletop && "applyManualAction" in runtime.api;
 }
 
-export default function Game() {
+interface GameProps {
+  /** When provided, redirect here instead of /lobby when the game ends. */
+  exitTo?: string;
+}
+
+export default function Game({ exitTo }: GameProps = {}) {
   const USE_STACK_FLASH_PREVIEW = true;
   const gameView = useGameStore((s) => s.gameView);
   const currentPrompt = useGameStore((s) => s.currentPrompt);
@@ -1218,7 +1223,7 @@ export default function Game() {
     return () => clearTimeout(timer);
   }, [gameView?.gameOver, activePrompt?.type, endGame]);
 
-  if (!isGameActive) return <Navigate to="/lobby" replace />;
+  if (!isGameActive) return <Navigate to={exitTo ?? "/lobby"} replace />;
 
   // Loading
   if (!gameView) {
@@ -1426,6 +1431,8 @@ export default function Game() {
         />
       </div>
 
+      {manualApi && <ManualTabletopControls gameView={gameView} api={manualApi} />}
+
       <RightActionPanel
         collapsed={isActionPanelCollapsed}
         onToggleCollapse={toggleActionPanel}
@@ -1442,8 +1449,6 @@ export default function Game() {
         }
         onRestoreSnapshot={restoreSnapshot}
       />
-
-      {manualApi && <ManualTabletopControls gameView={gameView} api={manualApi} />}
 
       {!manualApi && (
         <MainActionOverlay

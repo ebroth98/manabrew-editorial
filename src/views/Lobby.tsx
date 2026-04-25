@@ -163,7 +163,7 @@ export default function Lobby() {
           return;
         }
         useServerStore.setState({ gameStarted: false });
-        navigate("/play", {
+        navigate("/tabletop", {
           state: {
             manualTabletop: true,
             playerOrder: launch.playerOrder,
@@ -266,7 +266,7 @@ export default function Lobby() {
         }),
       );
       await startManualRoomHost(`player-${myIndex}`);
-      navigate("/play", {
+      navigate("/tabletop", {
         state: {
           manualTabletop: true,
           playerOrder,

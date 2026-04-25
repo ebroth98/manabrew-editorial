@@ -1,7 +1,7 @@
 import { NavLink } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import { useGameStore } from "@/stores/useGameStore";
-import { Home, Gamepad2, Layers, Settings, Swords, Search } from "lucide-react";
+import { Home, Gamepad2, Hand, Layers, Settings, Swords, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { OpenMagicLogo } from "./OpenMagicLogo";
 
@@ -78,6 +78,22 @@ export function Sidebar({ className, onNavigate }: SidebarProps) {
                 >
                   <Gamepad2 className="mr-2 h-4 w-4 shrink-0" />
                   Active Matches
+                </Button>
+              )}
+            </NavLink>
+          </div>
+        </div>
+        <div className="px-3 py-2">
+          <h2 className="mb-2 px-4 text-lg font-semibold tracking-tight">Sandbox</h2>
+          <div className="space-y-1">
+            <NavLink to="/tabletop" onClick={onNavigate}>
+              {({ isActive }) => (
+                <Button
+                  variant={isActive ? "secondary" : "ghost"}
+                  className="w-full justify-start whitespace-nowrap"
+                >
+                  <Hand className="mr-2 h-4 w-4 shrink-0" />
+                  Tabletop
                 </Button>
               )}
             </NavLink>
