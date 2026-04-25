@@ -101,6 +101,15 @@ export interface ScryfallCard {
   };
   related_uris: Record<string, string>;
   purchase_uris: Record<string, string>;
+  /** Related cards — tokens, meld parts, combo pieces. Present when the card has related objects. */
+  all_parts?: Array<{
+    object: string;
+    id: string;
+    component: "token" | "combo_piece" | "meld_part" | "meld_result";
+    name: string;
+    type_line: string;
+    uri: string;
+  }>;
 }
 
 export interface ScryfallListResponse {

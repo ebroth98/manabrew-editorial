@@ -17,29 +17,28 @@ import { PromptType as PT } from "@/types/promptType";
 interface TargetModalsProps {
   promptType?: PromptType;
   currentPrompt: AgentPrompt | null;
-  // Zone viewer
   viewingZone: { title: string; cards: XMageCard[]; onClickCard?: (cardId: string) => void } | null;
   onCloseZone: () => void;
-  // Zone target selector
   zoneTargetSelector: { title: string; cards: XMageCard[]; validCardIds: string[] } | null;
   onSelectZoneTarget: (cardId: string) => void;
   onCancelZoneTarget: () => void;
-  // Library peek
-  libraryPeekModal: { mode: LibraryPeekMode; cards: XMageCard[]; numToTake?: number; optional?: boolean } | null;
+  libraryPeekModal: {
+    mode: LibraryPeekMode;
+    cards: XMageCard[];
+    numToTake?: number;
+    optional?: boolean;
+  } | null;
   onLibraryPeekConfirm: (selectedIds: string[]) => void;
-  // Spell stack
   spellStackModalOpen: boolean;
   stack: StackObject[];
   validSpellIds: string[];
   onTargetSpell: (spellId: string) => void;
   onCloseStack: () => void;
-  // Ability picker
+  playerColorMap?: Map<string, string>;
   abilityPickerState: AbilityPickerState | null;
   onSelectAbility: (ability: HandActionOption) => void;
   onCancelAbilityPicker: () => void;
-  // Card selection
   onChooseCardsDecision: (cardIds: string[]) => void;
-  // Exert / Enlist
   onExertDecision: (chosenAttackerIds: string[]) => void;
   onEnlistDecision: (chosenAttackerIds: string[]) => void;
 }
@@ -59,6 +58,7 @@ export function TargetModals({
   validSpellIds,
   onTargetSpell,
   onCloseStack,
+  playerColorMap,
   abilityPickerState,
   onSelectAbility,
   onCancelAbilityPicker,
@@ -108,6 +108,7 @@ export function TargetModals({
           validSpellIds={validSpellIds}
           onTarget={onTargetSpell}
           onCancel={onCloseStack}
+          playerColorMap={playerColorMap}
         />
       )}
 
@@ -120,10 +121,7 @@ export function TargetModals({
         />
       )}
 
-      <PromptModalController
-        isActive={isActiveTargetPromptModal}
-        promptStateKey={currentPrompt}
-      >
+      <PromptModalController isActive={isActiveTargetPromptModal} promptStateKey={currentPrompt}>
         {promptType === PT.ChooseCardsForEffect && currentPrompt?.zoneCards != null && (
           <ChooseCardsModal
             cards={currentPrompt.zoneCards}

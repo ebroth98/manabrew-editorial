@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Card } from "@/components/game/Card";
 import { cn } from "@/lib/utils";
+import { withAlpha } from "@/themes/gameTheme";
 import type { Card as XMageCard, StackObject } from "@/types/openmagic";
 import { useStackUIStore } from "@/stores/useStackUIStore";
 
@@ -11,13 +12,9 @@ interface StackDisplayProps {
   flashCard?: XMageCard | null;
   flashToken?: string | null;
   showPreStackFlash?: boolean;
-  /** Card currently being cast (waiting for targets / mana payment). */
   castingCard?: XMageCard | null;
-  /**
-   * When the right action panel is open it covers the default stack
-   * position — callers pass `false` so the stack shifts leftward.
-   */
   rightPanelCollapsed?: boolean;
+  playerColorMap?: Map<string, string>;
 }
 
 // Stack UI tuning (single source of truth for size/placement)
@@ -45,21 +42,18 @@ export function StackDisplay({
   showPreStackFlash = true,
   castingCard,
   rightPanelCollapsed = true,
+  playerColorMap,
 }: StackDisplayProps) {
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const setHoveredStackObjectId = useStackUIStore((s) => s.setHoveredStackObjectId);
   const prevLayoutRef = useRef<Record<string, { left: number; top: number }>>({});
   const prevStackIdsRef = useRef<Set<string>>(new Set(stack.map((obj) => obj.id)));
   const enteringIds = new Set(
-    stack
-      .filter((obj) => !prevStackIdsRef.current.has(obj.id))
-      .map((obj) => obj.id),
+    stack.filter((obj) => !prevStackIdsRef.current.has(obj.id)).map((obj) => obj.id),
   );
 
   const hoveredIndex = hoveredId ? stack.findIndex((obj) => obj.id === hoveredId) : -1;
-  const flashStackIndex = flashCard
-    ? stack.findIndex((obj) => obj.sourceId === flashCard.id)
-    : -1;
+  const flashStackIndex = flashCard ? stack.findIndex((obj) => obj.sourceId === flashCard.id) : -1;
   const directionSign = STACK_UI.direction === "right" ? 1 : -1;
   const cardHeight = Math.round(STACK_UI.cardWidth * STACK_CARD_ASPECT);
   const totalItems = stack.length + (castingCard ? 1 : 0);
@@ -77,13 +71,9 @@ export function StackDisplay({
         });
   // Stable bounds by direction so hover transitions don't snap/rebase.
   const fixedMinLeft =
-    STACK_UI.direction === "right"
-      ? -STACK_UI.hoverPushX
-      : -spanX - STACK_UI.hoverPushX;
+    STACK_UI.direction === "right" ? -STACK_UI.hoverPushX : -spanX - STACK_UI.hoverPushX;
   const fixedMaxLeft =
-    STACK_UI.direction === "right"
-      ? spanX + STACK_UI.hoverPushX
-      : STACK_UI.hoverPushX;
+    STACK_UI.direction === "right" ? spanX + STACK_UI.hoverPushX : STACK_UI.hoverPushX;
   const xShift = -fixedMinLeft;
   const pileWidth = fixedMaxLeft - fixedMinLeft + STACK_UI.cardWidth;
   const top = `calc(50% - ${pileHeight / 2}px + ${STACK_UI.centerOffsetY}px)`;
@@ -116,9 +106,7 @@ export function StackDisplay({
   return (
     <div
       data-stack-panel
-      className={cn(
-        "pointer-events-auto absolute z-40 transition-[right] duration-200",
-      )}
+      className={cn("pointer-events-auto absolute z-40 transition-[right] duration-200")}
       style={{ top, right: `${rightInset}px` }}
     >
       <div
@@ -137,12 +125,12 @@ export function StackDisplay({
           const targetLeft = lefts[idx] + xShift;
           const targetTop = idx * STACK_UI.offsetY;
           const prev = prevLayoutRef.current[obj.id];
-          const hasPositionChange =
-            !prev || prev.left !== targetLeft || prev.top !== targetTop;
+          const hasPositionChange = !prev || prev.left !== targetLeft || prev.top !== targetTop;
           const zIndex =
             hoveredIndex < 0
               ? idx + 1
               : 200 - Math.abs(idx - hoveredIndex) * 10 + (isHovered ? 5 : 0);
+          const seatColor = playerColorMap?.get(obj.controllerId);
           return (
             <div
               key={obj.id}
@@ -171,13 +159,19 @@ export function StackDisplay({
               <Card
                 card={card}
                 className={cn(
-                  "w-full h-full shadow-lg cursor-pointer",
+                  "w-full h-full cursor-pointer",
                   isFlashedStackCard && "animate-card-stack-flash-in",
-                  enteringIds.has(obj.id) &&
-                    !isFlashedStackCard &&
-                    "animate-card-stack-enter",
+                  enteringIds.has(obj.id) && !isFlashedStackCard && "animate-card-stack-enter",
                   isTopOfStack && "playable-card",
                 )}
+                style={
+                  seatColor
+                    ? {
+                        boxShadow: `0 0 0 2px ${withAlpha(seatColor, 0.7)}, 0 0 14px ${withAlpha(seatColor, 0.45)}`,
+                        borderRadius: "inherit",
+                      }
+                    : undefined
+                }
               />
             </div>
           );
@@ -189,16 +183,13 @@ export function StackDisplay({
             className="absolute left-0"
             style={{
               zIndex: stack.length + 2,
-              left: `${(stack.length) * STACK_UI.offsetX * directionSign + xShift}px`,
+              left: `${stack.length * STACK_UI.offsetX * directionSign + xShift}px`,
               top: `${stack.length * STACK_UI.offsetY}px`,
               width: `${STACK_UI.cardWidth}px`,
               height: `${cardHeight}px`,
             }}
           >
-            <Card
-              card={castingCard}
-              className="w-full h-full shadow-lg casting-card"
-            />
+            <Card card={castingCard} className="w-full h-full shadow-lg casting-card" />
           </div>
         )}
 

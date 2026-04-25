@@ -8,6 +8,7 @@ import { useCardPreview } from "@/hooks/useCardPreview";
 import { HoverCardPreview } from "@/components/game/HoverCardPreview";
 import { MODAL_CARD_SIZE } from "../game.styles";
 import { useTheme } from "@/hooks/useTheme";
+import { withAlpha } from "@/themes/gameTheme";
 import type { CSSProperties } from "react";
 import { Button } from "@/components/ui/button";
 
@@ -17,9 +18,11 @@ interface SpellStackModalProps {
   validSpellIds: string[];
   onTarget: (spellId: string) => void;
   onCancel: () => void;
+  /** Maps controllerId → player seat color for per-player glow. */
+  playerColorMap?: Map<string, string>;
 }
 
-export function SpellStackModal({ stack, validSpellIds, onTarget, onCancel }: SpellStackModalProps) {
+export function SpellStackModal({ stack, validSpellIds, onTarget, onCancel, playerColorMap }: SpellStackModalProps) {
   const preview = useCardPreview();
 
   const themeColors = useTheme().gameTheme;
@@ -65,6 +68,13 @@ export function SpellStackModal({ stack, validSpellIds, onTarget, onCancel }: Sp
               const isValid = validSpellIds.includes(obj.id);
               const cardStub = stackObjectToCardStub(obj);
               const isTop = idx === 0;
+              const seatColor = playerColorMap?.get(obj.controllerId);
+              const glowStyle: CSSProperties = {
+                ...(seatColor ? {
+                  boxShadow: `0 0 0 2px ${withAlpha(seatColor, 0.7)}, 0 0 14px ${withAlpha(seatColor, 0.45)}`,
+                } : {}),
+                ...(isValid ? { "--tw-ring-color": ringColor } as CSSProperties : {}),
+              };
               return (
                 <div
                   key={obj.id}
@@ -85,7 +95,7 @@ export function SpellStackModal({ stack, validSpellIds, onTarget, onCancel }: Sp
                       "transition-transform",
                       isValid && "ring-2 group-hover:scale-105 group-hover:-translate-y-2",
                     )}
-                    style={isValid ? { "--tw-ring-color": ringColor } as CSSProperties : undefined}
+                    style={Object.keys(glowStyle).length > 0 ? glowStyle : undefined}
                   />
                   <div className="flex items-center gap-1">
                     <Badge

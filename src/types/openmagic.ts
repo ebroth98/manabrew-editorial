@@ -27,9 +27,7 @@ export interface Card {
   supertypes: string[];
   power?: string;
   toughness?: string;
-  /** Base power before modifiers (for buff/debuff color-coding). */
   basePower?: number;
-  /** Base toughness before modifiers (for buff/debuff color-coding). */
   baseToughness?: number;
   text: string;
   imageUrl?: string;
@@ -41,40 +39,24 @@ export interface Card {
   zoneId: string; // UUID
   tapped?: boolean;
   keywords?: string[];
-  /** Active counters keyed by counter type name (e.g. "P1P1", "M1M1", "Loyalty"). Only non-zero entries present. */
   counters?: Record<string, number>;
   damage?: number;
   summoningSick?: boolean;
   isToken?: boolean;
-  /** True if this card has an alternate face (Transform DFC, Modal DFC). */
   isDoubleFaced?: boolean;
-  /** True if this card is currently showing its back face. */
   isTransformed?: boolean;
-  /** True if this card is face-down (Morph, Manifest). */
   isFaceDown?: boolean;
-  /** True if this card is currently bestowed (attached as an Aura via Bestow). */
   isBestowed?: boolean;
-  /** ID of the card this permanent is attached to (equipment host, enchanted creature). */
   attachedTo?: string;
-  /** IDs of cards attached to this permanent (equipment, auras). */
   attachmentIds?: string[];
-  /** True if this card is phased out (treated as not on battlefield). */
   phasedOut?: boolean;
-  /** True if this creature has been exerted (won't untap next untap step). */
   exerted?: boolean;
-  /** Flashback cost string if the card has flashback (e.g. "1 R"). */
   flashbackCost?: string;
-  /** Kicker cost string if the card has kicker (e.g. "W"). */
   kickerCost?: string;
-  /** Effective mana cost after static ability reductions/increases. Only set when different from manaCost. */
   effectiveManaCost?: string;
-  /** Madness cost string if the card has madness (e.g. "R"). */
   madnessCost?: string;
-  /** True if this card is currently exiled via Madness replacement. */
   isMadnessExiled?: boolean;
-  /** True if this card has been plotted (castable from exile for free on a later turn). */
   isPlotted?: boolean;
-  /** True if this card was exiled via Warp (castable from exile for normal cost). */
   isWarpExiled?: boolean;
 }
 
@@ -116,6 +98,24 @@ export interface Deck {
   coverCardFace?: 0 | 1;
   /** Saved stack-view section positions (section ID → {x, y} in pixels). */
   stackPositions?: Record<string, { x: number; y: number }>;
+  /** Cached token metadata for cards in this deck (persisted to avoid re-fetching). */
+  tokens?: DeckToken[];
+}
+
+/** Token metadata produced by a card in the deck. */
+export interface DeckToken {
+  /** Token name as it appears on Scryfall. */
+  name: string;
+  /** Type line, e.g. "Token Creature — Angel". */
+  typeLine: string;
+  /** Names of deck cards that produce this token. */
+  producers: string[];
+  /** User-selected printing set code (e.g. "thou"). */
+  setCode?: string;
+  /** Collector number within the set. */
+  cardNumber?: string;
+  /** Resolved image URL for the selected printing. */
+  imageUrl?: string;
 }
 
 export interface Player {
@@ -148,7 +148,7 @@ export interface Table {
   name: string;
   gameType: string;
   deckType: string;
-  state: 'WAITING' | 'DUELING' | 'SIDEBOARDING' | 'FINISHED';
+  state: "WAITING" | "DUELING" | "SIDEBOARDING" | "FINISHED";
   numPlayers: number;
   players: PlayerInfo[];
   isTournament: boolean;

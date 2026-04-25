@@ -34,6 +34,7 @@ import { useTheme } from "@/hooks/useTheme";
 import { cn } from "@/lib/utils";
 import { Navigate, useLocation } from "react-router-dom";
 import { PromptType } from "@/types/promptType";
+import { OPPONENT_SEATS } from "@/components/game/game.types";
 import { useStackUIStore } from "@/stores/useStackUIStore";
 import { applyManualTabletopAction, getSelectedGameRuntime } from "@/game";
 import type { HandActionOption } from "@/stores/useGameUIStore";
@@ -794,6 +795,17 @@ export default function Game() {
   const me = gameView?.players?.find((p) => p.isHuman) ?? gameView?.players?.[0];
   const opponents = gameView?.players?.filter((p) => !p.isHuman) ?? [];
   const opponent = opponents[0]; // alias for arrows hook + game-over screen
+
+  // Map each player's id → their seat color for stack card glows
+  const playerColorMap = useMemo(() => {
+    const map = new Map<string, string>();
+    if (me) map.set(me.id, themeColors.playerColors.self);
+    opponents.forEach((opp, i) => {
+      const seat = OPPONENT_SEATS[i] ?? "opponent1";
+      map.set(opp.id, themeColors.playerColors[seat]);
+    });
+    return map;
+  }, [me, opponents, themeColors.playerColors]);
   // DEV: pad with simulated opponents to test multi-player layout
   const displayOpponents = [
     ...opponents,
@@ -1382,6 +1394,7 @@ export default function Game() {
         showPreStackFlash={shouldShowPreStackFlash}
         castingCard={casting.castingCard}
         rightPanelCollapsed={isActionPanelCollapsed}
+        playerColorMap={playerColorMap}
       />
 
       <GameModals
@@ -1405,6 +1418,7 @@ export default function Game() {
         validSpellIds={promptType === PromptType.ChooseTargetSpell ? (activePrompt?.validSpellIds ?? []) : []}
         onTargetSpell={(spellId) => { targetSpell(spellId); setSpellStackModalOpen(false); }}
         onCloseStack={() => setSpellStackModalOpen(false)}
+        playerColorMap={playerColorMap}
         abilityPickerState={abilityPickerState}
         onSelectAbility={(ability) => {
           if (ability.kind === "cast") {

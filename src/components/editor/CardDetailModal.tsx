@@ -5,7 +5,17 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
-import { Plus, Minus, Loader2, Image as ImageIcon, ChevronDown, Tag, Check, Crown, RotateCcw } from "lucide-react";
+import {
+  Plus,
+  Minus,
+  Loader2,
+  Image as ImageIcon,
+  ChevronDown,
+  Tag,
+  Check,
+  Crown,
+  RotateCcw,
+} from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { useCardRulings } from "@/hooks/useCards";
 import { usePreferredPrintsStore } from "@/stores/usePreferredPrintsStore";
@@ -28,6 +38,8 @@ interface DeckEditorActions {
   customTags?: string[];
   onTagCard?: (cardName: string, tag: string) => void;
   onAddTag?: (tag: string) => void;
+  isToken?: boolean;
+  onUpdateTokenPrint?: (tokenName: string, print: ScryfallCard) => void;
 }
 
 interface CardDetailModalProps {
@@ -36,7 +48,11 @@ interface CardDetailModalProps {
   deckEditorActions?: DeckEditorActions;
 }
 
-export function CardDetailModal({ card: initialCard, onClose, deckEditorActions }: CardDetailModalProps) {
+export function CardDetailModal({
+  card: initialCard,
+  onClose,
+  deckEditorActions,
+}: CardDetailModalProps) {
   const [showPrints, setShowPrints] = useState(false);
   const [showDeckPicker, setShowDeckPicker] = useState(false);
   const [newTagInput, setNewTagInput] = useState("");
@@ -47,7 +63,6 @@ export function CardDetailModal({ card: initialCard, onClose, deckEditorActions 
   const setLookup = useSetLookup();
   const { savedDecks, currentDeck, addToMain, addCardToSavedDeck, updatePrint } = useDeckStore();
 
-  // Reset selected print and face when switching to a different card
   useEffect(() => {
     setSelectedPrint(null);
     setShowPrints(false);
@@ -60,9 +75,12 @@ export function CardDetailModal({ card: initialCard, onClose, deckEditorActions 
   const card = selectedPrint ?? initialCard;
   const isDoubleFaced = !!(card.card_faces && card.card_faces.length >= 2);
 
-  // Derive per-face data when the card has faces
   const activeFace = isDoubleFaced ? card.card_faces![faceIndex] : null;
-  const imageUrl = activeFace?.image_uris?.png ?? activeFace?.image_uris?.large ?? activeFace?.image_uris?.normal ?? getScryfallImageUrl(card, "png");
+  const imageUrl =
+    activeFace?.image_uris?.png ??
+    activeFace?.image_uris?.large ??
+    activeFace?.image_uris?.normal ??
+    getScryfallImageUrl(card, "png");
   const manaCost = activeFace?.mana_cost ?? getScryfallManaCost(card);
   const displayName = activeFace?.name ?? card.name;
   const typeLine = activeFace?.type_line ?? card.type_line;
@@ -101,7 +119,9 @@ export function CardDetailModal({ card: initialCard, onClose, deckEditorActions 
       collectorNumber: print.collector_number,
       imageUrl: getScryfallImageUrl(print, "png"),
     });
-    if (deckEditorActions) {
+    if (deckEditorActions && deckEditorActions.isToken && deckEditorActions.onUpdateTokenPrint) {
+      deckEditorActions.onUpdateTokenPrint(card.name, print);
+    } else if (deckEditorActions) {
       updatePrint(card.name, print);
     }
   }
@@ -143,7 +163,9 @@ export function CardDetailModal({ card: initialCard, onClose, deckEditorActions 
                       onClick={() => setFaceIndex(faceIndex === 0 ? 1 : 0)}
                     >
                       <RotateCcw className="h-3.5 w-3.5" />
-                      {faceIndex === 0 ? `Show back: ${card.card_faces![1].name}` : `Show front: ${card.card_faces![0].name}`}
+                      {faceIndex === 0
+                        ? `Show back: ${card.card_faces![1].name}`
+                        : `Show front: ${card.card_faces![0].name}`}
                     </Button>
                   )}
 
@@ -179,7 +201,9 @@ export function CardDetailModal({ card: initialCard, onClose, deckEditorActions 
                     <div className="flex gap-4">
                       <div>
                         <span className="text-sm font-semibold text-muted-foreground">P/T: </span>
-                        <span className="text-sm font-bold">{power}/{toughness}</span>
+                        <span className="text-sm font-bold">
+                          {power}/{toughness}
+                        </span>
                       </div>
                       <div>
                         <span className="text-sm font-semibold text-muted-foreground">CMC: </span>
@@ -198,7 +222,9 @@ export function CardDetailModal({ card: initialCard, onClose, deckEditorActions 
                           className="h-4 w-4 shrink-0 brightness-0 dark:invert"
                         />
                       )}
-                      <span>{card.set_name} ({card.set.toUpperCase()})</span>
+                      <span>
+                        {card.set_name} ({card.set.toUpperCase()})
+                      </span>
                     </div>
                     <div>
                       <span className="font-semibold text-muted-foreground">Rarity: </span>
@@ -246,7 +272,10 @@ export function CardDetailModal({ card: initialCard, onClose, deckEditorActions 
                       <Badge
                         key={key}
                         variant="outline"
-                        className={cn("text-xs justify-between px-2 py-0.5", LEGALITY_STYLES[status])}
+                        className={cn(
+                          "text-xs justify-between px-2 py-0.5",
+                          LEGALITY_STYLES[status],
+                        )}
                       >
                         <span>{label}</span>
                         <span className="capitalize">{status.replace("_", " ")}</span>
@@ -291,27 +320,53 @@ export function CardDetailModal({ card: initialCard, onClose, deckEditorActions 
               <div className="flex items-center gap-1">
                 {/* +/- stepper */}
                 <div className="flex items-center rounded-md border bg-muted/30 p-0.5">
-                  <Button size="icon" variant="ghost" className="h-7 w-7" title="Remove one copy"
-                    onClick={() => { deckEditorActions.onRemoveOne(card.name); toast.success(`Removed one ${card.name}`); }}>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="h-7 w-7"
+                    title="Remove one copy"
+                    onClick={() => {
+                      deckEditorActions.onRemoveOne(card.name);
+                      toast.success(`Removed one ${card.name}`);
+                    }}
+                  >
                     <Minus className="h-3.5 w-3.5" />
                   </Button>
-                  <Button size="icon" variant="ghost" className="h-7 w-7" title="Add one copy"
-                    onClick={() => { deckEditorActions.onAddOne(card.name); toast.success(`Added ${card.name}`); }}>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="h-7 w-7"
+                    title="Add one copy"
+                    onClick={() => {
+                      deckEditorActions.onAddOne(card.name);
+                      toast.success(`Added ${card.name}`);
+                    }}
+                  >
                     <Plus className="h-3.5 w-3.5" />
                   </Button>
                 </div>
 
                 {/* Icon toolbar */}
                 <div className="flex items-center rounded-md border bg-muted/30 p-0.5">
-                  <Button size="icon" variant="ghost" className="h-7 w-7" title="Change printing"
-                    onClick={() => setShowPrints(true)}>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="h-7 w-7"
+                    title="Change printing"
+                    onClick={() => setShowPrints(true)}
+                  >
                     <ImageIcon className="h-3.5 w-3.5" />
                   </Button>
                   {isDoubleFaced && (
                     <Button
-                      size="icon" variant="ghost"
+                      size="icon"
+                      variant="ghost"
                       className="h-7 w-7"
-                      title={faceIndex === 0 ? `Flip to back: ${card.card_faces![1].name}` : `Flip to front: ${card.card_faces![0].name}`}
+                      title={
+                        faceIndex === 0
+                          ? `Flip to back: ${card.card_faces![1].name}`
+                          : `Flip to front: ${card.card_faces![0].name}`
+                      }
                       onClick={() => setFaceIndex(faceIndex === 0 ? 1 : 0)}
                     >
                       <RotateCcw className="h-3.5 w-3.5" />
@@ -322,8 +377,17 @@ export function CardDetailModal({ card: initialCard, onClose, deckEditorActions 
                       size="icon"
                       variant="ghost"
                       className={cn("h-7 w-7", deckEditorActions.isCommander && "text-commander")}
-                      title={deckEditorActions.isCommander ? "Remove as commander" : "Set as commander"}
-                      onClick={() => { deckEditorActions.onSetCommander(card.name); toast.success(deckEditorActions.isCommander ? `Removed ${card.name} as commander` : `Set ${card.name} as commander`); }}
+                      title={
+                        deckEditorActions.isCommander ? "Remove as commander" : "Set as commander"
+                      }
+                      onClick={() => {
+                        deckEditorActions.onSetCommander(card.name);
+                        toast.success(
+                          deckEditorActions.isCommander
+                            ? `Removed ${card.name} as commander`
+                            : `Set ${card.name} as commander`,
+                        );
+                      }}
                     >
                       <Crown className="h-3.5 w-3.5" />
                     </Button>
@@ -333,7 +397,12 @@ export function CardDetailModal({ card: initialCard, onClose, deckEditorActions 
                 {/* Tag dropdown */}
                 {deckEditorActions.onTagCard && (
                   <div className="relative ml-1">
-                    <Button size="sm" variant="outline" className="gap-1 h-8" onClick={() => setShowDeckPicker((v) => !v)}>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="gap-1 h-8"
+                      onClick={() => setShowDeckPicker((v) => !v)}
+                    >
                       <Tag className="h-3.5 w-3.5" />
                       <ChevronDown className="h-3 w-3 opacity-60" />
                     </Button>
@@ -354,7 +423,9 @@ export function CardDetailModal({ card: initialCard, onClose, deckEditorActions 
                             <span className="flex-1 truncate">{tag}</span>
                           </button>
                         ))}
-                        {(deckEditorActions.customTags ?? []).length > 0 && <div className="border-t my-1" />}
+                        {(deckEditorActions.customTags ?? []).length > 0 && (
+                          <div className="border-t my-1" />
+                        )}
                         <div className="px-2 py-1 flex items-center gap-1">
                           <Input
                             className="h-7 text-xs flex-1"
@@ -423,13 +494,17 @@ export function CardDetailModal({ card: initialCard, onClose, deckEditorActions 
                       ))}
                     </ScrollArea>
                     {savedDecks.length === 0 && !currentDeck.name && (
-                      <div className="px-3 py-2 text-sm text-muted-foreground">No decks available</div>
+                      <div className="px-3 py-2 text-sm text-muted-foreground">
+                        No decks available
+                      </div>
                     )}
                   </div>
                 )}
               </div>
             )}
-            <Button size="sm" variant="ghost" onClick={onClose}>Close</Button>
+            <Button size="sm" variant="ghost" onClick={onClose}>
+              Close
+            </Button>
           </div>
         </Modal.Footer>
       </Modal>
@@ -439,6 +514,7 @@ export function CardDetailModal({ card: initialCard, onClose, deckEditorActions 
           cardName={card.name}
           onClose={() => setShowPrints(false)}
           onSelect={handleSelectPrint}
+          isToken={deckEditorActions?.isToken}
         />
       )}
     </>

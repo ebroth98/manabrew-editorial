@@ -3,7 +3,7 @@ import { Modal } from "@/components/game/modals/Modal";
 import { Loader2 } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useDeckStore } from "@/stores/useDeckStore";
-import { getCardByName, getCardPrints } from "@/api/scryfall";
+import { getCardByName, getCardPrints, getTokenByName } from "@/api/scryfall";
 import { useSetLookup } from "@/hooks/useCards";
 import type { ScryfallCard } from "@/types/scryfall";
 
@@ -11,9 +11,10 @@ interface PrintPickerModalProps {
   cardName: string | null;
   onClose: () => void;
   onSelect?: (print: ScryfallCard) => void;
+  isToken?: boolean;
 }
 
-export function PrintPickerModal({ cardName, onClose, onSelect }: PrintPickerModalProps) {
+export function PrintPickerModal({ cardName, onClose, onSelect, isToken }: PrintPickerModalProps) {
   const [prints, setPrints] = useState<ScryfallCard[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -32,14 +33,25 @@ export function PrintPickerModal({ cardName, onClose, onSelect }: PrintPickerMod
       setIsLoading(true);
       setError(null);
       try {
-        const baseCard = await getCardByName(cardName!);
-        if (baseCard.prints_search_uri) {
-          const res = await getCardPrints(baseCard.prints_search_uri);
-          if (mounted) {
-            setPrints(res.data || []);
+        if (isToken) {
+          // Find one token, then fetch ALL its printings via prints_search_uri
+          const tokenCard = await getTokenByName(cardName!);
+          if (tokenCard?.prints_search_uri) {
+            const res = await getCardPrints(tokenCard.prints_search_uri);
+            if (mounted) setPrints(res.data || []);
+          } else if (tokenCard && mounted) {
+            setPrints([tokenCard]);
+          } else if (mounted) {
+            setPrints([]);
           }
-        } else if (mounted) {
-          setPrints([baseCard]);
+        } else {
+          const baseCard = await getCardByName(cardName!);
+          if (baseCard.prints_search_uri) {
+            const res = await getCardPrints(baseCard.prints_search_uri);
+            if (mounted) setPrints(res.data || []);
+          } else if (mounted) {
+            setPrints([baseCard]);
+          }
         }
       } catch {
         if (mounted) {
@@ -56,12 +68,17 @@ export function PrintPickerModal({ cardName, onClose, onSelect }: PrintPickerMod
     return () => {
       mounted = false;
     };
-  }, [cardName]);
+  }, [cardName, isToken]);
 
   if (!cardName) return null;
 
   return (
-    <Modal onClose={onClose} maxWidth="max-w-4xl" maxHeight="max-h-[80vh]" backdropClassName="z-[9100]">
+    <Modal
+      onClose={onClose}
+      maxWidth="max-w-4xl"
+      maxHeight="max-h-[80vh]"
+      backdropClassName="z-[9100]"
+    >
       <Modal.Header onClose={onClose}>
         <h2 className="text-lg font-bold">Select Printing: {cardName}</h2>
       </Modal.Header>
@@ -73,9 +90,7 @@ export function PrintPickerModal({ cardName, onClose, onSelect }: PrintPickerMod
           </div>
         )}
         {error && (
-          <div className="flex items-center justify-center py-12 text-destructive">
-            {error}
-          </div>
+          <div className="flex items-center justify-center py-12 text-destructive">{error}</div>
         )}
 
         {!isLoading && !error && (
@@ -83,9 +98,14 @@ export function PrintPickerModal({ cardName, onClose, onSelect }: PrintPickerMod
             <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
               {prints.map((p) => {
                 const face = p.card_faces
-                  ? p.card_faces.find((f) => f.name.toLowerCase() === cardName.toLowerCase()) || p.card_faces[0]
+                  ? p.card_faces.find((f) => f.name.toLowerCase() === cardName.toLowerCase()) ||
+                    p.card_faces[0]
                   : null;
-                const imageUrl = face?.image_uris?.normal || face?.image_uris?.large || p.image_uris?.normal || p.image_uris?.large;
+                const imageUrl =
+                  face?.image_uris?.normal ||
+                  face?.image_uris?.large ||
+                  p.image_uris?.normal ||
+                  p.image_uris?.large;
 
                 return (
                   <div
@@ -113,7 +133,10 @@ export function PrintPickerModal({ cardName, onClose, onSelect }: PrintPickerMod
                       )}
                     </div>
                     <div className="text-center w-full">
-                      <div className="text-xs font-semibold truncate flex items-center justify-center gap-1" title={p.set_name}>
+                      <div
+                        className="text-xs font-semibold truncate flex items-center justify-center gap-1"
+                        title={p.set_name}
+                      >
                         {setLookup.get(p.set)?.icon_svg_uri && (
                           <img
                             src={setLookup.get(p.set)!.icon_svg_uri}
