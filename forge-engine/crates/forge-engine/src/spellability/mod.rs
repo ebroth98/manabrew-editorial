@@ -39,7 +39,6 @@ use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
 use crate::mana::ManaPool;
 use crate::parsing::{keys, Params, ParsedParams};
-use forge_foundation::ZoneType;
 
 pub use ability_mana_part::AbilityManaPart;
 pub use alternative_cost::{AlternativeCost, MORPH_GENERIC_COST, MORPH_PT};
@@ -572,7 +571,7 @@ impl SpellAbility {
             .get(keys::SP)
             .or_else(|| parsed.get(keys::DB))
             .or_else(|| parsed.get(keys::AB))
-            .and_then(|s| ApiType::smart_value_of(s));
+            .and_then(ApiType::smart_value_of);
         let record_type = crate::ability::ability_factory::AbilityRecordType::from_parsed(&parsed)
             .unwrap_or_default();
         let target_restrictions = if parsed.has(keys::VALID_TGTS) {
@@ -1083,7 +1082,7 @@ impl SpellAbility {
 
         for (name, ability) in &self.trigger_spell_abilities {
             clone.trigger_spell_abilities.insert(
-                name.clone(),
+                *name,
                 ability.copy_with_host_activating_lki_keep_text_changes(
                     host.clone(),
                     activ,
@@ -1475,6 +1474,7 @@ impl SpellAbility {
     }
 
     /// Java parity hook for `SpellAbility.setCardState(CardState)`.
+    #[allow(clippy::only_used_in_recursion)]
     pub fn set_card_state(&mut self, state: &crate::card::card_state::CardState) {
         if let Some(sub_ability) = self.sub_ability.as_deref_mut() {
             sub_ability.set_card_state(state);

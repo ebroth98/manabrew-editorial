@@ -49,7 +49,7 @@ impl TriggerBehavior for TriggerDamageDone {
         _trigger: &super::trigger::Trigger,
         sa: &mut SpellAbility,
         params: &RunParams,
-        game: &GameState,
+        _game: &GameState,
     ) {
         // Java: sa.setTriggeringObject(AbilityKey.Source, CardCopyService.getLKICopy(DamageSource))
         // TODO: Java uses CardCopyService.getLKICopy for the source. We just use the ID directly.
@@ -66,10 +66,7 @@ impl TriggerBehavior for TriggerDamageDone {
         // TODO: Java also sets Cause (SpellAbility) from runParams.
         // Skipping Cause for now since SpellAbility is complex and stored as object in Java.
         if let Some(amount) = params.damage_amount {
-            sa.set_triggering_object(
-                crate::ability::AbilityKey::DamageAmount,
-                &amount.to_string(),
-            );
+            sa.set_triggering_object(crate::ability::AbilityKey::DamageAmount, amount.to_string());
         }
         if let Some(p) = params.defending_player {
             sa.set_triggering_object(crate::ability::AbilityKey::DefendingPlayer, p);

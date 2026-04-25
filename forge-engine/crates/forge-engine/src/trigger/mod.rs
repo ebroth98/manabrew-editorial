@@ -1,6 +1,7 @@
 #[path = "trigger_handler.rs"]
 pub mod handler;
 pub mod selector_domain;
+#[allow(clippy::module_inception)]
 pub mod trigger;
 pub mod trigger_abandoned;
 pub mod trigger_ability_activated;

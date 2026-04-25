@@ -312,7 +312,7 @@ pub fn apply_continuous_effects(game: &mut GameState) {
                     // comma or " & " separated lists, e.g. Yavimaya, Cradle of
                     // Growth: AddType$ Forest.
                     if let Some(raw) = add_type {
-                        for t in raw.split(|c| c == ',' || c == '&').map(str::trim) {
+                        for t in raw.split([',', '&']).map(str::trim) {
                             if t.is_empty() {
                                 continue;
                             }
@@ -724,7 +724,7 @@ pub fn prompt_etb_tapped_replacement_with_agents(
 pub fn apply_etb_tapped_with_agents(
     game: &mut GameState,
     entering_card: CardId,
-    mut agents: Option<&mut [Box<dyn PlayerAgent>]>,
+    agents: Option<&mut [Box<dyn PlayerAgent>]>,
 ) {
     // Collect all ETBTapped sources: (source_id, filter_str).
     // We need owned data to avoid aliasing the cards slice while mutating.
@@ -775,7 +775,7 @@ pub fn apply_etb_tapped_with_agents(
         return;
     }
 
-    if let Some(agents) = agents.as_deref_mut() {
+    if let Some(agents) = agents {
         prompt_etb_tapped_replacement_with_agents(game, entering_card, agents);
     }
 

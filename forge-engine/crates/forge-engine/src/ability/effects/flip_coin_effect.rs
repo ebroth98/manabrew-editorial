@@ -1,6 +1,6 @@
 use super::EffectContext;
 use crate::agent::BinaryChoiceKind;
-use crate::spellability::{build_spell_ability, SpellAbility};
+use crate::spellability::SpellAbility;
 
 /// `SP$ FlipACoin` — flip a coin, resolve different abilities for win/lose.
 ///

@@ -1,7 +1,5 @@
 use super::{resolve_defined_players, EffectContext};
 use crate::event::RunParams;
-use crate::parsing::keys;
-use crate::spellability::SpellAbility;
 use crate::trigger::TriggerType;
 
 /// `SP$ Shuffle` — shuffle one or more players' libraries.

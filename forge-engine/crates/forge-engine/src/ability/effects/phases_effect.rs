@@ -2,7 +2,6 @@ use forge_foundation::ZoneType;
 
 use super::EffectContext;
 use crate::event::{AbilityValue, RunParams};
-use crate::spellability::SpellAbility;
 use crate::trigger::TriggerType;
 
 /// Resolve `SP$ Phases` — phase permanents in or out.
@@ -77,7 +76,7 @@ fn apply_phase(ctx: &mut EffectContext, card_id: crate::ids::CardId, mode: &str)
                 );
             }
         }
-        "Out" | _ => {
+        _ => {
             if !ctx.game.card(card_id).phased_out {
                 ctx.game.card_mut(card_id).set_phased_out(true);
                 ctx.trigger_handler.run_trigger(

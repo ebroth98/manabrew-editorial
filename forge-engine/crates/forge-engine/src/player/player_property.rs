@@ -6,8 +6,8 @@ use crate::card::valid_filter::matches_valid_card;
 use crate::card::valid_filter::matches_valid_card_selector_in_game;
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
+use crate::parsing::cached_compiled_selector;
 use crate::parsing::compare::compare_expr;
-use crate::parsing::{cached_compiled_selector, CompiledSelector};
 use crate::spellability::SpellAbility;
 use crate::zone::zone_type::smart_value_of as parse_zone_type;
 
@@ -40,8 +40,8 @@ fn split_escaped_underscores(text: &str) -> Vec<String> {
     parts
 }
 
-fn count_matching_cards<'a>(
-    game: &'a GameState,
+fn count_matching_cards(
+    game: &GameState,
     cards: impl IntoIterator<Item = CardId>,
     restriction: &str,
     source_id: CardId,
@@ -424,30 +424,30 @@ pub fn player_has_property(
             source_id,
         );
         return theirs >= yours + amount;
-    } else if property.starts_with("hasMore") {
+    } else if let Some(rest) = property.strip_prefix("hasMore") {
         let compared_player = if property.contains("ThanActive") {
             game.active_player()
         } else {
             controller
         };
-        if property[7..].starts_with("Life") {
+        if rest.starts_with("Life") {
             return player_state.life > game.player(compared_player).life;
-        } else if property[7..].starts_with("CardsInHand") {
+        } else if rest.starts_with("CardsInHand") {
             return game.cards_in_zone(ZoneType::Hand, player).len()
                 > game.cards_in_zone(ZoneType::Hand, compared_player).len();
         }
-    } else if property.starts_with("hasFewer") {
-        let (left, right) = property.split_once("Than").unwrap_or((property, ""));
+    } else if let Some(rest) = property.strip_prefix("hasFewer") {
+        let (left, right) = rest.split_once("Than").unwrap_or((rest, ""));
         let card_type = left
             .split_once("sIn")
-            .map(|(prefix, _)| &prefix[8..])
+            .map(|(prefix, _)| prefix)
             .unwrap_or("");
         let compared_player = if right == "Active" {
             game.active_player()
         } else {
             controller
         };
-        let zone = if property[8..].starts_with("CreaturesInYard") {
+        let zone = if rest.starts_with("CreaturesInYard") {
             ZoneType::Graveyard
         } else {
             ZoneType::Battlefield

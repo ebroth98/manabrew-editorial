@@ -13,7 +13,7 @@ pub enum ServerError {
     AlreadyInRoom(String),
     GameAlreadyStarted,
     DuplicateUsername(String),
-    WebSocket(tokio_tungstenite::tungstenite::Error),
+    WebSocket(Box<tokio_tungstenite::tungstenite::Error>),
     Serde(serde_json::Error),
 }
 
@@ -61,7 +61,7 @@ impl ServerError {
 
 impl From<tokio_tungstenite::tungstenite::Error> for ServerError {
     fn from(e: tokio_tungstenite::tungstenite::Error) -> Self {
-        Self::WebSocket(e)
+        Self::WebSocket(Box::new(e))
     }
 }
 

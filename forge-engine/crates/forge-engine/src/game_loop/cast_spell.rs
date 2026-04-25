@@ -880,7 +880,7 @@ impl GameLoop {
                         let params = Params::from_raw(svar_val);
                         let cost = params
                             .get(keys::MODE_COST)
-                            .map(|c| forge_foundation::ManaCost::parse(c))
+                            .map(forge_foundation::ManaCost::parse)
                             .unwrap_or_else(|| forge_foundation::ManaCost::generic(0));
                         let desc = params
                             .get_cloned(keys::SPELL_DESCRIPTION)
@@ -1016,7 +1016,7 @@ impl GameLoop {
         // Detect commander cast from Command zone (for commander tax)
         let is_commander_cast = game.player_is_commander(player, card_id)
             && game.card_is_in_zone(card_id, ZoneType::Command);
-        let mut commander_tax = if is_commander_cast {
+        let commander_tax = if is_commander_cast {
             game.player_commander_tax(player, card_id)
         } else {
             0
@@ -1063,7 +1063,7 @@ impl GameLoop {
             mana_cost
         };
 
-        let mana_cost = mana_cost;
+        // mana_cost already in scope
 
         // Build SpellAbility chain and choose modes/targets from the pre-payment
         // game state. This matches Java/MTG casting order: announce modes and
@@ -1419,7 +1419,7 @@ impl GameLoop {
         // Fire ManaExpend triggers (Expend mechanic — cumulative per-turn tracking)
         {
             let pool_size_after = self.pool(player).total_mana();
-            let mana_spent = (pool_size_before - pool_size_after) as i32;
+            let mana_spent = pool_size_before - pool_size_after;
             if mana_spent > 0 {
                 let starting = game.player(player).mana_expended_this_turn;
                 let total = starting + mana_spent;

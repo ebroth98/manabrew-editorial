@@ -35,8 +35,8 @@ impl TriggerBehavior for TriggerDiscardedAll {
         params: &RunParams,
         game: &GameState,
     ) -> bool {
-        let host_card = trigger.base.card_trait_base.host_card_id();
-        let host_controller = trigger.base.card_trait_base.host_controller(game);
+        let _host_card = trigger.base.card_trait_base.host_card_id();
+        let _host_controller = trigger.base.card_trait_base.host_controller(game);
         trigger.matches_optional_valid_card_filter(&self.valid_card, params.card, game)
             && trigger.matches_optional_valid_player_filter(&self.valid_player, params.player, game)
     }
@@ -46,7 +46,7 @@ impl TriggerBehavior for TriggerDiscardedAll {
         _trigger: &super::trigger::Trigger,
         sa: &mut SpellAbility,
         params: &RunParams,
-        game: &GameState,
+        _game: &GameState,
     ) {
         // Java: filters cards with ValidCard via CardLists.getValidCards, then sets Cards, Amount, Player, Cause
         // TODO: ValidCard filtering skipped — free function has no access to trigger params (hasParam/getParam)
@@ -57,10 +57,10 @@ impl TriggerBehavior for TriggerDiscardedAll {
                 .collect::<Vec<_>>()
                 .join(",");
             sa.set_triggering_object(crate::ability::AbilityKey::Cards, &csv);
-            sa.set_triggering_object(crate::ability::AbilityKey::Amount, &cards.len().to_string());
+            sa.set_triggering_object(crate::ability::AbilityKey::Amount, cards.len().to_string());
         }
         if let Some(p) = params.player {
-            sa.set_triggering_object(crate::ability::AbilityKey::Player, &p.0.to_string());
+            sa.set_triggering_object(crate::ability::AbilityKey::Player, p.0.to_string());
         }
         // TODO: AbilityKey.Cause is a SpellAbility in Java, cannot be stored as String easily
     }

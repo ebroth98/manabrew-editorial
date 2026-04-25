@@ -71,10 +71,10 @@ impl TriggerBehavior for TriggerTaps {
         _trigger: &Trigger,
         sa: &mut SpellAbility,
         params: &RunParams,
-        game: &GameState,
+        _game: &GameState,
     ) {
         if let Some(card) = params.card {
-            sa.set_triggering_object(crate::ability::AbilityKey::Card, &card.0.to_string());
+            sa.set_triggering_object(crate::ability::AbilityKey::Card, card.0.to_string());
         }
     }
 

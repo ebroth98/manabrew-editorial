@@ -23,10 +23,11 @@ pub fn cant_attach(cards: &[Card], attachment: &Card, target: &Card, check_sba: 
                     continue;
                 }
             }
-            if (check_sba || !st_ab.ir.exception_sba) && st_ab.ir.exceptions.is_some() {
-                if matches_valid_card(st_ab.ir.exceptions.as_ref(), attachment, source) {
-                    continue;
-                }
+            if (check_sba || !st_ab.ir.exception_sba)
+                && st_ab.ir.exceptions.is_some()
+                && matches_valid_card(st_ab.ir.exceptions.as_ref(), attachment, source)
+            {
+                continue;
             }
             return true;
         }

@@ -4,8 +4,6 @@ use super::{emit_zone_trigger_with_lki_counters, matches_change_type, EffectCont
 use crate::card::valid_filter;
 use crate::event::{AbilityValue, RunParams};
 use crate::ids::CardId;
-use crate::parsing::keys;
-use crate::spellability::SpellAbility;
 use crate::trigger::TriggerType;
 
 /// Struct form of this effect so it can participate in the

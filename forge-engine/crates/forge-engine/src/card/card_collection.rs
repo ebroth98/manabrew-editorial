@@ -15,12 +15,6 @@ impl CardCollection {
         Self { cards: Vec::new() }
     }
 
-    pub fn from_iter<I: IntoIterator<Item = CardId>>(iter: I) -> Self {
-        Self {
-            cards: iter.into_iter().collect(),
-        }
-    }
-
     pub fn push(&mut self, card: CardId) {
         self.cards.push(card);
     }
@@ -58,6 +52,14 @@ impl CardCollection {
         F: Fn(&CardId) -> bool,
     {
         CardCollection::from_iter(self.cards.iter().copied().filter(test))
+    }
+}
+
+impl FromIterator<CardId> for CardCollection {
+    fn from_iter<I: IntoIterator<Item = CardId>>(iter: I) -> Self {
+        Self {
+            cards: iter.into_iter().collect(),
+        }
     }
 }
 

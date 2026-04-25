@@ -3,7 +3,6 @@ use forge_foundation::ZoneType;
 use super::{emit_zone_trigger, resolve_numeric_svar, EffectContext};
 use crate::ids::CardId;
 use crate::parsing::keys;
-use crate::spellability::SpellAbility;
 
 /// `SP$ TwoPiles` — divide cards into two piles and an opponent chooses one.
 ///

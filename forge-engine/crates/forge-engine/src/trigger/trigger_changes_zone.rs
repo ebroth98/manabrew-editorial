@@ -4,7 +4,7 @@ use crate::ability::ability_utils::parse_counter_type;
 use crate::event::RunParams;
 use crate::game::GameState;
 use crate::parsing::compare::compare_expr;
-use crate::parsing::{keys, Params};
+use crate::parsing::Params;
 use crate::spellability::SpellAbility;
 use crate::trigger::TriggerType;
 
@@ -153,7 +153,7 @@ impl TriggerBehavior for TriggerChangesZone {
         trigger: &super::trigger::Trigger,
         sa: &mut SpellAbility,
         params: &RunParams,
-        game: &GameState,
+        _game: &GameState,
     ) {
         // Java: if origin == Battlefield, Card = CardLKI, NewCard = Card
         //        else: copy both Card and CardLKI from runParams
@@ -163,13 +163,13 @@ impl TriggerBehavior for TriggerChangesZone {
                 if let Some(power) = params.lki_power {
                     sa.set_triggering_object(
                         crate::ability::AbilityKey::TriggeredCardPower,
-                        &power.to_string(),
+                        power.to_string(),
                     );
                 }
                 if let Some(toughness) = params.lki_toughness {
                     sa.set_triggering_object(
                         crate::ability::AbilityKey::TriggeredCardToughness,
-                        &toughness.to_string(),
+                        toughness.to_string(),
                     );
                 }
             }

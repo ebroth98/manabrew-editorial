@@ -1,6 +1,5 @@
 use super::EffectContext;
 use crate::agent::BinaryChoiceKind;
-use crate::spellability::SpellAbility;
 
 /// `SP$ ChooseDirection` — choose left or right and remember it on source.
 ///

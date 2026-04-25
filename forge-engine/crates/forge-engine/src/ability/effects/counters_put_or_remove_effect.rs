@@ -3,7 +3,6 @@ use forge_foundation::ZoneType;
 use super::{resolve_numeric_svar, EffectContext};
 use crate::agent::BinaryChoiceKind;
 use crate::parsing::keys;
-use crate::spellability::SpellAbility;
 
 /// `SP$ CountersPutOrRemove` — choose add/remove on target card counters.
 ///
@@ -51,8 +50,8 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
 
     let put_counter = if can_add && can_remove {
         let prompt = format!(
-            "Add or remove {} counter on {}?",
-            format!("{:?}", counter_type),
+            "Add or remove {:?} counter on {}?",
+            counter_type,
             ctx.game.card(target_id).card_name
         );
         ctx.agents[controller.index()].choose_binary(

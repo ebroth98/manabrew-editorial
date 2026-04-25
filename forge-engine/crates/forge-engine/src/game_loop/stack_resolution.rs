@@ -251,7 +251,7 @@ impl GameLoop {
                     .ir
                     .precost_desc
                     .as_deref()
-                    .map_or(false, |d| d.to_lowercase().contains("cycling"));
+                    .is_some_and(|d| d.to_lowercase().contains("cycling"));
                 if is_cycling {
                     if let Some(source_card) = entry.spell_ability.source {
                         self.trigger_handler.run_trigger(
@@ -312,10 +312,10 @@ impl GameLoop {
                             .card(card_id)
                             .keywords
                             .iter_strings()
-                            .find_map(|kw| crate::keyword::extract_keyword_cost_str(&kw, "Enchant"))
+                            .find_map(|kw| crate::keyword::extract_keyword_cost_str(kw, "Enchant"))
                             .unwrap_or_default();
                         if crate::parsing::enchant_type_matches_card(
-                            &enchant_type,
+                            enchant_type,
                             game.card(target_id),
                         ) {
                             game.attach_to(card_id, target_id);
@@ -457,7 +457,7 @@ impl GameLoop {
                 }
 
                 // Morph/Megamorph: enter face-down as a 2/2 creature
-                if alt_cost.map_or(false, |ac| ac.is_morph()) {
+                if alt_cost.is_some_and(|ac| ac.is_morph()) {
                     let is_mega = alt_cost == Some(crate::spellability::AlternativeCost::Megamorph);
                     let c = game.card_mut(card_id);
                     c.set_face_down(true);

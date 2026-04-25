@@ -10,7 +10,6 @@ use crate::cost::{parse_cost, Cost, CostPart};
 use crate::event::RunParams;
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
-use crate::parsing::keys;
 use crate::spellability::SpellAbility;
 use crate::trigger::handler::TriggerHandler;
 use crate::trigger::TriggerType;
@@ -500,7 +499,7 @@ fn try_pay_effect_cost(
                             false,
                         );
                         emit_zone_trigger(
-                            &mut ctx.trigger_handler,
+                            ctx.trigger_handler,
                             top,
                             ZoneType::Library,
                             ZoneType::Graveyard,
@@ -581,7 +580,7 @@ fn try_pay_effect_cost(
                         );
                         ctx.move_card(chosen, ZoneType::Graveyard, owner);
                         emit_zone_trigger(
-                            &mut ctx.trigger_handler,
+                            ctx.trigger_handler,
                             chosen,
                             ZoneType::Battlefield,
                             ZoneType::Graveyard,

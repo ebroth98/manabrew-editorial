@@ -389,7 +389,7 @@ pub fn add_forget_on_moved_trigger(
     // flag so the zone-move system knows to clean up.
     // Store a SVar on the card so the zone-move system knows which host to clean up
     game.card_mut(remembered_card_id)
-        .set_s_var("ForgetOnZoneChangeHost", &host_id.0.to_string());
+        .set_s_var("ForgetOnZoneChangeHost", host_id.0.to_string());
 }
 
 /// Create a temporary "effect" card in the command zone.

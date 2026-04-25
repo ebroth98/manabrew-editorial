@@ -4,8 +4,6 @@ use super::EffectContext;
 use crate::card::card_util;
 use crate::card::perpetual::perpetual_interface::PerpetualInterface;
 use crate::card::perpetual::{perpetual_keywords, perpetual_pt_boost};
-use crate::parsing::keys;
-use crate::spellability::SpellAbility;
 
 /// Parsed `NumAtt$`/`NumDef$` bonus spec: either a fixed literal or a
 /// target-relative scale (Java L469–L481).

@@ -3,7 +3,6 @@ use forge_foundation::ZoneType;
 use super::{emit_zone_trigger_with_lki_counters, EffectContext};
 use crate::card::card_util;
 use crate::event::RunParams;
-use crate::spellability::SpellAbility;
 use crate::trigger::TriggerType;
 
 /// Struct form of this effect so it can participate in the

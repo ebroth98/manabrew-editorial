@@ -71,7 +71,7 @@ pub(super) fn matches_with_context(
                     None => return false,
                 }
             };
-            if card.mana_cost.cmc() as i32 > max_cmc {
+            if card.mana_cost.cmc() > max_cmc {
                 return false;
             }
         }
@@ -237,15 +237,14 @@ pub(super) fn apply_pre_move(
     dest_zone: ZoneType,
 ) -> bool {
     // canExiledBy check
-    if dest_zone == ZoneType::Exile {
-        if ctx
+    if dest_zone == ZoneType::Exile
+        && ctx
             .game
             .card(card_id)
             .keywords
             .contains_string_ignore_case("CantBeExiled")
-        {
-            return false;
-        }
+    {
+        return false;
     }
 
     if dest_zone == ZoneType::Battlefield {
@@ -463,10 +462,9 @@ pub(super) fn apply_post_move(
                 if matches!(
                     src_zone,
                     ZoneType::Battlefield | ZoneType::Stack | ZoneType::Command
-                ) {
-                    if !ctx.game.card(sid).remembered_cards.contains(&card_id) {
-                        ctx.game.card_mut(sid).add_remembered_card(card_id);
-                    }
+                ) && !ctx.game.card(sid).remembered_cards.contains(&card_id)
+                {
+                    ctx.game.card_mut(sid).add_remembered_card(card_id);
                 }
             }
         }

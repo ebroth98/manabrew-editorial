@@ -50,16 +50,13 @@ impl TriggerBehavior for TriggerAttackerBlockedByCreature {
         _trigger: &super::trigger::Trigger,
         sa: &mut SpellAbility,
         params: &RunParams,
-        game: &GameState,
+        _game: &GameState,
     ) {
         if let Some(attacker) = params.attacker {
-            sa.set_triggering_object(
-                crate::ability::AbilityKey::Attacker,
-                &attacker.0.to_string(),
-            );
+            sa.set_triggering_object(crate::ability::AbilityKey::Attacker, attacker.0.to_string());
         }
         if let Some(blocker) = params.blocker {
-            sa.set_triggering_object(crate::ability::AbilityKey::Blocker, &blocker.0.to_string());
+            sa.set_triggering_object(crate::ability::AbilityKey::Blocker, blocker.0.to_string());
         }
     }
 

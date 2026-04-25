@@ -34,7 +34,7 @@ pub fn can_pay(
                 true,
             )
         })
-        .map(|&cid| game.card(cid).mana_cost.cmc() as i32)
+        .map(|&cid| game.card(cid).mana_cost.cmc())
         .sum();
     total_mv >= resolved_amount
 }

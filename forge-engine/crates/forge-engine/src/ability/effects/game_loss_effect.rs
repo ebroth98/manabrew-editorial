@@ -2,7 +2,6 @@ use super::{resolve_defined_player, EffectContext};
 use crate::replacement::replacement_handler::{apply_replacements, ReplacementEvent};
 use crate::replacement::GameLossReason;
 use crate::replacement::ReplacementResult;
-use crate::spellability::SpellAbility;
 
 /// Resolve `SP$ GameLoss` — a player loses the game.
 ///

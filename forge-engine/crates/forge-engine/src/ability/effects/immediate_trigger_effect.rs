@@ -5,8 +5,6 @@
 //! trigger processing.
 
 use super::EffectContext;
-use crate::parsing::keys;
-use crate::spellability::SpellAbility;
 use crate::trigger::DelayedTrigger;
 use crate::trigger::TriggerType;
 

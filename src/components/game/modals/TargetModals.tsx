@@ -8,7 +8,7 @@ import {
   PromptModalController,
 } from "@/components/game/modals";
 import { ZoneTargetSelector } from "@/components/game/ZoneTargetSelector";
-import type { Card as XMageCard, StackObject } from "@/types/openmagic";
+import type { Card as OpenMagicCard, StackObject } from "@/types/openmagic";
 import type { AgentPrompt } from "@/stores/useGameStore";
 import type { AbilityPickerState, HandActionOption } from "@/stores/useGameUIStore";
 import type { PromptType } from "@/types/promptType";
@@ -17,14 +17,18 @@ import { PromptType as PT } from "@/types/promptType";
 interface TargetModalsProps {
   promptType?: PromptType;
   currentPrompt: AgentPrompt | null;
-  viewingZone: { title: string; cards: XMageCard[]; onClickCard?: (cardId: string) => void } | null;
+  viewingZone: {
+    title: string;
+    cards: OpenMagicCard[];
+    onClickCard?: (cardId: string) => void;
+  } | null;
   onCloseZone: () => void;
-  zoneTargetSelector: { title: string; cards: XMageCard[]; validCardIds: string[] } | null;
+  zoneTargetSelector: { title: string; cards: OpenMagicCard[]; validCardIds: string[] } | null;
   onSelectZoneTarget: (cardId: string) => void;
   onCancelZoneTarget: () => void;
   libraryPeekModal: {
     mode: LibraryPeekMode;
-    cards: XMageCard[];
+    cards: OpenMagicCard[];
     numToTake?: number;
     optional?: boolean;
   } | null;

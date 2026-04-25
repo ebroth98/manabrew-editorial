@@ -18,7 +18,6 @@ use crate::card::filter_constants as fc;
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
 use crate::parsing::compare::compare_expr;
-use crate::parsing::SemanticAmount;
 use crate::spellability::SpellAbility;
 
 fn parse_trigger_card_object(sa: &SpellAbility, key: &str) -> Option<CardId> {
@@ -1145,10 +1144,7 @@ pub fn resolve_count_svar_for_sa(
     // - Count$ValidBattlefield Creature.YouCtrl
     // Mirrors Java xCount() Valid* zone parsing.
     if let Some(rest) = expr.strip_prefix("Count$Valid") {
-        let (rest, operators) = rest
-            .split_once('/')
-            .map(|(base, ops)| (base, ops))
-            .unwrap_or((rest, ""));
+        let (rest, operators) = rest.split_once('/').unwrap_or((rest, ""));
         let mut parts = rest.trim_start().splitn(2, ' ');
         let zone_part = parts.next().unwrap_or("").trim();
         let restrictions = parts.next().unwrap_or("").trim();
@@ -1183,10 +1179,7 @@ pub fn resolve_count_svar_for_sa(
     // Count$Valid TYPE.QUALIFIERS/Times.N — count × N multiplier
     // Count$Valid TYPE.QUALIFIERS$GreatestCardPower — greatest power among matching creatures
     if let Some(filter_str) = expr.strip_prefix("Count$Valid ") {
-        let (filter_str, operators) = filter_str
-            .split_once('/')
-            .map(|(base, ops)| (base, ops))
-            .unwrap_or((filter_str, ""));
+        let (filter_str, operators) = filter_str.split_once('/').unwrap_or((filter_str, ""));
         // Check for $GreatestCardPower suffix
         let (filter_str, greatest_power) =
             if let Some(base) = filter_str.strip_suffix("$GreatestCardPower") {
@@ -1359,6 +1352,7 @@ pub fn resolve_count_svar_for_sa(
 }
 
 /// Check if a card matches a validity filter string like "Forest.YouCtrl".
+#[allow(dead_code)]
 fn valid_card_matches_with_source(
     filter: &str,
     card: &crate::card::Card,
@@ -1423,6 +1417,7 @@ fn valid_card_matches_with_source(
 }
 
 /// Check a counter qualifier like "counters_GE1_P1P1".
+#[allow(dead_code)]
 fn check_counter_qualifier(card: &crate::card::Card, qual: &str) -> bool {
     let rest = match qual.strip_prefix("counters_") {
         Some(r) => r,

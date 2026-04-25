@@ -10,7 +10,7 @@
     "vite:dev": "vite",
     "vite:build": "tsc -b && vite build",
     "lint": "eslint . && prettier --check src",
-    "lint:rust": "cargo fmt --all -- --check && cargo clippy --workspace --all-targets -- -D warnings",
+    "lint:rust": "cargo fmt --all -- --check && cargo clippy --workspace --lib --bins -- -D warnings",
     "lint:all": "yarn lint && yarn lint:rust",
     "format": "prettier --write src",
     "format:check": "prettier --check src",

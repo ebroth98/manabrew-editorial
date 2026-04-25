@@ -4,7 +4,6 @@ use crate::card::{valid_filter, Card};
 use crate::cost::{parse_cost, Cost};
 use crate::game::GameState;
 use crate::ids::PlayerId;
-use crate::parsing::keys;
 use crate::spellability::SpellAbility;
 use crate::staticability::StaticMode;
 
@@ -324,16 +323,12 @@ fn spell_ability_matches(valid_sa: &str, sa: &SpellAbility, source: &Card, host:
             return false;
         }
 
-        if parts.len() >= 2 {
-            match parts[1].to_ascii_lowercase().as_str() {
-                // ValidSA$ Spell.Self should only match the source card's own spell.
-                "self" => {
-                    if sa.source != Some(source.id) || source.id != host.id {
-                        return false;
-                    }
-                }
-                _ => {}
-            }
+        // ValidSA$ Spell.Self should only match the source card's own spell.
+        if parts.len() >= 2
+            && parts[1].eq_ignore_ascii_case("self")
+            && (sa.source != Some(source.id) || source.id != host.id)
+        {
+            return false;
         }
 
         true

@@ -1,5 +1,4 @@
 use super::EffectContext;
-use crate::spellability::SpellAbility;
 
 /// Resolve `SP$ EndTurn` — end the current turn.
 ///
@@ -16,7 +15,7 @@ use crate::spellability::SpellAbility;
 /// `SpellAbilityEffect` trait hierarchy — mirrors Java's
 /// `EndTurnEffect` class extending `SpellAbilityEffect`.
 #[forge_engine_macros::spell_effect(EndTurnEffect)]
-fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
+fn resolve(ctx: &mut EffectContext, _sa: &crate::spellability::SpellAbility) {
     // Clear the stack (exile all spells/abilities)
     while ctx.game.stack.pop().is_some() {}
     // Signal the game loop to skip to cleanup

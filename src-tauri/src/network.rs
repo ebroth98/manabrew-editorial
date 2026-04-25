@@ -5,6 +5,7 @@ use forge_agent_interface::game_snapshot_event::GameSnapshotEventDto;
 use forge_agent_interface::ids_codec::parse_player_slot;
 use forge_agent_interface::prompt::{AgentPrompt, PlayerAction};
 
+#[allow(clippy::large_enum_variant)]
 pub enum RelayEnvelope {
     Prompt {
         for_player: String,

@@ -233,7 +233,7 @@ export interface ActivatableAbilityInfo {
 export interface ClientCallback {
   id: string; // UUID
   method: string; // e.g., "askYesNo", "chooseMode"
-  data: any; // Context specific payload
+  data: unknown; // Context specific payload
 }
 
 // Middleware API Response Types

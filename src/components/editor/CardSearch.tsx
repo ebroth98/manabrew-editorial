@@ -8,13 +8,13 @@ import { Loader2, LayoutGrid, List, Info, SlidersHorizontal, PanelRightClose } f
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { ScryfallCard } from "@/types/scryfall";
-import type { Card as XMageCard } from "@/types/openmagic";
+import type { Card as OpenMagicCard } from "@/types/openmagic";
 import { useDraggable } from "@dnd-kit/core";
 import { CardDetailModal } from "@/components/editor/CardDetailModal";
 import { useCardPreview } from "@/hooks/useCardPreview";
 import { HoverCardPreview } from "@/components/game/HoverCardPreview";
 import { SetSelect } from "@/components/editor/SetSelect";
-import { scryfallToXMage } from "@/lib/scryfall.utils";
+import { scryfallToOpenMagic } from "@/lib/scryfall.utils";
 import { manaSymbolUrl } from "@/api/scryfall";
 
 // ─── Filter definitions ────────────────────────────────────────────────────────
@@ -289,8 +289,8 @@ function countAdvancedFilters(adv: AdvancedFilters): number {
   return count;
 }
 
-function mapScryfallToXMage(sfCard: ScryfallCard): XMageCard {
-  return scryfallToXMage(sfCard, sfCard.id);
+function mapScryfallToOpenMagic(sfCard: ScryfallCard): OpenMagicCard {
+  return scryfallToOpenMagic(sfCard, sfCard.id);
 }
 
 // ─── Filter UI helpers ───────────────────────────────────────────────────────
@@ -384,10 +384,10 @@ function DraggableCardGrid({
   onHover,
   onLeave,
 }: {
-  card: XMageCard;
+  card: OpenMagicCard;
   onMoreInfo: () => void;
   standalone?: boolean;
-  onHover: (card: XMageCard, e: React.MouseEvent) => void;
+  onHover: (card: OpenMagicCard, e: React.MouseEvent) => void;
   onLeave: () => void;
 }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
@@ -436,10 +436,10 @@ function DraggableCardRow({
   onHover,
   onLeave,
 }: {
-  card: XMageCard;
+  card: OpenMagicCard;
   onMoreInfo: () => void;
   standalone?: boolean;
-  onHover: (card: XMageCard, e: React.MouseEvent) => void;
+  onHover: (card: OpenMagicCard, e: React.MouseEvent) => void;
   onLeave: () => void;
 }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
@@ -558,21 +558,24 @@ export function CardSearch({ standalone, onClose }: CardSearchProps) {
   function toggleColor(id: string) {
     setActiveColors((prev) => {
       const n = new Set(prev);
-      n.has(id) ? n.delete(id) : n.add(id);
+      if (n.has(id)) n.delete(id);
+      else n.add(id);
       return n;
     });
   }
   function toggleType(id: string) {
     setActiveTypes((prev) => {
       const n = new Set(prev);
-      n.has(id) ? n.delete(id) : n.add(id);
+      if (n.has(id)) n.delete(id);
+      else n.add(id);
       return n;
     });
   }
   function toggleAdvSet(field: "rarity" | "is" | "colorIdentity" | "produces", id: string) {
     setAdvanced((prev) => {
       const n = new Set(prev[field]);
-      n.has(id) ? n.delete(id) : n.add(id);
+      if (n.has(id)) n.delete(id);
+      else n.add(id);
       return { ...prev, [field]: n };
     });
   }
@@ -583,9 +586,9 @@ export function CardSearch({ standalone, onClose }: CardSearchProps) {
     setAdvanced((prev) => ({ ...prev, [key]: prev[key] === value ? "" : value }));
   }
 
-  // Keep both XMageCard and raw ScryfallCard arrays in sync
+  // Keep both OpenMagicCard and raw ScryfallCard arrays in sync
   const rawCards: ScryfallCard[] = data?.pages.flatMap((p) => p.data) ?? [];
-  const allCards: XMageCard[] = rawCards.map(mapScryfallToXMage);
+  const allCards: OpenMagicCard[] = rawCards.map(mapScryfallToOpenMagic);
 
   return (
     <div className="flex flex-col h-full w-full">

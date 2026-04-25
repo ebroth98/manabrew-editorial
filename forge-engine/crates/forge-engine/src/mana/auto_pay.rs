@@ -58,7 +58,7 @@ pub fn pay_mana_cost_auto_with_chooser(
     any_color_conversion: bool,
     sacrifice_chooser: Option<SacrificeChooser<'_>>,
 ) -> Option<AutoPayResult> {
-    let mut tapped = match sacrifice_chooser {
+    let tapped = match sacrifice_chooser {
         Some(chooser) => {
             let mut tapped =
                 auto_tap_lands_with_chooser(game, pool, player, mana_cost, current_spell, chooser);
@@ -98,14 +98,12 @@ pub fn pay_mana_cost_auto_with_chooser(
         })
         .collect();
 
-    let Some(payment) = pool.try_pay_for_spell_converted_with_phyrexian_life_result(
+    let payment = pool.try_pay_for_spell_converted_with_phyrexian_life_result(
         mana_cost,
         payment_ctx,
         any_color_conversion,
         game.player(player).life,
-    ) else {
-        return None;
-    };
+    )?;
     if commander_tax > 0 && !pool.try_pay_extra_generic(commander_tax) {
         return None;
     }
@@ -146,14 +144,12 @@ pub fn pay_mana_cost_auto_with_callback(
     }
     let tapped = choices.iter().map(|choice| choice.card_id).collect();
 
-    let Some(payment) = pool.try_pay_for_spell_converted_with_phyrexian_life_result(
+    let payment = pool.try_pay_for_spell_converted_with_phyrexian_life_result(
         mana_cost,
         payment_ctx,
         any_color_conversion,
         game.player(player).life,
-    ) else {
-        return None;
-    };
+    )?;
     if commander_tax > 0 && !pool.try_pay_extra_generic(commander_tax) {
         return None;
     }

@@ -8,7 +8,6 @@ use super::EffectContext;
 use crate::parsing::keys;
 use crate::replacement::replacement_handler::{apply_replacements, ReplacementEvent};
 use crate::replacement::ReplacementResult;
-use crate::spellability::SpellAbility;
 
 /// Struct form of this effect so it can participate in the
 /// `SpellAbilityEffect` trait hierarchy — mirrors Java's

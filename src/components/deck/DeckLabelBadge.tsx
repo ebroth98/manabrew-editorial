@@ -4,7 +4,7 @@ import type { DeckLabel } from "@/types/openmagic";
 
 /** Return the theme's shadow (dark) or neutral (light) colour depending on
  *  which produces better contrast against the supplied hex background. */
-export function getContrastColor(hex: string, darkInk: string, lightInk: string): string {
+function getContrastColor(hex: string, darkInk: string, lightInk: string): string {
   const r = parseInt(hex.slice(1, 3), 16);
   const g = parseInt(hex.slice(3, 5), 16);
   const b = parseInt(hex.slice(5, 7), 16);

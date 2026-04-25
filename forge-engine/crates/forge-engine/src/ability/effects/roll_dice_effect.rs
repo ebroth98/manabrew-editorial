@@ -86,11 +86,7 @@ pub fn get_increment_cards(
     night_shift_keyword: &str,
 ) -> Vec<crate::ids::CardId> {
     let mut out = Vec::new();
-    let battlefield: Vec<_> = game
-        .cards_in_zone(ZoneType::Battlefield, player)
-        .iter()
-        .copied()
-        .collect();
+    let battlefield: Vec<_> = game.cards_in_zone(ZoneType::Battlefield, player).to_vec();
 
     for cid in battlefield.iter().copied() {
         let card = game.card(cid);
@@ -138,7 +134,7 @@ pub fn roll_dice_for_player_to_visit_attractions(
     trigger_handler: &mut TriggerHandler,
     rng: &mut (impl crate::game_rng::GameRng + ?Sized),
     agents: &mut [Box<dyn crate::agent::PlayerAgent>],
-    mana_pools: &mut Vec<crate::mana::ManaPool>,
+    mana_pools: &mut [crate::mana::ManaPool],
     player: PlayerId,
 ) {
     roll_to_visit_attractions(game, trigger_handler, rng, agents, mana_pools, player);
@@ -443,7 +439,7 @@ pub fn roll_to_visit_attractions(
     trigger_handler: &mut TriggerHandler,
     rng: &mut (impl GameRng + ?Sized),
     agents: &mut [Box<dyn crate::agent::PlayerAgent>],
-    mana_pools: &mut Vec<crate::mana::ManaPool>,
+    mana_pools: &mut [crate::mana::ManaPool],
     player: PlayerId,
 ) {
     let mut event = ReplacementEvent::RollDice {
@@ -723,7 +719,7 @@ fn apply_keyword_roll_modifiers_for_attraction(
     game: &mut GameState,
     trigger_handler: &mut TriggerHandler,
     agents: &mut [Box<dyn crate::agent::PlayerAgent>],
-    mana_pools: &mut Vec<crate::mana::ManaPool>,
+    mana_pools: &mut [crate::mana::ManaPool],
     player: PlayerId,
     natural_rolls: &mut Vec<i32>,
 ) -> Vec<DieRollResult> {
@@ -742,7 +738,7 @@ fn apply_simple_roll_modifiers(
     game: &mut GameState,
     trigger_handler: &mut TriggerHandler,
     agents: &mut [Box<dyn crate::agent::PlayerAgent>],
-    mana_pools: &mut Vec<crate::mana::ManaPool>,
+    mana_pools: &mut [crate::mana::ManaPool],
     player: PlayerId,
     natural_rolls: &mut Vec<i32>,
     source_sa: Option<&SpellAbility>,
@@ -892,7 +888,7 @@ fn pay_roll_cost(
     game: &mut GameState,
     trigger_handler: &mut TriggerHandler,
     agents: &mut [Box<dyn crate::agent::PlayerAgent>],
-    mana_pools: &mut Vec<crate::mana::ManaPool>,
+    mana_pools: &mut [crate::mana::ManaPool],
     player: PlayerId,
     card_id: crate::ids::CardId,
     cost_raw: &str,

@@ -714,7 +714,7 @@ impl SpellAbilityIr {
                     "SharedKeywords",
                 ]
                 .iter()
-                .any(|key| params.has(*key)),
+                .any(|key| params.has(key)),
             modular: parsed_true(params.get(keys::MODULAR)),
             adapt: parsed_true(params.get(keys::ADAPT)),
             monstrosity: parsed_true(params.get(keys::MONSTROSITY)),

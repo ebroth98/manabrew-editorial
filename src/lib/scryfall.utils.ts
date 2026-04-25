@@ -24,7 +24,7 @@ export function parseTypeLine(typeLine: string): ParsedTypeLine {
   };
 }
 
-// ─── ScryfallCard → XMage Card (full) ────────────────────────────────────────
+// ─── ScryfallCard → OpenMagic Card (full) ────────────────────────────────────────
 
 const DEFAULT_CARD_FIELDS: Pick<
   Card,
@@ -55,7 +55,7 @@ function detectIsDoubleFaced(sc: ScryfallCard): boolean {
   return !!(sc.card_faces && sc.card_faces.length >= 2 && sc.card_faces[1]?.image_uris);
 }
 
-export function scryfallToXMage(sc: ScryfallCard, id?: string): Card {
+export function scryfallToOpenMagic(sc: ScryfallCard, id?: string): Card {
   const { supertypes, types, subtypes } = parseTypeLine(getFrontTypeLine(sc));
   return {
     ...DEFAULT_CARD_FIELDS,

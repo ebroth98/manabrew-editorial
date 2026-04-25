@@ -1221,10 +1221,8 @@ impl GameLoop {
                 continue;
             }
             for re in &card.replacement_effects {
-                if re.event == ReplacementType::DamageDone {
-                    if re.ir.prevent {
-                        count += 1;
-                    }
+                if re.event == ReplacementType::DamageDone && re.ir.prevent {
+                    count += 1;
                 }
             }
         }

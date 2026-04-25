@@ -3,7 +3,6 @@ use forge_foundation::mana::ManaAtom;
 use super::EffectContext;
 use crate::card::card_util;
 use crate::mana::{color_name_to_mana_atom, Mana};
-use crate::spellability::SpellAbility;
 
 /// Configure the spell ability during construction.
 /// Mirrors Java `ManaReflectedEffect.buildSpellAbility` — creates the

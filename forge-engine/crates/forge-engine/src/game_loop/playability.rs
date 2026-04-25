@@ -881,7 +881,7 @@ impl GameLoop {
                 .keywords
                 .iter_strings()
                 .chain(card.granted_keywords.iter_strings())
-                .find_map(|kw| crate::card::parse_plotted_turn(kw))
+                .find_map(crate::card::parse_plotted_turn)
             {
                 // Plot: plotted card in exile can be cast for free on a LATER turn
                 if game.turn.turn_number <= plotted_turn {

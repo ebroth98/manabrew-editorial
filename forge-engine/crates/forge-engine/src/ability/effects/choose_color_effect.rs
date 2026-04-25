@@ -1,6 +1,4 @@
 use super::{resolve_defined_players, EffectContext};
-use crate::parsing::keys;
-use crate::spellability::SpellAbility;
 
 /// `SP$ ChooseColor` — player(s) choose a color.
 ///

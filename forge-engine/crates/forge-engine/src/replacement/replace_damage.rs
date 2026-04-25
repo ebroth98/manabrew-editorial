@@ -6,7 +6,6 @@ use crate::card::Card;
 use crate::game::GameState;
 use crate::ids::CardId;
 use crate::parsing::compare::compare_expr;
-use crate::parsing::keys;
 
 use super::replacement_effect::ReplacementEffect;
 use super::replacement_handler::ReplacementEvent;

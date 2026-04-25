@@ -2,7 +2,6 @@ use forge_foundation::ZoneType;
 
 use super::{matches_valid_cards_for_sa, EffectContext};
 use crate::ids::CardId;
-use crate::spellability::SpellAbility;
 
 /// End-of-turn revert for must-block. Mirrors the `GameCommand.run()` in Java
 /// `MustBlockEffect` that clears the must-block flag when the effect expires.

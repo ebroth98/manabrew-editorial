@@ -4,7 +4,7 @@ use crate::ability::ability_utils;
 use crate::card::valid_filter;
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
-use crate::parsing::{cached_compiled_selector, CompiledSelector};
+use crate::parsing::cached_compiled_selector;
 use crate::spellability::SpellAbility;
 
 /// Port of common `CardLists` utilities used by card filtering/counting code.

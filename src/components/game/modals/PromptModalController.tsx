@@ -1,14 +1,6 @@
 import { useGameUIStore } from "@/stores/useGameUIStore";
-import { Children, createContext, type ReactNode, useEffect, useMemo } from "react";
-
-interface PromptModalChromeContextValue {
-  showMinimize: boolean;
-  onMinimize?: () => void;
-}
-
-export const PromptModalChromeContext = createContext<PromptModalChromeContextValue>({
-  showMinimize: false,
-});
+import { Children, type ReactNode, useEffect, useMemo } from "react";
+import { PromptModalChromeContext } from "./promptModalChrome.context";
 
 interface PromptModalControllerProps {
   isActive: boolean;

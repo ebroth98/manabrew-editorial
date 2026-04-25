@@ -4,7 +4,6 @@ use super::{resolve_numeric_svar, EffectContext};
 use crate::card::CounterType;
 use crate::event::RunParams;
 use crate::parsing::keys;
-use crate::spellability::SpellAbility;
 use crate::trigger::TriggerType;
 
 /// `SP$ MoveCounter` — move counters from one permanent to another.

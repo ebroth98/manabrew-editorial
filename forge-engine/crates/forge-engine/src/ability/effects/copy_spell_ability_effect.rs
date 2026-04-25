@@ -1,6 +1,5 @@
 use super::EffectContext;
 use crate::event::RunParams;
-use crate::parsing::keys;
 use crate::replacement::replacement_handler::{apply_replacements, ReplacementEvent};
 use crate::replacement::ReplacementResult;
 use crate::spellability::SpellAbility;
@@ -53,7 +52,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
         let stack_entries: Vec<_> = ctx.game.stack.iter().collect();
         stack_entries.iter().rev().find_map(|entry| {
             if Some(entry.id) != sa.ir.stack_id {
-                Some((*entry).spell_ability.clone())
+                Some(entry.spell_ability.clone())
             } else {
                 None
             }

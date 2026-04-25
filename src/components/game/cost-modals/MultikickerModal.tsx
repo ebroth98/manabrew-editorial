@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Modal } from "../modals/Modal";
 import { Button } from "@/components/ui/button";
 import { useCardImage } from "@/hooks/useCardImage";
@@ -22,9 +22,11 @@ export function MultikickerModal({
   const { data: imageUrl } = useCardImage(sourceCardName ?? "");
   const [count, setCount] = useState(0);
 
-  useEffect(() => {
+  const [prevInputs, setPrevInputs] = useState({ cost, maxKicks });
+  if (prevInputs.cost !== cost || prevInputs.maxKicks !== maxKicks) {
+    setPrevInputs({ cost, maxKicks });
     setCount(0);
-  }, [cost, maxKicks]);
+  }
 
   return (
     <Modal maxWidth="max-w-md" maxHeight="">

@@ -2,7 +2,6 @@
 
 use super::EffectContext;
 use crate::ability::spell_ability_effect::get_defined_players_or_targeted;
-use crate::parsing::keys;
 use crate::spellability::{build_spell_ability, SpellAbility};
 
 /// Struct form of this effect so it can participate in the

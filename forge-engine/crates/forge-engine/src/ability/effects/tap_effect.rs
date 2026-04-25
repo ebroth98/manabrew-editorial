@@ -4,7 +4,6 @@ use super::EffectContext;
 use crate::ability::spell_ability_effect::get_target_cards;
 use crate::event::RunParams;
 use crate::ids::CardId;
-use crate::spellability::SpellAbility;
 use crate::trigger::TriggerType;
 
 /// Resolve `SP$ Tap` — tap target permanent(s).

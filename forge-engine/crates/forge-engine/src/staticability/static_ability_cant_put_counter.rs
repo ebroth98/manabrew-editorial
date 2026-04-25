@@ -2,7 +2,6 @@ use forge_foundation::ZoneType;
 
 use crate::card::{valid_filter, Card, CounterType};
 use crate::ids::PlayerId;
-use crate::parsing::keys;
 use crate::staticability::StaticMode;
 
 pub fn any_cant_put_counter_on_card(
@@ -18,7 +17,7 @@ pub fn any_cant_put_counter_on_card(
             .iter()
             .filter(|sa| sa.mode == StaticMode::CantPutCounter)
         {
-            if !counter_type_matches(st_ab.ir.counter_type.as_ref(), &counter_type) {
+            if !counter_type_matches(st_ab.ir.counter_type.as_ref(), counter_type) {
                 continue;
             }
             if !matches_valid_card(st_ab.ir.valid_card.as_ref(), target, source) {
@@ -46,7 +45,7 @@ pub fn any_cant_put_counter_on_player(
             .iter()
             .filter(|sa| sa.mode == StaticMode::CantPutCounter)
         {
-            if !counter_type_matches(st_ab.ir.counter_type.as_ref(), &counter_type) {
+            if !counter_type_matches(st_ab.ir.counter_type.as_ref(), counter_type) {
                 continue;
             }
             if !matches_valid_player(st_ab.ir.valid_player.as_ref(), player, source.controller) {

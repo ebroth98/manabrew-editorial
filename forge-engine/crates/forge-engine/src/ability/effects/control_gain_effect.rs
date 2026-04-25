@@ -2,8 +2,6 @@ use forge_foundation::ZoneType;
 
 use super::EffectContext;
 use crate::event::RunParams;
-use crate::parsing::keys;
-use crate::spellability::SpellAbility;
 use crate::trigger::TriggerType;
 
 /// Revert a scheduled control-gain. Mirrors Java `ControlGainEffect`'s
@@ -76,6 +74,7 @@ mod tests {
     use crate::game::GameState;
     use crate::ids::{CardId, PlayerId};
     use crate::mana::ManaPool;
+    use crate::spellability::SpellAbility;
     use crate::trigger::TriggerHandler;
     use forge_foundation::{CardTypeLine, ColorSet, ManaCost, ZoneType};
     use std::collections::HashMap;

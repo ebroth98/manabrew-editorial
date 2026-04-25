@@ -4,7 +4,7 @@ import { Card } from "@/components/game/Card";
 import { usePreferencesStore } from "@/stores/usePreferencesStore";
 import { useHandScale } from "@/hooks/useHandScale";
 import type { HandDisplayProps } from "../game.types";
-import type { Card as XMageCard } from "@/types/openmagic";
+import type { Card as OpenMagicCard } from "@/types/openmagic";
 import type { HandActionOption } from "@/stores/useGameUIStore";
 import { HAND_CARD_BASES, ZONE_LABEL } from "../game.styles";
 import { HandCardActions } from "./HandCardActions";
@@ -31,7 +31,7 @@ const PLAYABLE_GLOW_STYLE: React.CSSProperties = {
 const EMPTY_ACTIONS: HandActionOption[] = [];
 
 interface HandCardItemProps {
-  card: XMageCard;
+  card: OpenMagicCard;
   cardW: number;
   cardH: number;
   isHovered: boolean;
@@ -44,8 +44,8 @@ interface HandCardItemProps {
   onFlipCard?: () => void;
   showBackFace?: boolean;
   onSelectAction?: (action: HandActionOption) => void;
-  onMouseDown: (card: XMageCard, e: React.MouseEvent) => void;
-  onMouseEnter: (card: XMageCard, e: React.MouseEvent) => void;
+  onMouseDown: (card: OpenMagicCard, e: React.MouseEvent) => void;
+  onMouseEnter: (card: OpenMagicCard, e: React.MouseEvent) => void;
   onMouseLeave: () => void;
 }
 
@@ -240,37 +240,29 @@ export function HandDisplayNormal({
   const containerRef = useRef<HTMLDivElement>(null);
   const hideTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
-  // Stable callback refs — avoids recreating handlers when parent callbacks change
-  const onStartDragRef = useRef(onStartDrag);
-  onStartDragRef.current = onStartDrag;
-  const onClickCardRef = useRef(onClickCard);
-  onClickCardRef.current = onClickCard;
-  const onHoverCardRef = useRef(onHoverCard);
-  onHoverCardRef.current = onHoverCard;
-
   const handleCardMouseDown = useCallback(
-    (card: XMageCard, e: React.MouseEvent) => {
+    (card: OpenMagicCard, e: React.MouseEvent) => {
       e.preventDefault();
-      if (card.isPlayable && onStartDragRef.current) {
-        onStartDragRef.current(card, e);
+      if (card.isPlayable && onStartDrag) {
+        onStartDrag(card, e);
       } else if (card.isPlayable) {
-        onClickCardRef.current?.(card, e);
+        onClickCard?.(card, e);
       } else {
         startTug(card.id, e.clientX, e.clientY);
       }
     },
-    [startTug],
+    [startTug, onStartDrag, onClickCard],
   );
 
   const handleCardMouseEnter = useCallback(
-    (card: XMageCard, e: React.MouseEvent) => {
+    (card: OpenMagicCard, e: React.MouseEvent) => {
       clearTimeout(hideTimerRef.current);
       setHoveredCardId(card.id);
       const el = e.currentTarget as HTMLElement;
       const rect = el.getBoundingClientRect();
       const finalTop = rect.top - 12 - (cardH * HOVER_SCALE - cardH);
 
-      onHoverCardRef.current?.(card, e, {
+      onHoverCard?.(card, e, {
         useAnchor: true,
         placement: "top-center",
         anchorOverride: {
@@ -286,15 +278,15 @@ export function HandDisplayNormal({
         } as DOMRect,
       });
     },
-    [cardW, cardH],
+    [cardW, cardH, onHoverCard],
   );
 
   const handleCardMouseLeave = useCallback(() => {
     hideTimerRef.current = setTimeout(() => {
       setHoveredCardId(null);
-      onHoverCardRef.current?.(null);
+      onHoverCard?.(null);
     }, 150);
-  }, []);
+  }, [onHoverCard]);
 
   return (
     <div className="flex flex-col gap-1 shrink-0" ref={containerRef}>

@@ -1,7 +1,6 @@
 use std::collections::HashSet;
 
 use forge_foundation::ZoneType;
-use rand::seq::SliceRandom;
 
 use crate::card::CardInstance;
 use crate::event::RunParams;

@@ -4,7 +4,6 @@ use super::{resolve_defined_player, resolve_numeric_svar, EffectContext};
 use crate::event::RunParams;
 use crate::replacement::replacement_handler::{apply_replacements, ReplacementEvent};
 use crate::replacement::ReplacementResult;
-use crate::spellability::SpellAbility;
 use crate::trigger::TriggerType;
 
 /// Mirrors Java's `ScryEffect.java`.

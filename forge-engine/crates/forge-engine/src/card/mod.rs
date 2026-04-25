@@ -1725,11 +1725,7 @@ impl Card {
     }
 
     pub fn has_attraction_light(&self, light: i32) -> bool {
-        light > 0
-            && self
-                .attraction_lights
-                .iter()
-                .any(|&entry| entry == light as u32)
+        light > 0 && self.attraction_lights.contains(&(light as u32))
     }
 
     pub fn has_sector(&self) -> bool {
@@ -2988,13 +2984,13 @@ impl Card {
         self.cant_have_keywords.remove(&kw.to_ascii_lowercase());
     }
     pub fn add_changed_text_color_word(&mut self, from: &str, to: &str) {
-        self.set_s_var(&format!("TextColor:{from}"), to);
+        self.set_s_var(format!("TextColor:{from}"), to);
     }
     pub fn remove_changed_text_color_word(&mut self, from: &str) {
         self.remove_s_var(&format!("TextColor:{from}"));
     }
     pub fn add_changed_text_type_word(&mut self, from: &str, to: &str) {
-        self.set_s_var(&format!("TextType:{from}"), to);
+        self.set_s_var(format!("TextType:{from}"), to);
     }
     pub fn remove_changed_text_type_word(&mut self, from: &str) {
         self.remove_s_var(&format!("TextType:{from}"));

@@ -255,6 +255,7 @@ fn trigger_matches(
         })
 }
 
+#[allow(dead_code)]
 fn matches_zone(filter: &str, zone: Option<ZoneType>) -> bool {
     let Some(zone) = zone else {
         return false;

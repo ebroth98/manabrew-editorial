@@ -37,13 +37,10 @@ console_error_panic_hook = "0.1"
 [dev-dependencies]
 wasm-bindgen-test = "0.3"
 
-[profile.release]
-opt-level = "z"  # Optimize for size
-lto = true
-
 # wasm-pack's bundled wasm-opt (Binaryen) has an internal assertion crash on
 # our release wasm ("child not found in parent" in Precompute.cpp). Disabling
 # its post-build optimizer pass avoids the crash; rustc's own opt-level="z"
-# + lto still produce a reasonable binary.
+# + lto still produce a reasonable binary. Workspace defines `[profile.release]`
+# with the size-tuned settings; forge-wasm inherits them.
 [package.metadata.wasm-pack.profile.release]
 wasm-opt = false

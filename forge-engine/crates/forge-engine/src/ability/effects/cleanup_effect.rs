@@ -1,5 +1,4 @@
 use super::EffectContext;
-use crate::spellability::SpellAbility;
 
 /// Mirrors Java's `CleanupEffect.java`.
 ///

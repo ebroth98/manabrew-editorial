@@ -4,8 +4,6 @@ use super::{matches_valid_cards_for_sa, EffectContext};
 use crate::card::perpetual::perpetual_interface::PerpetualInterface;
 use crate::card::perpetual::{perpetual_keywords, perpetual_pt_boost};
 use crate::ids::CardId;
-use crate::parsing::keys;
-use crate::spellability::SpellAbility;
 
 /// End-of-turn revert for PumpAll. Mirrors the `GameCommand.run()` in Java
 /// `PumpAllEffect` that reverses the P/T bonus and removes granted keywords

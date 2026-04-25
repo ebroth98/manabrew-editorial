@@ -3,7 +3,6 @@
 //! Ported from Java's `TextBoxExchangeEffect.java`.
 
 use super::EffectContext;
-use crate::spellability::SpellAbility;
 use forge_foundation::ZoneType;
 
 /// End-of-turn revert for text box exchange. Mirrors the `GameCommand.run()`

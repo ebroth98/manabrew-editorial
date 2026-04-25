@@ -23,7 +23,7 @@ impl TriggerBehavior for TriggerVote {
         TriggerType::Vote
     }
 
-    fn perform_test(&self, _trigger: &Trigger, _params: &RunParams, game: &GameState) -> bool {
+    fn perform_test(&self, _trigger: &Trigger, _params: &RunParams, _game: &GameState) -> bool {
         true
     }
 

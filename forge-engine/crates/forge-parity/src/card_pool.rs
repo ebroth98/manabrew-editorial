@@ -88,9 +88,7 @@ impl std::fmt::Display for PoolStats {
 
 impl PoolStats {
     pub fn example_lines(&self) -> impl Iterator<Item = String> + '_ {
-        self.examples
-            .iter()
-            .map(|example| format_example_line(example))
+        self.examples.iter().map(format_example_line)
     }
 }
 
@@ -187,15 +185,11 @@ impl std::fmt::Display for ScriptScanStats {
 
 impl ScriptScanStats {
     pub fn example_lines(&self) -> impl Iterator<Item = String> + '_ {
-        self.examples
-            .iter()
-            .map(|example| format_example_line(example))
+        self.examples.iter().map(format_example_line)
     }
 
     pub fn semantic_raw_example_lines(&self) -> impl Iterator<Item = String> + '_ {
-        self.semantic_raw_examples
-            .iter()
-            .map(|example| format_example_line(example))
+        self.semantic_raw_examples.iter().map(format_example_line)
     }
 }
 

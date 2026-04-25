@@ -8,7 +8,6 @@ use forge_foundation::ZoneType;
 
 use crate::card::{valid_filter, Card};
 use crate::combat::DefenderId;
-use crate::parsing::keys;
 use crate::staticability::StaticMode;
 
 /// Compute the total generic mana cost required for `attacker` to attack `defender`.
@@ -53,7 +52,7 @@ pub fn get_attack_cost(cards: &[Card], attacker: &Card, defender: DefenderId) ->
                             continue;
                         }
                     }
-                    "Each" | _ => {
+                    _ => {
                         // Applies to any attack
                     }
                 }

@@ -63,7 +63,7 @@ impl TriggerBehavior for TriggerTokenCreatedOnce {
         _trigger: &Trigger,
         sa: &mut SpellAbility,
         params: &RunParams,
-        game: &GameState,
+        _game: &GameState,
     ) {
         // TODO: port ValidToken filtering from Java (IterableUtil.filter with CardPredicates.restriction)
         if let Some(cards) = params.cards.as_ref() {

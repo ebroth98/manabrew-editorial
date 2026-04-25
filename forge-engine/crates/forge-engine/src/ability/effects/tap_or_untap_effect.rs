@@ -3,8 +3,6 @@ use forge_foundation::ZoneType;
 use super::EffectContext;
 use crate::agent::BinaryChoiceKind;
 use crate::ids::CardId;
-use crate::parsing::keys;
-use crate::spellability::SpellAbility;
 
 /// `SP$ TapOrUntap` — choose tap or untap for the targeted/defined permanent.
 ///

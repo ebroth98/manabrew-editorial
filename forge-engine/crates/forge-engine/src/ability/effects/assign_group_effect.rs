@@ -4,7 +4,6 @@
 
 use super::EffectContext;
 use crate::ids::CardId;
-use crate::spellability::SpellAbility;
 
 /// Struct form of this effect so it can participate in the
 /// `SpellAbilityEffect` trait hierarchy — mirrors Java's

@@ -5,7 +5,7 @@ import { useShallow } from "zustand/react/shallow";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type {
-  Card as XMageCard,
+  Card as OpenMagicCard,
   Player,
   StackObject,
   ActivatableAbilityInfo,
@@ -269,11 +269,11 @@ export default function Game() {
   // player's visible zones. Used as a fallback so we can resolve a casting
   // spell that the engine has temporarily removed from every live zone
   // (between hand → in-flight → stack).
-  const knownCardsRef = useRef<Map<string, XMageCard>>(new Map());
+  const knownCardsRef = useRef<Map<string, OpenMagicCard>>(new Map());
   useEffect(() => {
     if (!gameView) return;
     const cache = knownCardsRef.current;
-    const ingest = (cards: XMageCard[] | undefined) => {
+    const ingest = (cards: OpenMagicCard[] | undefined) => {
       if (!cards) return;
       for (const c of cards) cache.set(c.id, c);
     };
@@ -415,7 +415,7 @@ export default function Game() {
   );
 
   const getManualCardActions = useCallback(
-    (card: XMageCard): HandActionOption[] => {
+    (card: OpenMagicCard): HandActionOption[] => {
       if (!manualApi) return [];
       const humanPlayerId = gameView?.players[0]?.id;
       const ownsHumanZone = card.controllerId === humanPlayerId || card.ownerId === humanPlayerId;
@@ -455,7 +455,7 @@ export default function Game() {
   );
 
   const getHandActionOptions = useCallback(
-    (card: XMageCard): HandActionOption[] =>
+    (card: OpenMagicCard): HandActionOption[] =>
       manualApi
         ? getManualCardActions(card)
         : [...(castOptionsByCardId.get(card.id) ?? []), ...(abilitiesByCardId.get(card.id) ?? [])],
@@ -463,13 +463,13 @@ export default function Game() {
   );
 
   const getBattlefieldAbilityOptions = useCallback(
-    (card: XMageCard): HandActionOption[] => abilitiesByCardId.get(card.id) ?? [],
+    (card: OpenMagicCard): HandActionOption[] => abilitiesByCardId.get(card.id) ?? [],
     [abilitiesByCardId],
   );
 
   /** All available actions for a card (cast + activated + mana abilities). */
   const getCardActions = useCallback(
-    (card: XMageCard): HandActionOption[] => {
+    (card: OpenMagicCard): HandActionOption[] => {
       if (manualApi) return getManualCardActions(card);
       if (promptType === PromptType.PayManaCost) {
         return manaAbilitiesByCardId.get(card.id) ?? [];
@@ -514,7 +514,7 @@ export default function Game() {
     }
   };
 
-  const handleHandCardAction = (card: XMageCard, e?: React.MouseEvent) => {
+  const handleHandCardAction = (card: OpenMagicCard, e?: React.MouseEvent) => {
     if (manualApi) {
       preview.showSticky(card, e?.clientX, e?.clientY);
       return;
@@ -541,7 +541,7 @@ export default function Game() {
     preview.showSticky(card, e?.clientX, e?.clientY);
   };
 
-  const handleHandCardDragStart = (card: XMageCard, e: React.MouseEvent) => {
+  const handleHandCardDragStart = (card: OpenMagicCard, e: React.MouseEvent) => {
     if (manualApi) {
       preview.showSticky(card, e.clientX, e.clientY);
       return;
@@ -554,7 +554,7 @@ export default function Game() {
     startHandCardDrag(card, e);
   };
 
-  const handleBattlefieldCardAction = (card: XMageCard, e?: React.MouseEvent) => {
+  const handleBattlefieldCardAction = (card: OpenMagicCard, e?: React.MouseEvent) => {
     const abilities = getBattlefieldAbilityOptions(card);
     if (abilities.length === 0) return false;
 
@@ -594,10 +594,10 @@ export default function Game() {
   );
 
   // Zone viewer helpers (wrap store actions)
-  function openZone(title: string, cards: XMageCard[], onClickCard?: (cardId: string) => void) {
+  function openZone(title: string, cards: OpenMagicCard[], onClickCard?: (cardId: string) => void) {
     openZoneViewer({ title, cards, onClickCard });
   }
-  function openManualZone(title: string, cards: XMageCard[]) {
+  function openManualZone(title: string, cards: OpenMagicCard[]) {
     openZoneViewer({
       title,
       cards: cards.map((card) => ({ ...card, isPlayable: true })),
@@ -619,7 +619,7 @@ export default function Game() {
   }
   function openZoneAndCast(
     title: string,
-    cards: XMageCard[],
+    cards: OpenMagicCard[],
     onClickCard: (cardId: string) => void,
   ) {
     openZoneViewer({
@@ -633,7 +633,7 @@ export default function Game() {
   }
 
   // Land tap/untap handler — shows interactive preview for multi-ability lands
-  const handleTapLand = (card: XMageCard) => {
+  const handleTapLand = (card: OpenMagicCard) => {
     if (promptType === PromptType.PayManaCost) {
       const manaAbilities = (activePrompt?.manaAbilityOptions ?? [])
         .filter((a) => a.cardId === card.id)
@@ -702,7 +702,7 @@ export default function Game() {
     }
   };
 
-  const handleUntapLand = (card: XMageCard) => {
+  const handleUntapLand = (card: OpenMagicCard) => {
     untapLand(card.id);
   };
 
@@ -887,11 +887,14 @@ export default function Game() {
     }
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
-  }, [passPriority]);
+  }, [passPriority, manualApi]);
 
   // Targeting / combat arrows — must be called unconditionally (Rules of Hooks)
   const me = gameView?.players?.find((p) => p.isHuman) ?? gameView?.players?.[0];
-  const opponents = gameView?.players?.filter((p) => !p.isHuman) ?? [];
+  const opponents = useMemo(
+    () => gameView?.players?.filter((p) => !p.isHuman) ?? [],
+    [gameView?.players],
+  );
   const opponent = opponents[0]; // alias for arrows hook + game-over screen
 
   // Map each player's id → their seat color for stack card glows
@@ -986,8 +989,8 @@ export default function Game() {
   }, [gameView?.stack, hoveredStackObjectId]);
 
   const visibleCardsById = useMemo(() => {
-    if (!gameView) return new Map<string, XMageCard>();
-    const cards: XMageCard[] = [
+    if (!gameView) return new Map<string, OpenMagicCard>();
+    const cards: OpenMagicCard[] = [
       ...gameView.battlefield,
       ...gameView.myHand,
       ...gameView.graveyard,
@@ -998,20 +1001,11 @@ export default function Game() {
       ...(gameView.opponentCommandZone ?? []),
     ];
     return new Map(cards.map((c) => [c.id, c]));
-  }, [
-    gameView?.battlefield,
-    gameView?.myHand,
-    gameView?.graveyard,
-    gameView?.exile,
-    gameView?.opponentGraveyard,
-    gameView?.opponentExile,
-    gameView?.myCommandZone,
-    gameView?.opponentCommandZone,
-  ]);
+  }, [gameView]);
 
   const stackCardsBySourceId = useMemo(() => {
-    if (!gameView?.stack) return new Map<string, XMageCard>();
-    const byId = new Map<string, XMageCard>();
+    if (!gameView?.stack) return new Map<string, OpenMagicCard>();
+    const byId = new Map<string, OpenMagicCard>();
     for (const s of gameView.stack) {
       if (byId.has(s.sourceId)) continue;
       byId.set(s.sourceId, {
@@ -1062,7 +1056,7 @@ export default function Game() {
   };
 
   const handleHoverCardGuarded = (
-    card: XMageCard | null,
+    card: OpenMagicCard | null,
     e?: React.MouseEvent,
     options: {
       useAnchor?: boolean;
@@ -1164,7 +1158,7 @@ export default function Game() {
     [gameView?.players],
   );
 
-  const resolveStackCard = (stackItem: StackObject): XMageCard =>
+  const resolveStackCard = (stackItem: StackObject): OpenMagicCard =>
     // `visibleCardsById` covers cards still in a live zone. For spells
     // that have left the hand but haven't resolved yet, fall through to
     // `knownCardsRef` — it preserves the full card (with setCode +
@@ -1193,7 +1187,7 @@ export default function Game() {
       zoneId: "",
     };
 
-  const activeFlashCard: XMageCard | null = useMemo(() => {
+  const activeFlashCard: OpenMagicCard | null = useMemo(() => {
     if (!activeFlash || activeFlash.kind !== "card") return null;
     const knownCard =
       visibleCardsById.get(activeFlash.cardId) ?? stackCardsBySourceId.get(activeFlash.cardId);
@@ -1217,12 +1211,12 @@ export default function Game() {
     };
   }, [activeFlash, visibleCardsById, stackCardsBySourceId]);
 
-  // Auto-return to play menu when game is over
+  // Auto-return to play menu when game is over.
   useEffect(() => {
     if (!gameView?.gameOver && activePrompt?.type !== PromptType.GameOver) return;
     const timer = setTimeout(() => endGame(), 3000);
     return () => clearTimeout(timer);
-  }, [gameView?.gameOver, activePrompt?.type]);
+  }, [gameView?.gameOver, activePrompt?.type, endGame]);
 
   if (!isGameActive) return <Navigate to="/lobby" replace />;
 

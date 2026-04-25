@@ -37,7 +37,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     });
 
     if !has_army {
-        create_army_token(ctx, sa, controller, &amass_type);
+        create_army_token(ctx, sa, controller, amass_type);
     }
 
     // Step 2: Find all Armies
@@ -88,10 +88,10 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
         .type_line
         .subtypes
         .iter()
-        .any(|s| s.eq_ignore_ascii_case(&amass_type));
+        .any(|s| s.eq_ignore_ascii_case(amass_type));
 
     if !has_type {
-        add_type_effect(ctx, sa, controller, target, &amass_type);
+        add_type_effect(ctx, sa, controller, target, amass_type);
     }
 }
 

@@ -1,5 +1,4 @@
 use super::EffectContext;
-use crate::spellability::SpellAbility;
 
 /// Resolve `SP$ Fog` — prevent all combat damage this turn.
 ///
@@ -18,7 +17,7 @@ use crate::spellability::SpellAbility;
 /// `SpellAbilityEffect` trait hierarchy — mirrors Java's
 /// `FogEffect` class extending `SpellAbilityEffect`.
 #[forge_engine_macros::spell_effect(FogEffect)]
-fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
+fn resolve(ctx: &mut EffectContext, _sa: &crate::spellability::SpellAbility) {
     ctx.game.prevent_all_combat_damage = true;
 }
 

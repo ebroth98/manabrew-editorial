@@ -8,7 +8,7 @@ import type { GameThemeColors } from "@/themes/gameTheme";
 type CounterColorKey = keyof GameThemeColors["counter"];
 
 /** Visual configuration for a single counter type. */
-export interface CounterConfig {
+interface CounterConfig {
   /** Symbol shown inside the badge. Keep ≤ 3 chars so it fits at small sizes. */
   label: string;
   /** Theme colour key for this counter's background tint. */
@@ -27,7 +27,7 @@ export interface CounterConfig {
  * for the canonical palette. To add a new counter type, add an entry here
  * and a matching `counter.<name>` key to the theme.
  */
-export const COUNTER_CONFIG: Record<string, CounterConfig> = {
+const COUNTER_CONFIG: Record<string, CounterConfig> = {
   P1P1: { label: "+1", colorKey: "p1p1", title: "+1/+1" },
   M1M1: { label: "−1", colorKey: "m1m1", title: "−1/−1" },
   Loyalty: { label: "♦", colorKey: "loyalty", title: "Loyalty" },
@@ -47,7 +47,7 @@ export const COUNTER_CONFIG: Record<string, CounterConfig> = {
 };
 
 /** Returns the config for a known counter type, or a sensible generic fallback. */
-export function getCounterConfig(type: string): CounterConfig {
+function getCounterConfig(type: string): CounterConfig {
   return (
     COUNTER_CONFIG[type] ?? {
       label: type.slice(0, 3),

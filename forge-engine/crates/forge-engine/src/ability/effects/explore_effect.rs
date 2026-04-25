@@ -6,7 +6,6 @@ use crate::event::RunParams;
 use crate::parsing::keys;
 use crate::replacement::replacement_handler::{apply_replacements, ReplacementEvent};
 use crate::replacement::ReplacementResult;
-use crate::spellability::SpellAbility;
 use crate::trigger::TriggerType;
 
 /// `SP$ Explore` — target creature explores.

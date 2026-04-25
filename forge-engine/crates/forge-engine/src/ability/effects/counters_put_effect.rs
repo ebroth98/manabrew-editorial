@@ -96,7 +96,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
             // resolve to empty and do nothing.
             "TriggeredTarget" | "TriggeredTargetLKICopy" => sa.target_chosen.target_card,
             "Targeted" => sa.target_chosen.target_card,
-            "Self" | _ => sa.source,
+            _ => sa.source,
         }
     };
     let Some(card_id) = target_id else { return };
@@ -224,6 +224,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
 /// resolves the type without prompting (UniqueType / CounterTypePerDefined
 /// also call chooseTypeFromList but inside resolvePerType, not here).
 fn matches_choose_from_list_path(sa: &SpellAbility) -> bool {
+    #[allow(dead_code)]
     const SKIP_PARAMS: &[&str] = &[
         "EachExistingCounter",
         "EachFromSource",

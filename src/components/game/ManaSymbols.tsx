@@ -20,7 +20,7 @@ export type ManaSymbolSize = keyof typeof SIZE_CLASSES;
 const VALID_SYMBOL = /^(?:\d+|[WUBRGCSXYTQEP]|[WUBRG2]\/[WUBRGP]|H[WUBRG])$/i;
 
 /** Parse a mana cost string into individual symbol tokens. */
-export function parseManaSymbols(cost: string): string[] {
+function parseManaSymbols(cost: string): string[] {
   if (!cost || cost === "no cost") return [];
   if (cost.includes("{")) {
     const matches = cost.match(/\{[^}]+\}/g);

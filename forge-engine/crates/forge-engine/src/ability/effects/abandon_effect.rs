@@ -4,7 +4,6 @@
 use super::EffectContext;
 use crate::event::RunParams;
 use crate::parsing::keys;
-use crate::spellability::SpellAbility;
 use crate::trigger::TriggerType;
 use forge_foundation::ZoneType;
 

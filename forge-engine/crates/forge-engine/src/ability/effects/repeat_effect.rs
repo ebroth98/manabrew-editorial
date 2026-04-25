@@ -6,7 +6,6 @@
 
 use super::EffectContext;
 use crate::parsing::compare::compare_expr;
-use crate::parsing::keys;
 use crate::spellability::{build_spell_ability, SpellAbility};
 
 /// Struct form of this effect so it can participate in the

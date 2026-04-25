@@ -272,7 +272,7 @@ impl Trigger {
         &self,
         desc: &str,
         mut sa: Option<SpellAbility>,
-        for_stack: bool,
+        _for_stack: bool,
         game: &GameState,
         host_card: CardId,
         activating_player: PlayerId,
@@ -762,7 +762,7 @@ impl Trigger {
             return false;
         }
         self.ensure_ability(game, host_card, activating_player)
-            .map_or(false, |sa| sa.is_mana_ability)
+            .is_some_and(|sa| sa.is_mana_ability)
     }
 
     pub fn add_remembered_many<T: Into<AbilityValue>, I: IntoIterator<Item = T>>(

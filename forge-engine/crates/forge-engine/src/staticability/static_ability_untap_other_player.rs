@@ -1,7 +1,6 @@
 use crate::card::{valid_filter, Card};
 use crate::ids::PlayerId;
 use crate::staticability::StaticMode;
-use forge_foundation::ZoneType;
 
 pub fn untap(cards: &[Card], card: &Card, player: PlayerId) -> bool {
     for source in cards.iter().filter(|c| c.zone.is_static_ability_source()) {

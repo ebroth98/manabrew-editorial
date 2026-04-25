@@ -3,7 +3,6 @@
 //! This module provides the JavaScript-facing API for the forge-engine.
 
 use serde::{Deserialize, Serialize};
-use std::cell::RefCell;
 use wasm_bindgen::prelude::*;
 
 use crate::card_loader::{get_card_db, DeckCard};

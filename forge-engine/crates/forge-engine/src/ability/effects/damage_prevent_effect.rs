@@ -7,7 +7,6 @@ use forge_foundation::ZoneType;
 
 use super::EffectContext;
 use crate::card::card_util;
-use crate::spellability::SpellAbility;
 
 /// End-of-turn revert for damage prevention. Mirrors the `GameCommand.run()` in Java
 /// `DamagePreventEffect` that resets damage prevention shields when the effect expires.

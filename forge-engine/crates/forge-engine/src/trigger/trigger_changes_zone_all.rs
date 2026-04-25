@@ -170,7 +170,7 @@ impl TriggerBehavior for TriggerChangesZoneAll {
         _trigger: &super::trigger::Trigger,
         sa: &mut SpellAbility,
         params: &RunParams,
-        game: &GameState,
+        _game: &GameState,
     ) {
         // TODO: Java calls this.filterCards(table) to filter by ValidCards param,
         // but we don't have access to the trigger params here. Passing through all cards.
@@ -181,7 +181,7 @@ impl TriggerBehavior for TriggerChangesZoneAll {
                 .collect::<Vec<_>>()
                 .join(",");
             sa.set_triggering_object(crate::ability::AbilityKey::Cards, &csv);
-            sa.set_triggering_object(crate::ability::AbilityKey::Amount, &cards.len().to_string());
+            sa.set_triggering_object(crate::ability::AbilityKey::Amount, cards.len().to_string());
             // Also set trigger_remembered_amount so TriggerCount$Amount SVars
             // (e.g. Woodland Champion's CounterNum$ X where X = TriggerCount$Amount)
             // resolve to the correct count instead of defaulting to 1.

@@ -19,6 +19,7 @@ pub struct ZoneChangeRecord {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Display)]
+#[allow(clippy::large_enum_variant)]
 pub enum AbilityValue {
     Card(CardId),
     Player(PlayerId),
@@ -319,52 +320,52 @@ pub struct RunParams {
 impl RunParams {
     pub fn add_common_trigger_objects(&self, sa: &mut crate::spellability::SpellAbility) {
         if let Some(card_id) = self.card {
-            sa.set_triggering_object(crate::ability::AbilityKey::Card, &card_id.0.to_string());
-            sa.set_triggering_object(crate::ability::AbilityKey::NewCard, &card_id.0.to_string());
+            sa.set_triggering_object(crate::ability::AbilityKey::Card, card_id.0.to_string());
+            sa.set_triggering_object(crate::ability::AbilityKey::NewCard, card_id.0.to_string());
         }
         if let Some(card_id) = self.card_lki {
-            sa.set_triggering_object(crate::ability::AbilityKey::CardLKI, &card_id.0.to_string());
+            sa.set_triggering_object(crate::ability::AbilityKey::CardLKI, card_id.0.to_string());
         }
         if let Some(player_id) = self.activator.or(self.cause_player) {
             sa.set_triggering_object(
                 crate::ability::AbilityKey::Activator,
-                &player_id.0.to_string(),
+                player_id.0.to_string(),
             );
         }
         if let Some(player_id) = self.player {
-            sa.set_triggering_object(crate::ability::AbilityKey::Player, &player_id.0.to_string());
+            sa.set_triggering_object(crate::ability::AbilityKey::Player, player_id.0.to_string());
         }
         if let Some(player_id) = self.attacking_player {
             sa.set_triggering_object(
                 crate::ability::AbilityKey::AttackingPlayer,
-                &player_id.0.to_string(),
+                player_id.0.to_string(),
             );
         }
         if let Some(player_id) = self.defending_player {
             sa.set_triggering_object(
                 crate::ability::AbilityKey::DefendingPlayer,
-                &player_id.0.to_string(),
+                player_id.0.to_string(),
             );
         }
         if let Some(card_id) = self.causer.or(self.cause_card) {
-            sa.set_triggering_object(crate::ability::AbilityKey::Causer, &card_id.0.to_string());
+            sa.set_triggering_object(crate::ability::AbilityKey::Causer, card_id.0.to_string());
         }
         if let Some(card_id) = self.source_card.or(self.spell_card) {
-            sa.set_triggering_object(crate::ability::AbilityKey::Source, &card_id.0.to_string());
+            sa.set_triggering_object(crate::ability::AbilityKey::Source, card_id.0.to_string());
         }
         if let Some(card_id) = self.attacker {
-            sa.set_triggering_object(crate::ability::AbilityKey::Attacker, &card_id.0.to_string());
+            sa.set_triggering_object(crate::ability::AbilityKey::Attacker, card_id.0.to_string());
         }
         if let Some(card_id) = self.blocker {
-            sa.set_triggering_object(crate::ability::AbilityKey::Blocker, &card_id.0.to_string());
+            sa.set_triggering_object(crate::ability::AbilityKey::Blocker, card_id.0.to_string());
         }
         if let Some(card_id) = self.attacked_card {
-            sa.set_triggering_object(crate::ability::AbilityKey::Attacked, &card_id.0.to_string());
+            sa.set_triggering_object(crate::ability::AbilityKey::Attacked, card_id.0.to_string());
         }
         if let Some(player_id) = self.attacked_player {
             sa.set_triggering_object(
                 crate::ability::AbilityKey::AttackedTarget,
-                &player_id.0.to_string(),
+                player_id.0.to_string(),
             );
         }
         if let Some(card_id) = self.target_card {
@@ -392,7 +393,7 @@ impl RunParams {
             }
         }
         if let Some(card_id) = self.explored {
-            sa.set_triggering_object(crate::ability::AbilityKey::Explored, &card_id.0.to_string());
+            sa.set_triggering_object(crate::ability::AbilityKey::Explored, card_id.0.to_string());
         }
         if let Some(cards) = self.cards.as_deref() {
             let csv = cards
@@ -415,13 +416,10 @@ impl RunParams {
             }
         }
         if let Some(value) = self.life_amount {
-            sa.set_triggering_object(crate::ability::AbilityKey::LifeAmount, &value.to_string());
+            sa.set_triggering_object(crate::ability::AbilityKey::LifeAmount, value.to_string());
         }
         if let Some(value) = self.natural_result {
-            sa.set_triggering_object(
-                crate::ability::AbilityKey::NaturalResult,
-                &value.to_string(),
-            );
+            sa.set_triggering_object(crate::ability::AbilityKey::NaturalResult, value.to_string());
         }
         if let Some(value) = self.card_state_name.as_deref() {
             sa.set_triggering_object(crate::ability::AbilityKey::CardState, value);
@@ -451,13 +449,13 @@ impl RunParams {
                 sa.set_triggering_object(crate::ability::AbilityKey::Result, &csv);
             }
         } else if let Some(value) = self.die_result {
-            sa.set_triggering_object(crate::ability::AbilityKey::Result, &value.to_string());
+            sa.set_triggering_object(crate::ability::AbilityKey::Result, value.to_string());
         }
         if let Some(value) = self.die_sides {
-            sa.set_triggering_object(crate::ability::AbilityKey::Sides, &value.to_string());
+            sa.set_triggering_object(crate::ability::AbilityKey::Sides, value.to_string());
         }
         if let Some(value) = self.number {
-            sa.set_triggering_object(crate::ability::AbilityKey::Number, &value.to_string());
+            sa.set_triggering_object(crate::ability::AbilityKey::Number, value.to_string());
         }
     }
 

@@ -3,7 +3,6 @@ use forge_foundation::ZoneType;
 use super::{matches_valid_cards_for_sa, resolve_numeric_svar, EffectContext};
 use crate::card::card_damage_map::DamageTarget;
 use crate::ids::CardId;
-use crate::spellability::SpellAbility;
 
 /// `SP$ EachDamage` — each matching creature/player deals damage.
 ///

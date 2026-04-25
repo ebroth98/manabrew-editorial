@@ -11,7 +11,6 @@ use super::move_cards::move_cards;
 use super::search::resolve_defined_player_choice;
 use super::stack::resolve_stack_removal;
 use crate::ids::CardId;
-use crate::parsing::keys;
 use crate::spellability::SpellAbility;
 
 fn parse_trigger_object_cards(sa: &SpellAbility, key: &str) -> Vec<CardId> {

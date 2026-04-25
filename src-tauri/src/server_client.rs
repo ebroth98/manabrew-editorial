@@ -144,7 +144,7 @@ async fn run_ws_client(
         "username": username,
         "password": password,
     });
-    sink.send(Message::Text(auth_msg.to_string().into()))
+    sink.send(Message::Text(auth_msg.to_string()))
         .await
         .map_err(|e| format!("Failed to send auth: {}", e))?;
 
@@ -154,7 +154,7 @@ async fn run_ws_client(
     // Spawn write task: forwards outbound messages from channel to WS sink
     let write_task = tauri::async_runtime::spawn(async move {
         while let Some(msg) = rx.recv().await {
-            if sink.send(Message::Text(msg.into())).await.is_err() {
+            if sink.send(Message::Text(msg)).await.is_err() {
                 break;
             }
         }

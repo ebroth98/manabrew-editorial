@@ -3,7 +3,6 @@ use forge_foundation::ZoneType;
 use super::EffectContext;
 use crate::card::card_damage_map::DamageTarget;
 use crate::event::RunParams;
-use crate::spellability::SpellAbility;
 use crate::trigger::TriggerType;
 
 /// SP$/DB$ Fight — two creatures deal damage to each other equal to their power.

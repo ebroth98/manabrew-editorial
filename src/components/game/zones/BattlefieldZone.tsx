@@ -6,7 +6,7 @@ import type { BattlefieldZoneProps } from "../game.types";
 import { CARD_RING, BATTLEFIELD_CARD, ZONE_LABEL } from "../game.styles";
 import { withAlpha } from "@/themes/gameTheme";
 import { useTheme } from "@/hooks/useTheme";
-import type { Card as XMageCard } from "@/types/openmagic";
+import type { Card as OpenMagicCard } from "@/types/openmagic";
 import { extractManaLetters, getExpandedManaAbilities } from "@/components/game/manaUtils";
 import { ManaAbilityTapButton } from "./ManaAbilityTapButton";
 
@@ -43,7 +43,7 @@ export function BattlefieldZone({
   const themeColors = useTheme().gameTheme;
 
   const cardMap = useMemo(() => {
-    const m = new Map<string, XMageCard>();
+    const m = new Map<string, OpenMagicCard>();
     for (const c of cards) m.set(c.id, c);
     return m;
   }, [cards]);
@@ -72,7 +72,7 @@ export function BattlefieldZone({
     return map;
   }, [tappableLandIds, manaAbilityOptions]);
 
-  const renderSingleCard = (card: XMageCard, extraClass?: string) => {
+  const renderSingleCard = (card: OpenMagicCard, extraClass?: string) => {
     const isPending = pendingCardIds?.includes(card.id);
     const isAttacking = attackingCardIds?.includes(card.id);
     const isTappable = tappableLandIds?.includes(card.id);
@@ -214,10 +214,10 @@ export function BattlefieldZone({
     );
   };
 
-  const renderCard = (card: XMageCard) => {
+  const renderCard = (card: OpenMagicCard) => {
     const attachments = (card.attachmentIds ?? [])
       .map((id) => cardMap.get(id))
-      .filter((c): c is XMageCard => c !== undefined);
+      .filter((c): c is OpenMagicCard => c !== undefined);
 
     if (attachments.length === 0) {
       return renderSingleCard(card, "p-px");

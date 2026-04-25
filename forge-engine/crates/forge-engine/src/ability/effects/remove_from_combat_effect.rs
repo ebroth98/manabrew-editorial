@@ -1,7 +1,6 @@
 use forge_foundation::ZoneType;
 
 use super::EffectContext;
-use crate::spellability::SpellAbility;
 
 /// `SP$ RemoveFromCombat` — remove target creature from combat.
 ///

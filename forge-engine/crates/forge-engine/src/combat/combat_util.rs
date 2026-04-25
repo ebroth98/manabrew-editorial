@@ -11,7 +11,6 @@ use super::{CombatState, DefenderId, LureType};
 use crate::card::{valid_filter, Card};
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
-use crate::parsing::keys;
 use crate::staticability::static_ability::StaticMode;
 use crate::staticability::static_ability_cant_attack_block;
 

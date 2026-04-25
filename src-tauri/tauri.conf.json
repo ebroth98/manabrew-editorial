@@ -5,8 +5,8 @@
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:1420",
-    "beforeDevCommand": "npm run vite:dev",
-    "beforeBuildCommand": "npm run vite:build"
+    "beforeDevCommand": "yarn vite:dev",
+    "beforeBuildCommand": "yarn vite:build"
   },
   "app": {
     "windows": [

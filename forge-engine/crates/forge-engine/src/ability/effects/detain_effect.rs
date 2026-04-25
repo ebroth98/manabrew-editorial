@@ -2,7 +2,6 @@ use forge_foundation::ZoneType;
 
 use super::{matches_valid_cards_for_sa, EffectContext};
 use crate::ids::CardId;
-use crate::spellability::SpellAbility;
 
 /// `SP$ Detain` — detain target creature(s). Detained creatures can't attack,
 /// block, or activate abilities until the controller's next turn.

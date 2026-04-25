@@ -11,7 +11,6 @@ use super::resolve_numeric_svar;
 use super::EffectContext;
 use crate::ids::CardId;
 use crate::parsing::keys;
-use crate::spellability::SpellAbility;
 
 /// Struct form of this effect so it can participate in the
 /// `SpellAbilityEffect` trait hierarchy — mirrors Java's
@@ -26,7 +25,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
         .game
         .cards
         .iter()
-        .filter(|c| c.zone == ZoneType::Battlefield && source.map_or(true, |sid| c.id != sid))
+        .filter(|c| c.zone == ZoneType::Battlefield && (source != Some(c.id)))
         .map(|c| c.id)
         .collect();
 

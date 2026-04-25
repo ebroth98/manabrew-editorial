@@ -3,7 +3,6 @@ use forge_foundation::ZoneType;
 use crate::card::{valid_filter, Card};
 use crate::game::GameState;
 use crate::ids::PlayerId;
-use crate::parsing::keys;
 use crate::staticability::StaticAbility;
 use crate::staticability::StaticMode;
 
@@ -125,10 +124,9 @@ pub fn apply_cant_attack_ability(
         .kw_text
         .as_deref()
         .is_some_and(|v| v.eq_ignore_ascii_case("Defender"))
+        && can_attack_defender(game, cards, card, defender)
     {
-        if can_attack_defender(game, cards, card, defender) {
-            return false;
-        }
+        return false;
     }
 
     if st_ab.ir.defender_not_nearest_to_you_in_chosen_direction {
@@ -605,10 +603,8 @@ pub fn apply_min_max_blocker_ability(
                 })
                 .count() as i32;
             *min = creature_count;
-        } else {
-            if let Some(val) = resolve_amount_expr(None, source, min_val) {
-                *min = val;
-            }
+        } else if let Some(val) = resolve_amount_expr(None, source, min_val) {
+            *min = val;
         }
     }
 

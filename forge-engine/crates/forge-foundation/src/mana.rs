@@ -370,12 +370,7 @@ impl ManaCostShard {
             ManaCostShard::X,
             ManaCostShard::ColoredX,
         ];
-        for &shard in ALL {
-            if shard.shard() == atoms {
-                return Some(shard);
-            }
-        }
-        None
+        ALL.iter().find(|&&shard| shard.shard() == atoms).copied()
     }
 }
 

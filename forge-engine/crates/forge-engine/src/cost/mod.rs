@@ -55,16 +55,12 @@ pub mod trait_cost_visitor;
 use forge_foundation::{ManaCost, ZoneType};
 use serde::{Deserialize, Serialize};
 
-use crate::ability::effects::{matches_change_type, matches_valid_cards};
+use crate::ability::effects::matches_change_type;
 use crate::card::{Card, CounterType};
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
 use crate::mana::ManaPool;
-use crate::spellability::spell::Spell;
 use crate::spellability::SpellAbility;
-use crate::staticability::static_ability_cant_exile::cant_exile;
-use crate::staticability::static_ability_cant_gain_lose_pay_life::cant_pay_life;
-use crate::staticability::static_ability_cant_put_counter::any_cant_put_counter_on_card;
 use crate::staticability::static_ability_cant_sacrifice::cant_sacrifice;
 
 pub(crate) const DYNAMIC_X_SENTINEL: i32 = i32::MIN;
@@ -753,7 +749,7 @@ pub fn matches_exile_from_stack_filter(
     game: &GameState,
     card_id: CardId,
     source: CardId,
-    player: PlayerId,
+    _player: PlayerId,
     type_filter: &str,
 ) -> bool {
     if type_filter == "All" || type_filter.is_empty() {

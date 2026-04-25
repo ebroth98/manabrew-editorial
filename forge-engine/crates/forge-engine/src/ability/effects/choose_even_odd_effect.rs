@@ -1,8 +1,6 @@
 use super::{resolve_defined_players, EffectContext};
 use crate::agent::BinaryChoiceKind;
 use crate::ids::PlayerId;
-use crate::parsing::keys;
-use crate::spellability::SpellAbility;
 
 /// `SP$ ChooseEvenOdd` — chosen player picks odd or even.
 ///

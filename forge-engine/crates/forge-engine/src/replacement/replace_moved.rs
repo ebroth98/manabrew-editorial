@@ -13,7 +13,6 @@ use crate::game::GameState;
 use crate::game_rng::ThreadRngAdapter;
 use crate::ids::CardId;
 use crate::mana::ManaPool;
-use crate::parsing::keys;
 use crate::spellability::build_spell_ability;
 use crate::trigger::TriggerHandler;
 
@@ -92,10 +91,10 @@ pub fn execute(
     event: &mut ReplacementEvent,
     game: &mut GameState,
     source_card_id: CardId,
-    mut agents: Option<&mut [Box<dyn PlayerAgent>]>,
-    mut runtime: Option<&mut ReplacementRuntime<'_>>,
+    agents: Option<&mut [Box<dyn PlayerAgent>]>,
+    runtime: Option<&mut ReplacementRuntime<'_>>,
 ) -> ReplacementResult {
-    let (moving_id, destination) = match event {
+    let (moving_id, _destination) = match event {
         ReplacementEvent::Moved {
             card, destination, ..
         } => (*card, destination),
@@ -177,6 +176,9 @@ fn execute_replace_with(
     let mut sa = build_spell_ability(game, source_card_id, &raw, controller);
     effect.set_replacing_objects(event, &mut sa);
 
+    // `local_agents_storage` keeps the fallback Vec alive when the caller
+    // didn't provide agents; we hand back a borrow into it.
+    #[allow(unused_assignments)]
     let mut local_agents_storage: Option<Vec<Box<dyn PlayerAgent>>> = None;
     let agents: &mut [Box<dyn PlayerAgent>] = if let Some(agents) = agents {
         agents

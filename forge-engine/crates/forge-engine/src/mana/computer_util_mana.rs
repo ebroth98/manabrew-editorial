@@ -14,8 +14,7 @@ use crate::parsing::keys;
 use super::mana_cost_being_paid::{can_pay_for_shard_with_color, ManaCostBeingPaid};
 use super::{
     all_basic_subtype_atoms, atom_short, basic_land_mana_atom, chosen_colors_to_atoms,
-    compute_reflected_atoms, fixed_produced_atoms, produced_to_atoms, resolve_mana_ability_amount,
-    tap_land_for_mana, ManaPool,
+    compute_reflected_atoms, fixed_produced_atoms, produced_to_atoms, tap_land_for_mana, ManaPool,
 };
 
 #[derive(Debug, Clone)]
@@ -1139,10 +1138,8 @@ fn get_payable_mana_sacrifice_targets(
 }
 
 fn choose_atom_for_shard(mana_ab: &ManaAbilityRef, shard: ManaCostShard) -> Option<u16> {
-    if shard.is_colorless() {
-        if mana_ab.atoms.contains(&ManaAtom::COLORLESS) {
-            return Some(ManaAtom::COLORLESS);
-        }
+    if shard.is_colorless() && mana_ab.atoms.contains(&ManaAtom::COLORLESS) {
+        return Some(ManaAtom::COLORLESS);
     }
 
     if shard == ManaCostShard::Generic || shard.is_generic() {
@@ -1456,30 +1453,31 @@ fn group_sources_by_mana_color(
             add_mana_ability_to_color_map(&mut mana_map, &ma);
         }
 
-        if !explicit_mana_added {
-            if card.zone == ZoneType::Battlefield && card.is_land() && !card.tapped {
-                let mut atoms = all_basic_subtype_atoms(card);
-                if atoms.is_empty() {
-                    if let Some(a) = basic_land_mana_atom(card) {
-                        atoms.push(a);
-                    }
+        if !explicit_mana_added
+            && card.zone == ZoneType::Battlefield
+            && card.is_land()
+            && !card.tapped
+        {
+            let mut atoms = all_basic_subtype_atoms(card);
+            if atoms.is_empty() {
+                if let Some(a) = basic_land_mana_atom(card) {
+                    atoms.push(a);
                 }
-                for atom in atoms {
-                    let replacement_multiplier = super::replacement_adjusted_atoms_for_availability(
-                        game, player, card_id, atom,
-                    )
-                    .len() as i32;
-                    let ma = ManaAbilityRef {
-                        card_id,
-                        ability_index: None,
-                        atoms: vec![atom],
-                        amount: replacement_multiplier.max(1),
-                        mana_text: atom_short(atom).to_string(),
-                        source_order,
-                    };
-                    source_order += 1;
-                    add_mana_ability_to_color_map(&mut mana_map, &ma);
-                }
+            }
+            for atom in atoms {
+                let replacement_multiplier =
+                    super::replacement_adjusted_atoms_for_availability(game, player, card_id, atom)
+                        .len() as i32;
+                let ma = ManaAbilityRef {
+                    card_id,
+                    ability_index: None,
+                    atoms: vec![atom],
+                    amount: replacement_multiplier.max(1),
+                    mana_text: atom_short(atom).to_string(),
+                    source_order,
+                };
+                source_order += 1;
+                add_mana_ability_to_color_map(&mut mana_map, &ma);
             }
         }
     }
@@ -1566,9 +1564,7 @@ pub fn can_pay_mana_cost_with_reserved_sacrifices(
     for _ in 0..pool.green() {
         source_masks.push(ManaAtom::GREEN);
     }
-    for _ in 0..pool.colorless() {
-        source_masks.push(0);
-    }
+    source_masks.extend(std::iter::repeat_n(0, pool.colorless() as usize));
 
     for &card_id in game.cards_in_zone(ZoneType::Battlefield, player) {
         if card_id == excluded_source {
@@ -1760,11 +1756,7 @@ fn get_available_mana_sources(
     player: PlayerId,
     reserved_sacrifices: &[CardId],
 ) -> Vec<CardId> {
-    let mut sources: Vec<CardId> = game
-        .cards_in_zone(ZoneType::Battlefield, player)
-        .iter()
-        .copied()
-        .collect();
+    let mut sources: Vec<CardId> = game.cards_in_zone(ZoneType::Battlefield, player).to_vec();
 
     for &cid in game.cards_in_zone(ZoneType::Hand, player) {
         let card = game.card(cid);

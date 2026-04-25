@@ -4,10 +4,11 @@
  */
 
 import { Button } from "@/components/ui/button";
-import { Plus, Minus, Tag, ChevronDown, ChevronRight } from "lucide-react";
+import { ChevronDown, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useCardImage } from "@/hooks/useCardImage";
-import type { LucideIcon } from "lucide-react";
+import type { OverlayAction } from "./deckEditor.utils";
+export type { OverlayAction } from "./deckEditor.utils";
 
 // ─── Card Count Badge ────────────────────────────────────────────────────────
 
@@ -69,13 +70,6 @@ export function CardThumbnail({
 
 // ─── Card Hover Overlay ──────────────────────────────────────────────────────
 
-export interface OverlayAction {
-  label: string;
-  icon: LucideIcon;
-  onClick: () => void;
-  variant?: "primary" | "ghost";
-}
-
 export function CardHoverOverlay({
   actions,
   rounded = "rounded-lg",
@@ -118,39 +112,6 @@ export function CardHoverOverlay({
       })}
     </div>
   );
-}
-
-/** Build the standard Add + Remove/Untag actions array for card overlays. */
-export function buildCardActions(
-  onAddOne: () => void,
-  onRemoveOne: () => void,
-  onUntag?: () => void,
-): OverlayAction[] {
-  const actions: OverlayAction[] = [
-    { label: "Add", icon: Plus, onClick: onAddOne, variant: "primary" },
-  ];
-  if (onUntag) {
-    actions.push({ label: "Untag", icon: Tag, onClick: onUntag });
-  } else {
-    actions.push({ label: "Remove", icon: Minus, onClick: onRemoveOne });
-  }
-  return actions;
-}
-
-// ─── Card Click Handler ──────────────────────────────────────────────────────
-
-export function handleCardClick(
-  e: React.MouseEvent,
-  cardName: string,
-  onSelect?: (cardName: string, addToSelection: boolean) => void,
-  onShowInfo?: () => void,
-) {
-  e.stopPropagation();
-  if (e.shiftKey && onSelect) {
-    onSelect(cardName, true);
-  } else if (onShowInfo) {
-    onShowInfo();
-  }
 }
 
 // ─── Collapsible Section Header ──────────────────────────────────────────────

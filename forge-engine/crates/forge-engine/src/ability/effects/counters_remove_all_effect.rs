@@ -4,8 +4,6 @@
 
 use super::{parse_counter_type, EffectContext};
 use crate::card::valid_filter;
-use crate::parsing::keys;
-use crate::spellability::SpellAbility;
 use forge_foundation::ZoneType;
 
 /// Struct form of this effect so it can participate in the

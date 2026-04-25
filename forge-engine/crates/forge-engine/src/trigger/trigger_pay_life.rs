@@ -33,7 +33,7 @@ impl TriggerBehavior for TriggerPayLife {
         params: &RunParams,
         game: &GameState,
     ) -> bool {
-        let host_controller = trigger.base.card_trait_base.host_controller(game);
+        let _host_controller = trigger.base.card_trait_base.host_controller(game);
         trigger.matches_optional_valid_player_filter(&self.valid_player, params.player, game)
     }
 
@@ -42,13 +42,13 @@ impl TriggerBehavior for TriggerPayLife {
         _trigger: &super::trigger::Trigger,
         sa: &mut SpellAbility,
         params: &RunParams,
-        game: &GameState,
+        _game: &GameState,
     ) {
         if let Some(amount) = params.life_amount {
-            sa.set_triggering_object(crate::ability::AbilityKey::LifeAmount, &amount.to_string());
+            sa.set_triggering_object(crate::ability::AbilityKey::LifeAmount, amount.to_string());
         }
         if let Some(p) = params.player {
-            sa.set_triggering_object(crate::ability::AbilityKey::Player, &p.0.to_string());
+            sa.set_triggering_object(crate::ability::AbilityKey::Player, p.0.to_string());
         }
     }
 

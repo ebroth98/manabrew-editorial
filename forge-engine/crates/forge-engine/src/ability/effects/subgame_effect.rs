@@ -5,8 +5,6 @@
 //! but the actual sub-game execution requires the full game loop.
 
 use super::EffectContext;
-use crate::parsing::keys;
-use crate::spellability::SpellAbility;
 
 /// Struct form of this effect so it can participate in the
 /// `SpellAbilityEffect` trait hierarchy — mirrors Java's

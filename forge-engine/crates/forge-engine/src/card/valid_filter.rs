@@ -270,7 +270,7 @@ impl CardTraitRequirementsIr {
 }
 
 fn check_boolean_requirement(value: Option<&str>, actual: bool) -> bool {
-    value.map_or(true, |value| value.eq_ignore_ascii_case("True") == actual)
+    value.is_none_or(|value| value.eq_ignore_ascii_case("True") == actual)
 }
 
 fn player_life_for_requirement(game: &GameState, source: &Card, who: &str) -> i32 {
@@ -947,7 +947,6 @@ fn relation_target_card_any(
         }),
         TargetRef::Player
         | TargetRef::Opponent
-        | TargetRef::ChosenCard
         | TargetRef::ChosenPlayer
         | TargetRef::TriggeredPlayer
         | TargetRef::TriggeredCardController
@@ -1197,7 +1196,7 @@ fn resolve_numeric_property(
     context: MatchContext<'_>,
 ) -> Option<i32> {
     match property {
-        NumericSelectorProperty::ManaValue => Some(card.mana_cost.cmc() as i32),
+        NumericSelectorProperty::ManaValue => Some(card.mana_cost.cmc()),
         NumericSelectorProperty::Power => Some(card.power()),
         NumericSelectorProperty::Toughness => Some(card.toughness()),
         NumericSelectorProperty::TargetCount => {
@@ -2126,11 +2125,7 @@ fn matches_type_and_qualifier_parts(
                         // Color source check: "RedSource", "WhiteSource", "BlackSource", etc.
                         // Mirrors Java ForgeScript.cardStateHasProperty: strip "Source" suffix,
                         // then check card color. Also handles "nonRedSource" via the non- prefix above.
-                        let color_name = if sub.ends_with("Source") {
-                            &sub[..sub.len() - 6]
-                        } else {
-                            sub
-                        };
+                        let color_name = sub.strip_suffix("Source").unwrap_or(sub);
                         if let Some(color) = Color::from_name(&color_name.to_lowercase()) {
                             if !card.color.has_color(color) {
                                 return false;
@@ -2360,7 +2355,7 @@ fn check_counter_condition(condition: &str, card: &Card) -> bool {
 
 /// Check a CMC condition like "cmcEQ1", "cmcLE3", "cmcGE5".
 fn check_cmc_condition(rest: &str, card: &Card) -> bool {
-    let cmc = card.mana_cost.cmc() as i32;
+    let cmc = card.mana_cost.cmc();
     if let Some(num_str) = rest.strip_prefix("eq") {
         if let Ok(n) = num_str.parse::<i32>() {
             return cmc == n;
@@ -2580,10 +2575,8 @@ fn meets_card_trait_requirements(
             if !game.is_night {
                 return false;
             }
-        } else if day_time.eq_ignore_ascii_case("Neither") {
-            if !game.is_neither_day_nor_night() {
-                return false;
-            }
+        } else if day_time.eq_ignore_ascii_case("Neither") && !game.is_neither_day_nor_night() {
+            return false;
         }
     }
 

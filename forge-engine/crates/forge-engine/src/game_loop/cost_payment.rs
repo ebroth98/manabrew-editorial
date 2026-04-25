@@ -281,7 +281,7 @@ impl GameLoop {
         part: &CostPart,
         api: Option<crate::ability::api_type::ApiType>,
         mandatory: bool,
-        context: &CostPaymentContext,
+        _context: &CostPaymentContext,
     ) -> bool {
         let source_is_planeswalker = game.card(source).type_line.is_planeswalker();
         if !Self::should_confirm_payment(part, source_is_planeswalker, mandatory) {
@@ -636,20 +636,18 @@ impl GameLoop {
                             owner,
                             agents,
                         );
-                    } else {
-                        if !self.pay_sacrifice_cost_internal(
-                            game,
-                            agents,
-                            player,
-                            type_filter,
-                            *amount,
-                            sa,
-                            Some(&pre_picked_sacrifices),
-                            &mut pre_sac_idx,
-                        ) {
-                            payment_ok = false;
-                            break;
-                        }
+                    } else if !self.pay_sacrifice_cost_internal(
+                        game,
+                        agents,
+                        player,
+                        type_filter,
+                        *amount,
+                        sa,
+                        Some(&pre_picked_sacrifices),
+                        &mut pre_sac_idx,
+                    ) {
+                        payment_ok = false;
+                        break;
                     }
                 }
                 CostPart::Discard {
@@ -1219,8 +1217,8 @@ impl GameLoop {
                     type_filter,
                     amount,
                 } => {
-                    if type_filter != "CARDNAME" {
-                        if !self.pay_sacrifice_cost_internal(
+                    if type_filter != "CARDNAME"
+                        && !self.pay_sacrifice_cost_internal(
                             game,
                             agents,
                             player,
@@ -1229,10 +1227,10 @@ impl GameLoop {
                             sa,
                             prechosen_sacrifices,
                             &mut pre_sac_idx,
-                        ) {
-                            payment_ok = false;
-                            break;
-                        }
+                        )
+                    {
+                        payment_ok = false;
+                        break;
                     }
                 }
                 CostPart::Discard {
@@ -1376,8 +1374,8 @@ impl GameLoop {
                     amount,
                     type_filter,
                 } => {
-                    if type_filter != "CARDNAME" {
-                        if !self.pay_return_cost_internal(
+                    if type_filter != "CARDNAME"
+                        && !self.pay_return_cost_internal(
                             game,
                             agents,
                             player,
@@ -1386,10 +1384,10 @@ impl GameLoop {
                             sa,
                             prechosen_sacrifices,
                             &mut pre_sac_idx,
-                        ) {
-                            payment_ok = false;
-                            break;
-                        }
+                        )
+                    {
+                        payment_ok = false;
+                        break;
                     }
                 }
                 CostPart::TapType {
@@ -2248,7 +2246,7 @@ impl GameLoop {
 
         let total_mv: i32 = chosen
             .iter()
-            .map(|&cid| game.card(cid).mana_cost.cmc() as i32)
+            .map(|&cid| game.card(cid).mana_cost.cmc())
             .sum();
         if total_mv < amount {
             return false;

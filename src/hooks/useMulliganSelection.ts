@@ -10,7 +10,7 @@
  * prompt so a cancelled mulligan doesn't leak picks into the next
  * decision.
  */
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import type { AgentPrompt } from "@/stores/useGameStore";
 import { PromptType } from "@/types/promptType";
 
@@ -37,9 +37,12 @@ export function useMulliganSelection(
   const promptCount =
     activePrompt?.type === PromptType.MulliganPutBack ? (activePrompt.count ?? 0) : 0;
 
-  useEffect(() => {
+  const promptKey = `${activePrompt?.type ?? ""}:${activePrompt?.count ?? ""}`;
+  const [prevPromptKey, setPrevPromptKey] = useState(promptKey);
+  if (prevPromptKey !== promptKey) {
+    setPrevPromptKey(promptKey);
     setSelected(new Set());
-  }, [activePrompt?.type, activePrompt?.count]);
+  }
 
   const toggle = useCallback(
     (cardId: string) => {

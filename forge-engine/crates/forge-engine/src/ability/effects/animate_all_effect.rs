@@ -10,7 +10,6 @@ use crate::card::perpetual::{
 };
 use crate::card::AnimateState;
 use crate::parsing::keys;
-use crate::spellability::SpellAbility;
 use crate::trigger::parse_trigger;
 use forge_foundation::ManaCost;
 
@@ -243,18 +242,16 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
                 } else {
                     ctx.game.card_mut(card_id).set_color(new_color);
                 }
-            } else {
-                if let Some(ts) = effect_ts {
-                    perpetual_colors::PerpetualColors {
-                        timestamp: ts,
-                        colors: new_color,
-                        overwrite: false,
-                    }
-                    .apply_effect(ctx.game.card_mut(card_id));
-                } else {
-                    let union = ctx.game.card(card_id).color.union(new_color);
-                    ctx.game.card_mut(card_id).set_color(union);
+            } else if let Some(ts) = effect_ts {
+                perpetual_colors::PerpetualColors {
+                    timestamp: ts,
+                    colors: new_color,
+                    overwrite: false,
                 }
+                .apply_effect(ctx.game.card_mut(card_id));
+            } else {
+                let union = ctx.game.card(card_id).color.union(new_color);
+                ctx.game.card_mut(card_id).set_color(union);
             }
         }
 

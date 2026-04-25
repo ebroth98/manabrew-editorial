@@ -19,7 +19,6 @@ use crate::game::GameState;
 use crate::game_rng::GameRng;
 use crate::ids::{CardId, PlayerId};
 use crate::mana::ManaPool;
-use crate::parsing::{keys, Params};
 use crate::replacement::replacement_effect::{
     resolve_replace_with_chain, GameLossReason, ReplacementChainIr, ReplacementEffect,
 };
@@ -255,6 +254,12 @@ pub struct ReplacementHandler {
     /// Tracks (card_id, effect_index) pairs that have already been applied
     /// during this handler invocation, to prevent infinite re-application.
     has_run: HashSet<(CardId, usize)>,
+}
+
+impl Default for ReplacementHandler {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl ReplacementHandler {
@@ -1198,7 +1203,7 @@ fn execute_effect(
         ReplacementType::Draw => replace_draw::execute(effect, event, game, card_id),
         ReplacementType::Destroy => replace_destroy::execute(effect, event, game, card_id),
         ReplacementType::Moved => {
-            replace_moved::execute(effect, event, game, card_id, agents.as_deref_mut(), runtime)
+            replace_moved::execute(effect, event, game, card_id, agents, runtime)
         }
         ReplacementType::GainLife => replace_gain_life::execute(effect, event, game, card_id),
         ReplacementType::CreateToken => replace_token::execute(effect, event, game, card_id),

@@ -62,11 +62,11 @@ impl TriggerBehavior for TriggerDiscarded {
         _trigger: &super::trigger::Trigger,
         sa: &mut SpellAbility,
         params: &RunParams,
-        game: &GameState,
+        _game: &GameState,
     ) {
         // Java: sa.setTriggeringObjectsFrom(runParams, AbilityKey.Card, AbilityKey.Cause);
         if let Some(card) = params.card {
-            sa.set_triggering_object(crate::ability::AbilityKey::Card, &card.0.to_string());
+            sa.set_triggering_object(crate::ability::AbilityKey::Card, card.0.to_string());
         }
         // TODO: AbilityKey.Cause is a SpellAbility in Java, cannot be stored as String easily
     }

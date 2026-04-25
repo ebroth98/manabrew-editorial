@@ -1,5 +1,4 @@
 use super::EffectContext;
-use crate::spellability::SpellAbility;
 
 /// Resolve `SP$ GameDraw` — the game ends in a draw.
 ///
@@ -13,7 +12,7 @@ use crate::spellability::SpellAbility;
 /// `SpellAbilityEffect` trait hierarchy — mirrors Java's
 /// `GameDrawEffect` class extending `SpellAbilityEffect`.
 #[forge_engine_macros::spell_effect(GameDrawEffect)]
-fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
+fn resolve(ctx: &mut EffectContext, _sa: &crate::spellability::SpellAbility) {
     // All players lose — no winner
     let all_players: Vec<_> = ctx.game.player_order.clone();
     for &pid in &all_players {

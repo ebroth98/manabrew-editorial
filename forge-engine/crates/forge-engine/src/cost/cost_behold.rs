@@ -43,11 +43,7 @@ pub fn can_pay(
     };
     let resolved_amount = super::resolve_dynamic_amount(game, source, player, *amount);
     if type_filter.ends_with("ChosenType") {
-        let mut cards = game
-            .cards_in_zone(ZoneType::Hand, player)
-            .iter()
-            .copied()
-            .collect::<Vec<_>>();
+        let mut cards = game.cards_in_zone(ZoneType::Hand, player).to_vec();
         cards.extend(
             game.cards_in_zone(ZoneType::Battlefield, player)
                 .iter()

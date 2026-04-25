@@ -34,7 +34,7 @@ impl TriggerBehavior for TriggerClashed {
         params: &RunParams,
         game: &GameState,
     ) -> bool {
-        let host_controller = trigger.base.card_trait_base.host_controller(game);
+        let _host_controller = trigger.base.card_trait_base.host_controller(game);
         if !trigger.matches_optional_valid_player_filter(&self.valid_player, params.player, game) {
             return false;
         }
@@ -49,7 +49,7 @@ impl TriggerBehavior for TriggerClashed {
         _trigger: &super::trigger::Trigger,
         _sa: &mut SpellAbility,
         _params: &RunParams,
-        game: &GameState,
+        _game: &GameState,
     ) {
         // Clash has no triggered variables
     }

@@ -1,6 +1,4 @@
 use super::{resolve_defined_players, EffectContext};
-use crate::parsing::keys;
-use crate::spellability::SpellAbility;
 
 /// `SP$ ChoosePlayer` — the activating player chooses a player.
 /// Stores the result in `source.chosen_player` for subsequent effects.

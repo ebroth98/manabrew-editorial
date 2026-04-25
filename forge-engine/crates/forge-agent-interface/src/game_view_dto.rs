@@ -778,7 +778,7 @@ impl GameViewDto {
                     source_id: entry
                         .spell_ability
                         .source
-                        .map(|c| card_id_str(c))
+                        .map(card_id_str)
                         .unwrap_or_default(),
                     controller_id: player_id_str(entry.spell_ability.activating_player),
                     name,

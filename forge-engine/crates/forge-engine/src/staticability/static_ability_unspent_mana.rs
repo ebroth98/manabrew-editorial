@@ -53,10 +53,10 @@ pub fn has_mana_burn(game: &GameState, player: PlayerId) -> bool {
         .iter()
         .filter(|c| c.zone == ZoneType::Battlefield)
     {
-        for st_ab in card
+        if let Some(st_ab) = card
             .static_abilities
             .iter()
-            .filter(|sa| sa.mode == StaticMode::ManaBurn)
+            .find(|sa| sa.mode == StaticMode::ManaBurn)
         {
             // Java short-circuits on the first ManaBurn static found:
             // if (!stAb.matchesValidParam("ValidPlayer", player)) return false;

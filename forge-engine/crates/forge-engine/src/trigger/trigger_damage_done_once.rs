@@ -52,7 +52,7 @@ impl TriggerBehavior for TriggerDamageDoneOnce {
         _trigger: &super::trigger::Trigger,
         sa: &mut SpellAbility,
         params: &RunParams,
-        game: &GameState,
+        _game: &GameState,
     ) {
         if let Some(card) = params.damage_target_card {
             sa.set_triggering_object(crate::ability::AbilityKey::Target, card);
@@ -69,10 +69,7 @@ impl TriggerBehavior for TriggerDamageDoneOnce {
             sa.set_triggering_object(crate::ability::AbilityKey::AttackingPlayer, p);
         }
         if let Some(amount) = params.damage_amount {
-            sa.set_triggering_object(
-                crate::ability::AbilityKey::DamageAmount,
-                &amount.to_string(),
-            );
+            sa.set_triggering_object(crate::ability::AbilityKey::DamageAmount, amount.to_string());
         }
     }
 

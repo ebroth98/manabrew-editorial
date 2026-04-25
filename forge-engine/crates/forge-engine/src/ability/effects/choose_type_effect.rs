@@ -1,6 +1,5 @@
 use super::EffectContext;
 use crate::game::TypeRegistry;
-use crate::spellability::SpellAbility;
 
 /// `SP$ ChooseType` — the activating player chooses a creature type, card type, etc.
 /// Stores the result in `source.chosen_type` for subsequent effects.

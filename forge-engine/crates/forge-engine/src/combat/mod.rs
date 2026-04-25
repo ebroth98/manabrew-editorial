@@ -209,19 +209,13 @@ impl CombatState {
     /// Check if a creature was (or is) attacking in this combat.
     pub fn was_attacking(&self, card_id: CardId) -> bool {
         self.attackers.iter().any(|(a, _)| *a == card_id)
-            || self
-                .lki_cache
-                .get(&card_id)
-                .map_or(false, |l| l.is_attacker)
+            || self.lki_cache.get(&card_id).is_some_and(|l| l.is_attacker)
     }
 
     /// Check if a creature was (or is) blocking in this combat.
     pub fn was_blocking(&self, card_id: CardId) -> bool {
         self.blockers.iter().any(|(b, _)| *b == card_id)
-            || self
-                .lki_cache
-                .get(&card_id)
-                .map_or(false, |l| !l.is_attacker)
+            || self.lki_cache.get(&card_id).is_some_and(|l| !l.is_attacker)
     }
 
     /// Remove attackers/blockers that are no longer on the battlefield or are
@@ -1024,7 +1018,7 @@ impl CombatState {
     /// Mirrors Java `Combat.orderBlockersForDamageAssignment()`.
     pub fn order_blockers_for_damage_assignment(
         &mut self,
-        game: &GameState,
+        _game: &GameState,
         agents: &mut [Box<dyn PlayerAgent>],
     ) {
         let attacker_ids: Vec<CardId> = self.attackers.iter().map(|(a, _)| *a).collect();
@@ -1050,7 +1044,7 @@ impl CombatState {
     /// Add a late-entry blocker to an existing damage assignment order.
     /// Mirrors Java `Combat.addBlockerToDamageAssignmentOrder()`.
     pub fn add_blocker_to_damage_assignment_order(&mut self, attacker: CardId, blocker: CardId) {
-        let order = self.damage_order.entry(attacker).or_insert_with(Vec::new);
+        let order = self.damage_order.entry(attacker).or_default();
         if !order.contains(&blocker) {
             order.push(blocker);
         }

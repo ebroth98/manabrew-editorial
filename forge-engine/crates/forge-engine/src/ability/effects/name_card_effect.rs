@@ -1,5 +1,4 @@
 use super::EffectContext;
-use crate::spellability::SpellAbility;
 
 /// `SP$ NameCard` — the activating player names a card.
 /// Stores the result in `source.named_cards` for subsequent effects.

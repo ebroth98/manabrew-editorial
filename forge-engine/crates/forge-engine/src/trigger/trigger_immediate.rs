@@ -24,7 +24,7 @@ impl TriggerBehavior for TriggerImmediate {
         TriggerType::Immediate
     }
 
-    fn perform_test(&self, _trigger: &Trigger, _params: &RunParams, game: &GameState) -> bool {
+    fn perform_test(&self, _trigger: &Trigger, _params: &RunParams, _game: &GameState) -> bool {
         // TODO: We're missing stuff in replacement to make this work
         true
     }
@@ -34,7 +34,7 @@ impl TriggerBehavior for TriggerImmediate {
         _trigger: &Trigger,
         _sa: &mut SpellAbility,
         _params: &RunParams,
-        game: &GameState,
+        _game: &GameState,
     ) {
     }
 

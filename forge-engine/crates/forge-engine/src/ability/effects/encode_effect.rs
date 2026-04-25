@@ -1,7 +1,6 @@
 use forge_foundation::ZoneType;
 
 use super::EffectContext;
-use crate::spellability::SpellAbility;
 
 /// `SP$ Encode` — exile the spell card and encode it onto a creature (Cipher).
 ///

@@ -35,8 +35,8 @@ impl TriggerBehavior for TriggerMilledOnce {
         params: &RunParams,
         game: &GameState,
     ) -> bool {
-        let host_card = trigger.base.card_trait_base.host_card_id();
-        let host_controller = trigger.base.card_trait_base.host_controller(game);
+        let _host_card = trigger.base.card_trait_base.host_card_id();
+        let _host_controller = trigger.base.card_trait_base.host_controller(game);
         if !trigger.matches_optional_valid_player_filter(&self.valid_player, params.player, game) {
             return false;
         }
@@ -53,7 +53,7 @@ impl TriggerBehavior for TriggerMilledOnce {
         _trigger: &super::trigger::Trigger,
         sa: &mut SpellAbility,
         params: &RunParams,
-        game: &GameState,
+        _game: &GameState,
     ) {
         // TODO: port ValidCard filtering from Java (CardLists.getValidCards)
         if let Some(cards) = params.cards.as_ref() {
@@ -63,10 +63,10 @@ impl TriggerBehavior for TriggerMilledOnce {
                 .collect::<Vec<_>>()
                 .join(",");
             sa.set_triggering_object(crate::ability::AbilityKey::Cards, &csv);
-            sa.set_triggering_object(crate::ability::AbilityKey::Amount, &cards.len().to_string());
+            sa.set_triggering_object(crate::ability::AbilityKey::Amount, cards.len().to_string());
         }
         if let Some(p) = params.player {
-            sa.set_triggering_object(crate::ability::AbilityKey::Player, &p.0.to_string());
+            sa.set_triggering_object(crate::ability::AbilityKey::Player, p.0.to_string());
         }
     }
 

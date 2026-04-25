@@ -250,6 +250,7 @@ impl ManaCostBeingPaid {
 
     /// Return the next unpaid shard in iteration order.
     /// Mirrors Java's `ManaCostBeingPaidIterator.next()`.
+    #[allow(clippy::should_implement_trait)]
     pub fn next(&mut self) -> Option<ManaCostShard> {
         if !self.has_next() {
             return None;
@@ -416,7 +417,7 @@ impl ManaCostBeingPaid {
     /// Returns false if that color was already used for X payment.
     /// Mirrors Java's `ManaCostBeingPaid.canColoredXShardBePaidByColor()`.
     pub fn can_colored_x_shard_be_paid_by_color(&self, color: &str) -> bool {
-        self.x_mana_cost_paid_by_color.get(color).is_none()
+        !self.x_mana_cost_paid_by_color.contains_key(color)
     }
 
     /// Add another ManaCost on top of the current unpaid cost.

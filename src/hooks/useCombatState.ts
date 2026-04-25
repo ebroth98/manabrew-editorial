@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import type { Card } from "@/types/openmagic";
 import { PromptType } from "@/types/promptType";
 
@@ -31,21 +31,28 @@ export function useCombatState({
   const [blockAssignments, setBlockAssignments] = useState<CombatAssignment[]>([]);
 
   // Reset combat state whenever the prompt type changes
-  useEffect(() => {
+  const [prevPromptType, setPrevPromptType] = useState(promptType);
+  if (prevPromptType !== promptType) {
+    setPrevPromptType(promptType);
     setPendingAttackers([]);
     setPendingAttacker(null);
     setAttackDefenderId(null);
     setBlockAssignments([]);
-  }, [promptType]);
+  }
 
-  useEffect(() => {
-    if (promptType !== PromptType.ChooseAttackers) return;
+  // Default attackDefenderId to first valid defender during ChooseAttackers.
+  if (promptType === PromptType.ChooseAttackers) {
     const defenders = currentPrompt?.possibleDefenderIds ?? [];
-    if (defenders.length === 0) return;
-    if (!attackDefenderId || !defenders.some((defender) => defender.id === attackDefenderId)) {
-      setAttackDefenderId(defenders[0]!.id);
+    if (
+      defenders.length > 0 &&
+      (!attackDefenderId || !defenders.some((defender) => defender.id === attackDefenderId))
+    ) {
+      const next = defenders[0]!.id;
+      if (next !== attackDefenderId) {
+        setAttackDefenderId(next);
+      }
     }
-  }, [attackDefenderId, currentPrompt?.possibleDefenderIds, promptType]);
+  }
 
   const playerIsTargetable =
     promptType === PromptType.ChooseAttackers

@@ -60,7 +60,7 @@ impl TriggerBehavior for TriggerAttackerBlockedOnce {
         _trigger: &super::trigger::Trigger,
         sa: &mut SpellAbility,
         params: &RunParams,
-        game: &GameState,
+        _game: &GameState,
     ) {
         if let Some(attackers) = params.attacker_ids.as_ref() {
             sa.set_triggering_object(AbilityKey::Attackers, attackers.clone());

@@ -4,7 +4,6 @@
 //! Registers or modifies a replacement effect on the game state.
 
 use super::EffectContext;
-use crate::spellability::SpellAbility;
 
 /// Struct form of this effect so it can participate in the
 /// `SpellAbilityEffect` trait hierarchy — mirrors Java's

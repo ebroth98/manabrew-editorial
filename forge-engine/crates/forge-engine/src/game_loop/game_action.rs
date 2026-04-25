@@ -186,10 +186,8 @@ impl GameLoop {
             // All other abilities are hidden while face-down.
             if card.face_down {
                 for ab in &card.activated_abilities {
-                    if ab.ability_text.contains("Mode$ TurnFaceUp") {
-                        if can_activate(card_id, ab) {
-                            result.push((card_id, ab.ability_index));
-                        }
+                    if ab.ability_text.contains("Mode$ TurnFaceUp") && can_activate(card_id, ab) {
+                        result.push((card_id, ab.ability_index));
                     }
                 }
                 continue;
@@ -216,10 +214,8 @@ impl GameLoop {
                 if ab.is_mana_ability || ab.is_unlock_door {
                     continue;
                 }
-                if ab.activation_zone == Some(ZoneType::Hand) {
-                    if can_activate(card_id, ab) {
-                        result.push((card_id, ab.ability_index));
-                    }
+                if ab.activation_zone == Some(ZoneType::Hand) && can_activate(card_id, ab) {
+                    result.push((card_id, ab.ability_index));
                 }
             }
         }
@@ -232,10 +228,8 @@ impl GameLoop {
                 if ab.is_mana_ability || ab.is_unlock_door {
                     continue;
                 }
-                if ab.activation_zone == Some(ZoneType::Graveyard) {
-                    if can_activate(card_id, ab) {
-                        result.push((card_id, ab.ability_index));
-                    }
+                if ab.activation_zone == Some(ZoneType::Graveyard) && can_activate(card_id, ab) {
+                    result.push((card_id, ab.ability_index));
                 }
             }
         }
@@ -248,10 +242,8 @@ impl GameLoop {
                 if ab.is_mana_ability || ab.is_unlock_door {
                     continue;
                 }
-                if ab.activation_zone == Some(ZoneType::Exile) {
-                    if can_activate(card_id, ab) {
-                        result.push((card_id, ab.ability_index));
-                    }
+                if ab.activation_zone == Some(ZoneType::Exile) && can_activate(card_id, ab) {
+                    result.push((card_id, ab.ability_index));
                 }
             }
         }
@@ -429,7 +421,6 @@ impl GameLoop {
                     &mana_str,
                     &mana_params,
                 );
-                drop(effect_ctx);
                 // Fire triggers and return
                 self.trigger_handler.run_trigger(
                     TriggerType::TapsForMana,
@@ -555,7 +546,7 @@ impl GameLoop {
                     cost: ref mut mc, ..
                 } = part
                 {
-                    *mc = mc.reduce_generic(card_mc.cmc() as i32);
+                    *mc = mc.reduce_generic(card_mc.cmc());
                     break;
                 }
             }

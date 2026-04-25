@@ -1,5 +1,4 @@
 use super::{resolve_defined_player, EffectContext};
-use crate::spellability::SpellAbility;
 
 /// Resolve `SP$ TakeInitiative` — a player takes the initiative.
 ///

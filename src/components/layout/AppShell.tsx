@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useEffectEvent, useState } from "react";
 import { usePanelRef } from "react-resizable-panels";
 import { Outlet, useLocation } from "react-router-dom";
 import { Sidebar } from "./Sidebar";
@@ -21,11 +21,11 @@ export function AppShell() {
   const isGameActive = useGameStore((s) => s.isGameActive);
   const isGameRoute = location.pathname.startsWith("/game") || isGameActive;
 
-  // Register Tauri event listeners at app level so they're always active
+  // Register Tauri event listeners at app level so they're always active.
   useEffect(() => {
     const cleanup = setupListeners();
     return cleanup;
-  }, []);
+  }, [setupListeners]);
 
   function toggleSidebar() {
     const panel = sidebarRef.current;
@@ -57,21 +57,24 @@ export function AppShell() {
 
   const onDragMouseDown = useDragToggle(expandSidebar, collapseSidebar, "right");
 
-  // Close mobile nav on route change
-  useEffect(() => {
+  // Close mobile nav on route change.
+  const [prevPathname, setPrevPathname] = useState(location.pathname);
+  if (prevPathname !== location.pathname) {
+    setPrevPathname(location.pathname);
     setMobileNavOpen(false);
-  }, [location.pathname]);
+  }
 
   // Collapse sidebar when a game starts, expand when it ends (return
   // to menu). The URL may stay at /play or /lobby, so watching the
   // store flag is more reliable than the pathname alone.
+  const shouldCollapseSidebar = isGameActive || location.pathname.startsWith("/game");
+  const syncSidebar = useEffectEvent((collapse: boolean) => {
+    if (collapse) collapseSidebar();
+    else expandSidebar();
+  });
   useEffect(() => {
-    if (isGameActive || location.pathname.startsWith("/game")) {
-      collapseSidebar();
-    } else {
-      expandSidebar();
-    }
-  }, [isGameActive, location.pathname, collapseSidebar, expandSidebar]);
+    syncSidebar(shouldCollapseSidebar);
+  }, [shouldCollapseSidebar]);
 
   return (
     <div className="h-screen overflow-hidden flex flex-col">

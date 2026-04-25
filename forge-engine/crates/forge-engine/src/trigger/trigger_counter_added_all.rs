@@ -62,7 +62,7 @@ impl TriggerBehavior for TriggerCounterAddedAll {
         _trigger: &super::trigger::Trigger,
         sa: &mut SpellAbility,
         params: &RunParams,
-        game: &GameState,
+        _game: &GameState,
     ) {
         if let Some(cards) = params.cards.as_ref() {
             let csv = cards
@@ -73,7 +73,7 @@ impl TriggerBehavior for TriggerCounterAddedAll {
             sa.set_triggering_object(crate::ability::AbilityKey::Objects, &csv);
         }
         if let Some(amount) = params.counter_amount {
-            sa.set_triggering_object(crate::ability::AbilityKey::Amount, &amount.to_string());
+            sa.set_triggering_object(crate::ability::AbilityKey::Amount, amount.to_string());
         }
     }
 

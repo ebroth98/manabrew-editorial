@@ -2,7 +2,6 @@ use forge_foundation::ZoneType;
 
 use super::{emit_zone_trigger, resolve_defined_player, resolve_numeric_svar, EffectContext};
 use crate::event::RunParams;
-use crate::spellability::SpellAbility;
 use crate::trigger::TriggerType;
 
 /// Mirrors Java's `SurveilEffect.java`.

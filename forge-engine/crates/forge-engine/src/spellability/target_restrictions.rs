@@ -322,7 +322,7 @@ impl TargetRestrictions {
 }
 
 fn has_other_qualifier(filter: &str) -> bool {
-    filter.split(|c| c == '.' || c == '+').any(|part| {
+    filter.split(['.', '+']).any(|part| {
         part.eq_ignore_ascii_case("Other") || part.eq_ignore_ascii_case("StrictlyOther")
     })
 }

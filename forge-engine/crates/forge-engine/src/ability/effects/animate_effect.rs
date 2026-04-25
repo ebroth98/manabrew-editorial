@@ -9,7 +9,6 @@ use crate::card::perpetual::{
     perpetual_mana_cost, perpetual_new_pt, perpetual_types,
 };
 use crate::card::AnimateState;
-use crate::parsing::keys;
 use crate::spellability::SpellAbility;
 use crate::trigger::parse_trigger;
 use forge_foundation::ManaCost;

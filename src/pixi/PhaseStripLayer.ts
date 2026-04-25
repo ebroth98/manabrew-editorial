@@ -131,6 +131,19 @@ const enabledStyle = new TextStyle({
   align: "center",
 });
 
+interface PhaseIndicatorData {
+  cx: number;
+  selfCy: number;
+  oppCy: number;
+  selfEnabled: boolean;
+  selfColor: number;
+  oppCount: number;
+  oppEnabled: boolean[];
+  oppColors: number[];
+  cellW: number;
+  hideIndicators: boolean;
+}
+
 interface PhaseCell {
   bg: Graphics;
   flashGfx: Graphics;
@@ -148,6 +161,11 @@ interface PhaseCell {
   oppIndicators: Graphics;
   oppHitAreas: Graphics[];
   oppHovered: boolean[];
+  _indData?: PhaseIndicatorData;
+  _fx?: number;
+  _fy?: number;
+  _fw?: number;
+  _fc?: number;
 }
 
 export interface OpponentInfo {
@@ -490,7 +508,7 @@ export class PhaseStripLayer {
 
       // ── Store indicator geometry for tick() drawing ──
       const phaseIds = cell.subPhases ?? [cell.id];
-      (cell as any)._indData = {
+      cell._indData = {
         cx: cx + cellW / 2,
         selfCy: y + CELL_H + INDICATOR_MARGIN + INDICATOR_SIZE / 2,
         oppCy: y - INDICATOR_MARGIN - INDICATOR_SIZE / 2,
@@ -541,10 +559,10 @@ export class PhaseStripLayer {
       }
 
       // Store geometry for flash tick
-      (cell as any)._fx = cx;
-      (cell as any)._fy = y;
-      (cell as any)._fw = cellW;
-      (cell as any)._fc = turnColor;
+      cell._fx = cx;
+      cell._fy = y;
+      cell._fw = cellW;
+      cell._fc = turnColor;
     }
   }
 
@@ -552,7 +570,7 @@ export class PhaseStripLayer {
     // Draw indicators every frame
     for (let ci = 0; ci < this.cells.length; ci++) {
       const cell = this.cells[ci]!;
-      const d = (cell as any)._indData;
+      const d = cell._indData;
       if (!d) continue;
 
       if (d.hideIndicators) {
@@ -608,12 +626,12 @@ export class PhaseStripLayer {
       const p = elapsed / FLASH_DURATION_MS;
       const e = easeOut(p);
       const fade = 1 - e;
-      const cx = (cell as any)._fx as number;
-      const cy = (cell as any)._fy as number;
-      const color = (cell as any)._fc as number;
-      if (cx === undefined) continue;
+      const cx = cell._fx;
+      const cy = cell._fy;
+      const color = cell._fc;
+      if (cx === undefined || cy === undefined || color === undefined) continue;
 
-      const cw = ((cell as any)._fw as number) ?? CELL_W;
+      const cw = cell._fw ?? CELL_W;
       const expand = fade * FLASH_MAX_EXPAND;
       cell.flashGfx.roundRect(
         cx - expand,

@@ -1,6 +1,4 @@
 use super::{resolve_defined_players, EffectContext};
-use crate::parsing::keys;
-use crate::spellability::SpellAbility;
 
 /// Create a skip-phase effect for use by static or replacement abilities.
 /// Mirrors Java's `SkipPhaseEffect.createSkipPhaseEffect(...)`.

@@ -579,7 +579,7 @@ impl Params {
             result,
             self.0
                 .get(key)
-                .map_or(false, |value| value.eq_ignore_ascii_case("True")),
+                .is_some_and(|value| value.eq_ignore_ascii_case("True")),
             "semantic boolean param {} diverged from string params",
             key
         );

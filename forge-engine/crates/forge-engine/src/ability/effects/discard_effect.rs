@@ -2,7 +2,6 @@ use forge_foundation::ZoneType;
 
 use super::EffectContext;
 use crate::ability::spell_ability_effect::get_target_players;
-use crate::spellability::SpellAbility;
 
 /// SP$ Discard — target/defined players discard N cards.
 ///

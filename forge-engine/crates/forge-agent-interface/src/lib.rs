@@ -1,3 +1,4 @@
+#![allow(clippy::too_many_arguments)]
 pub mod agent_impl;
 pub mod auto_pay;
 pub mod game_log_event;

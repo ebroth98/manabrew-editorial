@@ -931,7 +931,7 @@ pub fn matches_valid_cards_selector_opt(
     card: &Card,
     activating_player: PlayerId,
 ) -> bool {
-    selector.map_or(true, |selector| {
+    selector.is_none_or(|selector| {
         selector.alternatives.iter().any(|alternative| {
             matches_valid_cards_single(card, &alternative.raw, activating_player)
         })
@@ -1078,13 +1078,13 @@ fn matches_valid_cards_qualifier(
                 let lower = qualifier.to_ascii_lowercase();
                 if let Some(rest) = lower.strip_prefix("non") {
                     match rest {
-                        "land" => return !card.is_land(),
-                        "creature" => return !card.is_creature(),
-                        "artifact" => return !card.type_line.is_artifact(),
-                        "enchantment" => return !card.type_line.is_enchantment(),
-                        "planeswalker" => return !card.type_line.is_planeswalker(),
-                        "token" => return !card.is_token,
-                        "basic" => return !card.type_line.is_basic(),
+                        "land" => !card.is_land(),
+                        "creature" => !card.is_creature(),
+                        "artifact" => !card.type_line.is_artifact(),
+                        "enchantment" => !card.type_line.is_enchantment(),
+                        "planeswalker" => !card.type_line.is_planeswalker(),
+                        "token" => !card.is_token,
+                        "basic" => !card.type_line.is_basic(),
                         _ => {
                             let excluded = ColorSet::from_names(rest);
                             !card.color.shares_color_with(excluded)
@@ -1135,7 +1135,7 @@ pub fn matches_change_type(
     // Forge separates qualifiers with '.' for the first qualifier after the
     // type and '+' for additional qualifiers (e.g. "Card.Red+Other"). Split
     // on both so every qualifier is visited individually.
-    let parts: Vec<&str> = change_type.split(|c| c == '.' || c == '+').collect();
+    let parts: Vec<&str> = change_type.split(['.', '+']).collect();
     let type_part = parts[0];
 
     let type_matches = match type_part {
@@ -1365,8 +1365,8 @@ pub fn x_count(game: &GameState, card_id: CardId, expr: &str, sa: &SpellAbility)
     // Handle SVar$ indirection
     if let Some(svar_name) = stripped.strip_prefix("SVar$") {
         if let Some(svar_val) = game.card(card_id).get_s_var(svar_name.trim()) {
-            let val = svar_val.clone();
-            return x_count(game, card_id, &val, sa);
+            let val = svar_val;
+            return x_count(game, card_id, val, sa);
         }
         return 0;
     }
@@ -1872,8 +1872,7 @@ pub fn apply_mana_color_conversion(
                 .into_iter()
                 .map(String::from)
                 .collect()
-        } else if source_spec.starts_with("non") {
-            let excluded = &source_spec[3..];
+        } else if let Some(excluded) = source_spec.strip_prefix("non") {
             vec!["W", "U", "B", "R", "G"]
                 .into_iter()
                 .filter(|c| !c.eq_ignore_ascii_case(excluded))
@@ -1995,12 +1994,12 @@ fn capitalize(s: &str) -> String {
 }
 
 fn pluralize_type(type_name: &str) -> String {
-    if type_name.ends_with("s") {
+    if type_name.ends_with('s') {
         type_name.to_string()
-    } else if type_name.ends_with("y") {
-        format!("{}ies", &type_name[..type_name.len() - 1])
+    } else if let Some(stem) = type_name.strip_suffix('y') {
+        format!("{stem}ies")
     } else {
-        format!("{}s", type_name)
+        format!("{type_name}s")
     }
 }
 

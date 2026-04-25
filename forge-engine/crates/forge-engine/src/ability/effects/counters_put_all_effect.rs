@@ -4,8 +4,6 @@ use super::{matches_valid_cards_for_sa, resolve_numeric_svar, EffectContext};
 use crate::card::CounterType;
 use crate::event::RunParams;
 use crate::ids::CardId;
-use crate::parsing::keys;
-use crate::spellability::SpellAbility;
 use crate::trigger::TriggerType;
 
 /// `SP$ PutCounterAll` — put counters on all matching permanents.

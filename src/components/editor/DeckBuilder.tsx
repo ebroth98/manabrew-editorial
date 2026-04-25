@@ -60,7 +60,7 @@ import {
   getCardByName,
 } from "@/api/scryfall";
 import type { ScryfallCard } from "@/types/scryfall";
-import { createEmptyCard, scryfallToXMage } from "@/lib/scryfall.utils";
+import { createEmptyCard, scryfallToOpenMagic } from "@/lib/scryfall.utils";
 import { DROP_ZONE, DEFAULT_DECK_NAME } from "@/lib/constants";
 import { useDroppable } from "@dnd-kit/core";
 import { cn } from "@/lib/utils";
@@ -94,78 +94,16 @@ import {
   computeGroupedSections,
   computeGroupedStackColumns,
 } from "./deckBuilder.utils";
-import { useCardPreview } from "@/hooks/useCardPreview";
+import { useCardPreview, type HoverOptions } from "@/hooks/useCardPreview";
 import { useTokenProducers } from "@/hooks/useTokenProducers";
 import { TokenSection } from "./TokenSection";
 import { HoverCardPreview } from "@/components/game/HoverCardPreview";
 
-// ─── Unsaved changes tracking (shared with DeckEditor) ──────────────────────
-
-let _hasUnsavedChanges = false;
-const _listeners = new Set<() => void>();
-
-function setUnsavedState(_snapshot: string, current: string) {
-  const next = current !== _snapshot;
-  if (next !== _hasUnsavedChanges) {
-    _hasUnsavedChanges = next;
-    _listeners.forEach((fn) => fn());
-  }
-}
-
-function buildDeckSnapshot(deck: {
-  format?: string;
-  draft?: boolean;
-  cards: Card[];
-  commanders?: Card[];
-  sideboard: Card[];
-  maybeboard?: Card[];
-  attractions?: Card[];
-  contraptions?: Card[];
-  schemes?: Card[];
-  planes?: Card[];
-  name: string;
-  stackPositions?: Record<string, { x: number; y: number }>;
-}): string {
-  return JSON.stringify({
-    format: deck.format,
-    cards: deck.cards,
-    commanders: deck.commanders ?? [],
-    sideboard: deck.sideboard,
-    maybeboard: deck.maybeboard ?? [],
-    attractions: deck.attractions ?? [],
-    contraptions: deck.contraptions ?? [],
-    schemes: deck.schemes ?? [],
-    planes: deck.planes ?? [],
-    name: deck.name,
-    stackPositions: deck.stackPositions,
-  });
-}
-
-/** Hook to read unsaved changes state from outside DeckBuilder. */
-export function useDeckUnsavedChanges(): boolean {
-  const [, forceUpdate] = useState(0);
-  useEffect(() => {
-    const listener = () => forceUpdate((n) => n + 1);
-    _listeners.add(listener);
-    return () => {
-      _listeners.delete(listener);
-    };
-  }, []);
-  return _hasUnsavedChanges;
-}
-
-let _lastSavedSnapshotRef: string | null = null;
-
-/** Revert currentDeck to the last saved snapshot. Called when user leaves without saving. */
-export function revertDeckToLastSaved() {
-  if (!_lastSavedSnapshotRef) return;
-  try {
-    const deck = JSON.parse(_lastSavedSnapshotRef);
-    useDeckStore.getState().loadDeck(deck);
-  } catch {
-    /* ignore parse errors */
-  }
-}
+import {
+  buildDeckSnapshot,
+  setUnsavedState,
+  setLastSavedSnapshotRef,
+} from "./deckBuilder.unsavedChanges";
 
 const SIDEBOARD_LINE_REGEX = /^(sideboard|side)$/i;
 const DECK_LINE_REGEX = /^(\d+)x?\s+(.+)$/i;
@@ -182,7 +120,7 @@ function QuickCardSearch({
   onAdd: (card: ScryfallCard) => void;
   onRemove: (cardName: string) => void;
   getCount: (cardName: string) => number;
-  onHover: (card: Card, e: React.MouseEvent, options?: any) => void;
+  onHover: (card: Card, e: React.MouseEvent, options?: HoverOptions) => void;
   onLeave: () => void;
 }) {
   const [query, setQuery] = useState("");
@@ -377,7 +315,7 @@ export function DeckBuilder({
   const [groupBy, setGroupBy] = useState<GroupByMode>("type");
   const [lastSavedSnapshot, setLastSavedSnapshot] = useState(() => {
     const snap = buildDeckSnapshot(currentDeck);
-    _lastSavedSnapshotRef = snap;
+    setLastSavedSnapshotRef(snap);
     return snap;
   });
   const [pendingSwitchAction, setPendingSwitchAction] = useState<(() => void) | null>(null);
@@ -388,31 +326,44 @@ export function DeckBuilder({
   const nameInputRef = useRef<HTMLInputElement>(null);
   const enrichedNamesRef = useRef(new Set<string>());
 
-  const supplementaryCards = [
-    ...(currentDeck.commanders ?? []),
-    ...currentDeck.sideboard,
-    ...(currentDeck.maybeboard ?? []),
-    ...(currentDeck.attractions ?? []),
-    ...(currentDeck.contraptions ?? []),
-    ...(currentDeck.schemes ?? []),
-    ...(currentDeck.planes ?? []),
-  ];
+  const supplementaryCards = useMemo(
+    () => [
+      ...(currentDeck.commanders ?? []),
+      ...currentDeck.sideboard,
+      ...(currentDeck.maybeboard ?? []),
+      ...(currentDeck.attractions ?? []),
+      ...(currentDeck.contraptions ?? []),
+      ...(currentDeck.schemes ?? []),
+      ...(currentDeck.planes ?? []),
+    ],
+    [
+      currentDeck.commanders,
+      currentDeck.sideboard,
+      currentDeck.maybeboard,
+      currentDeck.attractions,
+      currentDeck.contraptions,
+      currentDeck.schemes,
+      currentDeck.planes,
+    ],
+  );
   const currentSnapshot = buildDeckSnapshot(currentDeck);
   const hasUnsavedChanges = currentSnapshot !== lastSavedSnapshot;
 
   // Sync shared unsaved state for DeckEditor blocker
   useEffect(() => {
-    _lastSavedSnapshotRef = lastSavedSnapshot;
+    setLastSavedSnapshotRef(lastSavedSnapshot);
     setUnsavedState(lastSavedSnapshot, currentSnapshot);
   }, [lastSavedSnapshot, currentSnapshot]);
 
   // Reset snapshot when a deck is loaded
   const deckIdentity = `${currentDeck.name}:${savedDecks.length}`;
-  useEffect(() => {
+  const [prevDeckIdentity, setPrevDeckIdentity] = useState(deckIdentity);
+  if (prevDeckIdentity !== deckIdentity) {
+    setPrevDeckIdentity(deckIdentity);
     const snapshot = buildDeckSnapshot(currentDeck);
     setLastSavedSnapshot(snapshot);
     setUnsavedState(snapshot, snapshot);
-  }, [deckIdentity]);
+  }
 
   // Warn on navigation/tab close with unsaved changes
   useEffect(() => {
@@ -453,15 +404,7 @@ export function DeckBuilder({
       .catch((err) => {
         console.warn("[DeckBuilder] Failed to enrich card images:", err);
       });
-  }, [
-    currentDeck.cards,
-    currentDeck.sideboard,
-    currentDeck.attractions,
-    currentDeck.contraptions,
-    currentDeck.schemes,
-    currentDeck.planes,
-    enrichDeckCards,
-  ]);
+  }, [currentDeck.cards, supplementaryCards, enrichDeckCards]);
 
   // ESC to clear selection
   useEffect(() => {
@@ -824,7 +767,7 @@ export function DeckBuilder({
       // Commanders are singletons; one fetch per distinct name.
       const commanderLoads = deck.commanders.map((cmd) =>
         getCardByName(cmd.name)
-          .then((sc) => setCommander(scryfallToXMage(sc)))
+          .then((sc) => setCommander(scryfallToOpenMagic(sc)))
           .catch(() => setCommander(createEmptyCard(cmd.name))),
       );
 
@@ -1095,7 +1038,7 @@ export function DeckBuilder({
                 );
                 return;
               }
-              addToMain(scryfallToXMage(sc));
+              addToMain(scryfallToOpenMagic(sc));
               toast.success(`Added ${sc.name}`);
             }}
             onRemove={(name) => {

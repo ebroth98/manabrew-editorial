@@ -109,7 +109,7 @@ pub fn can_pay(
                 if let Some(target) = target {
                     let values: Vec<i32> = candidates
                         .iter()
-                        .map(|&cid| game.card(cid).mana_cost.cmc() as i32)
+                        .map(|&cid| game.card(cid).mana_cost.cmc())
                         .collect();
                     if !super::cmc_can_sum_to(target, &values) {
                         return false;
@@ -125,7 +125,7 @@ pub fn can_pay(
                 if let Some(target) = target {
                     let total: i32 = candidates
                         .iter()
-                        .map(|&cid| game.card(cid).mana_cost.cmc() as i32)
+                        .map(|&cid| game.card(cid).mana_cost.cmc())
                         .sum();
                     if total < target {
                         return false;

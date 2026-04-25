@@ -4,7 +4,6 @@ use super::EffectContext;
 use crate::agent::{GameEntity, GameLogEvent};
 use crate::event::RunParams;
 use crate::ids::CardId;
-use crate::parsing::keys;
 use crate::spellability::{SpellAbility, StackEntry};
 use crate::trigger::TriggerType;
 
@@ -30,7 +29,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let is_madness = sa.ir.play_cost_text.is_some()
         && sa
             .source
-            .map_or(false, |src| ctx.game.card(src).has_keyword("Madness"));
+            .is_some_and(|src| ctx.game.card(src).has_keyword("Madness"));
 
     // ── Step 1: Choose card — mirrors Java PlayEffect.java line 234 ──
     // chooseSingleEntityForEffect(tgtCards, sa, ..., !singleOption && optional, ...)

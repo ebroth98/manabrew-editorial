@@ -5,7 +5,6 @@
 use crate::card::Card;
 use crate::game::GameState;
 use crate::ids::CardId;
-use crate::parsing::keys;
 
 use super::replacement_effect::ReplacementEffect;
 use super::replacement_handler::ReplacementEvent;
@@ -31,10 +30,10 @@ pub fn can_replace(
     };
     let producing_card = &game.cards[source_id.index()];
     if let Some(valid) = effect.ir.valid_card_selector.as_ref() {
-        if !valid.is_any_of(["Permanent", "Card"]) {
-            if !effect.matches_compiled_valid_card(valid, producing_card, source_card) {
-                return false;
-            }
+        if !valid.is_any_of(["Permanent", "Card"])
+            && !effect.matches_compiled_valid_card(valid, producing_card, source_card)
+        {
+            return false;
         }
     }
     if let Some(valid_player) = effect.ir.valid_activator_text.as_deref() {

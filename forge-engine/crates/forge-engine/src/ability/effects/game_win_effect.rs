@@ -1,7 +1,6 @@
 use super::{resolve_defined_player, EffectContext};
 use crate::replacement::replacement_handler::{apply_replacements, ReplacementEvent};
 use crate::replacement::ReplacementResult;
-use crate::spellability::SpellAbility;
 
 /// Resolve `SP$ GameWin` — a player wins the game.
 ///

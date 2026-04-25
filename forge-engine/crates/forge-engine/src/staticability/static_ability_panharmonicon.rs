@@ -4,7 +4,7 @@ use crate::card::{valid_filter, Card};
 use crate::event::RunParams;
 use crate::game::GameState;
 use crate::ids::CardId;
-use crate::parsing::{keys, CompiledSelector};
+use crate::parsing::CompiledSelector;
 use crate::trigger::Trigger;
 use crate::trigger::TriggerType;
 
@@ -223,6 +223,7 @@ fn mode_specific_matches(
     }
 }
 
+#[allow(dead_code)]
 fn matches_zone(filter: &str, zone: Option<ZoneType>) -> bool {
     let Some(zone) = zone else {
         return false;

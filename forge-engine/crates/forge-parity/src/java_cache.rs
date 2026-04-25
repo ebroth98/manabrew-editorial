@@ -198,20 +198,25 @@ impl JavaCache {
         Ok(())
     }
 
+    /// Whether the cache has no entries.
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
     /// Number of cached entries (for stats logging).
     pub fn len(&self) -> usize {
         let mut count = 0;
-        for entry in fs::read_dir(&self.cache_dir).into_iter().flatten() {
-            if let Ok(entry) = entry {
-                if entry.path().is_dir() && entry.file_name() != "." {
-                    for sub in fs::read_dir(entry.path()).into_iter().flatten() {
-                        if let Ok(sub) = sub {
-                            if sub.path().extension().map(|e| e == "json").unwrap_or(false)
-                                && sub.file_name() != MANIFEST_FILE
-                            {
-                                count += 1;
-                            }
-                        }
+        for entry in fs::read_dir(&self.cache_dir)
+            .into_iter()
+            .flatten()
+            .flatten()
+        {
+            if entry.path().is_dir() && entry.file_name() != "." {
+                for sub in fs::read_dir(entry.path()).into_iter().flatten().flatten() {
+                    if sub.path().extension().map(|e| e == "json").unwrap_or(false)
+                        && sub.file_name() != MANIFEST_FILE
+                    {
+                        count += 1;
                     }
                 }
             }

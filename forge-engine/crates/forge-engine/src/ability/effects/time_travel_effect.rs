@@ -6,7 +6,6 @@ use crate::agent::BinaryChoiceKind;
 use crate::card::CounterType;
 use crate::ids::CardId;
 use crate::parsing::keys;
-use crate::spellability::SpellAbility;
 
 /// `SP$ TimeTravel` — for chosen cards, add or remove a time counter.
 ///

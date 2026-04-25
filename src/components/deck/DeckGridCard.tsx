@@ -14,7 +14,8 @@ import { ManaSymbols } from "@/components/game/ManaSymbols";
 import { Pencil, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { SavedDeck } from "@/stores/useDeckStore";
-import { DeckCoverImage, resolveDeckCoverSource } from "@/components/deck/deckCover";
+import { DeckCoverImage } from "@/components/deck/deckCover";
+import { resolveDeckCoverSource } from "@/components/deck/deckCover.utils";
 import {
   DECK_NAME_SHADOW_CLASS,
   getDeckColorCost,

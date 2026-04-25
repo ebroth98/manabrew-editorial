@@ -642,11 +642,9 @@ fn evaluate_count_expr(game: &GameState, source: &Card, expr: &str, caster: Play
                 .collect();
             return match aggregator {
                 "Amount" => matches.len() as i32,
-                "GreatestCardManaCost" => matches
-                    .iter()
-                    .map(|c| c.mana_cost.cmc() as i32)
-                    .max()
-                    .unwrap_or(0),
+                "GreatestCardManaCost" => {
+                    matches.iter().map(|c| c.mana_cost.cmc()).max().unwrap_or(0)
+                }
                 _ => 0,
             };
         }
@@ -788,7 +786,7 @@ pub fn adjust(
     cost: &mut ManaCostBeingPaid,
     sa: &mut SpellAbility,
     payer: PlayerId,
-    mut cards_to_delve_out: Option<&mut Vec<CardId>>,
+    cards_to_delve_out: Option<&mut Vec<CardId>>,
     test: bool,
     effect: bool,
 ) -> bool {
@@ -839,7 +837,7 @@ pub fn adjust(
             cost,
             sa,
             test,
-            cards_to_delve_out.as_deref_mut(),
+            cards_to_delve_out,
         ) {
             return false;
         }
@@ -989,7 +987,7 @@ fn apply_emerge_reduction(
         .keywords
         .get_values()
         .into_iter()
-        .chain(game.card(source).granted_keywords.get_values().into_iter())
+        .chain(game.card(source).granted_keywords.get_values())
         .find_map(|kw| {
             kw.original
                 .strip_prefix("Emerge:")

@@ -6,7 +6,6 @@ use crate::card::CounterType;
 use crate::event::RunParams;
 use crate::ids::CardId;
 use crate::replacement::replacement_handler::{apply_replacements_with_agents, ReplacementEvent};
-use crate::spellability::SpellAbility;
 use crate::trigger::TriggerType;
 
 /// `SP$ Proliferate` — choose any number of permanents and/or players that

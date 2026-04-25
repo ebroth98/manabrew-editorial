@@ -3,7 +3,7 @@ use crate::ids::CardId;
 use crate::parsing::keys;
 use crate::replacement::replacement_handler::{apply_replacements, ReplacementEvent};
 use crate::replacement::ReplacementResult;
-use crate::spellability::{SpellAbility, SpellAbilityMode};
+use crate::spellability::SpellAbilityMode;
 
 /// Mirrors Java's `SetStateEffect.java`.
 ///

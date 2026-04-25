@@ -5,7 +5,6 @@
 use crate::card::Card;
 use crate::game::GameState;
 use crate::ids::CardId;
-use crate::parsing::keys;
 
 use super::replacement_effect::ReplacementEffect;
 use super::replacement_handler::{execute_replace_with_numeric_update, ReplacementEvent};
@@ -23,7 +22,7 @@ use crate::card_trait_base::CardTrait;
 pub fn filter_amount(effect: &ReplacementEffect, base_amount: i32) -> i32 {
     match effect.replace_with() {
         Some(s) if s == "AddOneMoreToken" || s == "AddOneMoreTokens" => base_amount + 1,
-        Some(s) if s == "DoubleTokens" => base_amount * 2,
+        Some("DoubleTokens") => base_amount * 2,
         _ => base_amount,
     }
 }

@@ -313,26 +313,24 @@ impl GameLoop {
                                     card_id,
                                     card_name,
                                 })
+                            } else if let Some(result) = this.play_special_card_action(
+                                game,
+                                agents,
+                                priority_player,
+                                play.card_id,
+                                play.mode,
+                            ) {
+                                result.map(|(card_id, card_name)| {
+                                    PlaySpellAbilityResult::CardPlayed { card_id, card_name }
+                                })
                             } else {
-                                if let Some(result) = this.play_special_card_action(
+                                let prepared = this.prepare_card_spell_ability(
                                     game,
-                                    agents,
                                     priority_player,
                                     play.card_id,
-                                    play.mode,
-                                ) {
-                                    result.map(|(card_id, card_name)| {
-                                        PlaySpellAbilityResult::CardPlayed { card_id, card_name }
-                                    })
-                                } else {
-                                    let prepared = this.prepare_card_spell_ability(
-                                        game,
-                                        priority_player,
-                                        play.card_id,
-                                        play,
-                                    )?;
-                                    this.play_spell_ability(game, agents, priority_player, prepared)
-                                }
+                                    play,
+                                )?;
+                                this.play_spell_ability(game, agents, priority_player, prepared)
                             }
                         });
                     if let Some(PlaySpellAbilityResult::CardPlayed {

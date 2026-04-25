@@ -4,7 +4,7 @@
 //! matches a property string used in `ValidTgts$` filters (e.g. "nonBlack",
 //! "OppCtrl", "YouCtrl").
 
-use forge_foundation::{Color, ColorSet};
+use forge_foundation::Color;
 
 use crate::card::filter_constants as fc;
 use crate::card::Card;
@@ -17,7 +17,7 @@ use crate::ids::PlayerId;
 pub fn card_has_property(card: &Card, filter: &str, source_controller: PlayerId) -> bool {
     // Handle compound filters separated by '.' or '+' (e.g. "OppCtrl.nonBlack", "nonLand+OppCtrl")
     // Both separators mean AND — all parts must match.
-    for part in filter.split(|c| c == '.' || c == '+') {
+    for part in filter.split(['.', '+']) {
         if !matches_single_property(card, part, source_controller) {
             return false;
         }
@@ -185,7 +185,7 @@ fn matches_single_property(card: &Card, property: &str, source_controller: Playe
 #[cfg(test)]
 mod tests {
     use super::*;
-    use forge_foundation::ManaCost;
+    use forge_foundation::{ColorSet, ManaCost};
 
     #[test]
     fn non_black_filter() {

@@ -165,17 +165,17 @@ impl CostPayment {
 
             match decision {
                 Some(pd) => {
-                    if decision_maker.pays_right_after_decision() {
-                        if !pay_as_decided(
+                    if decision_maker.pays_right_after_decision()
+                        && !pay_as_decided(
                             game,
                             self.player,
                             self.source,
                             part,
                             &pd,
                             self.is_effect,
-                        ) {
-                            return false;
-                        }
+                        )
+                    {
+                        return false;
                     }
                     decisions.push((part.clone(), pd));
                 }

@@ -1,5 +1,4 @@
 use super::EffectContext;
-use crate::spellability::SpellAbility;
 
 /// Resolve `SP$ ReverseTurnOrder` — reverse the player turn order.
 ///
@@ -13,7 +12,7 @@ use crate::spellability::SpellAbility;
 /// `SpellAbilityEffect` trait hierarchy — mirrors Java's
 /// `ReverseTurnOrderEffect` class extending `SpellAbilityEffect`.
 #[forge_engine_macros::spell_effect(ReverseTurnOrderEffect)]
-fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
+fn resolve(ctx: &mut EffectContext, _sa: &crate::spellability::SpellAbility) {
     ctx.game.player_order.reverse();
 }
 

@@ -78,7 +78,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
                 sa,
                 ctx.game.card(cid),
                 valid_tgts_selector,
-                &valid_tgts,
+                valid_tgts,
             ) {
                 continue;
             }

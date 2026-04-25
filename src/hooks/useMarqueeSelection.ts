@@ -85,7 +85,7 @@ export function useMarquee({
       document.addEventListener("mousemove", handleMouseMove);
       document.addEventListener("mouseup", handleMouseUp);
     },
-    [onMarqueeComplete, minSize],
+    [containerRef, onMarqueeComplete, minSize],
   );
 
   const marqueeRect: MarqueeRect | null = marquee

@@ -1,6 +1,5 @@
 use crate::card::{valid_filter, Card};
 use crate::staticability::StaticMode;
-use forge_foundation::ZoneType;
 
 pub fn ignore_land_walk(cards: &[Card], attacker: &Card, blocker: &Card, keyword: &str) -> bool {
     for source in cards.iter().filter(|c| c.zone.is_static_ability_source()) {

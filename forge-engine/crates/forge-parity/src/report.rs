@@ -148,7 +148,7 @@ pub fn format_matrix_text(report: &MatrixReport) -> String {
         })
         .collect();
     if !failures.is_empty() {
-        out.push_str(&format!("\nNon-passing runs:\n"));
+        out.push_str("\nNon-passing runs:\n");
         for (i, r) in failures.iter().enumerate() {
             if r.status == MatchupStatus::Skipped {
                 out.push_str(&format!(

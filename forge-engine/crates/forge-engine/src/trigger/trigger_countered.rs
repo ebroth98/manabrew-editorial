@@ -72,11 +72,11 @@ impl TriggerBehavior for TriggerCountered {
         _trigger: &super::trigger::Trigger,
         sa: &mut SpellAbility,
         params: &RunParams,
-        game: &GameState,
+        _game: &GameState,
     ) {
         // Java: sa.setTriggeringObjectsFrom(runParams, AbilityKey.Card, AbilityKey.Cause, AbilityKey.CounteredSA)
         if let Some(card) = params.card {
-            sa.set_triggering_object(crate::ability::AbilityKey::Card, &card.0.to_string());
+            sa.set_triggering_object(crate::ability::AbilityKey::Card, card.0.to_string());
         }
         // TODO: Java also sets Cause (SpellAbility) and CounteredSA (SpellAbility) from runParams.
         // Skipping Cause and CounteredSA for now since SpellAbility is complex and stored as object in Java.

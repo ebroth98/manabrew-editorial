@@ -45,6 +45,7 @@ pub enum PhaseCommand {
 /// per-player "until <player's> next <phase>" effects.
 #[derive(Debug, Clone, Default)]
 pub struct Phase {
+    #[allow(dead_code)]
     phase_type: Option<PhaseType>,
     /// Commands to execute "at" this phase.
     at: Vec<PhaseCommand>,

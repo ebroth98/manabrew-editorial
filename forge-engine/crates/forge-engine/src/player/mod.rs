@@ -928,10 +928,8 @@ pub fn all_cards_unique_mana_symbols(game: &GameState, player: PlayerId) -> bool
             }
         }
         let generic_cost = cost.generic_cost();
-        if generic_cost > 0 || cost.cmc() == 0 {
-            if !generic.insert(generic_cost) {
-                return false;
-            }
+        if (generic_cost > 0 || cost.cmc() == 0) && !generic.insert(generic_cost) {
+            return false;
         }
     }
     true

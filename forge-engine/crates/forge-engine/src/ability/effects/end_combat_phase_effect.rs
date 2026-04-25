@@ -1,5 +1,4 @@
 use super::EffectContext;
-use crate::spellability::SpellAbility;
 
 /// Resolve `SP$ EndCombatPhase` — end the current combat phase.
 ///
@@ -15,7 +14,7 @@ use crate::spellability::SpellAbility;
 /// `SpellAbilityEffect` trait hierarchy — mirrors Java's
 /// `EndCombatPhaseEffect` class extending `SpellAbilityEffect`.
 #[forge_engine_macros::spell_effect(EndCombatPhaseEffect)]
-fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
+fn resolve(ctx: &mut EffectContext, _sa: &crate::spellability::SpellAbility) {
     if !ctx.game.turn.is_combat() {
         return; // CR 723.2g — only meaningful during combat
     }

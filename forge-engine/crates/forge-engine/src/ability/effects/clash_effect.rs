@@ -9,7 +9,6 @@ use forge_foundation::ZoneType;
 use super::EffectContext;
 use crate::ids::{CardId, PlayerId};
 use crate::parsing::keys;
-use crate::spellability::SpellAbility;
 
 /// Struct form of this effect so it can participate in the
 /// `SpellAbilityEffect` trait hierarchy — mirrors Java's
@@ -49,10 +48,10 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let o_card: Option<CardId> = o_lib.last().copied();
 
     let p_cmc = p_card
-        .map(|cid| ctx.game.card(cid).mana_cost.cmc() as i32)
+        .map(|cid| ctx.game.card(cid).mana_cost.cmc())
         .unwrap_or(-1);
     let o_cmc = o_card
-        .map(|cid| ctx.game.card(cid).mana_cost.cmc() as i32)
+        .map(|cid| ctx.game.card(cid).mana_cost.cmc())
         .unwrap_or(-1);
 
     let mut revealed = Vec::new();

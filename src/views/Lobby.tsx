@@ -96,7 +96,15 @@ export default function Lobby() {
     if (!connected && !connecting && prefs.serverUsername) {
       connect(prefs.serverHost, prefs.serverPort, prefs.serverUsername, prefs.serverPassword);
     }
-  }, []);
+  }, [
+    connect,
+    connected,
+    connecting,
+    prefs.serverHost,
+    prefs.serverPort,
+    prefs.serverUsername,
+    prefs.serverPassword,
+  ]);
 
   // Poll lobby data every 5s while connected
   useEffect(() => {
@@ -138,7 +146,7 @@ export default function Lobby() {
         },
       });
     }
-  }, [gameStarted]);
+  }, [gameStarted, currentRoom, navigate, playerDecks, playerOrder, startingLife, username]);
 
   useEffect(() => {
     const unsubscribe = getPlatform().events.on<RoomMessagePayload>(

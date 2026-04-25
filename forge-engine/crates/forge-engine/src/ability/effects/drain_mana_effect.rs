@@ -1,9 +1,7 @@
 use super::{resolve_defined_players, EffectContext};
 use crate::ability::ability_ir::DefinedRef;
-use crate::parsing::keys;
 use crate::replacement::replacement_handler::{apply_replacements, ReplacementEvent};
 use crate::replacement::ReplacementResult;
-use crate::spellability::SpellAbility;
 
 /// Mirrors Java's `DrainManaEffect` for "lose all unspent mana" effects.
 /// Struct form of this effect so it can participate in the
@@ -46,7 +44,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
 
         // Mana burn: if player has ManaBurn static, lose life equal to drained mana
         if crate::staticability::static_ability_unspent_mana::has_mana_burn(ctx.game, *pid) {
-            ctx.game.player_lose_life(*pid, amount as i32);
+            ctx.game.player_lose_life(*pid, amount);
         }
 
         pool.reset_pool();

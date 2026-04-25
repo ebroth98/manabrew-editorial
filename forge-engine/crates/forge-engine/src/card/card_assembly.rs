@@ -13,7 +13,7 @@
 use forge_carddb::CardRules;
 
 use crate::ids::{CardId, PlayerId};
-use crate::parsing::{keys, parse_or_warn};
+use crate::parsing::parse_or_warn;
 use crate::replacement::{parse_replacement_effect, ReplacementEffect};
 use crate::staticability::{parse_static_ability, StaticAbility};
 use crate::trigger::{parse_trigger, Trigger};

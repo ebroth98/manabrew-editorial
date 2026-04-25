@@ -3,7 +3,6 @@ use forge_foundation::ZoneType;
 use super::EffectContext;
 use crate::card::perpetual::perpetual_interface::PerpetualInterface;
 use crate::card::perpetual::perpetual_new_pt;
-use crate::spellability::SpellAbility;
 
 /// End-of-turn revert for power exchange. Mirrors the `GameCommand.run()` in Java
 /// `PowerExchangeEffect` that calls `removeNewPT` on both cards when the

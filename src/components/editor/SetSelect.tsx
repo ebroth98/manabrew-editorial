@@ -58,9 +58,16 @@ export function SetSelect({
     return () => document.removeEventListener("mousedown", handleClick);
   }, []);
 
-  useEffect(() => {
+  // Reset search and focus input when popover opens.
+  const [prevIsOpen, setPrevIsOpen] = useState(isOpen);
+  if (prevIsOpen !== isOpen) {
+    setPrevIsOpen(isOpen);
     if (isOpen) {
       setSearch("");
+    }
+  }
+  useEffect(() => {
+    if (isOpen) {
       setTimeout(() => inputRef.current?.focus(), 0);
     }
   }, [isOpen]);

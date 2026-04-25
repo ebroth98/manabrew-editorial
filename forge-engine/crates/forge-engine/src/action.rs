@@ -53,7 +53,7 @@ impl GameState {
         dest_zone: ZoneType,
         dest_owner: PlayerId,
         agents: &mut [Box<dyn PlayerAgent>],
-        runtime: &mut ReplacementRuntime<'_>,
+        _runtime: &mut ReplacementRuntime<'_>,
     ) {
         self.move_card_internal(card_id, dest_zone, dest_owner, Some(agents), true, false);
     }
@@ -365,7 +365,7 @@ impl GameState {
                             count: etb_p1p1,
                             is_effect: true,
                         };
-                        if let Some(agents) = agents.as_deref_mut() {
+                        if let Some(agents) = agents {
                             apply_replacements_with_agents(self, agents, &mut add_event);
                         } else {
                             apply_replacements(self, &mut add_event);
@@ -737,12 +737,10 @@ impl GameState {
                     reason: GameLossReason::Milled,
                 };
                 let result = apply_replacements(self, &mut event);
-                if result != ReplacementResult::Replaced {
-                    if !self.player(pid).has_lost {
-                        self.player_mark_lost(pid, GameLossReason::Milled);
-                        newly_lost_players.push(pid);
-                        any_changes = true;
-                    }
+                if result != ReplacementResult::Replaced && !self.player(pid).has_lost {
+                    self.player_mark_lost(pid, GameLossReason::Milled);
+                    newly_lost_players.push(pid);
+                    any_changes = true;
                 }
             }
             if self.player(pid).life <= 0 && self.player(pid).is_alive() {
@@ -751,12 +749,10 @@ impl GameState {
                     reason: GameLossReason::LifeReachedZero,
                 };
                 let result = apply_replacements(self, &mut event);
-                if result != ReplacementResult::Replaced {
-                    if !self.player(pid).has_lost {
-                        self.player_mark_lost(pid, GameLossReason::LifeReachedZero);
-                        newly_lost_players.push(pid);
-                        any_changes = true;
-                    }
+                if result != ReplacementResult::Replaced && !self.player(pid).has_lost {
+                    self.player_mark_lost(pid, GameLossReason::LifeReachedZero);
+                    newly_lost_players.push(pid);
+                    any_changes = true;
                 }
             }
             // Check poison counters (10+ = lose)
@@ -783,12 +779,10 @@ impl GameState {
                     .map(|(&k, &v)| (k, v))
                     .collect();
                 for (_card_raw_id, dmg) in commander_dmg_entries {
-                    if dmg >= 21 && self.player(pid).is_alive() {
-                        if !self.player(pid).has_lost {
-                            self.player_mark_lost(pid, GameLossReason::CommanderDamage);
-                            newly_lost_players.push(pid);
-                            any_changes = true;
-                        }
+                    if dmg >= 21 && self.player(pid).is_alive() && !self.player(pid).has_lost {
+                        self.player_mark_lost(pid, GameLossReason::CommanderDamage);
+                        newly_lost_players.push(pid);
+                        any_changes = true;
                     }
                 }
             }
@@ -842,131 +836,129 @@ impl GameState {
                 let should_die = zero_toughness || lethal;
                 (is_creature, zero_toughness, lethal, should_die, card.owner)
             };
-            if is_creature {
-                if should_die {
-                    // Clear deathtouch flag regardless of outcome (mirrors Java
-                    // GameAction.java line 1491: c.setHasBeenDealtDeathtouchDamage(false)).
-                    self.cards[cid.index()].has_deathtouch_damage = false;
-                    let owner = owner;
-                    // CR 702.12: Indestructible prevents death from lethal damage and
-                    // "destroy" effects, but NOT from toughness ≤ 0 (CR 704.5f vs 704.5g).
-                    // This covers K:Indestructible from Forge card scripts (e.g. Darksteel Myr).
-                    if lethal
-                        && !zero_toughness
-                        && self.cards[cid.index()].has_keyword("Indestructible")
-                    {
-                        continue;
-                    }
-                    // CR 702.89: Umbra armor (Totem Armor) — if enchanted creature
-                    // would be destroyed, instead remove all damage and destroy the aura.
-                    let has_umbra = self.cards[cid.index()].attachments.iter().any(|&aid| {
-                        aid.index() < self.cards.len()
-                            && self.cards[aid.index()].zone == ZoneType::Battlefield
-                            && (self.cards[aid.index()].has_keyword("Umbra armor")
-                                || self.cards[aid.index()].has_keyword("Totem armor"))
-                    });
-                    if has_umbra && !zero_toughness {
-                        // Find the first umbra armor aura and destroy it instead
-                        let umbra_id =
-                            self.cards[cid.index()]
-                                .attachments
-                                .iter()
-                                .copied()
-                                .find(|&aid| {
-                                    aid.index() < self.cards.len()
-                                        && self.cards[aid.index()].zone == ZoneType::Battlefield
-                                        && (self.cards[aid.index()].has_keyword("Umbra armor")
-                                            || self.cards[aid.index()].has_keyword("Totem armor"))
-                                });
-                        if let Some(umbra_id) = umbra_id {
-                            // Remove all damage from the creature
-                            self.cards[cid.index()].damage = 0;
-                            self.cards[cid.index()].has_deathtouch_damage = false;
-                            // Destroy the aura instead
-                            let umbra_owner = self.cards[umbra_id.index()].owner;
-                            let old_zone = self.cards[umbra_id.index()].zone;
-                            self.move_card(umbra_id, ZoneType::Graveyard, umbra_owner);
-                            if let Some(handler) = trigger_handler.as_deref_mut() {
-                                crate::ability::effects::emit_zone_trigger(
-                                    handler,
-                                    umbra_id,
-                                    old_zone,
-                                    ZoneType::Graveyard,
-                                );
-                            }
-                            any_changes = true;
-                            continue; // Creature survives
-                        }
-                    }
-
-                    // Run Destroy replacement effects (R$-based indestructible, etc.).
-                    // Mirrors Java GameAction.destroy() → ReplacementHandler.run(Destroy, …).
-                    let mut destroy_event = ReplacementEvent::Destroy { target: cid };
-                    let result = apply_replacements(self, &mut destroy_event);
-                    if result != ReplacementResult::Replaced {
-                        // No replacement blocked destruction — run Moved check in case
-                        // a zone-rerouting effect applies (e.g. "exile instead of die").
-                        let mut moved_event = ReplacementEvent::Moved {
-                            card: cid,
-                            origin: ZoneType::Battlefield,
-                            destination: ZoneType::Graveyard,
-                            is_discard: false,
-                        };
-                        if let Some(agents) = agents.as_deref_mut() {
-                            apply_replacements_with_agents(self, agents, &mut moved_event);
-                        } else {
-                            apply_replacements(self, &mut moved_event);
-                        }
-                        let final_dest =
-                            if let ReplacementEvent::Moved { destination, .. } = moved_event {
-                                destination
-                            } else {
-                                ZoneType::Graveyard
-                            };
-                        let old_zone = self.card(cid).zone;
-                        // Emit trigger BEFORE move_card so that LKI state
-                        // (counters, keywords) is still available for trigger
-                        // matching.  Persist/Undying check counter conditions
-                        // on the dying card; if we emit after move_card the
-                        // counters are already cleared and the check is wrong.
-                        // flush_waiting_triggers pre-matches while card state
-                        // is intact; the matched results survive the move.
+            if is_creature && should_die {
+                // Clear deathtouch flag regardless of outcome (mirrors Java
+                // GameAction.java line 1491: c.setHasBeenDealtDeathtouchDamage(false)).
+                self.cards[cid.index()].has_deathtouch_damage = false;
+                // owner already in scope
+                // CR 702.12: Indestructible prevents death from lethal damage and
+                // "destroy" effects, but NOT from toughness ≤ 0 (CR 704.5f vs 704.5g).
+                // This covers K:Indestructible from Forge card scripts (e.g. Darksteel Myr).
+                if lethal
+                    && !zero_toughness
+                    && self.cards[cid.index()].has_keyword("Indestructible")
+                {
+                    continue;
+                }
+                // CR 702.89: Umbra armor (Totem Armor) — if enchanted creature
+                // would be destroyed, instead remove all damage and destroy the aura.
+                let has_umbra = self.cards[cid.index()].attachments.iter().any(|&aid| {
+                    aid.index() < self.cards.len()
+                        && self.cards[aid.index()].zone == ZoneType::Battlefield
+                        && (self.cards[aid.index()].has_keyword("Umbra armor")
+                            || self.cards[aid.index()].has_keyword("Totem armor"))
+                });
+                if has_umbra && !zero_toughness {
+                    // Find the first umbra armor aura and destroy it instead
+                    let umbra_id =
+                        self.cards[cid.index()]
+                            .attachments
+                            .iter()
+                            .copied()
+                            .find(|&aid| {
+                                aid.index() < self.cards.len()
+                                    && self.cards[aid.index()].zone == ZoneType::Battlefield
+                                    && (self.cards[aid.index()].has_keyword("Umbra armor")
+                                        || self.cards[aid.index()].has_keyword("Totem armor"))
+                            });
+                    if let Some(umbra_id) = umbra_id {
+                        // Remove all damage from the creature
+                        self.cards[cid.index()].damage = 0;
+                        self.cards[cid.index()].has_deathtouch_damage = false;
+                        // Destroy the aura instead
+                        let umbra_owner = self.cards[umbra_id.index()].owner;
+                        let old_zone = self.cards[umbra_id.index()].zone;
+                        self.move_card(umbra_id, ZoneType::Graveyard, umbra_owner);
                         if let Some(handler) = trigger_handler.as_deref_mut() {
-                            // Capture +1/+1 counters for LKI (Modular death
-                            // triggers).  Counters are still present since we
-                            // emit before move_card.
-                            let lki_p1p1 = *self
-                                .card(cid)
-                                .counters
-                                .get(&crate::card::CounterType::P1P1)
-                                .unwrap_or(&0);
-                            let lki_power = self.card(cid).power();
-                            let lki_toughness = self.card(cid).toughness();
-                            // Capture LKI counters on the card for SVar resolution
-                            let lki_counters = self.card(cid).counters.clone();
-                            self.card_mut(cid).lki_counters = Some(lki_counters);
-                            self.card_mut(cid)
-                                .set_lki_power_toughness(Some(lki_power), Some(lki_toughness));
-                            crate::ability::effects::emit_zone_trigger_with_lki_counters(
+                            crate::ability::effects::emit_zone_trigger(
                                 handler,
-                                cid,
+                                umbra_id,
                                 old_zone,
-                                final_dest,
-                                lki_p1p1,
-                                lki_power,
-                                lki_toughness,
+                                ZoneType::Graveyard,
                             );
-                            handler.flush_waiting_triggers(self);
                         }
-                        self.move_card_without_replacement(cid, final_dest, owner);
-                        // Same-SBA-batch LTB lookback is derived per-event from
-                        // `pre_sba_battlefield` in `TriggerHandler::ltb_trigger_refs_for_event`.
-                        // No global registration needed.
                         any_changes = true;
-                    } else {
-                        // Indestructible — destruction was replaced; creature stays.
-                        // Damage is still marked but the creature does not die.
+                        continue; // Creature survives
                     }
+                }
+
+                // Run Destroy replacement effects (R$-based indestructible, etc.).
+                // Mirrors Java GameAction.destroy() → ReplacementHandler.run(Destroy, …).
+                let mut destroy_event = ReplacementEvent::Destroy { target: cid };
+                let result = apply_replacements(self, &mut destroy_event);
+                if result != ReplacementResult::Replaced {
+                    // No replacement blocked destruction — run Moved check in case
+                    // a zone-rerouting effect applies (e.g. "exile instead of die").
+                    let mut moved_event = ReplacementEvent::Moved {
+                        card: cid,
+                        origin: ZoneType::Battlefield,
+                        destination: ZoneType::Graveyard,
+                        is_discard: false,
+                    };
+                    if let Some(agents) = agents.as_deref_mut() {
+                        apply_replacements_with_agents(self, agents, &mut moved_event);
+                    } else {
+                        apply_replacements(self, &mut moved_event);
+                    }
+                    let final_dest =
+                        if let ReplacementEvent::Moved { destination, .. } = moved_event {
+                            destination
+                        } else {
+                            ZoneType::Graveyard
+                        };
+                    let old_zone = self.card(cid).zone;
+                    // Emit trigger BEFORE move_card so that LKI state
+                    // (counters, keywords) is still available for trigger
+                    // matching.  Persist/Undying check counter conditions
+                    // on the dying card; if we emit after move_card the
+                    // counters are already cleared and the check is wrong.
+                    // flush_waiting_triggers pre-matches while card state
+                    // is intact; the matched results survive the move.
+                    if let Some(handler) = trigger_handler.as_deref_mut() {
+                        // Capture +1/+1 counters for LKI (Modular death
+                        // triggers).  Counters are still present since we
+                        // emit before move_card.
+                        let lki_p1p1 = *self
+                            .card(cid)
+                            .counters
+                            .get(&crate::card::CounterType::P1P1)
+                            .unwrap_or(&0);
+                        let lki_power = self.card(cid).power();
+                        let lki_toughness = self.card(cid).toughness();
+                        // Capture LKI counters on the card for SVar resolution
+                        let lki_counters = self.card(cid).counters.clone();
+                        self.card_mut(cid).lki_counters = Some(lki_counters);
+                        self.card_mut(cid)
+                            .set_lki_power_toughness(Some(lki_power), Some(lki_toughness));
+                        crate::ability::effects::emit_zone_trigger_with_lki_counters(
+                            handler,
+                            cid,
+                            old_zone,
+                            final_dest,
+                            lki_p1p1,
+                            lki_power,
+                            lki_toughness,
+                        );
+                        handler.flush_waiting_triggers(self);
+                    }
+                    self.move_card_without_replacement(cid, final_dest, owner);
+                    // Same-SBA-batch LTB lookback is derived per-event from
+                    // `pre_sba_battlefield` in `TriggerHandler::ltb_trigger_refs_for_event`.
+                    // No global registration needed.
+                    any_changes = true;
+                } else {
+                    // Indestructible — destruction was replaced; creature stays.
+                    // Damage is still marked but the creature does not die.
                 }
             }
         }
@@ -1102,7 +1094,7 @@ impl GameState {
                                 .keywords
                                 .iter_strings()
                                 .find_map(|kw| {
-                                    crate::keyword::extract_keyword_cost_str(&kw, "Enchant")
+                                    crate::keyword::extract_keyword_cost_str(kw, "Enchant")
                                 })
                                 .unwrap_or_default();
                             player.has_lost || !enchant_type.eq_ignore_ascii_case("Player")
@@ -1120,10 +1112,10 @@ impl GameState {
                                 .keywords
                                 .iter_strings()
                                 .find_map(|kw| {
-                                    crate::keyword::extract_keyword_cost_str(&kw, "Enchant")
+                                    crate::keyword::extract_keyword_cost_str(kw, "Enchant")
                                 })
                                 .unwrap_or_default();
-                            !crate::parsing::enchant_type_matches_card(&enchant_type, host)
+                            !crate::parsing::enchant_type_matches_card(enchant_type, host)
                         }
                     }
                 })

@@ -23,11 +23,6 @@ export function useBattlefieldLayout({
   const [draggingCardIds, setDraggingCardIds] = useState<Set<string>>(new Set());
   const [justDraggedCardIds, setJustDraggedCardIds] = useState<Set<string>>(new Set());
 
-  const positionsRef = useRef(positions);
-  positionsRef.current = positions;
-  const selectedCardIdsRef = useRef(selectedCardIds);
-  selectedCardIdsRef.current = selectedCardIds;
-
   const dragRef = useRef<{
     cardIds: string[];
     startMouseX: number;
@@ -39,7 +34,7 @@ export function useBattlefieldLayout({
   const handleMarqueeComplete = useCallback(
     (rect: { left: number; top: number; width: number; height: number }, additive: boolean) => {
       const hits = new Set<string>();
-      for (const [id, pos] of Object.entries(positionsRef.current)) {
+      for (const [id, pos] of Object.entries(positions)) {
         if (
           pos.x < rect.left + rect.width &&
           pos.x + CARD_W > rect.left &&
@@ -49,9 +44,9 @@ export function useBattlefieldLayout({
           hits.add(id);
         }
       }
-      setSelectedCardIds(additive ? new Set([...selectedCardIdsRef.current, ...hits]) : hits);
+      setSelectedCardIds(additive ? new Set([...selectedCardIds, ...hits]) : hits);
     },
-    [],
+    [positions, selectedCardIds],
   );
 
   const { marqueeRect, handleContainerMouseDown } = useMarquee({
@@ -149,17 +144,17 @@ export function useBattlefieldLayout({
         return;
       }
 
-      const pos = positionsRef.current[cardId];
+      const pos = positions[cardId];
       if (!pos) return;
 
-      const inSelection = selectedCardIdsRef.current.has(cardId);
-      const cardsToDrag = inSelection ? [...selectedCardIdsRef.current] : [cardId];
+      const inSelection = selectedCardIds.has(cardId);
+      const cardsToDrag = inSelection ? [...selectedCardIds] : [cardId];
 
       if (!inSelection) setSelectedCardIds(new Set());
 
       const startPositions: Record<string, { x: number; y: number }> = {};
       for (const id of cardsToDrag) {
-        startPositions[id] = positionsRef.current[id] ?? { x: 0, y: 0 };
+        startPositions[id] = positions[id] ?? { x: 0, y: 0 };
       }
 
       dragRef.current = {
@@ -226,7 +221,7 @@ export function useBattlefieldLayout({
       document.addEventListener("mousemove", handleMouseMove);
       document.addEventListener("mouseup", handleMouseUp);
     },
-    [leftReserved, rightReserved],
+    [leftReserved, rightReserved, positions, selectedCardIds],
   );
 
   const wrappedHandleContainerMouseDown = useCallback(

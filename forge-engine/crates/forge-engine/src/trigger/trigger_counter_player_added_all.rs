@@ -98,24 +98,24 @@ impl TriggerBehavior for TriggerCounterPlayerAddedAll {
         _trigger: &super::trigger::Trigger,
         sa: &mut SpellAbility,
         params: &RunParams,
-        game: &GameState,
+        _game: &GameState,
     ) {
         // Java: sa.setTriggeringObjectsFrom(runParams, AbilityKey.Source, AbilityKey.Object, AbilityKey.CounterMap)
         // Java also sets Amount = sum of CounterMap values
         if let Some(source) = params.source_player {
-            sa.set_triggering_object(crate::ability::AbilityKey::Source, &source.0.to_string());
+            sa.set_triggering_object(crate::ability::AbilityKey::Source, source.0.to_string());
         } else if let Some(source) = params.source_card {
-            sa.set_triggering_object(crate::ability::AbilityKey::Source, &source.0.to_string());
+            sa.set_triggering_object(crate::ability::AbilityKey::Source, source.0.to_string());
         }
         if let Some(obj) = params.object_card {
-            sa.set_triggering_object(crate::ability::AbilityKey::Object, &obj.0.to_string());
+            sa.set_triggering_object(crate::ability::AbilityKey::Object, obj.0.to_string());
         } else if let Some(p) = params.object_player {
-            sa.set_triggering_object(crate::ability::AbilityKey::Object, &p.0.to_string());
+            sa.set_triggering_object(crate::ability::AbilityKey::Object, p.0.to_string());
         }
         // TODO: Java also sets CounterMap from runParams and computes Amount as sum of CounterMap values.
         // CounterMap is a Map<CounterType, Integer> in Java. Using counter_amount as approximation.
         if let Some(amount) = params.counter_amount {
-            sa.set_triggering_object(crate::ability::AbilityKey::Amount, &amount.to_string());
+            sa.set_triggering_object(crate::ability::AbilityKey::Amount, amount.to_string());
         }
     }
 

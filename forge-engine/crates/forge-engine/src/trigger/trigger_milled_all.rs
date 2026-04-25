@@ -33,8 +33,8 @@ impl TriggerBehavior for TriggerMilledAll {
         params: &RunParams,
         game: &GameState,
     ) -> bool {
-        let host_card = trigger.base.card_trait_base.host_card_id();
-        let host_controller = trigger.base.card_trait_base.host_controller(game);
+        let _host_card = trigger.base.card_trait_base.host_card_id();
+        let _host_controller = trigger.base.card_trait_base.host_controller(game);
         let Some(cards) = params.cards.as_ref() else {
             return self.valid_card.is_none();
         };
@@ -48,7 +48,7 @@ impl TriggerBehavior for TriggerMilledAll {
         _trigger: &super::trigger::Trigger,
         sa: &mut SpellAbility,
         params: &RunParams,
-        game: &GameState,
+        _game: &GameState,
     ) {
         // TODO: port ValidCard filtering from Java (CardLists.getValidCards)
         if let Some(cards) = params.cards.as_ref() {
@@ -58,7 +58,7 @@ impl TriggerBehavior for TriggerMilledAll {
                 .collect::<Vec<_>>()
                 .join(",");
             sa.set_triggering_object(crate::ability::AbilityKey::Cards, &csv);
-            sa.set_triggering_object(crate::ability::AbilityKey::Amount, &cards.len().to_string());
+            sa.set_triggering_object(crate::ability::AbilityKey::Amount, cards.len().to_string());
         }
     }
 

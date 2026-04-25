@@ -5,7 +5,6 @@ use crate::agent::types::GameEntity;
 use crate::player::player_controller::PlayerController;
 use crate::replacement::replacement_handler::{apply_replacements, ReplacementEvent};
 use crate::replacement::ReplacementResult;
-use crate::spellability::SpellAbility;
 
 /// SP$ Attach / AB$ Attach — attach source Equipment/Aura to target creature.
 ///

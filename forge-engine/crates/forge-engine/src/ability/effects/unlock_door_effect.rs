@@ -7,8 +7,7 @@ use forge_foundation::ZoneType;
 use super::EffectContext;
 use crate::event::RunParams;
 use crate::ids::CardId;
-use crate::parsing::keys;
-use crate::spellability::{SpellAbility, SpellAbilityMode};
+use crate::spellability::SpellAbilityMode;
 use crate::trigger::TriggerType;
 
 fn unlocked_room_count(ctx: &EffectContext, card_id: CardId) -> i32 {
@@ -76,7 +75,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
                     .card(card_id)
                     .svars
                     .get("DoorUnlocked")
-                    .map_or(true, |v| v != "True");
+                    .is_none_or(|v| v != "True");
                 if is_locked {
                     ctx.game.card_mut(card_id).set_s_var("DoorUnlocked", "True");
                     if before < 2 {
@@ -94,7 +93,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
         if after != before {
             ctx.game
                 .card_mut(card_id)
-                .set_s_var("UnlockedRoomCount", &after.to_string());
+                .set_s_var("UnlockedRoomCount", after.to_string());
         }
 
         if unlocked {

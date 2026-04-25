@@ -28,8 +28,8 @@ impl TriggerBehavior for TriggerUnattach {
     }
 
     fn perform_test(&self, trigger: &Trigger, params: &RunParams, game: &GameState) -> bool {
-        let host_card = trigger.base.card_trait_base.host_card_id();
-        let host_controller = trigger.base.card_trait_base.host_controller(game);
+        let _host_card = trigger.base.card_trait_base.host_card_id();
+        let _host_controller = trigger.base.card_trait_base.host_controller(game);
         trigger.matches_optional_valid_card_filter(&self.valid_card, params.card, game)
     }
 
@@ -38,13 +38,13 @@ impl TriggerBehavior for TriggerUnattach {
         _trigger: &Trigger,
         sa: &mut SpellAbility,
         params: &RunParams,
-        game: &GameState,
+        _game: &GameState,
     ) {
         if let Some(obj) = params.object_card {
-            sa.set_triggering_object(crate::ability::AbilityKey::Object, &obj.0.to_string());
+            sa.set_triggering_object(crate::ability::AbilityKey::Object, obj.0.to_string());
         }
         if let Some(src) = params.source_card {
-            sa.set_triggering_object(crate::ability::AbilityKey::AttachSource, &src.0.to_string());
+            sa.set_triggering_object(crate::ability::AbilityKey::AttachSource, src.0.to_string());
         }
     }
 

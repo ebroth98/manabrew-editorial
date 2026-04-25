@@ -43,24 +43,18 @@ impl TriggerBehavior for TriggerAttackerUnblocked {
         _trigger: &super::trigger::Trigger,
         sa: &mut SpellAbility,
         params: &RunParams,
-        game: &GameState,
+        _game: &GameState,
     ) {
         if let Some(attacker) = params.attacker {
-            sa.set_triggering_object(
-                crate::ability::AbilityKey::Attacker,
-                &attacker.0.to_string(),
-            );
+            sa.set_triggering_object(crate::ability::AbilityKey::Attacker, attacker.0.to_string());
         }
         if let Some(c) = params.attacked_card {
-            sa.set_triggering_object(crate::ability::AbilityKey::Defender, &c.0.to_string());
+            sa.set_triggering_object(crate::ability::AbilityKey::Defender, c.0.to_string());
         } else if let Some(p) = params.attacked_player {
-            sa.set_triggering_object(crate::ability::AbilityKey::Defender, &p.0.to_string());
+            sa.set_triggering_object(crate::ability::AbilityKey::Defender, p.0.to_string());
         }
         if let Some(p) = params.defending_player {
-            sa.set_triggering_object(
-                crate::ability::AbilityKey::DefendingPlayer,
-                &p.0.to_string(),
-            );
+            sa.set_triggering_object(crate::ability::AbilityKey::DefendingPlayer, p.0.to_string());
         }
     }
 

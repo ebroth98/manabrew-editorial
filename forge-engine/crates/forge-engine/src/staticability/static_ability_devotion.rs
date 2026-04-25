@@ -3,7 +3,6 @@ use crate::game::GameState;
 use crate::ids::PlayerId;
 use crate::parsing::keys;
 use crate::staticability::StaticMode;
-use forge_foundation::ZoneType;
 
 pub fn get_devotion_mod(game: &GameState, player: PlayerId) -> i32 {
     let mut total = 0;

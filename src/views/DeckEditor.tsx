@@ -1,8 +1,8 @@
+import { DeckBuilder } from "@/components/editor/DeckBuilder";
 import {
-  DeckBuilder,
   useDeckUnsavedChanges,
   revertDeckToLastSaved,
-} from "@/components/editor/DeckBuilder";
+} from "@/components/editor/deckBuilder.unsavedChanges";
 import { CardSearch } from "@/components/editor/CardSearch";
 import {
   DndContext,
@@ -16,7 +16,7 @@ import type { DragEndEvent, DragStartEvent } from "@dnd-kit/core";
 import { useDeckStore } from "@/stores/useDeckStore";
 import { DROP_ZONE, DEFAULT_DECK_NAME } from "@/lib/constants";
 import { useState } from "react";
-import type { Card as XMageCard } from "@/types/openmagic";
+import type { Card as OpenMagicCard } from "@/types/openmagic";
 import { Card } from "@/components/game/Card";
 import { useBlocker, useLocation } from "react-router";
 import { Button } from "@/components/ui/button";
@@ -53,7 +53,7 @@ export default function DeckEditor() {
     deleteSavedDeck,
     currentDeckId: _currentDeckId,
   } = useDeckStore();
-  const [draggedCard, setDraggedCard] = useState<XMageCard | null>(null);
+  const [draggedCard, setDraggedCard] = useState<OpenMagicCard | null>(null);
   const [showSearch, setShowSearch] = useState(false);
   const hasUnsavedChanges = useDeckUnsavedChanges();
   const location = useLocation();
@@ -144,7 +144,7 @@ export default function DeckEditor() {
 
   function handleDragStart(event: DragStartEvent) {
     const data = event.active.data.current;
-    if (data?.card) setDraggedCard(data.card as XMageCard);
+    if (data?.card) setDraggedCard(data.card as OpenMagicCard);
   }
 
   function handleDragEnd(event: DragEndEvent) {
@@ -155,7 +155,7 @@ export default function DeckEditor() {
     const dragData = active.data.current;
     if (!dragData?.card) return;
 
-    const card = dragData.card as XMageCard;
+    const card = dragData.card as OpenMagicCard;
     const overId = String(over.id);
     const activeId = String(active.id);
     const cardName = (dragData.name as string) ?? card.name;

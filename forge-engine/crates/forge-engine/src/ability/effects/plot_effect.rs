@@ -1,6 +1,5 @@
 use super::EffectContext;
 use crate::card::make_plotted_keyword;
-use crate::spellability::SpellAbility;
 use forge_foundation::ZoneType;
 
 /// `AB$ Plot` — exile the source card from hand and mark it as plotted.

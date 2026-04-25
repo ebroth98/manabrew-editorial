@@ -1,9 +1,7 @@
 use crate::card::valid_filter;
 use crate::game::GameState;
 use crate::ids::PlayerId;
-use crate::parsing::keys;
 use crate::staticability::StaticMode;
-use forge_foundation::ZoneType;
 
 /// Apply exhaust ability check for a specific card.
 pub fn apply_with_exhaust(

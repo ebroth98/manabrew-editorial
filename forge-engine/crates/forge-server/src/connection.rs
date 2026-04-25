@@ -35,7 +35,7 @@ async fn write_loop(mut rx: mpsc::UnboundedReceiver<Message>, mut sink: WsSender
 
 fn send_msg(sender: &mpsc::UnboundedSender<Message>, msg: &ServerMessage) {
     if let Ok(json) = serde_json::to_string(msg) {
-        let _ = sender.send(Message::Text(json.into()));
+        let _ = sender.send(Message::Text(json));
     }
 }
 
@@ -43,7 +43,7 @@ fn emit_to(state: &Arc<ServerState>, player_id: &str, msg: &ServerMessage, json:
     if let Some(player) = state.players.get(player_id) {
         if player.connected {
             debug!("[emit] -> '{}': {}", player.username, msg_type_of(msg));
-            let _ = player.sender.send(Message::Text(json.to_string().into()));
+            let _ = player.sender.send(Message::Text(json.to_string()));
         }
     }
 }
@@ -124,7 +124,7 @@ pub async fn handle_connection(
 
     let ws_stream = tokio_tungstenite::accept_async(stream)
         .await
-        .map_err(ServerError::WebSocket)?;
+        .map_err(|e| ServerError::WebSocket(Box::new(e)))?;
 
     info!("[connect] WebSocket upgraded for {}", addr);
 
@@ -164,7 +164,7 @@ pub async fn handle_connection(
         ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
         loop {
             ticker.tick().await;
-            if heartbeat_tx.send(Message::Ping(Vec::new().into())).is_err() {
+            if heartbeat_tx.send(Message::Ping(Vec::new())).is_err() {
                 break;
             }
         }
@@ -247,7 +247,7 @@ async fn authenticate(
         .await
         .map_err(|_| ServerError::AuthTimeout)?
         .ok_or(ServerError::AuthFailed("Connection closed".into()))?
-        .map_err(ServerError::WebSocket)?;
+        .map_err(|e| ServerError::WebSocket(Box::new(e)))?;
 
     let text = match frame {
         Message::Text(t) => t,

@@ -1,7 +1,6 @@
 use forge_foundation::ZoneType;
 
 use crate::card::{valid_filter, Card};
-use crate::parsing::keys;
 use crate::staticability::StaticMode;
 
 pub fn counters_remain(cards: &[Card], card: &Card, destination: ZoneType) -> bool {

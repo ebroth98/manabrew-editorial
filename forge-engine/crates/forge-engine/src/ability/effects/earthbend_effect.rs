@@ -6,7 +6,6 @@ use forge_foundation::{CoreType, ZoneType};
 
 use super::EffectContext;
 use crate::ids::CardId;
-use crate::spellability::SpellAbility;
 
 /// Configure the spell ability during construction.
 /// Mirrors Java `EarthbendEffect.buildSpellAbility` — sets up targeting to

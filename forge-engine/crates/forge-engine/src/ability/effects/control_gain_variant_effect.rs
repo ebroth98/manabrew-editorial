@@ -1,7 +1,6 @@
 use forge_foundation::ZoneType;
 
 use super::{matches_valid_cards_for_sa, EffectContext};
-use crate::spellability::SpellAbility;
 
 /// `SP$ ControlGainVariant` — complex control redistribution.
 ///

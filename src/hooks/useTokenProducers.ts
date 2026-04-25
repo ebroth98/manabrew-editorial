@@ -48,11 +48,8 @@ export function useTokenProducers(
     retry: false,
   });
 
-  const tokens = useMemo(() => {
-    if (!scryfallMap || scryfallMap.size === 0) {
-      // Return cached tokens while waiting for fetch
-      return cached ?? [];
-    }
+  const computedTokens = useMemo(() => {
+    if (!scryfallMap || scryfallMap.size === 0) return null;
 
     const tokenMap = new Map<string, { name: string; typeLine: string; producers: Set<string> }>();
 
@@ -86,7 +83,11 @@ export function useTokenProducers(
         }),
       )
       .sort((a, b) => a.name.localeCompare(b.name));
-  }, [scryfallMap, uniqueNames]); // NOT cached — avoids feedback loop with store
+  }, [scryfallMap, uniqueNames]);
+
+  // Fall back to cached tokens while the fetch is in flight, but keep the
+  // memoized computation independent of `cached` to avoid feedback loops with the store.
+  const tokens = computedTokens ?? cached ?? [];
 
   return { tokens, isLoading };
 }

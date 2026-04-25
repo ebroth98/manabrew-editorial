@@ -110,21 +110,21 @@ impl TriggerBehavior for TriggerBecomesTarget {
         _trigger: &super::trigger::Trigger,
         sa: &mut SpellAbility,
         params: &RunParams,
-        game: &GameState,
+        _game: &GameState,
     ) {
         if let Some(ref source_sa) = params.source_sa {
             if let Some(source_card) = source_sa.source {
                 sa.set_triggering_object(
                     crate::ability::AbilityKey::Source,
-                    &source_card.0.to_string(),
+                    source_card.0.to_string(),
                 );
             }
             sa.set_triggering_spell_ability("SourceSA", source_sa.clone());
         }
         if let Some(card) = params.target_card.or(params.card) {
-            sa.set_triggering_object(crate::ability::AbilityKey::Target, &card.0.to_string());
+            sa.set_triggering_object(crate::ability::AbilityKey::Target, card.0.to_string());
         } else if let Some(p) = params.target_player {
-            sa.set_triggering_object(crate::ability::AbilityKey::Target, &p.0.to_string());
+            sa.set_triggering_object(crate::ability::AbilityKey::Target, p.0.to_string());
         }
     }
 

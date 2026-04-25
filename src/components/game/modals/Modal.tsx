@@ -2,7 +2,7 @@ import { createPortal } from "react-dom";
 import { useContext, useEffect } from "react";
 import { Minus, X } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { PromptModalChromeContext } from "./PromptModalController";
+import { PromptModalChromeContext } from "./promptModalChrome.context";
 import { withAlpha } from "@/themes/gameTheme";
 import { useTheme } from "@/hooks/useTheme";
 

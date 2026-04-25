@@ -66,13 +66,13 @@ impl TriggerBehavior for TriggerLifeGained {
         _trigger: &Trigger,
         sa: &mut SpellAbility,
         params: &RunParams,
-        game: &GameState,
+        _game: &GameState,
     ) {
         if let Some(amount) = params.life_amount {
-            sa.set_triggering_object(crate::ability::AbilityKey::LifeAmount, &amount.to_string());
+            sa.set_triggering_object(crate::ability::AbilityKey::LifeAmount, amount.to_string());
         }
         if let Some(p) = params.player {
-            sa.set_triggering_object(crate::ability::AbilityKey::Player, &p.0.to_string());
+            sa.set_triggering_object(crate::ability::AbilityKey::Player, p.0.to_string());
         }
     }
 

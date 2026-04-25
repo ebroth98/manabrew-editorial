@@ -43,7 +43,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let sub_text = match ctx
         .game
         .card(source_id)
-        .get_s_var(&sub_svar_name)
+        .get_s_var(sub_svar_name)
         .map(str::to_string)
     {
         Some(text) => text,

@@ -5,7 +5,6 @@
 
 use super::EffectContext;
 use crate::card::CounterType;
-use crate::spellability::SpellAbility;
 
 /// Note the number of counters of a specific type on a card.
 /// Mirrors Java's `CountersNoteEffect.noteCounters(Card, CounterType)`.

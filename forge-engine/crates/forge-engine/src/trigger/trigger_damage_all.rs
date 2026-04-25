@@ -44,24 +44,21 @@ impl TriggerBehavior for TriggerDamageAll {
         _trigger: &super::trigger::Trigger,
         sa: &mut SpellAbility,
         params: &RunParams,
-        game: &GameState,
+        _game: &GameState,
     ) {
         // Java: sets DamageAmount (total), Sources (set of source cards), Targets (set of target entities)
         // from filtered CardDamageMap. We approximate with single source/target from params.
         // TODO: Java filters the damage map by ValidSource/ValidTarget and computes totals.
         if let Some(amount) = params.damage_amount {
-            sa.set_triggering_object(
-                crate::ability::AbilityKey::DamageAmount,
-                &amount.to_string(),
-            );
+            sa.set_triggering_object(crate::ability::AbilityKey::DamageAmount, amount.to_string());
         }
         if let Some(src) = params.damage_source {
-            sa.set_triggering_object(crate::ability::AbilityKey::Sources, &src.0.to_string());
+            sa.set_triggering_object(crate::ability::AbilityKey::Sources, src.0.to_string());
         }
         if let Some(card) = params.damage_target_card {
-            sa.set_triggering_object(crate::ability::AbilityKey::Targets, &card.0.to_string());
+            sa.set_triggering_object(crate::ability::AbilityKey::Targets, card.0.to_string());
         } else if let Some(player) = params.damage_target_player {
-            sa.set_triggering_object(crate::ability::AbilityKey::Targets, &player.0.to_string());
+            sa.set_triggering_object(crate::ability::AbilityKey::Targets, player.0.to_string());
         }
     }
 

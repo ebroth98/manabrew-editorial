@@ -1,7 +1,6 @@
 use forge_foundation::ZoneType;
 
 use super::{resolve_numeric_svar, EffectContext};
-use crate::spellability::SpellAbility;
 
 /// Mirrors Java's `PeekAndRevealEffect.java`.
 ///

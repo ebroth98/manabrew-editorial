@@ -9,7 +9,7 @@ import type {
   RequestOptions,
 } from "./archidekt";
 
-const USER_AGENT = "bardidina-deck-importer";
+const USER_AGENT = "openmagic-deck-importer";
 
 function resolveFetch(opts?: RequestOptions): typeof fetch {
   const f = opts?.fetch ?? (globalThis as { fetch?: typeof fetch }).fetch;

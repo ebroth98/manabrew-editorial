@@ -10,7 +10,6 @@
 use std::io::{BufRead, BufReader, BufWriter, Write};
 use std::path::PathBuf;
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
-use std::time::Instant;
 
 use serde::{Deserialize, Serialize};
 
@@ -149,7 +148,7 @@ impl JavaBridge {
         let stderr_handle = std::thread::spawn(move || {
             if let Some(stderr) = stderr {
                 let reader = BufReader::new(stderr);
-                for line in reader.lines().flatten() {
+                for line in reader.lines().map_while(Result::ok) {
                     if verbose
                         || line.contains("Exception")
                         || line.contains("Error")
@@ -389,7 +388,7 @@ impl JavaServer {
         let stderr_handle = std::thread::spawn(move || {
             if let Some(stderr) = stderr {
                 let reader = BufReader::new(stderr);
-                for line in reader.lines().flatten() {
+                for line in reader.lines().map_while(Result::ok) {
                     if verbose
                         || line.contains("Exception")
                         || line.contains("Error")
@@ -842,10 +841,10 @@ fn resolve_java_bin(verbose: bool) -> String {
                 if let Some(v) = extract_jdk_version(&name) {
                     if v >= 17 {
                         let home = entry.path().join("Contents").join("Home");
-                        if home.join("bin").join("java").exists() {
-                            if best.as_ref().map_or(true, |(bv, _)| v > *bv) {
-                                best = Some((v, home));
-                            }
+                        if home.join("bin").join("java").exists()
+                            && best.as_ref().is_none_or(|(bv, _)| v > *bv)
+                        {
+                            best = Some((v, home));
                         }
                     }
                 }

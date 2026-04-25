@@ -268,9 +268,9 @@ impl AttackConstraints {
 
         // Remove only-alone attackers from normal pool
         reqs.retain(|a| {
-            self.restrictions.get(&a.attacker).map_or(true, |r| {
-                !r.types.contains(&AttackRestrictionType::OnlyAlone)
-            })
+            self.restrictions
+                .get(&a.attacker)
+                .is_none_or(|r| !r.types.contains(&AttackRestrictionType::OnlyAlone))
         });
 
         // Greedy: add creatures with requirements in priority order
@@ -370,7 +370,7 @@ impl AttackConstraints {
 
     /// Build a sorted list of attack candidates from requirements.
     /// Higher-priority (more requirements) come first.
-    fn get_sorted_filtered_requirements(&self, cards: &[Card]) -> Vec<Attack> {
+    fn get_sorted_filtered_requirements(&self, _cards: &[Card]) -> Vec<Attack> {
         let mut result = Vec::new();
 
         for (&attacker_id, req) in &self.requirements {
@@ -378,7 +378,7 @@ impl AttackConstraints {
             let sorted_reqs = req.get_sorted_requirements();
 
             for (defender, count) in sorted_reqs {
-                let can_attack = restriction.map_or(true, |r| r.can_attack(defender));
+                let can_attack = restriction.is_none_or(|r| r.can_attack(defender));
                 if can_attack {
                     result.push(Attack {
                         attacker: attacker_id,

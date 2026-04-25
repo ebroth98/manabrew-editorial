@@ -43,18 +43,15 @@ impl TriggerBehavior for TriggerExplores {
         _trigger: &Trigger,
         sa: &mut SpellAbility,
         params: &RunParams,
-        game: &GameState,
+        _game: &GameState,
     ) {
         // Java: sa.setTriggeringObject(AbilityKey.Explorer, runParams.get(AbilityKey.Card));
         //       if (runParams.containsKey(AbilityKey.Explored)) sa.setTriggeringObjectsFrom(runParams, AbilityKey.Explored);
         if let Some(card_id) = params.card {
-            sa.set_triggering_object(crate::ability::AbilityKey::Explorer, &card_id.0.to_string());
+            sa.set_triggering_object(crate::ability::AbilityKey::Explorer, card_id.0.to_string());
         }
         if let Some(explored) = params.explored {
-            sa.set_triggering_object(
-                crate::ability::AbilityKey::Explored,
-                &explored.0.to_string(),
-            );
+            sa.set_triggering_object(crate::ability::AbilityKey::Explored, explored.0.to_string());
         }
     }
 

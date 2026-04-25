@@ -15,12 +15,10 @@
 //! Cards are rendered as `Name@parityId`, e.g. `Mountain@3`.
 //! This matches the Java side's `ParityCardMap.appendKey()` format.
 
-use std::fmt::Write;
-
 use forge_engine_core::ability::api_type::ApiType;
 use forge_engine_core::agent::{
-    BinaryChoiceKind, CombatCostAction, GameEntity, ManaCostAction, PlayCardMode, PlayOption,
-    RollSwapChoice, TargetChoice,
+    BinaryChoiceKind, CombatCostAction, GameEntity, ManaCostAction, PlayOption, RollSwapChoice,
+    TargetChoice,
 };
 use forge_engine_core::combat::DefenderId;
 use forge_engine_core::game::GameState;

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Modal } from "@/components/game/modals/Modal";
 import { ManaSymbols } from "@/components/game/ManaSymbols";
 import { Button } from "@/components/ui/button";
@@ -22,7 +22,7 @@ import { usePreferredPrintsStore } from "@/stores/usePreferredPrintsStore";
 import { useDeckStore } from "@/stores/useDeckStore";
 import { PrintPickerModal } from "@/components/editor/PrintPickerModal";
 import { getScryfallImageUrl, getScryfallManaCost } from "@/api/scryfall";
-import { scryfallToXMage } from "@/lib/scryfall.utils";
+import { scryfallToOpenMagic } from "@/lib/scryfall.utils";
 import { useSetLookup } from "@/hooks/useCards";
 import { FORMAT_DISPLAY, LEGALITY_STYLES } from "@/lib/constants";
 import { toast } from "sonner";
@@ -63,12 +63,15 @@ export function CardDetailModal({
   const setLookup = useSetLookup();
   const { savedDecks, currentDeck, addToMain, addCardToSavedDeck, updatePrint } = useDeckStore();
 
-  useEffect(() => {
+  const cardId = initialCard?.id;
+  const [prevCardId, setPrevCardId] = useState(cardId);
+  if (prevCardId !== cardId) {
+    setPrevCardId(cardId);
     setSelectedPrint(null);
     setShowPrints(false);
     setShowDeckPicker(false);
     setFaceIndex(0);
-  }, [initialCard?.id]);
+  }
 
   if (!initialCard) return null;
 
@@ -91,13 +94,13 @@ export function CardDetailModal({
   const rulings = rulingsData?.data ?? [];
 
   function handleAddToCurrentDeck() {
-    addToMain(scryfallToXMage(card));
+    addToMain(scryfallToOpenMagic(card));
     setShowDeckPicker(false);
     toast.success(`Added to ${currentDeck.name}`);
   }
 
   function handleAddToSavedDeck(deckId: string, deckName: string) {
-    addCardToSavedDeck(deckId, scryfallToXMage(card));
+    addCardToSavedDeck(deckId, scryfallToOpenMagic(card));
     setShowDeckPicker(false);
     toast.success(`Added to ${deckName}`);
   }

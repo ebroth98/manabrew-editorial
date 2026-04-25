@@ -8,7 +8,6 @@ use super::super::{emit_zone_trigger, EffectContext};
 use super::helpers::{apply_post_move, apply_pre_move, resolve_dest_owner};
 use crate::event::RunParams;
 use crate::ids::{CardId, PlayerId};
-use crate::parsing::keys;
 use crate::spellability::SpellAbility;
 use crate::trigger::TriggerType;
 
@@ -215,7 +214,7 @@ pub(super) fn move_cards(
             );
 
             if dest_zone == ZoneType::Library && !force_shuffle {
-                reapply_library_position(ctx, &ordered, dest_zone, &lib_position, pid);
+                reapply_library_position(ctx, &ordered, dest_zone, lib_position, pid);
             }
         }
     }

@@ -165,8 +165,8 @@ fn parse_mana_cost(inner: &str) -> Option<CostPart> {
     let mut is_cost_pay_any_number_of_times = false;
 
     if let Some(r) = restriction {
-        if r.starts_with("XMin") {
-            x_min = r[4..].parse::<i32>().unwrap_or(0);
+        if let Some(rest) = r.strip_prefix("XMin") {
+            x_min = rest.parse::<i32>().unwrap_or(0);
         }
         is_exiled_creature_cost = r.eq_ignore_ascii_case("Exiled");
         is_enchanted_creature_cost = r.eq_ignore_ascii_case("EnchantedCost");

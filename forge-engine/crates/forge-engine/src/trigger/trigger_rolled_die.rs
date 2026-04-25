@@ -44,7 +44,7 @@ impl TriggerBehavior for TriggerRolledDie {
         params: &RunParams,
         game: &GameState,
     ) -> bool {
-        let host_controller = trigger.base.card_trait_base.host_controller(game);
+        let _host_controller = trigger.base.card_trait_base.host_controller(game);
         if !trigger.matches_optional_valid_player_filter(&self.valid_player, params.player, game) {
             return false;
         }
@@ -85,13 +85,13 @@ impl TriggerBehavior for TriggerRolledDie {
         _trigger: &super::trigger::Trigger,
         sa: &mut SpellAbility,
         params: &RunParams,
-        game: &GameState,
+        _game: &GameState,
     ) {
         if let Some(result) = params.die_result {
-            sa.set_triggering_object(crate::ability::AbilityKey::Result, &result.to_string());
+            sa.set_triggering_object(crate::ability::AbilityKey::Result, result.to_string());
         }
         if let Some(p) = params.player {
-            sa.set_triggering_object(crate::ability::AbilityKey::Player, &p.0.to_string());
+            sa.set_triggering_object(crate::ability::AbilityKey::Player, p.0.to_string());
         }
     }
 

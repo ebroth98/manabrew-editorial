@@ -114,7 +114,7 @@ impl TriggerBehavior for TriggerAttackersDeclared {
         _trigger: &super::trigger::Trigger,
         sa: &mut SpellAbility,
         params: &RunParams,
-        game: &GameState,
+        _game: &GameState,
     ) {
         // Java: sa.setTriggeringObject(AbilityKey.Attackers, attackers);
         if let Some(attacker_ids) = params.attacker_ids.as_ref() {
@@ -151,16 +151,13 @@ impl TriggerBehavior for TriggerAttackersDeclared {
             if !parts.is_empty() {
                 sa.set_triggering_object(
                     crate::ability::AbilityKey::AttackedTarget,
-                    &parts.join(","),
+                    parts.join(","),
                 );
             }
         }
         // Java: sa.setTriggeringObjectsFrom(runParams, AbilityKey.AttackingPlayer);
         if let Some(p) = params.attacking_player {
-            sa.set_triggering_object(
-                crate::ability::AbilityKey::AttackingPlayer,
-                &p.0.to_string(),
-            );
+            sa.set_triggering_object(crate::ability::AbilityKey::AttackingPlayer, p.0.to_string());
         }
     }
 

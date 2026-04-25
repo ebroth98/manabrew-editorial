@@ -5,7 +5,6 @@
 
 use super::EffectContext;
 use crate::ids::CardId;
-use crate::spellability::SpellAbility;
 use forge_foundation::ZoneType;
 
 /// Struct form of this effect so it can participate in the

@@ -293,7 +293,7 @@ impl PhaseHandler {
     /// Returns true if a combat is currently in progress.
     /// Mirrors Java's `PhaseHandler.inCombat()`.
     pub fn in_combat(&self) -> bool {
-        self.phase.map_or(false, |p| p.is_combat())
+        self.phase.is_some_and(|p| p.is_combat())
     }
 
     /// End the current combat.

@@ -3,10 +3,8 @@ use forge_foundation::ZoneType;
 use super::{emit_zone_trigger_with_lki_counters, matches_valid_cards_for_sa, EffectContext};
 use crate::event::RunParams;
 use crate::ids::CardId;
-use crate::parsing::keys;
 use crate::replacement::replacement_handler::{apply_replacements, ReplacementEvent};
 use crate::replacement::ReplacementResult;
-use crate::spellability::SpellAbility;
 use crate::trigger::TriggerType;
 
 /// `SP$ DestroyAll` — destroy all permanents matching `ValidCards$`.

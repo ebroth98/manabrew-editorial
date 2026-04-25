@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useEffectEvent, useRef, useState } from "react";
 import { Application, type Ticker } from "pixi.js";
 import { installPixiPatches } from "./pixiPatches";
 import { ArrowLayer, type ArrowDef } from "./ArrowLayer";
@@ -81,8 +81,8 @@ export function PixiArrowsCanvas({
 
   const [ready, setReady] = useState(false);
 
-  const initApp = useCallback(async () => {
-    if (!canvasRef.current || appRef.current) return;
+  const initApp = useCallback(async (): Promise<boolean> => {
+    if (!canvasRef.current || appRef.current) return false;
 
     const app = new Application();
     appRef.current = app;
@@ -99,9 +99,9 @@ export function PixiArrowsCanvas({
     } catch (err) {
       console.error("[pixi-arrows] init failed:", err);
       appRef.current = null;
-      return;
+      return false;
     }
-    if (!app.renderer) return;
+    if (!app.renderer) return false;
 
     const arrowLayer = new ArrowLayer();
     arrowLayerRef.current = arrowLayer;
@@ -147,19 +147,25 @@ export function PixiArrowsCanvas({
       app.renderer.resize(parent.clientWidth, parent.clientHeight);
     }
 
-    setReady(true);
+    return true;
   }, [mainSceneRef]);
 
+  const markReady = useEffectEvent((value: boolean) => setReady(value));
+
   useEffect(() => {
-    initApp();
+    let active = true;
+    initApp().then((success) => {
+      if (active && success) markReady(true);
+    });
     return () => {
+      active = false;
       arrowLayerRef.current?.destroy();
       arrowLayerRef.current = null;
       pointerLayerRef.current?.destroy();
       pointerLayerRef.current = null;
       appRef.current?.destroy(true);
       appRef.current = null;
-      setReady(false);
+      markReady(false);
     };
   }, [initApp]);
 

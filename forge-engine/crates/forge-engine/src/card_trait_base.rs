@@ -416,15 +416,13 @@ impl CardTraitBase {
         node: &'a CardTraitBase,
     ) -> HostName<'a> {
         if node.is_intrinsic() {
-            if let Some(state_name) = node.card_state_name {
-                // TODO(port): needs `Card::get_current_state_name()` for the
-                // comparison. For now assume the state differs when present
-                // and the host has no way to report its current state.
+            // TODO(port): needs `Card::get_current_state_name()` for the
+            // comparison. For now assume the state differs when present
+            // and the host has no way to report its current state.
+            if let Some(_state_name) = node.card_state_name {
                 unimplemented!(
                     "port: Card::get_current_state_name — required by CardTraitBase::get_host_name"
                 );
-                #[allow(unreachable_code)]
-                return HostName::State(state_name);
             }
         }
         HostName::Card(node.host_card(game))

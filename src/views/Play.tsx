@@ -68,7 +68,7 @@ export default function Play() {
       isHost,
       startingLife,
     );
-  }, [mpState]);
+  }, [mpState, setMultiplayerState, startMultiplayerGame]);
 
   useEffect(() => {
     if (!tabletopState?.manualTabletop || multiplayerStarted.current) return;

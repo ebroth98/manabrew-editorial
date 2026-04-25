@@ -2,7 +2,6 @@ use forge_foundation::ZoneType;
 
 use super::EffectContext;
 use crate::ability::ability_ir::DefinedRef;
-use crate::spellability::SpellAbility;
 
 /// `SP$ PreventDamage` — prevent the next N damage that would be dealt to
 /// a target creature or player this turn.

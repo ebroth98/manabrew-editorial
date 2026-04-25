@@ -3,7 +3,7 @@
  * Intended to be positioned at the border between opponent and player halves.
  */
 
-import { useRef, useEffect, useCallback, useState } from "react";
+import { useRef, useEffect, useEffectEvent, useCallback, useState } from "react";
 import { Application } from "pixi.js";
 import { installPixiPatches } from "./pixiPatches";
 installPixiPatches();
@@ -21,13 +21,19 @@ export function PixiPhaseStripCanvas({ state, callbacks, className }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const appRef = useRef<Application | null>(null);
   const stripRef = useRef<PhaseStripLayer | null>(null);
-  const callbacksRef = useRef(callbacks);
-  callbacksRef.current = callbacks;
 
   const [ready, setReady] = useState(false);
 
-  const initApp = useCallback(async () => {
-    if (!canvasRef.current || appRef.current) return;
+  // Re-bind PhaseStripLayer callbacks whenever the parent's callbacks change.
+  useEffect(() => {
+    stripRef.current?.setCallbacks({
+      onToggleSelfPhase: (id) => callbacks.onToggleSelfPhase?.(id),
+      onToggleOpponentPhase: (oppId, id) => callbacks.onToggleOpponentPhase?.(oppId, id),
+    });
+  }, [callbacks, ready]);
+
+  const initApp = useCallback(async (): Promise<boolean> => {
+    if (!canvasRef.current || appRef.current) return false;
     const app = new Application();
     appRef.current = app;
     try {
@@ -41,22 +47,17 @@ export function PixiPhaseStripCanvas({ state, callbacks, className }: Props) {
       });
     } catch {
       appRef.current = null;
-      return;
+      return false;
     }
     if (!app.renderer) {
       appRef.current = null;
-      return;
+      return false;
     }
 
     const theme = getTheme();
     const strip = new PhaseStripLayer(theme);
     stripRef.current = strip;
     app.stage.addChild(strip.container);
-
-    strip.setCallbacks({
-      onToggleSelfPhase: (id) => callbacksRef.current.onToggleSelfPhase?.(id),
-      onToggleOpponentPhase: (oppId, id) => callbacksRef.current.onToggleOpponentPhase?.(oppId, id),
-    });
 
     const parent = canvasRef.current.parentElement;
     if (parent) {
@@ -65,17 +66,23 @@ export function PixiPhaseStripCanvas({ state, callbacks, className }: Props) {
     }
 
     app.ticker.add(() => strip.tick());
-    setReady(true);
+    return true;
   }, []);
 
+  const markReady = useEffectEvent((value: boolean) => setReady(value));
+
   useEffect(() => {
-    initApp();
+    let active = true;
+    initApp().then((success) => {
+      if (active && success) markReady(true);
+    });
     return () => {
+      active = false;
       stripRef.current?.destroy();
       stripRef.current = null;
       appRef.current?.destroy(true);
       appRef.current = null;
-      setReady(false);
+      markReady(false);
     };
   }, [initApp]);
 

@@ -62,12 +62,12 @@ impl TriggerBehavior for TriggerCounterTypeAddedAll {
         _trigger: &super::trigger::Trigger,
         sa: &mut SpellAbility,
         params: &RunParams,
-        game: &GameState,
+        _game: &GameState,
     ) {
         if let Some(obj) = params.object_card {
-            sa.set_triggering_object(crate::ability::AbilityKey::Object, &obj.0.to_string());
+            sa.set_triggering_object(crate::ability::AbilityKey::Object, obj.0.to_string());
         } else if let Some(p) = params.object_player {
-            sa.set_triggering_object(crate::ability::AbilityKey::Object, &p.0.to_string());
+            sa.set_triggering_object(crate::ability::AbilityKey::Object, p.0.to_string());
         }
     }
 

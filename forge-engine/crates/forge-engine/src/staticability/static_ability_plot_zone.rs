@@ -1,6 +1,5 @@
 use crate::card::{valid_filter, Card};
 use crate::staticability::StaticMode;
-use forge_foundation::ZoneType;
 
 pub fn plot_zone(cards: &[Card], card: &Card) -> bool {
     for source in cards.iter().filter(|c| c.zone.is_static_ability_source()) {

@@ -5,7 +5,6 @@
 //! a batched zone-change operation.
 
 use super::EffectContext;
-use crate::spellability::SpellAbility;
 
 /// Resolve accumulated zone change triggers.
 /// In practice this is handled by the zone-change bookkeeping in the engine;

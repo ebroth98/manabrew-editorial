@@ -7,7 +7,6 @@ use forge_foundation::ZoneType;
 use super::super::{resolve_defined_players_with_sa, EffectContext};
 use super::helpers::{get_land_subtypes, matches_with_context};
 use crate::ids::{CardId, PlayerId};
-use crate::parsing::keys;
 use crate::spellability::SpellAbility;
 
 /// EACH clause search: one card per clause separated by "&".
@@ -183,7 +182,7 @@ fn resolve_constrained_multi(
     for _ in 0..max {
         // Apply budget filters
         if let Some(b) = budget_cmc {
-            remaining.retain(|&cid| ctx.game.card(cid).mana_cost.cmc() as i32 + spent_cmc <= b);
+            remaining.retain(|&cid| ctx.game.card(cid).mana_cost.cmc() + spent_cmc <= b);
         }
         if let Some(b) = budget_power {
             remaining.retain(|&cid| ctx.game.card(cid).base_power.unwrap_or(0) + spent_power <= b);
@@ -213,7 +212,7 @@ fn resolve_constrained_multi(
             required_land_types = land_types;
         }
 
-        spent_cmc += cmc as i32;
+        spent_cmc += cmc;
         spent_power += power;
         selected.push(chosen);
 

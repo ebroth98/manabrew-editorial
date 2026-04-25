@@ -1,9 +1,7 @@
 use crate::card::valid_filter;
 use crate::game::GameState;
 use crate::ids::PlayerId;
-use crate::parsing::keys;
 use crate::staticability::StaticMode;
-use forge_foundation::ZoneType;
 
 pub fn gain_life_radiation(game: &GameState, player: PlayerId) -> bool {
     for card in game

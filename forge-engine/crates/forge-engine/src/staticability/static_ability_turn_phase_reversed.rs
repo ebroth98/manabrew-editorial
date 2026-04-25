@@ -1,9 +1,7 @@
 use crate::card::valid_filter;
 use crate::game::GameState;
 use crate::ids::PlayerId;
-use crate::parsing::keys;
 use crate::staticability::StaticMode;
-use forge_foundation::ZoneType;
 
 pub fn is_turn_reversed(game: &GameState, player: PlayerId) -> bool {
     any_turn_phase_reversed(game, player, StaticMode::TurnReversed)

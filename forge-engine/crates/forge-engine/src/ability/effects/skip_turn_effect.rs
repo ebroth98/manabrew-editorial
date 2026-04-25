@@ -1,6 +1,5 @@
 use super::{resolve_defined_players, resolve_numeric_svar, EffectContext};
 use crate::parsing::keys;
-use crate::spellability::SpellAbility;
 
 /// Resolve `SP$ SkipTurn` — make a player skip their next turn(s).
 ///

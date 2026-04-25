@@ -35,8 +35,8 @@ impl TriggerBehavior for TriggerCycled {
         params: &RunParams,
         game: &GameState,
     ) -> bool {
-        let host_card = trigger.base.card_trait_base.host_card_id();
-        let host_controller = trigger.base.card_trait_base.host_controller(game);
+        let _host_card = trigger.base.card_trait_base.host_card_id();
+        let _host_controller = trigger.base.card_trait_base.host_controller(game);
         trigger.matches_optional_valid_card_filter(&self.valid_card, params.card, game)
             && trigger.matches_optional_valid_player_filter(&self.valid_player, params.player, game)
     }
@@ -46,11 +46,11 @@ impl TriggerBehavior for TriggerCycled {
         _trigger: &super::trigger::Trigger,
         sa: &mut SpellAbility,
         params: &RunParams,
-        game: &GameState,
+        _game: &GameState,
     ) {
         // Java: sa.setTriggeringObjectsFrom(runParams, AbilityKey.Card, AbilityKey.Cause)
         if let Some(card) = params.card {
-            sa.set_triggering_object(crate::ability::AbilityKey::Card, &card.0.to_string());
+            sa.set_triggering_object(crate::ability::AbilityKey::Card, card.0.to_string());
         }
         // TODO: Java also sets Cause (SpellAbility) from runParams.
         // Skipping Cause for now since SpellAbility is complex and stored as object in Java.

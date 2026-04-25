@@ -208,16 +208,16 @@ impl TriggerBehavior for TriggerAbilityTriggered {
         _trigger: &super::trigger::Trigger,
         sa: &mut SpellAbility,
         params: &RunParams,
-        game: &GameState,
+        _game: &GameState,
     ) {
         // Java: sa.setTriggeringObject(AbilityKey.Source, triggeredSA.getHostCard());
         // The source is the host card of the triggered SpellAbility
         if let Some(ref triggered_sa) = params.spell_ability {
             if let Some(source) = triggered_sa.source {
-                sa.set_triggering_object(crate::ability::AbilityKey::Source, &source.0.to_string());
+                sa.set_triggering_object(crate::ability::AbilityKey::Source, source.0.to_string());
             }
         } else if let Some(card) = params.source_card {
-            sa.set_triggering_object(crate::ability::AbilityKey::Source, &card.0.to_string());
+            sa.set_triggering_object(crate::ability::AbilityKey::Source, card.0.to_string());
         }
         // Java: sa.setTriggeringObjectsFrom(runParams, AbilityKey.SpellAbility, AbilityKey.Cause);
         // SpellAbility and Cause are complex objects; store what we can
@@ -229,7 +229,7 @@ impl TriggerBehavior for TriggerAbilityTriggered {
                 .join(",");
             sa.set_triggering_object(crate::ability::AbilityKey::Cause, &csv);
         } else if let Some(cause_card) = params.cause_card {
-            sa.set_triggering_object(crate::ability::AbilityKey::Cause, &cause_card.0.to_string());
+            sa.set_triggering_object(crate::ability::AbilityKey::Cause, cause_card.0.to_string());
         }
     }
 

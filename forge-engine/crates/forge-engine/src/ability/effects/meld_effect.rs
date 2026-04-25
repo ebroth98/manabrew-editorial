@@ -10,7 +10,6 @@ use forge_foundation::ZoneType;
 use super::{emit_zone_trigger, EffectContext};
 use crate::ids::CardId;
 use crate::parsing::keys;
-use crate::spellability::SpellAbility;
 
 /// Struct form of this effect so it can participate in the
 /// `SpellAbilityEffect` trait hierarchy — mirrors Java's
@@ -36,7 +35,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
                 && c.controller == controller
                 && c.owner == controller
                 && c.card_name == sec_name
-                && super::matches_change_type(c, &sec_type, &[])
+                && super::matches_change_type(c, sec_type, &[])
         })
         .map(|c| c.id)
         .collect();

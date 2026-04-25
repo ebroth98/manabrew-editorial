@@ -48,7 +48,7 @@ fn discover_for_player(ctx: &mut EffectContext, sa: &SpellAbility, player: Playe
             .core_types
             .iter()
             .any(|ct| matches!(ct, forge_foundation::CoreType::Land));
-        let cmc = card.mana_cost.cmc() as i32;
+        let cmc = card.mana_cost.cmc();
 
         // Exile one at a time (Java: exileSeq = true)
         let old_zone = ctx.game.card(top).zone;

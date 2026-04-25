@@ -2,8 +2,6 @@ use forge_foundation::ZoneType;
 
 use super::{matches_valid_cards_for_sa, EffectContext};
 use crate::ids::CardId;
-use crate::parsing::keys;
-use crate::spellability::SpellAbility;
 
 /// `SP$ UntapAll` — untap all matching permanents.
 ///

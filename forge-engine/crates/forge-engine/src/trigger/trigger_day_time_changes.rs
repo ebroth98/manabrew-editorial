@@ -27,7 +27,7 @@ impl TriggerBehavior for TriggerDayTimeChanges {
         &self,
         _trigger: &super::trigger::Trigger,
         _params: &RunParams,
-        game: &GameState,
+        _game: &GameState,
     ) -> bool {
         true
     }
@@ -37,7 +37,7 @@ impl TriggerBehavior for TriggerDayTimeChanges {
         _trigger: &super::trigger::Trigger,
         _sa: &mut SpellAbility,
         _params: &RunParams,
-        game: &GameState,
+        _game: &GameState,
     ) {
     }
 

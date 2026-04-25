@@ -24,7 +24,7 @@ pub fn parse_manifest_params(ctx: &EffectContext, sa: &SpellAbility) -> Manifest
         .ir
         .defined_text
         .as_deref()
-        .map_or(true, |d| d == "TopOfLibrary");
+        .is_none_or(|d| d == "TopOfLibrary");
     ManifestParams {
         amount,
         from_library,

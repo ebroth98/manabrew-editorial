@@ -1,7 +1,6 @@
 use forge_foundation::ZoneType;
 
-use super::{matches_valid_cards_for_sa, parse_zone_type, EffectContext};
-use crate::spellability::SpellAbility;
+use super::{matches_valid_cards_for_sa, EffectContext};
 
 /// `SP$ ChooseCard` — player chooses card(s) from a filtered set in a zone.
 ///

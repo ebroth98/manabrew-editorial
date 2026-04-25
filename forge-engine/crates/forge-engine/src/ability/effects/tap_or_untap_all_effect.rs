@@ -3,7 +3,6 @@ use forge_foundation::ZoneType;
 use super::{matches_valid_cards_for_sa, resolve_defined_players, EffectContext};
 use crate::agent::BinaryChoiceKind;
 use crate::ids::{CardId, PlayerId};
-use crate::spellability::SpellAbility;
 
 /// `SP$ TapOrUntapAll` — choose tap or untap, then apply to all matching cards.
 ///

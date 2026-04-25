@@ -3,7 +3,7 @@ import { Modal } from "./Modal";
 import { cn } from "@/lib/utils";
 import { useState, useCallback, useRef, useEffect } from "react";
 import { useModalKeyboard } from "@/hooks/useModalKeyboard";
-import type { Card as XMageCard } from "@/types/openmagic";
+import type { Card as OpenMagicCard } from "@/types/openmagic";
 
 interface DamageOrderModalProps {
   /** Attacker card ID (to show which attacker this is for). */
@@ -11,9 +11,9 @@ interface DamageOrderModalProps {
   /** Blocker IDs in their default order. */
   blockerIds: string[];
   /** Blocker card data for display. */
-  blockerCards: XMageCard[];
+  blockerCards: OpenMagicCard[];
   /** All cards from the game view (to look up blocker/attacker info). */
-  gameViewCards?: XMageCard[];
+  gameViewCards?: OpenMagicCard[];
   onConfirm: (orderedBlockerIds: string[]) => void;
 }
 
@@ -25,17 +25,20 @@ export function DamageOrderModal({
   onConfirm,
 }: DamageOrderModalProps) {
   const [ordered, setOrdered] = useState<string[]>([]);
+
+  // Reset when blockerIds change
+  const [prevBlockerIds, setPrevBlockerIds] = useState(blockerIds);
+  if (prevBlockerIds !== blockerIds) {
+    setPrevBlockerIds(blockerIds);
+    setOrdered([]);
+  }
+
   const remaining = blockerIds.filter((id) => !ordered.includes(id));
   const isComplete = ordered.length === blockerIds.length;
 
   const dialogRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     dialogRef.current?.focus();
-  }, [blockerIds]);
-
-  // Reset when blockerIds change
-  useEffect(() => {
-    setOrdered([]);
   }, [blockerIds]);
 
   const handleConfirm = useCallback(() => {

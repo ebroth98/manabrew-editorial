@@ -26,6 +26,7 @@ pub struct GameConfig {
     #[serde(default = "default_starting_life")]
     pub starting_life: i32,
     #[serde(default)]
+    #[allow(dead_code)]
     pub commander_name: Option<String>,
 }
 
@@ -45,6 +46,7 @@ impl Default for GameConfig {
 /// Deck list from JavaScript.
 #[derive(Debug, Clone, Deserialize)]
 pub struct DeckList {
+    #[allow(dead_code)]
     pub cards: Vec<DeckCard>,
 }
 
@@ -98,7 +100,9 @@ pub struct WasmGame {
     pub game_state: GameState,
     pub game_loop: GameLoop,
     pub rng: rand::rngs::StdRng,
+    #[allow(dead_code)]
     pub human_player_id: PlayerId,
+    #[allow(dead_code)]
     pub ai_player_id: PlayerId,
 }
 

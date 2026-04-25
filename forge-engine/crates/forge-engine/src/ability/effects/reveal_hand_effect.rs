@@ -2,7 +2,6 @@ use forge_foundation::ZoneType;
 
 use super::{resolve_defined_player, EffectContext};
 use crate::agent::GameLogEvent;
-use crate::spellability::SpellAbility;
 
 /// Mirrors Java's `RevealHandEffect.java`.
 ///

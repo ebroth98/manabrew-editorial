@@ -2,8 +2,6 @@ use forge_foundation::ZoneType;
 
 use super::{matches_valid_cards_selector_opt, EffectContext};
 use crate::ids::CardId;
-use crate::parsing::keys;
-use crate::spellability::SpellAbility;
 
 /// End-of-turn revert for goad. Mirrors the `GameCommand.run()` in Java
 /// `GoadEffect` that removes the goaded-by marker when the effect expires.

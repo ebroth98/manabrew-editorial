@@ -5,7 +5,6 @@
 //! player chooses which cards to exchange.
 
 use super::EffectContext;
-use crate::spellability::SpellAbility;
 
 /// Resolve exchange of controlled cards between two target players.
 /// Currently delegates to the standard control exchange logic.

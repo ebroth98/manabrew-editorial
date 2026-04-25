@@ -6,7 +6,6 @@ use forge_foundation::ZoneType;
 
 use super::EffectContext;
 use crate::event::RunParams;
-use crate::spellability::SpellAbility;
 use crate::trigger::TriggerType;
 
 /// Struct form of this effect so it can participate in the

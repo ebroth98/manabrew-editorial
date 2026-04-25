@@ -2,7 +2,6 @@ use forge_foundation::ZoneType;
 
 use super::{resolve_defined_player, resolve_numeric_svar, EffectContext};
 use crate::agent::GameLogEvent;
-use crate::spellability::SpellAbility;
 
 /// Mirrors Java's `LookAtEffect.java`.
 ///

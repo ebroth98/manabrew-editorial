@@ -2,7 +2,6 @@ use crate::card::{valid_filter, Card};
 use crate::game::GameState;
 use crate::ids::PlayerId;
 use crate::parsing::compare::compare_expr;
-use crate::parsing::keys;
 use crate::spellability::SpellAbility;
 use crate::staticability::StaticMode;
 use forge_foundation::ZoneType;
@@ -65,7 +64,7 @@ pub fn cant_be_cast_ability_in_context(
 /// Origin, cmcGT, NumLimitEachTurn.
 pub fn apply_cant_be_cast_ability(
     st_ab: &crate::staticability::StaticAbility,
-    spell: &SpellAbility,
+    _spell: &SpellAbility,
     card: &Card,
     source: &Card,
     activator: PlayerId,

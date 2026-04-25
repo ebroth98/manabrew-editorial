@@ -49,7 +49,7 @@ impl VerboseMode {
         }
         match value {
             None => VerboseMode::All,
-            Some(s) if s.is_empty() => VerboseMode::All,
+            Some("") => VerboseMode::All,
             Some(s) => {
                 let turns: Vec<u32> = s.split(',').filter_map(|t| t.trim().parse().ok()).collect();
                 if turns.is_empty() {
@@ -919,7 +919,6 @@ impl PlayerAgent for DeterministicAgent {
                 .map(|&(id, _)| self.card_name(id))
                 .collect();
             let _joined = names.join(", ");
-        } else {
         }
         attackers
     }
@@ -972,7 +971,7 @@ impl PlayerAgent for DeterministicAgent {
             // When BlockRestrict limit is reached, Java still iterates remaining
             // blockers with 0 legal options (consuming RNG for forced PASS).
             // Mirror this by continuing iteration but with empty legal attackers.
-            let at_limit = max_blockers.map_or(false, |max| pairs.len() >= max);
+            let at_limit = max_blockers.is_some_and(|max| pairs.len() >= max);
             let legal_attackers = if at_limit {
                 Vec::new() // no legal targets → forced PASS (consumes RNG)
             } else {
@@ -1015,9 +1014,7 @@ impl PlayerAgent for DeterministicAgent {
             &legal_attackers,
             &mut self.rng.borrow_mut(),
         );
-        if attacker.is_none() {
-            return None;
-        }
+        attacker?;
         let attacker = attacker.unwrap();
         Some(attacker)
     }
@@ -1373,10 +1370,11 @@ impl PlayerAgent for DeterministicAgent {
         let count = num.min(hand.len());
         let mut rng = self.game_rng.borrow_mut();
         let mut result: Vec<CardId> = hand[..count].to_vec();
-        for i in count..hand.len() {
+        for (offset, &card) in hand[count..].iter().enumerate() {
+            let i = count + offset;
             let j = choice_space::pick_index(i + 1, &mut rng);
             if j < count {
-                result[j] = hand[i];
+                result[j] = card;
             }
         }
         result

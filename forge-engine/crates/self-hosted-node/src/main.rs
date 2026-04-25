@@ -1,3 +1,4 @@
+#![allow(clippy::too_many_arguments)]
 use std::collections::HashMap;
 use std::sync::{mpsc as std_mpsc, Arc, Mutex};
 use std::thread;
@@ -519,46 +520,46 @@ async fn handle_state_update(
         }
     }
 
-    if protocol == SELF_HOSTED_NODE_PROTOCOL && payload_type == Some("startGame") {
-        if matches!(role, Role::Host) {
-            info!(observer = %client.username, "received self-hosted-node startGame request");
-            client.send(&ClientMessage::StartGame).await?;
+    if protocol == SELF_HOSTED_NODE_PROTOCOL
+        && payload_type == Some("startGame")
+        && matches!(role, Role::Host)
+    {
+        info!(observer = %client.username, "received self-hosted-node startGame request");
+        client.send(&ClientMessage::StartGame).await?;
+    }
+
+    if protocol == SELF_HOSTED_NODE_PROTOCOL
+        && payload_type == Some("spawnBot")
+        && matches!(role, Role::Host)
+    {
+        let requested_room_id = state
+            .get("roomId")
+            .and_then(Value::as_str)
+            .unwrap_or(room_id);
+        if requested_room_id == room_id {
+            info!(observer = %client.username, room_id, "received self-hosted-node spawnBot request");
+            let bot_config = config_for_spawn_bot(config, &state);
+            maybe_spawn_bot(bot_config, room_id.to_string(), bot_state.clone());
+        } else {
+            debug!(
+                observer = %client.username,
+                current_room_id = room_id,
+                requested_room_id,
+                "ignoring spawnBot request for another room"
+            );
         }
     }
 
-    if protocol == SELF_HOSTED_NODE_PROTOCOL && payload_type == Some("spawnBot") {
-        if matches!(role, Role::Host) {
-            let requested_room_id = state
-                .get("roomId")
-                .and_then(Value::as_str)
-                .unwrap_or(room_id);
-            if requested_room_id == room_id {
-                info!(observer = %client.username, room_id, "received self-hosted-node spawnBot request");
-                let bot_config = config_for_spawn_bot(config, &state);
-                maybe_spawn_bot(bot_config, room_id.to_string(), bot_state.clone());
-            } else {
-                debug!(
-                    observer = %client.username,
-                    current_room_id = room_id,
-                    requested_room_id,
-                    "ignoring spawnBot request for another room"
-                );
-            }
-        }
-    }
-
-    if protocol == BOT_PROTOCOL && payload_type == Some("ping") {
-        if matches!(role, Role::Bot) {
-            client
-                .broadcast_room_message(
-                    BOT_PROTOCOL,
-                    json!({
-                        "type": "pong",
-                        "bot": client.username,
-                    }),
-                )
-                .await?;
-        }
+    if protocol == BOT_PROTOCOL && payload_type == Some("ping") && matches!(role, Role::Bot) {
+        client
+            .broadcast_room_message(
+                BOT_PROTOCOL,
+                json!({
+                    "type": "pong",
+                    "bot": client.username,
+                }),
+            )
+            .await?;
     }
 
     Ok(())
@@ -1097,7 +1098,7 @@ impl RelayClient {
         message: &ClientMessage,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         self.write
-            .send(Message::Text(serde_json::to_string(message)?.into()))
+            .send(Message::Text(serde_json::to_string(message)?))
             .await?;
         Ok(())
     }

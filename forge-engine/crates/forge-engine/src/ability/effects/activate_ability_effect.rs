@@ -1,6 +1,4 @@
 use super::{resolve_defined_players, EffectContext};
-use crate::parsing::keys;
-use crate::spellability::SpellAbility;
 
 /// Mirrors Java's `ActivateAbilityEffect` for the common `ManaAbility$ True`
 /// case used by cards like Pygmy Hippo.

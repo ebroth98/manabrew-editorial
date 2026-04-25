@@ -33,8 +33,8 @@ impl TriggerBehavior for TriggerBecomesSaddled {
         params: &RunParams,
         game: &GameState,
     ) -> bool {
-        let host_card = trigger.base.card_trait_base.host_card_id();
-        let host_controller = trigger.base.card_trait_base.host_controller(game);
+        let _host_card = trigger.base.card_trait_base.host_card_id();
+        let _host_controller = trigger.base.card_trait_base.host_controller(game);
         if !trigger.matches_optional_valid_card_filter(&self.valid_saddled, params.card, game) {
             return false;
         }
@@ -51,10 +51,10 @@ impl TriggerBehavior for TriggerBecomesSaddled {
         _trigger: &super::trigger::Trigger,
         sa: &mut SpellAbility,
         params: &RunParams,
-        game: &GameState,
+        _game: &GameState,
     ) {
         if let Some(card) = params.card {
-            sa.set_triggering_object(crate::ability::AbilityKey::Card, &card.0.to_string());
+            sa.set_triggering_object(crate::ability::AbilityKey::Card, card.0.to_string());
         }
         if let Some(crew) = params.crew_cards.as_ref() {
             let csv = crew

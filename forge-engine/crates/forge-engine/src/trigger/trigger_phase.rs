@@ -39,7 +39,7 @@ impl TriggerBehavior for TriggerPhase {
         params: &RunParams,
         game: &GameState,
     ) -> bool {
-        let host_controller = trigger.base.card_trait_base.host_controller(game);
+        let _host_controller = trigger.base.card_trait_base.host_controller(game);
         if let Some(expected_phase) = self.phase {
             if params.phase != Some(expected_phase) {
                 return false;
@@ -53,10 +53,10 @@ impl TriggerBehavior for TriggerPhase {
         _trigger: &super::trigger::Trigger,
         sa: &mut SpellAbility,
         params: &RunParams,
-        game: &GameState,
+        _game: &GameState,
     ) {
         if let Some(p) = params.player {
-            sa.set_triggering_object(crate::ability::AbilityKey::Player, &p.0.to_string());
+            sa.set_triggering_object(crate::ability::AbilityKey::Player, p.0.to_string());
             sa.set_triggering_object(crate::ability::AbilityKey::TriggeredPlayer, p);
         }
     }

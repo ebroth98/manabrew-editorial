@@ -1,6 +1,5 @@
 use super::{resolve_numeric_svar, EffectContext};
 use crate::parsing::keys;
-use crate::spellability::SpellAbility;
 
 /// Resolve `SP$ AddPhase` — add extra combat (or main) phases to the current turn.
 ///

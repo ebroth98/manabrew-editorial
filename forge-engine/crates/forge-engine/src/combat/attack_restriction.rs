@@ -4,7 +4,6 @@ use forge_foundation::ZoneType;
 
 use crate::card::Card;
 use crate::ids::CardId;
-use crate::parsing::keys;
 use crate::staticability::StaticMode;
 
 pub use super::attack_restriction_type::AttackRestrictionType;

@@ -1,18 +1,18 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { Card } from "@/components/game/Card";
 import { cn } from "@/lib/utils";
 import { withAlpha } from "@/themes/gameTheme";
-import type { Card as XMageCard, StackObject } from "@/types/openmagic";
+import type { Card as OpenMagicCard, StackObject } from "@/types/openmagic";
 import { useStackUIStore } from "@/stores/useStackUIStore";
 
 interface StackDisplayProps {
   stack: StackObject[];
-  resolveStackCard: (stackItem: StackObject) => XMageCard;
+  resolveStackCard: (stackItem: StackObject) => OpenMagicCard;
   onOpenStack: () => void;
-  flashCard?: XMageCard | null;
+  flashCard?: OpenMagicCard | null;
   flashToken?: string | null;
   showPreStackFlash?: boolean;
-  castingCard?: XMageCard | null;
+  castingCard?: OpenMagicCard | null;
   rightPanelCollapsed?: boolean;
   playerColorMap?: Map<string, string>;
 }
@@ -46,10 +46,14 @@ export function StackDisplay({
 }: StackDisplayProps) {
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const setHoveredStackObjectId = useStackUIStore((s) => s.setHoveredStackObjectId);
-  const prevLayoutRef = useRef<Record<string, { left: number; top: number }>>({});
-  const prevStackIdsRef = useRef<Set<string>>(new Set(stack.map((obj) => obj.id)));
+  // Track previous render's stack ids and per-id layout to drive enter animations
+  // and skip transitions when positions haven't changed.
+  const stackIdsKey = stack.map((obj) => obj.id).join(",");
+  const [prevStackIds, setPrevStackIds] = useState<Set<string>>(
+    () => new Set(stack.map((obj) => obj.id)),
+  );
   const enteringIds = new Set(
-    stack.filter((obj) => !prevStackIdsRef.current.has(obj.id)).map((obj) => obj.id),
+    stack.filter((obj) => !prevStackIds.has(obj.id)).map((obj) => obj.id),
   );
 
   const hoveredIndex = hoveredId ? stack.findIndex((obj) => obj.id === hoveredId) : -1;
@@ -78,7 +82,19 @@ export function StackDisplay({
   const pileWidth = fixedMaxLeft - fixedMinLeft + STACK_UI.cardWidth;
   const top = `calc(50% - ${pileHeight / 2}px + ${STACK_UI.centerOffsetY}px)`;
 
-  useEffect(() => {
+  // Snapshot previous stack ids after render so the next render can detect new entries.
+  const [prevStackIdsKey, setPrevStackIdsKey] = useState(stackIdsKey);
+  if (prevStackIdsKey !== stackIdsKey) {
+    setPrevStackIdsKey(stackIdsKey);
+    setPrevStackIds(new Set(stack.map((obj) => obj.id)));
+  }
+
+  // Snapshot previous layout (left/top per id) for transition decisions.
+  const [prevLayout, setPrevLayout] = useState<Record<string, { left: number; top: number }>>({});
+  const layoutKey = stack.map((obj, idx) => `${obj.id}:${lefts[idx] + xShift}:${idx}`).join("|");
+  const [prevLayoutKey, setPrevLayoutKey] = useState(layoutKey);
+  if (prevLayoutKey !== layoutKey) {
+    setPrevLayoutKey(layoutKey);
     const nextLayout: Record<string, { left: number; top: number }> = {};
     stack.forEach((obj, idx) => {
       nextLayout[obj.id] = {
@@ -86,12 +102,8 @@ export function StackDisplay({
         top: idx * STACK_UI.offsetY,
       };
     });
-    prevLayoutRef.current = nextLayout;
-  }, [stack, lefts, xShift]);
-
-  useEffect(() => {
-    prevStackIdsRef.current = new Set(stack.map((obj) => obj.id));
-  }, [stack]);
+    setPrevLayout(nextLayout);
+  }
 
   useEffect(() => {
     return () => setHoveredStackObjectId(null);
@@ -124,7 +136,7 @@ export function StackDisplay({
           const isFlashedStackCard = flashStackIndex === idx;
           const targetLeft = lefts[idx] + xShift;
           const targetTop = idx * STACK_UI.offsetY;
-          const prev = prevLayoutRef.current[obj.id];
+          const prev = prevLayout[obj.id];
           const hasPositionChange = !prev || prev.left !== targetLeft || prev.top !== targetTop;
           const zIndex =
             hoveredIndex < 0

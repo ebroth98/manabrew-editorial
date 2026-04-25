@@ -290,8 +290,6 @@ impl ReplacementEffect {
     }
 
     /// Check requirements for this replacement effect against the current game state.
-    ///
-
     pub fn requirements_check(&self, game: &GameState, source: &Card) -> bool {
         if self.suppressed || self.base.card_trait_base.is_suppressed() {
             return false;
@@ -857,7 +855,7 @@ pub fn parse_replacement_effect(raw: &str) -> Option<ReplacementEffect> {
     // Parse ActiveZones$ (comma- or space-separated list of zone names).
     let active_zones = params
         .get(keys::ACTIVE_ZONES)
-        .map(|s| parse_zone_list(s))
+        .map(parse_zone_list)
         .unwrap_or_default();
 
     Some(ReplacementEffect::new(event, layer, params, active_zones))
@@ -865,7 +863,7 @@ pub fn parse_replacement_effect(raw: &str) -> Option<ReplacementEffect> {
 
 /// Parse a comma- or space-separated zone list string into `ZoneType` values.
 pub(super) fn parse_zone_list(s: &str) -> Vec<ZoneType> {
-    s.split(|c: char| c == ',' || c == ' ')
+    s.split([',', ' '])
         .filter_map(|tok| match tok.trim() {
             "Battlefield" => Some(ZoneType::Battlefield),
             "Graveyard" => Some(ZoneType::Graveyard),

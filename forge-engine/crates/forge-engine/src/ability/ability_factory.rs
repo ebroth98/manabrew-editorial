@@ -474,13 +474,9 @@ fn build_spell_ability_of_type_with_params(
 
     // Recursively build sub-ability chain from SVars
     let sub_ability = if let Some(sub_svar_name) = parsed.get(keys::SUB_ABILITY) {
-        if let Some(sub_text) = host.get_s_var(sub_svar_name).map(str::to_string) {
-            Some(Box::new(build_spell_ability_from_host_card(
-                host, &sub_text, player,
-            )))
-        } else {
-            None
-        }
+        host.get_s_var(sub_svar_name)
+            .map(str::to_string)
+            .map(|sub_text| Box::new(build_spell_ability_from_host_card(host, &sub_text, player)))
     } else {
         None
     };
@@ -566,6 +562,7 @@ fn build_spell_ability_of_type_with_params(
     sa
 }
 
+#[allow(dead_code)]
 fn build_mana_part(params: &Params) -> Option<AbilityManaPart> {
     let produced = params.get(keys::PRODUCED)?;
     let mut mana_part = AbilityManaPart::new(produced, params.get(keys::RESTRICTION).unwrap_or(""));

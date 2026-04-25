@@ -231,7 +231,7 @@ pub fn add_madness_replacement(card: &mut Card) {
         };
         let cost = cost.trim();
         let desc = if cost == "ManaCost" {
-            format!("Madness: If you discard this card, discard it into exile.")
+            "Madness: If you discard this card, discard it into exile.".to_string()
         } else {
             let display = forge_foundation::ManaCost::parse(cost);
             format!(

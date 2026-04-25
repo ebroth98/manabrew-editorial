@@ -26,8 +26,8 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
 
     // If targeting was used (ValidTgts$ Player), use the chosen target.
     if let Some(target_player) = sa.target_chosen.target_player {
-        if ctx.game.player(target_player).is_alive() {
-            if !crate::staticability::static_ability_cant_put_counter::any_cant_put_counter_on_player(
+        if ctx.game.player(target_player).is_alive()
+            && !crate::staticability::static_ability_cant_put_counter::any_cant_put_counter_on_player(
                 &ctx.game.cards,
                 target_player,
                 &crate::card::CounterType::Poison,
@@ -38,7 +38,6 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
                     ctx.game.player_remove_poison(target_player, -amount);
                 }
             }
-        }
         return;
     }
 
@@ -67,8 +66,8 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
 
     // Single player: You, Opponent, TriggeredTarget, etc.
     if let Some(pid) = resolve_defined_player(defined, controller, ctx.game) {
-        if ctx.game.player(pid).is_alive() {
-            if !crate::staticability::static_ability_cant_put_counter::any_cant_put_counter_on_player(
+        if ctx.game.player(pid).is_alive()
+            && !crate::staticability::static_ability_cant_put_counter::any_cant_put_counter_on_player(
                 &ctx.game.cards,
                 pid,
                 &crate::card::CounterType::Poison,
@@ -79,7 +78,6 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
                     ctx.game.player_remove_poison(pid, -amount);
                 }
             }
-        }
     }
 }
 

@@ -12,11 +12,10 @@ use super::EffectContext;
 #[forge_engine_macros::spell_effect(ControlPlayerEffect)]
 fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let controller_def = sa.ir.controller_text.as_deref().unwrap_or("You");
-    let controller =
-        super::resolve_defined_players(&controller_def, sa.activating_player, ctx.game)
-            .into_iter()
-            .next()
-            .unwrap_or(sa.activating_player);
+    let controller = super::resolve_defined_players(controller_def, sa.activating_player, ctx.game)
+        .into_iter()
+        .next()
+        .unwrap_or(sa.activating_player);
 
     let targets = if let Some(pid) = sa.target_chosen.target_player {
         vec![pid]

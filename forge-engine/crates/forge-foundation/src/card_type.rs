@@ -262,10 +262,8 @@ impl CardTypeLine {
             self.supertypes.insert(st);
         } else if let Some(ct) = CoreType::from_name(t) {
             self.core_types.insert(ct);
-        } else {
-            if !self.subtypes.iter().any(|s| s == t) {
-                self.subtypes.push(t.to_string());
-            }
+        } else if !self.subtypes.iter().any(|s| s == t) {
+            self.subtypes.push(t.to_string());
         }
     }
 }

@@ -1,7 +1,6 @@
 use forge_foundation::ZoneType;
 
 use super::EffectContext;
-use crate::spellability::SpellAbility;
 
 /// Resolve `SP$ Regenerate` — add a regeneration shield to a creature.
 ///

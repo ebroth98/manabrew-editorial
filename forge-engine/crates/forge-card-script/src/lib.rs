@@ -439,9 +439,7 @@ impl<'a> ParsedParams<'a> {
     }
 
     pub fn has_any(&self, keys: &[&str]) -> bool {
-        self.entries
-            .iter()
-            .any(|entry| keys.iter().any(|key| entry.key == *key))
+        self.entries.iter().any(|entry| keys.contains(&entry.key))
     }
 
     pub fn duplicates(&self) -> impl Iterator<Item = &ParamEntry<'a>> {
@@ -473,7 +471,7 @@ pub fn raw_has_key(raw: &str, key: &str) -> bool {
 }
 
 pub fn raw_has_any(raw: &str, keys: &[&str]) -> bool {
-    raw_entries(raw).any(|entry| keys.iter().any(|key| entry.key == *key))
+    raw_entries(raw).any(|entry| keys.contains(&entry.key))
 }
 
 fn raw_entries(raw: &str) -> impl Iterator<Item = ParamEntry<'_>> {

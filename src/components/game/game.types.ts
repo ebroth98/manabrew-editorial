@@ -1,4 +1,4 @@
-import type { Card as XMageCard, Player, ActivatableAbilityInfo } from "@/types/openmagic";
+import type { Card as OpenMagicCard, Player, ActivatableAbilityInfo } from "@/types/openmagic";
 import type { GameLogEntry } from "@/types/gameLog";
 import type { GameSnapshotEntry } from "@/types/gameSnapshot";
 import type { PromptType } from "@/types/promptType";
@@ -34,10 +34,10 @@ export interface OpponentHalfProps {
   player: Player;
   /** 0-based opponent index for seat color assignment. */
   opponentIndex: number;
-  permanents: XMageCard[];
-  graveyard: XMageCard[];
-  exile: XMageCard[];
-  commandZone?: XMageCard[];
+  permanents: OpenMagicCard[];
+  graveyard: OpenMagicCard[];
+  exile: OpenMagicCard[];
+  commandZone?: OpenMagicCard[];
   isTargetable: boolean;
   isSelectedTarget?: boolean;
   onTarget: () => void;
@@ -48,16 +48,20 @@ export interface OpponentHalfProps {
   promptType: PromptType | undefined;
   pendingAttacker: string | null;
   attackerIds?: string[];
-  onClickCard: (card: XMageCard) => void;
-  onClickAnyCard: (card: XMageCard) => void;
+  onClickCard: (card: OpenMagicCard) => void;
+  onClickAnyCard: (card: OpenMagicCard) => void;
   onHoverCard: (
-    card: XMageCard | null,
+    card: OpenMagicCard | null,
     e?: React.MouseEvent,
     options?: { useAnchor?: boolean; placement?: "auto" | "top-center"; anchorOverride?: DOMRect },
   ) => void;
   onFlipCard: () => void;
   showBackFace: boolean;
-  onOpenZone: (title: string, cards: XMageCard[], onClickCard?: (cardId: string) => void) => void;
+  onOpenZone: (
+    title: string,
+    cards: OpenMagicCard[],
+    onClickCard?: (cardId: string) => void,
+  ) => void;
   zonePanelSide: "left" | "right";
   zonePanelOrder: ("library" | "graveyard" | "exile")[];
   isMonarch?: boolean;
@@ -73,17 +77,17 @@ export interface OpponentHalfProps {
 }
 
 export interface BattlefieldZoneProps {
-  cards: XMageCard[];
+  cards: OpenMagicCard[];
   label: string;
   emptyLabel: string;
   className?: string;
   zoneBg?: string;
   minHeight?: number;
   topReserved?: number;
-  onClickCard?: (card: XMageCard) => void;
-  onClickAnyCard?: (card: XMageCard) => void;
+  onClickCard?: (card: OpenMagicCard) => void;
+  onClickAnyCard?: (card: OpenMagicCard) => void;
   onHoverCard?: (
-    card: XMageCard | null,
+    card: OpenMagicCard | null,
     e?: React.MouseEvent,
     options?: { useAnchor?: boolean; placement?: "auto" | "top-center"; anchorOverride?: DOMRect },
   ) => void;
@@ -92,13 +96,13 @@ export interface BattlefieldZoneProps {
   pendingCardIds?: string[];
   attackingCardIds?: string[];
   tappableLandIds?: string[];
-  onTapLand?: (card: XMageCard) => void;
+  onTapLand?: (card: OpenMagicCard) => void;
   /** Mana ability options for tappable lands (per-color tap buttons on dual lands). */
   manaAbilityOptions?: ActivatableAbilityInfo[];
   /** Tap a land with a specific mana ability (dual land color choice). */
   onTapLandAbility?: (cardId: string, abilityIndex: number, color?: string) => void;
   untappableLandIds?: string[];
-  onUntapLand?: (card: XMageCard) => void;
+  onUntapLand?: (card: OpenMagicCard) => void;
   leftReserved?: number;
   rightReserved?: number;
   landsAtTop?: boolean;
@@ -107,19 +111,19 @@ export interface BattlefieldZoneProps {
 }
 
 export interface HandDisplayProps {
-  cards: XMageCard[];
+  cards: OpenMagicCard[];
   onHoverCard?: (
-    card: XMageCard | null,
+    card: OpenMagicCard | null,
     e?: React.MouseEvent,
     options?: { useAnchor?: boolean; placement?: "auto" | "top-center"; anchorOverride?: DOMRect },
   ) => void;
-  onStartDrag?: (card: XMageCard, e: React.MouseEvent) => void;
-  onClickCard?: (card: XMageCard, e?: React.MouseEvent) => void;
+  onStartDrag?: (card: OpenMagicCard, e: React.MouseEvent) => void;
+  onClickCard?: (card: OpenMagicCard, e?: React.MouseEvent) => void;
   onFlipCard?: () => void;
   showBackFace?: boolean;
   draggingCardId?: string;
   castingCardId?: string | null;
-  getActions?: (card: XMageCard) => HandActionOption[];
+  getActions?: (card: OpenMagicCard) => HandActionOption[];
   onSelectAction?: (action: HandActionOption) => void;
   /**
    * Optional selection overlay — used by the mulligan flows to drive the

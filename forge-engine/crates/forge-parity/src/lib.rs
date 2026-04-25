@@ -1,3 +1,4 @@
+#![allow(clippy::too_many_arguments)]
 //! `forge-parity` — Cross-engine differential testing for the Forge MTG engine.
 //!
 //! This crate provides tools to run games through the Rust forge-engine with

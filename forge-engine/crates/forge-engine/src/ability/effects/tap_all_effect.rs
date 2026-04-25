@@ -2,7 +2,6 @@ use forge_foundation::ZoneType;
 
 use super::{matches_valid_cards_for_sa, EffectContext};
 use crate::ids::CardId;
-use crate::spellability::SpellAbility;
 
 /// `SP$ TapAll` — tap all matching permanents.
 ///

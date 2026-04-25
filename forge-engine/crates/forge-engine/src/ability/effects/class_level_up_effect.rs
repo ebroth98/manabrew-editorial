@@ -6,7 +6,6 @@
 
 use super::EffectContext;
 use crate::event::RunParams;
-use crate::spellability::SpellAbility;
 use crate::staticability::layer::apply_continuous_effects;
 use crate::trigger::TriggerType;
 

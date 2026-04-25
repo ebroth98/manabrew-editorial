@@ -59,16 +59,16 @@ impl TriggerBehavior for TriggerTapsForMana {
         _trigger: &Trigger,
         sa: &mut SpellAbility,
         params: &RunParams,
-        game: &GameState,
+        _game: &GameState,
     ) {
         if let Some(card) = params.card {
-            sa.set_triggering_object(crate::ability::AbilityKey::Card, &card.0.to_string());
+            sa.set_triggering_object(crate::ability::AbilityKey::Card, card.0.to_string());
         }
         if let Some(produced) = params.produced.as_ref() {
             sa.set_triggering_object(crate::ability::AbilityKey::Produced, produced);
         }
         if let Some(p) = params.activator {
-            sa.set_triggering_object(crate::ability::AbilityKey::Activator, &p.0.to_string());
+            sa.set_triggering_object(crate::ability::AbilityKey::Activator, p.0.to_string());
         }
     }
 

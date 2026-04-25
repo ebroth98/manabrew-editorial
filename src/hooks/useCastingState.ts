@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
-import type { Card as XMageCard, StackObject } from "@/types/openmagic";
+import { useState, useCallback, useMemo } from "react";
+import type { Card as OpenMagicCard, StackObject } from "@/types/openmagic";
 import type { AgentPrompt } from "@/stores/useGameStore";
 import { TargetingIntent } from "@/types/promptType";
 
@@ -7,10 +7,10 @@ import { TargetingIntent } from "@/types/promptType";
  * Prompt types that are part of the spell-casting flow.
  * While any of these are active, the casting card stays visible in the stack.
  */
-/** Minimal XMageCard used when the engine's zones don't yet have the
+/** Minimal OpenMagicCard used when the engine's zones don't yet have the
  * spell we're casting — enough for StackDisplay to render the card face
  * and for the casting glow / target arrow to anchor to it. */
-function stubCard(id: string, name: string, text = ""): XMageCard {
+function stubCard(id: string, name: string, text = ""): OpenMagicCard {
   return {
     id,
     name,
@@ -47,8 +47,8 @@ const CASTING_PROMPT_TYPES = new Set([
 
 interface UseCastingStateOptions {
   currentPrompt: AgentPrompt | null | undefined;
-  hand: XMageCard[];
-  battlefield: XMageCard[];
+  hand: OpenMagicCard[];
+  battlefield: OpenMagicCard[];
   /** Current stack so we can find the casting card once the engine has
    *  pushed it onto the stack (target prompts fire with the spell already
    *  on the stack for many effects). */
@@ -57,7 +57,7 @@ interface UseCastingStateOptions {
    *  removed from every live zone (e.g. a spell in the "in-flight" state
    *  between leaving the hand and landing on the stack). Populate from a
    *  caller-side cache of every card ever observed. */
-  resolveKnownCard?: (cardId: string) => XMageCard | undefined;
+  resolveKnownCard?: (cardId: string) => OpenMagicCard | undefined;
   targetCard: (cardId: string | null) => void;
   targetPlayer: (playerId: string) => void;
   targetAny: (target: { kind: string; playerId?: string; cardId?: string }) => void;
@@ -136,11 +136,13 @@ export function useCastingState({
     currentPrompt?.intent ?? (promptHostile ? TargetingIntent.Hostile : TargetingIntent.Friendly);
 
   // Clear target when casting card changes (new spell or cast finished)
-  useEffect(() => {
+  const [prevCastingCardId, setPrevCastingCardId] = useState(castingCardId);
+  if (prevCastingCardId !== castingCardId) {
+    setPrevCastingCardId(castingCardId);
     setTargetId(null);
     setTargetHostile(false);
     setTargetIntent(TargetingIntent.Hostile);
-  }, [castingCardId]);
+  }
 
   // Whether we're in the targeting phase (arrow follows cursor)
   const isTargeting = promptType?.startsWith("chooseTarget") ?? false;
@@ -190,7 +192,7 @@ export function useCastingState({
   return {
     /** The card ID being cast, or null. */
     castingCardId,
-    /** The XMageCard object being cast, or null. */
+    /** The OpenMagicCard object being cast, or null. */
     castingCard,
     /** Whether the source card is on the battlefield (activated ability) vs in hand. */
     castingFromBattlefield,

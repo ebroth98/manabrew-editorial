@@ -4,7 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
-import { scryfallToXMage } from "@/lib/scryfall.utils";
+import { scryfallToOpenMagic } from "@/lib/scryfall.utils";
 import { applyManualTabletopAction, type ManualTabletopApi } from "@/game";
 import { useGameStore } from "@/stores/useGameStore";
 import type { Card, GameView } from "@/types/openmagic";
@@ -40,7 +40,7 @@ function createManualCard(
   scryfallCard?: ScryfallCard,
 ): Card {
   const base = scryfallCard
-    ? scryfallToXMage(scryfallCard, `manual-card-${crypto.randomUUID()}`)
+    ? scryfallToOpenMagic(scryfallCard, `manual-card-${crypto.randomUUID()}`)
     : null;
 
   return {
@@ -84,10 +84,13 @@ export function ManualTabletopControls({ gameView, api }: ManualTabletopControls
   const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const searchContainerRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    if (gameView.players.some((player) => player.id === controllerId)) return;
-    setControllerId(gameView.players[0]?.id ?? "");
-  }, [controllerId, gameView.players]);
+  // Snap controllerId back to a valid player whenever the player list changes.
+  if (!gameView.players.some((player) => player.id === controllerId)) {
+    const fallback = gameView.players[0]?.id ?? "";
+    if (fallback !== controllerId) {
+      setControllerId(fallback);
+    }
+  }
 
   const selectedPlayer = useMemo(
     () => gameView.players.find((player) => player.id === controllerId),

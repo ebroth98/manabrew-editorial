@@ -23,7 +23,6 @@ use crate::trigger::trigger::parse_trigger;
 use super::{resolve_defined_player, resolve_defined_players, EffectContext};
 use crate::ability::ability_utils;
 use crate::ability::spell_ability_effect::{check_valid_duration, SpellAbilityEffect};
-use crate::parsing::keys;
 use crate::spellability::AbilityDuration;
 
 /// Stateless marker type — mirrors Java's `class EffectEffect extends SpellAbilityEffect`.

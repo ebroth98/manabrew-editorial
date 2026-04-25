@@ -319,6 +319,7 @@ pub fn build_preset_decks(game: &mut GameState, preset_id: &str, p0: PlayerId, p
 
 /// Build a single-player deck for `owner` from a preset id.
 /// Falls back to the red burn preset if `preset_id` is unknown.
+#[allow(dead_code)]
 pub fn build_preset_deck_for_player(game: &mut GameState, preset_id: &str, owner: PlayerId) {
     let preset = get_preset_by_id(preset_id).or_else(|| get_preset_by_id("red_burn"));
     if let Some(p) = preset {
@@ -342,6 +343,7 @@ pub fn prepare_preset_registered_player(
 ///
 /// Reads the preset's `opponent` field and loads that deck for `owner`.
 /// Falls back to a random AI-eligible deck if the preset or opponent is missing.
+#[allow(dead_code)]
 pub fn build_preset_opponent(game: &mut GameState, preset_id: &str, owner: PlayerId) {
     let preset = get_preset_by_id(preset_id);
     match preset.and_then(|p| p.opponent.as_deref()) {
@@ -416,6 +418,7 @@ fn random_ai_deck_cards() -> &'static Vec<DeckCardEntry> {
 /// Build the default AI opponent deck (random AI-eligible) for a single player.
 ///
 /// Used when the human plays a custom deck so the AI still gets a deck.
+#[allow(dead_code)]
 pub fn build_ai_opponent(game: &mut GameState, owner: PlayerId) {
     let cards = random_ai_deck_cards();
     build_deck_from_entries(game, owner, cards);
@@ -454,6 +457,7 @@ fn build_deck_from_entries(game: &mut GameState, owner: PlayerId, deck: &[DeckCa
 /// Build a custom deck for `owner` from a list of card identities (one per
 /// copy), loading each definition from the global CardDatabase.
 /// Unrecognised names are skipped with a log message.
+#[allow(dead_code)]
 pub fn build_custom_deck(game: &mut GameState, owner: PlayerId, identities: &[CardIdentity]) {
     let db = get_card_db();
     for identity in identities {

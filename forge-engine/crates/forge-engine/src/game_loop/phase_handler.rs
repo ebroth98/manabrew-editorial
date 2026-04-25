@@ -896,10 +896,8 @@ impl GameLoop {
                 );
 
                 // Grant haste if creature (suspend creatures get haste)
-                if is_creature {
-                    if !game.card(card_id).has_haste() {
-                        game.card_mut(card_id).granted_keywords.add("Haste");
-                    }
+                if is_creature && !game.card(card_id).has_haste() {
+                    game.card_mut(card_id).granted_keywords.add("Haste");
                 }
             }
         }

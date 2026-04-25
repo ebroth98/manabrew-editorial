@@ -100,7 +100,7 @@ impl Card {
             .keywords
             .iter_strings()
             .chain(self.granted_keywords.iter_strings())
-            .filter_map(|kw| crate::keyword::extract_keyword_cost_str(&kw, "Equip"))
+            .filter_map(|kw| crate::keyword::extract_keyword_cost_str(kw, "Equip"))
         {
             let payload = equip_raw.split(":::").next().unwrap_or(equip_raw).trim();
             let mut parts = payload.split(':');
@@ -129,7 +129,7 @@ impl Card {
             .iter_strings()
             .chain(self.granted_keywords.iter_strings())
         {
-            if let Some(rest) = crate::keyword::extract_keyword_cost_str(&kw, "Adapt") {
+            if let Some(rest) = crate::keyword::extract_keyword_cost_str(kw, "Adapt") {
                 let parts: Vec<&str> = rest.splitn(2, ':').collect();
                 if parts.len() == 2 {
                     let magnitude = parts[0].trim();
@@ -154,7 +154,7 @@ impl Card {
             .iter_strings()
             .chain(self.granted_keywords.iter_strings())
         {
-            if let Some(n_str) = crate::keyword::extract_keyword_cost_str(&kw, "Crew") {
+            if let Some(n_str) = crate::keyword::extract_keyword_cost_str(kw, "Crew") {
                 let n = n_str.trim();
                 let ab_text = format!(
                     "AB$ Animate | Cost$ tapXType<Any/Creature.Other+withTotalPowerGE{{{}}}> | Defined$ Self | Types$ Artifact,Creature | Secondary$ True | SpellDescription$ Crew {}",
@@ -176,7 +176,7 @@ impl Card {
             .iter_strings()
             .chain(self.granted_keywords.iter_strings())
         {
-            if let Some(_n_str) = crate::keyword::extract_keyword_cost_str(&kw, "Station") {
+            if let Some(_n_str) = crate::keyword::extract_keyword_cost_str(kw, "Station") {
                 let ab_text = "AB$ PutCounter | Cost$ tapXType<1/Creature.Other> | Defined$ Self | CounterType$ CHARGE | CounterNum$ StationX | SorcerySpeed$ True | CostDesc$ | SpellDescription$ Station";
                 let next_idx = self.activated_abilities.len();
                 if let Some(ab) = parse_activated_ability(ab_text, next_idx) {
@@ -195,7 +195,7 @@ impl Card {
             .iter_strings()
             .chain(self.granted_keywords.iter_strings())
         {
-            if let Some(cost_str) = crate::keyword::extract_keyword_cost_str(&kw, "Embalm") {
+            if let Some(cost_str) = crate::keyword::extract_keyword_cost_str(kw, "Embalm") {
                 let cost = cost_str.trim();
                 let ab_text = format!(
                     "AB$ CopyPermanent | Cost$ {} ExileFromGrave<1/CARDNAME> | ActivationZone$ Graveyard | SorcerySpeed$ True | Defined$ Self | SetColor$ White | AddTypes$ Zombie | SpellDescription$ Embalm",
@@ -215,7 +215,7 @@ impl Card {
             .iter_strings()
             .chain(self.granted_keywords.iter_strings())
         {
-            if let Some(cost_str) = crate::keyword::extract_keyword_cost_str(&kw, "Eternalize") {
+            if let Some(cost_str) = crate::keyword::extract_keyword_cost_str(kw, "Eternalize") {
                 let cost = cost_str.trim();
                 let ab_text = format!(
                     "AB$ CopyPermanent | Cost$ {} ExileFromGrave<1/CARDNAME> | ActivationZone$ Graveyard | SorcerySpeed$ True | Defined$ Self | SetColor$ Black | SetPower$ 4 | SetToughness$ 4 | AddTypes$ Zombie | SpellDescription$ Eternalize",

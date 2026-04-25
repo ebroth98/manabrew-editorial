@@ -4,8 +4,6 @@
 //! Double the number of each type of counter on target permanent.
 
 use super::EffectContext;
-use crate::parsing::keys;
-use crate::spellability::SpellAbility;
 use forge_foundation::ZoneType;
 
 /// Struct form of this effect so it can participate in the
@@ -29,7 +27,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
 
         if let Some(ref ct) = counter_type_filter {
             // Multiply specific counter type
-            let current = *ctx.game.card(card_id).counters.get(&ct).unwrap_or(&0);
+            let current = *ctx.game.card(card_id).counters.get(ct).unwrap_or(&0);
             let to_add = current * (multiplier - 1);
             if to_add > 0 {
                 ctx.game.card_mut(card_id).add_counter(ct, to_add);

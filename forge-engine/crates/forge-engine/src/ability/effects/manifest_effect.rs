@@ -6,7 +6,6 @@
 //! turn it face-down, and put it onto the battlefield as a 2/2 creature.
 //! The card can be turned face-up by paying its mana cost if it's a creature.
 
-use crate::parsing::keys;
 use forge_foundation::ZoneType;
 
 use super::manifest_base_effect::parse_manifest_params;

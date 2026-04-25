@@ -6,7 +6,6 @@
 //! Java names it `CleanUpEffect` while the Rust convention uses `cleanup_effect`.
 
 use super::EffectContext;
-use crate::spellability::SpellAbility;
 
 /// Resolve by delegating to the existing `cleanup_effect` handler.
 /// Struct form of this effect so it can participate in the

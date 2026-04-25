@@ -78,6 +78,7 @@ impl ClientBotManager {
         }
     }
 
+    #[allow(dead_code)]
     pub fn bot_usernames(&self) -> Vec<String> {
         self.bots
             .lock()
@@ -269,9 +270,7 @@ async fn send(
     message: &ClientMessage,
 ) -> Result<(), String> {
     sink.send(Message::Text(
-        serde_json::to_string(message)
-            .map_err(|error| error.to_string())?
-            .into(),
+        serde_json::to_string(message).map_err(|error| error.to_string())?,
     ))
     .await
     .map_err(|error| error.to_string())

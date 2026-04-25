@@ -164,7 +164,7 @@ pub trait TokenEffectBase {
             .ir
             .token_types_text
             .as_deref()
-            .map(|s| CardTypeLine::parse(s))
+            .map(CardTypeLine::parse)
             .unwrap_or_else(|| CardTypeLine::parse("Creature"));
         let colors = sa
             .ir
@@ -304,7 +304,7 @@ pub trait TokenEffectBase {
 
         if let Some(counter_type) = sa.ir.with_counters_type.as_ref() {
             let amount = super::resolve_numeric_svar(ctx.game, sa, keys::WITH_COUNTERS_AMOUNT, 1);
-            token.add_counter(&counter_type, amount.max(0));
+            token.add_counter(counter_type, amount.max(0));
         }
 
         if let Some(add_triggers_from) = sa.ir.add_triggers_from_text.as_deref() {

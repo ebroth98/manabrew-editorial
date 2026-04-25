@@ -11,7 +11,6 @@ use crate::card::Card;
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
 use crate::parsing::compare::compare_expr;
-use crate::parsing::keys;
 use crate::spellability::SpellAbility;
 
 use super::helpers::matches_valid_cards_for_sa;
@@ -333,9 +332,7 @@ fn filter_expr_matches(card: &Card, source: &Card, player: PlayerId, alt: &str) 
             "nonbasic" => !card.type_line.is_basic(),
             "youctrl" | "youown" => card.controller == player,
             "oppctrl" | "oppown" => card.controller != player,
-            "chosenctrl" => source
-                .chosen_player
-                .map_or(false, |chosen| card.controller == chosen),
+            "chosenctrl" => source.chosen_player == Some(card.controller),
             "" => true,
             // Unknown qualifier — permissive (matches Java fallthrough).
             _ => true,

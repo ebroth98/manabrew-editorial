@@ -35,9 +35,8 @@ pub fn is_valid<'a>(restrictions: &'a [&'a str]) -> impl Fn(&SpellAbility) -> bo
     move |sa: &SpellAbility| {
         for &restriction in restrictions {
             // Check if the restriction matches a param key set to "True"
-            if restriction.starts_with('!') {
+            if let Some(key) = restriction.strip_prefix('!') {
                 // Negated restriction: must NOT have the param
-                let key = &restriction[1..];
                 if sa.param_is_true(key) {
                     return false;
                 }

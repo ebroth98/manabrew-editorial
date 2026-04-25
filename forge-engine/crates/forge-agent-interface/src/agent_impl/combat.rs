@@ -170,16 +170,14 @@ pub(super) fn choose_combat_damage_assignment<T: AgentTransport>(
                     .unwrap_or(false)
                 {
                     (None, entry.damage)
-                } else {
-                    if let Some(blocker) = parse_card_id(&entry.assignee_id) {
-                        if blockers_in_order.contains(&blocker) {
-                            (Some(blocker), entry.damage)
-                        } else {
-                            (None, 0)
-                        }
+                } else if let Some(blocker) = parse_card_id(&entry.assignee_id) {
+                    if blockers_in_order.contains(&blocker) {
+                        (Some(blocker), entry.damage)
                     } else {
                         (None, 0)
                     }
+                } else {
+                    (None, 0)
                 }
             })
             .filter(|(_, damage)| *damage > 0)

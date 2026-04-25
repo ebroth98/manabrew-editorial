@@ -43,7 +43,7 @@ impl TriggerSpellAbilityCastOrCopy {
 #[typetag::serde]
 impl TriggerBehavior for TriggerSpellAbilityCastOrCopy {
     fn trigger_type(&self) -> TriggerType {
-        self.trigger_type.clone()
+        self.trigger_type
     }
 
     fn perform_test(&self, trigger: &Trigger, params: &RunParams, game: &GameState) -> bool {
@@ -60,22 +60,22 @@ impl TriggerBehavior for TriggerSpellAbilityCastOrCopy {
         _trigger: &Trigger,
         sa: &mut SpellAbility,
         params: &RunParams,
-        game: &GameState,
+        _game: &GameState,
     ) {
         // Java: sa.setTriggeringObject(AbilityKey.Card, cause.getHostCard())
         if let Some(card) = params.spell_card {
-            sa.set_triggering_object(crate::ability::AbilityKey::Card, &card.0.to_string());
+            sa.set_triggering_object(crate::ability::AbilityKey::Card, card.0.to_string());
         }
         // TODO: port SpellAbility triggering object (AbilityKey.SpellAbility = cause)
         // TODO: port SpellAbilityTargets triggering object (from cause.getAllTargetChoices)
         if let Some(amount) = params.life_amount {
-            sa.set_triggering_object(crate::ability::AbilityKey::LifeAmount, &amount.to_string());
+            sa.set_triggering_object(crate::ability::AbilityKey::LifeAmount, amount.to_string());
         }
         if let Some(lki) = params.card_lki {
-            sa.set_triggering_object(crate::ability::AbilityKey::CardLKI, &lki.0.to_string());
+            sa.set_triggering_object(crate::ability::AbilityKey::CardLKI, lki.0.to_string());
         }
         if let Some(p) = params.activator {
-            sa.set_triggering_object(crate::ability::AbilityKey::Activator, &p.0.to_string());
+            sa.set_triggering_object(crate::ability::AbilityKey::Activator, p.0.to_string());
         }
         // TODO: port CurrentStormCount triggering object - not yet in RunParams
         // TODO: port CurrentCastSpells triggering object - not yet in RunParams

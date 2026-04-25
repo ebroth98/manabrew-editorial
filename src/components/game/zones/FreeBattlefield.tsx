@@ -1,8 +1,8 @@
-import React, { useEffect, useMemo, useRef } from "react";
+import React, { useEffect, useEffectEvent, useMemo, useState } from "react";
 import { cn } from "@/lib/utils";
 import { Card } from "@/components/game/Card";
 import { CardOverlayButton } from "@/components/game/CardOverlayButton";
-import type { Card as XMageCard, ActivatableAbilityInfo } from "@/types/openmagic";
+import type { Card as OpenMagicCard, ActivatableAbilityInfo } from "@/types/openmagic";
 import { CARD_W, CARD_H, CARD_GAP as GAP } from "../game.constants";
 import { CARD_RING, BATTLEFIELD_CARD } from "../game.styles";
 import { withAlpha } from "@/themes/gameTheme";
@@ -20,13 +20,13 @@ export interface PlacementGhost {
 }
 
 interface FreeBattlefieldProps {
-  cards: XMageCard[];
+  cards: OpenMagicCard[];
   className?: string;
-  onClickCard?: (card: XMageCard) => void;
+  onClickCard?: (card: OpenMagicCard) => void;
   actionableCardIds?: string[];
-  onClickAnyCard?: (card: XMageCard) => void;
+  onClickAnyCard?: (card: OpenMagicCard) => void;
   onHoverCard?: (
-    card: XMageCard | null,
+    card: OpenMagicCard | null,
     e?: React.MouseEvent,
     options?: { useAnchor?: boolean; placement?: "auto" | "top-center"; anchorOverride?: DOMRect },
   ) => void;
@@ -35,7 +35,7 @@ interface FreeBattlefieldProps {
   pendingCardIds?: string[];
   attackingCardIds?: string[];
   tappableLandIds?: string[];
-  onTapLand?: (card: XMageCard) => void;
+  onTapLand?: (card: OpenMagicCard) => void;
   /** Tap multiple selected lands at once (queued). */
   onTapLands?: (cardIds: string[]) => void;
   /** Mana ability options for tappable lands (per-color tap buttons on dual lands). */
@@ -43,7 +43,7 @@ interface FreeBattlefieldProps {
   /** Tap a land with a specific mana ability (dual land color choice). */
   onTapLandAbility?: (cardId: string, abilityIndex: number, color?: string) => void;
   untappableLandIds?: string[];
-  onUntapLand?: (card: XMageCard) => void;
+  onUntapLand?: (card: OpenMagicCard) => void;
   /** Untap multiple selected lands at once (queued). */
   onUntapLands?: (cardIds: string[]) => void;
   bottomReserved?: number;
@@ -84,7 +84,7 @@ export function FreeBattlefield({
 }: FreeBattlefieldProps) {
   const themeColors = useTheme().gameTheme;
   const cardMap = useMemo(() => {
-    const m = new Map<string, XMageCard>();
+    const m = new Map<string, OpenMagicCard>();
     for (const c of cards) m.set(c.id, c);
     return m;
   }, [cards]);
@@ -140,14 +140,28 @@ export function FreeBattlefield({
   const isDraggingAnyCard = draggingCardIds.size > 0;
   const actionableCardIdSet = useMemo(() => new Set(actionableCardIds ?? []), [actionableCardIds]);
 
-  const onHoverCardRef = useRef(onHoverCard);
-  onHoverCardRef.current = onHoverCard;
-
+  const clearHover = useEffectEvent(() => onHoverCard?.(null));
   useEffect(() => {
     if (isDraggingAnyCard) {
-      onHoverCardRef.current?.(null);
+      clearHover();
     }
   }, [isDraggingAnyCard]);
+
+  // Track container width via ResizeObserver so the placement-ghost slot search
+  // can run during render without reading refs.
+  const [containerWidth, setContainerWidth] = useState(0);
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    setContainerWidth(el.clientWidth);
+    const observer = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      if (!entry) return;
+      setContainerWidth(Math.round(entry.contentRect.width));
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [containerRef]);
 
   // Minimum container height to show all positioned cards (account for attachment offset)
   const minH = Math.max(
@@ -161,7 +175,7 @@ export function FreeBattlefield({
   );
 
   const renderSingleCard = (
-    card: XMageCard,
+    card: OpenMagicCard,
     opts: { onMouseDown?: (e: React.MouseEvent) => void; extraStyle?: React.CSSProperties } = {},
   ) => {
     const isPending = pendingCardIds?.includes(card.id);
@@ -191,11 +205,11 @@ export function FreeBattlefield({
 
     /** Render a TAP or UNTAP overlay with multi-selection support. */
     const renderLandOverlay = (
-      c: XMageCard,
+      c: OpenMagicCard,
       variant: "tap" | "untap",
       label: string,
       validIds: string[] | undefined,
-      onSingle: (c: XMageCard) => void,
+      onSingle: (c: OpenMagicCard) => void,
       onBatch: ((ids: string[]) => void) | undefined,
       titleFn: (name: string) => string,
     ) => (
@@ -391,7 +405,7 @@ export function FreeBattlefield({
 
           const attachments = (card.attachmentIds ?? [])
             .map((id) => cardMap.get(id))
-            .filter((c): c is XMageCard => c !== undefined);
+            .filter((c): c is OpenMagicCard => c !== undefined);
 
           const totalOffset = attachments.length * ATTACH_OFFSET_Y;
 
@@ -421,16 +435,16 @@ export function FreeBattlefield({
         })}
 
         {placementGhost &&
-          containerRef.current &&
+          containerWidth > 0 &&
           (() => {
-            const cw = containerRef.current!.clientWidth;
+            const cw = containerWidth;
             const usableW = cw - leftReserved - rightReserved;
             const cols = Math.max(1, Math.floor((usableW + GAP) / (CARD_W + GAP)));
             const xMin = Math.max(0, leftReserved);
             const xMax = Math.max(xMin, cw - CARD_W - Math.max(0, rightReserved));
 
             const isOccupied = (x: number, y: number) => {
-              return Object.values(positions as any).some((pos: any) => {
+              return Object.values(positions).some((pos) => {
                 return (
                   x < pos.x + CARD_W + GAP / 2 &&
                   x + CARD_W + GAP / 2 > pos.x &&

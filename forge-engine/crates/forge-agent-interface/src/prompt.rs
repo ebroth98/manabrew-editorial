@@ -49,6 +49,7 @@ pub struct AgentPrompt {
 /// The actual decision prompt variants.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "camelCase")]
+#[allow(clippy::large_enum_variant)]
 pub enum AgentPromptInner {
     Mulligan {
         #[serde(rename = "gameView")]

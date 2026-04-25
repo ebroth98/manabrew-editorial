@@ -1,3 +1,4 @@
+#![allow(clippy::too_many_arguments)]
 //! CLI entry point for `forge-parity`.
 //!
 //! ```text
@@ -37,7 +38,7 @@
 
 use std::collections::BTreeSet;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Mutex;
 
@@ -1000,7 +1001,7 @@ fn run_matchup_cached(
 fn run_single_matchup_oneshot(
     config: &RunConfig,
     data: &LoadedData,
-    jar_path: &PathBuf,
+    jar_path: &Path,
 ) -> MatchupResult {
     // Run Rust and Java engines concurrently
     let (rust_result, java_result) = std::thread::scope(|s| {
@@ -1015,7 +1016,7 @@ fn run_single_matchup_oneshot(
             .stack_size(PARITY_THREAD_STACK_SIZE)
             .spawn_scoped(s, || {
                 let bridge_config = JavaBridgeConfig {
-                    jar_path: jar_path.clone(),
+                    jar_path: jar_path.to_path_buf(),
                     seed: config.seed,
                     max_turns: config.max_turns,
                     deck1: config.deck1.clone(),
@@ -1289,9 +1290,8 @@ fn dump_snapshot_timeline(
 
     eprintln!();
     eprintln!(
-        "{:col_w$} | {}",
+        "{:col_w$} |   #   Java snapshots",
         "  #   Rust snapshots",
-        "  #   Java snapshots",
         col_w = col_w
     );
     eprintln!("{:-<col_w$}-+-{:-<col_w$}", "", "", col_w = col_w);
@@ -1638,7 +1638,7 @@ fn run_matrix_mode(cli: &Cli) {
                                 &config.commanders,
                             ) {
                                 cache_hits.fetch_add(1, Ordering::Relaxed);
-                                let mut result = compare_snapshots(config, &trace, &cached_java);
+                                let mut result = compare_snapshots(config, trace, &cached_java);
                                 result.covered_cards = trace.covered_cards.clone();
                                 return result;
                             }
@@ -1809,7 +1809,7 @@ fn run_java_compare_and_cache(
         }
     };
 
-    let mut result = compare_snapshots(config, &rust_trace, &java_data);
+    let mut result = compare_snapshots(config, rust_trace, &java_data);
     result.covered_cards = rust_trace.covered_cards.clone();
 
     // Cache Java output — Java is deterministic for a given source hash,
@@ -1837,11 +1837,11 @@ fn run_java_compare_and_cache(
 fn run_java_streaming_compare_oneshot(
     config: &RunConfig,
     rust_trace: &forge_parity::protocol::GameTrace,
-    jar_path: &PathBuf,
+    jar_path: &Path,
 ) -> MatchupResult {
     // For one-shot mode, run Java and compare after (no streaming support on subprocess)
     let bridge_config = JavaBridgeConfig {
-        jar_path: jar_path.clone(),
+        jar_path: jar_path.to_path_buf(),
         seed: config.seed,
         max_turns: config.max_turns,
         deck1: config.deck1.clone(),
@@ -1861,7 +1861,7 @@ fn run_java_streaming_compare_oneshot(
             return MatchupResult::error(config, format!("Java engine error: {}", e));
         }
     };
-    let mut result = compare_snapshots(config, &rust_trace, &java_data);
+    let mut result = compare_snapshots(config, rust_trace, &java_data);
     result.covered_cards = rust_trace.covered_cards.clone();
     result
 }
@@ -2061,7 +2061,7 @@ impl CallbackKey {
 /// Segment a unified log into buckets separated by snapshots.
 /// Returns (buckets, snapshot_count) where buckets[i] contains the entries
 /// between snapshot i-1 and snapshot i.
-fn bucket_log_entries<'a>(log: &'a [ParityLogEntry]) -> (Vec<Vec<&'a ParityLogEntry>>, usize) {
+fn bucket_log_entries(log: &[ParityLogEntry]) -> (Vec<Vec<&ParityLogEntry>>, usize) {
     let mut buckets: Vec<Vec<&ParityLogEntry>> = vec![vec![]];
     let mut snap_count = 0usize;
     for entry in log {
@@ -2128,10 +2128,10 @@ fn pair_bucket_entries(
                 .position(|(jk, _, used)| !used && jk.as_ref() == Some(rk))
             {
                 // Emit all unmatched Java entries before this match position.
-                for j in 0..match_pos {
-                    if !java_available[j].2 {
-                        java_available[j].2 = true;
-                        rows.push((None, Some(java_available[j].1.clone())));
+                for entry in java_available.iter_mut().take(match_pos) {
+                    if !entry.2 {
+                        entry.2 = true;
+                        rows.push((None, Some(entry.1.clone())));
                     }
                 }
                 // Emit the matched pair.

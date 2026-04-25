@@ -16,11 +16,9 @@ pub fn pay_as_decided(game: &mut GameState, source: CardId, reveal_type: &str) -
             // Mark as revealed (Java calls host.revealChosenPlayer())
             return true;
         }
-    } else if reveal_type == "Type" {
-        if card.chosen_type.is_some() {
-            // Mark as revealed (Java calls host.revealChosenType())
-            return true;
-        }
+    } else if reveal_type == "Type" && card.chosen_type.is_some() {
+        // Mark as revealed (Java calls host.revealChosenType())
+        return true;
     }
     false
 }
@@ -45,17 +43,17 @@ pub fn can_pay(
         if source_card.chosen_player.is_none() {
             return false;
         }
-        return !source_card
+        return source_card
             .chosen_player_controller
-            .is_some_and(|pid| pid != player);
+            .is_none_or(|pid| pid == player);
     }
     if reveal_type.eq_ignore_ascii_case("Type") {
         if source_card.chosen_type.is_none() {
             return false;
         }
-        return !source_card
+        return source_card
             .chosen_type_controller
-            .is_some_and(|pid| pid != player);
+            .is_none_or(|pid| pid == player);
     }
     false
 }

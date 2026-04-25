@@ -9,7 +9,6 @@ use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
 use crate::mana::ManaPool;
 use crate::parsing::compare::compare_expr;
-use crate::parsing::keys;
 use crate::spellability::{build_spell_ability, StackEntry};
 use crate::trigger::TriggerType;
 use crate::trigger::{parse_trigger, Trigger};
@@ -67,7 +66,7 @@ pub struct DelayedTrigger {
 impl DelayedTrigger {
     /// Build a temporary `Trigger` wrapper for calling `TriggerBehavior` trait methods
     /// that require a `&Trigger` reference (Java's `this`).
-    pub fn as_trigger(&self, game: &crate::game::GameState) -> crate::trigger::Trigger {
+    pub fn as_trigger(&self, _game: &crate::game::GameState) -> crate::trigger::Trigger {
         let Self {
             params: delayed_params,
             ..
@@ -331,14 +330,14 @@ impl TriggerHandler {
                 .name
                 .clone();
 
-            if pt.entry.spell_ability.api == Some(crate::ability::api_type::ApiType::Charm) {
-                if !crate::ability::effects::charm_effect::make_choices_precast(
+            if pt.entry.spell_ability.api == Some(crate::ability::api_type::ApiType::Charm)
+                && !crate::ability::effects::charm_effect::make_choices_precast(
                     game,
                     agents,
                     &mut pt.entry.spell_ability,
-                ) {
-                    continue;
-                }
+                )
+            {
+                continue;
             }
 
             let setup_result = pt
@@ -1224,7 +1223,7 @@ impl TriggerHandler {
                 // ValidMode$ — must match the trigger's mode
                 if let Some(valid_mode) = sa.ir.valid_mode.as_deref() {
                     let modes: Vec<&str> = valid_mode.split(',').collect();
-                    if !modes.iter().any(|m| *m == "ChangesZone") {
+                    if !modes.contains(&"ChangesZone") {
                         continue;
                     }
                 }
@@ -1324,10 +1323,9 @@ impl TriggerHandler {
         if matches!(
             *mode,
             TriggerType::ChangesZone | TriggerType::ChangesZoneAll
-        ) {
-            if Self::is_trigger_disabled_by_static(game, host_card, trigger_index, params) {
-                return false;
-            }
+        ) && Self::is_trigger_disabled_by_static(game, host_card, trigger_index, params)
+        {
+            return false;
         }
 
         // Check active zones.

@@ -97,7 +97,7 @@ impl GameLoop {
             hasher.write_u8(c.has_deathtouch_damage as u8);
             hasher.write_u8(c.is_token as u8);
             hasher.write_u8(c.is_commander as u8);
-            hasher.write_u32(c.commander_cast_count as u32);
+            hasher.write_u32(c.commander_cast_count);
         }
 
         for entry in game.stack.iter() {

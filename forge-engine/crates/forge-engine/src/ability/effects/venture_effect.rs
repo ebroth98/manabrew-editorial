@@ -97,7 +97,7 @@ fn venture_into_dungeon(ctx: &mut EffectContext, sa: &SpellAbility, player: Play
             // Check if dungeon is in last room — if so, complete it and start new
             let rooms = get_dungeon_rooms(&dungeon_name);
             if let Some(rooms) = rooms {
-                if !room.is_empty() && rooms.last().map_or(false, |last| *last == room) {
+                if !room.is_empty() && rooms.last().is_some_and(|last| *last == room) {
                     // Complete the dungeon
                     complete_dungeon(ctx, player, id);
                     // Start a new dungeon

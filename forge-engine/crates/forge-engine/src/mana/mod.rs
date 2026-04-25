@@ -1,13 +1,11 @@
 use forge_foundation::mana::ManaAtom;
-use forge_foundation::{PhaseType, ZoneType};
-use serde::{Deserialize, Serialize};
+use forge_foundation::ZoneType;
 
 use crate::agent::PlayerAgent;
 use crate::card::Card;
 use crate::cost::CostPart;
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
-use crate::parsing::keys;
 use crate::spellability::SpellAbility;
 
 pub mod auto_pay;
@@ -516,10 +514,7 @@ fn land_pain_damage(card: &Card, chosen_atom: u16) -> i32 {
                 // Look up the SVar to find damage amount
                 if let Some(sub_text) = card.svars.get(sub_svar_name) {
                     let sub_params = crate::parsing::Params::from_raw(sub_text);
-                    if sub_params
-                        .get(crate::parsing::keys::DB)
-                        .map_or(false, |v| v == "DealDamage")
-                    {
+                    if sub_params.get(crate::parsing::keys::DB) == Some("DealDamage") {
                         if let Some(num_str) = sub_params.get(crate::parsing::keys::NUM_DMG) {
                             return num_str.parse::<i32>().unwrap_or(0);
                         }
@@ -669,43 +664,41 @@ pub fn determine_mana_production(
                 }
             }
         }
+    } else if fixed_produced_atoms(produced, &game.card(card_id).chosen_colors).is_some() {
+        mana_string = Some(produced.to_string());
     } else {
-        if fixed_produced_atoms(produced, &game.card(card_id).chosen_colors).is_some() {
-            mana_string = Some(produced.to_string());
-        } else {
-            let chosen_colors = game.card(card_id).chosen_colors.clone();
-            let colors = produced_to_color_names(produced, &chosen_colors);
-            if colors.len() > 1 {
-                let chosen = if let Some(forced) = express_choice
-                    .and_then(mana_atom_to_color_name)
-                    .and_then(|forced_name| {
-                        colors
-                            .iter()
-                            .find(|valid| valid.eq_ignore_ascii_case(forced_name))
-                            .cloned()
-                    }) {
-                    // Java calls chooseColor even when expressChoice is set,
-                    // presenting the forced color as a single-option choice.
-                    // Consume the RNG pick for parity.
-                    let single = vec![forced.clone()];
-                    let _ = agents[player.index()].choose_color(player, &single);
-                    Some(forced)
-                } else {
-                    agents[player.index()].choose_color(player, &colors)
-                };
-                if let Some(chosen) = chosen {
-                    if let Some(atom) = color_name_to_mana_atom(&chosen) {
-                        mana_string = Some(ManaPool::atom_to_letter(atom).to_string());
-                    }
-                }
-            } else if let Some(single) = colors.first() {
-                if let Some(atom) = color_name_to_mana_atom(single) {
+        let chosen_colors = game.card(card_id).chosen_colors.clone();
+        let colors = produced_to_color_names(produced, &chosen_colors);
+        if colors.len() > 1 {
+            let chosen = if let Some(forced) = express_choice
+                .and_then(mana_atom_to_color_name)
+                .and_then(|forced_name| {
+                    colors
+                        .iter()
+                        .find(|valid| valid.eq_ignore_ascii_case(forced_name))
+                        .cloned()
+                }) {
+                // Java calls chooseColor even when expressChoice is set,
+                // presenting the forced color as a single-option choice.
+                // Consume the RNG pick for parity.
+                let single = vec![forced.clone()];
+                let _ = agents[player.index()].choose_color(player, &single);
+                Some(forced)
+            } else {
+                agents[player.index()].choose_color(player, &colors)
+            };
+            if let Some(chosen) = chosen {
+                if let Some(atom) = color_name_to_mana_atom(&chosen) {
                     mana_string = Some(ManaPool::atom_to_letter(atom).to_string());
                 }
-            } else {
-                // Raw produced string (single-token fixed output)
-                mana_string = Some(produced.to_string());
             }
+        } else if let Some(single) = colors.first() {
+            if let Some(atom) = color_name_to_mana_atom(single) {
+                mana_string = Some(ManaPool::atom_to_letter(atom).to_string());
+            }
+        } else {
+            // Raw produced string (single-token fixed output)
+            mana_string = Some(produced.to_string());
         }
     }
 
@@ -968,9 +961,8 @@ fn calculate_available_mana_excluding_with_reserved_impl(
     for _ in 0..pool.green() {
         source_colors.push(ManaAtom::GREEN);
     }
-    for _ in 0..pool.colorless() {
-        source_colors.push(0); // colorless can only pay generic
-    }
+    // colorless can only pay generic
+    source_colors.extend(std::iter::repeat_n(0, pool.colorless() as usize));
 
     // Helper: add mana to availability pool, marking as snow if source is snow.
     macro_rules! avail_add {

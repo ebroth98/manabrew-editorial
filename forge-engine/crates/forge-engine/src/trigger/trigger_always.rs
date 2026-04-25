@@ -26,7 +26,7 @@ impl TriggerBehavior for TriggerAlways {
         &self,
         _trigger: &super::trigger::Trigger,
         _params: &RunParams,
-        game: &GameState,
+        _game: &GameState,
     ) -> bool {
         true
     }
@@ -36,7 +36,7 @@ impl TriggerBehavior for TriggerAlways {
         _trigger: &super::trigger::Trigger,
         _sa: &mut SpellAbility,
         _params: &RunParams,
-        game: &GameState,
+        _game: &GameState,
     ) {
     }
 

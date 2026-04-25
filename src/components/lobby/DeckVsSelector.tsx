@@ -5,12 +5,12 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { FormatBadge } from "@/components/game/FormatBadge";
 import { DeckSelectionCard } from "./DeckSelectionCard";
+import { DeckCoverImage } from "@/components/deck/deckCover";
 import {
-  DeckCoverImage,
   resolveDeckCoverSource,
   resolvePresetDeckCoverSource,
-} from "@/components/deck/deckCover";
-import type { DeckCoverSource } from "@/components/deck/deckCover";
+  type DeckCoverSource,
+} from "@/components/deck/deckCover.utils";
 import { DECK_NAME_SHADOW_CLASS, getDeckNameColorClass } from "@/components/deck/deckDisplay.utils";
 import { cn } from "@/lib/utils";
 import { GAME_FORMATS } from "@/lib/formats";
@@ -95,14 +95,13 @@ export function DeckVsSelector({ onStart, onStartTabletop }: DeckVsSelectorProps
     ? formatFilteredUserDecks.filter((deck) => deck.name.toLowerCase().includes(searchLower))
     : formatFilteredUserDecks;
 
-  useEffect(() => {
-    if (playerDeck && playerDeck.formatId !== selectedFormat) {
-      setPlayerDeck(null);
-    }
-    if (opponentDeck && opponentDeck.formatId !== selectedFormat) {
-      setOpponentDeck(null);
-    }
-  }, [selectedFormat, playerDeck, opponentDeck]);
+  // Drop selected decks if the format changed and they no longer match.
+  if (playerDeck && playerDeck.formatId !== selectedFormat) {
+    setPlayerDeck(null);
+  }
+  if (opponentDeck && opponentDeck.formatId !== selectedFormat) {
+    setOpponentDeck(null);
+  }
 
   function assignDeck(selected: SelectedDeck) {
     if (pickingSide === "player") {

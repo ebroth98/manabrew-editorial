@@ -162,12 +162,7 @@ fn decode_chunked(body: &str) -> String {
     let mut result = String::new();
     let mut remaining = body;
 
-    loop {
-        // Find chunk size line
-        let (size_str, rest) = match remaining.split_once("\r\n") {
-            Some(pair) => pair,
-            None => break,
-        };
+    while let Some((size_str, rest)) = remaining.split_once("\r\n") {
         let chunk_size = usize::from_str_radix(size_str.trim(), 16).unwrap_or(0);
         if chunk_size == 0 {
             break;
@@ -521,7 +516,7 @@ fn unified_diff(rust_trace: &str, java_trace: &str, d1: &str, d2: &str, seed: u6
             _ => {
                 if !in_diff {
                     in_diff = true;
-                    diff_start = if i >= 3 { i - 3 } else { 0 };
+                    diff_start = i.saturating_sub(3);
                     diff.push_str(&format!("@@ -{} +{} @@\n", diff_start + 1, diff_start + 1));
                     for ctx in &context_before {
                         diff.push_str(ctx);

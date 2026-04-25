@@ -48,8 +48,8 @@ pub fn smart_value_of(name: &str) -> Keyword {
     Keyword::smart_value_of(name)
 }
 
-/// Keyword cost parsing utilities.
-/// Mirrors Java's KeywordInterface + specific keyword parsers.
+// Keyword cost parsing utilities.
+// Mirrors Java's KeywordInterface + specific keyword parsers.
 
 /// Info about a card's kicker cost(s).
 #[derive(Debug, Clone)]

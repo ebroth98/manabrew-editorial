@@ -2,7 +2,7 @@
 //! Ported from Java's ChangeSpeedEffect.
 
 use super::EffectContext;
-use crate::spellability::{SpellAbility, SpellAbilityMode};
+use crate::spellability::SpellAbilityMode;
 
 /// Struct form of this effect so it can participate in the
 /// `SpellAbilityEffect` trait hierarchy — mirrors Java's

@@ -1,5 +1,4 @@
 use super::{resolve_defined_player, EffectContext};
-use crate::spellability::SpellAbility;
 
 /// Resolve `SP$ BecomeMonarch` — make a player the monarch.
 ///

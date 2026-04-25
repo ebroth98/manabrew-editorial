@@ -7,7 +7,6 @@
 use forge_foundation::ZoneType;
 
 use crate::card::{valid_filter, Card};
-use crate::parsing::keys;
 use crate::staticability::StaticMode;
 
 /// Compute the total generic mana cost required for `blocker` to block `attacker`.

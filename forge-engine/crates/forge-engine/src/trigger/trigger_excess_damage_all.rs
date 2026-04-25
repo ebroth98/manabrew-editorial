@@ -52,7 +52,7 @@ impl TriggerBehavior for TriggerExcessDamageAll {
         _trigger: &Trigger,
         sa: &mut SpellAbility,
         params: &RunParams,
-        game: &GameState,
+        _game: &GameState,
     ) {
         // Java: sa.setTriggeringObject(AbilityKey.Targets, getDamageTargets(DamageTargets))
         // TODO: getDamageTargets filters with ValidTarget — free function has no access to trigger params

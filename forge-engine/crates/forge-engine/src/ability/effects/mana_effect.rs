@@ -1,7 +1,6 @@
 use forge_foundation::mana::ManaAtom;
 
 use super::{mana_atom_from_produced, EffectContext};
-use crate::parsing::keys;
 use crate::spellability::SpellAbility;
 
 /// Build/configure the spell ability after construction.
@@ -124,7 +123,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     // Determine mana string to produce
     let mana_string: Option<String> = if produced.contains("Any") {
         // "Any" — all 5 colors available
-        let available = vec![
+        let available = [
             "W".to_string(),
             "U".to_string(),
             "B".to_string(),

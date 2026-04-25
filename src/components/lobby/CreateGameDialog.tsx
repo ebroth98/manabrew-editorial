@@ -10,7 +10,10 @@ import type { CardIdentity } from "@/types/server";
 import { GAME_FORMATS, validateDeckSections, type GameFormat } from "@/lib/formats";
 import { FormatBadge } from "@/components/game/FormatBadge";
 import { DeckSelectionCard } from "./DeckSelectionCard";
-import { resolveDeckCoverSource, resolvePresetDeckCoverSource } from "@/components/deck/deckCover";
+import {
+  resolveDeckCoverSource,
+  resolvePresetDeckCoverSource,
+} from "@/components/deck/deckCover.utils";
 import { cn } from "@/lib/utils";
 import { Search, Shuffle, Swords } from "lucide-react";
 import { getDeckFingerprint, serializeDeck } from "@/lib/decks";

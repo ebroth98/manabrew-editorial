@@ -3,7 +3,7 @@
  * Bridges all zustand stores into a single Redux store for inspection.
  * Toggle with Ctrl+Shift+D. Only rendered in development mode.
  */
-import { useEffect, useRef } from "react";
+import { useEffect } from "react";
 import { createStore } from "redux";
 import { createDevTools } from "@redux-devtools/core";
 import { DockMonitor } from "@redux-devtools/dock-monitor";
@@ -105,8 +105,8 @@ function getBridgeStore() {
 // ── Exported component ──────────────────────────────────────────────────────
 
 export function DevToolsPanel() {
-  const storeRef = useRef(getBridgeStore());
-  const store = storeRef.current;
+  // getBridgeStore is a module-level singleton getter — same identity across renders.
+  const store = getBridgeStore();
 
   // Subscribe to all zustand stores and dispatch bridge actions on change
   useEffect(() => {

@@ -16,7 +16,7 @@ function isModifierHeld(e: React.MouseEvent | MouseEvent, mode: CardPreviewMode)
   }
 }
 
-interface HoverOptions {
+export interface HoverOptions {
   useAnchor?: boolean;
   placement?: "auto" | "top-center";
   anchorOverride?: DOMRect;

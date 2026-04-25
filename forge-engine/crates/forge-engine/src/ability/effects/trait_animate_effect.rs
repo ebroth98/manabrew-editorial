@@ -4,7 +4,6 @@
 //! Provides shared logic for `AnimateEffect` and `AnimateAllEffect`
 //! that handles setting power/toughness, types, colors, and keywords.
 
-use crate::parsing::keys;
 use crate::spellability::SpellAbility;
 
 /// Parsed animate parameters from a spell ability.
@@ -22,22 +21,28 @@ pub struct AnimateParams {
 /// Parse shared animate parameters from a spell ability.
 /// Used by both `animate_effect` and `animate_all_effect`.
 pub fn parse_animate_params(sa: &SpellAbility) -> AnimateParams {
-    let mut params = AnimateParams::default();
-
-    params.power = sa.ir.animate_power;
-    params.toughness = sa.ir.animate_toughness;
-    if let Some(types) = sa.ir.animate_types_text.as_deref() {
-        params.add_types = types.split(',').map(|s| s.trim().to_string()).collect();
+    AnimateParams {
+        power: sa.ir.animate_power,
+        toughness: sa.ir.animate_toughness,
+        add_types: sa
+            .ir
+            .animate_types_text
+            .as_deref()
+            .map(|types| types.split(',').map(|s| s.trim().to_string()).collect())
+            .unwrap_or_default(),
+        add_keywords: sa
+            .ir
+            .animate_keywords_text
+            .as_deref()
+            .map(|kws| kws.split(',').map(|s| s.trim().to_string()).collect())
+            .unwrap_or_default(),
+        colors: sa
+            .ir
+            .animate_colors_text
+            .as_deref()
+            .map(|colors| colors.split(',').map(|s| s.trim().to_string()).collect()),
+        overwrite_types: sa.ir.animate_overwrite_types,
     }
-    if let Some(kws) = sa.ir.animate_keywords_text.as_deref() {
-        params.add_keywords = kws.split(',').map(|s| s.trim().to_string()).collect();
-    }
-    if let Some(colors) = sa.ir.animate_colors_text.as_deref() {
-        params.colors = Some(colors.split(',').map(|s| s.trim().to_string()).collect());
-    }
-    params.overwrite_types = sa.ir.animate_overwrite_types;
-
-    params
 }
 
 /// Apply animate effects to a single card.

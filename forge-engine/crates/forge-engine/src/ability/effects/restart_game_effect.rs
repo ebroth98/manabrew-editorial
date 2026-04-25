@@ -6,7 +6,6 @@ use forge_foundation::ZoneType;
 
 use super::EffectContext;
 use crate::ids::CardId;
-use crate::parsing::keys;
 use crate::spellability::SpellAbility;
 
 /// Stack text override. Mirrors Java `RestartGameEffect.getStackDescription`.
@@ -50,7 +49,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
             .filter(|c| {
                 c.owner == player_id
                     && restart_zones.contains(&c.zone)
-                    && leave_zone.map_or(true, |lz| c.zone != lz)
+                    && (leave_zone != Some(c.zone))
             })
             .map(|c| c.id)
             .collect();
