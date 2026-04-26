@@ -1,8 +1,9 @@
 import type { Card } from "@/types/openmagic";
 import type { SavedDeck } from "@/stores/useDeckStore";
+import { MANA_LETTERS } from "@/themes/gameTheme";
 export { type CardGroup, groupCards } from "@/components/editor/deckBuilder.utils";
 
-const VALID_COLORS = new Set(["W", "U", "B", "R", "G", "C"]);
+const VALID_COLORS = new Set<string>(MANA_LETTERS);
 
 export function extractColors(cards: Card[]): string[] {
   const set = new Set<string>();
@@ -12,7 +13,7 @@ export function extractColors(cards: Card[]): string[] {
     }
     if (card.manaCost?.includes("{C}")) set.add("C");
   }
-  return ["W", "U", "B", "R", "G", "C"].filter((color) => set.has(color));
+  return MANA_LETTERS.filter((color) => set.has(color));
 }
 
 export function categorize(

@@ -7,6 +7,7 @@
  */
 
 import type { ThemeColors } from "./appTheme";
+import type { GameThemeColorMap } from "./gameTheme";
 
 // ── Font sizes ──────────────────────────────────────────────────────────
 
@@ -43,19 +44,13 @@ export const DEFAULT_GAME_FONT_SIZES: GameFontSizes = {
 
 // ── Preset types ────────────────────────────────────────────────────────
 
-/** Flat dot-notation colour map used by theme presets.  Keys are
- *  validated at runtime against the `GameThemeColors` schema in
- *  `gameTheme.ts` — that file is the single source of truth for
- *  which paths are legal. */
-export type GameThemePresetColors = Record<string, string>;
-
 export interface ThemePreset {
   id: string;
   name: string;
   description: string;
   light: ThemeColors;
   dark: ThemeColors;
-  gameColors: GameThemePresetColors;
+  gameColors: GameThemeColorMap;
   /** Optional — presets that don't provide this fall through to the
    *  default preset's entries via `resolveGameFontSizes`. */
   gameFontSizes?: Partial<GameFontSizes>;

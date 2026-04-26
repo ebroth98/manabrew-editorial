@@ -169,18 +169,18 @@ Current WIP behavior:
 
 ### Frontend
 
-| Command | Description |
-|---------|-------------|
-| `yarn dev` | Start Tauri desktop app in development mode |
-| `yarn build` | Build production Tauri app |
-| `yarn vite:dev` | Start Vite dev server only (no Tauri) |
-| `yarn vite:build` | Build frontend assets only |
-| `yarn lint` | Run ESLint |
-| `yarn preview` | Preview production build locally |
-| `yarn ios` | Start iOS development build |
-| `yarn android` | Start Android development build |
-| `yarn import-deck` | Import a deck from Archidekt/Moxfield into `preset_decks/` ([details](#deck-importer)) |
-
+| Command                                       | Description                                                                            |
+| --------------------------------------------- | -------------------------------------------------------------------------------------- |
+| `yarn dev`                                    | Start Tauri desktop app in development mode                                            |
+| `yarn build`                                  | Build production Tauri app                                                             |
+| `yarn vite:dev`                               | Start Vite dev server only (no Tauri)                                                  |
+| `yarn vite:build`                             | Build frontend assets only                                                             |
+| `yarn lint`                                   | Run ESLint                                                                             |
+| `yarn preview`                                | Preview production build locally                                                       |
+| `yarn ios`                                    | Start iOS development build                                                            |
+| `yarn android`                                | Start Android development build                                                        |
+| `yarn import-deck`                            | Import a deck from Archidekt/Moxfield into `preset_decks/` ([details](#deck-importer)) |
+| `node scripts/generate-theme-css.mjs --write` | Regenerate game-theme `@theme` CSS block ([details](#theme-css-generator))             |
 
 ### Deck Importer
 
@@ -200,11 +200,11 @@ yarn import-deck "korvold" --format=commander
 
 The interactive flow searches Archidekt (URL mode dispatches to the matching provider), lists results with author/format/blurb, lets you pick one to preview the full card list, and on confirm prompts for label / description / filename before writing the preset JSON. Commanders are detected from deck categories and folded into the preset's `cards` field.
 
-| Flag | Default | Description |
-|------|---------|-------------|
-| *(positional)* | — | Search query. Ignored when `--url` is passed. |
-| `--url=<url>` | — | Archidekt or Moxfield deck URL; skips the search step. |
-| `--format=<name>` | `standard` | Value written to the preset's `format` field. |
+| Flag              | Default    | Description                                            |
+| ----------------- | ---------- | ------------------------------------------------------ |
+| _(positional)_    | —          | Search query. Ignored when `--url` is passed.          |
+| `--url=<url>`     | —          | Archidekt or Moxfield deck URL; skips the search step. |
+| `--format=<name>` | `standard` | Value written to the preset's `format` field.          |
 
 The same Archidekt / Moxfield core powers the in-app **Import from URL** and **Search deck** entries in the deck editor menu, so the CLI and the UI stay in sync.
 
@@ -233,11 +233,25 @@ Available parity tests are defined in `forge-engine/crates/forge-parity/regressi
 
 #### Parity Test Environment Variables
 
-| Variable | Description |
-|----------|-------------|
-| `FORGE_RNG_TRACE=1` | Log every RNG call in both engines (agent + game) |
+| Variable                | Description                                                                    |
+| ----------------------- | ------------------------------------------------------------------------------ |
+| `FORGE_RNG_TRACE=1`     | Log every RNG call in both engines (agent + game)                              |
 | `FORGE_TRIGGER_TRACE=1` | Log trigger processing, DisableTriggers checks, optional trigger confirmations |
-| `FORGE_LIFE_TRACE=1` | Log every life gain/loss event |
+| `FORGE_LIFE_TRACE=1`    | Log every life gain/loss event                                                 |
+
+### Theme CSS Generator
+
+When you add a new colour token to `GameThemeColors`, run this script to regenerate the Tailwind `@theme` block in `src/index.css`:
+
+```bash
+# Preview the generated CSS (no file changes)
+node scripts/generate-theme-css.mjs
+
+# Update src/index.css in place
+node scripts/generate-theme-css.mjs --write
+```
+
+The script reads all dot-notation keys from `buildGameColors.ts`, converts them to kebab-case CSS variable names, and writes the `--color-*: var(--*)` mappings that Tailwind needs to generate utility classes like `bg-pointer-hostile` or `text-mana-w`. Idempotent — safe to re-run.
 
 ### Structure Scanner
 
@@ -272,6 +286,7 @@ This project maintains **strict 1:1 parity** with the Java Forge engine:
 ### Effect and Replacement Coverage
 
 The Rust engine currently implements:
+
 - **232 effect API types** (all dispatched with real game logic)
 - **37 replacement event types** (all with `can_replace` + `execute` + game loop callsites)
 - **Full trigger system** with LKI, DisableTriggers, optional triggers, and death-return triggers
@@ -321,11 +336,11 @@ git diff HEAD~1...HEAD --stat -- forge/forge-game/ forge/forge-gui/res/cardsfold
 
 ### What to Port
 
-| Upstream Area | Rust Counterpart | Action |
-|---|---|---|
-| `forge-game/` (rules engine) | `forge-engine/crates/forge-engine/` | Port rule changes to Rust |
+| Upstream Area                               | Rust Counterpart                    | Action                                                              |
+| ------------------------------------------- | ----------------------------------- | ------------------------------------------------------------------- |
+| `forge-game/` (rules engine)                | `forge-engine/crates/forge-engine/` | Port rule changes to Rust                                           |
 | `forge-gui/res/cardsfolder/` (card scripts) | Parsed by `forge-carddb` at runtime | Usually automatic — new cards work if ability types are implemented |
-| `forge-game/` API changes | `forge/forge-harness/` | Update harness if parity tests break |
+| `forge-game/` API changes                   | `forge/forge-harness/`              | Update harness if parity tests break                                |
 
 ### Recommended Cadence
 
@@ -333,17 +348,17 @@ Monthly manual pulls work well. Most upstream changes are card-level (new cards,
 
 ## Tech Stack
 
-| Layer | Technology |
-|---|---|
-| Frontend | React 19, TypeScript, Vite |
-| Styling | Tailwind CSS 4, Shadcn/UI |
-| State | Zustand, TanStack Query |
-| Routing | React Router |
-| Engine | Rust (compiled natively for Tauri) |
-| Desktop | Tauri v2 |
-| Networking | WebRTC data channels (planned) |
-| Card Data | Forge card scripts (.txt), Scryfall API (images) |
-| Themes | 12 built-in presets (Nord, Catppuccin, Dracula, etc.) |
+| Layer      | Technology                                            |
+| ---------- | ----------------------------------------------------- |
+| Frontend   | React 19, TypeScript, Vite                            |
+| Styling    | Tailwind CSS 4, Shadcn/UI                             |
+| State      | Zustand, TanStack Query                               |
+| Routing    | React Router                                          |
+| Engine     | Rust (compiled natively for Tauri)                    |
+| Desktop    | Tauri v2                                              |
+| Networking | WebRTC data channels (planned)                        |
+| Card Data  | Forge card scripts (.txt), Scryfall API (images)      |
+| Themes     | 12 built-in presets (Nord, Catppuccin, Dracula, etc.) |
 
 ## Development Workflow
 
@@ -365,6 +380,7 @@ Non-tag events also run the workflow but do **not** publish a Release:
 ### Step-by-step
 
 1. **Confirm `main` is in the state you want to release.**
+
    ```bash
    git checkout main
    git pull --ff-only
@@ -379,6 +395,7 @@ Non-tag events also run the workflow but do **not** publish a Release:
    - `src-tauri/Cargo.toml`
 
    Commit and push:
+
    ```bash
    git add package.json src-tauri/tauri.conf.json src-tauri/Cargo.toml
    git commit -m "chore: bump version to 0.2.0"
@@ -388,16 +405,19 @@ Non-tag events also run the workflow but do **not** publish a Release:
    Wait for CI to go green on that commit.
 
 4. **Tag and push.** The tag name must start with `v`.
+
    ```bash
    git tag v0.2.0
    git push origin v0.2.0
    ```
 
 5. **Watch the workflow** in the Actions tab. Four jobs run in sequence:
+
    ```
    gate ──► macos-dmg ─┐
         └─► windows-exe ─► release
    ```
+
    Windows builds take ~15–25 min; mac varies. The `release` job fires once both installers upload.
 
 6. **Verify the release.** Repo → **Releases** should now show the new tag with:

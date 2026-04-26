@@ -1,12 +1,12 @@
 import { ManaSymbols } from "@/components/game/ManaSymbols";
-import { MANA_COLORS } from "../game.constants";
+import { MANA_KEYS } from "../game.constants";
 import { useTheme } from "@/hooks/useTheme";
 
 export function ManaPool({ pool }: { pool: Record<string, number> }) {
   const fontSizes = useTheme().gameTheme.fontSizes;
   return (
     <div className="flex flex-row items-center gap-1 flex-nowrap">
-      {MANA_COLORS.flatMap(({ key }) => {
+      {MANA_KEYS.flatMap((key) => {
         const count = pool[key] ?? 0;
         if (count === 0) return [];
         return [

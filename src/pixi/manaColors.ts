@@ -8,13 +8,14 @@
 
 import type { Theme } from "@/hooks/useTheme";
 import { hexToNum } from "./colorUtils";
+import { MANA_LETTERS, type ManaLetter } from "@/themes/gameTheme";
 
-export type ManaLetter = "W" | "U" | "B" | "R" | "G" | "C";
+export type { ManaLetter } from "@/themes/gameTheme";
 
-const MANA_LETTERS = new Set<ManaLetter>(["W", "U", "B", "R", "G", "C"]);
+const MANA_SET = new Set<ManaLetter>(MANA_LETTERS);
 
 export const isManaLetter = (value: string | undefined): value is ManaLetter =>
-  value != null && MANA_LETTERS.has(value as ManaLetter);
+  value != null && MANA_SET.has(value as ManaLetter);
 
 export const manaColorFor = (letter: string | undefined, theme: Theme, fallback: number): number =>
   isManaLetter(letter) ? hexToNum(theme.gameTheme.mana[letter]) : fallback;

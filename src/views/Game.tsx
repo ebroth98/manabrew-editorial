@@ -22,6 +22,7 @@ import { PixiArrowsCanvas } from "@/pixi/PixiArrowsCanvas";
 import type { PixiGameScene } from "@/pixi/PixiGameScene";
 import { buildArrowSpecs } from "@/components/game/arrowSpecs";
 import { buildPointerSpecs } from "@/components/game/pointerSpecs";
+import { ANY_COLOR_LETTERS } from "@/components/game/manaUtils";
 import { PlayModePicker } from "@/components/game/PlayModePicker";
 import { HAND_CARD_BASES } from "@/components/game/game.styles";
 import { useHandScale } from "@/hooks/useHandScale";
@@ -371,7 +372,6 @@ export default function Game({ exitTo }: GameProps = {}) {
     const map = new Map<string, HandActionOption[]>();
     const rawOptions = activePrompt?.manaAbilityOptions ?? [];
     if (rawOptions.length === 0) return map;
-    const ANY_COLOR_LETTERS = ["W", "U", "B", "R", "G"];
     const byCard = new Map<string, ActivatableAbilityInfo[]>();
     for (const ab of rawOptions) {
       const arr = byCard.get(ab.cardId) ?? [];

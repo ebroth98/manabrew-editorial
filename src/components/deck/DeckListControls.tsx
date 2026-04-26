@@ -3,9 +3,9 @@ import { cn } from "@/lib/utils";
 import { Search, X } from "lucide-react";
 import { GAME_FORMATS } from "@/lib/formats";
 import type { SortBy } from "@/views/myDecks.utils";
+import { MANA_LETTERS, type ManaLetter } from "@/themes/gameTheme";
 
-const COLORS = ["W", "U", "B", "R", "G", "C"] as const;
-type Color = (typeof COLORS)[number];
+type Color = ManaLetter;
 
 const COLOR_LABEL: Record<Color, string> = {
   W: "White",
@@ -111,7 +111,7 @@ export function DeckListControls({
         </select>
 
         {/* Color pips */}
-        {COLORS.map((color) => {
+        {MANA_LETTERS.map((color) => {
           const active = colorFilter.includes(color);
           return (
             <button

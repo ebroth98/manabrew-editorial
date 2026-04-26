@@ -347,13 +347,6 @@ export class PointerLayer {
     const raw = intentIsHostile(intent)
       ? this.theme.gameTheme.pointer.hostile
       : this.theme.gameTheme.pointer.friendly;
-    if (!raw || !raw.trim()) {
-      // Fallback: red for hostile, blue for friendly — prevents invisible pointers
-      // when theme colours haven't resolved yet.
-      return intentIsHostile(intent)
-        ? { color: 0xd22828, alpha: 0.88 }
-        : { color: 0x5a96ff, alpha: 0.88 };
-    }
     return { color: hexToNum(raw), alpha: colorAlpha(raw) };
   }
 

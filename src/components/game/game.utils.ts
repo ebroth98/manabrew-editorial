@@ -1,10 +1,5 @@
 import type { Card as CardType, StackObject } from "@/types/openmagic";
-import { AVATAR_COLORS, PROMPT_LABELS } from "./game.constants";
-
-export function getAvatarColor(name: string): string {
-  const hash = name.split("").reduce((acc, c) => acc + c.charCodeAt(0), 0);
-  return AVATAR_COLORS[hash % AVATAR_COLORS.length];
-}
+import { PROMPT_LABELS } from "./game.constants";
 
 export function getInitials(name: string): string {
   return name

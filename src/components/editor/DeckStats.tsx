@@ -6,6 +6,7 @@ import type { Card } from "@/types/openmagic";
 import { useState } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { ManaSymbols } from "@/components/game/ManaSymbols";
+import { MANA_LETTERS } from "@/themes/gameTheme";
 
 // CMC 1–7+ buckets — cool→warm progression using theme counter / signal
 // tokens so the curve retones with the active preset.
@@ -74,7 +75,7 @@ export function DeckStats({ cards: propCards }: DeckStatsProps) {
   for (const { card } of spells) {
     if (!card.manaCost) continue;
     const pips = countColorPips(card.manaCost);
-    for (const c of ["W", "U", "B", "R", "G", "C"] as ManaColor[]) pipTotals[c] += pips[c];
+    for (const c of MANA_LETTERS) pipTotals[c as ManaColor] += pips[c as ManaColor];
     genericTotal += countGenericMana(card.manaCost);
   }
   const totalPips = Object.values(pipTotals).reduce((a, b) => a + b, 0);

@@ -13,8 +13,14 @@
 export type { ThemeColors } from "./appTheme";
 
 // ── Game theme ──────────────────────────────────────────────────────────
-export type { GameThemeColors, ManaLetter } from "./gameTheme";
+export type {
+  GameThemeColors,
+  GameThemeColorKey,
+  GameThemeColorMap,
+  ManaLetter,
+} from "./gameTheme";
 export {
+  MANA_LETTERS,
   resolveGameThemeColors,
   flattenGameThemeToCssVars,
   resolveGameFontSizes,
@@ -25,5 +31,5 @@ export {
 } from "./gameTheme";
 
 // ── Presets & font sizes ────────────────────────────────────────────────
-export type { GameFontSizes, GameThemePresetColors, ThemePreset } from "./presets";
+export type { GameFontSizes, ThemePreset } from "./presets";
 export { DEFAULT_GAME_FONT_SIZES, THEME_PRESETS } from "./presets";

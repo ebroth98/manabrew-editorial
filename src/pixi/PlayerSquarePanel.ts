@@ -1,8 +1,10 @@
 import { Container, Graphics, Text, TextStyle, Sprite } from "pixi.js";
 import type { Theme } from "@/hooks/useTheme";
+import { getTheme } from "@/hooks/useTheme";
 import { hexToNum } from "./colorUtils";
 import type { PlayerPanelState, PlayerPanelCallbacks, PlayerPanel } from "./playerPanel.types";
-import { applyIcon, rasterIcon, ICON_COLORS } from "./panelIcons";
+import { applyIcon, rasterIcon, getIconColor, SVG } from "./panelIcons";
+import { MANA_LETTERS } from "@/themes/gameTheme";
 import { getManaSymbolTextureSync, loadManaSymbolTexture } from "./manaSymbolCache";
 
 // ── Layout ────────────────────────────────────────────────────────────
@@ -14,18 +16,19 @@ const ROW_GAP = 4;
 const FONT = "system-ui, -apple-system, sans-serif";
 const MANA_SYM_SIZE = 11;
 
-// ── Text styles ───────────────────────────────────────────────────────
+// ── Text styles — seeded from the current theme; kept in sync by setTheme()
+const _initTheme = getTheme().gameTheme;
 const statStyle = new TextStyle({
   fontFamily: FONT,
   fontSize: 12,
   fontWeight: "bold",
-  fill: "#dddddd",
+  fill: _initTheme.textOnTinted,
 });
 const manaCountStyle = new TextStyle({
   fontFamily: FONT,
   fontSize: 9,
   fontWeight: "800",
-  fill: "#ffffff",
+  fill: _initTheme.textOnTinted,
 });
 
 // ── Stat cell ─────────────────────────────────────────────────────────
@@ -164,7 +167,7 @@ export class PlayerSquarePanel implements PlayerPanel {
     this.manaContainer.visible = false;
     this.container.addChild(this.manaContainer);
     this.manaEntries = [];
-    for (const key of ["W", "U", "B", "R", "G", "C"] as const) {
+    for (const key of MANA_LETTERS) {
       const sprite = new Sprite();
       sprite.width = MANA_SYM_SIZE;
       sprite.height = MANA_SYM_SIZE;
@@ -180,9 +183,10 @@ export class PlayerSquarePanel implements PlayerPanel {
       this.manaEntries.push({ sprite, count, key });
     }
 
-    // Pre-raster
-    for (const [key, hex] of Object.entries(ICON_COLORS)) {
-      rasterIcon(key, hex, 64);
+    // Pre-raster icons with current theme colours
+    const initTheme = getTheme().gameTheme;
+    for (const key of Object.keys(SVG)) {
+      rasterIcon(key, getIconColor(key, initTheme), 64);
     }
   }
 
@@ -265,7 +269,7 @@ export class PlayerSquarePanel implements PlayerPanel {
     ) => {
       cell.icon.visible = true;
       cell.value.visible = true;
-      const hex = highlight ? t.cardRing : (ICON_COLORS[cell.iconKey] ?? "#6b7280");
+      const hex = highlight ? t.cardRing : getIconColor(cell.iconKey, t);
       applyIcon(cell.icon, cell.iconKey, hex);
       cell.icon.alpha = 1;
       cell.value.alpha = 1;
@@ -328,7 +332,7 @@ export class PlayerSquarePanel implements PlayerPanel {
       cell.icon.visible = visible;
       cell.value.visible = visible;
       if (!visible) return;
-      const hex = highlight ? t.activeAction.active : (ICON_COLORS[cell.iconKey] ?? "#6b7280");
+      const hex = highlight ? t.activeAction.active : getIconColor(cell.iconKey, t);
       applyIcon(cell.icon, cell.iconKey, hex);
       cell.icon.x = condCursorX;
       cell.icon.y = condY;
@@ -350,7 +354,7 @@ export class PlayerSquarePanel implements PlayerPanel {
       const cmdOffset = RADIAL_OFFSET;
       const cmdIx = cx + Math.cos(cmdAngle) * cmdOffset - CMD_ICON / 2;
       const cmdIy = cy + Math.sin(cmdAngle) * cmdOffset - CMD_ICON / 2;
-      const cmdHex = ICON_COLORS["cmdsword"] ?? "#6b7280";
+      const cmdHex = getIconColor("cmdsword", t);
       this.cmdZoneStat.icon.visible = true;
       applyIcon(this.cmdZoneStat.icon, "cmdsword", cmdHex);
       this.cmdZoneStat.icon.width = CMD_ICON;

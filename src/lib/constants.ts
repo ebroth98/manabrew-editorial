@@ -36,9 +36,9 @@ export const FORMAT_DISPLAY: Record<string, string> = {
 };
 
 export const LEGALITY_STYLES: Record<string, string> = {
-  legal: "bg-green-500/20 text-green-400 border-green-500/30",
-  banned: "bg-red-500/20 text-red-400 border-red-500/30",
-  restricted: "bg-yellow-500/20 text-yellow-400 border-yellow-500/30",
+  legal: "bg-legality-legal/20 text-legality-legal border-legality-legal/30",
+  banned: "bg-legality-banned/20 text-legality-banned border-legality-banned/30",
+  restricted: "bg-legality-restricted/20 text-legality-restricted border-legality-restricted/30",
   not_legal: "bg-muted text-muted-foreground border-border",
 };
 

@@ -68,12 +68,15 @@ export interface BasePalette {
   manaC: string;
 }
 
+import type { GameThemeColorMap } from "./gameTheme";
+
 /**
  * Convert a palette into the full set of `gameColors` entries covering
- * every new theme token. Callers spread this into their preset's
- * `gameColors` map alongside the legacy keys.
+ * every game-theme token. The return type ensures every key from
+ * `GameThemeColors` is present — a missing or misspelled key is a
+ * compile error.
  */
-export function buildGameColors(p: BasePalette): Record<string, string> {
+export function buildGameColors(p: BasePalette): GameThemeColorMap {
   return {
     // ── Active action indicators ────────────────────────────────────
     "activeAction.priority": p.violet,
@@ -190,6 +193,26 @@ export function buildGameColors(p: BasePalette): Record<string, string> {
     "badges.cityBlessing": p.amber,
     "badges.ring": p.violet,
     "badges.speed": p.orange,
+
+    // ── Legality badge colours ──────────────────────────────────────────
+    "legality.legal": p.green,
+    "legality.banned": p.red,
+    "legality.restricted": p.yellow,
+
+    // ── Format badge colours ────────────────────────────────────────────
+    // One token per format badge colour key. Each preset maps these to
+    // its own palette so format badges feel cohesive with the theme.
+    "formatBadge.blue": p.blue,
+    "formatBadge.amber": p.amber,
+    "formatBadge.emerald": p.green,
+    "formatBadge.rose": p.red,
+    "formatBadge.slate": p.slate,
+    "formatBadge.zinc": p.slate,
+    "formatBadge.purple": p.purple,
+    "formatBadge.teal": p.teal,
+    "formatBadge.orange": p.orange,
+    "formatBadge.sky": p.sky,
+    "formatBadge.indigo": p.indigo,
   };
 }
 

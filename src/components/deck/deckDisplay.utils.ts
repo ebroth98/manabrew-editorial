@@ -1,13 +1,12 @@
 import type { Card } from "@/types/openmagic";
-
-const VALID_COLORS = ["W", "U", "B", "R", "G", "C"] as const;
+import { MANA_LETTERS } from "@/themes/gameTheme";
 
 const MONO_COLOR_CLASSES: Record<string, string> = {
-  W: "text-amber-500",
-  U: "text-blue-500",
-  B: "text-violet-500",
-  R: "text-red-500",
-  G: "text-emerald-500",
+  W: "text-mana-w",
+  U: "text-mana-u",
+  B: "text-mana-b",
+  R: "text-mana-r",
+  G: "text-mana-g",
   C: "text-muted-foreground",
 };
 
@@ -46,13 +45,13 @@ export function getDeckColors(cards: Pick<Card, "color" | "manaCost">[]): string
   const seen = new Set<string>();
   for (const card of cards) {
     for (const ch of card.color ?? "") {
-      if (VALID_COLORS.includes(ch as (typeof VALID_COLORS)[number])) {
+      if (MANA_LETTERS.includes(ch as (typeof MANA_LETTERS)[number])) {
         seen.add(ch);
       }
     }
     if (card.manaCost?.includes("{C}")) seen.add("C");
   }
-  return VALID_COLORS.filter((color) => seen.has(color));
+  return MANA_LETTERS.filter((color) => seen.has(color));
 }
 
 export function getDeckColorCost(cards: Pick<Card, "color" | "manaCost">[]): string {

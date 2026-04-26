@@ -93,24 +93,15 @@ function sampleQuadratic(
 }
 
 // ── Arrow colors from theme ────────────────────────────────────────────────
-function safeColor(
-  raw: string,
-  fallback: number,
-  fallbackAlpha = 0.88,
-): { color: number; alpha: number } {
-  if (!raw || !raw.trim()) return { color: fallback, alpha: fallbackAlpha };
-  return { color: hexToNum(raw), alpha: colorAlpha(raw) };
-}
-
 function getArrowColor(type: ArrowType, theme: Theme): { color: number; alpha: number } {
   const g = theme.gameTheme;
   switch (type) {
     case "attack":
-      return safeColor(g.arrow.attack, 0xff8a00);
+      return { color: hexToNum(g.arrow.attack), alpha: colorAlpha(g.arrow.attack) };
     case "block":
-      return safeColor(g.arrow.block, 0xd22828);
+      return { color: hexToNum(g.arrow.block), alpha: colorAlpha(g.arrow.block) };
     case "placement":
-      return safeColor(g.activeAction.active, 0xfb923c, PLACEMENT_ARROW_ALPHA);
+      return { color: hexToNum(g.activeAction.active), alpha: PLACEMENT_ARROW_ALPHA };
   }
 }
 

@@ -4,8 +4,8 @@
  * `GameThemeColors` is the single source of truth for every colour token
  * consumed by the game canvas, Pixi renderers, card sprites, prompt
  * buttons, and in-game panels.  Theme presets supply flat dot-notation
- * keys (e.g. `"pointer.hostile"`) that are validated against the schema
- * below; `resolveGameThemeColors` merges preset defaults → active preset
+ * keys (e.g. `"pointer.hostile"`) via `buildGameColors()`; the
+ * `resolveGameThemeColors` function merges default preset → active preset
  * → user overrides into a fully-resolved `GameThemeColors` object.
  */
 
@@ -17,6 +17,9 @@ import { THEME_PRESETS, DEFAULT_GAME_FONT_SIZES, type GameFontSizes } from "./pr
 // ---------------------------------------------------------------------------
 
 export type ManaLetter = "W" | "U" | "B" | "R" | "G" | "C";
+
+/** Canonical ordered list of all mana letters (WUBRGC). */
+export const MANA_LETTERS: readonly ManaLetter[] = ["W", "U", "B", "R", "G", "C"] as const;
 
 export interface GameThemeColors {
   activeAction: {
@@ -109,164 +112,117 @@ export interface GameThemeColors {
     ring: string;
     speed: string;
   };
-}
-
-// ---------------------------------------------------------------------------
-// Schema — drives path validation + enumeration
-// ---------------------------------------------------------------------------
-
-const COLOR_SCHEMA: GameThemeColors = {
-  activeAction: { priority: "", active: "" },
-  promptAction: { passAction: "", attackAction: "", defenseAction: "", cancel: "" },
-  arrow: { attack: "", block: "", hostileTarget: "", friendlyTarget: "" },
-  pointer: { hostile: "", friendly: "" },
-  mana: { W: "", U: "", B: "", R: "", G: "", C: "" },
-  cardStatus: {
-    exerted: "",
-    morph: "",
-    bestow: "",
-    token: "",
-    transformed: "",
-    plotted: "",
-    madness: "",
-    warped: "",
-  },
-  textOnTinted: "",
-  textMuted: "",
-  textGhost: "",
-  canvas: { background: "", shadow: "", neutral: "" },
-  cardPlaceholder: { fill: "", stroke: "" },
-  pt: { neutral: "", lethal: "", buffed: "", debuffed: "" },
-  success: "",
-  poison: "",
-  life: "",
-  counter: {
-    default: "",
-    p1p1: "",
-    m1m1: "",
-    loyalty: "",
-    charge: "",
-    quest: "",
-    study: "",
-    lore: "",
-    age: "",
-    time: "",
-    fade: "",
-    level: "",
-    storage: "",
-    mining: "",
-    brick: "",
-    depletion: "",
-    page: "",
-  },
-  cardRing: "",
-  playerColors: { self: "", opponent1: "", opponent2: "", opponent3: "" },
-  badges: {
-    monarch: "",
-    initiative: "",
-    poison: "",
-    energy: "",
-    commanderDamage: "",
-    hand: "",
-    radiation: "",
-    cityBlessing: "",
-    ring: "",
-    speed: "",
-  },
-};
-
-/** Return every valid dot-notation leaf path from `COLOR_SCHEMA`.
- *  Used by Settings and `getDefaultGameThemeColorMap` to enumerate
- *  the canonical key set without duplicating the schema. */
-export function getGameThemeColorPaths(): string[] {
-  const paths: string[] = [];
-  const walk = (obj: unknown, prefix: string): void => {
-    if (typeof obj === "string") {
-      paths.push(prefix);
-      return;
-    }
-    if (obj != null && typeof obj === "object") {
-      for (const [key, value] of Object.entries(obj as Record<string, unknown>)) {
-        walk(value, prefix ? `${prefix}.${key}` : key);
-      }
-    }
+  legality: {
+    legal: string;
+    banned: string;
+    restricted: string;
   };
-  walk(COLOR_SCHEMA, "");
-  return paths;
+  formatBadge: {
+    blue: string;
+    amber: string;
+    emerald: string;
+    rose: string;
+    slate: string;
+    zinc: string;
+    purple: string;
+    teal: string;
+    orange: string;
+    sky: string;
+    indigo: string;
+  };
 }
 
-function hasColorPath(path: string): boolean {
-  const segments = path.split(".");
-  let cursor: unknown = COLOR_SCHEMA;
-  for (const segment of segments) {
-    if (typeof cursor !== "object" || cursor === null || !(segment in cursor)) {
-      return false;
+// ---------------------------------------------------------------------------
+// Derived flat-map types — compile-time safety for preset & override keys
+// ---------------------------------------------------------------------------
+
+/** Recursively flatten `GameThemeColors` into a union of dot-notation
+ *  path strings. A typo in `buildGameColors` or user overrides becomes a
+ *  compile error instead of a silent dead token. */
+type FlatPaths<T, P extends string = ""> = {
+  [K in keyof T & string]: T[K] extends string
+    ? P extends ""
+      ? K
+      : `${P}.${K}`
+    : FlatPaths<T[K], P extends "" ? K : `${P}.${K}`>;
+}[keyof T & string];
+
+/** Union of every valid dot-notation key (e.g. `"pointer.hostile" | "mana.W" | …`). */
+export type GameThemeColorKey = FlatPaths<GameThemeColors>;
+
+/** A flat map containing **every** game-theme colour keyed by dot-path.
+ *  Used as the return type of `buildGameColors()` — a missing or extra
+ *  key is a compile error. */
+export type GameThemeColorMap = Record<GameThemeColorKey, string>;
+
+// ---------------------------------------------------------------------------
+// Resolution helpers
+// ---------------------------------------------------------------------------
+
+/** Convert a flat dot-notation map (`"pointer.hostile": "#ff0000"`)
+ *  into the nested `GameThemeColors` structure. */
+function flatToGameTheme(flat: GameThemeColorMap): GameThemeColors {
+  const result: Record<string, unknown> = {};
+  for (const [path, value] of Object.entries(flat)) {
+    const segments = path.split(".");
+    let cursor: Record<string, unknown> = result;
+    for (let i = 0; i < segments.length - 1; i++) {
+      const seg = segments[i]!;
+      cursor[seg] ??= {};
+      cursor = cursor[seg] as Record<string, unknown>;
     }
-    cursor = (cursor as Record<string, unknown>)[segment];
+    cursor[segments[segments.length - 1]!] = value;
   }
-  return typeof cursor === "string";
+  return result as unknown as GameThemeColors;
 }
 
-function setByPath(target: Record<string, unknown>, path: string, value: string): void {
-  const segments = path.split(".");
-  const lastIndex = segments.length - 1;
-  let cursor: Record<string, unknown> = target;
-  for (let i = 0; i < lastIndex; i += 1) {
-    cursor = cursor[segments[i]!] as Record<string, unknown>;
-  }
-  cursor[segments[lastIndex]!] = value;
+/** Trim whitespace and filter out empty/non-string entries. */
+function cleanFlatMap(raw: Record<string, string>): Record<string, string> {
+  return Object.fromEntries(
+    Object.entries(raw)
+      .filter(([, v]) => typeof v === "string" && v.trim())
+      .map(([k, v]) => [k, v.trim()]),
+  );
 }
 
 // ---------------------------------------------------------------------------
 // Resolution
 // ---------------------------------------------------------------------------
 
-/** Default preset's gameColors map, consulted as a semantic fallback when
- *  the active preset doesn't declare a given game-theme key. */
-const DEFAULT_PRESET_GAME_COLORS: Record<string, string> = (() => {
+/** Default preset's gameColors map — the fallback layer that guarantees
+ *  every game-theme key has a value. Also used as the canonical key list
+ *  for `getGameThemeColorPaths()`. */
+const DEFAULT_PRESET_GAME_COLORS: GameThemeColorMap = (() => {
   const defaultPreset = THEME_PRESETS.find((p) => p.id === "default");
-  const out: Record<string, string> = {};
-  if (!defaultPreset) return out;
-  for (const [key, value] of Object.entries(defaultPreset.gameColors)) {
-    if (typeof value === "string") out[key] = value;
-  }
-  return out;
+  if (!defaultPreset) return {} as GameThemeColorMap;
+  return cleanFlatMap(defaultPreset.gameColors) as GameThemeColorMap;
 })();
 
+/** Return every valid dot-notation leaf path, derived from the default
+ *  preset. Used by the Settings color picker to enumerate editable keys. */
+export function getGameThemeColorPaths(): GameThemeColorKey[] {
+  return Object.keys(DEFAULT_PRESET_GAME_COLORS) as GameThemeColorKey[];
+}
+
 /**
- * Maps a flat string record (from theme presets or user overrides) into
- * the structured `GameThemeColors` object.
+ * Merge default preset → active preset → user overrides into a
+ * fully-resolved `GameThemeColors` object. Every key is guaranteed
+ * to be a non-empty trimmed string.
  */
 export function resolveGameThemeColors(
-  overrides: Record<string, string> = {},
+  overrides: Partial<GameThemeColorMap> = {},
   presetId?: string,
 ): GameThemeColors {
   const activePresetId = presetId ?? usePreferencesStore.getState().appThemePreset;
   const preset = THEME_PRESETS.find((p) => p.id === activePresetId) || THEME_PRESETS[0]!;
-  const presetColors = (preset.gameColors || {}) as unknown as Record<string, string>;
 
-  // Start with an empty shell — the default preset fills every key.
-  const merged: GameThemeColors = structuredClone(COLOR_SCHEMA) as GameThemeColors;
+  const merged = {
+    ...DEFAULT_PRESET_GAME_COLORS,
+    ...cleanFlatMap(preset.gameColors),
+    ...cleanFlatMap(overrides as Record<string, string>),
+  } as GameThemeColorMap;
 
-  // Seed from the default preset (provides all fallback values)
-  for (const [path, value] of Object.entries(DEFAULT_PRESET_GAME_COLORS)) {
-    if (!hasColorPath(path) || !value.trim()) continue;
-    setByPath(merged as unknown as Record<string, unknown>, path, value.trim());
-  }
-
-  // Apply preset colors
-  for (const [path, value] of Object.entries(presetColors)) {
-    if (!hasColorPath(path) || typeof value !== "string" || !value.trim()) continue;
-    setByPath(merged as unknown as Record<string, unknown>, path, value.trim());
-  }
-
-  // Apply user overrides
-  for (const [path, value] of Object.entries(overrides)) {
-    if (!hasColorPath(path) || typeof value !== "string" || !value.trim()) continue;
-    setByPath(merged as unknown as Record<string, unknown>, path, value.trim());
-  }
-
-  return merged;
+  return flatToGameTheme(merged);
 }
 
 // ---------------------------------------------------------------------------

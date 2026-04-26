@@ -5,8 +5,9 @@
 
 import { Container, Graphics, Text, TextStyle, Sprite } from "pixi.js";
 import type { Theme } from "@/hooks/useTheme";
+import { getTheme } from "@/hooks/useTheme";
 import { hexToNum } from "./colorUtils";
-import { applyIcon, ICON_COLORS } from "./panelIcons";
+import { applyIcon, getIconColor } from "./panelIcons";
 
 /** Display cells. "combat" is a merged cell that represents all combat sub-phases. */
 interface PhaseSpec {
@@ -101,33 +102,34 @@ function drawShape(
   }
 }
 
-// Text styles — fill is updated from theme in setTheme()
+// Text styles — seeded from the current theme; kept in sync by setTheme()
+const _initTheme = getTheme().gameTheme;
 const normalStyle = new TextStyle({
   fontFamily: FONT,
   fontSize: 11,
   fontWeight: "600",
-  fill: "#555555",
+  fill: _initTheme.textMuted,
   align: "center",
 });
 const activeStyle = new TextStyle({
   fontFamily: FONT,
   fontSize: 11,
   fontWeight: "bold",
-  fill: "#ffffff",
+  fill: _initTheme.textOnTinted,
   align: "center",
 });
 const combatActiveStyle = new TextStyle({
   fontFamily: FONT,
   fontSize: 11,
   fontWeight: "bold",
-  fill: "#ffffff",
+  fill: _initTheme.textOnTinted,
   align: "center",
 });
 const enabledStyle = new TextStyle({
   fontFamily: FONT,
   fontSize: 11,
   fontWeight: "600",
-  fill: "#aaaaaa",
+  fill: _initTheme.textGhost,
   align: "center",
 });
 
@@ -244,7 +246,7 @@ export class PhaseStripLayer {
         icon.width = COMBAT_ICON_SIZE;
         icon.height = COMBAT_ICON_SIZE;
         this.container.addChild(icon);
-        applyIcon(icon, "cmdsword", ICON_COLORS["cmdsword"] ?? "#6b7280");
+        applyIcon(icon, "cmdsword", getIconColor("cmdsword", this.theme.gameTheme));
       }
       const text = new Text({ text: isCombat ? "" : p.short, style: normalStyle });
       text.anchor.set(0.5, 0.5);
@@ -452,7 +454,9 @@ export class PhaseStripLayer {
 
       // Combat icon position + tint
       if (cell.icon) {
-        const iconTint = isActive ? "#ffffff" : (ICON_COLORS["cmdsword"] ?? "#6b7280");
+        const iconTint = isActive
+          ? this.theme.gameTheme.textOnTinted
+          : getIconColor("cmdsword", this.theme.gameTheme);
         applyIcon(cell.icon, "cmdsword", iconTint);
         cell.icon.width = COMBAT_ICON_SIZE;
         cell.icon.height = COMBAT_ICON_SIZE;

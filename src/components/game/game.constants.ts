@@ -15,25 +15,7 @@ export const PHASES = [
   { id: "cleanup", label: "Cleanup", short: "CL" },
 ] as const;
 
-export const MANA_COLORS = [
-  { key: "W", bg: "bg-yellow-50 border-yellow-200", text: "text-yellow-800" },
-  { key: "U", bg: "bg-blue-100 border-blue-300", text: "text-blue-800" },
-  { key: "B", bg: "bg-gray-800 border-gray-600", text: "text-gray-100" },
-  { key: "R", bg: "bg-red-100 border-red-300", text: "text-red-800" },
-  { key: "G", bg: "bg-green-100 border-green-300", text: "text-green-800" },
-  { key: "C", bg: "bg-gray-100 border-gray-300", text: "text-gray-700" },
-] as const;
-
-export const AVATAR_COLORS = [
-  "bg-blue-600 text-white",
-  "bg-purple-600 text-white",
-  "bg-red-600 text-white",
-  "bg-green-700 text-white",
-  "bg-orange-500 text-white",
-  "bg-pink-600 text-white",
-  "bg-teal-600 text-white",
-  "bg-indigo-600 text-white",
-] as const;
+export { MANA_LETTERS as MANA_KEYS } from "@/themes/gameTheme";
 
 /** Width reserved for the Pixi player column on the left of the battlefield. */
 export const ZONE_COLUMN_RESERVED_PX = 120;
@@ -101,14 +83,14 @@ export const PROMPT_LABELS: Record<string, string> = {
 
 /** Card status badge definitions — label + Tailwind color classes */
 export const CARD_BADGES = {
-  exerted: { label: "EXERTED", style: "bg-orange-500/90 text-white" },
-  morph: { label: "MORPH", style: "bg-gray-600/90 text-white" },
-  bestow: { label: "BESTOW", style: "bg-teal-500/90 text-white" },
-  token: { label: "TOKEN", style: "bg-amber-400/90 text-amber-900" },
-  transformed: { label: "TRANSFORMED", style: "bg-purple-500/90 text-white" },
-  plotted: { label: "PLOTTED", style: "bg-indigo-500/90 text-white" },
-  madnessExiled: { label: "MADNESS", style: "bg-red-600/90 text-white" },
-  warpExiled: { label: "WARPED", style: "bg-cyan-600/90 text-white" },
+  exerted: { label: "EXERTED", style: "bg-card-status-exerted/90 text-text-on-tinted" },
+  morph: { label: "MORPH", style: "bg-card-status-morph/90 text-text-on-tinted" },
+  bestow: { label: "BESTOW", style: "bg-card-status-bestow/90 text-text-on-tinted" },
+  token: { label: "TOKEN", style: "bg-card-status-token/90 text-text-on-tinted" },
+  transformed: { label: "TRANSFORMED", style: "bg-card-status-transformed/90 text-text-on-tinted" },
+  plotted: { label: "PLOTTED", style: "bg-card-status-plotted/90 text-text-on-tinted" },
+  madnessExiled: { label: "MADNESS", style: "bg-card-status-madness/90 text-text-on-tinted" },
+  warpExiled: { label: "WARPED", style: "bg-card-status-warped/90 text-text-on-tinted" },
 } as const;
 
 /** Logical footprint of battlefield cards (for FreeBattlefield grid layout) */
