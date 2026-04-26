@@ -39,7 +39,12 @@ interface DeckVsSelectorProps {
     formatId?: string,
     commanderName?: string,
   ) => void;
-  onStartTabletop?: (deck: Deck) => void;
+  onStartTabletop?: (
+    deckList: CardIdentity[],
+    formatId?: string,
+    commanderName?: string,
+    sourceDeck?: Deck,
+  ) => void;
 }
 
 type PickingSide = "player" | "opponent";
@@ -170,13 +175,17 @@ export function DeckVsSelector({ onStart, onStartTabletop }: DeckVsSelectorProps
   }
 
   function handleTabletop() {
-    if (!playerDeck?.sourceDeck || playerDeck.sourceDeck.cards.length === 0) return;
-    onStartTabletop?.(playerDeck.sourceDeck);
+    if (!playerDeck || playerDeck.deckList.length === 0) return;
+    onStartTabletop?.(
+      playerDeck.deckList,
+      playerDeck.formatId,
+      playerDeck.commanderName,
+      playerDeck.sourceDeck,
+    );
   }
 
   const isReady = !!playerDeck && !!opponentDeck;
-  const canStartTabletop =
-    !!onStartTabletop && !!playerDeck?.sourceDeck && playerDeck.sourceDeck.cards.length > 0;
+  const canStartTabletop = !!onStartTabletop && !!playerDeck && playerDeck.deckList.length > 0;
 
   function resolveDeckCover(deck: SelectedDeck | null): DeckCoverSource | undefined {
     if (!deck) return undefined;

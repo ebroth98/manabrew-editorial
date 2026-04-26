@@ -15,6 +15,7 @@ import { useServerStore } from "./useServerStore";
 import type { GameState, GameConfig } from "./gameStore.types";
 import type { AgentPrompt } from "./gameStore.types";
 import type { Card, Deck, GameView } from "@/types/openmagic";
+import type { CardIdentity } from "@/types/server";
 import { usePhaseStopStore } from "@/stores/usePhaseStopStore";
 import type { GameRuntime, ManualTabletopApi } from "@/game";
 
@@ -164,9 +165,23 @@ export const useGameStore = create<GameState>()(
         }
       },
 
-      startManualTabletopGame: async (deck?: Deck) => {
+      startManualTabletopGame: async (
+        deck?: Deck,
+        deckList?: CardIdentity[],
+        formatId?: string,
+        commanderName?: string,
+      ) => {
         selectGameRuntime("manual-tabletop");
-        await get().startGame([], deck?.format ?? "standard", undefined, []);
+        // If a deckList is provided (e.g. preset deck), pass it to the engine
+        // so it can resolve the deck. Otherwise start with empty lists and
+        // seed manually from the Deck object below.
+        const engineDeckList = deckList ?? [];
+        await get().startGame(
+          engineDeckList,
+          formatId ?? deck?.format ?? "standard",
+          commanderName,
+          [],
+        );
         if (!deck) return;
 
         const runtime = getSelectedGameRuntime();
