@@ -203,7 +203,12 @@ export interface GameState {
     commanderName?: string,
     opponentDeckList?: CardIdentity[],
   ) => Promise<void>;
-  startManualTabletopGame: (deck?: Deck) => Promise<void>;
+  startManualTabletopGame: (
+    deck?: Deck,
+    deckList?: CardIdentity[],
+    formatId?: string,
+    commanderName?: string,
+  ) => Promise<void>;
   startManualRoomHost: (localPlayerSlot: string) => Promise<void>;
   startManualRoomClient: (
     localPlayerSlot: string,
