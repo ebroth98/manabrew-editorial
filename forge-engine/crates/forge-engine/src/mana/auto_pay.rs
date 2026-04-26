@@ -129,17 +129,63 @@ pub fn pay_mana_cost_auto_with_callback(
     any_color_conversion: bool,
     callback: ManaPayCallbackFn<'_>,
 ) -> Option<AutoPayResult> {
+    pay_mana_cost_auto_with_callback_and_reserved_sacrifices(
+        game,
+        pool,
+        player,
+        mana_cost,
+        current_spell,
+        commander_tax,
+        payment_ctx,
+        any_color_conversion,
+        &[],
+        callback,
+    )
+}
+
+/// Same as [`pay_mana_cost_auto_with_callback`] but takes a list of permanents
+/// already reserved by an additional-cost sacrifice on the current spell. The
+/// auto-payer skips those permanents when picking mana abilities, so the spell's
+/// `Sac<1/X>` cost and its mana payment can never double-book the same card.
+///
+/// Without this, the spell auto-payer (`cast_spell.rs:pay_mana_cost_session`)
+/// would freely pick the very permanent the player already chose to sacrifice
+/// for the additional cost, then silently drop the additional sacrifice at
+/// pay-time. That's the seed-62 Eviscerator's Insight bug.
+#[allow(clippy::too_many_arguments)]
+pub fn pay_mana_cost_auto_with_callback_and_reserved_sacrifices(
+    game: &mut GameState,
+    pool: &mut ManaPool,
+    player: PlayerId,
+    mana_cost: &ManaCost,
+    current_spell: Option<CardId>,
+    commander_tax: i32,
+    payment_ctx: &ManaPaymentContext,
+    any_color_conversion: bool,
+    reserved_sacrifices: &[CardId],
+    callback: ManaPayCallbackFn<'_>,
+) -> Option<AutoPayResult> {
     let mut choices =
-        auto_tap_lands_trace_with_callbacks(game, pool, player, mana_cost, current_spell, callback);
-    if commander_tax > 0 {
-        let tapped_tax = auto_tap_lands_trace_with_callbacks(
+        super::computer_util_mana::auto_tap_lands_trace_with_callbacks_and_reserved_sacrifices(
             game,
             pool,
             player,
-            &ManaCost::generic(commander_tax),
+            mana_cost,
             current_spell,
+            reserved_sacrifices,
             callback,
         );
+    if commander_tax > 0 {
+        let tapped_tax =
+            super::computer_util_mana::auto_tap_lands_trace_with_callbacks_and_reserved_sacrifices(
+                game,
+                pool,
+                player,
+                &ManaCost::generic(commander_tax),
+                current_spell,
+                reserved_sacrifices,
+                callback,
+            );
         choices.extend(tapped_tax);
     }
     let tapped = choices.iter().map(|choice| choice.card_id).collect();

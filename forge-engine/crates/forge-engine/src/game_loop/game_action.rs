@@ -1,5 +1,131 @@
+use std::collections::BTreeMap;
+
 use super::cost_payment::CostPaymentContext;
 use super::*;
+
+/// Sacrifice a batch of cards. Mirrors Java's `GameAction.sacrifice(Iterable<Card>, ...)`
+/// at `forge/forge-game/src/main/java/forge/game/GameAction.java:2104`.
+///
+/// Single chokepoint for the per-card sequence:
+///   1. capture LKI (counter map, power, toughness) before any zone change
+///   2. write `lki_counters` and `set_lki_power_toughness` on the card so death
+///      triggers (Modular, Servant of the Scale, etc.) see pre-move state
+///   3. record the card on `game.last_sacrificed_card` for `Sacrificed$CardPower`
+///      SVar lookups (Rite of Consumption, Altar's Reap)
+///   4. fire `TriggerType::Sacrificed` with the controller as `player`
+///   5. emit `ChangesZone(Battlefield → Graveyard)` carrying LKI counters
+///   6. flush waiting triggers — matches against pre-move state, **with pump
+///      triggers still on the card**, so Animate-granted triggers
+///      (Supernatural Stamina's death-return) fire correctly. `clear_pump_triggers`
+///      cleanup runs inside `move_card` after the match has already happened.
+///   7. move the card to its owner's graveyard with agent notifications
+///
+/// After all cards: fire `TriggerType::SacrificedOnce` once per distinct
+/// controller, with the batch payload in `RunParams.cards`. Java fires this
+/// from the same chokepoint at `GameAction.java:2133-2138`. Cards that key off
+/// it: Tasteful Offering, Camellia, the Seedmiser.
+///
+/// Returns the cards that were actually sacrificed (skipping any that had
+/// been removed from the battlefield by an interim trigger).
+///
+/// **Ordering rationale (flush before move):** matches the existing pattern at
+/// `cost_payment.rs:606`, `mana_payment.rs:349`, `cost_adjustment.rs:1219`
+/// and the rest of the majority. Required so that a Sacrificed trigger on
+/// the dying card itself (`ValidCard$ Card.Self` with `TriggerZones$
+/// Battlefield`) finds its host still on the battlefield at match time.
+///
+/// **Why not `clear_pump_triggers` before emit:** see the note in the original
+/// `pay_sacrifice_cost_internal` — Animate-granted triggers (Supernatural
+/// Stamina) must remain active so they can be matched and queued by
+/// `flush_waiting_triggers`. The `move_card` call below cleans them up after
+/// the match is done.
+pub(crate) fn perform_sacrifice(
+    game: &mut GameState,
+    trigger_handler: &mut TriggerHandler,
+    agents: &mut [Box<dyn PlayerAgent>],
+    cards: &[CardId],
+) -> Vec<CardId> {
+    let mut sacrificed: Vec<CardId> = Vec::with_capacity(cards.len());
+    let mut by_controller: BTreeMap<PlayerId, Vec<CardId>> = BTreeMap::new();
+
+    for &card_id in cards {
+        if game.card(card_id).zone != ZoneType::Battlefield {
+            continue;
+        }
+        let owner = game.card(card_id).owner;
+        let controller = game.card(card_id).controller;
+
+        let lki_counters = game.card(card_id).counters.clone();
+        let lki_power = game.card(card_id).power();
+        let lki_toughness = game.card(card_id).toughness();
+        let lki_p1p1 = *lki_counters
+            .get(&crate::card::CounterType::P1P1)
+            .unwrap_or(&0);
+
+        {
+            let card = game.card_mut(card_id);
+            card.lki_counters = Some(lki_counters);
+            card.set_lki_power_toughness(Some(lki_power), Some(lki_toughness));
+        }
+        game.last_sacrificed_card = Some(card_id);
+
+        trigger_handler.run_trigger(
+            TriggerType::Sacrificed,
+            RunParams {
+                card: Some(card_id),
+                player: Some(controller),
+                ..Default::default()
+            },
+            false,
+        );
+        crate::ability::effects::emit_zone_trigger_with_lki_counters(
+            trigger_handler,
+            card_id,
+            ZoneType::Battlefield,
+            ZoneType::Graveyard,
+            lki_p1p1,
+            lki_power,
+            lki_toughness,
+        );
+        trigger_handler.flush_waiting_triggers(game);
+        game.move_card_with_agents(card_id, ZoneType::Graveyard, owner, agents);
+
+        sacrificed.push(card_id);
+        by_controller.entry(controller).or_default().push(card_id);
+    }
+
+    fire_sacrificed_once_for_batch(game, trigger_handler, &by_controller);
+
+    sacrificed
+}
+
+/// Fire `TriggerType::SacrificedOnce` once per distinct controller in the batch.
+///
+/// Mirrors Java's batch tail at `GameAction.java:2133-2138`. Exposed separately
+/// so call sites that retain their own per-card emission loop (because they
+/// have site-specific LKI handling) can still get the batch trigger. Pass the
+/// `(controller → cards)` map you accumulated as you sacrificed.
+pub(crate) fn fire_sacrificed_once_for_batch(
+    game: &mut GameState,
+    trigger_handler: &mut TriggerHandler,
+    by_controller: &BTreeMap<PlayerId, Vec<CardId>>,
+) {
+    if by_controller.is_empty() {
+        return;
+    }
+    for (controller, batch_cards) in by_controller {
+        trigger_handler.run_trigger(
+            TriggerType::SacrificedOnce,
+            RunParams {
+                player: Some(*controller),
+                cards: Some(batch_cards.clone()),
+                ..Default::default()
+            },
+            false,
+        );
+    }
+    trigger_handler.flush_waiting_triggers(game);
+}
 
 impl GameLoop {
     fn fixed_reserved_sacrifices_for_action(sa: &SpellAbility, source: CardId) -> Vec<CardId> {

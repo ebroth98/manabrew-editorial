@@ -993,18 +993,24 @@ fn pay_roll_cost(
                             let game = &mut *game_ptr;
                             let trigger_handler = &mut *trigger_handler_ptr;
                             let owner = game.card(sacrificed_id).owner;
-                            let lki_p1p1 = *game
-                                .card(sacrificed_id)
-                                .counters
-                                .get(&crate::card::CounterType::P1P1)
-                                .unwrap_or(&0);
+                            let controller = game.card(sacrificed_id).controller;
+                            let lki_counters = game.card(sacrificed_id).counters.clone();
                             let lki_power = game.card(sacrificed_id).power();
                             let lki_toughness = game.card(sacrificed_id).toughness();
+                            let lki_p1p1 = *lki_counters
+                                .get(&crate::card::CounterType::P1P1)
+                                .unwrap_or(&0);
+                            {
+                                let card = game.card_mut(sacrificed_id);
+                                card.lki_counters = Some(lki_counters);
+                                card.set_lki_power_toughness(Some(lki_power), Some(lki_toughness));
+                            }
+                            game.last_sacrificed_card = Some(sacrificed_id);
                             trigger_handler.run_trigger(
                                 TriggerType::Sacrificed,
                                 RunParams {
                                     card: Some(sacrificed_id),
-                                    player: Some(player),
+                                    player: Some(controller),
                                     ..Default::default()
                                 },
                                 false,
@@ -1020,6 +1026,13 @@ fn pay_roll_cost(
                             );
                             trigger_handler.flush_waiting_triggers(game);
                             game.move_card(sacrificed_id, ZoneType::Graveyard, owner);
+                            let mut by_controller = std::collections::BTreeMap::new();
+                            by_controller.insert(controller, vec![sacrificed_id]);
+                            crate::game_loop::fire_sacrificed_once_for_batch(
+                                game,
+                                trigger_handler,
+                                &by_controller,
+                            );
                             Some(sacrificed_id)
                         },
                     }

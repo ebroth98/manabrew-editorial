@@ -595,46 +595,11 @@ impl GameLoop {
                     amount,
                 } => {
                     if type_filter == "CARDNAME" {
-                        let owner = game.card(card_id).owner;
-                        let lki_p1p1 = *game
-                            .card(card_id)
-                            .counters
-                            .get(&crate::card::CounterType::P1P1)
-                            .unwrap_or(&0);
-                        let lki_power = game.card(card_id).power();
-                        let lki_toughness = game.card(card_id).toughness();
-                        self.trigger_handler.run_trigger(
-                            TriggerType::Sacrificed,
-                            RunParams {
-                                card: Some(card_id),
-                                player: Some(player),
-                                ..Default::default()
-                            },
-                            false,
-                        );
-                        // Clear temporary Animate triggers BEFORE emitting
-                        // ChangesZone so they are not pre-matched by flush.
-                        // Per CR 400.7 the dying card becomes a new object.
-                        {
-                            let card = game.card_mut(card_id);
-                            card.clear_pump_triggers();
-                        }
-                        crate::ability::effects::emit_zone_trigger_with_lki_counters(
-                            &mut self.trigger_handler,
-                            card_id,
-                            ZoneType::Battlefield,
-                            ZoneType::Graveyard,
-                            lki_p1p1,
-                            lki_power,
-                            lki_toughness,
-                        );
-                        self.trigger_handler.flush_waiting_triggers(game);
-                        self.move_card_with_runtime(
+                        super::perform_sacrifice(
                             game,
-                            card_id,
-                            ZoneType::Graveyard,
-                            owner,
+                            &mut self.trigger_handler,
                             agents,
+                            &[card_id],
                         );
                     } else if !self.pay_sacrifice_cost_internal(
                         game,
@@ -2311,76 +2276,14 @@ impl GameLoop {
             let chosen = agents[player.index()]
                 .choose_sacrifice(player, &foods, None)
                 .unwrap_or(foods[0]);
-            let owner = game.card(chosen).owner;
-            let lki_p1p1 = *game
-                .card(chosen)
-                .counters
-                .get(&crate::card::CounterType::P1P1)
-                .unwrap_or(&0);
-            let lki_power = game.card(chosen).power();
-            let lki_toughness = game.card(chosen).toughness();
-            {
-                let card = game.card_mut(chosen);
-                card.clear_pump_triggers();
-            }
-            self.trigger_handler.run_trigger(
-                TriggerType::Sacrificed,
-                RunParams {
-                    card: Some(chosen),
-                    player: Some(player),
-                    ..Default::default()
-                },
-                false,
-            );
-            crate::ability::effects::emit_zone_trigger_with_lki_counters(
-                &mut self.trigger_handler,
-                chosen,
-                ZoneType::Battlefield,
-                ZoneType::Graveyard,
-                lki_p1p1,
-                lki_power,
-                lki_toughness,
-            );
-            self.trigger_handler.flush_waiting_triggers(game);
-            self.move_card_with_runtime(game, chosen, ZoneType::Graveyard, owner, agents);
+            super::perform_sacrifice(game, &mut self.trigger_handler, agents, &[chosen]);
         } else if !foods.is_empty() {
             // Let the chooser pick between food + graveyard cards. Food means sacrifice path.
             let mut combined = foods.clone();
             combined.extend(gy.iter().copied());
             if let Some(chosen) = self.choose_cost_card_mixed(game, agents, player, &combined) {
                 if foods.contains(&chosen) {
-                    let owner = game.card(chosen).owner;
-                    let lki_p1p1 = *game
-                        .card(chosen)
-                        .counters
-                        .get(&crate::card::CounterType::P1P1)
-                        .unwrap_or(&0);
-                    let lki_power = game.card(chosen).power();
-                    let lki_toughness = game.card(chosen).toughness();
-                    self.trigger_handler.run_trigger(
-                        TriggerType::Sacrificed,
-                        RunParams {
-                            card: Some(chosen),
-                            player: Some(player),
-                            ..Default::default()
-                        },
-                        false,
-                    );
-                    {
-                        let card = game.card_mut(chosen);
-                        card.clear_pump_triggers();
-                    }
-                    crate::ability::effects::emit_zone_trigger_with_lki_counters(
-                        &mut self.trigger_handler,
-                        chosen,
-                        ZoneType::Battlefield,
-                        ZoneType::Graveyard,
-                        lki_p1p1,
-                        lki_power,
-                        lki_toughness,
-                    );
-                    self.trigger_handler.flush_waiting_triggers(game);
-                    self.move_card_with_runtime(game, chosen, ZoneType::Graveyard, owner, agents);
+                    super::perform_sacrifice(game, &mut self.trigger_handler, agents, &[chosen]);
                 } else {
                     // Graveyard path: exile chosen + two more.
                     let mut chosen_gy = vec![chosen];
@@ -3259,6 +3162,10 @@ impl GameLoop {
         prechosen_sacrifices: Option<&[CardId]>,
         pre_sac_idx: &mut usize,
     ) -> bool {
+        // Collect chosen cards across all iterations, then sacrifice as one batch.
+        // Batching matters for `SacrificedOnce` (Tasteful Offering / Camellia) which
+        // Java fires once per controller per call, not once per card.
+        let mut to_sacrifice: Vec<CardId> = Vec::with_capacity(amount.max(0) as usize);
         for _ in 0..amount {
             let valid = cost::get_sacrifice_targets(game, player, type_filter);
             if valid.is_empty() {
@@ -3286,63 +3193,13 @@ impl GameLoop {
                 agents[player.index()].choose_sacrifice(player, &valid, sa)
             };
             if let Some(chosen) = chosen {
-                let owner = game.card(chosen).owner;
-                // Capture sacrificed creature's power/toughness for Sacrificed$CardPower
-                // SVar (used by Rite of Consumption, Altar's Reap, etc.).
-                // Must be before move_card clears counters and resets stats.
-                // Store LKI on the sacrificed card, and remember the card on the
-                // spell's source so the SVar resolver can find it.
-                {
-                    let sac_power = game.card(chosen).power();
-                    let sac_toughness = game.card(chosen).toughness();
-                    let lki_counters = game.card(chosen).counters.clone();
-                    game.card_mut(chosen)
-                        .set_lki_power_toughness(Some(sac_power), Some(sac_toughness));
-                    game.card_mut(chosen).lki_counters = Some(lki_counters);
-                    // Store as last sacrificed card for SVar lookup.
-                    // The SVar resolver reads this from the spell source's svars.
-                    // Since we don't have the source card_id here, store it
-                    // as a game-level transient for the SVar resolver to find.
-                    game.last_sacrificed_card = Some(chosen);
-                }
-                // Capture +1/+1 counter count BEFORE move_card clears counters.
-                // Needed for Modular death triggers (CR 702.43b).
-                let lki_p1p1 = *game
-                    .card(chosen)
-                    .counters
-                    .get(&crate::card::CounterType::P1P1)
-                    .unwrap_or(&0);
-                let lki_power = game.card(chosen).power();
-                let lki_toughness = game.card(chosen).toughness();
-                // Fire Sacrificed trigger before moving
-                self.trigger_handler.run_trigger(
-                    TriggerType::Sacrificed,
-                    RunParams {
-                        card: Some(chosen),
-                        player: Some(player),
-                        ..Default::default()
-                    },
-                    false,
-                );
-                // NOTE: pump triggers (e.g. Supernatural Stamina's death-return
-                // trigger) must NOT be cleared here. They need to fire during the
-                // ChangesZone event below. Cleanup happens in move_card when the
-                // card actually changes zones — after the trigger has been matched
-                // and queued by emit_zone_trigger + flush_waiting_triggers.
-                crate::ability::effects::emit_zone_trigger_with_lki_counters(
-                    &mut self.trigger_handler,
-                    chosen,
-                    ZoneType::Battlefield,
-                    ZoneType::Graveyard,
-                    lki_p1p1,
-                    lki_power,
-                    lki_toughness,
-                );
-                self.trigger_handler.flush_waiting_triggers(game);
-                self.move_card_with_runtime(game, chosen, ZoneType::Graveyard, owner, agents);
+                to_sacrifice.push(chosen);
             } else {
                 return false;
             }
+        }
+        if !to_sacrifice.is_empty() {
+            super::perform_sacrifice(game, &mut self.trigger_handler, agents, &to_sacrifice);
         }
         true
     }

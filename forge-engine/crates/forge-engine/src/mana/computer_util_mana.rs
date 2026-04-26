@@ -284,6 +284,32 @@ pub fn auto_tap_lands_trace_with_callbacks(
     )
 }
 
+/// Same as [`auto_tap_lands_trace_with_callbacks`] but excludes the given
+/// permanents from the auto-payer's mana-source pool. Used during spell
+/// casting so a permanent reserved for the spell's additional sacrifice
+/// cost (`Sac<1/X>`) can't also be picked for a `Sac<1/CARDNAME>` mana
+/// ability — see the seed-62 Eviscerator's Insight divergence.
+pub fn auto_tap_lands_trace_with_callbacks_and_reserved_sacrifices(
+    game: &mut GameState,
+    pool: &mut ManaPool,
+    player: PlayerId,
+    cost: &ManaCost,
+    current_spell: Option<CardId>,
+    reserved_sacrifices: &[CardId],
+    callback: ManaPayCallbackFn<'_>,
+) -> Vec<AutoTapChoice> {
+    auto_tap_lands_internal(
+        game,
+        pool,
+        player,
+        cost,
+        current_spell,
+        false,
+        reserved_sacrifices,
+        &mut Some(callback),
+    )
+}
+
 /// Determine the next mana source/ability auto-pay would use without mutating
 /// the game or pool. This lets callback-driven payment replay the exact same
 /// source choice as engine auto-pay, including multi-ability lands.

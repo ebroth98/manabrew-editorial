@@ -1,24 +1,31 @@
+use std::collections::BTreeMap;
+
 use forge_foundation::ZoneType;
 
 use super::{emit_zone_trigger_with_lki_counters, matches_change_type, EffectContext};
 use crate::ability::spell_ability_effect::get_target_players;
 use crate::card::CounterType;
 use crate::event::RunParams;
-use crate::ids::PlayerId;
+use crate::ids::{CardId, PlayerId};
 use crate::spellability::SpellAbility;
 use crate::trigger::TriggerType;
 
 /// Perform the actual sacrifice of a card: fire triggers, move to graveyard, emit zone change.
 /// If `exploit_source` is Some, also fires the Exploited trigger for the Exploit keyword.
+///
+/// Returns the sacrificed `CardId` on success, or `None` if the card was not on the
+/// battlefield or was prevented from being sacrificed (Sigarda et al.). Callers use the
+/// return value to accumulate per-controller batches for the trailing `SacrificedOnce`
+/// trigger fired once at the end of `resolve()`.
 fn do_sacrifice(
     ctx: &mut EffectContext,
     sa: &SpellAbility,
     card_id: crate::ids::CardId,
     sacrificing_player: PlayerId,
     exploit_source: Option<crate::ids::CardId>,
-) {
+) -> Option<CardId> {
     if ctx.game.card(card_id).zone != ZoneType::Battlefield {
-        return;
+        return None;
     }
     if crate::staticability::static_ability_cant_sacrifice::cant_sacrifice(
         &ctx.game.cards,
@@ -26,7 +33,7 @@ fn do_sacrifice(
         Some(sa),
         false,
     ) {
-        return;
+        return None;
     }
     let owner = ctx.game.card(card_id).owner;
 
@@ -89,6 +96,7 @@ fn do_sacrifice(
             false,
         );
     }
+    Some(card_id)
 }
 
 /// Struct form of this effect so it can participate in the
@@ -216,7 +224,15 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
 
         // 6. If not paid, sacrifice
         if !paid {
-            do_sacrifice(ctx, sa, source_id, controller, None);
+            if let Some(cid) = do_sacrifice(ctx, sa, source_id, controller, None) {
+                let mut by_controller: BTreeMap<PlayerId, Vec<CardId>> = BTreeMap::new();
+                by_controller.insert(controller, vec![cid]);
+                crate::game_loop::fire_sacrificed_once_for_batch(
+                    ctx.game,
+                    ctx.trigger_handler,
+                    &by_controller,
+                );
+            }
         }
         return;
     }
@@ -243,6 +259,15 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let defined = sa.defined().map(|s| s.to_lowercase()).unwrap_or_default();
 
     let sacrificing_players = get_target_players(ctx.game, sa);
+
+    // Track per-controller batches so a single SacrificedOnce trigger fires after
+    // each player's batch (mirrors Java GameAction.sacrifice line 2133-2138).
+    let mut by_controller: BTreeMap<PlayerId, Vec<CardId>> = BTreeMap::new();
+    let mut record_sac = |player: PlayerId, sacrificed: Option<CardId>| {
+        if let Some(cid) = sacrificed {
+            by_controller.entry(player).or_default().push(cid);
+        }
+    };
 
     for sacrificing_player in sacrificing_players {
         if optional {
@@ -296,7 +321,8 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
             };
 
             for card_id in chosen {
-                do_sacrifice(ctx, sa, card_id, sacrificing_player, exploit_source);
+                let sacrificed = do_sacrifice(ctx, sa, card_id, sacrificing_player, exploit_source);
+                record_sac(sacrificing_player, sacrificed);
                 if sa.ir.remember_sacrificed {
                     if let Some(source_id) = sa.source {
                         ctx.game.card_mut(source_id).add_remembered_card(card_id);
@@ -362,7 +388,8 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
             };
 
             if let Some(card_id) = card_to_sacrifice {
-                do_sacrifice(ctx, sa, card_id, sacrificing_player, exploit_source);
+                let sacrificed = do_sacrifice(ctx, sa, card_id, sacrificing_player, exploit_source);
+                record_sac(sacrificing_player, sacrificed);
                 // RememberSacrificed$ True — remember the sacrificed card on the source
                 // so downstream ConditionDefined$ Remembered checks can find it.
                 if sa.ir.remember_sacrificed {
@@ -373,4 +400,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
             }
         }
     }
+
+    drop(record_sac);
+    crate::game_loop::fire_sacrificed_once_for_batch(ctx.game, ctx.trigger_handler, &by_controller);
 }
