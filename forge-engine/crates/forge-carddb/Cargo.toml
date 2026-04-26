@@ -6,9 +6,11 @@ edition = "2021"
 [dependencies]
 forge-foundation = { path = "../forge-foundation" }
 forge-card-script = { path = "../forge-card-script" }
+forge-cardset-archive = { path = "../forge-cardset-archive" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 deunicode = { workspace = true }
 
 [dev-dependencies]
-# for integration tests
+# for integration tests and the verify_archive example
+memmap2 = "0.9"

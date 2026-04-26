@@ -203,6 +203,32 @@ impl CardDatabase {
         (db, result)
     }
 
+    /// Load cards from a pre-built rkyv archive.
+    ///
+    /// `archive_bytes` must be aligned (an `mmap`'d region trivially is).
+    /// `editions_dir` is read from the filesystem the same way as
+    /// `load_from_directory` — the archive only covers `cardsfolder/`.
+    ///
+    /// Equivalent in observable behavior to `load_from_directory(cardsfolder)`,
+    /// but skips the ~500 ms FS scan in favor of a single mmap + verify.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn load_from_archive(
+        archive_bytes: &[u8],
+        editions_dir: Option<&std::path::Path>,
+    ) -> Result<(Self, LoadResult), String> {
+        let archive = forge_cardset_archive::load_checked(archive_bytes)?;
+        let pairs: Vec<(&str, &str)> = archive
+            .cards
+            .iter()
+            .map(|c| (c.name_lower.as_str(), c.raw.as_str()))
+            .collect();
+        let (mut db, result) = Self::load_from_strings(pairs);
+        if let Some(editions) = editions_dir {
+            db.load_flavor_aliases_from_editions(editions);
+        }
+        Ok((db, result))
+    }
+
     /// Load cards from a directory on the filesystem.
     /// Walks the directory recursively looking for .txt files.
     #[cfg(not(target_arch = "wasm32"))]
