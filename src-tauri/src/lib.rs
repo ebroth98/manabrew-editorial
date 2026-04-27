@@ -23,15 +23,20 @@ use tauri::Manager;
 // machine's source tree layout.
 const TYPE_LISTS: &str = include_str!("../../forge/forge-gui/res/lists/TypeLists.txt");
 
-// Tauri copies these resource subdirs into the app's resource_dir at
-// install time (see tauri.conf.json bundle.resources). The card/token/
-// edition/preset loaders pick them up via env vars set before any
-// command runs.
+// Tauri copies these resources into the app's resource_dir at install
+// time (see tauri.conf.json bundle.resources). The card/token/edition/
+// preset loaders pick them up via env vars set before any command runs.
+//
+// `CARDSET_ARCHIVE` points at a single bundled file, not a directory —
+// without it, packaged builds fall back to scanning the 32k-file
+// cardsfolder, which on Windows takes ~10 minutes due to NTFS + Defender
+// per-file overhead.
 const RESOURCE_ENV_MAP: &[(&str, &str)] = &[
     ("CARDS_DIR", "cardsfolder"),
     ("TOKEN_SCRIPTS_DIR", "tokenscripts"),
     ("EDITIONS_DIR", "editions"),
     ("PRESET_DECKS_DIR", "preset_decks"),
+    ("CARDSET_ARCHIVE", "cardset.rkyv"),
 ];
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
