@@ -132,6 +132,8 @@ pub struct CardDto {
     pub owner_id: String,
     pub zone_id: String,
     pub tapped: bool,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub is_attacking: bool,
     pub keywords: Vec<String>,
     /// Active counters: counter type name -> count. Only non-zero entries included.
     pub counters: HashMap<String, i32>,
@@ -628,6 +630,7 @@ pub fn card_to_dto(
         owner_id: player_id_str(card.owner),
         zone_id: zone_label.to_string(),
         tapped: card.tapped,
+        is_attacking: card.attacking_player.is_some(),
         // Merge intrinsic keywords with those granted by continuous effects (layer 6)
         // and temporary pump keywords (KW$ parameter, until end of turn).
         keywords: {

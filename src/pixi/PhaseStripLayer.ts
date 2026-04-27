@@ -15,6 +15,8 @@ interface PhaseSpec {
   short: string;
   /** If set, this cell represents multiple phase ids (combat). */
   subPhases?: string[];
+  /** If set, stop indicators/toggles use these phase ids instead of the cell phases. */
+  indicatorPhases?: string[];
 }
 
 const COMBAT_SUB_PHASES = [
@@ -39,7 +41,12 @@ const PHASES: PhaseSpec[] = [
   { id: "upkeep", short: "UP" },
   { id: "draw", short: "DR" },
   { id: "main1", short: "M1" },
-  { id: "combat", short: "COMBAT", subPhases: COMBAT_SUB_PHASES },
+  {
+    id: "combat",
+    short: "COMBAT",
+    subPhases: COMBAT_SUB_PHASES,
+    indicatorPhases: ["declare_attackers"],
+  },
   { id: "main2", short: "M2" },
   { id: "end", short: "END" },
   { id: "cleanup", short: "CL" },
@@ -156,6 +163,7 @@ interface PhaseCell {
   id: string;
   defaultLabel: string;
   subPhases?: string[];
+  indicatorPhases?: string[];
   flashStart: number;
   selfIndicator: Graphics;
   selfHitArea: Graphics;
@@ -272,7 +280,7 @@ export class PhaseStripLayer {
       selfHitArea.cursor = "pointer";
       const selfHovered = false;
       selfHitArea.on("pointerdown", () => {
-        const phases = p.subPhases ?? [p.id];
+        const phases = p.indicatorPhases ?? p.subPhases ?? [p.id];
         for (const ph of phases) this.callbacks.onToggleSelfPhase?.(ph);
       });
       selfHitArea.on("pointerover", () => {
@@ -297,7 +305,7 @@ export class PhaseStripLayer {
           if (!oppState) return;
           const opp = oppState.opponents[oi];
           if (!opp) return;
-          const phases = p.subPhases ?? [p.id];
+          const phases = p.indicatorPhases ?? p.subPhases ?? [p.id];
           for (const ph of phases) this.callbacks.onToggleOpponentPhase?.(opp.id, ph);
         });
         oha.on("pointerover", () => {
@@ -320,6 +328,7 @@ export class PhaseStripLayer {
         id: p.id,
         defaultLabel: p.short,
         subPhases: p.subPhases,
+        indicatorPhases: p.indicatorPhases,
         flashStart: 0,
         selfIndicator,
         selfHitArea,
@@ -443,9 +452,8 @@ export class PhaseStripLayer {
       const combatSubActive = isCombatCell && cell.subPhases!.includes(state.currentStep);
       const isCurrentPhase = isCombatCell ? combatSubActive : state.currentStep === cell.id;
       const isActive = isCurrentPhase; // highlight current phase regardless of whose turn
-      const isEnabled = isCombatCell
-        ? cell.subPhases!.some((s) => state.selfEnabledPhases.has(s))
-        : state.selfEnabledPhases.has(cell.id);
+      const phaseIds = cell.indicatorPhases ?? cell.subPhases ?? [cell.id];
+      const isEnabled = phaseIds.some((s) => state.selfEnabledPhases.has(s));
 
       // Combat label: show sub-phase when active, icon-only otherwise
       if (isCombatCell) {
@@ -511,7 +519,6 @@ export class PhaseStripLayer {
       }
 
       // ── Store indicator geometry for tick() drawing ──
-      const phaseIds = cell.subPhases ?? [cell.id];
       cell._indData = {
         cx: cx + cellW / 2,
         selfCy: y + CELL_H + INDICATOR_MARGIN + INDICATOR_SIZE / 2,
@@ -525,7 +532,7 @@ export class PhaseStripLayer {
         }),
         oppColors,
         cellW,
-        hideIndicators: isCombatCell,
+        hideIndicators: false,
       };
 
       // Hit areas (static positions, always present)

@@ -105,16 +105,19 @@ impl GameLoop {
                 };
                 if let Some(until) = pass_until {
                     let current_phase = game.turn.phase;
-                    // Never fast-forward through active combat phases (after
-                    // attackers are declared). BeginCombat is fine to skip.
-                    let is_active_combat = matches!(
-                        current_phase,
-                        forge_foundation::PhaseType::CombatDeclareAttackers
-                            | forge_foundation::PhaseType::CombatDeclareBlockers
-                            | forge_foundation::PhaseType::CombatFirstStrikeDamage
-                            | forge_foundation::PhaseType::CombatDamage
-                            | forge_foundation::PhaseType::CombatEnd
-                    );
+                    // Never fast-forward through active combat phases after
+                    // attackers are declared. Empty combat may still honor
+                    // pass-until stops, including a declare-attackers stop.
+                    let has_declared_attackers = self.combat.has_attackers();
+                    let is_active_combat = has_declared_attackers
+                        && matches!(
+                            current_phase,
+                            forge_foundation::PhaseType::CombatDeclareAttackers
+                                | forge_foundation::PhaseType::CombatDeclareBlockers
+                                | forge_foundation::PhaseType::CombatFirstStrikeDamage
+                                | forge_foundation::PhaseType::CombatDamage
+                                | forge_foundation::PhaseType::CombatEnd
+                        );
                     let should_skip = if is_active_combat {
                         false
                     } else if game.stack.is_empty() {

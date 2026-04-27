@@ -38,6 +38,7 @@ export interface Card {
   ownerId: string; // UUID
   zoneId: string; // UUID
   tapped?: boolean;
+  isAttacking?: boolean;
   keywords?: string[];
   counters?: Record<string, number>;
   damage?: number;

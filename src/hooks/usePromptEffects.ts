@@ -38,6 +38,13 @@ function getAutoPassDelayMs(): number {
   );
 }
 
+function hasDeclaredAttackers(prompt: AgentPrompt): boolean {
+  return (
+    prompt.gameView.step === "declare_attackers" &&
+    prompt.gameView.battlefield.some((card) => card.isAttacking === true)
+  );
+}
+
 export function usePromptEffects({
   currentPrompt,
   isWaitingForResponse,
@@ -106,10 +113,18 @@ export function usePromptEffects({
     setIsAutoPassing(false);
     if (!currentPrompt || isWaitingForResponse) return;
 
-    // Mandatory combat stops: after attackers or blockers are declared on
-    // the opponent's turn, always stop so the player can respond (cast
-    // instants, activate abilities, etc.) regardless of phase stop settings.
-    const MANDATORY_COMBAT_STOPS = new Set(["declare_attackers", "declare_blockers"]);
+    if (
+      currentPrompt.type === PromptType.ChooseAction &&
+      stackLength === 0 &&
+      hasDeclaredAttackers(currentPrompt)
+    ) {
+      if (passUntilTurn !== null) {
+        usePhaseStopStore.getState().clearPassUntil();
+      }
+      return;
+    }
+
+    const MANDATORY_COMBAT_STOPS = new Set(["declare_blockers"]);
 
     if (currentPrompt.type === PromptType.ChooseAction && stackLength === 0) {
       const gv = currentPrompt.gameView;
