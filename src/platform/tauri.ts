@@ -7,6 +7,8 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import type { Deck } from "@/types/openmagic";
+import { presetDeckPayloadsToDecks, type PresetDeckPayload } from "@/lib/presetDecks";
 
 import type {
   IPlatformApi,
@@ -19,7 +21,6 @@ import type {
   StartMultiplayerGameParams,
   RespondParams,
   RestoreSnapshotParams,
-  PresetDeckInfo,
   DeckAvailabilityResult,
   ServerConnectParams,
   CreateRoomParams,
@@ -72,8 +73,8 @@ class TauriGameApi implements IGameApi {
     });
   }
 
-  async getPresetDecks(): Promise<PresetDeckInfo[]> {
-    return invoke<PresetDeckInfo[]>("get_preset_decks");
+  async getPresetDecks(): Promise<Deck[]> {
+    return presetDeckPayloadsToDecks(await invoke<PresetDeckPayload[]>("get_preset_decks"));
   }
 
   async validateDeckAvailability(): Promise<DeckAvailabilityResult> {

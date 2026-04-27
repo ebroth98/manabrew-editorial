@@ -3,7 +3,7 @@ import { Modal } from "./Modal";
 import { cn } from "@/lib/utils";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useModalKeyboard } from "@/hooks/useModalKeyboard";
-import { useCardImage } from "@/hooks/useCardImage";
+import { useCard } from "@/stores/useScryfallStore";
 import { CardImageThumbnail } from "@/components/game/CardImageThumbnail";
 import { MODAL_CARD_THUMBNAIL, MODAL_INPUT } from "../game.styles";
 
@@ -15,7 +15,8 @@ interface ChooseNumberModalProps {
 }
 
 export function ChooseNumberModal({ min, max, cardName, onConfirm }: ChooseNumberModalProps) {
-  const { data: imageUrl } = useCardImage(cardName ?? "");
+  const cardData = useCard({ name: cardName ?? "" });
+  const imageUrl = cardData?.uris.normal;
   const range = max - min + 1;
   const useButtons = range <= 20;
   const [inputValue, setInputValue] = useState(String(min));

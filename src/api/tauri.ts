@@ -7,6 +7,8 @@
  */
 import { invoke } from "@tauri-apps/api/core";
 import type { CardIdentity, GameFormat } from "@/types/server";
+import type { Deck } from "@/types/openmagic";
+import { presetDeckPayloadsToDecks, type PresetDeckPayload } from "@/lib/presetDecks";
 
 /**
  * Typed wrapper around Tauri's invoke that handles parameter conversion.
@@ -171,19 +173,12 @@ export const serverCommands = {
 // Deck & Utility Commands
 // ============================================================================
 
-export interface PresetDeckInfo {
-  id: string;
-  label: string;
-  desc: string;
-  color: string;
-  coverCardName?: string;
-}
-
 export const deckCommands = {
   /**
    * Get list of available preset decks.
    */
-  getPresetDecks: () => invoke<PresetDeckInfo[]>("get_preset_decks"),
+  getPresetDecks: async (): Promise<Deck[]> =>
+    presetDeckPayloadsToDecks(await invoke<PresetDeckPayload[]>("get_preset_decks")),
 };
 
 export const debugCommands = {

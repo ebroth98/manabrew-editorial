@@ -4,6 +4,7 @@ import { Search, X } from "lucide-react";
 import { GAME_FORMATS } from "@/lib/formats";
 import type { SortBy } from "@/views/myDecks.utils";
 import { MANA_LETTERS, type ManaLetter } from "@/themes/gameTheme";
+import { manaSymbolUrl } from "@/api/scryfall";
 
 type Color = ManaLetter;
 
@@ -15,10 +16,6 @@ const COLOR_LABEL: Record<Color, string> = {
   G: "Green",
   C: "Colorless",
 };
-
-function symbolUrl(color: Color) {
-  return `https://svgs.scryfall.io/card-symbols/${color}.svg`;
-}
 
 const SORT_OPTIONS: { value: SortBy; label: string }[] = [
   { value: "name", label: "A→Z" },
@@ -126,7 +123,7 @@ export function DeckListControls({
                   : "border-transparent opacity-40 hover:opacity-70",
               )}
             >
-              <img src={symbolUrl(color)} alt={color} className="h-full w-full" />
+              <img src={manaSymbolUrl(color)} alt={color} className="h-full w-full" />
             </button>
           );
         })}

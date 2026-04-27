@@ -35,12 +35,13 @@ pub struct PresetDeckInfo {
     /// Tailwind CSS text-color class used for the deck title in the UI.
     pub color: String,
     pub cover_card_name: Option<String>,
+    pub cards: Vec<DeckCardEntry>,
 }
 
 // ── JSON deck file schema ──────────────────────────────────────────
 
 /// A single card entry in a preset deck JSON file.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DeckCardEntry {
     pub name: String,
     pub count: usize,
@@ -259,6 +260,7 @@ pub fn list_preset_decks() -> Vec<PresetDeckInfo> {
             desc: p.desc.clone(),
             color: p.color.clone(),
             cover_card_name: choose_cover_card_name(&p.cards),
+            cards: p.cards.clone(),
         })
         .collect()
 }

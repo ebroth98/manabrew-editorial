@@ -1,13 +1,11 @@
 import { useMemo } from "react";
 import { cn } from "@/lib/utils";
 import { PlayerPanel } from "./PlayerPanel";
-import { BattlefieldZone } from "../zones";
 import { PLAYER_CLUSTER_RESERVED_PX } from "../game.constants";
 import { withAlpha } from "@/themes/gameTheme";
 import { useTheme } from "@/hooks/useTheme";
 import { OPPONENT_SEATS, type OpponentHalfProps } from "../game.types";
 import { PromptType } from "@/types/promptType";
-import { usePreferencesStore } from "@/stores/usePreferencesStore";
 import { PixiGameCanvas } from "@/pixi/PixiGameCanvas";
 import type { BattlefieldState, GameCanvasCallbacks } from "@/pixi/types";
 
@@ -38,22 +36,17 @@ export function OpponentHalf({
   onClickAnyCard,
   onHoverCard,
   onFlipCard,
-  showBackFace,
   onOpenZone,
   zonePanelOrder,
-  placementGhost,
   hostileTargeting,
   manaAbilityOptions,
-  onTapLandAbility,
   pixiSceneRef,
   isMonarch,
   hasInitiative,
 }: OpponentHalfProps) {
   const themeColors = useTheme().gameTheme;
-  const pixiEnabled = usePreferencesStore((s) => s.pixiEnabled);
 
   const leftReserved = PLAYER_CLUSTER_RESERVED_PX;
-  const rightReserved = 0;
 
   const canTarget =
     promptType === PromptType.ChooseTargetCard || promptType === PromptType.ChooseTargetAny;
@@ -145,51 +138,17 @@ export function OpponentHalf({
               zonePanelOrder={zonePanelOrder}
             />
           </div>
-          {pixiEnabled && (
-            <div className="absolute inset-0 z-10 rounded-lg overflow-hidden">
-              <PixiGameCanvas
-                battlefield={pixiBattlefield}
-                sceneRef={pixiSceneRef}
-                callbacks={pixiCallbacks}
-                leftReserved={leftReserved}
-                bottomReserved={0}
-                externalBlockers={[]}
-                sceneOptions={OPPONENT_SCENE_OPTIONS}
-              />
-            </div>
-          )}
-          <BattlefieldZone
-            cards={permanents}
-            label=""
-            emptyLabel="No permanents"
-            landsAtTop
-            onFlipCard={onFlipCard}
-            showBackFace={showBackFace}
-            className={cn("flex-1", pixiEnabled && "invisible")}
-            minHeight={60}
-            leftReserved={leftReserved}
-            rightReserved={rightReserved}
-            onClickCard={
-              promptType === PromptType.ChooseTargetCard ||
-              promptType === PromptType.ChooseTargetAny
-                ? onClickCard
-                : undefined
-            }
-            onClickAnyCard={promptType === PromptType.ChooseBlockers ? onClickAnyCard : undefined}
-            onHoverCard={onHoverCard}
-            pendingCardIds={
-              promptType === PromptType.ChooseBlockers && pendingAttacker
-                ? [pendingAttacker]
-                : undefined
-            }
-            attackingCardIds={
-              promptType === PromptType.ChooseBlockers ? (attackerIds ?? []) : undefined
-            }
-            placementGhost={placementGhost}
-            hostileTargeting={hostileTargeting}
-            manaAbilityOptions={manaAbilityOptions}
-            onTapLandAbility={onTapLandAbility}
-          />
+          <div className="absolute inset-0 z-10 rounded-lg overflow-hidden">
+            <PixiGameCanvas
+              battlefield={pixiBattlefield}
+              sceneRef={pixiSceneRef}
+              callbacks={pixiCallbacks}
+              leftReserved={leftReserved}
+              bottomReserved={0}
+              externalBlockers={[]}
+              sceneOptions={OPPONENT_SCENE_OPTIONS}
+            />
+          </div>
         </div>
       </div>
     </div>

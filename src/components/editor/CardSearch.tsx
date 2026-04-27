@@ -16,6 +16,7 @@ import { HoverCardPreview } from "@/components/game/HoverCardPreview";
 import { SetSelect } from "@/components/editor/SetSelect";
 import { scryfallToOpenMagic } from "@/lib/scryfall.utils";
 import { manaSymbolUrl } from "@/api/scryfall";
+import type { ManaCode } from "@/types/scryfall";
 
 // ─── Filter definitions ────────────────────────────────────────────────────────
 
@@ -332,7 +333,7 @@ function ManaFilterBtn({
   onClick,
   title,
 }: {
-  symbol: string;
+  symbol: ManaCode;
   active: boolean;
   onClick: () => void;
   title?: string;
@@ -1072,7 +1073,7 @@ export function CardSearch({ standalone, onClose }: CardSearchProps) {
         </div>
       </ScrollArea>
 
-      <CardDetailModal card={detailCard} onClose={() => setDetailCard(null)} />
+      {detailCard && <CardDetailModal card={detailCard} onClose={() => setDetailCard(null)} />}
 
       <HoverCardPreview preview={preview} />
     </div>

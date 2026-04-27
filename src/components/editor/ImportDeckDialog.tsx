@@ -21,11 +21,11 @@ import {
 } from "@/lib/archidekt";
 import { fetchDeckBySource, fetchResultBySource, parseDeckUrl } from "@/lib/deckImport";
 import { GAME_FORMATS } from "@/lib/formats";
-import { getCardByName } from "@/api/scryfall";
 import { createEmptyCard, scryfallToOpenMagic } from "@/lib/scryfall.utils";
 import { useCardPreview } from "@/hooks/useCardPreview";
 import { HoverCardPreview } from "@/components/game/HoverCardPreview";
 import type { Card } from "@/types/openmagic";
+import { useScryfallStore } from "@/stores/useScryfallStore";
 
 export type ImportDeckDialogMode = "url" | "search";
 
@@ -450,8 +450,8 @@ function DeckPreview({ result, deck }: { result: ArchidektSearchResult; deck: Ar
     if (existing) return existing;
     const promise = (async () => {
       try {
-        const sc = await getCardByName(name);
-        const card = scryfallToOpenMagic(sc);
+        const sc = await useScryfallStore.getState().getCard({ name });
+        const card = scryfallToOpenMagic(sc.info);
         cardCacheRef.current.set(key, card);
         return card;
       } catch {

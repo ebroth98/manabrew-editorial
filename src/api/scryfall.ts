@@ -1,17 +1,24 @@
-import type {
-  ScryfallCard,
-  ScryfallListResponse,
-  ScryfallRulingsResponse,
-  ScryfallSet,
+import {
+  MANA_CODE_FILE_OVERRIDES,
+  MANA_CODE_SET,
+  type ManaCode,
+  type ScryfallCard,
+  type ScryfallListResponse,
+  type ScryfallRulingsResponse,
+  type ScryfallSet,
 } from "@/types/scryfall";
+import { platformFetch } from "@/lib/platformFetch";
+import { enqueueCardLookup } from "./scryfallBatch";
 
-const SCRYFALL_API = "https://api.scryfall.com";
-const COLLECTION_BATCH_SIZE = 75;
-const SCRYFALL_QUEUE_DELAY_MS = 120;
+export const SCRYFALL_API = "https://api.scryfall.com";
+export const COLLECTION_BATCH_SIZE = 75;
 const SCRYFALL_MAX_RETRIES = 3;
+const SCRYFALL_REQUEST_INTERVAL_MS = 300;
+const SCRYFALL_DEFAULT_RATE_LIMIT_COOLDOWN_MS = 60_000;
 
-const scryfallQueue: Array<() => Promise<void>> = [];
-let scryfallQueueRunning = false;
+let nextScryfallRequestAt = 0;
+let scryfallCooldownUntil = 0;
+let scryfallQueue = Promise.resolve();
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -28,46 +35,45 @@ function parseRetryAfterMs(retryAfter: string | null): number | null {
   return Math.max(retryDate - Date.now(), 0);
 }
 
-async function drainScryfallQueue(): Promise<void> {
-  if (scryfallQueueRunning) return;
-  scryfallQueueRunning = true;
-  while (scryfallQueue.length > 0) {
-    const job = scryfallQueue.shift()!;
-    await job();
-    if (scryfallQueue.length > 0) {
-      await sleep(SCRYFALL_QUEUE_DELAY_MS);
-    }
-  }
-  scryfallQueueRunning = false;
-}
-
-function queueScryfallCall<T>(fn: () => Promise<T>): Promise<T> {
-  return new Promise<T>((resolve, reject) => {
-    scryfallQueue.push(async () => {
-      try {
-        resolve(await fn());
-      } catch (error) {
-        reject(error);
-      }
-    });
-    drainScryfallQueue();
-  });
-}
-
 export function scryfallCardKey(name: string, setCode?: string): string {
   return setCode ? `${name.toLowerCase()}::${setCode.toLowerCase()}` : name.toLowerCase();
 }
 
-async function performScryfallFetch<T>(
+async function waitForScryfallSlot(): Promise<void> {
+  const now = Date.now();
+  const earliestRequestAt = Math.max(nextScryfallRequestAt, scryfallCooldownUntil);
+  const waitMs = Math.max(earliestRequestAt - now, 0);
+  nextScryfallRequestAt = Math.max(now, earliestRequestAt) + SCRYFALL_REQUEST_INTERVAL_MS;
+  if (waitMs > 0) await sleep(waitMs);
+}
+
+function applyScryfallCooldown(response: Response): number {
+  const retryAfterMs =
+    parseRetryAfterMs(response.headers.get("retry-after")) ??
+    SCRYFALL_DEFAULT_RATE_LIMIT_COOLDOWN_MS;
+  scryfallCooldownUntil = Math.max(scryfallCooldownUntil, Date.now() + retryAfterMs);
+  nextScryfallRequestAt = Math.max(nextScryfallRequestAt, scryfallCooldownUntil);
+  return retryAfterMs;
+}
+
+async function queuedScryfallFetch(url: string, init?: RequestInit): Promise<Response> {
+  const scheduled = scryfallQueue.then(waitForScryfallSlot, waitForScryfallSlot);
+  scryfallQueue = scheduled.catch(() => undefined);
+  await scheduled;
+  return platformFetch(url, init);
+}
+
+export async function scryfallFetch<T>(
   url: string,
   errorMsg: string,
   init?: RequestInit,
 ): Promise<T> {
   for (let attempt = 0; attempt <= SCRYFALL_MAX_RETRIES; attempt += 1) {
-    const response = await fetch(url, init);
+    const response = await queuedScryfallFetch(url, init);
     if (response.status === 429 && attempt < SCRYFALL_MAX_RETRIES) {
-      const retryAfterMs = parseRetryAfterMs(response.headers.get("retry-after"));
-      await sleep(retryAfterMs ?? 1000 * (attempt + 1));
+      const retryAfterMs = applyScryfallCooldown(response);
+      console.warn(`SCRYFALL 429; pausing queue for ${Math.ceil(retryAfterMs / 1000)}s`);
+      await sleep(retryAfterMs);
       continue;
     }
     if (!response.ok) {
@@ -76,10 +82,6 @@ async function performScryfallFetch<T>(
     return response.json();
   }
   throw new Error(errorMsg);
-}
-
-async function scryfallFetch<T>(url: string, errorMsg: string, init?: RequestInit): Promise<T> {
-  return queueScryfallCall(() => performScryfallFetch<T>(url, errorMsg, init));
 }
 
 export async function searchCards(
@@ -95,73 +97,25 @@ export async function searchCards(
     "Failed to fetch cards from Scryfall",
   );
 }
-
 export async function getRulings(rulingsUri: string): Promise<ScryfallRulingsResponse> {
   return scryfallFetch(rulingsUri, "Failed to fetch rulings from Scryfall");
 }
-
 export async function getCardPrints(printsSearchUri: string): Promise<ScryfallListResponse> {
   return scryfallFetch(printsSearchUri, "Failed to fetch card prints from Scryfall");
 }
 
 export async function getCardByName(name: string, setCode?: string): Promise<ScryfallCard> {
-  const setParam = setCode ? `&set=${setCode.toLowerCase()}` : "";
-  const url = `${SCRYFALL_API}/cards/named?exact=${encodeURIComponent(name)}${setParam}`;
-  try {
-    return await scryfallFetch<ScryfallCard>(url, `Card not found: ${name}`);
-  } catch {
-    if (setCode) return getCardByName(name);
-    throw new Error(`Card not found: ${name}`);
-  }
+  return enqueueCardLookup(setCode ? { name, set: setCode.toLowerCase() } : { name });
 }
-
-/**
- * Fetch a token card from Scryfall using its set code and collector number.
- * The backend resolves these from Forge edition files — each token has a
- * dedicated Scryfall token set (e.g., "thou" for Tokens of Hour of Devastation)
- * and a collector number within that set.
- *
- * Uses the /cards/:set/:number endpoint which is a direct, unambiguous lookup.
- */
-export async function getTokenBySetAndNumber(
+export async function getCardById(id: string): Promise<ScryfallCard> {
+  return enqueueCardLookup({ id });
+}
+export async function getCardBySetAndNumber(
   setCode: string,
   collectorNumber: string,
 ): Promise<ScryfallCard> {
-  const tokenUrl = `${SCRYFALL_API}/cards/${encodeURIComponent(setCode.toLowerCase())}/${encodeURIComponent(collectorNumber)}`;
-  console.log({ tokenUrl });
-  return scryfallFetch(tokenUrl, `Token not found: ${setCode}/${collectorNumber}`);
+  return enqueueCardLookup({ set: setCode.toLowerCase(), collector_number: collectorNumber });
 }
-
-/**
- * Search Scryfall for a token print by name. Always restricts the query
- * to `type:token` so we don't accidentally return the legendary creature
- * with the same name (e.g. "Goblin" would otherwise hit Goblin cards
- * from the base set before the actual Goblin token print).
- *
- * Returns the first matching print, preferring the newest release, or
- * null when no token with that exact name exists on Scryfall. Used as
- * the fallback image resolver when the engine didn't supply a
- * `set_code` + `collector_number` pair for a token (e.g. because the
- * token's edition file has no `[tokens]` section).
- */
-export async function getTokenByName(name: string): Promise<ScryfallCard | null> {
-  const query = `!"${name}" type:token`;
-  const url = `${SCRYFALL_API}/cards/search?q=${encodeURIComponent(query)}&unique=prints&order=released&dir=desc`;
-  try {
-    const data = await scryfallFetch<{ data?: ScryfallCard[] }>(
-      url,
-      `No token print found for name: ${name}`,
-    );
-    return data.data?.[0] ?? null;
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Batch-fetch cards by name using POST /cards/collection (up to 75 per request).
- * Returns a map keyed by lowercased card name → ScryfallCard.
- */
 export async function fetchCardCollection(
   cards: { name: string; setCode?: string }[],
 ): Promise<Map<string, ScryfallCard>> {
@@ -198,28 +152,6 @@ export async function fetchCardCollection(
   }
   return result;
 }
-
-/**
- * Extract the primary image URL from a Scryfall card response.
- * Handles both single-faced cards (top-level image_uris) and double-faced cards
- * (image_uris in card_faces array).
- */
-export function getScryfallImageUrl(
-  card: ScryfallCard,
-  size: string = "normal",
-): string | undefined {
-  const sc = card as unknown as {
-    card_faces?: { image_uris?: Record<string, string> }[];
-    image_uris?: Record<string, string>;
-  };
-  const uris = sc.image_uris ?? sc.card_faces?.[0]?.image_uris;
-  return uris?.[size] ?? uris?.normal ?? uris?.large;
-}
-
-/**
- * Extract mana cost from a Scryfall card (handles DFCs).
- * For double-faced cards, returns the front face's mana cost.
- */
 export function getScryfallManaCost(card: ScryfallCard): string | undefined {
   const sc = card as unknown as {
     card_faces?: { mana_cost?: string }[];
@@ -227,10 +159,6 @@ export function getScryfallManaCost(card: ScryfallCard): string | undefined {
   };
   return sc.mana_cost ?? sc.card_faces?.[0]?.mana_cost;
 }
-
-/**
- * Fetch all Magic sets from Scryfall.
- */
 export async function fetchSets(): Promise<ScryfallSet[]> {
   const data = await scryfallFetch<{ data: ScryfallSet[] }>(
     `${SCRYFALL_API}/sets`,
@@ -239,7 +167,39 @@ export async function fetchSets(): Promise<ScryfallSet[]> {
   return data.data;
 }
 
-/** Build a Scryfall mana symbol SVG URL. */
-export function manaSymbolUrl(symbol: string): string {
-  return `https://svgs.scryfall.io/card-symbols/${encodeURIComponent(symbol)}.svg`;
+export async function fetchImageElement(url: string): Promise<HTMLImageElement> {
+  let response: Response | null = null;
+  for (let attempt = 0; attempt <= SCRYFALL_MAX_RETRIES; attempt += 1) {
+    response = await queuedScryfallFetch(url);
+    if (response.status === 429 && attempt < SCRYFALL_MAX_RETRIES) {
+      const retryAfterMs = applyScryfallCooldown(response);
+      console.warn(`SCRYFALL 429; pausing queue for ${Math.ceil(retryAfterMs / 1000)}s`);
+      await sleep(retryAfterMs);
+      continue;
+    }
+    break;
+  }
+  if (!response?.ok) throw new Error(`HTTP ${response?.status ?? "unknown"} for ${url}`);
+  const blob = await response.blob();
+  const blobUrl = URL.createObjectURL(blob);
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error(`Failed to decode: ${url}`));
+    img.src = blobUrl;
+  });
 }
+
+export function normalizeManaCode(value: string): ManaCode | null {
+  const normalized = value.trim().toUpperCase();
+  return MANA_CODE_SET.has(normalized) ? (normalized as ManaCode) : null;
+}
+
+export function isManaCode(value: string): value is ManaCode {
+  return normalizeManaCode(value) === value;
+}
+
+export const manaSymbolUrl = (code: ManaCode) => {
+  const filename = MANA_CODE_FILE_OVERRIDES[code] ?? code.replace(/\//g, "");
+  return `https://svgs.scryfall.io/card-symbols/${encodeURIComponent(filename)}.svg`;
+};

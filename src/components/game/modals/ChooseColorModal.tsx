@@ -1,6 +1,8 @@
 import { Modal } from "./Modal";
 import { cn } from "@/lib/utils";
 import { useEffect, useRef } from "react";
+import { manaSymbolUrl, normalizeManaCode } from "@/api/scryfall";
+import type { ManaCode } from "@/types/scryfall";
 
 interface ChooseColorModalProps {
   validColors: string[];
@@ -10,7 +12,7 @@ interface ChooseColorModalProps {
 
 /** Per-colour picker cell — each uses its `mana-<letter>` theme token for
  *  the background so a preset can retone the whole set at once.  */
-const COLOR_INFO: Record<string, { symbol: string; bg: string }> = {
+const COLOR_INFO: Record<string, { symbol: ManaCode; bg: string }> = {
   White: { symbol: "W", bg: "bg-mana-w" },
   Blue: { symbol: "U", bg: "bg-mana-u" },
   Black: { symbol: "B", bg: "bg-mana-b" },
@@ -18,10 +20,6 @@ const COLOR_INFO: Record<string, { symbol: string; bg: string }> = {
   Green: { symbol: "G", bg: "bg-mana-g" },
   Colorless: { symbol: "C", bg: "bg-mana-c" },
 };
-
-function manaSymbolUrl(symbol: string): string {
-  return `https://svgs.scryfall.io/card-symbols/${encodeURIComponent(symbol)}.svg`;
-}
 
 export function ChooseColorModal({
   validColors,
@@ -50,7 +48,10 @@ export function ChooseColorModal({
 
         <div className="p-4 flex flex-wrap gap-3 justify-center">
           {validColors.map((color) => {
-            const info = COLOR_INFO[color] ?? { symbol: color[0] ?? "?", bg: "bg-muted" };
+            const info = COLOR_INFO[color] ?? {
+              symbol: normalizeManaCode(color[0] ?? "") ?? "C",
+              bg: "bg-muted",
+            };
             return (
               <button
                 key={color}

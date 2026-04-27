@@ -63,7 +63,3 @@ export function stackObjectToCardStub(obj: StackObject): CardType {
     zoneId: "",
   };
 }
-
-export function manaSymbolUrl(symbol: string): string {
-  return `https://svgs.scryfall.io/card-symbols/${encodeURIComponent(symbol)}.svg`;
-}

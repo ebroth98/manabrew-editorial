@@ -13,17 +13,17 @@ import {
   ChevronDown,
   Tag,
   Check,
-  Crown,
   RotateCcw,
 } from "lucide-react";
+import { GameIcon } from "@/components/game/GameIcon";
 import { Input } from "@/components/ui/input";
-import { useCardRulings } from "@/hooks/useCards";
+import { useCard, useCardRulings, useScryfallStore } from "@/stores/useScryfallStore";
 import { usePreferredPrintsStore } from "@/stores/usePreferredPrintsStore";
 import { useDeckStore } from "@/stores/useDeckStore";
 import { PrintPickerModal } from "@/components/editor/PrintPickerModal";
-import { getScryfallImageUrl, getScryfallManaCost } from "@/api/scryfall";
+import { getScryfallManaCost } from "@/api/scryfall";
 import { scryfallToOpenMagic } from "@/lib/scryfall.utils";
-import { useSetLookup } from "@/hooks/useCards";
+import { useSetLookup } from "@/stores/useScryfallStore";
 import { FORMAT_DISPLAY, LEGALITY_STYLES } from "@/lib/constants";
 import { toast } from "sonner";
 import type { ScryfallCard } from "@/types/scryfall";
@@ -43,7 +43,7 @@ interface DeckEditorActions {
 }
 
 interface CardDetailModalProps {
-  card: ScryfallCard | null;
+  card: ScryfallCard;
   onClose: () => void;
   deckEditorActions?: DeckEditorActions;
 }
@@ -58,7 +58,9 @@ export function CardDetailModal({
   const [newTagInput, setNewTagInput] = useState("");
   const [selectedPrint, setSelectedPrint] = useState<ScryfallCard | null>(null);
   const [faceIndex, setFaceIndex] = useState<0 | 1>(0);
-  const { data: rulingsData, isLoading: rulingsLoading } = useCardRulings(initialCard?.rulings_uri);
+  const rulingsData = useCardRulings(initialCard);
+  const updatePrinting = useScryfallStore((s) => s.updatePrinting);
+  const rulingsLoading = !rulingsData;
   const { setPreferredPrint } = usePreferredPrintsStore();
   const setLookup = useSetLookup();
   const { savedDecks, currentDeck, addToMain, addCardToSavedDeck, updatePrint } = useDeckStore();
@@ -73,17 +75,12 @@ export function CardDetailModal({
     setFaceIndex(0);
   }
 
-  if (!initialCard) return null;
-
   const card = selectedPrint ?? initialCard;
+  const storeCard = useCard(card);
   const isDoubleFaced = !!(card.card_faces && card.card_faces.length >= 2);
 
   const activeFace = isDoubleFaced ? card.card_faces![faceIndex] : null;
-  const imageUrl =
-    activeFace?.image_uris?.png ??
-    activeFace?.image_uris?.large ??
-    activeFace?.image_uris?.normal ??
-    getScryfallImageUrl(card, "png");
+  const imageUrl = storeCard?.uris.large;
   const manaCost = activeFace?.mana_cost ?? getScryfallManaCost(card);
   const displayName = activeFace?.name ?? card.name;
   const typeLine = activeFace?.type_line ?? card.type_line;
@@ -117,10 +114,11 @@ export function CardDetailModal({
   function handleSelectPrint(print: ScryfallCard) {
     setSelectedPrint(print);
     setFaceIndex(0);
+    const newEntry = updatePrinting(print);
     setPreferredPrint(initialCard!.oracle_id, {
       set: print.set,
       collectorNumber: print.collector_number,
-      imageUrl: getScryfallImageUrl(print, "png"),
+      imageUrl: newEntry.uris.png,
     });
     if (deckEditorActions && deckEditorActions.isToken && deckEditorActions.onUpdateTokenPrint) {
       deckEditorActions.onUpdateTokenPrint(card.name, print);
@@ -392,7 +390,7 @@ export function CardDetailModal({
                         );
                       }}
                     >
-                      <Crown className="h-3.5 w-3.5" />
+                      <GameIcon name="overlord-helm" className="h-3.5 w-3.5" />
                     </Button>
                   )}
                 </div>

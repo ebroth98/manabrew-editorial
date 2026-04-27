@@ -60,8 +60,8 @@ export function PromptModals({
       currentPrompt?.message != null) ||
     // Mulligan + MulliganPutBack render in the same bottom-right slot
     // as Pass Priority (see `PromptActionController`), and the real
-    // in-game hand drives card selection via `HandDisplayCool`'s
-    // selection mode — they intentionally do NOT open a modal here.
+    // in-game Pixi hand drives card selection via its selection mode —
+    // they intentionally do NOT open a modal here.
     (promptType === PT.ChooseMode && currentPrompt?.options != null) ||
     (promptType === PT.ChooseOptionalTrigger && currentPrompt?.description != null) ||
     (promptType === PT.PayCostToPreventEffect && currentPrompt?.description != null) ||

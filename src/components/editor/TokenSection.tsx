@@ -4,23 +4,18 @@
  * Always uses grid card thumbnails for token display.
  *
  * Image resolution: uses token.imageUrl from the deck store (user-selected print)
- * when available, otherwise falls back to useCardImage for Scryfall lookup.
+ * when available, otherwise falls back to a placeholder.
  */
 
 import { useState } from "react";
 import { ChevronDown, ChevronRight, Loader2, Palette } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useCardImage } from "@/hooks/useCardImage";
 import { GRID_COLS } from "./deckBuilder.utils";
 import type { DeckToken } from "@/types/openmagic";
 
 // ─── Scryfall fallback — only used when no stored imageUrl exists ───────────
 
 function ScryFallbackImage({ name, className }: { name: string; className?: string }) {
-  const { data: url } = useCardImage(name, undefined, true);
-  if (url) {
-    return <img src={url} alt={name} className={className} draggable={false} />;
-  }
   return (
     <div
       className={cn("aspect-[2.5/3.5] bg-muted flex items-center justify-center p-2", className)}
@@ -131,21 +126,11 @@ function MiniTokenPill({ token }: { token: DeckToken }) {
     );
   }
   // No stored image — use Scryfall fallback
-  return <ScryFallbackPill name={token.name} />;
+  return <ScryFallbackPill />;
 }
 
-function ScryFallbackPill({ name }: { name: string }) {
-  const { data: url } = useCardImage(name, undefined, true);
-  return url ? (
-    <img
-      src={url}
-      alt={name}
-      className="h-5 w-[14px] rounded-sm object-cover object-top border border-border/30"
-      draggable={false}
-    />
-  ) : (
-    <div className="h-5 w-[14px] rounded-sm bg-muted border border-border/30" />
-  );
+function ScryFallbackPill() {
+  return <div className="h-5 w-[14px] rounded-sm bg-muted border border-border/30" />;
 }
 
 // ─── Grid card with token image + producer tooltip + print picker ───────────

@@ -5,7 +5,7 @@ import { TextWithMana } from "@/components/game/TextWithMana";
 import { cn } from "@/lib/utils";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useModalKeyboard } from "@/hooks/useModalKeyboard";
-import { useCardImage } from "@/hooks/useCardImage";
+import { useCard } from "@/stores/useScryfallStore";
 import { CardImageThumbnail } from "@/components/game/CardImageThumbnail";
 import { MODAL_CARD_THUMBNAIL, MODAL_FOOTER_BETWEEN } from "../game.styles";
 
@@ -28,7 +28,8 @@ export function ChooseModeModal({
   cardName,
   onConfirm,
 }: ChooseModeModalProps) {
-  const { data: imageUrl } = useCardImage(cardName ?? "");
+  const cardData = useCard({ name: cardName ?? "" });
+  const imageUrl = cardData?.uris.normal;
   const [selected, setSelected] = useState<Set<number>>(new Set());
 
   // Reset selection whenever the option list changes (new prompt arrived).

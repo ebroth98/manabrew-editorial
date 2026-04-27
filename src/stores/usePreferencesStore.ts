@@ -2,9 +2,7 @@ import { create } from "zustand";
 import { persist, devtools } from "zustand/middleware";
 import { STORAGE_KEYS } from "@/lib/constants";
 
-export type ZonePanelSide = "left" | "right";
 export type ZonePanelItem = "library" | "graveyard" | "exile";
-export type HandDisplayMode = "cool" | "normal";
 export type HandSize = "small" | "medium" | "large";
 export type CardPreviewMode = "hover" | "shift" | "alt" | "ctrl";
 
@@ -31,22 +29,15 @@ interface PreferencesState {
   autoPassEnabled: boolean;
   setAutoPassEnabled: (enabled: boolean) => void;
 
-  /** Battlefield zone column placement + order */
-  zonePanelSide: ZonePanelSide;
+  /** Battlefield zone column order */
   zonePanelOrder: ZonePanelItem[];
-  setZonePanelSide: (side: ZonePanelSide) => void;
   setZonePanelOrder: (order: ZonePanelItem[]) => void;
-
-  /** Hand display layout style in game */
-  handDisplayMode: HandDisplayMode;
-  setHandDisplayMode: (mode: HandDisplayMode) => void;
 
   /** Hand card size */
   handSize: HandSize;
   setHandSize: (size: HandSize) => void;
 
-  /** Multiplier applied to battlefield card sprites (and the grid cells
-   *  they snap into). 1.0 is the legacy size. */
+  /** Multiplier applied to battlefield card sprites and the grid cells they snap into. */
   battlefieldCardScale: number;
   setBattlefieldCardScale: (scale: number) => void;
 
@@ -63,14 +54,37 @@ interface PreferencesState {
   setAppThemeColorOverride: (key: string, hsl: string) => void;
   resetAppThemeColorOverrides: () => void;
 
-  /** Use PixiJS canvas renderer for the game board (experimental) */
-  pixiEnabled: boolean;
-  setPixiEnabled: (enabled: boolean) => void;
-
   /** Game UI color overrides by dot-path key */
   gameThemeColorOverrides: Record<string, string>;
   setGameThemeColorOverride: (path: string, color: string) => void;
   resetGameThemeColorOverrides: () => void;
+}
+
+const PERSISTED_PREFERENCE_KEYS = [
+  "appThemePreset",
+  "flashDurationMs",
+  "serverHost",
+  "serverPort",
+  "serverUsername",
+  "serverPassword",
+  "autoPassEnabled",
+  "zonePanelOrder",
+  "handSize",
+  "battlefieldCardScale",
+  "cardPreviewMode",
+  "cardHoverDelayMs",
+  "appThemeColorOverrides",
+  "gameThemeColorOverrides",
+] as const satisfies readonly (keyof PreferencesState)[];
+
+function pickPersistedPreferences(persistedState: unknown): Partial<PreferencesState> {
+  if (!persistedState || typeof persistedState !== "object") return {};
+  const persisted = persistedState as Record<string, unknown>;
+  const next: Record<string, unknown> = {};
+  for (const key of PERSISTED_PREFERENCE_KEYS) {
+    if (key in persisted) next[key] = persisted[key];
+  }
+  return next as Partial<PreferencesState>;
 }
 
 export const usePreferencesStore = create<PreferencesState>()(
@@ -96,13 +110,8 @@ export const usePreferencesStore = create<PreferencesState>()(
         autoPassEnabled: true,
         setAutoPassEnabled: (autoPassEnabled) => set({ autoPassEnabled }),
 
-        zonePanelSide: "left",
         zonePanelOrder: ["library", "graveyard", "exile"],
-        setZonePanelSide: (zonePanelSide) => set({ zonePanelSide }),
         setZonePanelOrder: (zonePanelOrder) => set({ zonePanelOrder }),
-
-        handDisplayMode: "cool",
-        setHandDisplayMode: (handDisplayMode) => set({ handDisplayMode }),
 
         handSize: "medium",
         setHandSize: (handSize) => set({ handSize }),
@@ -124,9 +133,6 @@ export const usePreferencesStore = create<PreferencesState>()(
           })),
         resetAppThemeColorOverrides: () => set({ appThemeColorOverrides: {} }),
 
-        pixiEnabled: true,
-        setPixiEnabled: (pixiEnabled) => set({ pixiEnabled }),
-
         gameThemeColorOverrides: {},
         setGameThemeColorOverride: (path, color) =>
           set((state) => ({
@@ -137,7 +143,13 @@ export const usePreferencesStore = create<PreferencesState>()(
           })),
         resetGameThemeColorOverrides: () => set({ gameThemeColorOverrides: {} }),
       }),
-      { name: STORAGE_KEYS.PREFERENCES },
+      {
+        name: STORAGE_KEYS.PREFERENCES,
+        merge: (persistedState, currentState) => ({
+          ...currentState,
+          ...pickPersistedPreferences(persistedState),
+        }),
+      },
     ),
     { name: "preferences", enabled: import.meta.env.DEV },
   ),

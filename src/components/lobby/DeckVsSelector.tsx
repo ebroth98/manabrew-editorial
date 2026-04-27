@@ -1,24 +1,19 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { getDefaultGameRuntime } from "@/game";
-import type { PresetDeckInfo } from "@/platform";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { FormatBadge } from "@/components/game/FormatBadge";
 import { DeckSelectionCard } from "./DeckSelectionCard";
 import { DeckCoverImage } from "@/components/deck/deckCover";
-import {
-  resolveDeckCoverSource,
-  resolvePresetDeckCoverSource,
-  type DeckCoverSource,
-} from "@/components/deck/deckCover.utils";
 import { DECK_NAME_SHADOW_CLASS, getDeckNameColorClass } from "@/components/deck/deckDisplay.utils";
 import { cn } from "@/lib/utils";
 import { GAME_FORMATS } from "@/lib/formats";
 import { getDeckFingerprint, serializeDeck } from "@/lib/decks";
 import { useDeckStore } from "@/stores/useDeckStore";
 import type { CardIdentity } from "@/types/server";
-import type { Deck } from "@/types/openmagic";
+import type { Card, Deck } from "@/types/openmagic";
 import { Hand, Search, Shuffle, Swords, User, Bot } from "lucide-react";
+import { resolveCoverCard } from "../deck/deckCover.utils";
 
 interface SelectedDeck {
   id: string;
@@ -51,7 +46,7 @@ type PickingSide = "player" | "opponent";
 type PlayFormatId = string;
 
 export function DeckVsSelector({ onStart, onStartTabletop }: DeckVsSelectorProps) {
-  const [presetDecks, setPresetDecks] = useState<PresetDeckInfo[]>([]);
+  const [presetDecks, setPresetDecks] = useState<Deck[]>([]);
   const [playerDeck, setPlayerDeck] = useState<SelectedDeck | null>(null);
   const [opponentDeck, setOpponentDeck] = useState<SelectedDeck | null>(null);
   const [pickingSide, setPickingSide] = useState<PickingSide>("player");
@@ -71,8 +66,8 @@ export function DeckVsSelector({ onStart, onStartTabletop }: DeckVsSelectorProps
   const filteredDecks = searchLower
     ? presetDecks.filter(
         (deck) =>
-          deck.label.toLowerCase().includes(searchLower) ||
-          deck.desc.toLowerCase().includes(searchLower),
+          deck.name.toLowerCase().includes(searchLower) ||
+          (deck.description ?? "").toLowerCase().includes(searchLower),
       )
     : presetDecks;
 
@@ -118,7 +113,7 @@ export function DeckVsSelector({ onStart, onStartTabletop }: DeckVsSelectorProps
     setOpponentDeck(selected);
   }
 
-  function selectDeck(deck: PresetDeckInfo) {
+  function selectDeck(deck: Deck) {
     if (
       selectedFormat === "commander" ||
       selectedFormat === "brawl" ||
@@ -127,12 +122,14 @@ export function DeckVsSelector({ onStart, onStartTabletop }: DeckVsSelectorProps
       return;
     }
 
+    const id = deck.id ?? deck.name;
     assignDeck({
-      id: deck.id,
-      name: deck.label,
-      desc: deck.desc,
+      id,
+      name: deck.name,
+      desc: deck.description,
       color: deck.color,
-      deckList: [{ name: deck.id, setCode: "", section: "main" }],
+      deckList: serializeDeck(deck),
+      sourceDeck: deck,
       formatId: selectedFormat,
       coverCardName: deck.coverCardName,
     });
@@ -153,12 +150,14 @@ export function DeckVsSelector({ onStart, onStartTabletop }: DeckVsSelectorProps
     if (presetDecks.length === 0) return;
 
     const random = presetDecks[Math.floor(Math.random() * presetDecks.length)];
+    const id = random.id ?? random.name;
     setOpponentDeck({
-      id: random.id,
-      name: random.label,
-      desc: random.desc,
+      id,
+      name: random.name,
+      desc: random.description,
       color: random.color,
-      deckList: [{ name: random.id, setCode: "", section: "main" }],
+      deckList: serializeDeck(random),
+      sourceDeck: random,
       formatId: selectedFormat,
       coverCardName: random.coverCardName,
     });
@@ -187,16 +186,15 @@ export function DeckVsSelector({ onStart, onStartTabletop }: DeckVsSelectorProps
   const isReady = !!playerDeck && !!opponentDeck;
   const canStartTabletop = !!onStartTabletop && !!playerDeck && playerDeck.deckList.length > 0;
 
-  function resolveDeckCover(deck: SelectedDeck | null): DeckCoverSource | undefined {
+  function resolveDeckCover(deck: SelectedDeck | null): Card | undefined {
     if (!deck) return undefined;
-    if (deck.sourceDeck) return resolveDeckCoverSource(deck.sourceDeck);
-    if (deck.coverCardName) return resolvePresetDeckCoverSource(deck.coverCardName);
+    if (deck.sourceDeck) return resolveCoverCard(deck.sourceDeck);
     return undefined;
   }
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex items-stretch gap-0 border-b flex-shrink-0">
+      <div className="flex items-stretch gap-0 border-b flex-shrink-0 h-72">
         <FighterPanel
           side="player"
           label="YOU"
@@ -338,9 +336,7 @@ export function DeckVsSelector({ onStart, onStartTabletop }: DeckVsSelectorProps
                   ...(entry.sourceDeck?.cards ?? []),
                   ...(entry.sourceDeck?.commanders ?? []),
                 ];
-                const cover = entry.sourceDeck
-                  ? resolveDeckCoverSource(entry.sourceDeck)
-                  : undefined;
+                const cover = entry.sourceDeck ? resolveCoverCard(entry.sourceDeck) : undefined;
                 return (
                   <DeckSelectionCard
                     key={entry.id}
@@ -349,7 +345,7 @@ export function DeckVsSelector({ onStart, onStartTabletop }: DeckVsSelectorProps
                     color={entry.color}
                     deckList={entry.deckList}
                     cards={displayCards}
-                    cover={cover}
+                    cover={cover!}
                     labels={entry.sourceDeck?.labels}
                     isPreset={false}
                     isSelected={false}
@@ -383,19 +379,19 @@ export function DeckVsSelector({ onStart, onStartTabletop }: DeckVsSelectorProps
             <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 pt-1">
               {filteredDecks.map((deck) => (
                 <DeckSelectionCard
-                  key={deck.id}
-                  id={deck.id}
-                  name={deck.label}
-                  desc={deck.desc}
+                  key={deck.id ?? deck.name}
+                  id={deck.id ?? deck.name}
+                  name={deck.name}
+                  desc={deck.description}
                   color={deck.color}
-                  deckList={[{ name: deck.id, setCode: "", section: "main" }]}
-                  cards={[]}
-                  cover={resolvePresetDeckCoverSource(deck.coverCardName)}
+                  deckList={serializeDeck(deck)}
+                  cards={deck.cards}
+                  cover={resolveCoverCard(deck)}
                   coverFallbackClassName="absolute inset-0 bg-gradient-to-br from-muted-foreground/10 via-muted/40 to-muted-foreground/20"
                   isPreset={true}
                   isSelected={false}
-                  isPlayerDeck={playerDeck?.id === deck.id}
-                  isOpponentDeck={opponentDeck?.id === deck.id}
+                  isPlayerDeck={playerDeck?.id === (deck.id ?? deck.name)}
+                  isOpponentDeck={opponentDeck?.id === (deck.id ?? deck.name)}
                   formatId={selectedFormat}
                   onSelect={() => selectDeck(deck)}
                 />
@@ -453,7 +449,7 @@ interface FighterPanelProps {
   label: string;
   icon: ReactNode;
   deck: SelectedDeck | null;
-  cover?: DeckCoverSource;
+  cover?: Card;
   isActive: boolean;
   onClick: () => void;
   onClear: () => void;
@@ -488,7 +484,7 @@ function FighterPanel({
         }
       }}
       className={cn(
-        "relative flex-1 text-left transition-all min-h-[100px] flex flex-col justify-between cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm overflow-hidden",
+        "relative flex-1 h-full text-left transition-all flex flex-col justify-between cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-ring overflow-hidden",
         !cover && (isActive ? "bg-muted/20" : "hover:bg-muted/30"),
       )}
       style={{
@@ -498,8 +494,9 @@ function FighterPanel({
     >
       {cover && (
         <>
-          <DeckCoverImage cover={cover} alt={deck?.name} />
-          <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/40 to-black/20 z-[1]" />
+          <DeckCoverImage cover={cover} alt="" className="scale-110 blur-2xl opacity-60" />
+          <DeckCoverImage cover={cover} alt={deck?.name} className="object-contain" />
+          <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/30 to-transparent z-[1]" />
         </>
       )}
 
@@ -507,12 +504,11 @@ function FighterPanel({
         <div className="flex items-center gap-2 mb-2">
           <Badge
             variant="outline"
-            className={cn("text-[10px] font-bold gap-1", cover ? "text-white border-white/30" : "")}
-            style={
-              !cover
-                ? { color: "var(--fighter-color)", borderColor: "var(--fighter-color)" }
-                : undefined
-            }
+            className="text-[10px] font-bold gap-1 text-white border"
+            style={{
+              backgroundColor: "var(--fighter-color)",
+              borderColor: "var(--fighter-color)",
+            }}
           >
             {icon}
             {label}

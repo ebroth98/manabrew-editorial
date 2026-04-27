@@ -1,6 +1,6 @@
 import { Modal } from "./Modal";
 import { useState, useEffect, useRef } from "react";
-import { useCardImage } from "@/hooks/useCardImage";
+import { useCard } from "@/stores/useScryfallStore";
 import { CardImageThumbnail } from "@/components/game/CardImageThumbnail";
 import { MODAL_CARD_THUMBNAIL, MODAL_INPUT, MODAL_PILL_BUTTON } from "../game.styles";
 
@@ -17,7 +17,8 @@ export function ChooseTypeModal({
   cardName,
   onConfirm,
 }: ChooseTypeModalProps) {
-  const { data: imageUrl } = useCardImage(cardName ?? "");
+  const cardData = useCard({ name: cardName ?? "" });
+  const imageUrl = cardData?.uris.normal;
   const [filter, setFilter] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
 

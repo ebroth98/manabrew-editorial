@@ -1,12 +1,9 @@
 import { createPortal } from "react-dom";
-import { useCardImage } from "@/hooks/useCardImage";
 import { Loader2 } from "lucide-react";
 import type { Card } from "@/types/openmagic";
 import { CounterDisplay } from "@/components/game/CounterBadge";
 import { ManaSymbols } from "@/components/game/ManaSymbols";
 import { TextWithMana } from "@/components/game/TextWithMana";
-import { useQuery } from "@tanstack/react-query";
-import { getCardByName } from "@/api/scryfall";
 import { FLASH_CARD_SIZE } from "./game.styles";
 import { withAlpha } from "@/themes/gameTheme";
 import { useTheme } from "@/hooks/useTheme";
@@ -15,6 +12,7 @@ import { cn } from "@/lib/utils";
 import type { HandActionOption } from "@/stores/useGameUIStore";
 import { useEffect } from "react";
 import type { CSSProperties } from "react";
+import { useCard } from "@/stores/useScryfallStore";
 
 interface CardPreviewProps {
   card: Card;
@@ -60,39 +58,17 @@ export function CardPreview({
   const hasActions = actions && actions.length > 0 && onSelectAction;
   const themeColors = useTheme().gameTheme;
   const ringColor = themeColors.cardRing; // matches battlefield playable color
-  const { data: fetchedUrl, isLoading } = useCardImage(
-    card.name,
-    card.imageUrl,
-    card.isToken,
-    card.color,
-    card.setCode,
-    card.cardNumber,
-    "large",
-  );
-  const imageUrl = upgradeScryfallUrl(card.imageUrl ?? fetchedUrl, "large");
-
-  // Fetch double-faced card data if needed
-  const { data: doubleFacedData } = useQuery({
-    queryKey: ["double-faced-card", card.name, card.isDoubleFaced],
-    queryFn: async () => {
-      if (!card.isDoubleFaced) return null;
-      const cardData = await getCardByName(card.name);
-      if (cardData.card_faces && cardData.card_faces.length >= 2) {
-        const frontFace = cardData.card_faces[0];
-        const backFace = cardData.card_faces[1];
-        return {
-          frontImageUrl: frontFace.image_uris?.large ?? frontFace.image_uris?.normal ?? null,
-          backImageUrl: backFace.image_uris?.large ?? backFace.image_uris?.normal ?? null,
-          frontName: frontFace.name,
-          backName: backFace.name,
-        };
-      }
-      return null;
-    },
-    enabled: !!card.isDoubleFaced,
-    staleTime: Infinity,
-    gcTime: 1000 * 60 * 60,
-  });
+  const cardD = useCard(card);
+  const isLoading = !card.imageUrl && !cardD;
+  const imageUrl = upgradeScryfallUrl(card.imageUrl ?? cardD?.uris.large, "large");
+  const frontFace = cardD?.info?.card_faces?.[0];
+  const backFace = cardD?.info?.card_faces?.[1];
+  const doubleFacedData = {
+    frontImageUrl: frontFace?.image_uris?.large ?? frontFace?.image_uris?.normal ?? null,
+    backImageUrl: backFace?.image_uris?.large ?? backFace?.image_uris?.normal ?? null,
+    frontName: frontFace?.name,
+    backName: backFace?.name,
+  };
 
   // Dismiss on Escape, outside click, or number key shortcut
   useEffect(() => {
@@ -164,7 +140,7 @@ export function CardPreview({
 
   const hasDoubleFace = !!card.isDoubleFaced && !!doubleFacedData?.backImageUrl;
   const currentImageUrl =
-    hasDoubleFace && showBackFace ? doubleFacedData.backImageUrl : imageUrl || fetchedUrl;
+    hasDoubleFace && showBackFace ? doubleFacedData.backImageUrl : imageUrl || cardD?.uris.large;
   const currentCardName =
     hasDoubleFace && showBackFace
       ? doubleFacedData.backName

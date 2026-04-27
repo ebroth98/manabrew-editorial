@@ -534,26 +534,6 @@ export default function Settings() {
             </div>
 
             <div className="rounded-lg border bg-card/40 p-4 space-y-2">
-              <Label>Battlefield Zone Column Side</Label>
-              <div className="flex items-center gap-2">
-                <Button
-                  variant={prefs.zonePanelSide === "left" ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => prefs.setZonePanelSide("left")}
-                >
-                  Left
-                </Button>
-                <Button
-                  variant={prefs.zonePanelSide === "right" ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => prefs.setZonePanelSide("right")}
-                >
-                  Right
-                </Button>
-              </div>
-            </div>
-
-            <div className="rounded-lg border bg-card/40 p-4 space-y-2">
               <Label>Battlefield Zone Column Order</Label>
               <div className="grid grid-cols-3 gap-2">
                 {(["Top", "Middle", "Bottom"] as const).map((slot, index) => (
@@ -579,46 +559,6 @@ export default function Settings() {
               </div>
               <p className="text-xs text-muted-foreground">
                 Controls placement of Library / Graveyard / Exile in the in-field zone column.
-              </p>
-            </div>
-
-            <div className="rounded-lg border bg-card/40 p-4 space-y-2">
-              <Label>Hand Display Mode</Label>
-              <div className="flex items-center gap-2">
-                <Button
-                  variant={prefs.handDisplayMode === "cool" ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => prefs.setHandDisplayMode("cool")}
-                >
-                  Cool
-                </Button>
-                <Button
-                  variant={prefs.handDisplayMode === "normal" ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => prefs.setHandDisplayMode("normal")}
-                >
-                  Normal
-                </Button>
-              </div>
-              <p className="text-xs text-muted-foreground">
-                Switch between curved fan hand layout (Cool) and flat hand layout (Normal).
-              </p>
-            </div>
-
-            <div className="rounded-lg border bg-card/40 p-4 space-y-2">
-              <Label>GPU Canvas Renderer (Experimental)</Label>
-              <div className="flex items-center gap-2">
-                <Button
-                  variant={prefs.pixiEnabled ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => prefs.setPixiEnabled(!prefs.pixiEnabled)}
-                >
-                  {prefs.pixiEnabled ? "Enabled" : "Disabled"}
-                </Button>
-              </div>
-              <p className="text-xs text-muted-foreground">
-                Uses PixiJS WebGL canvas for the game board. Enables GPU-accelerated rendering and
-                prepares for future particle effects. Requires page reload to take effect.
               </p>
             </div>
 

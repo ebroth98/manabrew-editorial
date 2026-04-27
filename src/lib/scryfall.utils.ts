@@ -1,6 +1,7 @@
 import type { Card } from "@/types/openmagic";
 import type { ScryfallCard } from "@/types/scryfall";
-import { getScryfallImageUrl, getScryfallManaCost } from "@/api/scryfall";
+import { getScryfallManaCost } from "@/api/scryfall";
+import { chooseImageUrisForCard } from "@/stores/useScryfallStore";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -73,32 +74,8 @@ export function scryfallToOpenMagic(sc: ScryfallCard, id?: string): Card {
     power: sc.power,
     toughness: sc.toughness,
     text: getFrontOracleText(sc),
-    imageUrl: getScryfallImageUrl(sc),
+    imageUrl: chooseImageUrisForCard(sc, { frontOnly: true })?.normal,
     isDoubleFaced: detectIsDoubleFaced(sc) || undefined,
-  };
-}
-
-// ─── ScryfallCard → Partial<Card> (for enrichment) ───────────────────────────
-
-export function scryfallCardToPartial(sc: ScryfallCard): Partial<Card> {
-  const { supertypes, types, subtypes } = parseTypeLine(getFrontTypeLine(sc));
-  const imageUrl = getScryfallImageUrl(sc);
-  const isDoubleFaced = detectIsDoubleFaced(sc) || undefined;
-  return {
-    manaCost: getScryfallManaCost(sc) ?? "",
-    cmc: sc.cmc,
-    types,
-    subtypes,
-    supertypes,
-    color: (sc.colors ?? []).join(""),
-    colorIdentity: sc.color_identity ?? [],
-    power: sc.power,
-    toughness: sc.toughness,
-    setCode: sc.set,
-    cardNumber: sc.collector_number,
-    text: getFrontOracleText(sc),
-    isDoubleFaced,
-    ...(imageUrl ? { imageUrl } : {}),
   };
 }
 

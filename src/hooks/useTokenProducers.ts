@@ -5,13 +5,16 @@
  */
 
 import { useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { fetchCardCollection } from "@/api/scryfall";
-import type { ScryfallCard } from "@/types/scryfall";
 import type { Card, DeckToken } from "@/types/openmagic";
+import { useScryfallStore } from "@/stores/useScryfallStore";
+import { useQuery } from "@tanstack/react-query";
 
 // Re-export so consumers don't need to import from openmagic
 export type { DeckToken };
+
+function scryfallIdFromUri(uri: string): string | null {
+  return uri.split("/").filter(Boolean).pop() ?? null;
+}
 
 /**
  * Extract tokens produced by the given deck cards.
@@ -39,8 +42,69 @@ export function useTokenProducers(
   const { data: scryfallMap, isLoading } = useQuery({
     queryKey: ["token-producers", queryKey],
     queryFn: async () => {
-      if (uniqueNames.length === 0) return new Map<string, ScryfallCard>();
-      return fetchCardCollection(uniqueNames.map((n) => ({ name: n })));
+      const scryfall = useScryfallStore.getState();
+      const tokenMap = new Map<
+        string,
+        { name: string; typeLine: string; producers: Set<string>; tokenId?: string }
+      >();
+
+      const producerResults = await Promise.allSettled(
+        uniqueNames.map((name) => scryfall.getCard({ name })),
+      );
+
+      for (const result of producerResults) {
+        if (result.status !== "fulfilled") continue;
+        const producer = result.value.info;
+        if (!producer.all_parts) continue;
+
+        for (const part of producer.all_parts) {
+          if (part.component !== "token") continue;
+          const existing = tokenMap.get(part.name);
+          if (existing) {
+            existing.producers.add(producer.name);
+            existing.tokenId ??= scryfallIdFromUri(part.uri) ?? undefined;
+          } else {
+            tokenMap.set(part.name, {
+              name: part.name,
+              typeLine: part.type_line,
+              producers: new Set([producer.name]),
+              tokenId: scryfallIdFromUri(part.uri) ?? undefined,
+            });
+          }
+        }
+      }
+
+      const tokens = await Promise.all(
+        [...tokenMap.values()].map(async (token): Promise<DeckToken> => {
+          if (!token.tokenId) {
+            return {
+              name: token.name,
+              typeLine: token.typeLine,
+              producers: [...token.producers].sort(),
+            };
+          }
+
+          try {
+            const tokenCard = await scryfall.getCard({ id: token.tokenId, name: token.name });
+            return {
+              name: token.name,
+              typeLine: token.typeLine,
+              producers: [...token.producers].sort(),
+              setCode: tokenCard.info.set,
+              cardNumber: tokenCard.info.collector_number,
+              imageUrl: tokenCard.uris.normal ?? tokenCard.uris.large,
+            };
+          } catch {
+            return {
+              name: token.name,
+              typeLine: token.typeLine,
+              producers: [...token.producers].sort(),
+            };
+          }
+        }),
+      );
+
+      return tokens.sort((a, b) => a.name.localeCompare(b.name));
     },
     enabled: uniqueNames.length > 0,
     staleTime: 1000 * 60 * 30, // 30 min — token relationships don't change
@@ -48,46 +112,9 @@ export function useTokenProducers(
     retry: false,
   });
 
-  const computedTokens = useMemo(() => {
-    if (!scryfallMap || scryfallMap.size === 0) return null;
-
-    const tokenMap = new Map<string, { name: string; typeLine: string; producers: Set<string> }>();
-
-    for (const [, sc] of scryfallMap) {
-      if (!sc.all_parts) continue;
-      for (const part of sc.all_parts) {
-        if (part.component !== "token") continue;
-        const existing = tokenMap.get(part.name);
-        if (existing) {
-          existing.producers.add(sc.name);
-        } else {
-          tokenMap.set(part.name, {
-            name: part.name,
-            typeLine: part.type_line,
-            producers: new Set([sc.name]),
-          });
-        }
-      }
-    }
-
-    // Filter: only show tokens whose producers are actually in the deck.
-    // Do NOT merge print data here — that's the store's job.
-    const deckNameSet = new Set(uniqueNames.map((n) => n.toLowerCase()));
-    return [...tokenMap.values()]
-      .filter((t) => [...t.producers].some((p) => deckNameSet.has(p.toLowerCase())))
-      .map(
-        (t): DeckToken => ({
-          name: t.name,
-          typeLine: t.typeLine,
-          producers: [...t.producers].sort(),
-        }),
-      )
-      .sort((a, b) => a.name.localeCompare(b.name));
-  }, [scryfallMap, uniqueNames]);
-
   // Fall back to cached tokens while the fetch is in flight, but keep the
   // memoized computation independent of `cached` to avoid feedback loops with the store.
-  const tokens = computedTokens ?? cached ?? [];
+  const tokens = scryfallMap ?? cached ?? [];
 
   return { tokens, isLoading };
 }

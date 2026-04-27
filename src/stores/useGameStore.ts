@@ -17,6 +17,7 @@ import type { AgentPrompt } from "./gameStore.types";
 import type { Card, Deck, GameView } from "@/types/openmagic";
 import type { CardIdentity } from "@/types/server";
 import { usePhaseStopStore } from "@/stores/usePhaseStopStore";
+import { prefetchCards } from "@/stores/useScryfallStore";
 import type { GameRuntime, ManualTabletopApi } from "@/game";
 
 export type {
@@ -113,7 +114,20 @@ export const useGameStore = create<GameState>()(
 
       startGame: async (deckList, formatId, commanderName, opponentDeckList) => {
         try {
-          set({ debugInfo: "Starting game..." });
+          // Flip into the loading screen immediately so the user sees a
+          // spinner during validation / prefetch instead of staring at the
+          // deck selector.
+          set({
+            isGameActive: true,
+            gameView: null,
+            currentPrompt: null,
+            gameLog: [],
+            snapshots: [],
+            deferredQueue: [],
+            isFlashing: false,
+            isWaitingForResponse: false,
+            debugInfo: "Starting game...",
+          });
           const format = formatId ? getFormat(formatId) : undefined;
           const startingLife = format?.deckRules.startingLife ?? 20;
           const gameConfig: GameConfig = { formatId: formatId ?? "standard", startingLife };
@@ -140,18 +154,9 @@ export const useGameStore = create<GameState>()(
             commanderName: commanderName ?? null,
             opponentDeckList: opponentDeckList ?? null,
           });
-          // Clear old game state so stale gameView/prompts don't bleed into new game
-          set({
-            isGameActive: true,
-            gameLog: [],
-            snapshots: [],
-            gameView: null,
-            currentPrompt: null,
-            deferredQueue: [],
-            isFlashing: false,
-            isWaitingForResponse: false,
-            debugInfo: `Game started: ${result}. Polling...`,
-          });
+          set({ debugInfo: "Fetching card images..." });
+          await prefetchCards([...deckList, ...(opponentDeckList ?? [])]);
+          set({ debugInfo: `Game started: ${result}. Polling...` });
           if (runtime.capabilities.manualTabletop) {
             const prompt = await runtime.api.getPrompt();
             if (prompt && (prompt as AgentPrompt).gameView) {
@@ -159,7 +164,7 @@ export const useGameStore = create<GameState>()(
             }
           }
         } catch (e) {
-          set({ debugInfo: `Start failed: ${e}` });
+          set({ isGameActive: false, debugInfo: `Start failed: ${e}` });
           console.error("[store] Failed to start game:", e);
           toast.error(e instanceof Error ? e.message : "Failed to start game");
         }
@@ -193,6 +198,7 @@ export const useGameStore = create<GameState>()(
           type: "replaceState",
           ...seedManualDeck(gameView, deck),
         });
+        await prefetchCards([...deck.cards, ...(deck.commanders ?? []), ...(deck.sideboard ?? [])]);
         const prompt = await runtime.api.getPrompt();
         if (prompt && (prompt as AgentPrompt).gameView) {
           applyPrompt(prompt as AgentPrompt, "Manual", set, get);
@@ -278,7 +284,20 @@ export const useGameStore = create<GameState>()(
         startingLife,
       ) => {
         try {
-          set({ debugInfo: "Starting multiplayer game..." });
+          set({
+            isGameActive: true,
+            isMultiplayer: true,
+            isHost: localIsHost,
+            myPlayerSlot: `player-${enginePlayerIndex}`,
+            gameView: null,
+            currentPrompt: null,
+            gameLog: [],
+            snapshots: [],
+            deferredQueue: [],
+            isFlashing: false,
+            isWaitingForResponse: false,
+            debugInfo: "Starting multiplayer game...",
+          });
           resetSelectedGameRuntime();
           const runtime = getSelectedGameRuntime();
           for (const [index, deckList] of deckLists.entries()) {
@@ -297,22 +316,11 @@ export const useGameStore = create<GameState>()(
             localIsHost,
             startingLife,
           });
-          set({
-            isGameActive: true,
-            isMultiplayer: true,
-            isHost: localIsHost,
-            myPlayerSlot: `player-${enginePlayerIndex}`,
-            gameLog: [],
-            snapshots: [],
-            gameView: null,
-            currentPrompt: null,
-            deferredQueue: [],
-            isFlashing: false,
-            isWaitingForResponse: false,
-            debugInfo: "Multiplayer game started.",
-          });
+          set({ debugInfo: "Fetching card images..." });
+          await prefetchCards(deckLists.flat());
+          set({ debugInfo: "Multiplayer game started." });
         } catch (e) {
-          set({ debugInfo: `Multiplayer start failed: ${e}` });
+          set({ isGameActive: false, debugInfo: `Multiplayer start failed: ${e}` });
           console.error("[store] Failed to start multiplayer game:", e);
           toast.error(e instanceof Error ? e.message : "Failed to start multiplayer game");
         }

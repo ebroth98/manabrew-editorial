@@ -8,7 +8,8 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { ManaSymbols } from "@/components/game/ManaSymbols";
-import { Plus, Search, Swords, Crown, X, Pencil } from "lucide-react";
+import { Plus, Search, Swords, X, Pencil } from "lucide-react";
+import { GameIcon } from "@/components/game/GameIcon";
 import { toast } from "sonner";
 import { DeckStats } from "@/components/editor/DeckStats";
 import { FormatBadge } from "@/components/game/FormatBadge";
@@ -18,7 +19,7 @@ import { DeckListControls } from "@/components/deck/DeckListControls";
 import type { Card } from "@/types/openmagic";
 import type { CardIdentity } from "@/types/server";
 import { fetchCardCollection } from "@/api/scryfall";
-import { scryfallCardToPartial } from "@/lib/scryfall.utils";
+import { scryfallToOpenMagic } from "@/lib/scryfall.utils";
 import { ROUTES, DEFAULT_DECK_NAME } from "@/lib/constants";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { extractColors, groupCards, categorize, applyDeckFilters } from "./myDecks.utils";
@@ -92,7 +93,7 @@ export default function MyDecks() {
       .then((scryfallMap) => {
         const updates = new Map<string, Partial<Card>>();
         for (const [key, sc] of scryfallMap) {
-          updates.set(key, scryfallCardToPartial(sc));
+          updates.set(key, scryfallToOpenMagic(sc));
         }
         enrichSavedDeck(selected.id, updates);
       })
@@ -343,7 +344,7 @@ export default function MyDecks() {
                       }
                       onMouseLeave={preview.handleMouseLeave}
                     >
-                      <Crown className="h-3 w-3 text-commander shrink-0" />
+                      <GameIcon name="overlord-helm" className="h-3 w-3 text-commander shrink-0" />
                       <span className="text-sm flex-1 truncate">
                         {selected.deck.commanders![0].name}
                       </span>
@@ -409,7 +410,7 @@ export default function MyDecks() {
                                   : setSavedCommander(selected.id, card)
                               }
                             >
-                              <Crown className="h-3 w-3" />
+                              <GameIcon name="overlord-helm" className="h-3 w-3" />
                             </Button>
                           </div>
                         );

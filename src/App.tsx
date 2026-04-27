@@ -9,7 +9,9 @@ import { useGameDevStore } from "@/stores/useGameDevStore";
 import { lazy, Suspense, useEffect } from "react";
 import { toast } from "sonner";
 import { getPlatformType } from "@/platform";
+import { initApp } from "@/lib/appInit";
 
+void initApp();
 const DevToolsPanel = import.meta.env.DEV
   ? lazy(() => import("@/components/dev/DevToolsPanel").then((m) => ({ default: m.DevToolsPanel })))
   : () => null;

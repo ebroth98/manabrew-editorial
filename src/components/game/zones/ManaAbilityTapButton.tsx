@@ -1,9 +1,9 @@
 import { memo } from "react";
 import { cn } from "@/lib/utils";
 import { extractManaLetters } from "@/components/game/manaUtils";
-import { manaSymbolUrl } from "@/components/game/game.utils";
 import { withAlpha, type ManaLetter } from "@/themes/gameTheme";
 import { useTheme } from "@/hooks/useTheme";
+import { manaSymbolUrl } from "@/api/scryfall";
 
 /** Alpha applied to the mana-letter tint when used as the tap-button fill. */
 const MANA_BUTTON_ALPHA = 0.45;

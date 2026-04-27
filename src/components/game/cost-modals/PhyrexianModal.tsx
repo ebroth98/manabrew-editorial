@@ -1,6 +1,6 @@
 import { Modal } from "../modals/Modal";
 import { Button } from "@/components/ui/button";
-import { useCardImage } from "@/hooks/useCardImage";
+import { useCard } from "@/stores/useScryfallStore";
 import { CardImageThumbnail } from "@/components/game/CardImageThumbnail";
 import { ManaSymbols } from "@/components/game/ManaSymbols";
 import { MODAL_CARD_IMAGE } from "../game.styles";
@@ -12,7 +12,8 @@ interface PhyrexianModalProps {
 }
 
 export function PhyrexianModal({ phyrexianColor, sourceCardName, onDecide }: PhyrexianModalProps) {
-  const { data: imageUrl } = useCardImage(sourceCardName ?? "");
+  const cardData = useCard({ name: sourceCardName ?? "" });
+  const imageUrl = cardData?.uris.normal;
   // phyrexianColor is comma-separated, e.g. "W/P" or "B/P, B/P"
   const shards = phyrexianColor.split(",").map((s) => s.trim());
   const lifeCost = shards.length * 2;

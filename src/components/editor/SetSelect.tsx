@@ -1,11 +1,11 @@
 import { useMemo, useState, useRef, useEffect } from "react";
-import { useScryfallSets } from "@/hooks/useCards";
 import { cn } from "@/lib/utils";
 import { ChevronDown, X } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
 import { MAIN_SET_TYPES } from "@/lib/constants";
+import { useScryfallStore } from "@/stores/useScryfallStore";
 
 const SET_ICON_CLASS = "brightness-0 dark:invert";
 
@@ -24,7 +24,7 @@ export function SetSelect({
   placeholder = "Any set",
   showAll = false,
 }: SetSelectProps) {
-  const { data: sets } = useScryfallSets();
+  const sets = useScryfallStore((s) => s.sets);
   const [isOpen, setIsOpen] = useState(false);
   const [search, setSearch] = useState("");
   const containerRef = useRef<HTMLDivElement>(null);
@@ -161,7 +161,7 @@ export function SetSelect({
 
 /** Display a set name from its code, with icon. */
 export function SetName({ code, className }: { code: string; className?: string }) {
-  const { data: sets } = useScryfallSets();
+  const sets = useScryfallStore((s) => s.sets);
   const set = sets?.find((s) => s.code === code.toLowerCase());
 
   if (!set) return <span className={className}>{code.toUpperCase()}</span>;

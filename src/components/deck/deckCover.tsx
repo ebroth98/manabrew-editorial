@@ -1,45 +1,26 @@
-import { useState } from "react";
 import { cn } from "@/lib/utils";
-import { useDeckCoverUrl, type DeckCoverSource } from "./deckCover.utils";
+import { useCard } from "@/stores/useScryfallStore";
+import type { Card } from "@/types/openmagic";
 
 interface DeckCoverImageProps {
-  cover?: DeckCoverSource;
+  cover: Card;
   alt?: string;
   className?: string;
   fallbackClassName?: string;
 }
 
-export function DeckCoverImage({ cover, alt, className, fallbackClassName }: DeckCoverImageProps) {
-  const [artError, setArtError] = useState(false);
-  const artUrl = useDeckCoverUrl(cover);
-
-  const [prevArtUrl, setPrevArtUrl] = useState(artUrl);
-  if (prevArtUrl !== artUrl) {
-    setPrevArtUrl(artUrl);
-    setArtError(false);
-  }
-
-  if (artUrl && !artError) {
-    return (
-      <img
-        src={artUrl}
-        alt={alt ?? cover?.cardName ?? "Deck cover"}
-        loading="lazy"
-        className={cn(
-          "absolute inset-0 h-full w-full object-cover",
-          "transition-transform duration-300 ease-out group-hover:scale-110",
-          className,
-        )}
-        onError={() => setArtError(true)}
-      />
-    );
-  }
-
+export function DeckCoverImage({ cover, alt, className }: DeckCoverImageProps) {
+  const card = useCard(cover);
+  if (!card) return null;
   return (
-    <div
+    <img
+      src={card.uris.art_crop}
+      alt={alt ?? cover?.name ?? "Deck cover"}
+      loading="lazy"
       className={cn(
-        "absolute inset-0 bg-gradient-to-br from-muted-foreground/5 to-muted-foreground/20",
-        fallbackClassName,
+        "absolute inset-0 h-full w-full object-cover",
+        "transition-transform duration-300 ease-out group-hover:scale-110",
+        className,
       )}
     />
   );

@@ -53,12 +53,7 @@ import { DeckStats } from "./DeckStats";
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { toast } from "sonner";
 import type { Card } from "@/types/openmagic";
-import {
-  fetchCardCollection,
-  searchCards,
-  getScryfallImageUrl,
-  getCardByName,
-} from "@/api/scryfall";
+import { fetchCardCollection, searchCards } from "@/api/scryfall";
 import type { ScryfallCard } from "@/types/scryfall";
 import { createEmptyCard, scryfallToOpenMagic } from "@/lib/scryfall.utils";
 import { DROP_ZONE, DEFAULT_DECK_NAME } from "@/lib/constants";
@@ -89,7 +84,6 @@ import {
   type GroupByMode,
   GROUP_BY_OPTIONS,
   groupCards,
-  scryfallCardToPartial,
   exportToArena,
   computeGroupedSections,
   computeGroupedStackColumns,
@@ -104,6 +98,7 @@ import {
   setUnsavedState,
   setLastSavedSnapshotRef,
 } from "./deckBuilder.unsavedChanges";
+import { useScryfallStore } from "@/stores/useScryfallStore";
 
 const SIDEBOARD_LINE_REGEX = /^(sideboard|side)$/i;
 const DECK_LINE_REGEX = /^(\d+)x?\s+(.+)$/i;
@@ -200,16 +195,12 @@ function QuickCardSearch({
         <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-popover border rounded-md shadow-lg max-h-80 overflow-y-auto min-w-[280px]">
           {results.map((sc) => {
             const count = getCount(sc.name);
-            const previewCard: Card = {
-              ...createEmptyCard(sc.name),
-              imageUrl: getScryfallImageUrl(sc),
-            };
             return (
               <div
                 key={sc.id}
                 className="flex items-center gap-2 px-2 py-1 hover:bg-muted border-b border-border/30 last:border-0"
-                onMouseEnter={(e) => onHover(previewCard, e, { useDelay: true })}
-                onMouseMove={(e) => onHover(previewCard, e, { useDelay: true })}
+                onMouseEnter={(e) => onHover(scryfallToOpenMagic(sc), e, { useDelay: true })}
+                onMouseMove={(e) => onHover(scryfallToOpenMagic(sc), e, { useDelay: true })}
                 onMouseLeave={onLeave}
               >
                 {sc.image_uris?.small && (
@@ -398,7 +389,7 @@ export function DeckBuilder({
     fetchCardCollection(uniqueNames.map((n) => ({ name: n })))
       .then((scryfallMap) => {
         const updates = new Map<string, Partial<Card>>();
-        for (const [key, sc] of scryfallMap) updates.set(key, scryfallCardToPartial(sc));
+        for (const [key, sc] of scryfallMap) updates.set(key, scryfallToOpenMagic(sc));
         enrichDeckCards(updates);
       })
       .catch((err) => {
@@ -571,7 +562,14 @@ export function DeckBuilder({
     const storedByName = new Map(stored.map((t) => [t.name, t]));
     const merged = discoveredTokens.map((d) => {
       const s = storedByName.get(d.name);
-      return s ? { ...d, setCode: s.setCode, cardNumber: s.cardNumber, imageUrl: s.imageUrl } : d;
+      return s
+        ? {
+            ...d,
+            setCode: s.setCode ?? d.setCode,
+            cardNumber: s.cardNumber ?? d.cardNumber,
+            imageUrl: s.imageUrl ?? d.imageUrl,
+          }
+        : d;
     });
     if (JSON.stringify(merged) !== JSON.stringify(stored)) setTokens(merged);
   }, [discoveredTokens]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -609,8 +607,22 @@ export function DeckBuilder({
       ...(currentDeck.commanders ?? []),
     ];
     const deckCard = allCards.find((c) => c.name === cardName);
-    getCardByName(cardName, deckCard?.setCode || undefined)
-      .then((sc) => setDetailCard(sc))
+    const token = currentDeck.tokens?.find((t) => t.name === cardName);
+    const lookup = deckCard
+      ? {
+          name: deckCard.name,
+          setCode: deckCard.setCode,
+          collectorNumber: deckCard.cardNumber,
+        }
+      : {
+          name: cardName,
+          setCode: token?.setCode,
+          collectorNumber: token?.cardNumber,
+        };
+    useScryfallStore
+      .getState()
+      .getCard(lookup)
+      .then((sc) => setDetailCard(sc.info))
       .catch(() => toast.error(`Could not fetch info for "${cardName}"`));
   }
 
@@ -724,7 +736,7 @@ export function DeckBuilder({
       try {
         const scryfallMap = await fetchCardCollection(entries.map((p) => ({ name: p.name })));
         const updates = new Map<string, Partial<Card>>();
-        for (const [key, sc] of scryfallMap) updates.set(key, scryfallCardToPartial(sc));
+        for (const [key, sc] of scryfallMap) updates.set(key, scryfallToOpenMagic(sc));
         enrichDeckCards(updates);
         toast.success("Card data loaded from Scryfall");
       } catch {
@@ -774,8 +786,10 @@ export function DeckBuilder({
 
       // Commanders are singletons; one fetch per distinct name.
       const commanderLoads = deck.commanders.map((cmd) =>
-        getCardByName(cmd.name)
-          .then((sc) => setCommander(scryfallToOpenMagic(sc)))
+        useScryfallStore
+          .getState()
+          .getCard({ name: cmd.name })
+          .then((sc) => setCommander(scryfallToOpenMagic(sc.info)))
           .catch(() => setCommander(createEmptyCard(cmd.name))),
       );
 
@@ -1312,11 +1326,13 @@ export function DeckBuilder({
             const isSameFront =
               currentDeck.coverCardName === card.name && (currentDeck.coverCardFace ?? 0) === 0;
             setCoverCard(isSameFront ? undefined : card.name, 0);
+            if (!isSameFront) useScryfallStore.getState().invalidateCard(card.name);
           }}
           onSetCoverBack={(card) => {
             const isSameBack =
               currentDeck.coverCardName === card.name && currentDeck.coverCardFace === 1;
             setCoverCard(isSameBack ? undefined : card.name, 1);
+            if (!isSameBack) useScryfallStore.getState().invalidateCard(card.name);
           }}
           stackPositions={currentDeck.stackPositions}
           onStackPositionsChange={setStackPositions}
@@ -1400,35 +1416,37 @@ export function DeckBuilder({
         }}
         isToken
       />
-      <CardDetailModal
-        card={detailCard}
-        onClose={() => setDetailCard(null)}
-        deckEditorActions={{
-          onAddOne: handleAddOneToMainByName,
-          onRemoveOne: handleRemoveOneFromMain,
-          onPickPrint: (name) => setPrintPickerCard(name),
-          onSetCommander: (name) => {
-            const existing = currentDeck.commanders?.find((c) => c.name === name);
-            if (existing) {
-              removeCommander(existing);
-            } else {
-              const card = currentDeck.cards.find((c) => c.name === name);
-              if (card) handleSetCommander(card);
-            }
-          },
-          isCommander: detailCard
-            ? (currentDeck.commanders?.some((c) => c.name === detailCard.name) ?? false)
-            : false,
-          deckFormat: currentDeck.format ?? "standard",
-          customTags: currentDeck.customTags,
-          onTagCard: tagCard,
-          onAddTag: addCustomTag,
-          isToken: detailCard
-            ? (currentDeck.tokens?.some((t) => t.name === detailCard.name) ?? false)
-            : false,
-          onUpdateTokenPrint: updateTokenPrint,
-        }}
-      />
+      {detailCard && (
+        <CardDetailModal
+          card={detailCard}
+          onClose={() => setDetailCard(null)}
+          deckEditorActions={{
+            onAddOne: handleAddOneToMainByName,
+            onRemoveOne: handleRemoveOneFromMain,
+            onPickPrint: (name) => setPrintPickerCard(name),
+            onSetCommander: (name) => {
+              const existing = currentDeck.commanders?.find((c) => c.name === name);
+              if (existing) {
+                removeCommander(existing);
+              } else {
+                const card = currentDeck.cards.find((c) => c.name === name);
+                if (card) handleSetCommander(card);
+              }
+            },
+            isCommander: detailCard
+              ? (currentDeck.commanders?.some((c) => c.name === detailCard.name) ?? false)
+              : false,
+            deckFormat: currentDeck.format ?? "standard",
+            customTags: currentDeck.customTags,
+            onTagCard: tagCard,
+            onAddTag: addCustomTag,
+            isToken: detailCard
+              ? (currentDeck.tokens?.some((t) => t.name === detailCard.name) ?? false)
+              : false,
+            onUpdateTokenPrint: updateTokenPrint,
+          }}
+        />
+      )}
       <DeckLabelsModal open={labelsOpen} onClose={() => setLabelsOpen(false)} />
       <ImportDeckDialog
         open={importDialogMode !== null}

@@ -19,7 +19,9 @@ export type GameIconName =
   | "radioactive"
   | "stone-tower"
   | "ring"
-  | "speedometer";
+  | "speedometer"
+  | "book-cover"
+  | "overlord-helm";
 
 interface GameIconProps {
   name: GameIconName;

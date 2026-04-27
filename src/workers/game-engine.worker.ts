@@ -365,6 +365,7 @@ async function handleCommand(command: string, args?: Record<string, unknown>): P
         desc: deck.desc,
         color: deck.color,
         coverCardName: deck.coverCardName ?? choosePresetCoverCardName(deck.cards),
+        cards: deck.cards,
       }));
     }
 

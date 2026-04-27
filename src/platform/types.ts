@@ -7,6 +7,7 @@
  */
 
 import type { CardIdentity, GameFormat, RoomRelayEnvelope } from "@/types/server";
+import type { Deck } from "@/types/openmagic";
 
 // ============================================================================
 // Game API Types
@@ -35,14 +36,6 @@ export interface RespondParams {
 
 export interface RestoreSnapshotParams {
   checkpointId: number;
-}
-
-export interface PresetDeckInfo {
-  id: string;
-  label: string;
-  desc: string;
-  color: string;
-  coverCardName?: string;
 }
 
 export interface DeckAvailabilityResult {
@@ -113,7 +106,7 @@ export interface IGameApi {
   restoreSnapshot(params: RestoreSnapshotParams): Promise<void>;
 
   /** Get preset deck list */
-  getPresetDecks(): Promise<PresetDeckInfo[]>;
+  getPresetDecks(): Promise<Deck[]>;
 
   /** Check whether a deck is playable on the current platform backend */
   validateDeckAvailability(deckList: CardIdentity[]): Promise<DeckAvailabilityResult>;

@@ -16,7 +16,6 @@ import type {
   StartMultiplayerGameParams,
   RespondParams,
   RestoreSnapshotParams,
-  PresetDeckInfo,
   DeckAvailabilityResult,
   ServerConnectParams,
   CreateRoomParams,
@@ -27,6 +26,8 @@ import type {
 } from "./types";
 import { isRoomRelayEnvelope } from "@/types/server";
 import type { RoomRelayEnvelope } from "@/types/server";
+import type { Deck } from "@/types/openmagic";
+import { presetDeckPayloadsToDecks, type PresetDeckPayload } from "@/lib/presetDecks";
 
 // ============================================================================
 // Worker Message Types
@@ -414,8 +415,10 @@ class WebGameApi implements IGameApi {
     });
   }
 
-  async getPresetDecks(): Promise<PresetDeckInfo[]> {
-    return this.bridge.invoke<PresetDeckInfo[]>("get_preset_decks");
+  async getPresetDecks(): Promise<Deck[]> {
+    return presetDeckPayloadsToDecks(
+      await this.bridge.invoke<PresetDeckPayload[]>("get_preset_decks"),
+    );
   }
 
   async validateDeckAvailability(

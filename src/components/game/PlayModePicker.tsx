@@ -1,6 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/game/modals/Modal";
-import { useCardImage } from "@/hooks/useCardImage";
+import { useCard } from "@/stores/useScryfallStore";
 import { CardImageThumbnail } from "@/components/game/CardImageThumbnail";
 import { MODAL_CARD_THUMBNAIL } from "./game.styles";
 
@@ -18,7 +18,8 @@ interface PlayModePickerProps {
 }
 
 export function PlayModePicker({ cardName, options, onSelect, onCancel }: PlayModePickerProps) {
-  const { data: imageUrl } = useCardImage(cardName);
+  const cardData = useCard({ name: cardName });
+  const imageUrl = cardData?.uris.normal;
 
   return (
     <Modal maxWidth="max-w-sm" maxHeight="">

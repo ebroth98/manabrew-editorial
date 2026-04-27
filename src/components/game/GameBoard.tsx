@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useMemo, useRef, useState } from "react";
 import type { Card, Player } from "@/types/openmagic";
 import type { AgentPrompt } from "@/stores/useGameStore";
 import { usePreferencesStore, type ZonePanelItem } from "@/stores/usePreferencesStore";
@@ -10,11 +10,10 @@ import type { PixiGameScene } from "@/pixi/PixiGameScene";
 import type { PromptType } from "@/types/promptType";
 import { PromptType as PT } from "@/types/promptType";
 import { OpponentHalf, PlayerPanel } from "@/components/game/panels";
-import { FreeBattlefield, HandDisplay } from "@/components/game/zones";
-import type { PlacementGhost } from "@/components/game/zones/FreeBattlefield";
-import { PLAYER_CLUSTER_RESERVED_PX } from "@/components/game/game.constants";
+import type { PlacementGhost } from "@/components/game/game.types";
 import { useHandScale } from "@/hooks/useHandScale";
 import { HAND_CARD_BASES } from "@/components/game/game.styles";
+import { computeBaseLayout, SIZE_PARAMS } from "@/pixi/HandLayout";
 import type { HandActionOption } from "@/stores/useGameUIStore";
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/components/ui/resizable";
 import { cn } from "@/lib/utils";
@@ -68,11 +67,7 @@ interface GameBoardProps {
   // Flash state
   turnFlashPlayerId: string | null;
 
-  // Hover state
-  showBackFace: boolean;
-
   // Preferences
-  zonePanelSide: "left" | "right";
   zonePanelOrder: ZonePanelItem[];
 
   // Stack placement preview
@@ -81,7 +76,6 @@ interface GameBoardProps {
   // Battlefield drag state
   isOverBattlefield: boolean;
   battlefieldContainerRef: React.RefObject<HTMLDivElement | null>;
-  handContainerRef: React.RefObject<HTMLDivElement | null>;
   draggingCardId?: string;
   castingCardId?: string | null;
 
@@ -98,7 +92,6 @@ interface GameBoardProps {
   onSelectHandAction?: (action: HandActionOption) => void;
   onFlipCard: () => void;
   onBattlefieldClick: (card: Card) => void;
-  actionableCardIds?: string[];
   onAttackerClick: (card: Card) => void;
   onTargetPlayer: (playerId: string) => void;
   onOpenZone: (title: string, cards: Card[], onClickCard?: (cardId: string) => void) => void;
@@ -130,12 +123,6 @@ interface GameBoardProps {
   handSelectionMode?: boolean;
   handSelectedIds?: Set<string>;
   onHandCardToggle?: (cardId: string) => void;
-
-  /** True while the mulligan flow owns the hand (keep/mulligan prompt or
-   *  put-back prompt). Hides the Pixi hand so only the React fan shows
-   *  — prevents the "two hands stacked on top of each other" look the
-   *  player would otherwise see. */
-  mulliganActive?: boolean;
 }
 
 export function GameBoard({
@@ -163,13 +150,10 @@ export function GameBoard({
   monarchId,
   initiativeHolderId,
   turnFlashPlayerId,
-  showBackFace,
-  zonePanelSide,
   zonePanelOrder,
   placementGhost,
   isOverBattlefield,
   battlefieldContainerRef,
-  handContainerRef,
   draggingCardId,
   castingCardId,
   onHandCardDragStart,
@@ -180,7 +164,6 @@ export function GameBoard({
   onSelectHandAction,
   onFlipCard,
   onBattlefieldClick,
-  actionableCardIds,
   onAttackerClick,
   onTargetPlayer,
   onOpenZone,
@@ -197,38 +180,33 @@ export function GameBoard({
   handSelectionMode,
   handSelectedIds,
   onHandCardToggle,
-  mulliganActive,
 }: GameBoardProps) {
   const selfStops = usePhaseStopStore((s) => s.selfStops);
   const toggleSelfStop = usePhaseStopStore((s) => s.toggleSelfStop);
 
   const handSize = usePreferencesStore((s) => s.handSize);
-  const pixiEnabled = usePreferencesStore((s) => s.pixiEnabled);
   const vScale = useHandScale();
   // Reserve the visible portion of the hand for drag clamping. The hand
   // now sits lower (45% of card clipped below zone), so the reserved
   // strip is thinner — roughly 35% of the container height.
   const handBottomReserved = Math.round(HAND_CARD_BASES[handSize].containerH * vScale * 0.35);
 
-  // Measure the hand fan's live DOM width so the player cluster (anchored
-  // bottom-left) can cap its own width to `(battlefield - hand)/2 - gap`
-  // — this is what prevents the zones row from sliding under the hand
-  // as the window narrows. The React `HandDisplay` is `invisible` when
-  // Pixi owns the visible fan but `visibility: hidden` still lays out,
-  // so its rect matches what Pixi draws.
-  const [handWidth, setHandWidth] = useState(0);
-  useEffect(() => {
-    const el = handContainerRef.current;
-    if (!el || typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver((entries) => {
-      for (const entry of entries) {
-        const next = Math.round(entry.contentRect.width);
-        setHandWidth((prev) => (prev === next ? prev : next));
-      }
-    });
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, [handContainerRef]);
+  const handWidth = useMemo(() => {
+    if (myHand.length === 0) return 0;
+    const base = HAND_CARD_BASES[handSize];
+    const params = SIZE_PARAMS[handSize];
+    const cardW = Math.round(base.cardW * vScale);
+    const layout = computeBaseLayout(
+      myHand.length,
+      cardW,
+      Math.round(params.maxSpread * vScale),
+      Math.round(params.minSpread * vScale),
+      Math.round(params.spreadWidth * vScale),
+    );
+    if (layout.length === 0) return 0;
+    const xs = layout.map((slot) => slot.x);
+    return Math.max(...xs) - Math.min(...xs) + cardW;
+  }, [handSize, myHand.length, vScale]);
 
   const CLUSTER_GAP_FROM_HAND_PX = 12;
   const CLUSTER_MIN_WIDTH_PX = 120;
@@ -241,13 +219,6 @@ export function GameBoard({
     return `max(${CLUSTER_MIN_WIDTH_PX}px, calc(50% - ${handHalf + pad}px))`;
   }, [handWidth]);
   const hostileTargeting = currentPrompt?.hostile ?? false;
-  const showChooseActionManaSources =
-    promptType === PT.ChooseAction &&
-    activePlayerId === me.id &&
-    priorityPlayerId === me.id &&
-    (step === "main1" || step === "main2") &&
-    (currentPrompt?.gameView.stack?.length ?? 0) === 0;
-
   const pixiBattlefield = useMemo(
     (): BattlefieldState => ({
       cards: myPermanents,
@@ -284,8 +255,10 @@ export function GameBoard({
       cards: myHand,
       draggingCardId,
       castingCardId,
+      selectionMode: handSelectionMode,
+      selectedIds: handSelectedIds,
     }),
-    [myHand, draggingCardId, castingCardId],
+    [myHand, draggingCardId, castingCardId, handSelectionMode, handSelectedIds],
   );
 
   const pixiCallbacks = useMemo(
@@ -339,7 +312,10 @@ export function GameBoard({
           preventDefault: () => {},
         } as React.MouseEvent);
       },
-      onClickCard_Hand: (card) => onHandCardClick(card),
+      onClickCard_Hand: (card) => {
+        if (handSelectionMode) onHandCardToggle?.(card.id);
+        else onHandCardClick(card);
+      },
       onDismissHoverPreview,
       onTapLand,
       onTapLands,
@@ -356,6 +332,8 @@ export function GameBoard({
       onDismissHoverPreview,
       onHandCardDragStart,
       onHandCardClick,
+      handSelectionMode,
+      onHandCardToggle,
       onTapLand,
       onTapLands,
       onTapLandAbility,
@@ -451,16 +429,10 @@ export function GameBoard({
             onClickAnyCard={onAttackerClick}
             onHoverCard={(card, e, opts) => onHoverCard(card, e, { useAnchor: true, ...opts })}
             onFlipCard={onFlipCard}
-            showBackFace={showBackFace}
             onOpenZone={onOpenZone}
-            zonePanelSide={zonePanelSide}
             zonePanelOrder={zonePanelOrder}
-            placementGhost={
-              placementGhost?.controllerId === opponents[0]!.id ? placementGhost : null
-            }
             hostileTargeting={hostileTargeting}
             manaAbilityOptions={currentPrompt?.manaAbilityOptions}
-            onTapLandAbility={onTapLandAbility}
             pixiSceneRef={getOpponentPixiSceneRef?.(opponents[0]!.id)}
           />
         ) : (
@@ -494,14 +466,10 @@ export function GameBoard({
                       onHoverCard(card, e, { useAnchor: true, ...opts })
                     }
                     onFlipCard={onFlipCard}
-                    showBackFace={showBackFace}
                     onOpenZone={onOpenZone}
-                    zonePanelSide={zonePanelSide}
                     zonePanelOrder={zonePanelOrder}
-                    placementGhost={placementGhost?.controllerId === op.id ? placementGhost : null}
                     hostileTargeting={hostileTargeting}
                     manaAbilityOptions={currentPrompt?.manaAbilityOptions}
-                    onTapLandAbility={onTapLandAbility}
                     pixiSceneRef={getOpponentPixiSceneRef?.(op.id)}
                   />
                 </ResizablePanel>
@@ -602,106 +570,22 @@ export function GameBoard({
                   zonePanelOrder={zonePanelOrder}
                 />
               </div>
-              {pixiEnabled && (
-                <div className="absolute inset-0 z-10 overflow-hidden">
-                  <PixiGameCanvas
-                    battlefield={pixiBattlefield}
-                    hand={mulliganActive ? undefined : pixiHand}
-                    sceneRef={pixiSceneRef}
-                    placementGhostName={
-                      placementGhost?.controllerId === me.id ? placementGhost.cardName : null
-                    }
-                    isDropActive={isOverBattlefield}
-                    callbacks={pixiCallbacks}
-                    bottomReserved={handBottomReserved}
-                    bottomLeftReserved={PLAYER_CLUSTER_BLOCKER}
-                    getHandActions={getHandActions}
-                    onSelectHandAction={(_card, action) => onSelectHandAction?.(action)}
-                    bottomRightReserved={PASS_BUTTON_RESERVED}
-                    externalBlockers={pixiExternalBlockers}
-                  />
-                </div>
-              )}
-              <FreeBattlefield
-                cards={myPermanents}
-                className={cn("flex-1", pixiEnabled && "invisible")}
-                onClickCard={
-                  promptType === PT.ChooseAction ||
-                  promptType === PT.ChooseAttackers ||
-                  promptType === PT.ChooseBlockers ||
-                  promptType === PT.ChooseTargetCard ||
-                  promptType === PT.ChooseTargetAny
-                    ? onBattlefieldClick
-                    : undefined
-                }
-                onHoverCard={(card, e, opts) => onHoverCard(card, e, { useAnchor: true, ...opts })}
-                onFlipCard={onFlipCard}
-                showBackFace={showBackFace}
-                pendingCardIds={
-                  promptType === PT.ChooseAttackers
-                    ? pendingAttackers
-                    : promptType === PT.ChooseBlockers
-                      ? blockAssignments.map((a) => a.blockerId)
-                      : undefined
-                }
-                actionableCardIds={actionableCardIds}
-                tappableLandIds={
-                  showChooseActionManaSources ||
-                  promptType === PT.PayCombatCost ||
-                  promptType === PT.PayManaCost
-                    ? (currentPrompt?.tappableLandIds ?? [])
-                    : undefined
-                }
-                onTapLand={onTapLand}
-                onTapLands={onTapLands}
-                manaAbilityOptions={
-                  showChooseActionManaSources || promptType === PT.PayManaCost
-                    ? (currentPrompt?.manaAbilityOptions ?? [])
-                    : undefined
-                }
-                onTapLandAbility={onTapLandAbility}
-                untappableLandIds={
-                  showChooseActionManaSources ||
-                  promptType === PT.PayCombatCost ||
-                  promptType === PT.PayManaCost
-                    ? (currentPrompt?.untappableLandIds ?? [])
-                    : undefined
-                }
-                onUntapLand={onUntapLand}
-                onUntapLands={onUntapLands}
-                bottomReserved={handBottomReserved}
-                leftReserved={PLAYER_CLUSTER_RESERVED_PX}
-                rightReserved={0}
-                isDropActive={isOverBattlefield}
-                placementGhost={placementGhost?.controllerId === me.id ? placementGhost : null}
-                hostileTargeting={hostileTargeting}
-              />
-              <div
-                ref={handContainerRef}
-                className={cn(
-                  "absolute bottom-0 left-1/2 -translate-x-1/2 z-20 w-max max-w-full",
-                  // Pixi normally owns the hand and hides the React
-                  // fan, but during the mulligan flow we swap: Pixi
-                  // skips the hand entirely (above) and the React fan
-                  // takes over so click-to-toggle / the keep prompt
-                  // have a single surface.
-                  pixiEnabled && !mulliganActive && "invisible pointer-events-none",
-                )}
-              >
-                <HandDisplay
-                  cards={myHand}
-                  onHoverCard={onHoverCard}
-                  onClickCard={onHandCardClick}
-                  onFlipCard={onFlipCard}
-                  showBackFace={showBackFace}
-                  onStartDrag={onHandCardDragStart}
-                  draggingCardId={draggingCardId}
-                  castingCardId={castingCardId}
-                  getActions={getHandActions}
-                  onSelectAction={onSelectHandAction}
-                  selectionMode={handSelectionMode}
-                  selectedIds={handSelectedIds}
-                  onCardToggle={onHandCardToggle}
+              <div className="absolute inset-0 z-10 overflow-hidden">
+                <PixiGameCanvas
+                  battlefield={pixiBattlefield}
+                  hand={pixiHand}
+                  sceneRef={pixiSceneRef}
+                  placementGhostName={
+                    placementGhost?.controllerId === me.id ? placementGhost.cardName : null
+                  }
+                  isDropActive={isOverBattlefield}
+                  callbacks={pixiCallbacks}
+                  bottomReserved={handBottomReserved}
+                  bottomLeftReserved={PLAYER_CLUSTER_BLOCKER}
+                  getHandActions={getHandActions}
+                  onSelectHandAction={(_card, action) => onSelectHandAction?.(action)}
+                  bottomRightReserved={PASS_BUTTON_RESERVED}
+                  externalBlockers={pixiExternalBlockers}
                 />
               </div>
             </div>

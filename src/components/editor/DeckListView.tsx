@@ -2,17 +2,8 @@ import { useState, useCallback, useRef, useMemo } from "react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
 import { ManaSymbols } from "@/components/game/ManaSymbols";
-import {
-  X,
-  Minus,
-  Plus,
-  Download,
-  Upload,
-  Crown,
-  Tag,
-  Image as ImageIcon,
-  GripVertical,
-} from "lucide-react";
+import { X, Minus, Plus, Download, Upload, Tag, GripVertical } from "lucide-react";
+import { GameIcon } from "@/components/game/GameIcon";
 import { useDraggable, useDroppable } from "@dnd-kit/core";
 import { cn } from "@/lib/utils";
 import type { Card } from "@/types/openmagic";
@@ -97,9 +88,7 @@ function DraggableStackCard({
       onClick={(e) => handleCardClick(e, group.card.name, onSelect, onShowInfo)}
     >
       <CardThumbnail
-        imageUrl={group.card.imageUrl}
-        name={group.card.name}
-        className="block rounded-[4%] border-border/40"
+        card={group.card}
         fallbackClassName="rounded-[4%]"
         fallbackStyle={{ width: cardWidth, height: cardHeight }}
       />
@@ -287,7 +276,7 @@ function CardVisual({
       onMouseLeave={onLeave}
       onClick={(e) => handleCardClick(e, group.card.name, onSelect, onShowInfo)}
     >
-      <CardThumbnail imageUrl={group.card.imageUrl} name={group.card.name} />
+      <CardThumbnail card={group.card} />
       <CardCountBadge count={group.count} />
       <div className="absolute top-1 left-1 z-20 flex gap-0.5">
         {showCommander && (
@@ -306,7 +295,7 @@ function CardVisual({
               else onSetCommander?.();
             }}
           >
-            <Crown className="h-3.5 w-3.5" />
+            <GameIcon name="overlord-helm" className="h-3.5 w-3.5" />
           </button>
         )}
         {onSetCover && (
@@ -318,13 +307,13 @@ function CardVisual({
                 ? "bg-primary/90 text-white"
                 : "bg-overlay/70 text-muted-foreground opacity-0 group-hover:opacity-100",
             )}
-            title={isCover ? "Remove as cover" : "Set as deck cover"}
+            title={isCover ? "Remove as deck art cover" : "Set as deck art cover"}
             onClick={(e) => {
               e.stopPropagation();
               onSetCover();
             }}
           >
-            <ImageIcon className="h-3.5 w-3.5" />
+            <GameIcon name="book-cover" className="h-3.5 w-3.5" />
           </button>
         )}
         {onSetCoverBack && (
@@ -336,13 +325,19 @@ function CardVisual({
                 ? "bg-primary/90 text-white"
                 : "bg-overlay/70 text-muted-foreground opacity-0 group-hover:opacity-100",
             )}
-            title={isCoverBack ? "Remove back face as cover" : "Set back side as deck cover"}
+            title={
+              isCoverBack ? "Remove back face as deck art cover" : "Set back face as deck art cover"
+            }
             onClick={(e) => {
               e.stopPropagation();
               onSetCoverBack();
             }}
           >
-            <ImageIcon className="h-3.5 w-3.5" style={{ transform: "scaleX(-1)" }} />
+            <GameIcon
+              name="book-cover"
+              className="h-3.5 w-3.5"
+              style={{ transform: "scaleX(-1)" }}
+            />
           </button>
         )}
       </div>
@@ -472,7 +467,7 @@ function CardRow({
               else onSetCommander();
             }}
           >
-            <Crown className="h-3 w-3" />
+            <GameIcon name="overlord-helm" className="h-3 w-3" />
           </Button>
         )}
         {onSetCover && (
@@ -484,13 +479,13 @@ function CardRow({
                 ? "h-5 w-5 text-primary"
                 : "h-5 w-5 text-muted-foreground/40 hover:text-primary transition-colors"
             }
-            title={isCover ? "Remove as cover" : "Set as deck cover"}
+            title={isCover ? "Remove as deck art cover" : "Set as deck art cover"}
             onClick={(e) => {
               e.stopPropagation();
               onSetCover();
             }}
           >
-            <ImageIcon className="h-3 w-3" />
+            <GameIcon name="book-cover" className="h-3 w-3" />
           </Button>
         )}
         {onSetCoverBack && (
@@ -502,13 +497,15 @@ function CardRow({
                 ? "h-5 w-5 text-primary"
                 : "h-5 w-5 text-muted-foreground/40 hover:text-primary transition-colors"
             }
-            title={isCoverBack ? "Remove back face as cover" : "Set back side as deck cover"}
+            title={
+              isCoverBack ? "Remove back face as deck art cover" : "Set back face as deck art cover"
+            }
             onClick={(e) => {
               e.stopPropagation();
               onSetCoverBack();
             }}
           >
-            <ImageIcon className="h-3 w-3" style={{ transform: "scaleX(-1)" }} />
+            <GameIcon name="book-cover" className="h-3 w-3" style={{ transform: "scaleX(-1)" }} />
           </Button>
         )}
         <Button
@@ -1499,7 +1496,7 @@ export function DeckListView({
         {commanders.length > 0 && (
           <div className="mb-3">
             <div className="flex items-center gap-1 mb-1.5">
-              <Crown className="h-3 w-3 text-commander shrink-0" />
+              <GameIcon name="overlord-helm" className="h-3 w-3 text-commander shrink-0" />
               <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
                 Commander{commanders.length > 1 ? "s" : ""}
               </span>
@@ -1515,7 +1512,7 @@ export function DeckListView({
                     onMouseLeave={onLeave}
                     onClick={() => onShowInfo?.(cmd.name)}
                   >
-                    <Crown className="h-3 w-3 text-commander shrink-0" />
+                    <GameIcon name="overlord-helm" className="h-3 w-3 text-commander shrink-0" />
                     <span className="text-sm flex-1 truncate">{cmd.name}</span>
                     {cmd.manaCost && (
                       <ManaSymbols cost={cmd.manaCost} size="sm" className="shrink-0" />
@@ -1529,13 +1526,17 @@ export function DeckListView({
                             ? "h-5 w-5 text-primary"
                             : "h-5 w-5 text-muted-foreground/40 hover:text-primary transition-colors"
                         }
-                        title={coverCardName === cmd.name ? "Remove as cover" : "Set as deck cover"}
+                        title={
+                          coverCardName === cmd.name
+                            ? "Remove as deck art cover"
+                            : "Set as deck art cover"
+                        }
                         onClick={(e) => {
                           e.stopPropagation();
                           onSetCover(cmd);
                         }}
                       >
-                        <ImageIcon className="h-3 w-3" />
+                        <GameIcon name="book-cover" className="h-3 w-3" />
                       </Button>
                     )}
                     {cmd.isDoubleFaced && onSetCoverBack && (
@@ -1549,15 +1550,19 @@ export function DeckListView({
                         }
                         title={
                           coverCardName === cmd.name && coverCardFace === 1
-                            ? "Remove back face as cover"
-                            : "Set back side as deck cover"
+                            ? "Remove back face as deck art cover"
+                            : "Set back face as deck art cover"
                         }
                         onClick={(e) => {
                           e.stopPropagation();
                           onSetCoverBack(cmd);
                         }}
                       >
-                        <ImageIcon className="h-3 w-3" style={{ transform: "scaleX(-1)" }} />
+                        <GameIcon
+                          name="book-cover"
+                          className="h-3 w-3"
+                          style={{ transform: "scaleX(-1)" }}
+                        />
                       </Button>
                     )}
                     <Button
@@ -1579,7 +1584,7 @@ export function DeckListView({
                 {commanders.map((cmd) => (
                   <div key={cmd.id} className="relative">
                     <div className="absolute top-1 right-1 z-20 bg-overlay/70 rounded-full p-0.5 shadow">
-                      <Crown className="h-3.5 w-3.5 text-commander" />
+                      <GameIcon name="overlord-helm" className="h-3.5 w-3.5 text-commander" />
                     </div>
                     <CardVisual
                       group={{ card: cmd, count: 1 }}

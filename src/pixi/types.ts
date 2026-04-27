@@ -110,6 +110,8 @@ export interface HandState {
   cards: Card[];
   draggingCardId?: string;
   castingCardId?: string | null;
+  selectionMode?: boolean;
+  selectedIds?: Set<string>;
 }
 
 export interface CardSpriteData {

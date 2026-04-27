@@ -44,7 +44,7 @@ import { OPPONENT_SEATS } from "@/components/game/game.types";
 import { useStackUIStore } from "@/stores/useStackUIStore";
 import { applyManualTabletopAction, getSelectedGameRuntime } from "@/game";
 import type { HandActionOption } from "@/stores/useGameUIStore";
-import type { PlacementGhost } from "@/components/game/zones/FreeBattlefield";
+import type { PlacementGhost } from "@/components/game/game.types";
 import type { GameRuntime, ManualTabletopApi } from "@/game";
 
 /** Prompt types where hover card preview is allowed (no modal overlay). */
@@ -179,10 +179,8 @@ export default function Game({ exitTo }: GameProps = {}) {
     })),
   );
   const flashDurationMs = usePreferencesStore((s) => s.flashDurationMs);
-  const zonePanelSide = usePreferencesStore((s) => s.zonePanelSide);
   const zonePanelOrder = usePreferencesStore((s) => s.zonePanelOrder);
   const handSize = usePreferencesStore((s) => s.handSize);
-  const pixiEnabled = usePreferencesStore((s) => s.pixiEnabled);
   const vScale = useHandScale();
   const ghostCardW = Math.round(HAND_CARD_BASES[handSize].cardW * vScale);
   const ghostCardH = Math.round(HAND_CARD_BASES[handSize].cardH * vScale);
@@ -228,10 +226,6 @@ export default function Game({ exitTo }: GameProps = {}) {
     height: number;
   } | null>(null);
   useEffect(() => {
-    if (!pixiEnabled) {
-      setStackBlockerRect(null);
-      return;
-    }
     let raf = 0;
     let lastKey = "";
     const tick = () => {
@@ -260,7 +254,7 @@ export default function Game({ exitTo }: GameProps = {}) {
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [pixiEnabled]);
+  }, []);
 
   const activePrompt = manualApi ? null : currentPrompt;
   const promptType = activePrompt?.type;
@@ -808,10 +802,9 @@ export default function Game({ exitTo }: GameProps = {}) {
 
   // Hand drag-to-play
   const battlefieldContainerRef = useRef<HTMLDivElement>(null);
-  const handContainerRef = useRef<HTMLDivElement>(null);
   const { draggingHandCard, ghostPos, isOverBattlefield, startHandCardDrag } = useHandDrag({
     battlefieldContainerRef,
-    handContainerRef,
+    handDropExclusionPx: Math.round(HAND_CARD_BASES[handSize].containerH * vScale * 0.35),
     onCastSpell: handleCastSpell,
     dismissHover: preview.dismiss,
   });
@@ -1263,11 +1256,6 @@ export default function Game({ exitTo }: GameProps = {}) {
   const shouldRenderStackFlashCard = activeFlash?.kind === "card";
   const shouldShowPreStackFlash = activeFlashCard?.types.includes("Land") ?? false;
 
-  // While the cursor is carrying a targeting glyph (free-follow phase
-  // before the user locks a target), hide the native OS pointer so the
-  // floating glyph reads as the cursor itself. Once a target is locked
-  // the glyph anchors to the target and the OS cursor can return so the
-  // user can click Confirm / Cancel.
   const hideOsCursor = casting.showArrow && !!casting.castingCardId && !casting.targetId;
 
   return (
@@ -1298,9 +1286,6 @@ export default function Game({ exitTo }: GameProps = {}) {
         } as React.CSSProperties
       }
     >
-      {/* Dedicated full-board Pixi canvas for arrows and targeting pointers.
-          The overlay canvas is transparent with pointer-events:none so it
-          never blocks the DOM behind it. */}
       <PixiArrowsCanvas
         mainSceneRef={pixiSceneRef}
         opponentSceneRefs={opponentSceneRefsRef.current}
@@ -1325,9 +1310,6 @@ export default function Game({ exitTo }: GameProps = {}) {
           handSelectionMode={mulliganPutBack.active}
           handSelectedIds={mulliganPutBack.selected}
           onHandCardToggle={mulliganPutBack.toggle}
-          mulliganActive={
-            promptType === PromptType.Mulligan || promptType === PromptType.MulliganPutBack
-          }
           me={me}
           opponents={displayOpponents}
           myPermanents={myPermanents}
@@ -1352,13 +1334,10 @@ export default function Game({ exitTo }: GameProps = {}) {
           blockAssignments={blockAssignments}
           playerIsTargetable={playerIsTargetable}
           turnFlashPlayerId={turnFlashPlayerId}
-          showBackFace={preview.showBackFace}
-          zonePanelSide={zonePanelSide}
           zonePanelOrder={zonePanelOrder}
           placementGhost={placementGhost}
           isOverBattlefield={isOverBattlefield}
           battlefieldContainerRef={battlefieldContainerRef}
-          handContainerRef={handContainerRef}
           draggingCardId={draggingHandCard?.id}
           castingCardId={casting.castingCardId}
           onHandCardDragStart={handleHandCardDragStart}
@@ -1368,11 +1347,6 @@ export default function Game({ exitTo }: GameProps = {}) {
           getHandActions={getHandActionOptions}
           onSelectHandAction={handlePreviewAction}
           onFlipCard={preview.flipCard}
-          actionableCardIds={
-            promptType === PromptType.ChooseAction
-              ? (activePrompt?.activatableAbilityIds ?? []).map((ability) => ability.cardId)
-              : undefined
-          }
           onBattlefieldClick={(card) => {
             if (manualApi) {
               void applyManualAction({

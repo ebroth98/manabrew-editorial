@@ -2,8 +2,6 @@ import type { Card as OpenMagicCard, Player, ActivatableAbilityInfo } from "@/ty
 import type { GameLogEntry } from "@/types/gameLog";
 import type { GameSnapshotEntry } from "@/types/gameSnapshot";
 import type { PromptType } from "@/types/promptType";
-import type { PlacementGhost } from "@/components/game/zones/FreeBattlefield";
-import type { HandActionOption } from "@/stores/useGameUIStore";
 import type { PixiGameScene } from "@/pixi/PixiGameScene";
 
 export type PromptActionType = PromptType;
@@ -16,6 +14,12 @@ export interface CombatAssignment {
 export type FlashItem =
   | { kind: "card"; cardId: string; cardName: string; setCode: string }
   | { kind: "turn"; playerId: string; playerName: string };
+
+export interface PlacementGhost {
+  stackObjectId: string;
+  cardName: string;
+  controllerId: string;
+}
 
 /** Seat identifier used to resolve per-player theme colours. Source of
  *  truth for `playerColors.<seat>` theme keys and for `OPPONENT_SEATS`
@@ -56,86 +60,20 @@ export interface OpponentHalfProps {
     options?: { useAnchor?: boolean; placement?: "auto" | "top-center"; anchorOverride?: DOMRect },
   ) => void;
   onFlipCard: () => void;
-  showBackFace: boolean;
   onOpenZone: (
     title: string,
     cards: OpenMagicCard[],
     onClickCard?: (cardId: string) => void,
   ) => void;
-  zonePanelSide: "left" | "right";
   zonePanelOrder: ("library" | "graveyard" | "exile")[];
   isMonarch?: boolean;
   hasInitiative?: boolean;
-  placementGhost?: PlacementGhost | null;
   hostileTargeting?: boolean;
   manaAbilityOptions?: ActivatableAbilityInfo[];
-  onTapLandAbility?: (cardId: string, abilityIndex: number, color?: string) => void;
   /** Populated by the opponent's Pixi canvas so the full-board arrow
    *  layer can resolve sprite positions for opponent permanents
    *  without round-tripping through DOM queries. */
   pixiSceneRef?: React.MutableRefObject<PixiGameScene | null>;
-}
-
-export interface BattlefieldZoneProps {
-  cards: OpenMagicCard[];
-  label: string;
-  emptyLabel: string;
-  className?: string;
-  zoneBg?: string;
-  minHeight?: number;
-  topReserved?: number;
-  onClickCard?: (card: OpenMagicCard) => void;
-  onClickAnyCard?: (card: OpenMagicCard) => void;
-  onHoverCard?: (
-    card: OpenMagicCard | null,
-    e?: React.MouseEvent,
-    options?: { useAnchor?: boolean; placement?: "auto" | "top-center"; anchorOverride?: DOMRect },
-  ) => void;
-  onFlipCard?: () => void;
-  showBackFace?: boolean;
-  pendingCardIds?: string[];
-  attackingCardIds?: string[];
-  tappableLandIds?: string[];
-  onTapLand?: (card: OpenMagicCard) => void;
-  /** Mana ability options for tappable lands (per-color tap buttons on dual lands). */
-  manaAbilityOptions?: ActivatableAbilityInfo[];
-  /** Tap a land with a specific mana ability (dual land color choice). */
-  onTapLandAbility?: (cardId: string, abilityIndex: number, color?: string) => void;
-  untappableLandIds?: string[];
-  onUntapLand?: (card: OpenMagicCard) => void;
-  leftReserved?: number;
-  rightReserved?: number;
-  landsAtTop?: boolean;
-  placementGhost?: PlacementGhost | null;
-  hostileTargeting?: boolean;
-}
-
-export interface HandDisplayProps {
-  cards: OpenMagicCard[];
-  onHoverCard?: (
-    card: OpenMagicCard | null,
-    e?: React.MouseEvent,
-    options?: { useAnchor?: boolean; placement?: "auto" | "top-center"; anchorOverride?: DOMRect },
-  ) => void;
-  onStartDrag?: (card: OpenMagicCard, e: React.MouseEvent) => void;
-  onClickCard?: (card: OpenMagicCard, e?: React.MouseEvent) => void;
-  onFlipCard?: () => void;
-  showBackFace?: boolean;
-  draggingCardId?: string;
-  castingCardId?: string | null;
-  getActions?: (card: OpenMagicCard) => HandActionOption[];
-  onSelectAction?: (action: HandActionOption) => void;
-  /**
-   * Optional selection overlay — used by the mulligan flows to drive the
-   * hand without spawning a separate modal. When `selectionMode` is on:
-   *   - Clicking a card invokes `onCardToggle` instead of drag/cast.
-   *   - Cards in `selectedIds` drop below the arc, un-tilt, and wear a
-   *     red ring + "→ Library bottom" pill.
-   *   - The normal drag / cast / tug-reject paths are disabled.
-   */
-  selectionMode?: boolean;
-  selectedIds?: Set<string>;
-  onCardToggle?: (cardId: string) => void;
 }
 
 export interface RightActionPanelProps {

@@ -5,7 +5,7 @@
  * consistency and makes bulk style changes easier.
  */
 
-// ── Card ring variants (used in BattlefieldZone, FreeBattlefield) ──────────
+// ── Card ring variants ────────────────────────────────────────────────────
 
 export const CARD_RING = {
   choosable: "ring-2 cursor-pointer",

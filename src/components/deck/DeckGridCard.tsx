@@ -15,7 +15,7 @@ import { Pencil, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { SavedDeck } from "@/stores/useDeckStore";
 import { DeckCoverImage } from "@/components/deck/deckCover";
-import { resolveDeckCoverSource } from "@/components/deck/deckCover.utils";
+import { resolveCoverCard } from "@/components/deck/deckCover.utils";
 import {
   DECK_NAME_SHADOW_CLASS,
   getDeckColorCost,
@@ -34,7 +34,7 @@ export function DeckGridCard({ deck, onOpen, onDelete, onRename }: DeckGridCardP
   const displayCards = [...deck.deck.cards, ...(deck.deck.commanders ?? [])];
   const colorCost = getDeckColorCost(displayCards);
   const titleColorClass = getDeckNameColorClass(displayCards);
-  const cover = resolveDeckCoverSource(deck.deck);
+  const cover = resolveCoverCard(deck.deck);
 
   return (
     <>
@@ -45,7 +45,7 @@ export function DeckGridCard({ deck, onOpen, onDelete, onRename }: DeckGridCardP
         )}
         onClick={onOpen}
       >
-        <DeckCoverImage cover={cover} alt={cover?.cardName} />
+        <DeckCoverImage cover={cover} alt={cover.name} />
 
         {/* Darkening overlay so bottom info is always readable */}
         <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-black/10" />

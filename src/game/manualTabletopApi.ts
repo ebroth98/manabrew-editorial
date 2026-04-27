@@ -1,14 +1,13 @@
 import { getPlatform } from "@/platform";
 import type {
   DeckAvailabilityResult,
-  PresetDeckInfo,
   RespondParams,
   RestoreSnapshotParams,
   StartGameParams,
   StartMultiplayerGameParams,
 } from "@/platform";
 import { PromptType } from "@/types/promptType";
-import type { Card, GameView, Player } from "@/types/openmagic";
+import type { Card, Deck, GameView, Player } from "@/types/openmagic";
 import type { ManualTabletopApi, ManualTabletopAction } from "./runtime.types";
 
 const MANUAL_GAME_ID = "manual-tabletop";
@@ -240,7 +239,7 @@ export class ManualTabletopGameApi implements ManualTabletopApi {
     throw new Error("Manual tabletop snapshots are not implemented yet.");
   }
 
-  async getPresetDecks(): Promise<PresetDeckInfo[]> {
+  async getPresetDecks(): Promise<Deck[]> {
     return [];
   }
 

@@ -16,7 +16,7 @@ export const MAX_GRID_SLOTS = 200;
 
 // ── Battlefield card scale ─────────────────────────────────────────────────
 // Multiplier applied to battlefield sprites (and their grid cell footprint).
-// 1.0 is the legacy size; default is slightly bigger. User-adjustable via
+// 1.0 is the baseline size; default is slightly bigger. User-adjustable via
 // the Settings page.
 export const BATTLEFIELD_CARD_SCALE_DEFAULT = 1.15;
 export const BATTLEFIELD_CARD_SCALE_MIN = 0.8;

@@ -8,7 +8,6 @@ import type { GameFormat } from "@/types/server";
 import { cn } from "@/lib/utils";
 import {
   Swords,
-  Crown,
   Users,
   Loader2,
   Layers,
@@ -20,8 +19,18 @@ import {
   BookOpen,
   Package,
 } from "lucide-react";
+import { GameIcon } from "@/components/game/GameIcon";
 
-const FORMATS: { value: GameFormat; label: string; icon: typeof Swords; description: string }[] = [
+const CommanderIcon = ({ className }: { className?: string }) => (
+  <GameIcon name="overlord-helm" className={className} />
+);
+
+const FORMATS: {
+  value: GameFormat;
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+  description: string;
+}[] = [
   {
     value: "Standard",
     label: "Standard",
@@ -46,7 +55,7 @@ const FORMATS: { value: GameFormat; label: string; icon: typeof Swords; descript
   {
     value: "Commander",
     label: "Commander",
-    icon: Crown,
+    icon: CommanderIcon,
     description: "100-card singleton, 40 life",
   },
   { value: "Brawl", label: "Brawl", icon: Wand2, description: "60-card singleton, 25 life" },

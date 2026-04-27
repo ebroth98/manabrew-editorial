@@ -1,51 +1,79 @@
-import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
-import { searchCards, getRulings, getCardPrints, fetchSets } from "@/api/scryfall";
-import type { ScryfallSet } from "@/types/scryfall";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { searchCards } from "@/api/scryfall";
+import type { ScryfallListResponse } from "@/types/scryfall";
+
+type CardSearchStatus = "pending" | "error" | "success";
+
+interface CardSearchData {
+  pages: ScryfallListResponse[];
+}
 
 export function useCardSearch(query: string, order?: string, dir?: string) {
-  return useInfiniteQuery({
-    queryKey: ["cards", "search", query, order, dir],
-    queryFn: ({ pageParam = 1 }) => searchCards(query, pageParam as number, order, dir),
-    getNextPageParam: (lastPage, allPages) => {
-      if (lastPage.has_more) {
-        return allPages.length + 1;
-      }
-      return undefined;
-    },
-    enabled: query.length > 0,
-    initialPageParam: 1,
-  });
-}
+  const requestIdRef = useRef(0);
+  const [pages, setPages] = useState<ScryfallListResponse[]>([]);
+  const [status, setStatus] = useState<CardSearchStatus>("pending");
+  const [error, setError] = useState<Error | null>(null);
+  const [isFetchingNextPage, setIsFetchingNextPage] = useState(false);
 
-export function useCardRulings(rulingsUri: string | undefined) {
-  return useQuery({
-    queryKey: ["cards", "rulings", rulingsUri],
-    queryFn: () => getRulings(rulingsUri!),
-    enabled: !!rulingsUri,
-  });
-}
+  useEffect(() => {
+    const requestId = ++requestIdRef.current;
+    setPages([]);
+    setError(null);
 
-export function useCardPrints(printsSearchUri: string | undefined, enabled: boolean = true) {
-  return useQuery({
-    queryKey: ["cards", "prints", printsSearchUri],
-    queryFn: () => getCardPrints(printsSearchUri!),
-    enabled: !!printsSearchUri && enabled,
-  });
-}
+    if (query.length === 0) {
+      setStatus("pending");
+      setIsFetchingNextPage(false);
+      return;
+    }
 
-/** Fetches all Scryfall sets, cached for 1 hour. */
-export function useScryfallSets() {
-  return useQuery({
-    queryKey: ["scryfall", "sets"],
-    queryFn: fetchSets,
-    staleTime: 60 * 60 * 1000,
-    gcTime: 2 * 60 * 60 * 1000,
-  });
-}
+    setStatus("pending");
+    setIsFetchingNextPage(true);
+    searchCards(query, 1, order, dir)
+      .then((page) => {
+        if (requestId !== requestIdRef.current) return;
+        setPages([page]);
+        setStatus("success");
+      })
+      .catch((caught) => {
+        if (requestId !== requestIdRef.current) return;
+        setError(caught instanceof Error ? caught : new Error("Failed to fetch cards"));
+        setStatus("error");
+      })
+      .finally(() => {
+        if (requestId !== requestIdRef.current) return;
+        setIsFetchingNextPage(false);
+      });
+  }, [query, order, dir]);
 
-/** Build a code→name lookup map from the sets query. */
-export function useSetLookup(): Map<string, ScryfallSet> {
-  const { data } = useScryfallSets();
-  if (!data) return new Map();
-  return new Map(data.map((s) => [s.code, s]));
+  const hasNextPage = pages.at(-1)?.has_more ?? false;
+
+  const fetchNextPage = useCallback(async () => {
+    if (query.length === 0 || isFetchingNextPage) return;
+    const nextPage = pages.length + 1;
+    setIsFetchingNextPage(true);
+    try {
+      const page = await searchCards(query, nextPage, order, dir);
+      setPages((current) => [...current, page]);
+      setStatus("success");
+    } catch (caught) {
+      setError(caught instanceof Error ? caught : new Error("Failed to fetch cards"));
+      setStatus("error");
+    } finally {
+      setIsFetchingNextPage(false);
+    }
+  }, [dir, isFetchingNextPage, order, pages.length, query]);
+
+  const data = useMemo<CardSearchData | undefined>(
+    () => (pages.length > 0 ? { pages } : undefined),
+    [pages],
+  );
+
+  return {
+    data,
+    error,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+    status,
+  };
 }

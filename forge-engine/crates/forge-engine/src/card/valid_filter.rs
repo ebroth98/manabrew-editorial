@@ -2316,6 +2316,9 @@ fn matches_single_valid_player(
     source_controller: PlayerId,
 ) -> bool {
     let filter_lower = filter.to_ascii_lowercase();
+    if let Some(rest) = filter_lower.strip_prefix("player.") {
+        return matches_single_valid_player(rest, player, source_controller);
+    }
     match filter_lower.as_str() {
         "you" | "youctrl" => player == source_controller,
         "opponent" | "oppctrl" | "opponentctrl" => player != source_controller,

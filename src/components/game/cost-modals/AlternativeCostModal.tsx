@@ -1,6 +1,6 @@
 import { Modal } from "../modals/Modal";
 import { Button } from "@/components/ui/button";
-import { useCardImage } from "@/hooks/useCardImage";
+import { useCard } from "@/stores/useScryfallStore";
 import { CardImageThumbnail } from "@/components/game/CardImageThumbnail";
 import { TextWithMana } from "@/components/game/TextWithMana";
 import { MODAL_CARD_IMAGE } from "../game.styles";
@@ -16,7 +16,8 @@ export function AlternativeCostModal({
   sourceCardName,
   onDecide,
 }: AlternativeCostModalProps) {
-  const { data: imageUrl } = useCardImage(sourceCardName ?? "");
+  const cardData = useCard({ name: sourceCardName ?? "" });
+  const imageUrl = cardData?.uris.normal;
   return (
     <Modal maxWidth="max-w-md" maxHeight="">
       <Modal.Header>

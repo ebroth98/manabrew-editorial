@@ -2,7 +2,8 @@ import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Hand, Users, Crown, Swords, Shield, LogOut, Bot, X } from "lucide-react";
+import { Hand, Users, Swords, Shield, LogOut, Bot, X } from "lucide-react";
+import { GameIcon } from "@/components/game/GameIcon";
 import type { RoomInfo } from "@/types/server";
 import { cn } from "@/lib/utils";
 
@@ -114,7 +115,10 @@ export function TablesList({
                         {isBot && <Bot className="h-3 w-3 text-muted-foreground shrink-0" />}
                         <span className="text-sm font-medium truncate">{p.username}</span>
                         {p.username === currentRoom.host && (
-                          <Crown className="h-3 w-3 text-commander shrink-0" />
+                          <GameIcon
+                            name="overlord-helm"
+                            className="h-3 w-3 text-commander shrink-0"
+                          />
                         )}
                       </div>
                       <div className="text-[11px] text-muted-foreground truncate">

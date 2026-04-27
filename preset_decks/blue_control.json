@@ -7,7 +7,7 @@
   "order": 9,
   "cards": [
     { "name": "Island", "count": 17, "set": "akh" },
-    { "name": "Counterspell", "count": 4, "set": "mma" },
+    { "name": "Counterspell", "count": 4, "set": "ema" },
     { "name": "Cancel", "count": 4, "set": "m14" },
     { "name": "Mind Rot", "count": 4, "set": "m14" },
     { "name": "Control Magic", "count": 3, "set": "mma" },

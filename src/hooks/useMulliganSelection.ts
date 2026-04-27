@@ -1,7 +1,7 @@
 /**
  * Drives the "put cards on the bottom of the library" picker that
  * replaces the old mulligan modal. The selection is consumed by both
- * `HandDisplayCool` (to render the red ring + drop) and the
+ * the Pixi hand (to render the red ring + drop) and the
  * `MulliganPutBack` prompt action (for the Confirm button's counter),
  * so keeping it behind a single hook prevents `Game.tsx` from
  * re-plumbing state, toggle, and dispatch every render.

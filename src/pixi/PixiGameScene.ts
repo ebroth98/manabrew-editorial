@@ -127,6 +127,8 @@ interface HandTarget {
   zIndex: number;
 }
 
+const HAND_SELECTION_DROP_PX = 30;
+
 interface ActionKind {
   isTappable: boolean;
   isUntappable: boolean;
@@ -173,8 +175,7 @@ export interface BlockingRect {
 export interface PixiSceneOptions {
   /** When true, tapped cards rotate counter-clockwise, lands auto-place
    *  at the top of the zone, and non-lands fill from the bottom upward.
-   *  Matches the React BattlefieldZone's `landsAtTop` mode used for every
-   *  opponent's half of the board. */
+   *  Used for every opponent's half of the board. */
   mirrored?: boolean;
   /** Render the hand fan at the bottom of the zone. Default true. */
   showHand?: boolean;
@@ -525,7 +526,7 @@ export class PixiGameScene {
 
   /**
    * Constrain battlefield + hand layout to a sub-rect of the canvas. When
-   * unset, the full canvas is used (legacy behavior). Pass the rect of the
+   * unset, the full canvas is used. Pass the rect of the
    * "my half" zone when the canvas is promoted to cover the entire board.
    */
   setPlayZone(rect: PlayZoneRect | null): void {
@@ -710,6 +711,8 @@ export class PixiGameScene {
       const card = state.cards[i]!;
       const l = layout[i]!;
       const isHovered = this.hoveredHandIndex === i;
+      const selectionMode = state.selectionMode === true;
+      const isSelected = selectionMode && (state.selectedIds?.has(card.id) ?? false);
 
       let sprite = this.handSprites.get(card.id);
       if (!sprite) {
@@ -724,22 +727,27 @@ export class PixiGameScene {
         sprite.updateCardContent(card);
       }
 
-      const isHidden = card.id === state.draggingCardId || card.id === state.castingCardId;
+      const isHidden =
+        !selectionMode && (card.id === state.draggingCardId || card.id === state.castingCardId);
       sprite.alpha = isHidden ? 0 : 1;
-      sprite.cursor = card.isPlayable ? "grab" : "default";
+      sprite.cursor = selectionMode ? "pointer" : card.isPlayable ? "grab" : "default";
 
       const scaleX = l.scaleW / CARD_W;
       const scaleY = l.scaleH / CARD_H;
       this.handTargets.set(card.id, {
         x: centerX + l.x,
-        y: bottomY + l.y - l.scaleH / 2,
-        rot: (l.rotation * Math.PI) / 180,
+        y:
+          bottomY +
+          l.y -
+          l.scaleH / 2 +
+          (isSelected ? Math.round(HAND_SELECTION_DROP_PX * this.vScale) : 0),
+        rot: isSelected ? 0 : (l.rotation * Math.PI) / 180,
         scale: scaleX,
         zIndex: isHovered ? Z_HAND_HOVERED : i + 1,
       });
       sprite.scale.set(scaleX, scaleY);
 
-      this.applyHandCardHighlight(sprite, card, isHovered);
+      this.applyHandCardHighlight(sprite, card, isHovered, selectionMode, isSelected);
     }
   }
 
@@ -1314,7 +1322,7 @@ export class PixiGameScene {
     entry.sprite.updateCard(card);
     // Mirrored scenes (opponent half) rotate tapped cards counter-clockwise
     // so the tapped state reads correctly when viewed from across the
-    // table — matches how the React BattlefieldZone presents the opponent.
+    // table — keeps opponent permanents visually oriented toward the opponent.
     if (this.mirrored && card.tapped) entry.sprite.rotation = -Math.PI / 2;
     this.applyBattlefieldRing(entry.sprite, state);
     this.rebuildBattlefieldOverlay(entry, state);
@@ -2140,11 +2148,8 @@ export class PixiGameScene {
   private computeHandDimensions() {
     const base = HAND_CARD_BASES[this.handSize];
     const params = SIZE_PARAMS[this.handSize];
-    // `vScale` comes from the `useHandScale` hook which is also what the
-    // React hand (used during mulligan) multiplies by. Using it directly
-    // — without the earlier canvas-width clamp — keeps the Pixi hand
-    // visually identical to the React hand, so the player's cards don't
-    // change size when transitioning out of the mulligan flow.
+    // `vScale` comes from the `useHandScale` hook. Using it directly
+    // keeps the Pixi hand consistent across mulligan and normal play.
     const scale = this.vScale;
     return {
       cardW: Math.round(base.cardW * scale),
@@ -2166,6 +2171,10 @@ export class PixiGameScene {
     sprite.on("pointerleave", () => this.onHandCardLeave(sprite));
     sprite.on("pointerdown", (e: FederatedPointerEvent) => {
       e.stopPropagation();
+      if (this.lastHandState?.selectionMode) {
+        this.callbacks.onClickCard_Hand?.(sprite.card);
+        return;
+      }
       if (sprite.card.isPlayable) {
         this.callbacks.onStartDrag?.(sprite.card, {
           x: e.globalX,
@@ -2268,7 +2277,20 @@ export class PixiGameScene {
     return this.lastHandState?.cards.findIndex((c) => c.id === cardId) ?? -1;
   }
 
-  private applyHandCardHighlight(sprite: CardSprite, card: Card, isHovered: boolean): void {
+  private applyHandCardHighlight(
+    sprite: CardSprite,
+    card: Card,
+    isHovered: boolean,
+    selectionMode = false,
+    isSelected = false,
+  ): void {
+    if (selectionMode) {
+      const color = isSelected
+        ? hexToNum(this.theme.gameTheme.pointer.hostile)
+        : hexToNum(this.theme.gameTheme.cardRing);
+      sprite.setRing(color, isSelected ? 1 : PLAYABLE_RING_ALPHA);
+      return;
+    }
     if (!card.isPlayable) {
       sprite.setRing(null);
       return;
@@ -2366,7 +2388,7 @@ export class PixiGameScene {
     );
     if (!from) return null;
 
-    // Locked target → try card first, then player (matches React fallback).
+    // Locked target -> try card first, then player.
     let to: ScreenPos | null = null;
     if (spec.targetId) {
       to =

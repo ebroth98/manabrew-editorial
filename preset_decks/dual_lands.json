@@ -6,7 +6,7 @@
   "ai_eligible": false,
   "order": 27,
   "cards": [
-    { "name": "City of Brass", "count": 12, "set": "c21" },
+    { "name": "City of Brass", "count": 12, "set": "mma" },
     { "name": "Breeding Pool", "count": 4, "set": "rna" },
     { "name": "Hallowed Fountain", "count": 4, "set": "rna" },
     { "name": "Coiling Oracle", "count": 4, "set": "dis" },

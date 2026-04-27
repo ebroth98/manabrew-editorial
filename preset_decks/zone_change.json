@@ -8,7 +8,7 @@
   "cards": [
     { "name": "Swamp", "count": 12, "set": "akh" },
     { "name": "Island", "count": 4, "set": "akh" },
-    { "name": "Unsummon", "count": 4, "set": "m14" },
+    { "name": "Unsummon", "count": 4, "set": "m20" },
     { "name": "Boomerang", "count": 2, "set": "3ed" },
     { "name": "Raise Dead", "count": 13, "set": "m13" },
     { "name": "Diabolic Edict", "count": 3, "set": "te" },

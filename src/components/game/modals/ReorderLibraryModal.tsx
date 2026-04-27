@@ -1,7 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { Modal } from "./Modal";
 import { Card } from "@/components/game/Card";
-import { useCardImage } from "@/hooks/useCardImage";
+import { useCard } from "@/stores/useScryfallStore";
 import { CardImageThumbnail } from "@/components/game/CardImageThumbnail";
 import { MODAL_CARD_THUMBNAIL, MODAL_FOOTER_BETWEEN } from "../game.styles";
 import { useState, useCallback } from "react";
@@ -16,7 +16,8 @@ interface ReorderLibraryModalProps {
 }
 
 export function ReorderLibraryModal({ cards, cardName, onConfirm }: ReorderLibraryModalProps) {
-  const { data: imageUrl } = useCardImage(cardName ?? "");
+  const cardData = useCard({ name: cardName ?? "" });
+  const imageUrl = cardData?.uris.normal;
   // unsorted = cards not yet placed; sorted = placed in chosen order
   const [sorted, setSorted] = useState<CardType[]>([]);
   const unsorted = cards.filter((c) => !sorted.some((s) => s.id === c.id));

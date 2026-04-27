@@ -66,7 +66,10 @@ export interface DeckLabel {
 }
 
 export interface Deck {
+  id?: string;
   name: string;
+  description?: string;
+  color?: string;
   format?: DeckFormatId;
   cards: Card[];
   sideboard: Card[];

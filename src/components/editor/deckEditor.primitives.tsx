@@ -6,8 +6,9 @@
 import { Button } from "@/components/ui/button";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useCardImage } from "@/hooks/useCardImage";
 import type { OverlayAction } from "./deckEditor.utils";
+import type { Card } from "@/types/openmagic";
+import { useCard } from "@/stores/useScryfallStore";
 export type { OverlayAction } from "./deckEditor.utils";
 
 // ─── Card Count Badge ────────────────────────────────────────────────────────
@@ -30,41 +31,37 @@ export function CardCountBadge({ count, className }: { count: number; className?
 // ─── Card Thumbnail (image or fallback) ──────────────────────────────────────
 
 export function CardThumbnail({
-  imageUrl,
-  name,
-  className,
+  card,
   fallbackClassName,
   fallbackStyle,
 }: {
-  imageUrl?: string;
-  name: string;
-  className?: string;
+  card: Card;
   fallbackClassName?: string;
   fallbackStyle?: React.CSSProperties;
 }) {
-  const { data: fetchedUrl } = useCardImage(name, imageUrl);
-  const resolvedUrl = imageUrl ?? fetchedUrl ?? null;
-
-  if (resolvedUrl) {
+  const cardData = useCard(card);
+  if (!cardData) {
     return (
-      <img
-        src={resolvedUrl}
-        alt={name}
-        className={cn("w-full rounded-lg border border-border/50 shadow-sm", className)}
-        draggable={false}
-      />
+      <div
+        className={cn(
+          "w-full aspect-[2.5/3.5] rounded-lg border border-border bg-muted flex items-center justify-center p-2",
+          fallbackClassName,
+        )}
+        style={fallbackStyle}
+      >
+        <span className="text-[9px] text-muted-foreground leading-tight text-center">
+          {card.name}
+        </span>
+      </div>
     );
   }
   return (
-    <div
-      className={cn(
-        "w-full aspect-[2.5/3.5] rounded-lg border border-border bg-muted flex items-center justify-center p-2",
-        fallbackClassName,
-      )}
-      style={fallbackStyle}
-    >
-      <span className="text-[9px] text-muted-foreground leading-tight text-center">{name}</span>
-    </div>
+    <img
+      src={cardData.uris.normal}
+      alt={card.name}
+      className={cn("w-full rounded-lg border border-border/50 shadow-sm")}
+      draggable={false}
+    />
   );
 }
 

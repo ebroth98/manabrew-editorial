@@ -1,9 +1,6 @@
 import type { Card as CardType } from "@/types/openmagic";
-import { useCardImage } from "@/hooks/useCardImage";
 import { cn } from "@/lib/utils";
 import { memo, useState, useMemo, type CSSProperties } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { getCardByName } from "@/api/scryfall";
 import { CounterDisplay } from "@/components/game/CounterBadge";
 import { ManaSymbols } from "@/components/game/ManaSymbols";
 import { KeywordChips } from "@/components/game/CardKeywords";
@@ -17,6 +14,7 @@ import {
 } from "./game.utils";
 import { CARD_BADGES } from "./game.constants";
 import { CARD_BANNER_CONTAINER, CARD_BANNER_TEXT } from "./game.styles";
+import { useCard } from "@/stores/useScryfallStore";
 
 /** Special token types that get a more descriptive badge label. */
 const TOKEN_LABELS: Record<string, string> = {
@@ -65,39 +63,19 @@ function CardComponent({
   resolution = "normal",
 }: CardProps) {
   const [hasError, setHasError] = useState(false);
-  const { data: scryfallUrl } = useCardImage(
-    card.name,
-    card.imageUrl,
-    card.isToken,
-    card.color,
-    card.setCode,
-    card.cardNumber,
-    resolution,
-  );
-  const { data: doubleFacedData } = useQuery({
-    queryKey: ["double-faced-card-inline", card.name, card.isDoubleFaced],
-    queryFn: async () => {
-      if (!card.isDoubleFaced) return null;
-      const cardData = await getCardByName(card.name);
-      if (cardData.card_faces && cardData.card_faces.length >= 2) {
-        const frontFace = cardData.card_faces[0];
-        const backFace = cardData.card_faces[1];
-        return {
-          frontImageUrl: frontFace.image_uris?.[resolution] ?? frontFace.image_uris?.normal ?? null,
-          backImageUrl: backFace.image_uris?.[resolution] ?? backFace.image_uris?.normal ?? null,
-          backName: backFace.name,
-        };
-      }
-      return null;
-    },
-    enabled: !!card.isDoubleFaced,
-    staleTime: Infinity,
-    gcTime: 1000 * 60 * 60,
-  });
+  const cardD = useCard(card);
+  const frontFace = cardD?.info?.card_faces?.[0];
+  const backFace = cardD?.info?.card_faces?.[1];
+  const doubleFacedData = {
+    frontImageUrl: frontFace?.image_uris?.[resolution] ?? frontFace?.image_uris?.normal ?? null,
+    backImageUrl: backFace?.image_uris?.[resolution] ?? backFace?.image_uris?.normal ?? null,
+    backName: backFace?.name,
+  };
+
   const imageUrl = upgradeScryfallUrl(
     showBackFace && doubleFacedData?.backImageUrl
       ? doubleFacedData.backImageUrl
-      : card.imageUrl || scryfallUrl,
+      : card.imageUrl || cardD?.uris[resolution],
     resolution,
   );
   const displayName =

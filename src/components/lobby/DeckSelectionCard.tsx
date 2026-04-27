@@ -13,7 +13,6 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import type { Card, DeckLabel } from "@/types/openmagic";
 import type { CardIdentity } from "@/types/server";
-import type { DeckCoverSource } from "@/components/deck/deckCover.utils";
 
 interface DeckSelectionCardProps {
   id: string;
@@ -24,7 +23,7 @@ interface DeckSelectionCardProps {
   labels?: DeckLabel[];
   deckList: CardIdentity[];
   cards: Card[];
-  cover?: DeckCoverSource;
+  cover: Card;
   coverFallbackClassName?: string;
   isPreset: boolean;
   isSelected: boolean;

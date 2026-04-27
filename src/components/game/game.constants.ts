@@ -93,7 +93,7 @@ export const CARD_BADGES = {
   warpExiled: { label: "WARPED", style: "bg-card-status-warped/90 text-text-on-tinted" },
 } as const;
 
-/** Logical footprint of battlefield cards (for FreeBattlefield grid layout) */
+/** Logical footprint of battlefield cards. */
 export const CARD_W = 72;
 export const CARD_H = 100;
 export const CARD_GAP = 8;

@@ -3,7 +3,7 @@ import { Modal } from "./Modal";
 import { cn } from "@/lib/utils";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useModalKeyboard } from "@/hooks/useModalKeyboard";
-import { useCardImage } from "@/hooks/useCardImage";
+import { useCard } from "@/stores/useScryfallStore";
 import { CardImageThumbnail } from "@/components/game/CardImageThumbnail";
 import { MODAL_CARD_THUMBNAIL, MODAL_INPUT, MODAL_LIST_BUTTON } from "../game.styles";
 
@@ -14,7 +14,8 @@ interface ChooseCardNameModalProps {
 }
 
 export function ChooseCardNameModal({ validNames, cardName, onConfirm }: ChooseCardNameModalProps) {
-  const { data: imageUrl } = useCardImage(cardName ?? "");
+  const cardData = useCard({ name: cardName ?? "" });
+  const imageUrl = cardData?.uris.normal;
   const [filter, setFilter] = useState("");
   const [textInput, setTextInput] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);

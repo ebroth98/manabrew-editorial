@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Modal } from "../modals/Modal";
 import { Button } from "@/components/ui/button";
-import { useCardImage } from "@/hooks/useCardImage";
+import { useCard } from "@/stores/useScryfallStore";
 import { CardImageThumbnail } from "@/components/game/CardImageThumbnail";
 import { ManaSymbols } from "@/components/game/ManaSymbols";
 import { MODAL_CARD_IMAGE } from "../game.styles";
@@ -19,7 +19,8 @@ export function MultikickerModal({
   sourceCardName,
   onDecide,
 }: MultikickerModalProps) {
-  const { data: imageUrl } = useCardImage(sourceCardName ?? "");
+  const cardData = useCard({ name: sourceCardName ?? "" });
+  const imageUrl = cardData?.uris.normal;
   const [count, setCount] = useState(0);
 
   const [prevInputs, setPrevInputs] = useState({ cost, maxKicks });

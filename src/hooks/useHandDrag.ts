@@ -3,14 +3,14 @@ import type { Card } from "@/types/openmagic";
 
 interface UseHandDragOptions {
   battlefieldContainerRef: React.RefObject<HTMLDivElement | null>;
-  handContainerRef: React.RefObject<HTMLDivElement | null>;
+  handDropExclusionPx?: number;
   onCastSpell: (cardId: string) => void;
   dismissHover: () => void;
 }
 
 export function useHandDrag({
   battlefieldContainerRef,
-  handContainerRef,
+  handDropExclusionPx = 0,
   onCastSpell,
   dismissHover,
 }: UseHandDragOptions) {
@@ -52,16 +52,9 @@ export function useHandDrag({
           me.clientY >= rect.top &&
           me.clientY <= rect.bottom;
 
-        // Hand is inside battlefield container — exclude it so dropping
-        // back on the hand cancels instead of casting
-        if (over && handContainerRef.current) {
-          const handRect = handContainerRef.current.getBoundingClientRect();
-          const overHand =
-            me.clientX >= handRect.left &&
-            me.clientX <= handRect.right &&
-            me.clientY >= handRect.top &&
-            me.clientY <= handRect.bottom;
-          if (overHand) over = false;
+        if (over && handDropExclusionPx > 0) {
+          const overHandStrip = me.clientY >= rect.bottom - handDropExclusionPx;
+          if (overHandStrip) over = false;
         }
 
         isOverBattlefieldRef.current = over;

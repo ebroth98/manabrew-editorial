@@ -1,5 +1,5 @@
 import type { Card } from "@/types/openmagic";
-export { scryfallCardToPartial } from "@/lib/scryfall.utils";
+export { scryfallToOpenMagic } from "@/lib/scryfall.utils";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 

@@ -1,6 +1,7 @@
 import { Modal } from "./Modal";
 import { cn } from "@/lib/utils";
 import { useState } from "react";
+import { manaSymbolUrl, normalizeManaCode } from "@/api/scryfall";
 
 interface SpecifyManaComboModalProps {
   availableColors: string[];
@@ -19,10 +20,6 @@ const LETTER_INFO: Record<string, { label: string; bg: string }> = {
   G: { label: "Green", bg: "bg-mana-g" },
   C: { label: "Colorless", bg: "bg-mana-c" },
 };
-
-function manaSymbolUrl(symbol: string): string {
-  return `https://svgs.scryfall.io/card-symbols/${encodeURIComponent(symbol)}.svg`;
-}
 
 export function SpecifyManaComboModal({
   availableColors,
@@ -80,10 +77,11 @@ export function SpecifyManaComboModal({
       <div className="p-4 flex flex-col gap-2">
         {availableColors.map((color) => {
           const info = LETTER_INFO[color] ?? { label: color, bg: "bg-muted" };
+          const symbol = normalizeManaCode(color) ?? "C";
           const count = counts[color] ?? 0;
           return (
             <div key={color} className="flex items-center gap-3">
-              <img src={manaSymbolUrl(color)} alt={`{${color}}`} className="w-8 h-8" />
+              <img src={manaSymbolUrl(symbol)} alt={`{${symbol}}`} className="w-8 h-8" />
               <span
                 className={cn(
                   "text-sm font-medium w-16 px-2 py-0.5 rounded text-foreground",

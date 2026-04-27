@@ -1,10 +1,10 @@
 import { Container, Sprite, Texture, Graphics, Text, TextStyle } from "pixi.js";
 import type { Card } from "@/types/openmagic";
 import { CARD_W, CARD_H } from "@/components/game/game.constants";
-import { loadCardTexture } from "./textureCache";
 import type { Theme } from "@/hooks/useTheme";
 import { getTheme } from "@/hooks/useTheme";
 import { hexToNum } from "./colorUtils";
+import { useScryfallStore } from "@/stores/useScryfallStore";
 
 /**
  * Shared, mutable theme reference used by every `CardSprite` instance.
@@ -275,15 +275,12 @@ export class CardSprite extends Container {
   }
 
   private async loadImage(): Promise<void> {
-    const tex = await loadCardTexture(
-      this.card.name,
-      this.card.imageUrl,
-      this.card.isToken,
-      this.card.setCode,
-      this.card.cardNumber,
-      "normal",
-      this.card.isFaceDown,
-    );
+    const card = await useScryfallStore.getState().getCardTexture({
+      name: this.card.name,
+      setCode: this.card.setCode,
+      collectorNumber: this.card.cardNumber,
+    });
+    const tex = card.texture;
     if (this.destroyed) return;
     if (tex !== Texture.EMPTY) {
       this.imageSpr.texture = tex;

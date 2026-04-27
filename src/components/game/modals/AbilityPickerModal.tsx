@@ -1,6 +1,6 @@
 import { Modal } from "./Modal";
 import { TextWithMana } from "@/components/game/TextWithMana";
-import { useCardImage } from "@/hooks/useCardImage";
+import { useCard } from "@/stores/useScryfallStore";
 import { CardImageThumbnail } from "@/components/game/CardImageThumbnail";
 import { cn } from "@/lib/utils";
 import type { HandActionOption } from "@/stores/useGameUIStore";
@@ -19,7 +19,8 @@ export function AbilityPickerModal({
   onSelect,
   onCancel,
 }: AbilityPickerModalProps) {
-  const { data: imageUrl } = useCardImage(cardName);
+  const cardData = useCard({ name: cardName });
+  const imageUrl = cardData?.uris.normal;
   const hasCastOption = abilities.some((ability) => ability.kind === "cast");
 
   return (

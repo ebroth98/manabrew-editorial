@@ -3,9 +3,10 @@ import { Modal } from "@/components/game/modals/Modal";
 import { Loader2 } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useDeckStore } from "@/stores/useDeckStore";
-import { getCardByName, getCardPrints, getTokenByName } from "@/api/scryfall";
-import { useSetLookup } from "@/hooks/useCards";
+import { getCardPrints } from "@/api/scryfall";
+import { useSetLookup } from "@/stores/useScryfallStore";
 import type { ScryfallCard } from "@/types/scryfall";
+import { useScryfallStore } from "@/stores/useScryfallStore";
 
 interface PrintPickerModalProps {
   cardName: string | null;
@@ -18,7 +19,7 @@ export function PrintPickerModal({ cardName, onClose, onSelect, isToken }: Print
   const [prints, setPrints] = useState<ScryfallCard[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const { updatePrint } = useDeckStore();
+  const { currentDeck, updatePrint } = useDeckStore();
   const setLookup = useSetLookup();
 
   useEffect(() => {
@@ -33,26 +34,16 @@ export function PrintPickerModal({ cardName, onClose, onSelect, isToken }: Print
       setIsLoading(true);
       setError(null);
       try {
-        if (isToken) {
-          // Find one token, then fetch ALL its printings via prints_search_uri
-          const tokenCard = await getTokenByName(cardName!);
-          if (tokenCard?.prints_search_uri) {
-            const res = await getCardPrints(tokenCard.prints_search_uri);
-            if (mounted) setPrints(res.data || []);
-          } else if (tokenCard && mounted) {
-            setPrints([tokenCard]);
-          } else if (mounted) {
-            setPrints([]);
-          }
-        } else {
-          const baseCard = await getCardByName(cardName!);
-          if (baseCard.prints_search_uri) {
-            const res = await getCardPrints(baseCard.prints_search_uri);
-            if (mounted) setPrints(res.data || []);
-          } else if (mounted) {
-            setPrints([baseCard]);
-          }
-        }
+        const storedToken = isToken
+          ? currentDeck.tokens?.find((token) => token.name === cardName)
+          : undefined;
+        const tokenCard = await useScryfallStore.getState().getCard({
+          name: cardName!,
+          setCode: storedToken?.setCode,
+          collectorNumber: storedToken?.cardNumber,
+        });
+        const res = await getCardPrints(tokenCard.info.prints_search_uri);
+        if (mounted) setPrints(res.data || []);
       } catch {
         if (mounted) {
           setError("Failed to fetch printings.");
@@ -68,7 +59,7 @@ export function PrintPickerModal({ cardName, onClose, onSelect, isToken }: Print
     return () => {
       mounted = false;
     };
-  }, [cardName, isToken]);
+  }, [cardName, currentDeck.tokens, isToken]);
 
   if (!cardName) return null;
 
@@ -115,6 +106,7 @@ export function PrintPickerModal({ cardName, onClose, onSelect, isToken }: Print
                       if (onSelect) {
                         onSelect(p);
                       } else {
+                        useScryfallStore.getState().updatePrinting(p);
                         updatePrint(cardName, p);
                       }
                       onClose();

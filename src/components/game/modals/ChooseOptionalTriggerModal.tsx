@@ -2,7 +2,7 @@ import { Button } from "@/components/ui/button";
 import { Modal } from "./Modal";
 import { useEffect, useRef, useCallback } from "react";
 import { useModalKeyboard } from "@/hooks/useModalKeyboard";
-import { useCardImage } from "@/hooks/useCardImage";
+import { useCard } from "@/stores/useScryfallStore";
 import { CardImageThumbnail } from "@/components/game/CardImageThumbnail";
 import { Card } from "@/components/game/Card";
 import { MODAL_CARD_IMAGE } from "../game.styles";
@@ -36,7 +36,8 @@ export function ChooseOptionalTriggerModal({
   api,
   onConfirm,
 }: ChooseOptionalTriggerModalProps) {
-  const { data: imageUrl } = useCardImage(cardName ?? "");
+  const cardData = useCard({ name: cardName ?? "" });
+  const imageUrl = cardData?.uris.normal;
   const dialogRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {

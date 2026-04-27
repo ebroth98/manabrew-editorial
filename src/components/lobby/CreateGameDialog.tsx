@@ -1,6 +1,5 @@
 import { useState, useEffect } from "react";
 import { getDefaultGameRuntime } from "@/game";
-import type { PresetDeckInfo } from "@/platform";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
@@ -10,13 +9,11 @@ import type { CardIdentity } from "@/types/server";
 import { GAME_FORMATS, validateDeckSections, type GameFormat } from "@/lib/formats";
 import { FormatBadge } from "@/components/game/FormatBadge";
 import { DeckSelectionCard } from "./DeckSelectionCard";
-import {
-  resolveDeckCoverSource,
-  resolvePresetDeckCoverSource,
-} from "@/components/deck/deckCover.utils";
+import { resolveCoverCard } from "@/components/deck/deckCover.utils";
 import { cn } from "@/lib/utils";
 import { Search, Shuffle, Swords } from "lucide-react";
 import { getDeckFingerprint, serializeDeck } from "@/lib/decks";
+import type { Deck } from "@/types/openmagic";
 
 interface CreateGameDialogProps {
   open: boolean;
@@ -54,7 +51,7 @@ export function CreateGameDialog({
   const [selectedCommander, setSelectedCommander] = useState<string>(
     currentDeck.commanders?.[0]?.name ?? "",
   );
-  const [presetDecks, setPresetDecks] = useState<PresetDeckInfo[]>([]);
+  const [presetDecks, setPresetDecks] = useState<Deck[]>([]);
   const [playerCount, setPlayerCount] = useState(2);
   const [deckSearch, setDeckSearch] = useState("");
 
@@ -88,7 +85,7 @@ export function CreateGameDialog({
           labels: currentDeck.labels,
           deckList: serializeDeck(currentDeck),
           isPreset: false as const,
-          cover: resolveDeckCoverSource(currentDeck),
+          cover: resolveCoverCard(currentDeck),
           cards: [
             ...currentDeck.cards,
             ...currentDeck.sideboard,
@@ -111,7 +108,7 @@ export function CreateGameDialog({
       labels: s.deck.labels,
       deckList: serializeDeck(s.deck),
       isPreset: false as const,
-      cover: resolveDeckCoverSource(s.deck),
+      cover: resolveCoverCard(s.deck),
       cards: [
         ...s.deck.cards,
         ...s.deck.sideboard,
@@ -128,14 +125,14 @@ export function CreateGameDialog({
 
   // Preset deck entries
   const presetDeckEntries = presetDecks.map((deck) => ({
-    id: `preset__${deck.id}`,
-    name: deck.label,
-    desc: deck.desc,
+    id: `preset__${deck.id ?? deck.name}`,
+    name: deck.name,
+    desc: deck.description,
     color: deck.color,
-    deckList: [{ name: deck.id, setCode: "", section: "main" as const }],
+    deckList: serializeDeck(deck),
     isPreset: true as const,
-    cover: resolvePresetDeckCoverSource(deck.coverCardName),
-    cards: [],
+    cover: resolveCoverCard(deck),
+    cards: deck.cards,
     commanderName: undefined as string | undefined,
   }));
 
