@@ -127,6 +127,13 @@ export default function Game({ exitTo }: GameProps = {}) {
     enlistDecision,
     reorderLibraryDecision,
     assistDecision,
+    diceRolledAcknowledged,
+    firstPlayerRollAcknowledged,
+    rollToIgnoreDecision,
+    rollToSwapDecision,
+    rollToModifyDecision,
+    diceToRerollDecision,
+    rollSwapValueDecision,
     concede,
     endGame,
     restoreSnapshot,
@@ -173,6 +180,13 @@ export default function Game({ exitTo }: GameProps = {}) {
       enlistDecision: s.enlistDecision,
       reorderLibraryDecision: s.reorderLibraryDecision,
       assistDecision: s.assistDecision,
+      diceRolledAcknowledged: s.diceRolledAcknowledged,
+      firstPlayerRollAcknowledged: s.firstPlayerRollAcknowledged,
+      rollToIgnoreDecision: s.rollToIgnoreDecision,
+      rollToSwapDecision: s.rollToSwapDecision,
+      rollToModifyDecision: s.rollToModifyDecision,
+      diceToRerollDecision: s.diceToRerollDecision,
+      rollSwapValueDecision: s.rollSwapValueDecision,
       concede: s.concede,
       endGame: s.endGame,
       restoreSnapshot: s.restoreSnapshot,
@@ -1575,6 +1589,13 @@ export default function Game({ exitTo }: GameProps = {}) {
         onEnlistDecision={enlistDecision}
         onReorderLibraryDecision={reorderLibraryDecision}
         onAssistDecision={assistDecision}
+        onDiceRolledAcknowledged={diceRolledAcknowledged}
+        onRollToIgnoreDecision={rollToIgnoreDecision}
+        onRollToSwapDecision={rollToSwapDecision}
+        onRollToModifyDecision={rollToModifyDecision}
+        onDiceToRerollDecision={diceToRerollDecision}
+        onRollSwapValueDecision={rollSwapValueDecision}
+        onFirstPlayerRollAcknowledged={firstPlayerRollAcknowledged}
       />
 
       {playModePicker && (

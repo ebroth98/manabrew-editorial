@@ -291,9 +291,10 @@ impl GameLoop {
                     agents[player.index()].choose_sacrifice(player, valid, None)
                 }
                 mana::ManaPayCallback::ChooseColor(valid_colors) => {
-                    if !agents[player.index()].is_human() {
-                        let _ = agents[player.index()].choose_color(player, valid_colors);
-                    }
+                    // Always invoke the agent — humans go through their
+                    // interactive `ChooseColor` modal, AI returns a
+                    // default. The engine never branches on agent kind.
+                    let _ = agents[player.index()].choose_color(player, valid_colors);
                     None
                 }
                 mana::ManaPayCallback::ConfirmSelfSacrifice(source_id) => {

@@ -64,6 +64,13 @@ interface GameModalsProps {
   onEnlistDecision: (chosenAttackerIds: string[]) => void;
   onReorderLibraryDecision: (orderedCardIds: string[]) => void;
   onAssistDecision: (amountToPay: number) => void;
+  onDiceRolledAcknowledged: () => void;
+  onRollToIgnoreDecision: (roll: number | null) => void;
+  onRollToSwapDecision: (roll: number | null) => void;
+  onRollToModifyDecision: (roll: number | null) => void;
+  onDiceToRerollDecision: (rolls: number[]) => void;
+  onRollSwapValueDecision: (choice: "power" | "toughness" | null) => void;
+  onFirstPlayerRollAcknowledged: () => void;
 }
 
 export function GameModals({
@@ -113,6 +120,13 @@ export function GameModals({
   onEnlistDecision,
   onReorderLibraryDecision,
   onAssistDecision,
+  onDiceRolledAcknowledged,
+  onRollToIgnoreDecision,
+  onRollToSwapDecision,
+  onRollToModifyDecision,
+  onDiceToRerollDecision,
+  onRollSwapValueDecision,
+  onFirstPlayerRollAcknowledged,
 }: GameModalsProps) {
   return (
     <>
@@ -133,6 +147,13 @@ export function GameModals({
         onManaComboDecision={onManaComboDecision}
         onExploreDecision={onExploreDecision}
         onAssistDecision={onAssistDecision}
+        onDiceRolledAcknowledged={onDiceRolledAcknowledged}
+        onRollToIgnoreDecision={onRollToIgnoreDecision}
+        onRollToSwapDecision={onRollToSwapDecision}
+        onRollToModifyDecision={onRollToModifyDecision}
+        onDiceToRerollDecision={onDiceToRerollDecision}
+        onRollSwapValueDecision={onRollSwapValueDecision}
+        onFirstPlayerRollAcknowledged={onFirstPlayerRollAcknowledged}
       />
       <CostModals
         promptType={promptType}

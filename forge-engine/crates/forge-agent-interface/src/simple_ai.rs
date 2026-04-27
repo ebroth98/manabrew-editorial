@@ -281,6 +281,32 @@ pub fn choose_simple_ai_action(
             Some(PlayerAction::AssistDecision { amount_to_pay: 0 })
         }
         AgentPromptInner::StateUpdate { .. } | AgentPromptInner::GameOver { .. } => None,
+        // Display-only acknowledgements: the engine `await`s these so
+        // every transport must produce an ack — keeps the engine's
+        // broadcast loop polymorphic (no `if is_human` branching).
+        AgentPromptInner::DiceRolled { .. } => Some(PlayerAction::DiceRolledAcknowledged),
+        AgentPromptInner::FirstPlayerRoll { .. } => Some(PlayerAction::FirstPlayerRollAcknowledged),
+        AgentPromptInner::ChooseRollToIgnore { rolls, .. } => {
+            Some(PlayerAction::RollToIgnoreDecision {
+                roll: rolls.first().copied(),
+            })
+        }
+        AgentPromptInner::ChooseRollToSwap { rolls, .. } => {
+            Some(PlayerAction::RollToSwapDecision {
+                roll: rolls.first().copied(),
+            })
+        }
+        AgentPromptInner::ChooseRollToModify { rolls, .. } => {
+            Some(PlayerAction::RollToModifyDecision {
+                roll: rolls.first().copied(),
+            })
+        }
+        AgentPromptInner::ChooseDiceToReroll { .. } => {
+            Some(PlayerAction::DiceToRerollDecision { rolls: Vec::new() })
+        }
+        AgentPromptInner::ChooseRollSwapValue { .. } => Some(PlayerAction::RollSwapValueDecision {
+            choice: Some("power".to_string()),
+        }),
     }
 }
 

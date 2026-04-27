@@ -41,7 +41,10 @@ fn main() {
         }
     }
 
-    println!("Loading via load_from_directory({}) …", cardsfolder.display());
+    println!(
+        "Loading via load_from_directory({}) …",
+        cardsfolder.display()
+    );
     let t = Instant::now();
     let (db_fs, fs_result) = CardDatabase::load_from_directory(&cardsfolder);
     let fs_elapsed = t.elapsed();
@@ -50,7 +53,10 @@ fn main() {
         fs_result.loaded, fs_result.failed, fs_elapsed
     );
 
-    println!("Loading via load_from_archive({}) …", archive_path.display());
+    println!(
+        "Loading via load_from_archive({}) …",
+        archive_path.display()
+    );
     let t = Instant::now();
     let file = std::fs::File::open(&archive_path).expect("open archive");
     let mmap = unsafe { Mmap::map(&file).expect("mmap archive") };
@@ -156,10 +162,7 @@ fn main() {
     println!();
     if failures == 0 {
         println!("✓ all parity checks passed");
-        println!(
-            "  fs:      {:>7.0} ms",
-            fs_elapsed.as_secs_f64() * 1000.0
-        );
+        println!("  fs:      {:>7.0} ms", fs_elapsed.as_secs_f64() * 1000.0);
         println!(
             "  archive: {:>7.0} ms  ({:.1}× faster)",
             arch_elapsed.as_secs_f64() * 1000.0,

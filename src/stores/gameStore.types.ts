@@ -159,6 +159,30 @@ export interface AgentPrompt {
   reorderCardIds?: string[];
   /** helpPayAssist: max generic mana the assisting player can pay */
   maxGeneric?: number;
+
+  // ── Dice rolls ────────────────────────────────────────────────
+  /** diceRolled: number of sides on each rolled die */
+  sides?: number;
+  /** diceRolled: who rolled (player slot id, e.g. "player-0") */
+  playerId?: string;
+  /** diceRolled: pre-modifier values for each kept die */
+  naturalResults?: number[];
+  /** diceRolled: post-modifier values for each kept die */
+  finalResults?: number[];
+  /** diceRolled: dropped before modification (ignore-lowest, choose-to-ignore) */
+  ignoredRolls?: number[];
+  /** chooseRollToIgnore/Swap/Modify, chooseDiceToReroll: candidate values */
+  rolls?: number[];
+  /** chooseRollSwapValue: the rolled value being exchanged */
+  currentResult?: number;
+  /** chooseRollSwapValue: current power of the target creature */
+  power?: number;
+  /** chooseRollSwapValue: current toughness of the target creature */
+  toughness?: number;
+  /** firstPlayerRoll: per-player roll-off entries */
+  firstPlayerRolls?: { playerId: string; playerName: string; value: number }[];
+  /** firstPlayerRoll: id of the player who won the roll-off */
+  winnerPlayerId?: string;
 }
 
 export interface GameConfig {
@@ -264,6 +288,13 @@ export interface GameState {
   enlistDecision: (chosenAttackerIds: string[]) => void;
   reorderLibraryDecision: (orderedCardIds: string[]) => void;
   assistDecision: (amountToPay: number) => void;
+  diceRolledAcknowledged: () => void;
+  firstPlayerRollAcknowledged: () => void;
+  rollToIgnoreDecision: (roll: number | null) => void;
+  rollToSwapDecision: (roll: number | null) => void;
+  rollToModifyDecision: (roll: number | null) => void;
+  diceToRerollDecision: (rolls: number[]) => void;
+  rollSwapValueDecision: (choice: "power" | "toughness" | null) => void;
   concede: () => void;
   endGame: () => Promise<void>;
   setMultiplayerState: (

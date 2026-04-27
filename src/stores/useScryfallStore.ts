@@ -228,13 +228,16 @@ export const useCard = (
   const name = c?.name;
   const setCode = c?.setCode;
   const cardNumber = c?.cardNumber;
-  const key = name ? scryfallLookupKey({ name, setCode, collectorNumber: cardNumber }) : null;
+  // Some prompts have no source card (e.g. keyword-driven dice modifiers).
+  // Treat that as a no-op rather than throwing inside `scryfallLookupKey`.
+  const hasLookup = Boolean(name) || Boolean(setCode && cardNumber);
+  const key = hasLookup ? scryfallLookupKey({ name, setCode, collectorNumber: cardNumber }) : null;
   const cached = useScryfallStore((s) => (key ? (s.cards[key]?.card ?? null) : null));
 
   useEffect(() => {
-    if (!name || cached) return;
+    if (!hasLookup || cached) return;
     void getCard({ name, setCode, collectorNumber: cardNumber });
-  }, [getCard, name, setCode, cardNumber, cached, key]);
+  }, [getCard, name, setCode, cardNumber, cached, key, hasLookup]);
   return cached;
 };
 export const useCardTexture = (

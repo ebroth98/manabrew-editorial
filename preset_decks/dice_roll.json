@@ -1,0 +1,20 @@
+{
+  "label": "Dice Roll Test",
+  "desc": "Exercises every dice prompt: d6/d20/d12 rolls, modify, swap, reroll",
+  "color": "text-amber-400",
+  "opponent": "green_stompy",
+  "ai_eligible": false,
+  "order": 100,
+  "cards": [
+    { "name": "Mountain", "count": 6, "set": "akh" },
+    { "name": "Swamp", "count": 5, "set": "akh" },
+    { "name": "Forest", "count": 5, "set": "akh" },
+    { "name": "Goblin Tutor", "count": 3 },
+    { "name": "Goblin Morningstar", "count": 3 },
+    { "name": "Inhumaniac", "count": 3 },
+    { "name": "Xenosquirrels", "count": 3 },
+    { "name": "Sylvan Shepherd", "count": 3 },
+    { "name": "Centaur of Attention", "count": 2 },
+    { "name": "Reckless Endeavor", "count": 1 }
+  ]
+}

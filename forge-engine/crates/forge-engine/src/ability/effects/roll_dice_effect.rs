@@ -1,6 +1,7 @@
 use super::{resolve_defined_players, resolve_numeric_svar, EffectContext};
 use std::collections::{HashMap, HashSet};
 
+use crate::agent::notification::GameNotification;
 use crate::agent::GameLogEvent;
 use crate::cost::{parse_cost, Cost, CostPart};
 use crate::event::RunParams;
@@ -396,6 +397,20 @@ fn roll_for_player(
             GameLogEvent::rule(format!("Ignored rolls: {ignored_text}")).with_player(player),
         );
     }
+    crate::agent::game_log::broadcast_notification(
+        ctx.agents,
+        GameNotification::DiceRolled {
+            player,
+            sides,
+            natural_results: kept_natural_rolls.clone(),
+            final_results: kept_rolls.clone(),
+            ignored_rolls: ignored_rolls.clone(),
+            source_card_name: Some(source_name.clone()),
+        },
+    );
+    for agent in ctx.agents.iter_mut() {
+        agent.await_display_ack();
+    }
 
     if sa.param_is_true("SubsForEach") {
         if let Some(result_str) = sa.ir.result_sub_abilities_text.as_deref() {
@@ -560,6 +575,21 @@ pub fn roll_to_visit_attractions(
             agents,
             GameLogEvent::rule(format!("Ignored rolls: {ignored_text}")).with_player(player),
         );
+    }
+    let natural_results: Vec<i32> = results_list.iter().map(|r| r.natural_value).collect();
+    crate::agent::game_log::broadcast_notification(
+        agents,
+        GameNotification::DiceRolled {
+            player,
+            sides: 6,
+            natural_results,
+            final_results: kept_rolls.clone(),
+            ignored_rolls: ignored_rolls.clone(),
+            source_card_name: Some("Attraction roll".to_string()),
+        },
+    );
+    for agent in agents.iter_mut() {
+        agent.await_display_ack();
     }
 
     visit_attractions(game, trigger_handler, player, final_result);
@@ -945,9 +975,10 @@ fn pay_roll_cost(
                             agents[player.index()].choose_sacrifice(player, valid, None)
                         }
                         mana::ManaPayCallback::ChooseColor(valid_colors) => {
-                            if !agents[player.index()].is_human() {
-                                let _ = agents[player.index()].choose_color(player, valid_colors);
-                            }
+                            // Always invoke the agent — humans see an
+                            // interactive `ChooseColor` modal, AI
+                            // returns a default. No engine-side branch.
+                            let _ = agents[player.index()].choose_color(player, valid_colors);
                             None
                         }
                         mana::ManaPayCallback::ConfirmSelfSacrifice(sacrifice_id) => {

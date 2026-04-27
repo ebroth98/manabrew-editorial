@@ -29,11 +29,10 @@ const HEADER_BYTES: u32 = 8;
 /// Default buffer size: 256KB should handle even complex game views.
 pub const DEFAULT_BUFFER_SIZE: u32 = 256 * 1024;
 
-/// WASM transport that blocks on Atomics.wait() for human player responses.
+/// WASM transport that blocks on Atomics.wait() for player responses.
 pub struct WasmTransport {
     signal: Int32Array,
     data: Uint8Array,
-    is_human: bool,
 }
 
 impl WasmTransport {
@@ -41,7 +40,7 @@ impl WasmTransport {
     ///
     /// The SAB must be at least `HEADER_BYTES` + max prompt/response JSON size.
     /// The same SAB must be shared with the main thread for communication.
-    pub fn new(sab: &SharedArrayBuffer, is_human: bool) -> Self {
+    pub fn new(sab: &SharedArrayBuffer) -> Self {
         let signal = Int32Array::new_with_byte_offset_and_length(
             &JsValue::from(sab.clone()),
             0,
@@ -52,11 +51,7 @@ impl WasmTransport {
             HEADER_BYTES,
             sab.byte_length() - HEADER_BYTES,
         );
-        Self {
-            signal,
-            data,
-            is_human,
-        }
+        Self { signal, data }
     }
 
     /// Write JSON bytes into the data region and set the length.
@@ -122,10 +117,6 @@ impl AgentTransport for WasmTransport {
     fn send_snapshot(&self, _snapshot: GameSnapshotEventDto) {
         // TODO: Forward snapshots to main thread
     }
-
-    fn is_human(&self) -> bool {
-        self.is_human
-    }
 }
 
 /// AI transport that auto-responds without blocking.
@@ -149,10 +140,6 @@ impl AgentTransport for WasmAiTransport {
 
     fn send_log(&self, _entry: GameLogEntryDto) {}
     fn send_snapshot(&self, _snapshot: GameSnapshotEventDto) {}
-
-    fn is_human(&self) -> bool {
-        false
-    }
 }
 
 use std::cell::RefCell;
@@ -435,8 +422,27 @@ fn ai_respond(inner: &forge_agent_interface::prompt::AgentPromptInner) -> Player
         },
         AgentPromptInner::HelpPayAssist { .. } => PlayerAction::AssistDecision { amount_to_pay: 0 },
         AgentPromptInner::StateUpdate { .. } | AgentPromptInner::GameOver { .. } => {
-            // No action needed for display-only prompts
+            // No action needed for display-only prompts the engine doesn't await.
             PlayerAction::Pass { until_phase: None }
         }
+        // Display-only acknowledgements: the engine awaits these via
+        // `await_display_ack`, so the transport must produce a real ack.
+        AgentPromptInner::DiceRolled { .. } => PlayerAction::DiceRolledAcknowledged,
+        AgentPromptInner::FirstPlayerRoll { .. } => PlayerAction::FirstPlayerRollAcknowledged,
+        AgentPromptInner::ChooseRollToIgnore { rolls, .. } => PlayerAction::RollToIgnoreDecision {
+            roll: rolls.first().copied(),
+        },
+        AgentPromptInner::ChooseRollToSwap { rolls, .. } => PlayerAction::RollToSwapDecision {
+            roll: rolls.first().copied(),
+        },
+        AgentPromptInner::ChooseRollToModify { rolls, .. } => PlayerAction::RollToModifyDecision {
+            roll: rolls.first().copied(),
+        },
+        AgentPromptInner::ChooseDiceToReroll { .. } => {
+            PlayerAction::DiceToRerollDecision { rolls: Vec::new() }
+        }
+        AgentPromptInner::ChooseRollSwapValue { .. } => PlayerAction::RollSwapValueDecision {
+            choice: Some("power".to_string()),
+        },
     }
 }

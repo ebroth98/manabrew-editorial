@@ -4,8 +4,8 @@ use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
 
 use super::{
-    auto_tap_lands_trace, auto_tap_lands_trace_with_callbacks, auto_tap_lands_with_chooser,
-    AutoTapChoice, ManaPayCallbackFn, ManaPaymentContext, ManaPool, SacrificeChooser,
+    auto_tap_lands_trace, auto_tap_lands_with_chooser, AutoTapChoice, ManaPayCallbackFn,
+    ManaPaymentContext, ManaPool, SacrificeChooser,
 };
 
 pub struct AutoPayResult {

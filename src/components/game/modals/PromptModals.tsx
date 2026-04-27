@@ -12,6 +12,15 @@ import {
   SpecifyManaComboModal,
   PromptModalController,
 } from "@/components/game/modals";
+import {
+  DiceRollFeedback,
+  FirstPlayerRollFeedback,
+  ChooseRollToIgnoreModal,
+  ChooseRollToSwapModal,
+  ChooseRollToModifyModal,
+  ChooseDiceToRerollModal,
+  ChooseRollSwapValueModal,
+} from "@/components/game/dice";
 import type { AgentPrompt } from "@/stores/useGameStore";
 import type { PromptType } from "@/types/promptType";
 import { PromptType as PT } from "@/types/promptType";
@@ -34,6 +43,14 @@ interface PromptModalsProps {
   onManaComboDecision: (chosenColors: string[]) => void;
   onExploreDecision: (putInGraveyard: boolean) => void;
   onAssistDecision: (amountToPay: number) => void;
+  // Dice rolls
+  onDiceRolledAcknowledged: () => void;
+  onRollToIgnoreDecision: (roll: number | null) => void;
+  onRollToSwapDecision: (roll: number | null) => void;
+  onRollToModifyDecision: (roll: number | null) => void;
+  onDiceToRerollDecision: (rolls: number[]) => void;
+  onRollSwapValueDecision: (choice: "power" | "toughness" | null) => void;
+  onFirstPlayerRollAcknowledged: () => void;
 }
 
 export function PromptModals({
@@ -53,6 +70,13 @@ export function PromptModals({
   onManaComboDecision,
   onExploreDecision,
   onAssistDecision,
+  onDiceRolledAcknowledged,
+  onRollToIgnoreDecision,
+  onRollToSwapDecision,
+  onRollToModifyDecision,
+  onDiceToRerollDecision,
+  onRollSwapValueDecision,
+  onFirstPlayerRollAcknowledged,
 }: PromptModalsProps) {
   const isActivePromptModal =
     (promptType === PT.RevealCards &&
@@ -80,7 +104,22 @@ export function PromptModals({
       currentPrompt?.availableColors != null &&
       currentPrompt?.amount != null) ||
     (promptType === PT.ExploreDecision && currentPrompt?.revealedCardName != null) ||
-    (promptType === PT.HelpPayAssist && currentPrompt?.maxGeneric != null);
+    (promptType === PT.HelpPayAssist && currentPrompt?.maxGeneric != null) ||
+    (promptType === PT.FirstPlayerRoll &&
+      currentPrompt?.sides != null &&
+      currentPrompt?.firstPlayerRolls != null &&
+      currentPrompt?.winnerPlayerId != null) ||
+    (promptType === PT.DiceRolled &&
+      currentPrompt?.sides != null &&
+      currentPrompt?.finalResults != null) ||
+    (promptType === PT.ChooseRollToIgnore && currentPrompt?.rolls != null) ||
+    (promptType === PT.ChooseRollToSwap && currentPrompt?.rolls != null) ||
+    (promptType === PT.ChooseRollToModify && currentPrompt?.rolls != null) ||
+    (promptType === PT.ChooseDiceToReroll && currentPrompt?.rolls != null) ||
+    (promptType === PT.ChooseRollSwapValue &&
+      currentPrompt?.currentResult != null &&
+      currentPrompt?.power != null &&
+      currentPrompt?.toughness != null);
 
   return (
     <PromptModalController isActive={isActivePromptModal} promptStateKey={currentPrompt}>
@@ -226,6 +265,93 @@ export function PromptModals({
           onConfirm={(n) => onAssistDecision(n ?? 0)}
         />
       )}
+
+      {promptType === PT.FirstPlayerRoll &&
+        currentPrompt?.sides != null &&
+        currentPrompt?.firstPlayerRolls != null &&
+        currentPrompt?.winnerPlayerId != null && (
+          <FirstPlayerRollFeedback
+            sides={currentPrompt.sides}
+            rolls={currentPrompt.firstPlayerRolls}
+            winnerPlayerId={currentPrompt.winnerPlayerId}
+            players={
+              currentPrompt.gameView?.players?.map((p) => ({
+                id: p.id,
+                isHuman: p.isHuman,
+              })) ?? []
+            }
+            onAcknowledge={onFirstPlayerRollAcknowledged}
+          />
+        )}
+
+      {promptType === PT.DiceRolled &&
+        currentPrompt?.sides != null &&
+        currentPrompt?.finalResults != null && (
+          <DiceRollFeedback
+            sides={currentPrompt.sides}
+            naturalResults={currentPrompt.naturalResults ?? currentPrompt.finalResults}
+            finalResults={currentPrompt.finalResults}
+            ignoredRolls={currentPrompt.ignoredRolls}
+            playerId={currentPrompt.playerId}
+            players={
+              currentPrompt.gameView?.players?.map((p) => ({
+                id: p.id,
+                isHuman: p.isHuman,
+              })) ?? []
+            }
+            sourceCardName={currentPrompt.sourceCardName}
+            onAcknowledge={onDiceRolledAcknowledged}
+          />
+        )}
+
+      {promptType === PT.ChooseRollToIgnore && currentPrompt?.rolls != null && (
+        <ChooseRollToIgnoreModal
+          rolls={currentPrompt.rolls}
+          sides={currentPrompt.sides}
+          sourceCardName={currentPrompt.sourceCardName}
+          onConfirm={onRollToIgnoreDecision}
+        />
+      )}
+
+      {promptType === PT.ChooseRollToSwap && currentPrompt?.rolls != null && (
+        <ChooseRollToSwapModal
+          rolls={currentPrompt.rolls}
+          sides={currentPrompt.sides}
+          sourceCardName={currentPrompt.sourceCardName}
+          onConfirm={onRollToSwapDecision}
+        />
+      )}
+
+      {promptType === PT.ChooseRollToModify && currentPrompt?.rolls != null && (
+        <ChooseRollToModifyModal
+          rolls={currentPrompt.rolls}
+          sides={currentPrompt.sides}
+          sourceCardName={currentPrompt.sourceCardName}
+          onConfirm={onRollToModifyDecision}
+        />
+      )}
+
+      {promptType === PT.ChooseDiceToReroll && currentPrompt?.rolls != null && (
+        <ChooseDiceToRerollModal
+          rolls={currentPrompt.rolls}
+          sides={currentPrompt.sides}
+          sourceCardName={currentPrompt.sourceCardName}
+          onConfirm={onDiceToRerollDecision}
+        />
+      )}
+
+      {promptType === PT.ChooseRollSwapValue &&
+        currentPrompt?.currentResult != null &&
+        currentPrompt?.power != null &&
+        currentPrompt?.toughness != null && (
+          <ChooseRollSwapValueModal
+            currentResult={currentPrompt.currentResult}
+            power={currentPrompt.power}
+            toughness={currentPrompt.toughness}
+            sourceCardName={currentPrompt.sourceCardName}
+            onConfirm={onRollSwapValueDecision}
+          />
+        )}
     </PromptModalController>
   );
 }

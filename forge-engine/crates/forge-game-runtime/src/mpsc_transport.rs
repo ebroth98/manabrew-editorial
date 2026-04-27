@@ -120,8 +120,4 @@ impl AgentTransport for MpscTransport {
             let _ = tx.send(snapshot);
         }
     }
-
-    fn is_human(&self) -> bool {
-        !matches!(self.prompt_sink, PromptSink::Ai(_))
-    }
 }

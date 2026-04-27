@@ -127,6 +127,7 @@
   --animate-card-stack-flash-in: card-stack-flash-in 560ms cubic-bezier(0.18, 0.72, 0.25, 1) both;
   --animate-player-turn-flash: player-turn-flash var(--flash-duration, 1000ms) ease-out forwards;
   --animate-player-targetable-pulse: player-targetable-pulse 1.5s ease-in-out infinite;
+  --animate-dice-roll: dice-roll 2s cubic-bezier(0.18, 0.72, 0.25, 1) both;
 
   @keyframes accordion-down {
     from {
@@ -255,6 +256,38 @@
     }
     100% {
       background-position: 0% 50%;
+    }
+  }
+
+  /*
+   * Dice roll animation. Per-die randomization (rotation amount, fall delay)
+   * is applied via inline CSS variables — see `DiceRollAnimation.tsx`.
+   * Phases: spawn+tumble → settle pop → bounce decay → dwell.
+   */
+  @keyframes dice-roll {
+    0% {
+      opacity: 0;
+      transform: translateY(-80px) rotate(0deg) scale(0.8);
+    }
+    35% {
+      opacity: 1;
+      transform: translateY(0) rotate(var(--dice-spin, 540deg)) scale(1);
+    }
+    50% {
+      transform: translateY(0) rotate(var(--dice-spin, 540deg)) scale(1.12);
+    }
+    62% {
+      transform: translateY(-6px) rotate(var(--dice-spin, 540deg)) scale(1);
+    }
+    74% {
+      transform: translateY(0) rotate(var(--dice-spin, 540deg)) scale(1);
+    }
+    85% {
+      transform: translateY(-2px) rotate(var(--dice-spin, 540deg)) scale(1);
+    }
+    100% {
+      opacity: 1;
+      transform: translateY(0) rotate(var(--dice-spin, 540deg)) scale(1);
     }
   }
 }

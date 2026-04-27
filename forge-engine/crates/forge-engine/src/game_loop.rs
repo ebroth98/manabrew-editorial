@@ -370,13 +370,16 @@ impl GameLoop {
             .collect()
     }
 
-    /// Set up the game: shuffle libraries, draw opening hands, run mulligans.
+    /// Set up the game: roll for first player, shuffle libraries, draw
+    /// opening hands, run mulligans.
     pub fn setup(
         &mut self,
         game: &mut GameState,
         agents: &mut [Box<dyn PlayerAgent>],
         rng: &mut impl rand::Rng,
     ) {
+        self.roll_for_first_player(game, agents, rng);
+
         for &pid in &game.player_order.clone() {
             game.shuffle_library(pid, rng);
             game.draw_cards(pid, 7);
@@ -391,6 +394,89 @@ impl GameLoop {
             &self.mana_pools,
             &self.game_log,
         );
+    }
+
+    /// Each player rolls a d20; the highest roller goes first. Ties are
+    /// broken by rerolling among the tied players (resolved internally —
+    /// only the final round is surfaced to the UI).
+    ///
+    /// Emits a single `FirstPlayerRoll` notification so the frontend can
+    /// animate every player's die side-by-side. Mutates
+    /// `game.turn.active_player` and `priority_player` to the winner.
+    pub fn roll_for_first_player(
+        &mut self,
+        game: &mut GameState,
+        agents: &mut [Box<dyn PlayerAgent>],
+        rng: &mut impl rand::Rng,
+    ) {
+        const SIDES: i32 = 20;
+        let players: Vec<PlayerId> = game.player_order.clone();
+        if players.len() < 2 {
+            return;
+        }
+
+        // Run the tiebreak loop silently; only the final, decisive round
+        // is broadcast to the UI.
+        let mut contenders: Vec<PlayerId> = players.clone();
+        let (final_rolls, winner) = loop {
+            let rolls: Vec<(PlayerId, i32)> = contenders
+                .iter()
+                .map(|&pid| (pid, rng.gen_range(1..=SIDES)))
+                .collect();
+
+            for (pid, value) in &rolls {
+                let player_name = game.player(*pid).name.clone();
+                self.game_log.log(
+                    GameLogEntryType::Info,
+                    0,
+                    format!("{player_name} rolls a {value} (d{SIDES})"),
+                );
+            }
+
+            let highest = rolls.iter().map(|(_, v)| *v).max().unwrap_or(0);
+            let top: Vec<PlayerId> = rolls
+                .iter()
+                .filter(|(_, v)| *v == highest)
+                .map(|(p, _)| *p)
+                .collect();
+            if top.len() == 1 {
+                break (rolls, top[0]);
+            }
+            self.game_log.log(
+                GameLogEntryType::Info,
+                0,
+                "Tie — rerolling among tied players".to_string(),
+            );
+            contenders = top;
+        };
+
+        let winner_name = game.player(winner).name.clone();
+        self.game_log.log(
+            GameLogEntryType::Info,
+            0,
+            format!("{winner_name} goes first"),
+        );
+
+        for agent in agents.iter_mut() {
+            agent.snapshot_state(game, &self.mana_pools);
+        }
+        crate::agent::game_log::broadcast_notification(
+            agents,
+            crate::agent::notification::GameNotification::FirstPlayerRoll {
+                sides: SIDES,
+                rolls: final_rolls,
+                winner,
+            },
+        );
+        // Wait for every human-driven transport to finish its animation
+        // (in parallel — the prompt was already dispatched to all of
+        // them). AI transports skip this no-op.
+        for agent in agents.iter_mut() {
+            agent.await_display_ack();
+        }
+
+        game.turn.active_player = winner;
+        game.turn.priority_player = winner;
     }
 
     /// Run generic "opening hand" actions before the game begins.

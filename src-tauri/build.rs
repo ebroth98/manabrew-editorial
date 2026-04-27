@@ -59,7 +59,10 @@ fn needs_rebuild(cardsfolder: &Path, archive: &Path) -> bool {
 
 fn latest_mtime(dir: &Path) -> Option<SystemTime> {
     let mut latest: Option<SystemTime> = None;
-    for entry in walkdir::WalkDir::new(dir).into_iter().filter_map(|e| e.ok()) {
+    for entry in walkdir::WalkDir::new(dir)
+        .into_iter()
+        .filter_map(|e| e.ok())
+    {
         if !entry.file_type().is_file() {
             continue;
         }

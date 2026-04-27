@@ -49,6 +49,13 @@ export const HANDLED_PROMPT_TYPES = new Set<PromptType>([
   PromptType.ReorderLibrary,
   PromptType.ExploreDecision,
   PromptType.HelpPayAssist,
+  PromptType.FirstPlayerRoll,
+  PromptType.DiceRolled,
+  PromptType.ChooseRollToIgnore,
+  PromptType.ChooseRollToSwap,
+  PromptType.ChooseRollToModify,
+  PromptType.ChooseDiceToReroll,
+  PromptType.ChooseRollSwapValue,
 ]);
 
 function normalizeGameView(nextView: GameView, currentView: GameView | null): GameView {

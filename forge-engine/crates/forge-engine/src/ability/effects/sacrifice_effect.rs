@@ -401,6 +401,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
         }
     }
 
-    drop(record_sac);
+    // `record_sac` is unused past this point; NLL releases its &mut on
+    // `by_controller` so the next call can take a shared reference.
     crate::game_loop::fire_sacrificed_once_for_batch(ctx.game, ctx.trigger_handler, &by_controller);
 }

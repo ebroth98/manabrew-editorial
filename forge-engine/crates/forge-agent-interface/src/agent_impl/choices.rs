@@ -107,9 +107,13 @@ pub(super) fn mulligan_decision_recv<T: AgentTransport>(
     _hand: &[CardId],
     _mulligan_count: u32,
 ) -> bool {
+    // The engine sends exactly one Mulligan prompt before this recv;
+    // any other action is a contract violation. Concede short-circuits
+    // so a torn-down session exits cleanly.
     match agent.recv_action() {
         PlayerAction::MulliganDecision { keep } => keep,
-        _ => true,
+        PlayerAction::Concede => true,
+        other => panic!("mulligan_decision_recv expected MulliganDecision, got {other:?}"),
     }
 }
 
@@ -675,29 +679,62 @@ pub(super) fn choose_counter_type<T: AgentTransport>(
 
 pub(super) fn choose_roll_to_ignore<T: AgentTransport>(
     agent: &mut PromptAgent<T>,
-    player: PlayerId,
+    _player: PlayerId,
     rolls: &[i32],
     card_name: Option<&str>,
 ) -> Option<i32> {
-    choose_number_from_list(agent, player, rolls, "Choose a roll to ignore", card_name)
+    if rolls.is_empty() {
+        return None;
+    }
+    agent.send_prompt(AgentPromptInner::ChooseRollToIgnore {
+        game_view: agent.view(),
+        rolls: rolls.to_vec(),
+        source_card_name: card_name.map(String::from),
+    });
+    match agent.recv_action() {
+        PlayerAction::RollToIgnoreDecision { roll } => roll.filter(|r| rolls.contains(r)),
+        _ => rolls.first().copied(),
+    }
 }
 
 pub(super) fn choose_roll_to_swap<T: AgentTransport>(
     agent: &mut PromptAgent<T>,
-    player: PlayerId,
+    _player: PlayerId,
     rolls: &[i32],
     card_name: Option<&str>,
 ) -> Option<i32> {
-    choose_number_from_list(agent, player, rolls, "Choose a roll to exchange", card_name)
+    if rolls.is_empty() {
+        return None;
+    }
+    agent.send_prompt(AgentPromptInner::ChooseRollToSwap {
+        game_view: agent.view(),
+        rolls: rolls.to_vec(),
+        source_card_name: card_name.map(String::from),
+    });
+    match agent.recv_action() {
+        PlayerAction::RollToSwapDecision { roll } => roll.filter(|r| rolls.contains(r)),
+        _ => rolls.first().copied(),
+    }
 }
 
 pub(super) fn choose_roll_to_modify<T: AgentTransport>(
     agent: &mut PromptAgent<T>,
-    player: PlayerId,
+    _player: PlayerId,
     rolls: &[i32],
     card_name: Option<&str>,
 ) -> Option<i32> {
-    choose_number_from_list(agent, player, rolls, "Choose a roll to modify", card_name)
+    if rolls.is_empty() {
+        return None;
+    }
+    agent.send_prompt(AgentPromptInner::ChooseRollToModify {
+        game_view: agent.view(),
+        rolls: rolls.to_vec(),
+        source_card_name: card_name.map(String::from),
+    });
+    match agent.recv_action() {
+        PlayerAction::RollToModifyDecision { roll } => roll.filter(|r| rolls.contains(r)),
+        _ => rolls.first().copied(),
+    }
 }
 
 pub(super) fn choose_dice_to_reroll<T: AgentTransport>(
@@ -709,23 +746,15 @@ pub(super) fn choose_dice_to_reroll<T: AgentTransport>(
     if rolls.is_empty() {
         return Vec::new();
     }
-    let options: Vec<String> = rolls
-        .iter()
-        .enumerate()
-        .map(|(index, roll)| format!("Die {}: {}", index + 1, roll))
-        .collect();
-    agent.send_prompt(AgentPromptInner::ChooseMode {
+    agent.send_prompt(AgentPromptInner::ChooseDiceToReroll {
         game_view: agent.view(),
-        options,
-        min_choices: 0,
-        max_choices: rolls.len(),
+        rolls: rolls.to_vec(),
         source_card_name: card_name.map(String::from),
     });
     match agent.recv_action() {
-        PlayerAction::ModeDecision { chosen_indices } => chosen_indices
-            .into_iter()
-            .filter_map(|index| rolls.get(index).copied())
-            .collect(),
+        PlayerAction::DiceToRerollDecision { rolls: chosen } => {
+            chosen.into_iter().filter(|r| rolls.contains(r)).collect()
+        }
         _ => Vec::new(),
     }
 }
@@ -738,22 +767,17 @@ pub(super) fn choose_roll_swap_value<T: AgentTransport>(
     toughness: i32,
     card_name: Option<&str>,
 ) -> Option<RollSwapChoice> {
-    agent.send_prompt(AgentPromptInner::ChooseMode {
+    agent.send_prompt(AgentPromptInner::ChooseRollSwapValue {
         game_view: agent.view(),
-        options: vec![
-            format!("Power ({power})"),
-            format!("Toughness ({toughness})"),
-        ],
-        min_choices: 1,
-        max_choices: 1,
-        source_card_name: card_name
-            .map(String::from)
-            .or_else(|| Some(format!("Exchange roll {current_result}"))),
+        current_result,
+        power,
+        toughness,
+        source_card_name: card_name.map(String::from),
     });
     match agent.recv_action() {
-        PlayerAction::ModeDecision { chosen_indices } => match chosen_indices.first().copied() {
-            Some(1) => Some(RollSwapChoice::Toughness),
-            Some(0) => Some(RollSwapChoice::Power),
+        PlayerAction::RollSwapValueDecision { choice } => match choice.as_deref() {
+            Some("toughness") => Some(RollSwapChoice::Toughness),
+            Some("power") => Some(RollSwapChoice::Power),
             _ => None,
         },
         _ => Some(RollSwapChoice::Power),

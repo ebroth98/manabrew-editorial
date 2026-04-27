@@ -283,6 +283,18 @@ export const useGameStore = create<GameState>()(
         localIsHost,
         startingLife,
       ) => {
+        // Guard against re-entry — a second start while one is already in
+        // flight would tear down the first session's response channels in
+        // the engine (game_manager.rs sees a takeover and drops the txs),
+        // causing every recv_action in game 1 to return Concede and any
+        // user clicks made between the two starts to queue in game 2's
+        // channel where they'll be misrouted by `await_display_ack`.
+        if (get().isGameActive) {
+          console.warn(
+            "[store] startMultiplayerGame called while a game is already active — ignoring duplicate.",
+          );
+          return;
+        }
         try {
           set({
             isGameActive: true,
@@ -327,6 +339,20 @@ export const useGameStore = create<GameState>()(
       },
 
       respond: async (action) => {
+        // Single-prompt invariant: the engine sends exactly one prompt
+        // at a time per agent and expects exactly one response. If a
+        // response is already in flight, drop the duplicate — the modal
+        // stays mounted briefly between ack send and the next prompt's
+        // arrival (especially with multiplayer relay latency), so a
+        // rapid second click would otherwise queue a stale action that
+        // gets misrouted by the next recv on the engine side.
+        //
+        // Concede is the one exception: it must always go through to
+        // tear down the session even mid-prompt.
+        if (get().isWaitingForResponse && action.type !== "concede") {
+          console.warn(`[store] respond(${action.type}) ignored — already waiting for a response`);
+          return;
+        }
         try {
           // Only explicit player actions (not passes) cancel auto-pass.
           if (action.type !== "pass") {
@@ -527,6 +553,34 @@ export const useGameStore = create<GameState>()(
 
       assistDecision: (amountToPay) => {
         get().respond({ type: "assistDecision", amountToPay });
+      },
+
+      diceRolledAcknowledged: () => {
+        get().respond({ type: "diceRolledAcknowledged" });
+      },
+
+      firstPlayerRollAcknowledged: () => {
+        get().respond({ type: "firstPlayerRollAcknowledged" });
+      },
+
+      rollToIgnoreDecision: (roll) => {
+        get().respond({ type: "rollToIgnoreDecision", roll });
+      },
+
+      rollToSwapDecision: (roll) => {
+        get().respond({ type: "rollToSwapDecision", roll });
+      },
+
+      rollToModifyDecision: (roll) => {
+        get().respond({ type: "rollToModifyDecision", roll });
+      },
+
+      diceToRerollDecision: (rolls) => {
+        get().respond({ type: "diceToRerollDecision", rolls });
+      },
+
+      rollSwapValueDecision: (choice) => {
+        get().respond({ type: "rollSwapValueDecision", choice });
       },
 
       concede: () => {

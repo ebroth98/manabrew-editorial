@@ -981,14 +981,17 @@ pub trait PlayerAgent {
         ManaCostAction::Cancel
     }
 
-    /// Returns true if this agent represents a human player (interactive UI).
-    /// Human players get interactive mana payment instead of auto-tap.
-    /// DEPRECATED: Use `pays_right_after_decision()` instead. This method exists
-    /// only for backward compatibility during the refactor to the visitor/decision
-    /// pattern (CostPayment). New code should not branch on `is_human()`.
-    fn is_human(&self) -> bool {
-        false
-    }
+    /// Block until this agent acknowledges a display-only prompt that
+    /// requires UI dwell time (e.g. dice roll animations). Default
+    /// implementation is a no-op — only human-driven transports need
+    /// to wait for an ack.
+    ///
+    /// Used to make multi-agent broadcasts run their UI in parallel:
+    /// the broadcast loop dispatches the prompt to every agent in one
+    /// pass (so all clients receive it simultaneously), then a second
+    /// pass calls `await_display_ack` on each agent so the engine
+    /// blocks until the slowest player finishes their animation.
+    fn await_display_ack(&mut self) {}
 
     /// Decide how to pay a single cost part.
     /// Mirrors Java's `ICostVisitor<PaymentDecision>` visitor pattern — each

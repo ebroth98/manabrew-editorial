@@ -29,6 +29,13 @@ pub fn notify_all_agents(agents: &mut [Box<dyn PlayerAgent>], event: GameLogEven
     }
 }
 
+/// Broadcast a `GameNotification` (other than `Event`) to every agent.
+pub fn broadcast_notification(agents: &mut [Box<dyn PlayerAgent>], event: GameNotification) {
+    for agent in agents.iter_mut() {
+        agent.notify(event.clone());
+    }
+}
+
 impl GameLogEvent {
     pub fn new(kind: GameLogKind, message: impl Into<String>) -> Self {
         Self {

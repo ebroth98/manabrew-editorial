@@ -246,7 +246,7 @@ pub fn run_interactive_game(
         .dyn_into()
         .map_err(|_| JsError::new("Expected SharedArrayBuffer"))?;
 
-    let human_transport = WasmTransport::new(&sab, true);
+    let human_transport = WasmTransport::new(&sab);
     let ai_transport = WasmAiTransport;
 
     let game_id = format!("wasm-interactive-{}", js_sys::Date::now() as u64);
@@ -343,12 +343,12 @@ pub fn run_multiplayer_game(
             Box::new(PromptAgent::new(
                 PlayerId(0),
                 game_id.clone(),
-                WasmTransport::new(&local_sab, true),
+                WasmTransport::new(&local_sab),
             )),
             Box::new(PromptAgent::new(
                 PlayerId(1),
                 game_id.clone(),
-                WasmTransport::new(&remote_sab, false),
+                WasmTransport::new(&remote_sab),
             )),
         )
     } else {
@@ -356,12 +356,12 @@ pub fn run_multiplayer_game(
             Box::new(PromptAgent::new(
                 PlayerId(0),
                 game_id.clone(),
-                WasmTransport::new(&remote_sab, false),
+                WasmTransport::new(&remote_sab),
             )),
             Box::new(PromptAgent::new(
                 PlayerId(1),
                 game_id.clone(),
-                WasmTransport::new(&local_sab, true),
+                WasmTransport::new(&local_sab),
             )),
         )
     };

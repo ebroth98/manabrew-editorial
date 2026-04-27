@@ -67,6 +67,15 @@ export const PromptType = {
   // Other decisions
   ExploreDecision: "exploreDecision",
   HelpPayAssist: "helpPayAssist",
+
+  // Dice rolls
+  FirstPlayerRoll: "firstPlayerRoll",
+  DiceRolled: "diceRolled",
+  ChooseRollToIgnore: "chooseRollToIgnore",
+  ChooseRollToSwap: "chooseRollToSwap",
+  ChooseRollToModify: "chooseRollToModify",
+  ChooseDiceToReroll: "chooseDiceToReroll",
+  ChooseRollSwapValue: "chooseRollSwapValue",
 } as const;
 
 export type PromptType = (typeof PromptType)[keyof typeof PromptType];

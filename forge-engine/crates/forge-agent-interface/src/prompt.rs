@@ -560,6 +560,84 @@ pub enum AgentPromptInner {
         #[serde(rename = "maxGeneric")]
         max_generic: u32,
     },
+    /// Display-only: every player rolled a d20 to decide who goes first.
+    /// Sent once with the full roll-off result + winner. The frontend
+    /// animates every die in parallel and auto-acknowledges.
+    FirstPlayerRoll {
+        #[serde(rename = "gameView")]
+        game_view: GameViewDto,
+        sides: i32,
+        /// Per-player roll, in `player_order`.
+        #[serde(rename = "firstPlayerRolls")]
+        rolls: Vec<FirstPlayerRollEntry>,
+        /// Player slot id of the winner (one of `firstPlayerRolls[i].playerId`).
+        #[serde(rename = "winnerPlayerId")]
+        winner_player_id: String,
+    },
+    /// Display-only: dice were just rolled. Sent for UI animation/feedback;
+    /// no player decision required (acknowledged automatically by the game thread
+    /// like `StateUpdate`).
+    DiceRolled {
+        #[serde(rename = "gameView")]
+        game_view: GameViewDto,
+        #[serde(rename = "playerId")]
+        player_id: String,
+        sides: i32,
+        /// Natural (pre-modifier) values, one per kept die.
+        #[serde(rename = "naturalResults")]
+        natural_results: Vec<i32>,
+        /// Final values after modifiers/exchanges.
+        #[serde(rename = "finalResults")]
+        final_results: Vec<i32>,
+        /// Rolls dropped before modification (ignore-lowest, choose-to-ignore).
+        #[serde(rename = "ignoredRolls")]
+        ignored_rolls: Vec<i32>,
+        #[serde(rename = "sourceCardName")]
+        source_card_name: Option<String>,
+    },
+    /// Choose one rolled value to drop (ignore).
+    ChooseRollToIgnore {
+        #[serde(rename = "gameView")]
+        game_view: GameViewDto,
+        rolls: Vec<i32>,
+        #[serde(rename = "sourceCardName")]
+        source_card_name: Option<String>,
+    },
+    /// Choose one rolled value to exchange with a creature's P/T.
+    ChooseRollToSwap {
+        #[serde(rename = "gameView")]
+        game_view: GameViewDto,
+        rolls: Vec<i32>,
+        #[serde(rename = "sourceCardName")]
+        source_card_name: Option<String>,
+    },
+    /// Choose one rolled value to increment/decrement by 1.
+    ChooseRollToModify {
+        #[serde(rename = "gameView")]
+        game_view: GameViewDto,
+        rolls: Vec<i32>,
+        #[serde(rename = "sourceCardName")]
+        source_card_name: Option<String>,
+    },
+    /// Choose any subset of dice to reroll.
+    ChooseDiceToReroll {
+        #[serde(rename = "gameView")]
+        game_view: GameViewDto,
+        rolls: Vec<i32>,
+        #[serde(rename = "sourceCardName")]
+        source_card_name: Option<String>,
+    },
+    /// Choose whether a roll/PT exchange swaps power or toughness.
+    ChooseRollSwapValue {
+        #[serde(rename = "gameView")]
+        game_view: GameViewDto,
+        #[serde(rename = "currentResult")]
+        current_result: i32,
+        power: i32,
+        toughness: i32,
+        #[serde(rename = "sourceCardName")]
+        source_card_name: Option<String>,
+    },
     /// Choose card(s) for an effect (ChooseCardEffect, CloneEffect).
     ChooseCardsForEffect {
         #[serde(rename = "gameView")]
@@ -618,6 +696,13 @@ impl AgentPromptInner {
             | AgentPromptInner::ExploreDecision { game_view, .. }
             | AgentPromptInner::HelpPayAssist { game_view, .. }
             | AgentPromptInner::ChooseCardsForEffect { game_view, .. }
+            | AgentPromptInner::FirstPlayerRoll { game_view, .. }
+            | AgentPromptInner::DiceRolled { game_view, .. }
+            | AgentPromptInner::ChooseRollToIgnore { game_view, .. }
+            | AgentPromptInner::ChooseRollToSwap { game_view, .. }
+            | AgentPromptInner::ChooseRollToModify { game_view, .. }
+            | AgentPromptInner::ChooseDiceToReroll { game_view, .. }
+            | AgentPromptInner::ChooseRollSwapValue { game_view, .. }
             | AgentPromptInner::PayCombatCost { game_view, .. }
             | AgentPromptInner::PayManaCost { game_view, .. }
             | AgentPromptInner::ChooseDelve { game_view, .. }
@@ -626,6 +711,15 @@ impl AgentPromptInner {
             | AgentPromptInner::SpecifyManaCombo { game_view, .. } => game_view,
         }
     }
+}
+
+/// One player's roll in the start-of-game first-player roll-off.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FirstPlayerRollEntry {
+    pub player_id: String,
+    pub player_name: String,
+    pub value: i32,
 }
 
 /// Describes a single way to play a card (normal, alternative cost, etc.).
@@ -882,6 +976,30 @@ pub enum PlayerAction {
     },
     /// Cancel casting the spell (mana cost payment).
     CancelManaCost,
+    /// Acknowledge a `DiceRolled` display-only prompt (UI animation done).
+    DiceRolledAcknowledged,
+    /// Acknowledge a `FirstPlayerRoll` display-only prompt.
+    FirstPlayerRollAcknowledged,
+    /// Response to ChooseRollToIgnore.
+    RollToIgnoreDecision {
+        roll: Option<i32>,
+    },
+    /// Response to ChooseRollToSwap.
+    RollToSwapDecision {
+        roll: Option<i32>,
+    },
+    /// Response to ChooseRollToModify.
+    RollToModifyDecision {
+        roll: Option<i32>,
+    },
+    /// Response to ChooseDiceToReroll.
+    DiceToRerollDecision {
+        rolls: Vec<i32>,
+    },
+    /// Response to ChooseRollSwapValue. `choice` is "power" or "toughness".
+    RollSwapValueDecision {
+        choice: Option<String>,
+    },
     Concede,
 }
 

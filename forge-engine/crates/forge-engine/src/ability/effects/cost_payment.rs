@@ -119,6 +119,18 @@ pub(super) fn resolve_mana_ability_for_effect_payment(
     }
 }
 
+/// Pre-flight feasibility check on a cloned game/pool: can this cost
+/// actually be auto-paid? Returns true even when the real session would
+/// involve player choices (the auto-pay path is a sound lower bound on
+/// "is the cost possible at all").
+///
+/// Without this gate the real session at the call site below begins
+/// payment against the live state, and a cost that turns out to be
+/// unpayable can leave partial mutations behind (tapped lands, drained
+/// pool, fired triggers) when it aborts mid-way. Cloning + dry-running
+/// here is the cheapest way to guarantee atomicity without rewriting
+/// the session to be transactional. No agent-kind branching: the
+/// check applies uniformly to humans and AI.
 fn can_auto_pay_mana_cost_for_effect(
     ctx: &EffectContext,
     payer: PlayerId,
@@ -145,17 +157,14 @@ fn pay_mana_cost_for_effect(
     payer: PlayerId,
     source: CardId,
     mana_cost: &forge_foundation::ManaCost,
-    allow_auto: bool,
 ) -> bool {
     let ctx_ptr: *mut EffectContext<'_> = ctx;
     let card_name = ctx.game.card(source).card_name.clone();
     let cost_str = mana_cost.to_string();
     let payable_mana_cost =
         crate::mana::apply_player_life_payment_keywords(ctx.game, payer, mana_cost);
-    if allow_auto
-        && !ctx.agents[payer.index()].is_human()
-        && !can_auto_pay_mana_cost_for_effect(ctx, payer, source, &payable_mana_cost)
-    {
+
+    if !can_auto_pay_mana_cost_for_effect(ctx, payer, source, &payable_mana_cost) {
         return false;
     }
 
@@ -464,13 +473,7 @@ fn try_pay_effect_cost(
             CostPart::Mana {
                 cost: mana_cost, ..
             } => {
-                if !pay_mana_cost_for_effect(
-                    ctx,
-                    payer,
-                    source,
-                    mana_cost,
-                    matches!(mode, EffectCostPaymentMode::Unless { .. }),
-                ) {
+                if !pay_mana_cost_for_effect(ctx, payer, source, mana_cost) {
                     return false;
                 }
             }

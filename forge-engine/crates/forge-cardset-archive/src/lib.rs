@@ -88,12 +88,12 @@ pub struct BuildStats {
 /// Card files are line-oriented `Key:Value`. We extract `Name:` directly
 /// rather than going through the full parser because we only need it as
 /// the lookup index.
-pub fn build_archive_from_dir(
-    cardsfolder: &Path,
-    out_path: &Path,
-) -> Result<BuildStats, String> {
+pub fn build_archive_from_dir(cardsfolder: &Path, out_path: &Path) -> Result<BuildStats, String> {
     if !cardsfolder.exists() {
-        return Err(format!("cardsfolder does not exist: {}", cardsfolder.display()));
+        return Err(format!(
+            "cardsfolder does not exist: {}",
+            cardsfolder.display()
+        ));
     }
 
     let mut cards: Vec<Card> = Vec::with_capacity(35_000);

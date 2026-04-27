@@ -66,7 +66,6 @@ pub trait AgentTransport {
     fn recv_action(&self) -> PlayerAction;
     fn send_log(&self, entry: GameLogEntryDto);
     fn send_snapshot(&self, snapshot: GameSnapshotEventDto);
-    fn is_human(&self) -> bool;
 }
 
 /// A PlayerAgent that sends prompts via a transport and blocks waiting for a response.
@@ -1165,8 +1164,12 @@ impl<T: AgentTransport> PlayerAgent for PromptAgent<T> {
         )
     }
 
-    fn is_human(&self) -> bool {
-        self.transport.is_human()
+    fn await_display_ack(&mut self) {
+        // Block on the transport for the single response to the
+        // display-only prompt we just sent. The engine guarantees one
+        // outstanding prompt per agent, so the next action on the
+        // channel is by definition the ack.
+        let _ = self.transport.recv_action();
     }
 
     fn specify_mana_combo(
@@ -1283,6 +1286,61 @@ impl<T: AgentTransport> PlayerAgent for PromptAgent<T> {
                 });
             }
             GameNotification::PriorityChanged { .. } => {}
+            GameNotification::FirstPlayerRoll {
+                sides,
+                rolls,
+                winner,
+            } => {
+                let view = self.view();
+                let entries = rolls
+                    .into_iter()
+                    .map(|(pid, value)| {
+                        let id = player_id_str(pid);
+                        let name = view
+                            .players
+                            .iter()
+                            .find(|p| p.id == id)
+                            .map(|p| p.name.clone())
+                            .unwrap_or_else(|| id.clone());
+                        crate::prompt::FirstPlayerRollEntry {
+                            player_id: id,
+                            player_name: name,
+                            value,
+                        }
+                    })
+                    .collect();
+                self.send_prompt(AgentPromptInner::FirstPlayerRoll {
+                    game_view: view,
+                    sides,
+                    rolls: entries,
+                    winner_player_id: player_id_str(winner),
+                });
+                // Caller is responsible for `await_display_ack` after the
+                // full broadcast — see `roll_for_first_player`.
+            }
+            GameNotification::DiceRolled {
+                player,
+                sides,
+                natural_results,
+                final_results,
+                ignored_rolls,
+                source_card_name,
+            } => {
+                // Send the prompt to every agent's transport. The caller
+                // is responsible for issuing a parallel `await_display_ack`
+                // pass after broadcasting — that way all clients see the
+                // animation start at the same time and we wait once for
+                // the slowest player rather than serially per-agent.
+                self.send_prompt(AgentPromptInner::DiceRolled {
+                    game_view: self.view(),
+                    player_id: player_id_str(player),
+                    sides,
+                    natural_results,
+                    final_results,
+                    ignored_rolls,
+                    source_card_name,
+                });
+            }
             GameNotification::SnapshotCreated {
                 checkpoint_id,
                 label,

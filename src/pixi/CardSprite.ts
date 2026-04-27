@@ -34,6 +34,17 @@ function registerTintedTextStyle(style: TextStyle): TextStyle {
   return style;
 }
 
+/**
+ * Trim a keyword chip label to a sensible length so descriptive prose
+ * keywords (e.g. Xenosquirrels' full reminder text, used as a Forge
+ * keyword) can't overflow the card silhouette. Adds an ellipsis when
+ * truncated.
+ */
+function truncateChipLabel(text: string): string {
+  if (text.length <= KEYWORD_LABEL_MAX_LEN) return text;
+  return `${text.slice(0, KEYWORD_LABEL_MAX_LEN - 1)}…`;
+}
+
 // Hand cards render at up to ~3.25× base scale (medium hover) and ~4.3× (large
 // hover). Rasterize text textures high enough that they remain sharp across
 // that range on top of the 3× canvas backing.
@@ -100,6 +111,11 @@ const COUNTER_HEIGHT = 16;
 const COUNTER_RADIUS = 8;
 const KEYWORD_ROW_H = 12;
 const MAX_VISIBLE_KEYWORDS = 4;
+/** Maximum characters in a chip label before truncating with ellipsis.
+ *  Forge keyword scripts include some prose-length entries (e.g. the
+ *  full Xenosquirrels rules text), and the chip strip is meant for
+ *  short keyword names — anything longer is truncated visually. */
+const KEYWORD_LABEL_MAX_LEN = 14;
 // Fraction of the card height occupied by the title line (card name +
 // mana cost). Badges sit just below this band so the mana cost stays
 // unobstructed regardless of hover scale.
@@ -440,13 +456,17 @@ export class CardSprite extends Container {
     const addChip = (text: string) => {
       const chip = new Container();
       const bg = new Graphics();
-      const txt = new Text({ text, style: CHIP_STYLE });
+      const truncated = truncateChipLabel(text);
+      const txt = new Text({ text: truncated, style: CHIP_STYLE });
       txt.resolution = TEXT_RASTER_RESOLUTION;
       txt.anchor.set(0, 0.5);
       txt.x = 3;
       txt.y = rowH / 2;
 
-      const cw = txt.width + 6;
+      // Hard-cap chip width to the card so a stray long keyword can
+      // never overflow into the surrounding battlefield.
+      const maxChipW = CARD_W - 6;
+      const cw = Math.min(txt.width + 6, maxChipW);
       if (offsetX + cw > CARD_W - 6) {
         offsetX = 3;
         offsetY += rowH + 2;
