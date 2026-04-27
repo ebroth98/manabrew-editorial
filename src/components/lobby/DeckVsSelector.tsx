@@ -345,7 +345,7 @@ export function DeckVsSelector({ onStart, onStartTabletop }: DeckVsSelectorProps
                     color={entry.color}
                     deckList={entry.deckList}
                     cards={displayCards}
-                    cover={cover!}
+                    cover={cover}
                     labels={entry.sourceDeck?.labels}
                     isPreset={false}
                     isSelected={false}

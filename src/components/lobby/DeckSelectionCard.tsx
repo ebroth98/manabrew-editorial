@@ -23,7 +23,7 @@ interface DeckSelectionCardProps {
   labels?: DeckLabel[];
   deckList: CardIdentity[];
   cards: Card[];
-  cover: Card;
+  cover: Card | null | undefined;
   coverFallbackClassName?: string;
   isPreset: boolean;
   isSelected: boolean;

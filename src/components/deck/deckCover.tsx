@@ -3,7 +3,7 @@ import { useCard } from "@/stores/useScryfallStore";
 import type { Card } from "@/types/openmagic";
 
 interface DeckCoverImageProps {
-  cover: Card;
+  cover: Card | null | undefined;
   alt?: string;
   className?: string;
   fallbackClassName?: string;

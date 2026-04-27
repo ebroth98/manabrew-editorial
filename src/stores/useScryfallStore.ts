@@ -221,31 +221,41 @@ export const useScryfallStore = create<ScryfallState>()(
   ),
 );
 
-export const useCard = (c: { name: string; setCode?: string; cardNumber?: string }) => {
+export const useCard = (
+  c: { name: string; setCode?: string; cardNumber?: string } | null | undefined,
+) => {
   const getCard = useScryfallStore((s) => s.getCard);
-  const key = scryfallLookupKey({
-    name: c.name,
-    setCode: c.setCode,
-    collectorNumber: c.cardNumber,
-  });
-  const cached = useScryfallStore((s) => s.cards[key]?.card ?? null);
+  const name = c?.name;
+  const setCode = c?.setCode;
+  const cardNumber = c?.cardNumber;
+  const key = name ? scryfallLookupKey({ name, setCode, collectorNumber: cardNumber }) : null;
+  const cached = useScryfallStore((s) => (key ? (s.cards[key]?.card ?? null) : null));
 
   useEffect(() => {
-    if (!cached) {
-      void getCard({ name: c.name, setCode: c.setCode, collectorNumber: c.cardNumber });
-    }
-  }, [getCard, key, cached, c.cardNumber, c.name, c.setCode]);
+    if (!name || cached) return;
+    void getCard({ name, setCode, collectorNumber: cardNumber });
+  }, [getCard, name, setCode, cardNumber, cached, key]);
   return cached;
 };
-export const useCardTexture = (c: { name: string; setCode?: string; cardNumber?: string }) => {
+export const useCardTexture = (
+  c: { name: string; setCode?: string; cardNumber?: string } | null | undefined,
+) => {
   const getCardTexture = useScryfallStore((s) => s.getCardTexture);
+  const name = c?.name;
+  const setCode = c?.setCode;
+  const cardNumber = c?.cardNumber;
   const [out, setOut] = useState<CardEntry | null>(null);
 
   useEffect(() => {
-    getCardTexture({ name: c.name, setCode: c.setCode, collectorNumber: c.cardNumber }).then(
-      setOut,
-    );
-  }, [getCardTexture, c.cardNumber, c.name, c.setCode]);
+    if (!name) return;
+    let cancelled = false;
+    getCardTexture({ name, setCode, collectorNumber: cardNumber }).then((v) => {
+      if (!cancelled) setOut(v);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [getCardTexture, name, setCode, cardNumber]);
   return out;
 };
 
