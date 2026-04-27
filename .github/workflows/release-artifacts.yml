@@ -28,6 +28,9 @@ jobs:
   gate:
     name: Check build gate
     runs-on: [self-hosted, artifactGate]
+    permissions:
+      contents: read
+      pull-requests: read
     outputs:
       should_build_macos: ${{ steps.check.outputs.should_build_macos }}
       should_build_windows: ${{ steps.check.outputs.should_build_windows }}
