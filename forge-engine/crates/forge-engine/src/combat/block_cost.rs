@@ -22,7 +22,7 @@ pub fn get_block_cost(cards: &[Card], blocker: &Card, _attacker: &Card) -> i32 {
 
     for source in cards.iter().filter(|c| c.zone == ZoneType::Battlefield) {
         for sa in &source.static_abilities {
-            if sa.mode != StaticMode::CantBlockUnless {
+            if !sa.check_mode(&StaticMode::CantBlockUnless) {
                 continue;
             }
 

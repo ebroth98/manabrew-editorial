@@ -15,7 +15,7 @@ pub fn any_cant_put_counter_on_card(
         for st_ab in source
             .static_abilities
             .iter()
-            .filter(|sa| sa.mode == StaticMode::CantPutCounter)
+            .filter(|sa| sa.check_mode(&StaticMode::CantPutCounter))
         {
             if !counter_type_matches(st_ab.ir.counter_type.as_ref(), counter_type) {
                 continue;
@@ -43,7 +43,7 @@ pub fn any_cant_put_counter_on_player(
         for st_ab in source
             .static_abilities
             .iter()
-            .filter(|sa| sa.mode == StaticMode::CantPutCounter)
+            .filter(|sa| sa.check_mode(&StaticMode::CantPutCounter))
         {
             if !counter_type_matches(st_ab.ir.counter_type.as_ref(), counter_type) {
                 continue;

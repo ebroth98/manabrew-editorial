@@ -11,7 +11,7 @@ pub fn assign_no_combat_damage(cards: &[Card], card: &Card) -> bool {
         for st_ab in source
             .static_abilities
             .iter()
-            .filter(|sa| sa.mode == StaticMode::AssignNoCombatDamage)
+            .filter(|sa| sa.check_mode(&StaticMode::AssignNoCombatDamage))
         {
             if matches_valid_card(st_ab.ir.valid_card.as_ref(), card, source) {
                 return true;

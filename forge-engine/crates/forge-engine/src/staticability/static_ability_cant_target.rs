@@ -17,7 +17,7 @@ pub fn cant_target(
         for st_ab in source
             .static_abilities
             .iter()
-            .filter(|sa| sa.mode == StaticMode::CantTarget)
+            .filter(|sa| sa.check_mode(&StaticMode::CantTarget))
         {
             if !st_ab.ir.affected_zones.is_empty() {
                 if !st_ab.ir.affected_zones.contains(&target.zone) {

@@ -39,7 +39,7 @@ impl CardTraitChanges {
     /// Return true when any injected static ability changes casting cost.
     pub fn contains_cost_change(&self) -> bool {
         self.static_abilities.iter().any(|st_ab| {
-            st_ab.check_mode(&StaticMode::ReduceCost) || st_ab.check_mode(&StaticMode::IncreaseCost)
+            st_ab.check_mode(&StaticMode::ReduceCost) || st_ab.check_mode(&StaticMode::RaiseCost)
         })
     }
 

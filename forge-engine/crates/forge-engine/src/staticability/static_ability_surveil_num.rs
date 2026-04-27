@@ -16,7 +16,7 @@ pub fn surveil_num_mod(game: &GameState, player: PlayerId) -> i32 {
         for st_ab in card
             .static_abilities
             .iter()
-            .filter(|sa| sa.mode == StaticMode::SurveilNum && sa.zones_check(card.zone))
+            .filter(|sa| sa.check_mode(&StaticMode::SurveilNum) && sa.zones_check(card.zone))
         {
             total += get_surveil_mod(st_ab, card.controller, player);
         }

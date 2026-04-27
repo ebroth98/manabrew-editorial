@@ -205,7 +205,7 @@ impl GameLoop {
             for &attacker in &declared_attackers {
                 let static_abilities = game.card(attacker).static_abilities.clone();
                 for st in &static_abilities {
-                    if st.mode != crate::staticability::StaticMode::OptionalAttackCost {
+                    if !st.check_mode(&crate::staticability::StaticMode::OptionalAttackCost) {
                         continue;
                     }
                     let Some(cost_raw) = st.ir.cost.as_deref() else {

@@ -9,7 +9,7 @@ pub fn cant_crew(cards: &[Card], card: &Card) -> bool {
         for st_ab in source
             .static_abilities
             .iter()
-            .filter(|sa| sa.mode == StaticMode::CantCrew && sa.zones_check(source.zone))
+            .filter(|sa| sa.check_mode(&StaticMode::CantCrew) && sa.zones_check(source.zone))
         {
             if apply_cant_crew(st_ab, card, source) {
                 return true;

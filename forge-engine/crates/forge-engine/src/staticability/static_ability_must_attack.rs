@@ -9,7 +9,7 @@ pub fn must_attack(cards: &[Card], attacker: &Card) -> bool {
         for st_ab in source
             .static_abilities
             .iter()
-            .filter(|sa| sa.mode == StaticMode::MustAttack)
+            .filter(|sa| sa.check_mode(&StaticMode::MustAttack))
         {
             if matches_valid_creature(st_ab.ir.valid_creature.as_ref(), attacker, source) {
                 return true;

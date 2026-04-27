@@ -10,7 +10,7 @@ pub fn cant_attach(cards: &[Card], attachment: &Card, target: &Card, check_sba: 
         for st_ab in source
             .static_abilities
             .iter()
-            .filter(|sa| sa.mode == StaticMode::CantAttach)
+            .filter(|sa| sa.check_mode(&StaticMode::CantAttach))
         {
             if !matches_valid_card(st_ab.ir.valid_card.as_ref(), attachment, source) {
                 continue;

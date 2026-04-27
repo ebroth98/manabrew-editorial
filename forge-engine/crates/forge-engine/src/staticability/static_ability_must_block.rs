@@ -9,7 +9,7 @@ pub fn blocks_each_combat_if_able(cards: &[Card], creature: &Card) -> bool {
         for st_ab in source
             .static_abilities
             .iter()
-            .filter(|sa| sa.mode == StaticMode::MustBlock)
+            .filter(|sa| sa.check_mode(&StaticMode::MustBlock))
         {
             if matches_valid_creature(st_ab.ir.valid_creature.as_ref(), creature, source) {
                 return true;

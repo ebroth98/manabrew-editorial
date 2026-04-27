@@ -16,7 +16,7 @@ pub fn counters_remain(cards: &[Card], card: &Card, destination: ZoneType) -> bo
         for st_ab in source
             .static_abilities
             .iter()
-            .filter(|sa| sa.mode == StaticMode::CountersRemain)
+            .filter(|sa| sa.check_mode(&StaticMode::CountersRemain))
         {
             let active = source.zone == ZoneType::Battlefield
                 || (source.id == card.id && st_ab.ir.effect_zone_all);

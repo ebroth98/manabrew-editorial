@@ -21,7 +21,7 @@ fn any_turn_phase_reversed(game: &GameState, player: PlayerId, mode: StaticMode)
         for st_ab in card
             .static_abilities
             .iter()
-            .filter(|sa| sa.mode == mode && sa.zones_check(card.zone))
+            .filter(|sa| sa.check_mode(&mode) && sa.zones_check(card.zone))
         {
             if valid_filter::matches_valid_player_selector_opt(
                 st_ab.ir.valid_player.as_ref(),

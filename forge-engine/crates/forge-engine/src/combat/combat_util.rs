@@ -190,7 +190,7 @@ fn cant_block_by(game: &GameState, attacker_id: CardId, blocker_id: CardId) -> b
         .filter(|c| c.zone == ZoneType::Battlefield || c.zone == ZoneType::Command)
     {
         for sa in &source.static_abilities {
-            if sa.mode != StaticMode::CantBlockBy {
+            if !sa.check_mode(&StaticMode::CantBlockBy) {
                 continue;
             }
 

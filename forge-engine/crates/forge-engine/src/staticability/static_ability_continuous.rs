@@ -11,7 +11,7 @@ pub fn apply_continuous_ability(
     game: &mut GameState,
     layer: Layer,
 ) {
-    if st_ab.continuous_layer() != Some(layer) {
+    if !crate::staticability::layer::classify_static_layers(st_ab).contains(&layer) {
         return;
     }
     if !st_ab.check_conditions(source, game) {

@@ -9,7 +9,7 @@ pub fn colorless_damage_source(cards: &[Card], source_card: &Card) -> bool {
         for st_ab in source
             .static_abilities
             .iter()
-            .filter(|sa| sa.mode == StaticMode::ColorlessDamageSource)
+            .filter(|sa| sa.check_mode(&StaticMode::ColorlessDamageSource))
         {
             if matches_valid_card(st_ab.ir.valid_card.as_ref(), source_card, source) {
                 return true;

@@ -7,7 +7,7 @@ pub fn cant_transform(cards: &[Card], card: &Card, cause: Option<&SpellAbility>)
         for st_ab in source
             .static_abilities
             .iter()
-            .filter(|sa| sa.mode == StaticMode::CantTransform && sa.zones_check(source.zone))
+            .filter(|sa| sa.check_mode(&StaticMode::CantTransform) && sa.zones_check(source.zone))
         {
             if apply_cant_transform_ability(st_ab, card, source, cause) {
                 return true;

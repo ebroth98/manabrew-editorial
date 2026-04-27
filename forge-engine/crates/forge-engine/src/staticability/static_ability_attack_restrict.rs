@@ -10,7 +10,7 @@ pub fn global_attack_restrict(cards: &[Card]) -> Option<i32> {
         for st_ab in source
             .static_abilities
             .iter()
-            .filter(|sa| sa.mode == StaticMode::AttackRestrict)
+            .filter(|sa| sa.check_mode(&StaticMode::AttackRestrict))
         {
             if st_ab.ir.valid_defender_text.is_some() {
                 continue;
@@ -33,7 +33,7 @@ pub fn attack_restrict_num_for_defender(cards: &[Card], defender: PlayerId) -> O
         for st_ab in source
             .static_abilities
             .iter()
-            .filter(|sa| sa.mode == StaticMode::AttackRestrict)
+            .filter(|sa| sa.check_mode(&StaticMode::AttackRestrict))
         {
             let Some(valid_defender) = st_ab.ir.valid_defender_text.as_deref() else {
                 continue;

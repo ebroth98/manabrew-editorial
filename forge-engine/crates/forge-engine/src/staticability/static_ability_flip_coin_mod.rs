@@ -15,7 +15,7 @@ pub fn fixed_result(game: &GameState, player: PlayerId) -> Option<bool> {
         for st_ab in card
             .static_abilities
             .iter()
-            .filter(|sa| sa.mode == StaticMode::FlipCoinMod && sa.zones_check(card.zone))
+            .filter(|sa| sa.check_mode(&StaticMode::FlipCoinMod) && sa.zones_check(card.zone))
         {
             if !valid_filter::matches_valid_player_selector_opt(
                 st_ab.ir.valid_player.as_ref(),

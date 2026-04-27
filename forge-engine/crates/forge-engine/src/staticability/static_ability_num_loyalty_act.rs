@@ -24,7 +24,7 @@ pub fn limit_increase(cards: &[Card], card: &Card) -> bool {
         for st_ab in source
             .static_abilities
             .iter()
-            .filter(|sa| sa.mode == StaticMode::NumLoyaltyAct && sa.zones_check(source.zone))
+            .filter(|sa| sa.check_mode(&StaticMode::NumLoyaltyAct) && sa.zones_check(source.zone))
         {
             if apply_limit_increase(st_ab, card, source) {
                 return true;
@@ -44,7 +44,7 @@ pub fn additional_activations(cards: &[Card], card: &Card, sa: Option<&SpellAbil
         for st_ab in source
             .static_abilities
             .iter()
-            .filter(|s| s.mode == StaticMode::NumLoyaltyAct && s.zones_check(source.zone))
+            .filter(|s| s.check_mode(&StaticMode::NumLoyaltyAct) && s.zones_check(source.zone))
         {
             if !valid_filter::matches_valid_card_selector_opt(
                 st_ab.ir.valid_card.as_ref(),

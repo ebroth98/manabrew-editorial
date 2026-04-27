@@ -23,7 +23,7 @@ pub fn is_disabled(
         for st_ab in source
             .static_abilities
             .iter()
-            .filter(|sa| sa.mode == crate::staticability::StaticMode::DisableTriggers)
+            .filter(|sa| sa.check_mode(&crate::staticability::StaticMode::DisableTriggers))
         {
             if let Some(valid_mode) = st_ab.ir.valid_mode.as_deref() {
                 let modes = valid_mode.split(',').map(|s| s.trim());

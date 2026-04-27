@@ -15,7 +15,9 @@ use std::collections::HashMap;
 use forge_foundation::ColorSet;
 use forge_foundation::ZoneType;
 use serde::{Deserialize, Serialize};
+use strum_macros::EnumString;
 
+use super::static_ability_mode;
 use crate::card::valid_filter::CardTraitRequirementsIr;
 use crate::card::Card;
 use crate::card::CounterType;
@@ -45,7 +47,10 @@ const STATIC_CONDITION_KEYS: &[&str] = &[
 ///
 /// Mirrors Java `StaticAbilityMode` enum. Each variant corresponds to a
 /// `Mode$ <Value>` entry in the card script.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(
+    Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize, EnumString,
+)]
+#[strum(ascii_case_insensitive)]
 pub enum StaticMode {
     /// `Mode$ Continuous` — layer-based continuous effects (anthems, keyword
     /// grants, P/T setting). The most common category; handled by the layer
@@ -72,8 +77,8 @@ pub enum StaticMode {
     /// `Mode$ ReduceCost` — reduce the mana cost of matching spells.
     ReduceCost,
 
-    /// `Mode$ IncreaseCost` — increase the mana cost of matching spells.
-    IncreaseCost,
+    /// `Mode$ RaiseCost` — increase the mana cost of matching spells.
+    RaiseCost,
 
     /// `Mode$ SetCost` — raise cost to a minimum (Trinisphere). Used with `RaiseTo$`.
     SetCost,
@@ -110,6 +115,12 @@ pub enum StaticMode {
     CantAttackUnless,
     /// `Mode$ OptionalAttackCost` — optional attack payment like Exert/Enlist.
     OptionalAttackCost,
+    /// `Mode$ OptionalCost` — generic optional cost on a spell/ability (GameActionUtil).
+    OptionalCost,
+    /// `Mode$ AttackRequirement` — adds an attack requirement (StaticAbilityAttackRequirement).
+    AttackRequirement,
+    /// `Mode$ PlayerMustAttack` — controller of affected creatures must attack.
+    PlayerMustAttack,
     /// `Mode$ CantBlockUnless` — blocker must pay a cost to block (War Cadence).
     CantBlockUnless,
     /// `Mode$ CantBlockBy` — restricts which blockers can block an attacker
@@ -124,7 +135,6 @@ pub enum StaticMode {
     ActivateAbilityAsIfHaste,
     CanAdapt,
     AlternativeCost,
-    CantAttackBlock,
     CantBeCopied,
     CantBeSuspected,
     CantBecomeMonarch,
@@ -159,6 +169,7 @@ pub enum StaticMode {
     CantChangeLife,
 
     /// Any mode not yet recognised — stored but not applied.
+    #[strum(default)]
     Other(String),
 }
 
@@ -171,23 +182,26 @@ pub enum StaticMode {
 /// (battlefield entry order in `GameState.cards`).
 ///
 /// Reference: <https://magic.wizards.com/en/rules> CR 613
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum Layer {
-    /// Layer 2 — control-changing effects (`GainControl$`).
+    /// Layer 2 — control-changing effects.
     Control = 2,
-    /// Layer 4 — type-changing effects (`AddType$`, `RemoveType$`).
+    /// Layer 3 — text-changing effects.
+    Text = 3,
+    /// Layer 4 — type-changing effects.
     Type = 4,
-    /// Layer 5 — color-changing effects (`AddColor$`).
+    /// Layer 5 — color-changing effects.
     Color = 5,
-    /// Layer 6 — ability-adding / removing (`AddKeyword$`).
+    /// Layer 6 — ability-adding / removing.
     Ability = 6,
-    /// Layer 7b — P/T set to an absolute value (`SetPower$`, `SetToughness$`).
-    /// Note: 7a (CDAs) are not yet implemented.
+    /// Layer 7a — characteristic-defining P/T (CDAs).
+    Characteristic = 70,
+    /// Layer 7b — P/T set to an absolute value.
     SetPT = 71,
-    /// Layer 7c — P/T modifications: bonuses and penalties (`AddPower$`, `AddToughness$`).
+    /// Layer 7c — P/T modifications: bonuses and penalties.
     ModifyPT = 72,
-    // Layer 7d (counters) is handled intrinsically by `Card::power()`
-    // and `Card::toughness()` — no special layer entry needed.
+    /// Layer 7d / rules-modifying — MayPlay, AdjustLandPlays, Goad, etc.
+    Rules = 80,
 }
 
 // ── StaticAbility ────────────────────────────────────────────────────────────
@@ -200,10 +214,7 @@ pub enum Layer {
 pub struct StaticAbility {
     #[serde(default)]
     pub base: Box<CardTraitBase>,
-    pub mode: StaticMode,
-    /// Parsed key→value parameters from the pipe-separated script line.
-    /// Keys do NOT include the trailing `$`.
-    pub params: Params,
+    pub modes: Vec<StaticMode>,
     pub ignore_effect_cards: Vec<CardId>,
     pub ignore_effect_players: Vec<PlayerId>,
     pub may_play_turn: i32,
@@ -221,11 +232,13 @@ pub struct StaticAbility {
 pub struct StaticAbilityIr {
     pub card_trait_requirements: CardTraitRequirementsIr,
     pub valid_card: Option<CompiledSelector>,
+    pub valid_card_text: Option<String>,
     pub valid_cards_text: Option<String>,
     pub valid_player: Option<CompiledSelector>,
     pub affected: Option<CompiledSelector>,
     pub affected_text: Option<String>,
     pub affected_zone: Option<ZoneType>,
+    pub affected_zone_text: Option<String>,
     pub affected_zones: Vec<ZoneType>,
     pub valid_zone: Vec<ZoneType>,
     pub may_play: bool,
@@ -252,6 +265,15 @@ pub struct StaticAbilityIr {
     pub num_limit_each_turn: Option<i32>,
     pub activator_raw: Option<String>,
     pub cost: Option<String>,
+    pub gain_control_text: Option<String>,
+    pub add_power_text: Option<String>,
+    pub add_toughness_text: Option<String>,
+    pub add_type_text: Option<String>,
+    pub set_power_text: Option<String>,
+    pub set_toughness_text: Option<String>,
+    pub add_keyword_text: Option<String>,
+    pub add_ability_text: Option<String>,
+    pub add_trigger_text: Option<String>,
     pub type_filter: Option<String>,
     pub mana_conversion: Option<String>,
     pub except_cause_text: Option<String>,
@@ -262,6 +284,7 @@ pub struct StaticAbilityIr {
     pub stack_description_text: Option<String>,
     pub cost_desc_text: Option<String>,
     pub description_text: Option<String>,
+    pub draw_limit: Option<i32>,
     pub named_text: Option<String>,
     pub trigger_text: Option<String>,
     pub valid_defender: Option<CompiledSelector>,
@@ -274,6 +297,7 @@ pub struct StaticAbilityIr {
     pub is_present: Option<CompiledSelector>,
     pub valid_attacker: Option<CompiledSelector>,
     pub valid_blocker: Option<CompiledSelector>,
+    pub valid_blocker_text: Option<String>,
     pub valid_attacker_relative: Option<CompiledSelector>,
     pub has_valid_attacker_relative: bool,
     pub valid_blocker_relative: Option<CompiledSelector>,
@@ -342,6 +366,14 @@ pub struct StaticAbilityIr {
     pub add_type: bool,
     pub remove_type: bool,
     pub add_color: bool,
+    pub remove_color: bool,
+    pub set_color: bool,
+    pub characteristic_defining: bool,
+    pub has_text_layer_key: bool,
+    pub has_type_layer_key: bool,
+    pub has_color_layer_key: bool,
+    pub has_ability_layer_key: bool,
+    pub has_rules_layer_key: bool,
     pub has_zone_keys: bool,
     pub has_condition_keys: bool,
 }
@@ -356,6 +388,7 @@ impl StaticAbilityIr {
                 params.selector_untracked("IsPresent2").cloned(),
             ),
             valid_card: params.selector_untracked(keys::VALID_CARD).cloned(),
+            valid_card_text: raw.get(keys::VALID_CARD).map(String::to_string),
             valid_cards_text: raw.get(keys::VALID_CARDS).map(String::to_string),
             valid_player: params.selector_untracked(keys::VALID_PLAYER).cloned(),
             affected: params.selector_untracked(keys::AFFECTED).cloned(),
@@ -364,10 +397,11 @@ impl StaticAbilityIr {
                 .get(keys::AFFECTED_ZONE)
                 .map(String::as_str)
                 .and_then(ZoneType::from_str_compat),
+            affected_zone_text: raw.get(keys::AFFECTED_ZONE).map(String::to_string),
             affected_zones: zone_list(raw.get(keys::AFFECTED_ZONE).map(String::as_str)),
             valid_zone: zone_list(raw.get(keys::VALID_ZONE).map(String::as_str)),
             may_play: raw
-                .get("MayPlay")
+                .get(keys::MAY_PLAY)
                 .is_some_and(|value| value.eq_ignore_ascii_case("True")),
             counter_type_text: raw.get(keys::COUNTER_TYPE).map(String::to_string),
             counter_type: raw
@@ -402,6 +436,15 @@ impl StaticAbilityIr {
                 .and_then(|value| value.parse().ok()),
             activator_raw: raw.get(keys::ACTIVATOR).map(String::to_string),
             cost: raw.get(keys::COST).map(String::to_string),
+            gain_control_text: raw.get(keys::GAIN_CONTROL).map(String::to_string),
+            add_power_text: raw.get(keys::ADD_POWER).map(String::to_string),
+            add_toughness_text: raw.get(keys::ADD_TOUGHNESS).map(String::to_string),
+            add_type_text: raw.get(keys::ADD_TYPE).map(String::to_string),
+            set_power_text: raw.get(keys::SET_POWER).map(String::to_string),
+            set_toughness_text: raw.get(keys::SET_TOUGHNESS).map(String::to_string),
+            add_keyword_text: raw.get(keys::ADD_KEYWORD).map(String::to_string),
+            add_ability_text: raw.get(keys::ADD_ABILITY).map(String::to_string),
+            add_trigger_text: raw.get(keys::ADD_TRIGGER).map(String::to_string),
             type_filter: raw.get(keys::TYPE).map(String::to_string),
             mana_conversion: raw.get(keys::MANA_CONVERSION).map(String::to_string),
             except_cause_text: raw.get(keys::EXCEPT_CAUSE).map(String::to_string),
@@ -412,6 +455,9 @@ impl StaticAbilityIr {
             stack_description_text: raw.get("StackDescription").map(String::to_string),
             cost_desc_text: raw.get("CostDesc").map(String::to_string),
             description_text: raw.get(keys::DESCRIPTION).map(String::to_string),
+            draw_limit: raw
+                .get(keys::DRAW_LIMIT)
+                .and_then(|value| value.parse().ok()),
             named_text: raw.get("Named").map(String::to_string),
             trigger_text: raw.get(keys::TRIGGER).map(String::to_string),
             valid_defender: params.selector_untracked(keys::VALID_DEFENDER).cloned(),
@@ -424,6 +470,7 @@ impl StaticAbilityIr {
             is_present: params.selector_untracked(keys::IS_PRESENT).cloned(),
             valid_attacker: params.selector_untracked(keys::VALID_ATTACKER).cloned(),
             valid_blocker: params.selector_untracked(keys::VALID_BLOCKER).cloned(),
+            valid_blocker_text: raw.get(keys::VALID_BLOCKER).map(String::to_string),
             valid_attacker_relative: params
                 .selector_untracked(keys::VALID_ATTACKER_RELATIVE)
                 .cloned(),
@@ -516,6 +563,66 @@ impl StaticAbilityIr {
             add_type: raw.contains_key(keys::ADD_TYPE),
             remove_type: raw.contains_key(keys::REMOVE_TYPE),
             add_color: raw.contains_key(keys::ADD_COLOR),
+            remove_color: raw.contains_key(keys::REMOVE_COLOR),
+            set_color: raw.contains_key(keys::SET_COLOR),
+            characteristic_defining: raw
+                .get(keys::CHARACTERISTIC_DEFINING)
+                .is_some_and(|v| v.eq_ignore_ascii_case("True")),
+            has_text_layer_key: params.contains_any_key(&[
+                keys::CHANGE_COLOR_WORDS_TO,
+                keys::GAIN_TEXT_OF,
+                keys::ADD_NAMES,
+                keys::SET_NAME,
+                keys::INCORPORATE,
+                keys::MANA_COST,
+            ]),
+            has_type_layer_key: params.contains_any_key(&[
+                keys::ADD_TYPE,
+                keys::REMOVE_TYPE,
+                keys::ADD_ALL_CREATURE_TYPES,
+                keys::REMOVE_CARD_TYPES,
+                keys::REMOVE_SUB_TYPES,
+                keys::REMOVE_SUPER_TYPES,
+                keys::REMOVE_LAND_TYPES,
+                keys::REMOVE_CREATURE_TYPES,
+                keys::REMOVE_ARTIFACT_TYPES,
+                keys::REMOVE_ENCHANTMENT_TYPES,
+            ]),
+            has_color_layer_key: params.contains_any_key(&[
+                keys::ADD_COLOR,
+                keys::REMOVE_COLOR,
+                keys::SET_COLOR,
+            ]),
+            has_ability_layer_key: params.contains_any_key(&[
+                keys::REMOVE_ALL_ABILITIES,
+                keys::REMOVE_NON_MANA_ABILITIES,
+                keys::GAINS_ABILITIES_OF,
+                keys::GAINS_ABILITIES_OF_DEFINED,
+                keys::GAINS_TRIGGER_ABS_OF,
+                keys::ADD_KEYWORD,
+                keys::ADD_ABILITY,
+                keys::ADD_TRIGGER,
+                keys::ADD_REPLACEMENT_EFFECT,
+                keys::ADD_STATIC_ABILITY,
+                keys::ADD_SVAR,
+                keys::CANT_HAVE_KEYWORD,
+                keys::SHARE_REMEMBERED_KEYWORDS,
+                keys::REMOVE_KEYWORD,
+            ]),
+            has_rules_layer_key: params.contains_any_key(&[
+                keys::ADD_HIDDEN_KEYWORD,
+                keys::MAY_PLAY,
+                keys::IGNORE_EFFECT_COST,
+                keys::GOAD,
+                keys::CAN_BLOCK_ANY,
+                keys::CAN_BLOCK_AMOUNT,
+                keys::ADJUST_LAND_PLAYS,
+                keys::CONTROL_VOTE,
+                keys::ADDITIONAL_VOTE,
+                keys::ADDITIONAL_OPTIONAL_VOTE,
+                keys::DECLARES_ATTACKERS,
+                keys::DECLARES_BLOCKERS,
+            ]),
             has_zone_keys: params.contains_any_key(STATIC_ZONE_KEYS),
             has_condition_keys: params.contains_any_key(STATIC_CONDITION_KEYS),
         }
@@ -534,50 +641,38 @@ fn zone_list(raw: Option<&str>) -> Vec<ZoneType> {
 
 impl StaticAbility {
     fn sync_trait_base_params(&mut self) {
-        let map = self
-            .params
-            .iter()
-            .map(|(k, v)| (k.to_string(), v.to_string()))
-            .collect();
-        self.base.set_map_params(map);
         self.base.set_svars(self.svars.clone());
     }
 
-    /// Return the CR 613 layer this `Continuous` ability belongs to.
-    ///
-    /// Returns `None` for non-`Continuous` abilities or continuous abilities
-    /// whose effect type is not yet recognised.
-    pub fn continuous_layer(&self) -> Option<Layer> {
-        if self.mode != StaticMode::Continuous {
-            return None;
-        }
-        // Presence of specific params determines the layer (mirrors Java
-        // `StaticAbilityContinuous.getLayer()`).
-        if self.ir.add_power || self.ir.add_toughness {
-            Some(Layer::ModifyPT)
-        } else if self.ir.set_power || self.ir.set_toughness {
-            Some(Layer::SetPT)
-        } else if self.ir.add_keyword {
-            Some(Layer::Ability)
-        } else if self.ir.gain_control_param {
-            Some(Layer::Control)
-        } else if self.ir.add_type || self.ir.remove_type {
-            Some(Layer::Type)
-        } else if self.ir.add_color {
-            Some(Layer::Color)
-        } else {
-            None
+    pub fn check_mode(&self, mode: &StaticMode) -> bool {
+        match mode {
+            StaticMode::Other(query) => self
+                .modes
+                .iter()
+                .any(|m| matches!(m, StaticMode::Other(s) if s.eq_ignore_ascii_case(query))),
+            other => self.modes.iter().any(|m| m == other),
         }
     }
 
-    pub fn check_mode(&self, mode: &StaticMode) -> bool {
-        match (&self.mode, mode) {
-            (StaticMode::Other(a), StaticMode::Other(b)) => a.eq_ignore_ascii_case(b),
-            // CantAttackBlock matches both CantAttack and CantBlock queries
-            (StaticMode::CantAttackBlock, StaticMode::CantAttack) => true,
-            (StaticMode::CantAttackBlock, StaticMode::CantBlock) => true,
-            _ => self.mode == *mode,
-        }
+    pub fn unknown_modes(&self) -> impl Iterator<Item = &str> {
+        self.modes.iter().filter_map(|mode| match mode {
+            StaticMode::Other(value) => Some(value.as_str()),
+            _ => None,
+        })
+    }
+
+    /// Modes that parse with Java parity but do not yet have a Rust runtime
+    /// implementation. This keeps them distinct from `Other`, which means the
+    /// parser has not recognised the Java mode at all.
+    pub fn parsed_but_unimplemented_modes(&self) -> impl Iterator<Item = &StaticMode> {
+        self.modes.iter().filter(|mode| {
+            matches!(
+                mode,
+                StaticMode::OptionalCost
+                    | StaticMode::AttackRequirement
+                    | StaticMode::PlayerMustAttack
+            )
+        })
     }
 
     pub fn zones_check(&self, source_zone: ZoneType) -> bool {
@@ -964,100 +1059,18 @@ pub fn parse_static_ability(raw: &str) -> Option<StaticAbility> {
     // Parse "|"-separated "Key$ Value" pairs using central parser.
     let params = Params::from_raw(body);
 
-    let mode = match params.inner().get(keys::MODE).map(String::as_str) {
-        Some("Continuous") => StaticMode::Continuous,
-        Some("CantAttack") => StaticMode::CantAttack,
-        Some("CantBlock") => StaticMode::CantBlock,
-        Some("ETBTapped") => StaticMode::ETBTapped,
-        Some("CantBeCast") => StaticMode::CantBeCast,
-        Some("CantBeActivated") => StaticMode::CantBeActivated,
-        Some("CantPlayLand") => StaticMode::CantPlayLand,
-        Some("ReduceCost") => StaticMode::ReduceCost,
-        Some("IncreaseCost") | Some("RaiseCost") => StaticMode::IncreaseCost,
-        Some("SetCost") => StaticMode::SetCost,
-        Some("CantTarget") => StaticMode::CantTarget,
-        Some("CantAttach") => StaticMode::CantAttach,
-        Some("MustAttack") => StaticMode::MustAttack,
-        Some("MustBlock") => StaticMode::MustBlock,
-        Some("Panharmonicon") => StaticMode::Panharmonicon,
-        Some("CantGainLosePayLife") => StaticMode::CantGainLosePayLife,
-        Some("CantDraw") => StaticMode::CantDraw,
-        Some("CantExile") => StaticMode::CantExile,
-        Some("CantSacrifice") => StaticMode::CantSacrifice,
-        Some("CantRegenerate") => StaticMode::CantRegenerate,
-        Some("DisableTriggers") => StaticMode::DisableTriggers,
-        Some("CantPutCounter") => StaticMode::CantPutCounter,
-        Some("CastWithFlash") => StaticMode::CastWithFlash,
-        Some("BlockRestrict") => StaticMode::BlockRestrict,
-        Some("AttackRestrict") => StaticMode::AttackRestrict,
-        Some("CanAttackDefender") => StaticMode::CanAttackDefender,
-        Some("IgnoreHexproof") => StaticMode::IgnoreHexproof,
-        Some("IgnoreShroud") => StaticMode::IgnoreShroud,
-        Some("IgnoreLegendRule") => StaticMode::IgnoreLegendRule,
-        Some("MustTarget") => StaticMode::MustTarget,
-        Some("AssignCombatDamageAsUnblocked") => StaticMode::AssignCombatDamageAsUnblocked,
-        Some("AssignNoCombatDamage") => StaticMode::AssignNoCombatDamage,
-        Some("CombatDamageToughness") => StaticMode::CombatDamageToughness,
-        Some("NoCleanupDamage") => StaticMode::NoCleanupDamage,
-        Some("InfectDamage") => StaticMode::InfectDamage,
-        Some("WitherDamage") => StaticMode::WitherDamage,
-        Some("ColorlessDamageSource") => StaticMode::ColorlessDamageSource,
-        Some("CountersRemain") => StaticMode::CountersRemain,
-        Some("MaxCounter") => StaticMode::MaxCounter,
-        Some("CantAttackUnless") => StaticMode::CantAttackUnless,
-        Some("OptionalAttackCost") => StaticMode::OptionalAttackCost,
-        Some("CantBlockUnless") => StaticMode::CantBlockUnless,
-        Some("CantBlockBy") => StaticMode::CantBlockBy,
-        Some("ManaConvert") => StaticMode::ManaConvert,
-        Some("UnspentMana") => StaticMode::UnspentMana,
-        Some("ManaBurn") => StaticMode::ManaBurn,
-        Some("ActivateAbilityAsIfHaste") => StaticMode::ActivateAbilityAsIfHaste,
-        Some("CanAdapt") => StaticMode::CanAdapt,
-        Some("AlternativeCost") => StaticMode::AlternativeCost,
-        Some("CantAttackBlock") | Some("CantAttack,CantBlock") | Some("CantBlock,CantAttack") => {
-            StaticMode::CantAttackBlock
-        }
-        Some("CantBeCopied") => StaticMode::CantBeCopied,
-        Some("CantBeSuspected") => StaticMode::CantBeSuspected,
-        Some("CantBecomeMonarch") => StaticMode::CantBecomeMonarch,
-        Some("CantChangeDayTime") => StaticMode::CantChangeDayTime,
-        Some("CantCrew") => StaticMode::CantCrew,
-        Some("CantDiscard") => StaticMode::CantDiscard,
-        Some("CantPhaseIn") => StaticMode::CantPhaseIn,
-        Some("CantPhaseOut") => StaticMode::CantPhaseOut,
-        Some("CantTransform") => StaticMode::CantTransform,
-        Some("CantVenture") => StaticMode::CantVenture,
-        Some("Devotion") => StaticMode::Devotion,
-        Some("CanExhaust") => StaticMode::CanExhaust,
-        Some("FlipCoinMod") => StaticMode::FlipCoinMod,
-        Some("GainLifeRadiation") => StaticMode::GainLifeRadiation,
-        Some("IgnoreLandwalk") => StaticMode::IgnoreLandwalk,
-        Some("NumLoyaltyAct") => StaticMode::NumLoyaltyAct,
-        Some("PlotZone") => StaticMode::PlotZone,
-        Some("SurveilNum") => StaticMode::SurveilNum,
-        Some("TapPowerValue") => StaticMode::TapPowerValue,
-        Some("TurnReversed") => StaticMode::TurnReversed,
-        Some("PhaseReversed") => StaticMode::PhaseReversed,
-        Some("UntapOtherPlayer") => StaticMode::UntapOtherPlayer,
-        Some("CanBlockIfReach") => StaticMode::CanBlockIfReach,
-        Some("BlockTapped") => StaticMode::BlockTapped,
-        Some("CanAttackIfHaste") => StaticMode::CanAttackIfHaste,
-        Some("MinMaxBlocker") => StaticMode::MinMaxBlocker,
-        Some("AttackVigilance") => StaticMode::AttackVigilance,
-        Some("CantPreventDamage") => StaticMode::CantPreventDamage,
-        Some("CantGainLife") => StaticMode::CantGainLife,
-        Some("CantLoseLife") => StaticMode::CantLoseLife,
-        Some("CantChangeLife") => StaticMode::CantChangeLife,
-        Some("CantPayLife") => StaticMode::CantPayLife,
-        Some(other) => StaticMode::Other(other.to_string()),
+    let modes = match params.get(keys::MODE) {
+        Some(value) => static_ability_mode::set_value_of(value),
         None => return None,
     };
+    if modes.is_empty() {
+        return None;
+    }
 
     let ir = StaticAbilityIr::from_params(&params);
     let mut st_ab = StaticAbility {
         base: Box::new(CardTraitBase::default()),
-        mode,
-        params,
+        modes,
         ignore_effect_cards: Vec::new(),
         ignore_effect_players: Vec::new(),
         may_play_turn: 0,
@@ -1162,39 +1175,39 @@ mod tests {
     fn parse_continuous_anthem() {
         let raw = "S$ Mode$ Continuous | Affected$ Creature.YouControl | AddPower$ 1 | AddToughness$ 1 | Description$ Creatures you control get +1/+1.";
         let sa = parse_static_ability(raw).expect("should parse");
-        let StaticAbility {
-            params: raw_params, ..
-        } = &sa;
-        assert_eq!(sa.mode, StaticMode::Continuous);
-        assert_eq!(raw_params.get("AddPower"), Some("1"));
-        assert_eq!(raw_params.get("AddToughness"), Some("1"));
-        assert_eq!(sa.continuous_layer(), Some(Layer::ModifyPT));
+        assert_eq!(sa.modes, vec![StaticMode::Continuous]);
+        assert_eq!(sa.ir.add_power_text.as_deref(), Some("1"));
+        assert_eq!(sa.ir.add_toughness_text.as_deref(), Some("1"));
+        assert_eq!(
+            crate::staticability::layer::classify_static_layers(&sa),
+            vec![Layer::ModifyPT]
+        );
     }
 
     #[test]
     fn parse_etb_tapped() {
         let raw = "S$ Mode$ ETBTapped | Description$ This permanent enters the battlefield tapped.";
         let sa = parse_static_ability(raw).expect("should parse");
-        assert_eq!(sa.mode, StaticMode::ETBTapped);
-        assert!(sa.continuous_layer().is_none());
+        assert_eq!(sa.modes, vec![StaticMode::ETBTapped]);
+        assert!(crate::staticability::layer::classify_static_layers(&sa).is_empty());
     }
 
     #[test]
     fn parse_cant_attack() {
         let raw = "S$ Mode$ CantAttack | Affected$ Creature.YouControl | Description$ Creatures you control can't attack.";
         let sa = parse_static_ability(raw).expect("should parse");
-        assert_eq!(sa.mode, StaticMode::CantAttack);
+        assert_eq!(sa.modes, vec![StaticMode::CantAttack]);
     }
 
     #[test]
     fn parse_keyword_grant() {
         let raw = "S$ Mode$ Continuous | Affected$ Creature.YouControl | AddKeyword$ Flying | Description$ Creatures you control have flying.";
         let sa = parse_static_ability(raw).expect("should parse");
-        let StaticAbility {
-            params: raw_params, ..
-        } = &sa;
-        assert_eq!(sa.continuous_layer(), Some(Layer::Ability));
-        assert_eq!(raw_params.get("AddKeyword"), Some("Flying"));
+        assert_eq!(
+            crate::staticability::layer::classify_static_layers(&sa),
+            vec![Layer::Ability]
+        );
+        assert_eq!(sa.ir.add_keyword_text.as_deref(), Some("Flying"));
     }
 
     #[test]
@@ -1202,16 +1215,49 @@ mod tests {
         let raw =
             "S$ Mode$ Continuous | Affected$ Creature.YouControl | SetPower$ 0 | SetToughness$ 1";
         let sa = parse_static_ability(raw).expect("should parse");
-        assert_eq!(sa.continuous_layer(), Some(Layer::SetPT));
+        assert_eq!(
+            crate::staticability::layer::classify_static_layers(&sa),
+            vec![Layer::SetPT]
+        );
     }
 
     #[test]
     fn parse_s_colon_prefix() {
-        // Some older Forge card scripts use "S:" instead of "S$".
         let raw =
             "S: Mode$ Continuous | Affected$ Creature.YouControl | AddPower$ 2 | AddToughness$ 2";
         let sa = parse_static_ability(raw).expect("should parse S: prefix");
-        assert_eq!(sa.mode, StaticMode::Continuous);
+        assert_eq!(sa.modes, vec![StaticMode::Continuous]);
+    }
+
+    #[test]
+    fn parse_multi_mode_cant_attack_block() {
+        let raw = "S$ Mode$ CantAttack,CantBlock | Affected$ Creature.YouControl";
+        let sa = parse_static_ability(raw).expect("should parse");
+        assert_eq!(
+            sa.modes,
+            vec![StaticMode::CantAttack, StaticMode::CantBlock]
+        );
+        assert!(sa.check_mode(&StaticMode::CantAttack));
+        assert!(sa.check_mode(&StaticMode::CantBlock));
+        assert!(!sa.check_mode(&StaticMode::CantBeActivated));
+    }
+
+    #[test]
+    fn parse_multi_mode_three_restrictions() {
+        let raw = "S$ Mode$ CantAttack,CantBlock,CantBeActivated | Affected$ Creature.YouControl";
+        let sa = parse_static_ability(raw).expect("should parse");
+        assert!(sa.check_mode(&StaticMode::CantAttack));
+        assert!(sa.check_mode(&StaticMode::CantBlock));
+        assert!(sa.check_mode(&StaticMode::CantBeActivated));
+    }
+
+    #[test]
+    fn parse_continuous_with_restrictions() {
+        let raw = "S$ Mode$ Continuous,CantPlayLand,CantBeCast | Affected$ Card.YouControl";
+        let sa = parse_static_ability(raw).expect("should parse");
+        assert!(sa.check_mode(&StaticMode::Continuous));
+        assert!(sa.check_mode(&StaticMode::CantPlayLand));
+        assert!(sa.check_mode(&StaticMode::CantBeCast));
     }
 
     #[test]

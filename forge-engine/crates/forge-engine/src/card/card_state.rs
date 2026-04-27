@@ -732,7 +732,7 @@ pub fn add_static_ability(card: &mut Card, st_ab: StaticAbility) -> bool {
 
 pub fn remove_static_ability(card: &mut Card, mode: crate::staticability::StaticMode) -> bool {
     let before = card.static_abilities.len();
-    card.static_abilities.retain(|sa| sa.mode != mode);
+    card.static_abilities.retain(|sa| !sa.check_mode(&mode));
     before != card.static_abilities.len()
 }
 

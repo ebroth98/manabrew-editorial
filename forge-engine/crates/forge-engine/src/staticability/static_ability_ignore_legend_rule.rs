@@ -9,7 +9,7 @@ pub fn ignore_legend_rule(cards: &[Card], card: &Card) -> bool {
         for st_ab in source
             .static_abilities
             .iter()
-            .filter(|sa| sa.mode == StaticMode::IgnoreLegendRule)
+            .filter(|sa| sa.check_mode(&StaticMode::IgnoreLegendRule))
         {
             if !matches_valid_card(st_ab.ir.valid_card.as_ref(), card, source) {
                 continue;

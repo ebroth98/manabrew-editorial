@@ -44,7 +44,7 @@ pub fn get_restrictions(card: &Card) -> HashSet<AttackRestrictionType> {
 
     // Check static abilities for CantAttack with restriction subtypes
     for st_ab in &card.static_abilities {
-        if st_ab.mode == StaticMode::CantAttack {
+        if st_ab.check_mode(&StaticMode::CantAttack) {
             if let Some(restriction) = st_ab.ir.restriction_text.as_deref() {
                 match restriction {
                     "OnlyAlone" => {

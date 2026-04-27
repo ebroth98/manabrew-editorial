@@ -11,7 +11,7 @@ pub fn block_restrict_num(cards: &[Card], defender: PlayerId) -> i32 {
         for st_ab in source
             .static_abilities
             .iter()
-            .filter(|sa| sa.mode == StaticMode::BlockRestrict)
+            .filter(|sa| sa.check_mode(&StaticMode::BlockRestrict))
         {
             let valid = st_ab.ir.valid_defender.as_ref();
             if !matches_valid_player(valid, defender, source.controller) {

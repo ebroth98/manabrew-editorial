@@ -11,7 +11,7 @@ pub fn cant_regenerate(cards: &[Card], target: &Card) -> bool {
         for st_ab in source
             .static_abilities
             .iter()
-            .filter(|sa| sa.mode == StaticMode::CantRegenerate)
+            .filter(|sa| sa.check_mode(&StaticMode::CantRegenerate))
         {
             let valid = st_ab.ir.valid_card.as_ref();
             if matches_valid_card(valid, target, source) {

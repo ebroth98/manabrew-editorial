@@ -18,7 +18,7 @@ pub fn cant_discard(
         for st_ab in card
             .static_abilities
             .iter()
-            .filter(|sa| sa.mode == StaticMode::CantDiscard && sa.zones_check(card.zone))
+            .filter(|sa| sa.check_mode(&StaticMode::CantDiscard) && sa.zones_check(card.zone))
         {
             if apply_cant_discard_ability(st_ab, player, card.controller, cause, is_effect) {
                 return true;

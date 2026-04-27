@@ -8,7 +8,7 @@ pub fn assign_as_unblocked(cards: &[Card], card: &Card, optional: bool) -> bool 
         for st_ab in source
             .static_abilities
             .iter()
-            .filter(|sa| sa.mode == StaticMode::AssignCombatDamageAsUnblocked)
+            .filter(|sa| sa.check_mode(&StaticMode::AssignCombatDamageAsUnblocked))
         {
             let has_optional = st_ab.ir.optional;
             if has_optional && !optional {
@@ -32,7 +32,7 @@ pub fn has_optional_assign_as_unblocked(cards: &[Card], card: &Card) -> bool {
             source
                 .static_abilities
                 .iter()
-                .filter(move |sa| sa.mode == StaticMode::AssignCombatDamageAsUnblocked)
+                .filter(move |sa| sa.check_mode(&StaticMode::AssignCombatDamageAsUnblocked))
                 .map(move |sa| (source, sa))
         })
         .any(|(source, sa)| {
@@ -48,7 +48,7 @@ pub fn has_mandatory_assign_as_unblocked(cards: &[Card], card: &Card) -> bool {
             source
                 .static_abilities
                 .iter()
-                .filter(move |sa| sa.mode == StaticMode::AssignCombatDamageAsUnblocked)
+                .filter(move |sa| sa.check_mode(&StaticMode::AssignCombatDamageAsUnblocked))
                 .map(move |sa| (source, sa))
         })
         .any(|(source, sa)| {

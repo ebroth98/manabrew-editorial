@@ -24,7 +24,7 @@ pub fn extra_triggers(
         for st_ab in source
             .static_abilities
             .iter()
-            .filter(|sa| sa.mode == crate::staticability::StaticMode::Panharmonicon)
+            .filter(|sa| sa.check_mode(&crate::staticability::StaticMode::Panharmonicon))
         {
             if let Some(valid_card) = st_ab.ir.valid_card.as_ref() {
                 if !matches_valid_card(valid_card, trig_host, source) {

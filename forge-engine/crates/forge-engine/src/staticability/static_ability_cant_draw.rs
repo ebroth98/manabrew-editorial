@@ -3,7 +3,7 @@ use forge_foundation::ZoneType;
 use crate::card::valid_filter;
 use crate::game::GameState;
 use crate::ids::PlayerId;
-use crate::parsing::{keys, CompiledSelector};
+use crate::parsing::CompiledSelector;
 use crate::staticability::StaticMode;
 
 pub fn can_draw_amount(game: &GameState, player: PlayerId, start_amount: i32) -> i32 {
@@ -19,17 +19,13 @@ pub fn can_draw_amount(game: &GameState, player: PlayerId, start_amount: i32) ->
         for st_ab in card
             .static_abilities
             .iter()
-            .filter(|sa| sa.mode == StaticMode::CantDraw)
+            .filter(|sa| sa.check_mode(&StaticMode::CantDraw))
         {
             let valid_player = st_ab.ir.valid_player.as_ref();
             if !matches_valid_player(valid_player, player, card.controller) {
                 continue;
             }
-            let limit = st_ab
-                .params
-                .get(keys::DRAW_LIMIT)
-                .and_then(|s| s.parse::<i32>().ok())
-                .unwrap_or(0);
+            let limit = st_ab.ir.draw_limit.unwrap_or(0);
             let drawn = game.player(player).drawn_this_turn;
             amount = amount.min((limit - drawn).max(0));
         }

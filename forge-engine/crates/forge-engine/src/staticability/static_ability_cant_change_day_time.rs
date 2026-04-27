@@ -21,7 +21,7 @@ pub fn cant_change_day(game: &GameState, value: Option<bool>) -> bool {
         for st_ab in card
             .static_abilities
             .iter()
-            .filter(|sa| sa.mode == StaticMode::CantChangeDayTime && sa.zones_check(card.zone))
+            .filter(|sa| sa.check_mode(&StaticMode::CantChangeDayTime) && sa.zones_check(card.zone))
         {
             if cant_change_day_check(st_ab, value) {
                 return true;

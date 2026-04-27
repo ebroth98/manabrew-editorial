@@ -99,7 +99,7 @@ pub(crate) fn synthesize_derived(components: &mut ParsedComponents, existing_tri
 
     // OptionalAttackCost with Exert + Trigger$: register an Exerted trigger
     for sa in &components.static_abilities {
-        if sa.mode != crate::staticability::StaticMode::OptionalAttackCost {
+        if !sa.check_mode(&crate::staticability::StaticMode::OptionalAttackCost) {
             continue;
         }
         let has_exert = sa

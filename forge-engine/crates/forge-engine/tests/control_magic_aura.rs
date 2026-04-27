@@ -121,21 +121,10 @@ fn make_control_magic(owner: PlayerId) -> CardInstance {
         vec![],
     );
 
-    // Add the static ability that grants control
-    // S:Mode$ Continuous | Affected$ Card.EnchantedBy | GainControl$ You
-    let mut params = std::collections::BTreeMap::new();
-    params.insert("Mode".to_string(), "Continuous".to_string());
-    params.insert("Affected".to_string(), "Card.EnchantedBy".to_string());
-    params.insert("GainControl".to_string(), "You".to_string());
-
-    let sa = forge_engine_core::staticability::StaticAbility {
-        mode: forge_engine_core::staticability::StaticMode::Continuous,
-        params: Params::from_map(params),
-        ignore_effect_cards: Vec::new(),
-        ignore_effect_players: Vec::new(),
-        may_play_turn: 0,
-        svars: std::collections::HashMap::new(),
-    };
+    let sa = forge_engine_core::staticability::parse_static_ability(
+        "S$ Mode$ Continuous | Affected$ Card.EnchantedBy | GainControl$ You",
+    )
+    .expect("static ability should parse");
 
     card.static_abilities.push(sa);
     card

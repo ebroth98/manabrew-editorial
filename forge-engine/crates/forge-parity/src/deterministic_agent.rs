@@ -475,15 +475,12 @@ impl DeterministicAgent {
                 || c.zone == forge_foundation::ZoneType::Command
         }) {
             for sa in &source.static_abilities {
-                if sa.mode != forge_engine_core::staticability::StaticMode::CantBlockBy {
+                if !sa.check_mode(&forge_engine_core::staticability::StaticMode::CantBlockBy) {
                     continue;
                 }
 
-                if let Some(valid_attacker) = sa
-                    .params
-                    .get(forge_engine_core::parsing::keys::VALID_ATTACKER)
-                {
-                    if !forge_engine_core::card::valid_filter::matches_valid_card(
+                if let Some(valid_attacker) = sa.ir.valid_attacker.as_ref() {
+                    if !forge_engine_core::card::valid_filter::matches_valid_card_selector(
                         valid_attacker,
                         attacker,
                         source,
@@ -492,10 +489,7 @@ impl DeterministicAgent {
                     }
                 }
 
-                if let Some(valid_blocker) = sa
-                    .params
-                    .get(forge_engine_core::parsing::keys::VALID_BLOCKER)
-                {
+                if let Some(valid_blocker) = sa.ir.valid_blocker_text.as_deref() {
                     let blocker_matches = valid_blocker.split(',').any(|v| {
                         forge_engine_core::card::valid_filter::matches_valid_card(
                             v.trim(),

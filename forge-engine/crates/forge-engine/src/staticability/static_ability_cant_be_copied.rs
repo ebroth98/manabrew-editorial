@@ -6,7 +6,7 @@ pub fn cant_be_copied(cards: &[Card], card: &Card) -> bool {
         for st_ab in source
             .static_abilities
             .iter()
-            .filter(|sa| sa.mode == StaticMode::CantBeCopied && sa.zones_check(source.zone))
+            .filter(|sa| sa.check_mode(&StaticMode::CantBeCopied) && sa.zones_check(source.zone))
         {
             if valid_filter::matches_valid_card_selector_opt(
                 st_ab.ir.valid_card.as_ref(),

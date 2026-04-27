@@ -127,6 +127,14 @@ pub const ADD_TYPE: &str = "AddType";
 pub const TYPE: &str = "Type";
 pub const TYPES: &str = "Types";
 pub const ADD_TYPES: &str = "AddTypes";
+pub const ADD_ALL_CREATURE_TYPES: &str = "AddAllCreatureTypes";
+pub const REMOVE_ARTIFACT_TYPES: &str = "RemoveArtifactTypes";
+pub const REMOVE_CARD_TYPES: &str = "RemoveCardTypes";
+pub const REMOVE_COLOR: &str = "RemoveColor";
+pub const REMOVE_ENCHANTMENT_TYPES: &str = "RemoveEnchantmentTypes";
+pub const REMOVE_LAND_TYPES: &str = "RemoveLandTypes";
+pub const REMOVE_SUB_TYPES: &str = "RemoveSubTypes";
+pub const REMOVE_SUPER_TYPES: &str = "RemoveSuperTypes";
 pub const REMOVE_TYPE: &str = "RemoveType";
 pub const SECONDARY_TYPE: &str = "SecondaryType";
 pub const COLOR: &str = "Color";
@@ -143,10 +151,20 @@ pub const ALL_SUFFIX_KEYWORDS: &str = "AllSuffixKeywords";
 pub const ADD_KEYWORD: &str = "AddKeyword";
 pub const ADD_KEYWORDS: &str = "AddKeywords";
 pub const ADD_ABILITY: &str = "AddAbility";
+pub const ADD_REPLACEMENT_EFFECT: &str = "AddReplacementEffect";
+pub const ADD_STATIC_ABILITY: &str = "AddStaticAbility";
+pub const ADD_SVAR: &str = "AddSVar";
 pub const ADD_TRIGGER: &str = "AddTrigger";
 pub const ADD_KWS: &str = "AddKWs";
+pub const CANT_HAVE_KEYWORD: &str = "CantHaveKeyword";
+pub const GAINS_ABILITIES_OF: &str = "GainsAbilitiesOf";
+pub const GAINS_ABILITIES_OF_DEFINED: &str = "GainsAbilitiesOfDefined";
+pub const GAINS_TRIGGER_ABS_OF: &str = "GainsTriggerAbsOf";
 pub const PUMP_KEYWORDS: &str = "PumpKeywords";
 pub const GAINS: &str = "Gains";
+pub const REMOVE_KEYWORD: &str = "RemoveKeyword";
+pub const REMOVE_NON_MANA_ABILITIES: &str = "RemoveNonManaAbilities";
+pub const SHARE_REMEMBERED_KEYWORDS: &str = "ShareRememberedKeywords";
 
 // ── Attribute params ─────────────────────────────────────────────────────
 
@@ -173,6 +191,7 @@ pub const FACE_DOWN: &str = "FaceDown";
 pub const EXILE_FACE_DOWN: &str = "ExileFaceDown";
 pub const FORGET_CHANGED: &str = "ForgetChanged";
 pub const GAIN_CONTROL: &str = "GainControl";
+pub const GOAD: &str = "Goad";
 pub const HIDDEN: &str = "Hidden";
 pub const IMPRINT: &str = "Imprint";
 pub const IS_COMBAT: &str = "IsCombat";
@@ -233,6 +252,26 @@ pub const REST_RANDOM_ORDER: &str = "RestRandomOrder";
 pub const RESTRICT_VALID: &str = "RestrictValid";
 pub const RESTRICT_FROM_ZONE: &str = "RestrictFromZone";
 pub const RESTRICTION: &str = "Restriction";
+
+// ── Static ability continuous layer params ─────────────────────────────
+
+pub const ADD_HIDDEN_KEYWORD: &str = "AddHiddenKeyword";
+pub const ADD_NAMES: &str = "AddNames";
+pub const ADDITIONAL_OPTIONAL_VOTE: &str = "AdditionalOptionalVote";
+pub const ADDITIONAL_VOTE: &str = "AdditionalVote";
+pub const ADJUST_LAND_PLAYS: &str = "AdjustLandPlays";
+pub const CAN_BLOCK_AMOUNT: &str = "CanBlockAmount";
+pub const CAN_BLOCK_ANY: &str = "CanBlockAny";
+pub const CHANGE_COLOR_WORDS_TO: &str = "ChangeColorWordsTo";
+pub const CONTROL_VOTE: &str = "ControlVote";
+pub const DECLARES_ATTACKERS: &str = "DeclaresAttackers";
+pub const DECLARES_BLOCKERS: &str = "DeclaresBlockers";
+pub const GAIN_TEXT_OF: &str = "GainTextOf";
+pub const IGNORE_EFFECT_COST: &str = "IgnoreEffectCost";
+pub const INCORPORATE: &str = "Incorporate";
+pub const MANA_COST: &str = "ManaCost";
+pub const MAY_PLAY: &str = "MayPlay";
+pub const SET_NAME: &str = "SetName";
 
 // ── Replacement params ─────────────────────────────────────────────────
 

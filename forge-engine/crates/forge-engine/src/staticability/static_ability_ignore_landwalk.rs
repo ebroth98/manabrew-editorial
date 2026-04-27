@@ -6,7 +6,7 @@ pub fn ignore_land_walk(cards: &[Card], attacker: &Card, blocker: &Card, keyword
         for st_ab in source
             .static_abilities
             .iter()
-            .filter(|sa| sa.mode == StaticMode::IgnoreLandwalk && sa.zones_check(source.zone))
+            .filter(|sa| sa.check_mode(&StaticMode::IgnoreLandwalk) && sa.zones_check(source.zone))
         {
             if apply_ignore_landwalk(st_ab, attacker, blocker, keyword, source) {
                 return true;

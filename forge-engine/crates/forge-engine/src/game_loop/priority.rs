@@ -370,7 +370,7 @@ impl GameLoop {
                         let has_must_target_static = game.cards.iter().any(|card| {
                             card.zone == ZoneType::Battlefield
                                 && card.static_abilities.iter().any(|st_ab| {
-                                    st_ab.mode == crate::staticability::StaticMode::MustTarget
+                                    st_ab.check_mode(&crate::staticability::StaticMode::MustTarget)
                                 })
                         });
                         if self.java_parity_failed_spell_setup_to_stack

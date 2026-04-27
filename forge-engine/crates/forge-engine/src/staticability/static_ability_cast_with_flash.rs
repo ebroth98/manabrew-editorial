@@ -18,7 +18,7 @@ pub fn any_with_flash(
         for st_ab in source
             .static_abilities
             .iter()
-            .filter(|sa| sa.mode == StaticMode::CastWithFlash)
+            .filter(|sa| sa.check_mode(&StaticMode::CastWithFlash))
         {
             if !matches_valid_card(st_ab.ir.valid_card.as_ref(), spell_card, source) {
                 continue;
@@ -54,7 +54,7 @@ pub fn any_with_flash_for_card(cards: &[Card], spell_card: &Card, caster: Player
         for st_ab in source
             .static_abilities
             .iter()
-            .filter(|sa| sa.mode == StaticMode::CastWithFlash)
+            .filter(|sa| sa.check_mode(&StaticMode::CastWithFlash))
         {
             if !matches_valid_card(st_ab.ir.valid_card.as_ref(), spell_card, source) {
                 continue;

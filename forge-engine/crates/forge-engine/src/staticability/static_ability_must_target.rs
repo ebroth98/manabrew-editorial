@@ -110,7 +110,7 @@ fn get_restrictions(game: &GameState, sa: &SpellAbility) -> Vec<MustTargetRestri
         for st_ab in source
             .static_abilities
             .iter()
-            .filter(|sa| sa.mode == StaticMode::MustTarget)
+            .filter(|sa| sa.check_mode(&StaticMode::MustTarget))
         {
             if let Some(valid_sa) = st_ab.ir.valid_sa.as_deref() {
                 if !spell_ability_matches(valid_sa, sa, sa.activating_player, source.controller) {

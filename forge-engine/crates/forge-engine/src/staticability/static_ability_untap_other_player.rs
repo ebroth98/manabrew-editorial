@@ -4,11 +4,9 @@ use crate::staticability::StaticMode;
 
 pub fn untap(cards: &[Card], card: &Card, player: PlayerId) -> bool {
     for source in cards.iter().filter(|c| c.zone.is_static_ability_source()) {
-        for st_ab in source
-            .static_abilities
-            .iter()
-            .filter(|sa| sa.mode == StaticMode::UntapOtherPlayer && sa.zones_check(source.zone))
-        {
+        for st_ab in source.static_abilities.iter().filter(|sa| {
+            sa.check_mode(&StaticMode::UntapOtherPlayer) && sa.zones_check(source.zone)
+        }) {
             if apply_untap_ability(st_ab, card, source, player) {
                 return true;
             }

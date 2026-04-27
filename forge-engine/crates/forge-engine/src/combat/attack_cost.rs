@@ -24,7 +24,7 @@ pub fn get_attack_cost(cards: &[Card], attacker: &Card, defender: DefenderId) ->
 
     for source in cards.iter().filter(|c| c.zone == ZoneType::Battlefield) {
         for sa in &source.static_abilities {
-            if sa.mode != StaticMode::CantAttackUnless {
+            if !sa.check_mode(&StaticMode::CantAttackUnless) {
                 continue;
             }
 

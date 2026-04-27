@@ -13,7 +13,7 @@ pub fn cant_prevent_damage(cards: &[Card], source_id: CardId, is_combat: bool) -
         for st_ab in static_source
             .static_abilities
             .iter()
-            .filter(|sa| sa.mode == StaticMode::CantPreventDamage)
+            .filter(|sa| sa.check_mode(&StaticMode::CantPreventDamage))
         {
             if applies(st_ab, source_card, static_source, is_combat) {
                 return true;
@@ -26,7 +26,7 @@ pub fn cant_prevent_damage(cards: &[Card], source_id: CardId, is_combat: bool) -
         for st_ab in source_card
             .static_abilities
             .iter()
-            .filter(|sa| sa.mode == StaticMode::CantPreventDamage)
+            .filter(|sa| sa.check_mode(&StaticMode::CantPreventDamage))
         {
             if applies(st_ab, source_card, source_card, is_combat) {
                 return true;

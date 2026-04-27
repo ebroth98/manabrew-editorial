@@ -32,7 +32,7 @@ pub fn get_mana_to_keep(game: &GameState, player: PlayerId) -> HashSet<u16> {
         for st_ab in card
             .static_abilities
             .iter()
-            .filter(|sa| sa.mode == StaticMode::UnspentMana)
+            .filter(|sa| sa.check_mode(&StaticMode::UnspentMana))
         {
             apply_unspent_mana_ability(st_ab, card.controller, player, &mut result);
         }
@@ -56,7 +56,7 @@ pub fn has_mana_burn(game: &GameState, player: PlayerId) -> bool {
         if let Some(st_ab) = card
             .static_abilities
             .iter()
-            .find(|sa| sa.mode == StaticMode::ManaBurn)
+            .find(|sa| sa.check_mode(&StaticMode::ManaBurn))
         {
             // Java short-circuits on the first ManaBurn static found:
             // if (!stAb.matchesValidParam("ValidPlayer", player)) return false;

@@ -18,7 +18,11 @@ fn any_ignore(cards: &[Card], target: &Card, activator: PlayerId, mode: StaticMo
         .iter()
         .filter(|c| c.zone == ZoneType::Battlefield || c.zone == ZoneType::Command)
     {
-        for st_ab in source.static_abilities.iter().filter(|sa| sa.mode == mode) {
+        for st_ab in source
+            .static_abilities
+            .iter()
+            .filter(|sa| sa.check_mode(&mode))
+        {
             if !matches_valid_player(
                 st_ab.ir.activator_raw.as_deref(),
                 activator,

@@ -900,8 +900,9 @@ pub fn init_commander_color(game: &mut GameState, player: PlayerId) {
     for commander in commanders {
         let has_choose_color = game.card(commander).static_abilities.iter().any(|st_ab| {
             st_ab
-                .params
-                .get("Description")
+                .ir
+                .description_text
+                .as_deref()
                 .map(|desc| {
                     desc.contains(
                         "If CARDNAME is your commander, choose a color before the game begins.",

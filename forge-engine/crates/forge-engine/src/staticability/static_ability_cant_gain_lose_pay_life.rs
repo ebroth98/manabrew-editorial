@@ -97,7 +97,7 @@ fn any_common(
         .filter(|c| c.zone == ZoneType::Battlefield)
     {
         for st_ab in &card.static_abilities {
-            if !modes.contains(&st_ab.mode) {
+            if !modes.iter().any(|m| st_ab.check_mode(m)) {
                 continue;
             }
             if let Some(for_cost) = st_ab.ir.for_cost {

@@ -28,7 +28,7 @@ use crate::trigger::TriggerHandler;
 /// Result of computing cost adjustments from static abilities.
 ///
 /// Mirrors the net effect of Java's `CostAdjustment.adjust(ManaCostBeingPaid, ...)`
-/// after scanning all ReduceCost / IncreaseCost / SetCost static abilities.
+/// after scanning all ReduceCost / RaiseCost / SetCost static abilities.
 #[derive(Debug, Clone, Default)]
 pub struct CostAdjustment {
     /// Generic mana adjustment (positive = increase, negative = reduction).
@@ -150,7 +150,7 @@ fn matches_cost_adjustment_activator(
 
 /// Compute cost adjustments for casting `spell_card` by `caster` from `cast_zone`.
 ///
-/// Scans all battlefield permanents for ReduceCost / IncreaseCost / SetCost static abilities.
+/// Scans all battlefield permanents for ReduceCost / RaiseCost / SetCost static abilities.
 /// Mirrors Java's `CostAdjustment.adjust(ManaCostBeingPaid, ...)` scanning loop.
 ///
 /// Includes the spell card's own static abilities (e.g. Sunderflock's self-reduce) —
@@ -209,22 +209,14 @@ fn compute_cost_adjustment_inner(
         c.zone == ZoneType::Battlefield || (include_spell_self && c.id == spell_card.id)
     }) {
         for st_ab in source.static_abilities.iter() {
-            let is_reduce;
-            let is_set_cost;
-            match st_ab.mode {
-                StaticMode::ReduceCost => {
-                    is_reduce = true;
-                    is_set_cost = false;
-                }
-                StaticMode::IncreaseCost => {
-                    is_reduce = false;
-                    is_set_cost = false;
-                }
-                StaticMode::SetCost => {
-                    is_reduce = false;
-                    is_set_cost = true;
-                }
-                _ => continue,
+            let (is_reduce, is_set_cost) = if st_ab.check_mode(&StaticMode::ReduceCost) {
+                (true, false)
+            } else if st_ab.check_mode(&StaticMode::RaiseCost) {
+                (false, false)
+            } else if st_ab.check_mode(&StaticMode::SetCost) {
+                (false, true)
+            } else {
+                continue;
             };
 
             // Java `CostAdjustment.applyRaiseCostAbility` merges `Cost$...` directly
@@ -252,7 +244,7 @@ fn compute_cost_adjustment_inner(
                 // Java's matchesValidParam("Activator", ...) returns true when
                 // the parameter is absent, making the effect universal.
                 // Examples: Urza's Incubator (ReduceCost for all),
-                // Thalia (IncreaseCost for all).
+                // Thalia (RaiseCost for all).
             }
 
             // ── checkRequirement: ValidCard$ ─────────────────────────
@@ -427,7 +419,7 @@ pub fn compute_raise_cost_parts_with_targets(
         .filter(|c| c.zone == ZoneType::Battlefield || c.id == spell_card.id)
     {
         for st_ab in source.static_abilities.iter() {
-            if st_ab.mode != StaticMode::IncreaseCost {
+            if !st_ab.check_mode(&StaticMode::RaiseCost) {
                 continue;
             }
 
@@ -448,7 +440,7 @@ pub fn compute_raise_cost_parts_with_targets(
                     continue;
                 }
             } else {
-                // IncreaseCost without Activator$ → universal effect (e.g. Thalia)
+                // RaiseCost without Activator$ → universal effect (e.g. Thalia)
             }
 
             if !matches_valid_card(

@@ -11,7 +11,7 @@ pub fn combat_damage_uses_toughness(cards: &[Card], card: &Card) -> bool {
         for st_ab in source
             .static_abilities
             .iter()
-            .filter(|sa| sa.mode == StaticMode::CombatDamageToughness)
+            .filter(|sa| sa.check_mode(&StaticMode::CombatDamageToughness))
         {
             if matches_valid_card(st_ab.ir.valid_card.as_ref(), card, source) {
                 return true;

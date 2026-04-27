@@ -1202,7 +1202,7 @@ impl TriggerHandler {
                 continue;
             }
             for sa in &card.static_abilities {
-                if sa.mode != crate::staticability::StaticMode::DisableTriggers {
+                if !sa.check_mode(&crate::staticability::StaticMode::DisableTriggers) {
                     continue;
                 }
 

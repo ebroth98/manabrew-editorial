@@ -27,7 +27,7 @@ pub fn is_infect_damage_with_life_override(
         for st_ab in source
             .static_abilities
             .iter()
-            .filter(|sa| sa.mode == StaticMode::InfectDamage)
+            .filter(|sa| sa.check_mode(&StaticMode::InfectDamage))
         {
             let life_override = if source.controller == target {
                 target_life_override

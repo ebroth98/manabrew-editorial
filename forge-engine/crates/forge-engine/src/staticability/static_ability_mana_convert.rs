@@ -19,7 +19,7 @@ pub fn can_spend_mana_as_any_color(cards: &[Card], player: PlayerId, spell_card:
         for st_ab in source
             .static_abilities
             .iter()
-            .filter(|sa| sa.mode == StaticMode::ManaConvert)
+            .filter(|sa| sa.check_mode(&StaticMode::ManaConvert))
         {
             // Check ValidPlayer$
             if !valid_filter::matches_valid_player_selector_opt(

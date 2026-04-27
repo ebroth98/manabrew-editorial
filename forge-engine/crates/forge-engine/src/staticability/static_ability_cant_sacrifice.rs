@@ -14,7 +14,7 @@ pub fn cant_sacrifice(
         for st_ab in source
             .static_abilities
             .iter()
-            .filter(|sa| sa.mode == StaticMode::CantSacrifice)
+            .filter(|sa| sa.check_mode(&StaticMode::CantSacrifice))
         {
             if let Some(for_cost) = st_ab.ir.for_cost {
                 if for_cost != is_cost {

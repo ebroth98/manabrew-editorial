@@ -12,7 +12,7 @@ pub fn can_attack_defender(cards: &[Card], card: &Card, defender: PlayerId) -> b
         for st_ab in source
             .static_abilities
             .iter()
-            .filter(|sa| sa.mode == StaticMode::CanAttackDefender)
+            .filter(|sa| sa.check_mode(&StaticMode::CanAttackDefender))
         {
             if !matches_valid_card(st_ab.ir.valid_card.as_ref(), card, source) {
                 continue;

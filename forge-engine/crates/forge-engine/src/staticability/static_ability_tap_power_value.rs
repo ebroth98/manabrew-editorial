@@ -11,7 +11,7 @@ pub fn with_toughness(cards: &[Card], card: &Card, _sa: Option<&SpellAbility>) -
         for st_ab in source
             .static_abilities
             .iter()
-            .filter(|s| s.mode == StaticMode::TapPowerValue && s.zones_check(source.zone))
+            .filter(|s| s.check_mode(&StaticMode::TapPowerValue) && s.zones_check(source.zone))
         {
             // Value$ must equal "Toughness" (case-insensitive to match Java .equals behavior)
             match st_ab.ir.value_text.as_deref() {
@@ -48,7 +48,7 @@ pub fn get_mod(cards: &[Card], card: &Card, _sa: Option<&SpellAbility>) -> i32 {
         for st_ab in source
             .static_abilities
             .iter()
-            .filter(|s| s.mode == StaticMode::TapPowerValue && s.zones_check(source.zone))
+            .filter(|s| s.check_mode(&StaticMode::TapPowerValue) && s.zones_check(source.zone))
         {
             // ValidCard$
             if !valid_filter::matches_valid_card_selector_opt(

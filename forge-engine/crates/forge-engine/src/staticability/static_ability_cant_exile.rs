@@ -14,7 +14,7 @@ pub fn cant_exile(
         for st_ab in source
             .static_abilities
             .iter()
-            .filter(|sa| sa.mode == StaticMode::CantExile)
+            .filter(|sa| sa.check_mode(&StaticMode::CantExile))
         {
             if let Some(for_cost) = st_ab.ir.for_cost {
                 if for_cost != is_cost {

@@ -7,7 +7,7 @@ pub fn any_with_adapt(cards: &[Card], sa: &SpellAbility, card: &Card) -> bool {
         for st_ab in source
             .static_abilities
             .iter()
-            .filter(|s| s.mode == StaticMode::CanAdapt && s.zones_check(source.zone))
+            .filter(|s| s.check_mode(&StaticMode::CanAdapt) && s.zones_check(source.zone))
         {
             if apply_with_adapt(st_ab, sa, card, source) {
                 return true;

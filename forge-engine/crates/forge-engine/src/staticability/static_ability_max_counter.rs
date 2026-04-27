@@ -12,7 +12,7 @@ pub fn max_counter(cards: &[Card], target: &Card, counter_type: &CounterType) ->
         for st_ab in source
             .static_abilities
             .iter()
-            .filter(|sa| sa.mode == StaticMode::MaxCounter)
+            .filter(|sa| sa.check_mode(&StaticMode::MaxCounter))
         {
             if let Some(parsed) = st_ab.ir.counter_type.as_ref() {
                 if *parsed != *counter_type {

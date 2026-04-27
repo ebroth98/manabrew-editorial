@@ -6,23 +6,23 @@
 
 ## Notation
 
-| Symbol | Meaning |
-|--------|---------|
-| `::=` | Production rule |
-| `\|` | Alternative |
-| `( … )` | Grouping |
-| `[ … ]` | Optional (0 or 1) |
-| `{ … }` | Repetition (0 or more) |
-| `{ … }+` | Repetition (1 or more) |
-| `'…'` | Terminal literal |
-| `/…/` | Regex terminal |
-| `ε` | Empty string |
-| `NL` | Newline (`\n` or `\r\n`) |
-| `WS` | Horizontal whitespace (`' '` or `'\t'`) |
+| Symbol   | Meaning                                 |
+| -------- | --------------------------------------- |
+| `::=`    | Production rule                         |
+| `\|`     | Alternative                             |
+| `( … )`  | Grouping                                |
+| `[ … ]`  | Optional (0 or 1)                       |
+| `{ … }`  | Repetition (0 or more)                  |
+| `{ … }+` | Repetition (1 or more)                  |
+| `'…'`    | Terminal literal                        |
+| `/…/`    | Regex terminal                          |
+| `ε`      | Empty string                            |
+| `NL`     | Newline (`\n` or `\r\n`)                |
+| `WS`     | Horizontal whitespace (`' '` or `'\t'`) |
 
 This grammar is **syntactic only**. It defines how to split input into
 structural tokens. All semantic interpretation — determining what a value
-*means* — is performed in a separate phase (§3).
+_means_ — is performed in a separate phase (§3).
 
 ---
 
@@ -61,21 +61,21 @@ CommentLine    ::= '#' RawValue
 
 Line classification is determined by the text before the first `:`.
 
-| Prefix | Production |
-|--------|------------|
-| `A` | AbilityLine |
-| `T` | TriggerLine |
-| `S` | StaticAbilityLine |
-| `R` | ReplacementLine |
-| `K` | KeywordLine |
-| `SVar` | SVarLine |
-| `AlternateMode` | AlternateModeLine |
-| `ALTERNATE` (no colon) | FaceSeparator |
-| `/SPECIALIZE.*/` | SpecializeLine |
-| `/SETCOLORID.*/` | IgnoredLine |
-| Known field key | FieldLine |
-| `AI`, `DeckHints`, `DeckNeeds`, `DeckHas`, `HandLifeModifier` | IgnoredLine |
-| (anything else) | Unknown — emit diagnostic |
+| Prefix                                                        | Production                |
+| ------------------------------------------------------------- | ------------------------- |
+| `A`                                                           | AbilityLine               |
+| `T`                                                           | TriggerLine               |
+| `S`                                                           | StaticAbilityLine         |
+| `R`                                                           | ReplacementLine           |
+| `K`                                                           | KeywordLine               |
+| `SVar`                                                        | SVarLine                  |
+| `AlternateMode`                                               | AlternateModeLine         |
+| `ALTERNATE` (no colon)                                        | FaceSeparator             |
+| `/SPECIALIZE.*/`                                              | SpecializeLine            |
+| `/SETCOLORID.*/`                                              | IgnoredLine               |
+| Known field key                                               | FieldLine                 |
+| `AI`, `DeckHints`, `DeckNeeds`, `DeckHas`, `HandLifeModifier` | IgnoredLine               |
+| (anything else)                                               | Unknown — emit diagnostic |
 
 The key is matched **before the first colon** in the line. If no colon
 exists and the line is not `ALTERNATE` or blank, the line is malformed.
@@ -240,10 +240,10 @@ Keyword values are syntactically opaque. Semantic interpretation splits
 the raw value on `:` to distinguish simple keywords, parameterized
 keywords, and class level definitions:
 
-| Pattern | Interpretation |
-|---------|---------------|
-| `Flying` | Simple keyword |
-| `Evoke:2 U` | Parameterized keyword (name `:` param) |
+| Pattern                       | Interpretation                           |
+| ----------------------------- | ---------------------------------------- |
+| `Flying`                      | Simple keyword                           |
+| `Evoke:2 U`                   | Parameterized keyword (name `:` param)   |
 | `Class:2:1 G:AddTrigger$ Foo` | Class level (level `:` cost `:` payload) |
 
 This sub-parsing is **not part of the syntactic grammar**.
@@ -303,6 +303,7 @@ an `Amount`, a `Selector`, or plain `Text` depending on the key. The
 priority-ordered mapping in §11 defines which interpretation wins.
 
 Phase 2 also resolves:
+
 - SVar bodies into their typed forms (ability, param record, or expression).
 - Keyword lines into simple, parameterized, or class keywords.
 - Field values into their domain types (mana cost, type line, P/T, etc.).
@@ -414,11 +415,11 @@ AtomicPart        ::= ComparisonFilter | IDENTIFIER
 
 **Operator precedence** (highest to lowest):
 
-| Precedence | Operator | Associativity | Meaning |
-|------------|----------|---------------|---------|
-| 1 (highest) | `.` `+` | left | Chain: intersect filters within one alternative |
-| 2 | `&` (space-padded) | left | Conjunction of selector chains |
-| 3 (lowest) | `,` | left | Disjunction: logical OR of alternatives |
+| Precedence  | Operator           | Associativity | Meaning                                         |
+| ----------- | ------------------ | ------------- | ----------------------------------------------- |
+| 1 (highest) | `.` `+`            | left          | Chain: intersect filters within one alternative |
+| 2           | `&` (space-padded) | left          | Conjunction of selector chains                  |
+| 3 (lowest)  | `,`                | left          | Disjunction: logical OR of alternatives         |
 
 All selector operators (`.`, `+`, `&`, `,`) are **left-associative**.
 The `.` and `+` operators are equivalent in precedence. Both conjoin
@@ -455,13 +456,13 @@ time, not at parse time.
 
 #### Selector Examples
 
-| Input | Parse |
-|-------|-------|
-| `Creature.YouCtrl` | One alt, one chain, two parts: `Creature`, `YouCtrl` |
-| `Creature.YouCtrl.Tapped` | One alt, one chain, three parts |
-| `Instant.YouOwn,Sorcery.YouOwn` | Two alts (OR), each one chain |
-| `Creature.OppCtrl+cmcLE3` | One alt, one chain, two parts: `OppCtrl`, `cmcLE3` |
-| `Card.Self & Creature.Token` | One alt, two chains (AND) |
+| Input                           | Parse                                                |
+| ------------------------------- | ---------------------------------------------------- |
+| `Creature.YouCtrl`              | One alt, one chain, two parts: `Creature`, `YouCtrl` |
+| `Creature.YouCtrl.Tapped`       | One alt, one chain, three parts                      |
+| `Instant.YouOwn,Sorcery.YouOwn` | Two alts (OR), each one chain                        |
+| `Creature.OppCtrl+cmcLE3`       | One alt, one chain, two parts: `OppCtrl`, `cmcLE3`   |
+| `Card.Self & Creature.Token`    | One alt, two chains (AND)                            |
 
 ### 4.6 References
 
@@ -560,11 +561,11 @@ Mana symbols and angle-bracket costs may be freely intermixed (e.g.
 
 #### Cost String Examples
 
-| Input | Tokens |
-|-------|--------|
-| `T` | `[Tap]` |
-| `2 W B` | `[Mana(2), Mana(W), Mana(B)]` |
-| `AddCounter<2/LOYALTY>` | `[AngleBracket(AddCounter, [2, LOYALTY])]` |
+| Input                        | Tokens                                                    |
+| ---------------------------- | --------------------------------------------------------- |
+| `T`                          | `[Tap]`                                                   |
+| `2 W B`                      | `[Mana(2), Mana(W), Mana(B)]`                             |
+| `AddCounter<2/LOYALTY>`      | `[AngleBracket(AddCounter, [2, LOYALTY])]`                |
 | `2 T SubCounter<All/CHARGE>` | `[Mana(2), Tap, AngleBracket(SubCounter, [All, CHARGE])]` |
 
 ### 4.10 Comparisons
@@ -584,6 +585,7 @@ RHS               ::= /[^\s]+/
 ```
 
 Three surface forms exist:
+
 - Spaced: `LHS op RHS` (e.g. `X EQ 0`)
 - Compact with LHS: `LHS opRHS` (e.g. `X GE2`)
 - Compact without LHS: `opRHS` (e.g. `GE2`)
@@ -695,17 +697,17 @@ This set is open and extensible.
 
 Common params by trigger mode:
 
-| Param | Type | Usage |
-|-------|------|-------|
-| `ValidCard$` | Selector | What card matches the trigger condition |
-| `Origin$` | Zone | Source zone (ChangesZone) |
-| `Destination$` | Zone | Destination zone (ChangesZone) |
-| `Execute$` | SVarReference | SVar to invoke when triggered |
-| `TriggerZones$` | ZoneList | Where the trigger source must be |
-| `TriggerDescription$` | Text | Human-readable description |
-| `Phase$` | Symbol | Which phase (Phase mode) |
-| `ValidActivatingPlayer$` | Reference | Who activated/cast |
-| `Secondary$` | Boolean | Whether this is a secondary trigger |
+| Param                    | Type          | Usage                                   |
+| ------------------------ | ------------- | --------------------------------------- |
+| `ValidCard$`             | Selector      | What card matches the trigger condition |
+| `Origin$`                | Zone          | Source zone (ChangesZone)               |
+| `Destination$`           | Zone          | Destination zone (ChangesZone)          |
+| `Execute$`               | SVarReference | SVar to invoke when triggered           |
+| `TriggerZones$`          | ZoneList      | Where the trigger source must be        |
+| `TriggerDescription$`    | Text          | Human-readable description              |
+| `Phase$`                 | Symbol        | Which phase (Phase mode)                |
+| `ValidActivatingPlayer$` | Reference     | Who activated/cast                      |
+| `Secondary$`             | Boolean       | Whether this is a secondary trigger     |
 
 ---
 
@@ -719,7 +721,7 @@ The `Mode$` param is **required** and must be one of:
 ```
 'Continuous'        'CantAttack'         'CantBlock'
 'CantCast'          'CantBeCast'         'ReduceCost'
-'IncreaseCost'      'AlternativeCost'    'SetProperty'
+'RaiseCost'         'AlternativeCost'    'SetProperty'
 'CantTarget'        'CantDamage'         'CantAttackBlock'
 'CantBeCountered'   'Undo'
 'CantPlayLand'      'CantBeSacrificed'
@@ -796,7 +798,7 @@ payload itself may not contain unescaped `:`).
 
 - `Level` is an integer.
 - `Cost` is a cost string (may contain spaces but not `:`).
-- `Payload` is one or more `Key$ SVarName` pairs separated by ` & `.
+- `Payload` is one or more `Key$ SVarName` pairs separated by `&`.
 
 Well-known keyword names (non-exhaustive):
 
@@ -877,21 +879,21 @@ the param is absent from the `ParamRecord`. These defaults are
 
 Examples (non-exhaustive):
 
-| Ability | Param | Default |
-|---------|-------|---------|
-| `DealDamage` | `NumDmg$` | (required — no default) |
-| Any targeted ability | `TargetMin$` | `1` |
-| Any targeted ability | `TargetMax$` | `1` |
-| `Draw` | `NumCards$` | `1` |
-| `Draw` | `Defined$` | `You` |
-| `GainLife` | `Defined$` | `You` |
-| `ChangeZone` | `Origin$` | (required) |
-| `ChangeZone` | `Destination$` | (required) |
-| `PutCounter` | `CounterNum$` | `1` |
-| `Pump` | `Duration$` | `UntilEndOfTurn` |
-| `Token` | `TokenOwner$` | `You` |
-| Any ability | `StackDescription$` | `SpellDescription$` value |
-| Any trigger | `Secondary$` | `False` |
+| Ability              | Param               | Default                   |
+| -------------------- | ------------------- | ------------------------- |
+| `DealDamage`         | `NumDmg$`           | (required — no default)   |
+| Any targeted ability | `TargetMin$`        | `1`                       |
+| Any targeted ability | `TargetMax$`        | `1`                       |
+| `Draw`               | `NumCards$`         | `1`                       |
+| `Draw`               | `Defined$`          | `You`                     |
+| `GainLife`           | `Defined$`          | `You`                     |
+| `ChangeZone`         | `Origin$`           | (required)                |
+| `ChangeZone`         | `Destination$`      | (required)                |
+| `PutCounter`         | `CounterNum$`       | `1`                       |
+| `Pump`               | `Duration$`         | `UntilEndOfTurn`          |
+| `Token`              | `TokenOwner$`       | `You`                     |
+| Any ability          | `StackDescription$` | `SpellDescription$` value |
+| Any trigger          | `Secondary$`        | `False`                   |
 
 Defaults are defined per-ability in the engine's ability factory, not in
 the card script. A conforming parser must not inject defaults during
@@ -905,28 +907,28 @@ The semantic type of a param's `RawValue` is determined by its key. The
 following rules are applied in **priority order** during Phase 2. The
 first matching rule wins.
 
-| Priority | Key Condition | Value Condition | Semantic Type |
-|----------|---------------|-----------------|---------------|
-| 1 | Key ∈ `{AB, SP, DB, ST}` | — | `AbilityRecord` |
-| 2 | Key = `Mode` or `Event`, or Key ends with `Mode` or `Logic` | — | `Symbol` |
-| 3 | Key ends with `Description`, `Desc`, `Prompt`, `Message`, `Title`; or Key ∈ explicit text-key set¹ | — | `Text` |
-| 4 | Key = `Cost` or `Incorporate`, or Key ends with `Cost` or `CostDesc` | — | `Cost` |
-| 5 | — | Value contains `->` | `Transform` |
-| 6 | — | Value ∈ `{True, False}` (case-insensitive) | `Boolean` |
-| 7 | Key ∈ `{Primary, Secondary}` | (after boolean check fails) | `Text` |
-| 8 | Key ∈ explicit symbol-key set² | — | `Symbol` |
-| 9 | Key contains `Zone` or ends with `Zones`, `Destination`; or Key ∈ explicit zone-key set³ | — | `ZoneList` |
-| 10 | Key = `Execute` or `sVars`, or Key ends with `SubAbility`, `Ability`, `Abilities`, `SVar`, `Pile`, `Subs`; or Key ∈ explicit svar-ref set⁴ | — | `SVarReference` |
-| 11 | Key ends with `Amount`, `CMC`, `Power`, `Toughness`, `HandSize`, `Limit`, `Min`, `Max`; or Key starts with `Num` or ends with `Num`; or Key ∈ explicit amount-key set⁵ | — | `Amount` |
-| 12 | Key = `Defined` or starts with `Defined` or ends with `Defined`, `DefinedPlayer`, `Controller`, `Owner`, `Payer`, `Player`, `Source`, `Decider`, `Defender`, `Damage`; or Key ∈ explicit reference-key set⁶ | — | `Reference` |
-| 13 | Key starts with `Valid` or contains `Valid`; or Key ends with `Type`, `Types`, `Cards`, `Choices`, `Players`, `Restrictions`, `Tgts`, `Objects`; or Key ∈ explicit selector-key set⁷ | — | `Selector` |
-| 14 | — | Value parses as INTEGER | `Integer` |
-| 15 | — | Value matches comparison pattern (§4.10) | `Comparison` |
-| 16 | Key ends with `Compare`, `Condition`, `Formula`; or Key contains `ThisTurn`; or Key starts with `CheckOn`; or Key = `Expression` or `LifeTotal` or `Condition` | — | `Expression` |
-| 16b | — | Value starts with `Count$`, `Remembered$`, `Triggered$`; or Value contains `/Plus.`, `/Minus.`, `/Times.`, `/Twice`, `/Half` | `Expression` |
-| 17 | Key ends with `List`, `Names`, `Colors`, `Color`, `Keyword`, `Keywords`, `KWs`, `Counters`; or Key ∈ explicit list-key set⁸ | — | `DelimitedList` |
-| 17b | — | Value contains `,` | `DelimitedList` |
-| 18 | (fallback) | — | `Raw` |
+| Priority | Key Condition                                                                                                                                                                                               | Value Condition                                                                                                              | Semantic Type   |
+| -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- | --------------- |
+| 1        | Key ∈ `{AB, SP, DB, ST}`                                                                                                                                                                                    | —                                                                                                                            | `AbilityRecord` |
+| 2        | Key = `Mode` or `Event`, or Key ends with `Mode` or `Logic`                                                                                                                                                 | —                                                                                                                            | `Symbol`        |
+| 3        | Key ends with `Description`, `Desc`, `Prompt`, `Message`, `Title`; or Key ∈ explicit text-key set¹                                                                                                          | —                                                                                                                            | `Text`          |
+| 4        | Key = `Cost` or `Incorporate`, or Key ends with `Cost` or `CostDesc`                                                                                                                                        | —                                                                                                                            | `Cost`          |
+| 5        | —                                                                                                                                                                                                           | Value contains `->`                                                                                                          | `Transform`     |
+| 6        | —                                                                                                                                                                                                           | Value ∈ `{True, False}` (case-insensitive)                                                                                   | `Boolean`       |
+| 7        | Key ∈ `{Primary, Secondary}`                                                                                                                                                                                | (after boolean check fails)                                                                                                  | `Text`          |
+| 8        | Key ∈ explicit symbol-key set²                                                                                                                                                                              | —                                                                                                                            | `Symbol`        |
+| 9        | Key contains `Zone` or ends with `Zones`, `Destination`; or Key ∈ explicit zone-key set³                                                                                                                    | —                                                                                                                            | `ZoneList`      |
+| 10       | Key = `Execute` or `sVars`, or Key ends with `SubAbility`, `Ability`, `Abilities`, `SVar`, `Pile`, `Subs`; or Key ∈ explicit svar-ref set⁴                                                                  | —                                                                                                                            | `SVarReference` |
+| 11       | Key ends with `Amount`, `CMC`, `Power`, `Toughness`, `HandSize`, `Limit`, `Min`, `Max`; or Key starts with `Num` or ends with `Num`; or Key ∈ explicit amount-key set⁵                                      | —                                                                                                                            | `Amount`        |
+| 12       | Key = `Defined` or starts with `Defined` or ends with `Defined`, `DefinedPlayer`, `Controller`, `Owner`, `Payer`, `Player`, `Source`, `Decider`, `Defender`, `Damage`; or Key ∈ explicit reference-key set⁶ | —                                                                                                                            | `Reference`     |
+| 13       | Key starts with `Valid` or contains `Valid`; or Key ends with `Type`, `Types`, `Cards`, `Choices`, `Players`, `Restrictions`, `Tgts`, `Objects`; or Key ∈ explicit selector-key set⁷                        | —                                                                                                                            | `Selector`      |
+| 14       | —                                                                                                                                                                                                           | Value parses as INTEGER                                                                                                      | `Integer`       |
+| 15       | —                                                                                                                                                                                                           | Value matches comparison pattern (§4.10)                                                                                     | `Comparison`    |
+| 16       | Key ends with `Compare`, `Condition`, `Formula`; or Key contains `ThisTurn`; or Key starts with `CheckOn`; or Key = `Expression` or `LifeTotal` or `Condition`                                              | —                                                                                                                            | `Expression`    |
+| 16b      | —                                                                                                                                                                                                           | Value starts with `Count$`, `Remembered$`, `Triggered$`; or Value contains `/Plus.`, `/Minus.`, `/Times.`, `/Twice`, `/Half` | `Expression`    |
+| 17       | Key ends with `List`, `Names`, `Colors`, `Color`, `Keyword`, `Keywords`, `KWs`, `Counters`; or Key ∈ explicit list-key set⁸                                                                                 | —                                                                                                                            | `DelimitedList` |
+| 17b      | —                                                                                                                                                                                                           | Value contains `,`                                                                                                           | `DelimitedList` |
+| 18       | (fallback)                                                                                                                                                                                                  | —                                                                                                                            | `Raw`           |
 
 The explicit key sets referenced above (¹–⁸) are defined in the parser
 source (`forge-card-script/src/lib.rs`, functions `is_text_key`,
