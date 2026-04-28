@@ -538,11 +538,12 @@ impl JavaServer {
         Ok(JavaMatchupData { log })
     }
 
-    /// Run a matchup with streaming snapshot comparison.
+    /// Run a matchup with streaming log comparison.
     ///
-    /// Like `run_matchup`, but calls `on_snapshot(index, &snapshot)` for each
-    /// Java snapshot as it arrives. If the callback returns `false`, remaining
-    /// snapshots are skipped (not parsed/stored) but output is drained to the
+    /// Like `run_matchup`, but calls `on_entry(index, &entry)` for each
+    /// Java parity log entry as it arrives. `index` is the current snapshot
+    /// count at the time of delivery. If the callback returns `false`,
+    /// remaining entries are skipped (not parsed/stored) but output is drained to the
     /// done sentinel to keep the protocol in sync.
     ///
     /// This enables early divergence detection without waiting for the full
@@ -558,10 +559,10 @@ impl JavaServer {
         variant: &str,
         commanders: &[String],
         verbose_turns: Option<String>,
-        mut on_snapshot: F,
+        mut on_entry: F,
     ) -> Result<JavaMatchupData, JavaBridgeError>
     where
-        F: FnMut(usize, &StateSnapshot) -> bool,
+        F: FnMut(usize, &ParityLogEntry) -> bool,
     {
         let request = MatchupRequest {
             command: "run".to_string(),
@@ -629,12 +630,22 @@ impl JavaServer {
             }
 
             if let Some(decision) = parse_decision_line(line) {
-                log.push(ParityLogEntry::Decision(decision));
+                let entry = ParityLogEntry::Decision(decision);
+                let keep_going = on_entry(snapshot_count, &entry);
+                log.push(entry);
+                if !keep_going {
+                    draining = true;
+                }
                 continue;
             }
 
             if let Some(callback) = parse_callback_line(line, snapshot_count) {
-                log.push(ParityLogEntry::Callback(callback));
+                let entry = ParityLogEntry::Callback(callback);
+                let keep_going = on_entry(snapshot_count, &entry);
+                log.push(entry);
+                if !keep_going {
+                    draining = true;
+                }
                 continue;
             }
 
@@ -646,8 +657,9 @@ impl JavaServer {
                             snapshot.turn, snapshot.phase, snapshot.game_over
                         );
                     }
-                    let keep_going = on_snapshot(snapshot_count, &snapshot);
-                    log.push(ParityLogEntry::Snapshot(snapshot));
+                    let entry = ParityLogEntry::Snapshot(snapshot);
+                    let keep_going = on_entry(snapshot_count, &entry);
+                    log.push(entry);
                     snapshot_count += 1;
                     if !keep_going {
                         draining = true;

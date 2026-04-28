@@ -5,8 +5,14 @@ edition = "2021"
 
 [dependencies]
 rkyv = { version = "0.7", features = ["validation"] }
+forge-card-script = { path = "../forge-card-script" }
+memmap2 = "0.9"
 walkdir = "2"
 
 [[bin]]
 name = "build-cardset-archive"
 path = "src/bin/build.rs"
+
+[[bin]]
+name = "bench-cardset-archive"
+path = "src/bin/bench.rs"

@@ -47,7 +47,6 @@ use rayon::prelude::*;
 use rayon::ThreadPoolBuilder;
 
 use forge_parity::card_pool::CardPool;
-use forge_parity::comparator;
 use forge_parity::deck_generator;
 use forge_parity::deterministic_agent::VerboseMode;
 use forge_parity::java_bridge::{
@@ -55,8 +54,9 @@ use forge_parity::java_bridge::{
 };
 use forge_parity::java_cache::{self, JavaCache};
 use forge_parity::java_random::JavaRandom;
+use forge_parity::parity_compare::{compare_matchup, extract_investigation_window};
 use forge_parity::protocol::{
-    Divergence, FuzzReport, FuzzResult, MatchupResult, MatchupStatus, MatrixReport, ParityLogEntry,
+    FuzzReport, FuzzResult, MatchupResult, MatchupStatus, MatrixReport, ParityLogEntry,
 };
 use forge_parity::report;
 use forge_parity::runner::{self, LoadedData, RunConfig, DEFAULT_DECKS_DIR};
@@ -1092,186 +1092,6 @@ fn run_single_matchup_rust_only(config: &RunConfig, data: &LoadedData) -> Matchu
     }
 }
 
-/// Compare Rust and Java snapshot lists and build a MatchupResult.
-fn compare_snapshots(
-    config: &RunConfig,
-    rust_trace: &forge_parity::protocol::GameTrace,
-    java_data: &JavaMatchupData,
-) -> MatchupResult {
-    let rust_snapshots = rust_trace.snapshot_vec();
-    let java_snapshots = java_data.snapshot_vec();
-    let mut first_divergence: Option<Divergence> = None;
-    let mut compared_until = rust_snapshots.len().max(java_snapshots.len());
-    let mut rust_idx = 0usize;
-    let mut java_idx = 0usize;
-    let mut compared_index = 0usize;
-    // Track the actual array indices at the point of divergence, which may
-    // differ from compared_index after deep-mode resync skips.
-    let mut diverge_rust_idx: Option<usize> = None;
-    let mut diverge_java_idx: Option<usize> = None;
-
-    while rust_idx < rust_snapshots.len() || java_idx < java_snapshots.len() {
-        match (rust_snapshots.get(rust_idx), java_snapshots.get(java_idx)) {
-            (Some(rs), Some(js)) => {
-                let divs = comparator::compare(compared_index, rs, js);
-                if divs.is_empty() {
-                    rust_idx += 1;
-                    java_idx += 1;
-                    compared_index += 1;
-                    continue;
-                }
-
-                if config.loose_parity {
-                    if let Some((next_rust_idx, next_java_idx)) = find_deep_resync(
-                        &rust_snapshots,
-                        &java_snapshots,
-                        rust_idx,
-                        java_idx,
-                        compared_index,
-                    ) {
-                        rust_idx = next_rust_idx;
-                        java_idx = next_java_idx;
-                        continue;
-                    }
-                }
-
-                first_divergence = divs.into_iter().next();
-                compared_until = compared_index + 1;
-                diverge_rust_idx = Some(rust_idx);
-                diverge_java_idx = Some(java_idx);
-                break;
-            }
-            (Some(rs), None) => {
-                first_divergence = Some(Divergence {
-                    snapshot_index: compared_index,
-                    turn: rs.turn,
-                    phase: rs.phase.clone(),
-                    field: "snapshot.exists".into(),
-                    rust_value: "present".into(),
-                    java_value: "missing".into(),
-                });
-                compared_until = compared_index + 1;
-                diverge_rust_idx = Some(rust_idx);
-                break;
-            }
-            (None, Some(js)) => {
-                first_divergence = Some(Divergence {
-                    snapshot_index: compared_index,
-                    turn: js.turn,
-                    phase: js.phase.clone(),
-                    field: "snapshot.exists".into(),
-                    rust_value: "missing".into(),
-                    java_value: "present".into(),
-                });
-                compared_until = compared_index + 1;
-                diverge_java_idx = Some(java_idx);
-                break;
-            }
-            (None, None) => {
-                compared_until = compared_index;
-                break;
-            }
-        }
-    }
-
-    // --- Snapshot timeline dump (--log-snapshots) ---
-    if config.log_snapshots {
-        dump_snapshot_timeline(&rust_snapshots, &java_snapshots);
-    }
-
-    let divergence_count = usize::from(first_divergence.is_some());
-    let status = if first_divergence.is_none() {
-        MatchupStatus::Pass
-    } else {
-        MatchupStatus::Fail
-    };
-    MatchupResult {
-        deck1: config.deck1.clone(),
-        deck2: config.deck2.clone(),
-        seed: config.seed,
-        status,
-        snapshots_compared: compared_until,
-        divergence_count,
-        rust_snapshot: first_divergence.as_ref().and_then(|_| {
-            let idx = diverge_rust_idx.unwrap_or_else(|| {
-                compared_until
-                    .saturating_sub(1)
-                    .min(rust_snapshots.len().saturating_sub(1))
-            });
-            rust_snapshots.get(idx).cloned()
-        }),
-        java_snapshot: first_divergence.as_ref().and_then(|_| {
-            let idx = diverge_java_idx.unwrap_or_else(|| {
-                compared_until
-                    .saturating_sub(1)
-                    .min(java_snapshots.len().saturating_sub(1))
-            });
-            java_snapshots.get(idx).cloned()
-        }),
-        first_divergence,
-        error_message: None,
-        skip_reason: None,
-        covered_cards: vec![],
-        rust_log: rust_trace.log.clone(),
-        java_log: java_data.log.clone(),
-        finished_turn: rust_snapshots.last().and_then(|s| {
-            if s.game_over {
-                Some(s.turn)
-            } else {
-                None
-            }
-        }),
-    }
-}
-
-fn find_deep_resync(
-    rust_snapshots: &[forge_parity::protocol::StateSnapshot],
-    java_snapshots: &[forge_parity::protocol::StateSnapshot],
-    rust_idx: usize,
-    java_idx: usize,
-    compared_index: usize,
-) -> Option<(usize, usize)> {
-    const RESYNC_WINDOW: usize = 8;
-
-    let mut best: Option<(usize, usize)> = None;
-    for rust_skip in 0..=RESYNC_WINDOW {
-        for java_skip in 0..=RESYNC_WINDOW {
-            if rust_skip == 0 && java_skip == 0 {
-                continue;
-            }
-            let Some(rs) = rust_snapshots.get(rust_idx + rust_skip) else {
-                continue;
-            };
-            let Some(js) = java_snapshots.get(java_idx + java_skip) else {
-                continue;
-            };
-            if comparator::compare(compared_index, rs, js).is_empty() {
-                let candidate = (rust_idx + rust_skip, java_idx + java_skip);
-                match best {
-                    None => best = Some(candidate),
-                    Some(current) => {
-                        let current_skips = (current.0 - rust_idx, current.1 - java_idx);
-                        let candidate_skips = (rust_skip, java_skip);
-                        let current_score = (
-                            current_skips.0 + current_skips.1,
-                            current_skips.0.max(current_skips.1),
-                        );
-                        let candidate_score = (
-                            candidate_skips.0 + candidate_skips.1,
-                            candidate_skips.0.max(candidate_skips.1),
-                        );
-                        if candidate_score < current_score {
-                            best = Some(candidate);
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    best
-}
-
 /// Print all Rust and Java snapshots side-by-side so we can see exactly what
 /// each engine checkpointed and when.
 fn dump_snapshot_timeline(
@@ -1369,7 +1189,7 @@ impl ServerPool {
         on_snapshot: F,
     ) -> Result<JavaMatchupData, JavaBridgeError>
     where
-        F: FnMut(usize, &forge_parity::protocol::StateSnapshot) -> bool,
+        F: FnMut(usize, &forge_parity::protocol::ParityLogEntry) -> bool,
     {
         for server_mutex in &self.servers {
             if let Ok(mut server) = server_mutex.try_lock() {
@@ -1896,48 +1716,15 @@ fn build_rust_only_result(
     }
 }
 
-fn extract_investigation_window<'a>(
-    rust_log: &'a [ParityLogEntry],
-    java_log: &'a [ParityLogEntry],
-    divergent_snapshot: usize,
-) -> (&'a [ParityLogEntry], &'a [ParityLogEntry]) {
-    fn find_snapshot_range(log: &[ParityLogEntry], snap_idx: usize) -> (usize, usize) {
-        let mut count = 0usize;
-        let mut start = 0usize;
-        let mut end = log.len();
-        for (i, entry) in log.iter().enumerate() {
-            if entry.as_snapshot().is_some() {
-                if count == snap_idx {
-                    // This is the divergent snapshot — everything before it
-                    // (back to previous snapshot) is what we want, plus this snapshot.
-                    end = i + 1;
-                    break;
-                }
-                count += 1;
-                // The entry right after this snapshot starts the next window.
-                start = i + 1;
-            }
-        }
-        if snap_idx > 0 && start > 0 {
-            // Walk back to include the previous snapshot itself.
-            let mut s = start - 1;
-            while s > 0 {
-                if log[s].as_snapshot().is_some() {
-                    start = s;
-                    break;
-                }
-                s -= 1;
-            }
-            if s == 0 && log[0].as_snapshot().is_some() {
-                start = 0;
-            }
-        }
-        (start, end)
+fn compare_snapshots(
+    config: &RunConfig,
+    rust_trace: &forge_parity::protocol::GameTrace,
+    java_data: &JavaMatchupData,
+) -> MatchupResult {
+    if config.log_snapshots {
+        dump_snapshot_timeline(&rust_trace.snapshot_vec(), &java_data.snapshot_vec());
     }
-
-    let (rs, re) = find_snapshot_range(rust_log, divergent_snapshot);
-    let (js, je) = find_snapshot_range(java_log, divergent_snapshot);
-    (&rust_log[rs..re], &java_log[js..je])
+    compare_matchup(config, rust_trace, java_data)
 }
 
 /// Wrap text to `width` visible characters, respecting ANSI escape sequences.

@@ -1,6 +1,7 @@
 use std::cell::RefCell;
 use std::collections::{BTreeSet, HashSet};
 use std::rc::Rc;
+use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
@@ -16,6 +17,7 @@ use forge_engine_core::game_runtime::GameRuntime;
 use forge_engine_core::ids::{CardId, PlayerId};
 use forge_engine_core::spellability::{MagicStack, SpellAbility, StackEntry};
 use forge_foundation::ZoneType;
+use memmap2::Mmap;
 use rand::rngs::StdRng;
 use rand::SeedableRng;
 
@@ -32,16 +34,26 @@ pub const DEFAULT_DECKS_DIR: &str = "preset_decks";
 pub(crate) struct ParityObserver {
     shared_log: Arc<Mutex<Vec<ParityLogEntry>>>,
     shared_snapshot_index: Arc<Mutex<usize>>,
+    stream_tx: Option<Sender<ParityLogEntry>>,
 }
 
 impl ParityObserver {
     fn new(
         shared_log: Arc<Mutex<Vec<ParityLogEntry>>>,
         shared_snapshot_index: Arc<Mutex<usize>>,
+        stream_tx: Option<Sender<ParityLogEntry>>,
     ) -> Self {
         Self {
             shared_log,
             shared_snapshot_index,
+            stream_tx,
+        }
+    }
+
+    fn push_entry(&self, entry: ParityLogEntry) {
+        self.shared_log.lock().unwrap().push(entry.clone());
+        if let Some(tx) = &self.stream_tx {
+            let _ = tx.send(entry);
         }
     }
 
@@ -61,20 +73,17 @@ impl ParityObserver {
             .duration_since(UNIX_EPOCH)
             .map(|d| d.as_millis() as u64)
             .unwrap_or(0);
-        self.shared_log
-            .lock()
-            .unwrap()
-            .push(ParityLogEntry::Callback(CallbackRecord {
-                snapshot_index,
-                turn,
-                phase: phase.to_string(),
-                player,
-                name: name.to_string(),
-                outcome: outcome.to_string(),
-                args: choice_logs,
-                callback_args,
-                timestamp_ms,
-            }));
+        self.push_entry(ParityLogEntry::Callback(CallbackRecord {
+            snapshot_index,
+            turn,
+            phase: phase.to_string(),
+            player,
+            name: name.to_string(),
+            outcome: outcome.to_string(),
+            args: choice_logs,
+            callback_args,
+            timestamp_ms,
+        }));
     }
 
     fn mark_snapshot(&self) {
@@ -153,6 +162,7 @@ impl CapturingAgent {
         shared_log: Arc<Mutex<Vec<ParityLogEntry>>>,
         covered: Arc<Mutex<BTreeSet<String>>>,
         snapshot_index: Arc<Mutex<usize>>,
+        stream_tx: Option<Sender<ParityLogEntry>>,
         rng: Rc<RefCell<JavaRandom>>,
         game_rng: Rc<RefCell<JavaRandom>>,
         parity_map: Arc<ParityCardMap>,
@@ -160,7 +170,11 @@ impl CapturingAgent {
         deep: bool,
         callback_snapshots: bool,
     ) -> Self {
-        let observer = Arc::new(ParityObserver::new(Arc::clone(&shared_log), snapshot_index));
+        let observer = Arc::new(ParityObserver::new(
+            Arc::clone(&shared_log),
+            snapshot_index,
+            stream_tx,
+        ));
         Self {
             player_id,
             inner: DeterministicAgent::new(
@@ -213,9 +227,10 @@ impl CapturingAgent {
             .duration_since(UNIX_EPOCH)
             .map(|d| d.as_millis() as u64)
             .unwrap_or(0);
-        let mut log = self.shared_log.lock().unwrap();
-        log.push(ParityLogEntry::Snapshot(snapshot.clone()));
-        log.push(ParityLogEntry::Decision(DecisionRecord {
+        self.parity_observer
+            .push_entry(ParityLogEntry::Snapshot(snapshot.clone()));
+        self.parity_observer
+            .push_entry(ParityLogEntry::Decision(DecisionRecord {
             turn: snapshot.turn,
             phase: snapshot.phase.clone(),
             deciding_player: self.player_id.0,
@@ -325,10 +340,7 @@ impl PlayerAgent for CapturingAgent {
                                 p.lands_played = 0;
                             }
                         }
-                        self.shared_log
-                            .lock()
-                            .unwrap()
-                            .push(ParityLogEntry::Snapshot(snap));
+                        self.parity_observer.push_entry(ParityLogEntry::Snapshot(snap));
                         self.parity_observer.mark_snapshot();
                     }
                 }
@@ -340,10 +352,8 @@ impl PlayerAgent for CapturingAgent {
                 }
                 if self.deep && self.player_id.0 == 0 {
                     if let Some(ref game) = self.last_game_state {
-                        self.shared_log
-                            .lock()
-                            .unwrap()
-                            .push(ParityLogEntry::Snapshot(snapshot_game(game)));
+                        self.parity_observer
+                            .push_entry(ParityLogEntry::Snapshot(snapshot_game(game)));
                         self.parity_observer.mark_snapshot();
                     }
                 }
@@ -354,10 +364,8 @@ impl PlayerAgent for CapturingAgent {
                 }
                 if self.deep && self.player_id.0 == 0 {
                     if let Some(ref game) = self.last_game_state {
-                        self.shared_log
-                            .lock()
-                            .unwrap()
-                            .push(ParityLogEntry::Snapshot(snapshot_game(game)));
+                        self.parity_observer
+                            .push_entry(ParityLogEntry::Snapshot(snapshot_game(game)));
                         self.parity_observer.mark_snapshot();
                     }
                 }
@@ -489,6 +497,7 @@ impl PlayerAgent for CapturingAgent {
     }
 }
 
+#[derive(Clone)]
 pub struct RunConfig {
     pub deck1: String,
     pub deck2: String,
@@ -515,6 +524,29 @@ pub struct LoadedData {
     pub token_templates: Vec<(String, CardInstance)>,
 }
 
+fn cardset_archive_path() -> std::path::PathBuf {
+    if let Ok(path) = std::env::var("CARDSET_ARCHIVE") {
+        std::path::PathBuf::from(path)
+    } else {
+        std::path::PathBuf::from("src-tauri/resources/cardset.rkyv")
+    }
+}
+
+fn load_card_db_from_archive(
+    archive_path: &std::path::Path,
+    editions_dir: &std::path::Path,
+) -> Result<(CardDatabase, usize, usize), String> {
+    let file = std::fs::File::open(archive_path).map_err(|e| format!("open: {e}"))?;
+    let mmap = unsafe { Mmap::map(&file).map_err(|e| format!("mmap: {e}"))? };
+    let editions_opt = if editions_dir.exists() {
+        Some(editions_dir)
+    } else {
+        None
+    };
+    let (db, result) = CardDatabase::load_from_archive(&mmap, editions_opt)?;
+    Ok((db, result.loaded, result.failed))
+}
+
 pub fn load_data(cards_dir: Option<&str>, verbose: bool) -> Result<LoadedData, String> {
     let _t_total = Instant::now();
     let cards_dir = cards_dir.unwrap_or("forge/forge-gui/res/cardsfolder");
@@ -527,16 +559,50 @@ pub fn load_data(cards_dir: Option<&str>, verbose: bool) -> Result<LoadedData, S
         ));
     }
 
+    let res_dir = cards_path.parent().unwrap_or_else(|| std::path::Path::new("."));
+    let editions_dir = res_dir.join("editions");
+    let archive_path = cardset_archive_path();
+    let (db, _result) = if archive_path.exists() {
+        match load_card_db_from_archive(&archive_path, &editions_dir) {
+            Ok((db, loaded, failed)) => {
+                if verbose {
+                    eprintln!(
+                        "[parity] Loaded {} cards ({} failed) from archive {}",
+                        loaded,
+                        failed,
+                        archive_path.display()
+                    );
+                }
+                (
+                    db,
+                    forge_carddb::database::LoadResult {
+                        loaded,
+                        failed,
+                        errors: Vec::new(),
+                    },
+                )
+            }
+            Err(err) => {
+                if verbose {
+                    eprintln!(
+                        "[parity] Archive at {} unusable ({}); falling back to FS scan",
+                        archive_path.display(),
+                        err
+                    );
+                }
+                if verbose {
+                    eprintln!("[parity] Loading cards from {:?} ...", cards_path);
+                }
+                CardDatabase::load_from_directory(cards_path)
+            }
+        }
+    } else {
+        if verbose {
+            eprintln!("[parity] Loading cards from {:?} ...", cards_path);
+        }
+        CardDatabase::load_from_directory(cards_path)
+    };
     if verbose {
-        eprintln!("[parity] Loading cards from {:?} ...", cards_path);
-    }
-    let _t_cards = Instant::now();
-    let (db, result) = CardDatabase::load_from_directory(cards_path);
-    if verbose {
-        eprintln!(
-            "[parity] Loaded {} cards ({} failed)",
-            result.loaded, result.failed
-        );
         let script_stats = crate::card_pool::scan_raw_script_diagnostics(cards_path);
         eprintln!("[parity] {}", script_stats);
         for example in script_stats.example_lines() {
@@ -618,6 +684,14 @@ pub fn load_data(cards_dir: Option<&str>, verbose: bool) -> Result<LoadedData, S
 }
 
 pub fn run_with_data(config: &RunConfig, data: &LoadedData) -> Result<GameTrace, String> {
+    run_with_data_streaming(config, data, None)
+}
+
+pub fn run_with_data_streaming(
+    config: &RunConfig,
+    data: &LoadedData,
+    stream_tx: Option<Sender<ParityLogEntry>>,
+) -> Result<GameTrace, String> {
     let _t_total = Instant::now();
     // Resolve deck lists — supports preset names, inline: specs, and file: specs
     let decks_dir = config.decks_dir.as_deref().unwrap_or(DEFAULT_DECKS_DIR);
@@ -820,6 +894,7 @@ pub fn run_with_data(config: &RunConfig, data: &LoadedData) -> Result<GameTrace,
             Arc::clone(&shared_log),
             Arc::clone(&shared_covered_cards),
             Arc::clone(&shared_snapshot_index),
+            stream_tx.clone(),
             Rc::clone(&agent_rng),
             Rc::clone(&game_rng),
             Arc::clone(&parity_map),
@@ -834,6 +909,7 @@ pub fn run_with_data(config: &RunConfig, data: &LoadedData) -> Result<GameTrace,
             Arc::clone(&shared_log),
             Arc::clone(&shared_covered_cards),
             Arc::clone(&shared_snapshot_index),
+            stream_tx,
             Rc::clone(&agent_rng),
             Rc::clone(&game_rng),
             Arc::clone(&parity_map),

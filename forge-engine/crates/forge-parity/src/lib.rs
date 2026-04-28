@@ -27,6 +27,7 @@ pub mod java_bridge;
 pub mod java_cache;
 pub mod java_random;
 pub mod parity_card_map;
+pub mod parity_compare;
 pub mod parity_id;
 pub mod parity_log;
 pub mod parity_order;
