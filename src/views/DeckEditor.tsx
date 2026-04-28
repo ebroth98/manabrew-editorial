@@ -41,8 +41,10 @@ export default function DeckEditor() {
   const {
     addToMain,
     addToSide,
+    addToMaybe,
     removeFromMain,
     removeFromSide,
+    removeFromMaybe,
     currentDeck,
     tagCard,
     untagCard,
@@ -55,6 +57,20 @@ export default function DeckEditor() {
   } = useDeckStore();
   const [draggedCard, setDraggedCard] = useState<OpenMagicCard | null>(null);
   const [showSearch, setShowSearch] = useState(false);
+  const [previewSlot, setPreviewSlot] = useState<HTMLDivElement | null>(null);
+  const [previewCollapsed, setPreviewCollapsed] = useState<boolean>(
+    () =>
+      typeof window !== "undefined" &&
+      window.localStorage.getItem("deckEditor.previewRailCollapsed") === "true",
+  );
+
+  function togglePreview() {
+    setPreviewCollapsed((v) => {
+      const next = !v;
+      window.localStorage.setItem("deckEditor.previewRailCollapsed", String(next));
+      return next;
+    });
+  }
   const hasUnsavedChanges = useDeckUnsavedChanges();
   const location = useLocation();
 
@@ -76,14 +92,6 @@ export default function DeckEditor() {
   const blocker = useBlocker(hasUnsavedChanges && view === "editor");
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
-
-  const supplementaryCards = [
-    ...currentDeck.sideboard,
-    ...(currentDeck.attractions ?? []),
-    ...(currentDeck.contraptions ?? []),
-    ...(currentDeck.schemes ?? []),
-    ...(currentDeck.planes ?? []),
-  ];
 
   // ── Deck list handlers ────────────────────────────────────────────────────
 
@@ -169,20 +177,58 @@ export default function DeckEditor() {
         untagCard(cardName, sourceTag);
       }
       tagCard(cardName, destTag);
-    } else if (overId === DROP_ZONE.SIDE) {
+    } else if (
+      overId === DROP_ZONE.MAIN ||
+      overId === DROP_ZONE.SIDE ||
+      overId === DROP_ZONE.MAYBE
+    ) {
+      let source: "main" | "side" | "maybe" | "special" | "commander" = "main";
+      if (activeId.startsWith("deck-sideboard-")) source = "side";
+      else if (activeId.startsWith("deck-maybeboard-")) source = "maybe";
+      else if (activeId.startsWith("deck-commander-")) source = "commander";
+      else if (
+        activeId.startsWith("deck-attractions-") ||
+        activeId.startsWith("deck-contraptions-") ||
+        activeId.startsWith("deck-schemes-") ||
+        activeId.startsWith("deck-planes-")
+      )
+        source = "special";
+
+      const dest: "main" | "side" | "maybe" =
+        overId === DROP_ZONE.MAIN ? "main" : overId === DROP_ZONE.SIDE ? "side" : "maybe";
+
+      const sourceZone = source === "side" || source === "special" ? "side" : source;
+      if (sourceZone === dest) return;
+      if (source === "commander") return;
+
       if (sourceTag) untagCard(cardName, sourceTag);
-      const copies = currentDeck.cards.filter((c) => c.name === cardName);
-      for (const c of copies) {
-        removeFromMain(c.id);
-        addToSide({ ...c, id: crypto.randomUUID() });
-      }
-    } else if (overId === DROP_ZONE.MAIN) {
-      if (sourceTag) untagCard(cardName, sourceTag);
-      const copies = supplementaryCards.filter((c) => c.name === cardName);
-      for (const c of copies) {
-        removeFromSide(c.id);
-        addToMain({ ...c, id: crypto.randomUUID() });
-      }
+
+      const sourceList: OpenMagicCard[] =
+        source === "main"
+          ? currentDeck.cards
+          : source === "side"
+            ? currentDeck.sideboard
+            : source === "maybe"
+              ? (currentDeck.maybeboard ?? [])
+              : source === "special"
+                ? [
+                    ...(currentDeck.attractions ?? []),
+                    ...(currentDeck.contraptions ?? []),
+                    ...(currentDeck.schemes ?? []),
+                    ...(currentDeck.planes ?? []),
+                  ]
+                : [];
+      const one = [...sourceList].reverse().find((c) => c.name === cardName);
+      if (!one) return;
+
+      if (source === "main") removeFromMain(one.id);
+      else if (source === "side" || source === "special") removeFromSide(one.id);
+      else if (source === "maybe") removeFromMaybe(one.id);
+
+      const fresh = { ...one, id: crypto.randomUUID() };
+      if (dest === "main") addToMain(fresh);
+      else if (dest === "side") addToSide(fresh);
+      else if (dest === "maybe") addToMaybe(fresh);
     }
   }
 
@@ -319,14 +365,19 @@ export default function DeckEditor() {
         onDragEnd={handleDragEnd}
       >
         <div className="h-full w-full overflow-hidden flex">
-          <div
-            className={cn("h-full overflow-hidden transition-all", showSearch ? "w-1/2" : "w-full")}
-          >
-            <DeckBuilder onToggleSearch={() => setShowSearch((v) => !v)} onBack={handleBack} />
+          <div className="h-full overflow-hidden flex-1 min-w-0">
+            <DeckBuilder
+              onToggleSearch={() => setShowSearch((v) => !v)}
+              onBack={handleBack}
+              previewSlot={previewSlot}
+              setPreviewSlot={setPreviewSlot}
+              previewCollapsed={previewCollapsed}
+              onTogglePreview={togglePreview}
+            />
           </div>
           {showSearch && (
-            <div className="w-1/2 h-full border-l overflow-hidden">
-              <CardSearch onClose={() => setShowSearch(false)} />
+            <div className="flex-1 min-w-0 h-full border-l overflow-hidden">
+              <CardSearch onClose={() => setShowSearch(false)} previewSlot={previewSlot} />
             </div>
           )}
         </div>

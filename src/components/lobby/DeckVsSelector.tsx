@@ -76,17 +76,26 @@ export function DeckVsSelector({ onStart, onStartTabletop }: DeckVsSelectorProps
     (saved) => !saved.deck.draft && getDeckFingerprint(saved.deck) !== currentDeckFingerprint,
   );
 
+  const currentDeckIsPlayable =
+    currentDeck.cards.length > 0 || (currentDeck.commanders?.length ?? 0) > 0;
+
   const userDeckEntries: SelectedDeck[] = [
-    currentDeck,
+    ...(currentDeckIsPlayable ? [currentDeck] : []),
     ...distinctSavedDecks.map((saved) => saved.deck),
-  ].map((deck, index) => ({
-    id: index === 0 ? "current" : distinctSavedDecks[index - 1]!.id,
-    name: deck.name,
-    deckList: serializeDeck(deck),
-    sourceDeck: deck,
-    formatId: deck.format ?? "standard",
-    commanderName: deck.commanders?.[0]?.name,
-  }));
+  ].map((deck, index) => {
+    const id =
+      currentDeckIsPlayable && index === 0
+        ? "current"
+        : distinctSavedDecks[currentDeckIsPlayable ? index - 1 : index]!.id;
+    return {
+      id,
+      name: deck.name,
+      deckList: serializeDeck(deck),
+      sourceDeck: deck,
+      formatId: deck.format ?? "standard",
+      commanderName: deck.commanders?.[0]?.name,
+    };
+  });
 
   const formatFilteredUserDecks = userDeckEntries.filter(
     (deck) => deck.formatId === selectedFormat,
@@ -320,6 +329,10 @@ export function DeckVsSelector({ onStart, onStartTabletop }: DeckVsSelectorProps
             value={deckSearch}
             onChange={(e) => setDeckSearch(e.target.value)}
             className="w-full pl-8 pr-3 py-1.5 rounded-md border bg-background text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+            autoComplete="off"
+            autoCorrect="off"
+            autoCapitalize="off"
+            spellCheck={false}
           />
         </div>
       </div>

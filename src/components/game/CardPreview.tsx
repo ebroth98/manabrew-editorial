@@ -19,7 +19,7 @@ interface CardPreviewProps {
   mouseX: number;
   mouseY: number;
   anchorRect?: DOMRect | null;
-  placement?: "auto" | "top-center";
+  placement?: "auto" | "top-center" | "pinned";
   showBackFace?: boolean;
   /** Available actions for this card (cast options + activated abilities). */
   actions?: HandActionOption[];
@@ -30,6 +30,7 @@ interface CardPreviewProps {
   onMouseEnter?: () => void;
   onMouseLeave?: () => void;
   isSticky?: boolean;
+  slot?: HTMLElement | null;
 }
 
 const { w: CARD_W, h: CARD_H } = FLASH_CARD_SIZE;
@@ -54,6 +55,7 @@ export function CardPreview({
   onMouseEnter,
   onMouseLeave,
   isSticky = false,
+  slot,
 }: CardPreviewProps) {
   const hasActions = actions && actions.length > 0 && onSelectAction;
   const themeColors = useTheme().gameTheme;
@@ -112,7 +114,11 @@ export function CardPreview({
   let top: number;
   let actionsOnRight: boolean;
 
-  if (placement === "top-center" && anchorRect) {
+  if (placement === "pinned") {
+    cardLeft = window.innerWidth - cardWidth - 16;
+    top = 80;
+    actionsOnRight = false;
+  } else if (placement === "top-center" && anchorRect) {
     cardLeft = anchorRect.left + anchorRect.width / 2 - cardWidth / 2;
     top = anchorRect.top - cardHeight - 12;
     // Clamp to screen
@@ -159,8 +165,16 @@ export function CardPreview({
       )}
       <div
         data-card-preview
-        className="fixed z-[9999] select-none pointer-events-auto"
-        style={{ left: cardLeft, top }}
+        className={cn(
+          "select-none transition-opacity",
+          slot
+            ? "relative w-full h-full flex items-start justify-center pointer-events-none"
+            : cn(
+                "fixed z-[9999]",
+                placement === "pinned" ? "pointer-events-none" : "pointer-events-auto",
+              ),
+        )}
+        style={slot ? undefined : { left: cardLeft, top }}
         onMouseEnter={onMouseEnter}
         onMouseLeave={onMouseLeave}
       >
@@ -308,6 +322,6 @@ export function CardPreview({
         </div>
       </div>
     </>,
-    document.body,
+    slot ?? document.body,
   );
 }

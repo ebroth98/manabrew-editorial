@@ -10,7 +10,7 @@
 import { useState } from "react";
 import { ChevronDown, ChevronRight, Loader2, Palette } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { GRID_COLS } from "./deckBuilder.utils";
+import { CARD_WIDTH_MAP } from "./deckBuilder.utils";
 import type { DeckToken } from "@/types/openmagic";
 
 // ─── Scryfall fallback — only used when no stored imageUrl exists ───────────
@@ -46,7 +46,7 @@ export function TokenSection({
 
   if (!isLoading && tokens.length === 0) return null;
 
-  const gridCols = GRID_COLS[cardSize] ?? "grid-cols-8";
+  const cardWidth = CARD_WIDTH_MAP[cardSize] ?? 115;
 
   return (
     <div className="border-t shrink-0">
@@ -95,14 +95,15 @@ export function TokenSection({
               <span className="text-xs text-muted-foreground/40">Loading tokens...</span>
             </div>
           ) : (
-            <div className={cn("grid gap-2", gridCols)}>
+            <div className="flex flex-wrap gap-2">
               {tokens.map((t) => (
-                <TokenGridCard
+                <div
                   key={`${t.name}-${t.setCode ?? ""}-${t.cardNumber ?? ""}`}
-                  token={t}
-                  onShowInfo={onShowInfo}
-                  onPickPrint={onPickPrint}
-                />
+                  className="shrink-0"
+                  style={{ width: cardWidth }}
+                >
+                  <TokenGridCard token={t} onShowInfo={onShowInfo} onPickPrint={onPickPrint} />
+                </div>
               ))}
             </div>
           )}

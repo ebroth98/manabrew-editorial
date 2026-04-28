@@ -73,14 +73,6 @@ export const STACK_TYPE_COLS: SectionDefinition[] = pick(
 
 export const CARD_WIDTH_MAP: Record<number, number> = { 1: 75, 2: 95, 3: 115, 4: 140, 5: 170 };
 
-export const GRID_COLS: Record<number, string> = {
-  1: "grid-cols-12",
-  2: "grid-cols-10",
-  3: "grid-cols-8",
-  4: "grid-cols-6",
-  5: "grid-cols-5",
-};
-
 // ─── Pure Functions ───────────────────────────────────────────────────────────
 
 /**

@@ -1,14 +1,40 @@
-import { useState, useCallback, useRef, useMemo } from "react";
-import { ScrollArea } from "@/components/ui/scroll-area";
+import { useState, useCallback, useEffect, useLayoutEffect, useRef, useMemo } from "react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuSub,
+  ContextMenuSubContent,
+  ContextMenuSubTrigger,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu";
 import { ManaSymbols } from "@/components/game/ManaSymbols";
-import { X, Minus, Plus, Download, Upload, Tag, GripVertical } from "lucide-react";
+import {
+  X,
+  Minus,
+  Plus,
+  Download,
+  Upload,
+  Tag,
+  GripVertical,
+  ArrowUpToLine,
+  ArrowDownToLine,
+  HelpCircle,
+  Info,
+  Image as ImageIcon,
+  Trash2,
+  Bookmark,
+  Check,
+} from "lucide-react";
 import { GameIcon } from "@/components/game/GameIcon";
 import { useDraggable, useDroppable } from "@dnd-kit/core";
 import { cn } from "@/lib/utils";
 import type { Card } from "@/types/openmagic";
 import type { CardGroup, ViewMode, SectionDefinition } from "./deckBuilder.utils";
-import { CARD_WIDTH_MAP, GRID_COLS, getTaggedGroups } from "./deckBuilder.utils";
+import { CARD_WIDTH_MAP, getTaggedGroups } from "./deckBuilder.utils";
 import { CARD_RING } from "@/components/game/game.styles";
 import { DROP_ZONE } from "@/lib/constants";
 import { useMarquee } from "@/hooks/useMarqueeSelection";
@@ -21,6 +47,267 @@ import {
   EmptyDropZone,
 } from "./deckEditor.primitives";
 import { buildCardActions, handleCardClick } from "./deckEditor.utils";
+
+type CardLocation = "main" | "side" | "maybe";
+
+interface CardContextActions {
+  onAddOne?: () => void;
+  onRemoveOne?: () => void;
+  onRemoveAll?: () => void;
+  onMoveOneToMain?: () => void;
+  onMoveAllToMain?: () => void;
+  onMoveOneToSide?: () => void;
+  onMoveAllToSide?: () => void;
+  onMoveOneToMaybe?: () => void;
+  onMoveAllToMaybe?: () => void;
+  onShowInfo?: () => void;
+  onPickPrint?: () => void;
+  customTags?: string[];
+  appliedTags?: string[];
+  onApplyTag?: (tag: string) => void;
+  onRemoveCustomTag?: (tag: string) => void;
+  onCreateTag?: (tag: string) => void;
+}
+
+interface CardContextMenuProps extends CardContextActions {
+  children: React.ReactNode;
+  count: number;
+  location: CardLocation;
+}
+
+function MoveDestination({
+  label,
+  icon: Icon,
+  count,
+  onMoveOne,
+  onMoveAll,
+}: {
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+  count: number;
+  onMoveOne?: () => void;
+  onMoveAll?: () => void;
+}) {
+  if (!onMoveOne && !onMoveAll) return null;
+  if (count <= 1 || !onMoveAll) {
+    const handler = onMoveOne ?? onMoveAll!;
+    return (
+      <ContextMenuItem onSelect={handler}>
+        <Icon className="mr-2 h-3.5 w-3.5" /> {label}
+      </ContextMenuItem>
+    );
+  }
+  return (
+    <ContextMenuSub>
+      <ContextMenuSubTrigger>
+        <Icon className="mr-2 h-3.5 w-3.5" /> {label}
+      </ContextMenuSubTrigger>
+      <ContextMenuSubContent className="w-36">
+        {onMoveOne && <ContextMenuItem onSelect={onMoveOne}>Move 1</ContextMenuItem>}
+        <ContextMenuItem onSelect={onMoveAll}>Move all ({count})</ContextMenuItem>
+      </ContextMenuSubContent>
+    </ContextMenuSub>
+  );
+}
+
+function TagsSubmenu({
+  customTags,
+  appliedTags,
+  onApplyTag,
+  onRemoveCustomTag,
+  onCreateTag,
+}: {
+  customTags?: string[];
+  appliedTags?: string[];
+  onApplyTag: (tag: string) => void;
+  onRemoveCustomTag?: (tag: string) => void;
+  onCreateTag?: (tag: string) => void;
+}) {
+  const [newTagInput, setNewTagInput] = useState("");
+  return (
+    <ContextMenuSub>
+      <ContextMenuSubTrigger>
+        <Bookmark className="mr-2 h-3.5 w-3.5" /> Tags
+        {appliedTags && appliedTags.length > 0 && (
+          <span className="ml-auto text-[10px] text-muted-foreground">{appliedTags.length}</span>
+        )}
+      </ContextMenuSubTrigger>
+      <ContextMenuSubContent className="w-56">
+        {customTags && customTags.length > 0 ? (
+          customTags.map((tag) => {
+            const applied = appliedTags?.includes(tag) ?? false;
+            return (
+              <ContextMenuItem
+                key={tag}
+                onSelect={() => onApplyTag(tag)}
+                className="justify-between"
+              >
+                <span className="flex items-center gap-2 truncate">
+                  <Bookmark className="h-3.5 w-3.5 shrink-0 text-primary/60" />
+                  <span className="truncate">{tag}</span>
+                  {applied && <Check className="h-3 w-3 shrink-0 text-primary/70" />}
+                </span>
+                {onRemoveCustomTag && (
+                  <button
+                    type="button"
+                    className="ml-2 rounded p-0.5 text-destructive hover:bg-muted shrink-0"
+                    title={`Remove "${tag}" from deck`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onRemoveCustomTag(tag);
+                    }}
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                )}
+              </ContextMenuItem>
+            );
+          })
+        ) : (
+          <div className="px-2 py-1.5 text-xs text-muted-foreground">No tags yet</div>
+        )}
+        {onCreateTag && (
+          <>
+            <ContextMenuSeparator />
+            <ContextMenuItem
+              asChild
+              onSelect={(e) => e.preventDefault()}
+              onPointerMove={(e) => e.preventDefault()}
+              onPointerLeave={(e) => e.preventDefault()}
+              className="focus:bg-transparent p-1 cursor-text"
+            >
+              <div>
+                <Input
+                  className="h-7 text-xs"
+                  placeholder="New tag…"
+                  value={newTagInput}
+                  onChange={(e) => setNewTagInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    e.stopPropagation();
+                    if (e.key === "Enter" && newTagInput.trim()) {
+                      onCreateTag(newTagInput.trim());
+                      setNewTagInput("");
+                    }
+                  }}
+                  onKeyDownCapture={(e) => e.stopPropagation()}
+                  onClick={(e) => e.stopPropagation()}
+                  onMouseDown={(e) => e.stopPropagation()}
+                />
+              </div>
+            </ContextMenuItem>
+          </>
+        )}
+      </ContextMenuSubContent>
+    </ContextMenuSub>
+  );
+}
+
+function CardContextMenu({
+  children,
+  count,
+  location,
+  onAddOne,
+  onRemoveOne,
+  onRemoveAll,
+  onMoveOneToMain,
+  onMoveAllToMain,
+  onMoveOneToSide,
+  onMoveAllToSide,
+  onMoveOneToMaybe,
+  onMoveAllToMaybe,
+  onShowInfo,
+  onPickPrint,
+  customTags,
+  appliedTags,
+  onApplyTag,
+  onRemoveCustomTag,
+  onCreateTag,
+}: CardContextMenuProps) {
+  const showTagSubmenu = !!onApplyTag && ((customTags && customTags.length > 0) || !!onCreateTag);
+  const showAll = count > 1;
+  const hasMoveActions =
+    (location !== "main" && (onMoveOneToMain || onMoveAllToMain)) ||
+    (location !== "side" && (onMoveOneToSide || onMoveAllToSide)) ||
+    (location !== "maybe" && (onMoveOneToMaybe || onMoveAllToMaybe));
+  return (
+    <ContextMenu>
+      <ContextMenuTrigger asChild>{children}</ContextMenuTrigger>
+      <ContextMenuContent className="w-52">
+        {onShowInfo && (
+          <>
+            <ContextMenuItem onSelect={onShowInfo}>
+              <Info className="mr-2 h-3.5 w-3.5" /> Card info
+            </ContextMenuItem>
+            <ContextMenuSeparator />
+          </>
+        )}
+        {onAddOne && (
+          <ContextMenuItem onSelect={onAddOne}>
+            <Plus className="mr-2 h-3.5 w-3.5" /> Add 1
+          </ContextMenuItem>
+        )}
+        {onRemoveOne && (
+          <ContextMenuItem onSelect={onRemoveOne}>
+            <Minus className="mr-2 h-3.5 w-3.5" /> Remove 1
+          </ContextMenuItem>
+        )}
+        {onRemoveAll && showAll && (
+          <ContextMenuItem onSelect={onRemoveAll} className="text-destructive">
+            <Trash2 className="mr-2 h-3.5 w-3.5" /> Remove all ({count})
+          </ContextMenuItem>
+        )}
+        {hasMoveActions && <ContextMenuSeparator />}
+        {location !== "main" && (
+          <MoveDestination
+            label="Move to main"
+            icon={ArrowUpToLine}
+            count={count}
+            onMoveOne={onMoveOneToMain}
+            onMoveAll={onMoveAllToMain}
+          />
+        )}
+        {location !== "side" && (
+          <MoveDestination
+            label="Move to sideboard"
+            icon={ArrowDownToLine}
+            count={count}
+            onMoveOne={onMoveOneToSide}
+            onMoveAll={onMoveAllToSide}
+          />
+        )}
+        {location !== "maybe" && (
+          <MoveDestination
+            label="Move to maybeboard"
+            icon={HelpCircle}
+            count={count}
+            onMoveOne={onMoveOneToMaybe}
+            onMoveAll={onMoveAllToMaybe}
+          />
+        )}
+        {showTagSubmenu && (
+          <>
+            <ContextMenuSeparator />
+            <TagsSubmenu
+              customTags={customTags}
+              appliedTags={appliedTags}
+              onApplyTag={onApplyTag!}
+              onRemoveCustomTag={onRemoveCustomTag}
+              onCreateTag={onCreateTag}
+            />
+          </>
+        )}
+        {onPickPrint && (
+          <>
+            <ContextMenuSeparator />
+            <ContextMenuItem onSelect={onPickPrint}>
+              <ImageIcon className="mr-2 h-3.5 w-3.5" /> Choose printing…
+            </ContextMenuItem>
+          </>
+        )}
+      </ContextMenuContent>
+    </ContextMenu>
+  );
+}
 
 // ─── Draggable Stack Card ─────────────────────────────────────────────────────
 
@@ -233,6 +520,8 @@ interface CardVisualProps {
   isCoverBack?: boolean;
   onSetCover?: () => void;
   onSetCoverBack?: () => void;
+  contextLocation?: CardLocation;
+  contextActions?: CardContextActions;
 }
 
 function CardVisual({
@@ -254,13 +543,15 @@ function CardVisual({
   isCoverBack,
   onSetCover,
   onSetCoverBack,
+  contextLocation,
+  contextActions,
 }: CardVisualProps) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: dragId,
     data: { type: "deck-card", card: group.card, name: group.card.name },
   });
 
-  return (
+  const visualContent = (
     <div
       ref={setNodeRef}
       {...listeners}
@@ -348,6 +639,54 @@ function CardVisual({
       />
     </div>
   );
+
+  if (!contextActions || !contextLocation) return visualContent;
+  return (
+    <CardContextMenu count={group.count} location={contextLocation} {...contextActions}>
+      {visualContent}
+    </CardContextMenu>
+  );
+}
+
+function DraggableMiniRow({
+  dragId,
+  card,
+  className,
+  children,
+  onMouseEnter,
+  onMouseMove,
+  onMouseLeave,
+}: {
+  dragId: string;
+  card: Card;
+  className?: string;
+  children: React.ReactNode;
+  onMouseEnter?: (e: React.MouseEvent) => void;
+  onMouseMove?: (e: React.MouseEvent) => void;
+  onMouseLeave?: () => void;
+}) {
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+    id: dragId,
+    data: { type: "deck-card", card, name: card.name },
+  });
+  return (
+    <div
+      ref={setNodeRef}
+      {...listeners}
+      {...attributes}
+      className={cn(
+        className,
+        "cursor-grab active:cursor-grabbing select-none",
+        isDragging && "opacity-30",
+      )}
+      data-card-name={card.name}
+      onMouseEnter={onMouseEnter}
+      onMouseMove={onMouseMove}
+      onMouseLeave={onMouseLeave}
+    >
+      {children}
+    </div>
+  );
 }
 
 // ─── List Row ─────────────────────────────────────────────────────────────────
@@ -362,7 +701,7 @@ interface CardRowProps {
   onRemoveAll: () => void;
   onSetCommander: () => void;
   onRemoveCommander: () => void;
-  onMoveToSide: () => void;
+  onMoveOneToSide: () => void;
   onPickPrint: () => void;
   onHover: (card: Card, e: React.MouseEvent, options?: HoverOptions) => void;
   onLeave: () => void;
@@ -373,6 +712,7 @@ interface CardRowProps {
   isCoverBack?: boolean;
   onSetCover?: () => void;
   onSetCoverBack?: () => void;
+  contextActions?: CardContextActions;
 }
 
 function CardRow({
@@ -385,7 +725,7 @@ function CardRow({
   onRemoveAll,
   onSetCommander,
   onRemoveCommander,
-  onMoveToSide,
+  onMoveOneToSide,
   onHover,
   onLeave,
   isSelected,
@@ -395,13 +735,14 @@ function CardRow({
   isCoverBack,
   onSetCover,
   onSetCoverBack,
+  contextActions,
 }: CardRowProps) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: dragId,
     data: { type: "deck-card", card: group.card, name: group.card.name },
   });
 
-  return (
+  const rowContent = (
     <div
       ref={setNodeRef}
       {...listeners}
@@ -536,10 +877,10 @@ function CardRow({
           size="icon"
           variant="ghost"
           className="h-5 w-5 text-muted-foreground"
-          title="Move to sideboard"
+          title="Move 1 to sideboard"
           onClick={(e) => {
             e.stopPropagation();
-            onMoveToSide();
+            onMoveOneToSide();
           }}
         >
           <Download className="h-3 w-3" />
@@ -559,6 +900,13 @@ function CardRow({
       </div>
     </div>
   );
+
+  if (!contextActions) return rowContent;
+  return (
+    <CardContextMenu count={group.count} location="main" {...contextActions}>
+      {rowContent}
+    </CardContextMenu>
+  );
 }
 
 // ─── Unified Collapsible Card Section ─────────────────────────────────────────
@@ -570,13 +918,16 @@ interface CardSectionProps {
   commanderNames?: Set<string>;
   deckFormat?: string;
   viewMode: ViewMode;
-  gridCols: string;
+  cardWidth: number;
   onAddOne: (g: CardGroup) => void;
   onRemoveOne: (name: string) => void;
   onRemoveAll: (name: string) => void;
   onSetCommander: (card: Card) => void;
   onRemoveCommander: (card?: Card) => void;
-  onMoveToSide: (name: string) => void;
+  onMoveOneToSide: (name: string) => void;
+  onMoveAllToSide: (name: string) => void;
+  onMoveOneToMaybe: (name: string) => void;
+  onMoveAllToMaybe: (name: string) => void;
   onPickPrint: (name: string) => void;
   onHover: (card: Card, e: React.MouseEvent, options?: HoverOptions) => void;
   onLeave: () => void;
@@ -591,6 +942,11 @@ interface CardSectionProps {
   coverCardFace?: 0 | 1;
   onSetCover?: (card: Card) => void;
   onSetCoverBack?: (card: Card) => void;
+  customTags?: string[];
+  cardTagsByName?: Record<string, string[]>;
+  onApplyCardTag?: (cardName: string, tag: string) => void;
+  onCreateAndApplyTag?: (cardName: string, tag: string) => void;
+  onRemoveCustomTag?: (tag: string) => void;
 }
 
 function CardSection({
@@ -600,13 +956,16 @@ function CardSection({
   commanderNames,
   deckFormat,
   viewMode,
-  gridCols,
+  cardWidth,
   onAddOne,
   onRemoveOne,
   onRemoveAll,
   onSetCommander,
   onRemoveCommander,
-  onMoveToSide,
+  onMoveOneToSide,
+  onMoveAllToSide,
+  onMoveOneToMaybe,
+  onMoveAllToMaybe,
   onPickPrint,
   onHover,
   onLeave,
@@ -620,6 +979,11 @@ function CardSection({
   coverCardFace,
   onSetCover,
   onSetCoverBack,
+  customTags,
+  cardTagsByName,
+  onApplyCardTag,
+  onCreateAndApplyTag,
+  onRemoveCustomTag,
 }: CardSectionProps) {
   const [collapsed, setCollapsed] = useState(false);
   const isTagSection = !!tag;
@@ -684,7 +1048,7 @@ function CardSection({
                     onRemoveAll={() => onRemoveAll(g.card.name)}
                     onSetCommander={() => onSetCommander(g.card)}
                     onRemoveCommander={onRemoveCommander}
-                    onMoveToSide={() => onMoveToSide(g.card.name)}
+                    onMoveOneToSide={() => onMoveOneToSide(g.card.name)}
                     onPickPrint={() => onPickPrint(g.card.name)}
                     onHover={(card, e, opts) => onHover(card, e, opts)}
                     onLeave={onLeave}
@@ -699,6 +1063,26 @@ function CardSection({
                         ? () => onSetCoverBack(g.card)
                         : undefined
                     }
+                    contextActions={{
+                      onAddOne: () => onAddOne(g),
+                      onRemoveOne: () => effectiveRemoveOne(g.card.name),
+                      onRemoveAll: () => onRemoveAll(g.card.name),
+                      onMoveOneToSide: () => onMoveOneToSide(g.card.name),
+                      onMoveAllToSide: () => onMoveAllToSide(g.card.name),
+                      onMoveOneToMaybe: () => onMoveOneToMaybe(g.card.name),
+                      onMoveAllToMaybe: () => onMoveAllToMaybe(g.card.name),
+                      onShowInfo: onShowInfo ? () => onShowInfo(g.card.name) : undefined,
+                      onPickPrint: () => onPickPrint(g.card.name),
+                      customTags,
+                      appliedTags: cardTagsByName?.[g.card.name.toLowerCase()],
+                      onApplyTag: onApplyCardTag
+                        ? (t) => onApplyCardTag(g.card.name, t)
+                        : undefined,
+                      onRemoveCustomTag,
+                      onCreateTag: onCreateAndApplyTag
+                        ? (t) => onCreateAndApplyTag(g.card.name, t)
+                        : undefined,
+                    }}
                   />
                 </div>
                 {isTagSection && onUntagCard && (
@@ -716,32 +1100,54 @@ function CardSection({
             ))}
           </div>
         ) : (
-          <div className={cn("grid gap-2", gridCols)}>
+          <div className="flex flex-wrap gap-2">
             {groups.map((g) => (
-              <CardVisual
-                key={g.card.name}
-                group={g}
-                dragId={`${dragPrefix}-${g.card.name}`}
-                onAddOne={() => onAddOne(g)}
-                onRemoveOne={() => effectiveRemoveOne(g.card.name)}
-                onUntag={isTagSection && onUntagCard ? () => onUntagCard(g.card.name) : undefined}
-                onPickPrint={() => onPickPrint(g.card.name)}
-                onHover={(card, e, opts) => onHover(card, e, opts)}
-                onLeave={onLeave}
-                isSelected={selectedCards?.has(g.card.name.toLowerCase())}
-                onSelect={onSelectCard}
-                onShowInfo={onShowInfo ? () => onShowInfo(g.card.name) : undefined}
-                isCommander={commanderNames?.has(g.card.name) ?? false}
-                showCommander={deckFormat === "commander"}
-                onSetCommander={() => onSetCommander(g.card)}
-                onRemoveCommander={onRemoveCommander}
-                isCover={coverCardName === g.card.name && (coverCardFace ?? 0) === 0}
-                isCoverBack={coverCardName === g.card.name && coverCardFace === 1}
-                onSetCover={onSetCover ? () => onSetCover(g.card) : undefined}
-                onSetCoverBack={
-                  g.card.isDoubleFaced && onSetCoverBack ? () => onSetCoverBack(g.card) : undefined
-                }
-              />
+              <div key={g.card.name} className="shrink-0" style={{ width: cardWidth }}>
+                <CardVisual
+                  group={g}
+                  dragId={`${dragPrefix}-${g.card.name}`}
+                  onAddOne={() => onAddOne(g)}
+                  onRemoveOne={() => effectiveRemoveOne(g.card.name)}
+                  onUntag={isTagSection && onUntagCard ? () => onUntagCard(g.card.name) : undefined}
+                  onPickPrint={() => onPickPrint(g.card.name)}
+                  onHover={(card, e, opts) => onHover(card, e, opts)}
+                  onLeave={onLeave}
+                  isSelected={selectedCards?.has(g.card.name.toLowerCase())}
+                  onSelect={onSelectCard}
+                  onShowInfo={onShowInfo ? () => onShowInfo(g.card.name) : undefined}
+                  isCommander={commanderNames?.has(g.card.name) ?? false}
+                  showCommander={deckFormat === "commander"}
+                  onSetCommander={() => onSetCommander(g.card)}
+                  onRemoveCommander={onRemoveCommander}
+                  isCover={coverCardName === g.card.name && (coverCardFace ?? 0) === 0}
+                  isCoverBack={coverCardName === g.card.name && coverCardFace === 1}
+                  onSetCover={onSetCover ? () => onSetCover(g.card) : undefined}
+                  onSetCoverBack={
+                    g.card.isDoubleFaced && onSetCoverBack
+                      ? () => onSetCoverBack(g.card)
+                      : undefined
+                  }
+                  contextLocation="main"
+                  contextActions={{
+                    onAddOne: () => onAddOne(g),
+                    onRemoveOne: () => effectiveRemoveOne(g.card.name),
+                    onRemoveAll: () => onRemoveAll(g.card.name),
+                    onMoveOneToSide: () => onMoveOneToSide(g.card.name),
+                    onMoveAllToSide: () => onMoveAllToSide(g.card.name),
+                    onMoveOneToMaybe: () => onMoveOneToMaybe(g.card.name),
+                    onMoveAllToMaybe: () => onMoveAllToMaybe(g.card.name),
+                    onShowInfo: onShowInfo ? () => onShowInfo(g.card.name) : undefined,
+                    onPickPrint: () => onPickPrint(g.card.name),
+                    customTags,
+                    appliedTags: cardTagsByName?.[g.card.name.toLowerCase()],
+                    onApplyTag: onApplyCardTag ? (t) => onApplyCardTag(g.card.name, t) : undefined,
+                    onRemoveCustomTag,
+                    onCreateTag: onCreateAndApplyTag
+                      ? (t) => onCreateAndApplyTag(g.card.name, t)
+                      : undefined,
+                  }}
+                />
+              </div>
             ))}
           </div>
         ))}
@@ -852,13 +1258,25 @@ export interface DeckListViewProps {
   stackColumns: Array<SectionDefinition & { groups: CardGroup[] }>;
   isOverSide: boolean;
   setSideDropRef: (node: HTMLElement | null) => void;
+  isOverMaybe: boolean;
+  setMaybeDropRef: (node: HTMLElement | null) => void;
   onAddOne: (g: CardGroup) => void;
   onRemoveOne: (name: string) => void;
   onRemoveAll: (name: string) => void;
   onSetCommander: (card: Card) => void;
   onRemoveCommander: (card?: Card) => void;
-  onMoveToSide: (name: string) => void;
-  onMoveToMain: (name: string) => void;
+  onMoveOneToSide: (name: string) => void;
+  onMoveAllToSide: (name: string) => void;
+  onMoveOneToMaybe: (name: string) => void;
+  onMoveAllToMaybe: (name: string) => void;
+  onMoveOneFromSideToMain: (name: string) => void;
+  onMoveAllFromSideToMain: (name: string) => void;
+  onMoveOneFromSideToMaybe: (name: string) => void;
+  onMoveAllFromSideToMaybe: (name: string) => void;
+  onMoveOneFromMaybeToMain: (name: string) => void;
+  onMoveAllFromMaybeToMain: (name: string) => void;
+  onMoveOneFromMaybeToSide: (name: string) => void;
+  onMoveAllFromMaybeToSide: (name: string) => void;
   onPickPrint: (name: string) => void;
   onHover: (card: Card, e: React.MouseEvent, options?: HoverOptions) => void;
   onLeave: () => void;
@@ -871,6 +1289,8 @@ export interface DeckListViewProps {
   cardTags?: Record<string, string[]>;
   allMainCards?: Card[];
   onUntagCard?: (cardName: string, tag: string) => void;
+  onTagCard?: (cardName: string, tag: string) => void;
+  onAddCustomTag?: (tag: string) => void;
   onRemoveTag?: (tag: string) => void;
   selectedCards?: Set<string>;
   onSelectCard?: (cardName: string, addToSelection: boolean) => void;
@@ -897,13 +1317,25 @@ export function DeckListView({
   stackColumns,
   isOverSide,
   setSideDropRef,
+  isOverMaybe,
+  setMaybeDropRef,
   onAddOne,
   onRemoveOne,
   onRemoveAll,
   onSetCommander,
   onRemoveCommander,
-  onMoveToSide,
-  onMoveToMain,
+  onMoveOneToSide,
+  onMoveAllToSide,
+  onMoveOneToMaybe,
+  onMoveAllToMaybe,
+  onMoveOneFromSideToMain,
+  onMoveAllFromSideToMain,
+  onMoveOneFromSideToMaybe,
+  onMoveAllFromSideToMaybe,
+  onMoveOneFromMaybeToMain,
+  onMoveAllFromMaybeToMain,
+  onMoveOneFromMaybeToSide,
+  onMoveAllFromMaybeToSide,
   onPickPrint,
   onHover,
   onLeave,
@@ -916,6 +1348,8 @@ export function DeckListView({
   cardTags,
   allMainCards,
   onUntagCard,
+  onTagCard,
+  onAddCustomTag,
   onRemoveTag,
   selectedCards,
   onSelectCard,
@@ -928,12 +1362,32 @@ export function DeckListView({
   stackPositions: savedStackPositions,
   onStackPositionsChange,
 }: DeckListViewProps) {
-  const gridCols = GRID_COLS[cardSize] ?? "grid-cols-8";
   const cardWidth = CARD_WIDTH_MAP[cardSize] ?? 115;
   const sideboardCount = sideboardGroups.reduce((s, g) => s + g.count, 0);
   const maybeboardCount = maybeboardGroups.reduce((s, g) => s + g.count, 0);
 
   const containerRef = useRef<HTMLDivElement>(null);
+
+  const COLUMN_MIN_PX = 18 * 16;
+  const COLUMNS_PADDING_PX = 24;
+  const [listColumnCount, setListColumnCount] = useState(1);
+  const computeColumnCount = useCallback(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const w = el.clientWidth - COLUMNS_PADDING_PX;
+    const n = Math.max(1, Math.floor(w / COLUMN_MIN_PX));
+    setListColumnCount((prev) => (prev === n ? prev : n));
+  }, [COLUMN_MIN_PX, COLUMNS_PADDING_PX]);
+  useLayoutEffect(() => {
+    computeColumnCount();
+  });
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(computeColumnCount);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [computeColumnCount]);
 
   const handleMarqueeComplete = useCallback(
     (rect: { left: number; top: number; width: number; height: number }, additive: boolean) => {
@@ -981,17 +1435,34 @@ export function DeckListView({
     [handleContainerMouseDown],
   );
 
+  const applyCardTag = useCallback(
+    (cardName: string, tagName: string) => {
+      onTagCard?.(cardName, tagName);
+    },
+    [onTagCard],
+  );
+  const createAndApplyTag = useCallback(
+    (cardName: string, tagName: string) => {
+      onAddCustomTag?.(tagName);
+      onTagCard?.(cardName, tagName);
+    },
+    [onAddCustomTag, onTagCard],
+  );
+
   const sharedSectionProps = {
     commanderNames: new Set(commanders.map((c) => c.name)),
     deckFormat,
     viewMode,
-    gridCols,
+    cardWidth,
     onAddOne,
     onRemoveOne,
     onRemoveAll,
     onSetCommander,
     onRemoveCommander,
-    onMoveToSide,
+    onMoveOneToSide,
+    onMoveAllToSide,
+    onMoveOneToMaybe,
+    onMoveAllToMaybe,
     onPickPrint,
     onHover,
     onLeave,
@@ -1002,6 +1473,11 @@ export function DeckListView({
     coverCardFace,
     onSetCover,
     onSetCoverBack,
+    customTags,
+    cardTagsByName: cardTags,
+    onApplyCardTag: applyCardTag,
+    onCreateAndApplyTag: createAndApplyTag,
+    onRemoveCustomTag: onRemoveTag,
   };
 
   const selectionBadge =
@@ -1049,6 +1525,20 @@ export function DeckListView({
 
   const positionsRef = useRef<Map<string, { x: number; y: number }>>(new Map());
   const [posVersion, setPosVersion] = useState(0);
+
+  const prevCardWidthRef = useRef(cardWidth);
+  if (prevCardWidthRef.current !== cardWidth) {
+    const oldSnap = prevCardWidthRef.current + GAP;
+    const newSnap = cardWidth + GAP;
+    if (positionsRef.current.size > 0 && oldSnap > 0) {
+      for (const [id, pos] of positionsRef.current) {
+        const col = Math.round(pos.x / oldSnap);
+        positionsRef.current.set(id, { x: col * newSnap, y: pos.y });
+      }
+      setPosVersion((v) => v + 1);
+    }
+    prevCardWidthRef.current = cardWidth;
+  }
 
   // Sync positions when natural IDs change.
   const prevNaturalRef = useRef<string[]>([]);
@@ -1274,8 +1764,15 @@ export function DeckListView({
       return (
         <div
           key={id}
-          ref={refCallback}
-          className={cn(wrapperClass, "shrink-0 rounded-lg p-2 -m-1 min-h-[100px]")}
+          ref={(el) => {
+            refCallback(el);
+            if (el) setMaybeDropRef(el);
+          }}
+          className={cn(
+            wrapperClass,
+            "shrink-0 rounded-lg transition-colors p-2 -m-1 min-h-[100px]",
+            isOverMaybe && "bg-primary/10 border-2 border-dashed border-primary/40",
+          )}
           style={{ minWidth: cardWidth + 8, ...posStyle }}
         >
           {maybeboardGroups.length > 0 ? (
@@ -1488,9 +1985,9 @@ export function DeckListView({
           }}
         />
       )}
-      <ScrollArea
+      <div
         ref={containerRef}
-        className="h-full px-3 py-2 relative"
+        className="h-full overflow-y-auto overflow-x-hidden px-3 py-2 relative"
         onMouseDown={wrappedHandleMouseDown}
       >
         {commanders.length > 0 && (
@@ -1580,9 +2077,9 @@ export function DeckListView({
                 ))}
               </div>
             ) : (
-              <div className={cn("grid gap-2", gridCols)}>
+              <div className="flex flex-wrap gap-2">
                 {commanders.map((cmd) => (
-                  <div key={cmd.id} className="relative">
+                  <div key={cmd.id} className="relative shrink-0" style={{ width: cardWidth }}>
                     <div className="absolute top-1 right-1 z-20 bg-overlay/70 rounded-full p-0.5 shadow">
                       <GameIcon name="overlord-helm" className="h-3.5 w-3.5 text-commander" />
                     </div>
@@ -1619,8 +2116,10 @@ export function DeckListView({
 
         {viewMode === "list" ? (
           <>
-            {/* Multi-column layout for list view */}
-            <div className="columns-3 gap-4">
+            <div
+              className="w-full gap-4"
+              style={{ columnCount: listColumnCount, columnGap: "1rem" }}
+            >
               {mainSections.map((s) => (
                 <div key={s.id} className="break-inside-avoid">
                   <CardSection
@@ -1646,7 +2145,7 @@ export function DeckListView({
             {customTags && customTags.length > 0 && allMainCards && (
               <>
                 <div className="border-t border-border/30 my-3" />
-                <div className="columns-3 gap-4">
+                <div style={{ columnCount: listColumnCount, columnGap: "1rem" }}>
                   {customTags.map((tag) => {
                     const tagGroups = getTaggedGroups(tag, allMainCards, cardTags);
                     return (
@@ -1732,56 +2231,93 @@ export function DeckListView({
             ) : viewMode === "list" ? (
               <div className="space-y-0.5 pb-1">
                 {sideboardGroups.map((g) => (
-                  <div
+                  <CardContextMenu
                     key={g.card.name}
-                    className="flex items-center gap-1 group hover:bg-muted/40 rounded px-1 py-0.5"
-                    onMouseEnter={(e) => onHover(g.card, e, { useDelay: true })}
-                    onMouseMove={(e) => onHover(g.card, e, { useDelay: true })}
-                    onMouseLeave={onLeave}
+                    count={g.count}
+                    location="side"
+                    onAddOne={() => onAddToSide({ ...g.card, id: crypto.randomUUID() })}
+                    onRemoveOne={() => onRemoveFromSide(g.card.name)}
+                    onMoveOneToMain={() => onMoveOneFromSideToMain(g.card.name)}
+                    onMoveAllToMain={() => onMoveAllFromSideToMain(g.card.name)}
+                    onMoveOneToMaybe={() => onMoveOneFromSideToMaybe(g.card.name)}
+                    onMoveAllToMaybe={() => onMoveAllFromSideToMaybe(g.card.name)}
+                    onShowInfo={onShowInfo ? () => onShowInfo(g.card.name) : undefined}
+                    onPickPrint={() => onPickPrint(g.card.name)}
+                    customTags={customTags}
+                    appliedTags={cardTags?.[g.card.name.toLowerCase()]}
+                    onApplyTag={(t) => applyCardTag(g.card.name, t)}
+                    onRemoveCustomTag={onRemoveTag}
+                    onCreateTag={(t) => createAndApplyTag(g.card.name, t)}
                   >
-                    <span className="text-xs font-mono w-4 text-right text-muted-foreground shrink-0">
-                      {g.count}
-                    </span>
-                    <span className="text-sm flex-1 truncate">{g.card.name}</span>
-                    {g.card.manaCost && (
-                      <ManaSymbols cost={g.card.manaCost} size="sm" className="shrink-0" />
-                    )}
-                    <div className="flex gap-0.5 shrink-0">
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className="h-5 w-5 text-muted-foreground"
-                        title="Move to main"
-                        onClick={() => onMoveToMain(g.card.name)}
-                      >
-                        <Upload className="h-3 w-3" />
-                      </Button>
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className="h-5 w-5 text-destructive"
-                        title="Remove"
-                        onClick={() => onRemoveFromSide(g.card.name)}
-                      >
-                        <X className="h-3 w-3" />
-                      </Button>
-                    </div>
-                  </div>
+                    <DraggableMiniRow
+                      dragId={`deck-sideboard-${g.card.name}`}
+                      card={g.card}
+                      className="flex items-center gap-1 group hover:bg-muted/40 rounded px-1 py-0.5"
+                      onMouseEnter={(e) => onHover(g.card, e, { useDelay: true })}
+                      onMouseMove={(e) => onHover(g.card, e, { useDelay: true })}
+                      onMouseLeave={onLeave}
+                    >
+                      <span className="text-xs font-mono w-4 text-right text-muted-foreground shrink-0">
+                        {g.count}
+                      </span>
+                      <span className="text-sm flex-1 truncate">{g.card.name}</span>
+                      {g.card.manaCost && (
+                        <ManaSymbols cost={g.card.manaCost} size="sm" className="shrink-0" />
+                      )}
+                      <div className="flex gap-0.5 shrink-0">
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-5 w-5 text-muted-foreground"
+                          title="Move 1 to main"
+                          onClick={() => onMoveOneFromSideToMain(g.card.name)}
+                        >
+                          <Upload className="h-3 w-3" />
+                        </Button>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-5 w-5 text-destructive"
+                          title="Remove"
+                          onClick={() => onRemoveFromSide(g.card.name)}
+                        >
+                          <X className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    </DraggableMiniRow>
+                  </CardContextMenu>
                 ))}
               </div>
             ) : (
-              <div className={cn("grid gap-2 pb-1", gridCols)}>
+              <div className="flex flex-wrap gap-2 pb-1">
                 {sideboardGroups.map((g) => (
-                  <CardVisual
-                    key={g.card.name}
-                    group={g}
-                    dragId={`deck-sideboard-${g.card.name}`}
-                    onAddOne={() => onAddToSide({ ...g.card, id: crypto.randomUUID() })}
-                    onRemoveOne={() => onRemoveFromSide(g.card.name)}
-                    onPickPrint={() => onPickPrint(g.card.name)}
-                    onHover={(card, e, opts) => onHover(card, e, opts)}
-                    onLeave={onLeave}
-                  />
+                  <div key={g.card.name} className="shrink-0" style={{ width: cardWidth }}>
+                    <CardVisual
+                      group={g}
+                      dragId={`deck-sideboard-${g.card.name}`}
+                      onAddOne={() => onAddToSide({ ...g.card, id: crypto.randomUUID() })}
+                      onRemoveOne={() => onRemoveFromSide(g.card.name)}
+                      onPickPrint={() => onPickPrint(g.card.name)}
+                      onHover={(card, e, opts) => onHover(card, e, opts)}
+                      onLeave={onLeave}
+                      contextLocation="side"
+                      contextActions={{
+                        onAddOne: () => onAddToSide({ ...g.card, id: crypto.randomUUID() }),
+                        onRemoveOne: () => onRemoveFromSide(g.card.name),
+                        onMoveOneToMain: () => onMoveOneFromSideToMain(g.card.name),
+                        onMoveAllToMain: () => onMoveAllFromSideToMain(g.card.name),
+                        onMoveOneToMaybe: () => onMoveOneFromSideToMaybe(g.card.name),
+                        onMoveAllToMaybe: () => onMoveAllFromSideToMaybe(g.card.name),
+                        onShowInfo: onShowInfo ? () => onShowInfo(g.card.name) : undefined,
+                        onPickPrint: () => onPickPrint(g.card.name),
+                        customTags,
+                        appliedTags: cardTags?.[g.card.name.toLowerCase()],
+                        onApplyTag: (t) => applyCardTag(g.card.name, t),
+                        onRemoveCustomTag: onRemoveTag,
+                        onCreateTag: (t) => createAndApplyTag(g.card.name, t),
+                      }}
+                    />
+                  </div>
                 ))}
               </div>
             )}
@@ -1789,7 +2325,15 @@ export function DeckListView({
         </div>
 
         {/* ── Maybeboard ── */}
-        <div className="mt-2 rounded-lg border-2 border-dashed border-border/40 hover:border-border/60 transition-colors">
+        <div
+          ref={setMaybeDropRef}
+          className={cn(
+            "mt-2 rounded-lg border-2 border-dashed transition-colors",
+            isOverMaybe
+              ? "border-primary bg-primary/10"
+              : "border-border/40 hover:border-border/60",
+          )}
+        >
           <div className="px-2 pt-2 pb-1">
             <div className="flex items-center gap-2 mb-1.5">
               <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
@@ -1804,62 +2348,99 @@ export function DeckListView({
             ) : viewMode === "list" ? (
               <div className="space-y-0.5 pb-1">
                 {maybeboardGroups.map((g) => (
-                  <div
+                  <CardContextMenu
                     key={g.card.name}
-                    className="flex items-center gap-1 group hover:bg-muted/40 rounded px-1 py-0.5"
-                    onMouseEnter={(e) => onHover(g.card, e, { useDelay: true })}
-                    onMouseMove={(e) => onHover(g.card, e, { useDelay: true })}
-                    onMouseLeave={onLeave}
+                    count={g.count}
+                    location="maybe"
+                    onAddOne={() => onAddToMaybe({ ...g.card, id: crypto.randomUUID() })}
+                    onRemoveOne={() => onRemoveFromMaybe(g.card.name)}
+                    onMoveOneToMain={() => onMoveOneFromMaybeToMain(g.card.name)}
+                    onMoveAllToMain={() => onMoveAllFromMaybeToMain(g.card.name)}
+                    onMoveOneToSide={() => onMoveOneFromMaybeToSide(g.card.name)}
+                    onMoveAllToSide={() => onMoveAllFromMaybeToSide(g.card.name)}
+                    onShowInfo={onShowInfo ? () => onShowInfo(g.card.name) : undefined}
+                    onPickPrint={() => onPickPrint(g.card.name)}
+                    customTags={customTags}
+                    appliedTags={cardTags?.[g.card.name.toLowerCase()]}
+                    onApplyTag={(t) => applyCardTag(g.card.name, t)}
+                    onRemoveCustomTag={onRemoveTag}
+                    onCreateTag={(t) => createAndApplyTag(g.card.name, t)}
                   >
-                    <span className="text-xs font-mono w-4 text-right text-muted-foreground shrink-0">
-                      {g.count}
-                    </span>
-                    <span className="text-sm flex-1 truncate text-muted-foreground">
-                      {g.card.name}
-                    </span>
-                    {g.card.manaCost && (
-                      <ManaSymbols
-                        cost={g.card.manaCost}
-                        size="sm"
-                        className="shrink-0 opacity-60"
-                      />
-                    )}
-                    <div className="flex gap-0.5 shrink-0">
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className="h-5 w-5 text-muted-foreground"
-                        title="Move to main"
-                        onClick={() => onMoveToMain(g.card.name)}
-                      >
-                        <Upload className="h-3 w-3" />
-                      </Button>
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className="h-5 w-5 text-destructive"
-                        title="Remove"
-                        onClick={() => onRemoveFromMaybe(g.card.name)}
-                      >
-                        <X className="h-3 w-3" />
-                      </Button>
-                    </div>
-                  </div>
+                    <DraggableMiniRow
+                      dragId={`deck-maybeboard-${g.card.name}`}
+                      card={g.card}
+                      className="flex items-center gap-1 group hover:bg-muted/40 rounded px-1 py-0.5"
+                      onMouseEnter={(e) => onHover(g.card, e, { useDelay: true })}
+                      onMouseMove={(e) => onHover(g.card, e, { useDelay: true })}
+                      onMouseLeave={onLeave}
+                    >
+                      <span className="text-xs font-mono w-4 text-right text-muted-foreground shrink-0">
+                        {g.count}
+                      </span>
+                      <span className="text-sm flex-1 truncate text-muted-foreground">
+                        {g.card.name}
+                      </span>
+                      {g.card.manaCost && (
+                        <ManaSymbols
+                          cost={g.card.manaCost}
+                          size="sm"
+                          className="shrink-0 opacity-60"
+                        />
+                      )}
+                      <div className="flex gap-0.5 shrink-0">
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-5 w-5 text-muted-foreground"
+                          title="Move 1 to main"
+                          onClick={() => onMoveOneFromMaybeToMain(g.card.name)}
+                        >
+                          <Upload className="h-3 w-3" />
+                        </Button>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-5 w-5 text-destructive"
+                          title="Remove"
+                          onClick={() => onRemoveFromMaybe(g.card.name)}
+                        >
+                          <X className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    </DraggableMiniRow>
+                  </CardContextMenu>
                 ))}
               </div>
             ) : (
-              <div className={cn("grid gap-2 pb-1", gridCols)}>
+              <div className="flex flex-wrap gap-2 pb-1">
                 {maybeboardGroups.map((g) => (
-                  <CardVisual
-                    key={g.card.name}
-                    group={g}
-                    dragId={`deck-maybeboard-${g.card.name}`}
-                    onAddOne={() => onAddToMaybe({ ...g.card, id: crypto.randomUUID() })}
-                    onRemoveOne={() => onRemoveFromMaybe(g.card.name)}
-                    onPickPrint={() => onPickPrint(g.card.name)}
-                    onHover={(card, e, opts) => onHover(card, e, opts)}
-                    onLeave={onLeave}
-                  />
+                  <div key={g.card.name} className="shrink-0" style={{ width: cardWidth }}>
+                    <CardVisual
+                      group={g}
+                      dragId={`deck-maybeboard-${g.card.name}`}
+                      onAddOne={() => onAddToMaybe({ ...g.card, id: crypto.randomUUID() })}
+                      onRemoveOne={() => onRemoveFromMaybe(g.card.name)}
+                      onPickPrint={() => onPickPrint(g.card.name)}
+                      onHover={(card, e, opts) => onHover(card, e, opts)}
+                      onLeave={onLeave}
+                      contextLocation="maybe"
+                      contextActions={{
+                        onAddOne: () => onAddToMaybe({ ...g.card, id: crypto.randomUUID() }),
+                        onRemoveOne: () => onRemoveFromMaybe(g.card.name),
+                        onMoveOneToMain: () => onMoveOneFromMaybeToMain(g.card.name),
+                        onMoveAllToMain: () => onMoveAllFromMaybeToMain(g.card.name),
+                        onMoveOneToSide: () => onMoveOneFromMaybeToSide(g.card.name),
+                        onMoveAllToSide: () => onMoveAllFromMaybeToSide(g.card.name),
+                        onShowInfo: onShowInfo ? () => onShowInfo(g.card.name) : undefined,
+                        onPickPrint: () => onPickPrint(g.card.name),
+                        customTags,
+                        appliedTags: cardTags?.[g.card.name.toLowerCase()],
+                        onApplyTag: (t) => applyCardTag(g.card.name, t),
+                        onRemoveCustomTag: onRemoveTag,
+                        onCreateTag: (t) => createAndApplyTag(g.card.name, t),
+                      }}
+                    />
+                  </div>
                 ))}
               </div>
             )}
@@ -1910,18 +2491,19 @@ export function DeckListView({
                     ))}
                   </div>
                 ) : (
-                  <div className={cn("grid gap-2 pb-1", gridCols)}>
+                  <div className="flex flex-wrap gap-2 pb-1">
                     {section.groups.map((g) => (
-                      <CardVisual
-                        key={g.card.name}
-                        group={g}
-                        dragId={`deck-${section.id}-${g.card.name}`}
-                        onAddOne={() => onAddToSide({ ...g.card, id: crypto.randomUUID() })}
-                        onRemoveOne={() => onRemoveFromSide(g.card.name)}
-                        onPickPrint={() => onPickPrint(g.card.name)}
-                        onHover={(card, e, opts) => onHover(card, e, opts)}
-                        onLeave={onLeave}
-                      />
+                      <div key={g.card.name} className="shrink-0" style={{ width: cardWidth }}>
+                        <CardVisual
+                          group={g}
+                          dragId={`deck-${section.id}-${g.card.name}`}
+                          onAddOne={() => onAddToSide({ ...g.card, id: crypto.randomUUID() })}
+                          onRemoveOne={() => onRemoveFromSide(g.card.name)}
+                          onPickPrint={() => onPickPrint(g.card.name)}
+                          onHover={(card, e, opts) => onHover(card, e, opts)}
+                          onLeave={onLeave}
+                        />
+                      </div>
                     ))}
                   </div>
                 )}
@@ -1929,7 +2511,7 @@ export function DeckListView({
             </div>
           );
         })}
-      </ScrollArea>
+      </div>
     </div>
   );
 }

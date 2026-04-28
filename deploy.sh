@@ -65,6 +65,15 @@ COMMIT_COUNT=$(git rev-list "${PREV}..${CURR}" --count)
 COMMIT_MSG=$(git log -1 --format="%s" "$CURR")
 AUTHOR=$(git log -1 --format="%an" "$CURR")
 
+# Changelog of every commit being deployed (newest first), trimmed so the full
+# Discord message stays well under the 2000-char single-message limit.
+CHANGELOG=$(git log --pretty=format:'- %s (%h, %an)' "${PREV}..${CURR}")
+CHANGELOG_MAX=1500
+if [ "${#CHANGELOG}" -gt "$CHANGELOG_MAX" ]; then
+    CHANGELOG="${CHANGELOG:0:$CHANGELOG_MAX}
+… (truncated)"
+fi
+
 # ── Determine what changed ───────────────────────────────────────────
 CHANGED=$(git diff --name-only "${PREV}..${CURR}")
 
@@ -175,4 +184,7 @@ cat <<EOF
 ${SERVICES_FMT}
 **Build time:** ${BUILD_DURATION}s
 **Log:** \`${RAW_LOG}\`
+
+**Changelog:**
+${CHANGELOG}
 EOF

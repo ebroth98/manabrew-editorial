@@ -78,6 +78,10 @@ export function ChooseCardNameModal({ validNames, cardName, onConfirm }: ChooseC
                   value={filter}
                   onChange={(e) => setFilter(e.target.value)}
                   className={MODAL_INPUT}
+                  autoComplete="off"
+                  autoCorrect="off"
+                  autoCapitalize="off"
+                  spellCheck={false}
                 />
               </div>
             )}
@@ -105,6 +109,10 @@ export function ChooseCardNameModal({ validNames, cardName, onConfirm }: ChooseC
               value={textInput}
               onChange={(e) => setTextInput(e.target.value)}
               className={cn(MODAL_INPUT, "flex-1")}
+              autoComplete="off"
+              autoCorrect="off"
+              autoCapitalize="off"
+              spellCheck={false}
             />
             <Button size="sm" onClick={handleTextConfirm} disabled={!textInput.trim()}>
               Confirm

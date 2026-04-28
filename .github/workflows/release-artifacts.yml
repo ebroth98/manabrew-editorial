@@ -89,6 +89,7 @@ jobs:
         with:
           submodules: recursive
           clean: true
+          fetch-depth: 10
 
       - run: yarn
 
@@ -107,6 +108,32 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
+      # Build a per-artifact changelog so the Discord notification carries
+      # the list of commits since the previous push. Trimmed so the whole
+      # message stays well under Discord's 2000-char single-message limit.
+      - name: Build changelog
+        id: changelog
+        shell: bash
+        run: |
+          BEFORE='${{ github.event.before }}'
+          AFTER='${{ github.sha }}'
+          ZERO_SHA='0000000000000000000000000000000000000000'
+          if [ -n "$BEFORE" ] && [ "$BEFORE" != "$ZERO_SHA" ] && git rev-parse --verify --quiet "$BEFORE^{commit}" >/dev/null; then
+            RANGE="${BEFORE}..${AFTER}"
+          else
+            RANGE="${AFTER}~5..${AFTER}"
+          fi
+          LOG=$(git log --pretty=format:'- %s (%h, %an)' "$RANGE" 2>/dev/null || echo '')
+          MAX=1500
+          if [ "${#LOG}" -gt "$MAX" ]; then
+            LOG="${LOG:0:$MAX}"$'\n'"… (truncated)"
+          fi
+          {
+            echo 'changelog<<CHANGELOG_EOF'
+            echo "$LOG"
+            echo 'CHANGELOG_EOF'
+          } >> "$GITHUB_OUTPUT"
+
       # Fan out to n8n → Discord so subscribers see the new .dmg without
       # having to watch the Actions tab. URL points at the workflow run
       # page because Actions artifacts are not publicly downloadable.
@@ -114,6 +141,7 @@ jobs:
         if: ${{ success() }}
         env:
           N8N_WEBHOOK_URL: ${{ secrets.N8N_DEPLOY_WEBHOOK_URL }}
+          CHANGELOG: ${{ steps.changelog.outputs.changelog }}
         shell: bash
         run: |
           if [ -z "${N8N_WEBHOOK_URL:-}" ]; then
@@ -121,15 +149,16 @@ jobs:
             exit 0
           fi
           PAYLOAD=$(jq -n \
-            --arg event    "artifact" \
-            --arg platform "macos" \
-            --arg name     "macos-dmg-${{ github.sha }}" \
-            --arg url      "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
-            --arg sha      "${{ github.sha }}" \
-            --arg ref      "${{ github.ref }}" \
-            --arg repo     "${{ github.repository }}" \
-            --arg actor    "${{ github.actor }}" \
-            '{event:$event, platform:$platform, name:$name, url:$url, sha:$sha, ref:$ref, repo:$repo, actor:$actor}')
+            --arg event     "artifact" \
+            --arg platform  "macos" \
+            --arg name      "macos-dmg-${{ github.sha }}" \
+            --arg url       "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
+            --arg sha       "${{ github.sha }}" \
+            --arg ref       "${{ github.ref }}" \
+            --arg repo      "${{ github.repository }}" \
+            --arg actor     "${{ github.actor }}" \
+            --arg changelog "$CHANGELOG" \
+            '{event:$event, platform:$platform, name:$name, url:$url, sha:$sha, ref:$ref, repo:$repo, actor:$actor, changelog:$changelog}')
           curl -fsS -X POST -H 'Content-Type: application/json' \
             -d "$PAYLOAD" "$N8N_WEBHOOK_URL"
 
@@ -146,6 +175,7 @@ jobs:
         with:
           submodules: recursive
           clean: true
+          fetch-depth: 10
 
       # Loads MSVC env (link.exe, LIB, INCLUDE) for subsequent steps so
       # Rust/Tauri can link. Replaces the need for a persistent
@@ -179,6 +209,36 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
+      # Build a per-artifact changelog so the Discord notification carries
+      # the list of commits since the previous push. Trimmed so the whole
+      # message stays well under Discord's 2000-char single-message limit.
+      - name: Build changelog
+        id: changelog
+        shell: pwsh
+        run: |
+          $before = '${{ github.event.before }}'
+          $after  = '${{ github.sha }}'
+          $zero   = '0000000000000000000000000000000000000000'
+          $hasBefore = $before -and $before -ne $zero
+          if ($hasBefore) {
+            git rev-parse --verify --quiet "$before^{commit}" 2>$null | Out-Null
+            if ($LASTEXITCODE -ne 0) { $hasBefore = $false }
+          }
+          if ($hasBefore) {
+            $range = "$before..$after"
+          } else {
+            $range = "$after~5..$after"
+          }
+          $log = (git log --pretty=format:"- %s (%h, %an)" $range 2>$null) -join "`n"
+          if (-not $log) { $log = '' }
+          $max = 1500
+          if ($log.Length -gt $max) {
+            $log = $log.Substring(0, $max) + "`n… (truncated)"
+          }
+          "changelog<<CHANGELOG_EOF" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          $log | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "CHANGELOG_EOF" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
       # Fan out to n8n → Discord so subscribers see the new .exe without
       # having to watch the Actions tab. URL points at the workflow run
       # page because Actions artifacts are not publicly downloadable.
@@ -186,6 +246,7 @@ jobs:
         if: ${{ success() }}
         env:
           N8N_WEBHOOK_URL: ${{ secrets.N8N_DEPLOY_WEBHOOK_URL }}
+          CHANGELOG: ${{ steps.changelog.outputs.changelog }}
         shell: pwsh
         run: |
           if ([string]::IsNullOrEmpty($env:N8N_WEBHOOK_URL)) {
@@ -193,14 +254,15 @@ jobs:
             exit 0
           }
           $payload = @{
-            event    = 'artifact'
-            platform = 'windows'
-            name     = 'windows-exe-${{ github.sha }}'
-            url      = '${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}'
-            sha      = '${{ github.sha }}'
-            ref      = '${{ github.ref }}'
-            repo     = '${{ github.repository }}'
-            actor    = '${{ github.actor }}'
+            event     = 'artifact'
+            platform  = 'windows'
+            name      = 'windows-exe-${{ github.sha }}'
+            url       = '${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}'
+            sha       = '${{ github.sha }}'
+            ref       = '${{ github.ref }}'
+            repo      = '${{ github.repository }}'
+            actor     = '${{ github.actor }}'
+            changelog = $env:CHANGELOG
           } | ConvertTo-Json -Compress
           Invoke-RestMethod -Uri $env:N8N_WEBHOOK_URL -Method Post -ContentType 'application/json' -Body $payload
 

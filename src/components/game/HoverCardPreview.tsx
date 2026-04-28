@@ -8,15 +8,23 @@ interface HoverCardPreviewProps {
   actions?: HandActionOption[];
   /** Optional handler for selected actions (game only). */
   onSelectAction?: (action: HandActionOption) => void;
+  pinned?: boolean;
+  slot?: HTMLElement | null;
 }
 
 /**
  * Reusable wrapper that renders the CardPreview portal based on the state
  * from the useCardPreview hook. Consolidates duplicated rendering logic.
  */
-export function HoverCardPreview({ preview, actions, onSelectAction }: HoverCardPreviewProps) {
-  // console.log("HoverCardPreview render", { hasCard: !!preview.hoveredCard, isSticky: preview.isSticky });
+export function HoverCardPreview({
+  preview,
+  actions,
+  onSelectAction,
+  pinned,
+  slot,
+}: HoverCardPreviewProps) {
   if (!preview.hoveredCard) return null;
+  if (pinned && !slot) return null;
 
   return (
     <CardPreview
@@ -24,7 +32,7 @@ export function HoverCardPreview({ preview, actions, onSelectAction }: HoverCard
       mouseX={preview.mousePos.x}
       mouseY={preview.mousePos.y}
       anchorRect={preview.anchorRect}
-      placement={preview.placement}
+      placement={pinned ? "pinned" : preview.placement}
       showBackFace={preview.showBackFace}
       isSticky={preview.isSticky}
       actions={actions}
@@ -32,6 +40,7 @@ export function HoverCardPreview({ preview, actions, onSelectAction }: HoverCard
       onDismiss={preview.dismiss}
       onMouseEnter={preview.onMouseEnterPreview}
       onMouseLeave={preview.onMouseLeavePreview}
+      slot={slot}
     />
   );
 }

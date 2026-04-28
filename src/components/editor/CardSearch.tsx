@@ -507,9 +507,10 @@ function DraggableCardRow({
 interface CardSearchProps {
   standalone?: boolean;
   onClose?: () => void;
+  previewSlot?: HTMLElement | null;
 }
 
-export function CardSearch({ standalone, onClose }: CardSearchProps) {
+export function CardSearch({ standalone, onClose, previewSlot }: CardSearchProps) {
   const [text, setText] = useState("");
   const [debouncedText, setDebouncedText] = useState("");
   const [activeColors, setActiveColors] = useState<Set<string>>(new Set());
@@ -1031,23 +1032,17 @@ export function CardSearch({ standalone, onClose }: CardSearchProps) {
           )}
 
           {viewMode === "grid" ? (
-            <div
-              className={cn(
-                "grid gap-3 pb-4",
-                standalone
-                  ? "grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8"
-                  : "grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5",
-              )}
-            >
+            <div className="flex flex-wrap gap-3 pb-4">
               {allCards.map((card, i) => (
-                <DraggableCardGrid
-                  key={card.id}
-                  card={card}
-                  onMoreInfo={() => setDetailCard(rawCards[i])}
-                  standalone={standalone}
-                  onHover={preview.handleMouseEnter}
-                  onLeave={preview.handleMouseLeave}
-                />
+                <div key={card.id} className="shrink-0" style={{ width: standalone ? 130 : 110 }}>
+                  <DraggableCardGrid
+                    card={card}
+                    onMoreInfo={() => setDetailCard(rawCards[i])}
+                    standalone={standalone}
+                    onHover={preview.handleMouseEnter}
+                    onLeave={preview.handleMouseLeave}
+                  />
+                </div>
               ))}
             </div>
           ) : (
@@ -1075,7 +1070,7 @@ export function CardSearch({ standalone, onClose }: CardSearchProps) {
 
       {detailCard && <CardDetailModal card={detailCard} onClose={() => setDetailCard(null)} />}
 
-      <HoverCardPreview preview={preview} />
+      <HoverCardPreview preview={preview} slot={previewSlot} pinned={!standalone} />
     </div>
   );
 }

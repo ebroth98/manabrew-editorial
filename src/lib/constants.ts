@@ -47,6 +47,7 @@ export const LEGALITY_STYLES: Record<string, string> = {
 export const DROP_ZONE = {
   MAIN: "drop-main",
   SIDE: "drop-side",
+  MAYBE: "drop-maybe",
   TAG_PREFIX: "drop-tag-",
 } as const;
 

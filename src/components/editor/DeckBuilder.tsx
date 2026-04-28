@@ -73,6 +73,7 @@ import {
 import { serializeDeck } from "@/lib/decks";
 import { FormatBadge } from "@/components/game/FormatBadge";
 import { DeckListView } from "./DeckListView";
+import { PreviewRail } from "./PreviewRail";
 import { CardDetailModal } from "./CardDetailModal";
 import { DeckLabelsModal } from "./DeckLabelsModal";
 import { DeckLabelBadge } from "@/components/deck/DeckLabelBadge";
@@ -198,10 +199,12 @@ function QuickCardSearch({
             return (
               <div
                 key={sc.id}
-                className="flex items-center gap-2 px-2 py-1 hover:bg-muted border-b border-border/30 last:border-0"
+                className="flex items-center gap-2 px-2 py-1 hover:bg-muted border-b border-border/30 last:border-0 cursor-pointer"
                 onMouseEnter={(e) => onHover(scryfallToOpenMagic(sc), e, { useDelay: true })}
                 onMouseMove={(e) => onHover(scryfallToOpenMagic(sc), e, { useDelay: true })}
                 onMouseLeave={onLeave}
+                onClick={() => onAdd(sc)}
+                title={`Add ${sc.name}`}
               >
                 {sc.image_uris?.small && (
                   <img
@@ -258,7 +261,18 @@ function QuickCardSearch({
 export function DeckBuilder({
   onToggleSearch,
   onBack,
-}: { onToggleSearch?: () => void; onBack?: () => void } = {}) {
+  previewSlot,
+  setPreviewSlot,
+  previewCollapsed,
+  onTogglePreview,
+}: {
+  onToggleSearch?: () => void;
+  onBack?: () => void;
+  previewSlot?: HTMLElement | null;
+  setPreviewSlot?: (el: HTMLDivElement | null) => void;
+  previewCollapsed?: boolean;
+  onTogglePreview?: () => void;
+} = {}) {
   const [printPickerCard, setPrintPickerCard] = useState<string | null>(null);
   const [tokenPrintPickerName, setTokenPrintPickerName] = useState<string | null>(null);
   const [detailCard, setDetailCard] = useState<ScryfallCard | null>(null);
@@ -371,6 +385,9 @@ export function DeckBuilder({
 
   const { setNodeRef: setMainDropRef, isOver: isOverMain } = useDroppable({ id: DROP_ZONE.MAIN });
   const { setNodeRef: setSideDropRef, isOver: isOverSide } = useDroppable({ id: DROP_ZONE.SIDE });
+  const { setNodeRef: setMaybeDropRef, isOver: isOverMaybe } = useDroppable({
+    id: DROP_ZONE.MAYBE,
+  });
 
   // Auto-enrich cards missing CMC/mana data
   useEffect(() => {
@@ -585,13 +602,40 @@ export function DeckBuilder({
     currentDeck.cards.filter((c) => c.name === cardName).forEach((c) => removeFromMain(c.id));
   }
 
-  function handleMoveToSide(cardName: string) {
+  function handleMoveOneToSide(cardName: string) {
+    const card = [...currentDeck.cards].reverse().find((c) => c.name === cardName);
+    if (!card) return;
+    removeFromMain(card.id);
+    addToSide({ ...card, id: crypto.randomUUID() });
+    toast.success(`Moved 1 ${cardName} to sideboard`);
+  }
+
+  function handleMoveAllToSide(cardName: string) {
     const copies = currentDeck.cards.filter((c) => c.name === cardName);
+    if (copies.length === 0) return;
     for (const c of copies) {
       removeFromMain(c.id);
       addToSide({ ...c, id: crypto.randomUUID() });
     }
-    toast.success(`Moved ${cardName} to sideboard`);
+    toast.success(`Moved ${copies.length} ${cardName} to sideboard`);
+  }
+
+  function handleMoveOneToMaybe(cardName: string) {
+    const card = [...currentDeck.cards].reverse().find((c) => c.name === cardName);
+    if (!card) return;
+    removeFromMain(card.id);
+    addToMaybe({ ...card, id: crypto.randomUUID() });
+    toast.success(`Moved 1 ${cardName} to maybeboard`);
+  }
+
+  function handleMoveAllToMaybe(cardName: string) {
+    const copies = currentDeck.cards.filter((c) => c.name === cardName);
+    if (copies.length === 0) return;
+    for (const c of copies) {
+      removeFromMain(c.id);
+      addToMaybe({ ...c, id: crypto.randomUUID() });
+    }
+    toast.success(`Moved ${copies.length} ${cardName} to maybeboard`);
   }
 
   function handleRemoveOneFromMaybe(cardName: string) {
@@ -631,13 +675,76 @@ export function DeckBuilder({
     if (card) removeFromSide(card.id);
   }
 
-  function handleMoveToMain(cardName: string) {
-    const copies = supplementaryCards.filter((c) => c.name === cardName);
+  function handleMoveOneFromSideToMain(cardName: string) {
+    const card = [...currentDeck.sideboard].reverse().find((c) => c.name === cardName);
+    if (!card) return;
+    removeFromSide(card.id);
+    addToMain({ ...card, id: crypto.randomUUID() });
+    toast.success(`Moved 1 ${cardName} to main`);
+  }
+
+  function handleMoveAllFromSideToMain(cardName: string) {
+    const copies = currentDeck.sideboard.filter((c) => c.name === cardName);
+    if (copies.length === 0) return;
     for (const c of copies) {
       removeFromSide(c.id);
       addToMain({ ...c, id: crypto.randomUUID() });
     }
-    toast.success(`Moved ${cardName} to main`);
+    toast.success(`Moved ${copies.length} ${cardName} to main`);
+  }
+
+  function handleMoveOneFromSideToMaybe(cardName: string) {
+    const card = [...currentDeck.sideboard].reverse().find((c) => c.name === cardName);
+    if (!card) return;
+    removeFromSide(card.id);
+    addToMaybe({ ...card, id: crypto.randomUUID() });
+    toast.success(`Moved 1 ${cardName} to maybeboard`);
+  }
+
+  function handleMoveAllFromSideToMaybe(cardName: string) {
+    const copies = currentDeck.sideboard.filter((c) => c.name === cardName);
+    if (copies.length === 0) return;
+    for (const c of copies) {
+      removeFromSide(c.id);
+      addToMaybe({ ...c, id: crypto.randomUUID() });
+    }
+    toast.success(`Moved ${copies.length} ${cardName} to maybeboard`);
+  }
+
+  function handleMoveOneFromMaybeToMain(cardName: string) {
+    const card = [...(currentDeck.maybeboard ?? [])].reverse().find((c) => c.name === cardName);
+    if (!card) return;
+    removeFromMaybe(card.id);
+    addToMain({ ...card, id: crypto.randomUUID() });
+    toast.success(`Moved 1 ${cardName} to main`);
+  }
+
+  function handleMoveAllFromMaybeToMain(cardName: string) {
+    const copies = (currentDeck.maybeboard ?? []).filter((c) => c.name === cardName);
+    if (copies.length === 0) return;
+    for (const c of copies) {
+      removeFromMaybe(c.id);
+      addToMain({ ...c, id: crypto.randomUUID() });
+    }
+    toast.success(`Moved ${copies.length} ${cardName} to main`);
+  }
+
+  function handleMoveOneFromMaybeToSide(cardName: string) {
+    const card = [...(currentDeck.maybeboard ?? [])].reverse().find((c) => c.name === cardName);
+    if (!card) return;
+    removeFromMaybe(card.id);
+    addToSide({ ...card, id: crypto.randomUUID() });
+    toast.success(`Moved 1 ${cardName} to sideboard`);
+  }
+
+  function handleMoveAllFromMaybeToSide(cardName: string) {
+    const copies = (currentDeck.maybeboard ?? []).filter((c) => c.name === cardName);
+    if (copies.length === 0) return;
+    for (const c of copies) {
+      removeFromMaybe(c.id);
+      addToSide({ ...c, id: crypto.randomUUID() });
+    }
+    toast.success(`Moved ${copies.length} ${cardName} to sideboard`);
   }
 
   function handleSetCommander(card: Card) {
@@ -1275,68 +1382,90 @@ export function DeckBuilder({
         </div>
       </div>
 
-      {/* ── Main drop zone (entire scrollable deck area) ── */}
-      <div
-        ref={setMainDropRef}
-        className={cn(
-          "flex-1 min-h-0 transition-colors overflow-hidden",
-          isOverMain && !isOverSide && "bg-primary/5",
+      <div className="flex-1 min-h-0 flex">
+        <div
+          ref={setMainDropRef}
+          className={cn(
+            "flex-1 min-w-0 transition-colors overflow-hidden",
+            isOverMain && !isOverSide && "bg-primary/5",
+          )}
+        >
+          <DeckListView
+            viewMode={viewMode}
+            cardSize={cardSize}
+            commanders={currentDeck.commanders ?? []}
+            deckFormat={currentDeck.format ?? "standard"}
+            mainSections={sectionGroups}
+            otherGroups={otherGroups}
+            sideboardGroups={sideGroups}
+            maybeboardGroups={maybeGroups}
+            specialSections={specialSections}
+            stackColumns={stackColsData}
+            isOverSide={isOverSide}
+            setSideDropRef={setSideDropRef}
+            isOverMaybe={isOverMaybe}
+            setMaybeDropRef={setMaybeDropRef}
+            onAddOne={handleAddOneToMain}
+            onRemoveOne={handleRemoveOneFromMain}
+            onRemoveAll={handleRemoveAllFromMain}
+            onSetCommander={handleSetCommander}
+            onRemoveCommander={removeCommander}
+            onMoveOneToSide={handleMoveOneToSide}
+            onMoveAllToSide={handleMoveAllToSide}
+            onMoveOneToMaybe={handleMoveOneToMaybe}
+            onMoveAllToMaybe={handleMoveAllToMaybe}
+            onMoveOneFromSideToMain={handleMoveOneFromSideToMain}
+            onMoveAllFromSideToMain={handleMoveAllFromSideToMain}
+            onMoveOneFromSideToMaybe={handleMoveOneFromSideToMaybe}
+            onMoveAllFromSideToMaybe={handleMoveAllFromSideToMaybe}
+            onMoveOneFromMaybeToMain={handleMoveOneFromMaybeToMain}
+            onMoveAllFromMaybeToMain={handleMoveAllFromMaybeToMain}
+            onMoveOneFromMaybeToSide={handleMoveOneFromMaybeToSide}
+            onMoveAllFromMaybeToSide={handleMoveAllFromMaybeToSide}
+            onPickPrint={(name) => setPrintPickerCard(name)}
+            onHover={preview.handleMouseEnter}
+            onLeave={preview.handleMouseLeave}
+            onAddToSide={(card) => addToSide(card)}
+            onRemoveFromSide={handleRemoveOneFromSide}
+            onAddToMaybe={(card) => addToMaybe(card)}
+            onRemoveFromMaybe={handleRemoveOneFromMaybe}
+            totalCards={currentDeck.cards.length + (currentDeck.commanders?.length ?? 0)}
+            customTags={currentDeck.customTags}
+            cardTags={currentDeck.cardTags}
+            allMainCards={currentDeck.cards}
+            onUntagCard={untagCard}
+            onTagCard={tagCard}
+            onAddCustomTag={addCustomTag}
+            onRemoveTag={removeCustomTag}
+            selectedCards={selectedCards}
+            onSelectCard={handleSelectCard}
+            onSelectAll={(names) => selectCards(names, true)}
+            onShowInfo={handleShowInfo}
+            coverCardName={currentDeck.coverCardName}
+            coverCardFace={currentDeck.coverCardFace}
+            onSetCover={(card) => {
+              const isSameFront =
+                currentDeck.coverCardName === card.name && (currentDeck.coverCardFace ?? 0) === 0;
+              setCoverCard(isSameFront ? undefined : card.name, 0);
+              if (!isSameFront) useScryfallStore.getState().invalidateCard(card.name);
+            }}
+            onSetCoverBack={(card) => {
+              const isSameBack =
+                currentDeck.coverCardName === card.name && currentDeck.coverCardFace === 1;
+              setCoverCard(isSameBack ? undefined : card.name, 1);
+              if (!isSameBack) useScryfallStore.getState().invalidateCard(card.name);
+            }}
+            stackPositions={currentDeck.stackPositions}
+            onStackPositionsChange={setStackPositions}
+          />
+        </div>
+        {setPreviewSlot && onTogglePreview && (
+          <PreviewRail
+            setSlot={setPreviewSlot}
+            collapsed={previewCollapsed ?? false}
+            onCollapse={onTogglePreview}
+          />
         )}
-      >
-        <DeckListView
-          viewMode={viewMode}
-          cardSize={cardSize}
-          commanders={currentDeck.commanders ?? []}
-          deckFormat={currentDeck.format ?? "standard"}
-          mainSections={sectionGroups}
-          otherGroups={otherGroups}
-          sideboardGroups={sideGroups}
-          maybeboardGroups={maybeGroups}
-          specialSections={specialSections}
-          stackColumns={stackColsData}
-          isOverSide={isOverSide}
-          setSideDropRef={setSideDropRef}
-          onAddOne={handleAddOneToMain}
-          onRemoveOne={handleRemoveOneFromMain}
-          onRemoveAll={handleRemoveAllFromMain}
-          onSetCommander={handleSetCommander}
-          onRemoveCommander={removeCommander}
-          onMoveToSide={handleMoveToSide}
-          onMoveToMain={handleMoveToMain}
-          onPickPrint={(name) => setPrintPickerCard(name)}
-          onHover={preview.handleMouseEnter}
-          onLeave={preview.handleMouseLeave}
-          onAddToSide={(card) => addToSide(card)}
-          onRemoveFromSide={handleRemoveOneFromSide}
-          onAddToMaybe={(card) => addToMaybe(card)}
-          onRemoveFromMaybe={handleRemoveOneFromMaybe}
-          totalCards={currentDeck.cards.length + (currentDeck.commanders?.length ?? 0)}
-          customTags={currentDeck.customTags}
-          cardTags={currentDeck.cardTags}
-          allMainCards={currentDeck.cards}
-          onUntagCard={untagCard}
-          onRemoveTag={removeCustomTag}
-          selectedCards={selectedCards}
-          onSelectCard={handleSelectCard}
-          onSelectAll={(names) => selectCards(names, true)}
-          onShowInfo={handleShowInfo}
-          coverCardName={currentDeck.coverCardName}
-          coverCardFace={currentDeck.coverCardFace}
-          onSetCover={(card) => {
-            const isSameFront =
-              currentDeck.coverCardName === card.name && (currentDeck.coverCardFace ?? 0) === 0;
-            setCoverCard(isSameFront ? undefined : card.name, 0);
-            if (!isSameFront) useScryfallStore.getState().invalidateCard(card.name);
-          }}
-          onSetCoverBack={(card) => {
-            const isSameBack =
-              currentDeck.coverCardName === card.name && currentDeck.coverCardFace === 1;
-            setCoverCard(isSameBack ? undefined : card.name, 1);
-            if (!isSameBack) useScryfallStore.getState().invalidateCard(card.name);
-          }}
-          stackPositions={currentDeck.stackPositions}
-          onStackPositionsChange={setStackPositions}
-        />
       </div>
 
       {selectedCards.size > 0 && (
@@ -1406,7 +1535,7 @@ export function DeckBuilder({
       />
       <DeckStats />
 
-      <HoverCardPreview preview={preview} />
+      <HoverCardPreview preview={preview} slot={previewSlot} pinned />
       <PrintPickerModal cardName={printPickerCard} onClose={() => setPrintPickerCard(null)} />
       <PrintPickerModal
         cardName={tokenPrintPickerName}

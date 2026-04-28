@@ -323,6 +323,10 @@ export function CreateGameDialog({
                         placeholder="Card name"
                         value={selectedCommander}
                         onChange={(e) => setSelectedCommander(e.target.value)}
+                        autoComplete="off"
+                        autoCorrect="off"
+                        autoCapitalize="off"
+                        spellCheck={false}
                       />
                     )}
                   </div>
@@ -370,6 +374,10 @@ export function CreateGameDialog({
                   value={deckSearch}
                   onChange={(e) => setDeckSearch(e.target.value)}
                   className="w-full pl-8 pr-3 py-1.5 rounded-md border bg-background text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                  autoComplete="off"
+                  autoCorrect="off"
+                  autoCapitalize="off"
+                  spellCheck={false}
                 />
               </div>
             </div>

@@ -63,6 +63,10 @@ export function ChooseTypeModal({
               value={filter}
               onChange={(e) => setFilter(e.target.value)}
               className={MODAL_INPUT}
+              autoComplete="off"
+              autoCorrect="off"
+              autoCapitalize="off"
+              spellCheck={false}
             />
           </div>
         )}

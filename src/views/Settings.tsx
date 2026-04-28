@@ -1047,6 +1047,10 @@ export default function Settings() {
                                       }
                                     }}
                                     className="flex-1 min-w-0 h-7 rounded border border-input bg-background px-1.5 text-right text-[11px] font-mono"
+                                    autoComplete="off"
+                                    autoCorrect="off"
+                                    autoCapitalize="off"
+                                    spellCheck={false}
                                   />
                                 ) : (
                                   <button

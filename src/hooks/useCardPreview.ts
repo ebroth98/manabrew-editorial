@@ -18,7 +18,7 @@ function isModifierHeld(e: React.MouseEvent | MouseEvent, mode: CardPreviewMode)
 
 export interface HoverOptions {
   useAnchor?: boolean;
-  placement?: "auto" | "top-center";
+  placement?: "auto" | "top-center" | "pinned";
   anchorOverride?: DOMRect;
   /** Whether to use the configured delay from preferences. */
   useDelay?: boolean;
@@ -34,7 +34,7 @@ export function useCardPreview(dismissDeps: unknown[] = []) {
   const [hoveredCard, setHoveredCard] = useState<Card | null>(null);
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
   const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null);
-  const [placement, setPlacement] = useState<"auto" | "top-center">("auto");
+  const [placement, setPlacement] = useState<"auto" | "top-center" | "pinned">("auto");
   const [showBackFace, setShowBackFace] = useState(false);
   const [isSticky, setIsSticky] = useState(false);
 
