@@ -81,7 +81,7 @@ pub enum AgentPromptInner {
         /// Untapped lands (and creatures/artifacts with mana abilities) that the player can tap.
         #[serde(rename = "tappableLandIds")]
         tappable_land_ids: Vec<String>,
-        /// Tapped lands whose mana is still in the pool (can be untapped to undo).
+        /// Source IDs whose most recent mana action can currently be undone.
         #[serde(rename = "untappableLandIds")]
         untappable_land_ids: Vec<String>,
         /// Activated abilities on battlefield permanents.

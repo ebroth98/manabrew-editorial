@@ -37,6 +37,11 @@ pub(crate) fn pay_mana_cost_session_generic<
     FTryPay,
     FResolveAbility,
     FBasicLandTap,
+    FUndoable,
+    FBeginUndo,
+    FFinishUndo,
+    FUndo,
+    TUndo,
 >(
     game: &mut GameState,
     agents: &mut [Box<dyn PlayerAgent>],
@@ -47,6 +52,10 @@ pub(crate) fn pay_mana_cost_session_generic<
     mut try_pay_from_pool: FTryPay,
     mut resolve_mana_ability: FResolveAbility,
     mut on_basic_land_tap: FBasicLandTap,
+    mut undoable_mana_sources: FUndoable,
+    mut begin_mana_undo: FBeginUndo,
+    mut finish_mana_undo: FFinishUndo,
+    mut undo_mana_action: FUndo,
 ) -> bool
 where
     FAvail: Fn(&GameState, PlayerId, CardId, &ActivatedAbility, &[CardId]) -> bool,
@@ -67,6 +76,10 @@ where
         Option<u16>,
     ),
     FBasicLandTap: FnMut(&mut GameState, PlayerId, CardId),
+    FUndoable: FnMut(&GameState, &[ManaPool], PlayerId) -> Vec<CardId>,
+    FBeginUndo: FnMut(&GameState, &[ManaPool], PlayerId, CardId) -> TUndo,
+    FFinishUndo: FnMut(&mut GameState, &mut [ManaPool], TUndo, usize),
+    FUndo: FnMut(&mut GameState, &mut [ManaPool], PlayerId, CardId) -> bool,
 {
     let saved_pool = mana_pools[session.player.index()].clone();
     let mut mana_loop_invalid_count = 0u32;
@@ -77,26 +90,7 @@ where
             mana::collect_mana_payment_sources(game, session.player, session.reserved_sacrifices);
         let tappable_lands = mana_sources.source_cards.clone();
         let mana_ability_options = mana_sources.mana_ability_options;
-        let pool_snapshot = mana_pools[session.player.index()].clone();
-        let untappable_lands: Vec<CardId> = game
-            .cards_in_zone(ZoneType::Battlefield, session.player)
-            .to_vec()
-            .into_iter()
-            .filter(|&cid| {
-                let c = game.card(cid);
-                if !c.tapped {
-                    return false;
-                }
-                let atoms = mana::land_mana_atoms(c);
-                if !atoms.is_empty() {
-                    atoms.iter().any(|&a| pool_snapshot.has_atom(a, 1))
-                } else if let Some(atom) = basic_land_mana_atom(c) {
-                    pool_snapshot.has_atom(atom, 1)
-                } else {
-                    false
-                }
-            })
-            .collect();
+        let untappable_lands = undoable_mana_sources(game, mana_pools, session.player);
         let pool_ref = mana_pools[session.player.index()].clone();
 
         agents[session.player.index()].snapshot_state(game, mana_pools);
@@ -175,6 +169,7 @@ where
                     // the land's native atoms and leaves the aura-added
                     // mana orphaned in the pool.
                     let player_idx = session.player.index();
+                    let undo_record = begin_mana_undo(game, mana_pools, session.player, land_id);
                     let pool_snapshot = mana_pools[player_idx].begin_tap_tracking();
                     resolve_mana_ability(
                         game,
@@ -186,9 +181,11 @@ where
                         express_choice,
                     );
                     let produced = mana_pools[player_idx].end_tap_tracking(&pool_snapshot);
+                    let produced_count = produced.len();
                     if !produced.is_empty() {
                         game.card_mut(land_id).last_mana_produced = Some(produced);
                     }
+                    finish_mana_undo(game, mana_pools, undo_record, produced_count);
                 } else if let Some(atom) = basic_land_mana_atom(game.card(land_id)) {
                     let _ = atom;
                     executed_actions.push(ManaCostAction::TapLand {
@@ -197,47 +194,25 @@ where
                         express_choice: None,
                     });
                     let player_idx = session.player.index();
+                    let undo_record = begin_mana_undo(game, mana_pools, session.player, land_id);
                     let pool_snapshot = mana_pools[player_idx].begin_tap_tracking();
                     game.tap(land_id);
                     mana_pools[player_idx].add(atom, 1);
                     on_basic_land_tap(game, session.player, land_id);
                     let produced = mana_pools[player_idx].end_tap_tracking(&pool_snapshot);
+                    let produced_count = produced.len();
                     if !produced.is_empty() {
                         game.card_mut(land_id).last_mana_produced = Some(produced);
                     }
+                    finish_mana_undo(game, mana_pools, undo_record, produced_count);
                 }
             }
             ManaCostAction::UntapLand(land_id) => {
                 if !untappable_lands.contains(&land_id) {
                     continue;
                 }
-                // Prefer the full set of mana this tap produced (stored
-                // as `last_mana_produced` above) so aura-triggered extra
-                // mana is rolled back alongside the land's native atoms.
-                // Falls back to the land's declared atoms only when the
-                // tap wasn't tracked — e.g. engine-internal auto-tap
-                // paths that bypass this session.
-                let tracked = game.card_mut(land_id).last_mana_produced.take();
-                let atoms = match tracked {
-                    Some(p) if !p.is_empty() => p,
-                    _ => {
-                        let c = game.card(land_id);
-                        if c.is_land() && c.tapped {
-                            let a = mana::land_mana_atoms(c);
-                            if a.is_empty() {
-                                basic_land_mana_atom(c).into_iter().collect::<Vec<_>>()
-                            } else {
-                                a
-                            }
-                        } else {
-                            vec![]
-                        }
-                    }
-                };
-                if !atoms.is_empty() {
+                if undo_mana_action(game, mana_pools, session.player, land_id) {
                     executed_actions.push(ManaCostAction::UntapLand(land_id));
-                    game.untap(land_id);
-                    mana_pools[session.player.index()].rollback_tap(&atoms);
                 }
             }
             ManaCostAction::Pay { auto } => {
@@ -407,7 +382,7 @@ impl GameLoop {
     {
         let self_ptr: *mut GameLoop = self;
         let agents_ptr: *mut [Box<dyn PlayerAgent>] = std::ptr::from_mut(agents);
-        pay_mana_cost_session_generic(
+        let paid = pay_mana_cost_session_generic(
             game,
             agents,
             &mut self.mana_pools,
@@ -450,10 +425,26 @@ impl GameLoop {
                     false,
                 );
                 let pending = this.trigger_handler.run_waiting_triggers(game);
+                if !pending.is_empty() {
+                    this.mark_mana_undo_disqualified();
+                }
                 for pt in pending {
                     this.resolve_single_effect(game, agents, &pt.entry.spell_ability, None);
                 }
             },
-        )
+            |_game, _mana_pools, player| unsafe { (&mut *self_ptr).undoable_mana_sources(player) },
+            |game, mana_pools, player, card_id| unsafe {
+                (&mut *self_ptr)
+                    .begin_mana_undo_action_with_mana_slice(game, mana_pools, player, card_id)
+            },
+            |_game, _mana_pools, record, produced_count| unsafe {
+                (&mut *self_ptr).finish_mana_undo_action(record, produced_count);
+            },
+            |game, mana_pools, player, card_id| unsafe {
+                (&mut *self_ptr).undo_mana_action_with_mana_slice(game, mana_pools, player, card_id)
+            },
+        );
+        self.invalidate_mana_undo_for_player(session.player);
+        paid
     }
 }

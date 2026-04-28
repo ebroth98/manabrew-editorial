@@ -472,6 +472,7 @@ impl GameLoop {
                 crate::spellability::build_spell_ability(game, card_id, &ab.ability_text, player);
             sa.express_mana_choice = express_choice;
             self.resolve_single_effect(game, agents, &sa, None);
+            self.mark_mana_undo_disqualified();
             // Fire triggers
             self.trigger_handler.run_trigger(
                 TriggerType::TapsForMana,
@@ -568,6 +569,7 @@ impl GameLoop {
                     },
                     false,
                 );
+                self.mark_mana_undo_disqualified();
                 return;
             }
 
@@ -595,6 +597,7 @@ impl GameLoop {
                 let sub_sa =
                     crate::spellability::build_spell_ability(game, card_id, &sub_text, player);
                 self.resolve_single_effect(game, agents, &sub_sa, None);
+                self.mark_mana_undo_disqualified();
             }
         }
 
@@ -626,6 +629,9 @@ impl GameLoop {
         // These fire from TapsForMana and produce extra mana without using the stack.
         // Mirrors Java's AbilityStatic resolution path for mana triggers.
         let pending = self.trigger_handler.run_waiting_triggers(game);
+        if !pending.is_empty() {
+            self.mark_mana_undo_disqualified();
+        }
         for pt in pending {
             self.resolve_single_effect(game, agents, &pt.entry.spell_ability, None);
         }

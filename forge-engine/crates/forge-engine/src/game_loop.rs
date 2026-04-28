@@ -3,6 +3,8 @@ use std::hash::{DefaultHasher, Hasher};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
+#[path = "game_loop/mana_action_undo.rs"]
+mod mana_action_undo;
 #[path = "game_loop/trigger_replacement_base.rs"]
 pub mod trigger_replacement_base;
 
@@ -27,6 +29,7 @@ use crate::spellability::{SpellAbility, StackEntry};
 use crate::staticability::layer::apply_continuous_effects;
 use crate::trigger::handler::TriggerHandler;
 use crate::trigger::TriggerType;
+use mana_action_undo::ManaUndoRecord;
 
 // ── GameLoop ────────────────────────────────────────────────────────
 
@@ -65,6 +68,10 @@ pub struct GameLoop {
     next_checkpoint_id: u64,
     reserved_sacrifice_stack: Vec<Vec<CardId>>,
     reserved_source_reuse_stack: Vec<bool>,
+    /// Per-player stack of reversible mana actions. The UI consumes this
+    /// through `untappableLandIds`; legality is owned by the engine.
+    mana_undo_stacks: Vec<Vec<ManaUndoRecord>>,
+    mana_undo_disqualified: bool,
     /// Cooperative shutdown signal. When the host (e.g. Tauri's
     /// `GameManager::end_game`) flips this flag we short-circuit the
     /// outer `run()` loop and bail out. Prevents the engine from
@@ -162,6 +169,8 @@ impl GameLoop {
             next_checkpoint_id: 1,
             reserved_sacrifice_stack: Vec::new(),
             reserved_source_reuse_stack: Vec::new(),
+            mana_undo_stacks: (0..num_players).map(|_| Vec::new()).collect(),
+            mana_undo_disqualified: false,
             abort_signal: None,
         }
     }
@@ -343,31 +352,14 @@ impl GameLoop {
             .collect()
     }
 
-    /// Get tapped lands whose mana is still in the pool (can be untapped to undo).
+    /// Get the top reversible mana source for a player, if any.
     pub fn get_untappable_lands(
         &self,
-        game: &GameState,
+        _game: &GameState,
         player: PlayerId,
-        pool_snapshot: &ManaPool,
+        _pool_snapshot: &ManaPool,
     ) -> Vec<CardId> {
-        game.cards_in_zone(ZoneType::Battlefield, player)
-            .to_vec()
-            .into_iter()
-            .filter(|&cid| {
-                let c = game.card(cid);
-                if !c.is_land() || !c.tapped {
-                    return false;
-                }
-                let atoms = mana::land_mana_atoms(c);
-                if !atoms.is_empty() {
-                    atoms.iter().any(|&a| pool_snapshot.has_atom(a, 1))
-                } else if let Some(atom) = basic_land_mana_atom(c) {
-                    pool_snapshot.has_atom(atom, 1)
-                } else {
-                    false
-                }
-            })
-            .collect()
+        self.undoable_mana_sources(player)
     }
 
     /// Set up the game: roll for first player, shuffle libraries, draw

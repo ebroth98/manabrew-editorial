@@ -7,6 +7,7 @@
   "order": 102,
   "cards": [
     { "name": "Forest", "count": 14 },
+    { "name": "Izzet Signet", "count": 4 },
     { "name": "Llanowar Elves", "count": 2 },
     { "name": "Elvish Mystic", "count": 2 },
     { "name": "Fyndhorn Elves", "count": 2 },
@@ -16,6 +17,7 @@
     { "name": "Elvish Vanguard", "count": 4 },
     { "name": "Priest of Titania", "count": 4 },
     { "name": "Timberwatch Elf", "count": 4 },
+    { "name": "Oasis Ritualist", "count": 4 },
     { "name": "Lys Alana Huntmaster", "count": 1 },
     { "name": "Masked Vandal", "count": 1 },
     { "name": "Salt Road Packbeast", "count": 1 },

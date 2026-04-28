@@ -314,6 +314,10 @@ fn pay_mana_cost_for_effect(
                 resolve_effect(ctx, &pt.entry.spell_ability);
             }
         },
+        |_game, _mana_pools, _player| Vec::new(),
+        |_game, _mana_pools, _player, _card_id| (),
+        |_game, _mana_pools, _record, _produced_count| {},
+        |_game, _mana_pools, _player, _card_id| false,
     )
 }
 

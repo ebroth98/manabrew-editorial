@@ -215,6 +215,7 @@ impl GameLoop {
             );
             match priority_action {
                 MainPhaseAction::Pass => {
+                    self.invalidate_mana_undo_for_player(priority_player);
                     self.log_priority_pass(game, priority_player);
                     passed_count += 1;
                     priority_player = game.next_player(priority_player);
@@ -223,6 +224,7 @@ impl GameLoop {
                     });
                 }
                 MainPhaseAction::Play(play) => {
+                    self.invalidate_mana_undo_for_player(priority_player);
                     self.log_priority_response(
                         game,
                         priority_player,
@@ -402,6 +404,7 @@ impl GameLoop {
                         });
                         continue;
                     }
+                    let undo_record = self.begin_mana_undo_action(game, priority_player, land_id);
                     let pool_snapshot = self.pool(priority_player).begin_tap_tracking();
 
                     let mana_abs: Vec<_> = {
@@ -558,6 +561,9 @@ impl GameLoop {
                                 );
                                 // Resolve mana triggers inline (e.g. Utopia Sprawl).
                                 let pending = this.trigger_handler.run_waiting_triggers(game);
+                                if !pending.is_empty() {
+                                    this.mark_mana_undo_disqualified();
+                                }
                                 for pt in pending {
                                     this.resolve_single_effect(
                                         game,
@@ -573,11 +579,13 @@ impl GameLoop {
                     // Record ALL mana produced by this tap for rollback — single snapshot
                     // covers base ability + granted abilities + aura triggers.
                     let produced = self.pool(priority_player).end_tap_tracking(&pool_snapshot);
+                    let produced_count = produced.len();
                     if !produced.is_empty() {
                         self.with_shared_state_mutation(game, agents, |_this, game, _agents| {
                             game.card_mut(land_id).last_mana_produced = Some(produced);
                         });
                     }
+                    self.finish_mana_undo_action(undo_record, produced_count);
                     passed_count = 0;
                 }
                 MainPhaseAction::UntapMana(land_id) => {
@@ -602,52 +610,12 @@ impl GameLoop {
                         continue;
                     }
                     self.with_shared_state_mutation(game, agents, |this, game, _agents| {
-                        let atoms = {
-                            let c = game.card(land_id);
-                            if c.is_land() && c.tapped {
-                                let a = mana::land_mana_atoms(c);
-                                if a.is_empty() {
-                                    // Fallback for lands without mana abilities
-                                    basic_land_mana_atom(c).into_iter().collect::<Vec<_>>()
-                                } else {
-                                    a
-                                }
-                            } else {
-                                vec![]
-                            }
-                        };
-                        if !atoms.is_empty() {
-                            game.untap(land_id);
-                            // Remove all mana produced by the last tap — covers base,
-                            // aura triggers, static doublers, and any other source.
-                            if let Some(produced) = game.card_mut(land_id).last_mana_produced.take()
-                            {
-                                this.pool_mut(priority_player).rollback_tap(&produced);
-                            } else {
-                                // Fallback: remove the first matching base atom
-                                let pool = this.pool_mut(priority_player);
-                                for &atom in &atoms {
-                                    if pool.has_atom(atom, 1) {
-                                        pool.remove(atom, 1);
-                                        break;
-                                    }
-                                }
-                            }
-                            // Fire Untaps trigger
-                            this.trigger_handler.run_trigger(
-                                TriggerType::Untaps,
-                                RunParams {
-                                    card: Some(land_id),
-                                    player: Some(priority_player),
-                                    ..Default::default()
-                                },
-                                false,
-                            );
-                        }
+                        this.undo_mana_action(game, priority_player, land_id);
                     });
                     passed_count = 0;
                 }
                 MainPhaseAction::ActivateAbility(card_id, ability_idx) => {
+                    self.invalidate_mana_undo_for_player(priority_player);
                     self.log_priority_response(
                         game,
                         priority_player,

@@ -31,6 +31,7 @@ export interface AgentPrompt {
   validPlayerIds?: string[];
   validCardIds?: string[];
   tappableLandIds?: string[];
+  /** Source IDs whose most recent mana action can currently be undone. */
   untappableLandIds?: string[];
   zone?: string;
   zoneCards?: Card[];

@@ -174,6 +174,7 @@ impl GameLoop {
         agents: &mut [Box<dyn PlayerAgent>],
         phase: PhaseType,
     ) {
+        self.invalidate_all_mana_undo();
         // Clear mana pools at each phase/step transition, retaining persistent,
         // combat mana, and UnspentMana static colors (MTG rule 500.4).
         // Scan for UnspentMana statics (Omnath, Leyline Tyrant, Upwelling, etc.)

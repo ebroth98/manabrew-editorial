@@ -360,6 +360,9 @@ impl GameLoop {
                                 if !tappable_lands.contains(&land_id) {
                                     continue;
                                 }
+                                let undo_record =
+                                    self.begin_mana_undo_action(game, controller, land_id);
+                                let pool_snapshot = self.pool(controller).begin_tap_tracking();
                                 // Use actual mana ability when available
                                 let mana_ab = {
                                     let c = game.card(land_id);
@@ -410,45 +413,18 @@ impl GameLoop {
                                         );
                                     }
                                 }
+                                let produced =
+                                    self.pool(controller).end_tap_tracking(&pool_snapshot);
+                                self.finish_mana_undo_action(undo_record, produced.len());
                             }
                             CombatCostAction::UntapLand(land_id) => {
                                 if !untappable_lands.contains(&land_id) {
                                     continue;
                                 }
-                                let atoms = {
-                                    let c = game.card(land_id);
-                                    if c.is_land() && c.tapped {
-                                        let a = mana::land_mana_atoms(c);
-                                        if a.is_empty() {
-                                            basic_land_mana_atom(c).into_iter().collect::<Vec<_>>()
-                                        } else {
-                                            a
-                                        }
-                                    } else {
-                                        vec![]
-                                    }
-                                };
-                                if !atoms.is_empty() {
-                                    game.untap(land_id);
-                                    let pool = self.pool_mut(controller);
-                                    for &atom in &atoms {
-                                        if pool.has_atom(atom, 1) {
-                                            pool.remove(atom, 1);
-                                            break;
-                                        }
-                                    }
-                                    self.trigger_handler.run_trigger(
-                                        TriggerType::Untaps,
-                                        RunParams {
-                                            card: Some(land_id),
-                                            player: Some(controller),
-                                            ..Default::default()
-                                        },
-                                        false,
-                                    );
-                                }
+                                self.undo_mana_action(game, controller, land_id);
                             }
                             CombatCostAction::Pay => {
+                                self.invalidate_mana_undo_for_player(controller);
                                 let pool = &mut self.mana_pools[controller.index()];
                                 if pool.total_mana() >= cost {
                                     pool.spend_generic(cost);
@@ -460,6 +436,7 @@ impl GameLoop {
                                 break;
                             }
                             CombatCostAction::Decline => {
+                                self.invalidate_mana_undo_for_player(controller);
                                 cost_failures.push(attacker_id);
                                 break;
                             }

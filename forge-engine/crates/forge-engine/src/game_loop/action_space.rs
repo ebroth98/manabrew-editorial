@@ -161,35 +161,11 @@ impl GameLoop {
                 .collect()
         };
 
-        let pool_snapshot = self.pool(player).clone();
         let untappable_lands: Vec<CardId> = {
             let _params_lookup_scope = crate::perf::ParamsLookupScopeGuard::enter(
                 crate::perf::ParamsLookupScope::ActionSpaceUntap,
             );
-            game.cards_in_zone(ZoneType::Battlefield, player)
-                .iter()
-                .copied()
-                .filter(|&cid| {
-                    let c = game.card(cid);
-                    if !c.tapped {
-                        return false;
-                    }
-                    // Only permanents with a real mana ability can be untapped to undo mana.
-                    let has_mana_ability =
-                        c.activated_abilities.iter().any(|ab| ab.is_mana_ability);
-                    if !has_mana_ability {
-                        return false;
-                    }
-                    let atoms = mana::land_mana_atoms(c);
-                    if !atoms.is_empty() {
-                        atoms.iter().any(|&a| pool_snapshot.has_atom(a, 1))
-                    } else if let Some(atom) = basic_land_mana_atom(c) {
-                        pool_snapshot.has_atom(atom, 1)
-                    } else {
-                        false
-                    }
-                })
-                .collect()
+            self.undoable_mana_sources(player)
         };
 
         ActionSpace {

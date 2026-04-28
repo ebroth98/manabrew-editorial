@@ -119,7 +119,7 @@ pub trait PlayerAgent {
     /// Choose a main-phase action: play a card from hand, tap a land for mana, untap a land,
     /// activate an ability, or pass.
     /// `tappable_lands` lists untapped lands available for tapping.
-    /// `untappable_lands` lists tapped lands that still have mana in the pool (can be untapped).
+    /// `untappable_lands` lists source IDs whose most recent mana action can be undone.
     /// `activatable` lists (card_id, ability_index) pairs for activated abilities that can be used.
     fn choose_action(
         &mut self,
