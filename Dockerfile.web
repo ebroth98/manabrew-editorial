@@ -31,6 +31,9 @@ COPY Cargo.toml Cargo.lock ./
 # src-tauri is a workspace member; cargo metadata needs its manifest to resolve
 COPY src-tauri/ ./src-tauri/
 COPY forge-engine/ ./forge-engine/
+# tree-sitter-forge-card-script is also a workspace member (declared at the
+# repo root, not under forge-engine/) so cargo metadata fails without it.
+COPY tree-sitter-forge-card-script/ ./tree-sitter-forge-card-script/
 COPY scripts/ ./scripts/
 COPY src/ ./src/
 COPY public/ ./public/
