@@ -60,6 +60,9 @@ COPY forge-engine/ forge-engine/
 COPY preset_decks/ preset_decks/
 COPY src-tauri/Cargo.toml src-tauri/Cargo.toml
 RUN mkdir -p src-tauri/src && echo "fn main() {}" > src-tauri/src/main.rs && touch src-tauri/src/lib.rs
+# tree-sitter-forge-card-script is also a workspace member (declared at the
+# repo root, not under forge-engine/) so cargo metadata fails without it.
+COPY tree-sitter-forge-card-script/ tree-sitter-forge-card-script/
 
 # Build with BuildKit cache mounts for cargo registry + target dir
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
