@@ -17,6 +17,7 @@ members = [
     "forge-engine/crates/forge-card-script-lsp",
     "forge-engine/crates/forge-engine-debugger",
     "forge-engine/crates/forge-cardset-archive",
+    "forge-engine/crates/forge-limited",
 ]
 
 [workspace.dependencies]

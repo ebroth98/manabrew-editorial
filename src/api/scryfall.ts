@@ -167,6 +167,27 @@ export async function fetchSets(): Promise<ScryfallSet[]> {
   return data.data;
 }
 
+export async function fetchCardsBySet(setCode: string): Promise<ScryfallCard[]> {
+  const out: ScryfallCard[] = [];
+  let url: string | undefined =
+    `${SCRYFALL_API}/cards/search?q=${encodeURIComponent(`e:${setCode.toLowerCase()}`)}` +
+    `&unique=prints&order=set&include_extras=true`;
+
+  while (url) {
+    try {
+      const page: ScryfallListResponse = await scryfallFetch<ScryfallListResponse>(
+        url,
+        `Failed to fetch cards for set ${setCode}`,
+      );
+      out.push(...page.data);
+      url = page.has_more ? page.next_page : undefined;
+    } catch {
+      break;
+    }
+  }
+  return out;
+}
+
 export async function fetchImageElement(url: string): Promise<HTMLImageElement> {
   let response: Response | null = null;
   for (let attempt = 0; attempt <= SCRYFALL_MAX_RETRIES; attempt += 1) {

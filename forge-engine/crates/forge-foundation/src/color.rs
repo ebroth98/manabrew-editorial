@@ -92,7 +92,7 @@ impl Color {
 
 /// A set of 0-5 colors, stored as a u8 bitmask. All 32 combinations are valid.
 /// Mirrors Java `ColorSet` — the ordinal IS the bitmask.
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
 pub struct ColorSet(u8);
 
 impl ColorSet {

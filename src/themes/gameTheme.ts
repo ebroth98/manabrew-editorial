@@ -130,6 +130,14 @@ export interface GameThemeColors {
     sky: string;
     indigo: string;
   };
+  rarity: {
+    common: string;
+    uncommon: string;
+    rare: string;
+    mythic: string;
+    special: string;
+    land: string;
+  };
 }
 
 // ---------------------------------------------------------------------------

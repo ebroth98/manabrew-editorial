@@ -187,6 +187,8 @@ export interface IPlatformApi {
    */
   readonly server?: IServerApi;
 
+  invoke<T>(command: string, args?: Record<string, unknown>): Promise<T>;
+
   /**
    * Check if a feature is supported.
    */

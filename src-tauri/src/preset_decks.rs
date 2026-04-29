@@ -21,6 +21,8 @@ pub struct CardIdentity {
     pub set_code: String,
     #[serde(default)]
     pub section: Option<String>,
+    #[serde(default)]
+    pub foil: bool,
 }
 
 // ── Preset deck registry ───────────────────────────────────────────
@@ -470,6 +472,7 @@ pub fn build_custom_deck(game: &mut GameState, owner: PlayerId, identities: &[Ca
                 if !identity.set_code.is_empty() {
                     card.set_code = Some(identity.set_code.clone());
                 }
+                card.paper_foil = identity.foil;
                 let destination = deck_zone_for_identity(identity.section.as_deref(), &card);
                 let id = game.create_card(card);
                 if destination == ZoneType::Command {
@@ -529,6 +532,7 @@ fn prepare_cards_from_identities(
                 if !identity.set_code.is_empty() {
                     card.set_code = Some(identity.set_code.clone());
                 }
+                card.paper_foil = identity.foil;
                 let destination = deck_zone_for_identity(identity.section.as_deref(), &card);
                 register_card_name(registered, &card.card_name, destination);
                 cards.push((card, destination));

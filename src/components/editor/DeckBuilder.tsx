@@ -305,6 +305,7 @@ export function DeckBuilder({
     setStackPositions,
     setTokens,
     updateTokenPrint,
+    toggleFoil,
   } = useDeckStore();
 
   const [editingName, setEditingName] = useState(false);
@@ -1423,6 +1424,7 @@ export function DeckBuilder({
             onMoveOneFromMaybeToSide={handleMoveOneFromMaybeToSide}
             onMoveAllFromMaybeToSide={handleMoveAllFromMaybeToSide}
             onPickPrint={(name) => setPrintPickerCard(name)}
+            onToggleFoil={toggleFoil}
             onHover={preview.handleMouseEnter}
             onLeave={preview.handleMouseLeave}
             onAddToSide={(card) => addToSide(card)}

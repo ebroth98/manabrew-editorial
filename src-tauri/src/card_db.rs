@@ -10,6 +10,7 @@ use memmap2::Mmap;
 static CARD_DB: OnceLock<CardDatabase> = OnceLock::new();
 static TOKEN_DB: OnceLock<CardDatabase> = OnceLock::new();
 static TOKEN_IMAGE_MAP: OnceLock<HashMap<String, TokenImageInfo>> = OnceLock::new();
+static CARD_NAME_INDEX: OnceLock<std::collections::HashSet<String>> = OnceLock::new();
 
 /// Scryfall set code + collector number for a token, derived from edition files.
 #[derive(Debug, Clone)]
@@ -106,6 +107,22 @@ pub fn get_card_db() -> &'static CardDatabase {
         }
         db
     })
+}
+
+pub fn get_card_name_index() -> &'static std::collections::HashSet<String> {
+    CARD_NAME_INDEX.get_or_init(|| {
+        let db = get_card_db();
+        let mut set = std::collections::HashSet::with_capacity(db.iter().count());
+        for (name, rules) in db.iter() {
+            set.insert(name.to_lowercase());
+            set.insert(rules.name().to_lowercase());
+        }
+        set
+    })
+}
+
+pub fn card_name_known(name: &str) -> bool {
+    get_card_name_index().contains(&name.to_lowercase())
 }
 
 fn load_card_db_from_archive(

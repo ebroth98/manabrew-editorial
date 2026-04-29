@@ -35,26 +35,26 @@ The project is large; every line is a long-term liability. Before adding code:
 
 Sub-AGENTS.md files are not auto-discovered by Codex or by Claude Code's parent-directory scan. **Consult this table at the start of any task** and read every file whose scope your change touches.
 
-| File | Read it before |
-|---|---|
-| `src/AGENTS.md` | Any change under `src/` |
-| `src/components/game/AGENTS.md` | Any change under `src/components/game/` (game board, modals, panels, zones) |
-| `src-tauri/AGENTS.md` | Any change under `src-tauri/` |
-| `forge-engine/AGENTS.md` | Any Rust engine work — workspace map and engine module map |
-| `forge-engine/crates/forge-engine/src/ability/effects/AGENTS.md` | Adding or modifying a `*_effect.rs` (most parity work) |
-| `forge-engine/crates/forge-parity/AGENTS.md` | Investigating a parity divergence or editing `regression.json` |
-| `forge/AGENTS.md` | Anything under `forge/` (read-only warning) |
-| `scripts/AGENTS.md` | Adding or running a build/parity script |
+| File                                                             | Read it before                                                              |
+| ---------------------------------------------------------------- | --------------------------------------------------------------------------- |
+| `src/AGENTS.md`                                                  | Any change under `src/`                                                     |
+| `src/components/game/AGENTS.md`                                  | Any change under `src/components/game/` (game board, modals, panels, zones) |
+| `src-tauri/AGENTS.md`                                            | Any change under `src-tauri/`                                               |
+| `forge-engine/AGENTS.md`                                         | Any Rust engine work — workspace map and engine module map                  |
+| `forge-engine/crates/forge-engine/src/ability/effects/AGENTS.md` | Adding or modifying a `*_effect.rs` (most parity work)                      |
+| `forge-engine/crates/forge-parity/AGENTS.md`                     | Investigating a parity divergence or editing `regression.json`              |
+| `forge/AGENTS.md`                                                | Anything under `forge/` (read-only warning)                                 |
+| `scripts/AGENTS.md`                                              | Adding or running a build/parity script                                     |
 
 Topic spinoffs (cross-cut multiple folders):
 
-| File | Read it when |
-|---|---|
-| `docs/agents/PARITY_PHILOSOPHY.md` | Any engine work |
-| `docs/agents/ENGINE_BUGFIX_WORKFLOW.md` | Investigating a parity divergence |
-| `docs/agents/UI_THEME_RULES.md` | Any UI change that involves color |
-| `docs/forge-dsl-semantics.md` | Any engine work touching abilities, triggers, replacements, static abilities, costs, SVars, or the stack |
-| `docs/forge-dsl-grammar.md` | Parser / IR changes, or when interpreting card-script syntax |
+| File                                    | Read it when                                                                                             |
+| --------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| `docs/agents/PARITY_PHILOSOPHY.md`      | Any engine work                                                                                          |
+| `docs/agents/ENGINE_BUGFIX_WORKFLOW.md` | Investigating a parity divergence                                                                        |
+| `docs/agents/UI_THEME_RULES.md`         | Any UI change that involves color                                                                        |
+| `docs/forge-dsl-semantics.md`           | Any engine work touching abilities, triggers, replacements, static abilities, costs, SVars, or the stack |
+| `docs/forge-dsl-grammar.md`             | Parser / IR changes, or when interpreting card-script syntax                                             |
 
 These files start minimal and grow over time. If a section outgrows its file, split it into a new doc under `docs/agents/` and add it to this map.
 

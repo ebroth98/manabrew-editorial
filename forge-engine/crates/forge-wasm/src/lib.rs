@@ -19,10 +19,14 @@
 
 mod card_loader;
 mod game_runner;
+mod limited_api;
+mod limited_bootstrap;
 mod wasm_api;
 pub mod wasm_transport;
 
 pub use card_loader::*;
+pub use limited_api::*;
+pub use limited_bootstrap::*;
 pub use wasm_api::*;
 
 use wasm_bindgen::prelude::*;

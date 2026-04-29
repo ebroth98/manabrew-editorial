@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { devtools } from "zustand/middleware";
 import { immer } from "zustand/middleware/immer";
 import {
+  fetchCardsBySet,
   fetchImageElement,
   fetchSets,
   getCardById,
@@ -35,11 +36,30 @@ interface ScryfallState {
   _fetchCardLookup: (lookup: ScryfallCardLookup) => Promise<CardEntry>;
   cards: Record<string, ScryfallEntry>;
   sets: ScryfallSet[];
+  /** Lowercased set codes whose card metadata has already been hydrated.
+   *  Object-shaped (not `Set`) so immer can produce drafts without the
+   *  MapSet plugin. */
+  hydratedSets: Record<string, true>;
   getCard: (lookup: ScryfallCardLookup) => Promise<CardEntry>;
   getCardTexture: (lookup: ScryfallCardLookup) => Promise<CardEntry>;
   updatePrinting: (card: ScryfallCard) => CardEntry;
   invalidateCard: (name: string) => void;
   getRulings: (card: { rulings_uri: string }) => Promise<ScryfallRulingsResponse>;
+  /**
+   * Fetch every printing in `setCode` via Scryfall's search endpoint
+   * and prime the cache under all the lookup keys (`set:..::cn:..`,
+   * `name:..`, `name:..::set:..`, `id:..`). Subsequent `useCard` calls
+   * for any of those resolve from cache instead of firing per-card
+   * lookups.
+   */
+  hydrateSet: (setCode: string) => Promise<ScryfallCard[]>;
+  /**
+   * Like `hydrateSet`, but also kicks off image-texture downloads for
+   * every card so a follow-up draft / sealed open is fully warm.
+   * Returns once metadata is in cache; image fetches continue in the
+   * background.
+   */
+  prefetchSet: (setCode: string) => Promise<void>;
 }
 
 function scryfallLookupKey({ id, name, setCode, collectorNumber }: ScryfallCardLookup): string {
@@ -122,6 +142,7 @@ export const useScryfallStore = create<ScryfallState>()(
   devtools(
     immer((set, get) => ({
       cards: {},
+      hydratedSets: {},
       _fetchCardLookup: async (lookup) => {
         const key = scryfallLookupKey(lookup);
         console.log("===== ACTUALLY FETCHING: " + key);
@@ -199,6 +220,50 @@ export const useScryfallStore = create<ScryfallState>()(
       getRulings: async (c) => {
         const rulingsUri = c.rulings_uri;
         return getRulings(rulingsUri);
+      },
+      hydrateSet: async (setCode) => {
+        const code = setCode.toLowerCase();
+        if (!get().hydratedSets[code]) {
+          // Mark hydrated up-front so concurrent callers don't double-fetch;
+          // we'd rather fail-soft than spam Scryfall.
+          set((state) => {
+            state.hydratedSets[code] = true;
+          });
+          const cards = await fetchCardsBySet(code);
+          set((state) => {
+            for (const card of cards) {
+              const uris = chooseImageUrisForCard(card, { frontOnly: true });
+              if (!uris) continue;
+              const entry: CardEntry = { info: card, texture: Texture.EMPTY, uris };
+              const lowerName = card.name.toLowerCase();
+              const setLower = card.set.toLowerCase();
+              const cn = card.collector_number.toLowerCase();
+              state.cards[`set:${setLower}::cn:${cn}`] = { card: entry };
+              state.cards[`name:${lowerName}`] = { card: entry };
+              state.cards[`name:${lowerName}::set:${setLower}`] = { card: entry };
+              state.cards[`id:${card.id}`] = { card: entry };
+            }
+          });
+        }
+        return Object.values(get().cards)
+          .map((e) => e.card?.info)
+          .filter((c): c is ScryfallCard => !!c && c.set?.toLowerCase() === code);
+      },
+      prefetchSet: async (setCode) => {
+        const cards = await get().hydrateSet(setCode);
+        if (cards.length === 0) return;
+        // Warm the browser HTTP cache for every card image — `<img>`
+        // tags in the deck-builder will then resolve instantly. We
+        // hit `normal` because that's what `CardThumbnail` renders;
+        // PIXI textures (`getCardTexture`) are reserved for the game
+        // canvas and would over-fetch here.
+        if (typeof Image === "undefined") return;
+        for (const c of cards) {
+          const uris = chooseImageUrisForCard(c, { frontOnly: true });
+          if (!uris?.normal) continue;
+          const img = new Image();
+          img.src = uris.normal;
+        }
       },
       updatePrinting: (print) => {
         const lowerName = print.name.toLowerCase();

@@ -1,7 +1,7 @@
 import { NavLink } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import { useGameStore } from "@/stores/useGameStore";
-import { Home, Gamepad2, Hand, Layers, Settings, Swords, Search } from "lucide-react";
+import { Home, Gamepad2, Hand, Layers, Package, Settings, Swords, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { OpenMagicLogo } from "./OpenMagicLogo";
 
@@ -67,6 +67,17 @@ export function Sidebar({ className, onNavigate }: SidebarProps) {
                 >
                   <Layers className="mr-2 h-4 w-4 shrink-0" />
                   My Decks
+                </Button>
+              )}
+            </NavLink>
+            <NavLink to="/limited" onClick={onNavigate}>
+              {({ isActive }) => (
+                <Button
+                  variant={isActive ? "secondary" : "ghost"}
+                  className="w-full justify-start whitespace-nowrap"
+                >
+                  <Package className="mr-2 h-4 w-4 shrink-0" />
+                  Limited
                 </Button>
               )}
             </NavLink>

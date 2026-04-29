@@ -6,6 +6,10 @@ mod client_bot;
 mod commands;
 mod engine_backend;
 mod game_manager;
+mod limited_bootstrap;
+mod limited_commands;
+mod limited_dto;
+mod limited_manager;
 mod multiplayer_controller;
 mod network;
 mod preset_decks;
@@ -16,6 +20,7 @@ mod tauri_transport;
 use client_bot::ClientBotManager;
 use forge_engine_core::game::TypeRegistry;
 use game_manager::GameManager;
+use limited_manager::LimitedManager;
 use server_client::ServerClient;
 use tauri::Manager;
 
@@ -67,6 +72,7 @@ pub fn run() {
         .manage(GameManager::new())
         .manage(ServerClient::new())
         .manage(ClientBotManager::new())
+        .manage(LimitedManager::new())
         .invoke_handler(tauri::generate_handler![
             commands::start_game,
             commands::respond,
@@ -90,6 +96,29 @@ pub fn run() {
             server_commands::server_send_room_message,
             server_commands::server_respond,
             commands::start_multiplayer_game,
+            limited_commands::limited_start_sealed,
+            limited_commands::limited_get_sealed_pool,
+            limited_commands::limited_get_edition_info,
+            limited_commands::limited_list_sealed_templates,
+            limited_commands::limited_start_booster_draft,
+            limited_commands::limited_pick_card,
+            limited_commands::limited_undo_pick,
+            limited_commands::limited_get_draft_state,
+            limited_commands::limited_start_winston,
+            limited_commands::limited_winston_take,
+            limited_commands::limited_winston_pass,
+            limited_commands::limited_get_winston_state,
+            limited_commands::limited_cubecobra_url,
+            limited_commands::limited_import_cube,
+            limited_commands::limited_list_chaos_themes,
+            limited_commands::limited_start_gauntlet_from_sealed,
+            limited_commands::limited_record_gauntlet_outcome,
+            limited_commands::limited_get_gauntlet_match_decks,
+            limited_commands::limited_update_gauntlet_human_deck,
+            limited_commands::limited_advance_gauntlet_round,
+            limited_commands::limited_get_gauntlet_state,
+            limited_commands::limited_list_conspiracy_hooks,
+            limited_commands::limited_drop_session,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

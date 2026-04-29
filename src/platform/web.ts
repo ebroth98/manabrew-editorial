@@ -759,6 +759,10 @@ export class WebPlatform implements IPlatformApi {
     await this.bridge.init();
   }
 
+  async invoke<T>(command: string, args?: Record<string, unknown>): Promise<T> {
+    return this.bridge.invoke<T>(command, args);
+  }
+
   /**
    * Clean up resources.
    */

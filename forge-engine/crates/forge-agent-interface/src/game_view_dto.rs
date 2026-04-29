@@ -185,6 +185,8 @@ pub struct CardDto {
     /// True if this card was exiled via Warp (castable from exile for normal cost).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub is_warp_exiled: bool,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub foil: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -725,6 +727,7 @@ pub fn card_to_dto(
             .chain(card.granted_keywords.iter_strings())
             .any(|kw| kw.starts_with(forge_engine_core::card::KEYWORD_PLOTTED_PREFIX)),
         is_warp_exiled: card.has_keyword(forge_engine_core::card::KEYWORD_WARP_EXILED),
+        foil: card.paper_foil,
     }
 }
 

@@ -114,6 +114,12 @@
   --color-format-badge-orange: var(--format-badge-orange);
   --color-format-badge-sky: var(--format-badge-sky);
   --color-format-badge-indigo: var(--format-badge-indigo);
+  --color-rarity-common: var(--rarity-common);
+  --color-rarity-uncommon: var(--rarity-uncommon);
+  --color-rarity-rare: var(--rarity-rare);
+  --color-rarity-mythic: var(--rarity-mythic);
+  --color-rarity-special: var(--rarity-special);
+  --color-rarity-land: var(--rarity-land);
 
   --radius-lg: var(--radius);
   --radius-md: calc(var(--radius) - 2px);
@@ -500,5 +506,39 @@
   }
   100% {
     box-shadow: none;
+  }
+}
+
+.draft-tile-foil {
+  position: relative;
+}
+
+.draft-tile-foil::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(
+    115deg,
+    transparent 30%,
+    rgba(255, 255, 255, 0.45) 45%,
+    rgba(252, 213, 53, 0.35) 50%,
+    rgba(118, 211, 240, 0.35) 55%,
+    transparent 70%
+  );
+  background-size: 250% 100%;
+  background-position: -100% 0;
+  animation: foil-shimmer 3.2s ease-in-out infinite;
+  mix-blend-mode: screen;
+  pointer-events: none;
+  z-index: 1;
+}
+
+@keyframes foil-shimmer {
+  0% {
+    background-position: -100% 0;
+  }
+  100% {
+    background-position: 200% 0;
   }
 }

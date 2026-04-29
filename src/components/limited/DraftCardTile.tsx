@@ -1,0 +1,52 @@
+import { memo } from "react";
+
+import { CardThumbnail } from "@/components/editor/deckEditor.primitives";
+import { FoilBadge } from "@/components/limited/FoilBadge";
+import { useCardPreview } from "@/hooks/useCardPreview";
+import { draftCardToOpenMagic } from "@/lib/limited.utils";
+import { cn } from "@/lib/utils";
+import type { DraftCard } from "@/types/limited";
+
+interface DraftCardTileProps {
+  card: DraftCard;
+  index: number;
+  onClick?: () => void;
+  disabled?: boolean;
+  preview: ReturnType<typeof useCardPreview>;
+  overlay?: React.ReactNode;
+}
+
+function DraftCardTileImpl({
+  card,
+  index,
+  onClick,
+  disabled,
+  preview,
+  overlay,
+}: DraftCardTileProps) {
+  const omc = draftCardToOpenMagic(card, index);
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      onMouseEnter={(ev) => preview.handleMouseEnter(omc, ev)}
+      onMouseLeave={preview.handleMouseLeave}
+      className={cn(
+        "group relative w-full text-left transition hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-primary/60 disabled:cursor-not-allowed disabled:opacity-60",
+        card.foil && "draft-tile-foil",
+      )}
+    >
+      <CardThumbnail card={omc} />
+      {card.isDoubleFaced && (
+        <span className="pointer-events-none absolute left-1 top-1 inline-flex items-center rounded-full border border-white/20 bg-black/70 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-white/90">
+          DFC
+        </span>
+      )}
+      {card.foil && <FoilBadge />}
+      {overlay}
+    </button>
+  );
+}
+
+export const DraftCardTile = memo(DraftCardTileImpl);

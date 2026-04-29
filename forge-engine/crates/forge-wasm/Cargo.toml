@@ -12,6 +12,7 @@ forge-foundation = { path = "../forge-foundation" }
 forge-carddb = { path = "../forge-carddb" }
 forge-engine-core = { path = "../forge-engine" }
 forge-agent-interface = { path = "../forge-agent-interface" }
+forge-limited = { path = "../forge-limited" }
 
 # WASM bindings
 wasm-bindgen = "0.2"

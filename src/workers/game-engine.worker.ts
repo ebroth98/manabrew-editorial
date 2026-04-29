@@ -16,6 +16,26 @@ import init, {
   parse_preset_decks,
   run_interactive_game,
   run_multiplayer_game,
+  limited_list_sealed_templates,
+  limited_list_chaos_themes,
+  limited_list_conspiracy_hooks,
+  limited_start_sealed,
+  limited_get_sealed_pool,
+  limited_get_edition_info,
+  limited_start_booster_draft,
+  limited_pick_card,
+  limited_undo_pick,
+  limited_get_draft_state,
+  limited_start_winston,
+  limited_winston_take,
+  limited_winston_pass,
+  limited_get_winston_state,
+  limited_start_gauntlet_from_sealed,
+  limited_record_gauntlet_outcome,
+  limited_advance_gauntlet_round,
+  limited_get_gauntlet_state,
+  limited_cubecobra_url,
+  limited_import_cube,
 } from "../wasm/forge_wasm";
 
 // ============================================================================
@@ -393,6 +413,52 @@ async function handleCommand(command: string, args?: Record<string, unknown>): P
         missingCards,
       };
     }
+
+    case "limited_list_sealed_templates":
+      return limited_list_sealed_templates();
+    case "limited_list_chaos_themes":
+      return limited_list_chaos_themes();
+    case "limited_list_conspiracy_hooks":
+      return limited_list_conspiracy_hooks();
+    case "limited_start_sealed":
+      return limited_start_sealed(args?.setup as object);
+    case "limited_get_sealed_pool":
+      return limited_get_sealed_pool(args?.sessionId as string);
+    case "limited_get_edition_info":
+      return limited_get_edition_info(args?.setCode as string);
+    case "limited_start_booster_draft":
+      return limited_start_booster_draft(args?.setup as object);
+    case "limited_pick_card":
+      return limited_pick_card(args?.sessionId as string, args?.cardName as string);
+    case "limited_undo_pick":
+      return limited_undo_pick(args?.sessionId as string);
+    case "limited_get_draft_state":
+      return limited_get_draft_state(args?.sessionId as string);
+    case "limited_start_winston":
+      return limited_start_winston(args?.setup as object);
+    case "limited_winston_take":
+      return limited_winston_take(args?.sessionId as string);
+    case "limited_winston_pass":
+      return limited_winston_pass(args?.sessionId as string);
+    case "limited_get_winston_state":
+      return limited_get_winston_state(args?.sessionId as string);
+    case "limited_start_gauntlet_from_sealed":
+      return limited_start_gauntlet_from_sealed(args?.sessionId as string, args?.rounds as number);
+    case "limited_record_gauntlet_outcome":
+      return limited_record_gauntlet_outcome(
+        args?.gauntletId as string,
+        args?.wonGame as boolean,
+        args?.matchOver as boolean,
+        args?.matchWon as boolean,
+      );
+    case "limited_advance_gauntlet_round":
+      return limited_advance_gauntlet_round(args?.gauntletId as string);
+    case "limited_get_gauntlet_state":
+      return limited_get_gauntlet_state(args?.gauntletId as string);
+    case "limited_cubecobra_url":
+      return limited_cubecobra_url(args?.cubeIdOrUrl as string);
+    case "limited_import_cube":
+      return limited_import_cube(args?.request as object, args?.body as string);
 
     default:
       throw new Error(`Unknown command: ${command}`);

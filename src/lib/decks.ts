@@ -22,6 +22,7 @@ export function toCardIdentity(card: Card, section: DeckSection): CardIdentity {
     name: card.name,
     setCode: card.setCode || "",
     section: deckSectionForCard(card, section),
+    foil: card.foil ? true : undefined,
   };
 }
 

@@ -102,6 +102,18 @@ const NAME_STYLE = registerTintedTextStyle(
   }),
 );
 
+const FOIL_STAR_STYLE = new TextStyle({
+  fontFamily: "system-ui, -apple-system, sans-serif",
+  fontSize: 10,
+  fontWeight: "bold",
+  fill: 0xffe27a,
+});
+
+/** Iridescent gold used for the foil ring + sparkle icon. Hard-coded
+ *  rather than themed because foil treatment reads "metallic gold"
+ *  across every preset; the surrounding card art carries the theme. */
+const FOIL_RING_COLOR = 0xffd87a;
+
 // ── Geometry ─────────────────────────────────────────────────────
 const CARD_RADIUS = 6;
 const RING_RADIUS = 8;
@@ -218,6 +230,8 @@ export class CardSprite extends Container {
   private keywordsContainer: Container;
   private placeholderGfx: Graphics;
   private nameText: Text;
+  private foilRing: Graphics;
+  private foilStar: Text;
   private _imageLoaded = false;
 
   constructor(card: Card) {
@@ -281,6 +295,18 @@ export class CardSprite extends Container {
     this.ptContainer.addChild(this.ptText);
     this.ptContainer.visible = false;
     this.addChild(this.ptContainer);
+
+    this.foilRing = new Graphics();
+    this.foilRing.visible = false;
+    this.addChild(this.foilRing);
+
+    this.foilStar = new Text({ text: "✦", style: FOIL_STAR_STYLE });
+    this.foilStar.resolution = TEXT_RASTER_RESOLUTION;
+    this.foilStar.anchor.set(1, 0);
+    this.foilStar.x = CARD_W - 3;
+    this.foilStar.y = 2;
+    this.foilStar.visible = false;
+    this.addChild(this.foilStar);
 
     this.hitArea = {
       contains: (x: number, y: number) => x >= 0 && x <= CARD_W && y >= 0 && y <= CARD_H,
@@ -348,6 +374,20 @@ export class CardSprite extends Container {
     this.updateBadge();
     this.updateCounters();
     this.updateKeywords();
+    this.updateFoil();
+  }
+
+  private updateFoil(): void {
+    const isFoil = !!this.card.foil;
+    this.foilStar.visible = isFoil;
+    this.foilRing.clear();
+    if (!isFoil) {
+      this.foilRing.visible = false;
+      return;
+    }
+    this.foilRing.visible = true;
+    this.foilRing.roundRect(1, 1, CARD_W - 2, CARD_H - 2, CARD_RADIUS - 1);
+    this.foilRing.stroke({ color: FOIL_RING_COLOR, width: 1.5, alpha: 0.85 });
   }
 
   private updatePT(): void {

@@ -259,6 +259,10 @@ export class TauriPlatform implements IPlatformApi {
     this.events = new TauriEventBus();
   }
 
+  async invoke<T>(command: string, args?: Record<string, unknown>): Promise<T> {
+    return invoke<T>(command, args);
+  }
+
   isSupported(feature: PlatformFeature): boolean {
     switch (feature) {
       case "multiplayer":

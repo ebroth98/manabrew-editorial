@@ -445,6 +445,9 @@ pub struct Card {
     /// (e.g., collector "1" in set "THOU" for Adorned Pouncer token).
     pub card_number: Option<String>,
 
+    #[serde(default)]
+    pub paper_foil: bool,
+
     // Phase-out state (issue #22, Phases effect).
     pub phased_out: bool,
 
@@ -771,6 +774,7 @@ impl Card {
             other_part: None,
             set_code: None,
             card_number: None,
+            paper_foil: false,
             phased_out: false,
             regeneration_shields: 0,
             kicked: false,
@@ -2488,7 +2492,7 @@ impl Card {
     }
 
     pub fn has_paper_foil(&self) -> bool {
-        false
+        self.paper_foil
     }
 
     pub fn has_marked_color(&self) -> bool {

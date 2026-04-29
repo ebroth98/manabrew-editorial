@@ -1,0 +1,477 @@
+use forge_foundation::sealed_product::{PaperCard, Rarity};
+use forge_foundation::ColorSet;
+use forge_limited::{
+    BoosterDraft, GauntletKind, GauntletMini, IBoosterDraft, LimitedDeck, SealedDeckGroup,
+    WinstonDraft,
+};
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SealedSetupDto {
+    pub pool_type: String,
+    pub num_boosters: u32,
+    pub pool: Vec<DraftCardDto>,
+    #[serde(default)]
+    pub variant: Option<String>,
+    #[serde(default)]
+    pub seed: Option<u64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DraftCardDto {
+    pub name: String,
+    pub set_code: String,
+    pub collector_number: String,
+    pub rarity: String,
+    #[serde(default)]
+    pub colors: Vec<String>,
+    #[serde(default)]
+    pub is_double_faced: bool,
+    #[serde(default)]
+    pub foil: bool,
+}
+
+impl From<&PaperCard> for DraftCardDto {
+    fn from(c: &PaperCard) -> Self {
+        Self {
+            name: c.name.clone(),
+            set_code: c.set_code.clone(),
+            collector_number: c.collector_number.clone(),
+            rarity: rarity_str(c.rarity).to_string(),
+            colors: color_letters(c.colors),
+            is_double_faced: c.is_double_faced,
+            foil: c.foil,
+        }
+    }
+}
+
+fn color_letters(colors: ColorSet) -> Vec<String> {
+    let mut out = Vec::new();
+    if colors.has_white() {
+        out.push("W".to_string());
+    }
+    if colors.has_blue() {
+        out.push("U".to_string());
+    }
+    if colors.has_black() {
+        out.push("B".to_string());
+    }
+    if colors.has_red() {
+        out.push("R".to_string());
+    }
+    if colors.has_green() {
+        out.push("G".to_string());
+    }
+    out
+}
+
+fn parse_colors(letters: &[String]) -> ColorSet {
+    let mut mask: u8 = 0;
+    for l in letters {
+        match l.trim().to_ascii_uppercase().as_str() {
+            "W" => mask |= ColorSet::WHITE.mask(),
+            "U" => mask |= ColorSet::BLUE.mask(),
+            "B" => mask |= ColorSet::BLACK.mask(),
+            "R" => mask |= ColorSet::RED.mask(),
+            "G" => mask |= ColorSet::GREEN.mask(),
+            _ => {}
+        }
+    }
+    ColorSet::from_mask(mask)
+}
+
+fn rarity_str(r: Rarity) -> &'static str {
+    match r {
+        Rarity::Common => "common",
+        Rarity::Uncommon => "uncommon",
+        Rarity::Rare => "rare",
+        Rarity::Mythic => "mythic",
+        Rarity::Special => "special",
+        Rarity::BasicLand => "land",
+        Rarity::Token => "token",
+        Rarity::Unknown => "unknown",
+    }
+}
+
+pub fn rarity_from_str(s: &str) -> Rarity {
+    match s.to_lowercase().as_str() {
+        "common" | "c" => Rarity::Common,
+        "uncommon" | "u" => Rarity::Uncommon,
+        "rare" | "r" => Rarity::Rare,
+        "mythic" | "mythic rare" | "m" => Rarity::Mythic,
+        "special" | "bonus" | "s" => Rarity::Special,
+        "land" | "basic land" | "l" => Rarity::BasicLand,
+        "token" | "t" => Rarity::Token,
+        _ => Rarity::Unknown,
+    }
+}
+
+impl DraftCardDto {
+    pub fn to_paper_card(&self) -> PaperCard {
+        let mut pc = PaperCard::new(
+            self.name.clone(),
+            self.set_code.clone(),
+            self.collector_number.clone(),
+            rarity_from_str(&self.rarity),
+        )
+        .with_colors(parse_colors(&self.colors))
+        .with_double_faced(self.is_double_faced);
+        pc.foil = self.foil;
+        pc
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LimitedDeckDto {
+    pub name: String,
+    pub main: Vec<DraftCardDto>,
+    pub sideboard: Vec<DraftCardDto>,
+}
+
+impl From<&LimitedDeck> for LimitedDeckDto {
+    fn from(d: &LimitedDeck) -> Self {
+        Self {
+            name: d.name.clone(),
+            main: d.main.iter().map(DraftCardDto::from).collect(),
+            sideboard: d.sideboard.iter().map(DraftCardDto::from).collect(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SealedPoolDto {
+    pub session_id: String,
+    pub deck_name: String,
+    pub land_set_code: Option<String>,
+    pub cards: Vec<DraftCardDto>,
+    pub suggested_deck: Option<LimitedDeckDto>,
+    pub ai_decks: Vec<LimitedDeckDto>,
+}
+
+impl SealedPoolDto {
+    pub fn from_group(session_id: String, group: &SealedDeckGroup) -> Self {
+        Self {
+            session_id,
+            deck_name: group.deck_name.clone(),
+            land_set_code: group.land_set_code.clone(),
+            cards: group.human_pool.iter().map(DraftCardDto::from).collect(),
+            suggested_deck: group
+                .suggested_human_deck
+                .as_ref()
+                .map(LimitedDeckDto::from),
+            ai_decks: group.ai_decks.iter().map(LimitedDeckDto::from).collect(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SealedTemplateMetadataDto {
+    pub id: String,
+    pub label: String,
+    pub description: String,
+    pub num_packs: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EditionInfoDto {
+    pub code: String,
+    pub name: String,
+    pub edition_type: String,
+    pub date: Option<String>,
+    pub slots: Vec<EditionSlotDto>,
+    pub foil_chance: f64,
+    pub foil_type: String,
+    pub variants: Vec<String>,
+    pub has_replacement_hooks: bool,
+    pub booster_covers: u32,
+    pub prerelease: Option<String>,
+    pub alias: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EditionSlotDto {
+    pub label: String,
+    pub count: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CubeMetadataDto {
+    pub id: String,
+    pub name: String,
+    pub num_packs: u32,
+    pub singleton: bool,
+    pub land_set_code: Option<String>,
+    pub card_count: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BoosterDraftSetupDto {
+    pub pod_size: u32,
+    pub rounds: u32,
+    pub pool: Vec<DraftCardDto>,
+    #[serde(default)]
+    pub variant: Option<String>,
+    #[serde(default)]
+    pub seed: Option<u64>,
+    #[serde(default)]
+    pub picks_per_pass: Option<u32>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DraftSeatDto {
+    pub seat: u32,
+    pub name: String,
+    pub is_human: bool,
+    pub picks_made: u32,
+    pub last_pick_name: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DraftStateDto {
+    pub session_id: String,
+    pub round: u32,
+    pub total_rounds: u32,
+    pub pick_number: u32,
+    pub pack_size: u32,
+    pub current_pack: Vec<DraftCardDto>,
+    pub picked_pile: Vec<DraftCardDto>,
+    pub seat_summaries: Vec<DraftSeatDto>,
+    pub is_round_over: bool,
+    pub is_complete: bool,
+    pub awaiting_human: bool,
+    pub human_conspiracies: Vec<String>,
+    pub picks_per_pass: u32,
+    pub picks_remaining_in_pack: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WinstonStateDto {
+    pub session_id: String,
+    pub active_seat: u32,
+    pub current_pile: u32,
+    pub piles: Vec<Vec<DraftCardDto>>,
+    pub deck_size: u32,
+    pub picked_pile: Vec<DraftCardDto>,
+    pub ai_pick_count: u32,
+    pub awaiting_human: bool,
+    pub is_complete: bool,
+}
+
+impl WinstonStateDto {
+    pub fn from_engine(session_id: String, draft: &WinstonDraft) -> Self {
+        let piles: Vec<Vec<DraftCardDto>> = draft
+            .piles()
+            .iter()
+            .map(|p| p.iter().map(DraftCardDto::from).collect())
+            .collect();
+        Self {
+            session_id,
+            active_seat: draft.active_seat() as u32,
+            current_pile: draft.current_pile() as u32,
+            piles,
+            deck_size: draft.deck_size() as u32,
+            picked_pile: draft
+                .human_picked()
+                .iter()
+                .map(DraftCardDto::from)
+                .collect(),
+            ai_pick_count: draft.ai_picked_count() as u32,
+            awaiting_human: draft.is_human_turn() && !draft.is_complete(),
+            is_complete: draft.is_complete(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WinstonSetupDto {
+    pub pool_packs: u32,
+    pub pool: Vec<DraftCardDto>,
+    #[serde(default)]
+    pub variant: Option<String>,
+    #[serde(default)]
+    pub seed: Option<u64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CubeImportRequestDto {
+    pub cube_id_or_url: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CubeImportResultDto {
+    pub cube_id: String,
+    pub name: String,
+    pub card_count: u32,
+    pub num_packs: u32,
+    pub singleton: bool,
+    pub pool: Vec<DraftCardDto>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChaosThemeDto {
+    pub tag: String,
+    pub label: String,
+    pub order_number: i32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GauntletSetupDto {
+    pub session_id: String,
+    pub kind: String,
+    pub rounds: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GauntletMatchDecksDto {
+    pub human_deck_name: String,
+    pub human_main: Vec<DraftCardDto>,
+    pub human_sideboard: Vec<DraftCardDto>,
+    pub opponent_name: String,
+    pub opponent_main: Vec<DraftCardDto>,
+    pub opponent_sideboard: Vec<DraftCardDto>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GauntletStateDto {
+    pub gauntlet_id: String,
+    pub kind: String,
+    pub rounds: u32,
+    pub current_round: u32,
+    pub wins: u32,
+    pub losses: u32,
+    pub completed: bool,
+    pub human_deck_name: String,
+    pub opponents: Vec<GauntletOpponentDto>,
+    pub current_opponent: Option<GauntletOpponentDto>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GauntletOpponentDto {
+    pub round: u32,
+    pub deck_name: String,
+    pub main_count: u32,
+    pub sideboard_count: u32,
+}
+
+impl GauntletStateDto {
+    pub fn from_engine(gauntlet_id: String, g: &GauntletMini) -> Self {
+        let opponents: Vec<GauntletOpponentDto> = g
+            .ai_decks
+            .iter()
+            .enumerate()
+            .map(|(i, d)| GauntletOpponentDto {
+                round: (i + 1) as u32,
+                deck_name: d.name.clone(),
+                main_count: d.main.len() as u32,
+                sideboard_count: d.sideboard.len() as u32,
+            })
+            .collect();
+        let current_opponent = opponents
+            .get(g.current_round.saturating_sub(1) as usize)
+            .filter(|_| !g.completed)
+            .cloned();
+        Self {
+            gauntlet_id,
+            kind: gauntlet_kind_str(g.kind).to_string(),
+            rounds: g.rounds,
+            current_round: g.current_round,
+            wins: g.wins,
+            losses: g.losses,
+            completed: g.completed,
+            human_deck_name: g.human_deck.name.clone(),
+            opponents,
+            current_opponent,
+        }
+    }
+}
+
+fn gauntlet_kind_str(k: GauntletKind) -> &'static str {
+    match k {
+        GauntletKind::Sealed => "sealed",
+        GauntletKind::BoosterDraft => "draft",
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GauntletOutcomeDto {
+    pub state: GauntletStateDto,
+    pub outcome: String,
+    pub next_round_index: Option<u32>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConspiracyHookDto {
+    pub card_name: String,
+    pub flag_name: String,
+    pub description: String,
+}
+
+impl DraftStateDto {
+    pub fn from_engine(session_id: String, draft: &BoosterDraft, awaiting_human: bool) -> Self {
+        let human = draft.human_player();
+        let pack: Vec<DraftCardDto> = draft
+            .current_pack_for_human()
+            .map(|p| p.cards().iter().map(DraftCardDto::from).collect())
+            .unwrap_or_default();
+        let pick_number = (human.picked.len() + 1) as u32;
+        let mut seat_summaries: Vec<DraftSeatDto> = std::iter::once(human)
+            .chain(draft.opposing_players().iter())
+            .map(|p| DraftSeatDto {
+                seat: p.seat as u32,
+                name: p.name.clone(),
+                is_human: p.is_human,
+                picks_made: p.picked.len() as u32,
+                last_pick_name: p.last_pick.as_ref().map(|c| c.name.clone()),
+            })
+            .collect();
+        seat_summaries.sort_by_key(|s| s.seat);
+
+        let human_conspiracies: Vec<String> = forge_limited::CONSPIRACY_HOOKS
+            .iter()
+            .filter(|h| human.flags.contains(h.flag))
+            .map(|h| h.card_name.to_string())
+            .collect();
+        let picks_remaining_in_pack = draft
+            .current_pack_for_human()
+            .map(|p| p.picks_remaining())
+            .unwrap_or(0);
+        Self {
+            session_id,
+            round: draft.round(),
+            total_rounds: draft.total_rounds(),
+            pick_number,
+            pack_size: pack.len() as u32,
+            current_pack: pack,
+            picked_pile: human.picked.iter().map(DraftCardDto::from).collect(),
+            seat_summaries,
+            is_round_over: draft.is_round_over(),
+            is_complete: !draft.has_next_choice() && draft.round() >= draft.total_rounds(),
+            awaiting_human,
+            human_conspiracies,
+            picks_per_pass: draft.picks_per_pass(),
+            picks_remaining_in_pack,
+        }
+    }
+}

@@ -4,18 +4,18 @@ The largest UI subtree. Read first: `src/AGENTS.md`, `docs/STYLE_GUIDELINES.md`,
 
 ## Layout
 
-| Folder / file | Role |
-|---|---|
-| `GameBoard.tsx`, `Game.tsx` (in `views/`) | Top-level board composition. |
-| `panels/` | Player panels, mana pool, action log, stack display, prompt actions. |
-| `zones/` | Small React overlays — `LibraryZoneTile`, `ManaAbilityTapButton`, `HandCardActions`. The battlefield and hand themselves are rendered by Pixi (`@/pixi/PixiGameCanvas`), not React. |
-| `modals/` | Prompt modals (target picker, choose mode, choose number, library peek, …). All built on the `Modal` compound. `PromptModalController` routes engine prompts to the right modal. |
-| `cost-modals/` | Alternative-cost prompts (kicker, buyback, replicate, phyrexian, …). |
-| `dice/` | Dice-roll UI: animations, feedback, and the reroll/swap/ignore/modify modals. |
-| `game.types.ts` | Shared TS interfaces for board UI. |
-| `game.constants.ts` | Magic numbers, phase definitions, sizing values, color arrays. |
-| `game.styles.ts` | Reusable Tailwind class-string constants. |
-| `game.utils.ts` | Pure utilities (no React). |
+| Folder / file                             | Role                                                                                                                                                                                |
+| ----------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GameBoard.tsx`, `Game.tsx` (in `views/`) | Top-level board composition.                                                                                                                                                        |
+| `panels/`                                 | Player panels, mana pool, action log, stack display, prompt actions.                                                                                                                |
+| `zones/`                                  | Small React overlays — `LibraryZoneTile`, `ManaAbilityTapButton`, `HandCardActions`. The battlefield and hand themselves are rendered by Pixi (`@/pixi/PixiGameCanvas`), not React. |
+| `modals/`                                 | Prompt modals (target picker, choose mode, choose number, library peek, …). All built on the `Modal` compound. `PromptModalController` routes engine prompts to the right modal.    |
+| `cost-modals/`                            | Alternative-cost prompts (kicker, buyback, replicate, phyrexian, …).                                                                                                                |
+| `dice/`                                   | Dice-roll UI: animations, feedback, and the reroll/swap/ignore/modify modals.                                                                                                       |
+| `game.types.ts`                           | Shared TS interfaces for board UI.                                                                                                                                                  |
+| `game.constants.ts`                       | Magic numbers, phase definitions, sizing values, color arrays.                                                                                                                      |
+| `game.styles.ts`                          | Reusable Tailwind class-string constants.                                                                                                                                           |
+| `game.utils.ts`                           | Pure utilities (no React).                                                                                                                                                          |
 
 When adding a constant, type, util, or class string, **check the shared modules first.** Don't duplicate.
 
@@ -48,14 +48,14 @@ Don't roll your own symbol parsing.
 
 Use the standard size constants. Don't invent pixel values.
 
-| Constant | Usage |
-|---|---|
-| `BATTLEFIELD_CARD` | `w-[70px] h-[98px]` — battlefield (where React is involved) |
-| `HAND_CARD` | `w-[80px] h-[112px]` — hand / zone viewer |
-| `HAND_CARD_BASES` | Per-size pixel dims (`small`/`medium`/`large`) scaled at runtime by `useHandScale` |
-| `MODAL_CARD_SIZE` | `w-[100px] h-[140px]` — cards inside modal grids |
-| `MULLIGAN_CARD_SIZE` | `w-[160px] h-[222px]` — cards inside mulligan modals |
-| `FLASH_CARD_SIZE` | `{ w: 310, h: 434 }` (numeric — for Pixi-rendered preview, not a Tailwind class) |
+| Constant             | Usage                                                                              |
+| -------------------- | ---------------------------------------------------------------------------------- |
+| `BATTLEFIELD_CARD`   | `w-[70px] h-[98px]` — battlefield (where React is involved)                        |
+| `HAND_CARD`          | `w-[80px] h-[112px]` — hand / zone viewer                                          |
+| `HAND_CARD_BASES`    | Per-size pixel dims (`small`/`medium`/`large`) scaled at runtime by `useHandScale` |
+| `MODAL_CARD_SIZE`    | `w-[100px] h-[140px]` — cards inside modal grids                                   |
+| `MULLIGAN_CARD_SIZE` | `w-[160px] h-[222px]` — cards inside mulligan modals                               |
+| `FLASH_CARD_SIZE`    | `{ w: 310, h: 434 }` (numeric — for Pixi-rendered preview, not a Tailwind class)   |
 
 ## Prompt routing
 

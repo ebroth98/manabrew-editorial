@@ -23,6 +23,7 @@ export interface CardIdentity {
   name: string;
   setCode: string;
   section?: DeckSection;
+  foil?: boolean;
 }
 
 export interface RoomInfo {

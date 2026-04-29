@@ -51,6 +51,7 @@ export interface Card {
   isDoubleFaced?: boolean;
   isTransformed?: boolean;
   isFaceDown?: boolean;
+  foil?: boolean;
   isBestowed?: boolean;
   attachedTo?: string;
   attachmentIds?: string[];

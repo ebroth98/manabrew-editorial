@@ -30,6 +30,46 @@ export function is_card_db_loaded(): boolean;
 
 export function is_token_db_loaded(): boolean;
 
+export function limited_advance_gauntlet_round(gauntlet_id: string): any;
+
+export function limited_cubecobra_url(cube_id_or_url: string): string;
+
+export function limited_get_draft_state(session_id: string): any;
+
+export function limited_get_gauntlet_state(gauntlet_id: string): any;
+
+export function limited_get_sealed_pool(session_id: string): any;
+
+export function limited_get_edition_info(set_code: string): any;
+
+export function limited_get_winston_state(session_id: string): any;
+
+export function limited_import_cube(request_json: any, body: string): any;
+
+export function limited_list_chaos_themes(): any;
+
+export function limited_list_conspiracy_hooks(): any;
+
+export function limited_list_sealed_templates(): any;
+
+export function limited_pick_card(session_id: string, card_name: string): any;
+
+export function limited_undo_pick(session_id: string): any;
+
+export function limited_record_gauntlet_outcome(gauntlet_id: string, won_game: boolean, match_over: boolean, match_won: boolean): any;
+
+export function limited_start_booster_draft(setup_json: any): any;
+
+export function limited_start_gauntlet_from_sealed(session_id: string, rounds: number): any;
+
+export function limited_start_sealed(setup_json: any): any;
+
+export function limited_start_winston(setup_json: any): any;
+
+export function limited_winston_pass(session_id: string): any;
+
+export function limited_winston_take(session_id: string): any;
+
 /**
  * Load the card database from a JSON bundle string.
  *
@@ -111,6 +151,26 @@ export interface InitOutput {
     readonly get_token_count: () => number;
     readonly has_card: (a: number, b: number) => number;
     readonly parse_preset_decks: (a: number, b: number) => [number, number, number];
+    readonly limited_list_sealed_templates: () => [number, number, number];
+    readonly limited_list_chaos_themes: () => [number, number, number];
+    readonly limited_list_conspiracy_hooks: () => [number, number, number];
+    readonly limited_start_sealed: (a: any) => [number, number, number];
+    readonly limited_get_sealed_pool: (a: number, b: number) => [number, number, number];
+    readonly limited_get_edition_info: (a: number, b: number) => [number, number, number];
+    readonly limited_start_booster_draft: (a: any) => [number, number, number];
+    readonly limited_pick_card: (a: number, b: number, c: number, d: number) => [number, number, number];
+    readonly limited_undo_pick: (a: number, b: number) => [number, number, number];
+    readonly limited_get_draft_state: (a: number, b: number) => [number, number, number];
+    readonly limited_start_winston: (a: any) => [number, number, number];
+    readonly limited_winston_take: (a: number, b: number) => [number, number, number];
+    readonly limited_winston_pass: (a: number, b: number) => [number, number, number];
+    readonly limited_get_winston_state: (a: number, b: number) => [number, number, number];
+    readonly limited_start_gauntlet_from_sealed: (a: number, b: number, c: number) => [number, number, number];
+    readonly limited_record_gauntlet_outcome: (a: number, b: number, c: number, d: number, e: number) => [number, number, number];
+    readonly limited_advance_gauntlet_round: (a: number, b: number) => [number, number, number];
+    readonly limited_get_gauntlet_state: (a: number, b: number) => [number, number, number];
+    readonly limited_cubecobra_url: (a: number, b: number) => [number, number, number, number];
+    readonly limited_import_cube: (a: any, b: number, c: number) => [number, number, number];
     readonly get_engine_info: () => any;
     readonly echo: (a: number, b: number) => [number, number];
     readonly parse_deck: (a: any) => [number, number, number];

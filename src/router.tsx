@@ -8,6 +8,10 @@ import Game from "@/views/Game";
 import Play from "@/views/Play";
 import Tabletop from "@/views/Tabletop";
 import Draft from "@/views/Draft";
+import Limited from "@/views/Limited";
+import Sealed from "@/views/Sealed";
+import Winston from "@/views/Winston";
+import Gauntlet from "@/views/Gauntlet";
 import Settings from "@/views/Settings";
 import Search from "@/views/Search";
 
@@ -84,6 +88,38 @@ export const router = createBrowserRouter([
         element: (
           <ErrorBoundary context="Draft">
             <Draft />
+          </ErrorBoundary>
+        ),
+      },
+      {
+        path: "limited",
+        element: (
+          <ErrorBoundary context="Limited">
+            <Limited />
+          </ErrorBoundary>
+        ),
+      },
+      {
+        path: "sealed/:id",
+        element: (
+          <ErrorBoundary context="Sealed">
+            <Sealed />
+          </ErrorBoundary>
+        ),
+      },
+      {
+        path: "winston/:winstonId",
+        element: (
+          <ErrorBoundary context="Winston">
+            <Winston />
+          </ErrorBoundary>
+        ),
+      },
+      {
+        path: "gauntlet/:gauntletId",
+        element: (
+          <ErrorBoundary context="Gauntlet">
+            <Gauntlet />
           </ErrorBoundary>
         ),
       },

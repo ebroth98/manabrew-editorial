@@ -213,6 +213,13 @@ export function buildGameColors(p: BasePalette): GameThemeColorMap {
     "formatBadge.orange": p.orange,
     "formatBadge.sky": p.sky,
     "formatBadge.indigo": p.indigo,
+
+    "rarity.common": p.slate,
+    "rarity.uncommon": p.slate,
+    "rarity.rare": p.amber,
+    "rarity.mythic": p.orange,
+    "rarity.special": p.purple,
+    "rarity.land": p.amber,
   };
 }
 

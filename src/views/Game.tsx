@@ -38,7 +38,10 @@ import { GameBoard } from "@/components/game/GameBoard";
 import { withAlpha } from "@/themes/gameTheme";
 import { useTheme } from "@/hooks/useTheme";
 import { cn } from "@/lib/utils";
-import { Navigate, useLocation } from "react-router-dom";
+import { Navigate, useLocation, useNavigate } from "react-router-dom";
+
+import { useLimitedStore } from "@/stores/useLimitedStore";
+import { tryConsumeGauntletMatch } from "@/lib/gauntletReturn";
 import { PromptType } from "@/types/promptType";
 import { OPPONENT_SEATS } from "@/components/game/game.types";
 import { useStackUIStore } from "@/stores/useStackUIStore";
@@ -1271,6 +1274,23 @@ export default function Game({ exitTo }: GameProps = {}) {
     const timer = setTimeout(() => endGame(), 3000);
     return () => clearTimeout(timer);
   }, [gameView?.gameOver, activePrompt?.type, endGame]);
+
+  const navigate = useNavigate();
+  useEffect(() => {
+    if (!gameView?.gameOver) return;
+    const pending = tryConsumeGauntletMatch();
+    if (!pending) return;
+    const humanWon = (gameView.winnerId ?? "").toLowerCase().includes("0");
+    void useLimitedStore
+      .getState()
+      .recordGauntletOutcome(pending.gauntletId, humanWon, true, humanWon)
+      .catch(() => {
+        /* surfaced via lastError on the gauntlet view */
+      })
+      .finally(() => {
+        navigate(`/gauntlet/${pending.gauntletId}`);
+      });
+  }, [gameView?.gameOver, gameView?.winnerId, navigate]);
 
   if (!isGameActive) return <Navigate to={exitTo ?? "/lobby"} replace />;
 

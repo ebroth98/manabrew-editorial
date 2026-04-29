@@ -123,6 +123,7 @@ function CardComponent({
           onBattlefield &&
           "outline-2 outline-dashed outline-prompt-action-cancel -outline-offset-2",
         card.phasedOut && "opacity-30 grayscale",
+        card.foil && "draft-tile-foil",
         className,
       )}
       onClick={onClick}
@@ -355,6 +356,7 @@ export const Card = memo(CardComponent, (prev, next) => {
     pc.isMadnessExiled !== nc.isMadnessExiled ||
     pc.isWarpExiled !== nc.isWarpExiled ||
     pc.isToken !== nc.isToken ||
+    pc.foil !== nc.foil ||
     pc.isDoubleFaced !== nc.isDoubleFaced ||
     pc.isPlayable !== nc.isPlayable ||
     pc.isChoosable !== nc.isChoosable ||

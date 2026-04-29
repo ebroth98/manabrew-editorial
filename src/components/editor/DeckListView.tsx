@@ -26,6 +26,7 @@ import {
   HelpCircle,
   Info,
   Image as ImageIcon,
+  Sparkles,
   Trash2,
   Bookmark,
   Check,
@@ -63,6 +64,8 @@ interface CardContextActions {
   onMoveAllToMaybe?: () => void;
   onShowInfo?: () => void;
   onPickPrint?: () => void;
+  onToggleFoil?: () => void;
+  isFoil?: boolean;
   customTags?: string[];
   appliedTags?: string[];
   onApplyTag?: (tag: string) => void;
@@ -218,6 +221,8 @@ function CardContextMenu({
   onMoveAllToMaybe,
   onShowInfo,
   onPickPrint,
+  onToggleFoil,
+  isFoil,
   customTags,
   appliedTags,
   onApplyTag,
@@ -304,6 +309,17 @@ function CardContextMenu({
               <ImageIcon className="mr-2 h-3.5 w-3.5" /> Choose printing…
             </ContextMenuItem>
           </>
+        )}
+        {onToggleFoil && (
+          <ContextMenuItem onSelect={onToggleFoil}>
+            <Sparkles
+              className={cn(
+                "mr-2 h-3.5 w-3.5",
+                isFoil ? "text-yellow-300" : "text-muted-foreground",
+              )}
+            />
+            {isFoil ? "Remove foil" : "Make foil"}
+          </ContextMenuItem>
         )}
       </ContextMenuContent>
     </ContextMenu>
@@ -930,6 +946,7 @@ interface CardSectionProps {
   onMoveOneToMaybe: (name: string) => void;
   onMoveAllToMaybe: (name: string) => void;
   onPickPrint: (name: string) => void;
+  onToggleFoil?: (name: string) => void;
   onHover: (card: Card, e: React.MouseEvent, options?: HoverOptions) => void;
   onLeave: () => void;
   selectedCards?: Set<string>;
@@ -968,6 +985,7 @@ function CardSection({
   onMoveOneToMaybe,
   onMoveAllToMaybe,
   onPickPrint,
+  onToggleFoil,
   onHover,
   onLeave,
   selectedCards,
@@ -1074,6 +1092,8 @@ function CardSection({
                       onMoveAllToMaybe: () => onMoveAllToMaybe(g.card.name),
                       onShowInfo: onShowInfo ? () => onShowInfo(g.card.name) : undefined,
                       onPickPrint: () => onPickPrint(g.card.name),
+                      onToggleFoil: onToggleFoil ? () => onToggleFoil(g.card.name) : undefined,
+                      isFoil: !!g.card.foil,
                       customTags,
                       appliedTags: cardTagsByName?.[g.card.name.toLowerCase()],
                       onApplyTag: onApplyCardTag
@@ -1139,6 +1159,8 @@ function CardSection({
                     onMoveAllToMaybe: () => onMoveAllToMaybe(g.card.name),
                     onShowInfo: onShowInfo ? () => onShowInfo(g.card.name) : undefined,
                     onPickPrint: () => onPickPrint(g.card.name),
+                    onToggleFoil: onToggleFoil ? () => onToggleFoil(g.card.name) : undefined,
+                    isFoil: !!g.card.foil,
                     customTags,
                     appliedTags: cardTagsByName?.[g.card.name.toLowerCase()],
                     onApplyTag: onApplyCardTag ? (t) => onApplyCardTag(g.card.name, t) : undefined,
@@ -1279,6 +1301,7 @@ export interface DeckListViewProps {
   onMoveOneFromMaybeToSide: (name: string) => void;
   onMoveAllFromMaybeToSide: (name: string) => void;
   onPickPrint: (name: string) => void;
+  onToggleFoil?: (name: string) => void;
   onHover: (card: Card, e: React.MouseEvent, options?: HoverOptions) => void;
   onLeave: () => void;
   onAddToSide: (card: Card) => void;
@@ -1338,6 +1361,7 @@ export function DeckListView({
   onMoveOneFromMaybeToSide,
   onMoveAllFromMaybeToSide,
   onPickPrint,
+  onToggleFoil,
   onHover,
   onLeave,
   onAddToSide,
@@ -1465,6 +1489,7 @@ export function DeckListView({
     onMoveOneToMaybe,
     onMoveAllToMaybe,
     onPickPrint,
+    onToggleFoil,
     onHover,
     onLeave,
     selectedCards,
@@ -2002,79 +2027,88 @@ export function DeckListView({
             {viewMode === "list" ? (
               <div className="space-y-0.5">
                 {commanders.map((cmd) => (
-                  <div
+                  <CardContextMenu
                     key={cmd.id}
-                    className="flex items-center gap-1 group hover:bg-muted/40 rounded px-1 py-0.5 cursor-pointer"
-                    onMouseEnter={(e) => onHover(cmd, e, { useDelay: true })}
-                    onMouseMove={(e) => onHover(cmd, e, { useDelay: true })}
-                    onMouseLeave={onLeave}
-                    onClick={() => onShowInfo?.(cmd.name)}
+                    count={1}
+                    location="main"
+                    onShowInfo={onShowInfo ? () => onShowInfo(cmd.name) : undefined}
+                    onPickPrint={() => onPickPrint(cmd.name)}
+                    onToggleFoil={onToggleFoil ? () => onToggleFoil(cmd.name) : undefined}
+                    isFoil={!!cmd.foil}
                   >
-                    <GameIcon name="overlord-helm" className="h-3 w-3 text-commander shrink-0" />
-                    <span className="text-sm flex-1 truncate">{cmd.name}</span>
-                    {cmd.manaCost && (
-                      <ManaSymbols cost={cmd.manaCost} size="sm" className="shrink-0" />
-                    )}
-                    {onSetCover && (
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className={
-                          coverCardName === cmd.name
-                            ? "h-5 w-5 text-primary"
-                            : "h-5 w-5 text-muted-foreground/40 hover:text-primary transition-colors"
-                        }
-                        title={
-                          coverCardName === cmd.name
-                            ? "Remove as deck art cover"
-                            : "Set as deck art cover"
-                        }
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onSetCover(cmd);
-                        }}
-                      >
-                        <GameIcon name="book-cover" className="h-3 w-3" />
-                      </Button>
-                    )}
-                    {cmd.isDoubleFaced && onSetCoverBack && (
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className={
-                          coverCardName === cmd.name && coverCardFace === 1
-                            ? "h-5 w-5 text-primary"
-                            : "h-5 w-5 text-muted-foreground/40 hover:text-primary transition-colors"
-                        }
-                        title={
-                          coverCardName === cmd.name && coverCardFace === 1
-                            ? "Remove back face as deck art cover"
-                            : "Set back face as deck art cover"
-                        }
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onSetCoverBack(cmd);
-                        }}
-                      >
-                        <GameIcon
-                          name="book-cover"
-                          className="h-3 w-3"
-                          style={{ transform: "scaleX(-1)" }}
-                        />
-                      </Button>
-                    )}
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      className="h-5 w-5 text-destructive shrink-0"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onRemoveCommander(cmd);
-                      }}
+                    <div
+                      className="flex items-center gap-1 group hover:bg-muted/40 rounded px-1 py-0.5 cursor-pointer"
+                      onMouseEnter={(e) => onHover(cmd, e, { useDelay: true })}
+                      onMouseMove={(e) => onHover(cmd, e, { useDelay: true })}
+                      onMouseLeave={onLeave}
+                      onClick={() => onShowInfo?.(cmd.name)}
                     >
-                      <X className="h-3 w-3" />
-                    </Button>
-                  </div>
+                      <GameIcon name="overlord-helm" className="h-3 w-3 text-commander shrink-0" />
+                      <span className="text-sm flex-1 truncate">{cmd.name}</span>
+                      {cmd.manaCost && (
+                        <ManaSymbols cost={cmd.manaCost} size="sm" className="shrink-0" />
+                      )}
+                      {onSetCover && (
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className={
+                            coverCardName === cmd.name
+                              ? "h-5 w-5 text-primary"
+                              : "h-5 w-5 text-muted-foreground/40 hover:text-primary transition-colors"
+                          }
+                          title={
+                            coverCardName === cmd.name
+                              ? "Remove as deck art cover"
+                              : "Set as deck art cover"
+                          }
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onSetCover(cmd);
+                          }}
+                        >
+                          <GameIcon name="book-cover" className="h-3 w-3" />
+                        </Button>
+                      )}
+                      {cmd.isDoubleFaced && onSetCoverBack && (
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className={
+                            coverCardName === cmd.name && coverCardFace === 1
+                              ? "h-5 w-5 text-primary"
+                              : "h-5 w-5 text-muted-foreground/40 hover:text-primary transition-colors"
+                          }
+                          title={
+                            coverCardName === cmd.name && coverCardFace === 1
+                              ? "Remove back face as deck art cover"
+                              : "Set back face as deck art cover"
+                          }
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onSetCoverBack(cmd);
+                          }}
+                        >
+                          <GameIcon
+                            name="book-cover"
+                            className="h-3 w-3"
+                            style={{ transform: "scaleX(-1)" }}
+                          />
+                        </Button>
+                      )}
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-5 w-5 text-destructive shrink-0"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onRemoveCommander(cmd);
+                        }}
+                      >
+                        <X className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  </CardContextMenu>
                 ))}
               </div>
             ) : (
@@ -2099,6 +2133,13 @@ export function DeckListView({
                       onSetCoverBack={
                         cmd.isDoubleFaced && onSetCoverBack ? () => onSetCoverBack(cmd) : undefined
                       }
+                      contextLocation="main"
+                      contextActions={{
+                        onShowInfo: onShowInfo ? () => onShowInfo(cmd.name) : undefined,
+                        onPickPrint: () => onPickPrint(cmd.name),
+                        onToggleFoil: onToggleFoil ? () => onToggleFoil(cmd.name) : undefined,
+                        isFoil: !!cmd.foil,
+                      }}
                     />
                   </div>
                 ))}
@@ -2244,6 +2285,8 @@ export function DeckListView({
                     onMoveAllToMaybe={() => onMoveAllFromSideToMaybe(g.card.name)}
                     onShowInfo={onShowInfo ? () => onShowInfo(g.card.name) : undefined}
                     onPickPrint={() => onPickPrint(g.card.name)}
+                    onToggleFoil={onToggleFoil ? () => onToggleFoil(g.card.name) : undefined}
+                    isFoil={!!g.card.foil}
                     customTags={customTags}
                     appliedTags={cardTags?.[g.card.name.toLowerCase()]}
                     onApplyTag={(t) => applyCardTag(g.card.name, t)}
@@ -2311,6 +2354,8 @@ export function DeckListView({
                         onMoveAllToMaybe: () => onMoveAllFromSideToMaybe(g.card.name),
                         onShowInfo: onShowInfo ? () => onShowInfo(g.card.name) : undefined,
                         onPickPrint: () => onPickPrint(g.card.name),
+                        onToggleFoil: onToggleFoil ? () => onToggleFoil(g.card.name) : undefined,
+                        isFoil: !!g.card.foil,
                         customTags,
                         appliedTags: cardTags?.[g.card.name.toLowerCase()],
                         onApplyTag: (t) => applyCardTag(g.card.name, t),
@@ -2361,6 +2406,8 @@ export function DeckListView({
                     onMoveAllToSide={() => onMoveAllFromMaybeToSide(g.card.name)}
                     onShowInfo={onShowInfo ? () => onShowInfo(g.card.name) : undefined}
                     onPickPrint={() => onPickPrint(g.card.name)}
+                    onToggleFoil={onToggleFoil ? () => onToggleFoil(g.card.name) : undefined}
+                    isFoil={!!g.card.foil}
                     customTags={customTags}
                     appliedTags={cardTags?.[g.card.name.toLowerCase()]}
                     onApplyTag={(t) => applyCardTag(g.card.name, t)}
@@ -2434,6 +2481,8 @@ export function DeckListView({
                         onMoveAllToSide: () => onMoveAllFromMaybeToSide(g.card.name),
                         onShowInfo: onShowInfo ? () => onShowInfo(g.card.name) : undefined,
                         onPickPrint: () => onPickPrint(g.card.name),
+                        onToggleFoil: onToggleFoil ? () => onToggleFoil(g.card.name) : undefined,
+                        isFoil: !!g.card.foil,
                         customTags,
                         appliedTags: cardTags?.[g.card.name.toLowerCase()],
                         onApplyTag: (t) => applyCardTag(g.card.name, t),

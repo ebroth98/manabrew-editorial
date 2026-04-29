@@ -149,6 +149,7 @@ interface DeckState {
   setCompanion: (card: Card) => void;
   removeCompanion: () => void;
   updatePrint: (cardName: string, scryfallCard: import("@/types/scryfall").ScryfallCard) => void;
+  toggleFoil: (cardName: string) => void;
   enrichDeckCards: (updates: Map<string, Partial<Card>>) => void;
   addCardToSavedDeck: (id: string, card: Card) => void;
   enrichSavedDeck: (id: string, updates: Map<string, Partial<Card>>) => void;
@@ -420,6 +421,41 @@ export const useDeckStore = create<DeckState>()(
             });
             return {
               currentDeck: patchDeckCards(state.currentDeck, updates),
+            };
+          }),
+        toggleFoil: (cardName) =>
+          set((state) => {
+            const deck = normalizeDeck(state.currentDeck);
+            const allCopies: Card[] = [
+              ...deck.cards,
+              ...deck.sideboard,
+              ...(deck.maybeboard ?? []),
+              ...(deck.attractions ?? []),
+              ...(deck.contraptions ?? []),
+              ...(deck.schemes ?? []),
+              ...(deck.planes ?? []),
+              ...(deck.commanders ?? []),
+            ];
+            const matches = allCopies.filter((c) => c.name === cardName);
+            const targetFoil = !matches.every((c) => c.foil);
+            const flip = (cards: Card[]): Card[] =>
+              cards.map((c) => (c.name === cardName ? { ...c, foil: targetFoil } : c));
+            return {
+              currentDeck: {
+                ...deck,
+                cards: flip(deck.cards),
+                sideboard: flip(deck.sideboard),
+                attractions: deck.attractions ? flip(deck.attractions) : deck.attractions,
+                contraptions: deck.contraptions ? flip(deck.contraptions) : deck.contraptions,
+                schemes: deck.schemes ? flip(deck.schemes) : deck.schemes,
+                planes: deck.planes ? flip(deck.planes) : deck.planes,
+                commanders: deck.commanders ? flip(deck.commanders) : deck.commanders,
+                companion:
+                  deck.companion && deck.companion.name === cardName
+                    ? { ...deck.companion, foil: targetFoil }
+                    : deck.companion,
+                maybeboard: deck.maybeboard ? flip(deck.maybeboard) : deck.maybeboard,
+              },
             };
           }),
         saveCurrentDeck: () =>

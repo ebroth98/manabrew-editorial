@@ -2069,6 +2069,7 @@ dependencies = [
 name = "forge-foundation"
 version = "0.1.0"
 dependencies = [
+ "rand 0.8.5",
  "serde",
 ]
 
@@ -2080,6 +2081,18 @@ dependencies = [
  "forge-carddb",
  "forge-engine-core",
  "forge-foundation",
+]
+
+[[package]]
+name = "forge-limited"
+version = "0.1.0"
+dependencies = [
+ "bitflags 2.11.0",
+ "forge-foundation",
+ "rand 0.8.5",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
 ]
 
 [[package]]
@@ -2133,6 +2146,7 @@ dependencies = [
  "forge-carddb",
  "forge-engine-core",
  "forge-foundation",
+ "forge-limited",
  "getrandom 0.2.17",
  "js-sys",
  "rand 0.8.5",
@@ -2155,6 +2169,7 @@ dependencies = [
  "forge-engine-core",
  "forge-foundation",
  "forge-game-runtime",
+ "forge-limited",
  "forge-server",
  "futures-util",
  "j4rs",

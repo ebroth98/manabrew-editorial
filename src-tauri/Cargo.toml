@@ -32,5 +32,6 @@ futures-util = "0.3"
 forge-server = { path = "../forge-engine/crates/forge-server" }
 forge-agent-interface = { path = "../forge-engine/crates/forge-agent-interface" }
 forge-game-runtime = { path = "../forge-engine/crates/forge-game-runtime" }
+forge-limited = { path = "../forge-engine/crates/forge-limited" }
 tauri-plugin-http = "2.5.8"
 j4rs = { version = "0.25.1", optional = true }

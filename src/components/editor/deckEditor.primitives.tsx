@@ -6,6 +6,7 @@
 import { Button } from "@/components/ui/button";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { FoilBadge } from "@/components/limited/FoilBadge";
 import type { OverlayAction } from "./deckEditor.utils";
 import type { Card } from "@/types/openmagic";
 import { useCard } from "@/stores/useScryfallStore";
@@ -56,12 +57,15 @@ export function CardThumbnail({
     );
   }
   return (
-    <img
-      src={cardData.uris.normal}
-      alt={card.name}
-      className={cn("w-full rounded-lg border border-border/50 shadow-sm")}
-      draggable={false}
-    />
+    <div className={cn("relative w-full", card.foil && "draft-tile-foil")}>
+      <img
+        src={cardData.uris.normal}
+        alt={card.name}
+        className={cn("w-full rounded-lg border border-border/50 shadow-sm")}
+        draggable={false}
+      />
+      {card.foil && <FoilBadge />}
+    </div>
   );
 }
 
