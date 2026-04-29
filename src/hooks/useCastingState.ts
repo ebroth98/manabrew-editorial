@@ -78,10 +78,15 @@ export function useCastingState({
   // Derive the casting card ID from the prompt
   // sourceCardId is set by the engine on targeting prompts
   // cardId is set on PayManaCost and similar cost prompts
+  // Fallback: some effects (e.g. replacement / triggered targeting) emit
+  // chooseTarget* prompts with `source: None`. The spell asking for a
+  // target is almost always the top-of-stack object, so we anchor the
+  // casting arrow to it instead of dropping the arrow entirely.
+  const stackTopSourceId = stack && stack.length > 0 ? stack[stack.length - 1]!.sourceId : null;
   const castingCardId = useMemo(() => {
     if (!promptType || !CASTING_PROMPT_TYPES.has(promptType)) return null;
-    return currentPrompt?.sourceCardId ?? currentPrompt?.cardId ?? null;
-  }, [promptType, currentPrompt?.sourceCardId, currentPrompt?.cardId]);
+    return currentPrompt?.sourceCardId ?? currentPrompt?.cardId ?? stackTopSourceId ?? null;
+  }, [promptType, currentPrompt?.sourceCardId, currentPrompt?.cardId, stackTopSourceId]);
 
   // Resolve the actual card object. Order matters: the spell is usually
   // still in hand at the very start of the cast (cost prompts), but for

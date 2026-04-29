@@ -6,23 +6,95 @@
   "ai_eligible": false,
   "order": 31,
   "cards": [
-    { "name": "Forest", "count": 4, "set": "akh" },
-    { "name": "Plains", "count": 3, "set": "akh" },
-    { "name": "Island", "count": 3, "set": "akh" },
-    { "name": "Swamp", "count": 2, "set": "akh" },
-    { "name": "Mountain", "count": 1, "set": "akh" },
-    { "name": "Watchful Naga", "count": 3, "set": "akh" },
-    { "name": "Whirler Virtuoso", "count": 3, "set": "kld" },
-    { "name": "Vexing Devil", "count": 3, "set": "avr" },
-    { "name": "Wirewood Symbiote", "count": 3, "set": "lgn" },
-    { "name": "Llanowar Elves", "count": 2, "set": "m11" },
-    { "name": "Zombie Trailblazer", "count": 3, "set": "ody" },
-    { "name": "Invigorate", "count": 3, "set": "mh1" },
-    { "name": "Deep Spawn", "count": 2, "set": "leg" },
-    { "name": "Wanderwine Hub", "count": 2, "set": "lor" },
-    { "name": "Sanctuary Warden", "count": 2, "set": "snc" },
-    { "name": "Blinding Powder", "count": 2, "set": "bok" },
-    { "name": "Ichorid", "count": 2, "set": "tor" },
-    { "name": "Ruin Processor", "count": 1, "set": "bfz" }
+    {
+      "name": "Forest",
+      "count": 4,
+      "set": "akh"
+    },
+    {
+      "name": "Plains",
+      "count": 3,
+      "set": "akh"
+    },
+    {
+      "name": "Island",
+      "count": 3,
+      "set": "akh"
+    },
+    {
+      "name": "Swamp",
+      "count": 2,
+      "set": "akh"
+    },
+    {
+      "name": "Mountain",
+      "count": 1,
+      "set": "akh"
+    },
+    {
+      "name": "Watchful Naga",
+      "count": 3,
+      "set": "akh"
+    },
+    {
+      "name": "Whirler Virtuoso",
+      "count": 3,
+      "set": "kld"
+    },
+    {
+      "name": "Vexing Devil",
+      "count": 3,
+      "set": "avr"
+    },
+    {
+      "name": "Wirewood Symbiote",
+      "count": 3,
+      "set": "mh3"
+    },
+    {
+      "name": "Llanowar Elves",
+      "count": 2,
+      "set": "m11"
+    },
+    {
+      "name": "Zombie Trailblazer",
+      "count": 3,
+      "set": "tor"
+    },
+    {
+      "name": "Invigorate",
+      "count": 3,
+      "set": "2xm"
+    },
+    {
+      "name": "Deep Spawn",
+      "count": 2,
+      "set": "me2"
+    },
+    {
+      "name": "Wanderwine Hub",
+      "count": 2,
+      "set": "lrw"
+    },
+    {
+      "name": "Sanctuary Warden",
+      "count": 2,
+      "set": "snc"
+    },
+    {
+      "name": "Blinding Powder",
+      "count": 2,
+      "set": "bok"
+    },
+    {
+      "name": "Ichorid",
+      "count": 2,
+      "set": "tor"
+    },
+    {
+      "name": "Ruin Processor",
+      "count": 1,
+      "set": "bfz"
+    }
   ]
 }

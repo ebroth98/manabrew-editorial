@@ -10,17 +10,22 @@
  */
 
 import type { ArrowSpec } from "@/pixi/types";
-import type { StackObject } from "@/types/openmagic";
-import { PromptType as PT, type PromptType } from "@/types/promptType";
+import type { StackObject, StackTarget } from "@/types/openmagic";
+import { PromptType as PT, type PromptType, TargetingIntent } from "@/types/promptType";
 
 export interface BuildArrowSpecsOptions {
   promptType?: PromptType;
   attackerIds: string[];
   blockAssignments: { blockerId: string; attackerId: string }[];
   combatAssignments: { blockerId: string; attackerId: string }[];
-  pendingAttackers: string[];
-  myPlayerId: string;
-  opponentPlayerId: string;
+  /** Locked-in attackers from the engine's battlefield state — every
+   *  battlefield card with `isAttacking && attackingPlayerId`. Drives
+   *  the persistent attack arrow shown throughout combat (after
+   *  declaration, during blockers, during damage). Pre-commit pending
+   *  attackers are signalled via card-tap visuals only (Game.tsx),
+   *  never an arrow — multiple opponents / planeswalkers / sieges make
+   *  any "default" destination misleading. */
+  activeAttackers: { attackerId: string; defenderId: string }[];
   stack?: StackObject[];
   /** If set, treat this stack object as the "active" source for the
    *  placement arrow (usually the hovered one) instead of the top-of-stack. */
@@ -42,26 +47,27 @@ function getActiveStackObject(
 export function buildArrowSpecs(opts: BuildArrowSpecsOptions): ArrowSpec[] {
   const {
     promptType,
-    attackerIds,
     blockAssignments,
     combatAssignments,
-    pendingAttackers,
-    myPlayerId,
-    opponentPlayerId,
+    activeAttackers,
     stack,
     activeStackObjectId,
   } = opts;
 
   const specs: ArrowSpec[] = [];
 
+  // Locked-in attackers: persist throughout combat (declared → blockers →
+  // damage) using the engine's per-card attacking state.
+  for (const { attackerId, defenderId } of activeAttackers) {
+    specs.push({
+      from: { kind: "card", id: attackerId },
+      to: { kind: "player", id: defenderId },
+      type: "attack",
+    });
+  }
+
+  // Mid-selection block assignments while ChooseBlockers is active.
   if (promptType === PT.ChooseBlockers) {
-    for (const id of attackerIds) {
-      specs.push({
-        from: { kind: "card", id },
-        to: { kind: "player", id: myPlayerId },
-        type: "attack",
-      });
-    }
     for (const { blockerId, attackerId } of blockAssignments) {
       specs.push({
         from: { kind: "card", id: blockerId },
@@ -71,22 +77,14 @@ export function buildArrowSpecs(opts: BuildArrowSpecsOptions): ArrowSpec[] {
     }
   }
 
+  // Locked-in block assignments from the engine combat state (persist
+  // through damage assignment / end of combat).
   for (const { blockerId, attackerId } of combatAssignments) {
     specs.push({
       from: { kind: "card", id: blockerId },
       to: { kind: "card", id: attackerId },
       type: "block",
     });
-  }
-
-  if (promptType === PT.ChooseAttackers) {
-    for (const id of pendingAttackers) {
-      specs.push({
-        from: { kind: "card", id },
-        to: { kind: "player", id: opponentPlayerId },
-        type: "attack",
-      });
-    }
   }
 
   // Placement ghost preview stays as an arrow (dashed marching-ants) — it
@@ -99,8 +97,36 @@ export function buildArrowSpecs(opts: BuildArrowSpecsOptions): ArrowSpec[] {
     if (!hasTargets) {
       specs.push({
         from: { kind: "stack", id: activeObj.id },
-        to: { kind: "placement-ghost" },
+        // Anchor the ghost to the spell's controller — opponent permanent
+        // spells preview into the opponent's battlefield, not ours.
+        to: { kind: "placement-ghost", playerId: activeObj.controllerId },
         type: "placement",
+      });
+    }
+  }
+
+  // Attach relationships: any stack object whose chosen targets carry the
+  // `Attach` intent (Equipment / Aura targeting) emits a rune-style
+  // arrow from the spell to its target. Pointer specs deliberately skip
+  // these intents so we don't double-render.
+  if (activeObj) {
+    const objAny = activeObj as unknown as Record<string, unknown>;
+    const targets = Array.isArray(objAny.targets) ? (objAny.targets as StackTarget[]) : [];
+    for (const t of targets) {
+      if (t.intent !== TargetingIntent.Attach) continue;
+      const to: ArrowSpec["to"] | null =
+        t.kind === "card"
+          ? { kind: "card", id: t.id }
+          : t.kind === "player"
+            ? { kind: "player", id: t.id }
+            : t.kind === "stack"
+              ? { kind: "stack", id: t.id }
+              : null;
+      if (!to) continue;
+      specs.push({
+        from: { kind: "stack", id: activeObj.id },
+        to,
+        type: "attach",
       });
     }
   }

@@ -20,8 +20,16 @@ export interface ChooseAttackersProps extends PromptActionLayoutProps {
   pendingAttackers: string[];
   selectedDefenderId?: string | null;
   selectedDefenderLabel?: string | null;
+  /** When true, the engine reports more than one legal defender (multi-
+   *  player game, planeswalkers, sieges). Attack/Attack-All defer the
+   *  declaration and ask the user to click a target instead of committing
+   *  immediately against the default defender. */
+  multipleDefenders: boolean;
   onPassPriority: () => void;
   onDeclareAttackers: (attackerIds: string[], defenderId?: string) => void;
+  /** Begin the click-to-pick-defender flow. Called instead of
+   *  `onDeclareAttackers` when `multipleDefenders` is true. */
+  onBeginAttackTargetPick: (attackerIds: string[]) => void;
 }
 
 export interface ChooseBlockersProps extends PromptActionLayoutProps {

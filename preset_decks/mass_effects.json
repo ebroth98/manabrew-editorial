@@ -6,14 +6,50 @@
   "ai_eligible": false,
   "order": 12,
   "cards": [
-    { "name": "Plains", "count": 18, "set": "akh" },
-    { "name": "Wrath of God", "count": 4, "set": "ema" },
-    { "name": "Pyroclasm", "count": 4, "set": "m11" },
-    { "name": "Righteous Charge", "count": 4, "set": "m13" },
-    { "name": "Rising Miasma", "count": 4, "set": "m15" },
-    { "name": "Savannah Lions", "count": 4, "set": "m10" },
-    { "name": "White Knight", "count": 4, "set": "m10" },
-    { "name": "Serra Angel", "count": 4, "set": "m21" },
-    { "name": "Darksteel Myr", "count": 4, "set": "som" }
+    {
+      "name": "Plains",
+      "count": 18,
+      "set": "akh"
+    },
+    {
+      "name": "Wrath of God",
+      "count": 4,
+      "set": "ema"
+    },
+    {
+      "name": "Pyroclasm",
+      "count": 4,
+      "set": "m11"
+    },
+    {
+      "name": "Righteous Charge",
+      "count": 4,
+      "set": "gtc"
+    },
+    {
+      "name": "Rising Miasma",
+      "count": 4,
+      "set": "bfz"
+    },
+    {
+      "name": "Savannah Lions",
+      "count": 4,
+      "set": "fdn"
+    },
+    {
+      "name": "White Knight",
+      "count": 4,
+      "set": "m10"
+    },
+    {
+      "name": "Serra Angel",
+      "count": 4,
+      "set": "fdn"
+    },
+    {
+      "name": "Darksteel Myr",
+      "count": 4,
+      "set": "som"
+    }
   ]
 }

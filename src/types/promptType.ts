@@ -116,9 +116,17 @@ export const TargetingIntent = {
 
 export type TargetingIntent = (typeof TargetingIntent)[keyof typeof TargetingIntent];
 
-/** Intents that should still be rendered as arrows (combat declarations). */
+/** Intents that should be rendered as arrows rather than floating pointer
+ *  glyphs. Combat declarations (`attack` / `block`) get the painterly
+ *  treatment; `attach` (Equipment / Aura targeting) gets the rune
+ *  treatment — both convey a persistent relationship better than a
+ *  cursor-anchored icon. */
 export function intentPrefersArrow(intent: TargetingIntent): boolean {
-  return intent === TargetingIntent.Attack || intent === TargetingIntent.Block;
+  return (
+    intent === TargetingIntent.Attack ||
+    intent === TargetingIntent.Block ||
+    intent === TargetingIntent.Attach
+  );
 }
 
 /**

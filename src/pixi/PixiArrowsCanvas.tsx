@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useEffectEvent, useRef, useState } from "react";
 import { Application, type Ticker } from "pixi.js";
-import { installPixiPatches } from "./pixiPatches";
+import { destroyPixiApp, installPixiPatches } from "./pixiPatches";
 import { ArrowLayer, type ArrowDef } from "./ArrowLayer";
 import { PointerLayer, type ResolvedPointer } from "./PointerLayer";
 
@@ -67,6 +67,12 @@ export function PixiArrowsCanvas({
   const arrowSpecsRef = useRef<ArrowSpec[]>([]);
   const pointerSpecsRef = useRef<PointerSpec[]>([]);
   const castingArrowRef = useRef<CastingArrowSpec | null>(null);
+  // Last-known canvas-local position per endpoint, used as a fallback when
+  // the live resolver returns null (one-frame race between a sprite zone
+  // change and the next Pixi tick, opponent scene mounting late, DOM node
+  // briefly unmounted, etc.). Without this, the entire arrow/pointer is
+  // dropped and the user sees nothing — making targeting feel broken.
+  const endpointCacheRef = useRef<Map<string, ScreenPos>>(new Map());
   useEffect(() => {
     arrowSpecsRef.current = arrowSpecs ?? [];
   }, [arrowSpecs]);
@@ -121,11 +127,11 @@ export function PixiArrowsCanvas({
 
     app.ticker.add((ticker: Ticker) => {
       if (!arrowLayerRef.current || !canvasRef.current) return;
-      const opponentScenes: PixiGameScene[] = [];
+      const opponentScenes: { playerId: string; scene: PixiGameScene }[] = [];
       const map = opponentSceneRefsRef.current;
       if (map) {
-        for (const ref of map.values()) {
-          if (ref.current) opponentScenes.push(ref.current);
+        for (const [playerId, ref] of map.entries()) {
+          if (ref.current) opponentScenes.push({ playerId, scene: ref.current });
         }
       }
       const { arrows, pointers } = resolveArrowsAndPointers(
@@ -136,14 +142,17 @@ export function PixiArrowsCanvas({
         mainSceneRef.current,
         opponentScenes,
         cursorViewportRef.current,
+        endpointCacheRef.current,
       );
       arrowLayerRef.current.update(arrows, ticker.deltaMS);
       pointerLayerRef.current?.update(pointers, ticker.deltaMS);
     });
 
-    // Initial resize since we no longer use resizeTo
+    // Initial resize since we no longer use resizeTo. Renderer may have
+    // been torn down already if the effect cleanup fired between the
+    // `await app.init()` resolution and this point.
     const parent = canvasRef.current.parentElement;
-    if (parent) {
+    if (parent && app.renderer) {
       app.renderer.resize(parent.clientWidth, parent.clientHeight);
     }
 
@@ -155,7 +164,14 @@ export function PixiArrowsCanvas({
   useEffect(() => {
     let active = true;
     initApp().then((success) => {
-      if (active && success) markReady(true);
+      // Effect was cleaned up while init was in flight — tear down the
+      // app we just created instead of leaking its WebGL context.
+      if (!active) {
+        destroyPixiApp(appRef.current);
+        appRef.current = null;
+        return;
+      }
+      if (success) markReady(true);
     });
     return () => {
       active = false;
@@ -163,7 +179,7 @@ export function PixiArrowsCanvas({
       arrowLayerRef.current = null;
       pointerLayerRef.current?.destroy();
       pointerLayerRef.current = null;
-      appRef.current?.destroy(true);
+      destroyPixiApp(appRef.current);
       appRef.current = null;
       markReady(false);
     };
@@ -177,7 +193,9 @@ export function PixiArrowsCanvas({
     const observer = new ResizeObserver((entries) => {
       for (const entry of entries) {
         const { width, height } = entry.contentRect;
-        if (width > 0 && height > 0) {
+        // App may have been destroyed between the resize event firing
+        // and this callback running (HMR re-mounts, unmount during init).
+        if (width > 0 && height > 0 && app.renderer) {
           app.renderer.resize(width, height);
         }
       }
@@ -235,8 +253,9 @@ function resolveArrowsAndPointers(
   pointerSpecs: PointerSpec[],
   casting: CastingArrowSpec | null,
   mainScene: PixiGameScene | null,
-  opponentScenes: PixiGameScene[],
+  opponentScenes: { playerId: string; scene: PixiGameScene }[],
   cursorViewport: { x: number; y: number },
+  endpointCache: Map<string, ScreenPos>,
 ): { arrows: ArrowDef[]; pointers: ResolvedPointer[] } {
   if (arrowSpecs.length === 0 && pointerSpecs.length === 0 && !casting) {
     return { arrows: [], pointers: [] };
@@ -249,8 +268,14 @@ function resolveArrowsAndPointers(
       rect: mainScene.canvasElement.getBoundingClientRect(),
     });
   }
-  for (const s of opponentScenes) {
-    scenesWithRect.push({ scene: s, rect: s.canvasElement.getBoundingClientRect() });
+  for (const { scene } of opponentScenes) {
+    scenesWithRect.push({ scene, rect: scene.canvasElement.getBoundingClientRect() });
+  }
+  // Per-player lookup for placement-ghost resolution. mainScene isn't in
+  // here — anything not in this map falls back to mainScene below.
+  const opponentSceneByPlayerId = new Map<string, PixiGameScene>();
+  for (const { playerId, scene } of opponentScenes) {
+    opponentSceneByPlayerId.set(playerId, scene);
   }
 
   const toLocal = (viewport: { x: number; y: number }): ScreenPos => ({
@@ -258,7 +283,7 @@ function resolveArrowsAndPointers(
     y: viewport.y - canvasRect.top,
   });
 
-  const resolveEndpoint = (ep: ArrowEndpoint): ScreenPos | null => {
+  const resolveEndpointLive = (ep: ArrowEndpoint): ScreenPos | null => {
     switch (ep.kind) {
       case "card": {
         // Probe each live scene (player first, then opponents) for the
@@ -281,16 +306,38 @@ function resolveArrowsAndPointers(
       case "stack":
         return domCenter(`[data-stack-object-id="${CSS.escape(ep.id)}"]`, toLocal);
       case "placement-ghost": {
-        if (!mainScene) return null;
-        const rect = scenesWithRect[0]?.rect;
-        if (!rect) return null;
-        const c = mainScene.getPlacementGhostCenter();
+        // Resolve to the controller's scene if specified — opponent
+        // permanent spells preview into the opponent's battlefield, not
+        // ours. Falls back to mainScene when no playerId or when the
+        // playerId isn't an opponent (i.e. it's the local player).
+        const oppScene = ep.playerId ? opponentSceneByPlayerId.get(ep.playerId) : null;
+        const scene = oppScene ?? mainScene;
+        if (!scene) return null;
+        const sceneEntry = scenesWithRect.find((s) => s.scene === scene);
+        if (!sceneEntry) return null;
+        const c = scene.getPlacementGhostCenter();
         return {
-          x: c.x + rect.left - canvasRect.left,
-          y: c.y + rect.top - canvasRect.top,
+          x: c.x + sceneEntry.rect.left - canvasRect.left,
+          y: c.y + sceneEntry.rect.top - canvasRect.top,
         };
       }
     }
+  };
+
+  // Wraps the live resolver with a stable cache so a single missed frame
+  // (sprite added but Pixi hasn't ticked yet, opponent scene mounted late,
+  // DOM node briefly absent) doesn't drop the entire arrow/pointer.
+  // `placement-ghost` is purely positional (next free slot) so we never
+  // cache it — a stale slot would mislead the player.
+  const resolveEndpoint = (ep: ArrowEndpoint): ScreenPos | null => {
+    const live = resolveEndpointLive(ep);
+    if (ep.kind === "placement-ghost") return live;
+    const key = `${ep.kind}:${ep.id}`;
+    if (live) {
+      endpointCache.set(key, live);
+      return live;
+    }
+    return endpointCache.get(key) ?? null;
   };
 
   const arrows: ArrowDef[] = [];
@@ -344,12 +391,18 @@ function resolveArrowsAndPointers(
         const intent =
           casting.intent ?? (casting.hostile ? TargetingIntent.Hostile : TargetingIntent.Friendly);
         if (intentPrefersArrow(intent)) {
+          const arrowType =
+            intent === TargetingIntent.Attack
+              ? "attack"
+              : intent === TargetingIntent.Block
+                ? "block"
+                : "attach";
           arrows.push({
             fromX: from.x,
             fromY: from.y,
             toX: to.x,
             toY: to.y,
-            type: intent === TargetingIntent.Attack ? "attack" : "block",
+            type: arrowType,
           });
         } else {
           pointers.push({
@@ -372,9 +425,15 @@ function domCenter(
   selector: string,
   toLocal: (viewport: { x: number; y: number }) => ScreenPos,
 ): ScreenPos | null {
-  const el = document.querySelector(selector);
-  if (!el) return null;
-  const r = (el as HTMLElement).getBoundingClientRect();
-  if (r.width === 0 && r.height === 0) return null;
-  return toLocal({ x: r.left + r.width / 2, y: r.top + r.height / 2 });
+  // The same element may be rendered in multiple places (e.g. a mobile-only
+  // <main class="md:hidden"> and a desktop layout). querySelector returns
+  // the first DOM-order match, which may be inside a hidden ancestor and
+  // report a 0×0 rect. Walk all matches and pick the first laid-out one.
+  const els = document.querySelectorAll(selector);
+  for (const el of els) {
+    const r = (el as HTMLElement).getBoundingClientRect();
+    if (r.width === 0 && r.height === 0) continue;
+    return toLocal({ x: r.left + r.width / 2, y: r.top + r.height / 2 });
+  }
+  return null;
 }

@@ -6,21 +6,85 @@
   "ai_eligible": false,
   "order": 15,
   "cards": [
-    { "name": "Swamp", "count": 7, "set": "akh" },
-    { "name": "Forest", "count": 3, "set": "akh" },
-    { "name": "Mountain", "count": 3, "set": "akh" },
-    { "name": "Island", "count": 3, "set": "akh" },
-    { "name": "Plague Stinger", "count": 2, "set": "som" },
-    { "name": "Sickle Ripper", "count": 2, "set": "mor" },
-    { "name": "Rancid Rats", "count": 2, "set": "soi" },
-    { "name": "Severed Legion", "count": 2, "set": "ons" },
-    { "name": "Boggart Brute", "count": 2, "set": "ori" },
-    { "name": "Bladetusk Boar", "count": 2, "set": "zen" },
-    { "name": "Thalakos Sentry", "count": 2, "set": "tmp" },
-    { "name": "Humble Budoka", "count": 2, "set": "chk" },
-    { "name": "Wardscale Crocodile", "count": 2, "set": "war" },
-    { "name": "Zombie Outlander", "count": 2, "set": "con" },
-    { "name": "Yavimaya Barbarian", "count": 2, "set": "inv" },
-    { "name": "Darksteel Myr", "count": 2, "set": "som" }
+    {
+      "name": "Swamp",
+      "count": 7,
+      "set": "akh"
+    },
+    {
+      "name": "Forest",
+      "count": 3,
+      "set": "akh"
+    },
+    {
+      "name": "Mountain",
+      "count": 3,
+      "set": "akh"
+    },
+    {
+      "name": "Island",
+      "count": 3,
+      "set": "akh"
+    },
+    {
+      "name": "Plague Stinger",
+      "count": 2,
+      "set": "som"
+    },
+    {
+      "name": "Sickle Ripper",
+      "count": 2,
+      "set": "mm2"
+    },
+    {
+      "name": "Rancid Rats",
+      "count": 2,
+      "set": "soi"
+    },
+    {
+      "name": "Severed Legion",
+      "count": 2,
+      "set": "ons"
+    },
+    {
+      "name": "Boggart Brute",
+      "count": 2,
+      "set": "ori"
+    },
+    {
+      "name": "Bladetusk Boar",
+      "count": 2,
+      "set": "zen"
+    },
+    {
+      "name": "Thalakos Sentry",
+      "count": 2,
+      "set": "tmp"
+    },
+    {
+      "name": "Humble Budoka",
+      "count": 2,
+      "set": "chk"
+    },
+    {
+      "name": "Wardscale Crocodile",
+      "count": 2,
+      "set": "war"
+    },
+    {
+      "name": "Zombie Outlander",
+      "count": 2,
+      "set": "con"
+    },
+    {
+      "name": "Yavimaya Barbarian",
+      "count": 2,
+      "set": "inv"
+    },
+    {
+      "name": "Darksteel Myr",
+      "count": 2,
+      "set": "som"
+    }
   ]
 }

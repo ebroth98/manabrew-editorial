@@ -31,12 +31,18 @@ export type ArrowEndpoint =
   | { kind: "card"; id: string }
   | { kind: "player"; id: string }
   | { kind: "stack"; id: string }
-  | { kind: "placement-ghost" };
+  /** "Drop here" anchor for the placement preview. `playerId` selects
+   *  which player's battlefield the ghost points at — when set, the
+   *  resolver looks up that player's PixiGameScene; when omitted it
+   *  falls back to the local player's scene. */
+  | { kind: "placement-ghost"; playerId?: string };
 
-/** Arrows are now reserved for combat declarations (attack/block) and
- *  the placement preview when casting a permanent spell. Every other
- *  targeting interaction renders as a `PointerSpec` instead. */
-export type ArrowType = "attack" | "block" | "placement";
+/** Arrows render combat declarations (`attack` / `block`, painterly
+ *  variant), attach relationships (`attach`, rune variant — Equipment /
+ *  Aura targeting), and the placement preview (`placement`, dashed
+ *  marching-ants) when casting a permanent spell. Every other targeting
+ *  interaction renders as a `PointerSpec` instead. */
+export type ArrowType = "attack" | "block" | "attach" | "placement";
 
 export interface ArrowSpec {
   from: ArrowEndpoint;

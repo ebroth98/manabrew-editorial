@@ -6,14 +6,50 @@
   "ai_eligible": true,
   "order": 9,
   "cards": [
-    { "name": "Island", "count": 17, "set": "akh" },
-    { "name": "Counterspell", "count": 4, "set": "ema" },
-    { "name": "Cancel", "count": 4, "set": "m14" },
-    { "name": "Mind Rot", "count": 4, "set": "m14" },
-    { "name": "Control Magic", "count": 3, "set": "mma" },
-    { "name": "Mulldrifter", "count": 3, "set": "mma" },
-    { "name": "Divination", "count": 4, "set": "m14" },
-    { "name": "Wall of Ice", "count": 4, "set": "7ed" },
-    { "name": "Sea Serpent", "count": 4, "set": "m10" }
+    {
+      "name": "Island",
+      "count": 17,
+      "set": "akh"
+    },
+    {
+      "name": "Counterspell",
+      "count": 4,
+      "set": "ema"
+    },
+    {
+      "name": "Cancel",
+      "count": 4,
+      "set": "m14"
+    },
+    {
+      "name": "Mind Rot",
+      "count": 4,
+      "set": "m14"
+    },
+    {
+      "name": "Control Magic",
+      "count": 3,
+      "set": "cma"
+    },
+    {
+      "name": "Mulldrifter",
+      "count": 3,
+      "set": "mma"
+    },
+    {
+      "name": "Divination",
+      "count": 4,
+      "set": "m14"
+    },
+    {
+      "name": "Wall of Ice",
+      "count": 4,
+      "set": "4ed"
+    },
+    {
+      "name": "Sea Serpent",
+      "count": 4,
+      "set": "me4"
+    }
   ]
 }

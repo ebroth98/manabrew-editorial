@@ -103,7 +103,9 @@ export interface MainActionOverlayProps {
   onPassUntilEot: () => void;
   selectedAttackDefenderId?: string | null;
   selectedAttackDefenderLabel?: string | null;
+  multipleAttackDefenders: boolean;
   onDeclareAttackers: (attackerIds: string[], defenderId?: string) => void;
+  onBeginAttackTargetPick: (attackerIds: string[]) => void;
   pendingAttacker: string | null;
   attackerIds: string[];
   blockAssignments: CombatAssignment[];

@@ -15,15 +15,25 @@ export function ChooseAttackers({
   pendingAttackers,
   selectedDefenderId,
   selectedDefenderLabel,
+  multipleDefenders,
   onPassPriority,
   onDeclareAttackers,
+  onBeginAttackTargetPick,
 }: ChooseAttackersProps) {
   const promptActionColors = usePromptActionColors();
   const hasPendingAttackers = pendingAttackers.length > 0;
-  const attackLabel = selectedDefenderLabel ? `ATTACK ${selectedDefenderLabel}` : "ATTACK";
+  const attackLabel =
+    multipleDefenders || !selectedDefenderLabel ? "ATTACK" : `ATTACK ${selectedDefenderLabel}`;
   const selectedAttackLabel = hasPendingAttackers
     ? `${attackLabel} (${pendingAttackers.length})`
     : attackLabel;
+  // In multi-defender games (multiplayer, planeswalkers/sieges) defer
+  // committing — the user picks the target afterward by clicking an
+  // avatar or a defender card.
+  const handleAttack = (attackerIds: string[]) => {
+    if (multipleDefenders) onBeginAttackTargetPick(attackerIds);
+    else onDeclareAttackers(attackerIds, selectedDefenderId ?? undefined);
+  };
 
   if (buttonLayout === "modern") {
     const attackAllStyle = getPromptActionButtonStyle(promptActionColors.attackAction);
@@ -36,7 +46,7 @@ export function ChooseAttackers({
           size="sm"
           variant="outline"
           className="h-9 w-full rounded-lg text-sm font-black tracking-[0.12em] !border-0 !text-white transition-[filter,box-shadow] hover:brightness-105"
-          onClick={() => onDeclareAttackers(availableAttackerIds, selectedDefenderId ?? undefined)}
+          onClick={() => handleAttack(availableAttackerIds)}
           disabled={isWaitingForResponse}
           style={attackAllStyle}
         >
@@ -46,7 +56,7 @@ export function ChooseAttackers({
           size="sm"
           variant="outline"
           className="h-9 w-full rounded-lg text-sm font-black tracking-[0.12em] !border-0 !text-white transition-[filter,box-shadow] hover:brightness-105"
-          onClick={() => onDeclareAttackers(pendingAttackers, selectedDefenderId ?? undefined)}
+          onClick={() => handleAttack(pendingAttackers)}
           disabled={isWaitingForResponse || !hasPendingAttackers}
           style={attackStyle}
         >

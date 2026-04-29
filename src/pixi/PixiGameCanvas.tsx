@@ -1,6 +1,6 @@
 import { useRef, useEffect, useCallback, useState } from "react";
 import { Application } from "pixi.js";
-import { installPixiPatches } from "./pixiPatches";
+import { destroyPixiApp, installPixiPatches } from "./pixiPatches";
 import { PixiGameScene, type PixiSceneOptions } from "./PixiGameScene";
 
 // Runtime workarounds for Pixi v8 bugs — must run before any `Application`
@@ -210,12 +210,24 @@ export function PixiGameCanvas({
   }, [cancelHandHoverClear, scheduleHandHoverClear]);
 
   useEffect(() => {
-    initApp();
+    let active = true;
+    initApp().then(() => {
+      // Effect was cleaned up while init was in flight — tear down the
+      // app/scene we just created instead of leaking the WebGL context.
+      if (!active) {
+        sceneRef.current?.destroy();
+        sceneRef.current = null;
+        destroyPixiApp(appRef.current);
+        appRef.current = null;
+        setScene(null);
+      }
+    });
     return () => {
+      active = false;
       cancelHandHoverClear();
       sceneRef.current?.destroy();
       sceneRef.current = null;
-      appRef.current?.destroy(true);
+      destroyPixiApp(appRef.current);
       appRef.current = null;
       setScene(null);
     };

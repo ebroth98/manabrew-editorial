@@ -50,7 +50,7 @@ import revealUrl from "~icons/game-icons/eye-target";
 import drawUrl from "~icons/game-icons/card-draw";
 import gainControlUrl from "~icons/game-icons/handcuffs";
 import fightUrl from "~icons/game-icons/crossed-swords";
-import attachUrl from "~icons/game-icons/paper-clip";
+// `attach` is rendered by ArrowLayer (rune variant) — keep no glyph here.
 import hostileUrl from "~icons/game-icons/crosshair";
 import friendlyUrl from "~icons/game-icons/shield-reflect";
 
@@ -81,7 +81,6 @@ const FRIENDLY_ICON_SVGS: Partial<Record<TargetingIntent, string>> = {
   heal: healUrl,
   reveal: revealUrl,
   draw: drawUrl,
-  attach: attachUrl,
   friendly: friendlyUrl,
 };
 
@@ -93,6 +92,7 @@ const POINTER_ICON_SVGS: Record<TargetingIntent, string | null> = {
   ...FRIENDLY_ICON_SVGS,
   attack: null,
   block: null,
+  attach: null,
 } as Record<TargetingIntent, string | null>;
 
 /** Rewrite a Game-Icons SVG so its paths render as opaque white pixels

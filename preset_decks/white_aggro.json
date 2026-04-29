@@ -6,10 +6,30 @@
   "ai_eligible": true,
   "order": 2,
   "cards": [
-    { "name": "Plains", "count": 17, "set": "akh" },
-    { "name": "Savannah Lions", "count": 4, "set": "2ED" },
-    { "name": "White Knight", "count": 3, "set": "m10" },
-    { "name": "Serra Angel", "count": 3, "set": "m21" },
-    { "name": "Soul Warden", "count": 3, "set": "mm3" }
+    {
+      "name": "Plains",
+      "count": 17,
+      "set": "akh"
+    },
+    {
+      "name": "Savannah Lions",
+      "count": 4,
+      "set": "2ED"
+    },
+    {
+      "name": "White Knight",
+      "count": 3,
+      "set": "m10"
+    },
+    {
+      "name": "Serra Angel",
+      "count": 3,
+      "set": "fdn"
+    },
+    {
+      "name": "Soul Warden",
+      "count": 3,
+      "set": "mm3"
+    }
   ]
 }

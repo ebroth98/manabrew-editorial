@@ -42,6 +42,7 @@ import { Navigate, useLocation } from "react-router-dom";
 import { PromptType } from "@/types/promptType";
 import { OPPONENT_SEATS } from "@/components/game/game.types";
 import { useStackUIStore } from "@/stores/useStackUIStore";
+import { useGameDevStore } from "@/stores/useGameDevStore";
 import { applyManualTabletopAction, getSelectedGameRuntime } from "@/game";
 import type { HandActionOption } from "@/stores/useGameUIStore";
 import type { PlacementGhost } from "@/components/game/game.types";
@@ -591,15 +592,21 @@ export default function Game({ exitTo }: GameProps = {}) {
     pendingAttacker,
     attackDefenderId,
     blockAssignments,
+    multipleAttackDefenders,
+    awaitingAttackTarget,
     playerIsTargetable,
+    cardIsAttackTarget,
     handleTargetPlayer,
     handleBattlefieldClick,
     handleAttackerClick,
+    selectAllAttackersForPick,
+    cancelAttackTargetPick,
   } = useCombatState({
     promptType,
     targetCard: casting.wrappedTargetCard,
     targetAny: casting.wrappedTargetAny,
     targetPlayer: casting.wrappedTargetPlayer,
+    declareAttackers,
     currentPrompt: activePrompt,
   });
   const selectedAttackDefender = activePrompt?.possibleDefenderIds?.find(
@@ -952,16 +959,26 @@ export default function Game({ exitTo }: GameProps = {}) {
   );
 
   const hoveredStackObjectIdForSpecs = useStackUIStore((s) => s.hoveredStackObjectId);
-  const arrowSpecs = useMemo(
+  // Walk every visible permanent for the locked-in attacker→defender
+  // pairs (engine fills `attackingPlayerId` once the attack is committed).
+  // This drives the persistent painterly arrow shown all the way through
+  // combat, regardless of whose prompt is active.
+  const activeAttackers = useMemo(
+    () =>
+      (gameView?.battlefield ?? [])
+        .filter((c) => c.isAttacking && c.attackingPlayerId)
+        .map((c) => ({ attackerId: c.id, defenderId: c.attackingPlayerId! })),
+    [gameView?.battlefield],
+  );
+
+  const liveArrowSpecs = useMemo(
     () =>
       buildArrowSpecs({
         promptType,
         attackerIds,
         blockAssignments,
         combatAssignments,
-        pendingAttackers,
-        myPlayerId: me?.id ?? "",
-        opponentPlayerId: opponent?.id ?? "",
+        activeAttackers,
         stack: gameView?.stack ?? [],
         activeStackObjectId: hoveredStackObjectIdForSpecs,
       }),
@@ -970,15 +987,29 @@ export default function Game({ exitTo }: GameProps = {}) {
       attackerIds,
       blockAssignments,
       combatAssignments,
-      pendingAttackers,
-      me?.id,
-      opponent?.id,
+      activeAttackers,
       gameView?.stack,
       hoveredStackObjectIdForSpecs,
     ],
   );
 
-  const pointerSpecs = useMemo(
+  // Dev-only: append a single force-rendered arrow spec for the type
+  // selected in the dev panel. Anchored player → player so it always
+  // resolves, even with an empty battlefield.
+  const debugArrowType = useGameDevStore((s) => s.debugArrowType);
+  const arrowSpecs = useMemo(() => {
+    if (!debugArrowType || !me?.id || !opponent?.id) return liveArrowSpecs;
+    return [
+      ...liveArrowSpecs,
+      {
+        from: { kind: "player" as const, id: me.id },
+        to: { kind: "player" as const, id: opponent.id },
+        type: debugArrowType,
+      },
+    ];
+  }, [liveArrowSpecs, debugArrowType, me?.id, opponent?.id]);
+
+  const livePointerSpecs = useMemo(
     () =>
       buildPointerSpecs({
         stack: gameView?.stack ?? [],
@@ -986,6 +1017,23 @@ export default function Game({ exitTo }: GameProps = {}) {
       }),
     [gameView?.stack, hoveredStackObjectIdForSpecs],
   );
+
+  // Dev-only: append a single force-rendered pointer spec for the
+  // intent the operator has selected in the dev panel so each glyph can
+  // be inspected on the live board without needing a real spell. Acts
+  // as a radio (one at a time) so glyphs never stack.
+  const debugPointerIntent = useGameDevStore((s) => s.debugPointerIntent);
+  const pointerSpecs = useMemo(() => {
+    if (!debugPointerIntent || !me?.id || !opponent?.id) return livePointerSpecs;
+    return [
+      ...livePointerSpecs,
+      {
+        from: { kind: "player" as const, id: me.id },
+        to: { kind: "player" as const, id: opponent.id },
+        intent: debugPointerIntent,
+      },
+    ];
+  }, [livePointerSpecs, debugPointerIntent, me?.id, opponent?.id]);
 
   const hoveredStackObjectId = useStackUIStore((s) => s.hoveredStackObjectId);
   const placementGhost = useMemo((): PlacementGhost | null => {
@@ -1175,16 +1223,17 @@ export default function Game({ exitTo }: GameProps = {}) {
     // that have left the hand but haven't resolved yet, fall through to
     // `knownCardsRef` — it preserves the full card (with setCode +
     // cardNumber) so StackDisplay's image fetch stays locked to the exact
-    // printing we were already showing. Without this, the stub below
-    // forces a name-only Scryfall lookup and the artwork can flip to a
-    // different printing mid-render.
+    // printing we were already showing. The stub at the bottom now seeds
+    // setCode / cardNumber from the engine-supplied StackObject fields
+    // (added so opponent-cast spells resolve to the correct printing
+    // without relying on a frontend cache that never saw the card).
     visibleCardsById.get(stackItem.sourceId) ??
     knownCardsRef.current.get(stackItem.sourceId) ??
     stackCardsBySourceId.get(stackItem.sourceId) ?? {
       id: stackItem.sourceId,
       name: stackItem.name,
-      setCode: "",
-      cardNumber: "",
+      setCode: stackItem.setCode ?? "",
+      cardNumber: stackItem.cardNumber ?? "",
       color: "",
       manaCost: "",
       types: [],
@@ -1245,11 +1294,29 @@ export default function Game({ exitTo }: GameProps = {}) {
       ? (activePrompt?.activatableAbilityIds ?? []).map((ability) => ability.cardId)
       : [],
   );
+  // While picking an attack target, mark every legal defender card
+  // (planeswalker / siege from the engine's `possibleDefenderIds`) as
+  // choosable so battlefield clicks land on them — the engine doesn't
+  // pre-mark them during attacker declaration.
+  const markIfDefender = (c: OpenMagicCard): OpenMagicCard =>
+    cardIsAttackTarget(c.id) ? { ...c, isChoosable: true } : c;
+  // Pending attackers display as tapped so the user has an immediate
+  // visual signal of "selected" without us drawing a misleading arrow
+  // toward an arbitrary default opponent. Tap state flips for real on
+  // the engine side once the attack commits.
+  const pendingAttackerSet = new Set(pendingAttackers);
+  const markIfPendingAttacker = (c: OpenMagicCard): OpenMagicCard =>
+    pendingAttackerSet.has(c.id) ? { ...c, tapped: true } : c;
   const myPermanents = gameView.battlefield
     .filter((c) => c.controllerId === me.id)
-    .map((c) => (battlefieldActivatableIds.has(c.id) ? { ...c, isChoosable: true } : c));
+    .map((c) => (battlefieldActivatableIds.has(c.id) ? { ...c, isChoosable: true } : c))
+    .map(markIfDefender)
+    .map(markIfPendingAttacker);
   const opponentPermanentsByPlayer = new Map(
-    opponents.map((op) => [op.id, gameView.battlefield.filter((c) => c.controllerId === op.id)]),
+    opponents.map((op) => [
+      op.id,
+      gameView.battlefield.filter((c) => c.controllerId === op.id).map(markIfDefender),
+    ]),
   );
 
   // Game over overlay
@@ -1450,7 +1517,9 @@ export default function Game({ exitTo }: GameProps = {}) {
           onPassUntilEot={activatePassUntilEot}
           selectedAttackDefenderId={attackDefenderId}
           selectedAttackDefenderLabel={selectedAttackDefender?.label}
+          multipleAttackDefenders={multipleAttackDefenders}
           onDeclareAttackers={declareAttackers}
+          onBeginAttackTargetPick={selectAllAttackersForPick}
           pendingAttacker={pendingAttacker}
           attackerIds={activePrompt?.attackerIds ?? []}
           blockAssignments={blockAssignments}
@@ -1489,6 +1558,22 @@ export default function Game({ exitTo }: GameProps = {}) {
           mulliganSelectedCount={mulliganPutBack.selected.size}
           onMulliganPutBackConfirm={mulliganPutBack.confirm}
         />
+      )}
+
+      {awaitingAttackTarget && (
+        <div className="pointer-events-none absolute top-4 left-1/2 z-50 -translate-x-1/2">
+          <div className="pointer-events-auto flex items-center gap-3 rounded-full border border-border/70 bg-background/90 px-4 py-2 shadow-lg backdrop-blur">
+            <span className="text-sm font-semibold tracking-wide">
+              Pick a target — click an opponent or planeswalker
+            </span>
+            <button
+              className="text-xs font-medium uppercase text-muted-foreground hover:text-destructive"
+              onClick={cancelAttackTargetPick}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
       )}
 
       <StackDisplay

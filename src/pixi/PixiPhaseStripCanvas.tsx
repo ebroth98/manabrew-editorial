@@ -5,7 +5,7 @@
 
 import { useRef, useEffect, useEffectEvent, useCallback, useState } from "react";
 import { Application } from "pixi.js";
-import { installPixiPatches } from "./pixiPatches";
+import { destroyPixiApp, installPixiPatches } from "./pixiPatches";
 installPixiPatches();
 import { PhaseStripLayer, type PhaseStripState, type PhaseStripCallbacks } from "./PhaseStripLayer";
 import { getTheme } from "@/hooks/useTheme";
@@ -60,7 +60,7 @@ export function PixiPhaseStripCanvas({ state, callbacks, className }: Props) {
     app.stage.addChild(strip.container);
 
     const parent = canvasRef.current.parentElement;
-    if (parent) {
+    if (parent && app.renderer) {
       app.renderer.resize(parent.clientWidth, parent.clientHeight);
       strip.resize(parent.clientWidth, parent.clientHeight);
     }
@@ -74,13 +74,20 @@ export function PixiPhaseStripCanvas({ state, callbacks, className }: Props) {
   useEffect(() => {
     let active = true;
     initApp().then((success) => {
-      if (active && success) markReady(true);
+      // Effect was cleaned up while init was in flight — tear down the
+      // app we just created instead of leaking its WebGL context.
+      if (!active) {
+        destroyPixiApp(appRef.current);
+        appRef.current = null;
+        return;
+      }
+      if (success) markReady(true);
     });
     return () => {
       active = false;
       stripRef.current?.destroy();
       stripRef.current = null;
-      appRef.current?.destroy(true);
+      destroyPixiApp(appRef.current);
       appRef.current = null;
       markReady(false);
     };
@@ -95,7 +102,9 @@ export function PixiPhaseStripCanvas({ state, callbacks, className }: Props) {
     const observer = new ResizeObserver((entries) => {
       for (const entry of entries) {
         const { width, height } = entry.contentRect;
-        if (width > 0 && height > 0) {
+        // App may have been destroyed between the resize event firing
+        // and this callback running (HMR re-mounts, unmount during init).
+        if (width > 0 && height > 0 && app.renderer) {
           app.renderer.resize(width, height);
           strip.resize(width, height);
         }

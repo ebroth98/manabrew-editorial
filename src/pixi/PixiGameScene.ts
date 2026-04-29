@@ -2441,14 +2441,21 @@ export class PixiGameScene {
   }
 
   private domCenterCanvasLocal(selector: string, canvasRect: DOMRect): ScreenPos | null {
-    const el = document.querySelector(selector);
-    if (!el) return null;
-    const r = (el as HTMLElement).getBoundingClientRect();
-    if (r.width === 0 && r.height === 0) return null;
-    return {
-      x: r.left + r.width / 2 - canvasRect.left,
-      y: r.top + r.height / 2 - canvasRect.top,
-    };
+    // The same element may be duplicated across responsive layouts
+    // (e.g. mobile-only <main class="md:hidden"> alongside desktop).
+    // Walk all matches and use the first one that's actually laid out
+    // — picking the DOM-first match would silently bail when it lives
+    // in a hidden ancestor.
+    const els = document.querySelectorAll(selector);
+    for (const el of els) {
+      const r = (el as HTMLElement).getBoundingClientRect();
+      if (r.width === 0 && r.height === 0) continue;
+      return {
+        x: r.left + r.width / 2 - canvasRect.left,
+        y: r.top + r.height / 2 - canvasRect.top,
+      };
+    }
+    return null;
   }
 
   private animateBattlefieldSprite(entry: SpriteEntry): void {

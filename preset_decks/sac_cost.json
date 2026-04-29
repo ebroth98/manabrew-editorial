@@ -6,11 +6,35 @@
   "ai_eligible": true,
   "order": 7,
   "cards": [
-    { "name": "Swamp", "count": 17, "set": "akh" },
-    { "name": "Severed Strands", "count": 10, "set": "grn" },
-    { "name": "Typhoid Rats", "count": 4, "set": "isd" },
-    { "name": "Vampire Nighthawk", "count": 3, "set": "m13" },
-    { "name": "Doom Blade", "count": 3, "set": "m14" },
-    { "name": "Raise Dead", "count": 3, "set": "m13" }
+    {
+      "name": "Swamp",
+      "count": 17,
+      "set": "akh"
+    },
+    {
+      "name": "Severed Strands",
+      "count": 10,
+      "set": "grn"
+    },
+    {
+      "name": "Typhoid Rats",
+      "count": 4,
+      "set": "isd"
+    },
+    {
+      "name": "Vampire Nighthawk",
+      "count": 3,
+      "set": "m13"
+    },
+    {
+      "name": "Doom Blade",
+      "count": 3,
+      "set": "m14"
+    },
+    {
+      "name": "Raise Dead",
+      "count": 3,
+      "set": "w17"
+    }
   ]
 }

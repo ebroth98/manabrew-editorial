@@ -94,6 +94,30 @@ const createTextureFromImage = (img: HTMLImageElement): Texture => {
 
 const pendingTexturePromises = new Map<string, Promise<CardEntry>>();
 
+/**
+ * Cache key shapes the resolved entry should be mirrored under so any
+ * subsequent caller — querying by id, set+collector, name+set, or just
+ * name — hits the same Scryfall printing instead of re-fetching and
+ * potentially resolving a different default printing.
+ *
+ * Pure (no draft / immer types) — the actual writes are inlined at the
+ * call site inside the immer producer where draft assignments are
+ * native and need no cast.
+ */
+function siblingKeysFor(entry: ScryfallEntry): string[] {
+  const info = entry.card?.info;
+  if (!info) return [];
+  const keys: string[] = [];
+  const lowerName = info.name?.toLowerCase();
+  const setCode = info.set?.toLowerCase();
+  const cn = info.collector_number?.toLowerCase();
+  if (info.id) keys.push(`id:${info.id}`);
+  if (setCode && cn) keys.push(`set:${setCode}::cn:${cn}`);
+  if (lowerName && setCode) keys.push(`name:${lowerName}::set:${setCode}`);
+  if (lowerName) keys.push(`name:${lowerName}`);
+  return keys;
+}
+
 export const useScryfallStore = create<ScryfallState>()(
   devtools(
     immer((set, get) => ({
@@ -108,11 +132,20 @@ export const useScryfallStore = create<ScryfallState>()(
           throw new Error("Couldn't find a texture url for: " + JSON.stringify(lookup));
         }
 
-        const entry = {
+        const entry: ScryfallEntry = {
           card: { info: card, texture: Texture.EMPTY, uris },
         };
+        const mirrorKeys = siblingKeysFor(entry);
+        const newId = entry.card?.info?.id;
         set((state) => {
           state.cards[key] = entry;
+          for (const k of mirrorKeys) {
+            // Preserve pinnings (e.g. from `updatePrinting`) by only
+            // overwriting empty slots or slots already pointing at the
+            // same Scryfall printing.
+            const existingId = state.cards[k]?.card?.info?.id;
+            if (existingId == null || existingId === newId) state.cards[k] = entry;
+          }
         });
         return entry.card!;
       },
@@ -146,8 +179,15 @@ export const useScryfallStore = create<ScryfallState>()(
           const htmlImage = await fetchImageElement(card.uris.border_crop);
           const texture = createTextureFromImage(htmlImage);
           const entry = { ...card, texture };
+          const wrapper: ScryfallEntry = { card: entry };
+          const mirrorKeys = siblingKeysFor(wrapper);
+          const newId = entry.info?.id;
           set((state) => {
-            state.cards[key] = { card: entry };
+            state.cards[key] = wrapper;
+            for (const k of mirrorKeys) {
+              const existingId = state.cards[k]?.card?.info?.id;
+              if (existingId == null || existingId === newId) state.cards[k] = wrapper;
+            }
           });
           return entry;
         })().finally(() => {
@@ -271,15 +311,49 @@ export const useCardRulings = (card: { rulings_uri: string }) => {
   return out;
 };
 
+export interface PrefetchProgress {
+  loaded: number;
+  failed: number;
+  total: number;
+}
+
+/**
+ * Eagerly fetch every Scryfall texture for the given card identities and
+ * resolve only once every request has settled.
+ *
+ * Used to gate the game-start handoff so the engine doesn't begin
+ * emitting prompts (which would dismiss the loading screen) before
+ * card artwork is in the texture cache. Failures don't reject the
+ * outer promise — the engine is still allowed to start, missing-art
+ * cards just fall back to the text rendering — but the failed count
+ * surfaces in `onProgress` so the UI can flag it.
+ */
 export async function prefetchCards(
   cards: { name: string; setCode?: string; cardNumber?: string }[],
-): Promise<void> {
+  onProgress?: (progress: PrefetchProgress) => void,
+): Promise<PrefetchProgress> {
   const state = useScryfallStore.getState();
-  await Promise.allSettled(
-    cards.map((c) =>
-      state.getCardTexture({ name: c.name, setCode: c.setCode, collectorNumber: c.cardNumber }),
-    ),
+  const total = cards.length;
+  let loaded = 0;
+  let failed = 0;
+  onProgress?.({ loaded, failed, total });
+  await Promise.all(
+    cards.map(async (c) => {
+      try {
+        await state.getCardTexture({
+          name: c.name,
+          setCode: c.setCode,
+          collectorNumber: c.cardNumber,
+        });
+        loaded += 1;
+      } catch (err) {
+        failed += 1;
+        console.warn(`[scryfall] prefetch failed for ${c.name}:`, err);
+      }
+      onProgress?.({ loaded, failed, total });
+    }),
   );
+  return { loaded, failed, total };
 }
 
 export function useSetLookup(): Map<string, ScryfallSet> {

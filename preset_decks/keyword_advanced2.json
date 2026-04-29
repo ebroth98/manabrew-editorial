@@ -6,20 +6,80 @@
   "ai_eligible": false,
   "order": 17,
   "cards": [
-    { "name": "Plains", "count": 6, "set": "akh" },
-    { "name": "Island", "count": 4, "set": "akh" },
-    { "name": "Swamp", "count": 4, "set": "akh" },
-    { "name": "Ledger Shredder", "count": 2, "set": "snc" },
-    { "name": "Thalia, Guardian of Thraben", "count": 2, "set": "dka" },
-    { "name": "Iridescent Hornbeetle", "count": 2, "set": "znr" },
-    { "name": "Sacred Cat", "count": 3, "set": "akh" },
-    { "name": "Aven Wind Guide", "count": 2, "set": "akh" },
-    { "name": "Eternal of Harsh Truths", "count": 2, "set": "hou" },
-    { "name": "Smuggler's Copter", "count": 2, "set": "kld" },
-    { "name": "Heart of Kiran", "count": 2, "set": "aer" },
-    { "name": "Arcbound Ravager", "count": 2, "set": "mrd" },
-    { "name": "Arcbound Worker", "count": 2, "set": "mrd" },
-    { "name": "Gray Merchant of Asphodel", "count": 2, "set": "ths" },
-    { "name": "Alseid of Life's Bounty", "count": 3, "set": "thb" }
+    {
+      "name": "Plains",
+      "count": 6,
+      "set": "akh"
+    },
+    {
+      "name": "Island",
+      "count": 4,
+      "set": "akh"
+    },
+    {
+      "name": "Swamp",
+      "count": 4,
+      "set": "akh"
+    },
+    {
+      "name": "Ledger Shredder",
+      "count": 2,
+      "set": "snc"
+    },
+    {
+      "name": "Thalia, Guardian of Thraben",
+      "count": 2,
+      "set": "dka"
+    },
+    {
+      "name": "Iridescent Hornbeetle",
+      "count": 2,
+      "set": "znr"
+    },
+    {
+      "name": "Sacred Cat",
+      "count": 3,
+      "set": "akh"
+    },
+    {
+      "name": "Aven Wind Guide",
+      "count": 2,
+      "set": "akh"
+    },
+    {
+      "name": "Eternal of Harsh Truths",
+      "count": 2,
+      "set": "hou"
+    },
+    {
+      "name": "Smuggler's Copter",
+      "count": 2,
+      "set": "kld"
+    },
+    {
+      "name": "Heart of Kiran",
+      "count": 2,
+      "set": "aer"
+    },
+    {
+      "name": "Arcbound Ravager",
+      "count": 2,
+      "set": "mma"
+    },
+    {
+      "name": "Arcbound Worker",
+      "count": 2,
+      "set": "mma"
+    },
+    {
+      "name": "Gray Merchant of Asphodel",
+      "count": 2,
+      "set": "ths"
+    },
+    {
+      "name": "Alseid of Life's Bounty",
+      "count": 3,
+      "set": "thb"
+    }
   ]
 }

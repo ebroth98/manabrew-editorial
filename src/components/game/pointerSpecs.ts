@@ -11,7 +11,7 @@
 
 import type { PointerSpec } from "@/pixi/types";
 import type { StackObject, StackTarget } from "@/types/openmagic";
-import { TargetingIntent } from "@/types/promptType";
+import { intentPrefersArrow, TargetingIntent } from "@/types/promptType";
 
 export interface BuildPointerSpecsOptions {
   stack?: StackObject[];
@@ -77,6 +77,10 @@ export function buildPointerSpecs(opts: BuildPointerSpecsOptions): PointerSpec[]
     const ep = targetEndpoint(t);
     if (!ep) continue;
     const intent = t.intent ?? (t.hostile ? TargetingIntent.Hostile : TargetingIntent.Friendly);
+    // Skip intents that render as arrows (attach/attack/block) — those
+    // are emitted by `buildArrowSpecs` instead so they aren't double-
+    // drawn here as pointer glyphs.
+    if (intentPrefersArrow(intent)) continue;
     specs.push({
       from: { kind: "stack", id: activeObj.id },
       to: ep,

@@ -6,25 +6,100 @@
   "ai_eligible": false,
   "order": 31,
   "cards": [
-    { "name": "Mountain", "count": 6, "set": "akh" },
-    { "name": "Forest", "count": 5, "set": "akh" },
-    { "name": "Swamp", "count": 5, "set": "akh" },
-    { "name": "Plains", "count": 4, "set": "akh" },
-
-    { "name": "Essence Warden", "count": 3, "set": "plc" },
-    { "name": "Blood Artist", "count": 3, "set": "avr" },
-    { "name": "Mayhem Devil", "count": 3, "set": "war" },
-    { "name": "Beast Whisperer", "count": 2, "set": "grn" },
-    { "name": "Nest of Scarabs", "count": 2, "set": "akh" },
-    { "name": "Mirkwood Bats", "count": 2, "set": "ltr" },
-    { "name": "Savannah Lions", "count": 4, "set": "m10" },
-    { "name": "White Knight", "count": 3, "set": "m10" },
-    { "name": "Lightning Bolt", "count": 4, "set": "m11" },
-    { "name": "Shock", "count": 4, "set": "m21" },
-    { "name": "Raise the Alarm", "count": 3, "set": "m15" },
-    { "name": "Impact Tremors", "count": 2, "set": "dtk" },
-    { "name": "Guttersnipe", "count": 2, "set": "rtr" },
-    { "name": "Young Pyromancer", "count": 2, "set": "m14" },
-    { "name": "Vampire Nighthawk", "count": 1, "set": "m13" }
+    {
+      "name": "Mountain",
+      "count": 6,
+      "set": "akh"
+    },
+    {
+      "name": "Forest",
+      "count": 5,
+      "set": "akh"
+    },
+    {
+      "name": "Swamp",
+      "count": 5,
+      "set": "akh"
+    },
+    {
+      "name": "Plains",
+      "count": 4,
+      "set": "akh"
+    },
+    {
+      "name": "Essence Warden",
+      "count": 3,
+      "set": "plc"
+    },
+    {
+      "name": "Blood Artist",
+      "count": 3,
+      "set": "avr"
+    },
+    {
+      "name": "Mayhem Devil",
+      "count": 3,
+      "set": "war"
+    },
+    {
+      "name": "Beast Whisperer",
+      "count": 2,
+      "set": "grn"
+    },
+    {
+      "name": "Nest of Scarabs",
+      "count": 2,
+      "set": "akh"
+    },
+    {
+      "name": "Mirkwood Bats",
+      "count": 2,
+      "set": "ltr"
+    },
+    {
+      "name": "Savannah Lions",
+      "count": 4,
+      "set": "fdn"
+    },
+    {
+      "name": "White Knight",
+      "count": 3,
+      "set": "m10"
+    },
+    {
+      "name": "Lightning Bolt",
+      "count": 4,
+      "set": "m11"
+    },
+    {
+      "name": "Shock",
+      "count": 4,
+      "set": "m21"
+    },
+    {
+      "name": "Raise the Alarm",
+      "count": 3,
+      "set": "m15"
+    },
+    {
+      "name": "Impact Tremors",
+      "count": 2,
+      "set": "dtk"
+    },
+    {
+      "name": "Guttersnipe",
+      "count": 2,
+      "set": "rtr"
+    },
+    {
+      "name": "Young Pyromancer",
+      "count": 2,
+      "set": "m14"
+    },
+    {
+      "name": "Vampire Nighthawk",
+      "count": 1,
+      "set": "m13"
+    }
   ]
 }

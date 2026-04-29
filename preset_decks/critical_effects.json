@@ -6,22 +6,90 @@
   "ai_eligible": false,
   "order": 22,
   "cards": [
-    { "name": "Island", "count": 7, "set": "akh" },
-    { "name": "Plains", "count": 5, "set": "akh" },
-    { "name": "Forest", "count": 3, "set": "akh" },
-    { "name": "Mountain", "count": 1, "set": "akh" },
-    { "name": "Chimeric Idol", "count": 2, "set": "pcy" },
-    { "name": "Elemental Uprising", "count": 2, "set": "ogw" },
-    { "name": "Zhalfirin Shapecraft", "count": 2, "set": "stx" },
-    { "name": "Majestic Metamorphosis", "count": 2, "set": "stx" },
-    { "name": "Natural Affinity", "count": 2, "set": "9ed" },
-    { "name": "Clone", "count": 2, "set": "m14" },
-    { "name": "Phantasmal Image", "count": 2, "set": "m12" },
-    { "name": "Voice of All", "count": 2, "set": "ddg" },
-    { "name": "Pentarch Ward", "count": 2, "set": "inv" },
-    { "name": "Wash Out", "count": 2, "set": "inv" },
-    { "name": "Balance", "count": 2, "set": "ema" },
-    { "name": "Winds of Change", "count": 2, "set": "5ed" },
-    { "name": "Serra Angel", "count": 2, "set": "m21" }
+    {
+      "name": "Island",
+      "count": 7,
+      "set": "akh"
+    },
+    {
+      "name": "Plains",
+      "count": 5,
+      "set": "akh"
+    },
+    {
+      "name": "Forest",
+      "count": 3,
+      "set": "akh"
+    },
+    {
+      "name": "Mountain",
+      "count": 1,
+      "set": "akh"
+    },
+    {
+      "name": "Chimeric Idol",
+      "count": 2,
+      "set": "pcy"
+    },
+    {
+      "name": "Elemental Uprising",
+      "count": 2,
+      "set": "ogw"
+    },
+    {
+      "name": "Zhalfirin Shapecraft",
+      "count": 2,
+      "set": "mom"
+    },
+    {
+      "name": "Majestic Metamorphosis",
+      "count": 2,
+      "set": "snc"
+    },
+    {
+      "name": "Natural Affinity",
+      "count": 2,
+      "set": "9ed"
+    },
+    {
+      "name": "Clone",
+      "count": 2,
+      "set": "m14"
+    },
+    {
+      "name": "Phantasmal Image",
+      "count": 2,
+      "set": "m12"
+    },
+    {
+      "name": "Voice of All",
+      "count": 2,
+      "set": "dmr"
+    },
+    {
+      "name": "Pentarch Ward",
+      "count": 2,
+      "set": "ima"
+    },
+    {
+      "name": "Wash Out",
+      "count": 2,
+      "set": "inv"
+    },
+    {
+      "name": "Balance",
+      "count": 2,
+      "set": "ema"
+    },
+    {
+      "name": "Winds of Change",
+      "count": 2,
+      "set": "5ed"
+    },
+    {
+      "name": "Serra Angel",
+      "count": 2,
+      "set": "fdn"
+    }
   ]
 }

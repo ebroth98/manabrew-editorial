@@ -74,7 +74,9 @@ interface PromptActionControllerProps {
   onPassUntilEot: () => void;
   selectedAttackDefenderId?: string | null;
   selectedAttackDefenderLabel?: string | null;
+  multipleAttackDefenders: boolean;
   onDeclareAttackers: (attackerIds: string[], defenderId?: string) => void;
+  onBeginAttackTargetPick: (attackerIds: string[]) => void;
   pendingAttacker: string | null;
   blockAssignments: CombatAssignment[];
   onDeclareBlockers: (assignments: CombatAssignment[]) => void;
@@ -113,7 +115,9 @@ export function PromptActionController({
   onPassUntilEot: _onPassUntilEot,
   selectedAttackDefenderId,
   selectedAttackDefenderLabel,
+  multipleAttackDefenders,
   onDeclareAttackers,
+  onBeginAttackTargetPick,
   pendingAttacker,
   blockAssignments,
   onDeclareBlockers,
@@ -150,8 +154,10 @@ export function PromptActionController({
         pendingAttackers={pendingAttackers}
         selectedDefenderId={selectedAttackDefenderId}
         selectedDefenderLabel={selectedAttackDefenderLabel}
+        multipleDefenders={multipleAttackDefenders}
         onPassPriority={onPassPriority}
         onDeclareAttackers={onDeclareAttackers}
+        onBeginAttackTargetPick={onBeginAttackTargetPick}
       />
     ),
     chooseBlockers: () => (

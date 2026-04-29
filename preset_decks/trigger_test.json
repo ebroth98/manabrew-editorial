@@ -6,16 +6,60 @@
   "ai_eligible": false,
   "order": 14,
   "cards": [
-    { "name": "Plains", "count": 10, "set": "akh" },
-    { "name": "Mountain", "count": 7, "set": "akh" },
-    { "name": "Soul Warden", "count": 7, "set": "mm3" },
-    { "name": "Guttersnipe", "count": 7, "set": "rtr" },
-    { "name": "Savannah Lions", "count": 4, "set": "m10" },
-    { "name": "Serra Angel", "count": 3, "set": "m21" },
-    { "name": "Lightning Bolt", "count": 4, "set": "m11" },
-    { "name": "Shock", "count": 4, "set": "m21" },
-    { "name": "Raise the Alarm", "count": 4, "set": "m15" },
-    { "name": "Vampire Nighthawk", "count": 3, "set": "m13" },
-    { "name": "White Knight", "count": 3, "set": "m10" }
+    {
+      "name": "Plains",
+      "count": 10,
+      "set": "akh"
+    },
+    {
+      "name": "Mountain",
+      "count": 7,
+      "set": "akh"
+    },
+    {
+      "name": "Soul Warden",
+      "count": 7,
+      "set": "mm3"
+    },
+    {
+      "name": "Guttersnipe",
+      "count": 7,
+      "set": "rtr"
+    },
+    {
+      "name": "Savannah Lions",
+      "count": 4,
+      "set": "fdn"
+    },
+    {
+      "name": "Serra Angel",
+      "count": 3,
+      "set": "fdn"
+    },
+    {
+      "name": "Lightning Bolt",
+      "count": 4,
+      "set": "m11"
+    },
+    {
+      "name": "Shock",
+      "count": 4,
+      "set": "m21"
+    },
+    {
+      "name": "Raise the Alarm",
+      "count": 4,
+      "set": "m15"
+    },
+    {
+      "name": "Vampire Nighthawk",
+      "count": 3,
+      "set": "m13"
+    },
+    {
+      "name": "White Knight",
+      "count": 3,
+      "set": "m10"
+    }
   ]
 }

@@ -6,23 +6,95 @@
   "ai_eligible": false,
   "order": 19,
   "cards": [
-    { "name": "Mountain", "count": 5, "set": "akh" },
-    { "name": "Forest", "count": 4, "set": "akh" },
-    { "name": "Island", "count": 4, "set": "akh" },
-    { "name": "Plains", "count": 4, "set": "akh" },
-    { "name": "Swamp", "count": 2, "set": "akh" },
-    { "name": "Sprout Swarm", "count": 2, "set": "fut" },
-    { "name": "Zurgo Bellstriker", "count": 2, "set": "dtk" },
-    { "name": "Joraga Warcaller", "count": 2, "set": "wwk" },
-    { "name": "Train of Thought", "count": 2, "set": "gpt" },
-    { "name": "Winds of Abandon", "count": 2, "set": "mh1" },
-    { "name": "Skewer the Critics", "count": 2, "set": "rna" },
-    { "name": "Wispmare", "count": 2, "set": "lrw" },
-    { "name": "Taigam's Strike", "count": 2, "set": "dtk" },
-    { "name": "Sweet Oblivion", "count": 2, "set": "thb" },
-    { "name": "Second Sight", "count": 2, "set": "ons" },
-    { "name": "Borrowed Grace", "count": 2, "set": "emn" },
-    { "name": "Grizzly Bears", "count": 2, "set": "m12" },
-    { "name": "Savannah Lions", "count": 2, "set": "m10" }
+    {
+      "name": "Mountain",
+      "count": 5,
+      "set": "akh"
+    },
+    {
+      "name": "Forest",
+      "count": 4,
+      "set": "akh"
+    },
+    {
+      "name": "Island",
+      "count": 4,
+      "set": "akh"
+    },
+    {
+      "name": "Plains",
+      "count": 4,
+      "set": "akh"
+    },
+    {
+      "name": "Swamp",
+      "count": 2,
+      "set": "akh"
+    },
+    {
+      "name": "Sprout Swarm",
+      "count": 2,
+      "set": "fut"
+    },
+    {
+      "name": "Zurgo Bellstriker",
+      "count": 2,
+      "set": "dtk"
+    },
+    {
+      "name": "Joraga Warcaller",
+      "count": 2,
+      "set": "wwk"
+    },
+    {
+      "name": "Train of Thought",
+      "count": 2,
+      "set": "gpt"
+    },
+    {
+      "name": "Winds of Abandon",
+      "count": 2,
+      "set": "mh1"
+    },
+    {
+      "name": "Skewer the Critics",
+      "count": 2,
+      "set": "rna"
+    },
+    {
+      "name": "Wispmare",
+      "count": 2,
+      "set": "lrw"
+    },
+    {
+      "name": "Taigam's Strike",
+      "count": 2,
+      "set": "dtk"
+    },
+    {
+      "name": "Sweet Oblivion",
+      "count": 2,
+      "set": "thb"
+    },
+    {
+      "name": "Second Sight",
+      "count": 2,
+      "set": "dst"
+    },
+    {
+      "name": "Borrowed Grace",
+      "count": 2,
+      "set": "emn"
+    },
+    {
+      "name": "Grizzly Bears",
+      "count": 2,
+      "set": "10e"
+    },
+    {
+      "name": "Savannah Lions",
+      "count": 2,
+      "set": "fdn"
+    }
   ]
 }

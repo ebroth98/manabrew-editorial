@@ -6,23 +6,79 @@
   "ai_eligible": false,
   "order": 54,
   "cards": [
-    { "name": "Mountain", "count": 10, "set": "akh" },
-    { "name": "Forest", "count": 10, "set": "akh" },
-    { "name": "Swamp", "count": 4, "set": "akh" },
-
-    { "name": "Guttersnipe", "count": 3, "set": "rtr" },
-    { "name": "Essence Warden", "count": 3, "set": "plc" },
-    { "name": "Raptor Hatchling", "count": 3, "set": "xln" },
-    { "name": "Gray Ogre", "count": 3, "set": "7ed" },
-    { "name": "Grizzly Bears", "count": 3, "set": "m12" },
-    { "name": "Satyr Wayfinder", "count": 3 },
-
-    { "name": "Lightning Bolt", "count": 4, "set": "m11" },
-    { "name": "Giant Growth", "count": 4, "set": "m11" },
-    { "name": "Shock", "count": 2, "set": "m21" },
-
-    { "name": "Rite of Passage", "count": 2, "set": "5dn" },
-    { "name": "Nest of Scarabs", "count": 3, "set": "akh" },
-    { "name": "Impact Tremors", "count": 3, "set": "dtk" }
+    {
+      "name": "Mountain",
+      "count": 10,
+      "set": "akh"
+    },
+    {
+      "name": "Forest",
+      "count": 10,
+      "set": "akh"
+    },
+    {
+      "name": "Swamp",
+      "count": 4,
+      "set": "akh"
+    },
+    {
+      "name": "Guttersnipe",
+      "count": 3,
+      "set": "rtr"
+    },
+    {
+      "name": "Essence Warden",
+      "count": 3,
+      "set": "plc"
+    },
+    {
+      "name": "Raptor Hatchling",
+      "count": 3,
+      "set": "xln"
+    },
+    {
+      "name": "Gray Ogre",
+      "count": 3,
+      "set": "4ed"
+    },
+    {
+      "name": "Grizzly Bears",
+      "count": 3,
+      "set": "10e"
+    },
+    {
+      "name": "Satyr Wayfinder",
+      "count": 3
+    },
+    {
+      "name": "Lightning Bolt",
+      "count": 4,
+      "set": "m11"
+    },
+    {
+      "name": "Giant Growth",
+      "count": 4,
+      "set": "m11"
+    },
+    {
+      "name": "Shock",
+      "count": 2,
+      "set": "m21"
+    },
+    {
+      "name": "Rite of Passage",
+      "count": 2,
+      "set": "5dn"
+    },
+    {
+      "name": "Nest of Scarabs",
+      "count": 3,
+      "set": "akh"
+    },
+    {
+      "name": "Impact Tremors",
+      "count": 3,
+      "set": "dtk"
+    }
   ]
 }

@@ -6,14 +6,50 @@
   "ai_eligible": false,
   "order": 50,
   "cards": [
-    { "name": "Mountain", "count": 10, "set": "akh" },
-    { "name": "Plains", "count": 7, "set": "akh" },
-    { "name": "Goblin Guide", "count": 4, "set": "zen" },
-    { "name": "Frenzied Goblin", "count": 3, "set": "m15" },
-    { "name": "Wall of Omens", "count": 3, "set": "roe" },
-    { "name": "Serra Angel", "count": 3, "set": "m14" },
-    { "name": "Lightning Bolt", "count": 4, "set": "m11" },
-    { "name": "Shock", "count": 3, "set": "m21" },
-    { "name": "Gray Ogre", "count": 3, "set": "7ed" }
+    {
+      "name": "Mountain",
+      "count": 10,
+      "set": "akh"
+    },
+    {
+      "name": "Plains",
+      "count": 7,
+      "set": "akh"
+    },
+    {
+      "name": "Goblin Guide",
+      "count": 4,
+      "set": "zen"
+    },
+    {
+      "name": "Frenzied Goblin",
+      "count": 3,
+      "set": "m15"
+    },
+    {
+      "name": "Wall of Omens",
+      "count": 3,
+      "set": "roe"
+    },
+    {
+      "name": "Serra Angel",
+      "count": 3,
+      "set": "m14"
+    },
+    {
+      "name": "Lightning Bolt",
+      "count": 4,
+      "set": "m11"
+    },
+    {
+      "name": "Shock",
+      "count": 3,
+      "set": "m21"
+    },
+    {
+      "name": "Gray Ogre",
+      "count": 3,
+      "set": "4ed"
+    }
   ]
 }

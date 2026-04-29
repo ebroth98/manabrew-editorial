@@ -6,14 +6,50 @@
   "ai_eligible": true,
   "order": 10,
   "cards": [
-    { "name": "Forest", "count": 17, "set": "akh" },
-    { "name": "Prey Upon", "count": 4, "set": "isd" },
-    { "name": "Ram Through", "count": 4, "set": "iko" },
-    { "name": "Garruk's Companion", "count": 4, "set": "m13" },
-    { "name": "Centaur Courser", "count": 4, "set": "m14" },
-    { "name": "Giant Spider", "count": 3, "set": "m14" },
-    { "name": "Craw Wurm", "count": 3, "set": "m11" },
-    { "name": "Giant Growth", "count": 4, "set": "m11" },
-    { "name": "Grizzly Bears", "count": 4, "set": "m12" }
+    {
+      "name": "Forest",
+      "count": 17,
+      "set": "akh"
+    },
+    {
+      "name": "Prey Upon",
+      "count": 4,
+      "set": "isd"
+    },
+    {
+      "name": "Ram Through",
+      "count": 4,
+      "set": "iko"
+    },
+    {
+      "name": "Garruk's Companion",
+      "count": 4,
+      "set": "m12"
+    },
+    {
+      "name": "Centaur Courser",
+      "count": 4,
+      "set": "m20"
+    },
+    {
+      "name": "Giant Spider",
+      "count": 3,
+      "set": "m14"
+    },
+    {
+      "name": "Craw Wurm",
+      "count": 3,
+      "set": "m10"
+    },
+    {
+      "name": "Giant Growth",
+      "count": 4,
+      "set": "m11"
+    },
+    {
+      "name": "Grizzly Bears",
+      "count": 4,
+      "set": "10e"
+    }
   ]
 }

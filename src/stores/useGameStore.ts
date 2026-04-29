@@ -100,6 +100,7 @@ export const useGameStore = create<GameState>()(
       snapshots: [],
       isGameActive: false,
       debugInfo: "",
+      prefetchProgress: null,
       deferredQueue: [],
       isFlashing: false,
       isWaitingForResponse: false,
@@ -127,6 +128,7 @@ export const useGameStore = create<GameState>()(
             isFlashing: false,
             isWaitingForResponse: false,
             debugInfo: "Starting game...",
+            prefetchProgress: null,
           });
           const format = formatId ? getFormat(formatId) : undefined;
           const startingLife = format?.deckRules.startingLife ?? 20;
@@ -148,15 +150,32 @@ export const useGameStore = create<GameState>()(
               );
             }
           }
+          // Prefetch BEFORE starting the engine. Otherwise the engine
+          // emits its first prompt within milliseconds and the loading
+          // screen dismisses (gameView becomes non-null) before the
+          // texture cache is warm — leaving cards rendering as text
+          // placeholders while images stream in.
+          const allCards = [...deckList, ...(opponentDeckList ?? [])];
+          set({
+            debugInfo: "Loading card images...",
+            prefetchProgress: { loaded: 0, failed: 0, total: allCards.length },
+          });
+          const progress = await prefetchCards(allCards, (p) => {
+            set({ prefetchProgress: p });
+          });
+          if (progress.failed > 0) {
+            console.warn(
+              `[store] prefetch finished with ${progress.failed}/${progress.total} failures`,
+            );
+          }
+          set({ debugInfo: "Starting engine..." });
           const result = await runtime.api.startGame({
             deckList: deckList,
             startingLife,
             commanderName: commanderName ?? null,
             opponentDeckList: opponentDeckList ?? null,
           });
-          set({ debugInfo: "Fetching card images..." });
-          await prefetchCards([...deckList, ...(opponentDeckList ?? [])]);
-          set({ debugInfo: `Game started: ${result}. Polling...` });
+          set({ debugInfo: `Game started: ${result}. Polling...`, prefetchProgress: null });
           if (runtime.capabilities.manualTabletop) {
             const prompt = await runtime.api.getPrompt();
             if (prompt && (prompt as AgentPrompt).gameView) {
@@ -164,7 +183,7 @@ export const useGameStore = create<GameState>()(
             }
           }
         } catch (e) {
-          set({ isGameActive: false, debugInfo: `Start failed: ${e}` });
+          set({ isGameActive: false, debugInfo: `Start failed: ${e}`, prefetchProgress: null });
           console.error("[store] Failed to start game:", e);
           toast.error(e instanceof Error ? e.message : "Failed to start game");
         }
@@ -309,6 +328,7 @@ export const useGameStore = create<GameState>()(
             isFlashing: false,
             isWaitingForResponse: false,
             debugInfo: "Starting multiplayer game...",
+            prefetchProgress: null,
           });
           resetSelectedGameRuntime();
           const runtime = getSelectedGameRuntime();
@@ -320,6 +340,23 @@ export const useGameStore = create<GameState>()(
               );
             }
           }
+          // Same ordering rule as `startGame`: prefetch BEFORE the engine
+          // boots so first prompts can't dismiss the loading screen
+          // ahead of the texture cache.
+          const allCards = deckLists.flat();
+          set({
+            debugInfo: "Loading card images...",
+            prefetchProgress: { loaded: 0, failed: 0, total: allCards.length },
+          });
+          const progress = await prefetchCards(allCards, (p) => {
+            set({ prefetchProgress: p });
+          });
+          if (progress.failed > 0) {
+            console.warn(
+              `[store] prefetch finished with ${progress.failed}/${progress.total} failures`,
+            );
+          }
+          set({ debugInfo: "Starting engine..." });
           await runtime.api.startMultiplayerGame({
             playerNames,
             deckLists,
@@ -328,11 +365,13 @@ export const useGameStore = create<GameState>()(
             localIsHost,
             startingLife,
           });
-          set({ debugInfo: "Fetching card images..." });
-          await prefetchCards(deckLists.flat());
-          set({ debugInfo: "Multiplayer game started." });
+          set({ debugInfo: "Multiplayer game started.", prefetchProgress: null });
         } catch (e) {
-          set({ isGameActive: false, debugInfo: `Multiplayer start failed: ${e}` });
+          set({
+            isGameActive: false,
+            debugInfo: `Multiplayer start failed: ${e}`,
+            prefetchProgress: null,
+          });
           console.error("[store] Failed to start multiplayer game:", e);
           toast.error(e instanceof Error ? e.message : "Failed to start multiplayer game");
         }

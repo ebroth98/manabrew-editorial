@@ -134,6 +134,12 @@ pub struct CardDto {
     pub tapped: bool,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub is_attacking: bool,
+    /// Encoded id (`player-N`) of the defender this creature is attacking,
+    /// when `is_attacking` is true. Sent so the UI can draw an attack arrow
+    /// straight from this attacker to the defender without needing to
+    /// reconstruct the relationship from prompt state.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub attacking_player_id: Option<String>,
     pub keywords: Vec<String>,
     /// Active counters: counter type name -> count. Only non-zero entries included.
     pub counters: HashMap<String, i32>,
@@ -190,6 +196,17 @@ pub struct StackObjectDto {
     pub controller_id: String,
     pub name: String,
     pub text: String,
+    /// MTG set code of the source card (e.g. "m14"). Sent so the frontend's
+    /// Scryfall image cache resolves the same printing the engine is using —
+    /// without it, a stack stub falls back to a name-only Scryfall lookup
+    /// which returns Scryfall's default printing and may not match the
+    /// player's deck choice.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub set_code: Option<String>,
+    /// MTG collector number of the source card (e.g. "127"). Paired with
+    /// `set_code` so `set:xxx::cn:yyy` cache lookups hit on the frontend.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub card_number: Option<String>,
     /// True when this stack entry is a permanent spell (creature, artifact,
     /// enchantment, planeswalker) that will resolve onto the battlefield.
     /// False for instants, sorceries, and activated/triggered abilities.
@@ -631,6 +648,7 @@ pub fn card_to_dto(
         zone_id: zone_label.to_string(),
         tapped: card.tapped,
         is_attacking: card.attacking_player.is_some(),
+        attacking_player_id: card.attacking_player.map(player_id_str),
         // Merge intrinsic keywords with those granted by continuous effects (layer 6)
         // and temporary pump keywords (KW$ parameter, until end of turn).
         keywords: {
@@ -771,11 +789,12 @@ impl GameViewDto {
             .stack
             .iter()
             .map(|entry| {
-                let name = entry
-                    .spell_ability
-                    .source
-                    .map(|cid| game.card(cid).card_name.clone())
+                let source_card = entry.spell_ability.source.map(|cid| game.card(cid));
+                let name = source_card
+                    .map(|c| c.card_name.clone())
                     .unwrap_or_else(|| "Ability".to_string());
+                let set_code = source_card.and_then(|c| c.set_code.clone());
+                let card_number = source_card.and_then(|c| c.card_number.clone());
                 StackObjectDto {
                     id: format!("stack-{}", entry.id),
                     source_id: entry
@@ -786,6 +805,8 @@ impl GameViewDto {
                     controller_id: player_id_str(entry.spell_ability.activating_player),
                     name,
                     text: entry.spell_ability.ability_text.clone(),
+                    set_code,
+                    card_number,
                     is_permanent_spell: entry.is_creature_spell || entry.is_permanent_spell,
                     targets: collect_stack_targets(&entry.spell_ability),
                 }

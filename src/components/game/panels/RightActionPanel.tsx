@@ -12,6 +12,7 @@ import {
   useGameDevStore,
 } from "@/stores/useGameDevStore";
 import { PlayerBadgeDevControls } from "@/components/dev/PlayerBadgeDevControls";
+import { PointerDebugControls } from "@/components/dev/PointerDebugControls";
 
 const DEV_LABELS: Record<DevPromptActionOverride, string> = {
   chooseAction: "ChooseAction",
@@ -168,6 +169,7 @@ export function RightActionPanel({
               ))}
             </div>
             <PlayerBadgeDevControls />
+            <PointerDebugControls />
           </div>
         )}
       </div>

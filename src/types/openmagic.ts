@@ -39,6 +39,10 @@ export interface Card {
   zoneId: string; // UUID
   tapped?: boolean;
   isAttacking?: boolean;
+  /** Encoded id (`player-N`) of the defender this creature is attacking,
+   *  when `isAttacking` is true. Drives the persistent painterly attack
+   *  arrow shown throughout combat. */
+  attackingPlayerId?: string;
   keywords?: string[];
   counters?: Record<string, number>;
   damage?: number;
@@ -203,6 +207,12 @@ export interface StackObject {
   controllerId: string;
   name: string;
   text: string;
+  /** Set code of the source card so the frontend's Scryfall image cache
+   *  can resolve the same printing the engine is using. Optional because
+   *  pure abilities (no source card) and legacy DTOs may omit it. */
+  setCode?: string;
+  /** Collector number paired with `setCode`. */
+  cardNumber?: string;
   /** True for permanent spells (creature/artifact/enchantment/planeswalker). */
   isPermanentSpell: boolean;
   /** Normalized chosen targets flattened across ability/sub-ability nodes. */

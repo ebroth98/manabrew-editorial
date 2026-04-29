@@ -206,6 +206,10 @@ export interface GameState {
   snapshots: GameSnapshotEntry[];
   isGameActive: boolean;
   debugInfo: string;
+  /** Card-image prefetch progress shown on the loading screen. Reset to
+   *  null between games. Populated while the start-game flow is fetching
+   *  Scryfall textures, before the engine is allowed to emit prompts. */
+  prefetchProgress: { loaded: number; failed: number; total: number } | null;
   /** Queue of deferred snapshots waiting for flash animation. */
   deferredQueue: DeferredSnapshot[];
   /** True while Game.tsx is processing flash animations. */

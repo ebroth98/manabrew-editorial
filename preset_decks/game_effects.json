@@ -6,16 +6,60 @@
   "ai_eligible": false,
   "order": 17,
   "cards": [
-    { "name": "Forest", "count": 8, "set": "akh" },
-    { "name": "Island", "count": 6, "set": "akh" },
-    { "name": "Plains", "count": 4, "set": "akh" },
-    { "name": "Fog", "count": 4, "set": "m12" },
-    { "name": "Holy Day", "count": 3, "set": "m13" },
-    { "name": "Time Warp", "count": 3, "set": "m10" },
-    { "name": "Icy Manipulator", "count": 3, "set": "m14" },
-    { "name": "Giant Spider", "count": 3, "set": "m14" },
-    { "name": "Serra Angel", "count": 3, "set": "m21" },
-    { "name": "Grizzly Bears", "count": 4, "set": "m12" },
-    { "name": "Giant Growth", "count": 4, "set": "m11" }
+    {
+      "name": "Forest",
+      "count": 8,
+      "set": "akh"
+    },
+    {
+      "name": "Island",
+      "count": 6,
+      "set": "akh"
+    },
+    {
+      "name": "Plains",
+      "count": 4,
+      "set": "akh"
+    },
+    {
+      "name": "Fog",
+      "count": 4,
+      "set": "m12"
+    },
+    {
+      "name": "Holy Day",
+      "count": 3,
+      "set": "10e"
+    },
+    {
+      "name": "Time Warp",
+      "count": 3,
+      "set": "m10"
+    },
+    {
+      "name": "Icy Manipulator",
+      "count": 3,
+      "set": "dmr"
+    },
+    {
+      "name": "Giant Spider",
+      "count": 3,
+      "set": "m14"
+    },
+    {
+      "name": "Serra Angel",
+      "count": 3,
+      "set": "fdn"
+    },
+    {
+      "name": "Grizzly Bears",
+      "count": 4,
+      "set": "10e"
+    },
+    {
+      "name": "Giant Growth",
+      "count": 4,
+      "set": "m11"
+    }
   ]
 }
