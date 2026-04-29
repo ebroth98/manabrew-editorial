@@ -58,13 +58,32 @@ function shellSplit(s) {
 // Fields that are wall-clock or otherwise non-deterministic debugging metadata.
 const IGNORED_FIELDS = new Set(["timestamp_ms"]);
 
+// Log-array keys whose contents we filter to snapshot entries only. The
+// production java-vs-rust parity comparator (forge-parity::comparator) only
+// diffs StateSnapshots; Decision and Callback log entries are inspection
+// metadata for the debugger, not part of the parity verdict. Including them
+// here would make rust-vs-rust strictly stricter than the production check
+// for no observable benefit (and would catch e.g. callback ordering changes
+// that produce identical game state).
+const LOG_ARRAY_KEYS = new Set(["rust_log", "java_log"]);
+
+function isSnapshotEntry(e) {
+  return e && typeof e === "object" && e.entry_type === "snapshot";
+}
+
 function stripIgnored(value) {
   if (Array.isArray(value)) {
     for (const v of value) stripIgnored(v);
   } else if (value && typeof value === "object") {
     for (const k of Object.keys(value)) {
-      if (IGNORED_FIELDS.has(k)) delete value[k];
-      else stripIgnored(value[k]);
+      if (IGNORED_FIELDS.has(k)) {
+        delete value[k];
+      } else if (LOG_ARRAY_KEYS.has(k) && Array.isArray(value[k])) {
+        value[k] = value[k].filter(isSnapshotEntry);
+        for (const e of value[k]) stripIgnored(e);
+      } else {
+        stripIgnored(value[k]);
+      }
     }
   }
 }
