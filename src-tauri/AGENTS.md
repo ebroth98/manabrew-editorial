@@ -1,0 +1,28 @@
+# Tauri shell
+
+Native desktop wrapper. Tauri v2, Rust backend, hosts either the native Rust engine or (opt-in) the Java Forge bridge.
+
+Read first: `/AGENTS.md`.
+
+## Layout
+
+| File | Role |
+|---|---|
+| `src/lib.rs`, `src/main.rs` | Tauri entry — registers handlers, loads bundled resources. |
+| `src/commands.rs` | Game commands exposed to the UI (`start_game`, `respond`, `end_game`, `restore_snapshot`, `get_prompt`, …). |
+| `src/server_commands.rs` | Lobby/server commands (`server_connect`, `server_join_room`, …). |
+| `src/game_manager.rs` | Owns the active game session(s). |
+| `src/engine_backend.rs`, `src/engine_backend/` | Two backends: `rust_backend.rs` (production) and `java_backend.rs` (parity-debug bridge). DTO shapes must match between the two — the UI doesn't branch. |
+| `src/ai_agent.rs`, `src/client_bot.rs` | AI agent and bot manager. |
+| `src/multiplayer_controller.rs`, `src/network.rs`, `src/tauri_transport.rs` | Networking + IPC transport. |
+| `src/server_client.rs` | Client-side connection to the optional matchmaking server. |
+| `src/card_db.rs`, `src/preset_decks.rs` | Card database loader, preset deck loader. |
+| `tauri.conf.json` | Bundle config — including the `bundle.resources` list that copies card scripts, tokens, editions, and preset decks into the app at install time. |
+
+## Conventions
+
+- **Bundled resources** (`cardsfolder/`, `tokenscripts/`, `editions/`, `preset_decks/`) are exposed via env vars (`CARDS_DIR`, `TOKEN_SCRIPTS_DIR`, …) set in `lib.rs::run()` before any command runs. Don't read paths relative to the source tree at runtime — packaged builds don't have it.
+- **Backend selection.** `OPEN_MAGIC_ENGINE_BACKEND=java-forge` switches to the Java bridge. Without it, the native Rust engine runs. Confirm the active backend in terminal logs (`backend=java-forge` or `backend=rust`); the UI alone doesn't reveal it.
+- **DTO parity.** `engine_backend/rust_backend.rs` and `engine_backend/java_backend.rs` must emit identical DTO shapes. If you add a field to one, add it to the other.
+- **Tauri command surface.** Every UI-facing command is registered in `lib.rs::run()` via `tauri::generate_handler![…]`. Adding a command means: implement, add to the handler list, expose from the appropriate module.
+- **Long-running work runs off the command thread.** Tauri commands are async; spawn into the game/transport runtime, don't block.
