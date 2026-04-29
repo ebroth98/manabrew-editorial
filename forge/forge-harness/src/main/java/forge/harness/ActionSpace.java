@@ -207,10 +207,19 @@ public final class ActionSpace {
             final Set<Card> reservedSacrifices
     ) {
         final ManaCost manaCost = sa.getPayCosts().getTotalMana();
+        return canPayManaCostFromCurrentSources(manaCost, sa, player, reservedSacrifices);
+    }
+
+    static boolean canPayManaCostFromCurrentSources(
+            final ManaCost manaCost,
+            final SpellAbility sa,
+            final Player player,
+            final Set<Card> reservedSacrifices
+    ) {
         final List<Integer> sourceMasks = new ArrayList<>();
 
         addFloatingManaSources(player, sourceMasks);
-        addBattlefieldManaSources(sa, player, reservedSacrifices, sourceMasks);
+        addBattlefieldManaSources(sa, player, reservedSacrifices == null ? Set.of() : reservedSacrifices, sourceMasks);
 
         return canPayManaCostFromSources(manaCost, sourceMasks);
     }

@@ -190,6 +190,7 @@ fn cleansing_wildfire_subability_uses_parent_targeted_controller_for_search() {
         spell_ability: sa,
         is_creature_spell: false,
         is_permanent_spell: false,
+        is_pending_cast: false,
         cast_from_zone: Some(ZoneType::Hand),
         optional_trigger_decider: None,
         optional_trigger_description: None,

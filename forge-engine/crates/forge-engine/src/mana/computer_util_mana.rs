@@ -310,6 +310,34 @@ pub fn auto_tap_lands_trace_with_callbacks_and_reserved_sacrifices(
     )
 }
 
+/// Same as [`auto_tap_lands_trace_with_callbacks_and_reserved_sacrifices`]
+/// but propagates a `ManaPaymentContext` to the source-grouping pass so
+/// `RestrictValid$` mana sources are filtered out when they don't apply to
+/// the current payment (e.g. Flamebraider's "Spend only on Elemental spells/
+/// abilities" must not show up when paying an `UnlessCost`).
+pub fn auto_tap_lands_trace_with_callbacks_reserved_and_ctx(
+    game: &mut GameState,
+    pool: &mut ManaPool,
+    player: PlayerId,
+    cost: &ManaCost,
+    current_spell: Option<CardId>,
+    reserved_sacrifices: &[CardId],
+    callback: ManaPayCallbackFn<'_>,
+    payment_ctx: &crate::mana::ManaPaymentContext,
+) -> Vec<AutoTapChoice> {
+    auto_tap_lands_internal_with_ctx(
+        game,
+        pool,
+        player,
+        cost,
+        current_spell,
+        false,
+        reserved_sacrifices,
+        &mut Some(callback),
+        Some(payment_ctx),
+    )
+}
+
 /// Determine the next mana source/ability auto-pay would use without mutating
 /// the game or pool. This lets callback-driven payment replay the exact same
 /// source choice as engine auto-pay, including multi-ability lands.
@@ -465,6 +493,30 @@ fn auto_tap_lands_internal(
     reserved_sacrifices: &[CardId],
     callback: &mut Option<ManaPayCallbackFn<'_>>,
 ) -> Vec<AutoTapChoice> {
+    auto_tap_lands_internal_with_ctx(
+        game,
+        pool,
+        player,
+        cost,
+        current_spell,
+        allow_reserved_source_reuse,
+        reserved_sacrifices,
+        callback,
+        None,
+    )
+}
+
+fn auto_tap_lands_internal_with_ctx(
+    game: &mut GameState,
+    pool: &mut ManaPool,
+    player: PlayerId,
+    cost: &ManaCost,
+    current_spell: Option<CardId>,
+    allow_reserved_source_reuse: bool,
+    reserved_sacrifices: &[CardId],
+    callback: &mut Option<ManaPayCallbackFn<'_>>,
+    payment_ctx: Option<&crate::mana::ManaPaymentContext>,
+) -> Vec<AutoTapChoice> {
     let mut tapped_choices: Vec<AutoTapChoice> = Vec::new();
 
     let mut unpaid = ManaCostBeingPaid::from_mana_cost(cost);
@@ -480,7 +532,8 @@ fn auto_tap_lands_internal(
 
         // Java re-collects candidates every iteration. This ensures tapped/sacrificed
         // sources are excluded and state changes from the previous iteration are visible.
-        let mana_ability_map = group_sources_by_mana_color(game, player, reserved_sacrifices, None);
+        let mana_ability_map =
+            group_sources_by_mana_color(game, player, reserved_sacrifices, payment_ctx);
         if mana_ability_map.is_empty() {
             break;
         }
@@ -523,8 +576,18 @@ fn auto_tap_lands_internal(
             continue;
         }
 
-        if let Some(fixed_atoms) = fixed_produced_atoms(&sa_payment.mana_text, &[]) {
-            let pain = super::land_pain_damage(game.card(sa_payment.card_id), chosen_atom);
+        if let Some(fixed_atoms) = fixed_output_atoms_for_payment(game, player, &sa_payment) {
+            let pain = super::land_pain_damage(
+                game.card(sa_payment.card_id),
+                chosen_atom,
+                sa_payment.ability_index,
+            );
+            let is_special_output = sa_payment.mana_text.starts_with("Special ");
+            let trace_atom = if is_special_output {
+                fixed_atoms.iter().fold(0, |acc, atom| acc | *atom)
+            } else {
+                chosen_atom
+            };
             let is_snow = game.card(sa_payment.card_id).type_line.is_snow();
             if source_requires_tap(game, &sa_payment) && !game.card(sa_payment.card_id).tapped {
                 game.tap(sa_payment.card_id);
@@ -549,8 +612,8 @@ fn auto_tap_lands_internal(
             tapped_choices.push(AutoTapChoice {
                 card_id: sa_payment.card_id,
                 mana_ability_index: sa_payment.ability_index,
-                chosen_atom,
-                needs_express_choice: false,
+                chosen_atom: trace_atom,
+                needs_express_choice: is_special_output,
             });
         } else {
             // Sources with more than one possible color require a color
@@ -567,9 +630,31 @@ fn auto_tap_lands_internal(
                         let forced = [color_name.to_string()];
                         // Multi-amount combo sources (e.g. Flamebraider:
                         // `Produced$ Combo Any | Amount$ 2`) resolve one
-                        // `chooseColor` per output mana in Java's ManaEffect,
-                        // so fire the callback once per unit.
-                        for _ in 0..amount {
+                        // `chooseColor` per scripted output mana in Java's
+                        // ManaEffect. ProduceMana replacement effects
+                        // (Nyxbloom's `ReplaceAmount$ 3`) duplicate the
+                        // already-chosen mana string afterward, so they must
+                        // not create extra color-choice callbacks.
+                        let replacement_multiplier = sa_payment
+                            .atoms
+                            .iter()
+                            .map(|&atom| {
+                                super::replacement_adjusted_atoms_for_availability(
+                                    game,
+                                    player,
+                                    sa_payment.card_id,
+                                    atom,
+                                )
+                                .len()
+                            })
+                            .max()
+                            .unwrap_or(1)
+                            .max(1);
+                        let color_choice_count = amount
+                            .checked_div(replacement_multiplier)
+                            .unwrap_or(amount)
+                            .max(1);
+                        for _ in 0..color_choice_count {
                             cb(ManaPayCallback::ChooseColor(&forced));
                         }
                     }
@@ -583,6 +668,7 @@ fn auto_tap_lands_internal(
                 chosen_atom,
                 source_requires_tap(game, &sa_payment),
                 &mut Vec::new(),
+                sa_payment.ability_index,
             );
 
             tapped_choices.push(AutoTapChoice {
@@ -711,15 +797,14 @@ fn shard_priority(unpaid: &ManaCostBeingPaid, candidates: &[ManaAbilityRef]) -> 
         }
     }
     // Sort colored shards by fewest available candidates (most constrained first).
-    // Secondary tiebreak: descending ManaAtom value. This matches Java's observed
-    // HashMap iteration order where higher-atom shards (Red=8) come before lower
-    // (Blue=2) when candidate counts are equal.
+    // Equal-count shards need a deterministic tiebreak; otherwise payment can
+    // consume flexible sources in different orders across runs/engines.
     colored.sort_by(|&a, &b| {
         let count_a = count_candidates_for_shard(candidates, a);
         let count_b = count_candidates_for_shard(candidates, b);
         count_a
             .cmp(&count_b)
-            .then_with(|| shard_atom_value(b).cmp(&shard_atom_value(a)))
+            .then_with(|| shard_color_rank(a).cmp(&shard_color_rank(b)))
     });
     if let Some(g) = generic {
         colored.push(g);
@@ -727,16 +812,84 @@ fn shard_priority(unpaid: &ManaCostBeingPaid, candidates: &[ManaAbilityRef]) -> 
     colored
 }
 
-/// Map a ManaCostShard to its primary ManaAtom bitmask value for tiebreaking.
-fn shard_atom_value(shard: ManaCostShard) -> u16 {
-    match shard {
-        ManaCostShard::White | ManaCostShard::WhitePhyrexian => ManaAtom::WHITE,
-        ManaCostShard::Blue | ManaCostShard::BluePhyrexian => ManaAtom::BLUE,
-        ManaCostShard::Black | ManaCostShard::BlackPhyrexian => ManaAtom::BLACK,
-        ManaCostShard::Red | ManaCostShard::RedPhyrexian => ManaAtom::RED,
-        ManaCostShard::Green | ManaCostShard::GreenPhyrexian => ManaAtom::GREEN,
-        ManaCostShard::Colorless => ManaAtom::COLORLESS,
-        _ => 0,
+fn shard_color_rank(shard: ManaCostShard) -> u8 {
+    let ordered = color_set_order_atoms(shard.color_mask() as u16);
+    let Some(primary) = ordered.first() else {
+        return 5;
+    };
+    color_set_order_atoms(ManaAtom::COLORS_SUPERPOSITION)
+        .iter()
+        .position(|atom| atom == primary)
+        .map(|idx| idx as u8)
+        .unwrap_or(5)
+}
+
+fn color_set_order_atoms(mask: u16) -> &'static [u16] {
+    match mask & ManaAtom::COLORS_SUPERPOSITION {
+        0 => &[],
+        1 => &[ManaAtom::WHITE],
+        2 => &[ManaAtom::BLUE],
+        3 => &[ManaAtom::WHITE, ManaAtom::BLUE],
+        4 => &[ManaAtom::BLACK],
+        5 => &[ManaAtom::WHITE, ManaAtom::BLACK],
+        6 => &[ManaAtom::BLUE, ManaAtom::BLACK],
+        7 => &[ManaAtom::WHITE, ManaAtom::BLUE, ManaAtom::BLACK],
+        8 => &[ManaAtom::RED],
+        9 => &[ManaAtom::RED, ManaAtom::WHITE],
+        10 => &[ManaAtom::BLUE, ManaAtom::RED],
+        11 => &[ManaAtom::BLUE, ManaAtom::RED, ManaAtom::WHITE],
+        12 => &[ManaAtom::BLACK, ManaAtom::RED],
+        13 => &[ManaAtom::RED, ManaAtom::WHITE, ManaAtom::BLACK],
+        14 => &[ManaAtom::BLUE, ManaAtom::BLACK, ManaAtom::RED],
+        15 => &[
+            ManaAtom::WHITE,
+            ManaAtom::BLUE,
+            ManaAtom::BLACK,
+            ManaAtom::RED,
+        ],
+        16 => &[ManaAtom::GREEN],
+        17 => &[ManaAtom::GREEN, ManaAtom::WHITE],
+        18 => &[ManaAtom::GREEN, ManaAtom::BLUE],
+        19 => &[ManaAtom::GREEN, ManaAtom::WHITE, ManaAtom::BLUE],
+        20 => &[ManaAtom::BLACK, ManaAtom::GREEN],
+        21 => &[ManaAtom::WHITE, ManaAtom::BLACK, ManaAtom::GREEN],
+        22 => &[ManaAtom::BLACK, ManaAtom::GREEN, ManaAtom::BLUE],
+        23 => &[
+            ManaAtom::GREEN,
+            ManaAtom::WHITE,
+            ManaAtom::BLUE,
+            ManaAtom::BLACK,
+        ],
+        24 => &[ManaAtom::RED, ManaAtom::GREEN],
+        25 => &[ManaAtom::RED, ManaAtom::GREEN, ManaAtom::WHITE],
+        26 => &[ManaAtom::GREEN, ManaAtom::BLUE, ManaAtom::RED],
+        27 => &[
+            ManaAtom::RED,
+            ManaAtom::GREEN,
+            ManaAtom::WHITE,
+            ManaAtom::BLUE,
+        ],
+        28 => &[ManaAtom::BLACK, ManaAtom::RED, ManaAtom::GREEN],
+        29 => &[
+            ManaAtom::BLACK,
+            ManaAtom::RED,
+            ManaAtom::GREEN,
+            ManaAtom::WHITE,
+        ],
+        30 => &[
+            ManaAtom::BLUE,
+            ManaAtom::BLACK,
+            ManaAtom::RED,
+            ManaAtom::GREEN,
+        ],
+        31 => &[
+            ManaAtom::WHITE,
+            ManaAtom::BLUE,
+            ManaAtom::BLACK,
+            ManaAtom::RED,
+            ManaAtom::GREEN,
+        ],
+        _ => &[],
     }
 }
 
@@ -1752,7 +1905,7 @@ pub fn can_pay_spell_mana_cost_for_action_space(
             break;
         };
 
-        if let Some(fixed_atoms) = fixed_produced_atoms(&sa_payment.mana_text, &[]) {
+        if let Some(fixed_atoms) = fixed_output_atoms_for_payment(game, player, &sa_payment) {
             let repeats = (sa_payment.amount.max(1) as usize)
                 .checked_div(fixed_atoms.len().max(1))
                 .unwrap_or(1)
@@ -1775,6 +1928,28 @@ pub fn can_pay_spell_mana_cost_for_action_space(
     unpaid.is_paid()
         || (unpaid.contains_only_phyrexian_mana()
             && game.player(player).life > required_phyrexian_life(&unpaid))
+}
+
+fn fixed_output_atoms_for_payment(
+    game: &GameState,
+    player: PlayerId,
+    mana_ability: &ManaAbilityRef,
+) -> Option<Vec<u16>> {
+    if let Some(fixed_atoms) = fixed_produced_atoms(&mana_ability.mana_text, &[]) {
+        return Some(fixed_atoms);
+    }
+    let special = mana_ability.mana_text.strip_prefix("Special ")?;
+    let atoms = crate::ability::effects::mana_effect::available_special_mana_atoms(
+        game,
+        mana_ability.card_id,
+        player,
+        special,
+    );
+    if atoms.is_empty() {
+        None
+    } else {
+        Some(atoms)
+    }
 }
 
 fn get_available_mana_sources(
@@ -1858,6 +2033,28 @@ fn is_payable_mana_ability(
                 raw.to_string()
             };
             if !crate::mana::mana_meets_restriction(&resolved, ctx) {
+                return false;
+            }
+            // Java parity (`harness/AutoPay.canPayShard:271`): the per-shard
+            // candidate filter calls `meetsManaRestrictions(manaAbility)` —
+            // passing the MANA ABILITY itself, not the SA being paid for.
+            // For `RestrictValid$ Spell` the check resolves at
+            // `AbilityManaPart.java:442` to `manaAbility.isValid("Spell")`,
+            // which returns false because the mana ability is an activated
+            // ability, not a spell. So Omnath's Leyline-Immersion-granted
+            // 5-mana ability fails its own restriction self-check and gets
+            // excluded from the candidate pool — even though Animar (the
+            // actual cast SA) is a spell. Replicate the same self-check
+            // here so Rust's per-shard filtering matches Java.
+            let self_ctx = crate::mana::ManaPaymentContext {
+                is_spell: false,
+                is_activated_ability: true,
+                sa_on_stack: false,
+                type_line: Some(card.type_line.clone()),
+                card_name: Some(card.card_name.clone()),
+                chosen_types_by_source: ctx.chosen_types_by_source.clone(),
+            };
+            if !crate::mana::mana_meets_restriction(&resolved, &self_ctx) {
                 return false;
             }
         }
@@ -2220,7 +2417,16 @@ pub fn auto_tap_lands_generic(
             atoms.first().copied().unwrap_or(ManaAtom::COLORLESS)
         };
 
-        tap_land_for_mana(game, pool, player, card_id, atom, true, &mut tapped_lands);
+        tap_land_for_mana(
+            game,
+            pool,
+            player,
+            card_id,
+            atom,
+            true,
+            &mut tapped_lands,
+            None,
+        );
         remaining -= 1;
     }
 

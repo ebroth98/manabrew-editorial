@@ -101,24 +101,24 @@ export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembl
 
 export interface InitOutput {
     readonly memory: WebAssembly.Memory;
-    readonly get_card_count: () => number;
-    readonly get_token_count: () => number;
-    readonly has_card: (a: number, b: number) => number;
-    readonly is_card_db_loaded: () => number;
-    readonly is_token_db_loaded: () => number;
+    readonly wasm_init: () => void;
+    readonly log: (a: number, b: number) => void;
     readonly load_card_bundle: (a: number, b: number) => [number, number, number];
     readonly load_token_bundle: (a: number, b: number) => [number, number, number];
-    readonly log: (a: number, b: number) => void;
+    readonly is_card_db_loaded: () => number;
+    readonly get_card_count: () => number;
+    readonly is_token_db_loaded: () => number;
+    readonly get_token_count: () => number;
+    readonly has_card: (a: number, b: number) => number;
     readonly parse_preset_decks: (a: number, b: number) => [number, number, number];
-    readonly wasm_init: () => void;
-    readonly echo: (a: number, b: number) => [number, number];
     readonly get_engine_info: () => any;
-    readonly parse_config: (a: any) => [number, number, number];
+    readonly echo: (a: number, b: number) => [number, number];
     readonly parse_deck: (a: any) => [number, number, number];
+    readonly parse_config: (a: any) => [number, number, number];
+    readonly test_rng: () => any;
+    readonly test_foundation: () => any;
     readonly run_interactive_game: (a: any, b: any, c: any, d: any) => [number, number, number];
     readonly run_multiplayer_game: (a: any, b: any, c: any, d: any, e: any, f: number) => [number, number, number];
-    readonly test_foundation: () => any;
-    readonly test_rng: () => any;
     readonly __wbindgen_malloc_command_export: (a: number, b: number) => number;
     readonly __wbindgen_realloc_command_export: (a: number, b: number, c: number, d: number) => number;
     readonly __wbindgen_exn_store_command_export: (a: number) => void;

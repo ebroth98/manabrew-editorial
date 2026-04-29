@@ -2,6 +2,28 @@ use super::mana_payment::ManaPaymentSession;
 use super::*;
 use crate::mana::mana_cost_being_paid::ManaCostBeingPaid;
 
+/// Find the `MayPlayAltManaCost$` value granted to `card_id` by any
+/// `MayPlay$ True` static the player controls. Mirrors Java's
+/// `GameActionUtil.getAlternativeCosts` reading the static that authorized the cast.
+fn may_play_alt_mana_cost_for(
+    game: &GameState,
+    player: PlayerId,
+    card_id: CardId,
+) -> Option<String> {
+    let card = game.card(card_id);
+    game.cards_in_zone(ZoneType::Battlefield, player)
+        .iter()
+        .chain(game.cards_in_zone(ZoneType::Command, player).iter())
+        .find_map(|&source_id| {
+            let source = game.card(source_id);
+            source.static_abilities.iter().find_map(|sa| {
+                crate::staticability::static_ability_continuous::may_play_alt_mana_cost(
+                    sa, source, card, game,
+                )
+            })
+        })
+}
+
 impl GameLoop {
     pub(crate) fn parse_spell_cost(abilities: &[String]) -> Option<crate::cost::Cost> {
         for ability in abilities {
@@ -177,7 +199,13 @@ impl GameLoop {
             game.card_mut(stack_push.source_card).cast_sa =
                 Some(Box::new(stack_push.entry.spell_ability.clone()));
         }
-        game.stack.push(stack_push.entry.clone());
+        if let Some(pending_stack_id) = stack_push.pending_stack_id {
+            game.stack
+                .complete_pending_cast(pending_stack_id, stack_push.entry.clone())
+                .expect("pending spell cast entry should exist until cast completes");
+        } else {
+            game.stack.push(stack_push.entry.clone());
+        }
         self.log_stack_push(&stack_push.stack_log_name, &game.player(player).name);
         let mut event = if stack_push.event_kind == SpellAbilityLogEventKind::Stack {
             crate::agent::GameLogEvent::stack(stack_push.stack_message)
@@ -527,7 +555,6 @@ impl GameLoop {
         let card = game.card(card_id);
         let card_name = card.card_name.clone();
         let original_zone = card.zone;
-        let original_owner = card.owner;
 
         // Cast spell — tap lands for mana, put on stack, resolve
         let is_creature = game.card(card_id).is_creature();
@@ -658,6 +685,13 @@ impl GameLoop {
             forge_foundation::ManaCost::parse(&warp_cost_str)
         } else if is_morph_facedown {
             forge_foundation::ManaCost::generic(crate::spellability::MORPH_GENERIC_COST)
+        } else if original_zone == ZoneType::Exile {
+            // Java parity: a `MayPlay$ True | MayPlayAltManaCost$ X` static
+            // active for this exiled card replaces the printed mana cost.
+            // Used by Airbend's Effect to let the owner cast for `{2}`.
+            may_play_alt_mana_cost_for(game, player, card_id)
+                .map(|s| forge_foundation::ManaCost::parse(&s))
+                .unwrap_or_else(|| game.card(card_id).mana_cost.clone())
         } else {
             game.card(card_id).mana_cost.clone()
         };
@@ -1092,26 +1126,44 @@ impl GameLoop {
             .svars
             .insert("XPaid".to_string(), x_value.to_string());
 
+        let cast_rollback_snapshot = self.make_snapshot(game, true);
+        let announced_from_zone = game.card_current_zone(card_id);
+        if sa.is_spell && !game.card_is_in_zone(card_id, ZoneType::Stack) {
+            self.move_card_with_runtime(game, card_id, ZoneType::Stack, player, agents);
+        }
+        let pending_stack_id = if sa.is_spell {
+            Some(game.stack.begin_pending_cast(StackEntry {
+                id: 0,
+                spell_ability: sa.clone(),
+                is_pending_cast: true,
+                is_creature_spell: is_creature,
+                is_permanent_spell: is_permanent,
+                cast_from_zone: Some(announced_from_zone),
+                optional_trigger_decider: None,
+                optional_trigger_description: None,
+                optional_trigger_source_name: None,
+            }))
+        } else {
+            None
+        };
+
+        macro_rules! rollback_cast {
+            () => {{
+                self.restore_snapshot(game, &cast_rollback_snapshot);
+                return None;
+            }};
+        }
+
         if !sa.overloaded {
-            crate::perf::increment(crate::perf::Metric::GameStateTargetingClones, 1);
-            let mut targeting_game = game.clone();
-            if sa.is_spell && !targeting_game.card_is_in_zone(card_id, ZoneType::Stack) {
-                // Java deterministic spell casting moves the spell to stack
-                // before setupTargets(), so counterspells can see themselves
-                // as legal stack targets during target selection.
-                targeting_game.move_card(card_id, ZoneType::Stack, player);
-            }
             if sa.api == Some(crate::ability::api_type::ApiType::Charm)
                 && !crate::ability::effects::charm_effect::make_choices_precast(
-                    &mut targeting_game,
-                    agents,
-                    &mut sa,
+                    game, agents, &mut sa,
                 )
             {
-                return None;
+                rollback_cast!();
             }
-            if !sa.setup_targets(&targeting_game, agents, &self.mana_pools) {
-                return None;
+            if !sa.setup_targets(game, agents, &self.mana_pools) {
+                rollback_cast!();
             }
             // Post-targeting validation: reject cast if MustTarget (Flagbearer)
             // restriction is not satisfied. Mirrors Java's isLegalAfterTargeting()
@@ -1119,20 +1171,14 @@ impl GameLoop {
             // target doesn't include the required Flagbearer.
             let meets =
                 crate::staticability::static_ability_must_target::meets_must_target_restriction(
-                    &targeting_game,
-                    &sa,
+                    game, &sa,
                 );
             if !meets {
                 eprintln!(
                     "[RUST-MUST-TARGET] Cast rejected for {} — MustTarget restriction not met",
                     card_name
                 );
-                if self.java_parity_failed_spell_setup_to_stack
-                    && !game.card_is_in_zone(card_id, ZoneType::Stack)
-                {
-                    game.move_card(card_id, ZoneType::Stack, player);
-                }
-                return None;
+                rollback_cast!();
             }
         }
 
@@ -1159,7 +1205,7 @@ impl GameLoop {
             false,
             false,
         ) {
-            return None;
+            rollback_cast!();
         }
         let total_cost = crate::mana::apply_player_life_payment_keywords(
             game,
@@ -1172,7 +1218,7 @@ impl GameLoop {
         let prechosen_spell_sacrifices = if let Some(ref sc) = spell_cost {
             match self.prechoose_additional_cost_sacrifices(game, agents, player, sc, Some(&sa)) {
                 Some(picks) => Some(picks),
-                None => return None,
+                None => rollback_cast!(),
             }
         } else {
             None
@@ -1180,7 +1226,7 @@ impl GameLoop {
         let prechosen_spell_discards = if let Some(ref sc) = spell_cost {
             match self.prechoose_additional_cost_discards(game, agents, player, card_id, sc) {
                 Some(picks) => Some(picks),
-                None => return None,
+                None => rollback_cast!(),
             }
         } else {
             None
@@ -1188,7 +1234,7 @@ impl GameLoop {
         let prechosen_static_alt_sacrifices = if let Some(ref cost) = static_alt_cost {
             match self.prechoose_additional_cost_sacrifices(game, agents, player, cost, Some(&sa)) {
                 Some(picks) => Some(picks),
-                None => return None,
+                None => rollback_cast!(),
             }
         } else {
             None
@@ -1196,7 +1242,7 @@ impl GameLoop {
         let prechosen_static_alt_discards = if let Some(ref cost) = static_alt_cost {
             match self.prechoose_additional_cost_discards(game, agents, player, card_id, cost) {
                 Some(picks) => Some(picks),
-                None => return None,
+                None => rollback_cast!(),
             }
         } else {
             None
@@ -1212,6 +1258,8 @@ impl GameLoop {
                 .collect();
             mana::ManaPaymentContext {
                 is_spell: true,
+                is_activated_ability: false,
+                sa_on_stack: true,
                 type_line: Some(card.type_line.clone()),
                 card_name: Some(card.card_name.clone()),
                 chosen_types_by_source,
@@ -1310,11 +1358,9 @@ impl GameLoop {
                         )
                     };
                     if let Some(result) = auto_result {
-                        colors_spent_to_cast.set(colors_spent_to_cast.get() | result.colors_spent);
-                        paying_mana_to_cast
-                            .borrow_mut()
-                            .extend(result.paying_mana.iter().copied());
-                        let trace: Vec<ManaCostAction> = result
+                        // Build trace from the partial-or-full taps regardless
+                        // of cancellation — Java's harness records the same.
+                        let mut trace: Vec<ManaCostAction> = result
                             .choices
                             .iter()
                             .map(|choice| ManaCostAction::TapLand {
@@ -1327,6 +1373,20 @@ impl GameLoop {
                                 },
                             })
                             .collect();
+                        if result.cancelled {
+                            // Partial-tap-then-cancel mirrors Java's
+                            // `payManaCostWithTrace` flow: lands stay tapped,
+                            // pool drains the partial mana, and the session
+                            // emits `[TapLand …, Cancel]`. Append the explicit
+                            // `Cancel` here so the session-generic loop sees a
+                            // terminal-cancelled trace rather than a paid one.
+                            trace.push(ManaCostAction::Cancel);
+                            return Some(trace);
+                        }
+                        colors_spent_to_cast.set(colors_spent_to_cast.get() | result.colors_spent);
+                        paying_mana_to_cast
+                            .borrow_mut()
+                            .extend(result.paying_mana.iter().copied());
                         for &tapped_id in &result.tapped {
                             slf.trigger_handler.run_trigger(
                                 TriggerType::Taps,
@@ -1397,16 +1457,7 @@ impl GameLoop {
                 },
             );
             if !mana_paid {
-                if game.card_current_zone(card_id) != original_zone {
-                    self.move_card_with_runtime(
-                        game,
-                        card_id,
-                        original_zone,
-                        original_owner,
-                        agents,
-                    );
-                }
-                return None;
+                rollback_cast!();
             }
         }
 
@@ -1521,6 +1572,16 @@ impl GameLoop {
         // ── TriggersWhenSpent: fire triggers from consumed mana ──
         {
             let triggers_after = self.pool(player).collect_trigger_mana();
+            // Mana that was both produced and consumed during this cost
+            // payment never appears in the before/after pool diff, so pull
+            // those from the pool's payment-consume log too. Without this,
+            // sources like Path of Ancestry — whose mana exists only between
+            // tap and cost-deduction — never fire their `TriggersWhenSpent`
+            // hook.
+            let payment_consumed = self.pool_mut(player).take_last_payment_triggers_consumed();
+            let mut combined_before = triggers_before.clone();
+            combined_before.extend(payment_consumed);
+            let triggers_before = combined_before;
             let mut fired = std::collections::HashSet::new();
             for (svar_name, source_id) in &triggers_before {
                 if fired.contains(&(svar_name.clone(), *source_id)) {
@@ -1614,11 +1675,11 @@ impl GameLoop {
                 sc,
                 None,
                 sc.mandatory,
-                Some(&sa),
+                Some(&mut sa),
                 prechosen_spell_sacrifices.as_deref(),
                 prechosen_spell_discards.as_deref(),
             ) {
-                return None;
+                rollback_cast!();
             }
             if has_waterbend {
                 for cid in untapped_before
@@ -1658,11 +1719,11 @@ impl GameLoop {
                 cost,
                 None,
                 cost.mandatory,
-                Some(&sa),
+                Some(&mut sa),
                 prechosen_static_alt_sacrifices.as_deref(),
                 prechosen_static_alt_discards.as_deref(),
             ) {
-                return None;
+                rollback_cast!();
             }
             if has_waterbend {
                 for cid in untapped_before
@@ -1702,11 +1763,11 @@ impl GameLoop {
                 rc,
                 None,
                 rc.mandatory,
-                Some(&sa),
+                Some(&mut sa),
                 None,
                 None,
             ) {
-                return None;
+                rollback_cast!();
             }
             if has_waterbend {
                 for cid in untapped_before
@@ -1749,11 +1810,11 @@ impl GameLoop {
                 fb_cost,
                 None,
                 fb_cost.mandatory,
-                Some(&sa),
+                Some(&mut sa),
                 None,
                 None,
             ) {
-                return None;
+                rollback_cast!();
             }
             if has_waterbend {
                 for cid in untapped_before
@@ -1786,11 +1847,11 @@ impl GameLoop {
                 &evoke_cost,
                 None,
                 evoke_cost.mandatory,
-                Some(&sa),
+                Some(&mut sa),
                 None,
                 None,
             ) {
-                return None;
+                rollback_cast!();
             }
         }
 
@@ -1837,14 +1898,15 @@ impl GameLoop {
         } else if is_commander_cast {
             Some(ZoneType::Command)
         } else {
-            // Use the card's actual zone (usually Hand, but could be
-            // Exile for Warp-from-exile casts with Normal mode).
-            Some(game.card_current_zone(card_id))
+            // Use the zone from which the spell was announced, before the
+            // source moved to Stack as part of casting.
+            Some(announced_from_zone)
         };
 
         let entry = StackEntry {
             id: 0,
             spell_ability: sa,
+            is_pending_cast: false,
             is_creature_spell: is_creature,
             is_permanent_spell: is_permanent,
             cast_from_zone: cast_zone,
@@ -1867,11 +1929,12 @@ impl GameLoop {
                 source_card: card_id,
                 // Deep-clones the stack entry and its SpellAbility graph.
                 entry: entry.clone(),
+                pending_stack_id,
                 stack_log_name: card_name.clone(),
                 stack_message,
                 target_card: chosen_target,
                 event_kind: SpellAbilityLogEventKind::Stack,
-                move_source_to_stack: true,
+                move_source_to_stack: false,
                 register_source_trigger: true,
             },
         );
@@ -2113,6 +2176,7 @@ impl GameLoop {
                 let entry = StackEntry {
                     id: 0,
                     spell_ability: sa,
+                    is_pending_cast: false,
                     is_creature_spell: is_creature,
                     is_permanent_spell: is_permanent,
                     cast_from_zone: Some(ZoneType::Exile),

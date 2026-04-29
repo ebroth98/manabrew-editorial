@@ -455,6 +455,22 @@ impl Trigger {
     /// Mirrors Java Trigger.checkResolvedLimit() (approximation with per-card counter).
     pub fn check_resolved_limit(&self, game: &GameState, host_card: CardId) -> bool {
         if let Some(limit) = self.ir.resolved_limit {
+            if self.get_overriding_ability().is_none() {
+                let Some(ability_text) = game.card(host_card).get_s_var(&self.execute) else {
+                    return true;
+                };
+                let ability = build_spell_ability(
+                    game,
+                    host_card,
+                    ability_text,
+                    game.card(host_card).controller,
+                );
+                return (game
+                    .card(host_card)
+                    .get_ability_resolved_this_turn_activators(Some(&ability))
+                    .len() as u32)
+                    < limit;
+            }
             return (game
                 .card(host_card)
                 .get_ability_resolved_this_turn_activators(self.get_overriding_ability())

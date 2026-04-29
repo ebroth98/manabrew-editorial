@@ -44,6 +44,22 @@ pub fn can_play(st_ab: &StaticAbility, source: &Card, card: &Card, _game: &GameS
     )
 }
 
+/// If a `MayPlay$ True` static on `source` grants `card` permission to be
+/// cast and also defines `MayPlayAltManaCost$`, return that alt cost string.
+/// Mirrors Java's `GameActionUtil.canPlayCardMayPlay` reading
+/// `getMayPlayAltManaCost()` for the granting static.
+pub fn may_play_alt_mana_cost(
+    st_ab: &StaticAbility,
+    source: &Card,
+    card: &Card,
+    game: &GameState,
+) -> Option<String> {
+    if !can_play(st_ab, source, card, game) {
+        return None;
+    }
+    st_ab.ir.may_play_alt_mana_cost.clone()
+}
+
 pub fn run(st_ab: &StaticAbility, source: &Card, game: &GameState) -> bool {
     st_ab.check_conditions(source, game)
 }

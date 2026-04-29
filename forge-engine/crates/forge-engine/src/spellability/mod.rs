@@ -2015,7 +2015,10 @@ pub fn choose_targets_by_kind(
         }
     }
 
-    true
+    let chosen_targets = sa.target_chosen.all_target_cards().len() as i32
+        + sa.target_chosen.all_target_players().len() as i32
+        + i32::from(sa.target_chosen.target_stack_entry.is_some());
+    chosen_targets >= min_targets
 }
 
 fn target_allowed_by_defined_controller(

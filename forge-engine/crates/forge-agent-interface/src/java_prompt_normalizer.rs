@@ -880,6 +880,7 @@ fn to_stack_object(entry: &Value, index: usize, controller_id: &str) -> Value {
             .and_then(Value::as_str)
             .unwrap_or_default(),
         "isPermanentSpell": false,
+        "isCasting": false,
         "targets": [],
     })
 }

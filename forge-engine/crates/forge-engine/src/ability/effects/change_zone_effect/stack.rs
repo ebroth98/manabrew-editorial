@@ -18,8 +18,18 @@ pub(super) fn resolve_stack_removal(
 ) {
     let target_card = if sa.uses_targeting() {
         sa.target_chosen.target_card
+    } else if let Some(src) = sa
+        .trigger_source
+        .filter(|&cid| ctx.game.card(cid).zone == ZoneType::Stack)
+    {
+        Some(src)
     } else {
-        sa.trigger_source
+        // Fallback to `Defined$ Self` (the source card) when the SA has no
+        // targets and no triggering card. Java's stack-removal path defaults
+        // to the host card here; without this, abilities like Avatar's
+        // Wrath's `DB$ ChangeZone | Origin$ Stack | Destination$ Exile`
+        // never exile the spell, leaving it to the default graveyard move.
+        sa.source
             .filter(|&cid| ctx.game.card(cid).zone == ZoneType::Stack)
     };
 

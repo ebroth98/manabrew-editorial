@@ -18,6 +18,11 @@ pub struct StackEntry {
     pub id: u32,
     /// The spell ability with its full sub-ability chain and targets.
     pub spell_ability: SpellAbility,
+    /// True while a spell has been announced and moved to the stack, but its
+    /// modes/targets/costs/payment have not finished yet. Pending entries are
+    /// visible for casting prompts but must never resolve or receive priority.
+    #[serde(default)]
+    pub is_pending_cast: bool,
     /// Whether this is a creature spell (goes to battlefield on resolve).
     pub is_creature_spell: bool,
     /// Whether this is a non-creature permanent spell.
@@ -169,9 +174,36 @@ impl MagicStack {
     pub fn push(&mut self, mut entry: StackEntry) -> u32 {
         let id = self.next_id;
         self.next_id += 1;
+        entry.is_pending_cast = false;
         entry.id = id;
         self.entries.push(entry);
-        // Update max distinct sources
+        self.update_max_distinct_sources();
+        id
+    }
+
+    pub fn begin_pending_cast(&mut self, mut entry: StackEntry) -> u32 {
+        let id = self.next_id;
+        self.next_id += 1;
+        entry.id = id;
+        entry.is_pending_cast = true;
+        self.entries.push(entry);
+        self.update_max_distinct_sources();
+        id
+    }
+
+    pub fn complete_pending_cast(&mut self, id: u32, mut entry: StackEntry) -> Option<&StackEntry> {
+        let pending = self
+            .entries
+            .iter_mut()
+            .find(|existing| existing.id == id && existing.is_pending_cast)?;
+        entry.id = id;
+        entry.is_pending_cast = false;
+        *pending = entry;
+        self.update_max_distinct_sources();
+        self.entries.iter().find(|existing| existing.id == id)
+    }
+
+    fn update_max_distinct_sources(&mut self) {
         let distinct: std::collections::HashSet<_> = self
             .entries
             .iter()
@@ -180,7 +212,6 @@ impl MagicStack {
         if distinct.len() > self.max_distinct_sources {
             self.max_distinct_sources = distinct.len();
         }
-        id
     }
 
     pub fn pop(&mut self) -> Option<StackEntry> {
@@ -510,6 +541,14 @@ impl MagicStack {
     /// which calls this to get the entry, then resolves it with full game context.
     /// Mirrors Java's `MagicStack.resolveStack()`.
     pub fn resolve_stack(&mut self) -> Option<StackEntry> {
+        if self
+            .entries
+            .last()
+            .map(|entry| entry.is_pending_cast)
+            .unwrap_or(false)
+        {
+            return None;
+        }
         let entry = self.entries.pop()?;
         self.resolving = true;
         self.cur_resolving_card = entry.spell_ability.source;

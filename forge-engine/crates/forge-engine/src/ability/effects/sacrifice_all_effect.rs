@@ -46,19 +46,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
             if ctx.game.player(payer).has_lost {
                 continue;
             }
-            let available = crate::mana::calculate_available_mana(
-                &ctx.mana_pools[payer.index()],
-                ctx.game,
-                payer,
-            );
-            let can_pay = crate::cost::can_pay_with_ability(
-                &cost,
-                ctx.game,
-                &available,
-                source,
-                payer,
-                Some(sa),
-            );
+            let can_pay = can_pay_unless_cost(ctx, sa, source, payer, &cost);
             let card_name = sa.source.map(|cid| ctx.game.card(cid).card_name.clone());
             let cost_kind = cost.to_simple_string();
             let prompt = format!(
@@ -83,6 +71,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
                 &prompt,
                 card_name.as_deref(),
                 sa.api,
+                can_pay,
             );
             let paid = wants_to_pay
                 && can_pay
@@ -184,4 +173,41 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     }
 
     crate::game_loop::fire_sacrificed_once_for_batch(ctx.game, ctx.trigger_handler, &by_controller);
+}
+
+fn can_pay_unless_cost(
+    ctx: &EffectContext,
+    sa: &crate::spellability::SpellAbility,
+    source: CardId,
+    payer: crate::ids::PlayerId,
+    cost: &crate::cost::Cost,
+) -> bool {
+    if cost.has_mana_cost()
+        && !crate::mana::can_pay_mana_cost_with_reserved_sacrifices(
+            ctx.game,
+            &ctx.mana_pools[payer.index()],
+            payer,
+            source,
+            cost,
+            &[],
+            None,
+        )
+    {
+        return false;
+    }
+
+    let non_mana_cost = cost.copy_with_no_mana();
+    if non_mana_cost.parts.is_empty() {
+        return true;
+    }
+    let available =
+        crate::mana::calculate_available_mana(&ctx.mana_pools[payer.index()], ctx.game, payer);
+    crate::cost::can_pay_with_ability(
+        &non_mana_cost,
+        ctx.game,
+        &available,
+        source,
+        payer,
+        Some(sa),
+    )
 }

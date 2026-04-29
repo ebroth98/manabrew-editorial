@@ -425,6 +425,7 @@ impl GameLoop {
         let entry = StackEntry {
             id: 0,
             spell_ability: sa,
+            is_pending_cast: false,
             is_creature_spell: false,
             is_permanent_spell: false,
             cast_from_zone: None,
@@ -722,7 +723,7 @@ impl GameLoop {
             ab.ability_api,
             adjusted_cost.mandatory,
             CostPaymentContext::ActivatedAbility,
-            Some(&sa),
+            Some(&mut sa),
         ) {
             return false;
         }
@@ -749,6 +750,7 @@ impl GameLoop {
         let entry = StackEntry {
             id: 0,
             spell_ability: sa,
+            is_pending_cast: false,
             is_creature_spell: false,
             is_permanent_spell: false,
             cast_from_zone: None,
@@ -769,6 +771,7 @@ impl GameLoop {
             StackPushContext {
                 source_card: card_id,
                 entry,
+                pending_stack_id: None,
                 stack_log_name: format!("{} ability", card_name),
                 stack_message,
                 target_card,

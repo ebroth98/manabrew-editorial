@@ -2,9 +2,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use dashmap::DashMap;
-use forge_card_script::{
-    ParsedCardScript, ScriptDiagnostic, ScriptDiagnosticKind, ScriptLineKind,
-};
+use forge_card_script::{ParsedCardScript, ScriptDiagnostic, ScriptDiagnosticKind, ScriptLineKind};
 use ropey::Rope;
 use tower_lsp::jsonrpc::Result;
 use tower_lsp::lsp_types::*;
@@ -108,10 +106,9 @@ impl Backend {
                 DiagnosticSeverity::ERROR,
                 "Missing ':' delimiter".to_string(),
             ),
-            ScriptDiagnosticKind::EmptyKey => (
-                DiagnosticSeverity::WARNING,
-                "Empty key".to_string(),
-            ),
+            ScriptDiagnosticKind::EmptyKey => {
+                (DiagnosticSeverity::WARNING, "Empty key".to_string())
+            }
             ScriptDiagnosticKind::UnknownField => (
                 DiagnosticSeverity::WARNING,
                 format!("Unknown field: {}", d.key.unwrap_or("?")),
@@ -120,10 +117,9 @@ impl Backend {
                 DiagnosticSeverity::ERROR,
                 "Ability line missing record type (AB$, SP$, DB$, ST$)".to_string(),
             ),
-            ScriptDiagnosticKind::MissingSVarName => (
-                DiagnosticSeverity::ERROR,
-                "SVar missing name".to_string(),
-            ),
+            ScriptDiagnosticKind::MissingSVarName => {
+                (DiagnosticSeverity::ERROR, "SVar missing name".to_string())
+            }
             ScriptDiagnosticKind::Param(pk) => {
                 use forge_card_script::ParamDiagnosticKind;
                 match pk {
@@ -131,16 +127,12 @@ impl Backend {
                         DiagnosticSeverity::ERROR,
                         "Param missing '$' delimiter".to_string(),
                     ),
-                    ParamDiagnosticKind::EmptyKey => (
-                        DiagnosticSeverity::WARNING,
-                        "Empty param key".to_string(),
-                    ),
+                    ParamDiagnosticKind::EmptyKey => {
+                        (DiagnosticSeverity::WARNING, "Empty param key".to_string())
+                    }
                     ParamDiagnosticKind::DuplicateKeySameValue => (
                         DiagnosticSeverity::HINT,
-                        format!(
-                            "Duplicate param '{}' with same value",
-                            d.key.unwrap_or("?")
-                        ),
+                        format!("Duplicate param '{}' with same value", d.key.unwrap_or("?")),
                     ),
                     ParamDiagnosticKind::DuplicateKeyDifferentValue => (
                         DiagnosticSeverity::WARNING,
@@ -166,11 +158,7 @@ impl Backend {
     }
 
     /// Find the SVar name at a cursor position (for go-to-def and hover).
-    fn svar_ref_at_position<'a>(
-        &self,
-        text: &'a str,
-        pos: Position,
-    ) -> Option<&'a str> {
+    fn svar_ref_at_position<'a>(&self, text: &'a str, pos: Position) -> Option<&'a str> {
         let line_text = text.lines().nth(pos.line as usize)?;
         let col = pos.character as usize;
 
@@ -329,8 +317,7 @@ impl LanguageServer for Backend {
                 ScriptLineKind::Ability(ability) => {
                     for entry in ability.params.entries() {
                         if pos.character as usize >= entry.key_span.start - line.span.start
-                            && pos.character as usize
-                                <= entry.value_span.end - line.span.start
+                            && pos.character as usize <= entry.value_span.end - line.span.start
                         {
                             let sem = entry.semantic();
                             return Ok(Some(Hover {
@@ -353,8 +340,7 @@ impl LanguageServer for Backend {
                 | ScriptLineKind::Replacement(rec) => {
                     for entry in rec.params.entries() {
                         if pos.character as usize >= entry.key_span.start - line.span.start
-                            && pos.character as usize
-                                <= entry.value_span.end - line.span.start
+                            && pos.character as usize <= entry.value_span.end - line.span.start
                         {
                             let sem = entry.semantic();
                             return Ok(Some(Hover {

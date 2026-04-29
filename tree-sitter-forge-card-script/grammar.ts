@@ -29,8 +29,7 @@ export default grammar({
 
     comment_line: ($) => seq("#", optional(alias(/[^\n]*/, $.comment_text))),
 
-    field_line: ($) =>
-      seq(alias($._field_key, $.key), ":", optional(alias(/[^\n]*/, $.value))),
+    field_line: ($) => seq(alias($._field_key, $.key), ":", optional(alias(/[^\n]*/, $.value))),
 
     _field_key: (_) =>
       choice(
@@ -54,11 +53,9 @@ export default grammar({
 
     specialize_line: ($) => seq(/SPECIALIZE[^:\n]*/, ":", optional(alias(/[^\n]*/, $.value))),
 
-    ignored_line: ($) =>
-      seq(alias($._ignored_key, $.key), ":", optional(alias(/[^\n]*/, $.value))),
+    ignored_line: ($) => seq(alias($._ignored_key, $.key), ":", optional(alias(/[^\n]*/, $.value))),
 
-    _ignored_key: (_) =>
-      choice("AI", "DeckHints", "DeckNeeds", "DeckHas", "HandLifeModifier"),
+    _ignored_key: (_) => choice("AI", "DeckHints", "DeckNeeds", "DeckHas", "HandLifeModifier"),
 
     ability_line: ($) => seq("A", ":", $.ability_body),
 

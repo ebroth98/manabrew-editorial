@@ -14,6 +14,14 @@ pub struct AutoPayResult {
     pub life_paid: i32,
     pub colors_spent: u16,
     pub paying_mana: Vec<u16>,
+    /// True when auto-tap produced taps but the resulting pool couldn't
+    /// satisfy the full cost — i.e. the cast must cancel. Java's
+    /// `AutoPay.payManaCostWithTrace` records the partial taps before
+    /// appending its `Cancel` marker; mirroring that lets the parity trace
+    /// stay byte-aligned with Java's `[TapLand …, Cancel]` shape and the
+    /// agent observe the same RNG-consumption pattern on the next priority
+    /// loop iteration.
+    pub cancelled: bool,
 }
 
 /// Deterministic auto-pay entrypoint used by parity AI paths.
@@ -113,6 +121,7 @@ pub fn pay_mana_cost_auto_with_chooser(
         life_paid: payment.life_paid,
         colors_spent: payment.colors_spent,
         paying_mana: payment.paying_mana,
+        cancelled: false,
     })
 }
 
@@ -166,7 +175,7 @@ pub fn pay_mana_cost_auto_with_callback_and_reserved_sacrifices(
     callback: ManaPayCallbackFn<'_>,
 ) -> Option<AutoPayResult> {
     let mut choices =
-        super::computer_util_mana::auto_tap_lands_trace_with_callbacks_and_reserved_sacrifices(
+        super::computer_util_mana::auto_tap_lands_trace_with_callbacks_reserved_and_ctx(
             game,
             pool,
             player,
@@ -174,10 +183,11 @@ pub fn pay_mana_cost_auto_with_callback_and_reserved_sacrifices(
             current_spell,
             reserved_sacrifices,
             callback,
+            payment_ctx,
         );
     if commander_tax > 0 {
         let tapped_tax =
-            super::computer_util_mana::auto_tap_lands_trace_with_callbacks_and_reserved_sacrifices(
+            super::computer_util_mana::auto_tap_lands_trace_with_callbacks_reserved_and_ctx(
                 game,
                 pool,
                 player,
@@ -185,19 +195,38 @@ pub fn pay_mana_cost_auto_with_callback_and_reserved_sacrifices(
                 current_spell,
                 reserved_sacrifices,
                 callback,
+                payment_ctx,
             );
         choices.extend(tapped_tax);
     }
-    let tapped = choices.iter().map(|choice| choice.card_id).collect();
+    let tapped: Vec<CardId> = choices.iter().map(|choice| choice.card_id).collect();
 
-    let payment = pool.try_pay_for_spell_converted_with_phyrexian_life_result(
+    let Some(payment) = pool.try_pay_for_spell_converted_with_phyrexian_life_result(
         mana_cost,
         payment_ctx,
         any_color_conversion,
         game.player(player).life,
-    )?;
+    ) else {
+        // Java parity: keep the partial taps in the returned trace so the
+        // agent emits `[TapLand …, Cancel]` and consumes the same RNG.
+        return Some(AutoPayResult {
+            tapped,
+            choices,
+            life_paid: 0,
+            colors_spent: 0,
+            paying_mana: Vec::new(),
+            cancelled: true,
+        });
+    };
     if commander_tax > 0 && !pool.try_pay_extra_generic(commander_tax) {
-        return None;
+        return Some(AutoPayResult {
+            tapped,
+            choices,
+            life_paid: 0,
+            colors_spent: 0,
+            paying_mana: Vec::new(),
+            cancelled: true,
+        });
     }
     Some(AutoPayResult {
         tapped,
@@ -205,5 +234,6 @@ pub fn pay_mana_cost_auto_with_callback_and_reserved_sacrifices(
         life_paid: payment.life_paid,
         colors_spent: payment.colors_spent,
         paying_mana: payment.paying_mana,
+        cancelled: false,
     })
 }

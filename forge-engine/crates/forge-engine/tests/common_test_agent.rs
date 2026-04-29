@@ -141,6 +141,7 @@ impl PlayerAgent for RecordingAgent {
         _: &str,
         _: Option<&str>,
         _: Option<forge_engine_core::ability::api_type::ApiType>,
+        _can_pay: bool,
     ) -> bool {
         let mut state = self.state.borrow_mut();
         state

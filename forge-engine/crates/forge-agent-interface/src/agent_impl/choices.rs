@@ -500,7 +500,11 @@ pub(super) fn pay_cost_to_prevent_effect<T: AgentTransport>(
     message: &str,
     card_name: Option<&str>,
     api: Option<forge_engine_core::ability::api_type::ApiType>,
+    can_pay: bool,
 ) -> bool {
+    if !can_pay {
+        return false;
+    }
     agent.send_prompt(AgentPromptInner::PayCostToPreventEffect {
         game_view: agent.view(),
         description: message.to_string(),

@@ -319,6 +319,7 @@ impl GameLoop {
                     game.stack.on_next_turn();
                     // Reset zone turn tracking for all zones.
                     game.reset_zone_turn_tracking();
+                    game.reset_card_turn_tracking();
                     let player_order = game.player_order.clone();
                     if let Some((player, _skip)) =
                         game.turn.advance_turn(&mut game.extra_turns, &player_order)
@@ -874,6 +875,7 @@ impl GameLoop {
                 let entry = StackEntry {
                     id: 0,
                     spell_ability: sa,
+                    is_pending_cast: false,
                     is_creature_spell: is_creature,
                     is_permanent_spell: is_permanent,
                     cast_from_zone: Some(ZoneType::Exile),

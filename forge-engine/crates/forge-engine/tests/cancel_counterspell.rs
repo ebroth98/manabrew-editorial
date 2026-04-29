@@ -193,6 +193,7 @@ fn test_target_type_filter() {
         spell_ability: sa,
         is_creature_spell: true,
         is_permanent_spell: false,
+        is_pending_cast: false,
         cast_from_zone: None,
         optional_trigger_decider: None,
         optional_trigger_description: None,
@@ -215,6 +216,7 @@ fn test_target_type_filter() {
         spell_ability: ability,
         is_creature_spell: false,
         is_permanent_spell: false,
+        is_pending_cast: false,
         cast_from_zone: None,
         optional_trigger_decider: None,
         optional_trigger_description: None,
@@ -249,6 +251,7 @@ fn test_target_type_filter() {
         spell_ability: ability,
         is_creature_spell: false,
         is_permanent_spell: false,
+        is_pending_cast: false,
         cast_from_zone: None,
         optional_trigger_decider: None,
         optional_trigger_description: None,
@@ -280,6 +283,7 @@ fn test_cancel_counters_creature_spell() {
         spell_ability: sa,
         is_creature_spell: true,
         is_permanent_spell: false,
+        is_pending_cast: false,
         cast_from_zone: None,
         optional_trigger_decider: None,
         optional_trigger_description: None,
@@ -302,6 +306,7 @@ fn test_cancel_counters_creature_spell() {
     // Setup targeting with TargetType$ Spell filter
     cancel_sa.target_restrictions = Some(target_restrictions::TargetRestrictions {
         valid_tgts: vec!["Spell".to_string()],
+        valid_tgts_selector: forge_engine_core::parsing::CompiledSelector::parse("Spell"),
         target_kind: target_restrictions::parse_valid_targets(
             "SP$ Counter | TargetType$ Spell | ValidTgts$ Spell",
         ),
@@ -362,6 +367,7 @@ fn test_cancel_counters_noncreature_spell() {
         spell_ability: sa,
         is_creature_spell: false,
         is_permanent_spell: false,
+        is_pending_cast: false,
         cast_from_zone: None,
         optional_trigger_decider: None,
         optional_trigger_description: None,
@@ -384,6 +390,7 @@ fn test_cancel_counters_noncreature_spell() {
     // Setup targeting with TargetType$ Spell filter
     cancel_sa.target_restrictions = Some(target_restrictions::TargetRestrictions {
         valid_tgts: vec!["Spell".to_string()],
+        valid_tgts_selector: forge_engine_core::parsing::CompiledSelector::parse("Spell"),
         target_kind: target_restrictions::parse_valid_targets(
             "SP$ Counter | TargetType$ Spell | ValidTgts$ Spell",
         ),
@@ -436,6 +443,7 @@ fn test_instant_sorcery_filter_excludes_enchantment_spells() {
         spell_ability: instant_sa,
         is_creature_spell: false,
         is_permanent_spell: false,
+        is_pending_cast: false,
         cast_from_zone: None,
         optional_trigger_decider: None,
         optional_trigger_description: None,
@@ -451,6 +459,7 @@ fn test_instant_sorcery_filter_excludes_enchantment_spells() {
         spell_ability: enchantment_sa,
         is_creature_spell: false,
         is_permanent_spell: true,
+        is_pending_cast: false,
         cast_from_zone: None,
         optional_trigger_decider: None,
         optional_trigger_description: None,
@@ -490,6 +499,7 @@ fn test_noncreature_spell_filter_excludes_creature_spells() {
         spell_ability: creature_sa,
         is_creature_spell: true,
         is_permanent_spell: true,
+        is_pending_cast: false,
         cast_from_zone: None,
         optional_trigger_decider: None,
         optional_trigger_description: None,
@@ -505,6 +515,7 @@ fn test_noncreature_spell_filter_excludes_creature_spells() {
         spell_ability: instant_sa,
         is_creature_spell: false,
         is_permanent_spell: false,
+        is_pending_cast: false,
         cast_from_zone: None,
         optional_trigger_decider: None,
         optional_trigger_description: None,
@@ -513,6 +524,9 @@ fn test_noncreature_spell_filter_excludes_creature_spells() {
 
     let restrictions = target_restrictions::TargetRestrictions {
         valid_tgts: vec!["Card.nonCreature".to_string()],
+        valid_tgts_selector: forge_engine_core::parsing::CompiledSelector::parse(
+            "Card.nonCreature",
+        ),
         target_kind: target_restrictions::TargetKind::Spell,
         target_type_filter: Some("Spell".to_string()),
         min_targets: "1".to_string(),

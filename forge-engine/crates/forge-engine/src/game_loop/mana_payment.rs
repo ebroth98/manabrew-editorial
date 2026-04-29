@@ -218,7 +218,24 @@ where
             ManaCostAction::Pay { auto } => {
                 if auto {
                     if let Some(mut auto_trace) = auto_pay(game, agents, mana_pools, session) {
+                        // Java parity: auto-pay may return a partial-tap trace
+                        // ending in `Cancel` when the cost cannot be fully
+                        // covered. Detect that terminal marker and cancel the
+                        // session — but keep the partial taps recorded so the
+                        // agent observes `[TapLand …, Cancel]`, matching
+                        // `AutoPay.payManaCostWithTrace`'s behaviour. Lands
+                        // stay tapped (auto-tap mutated `game` directly), so
+                        // we restore only the saved mana pool.
+                        let cancelled = matches!(auto_trace.last(), Some(ManaCostAction::Cancel));
                         executed_actions.append(&mut auto_trace);
+                        if cancelled {
+                            // The generic session reports the same partial
+                            // trace Java reports. Spell casting wraps this in
+                            // a cast-level rollback, so failed casts still
+                            // restore the game to the pre-announcement state.
+                            notify_mana_payment_resolved(agents, session.player, &executed_actions);
+                            return false;
+                        }
                         executed_actions.push(ManaCostAction::Pay { auto: false });
                         notify_mana_payment_resolved(agents, session.player, &executed_actions);
                         return true;

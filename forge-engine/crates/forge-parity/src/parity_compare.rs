@@ -1,6 +1,8 @@
 use crate::comparator;
 use crate::java_bridge::JavaMatchupData;
-use crate::protocol::{Divergence, GameTrace, MatchupResult, MatchupStatus, ParityLogEntry, StateSnapshot};
+use crate::protocol::{
+    Divergence, GameTrace, MatchupResult, MatchupStatus, ParityLogEntry, StateSnapshot,
+};
 use crate::runner::RunConfig;
 
 struct CompareOutcome {

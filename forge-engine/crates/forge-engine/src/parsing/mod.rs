@@ -380,6 +380,10 @@ pub enum TargetRef {
     TriggeredCardController,
     TriggeredDefendingPlayer,
     TriggeredAttackedTarget,
+    /// Source controller's registered commander card(s).
+    /// Used by Path of Ancestry's `sharesCreatureTypeWith Commander` and
+    /// similar relation predicates that compare against the player's commander.
+    Commander,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1282,6 +1286,8 @@ fn lower_relation_target_ref(value: &str) -> Option<TargetRef> {
         Some(TargetRef::TriggeredDefendingPlayer)
     } else if value.eq_ignore_ascii_case("TriggeredAttackedTarget") {
         Some(TargetRef::TriggeredAttackedTarget)
+    } else if value.eq_ignore_ascii_case("Commander") {
+        Some(TargetRef::Commander)
     } else {
         None
     }
@@ -1440,26 +1446,26 @@ fn lower_subtype_predicate(value: &str) -> Option<SelectorPredicate> {
 
 fn lower_selector_comparison(value: &str) -> Option<SelectorPredicate> {
     let lower = value.to_ascii_lowercase();
-    let (property, rest) = if let Some(rest) = lower.strip_prefix("cmc") {
-        (NumericSelectorProperty::ManaValue, rest)
-    } else if let Some(rest) = lower.strip_prefix("power") {
-        (NumericSelectorProperty::Power, rest)
-    } else if let Some(rest) = lower.strip_prefix("toughness") {
-        (NumericSelectorProperty::Toughness, rest)
-    } else if let Some(rest) = lower.strip_prefix("numtargets ") {
-        (NumericSelectorProperty::TargetCount, rest.trim())
-    } else if let Some(rest) = lower.strip_prefix("manaspent ") {
-        (NumericSelectorProperty::ManaSpent, rest.trim())
+    let (property, rest) = if lower.starts_with("cmc") {
+        (NumericSelectorProperty::ManaValue, &value[3..])
+    } else if lower.starts_with("power") {
+        (NumericSelectorProperty::Power, &value[5..])
+    } else if lower.starts_with("toughness") {
+        (NumericSelectorProperty::Toughness, &value[9..])
+    } else if lower.starts_with("numtargets ") {
+        (NumericSelectorProperty::TargetCount, value[11..].trim())
+    } else if lower.starts_with("manaspent ") {
+        (NumericSelectorProperty::ManaSpent, value[10..].trim())
     } else {
         return None;
     };
-    if rest == "even" {
+    if rest.eq_ignore_ascii_case("even") {
         return Some(SelectorPredicate::NumericParity {
             property,
             even: true,
         });
     }
-    if rest == "odd" {
+    if rest.eq_ignore_ascii_case("odd") {
         return Some(SelectorPredicate::NumericParity {
             property,
             even: false,
@@ -1643,17 +1649,21 @@ fn normalize_enchant_type(enchant_type: &str) -> &str {
         .trim()
 }
 
-pub fn enchant_type_to_valid_tgts(enchant_type: &str) -> &'static str {
-    match normalize_enchant_type(enchant_type).to_lowercase().as_str() {
-        "creature" => "Creature",
-        "land" => "Land",
-        "artifact" => "Artifact",
-        "enchantment" => "Enchantment",
-        "planeswalker" => "Planeswalker",
-        "permanent" => "Permanent",
-        "player" => "Player",
-        "creature or player" => "Creature,Player",
-        _ => "Permanent",
+pub fn enchant_type_to_valid_tgts(enchant_type: &str) -> String {
+    let normalized = normalize_enchant_type(enchant_type).trim();
+    match normalized.to_lowercase().as_str() {
+        "creature" => "Creature".to_string(),
+        "land" => "Land".to_string(),
+        "artifact" => "Artifact".to_string(),
+        "enchantment" => "Enchantment".to_string(),
+        "planeswalker" => "Planeswalker".to_string(),
+        "permanent" | "" => "Permanent".to_string(),
+        "player" => "Player".to_string(),
+        "creature or player" => "Creature,Player".to_string(),
+        // Compound filters like "Creature.Legendary" pass through verbatim so
+        // the targeting layer applies the full restriction rather than
+        // collapsing to "Permanent" (which would let any permanent qualify).
+        _ => normalized.to_string(),
     }
 }
 
@@ -1672,8 +1682,13 @@ pub fn enchant_type_to_target_params(enchant_type: &str) -> String {
 /// Used by aura SBA to verify the enchant restriction is still met.
 ///
 /// Example: `enchant_type_matches_card("creature", card)` → true if card is a creature
-pub fn enchant_type_matches_card(enchant_type: &str, card: &crate::card::CardInstance) -> bool {
-    match normalize_enchant_type(enchant_type).to_lowercase().as_str() {
+pub fn enchant_type_matches_card(
+    enchant_type: &str,
+    card: &crate::card::CardInstance,
+    aura_source: Option<&crate::card::CardInstance>,
+) -> bool {
+    let normalized = normalize_enchant_type(enchant_type).trim();
+    match normalized.to_lowercase().as_str() {
         "creature" => card.zone == ZoneType::Battlefield && card.is_creature(),
         "creature.inzonegraveyard" => card.zone == ZoneType::Graveyard && card.is_creature(),
         "land" => card.zone == ZoneType::Battlefield && card.is_land(),
@@ -1681,7 +1696,20 @@ pub fn enchant_type_matches_card(enchant_type: &str, card: &crate::card::CardIns
         "enchantment" => card.zone == ZoneType::Battlefield && card.type_line.is_enchantment(),
         "planeswalker" => card.zone == ZoneType::Battlefield && card.type_line.is_planeswalker(),
         "permanent" | "" => card.zone == ZoneType::Battlefield,
-        _ => true,
+        _ => {
+            // Compound filters like "Creature.Legendary" or
+            // "Creature.IsRemembered" — defer to the full valid-card matcher
+            // using the aura as source so qualifiers that consult source
+            // state (Remembered, YouCtrl, …) resolve correctly. Without an
+            // aura source, fall back to using the host as its own source,
+            // which is correct for source-independent filters like
+            // "Creature.Legendary".
+            if card.zone != ZoneType::Battlefield {
+                return false;
+            }
+            let source = aura_source.unwrap_or(card);
+            crate::card::valid_filter::matches_valid_card(normalized, card, source)
+        }
     }
 }
 

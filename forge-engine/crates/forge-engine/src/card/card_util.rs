@@ -609,12 +609,12 @@ pub fn get_valid_cards_to_target(game: &GameState, ability: &SpellAbility) -> Ve
                 } = &tgt.target_kind
                 {
                     if *target_zone == zone {
-                        candidates.extend(target_restrictions::get_valid_cards_in_zone(
+                        candidates.extend(target_restrictions::get_valid_cards_in_zone_for_sa(
                             game,
                             zone,
                             player,
                             filter.as_deref(),
-                            ability.source,
+                            ability,
                         ));
                     }
                 }

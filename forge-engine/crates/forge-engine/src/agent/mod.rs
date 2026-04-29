@@ -582,6 +582,12 @@ pub trait PlayerAgent {
 
     /// Java-parity unless-cost controller callback.
     /// Mirrors `PlayerController.payCostToPreventEffect(...)`.
+    ///
+    /// `can_pay` is the engine-computed feasibility of the unless-cost. Java's
+    /// `DeterministicController.payCostToPreventEffect` short-circuits to
+    /// `false` when `ComputerUtilCost.canPayCost` reports the cost as
+    /// unpayable, so the agent must see this signal to emit a matching
+    /// callback value.
     fn pay_cost_to_prevent_effect(
         &mut self,
         player: PlayerId,
@@ -589,7 +595,11 @@ pub trait PlayerAgent {
         message: &str,
         card_name: Option<&str>,
         api: Option<crate::ability::api_type::ApiType>,
+        can_pay: bool,
     ) -> bool {
+        if !can_pay {
+            return false;
+        }
         self.confirm_payment(player, cost_kind, message, card_name, api)
     }
 

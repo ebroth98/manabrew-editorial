@@ -875,8 +875,11 @@ impl<T: AgentTransport> PlayerAgent for PromptAgent<T> {
         message: &str,
         card_name: Option<&str>,
         api: Option<forge_engine_core::ability::api_type::ApiType>,
+        can_pay: bool,
     ) -> bool {
-        choices::pay_cost_to_prevent_effect(self, player, cost_kind, message, card_name, api)
+        choices::pay_cost_to_prevent_effect(
+            self, player, cost_kind, message, card_name, api, can_pay,
+        )
     }
 
     fn choose_binary(

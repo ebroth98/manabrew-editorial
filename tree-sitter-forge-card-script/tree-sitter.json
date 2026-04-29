@@ -5,9 +5,7 @@
       "camelcase": "ForgeCardScript",
       "scope": "source.forge-card-script",
       "path": ".",
-      "file-types": [
-        "txt"
-      ],
+      "file-types": ["txt"],
       "injection-regex": "forge"
     }
   ],

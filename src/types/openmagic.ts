@@ -215,6 +215,8 @@ export interface StackObject {
   cardNumber?: string;
   /** True for permanent spells (creature/artifact/enchantment/planeswalker). */
   isPermanentSpell: boolean;
+  /** True while the spell is announced but casting has not completed. */
+  isCasting?: boolean;
   /** Normalized chosen targets flattened across ability/sub-ability nodes. */
   targets: StackTarget[];
 }

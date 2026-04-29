@@ -179,7 +179,9 @@ final class AutoPay {
         // e.g. 1WU with a Hallowed Fountain (W/U) + Plains (W), U is paid first
         // since it has fewer sources, preventing the dual land from being consumed
         // for W and leaving U unpayable.
-        colored.sort(Comparator.comparingInt(shard -> countCandidatesForShard(candidates, shard)));
+        colored.sort(Comparator
+                .comparingInt((ManaCostShard shard) -> countCandidatesForShard(candidates, shard))
+                .thenComparingInt(ParityOrder::colorShardRank));
         if (generic != null) {
             colored.add(generic);
         }

@@ -62,10 +62,7 @@ pub fn install(ctx: &egui::Context) {
     style.spacing.text_edit_width = 140.0;
     style.visuals = visuals();
     style.text_styles = [
-        (
-            egui::TextStyle::Heading,
-            egui::FontId::monospace(12.0),
-        ),
+        (egui::TextStyle::Heading, egui::FontId::monospace(12.0)),
         (
             egui::TextStyle::Body,
             egui::FontId::monospace(BODY_TEXT_SIZE),

@@ -10,10 +10,7 @@ use crate::replacement::replacement_handler::{
 };
 use crate::replacement::GameLossReason;
 use crate::replacement::ReplacementResult;
-use crate::staticability::layer::{
-    apply_continuous_effects, apply_etb_tapped_with_agents,
-    prompt_etb_tapped_replacement_with_agents,
-};
+use crate::staticability::layer::{apply_continuous_effects, apply_etb_tapped_with_agents};
 use crate::trigger::handler::TriggerHandler;
 use crate::trigger::TriggerType;
 
@@ -277,12 +274,12 @@ impl GameState {
                 if was_land {
                     self.player_record_landfall(dest_owner);
                 }
-                if replacement_marked_etb_tapped {
-                    if let Some(agents) = agents.as_deref_mut() {
-                        prompt_etb_tapped_replacement_with_agents(self, card_id, agents);
-                    }
-                }
-                // Apply ETB-tapped effects (intrinsic + extrinsic).
+                // Apply ETB-tapped effects (intrinsic + extrinsic). When the
+                // replacement chain already tapped this card it also already
+                // prompted the affected player to choose the applied effect,
+                // so neither the prompt nor the apply pass should fire again
+                // here — Java's flow runs the choose-and-apply step exactly
+                // once via the replacement chain.
                 if !replacement_marked_etb_tapped {
                     apply_etb_tapped_with_agents(self, card_id, agents.as_deref_mut());
                 }
@@ -604,10 +601,20 @@ impl GameState {
             apply_replacements(self, &mut event);
         }
         if let ReplacementEvent::DamageToCard {
-            amount: final_amount,
+            amount: mut final_amount,
             ..
         } = event
         {
+            // Consume PreventDamage shields. Each shield prevents 1 damage and
+            // is removed. Mirrors Java's per-shield ReplaceDamage effect cards
+            // in the Command zone, but using the legacy `damage_prevention`
+            // counter pending the proper Command-zone effect-card port.
+            let shields = self.cards[target.index()].damage_prevention;
+            if shields > 0 && final_amount > 0 {
+                let consumed = shields.min(final_amount);
+                self.cards[target.index()].damage_prevention -= consumed;
+                final_amount -= consumed;
+            }
             if final_amount > 0 {
                 self.cards[target.index()].damage += final_amount;
                 // Fire DealtDamage replacement event after damage is applied.
@@ -1115,7 +1122,7 @@ impl GameState {
                                     crate::keyword::extract_keyword_cost_str(kw, "Enchant")
                                 })
                                 .unwrap_or_default();
-                            !crate::parsing::enchant_type_matches_card(enchant_type, host)
+                            !crate::parsing::enchant_type_matches_card(enchant_type, host, Some(c))
                         }
                     }
                 })

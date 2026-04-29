@@ -45,6 +45,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
                     remembered_cards: Vec::new(),
                     remembered_lki_cards: Vec::new(),
                     sort_after_active: false,
+                    trigger_order: None,
                 };
                 ctx.trigger_handler.register_delayed_trigger(delayed);
             }

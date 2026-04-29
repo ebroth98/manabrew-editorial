@@ -83,6 +83,7 @@ fn run_lim_duls_vault(pay_answers: Vec<bool>) -> (GameState, PlayerId, Vec<Callb
         spell_ability: sa,
         is_creature_spell: false,
         is_permanent_spell: false,
+        is_pending_cast: false,
         cast_from_zone: Some(ZoneType::Hand),
         optional_trigger_decider: None,
         optional_trigger_description: None,

@@ -47,6 +47,47 @@ impl GameLoop {
                     })
                 })
         };
+        // First MayPlay alt-cost (e.g. Airbend's `MayPlayAltManaCost$ 2`)
+        // granted to `card_id`. Returns the cost string if any.
+        let may_play_alt_cost = |card_id: CardId| -> Option<String> {
+            let card = game.card(card_id);
+            game.cards_in_zone(ZoneType::Battlefield, player)
+                .iter()
+                .chain(game.cards_in_zone(ZoneType::Command, player).iter())
+                .find_map(|&source_id| {
+                    let source = game.card(source_id);
+                    source.static_abilities.iter().find_map(|sa| {
+                        crate::staticability::static_ability_continuous::may_play_alt_mana_cost(
+                            sa, source, card, game,
+                        )
+                    })
+                })
+        };
+        // Count distinct MayPlay statics that grant permission to cast
+        // `card_id`. Java's `GameActionUtil.getMayPlaySpellOptions` enumerates
+        // one alternative SA per `CardPlayOption` returned by
+        // `source.mayPlay(activator)`, so the same exiled card can produce
+        // multiple play options when several statics grant permission (e.g.
+        // multiple airbend Effects each remembering it).
+        let count_may_play_grants = |card_id: CardId| -> usize {
+            let card = game.card(card_id);
+            game.cards_in_zone(ZoneType::Battlefield, player)
+                .iter()
+                .chain(game.cards_in_zone(ZoneType::Command, player).iter())
+                .map(|&source_id| {
+                    let source = game.card(source_id);
+                    source
+                        .static_abilities
+                        .iter()
+                        .filter(|sa| {
+                            crate::staticability::static_ability_continuous::can_play(
+                                sa, source, card, game,
+                            )
+                        })
+                        .count()
+                })
+                .sum()
+        };
         let chosen_types_by_source: std::collections::HashMap<CardId, String> = game
             .cards
             .iter()
@@ -144,6 +185,8 @@ impl GameLoop {
                 // must not count toward availability.
                 let payment_ctx = mana::ManaPaymentContext {
                     is_spell: true,
+                    is_activated_ability: false,
+                    sa_on_stack: false,
                     type_line: Some(card.type_line.clone()),
                     card_name: Some(card.card_name.clone()),
                     chosen_types_by_source: chosen_types_by_source.clone(),
@@ -802,8 +845,12 @@ impl GameLoop {
                 if must_be_instant && !has_flash_permission(card_id) {
                     continue;
                 }
-                let cast_sa =
+                let alt_cost_str = may_play_alt_cost(card_id);
+                let mut cast_sa =
                     crate::spellability::build_spell_ability_for_card_cast(game, card_id, player);
+                if alt_cost_str.is_some() {
+                    cast_sa.restriction.variables.set_zone(ZoneType::Exile);
+                }
                 if crate::staticability::static_ability_cant_be_cast::cant_be_cast_ability_in_context(
                     &game.cards,
                     &cast_sa,
@@ -838,13 +885,20 @@ impl GameLoop {
                     player,
                     ZoneType::Exile,
                 );
-                let adjusted = cost_adj.apply(&card.mana_cost);
+                let alt_cost_mc = alt_cost_str
+                    .as_ref()
+                    .map(|s| forge_foundation::ManaCost::parse(s));
+                let base_cost = alt_cost_mc.as_ref().unwrap_or(&card.mana_cost);
+                let adjusted = cost_adj.apply(base_cost);
                 if available_mana.can_pay(&adjusted) {
-                    playable.push(crate::agent::PlayOption {
-                        card_id,
-                        mode: crate::agent::PlayCardMode::Normal,
-                        alt_cost_index: 0,
-                    });
+                    let grant_count = count_may_play_grants(card_id).max(1);
+                    for _ in 0..grant_count {
+                        playable.push(crate::agent::PlayOption {
+                            card_id,
+                            mode: crate::agent::PlayCardMode::Normal,
+                            alt_cost_index: 0,
+                        });
+                    }
                 }
                 continue;
             }
@@ -949,6 +1003,8 @@ impl GameLoop {
                 // from chosen-type-gated sources.
                 let payment_ctx = mana::ManaPaymentContext {
                     is_spell: true,
+                    is_activated_ability: false,
+                    sa_on_stack: false,
                     type_line: Some(card.type_line.clone()),
                     card_name: Some(card.card_name.clone()),
                     chosen_types_by_source: game

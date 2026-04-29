@@ -214,7 +214,7 @@ fn pay_mana_cost_for_effect(
                 )
             };
 
-            let Some(result) = auto_result else {
+            let Some(result) = auto_result.filter(|r| !r.cancelled) else {
                 *game = saved_game;
                 mana_pools[session.player.index()] = saved_pool;
                 return None;
@@ -718,6 +718,7 @@ pub(super) fn resolve_effect_with_unless_cost(
             &prompt,
             card_name,
             sa.api,
+            true,
         ) {
             continue;
         }

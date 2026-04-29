@@ -126,6 +126,7 @@ impl CapturingAgent {
         StackEntry {
             id: entry.id,
             spell_ability,
+            is_pending_cast: entry.is_pending_cast,
             is_creature_spell: entry.is_creature_spell,
             is_permanent_spell: entry.is_permanent_spell,
             cast_from_zone: entry.cast_from_zone,
@@ -231,14 +232,14 @@ impl CapturingAgent {
             .push_entry(ParityLogEntry::Snapshot(snapshot.clone()));
         self.parity_observer
             .push_entry(ParityLogEntry::Decision(DecisionRecord {
-            turn: snapshot.turn,
-            phase: snapshot.phase.clone(),
-            deciding_player: self.player_id.0,
-            kind: kind.to_string(),
-            options: vec![],
-            choice: "CALLBACK_ENTRY".to_string(),
-            timestamp_ms,
-        }));
+                turn: snapshot.turn,
+                phase: snapshot.phase.clone(),
+                deciding_player: self.player_id.0,
+                kind: kind.to_string(),
+                options: vec![],
+                choice: "CALLBACK_ENTRY".to_string(),
+                timestamp_ms,
+            }));
     }
 }
 
@@ -340,7 +341,8 @@ impl PlayerAgent for CapturingAgent {
                                 p.lands_played = 0;
                             }
                         }
-                        self.parity_observer.push_entry(ParityLogEntry::Snapshot(snap));
+                        self.parity_observer
+                            .push_entry(ParityLogEntry::Snapshot(snap));
                         self.parity_observer.mark_snapshot();
                     }
                 }
@@ -465,7 +467,7 @@ impl PlayerAgent for CapturingAgent {
         fn choose_land_or_spell(&mut self, player: PlayerId) -> Option<bool> => "choose_land_or_spell";
         fn confirm_action(&mut self, player: PlayerId, mode: Option<&str>, message: &str, options: &[String], card_name: Option<&str>, api: Option<forge_engine_core::ability::api_type::ApiType>) -> bool => "confirm_action";
         fn confirm_payment(&mut self, player: PlayerId, cost_kind: &str, message: &str, card_name: Option<&str>, api: Option<forge_engine_core::ability::api_type::ApiType>) -> bool => "confirm_payment";
-        fn pay_cost_to_prevent_effect(&mut self, player: PlayerId, cost_kind: &str, message: &str, card_name: Option<&str>, api: Option<forge_engine_core::ability::api_type::ApiType>) -> bool => "pay_cost_to_prevent_effect";
+        fn pay_cost_to_prevent_effect(&mut self, player: PlayerId, cost_kind: &str, message: &str, card_name: Option<&str>, api: Option<forge_engine_core::ability::api_type::ApiType>, can_pay: bool) -> bool => "pay_cost_to_prevent_effect";
         fn confirm_replacement_effect(&mut self, player: PlayerId, question: &str, effect_description: &str, card_name: Option<&str>) -> bool => "confirm_replacement_effect";
         fn choose_binary(&mut self, player: PlayerId, question: &str, kind: BinaryChoiceKind, default_choice: Option<bool>, card_name: Option<&str>, api: Option<forge_engine_core::ability::api_type::ApiType>) -> bool => "choose_binary";
         fn choose_color(&mut self, player: PlayerId, valid_colors: &[String]) -> Option<String> => "choose_color";
@@ -559,7 +561,9 @@ pub fn load_data(cards_dir: Option<&str>, verbose: bool) -> Result<LoadedData, S
         ));
     }
 
-    let res_dir = cards_path.parent().unwrap_or_else(|| std::path::Path::new("."));
+    let res_dir = cards_path
+        .parent()
+        .unwrap_or_else(|| std::path::Path::new("."));
     let editions_dir = res_dir.join("editions");
     let archive_path = cardset_archive_path();
     let (db, _result) = if archive_path.exists() {
@@ -784,7 +788,6 @@ pub fn run_with_data_streaming(
     }
 
     let mut game_loop = GameLoop::new(2);
-    game_loop.java_parity_failed_spell_setup_to_stack = true;
 
     // Register token templates
     for (script_name, template) in &data.token_templates {

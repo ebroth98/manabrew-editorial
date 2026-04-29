@@ -42,6 +42,33 @@ fn parse_trigger_int_values(sa: &SpellAbility, key: &str) -> Vec<i32> {
         .unwrap_or_default()
 }
 
+fn paid_sacrificed_card(sa: &SpellAbility) -> Option<CardId> {
+    sa.paid_hash
+        .get(crate::cost::cost_sacrifice::HASH_CARDS)
+        .or_else(|| sa.paid_hash.get(crate::cost::cost_sacrifice::HASH_LKI))
+        .and_then(|ids| ids.first())
+        .and_then(|raw| raw.parse::<u32>().ok())
+        .map(CardId)
+}
+
+fn sacrificed_card_value(game: &GameState, sa: &SpellAbility, svar_expr: &str) -> i32 {
+    let Some(sac_id) = paid_sacrificed_card(sa).or(game.last_sacrificed_card) else {
+        return 0;
+    };
+    let sac_card = game.card(sac_id);
+    if svar_expr.ends_with("Power") {
+        sac_card
+            .lki_power
+            .unwrap_or(sac_card.base_power.unwrap_or(0))
+    } else if svar_expr.ends_with("Toughness") {
+        sac_card
+            .lki_toughness
+            .unwrap_or(sac_card.base_toughness.unwrap_or(0))
+    } else {
+        sac_card.mana_cost.cmc()
+    }
+}
+
 fn apply_simple_operator_chain(num: i32, operators: &str) -> i32 {
     let mut value = num;
     for op in operators.split('/') {
@@ -182,20 +209,27 @@ fn resolve_spell_ability_expr(expr: &str, game: &GameState, sa: &SpellAbility) -
     )
 }
 
-fn resolve_svar_expression(
+pub(crate) fn resolve_svar_expression(
     expr: &str,
     game: &GameState,
     source_id: CardId,
     controller: PlayerId,
     sa: &SpellAbility,
 ) -> i32 {
-    if let Ok(n) = expr.trim().parse::<i32>() {
+    let expr = expr.trim();
+    if let Ok(n) = expr.parse::<i32>() {
         return n;
     }
-    if expr.trim().starts_with("TriggerCount$") || expr.trim().starts_with("TriggerCountMax$") {
-        return evaluate_svar(expr.trim(), sa);
+    if expr.starts_with("TriggerCount$") || expr.starts_with("TriggerCountMax$") {
+        return evaluate_svar(expr, sa);
     }
-    if let Some(property) = expr.trim().strip_prefix("Remembered$") {
+    if expr.starts_with("Count$") {
+        return resolve_count_svar_for_sa(expr, game, source_id, controller, sa);
+    }
+    if expr.starts_with("PlayerCount") {
+        return resolve_player_count_svar(expr, game, source_id, controller, sa);
+    }
+    if let Some(property) = expr.strip_prefix("Remembered$") {
         return crate::ability::ability_utils::handle_paid(
             game,
             &game.card(source_id).remembered_cards,
@@ -203,7 +237,7 @@ fn resolve_svar_expression(
             source_id,
         );
     }
-    if let Some(rest) = expr.trim().strip_prefix("RememberedSize") {
+    if let Some(rest) = expr.strip_prefix("RememberedSize") {
         return do_x_math(
             game.card(source_id).remembered_cards.len() as i32,
             rest.strip_prefix('/').unwrap_or(""),
@@ -213,18 +247,15 @@ fn resolve_svar_expression(
             sa,
         );
     }
-    if let Some(value) = resolve_spell_ability_expr(expr.trim(), game, sa) {
+    if let Some(value) = resolve_spell_ability_expr(expr, game, sa) {
         return value;
     }
-    if let Some(value) = resolve_direct_player_expr(expr.trim(), game, source_id, controller, sa) {
+    if let Some(value) = resolve_direct_player_expr(expr, game, source_id, controller, sa) {
         return value;
     }
-    if let Some(svar_expr) = game.card(source_id).get_s_var(expr.trim()) {
-        if svar_expr.starts_with("Count$") {
-            return resolve_count_svar_for_sa(svar_expr, game, source_id, controller, sa);
-        }
-        if svar_expr.starts_with("PlayerCount") {
-            return resolve_player_count_svar(svar_expr, game, source_id, controller, sa);
+    if let Some(svar_expr) = game.card(source_id).get_s_var(expr) {
+        if svar_expr.starts_with("Count$") || svar_expr.starts_with("PlayerCount") {
+            return resolve_svar_expression(svar_expr, game, source_id, controller, sa);
         }
         return evaluate_svar(svar_expr, sa);
     }
@@ -728,21 +759,11 @@ pub fn resolve_numeric_value(
                 // Mirrors Java's AbilityUtils which reads from sa.getPaidList("SacrificedCards").
                 // Must be checked before resolve_direct_player_expr which would
                 // incorrectly match the Foo$Bar pattern as a player expression.
-                if svar_expr == "Sacrificed$CardPower" || svar_expr == "Sacrificed$CardToughness" {
-                    if let Some(sac_id) = game.last_sacrificed_card {
-                        let sac_card = game.card(sac_id);
-                        let val = if svar_expr.ends_with("Power") {
-                            sac_card
-                                .lki_power
-                                .unwrap_or(sac_card.base_power.unwrap_or(0))
-                        } else {
-                            sac_card
-                                .lki_toughness
-                                .unwrap_or(sac_card.base_toughness.unwrap_or(0))
-                        };
-                        return sign * val;
-                    }
-                    return 0;
+                if svar_expr == "Sacrificed$CardPower"
+                    || svar_expr == "Sacrificed$CardToughness"
+                    || svar_expr == "Sacrificed$CardManaCost"
+                {
+                    return sign * sacrificed_card_value(game, sa, svar_expr);
                 }
 
                 // TriggeredCard$CardPower / TriggeredCard$CardToughness — LKI resolution
@@ -832,21 +853,11 @@ pub fn resolve_numeric_value(
             // creature sacrificed during cost payment (e.g. Life's Legacy uses
             // `NumCards$ XPower` where `XPower:Sacrificed$CardPower`). Mirrors
             // Java `AbilityUtils.handlePaid` reading from `SacrificedCards`.
-            if svar_expr == "Sacrificed$CardPower" || svar_expr == "Sacrificed$CardToughness" {
-                if let Some(sac_id) = game.last_sacrificed_card {
-                    let sac_card = game.card(sac_id);
-                    let val = if svar_expr.ends_with("Power") {
-                        sac_card
-                            .lki_power
-                            .unwrap_or(sac_card.base_power.unwrap_or(0))
-                    } else {
-                        sac_card
-                            .lki_toughness
-                            .unwrap_or(sac_card.base_toughness.unwrap_or(0))
-                    };
-                    return sign * val;
-                }
-                return 0;
+            if svar_expr == "Sacrificed$CardPower"
+                || svar_expr == "Sacrificed$CardToughness"
+                || svar_expr == "Sacrificed$CardManaCost"
+            {
+                return sign * sacrificed_card_value(game, sa, svar_expr);
             }
             // `Remembered$Property` — Java parity for AbilityUtils' "Remembered$"
             // shortcut (e.g. Cavalier of Flame's `Y:Remembered$Amount`).
@@ -1056,6 +1067,30 @@ pub fn resolve_count_svar_for_sa(
 
     if expr == "Count$YourSpeed" {
         return game.player(controller).speed;
+    }
+
+    if let Some(operators) = expr.strip_prefix("Count$YourLifeTotal") {
+        let operators = operators.strip_prefix('/').unwrap_or(operators);
+        return do_x_math(
+            game.player(controller).life,
+            operators,
+            game,
+            source_id,
+            controller,
+            sa,
+        );
+    }
+
+    if let Some(operators) = expr.strip_prefix("Count$OppGreatestLifeTotal") {
+        let operators = operators.strip_prefix('/').unwrap_or(operators);
+        let highest_life = game
+            .alive_players()
+            .into_iter()
+            .filter(|&pid| crate::player::player_predicates::is_opponent_of(game, controller, pid))
+            .map(|pid| game.player(pid).life)
+            .max()
+            .unwrap_or(0);
+        return do_x_math(highest_life, operators, game, source_id, controller, sa);
     }
 
     // Count$Metalcraft.A.B — return A if controller has 3+ artifacts, else B.

@@ -29,6 +29,8 @@ use forge_engine_core::spellability::SpellAbility;
 use forge_foundation::mana::ManaAtom;
 use forge_foundation::{ManaCost, ZoneType};
 
+use crate::parity_order;
+
 use crate::parity_card_map::ParityCardMap;
 
 // ── Formatting context ──────────────────────────────────────────────────────
@@ -278,7 +280,7 @@ impl ParityFormat for ManaCostAction {
                 };
                 let idx = mana_ability_index.map(|i| i as i32).unwrap_or(-1);
                 let express = match express_choice {
-                    Some(ec) => fmt_mana_atom(*ec).to_string(),
+                    Some(ec) => fmt_mana_atom(*ec),
                     None => "null".to_string(),
                 };
                 format!(
@@ -298,16 +300,50 @@ impl ParityFormat for ManaCostAction {
     }
 }
 
-fn fmt_mana_atom(atom: u16) -> &'static str {
+fn fmt_mana_atom(atom: u16) -> String {
     match atom {
-        ManaAtom::WHITE => "W",
-        ManaAtom::BLUE => "U",
-        ManaAtom::BLACK => "B",
-        ManaAtom::RED => "R",
-        ManaAtom::GREEN => "G",
-        ManaAtom::COLORLESS => "C",
-        _ => "?",
+        ManaAtom::WHITE => "W".to_string(),
+        ManaAtom::BLUE => "U".to_string(),
+        ManaAtom::BLACK => "B".to_string(),
+        ManaAtom::RED => "R".to_string(),
+        ManaAtom::GREEN => "G".to_string(),
+        ManaAtom::COLORLESS => "C".to_string(),
+        _ => fmt_mana_atom_set(atom),
     }
+}
+
+fn fmt_mana_atom_set(atom: u16) -> String {
+    let mut colors = Vec::new();
+    if atom & ManaAtom::WHITE != 0 {
+        colors.push("white".to_string());
+    }
+    if atom & ManaAtom::BLUE != 0 {
+        colors.push("blue".to_string());
+    }
+    if atom & ManaAtom::BLACK != 0 {
+        colors.push("black".to_string());
+    }
+    if atom & ManaAtom::RED != 0 {
+        colors.push("red".to_string());
+    }
+    if atom & ManaAtom::GREEN != 0 {
+        colors.push("green".to_string());
+    }
+    if colors.is_empty() {
+        return "?".to_string();
+    }
+    parity_order::sort_color_names_like_java(&colors)
+        .iter()
+        .filter_map(|color| match color.as_str() {
+            "white" => Some("W"),
+            "blue" => Some("U"),
+            "black" => Some("B"),
+            "red" => Some("R"),
+            "green" => Some("G"),
+            _ => None,
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 // ── Dice / roll types ───────────────────────────────────────────────────────

@@ -12,7 +12,6 @@ interface StackDisplayProps {
   flashCard?: OpenMagicCard | null;
   flashToken?: string | null;
   showPreStackFlash?: boolean;
-  castingCard?: OpenMagicCard | null;
   rightPanelCollapsed?: boolean;
   playerColorMap?: Map<string, string>;
 }
@@ -40,7 +39,6 @@ export function StackDisplay({
   flashCard,
   flashToken,
   showPreStackFlash = true,
-  castingCard,
   rightPanelCollapsed = true,
   playerColorMap,
 }: StackDisplayProps) {
@@ -60,7 +58,7 @@ export function StackDisplay({
   const flashStackIndex = flashCard ? stack.findIndex((obj) => obj.sourceId === flashCard.id) : -1;
   const directionSign = STACK_UI.direction === "right" ? 1 : -1;
   const cardHeight = Math.round(STACK_UI.cardWidth * STACK_CARD_ASPECT);
-  const totalItems = stack.length + (castingCard ? 1 : 0);
+  const totalItems = stack.length;
   const spanX = Math.max(0, totalItems - 1) * STACK_UI.offsetX;
   const pileHeight = cardHeight + Math.max(0, totalItems - 1) * Math.abs(STACK_UI.offsetY);
 
@@ -109,7 +107,7 @@ export function StackDisplay({
     return () => setHoveredStackObjectId(null);
   }, [setHoveredStackObjectId]);
 
-  if (stack.length === 0 && !flashCard && !castingCard) return null;
+  if (stack.length === 0 && !flashCard) return null;
 
   const rightInset = rightPanelCollapsed
     ? STACK_RIGHT_WHEN_PANEL_COLLAPSED
@@ -148,6 +146,7 @@ export function StackDisplay({
               key={obj.id}
               data-stack-object-id={obj.id}
               data-card-id={obj.sourceId}
+              data-casting-card={obj.isCasting ? obj.sourceId : undefined}
               className={cn(
                 "absolute left-0 will-change-transform",
                 hasPositionChange
@@ -172,9 +171,10 @@ export function StackDisplay({
                 card={card}
                 className={cn(
                   "w-full h-full cursor-pointer",
+                  obj.isCasting && "casting-card",
                   isFlashedStackCard && "animate-card-stack-flash-in",
                   enteringIds.has(obj.id) && !isFlashedStackCard && "animate-card-stack-enter",
-                  isTopOfStack && "playable-card",
+                  isTopOfStack && !obj.isCasting && "playable-card",
                 )}
                 style={
                   seatColor
@@ -188,22 +188,6 @@ export function StackDisplay({
             </div>
           );
         })}
-
-        {castingCard && (
-          <div
-            data-casting-card={castingCard.id}
-            className="absolute left-0"
-            style={{
-              zIndex: stack.length + 2,
-              left: `${stack.length * STACK_UI.offsetX * directionSign + xShift}px`,
-              top: `${stack.length * STACK_UI.offsetY}px`,
-              width: `${STACK_UI.cardWidth}px`,
-              height: `${cardHeight}px`,
-            }}
-          >
-            <Card card={castingCard} className="w-full h-full shadow-lg casting-card" />
-          </div>
-        )}
 
         {flashCard && flashStackIndex < 0 && showPreStackFlash && (
           <div

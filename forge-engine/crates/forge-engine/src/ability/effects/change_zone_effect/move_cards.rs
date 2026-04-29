@@ -113,6 +113,10 @@ pub(super) fn move_cards(
         // regardless of destination.
         let final_dest = apply_hand_library_replacement(ctx, card_id, old_zone, dest_zone);
         ctx.move_card(card_id, final_dest, dest_owner);
+        if final_dest == ZoneType::Battlefield {
+            ctx.trigger_handler
+                .register_active_trigger(ctx.game, card_id);
+        }
         apply_post_move(
             ctx,
             card_id,
@@ -122,6 +126,9 @@ pub(super) fn move_cards(
             dest_owner,
             lib_position,
         );
+        if old_zone == ZoneType::Battlefield && final_dest != ZoneType::Battlefield {
+            ctx.trigger_handler.unregister_active_triggers(card_id);
+        }
         moved.push(card_id);
 
         // Move melded parts together
@@ -130,7 +137,14 @@ pub(super) fn move_cards(
                 let mo = ctx.game.card(meld_id).owner;
                 let mz = ctx.game.card(meld_id).zone;
                 ctx.move_card(meld_id, dest_zone, mo);
+                if dest_zone == ZoneType::Battlefield {
+                    ctx.trigger_handler
+                        .register_active_trigger(ctx.game, meld_id);
+                }
                 emit_zone_trigger(ctx.trigger_handler, meld_id, mz, dest_zone);
+                if mz == ZoneType::Battlefield && dest_zone != ZoneType::Battlefield {
+                    ctx.trigger_handler.unregister_active_triggers(meld_id);
+                }
                 moved.push(meld_id);
             }
         }
@@ -167,6 +181,7 @@ pub(super) fn move_cards(
                     remembered_cards: Vec::new(),
                     remembered_lki_cards: Vec::new(),
                     sort_after_active: false,
+                    trigger_order: None,
                 });
         }
     }

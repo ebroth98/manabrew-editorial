@@ -211,6 +211,9 @@ pub struct StackObjectDto {
     /// enchantment, planeswalker) that will resolve onto the battlefield.
     /// False for instants, sorceries, and activated/triggered abilities.
     pub is_permanent_spell: bool,
+    /// True while a spell is announced and on the stack, but casting has not
+    /// completed. This entry is visible for casting prompts and cannot resolve.
+    pub is_casting: bool,
     /// Normalized chosen targets for this stack object, flattened across the
     /// root ability and sub-ability chain in evaluation order.
     pub targets: Vec<StackTargetDto>,
@@ -808,6 +811,7 @@ impl GameViewDto {
                     set_code,
                     card_number,
                     is_permanent_spell: entry.is_creature_spell || entry.is_permanent_spell,
+                    is_casting: entry.is_pending_cast,
                     targets: collect_stack_targets(&entry.spell_ability),
                 }
             })

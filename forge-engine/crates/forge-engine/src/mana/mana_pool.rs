@@ -51,6 +51,13 @@ pub struct ManaPool {
     last_payment_atoms: Vec<u16>,
     #[serde(skip)]
     record_payment_atoms: bool,
+    /// `(svar_name, source_card)` pairs from mana spent during the most
+    /// recent payment whose source had `TriggersWhenSpent$`. Populated by
+    /// `try_pay*` helpers; consumed by cast/activation flows that fire the
+    /// linked trigger after the cost resolves (Path of Ancestry's scry,
+    /// etc.). Drained on read.
+    #[serde(skip)]
+    last_payment_triggers_consumed: Vec<(String, CardId)>,
     /// When set, caps total producible mana for playability checks.
     /// Used by `calculate_available_mana` to prevent multi-color sources
     /// (dual lands, Command Tower) from being counted as multiple mana.
@@ -1004,20 +1011,35 @@ impl ManaPool {
         };
         let mut colors_spent = 0u16;
         let mut paying_mana = Vec::new();
+        let mut triggers_consumed: Vec<(String, CardId)> = Vec::new();
         for &idx in &spent_indices {
             colors_spent |= self.mana[idx].color;
             paying_mana.push(self.mana[idx].color);
+            if let (Some(svar), Some(src)) = (
+                self.mana[idx].triggers_when_spent.as_ref(),
+                self.mana[idx].source_card,
+            ) {
+                triggers_consumed.push((svar.clone(), src));
+            }
         }
         for idx in spent_indices.into_iter().rev() {
             self.mana.remove(idx);
         }
         self.last_payment_atoms = paying_mana.clone();
+        self.last_payment_triggers_consumed = triggers_consumed;
         self.record_payment_atoms = false;
         Some(ManaPaymentOutcome {
             life_paid: life_to_pay,
             colors_spent,
             paying_mana,
         })
+    }
+
+    /// Drain and return the trigger metadata recorded by the most recent
+    /// `try_pay*` call that consumed mana whose source set
+    /// `TriggersWhenSpent$`.
+    pub fn take_last_payment_triggers_consumed(&mut self) -> Vec<(String, CardId)> {
+        std::mem::take(&mut self.last_payment_triggers_consumed)
     }
 
     fn search_phyrexian_payment(

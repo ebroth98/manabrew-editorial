@@ -108,6 +108,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
         remembered_cards,
         remembered_lki_cards,
         sort_after_active: false,
+        trigger_order: None,
     };
     if sa.ir.this_turn {
         ctx.trigger_handler

@@ -58,9 +58,6 @@ pub struct GameLoop {
     pub game_rng: Box<dyn GameRng>,
     /// Enables Java-parity snapshot rollback support (`stash_game_state` / `restore_game_state`).
     pub experimental_restore_snapshot: bool,
-    /// Java can leave a spell card in the stack zone when post-targeting legality
-    /// rejects the cast. Keep this parity-only so UI gameplay keeps failed casts in hand.
-    pub java_parity_failed_spell_setup_to_stack: bool,
     /// Last stashed snapshot used by rollback flows.
     previous_game_state: Option<GameSnapshot>,
     /// Rolling checkpoint history for UI rewind/debug.
@@ -98,6 +95,7 @@ pub(crate) enum SpellAbilityLogEventKind {
 pub(crate) struct StackPushContext {
     pub source_card: CardId,
     pub entry: StackEntry,
+    pub pending_stack_id: Option<u32>,
     pub stack_log_name: String,
     pub stack_message: String,
     pub target_card: Option<CardId>,
@@ -163,7 +161,6 @@ impl GameLoop {
             edition_dates: HashMap::new(),
             game_rng: Box::new(ThreadRngAdapter),
             experimental_restore_snapshot: false,
-            java_parity_failed_spell_setup_to_stack: false,
             previous_game_state: None,
             checkpoints: VecDeque::new(),
             next_checkpoint_id: 1,
@@ -522,6 +519,7 @@ impl GameLoop {
                 let entry = StackEntry {
                     id: 0,
                     spell_ability: sa,
+                    is_pending_cast: false,
                     is_creature_spell: false,
                     is_permanent_spell: false,
                     cast_from_zone: Some(ZoneType::Hand),
@@ -1316,6 +1314,7 @@ mod tests {
         game.stack.push(StackEntry {
             id: 1,
             spell_ability: sa,
+            is_pending_cast: false,
             is_creature_spell: true,
             is_permanent_spell: true,
             cast_from_zone: Some(ZoneType::Hand),

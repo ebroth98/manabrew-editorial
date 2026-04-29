@@ -61,6 +61,10 @@ pub struct DelayedTrigger {
     /// trigger ID is assigned after the card's intrinsic T: triggers and thus
     /// lands on top of the stack.
     pub sort_after_active: bool,
+    /// Java delayed triggers are real Trigger instances and receive a trigger
+    /// id when parsed. Assign the equivalent order at registration so
+    /// simultaneous delayed triggers do not tie on host timestamp.
+    pub trigger_order: Option<u32>,
 }
 
 impl DelayedTrigger {
@@ -75,7 +79,7 @@ impl DelayedTrigger {
             crate::game_loop::trigger_replacement_base::TriggerReplacementBase::default();
         base.set_host_card_id(self.source_card);
         crate::trigger::Trigger {
-            id: u32::MAX, // Sentinel — delayed triggers have no real Trigger id
+            id: self.trigger_order.unwrap_or(u32::MAX),
             base,
             kind: self.mode,
             mode: dyn_clone::clone_box(&*self.trigger_mode),
@@ -111,6 +115,8 @@ pub struct TriggerPushLog {
     pub trigger_api: String,
 }
 
+type MatchedTrigger = (PendingTrigger, PlayerId, u64, u8, u32);
+
 /// Mirrors Java's TriggerHandler — central trigger dispatcher.
 /// In Java, lives on Game. In Rust, lives on GameLoop because
 /// active_triggers and waiting_triggers are transient processing state.
@@ -128,8 +134,8 @@ pub struct TriggerHandler {
     /// Triggers that were matched early (before SBA) and are waiting to be
     /// placed on the stack. This ensures triggers from creatures that die to
     /// SBA (e.g. Raptor Hatchling's enrage) are not lost.
-    /// Tuple: (PendingTrigger, controller, zone_timestamp of source card).
-    pre_matched_triggers: Vec<(PendingTrigger, PlayerId, u64)>,
+    /// Tuple: (PendingTrigger, controller, zone timestamp, trigger bucket, trigger order).
+    pre_matched_triggers: Vec<MatchedTrigger>,
 }
 
 impl TriggerHandler {
@@ -265,8 +271,7 @@ impl TriggerHandler {
     /// The caller (game_loop) handles OptionalDecider$ prompting.
     pub fn run_waiting_triggers(&mut self, game: &GameState) -> Vec<PendingTrigger> {
         // Start with any triggers that were pre-matched (flushed before SBA).
-        let mut entries: Vec<(PendingTrigger, PlayerId, u64)> =
-            std::mem::take(&mut self.pre_matched_triggers);
+        let mut entries: Vec<MatchedTrigger> = std::mem::take(&mut self.pre_matched_triggers);
 
         if self.waiting_triggers.is_empty() && self.delayed_triggers.is_empty() {
             if entries.is_empty() {
@@ -274,10 +279,18 @@ impl TriggerHandler {
             }
             // Only have pre-matched — apply APNAP + zone timestamp ordering.
             let active_player = game.active_player();
-            entries.sort_by_key(|(_, controller, ts)| {
-                (if *controller == active_player { 0u8 } else { 1 }, *ts)
+            entries.sort_by_key(|(_, controller, ts, trigger_bucket, trigger_order)| {
+                (
+                    if *controller == active_player { 0u8 } else { 1 },
+                    *ts,
+                    *trigger_bucket,
+                    *trigger_order,
+                )
             });
-            return entries.into_iter().map(|(pending, _, _)| pending).collect();
+            return entries
+                .into_iter()
+                .map(|(pending, _, _, _, _)| pending)
+                .collect();
         }
 
         // Match any remaining waiting triggers (those fired after the flush).
@@ -293,11 +306,19 @@ impl TriggerHandler {
         // matching Java's forEachCardInGame() which iterates by Zone.cardList
         // insertion order.
         let active_player = game.active_player();
-        entries.sort_by_key(|(_, controller, ts)| {
-            (if *controller == active_player { 0u8 } else { 1 }, *ts)
+        entries.sort_by_key(|(_, controller, ts, trigger_bucket, trigger_order)| {
+            (
+                if *controller == active_player { 0u8 } else { 1 },
+                *ts,
+                *trigger_bucket,
+                *trigger_order,
+            )
         });
 
-        entries.into_iter().map(|(pending, _, _)| pending).collect()
+        entries
+            .into_iter()
+            .map(|(pending, _, _, _, _)| pending)
+            .collect()
     }
 
     pub fn process_waiting_triggers(
@@ -459,9 +480,9 @@ impl TriggerHandler {
     /// Drain `waiting_triggers`, match them against active and delayed triggers,
     /// and return the matched entries.  This is the core matching logic shared by
     /// both `flush_waiting_triggers` and `run_waiting_triggers`.
-    fn match_waiting_triggers(&mut self, game: &GameState) -> Vec<(PendingTrigger, PlayerId, u64)> {
+    fn match_waiting_triggers(&mut self, game: &GameState) -> Vec<MatchedTrigger> {
         let waiting = std::mem::take(&mut self.waiting_triggers);
-        let mut entries: Vec<(PendingTrigger, PlayerId, u64)> = Vec::new();
+        let mut entries: Vec<MatchedTrigger> = Vec::new();
 
         for event in &waiting {
             let mut trigger_refs: Vec<(CardId, usize, usize)> =
@@ -536,6 +557,7 @@ impl TriggerHandler {
                     let entry = StackEntry {
                         id: 0,
                         spell_ability: sa,
+                        is_pending_cast: false,
                         is_creature_spell: false,
                         is_permanent_spell: false,
                         cast_from_zone: None,
@@ -576,7 +598,7 @@ impl TriggerHandler {
                         description: trigger.description.clone(),
                     };
                     let source_ts = card.zone_timestamp;
-                    entries.push((pending, host_controller, source_ts));
+                    entries.push((pending, host_controller, source_ts, 1, trigger.id));
                     let extra = crate::staticability::static_ability_panharmonicon::extra_triggers(
                         game,
                         card_id,
@@ -594,6 +616,7 @@ impl TriggerHandler {
                         let extra_entry = StackEntry {
                             id: 0,
                             spell_ability: sa2,
+                            is_pending_cast: false,
                             is_creature_spell: false,
                             is_permanent_spell: false,
                             cast_from_zone: None,
@@ -627,6 +650,8 @@ impl TriggerHandler {
                             },
                             host_controller,
                             source_ts,
+                            1,
+                            trigger.id,
                         ));
                     }
                 }
@@ -703,6 +728,7 @@ impl TriggerHandler {
                 let entry = StackEntry {
                     id: 0,
                     spell_ability: sa,
+                    is_pending_cast: false,
                     is_creature_spell: false,
                     is_permanent_spell: false,
                     cast_from_zone: None,
@@ -725,6 +751,8 @@ impl TriggerHandler {
                     description: String::new(),
                 };
                 let delayed_ts = game.card(delayed.source_card).zone_timestamp;
+                let delayed_bucket = if delayed.sort_after_active { 2 } else { 0 };
+                let delayed_order = delayed.trigger_order.unwrap_or(0);
                 // Java parity: Panharmonicon-class statics (e.g. Yarok, Roaming Throne)
                 // double triggered abilities of permanents the owner controls. Rust
                 // implements Evoke-style sacrifice and other keyword-induced triggers
@@ -742,20 +770,44 @@ impl TriggerHandler {
                     );
                 if delayed.sort_after_active {
                     // Push to end of entries (above active triggers → resolves first).
-                    entries.push((pending.clone(), delayed.controller, delayed_ts));
+                    entries.push((
+                        pending.clone(),
+                        delayed.controller,
+                        delayed_ts,
+                        delayed_bucket,
+                        delayed_order,
+                    ));
                     for _ in 0..extra_delayed {
-                        entries.push((pending.clone(), delayed.controller, delayed_ts));
+                        entries.push((
+                            pending.clone(),
+                            delayed.controller,
+                            delayed_ts,
+                            delayed_bucket,
+                            delayed_order,
+                        ));
                     }
                 } else {
                     entries.insert(
                         delayed_insert_at + delayed_insert_offset,
-                        (pending.clone(), delayed.controller, delayed_ts),
+                        (
+                            pending.clone(),
+                            delayed.controller,
+                            delayed_ts,
+                            delayed_bucket,
+                            delayed_order,
+                        ),
                     );
                     delayed_insert_offset += 1;
                     for _ in 0..extra_delayed {
                         entries.insert(
                             delayed_insert_at + delayed_insert_offset,
-                            (pending.clone(), delayed.controller, delayed_ts),
+                            (
+                                pending.clone(),
+                                delayed.controller,
+                                delayed_ts,
+                                delayed_bucket,
+                                delayed_order,
+                            ),
                         );
                         delayed_insert_offset += 1;
                     }
@@ -818,10 +870,7 @@ impl TriggerHandler {
     /// Fire Immediate delayed triggers — these fire on the next trigger
     /// processing cycle without needing a matching event. Mirrors Java's
     /// `TriggerImmediate` which has `performTest()` returning true always.
-    fn fire_immediate_delayed_triggers(
-        &mut self,
-        game: &GameState,
-    ) -> Vec<(PendingTrigger, PlayerId, u64)> {
+    fn fire_immediate_delayed_triggers(&mut self, game: &GameState) -> Vec<MatchedTrigger> {
         let mut entries = Vec::new();
         let mut fired_indices = Vec::new();
         for (idx, delayed) in self.delayed_triggers.iter().enumerate() {
@@ -857,6 +906,7 @@ impl TriggerHandler {
                 let entry = StackEntry {
                     id: 0,
                     spell_ability: sa,
+                    is_pending_cast: false,
                     is_creature_spell: false,
                     is_permanent_spell: false,
                     cast_from_zone: None,
@@ -879,7 +929,13 @@ impl TriggerHandler {
                     description: String::new(),
                 };
                 let ts = game.card(delayed.source_card).zone_timestamp;
-                entries.push((pending, delayed.controller, ts));
+                entries.push((
+                    pending,
+                    delayed.controller,
+                    ts,
+                    0,
+                    delayed.trigger_order.unwrap_or(0),
+                ));
                 fired_indices.push(idx);
             }
         }
@@ -891,7 +947,8 @@ impl TriggerHandler {
 
     /// Register a delayed trigger (one-shot, fires once then is removed).
     /// Mirrors Java's `TriggerHandler.registerDelayedTrigger()`.
-    pub fn register_delayed_trigger(&mut self, delayed: DelayedTrigger) {
+    pub fn register_delayed_trigger(&mut self, mut delayed: DelayedTrigger) {
+        self.assign_delayed_trigger_order(&mut delayed);
         self.delayed_triggers.push(delayed);
     }
 
@@ -900,7 +957,8 @@ impl TriggerHandler {
         self.this_turn_delayed_triggers.clear();
     }
 
-    pub fn register_this_turn_delayed_trigger(&mut self, delayed: DelayedTrigger) {
+    pub fn register_this_turn_delayed_trigger(&mut self, mut delayed: DelayedTrigger) {
+        self.assign_delayed_trigger_order(&mut delayed);
         self.this_turn_delayed_triggers.push(delayed.clone());
         self.delayed_triggers.push(delayed);
     }
@@ -923,8 +981,9 @@ impl TriggerHandler {
     pub fn register_player_defined_delayed_trigger(
         &mut self,
         player: PlayerId,
-        delayed: DelayedTrigger,
+        mut delayed: DelayedTrigger,
     ) {
+        self.assign_delayed_trigger_order(&mut delayed);
         self.player_defined_delayed_triggers.push((player, delayed));
     }
 
@@ -944,6 +1003,13 @@ impl TriggerHandler {
         });
         for delayed in to_activate {
             self.delayed_triggers.push(delayed);
+        }
+    }
+
+    fn assign_delayed_trigger_order(&mut self, delayed: &mut DelayedTrigger) {
+        if delayed.trigger_order.is_none() {
+            delayed.trigger_order = Some(self.next_trigger_id);
+            self.next_trigger_id += 1;
         }
     }
 

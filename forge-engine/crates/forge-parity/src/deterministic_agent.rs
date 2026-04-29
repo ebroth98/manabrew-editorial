@@ -1256,12 +1256,13 @@ impl PlayerAgent for DeterministicAgent {
         _message: &str,
         _card_name: Option<&str>,
         _api: Option<forge_engine_core::ability::api_type::ApiType>,
+        can_pay: bool,
     ) -> bool {
-        // Java DeterministicController.payCostToPreventEffect does not spend a
-        // separate boolean RNG decision here. It enters deterministic cost
-        // payment directly, and any RNG comes from the payment parts
-        // themselves (for example, choosing a sacrifice).
-        true
+        // Java DeterministicController.payCostToPreventEffect short-circuits
+        // to false when ComputerUtilCost.canPayCost reports the cost as
+        // unpayable; otherwise it enters deterministic cost payment directly
+        // (no separate boolean RNG). Mirror that gate here.
+        can_pay
     }
 
     fn choose_binary(

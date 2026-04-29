@@ -20,6 +20,8 @@ pub const EVENT: &str = "Event";
 
 pub const AFFECTED: &str = "Affected";
 pub const AFFECTED_ZONE: &str = "AffectedZone";
+pub const MAY_PLAY: &str = "MayPlay";
+pub const MAY_PLAY_ALT_MANA_COST: &str = "MayPlayAltManaCost";
 pub const VALID: &str = "Valid";
 pub const VALID_ACTIVATING_PLAYER: &str = "ValidActivatingPlayer";
 pub const VALID_ACTIVATOR: &str = "ValidActivator";
@@ -270,7 +272,6 @@ pub const GAIN_TEXT_OF: &str = "GainTextOf";
 pub const IGNORE_EFFECT_COST: &str = "IgnoreEffectCost";
 pub const INCORPORATE: &str = "Incorporate";
 pub const MANA_COST: &str = "ManaCost";
-pub const MAY_PLAY: &str = "MayPlay";
 pub const SET_NAME: &str = "SetName";
 
 // ── Replacement params ─────────────────────────────────────────────────

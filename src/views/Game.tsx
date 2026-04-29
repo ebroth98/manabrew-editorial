@@ -281,9 +281,8 @@ export default function Game({ exitTo }: GameProps = {}) {
   const mulliganPutBack = useMulliganSelection(activePrompt, mulliganPutBackDecision);
 
   // Accumulating cache of every card we've ever observed across the
-  // player's visible zones. Used as a fallback so we can resolve a casting
-  // spell that the engine has temporarily removed from every live zone
-  // (between hand → in-flight → stack).
+  // player's visible zones. Used as a fallback so stack cards keep their
+  // exact printing after they leave hand.
   const knownCardsRef = useRef<Map<string, OpenMagicCard>>(new Map());
   useEffect(() => {
     if (!gameView) return;
@@ -301,14 +300,8 @@ export default function Game({ exitTo }: GameProps = {}) {
     ingest(gameView.opponentGraveyard);
     ingest(gameView.opponentExile);
   }, [gameView]);
-  const resolveKnownCard = useCallback((id: string) => knownCardsRef.current.get(id), []);
-
   const casting = useCastingState({
     currentPrompt: activePrompt,
-    hand: gameView?.myHand ?? [],
-    battlefield: gameView?.battlefield ?? [],
-    stack: gameView?.stack ?? [],
-    resolveKnownCard,
     targetCard,
     targetPlayer,
     targetAny,
@@ -1587,7 +1580,6 @@ export default function Game({ exitTo }: GameProps = {}) {
             : null
         }
         showPreStackFlash={shouldShowPreStackFlash}
-        castingCard={casting.castingCard}
         rightPanelCollapsed={isActionPanelCollapsed}
         playerColorMap={playerColorMap}
       />

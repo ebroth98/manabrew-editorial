@@ -55,16 +55,17 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
 }
 
 fn resolve_token_owners(ctx: &EffectContext, sa: &SpellAbility) -> Vec<PlayerId> {
+    // Java parity (`SpellAbilityEffect.getDefinedPlayersOrTargeted("TokenOwner")`):
+    // when an explicit `TokenOwner$` resolves to no players (e.g. `TargetedController`
+    // with no chosen target), no tokens are created. Only fall back to the
+    // activator when no `TokenOwner` is specified at all.
     if let Some(defined) = sa.token_owner() {
-        let players = crate::ability::ability_utils::resolve_defined_players_with_sa(
+        return crate::ability::ability_utils::resolve_defined_players_with_sa(
             defined,
             sa,
             sa.activating_player,
             ctx.game,
         );
-        if !players.is_empty() {
-            return players;
-        }
     }
     vec![sa.activating_player]
 }

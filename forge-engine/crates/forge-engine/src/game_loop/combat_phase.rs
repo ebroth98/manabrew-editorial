@@ -1128,11 +1128,19 @@ impl GameLoop {
         agents: &mut [Box<dyn crate::agent::PlayerAgent>],
         first_strike_only: bool,
     ) {
-        use crate::ids::PlayerId;
         use forge_foundation::ZoneType;
 
-        let mut effects_by_player: std::collections::HashMap<PlayerId, usize> =
-            std::collections::HashMap::new();
+        // Java fires one ReplacementHandler prompt per damage point hitting a
+        // target with prevention shields. Each prompt offers the full list of
+        // remaining prevention effects on that target; once the chosen
+        // 1-shield effect consumes its damage, the next damage point sees one
+        // fewer effect. So for a target with `S` shields taking `D` damage,
+        // Java emits `min(S, D)` prompts of sizes S, S-1, …, S-min(S,D)+1.
+        //
+        // Per-target rather than per-player: the candidate list is built from
+        // shields on a single target, and the prompt is fired against that
+        // target's controller.
+        let mut tasks: Vec<(crate::ids::CardId, usize, usize)> = Vec::new();
 
         for &(attacker_id, _defender) in &self.combat.attackers {
             let attacker = &game.cards[attacker_id.index()];
@@ -1148,6 +1156,7 @@ impl GameLoop {
                 continue;
             }
 
+            let attacker_power = attacker.power().max(0) as usize;
             let blocker_ids = self.combat.get_blockers_for(attacker_id);
             for &blocker_id in &blocker_ids {
                 let blocker = &game.cards[blocker_id.index()];
@@ -1155,28 +1164,32 @@ impl GameLoop {
                     continue;
                 }
                 let shield_count = self.count_damage_prevention_effects(game, blocker_id);
-                if shield_count > 0 {
-                    *effects_by_player.entry(blocker.controller).or_insert(0) += shield_count;
+                let damage_count = shield_count.min(attacker_power);
+                if damage_count > 0 {
+                    tasks.push((blocker_id, shield_count, damage_count));
                 }
             }
             if !blocker_ids.is_empty() {
+                let total_blocker_power: usize = blocker_ids
+                    .iter()
+                    .map(|b| game.cards[b.index()].power().max(0) as usize)
+                    .sum();
                 let shield_count = self.count_damage_prevention_effects(game, attacker_id);
-                if shield_count > 0 {
-                    *effects_by_player.entry(attacker.controller).or_insert(0) += shield_count;
+                let damage_count = shield_count.min(total_blocker_power);
+                if damage_count > 0 {
+                    tasks.push((attacker_id, shield_count, damage_count));
                 }
             }
         }
 
-        for pid in &game.player_order {
-            if let Some(&total) = effects_by_player.get(pid) {
-                let mut remaining = total;
-                while remaining > 0 {
-                    let descs: Vec<String> = (0..remaining)
-                        .map(|i| format!("Prevention shield {}", i))
-                        .collect();
-                    agents[pid.index()].choose_single_replacement_effect(*pid, &descs);
-                    remaining -= 1;
-                }
+        for (target_id, shield_count, damage_count) in tasks {
+            let controller = game.cards[target_id.index()].controller;
+            for i in 0..damage_count {
+                let list_size = shield_count - i;
+                let descs: Vec<String> = (0..list_size)
+                    .map(|j| format!("Prevention shield {}", j))
+                    .collect();
+                agents[controller.index()].choose_single_replacement_effect(controller, &descs);
             }
         }
     }

@@ -4,9 +4,9 @@ use std::env;
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
-use std::sync::{Arc, Mutex};
-use std::sync::mpsc::{self, Receiver, Sender, TryRecvError};
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::mpsc::{self, Receiver, Sender, TryRecvError};
+use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -20,8 +20,7 @@ use forge_cardset_archive::{load_checked, load_unchecked, ArchivedCardArchive};
 use forge_parity::deterministic_agent::VerboseMode;
 use forge_parity::java_bridge::{JavaBridgeError, JavaMatchupData, JavaServer, JavaServerConfig};
 use forge_parity::parity_compare::{
-    compare_matchup, compare_matchup_partial_logs,
-    extract_investigation_window,
+    compare_matchup, compare_matchup_partial_logs, extract_investigation_window,
 };
 use forge_parity::protocol::{
     CallbackRecord, Divergence, GameTrace, MatchupResult, ParityLog, ParityLogEntry, StateSnapshot,
@@ -30,7 +29,9 @@ use forge_parity::runner::{load_data, run_with_data_streaming, LoadedData, RunCo
 use memmap2::Mmap;
 use serde::Deserialize;
 use streaming_iterator::StreamingIterator;
-use tree_sitter::{Node as TsNode, Parser as TsParser, Query as TsQuery, QueryCursor as TsQueryCursor};
+use tree_sitter::{
+    Node as TsNode, Parser as TsParser, Query as TsQuery, QueryCursor as TsQueryCursor,
+};
 
 mod theme;
 
@@ -41,10 +42,8 @@ const TRACE_THREAD_STACK_SIZE: usize = 64 * 1024 * 1024;
 const TRACE_SNAPSHOT_HEIGHT: f32 = 320.0;
 const TRACE_EVENTS_HEIGHT: f32 = 180.0;
 const TRACE_TIMELINE_HEIGHT: f32 = TRACE_SNAPSHOT_HEIGHT + TRACE_EVENTS_HEIGHT + 28.0;
-const TRACE_DECK_1: &str =
-    "inline:Mountain*6|Lightning Bolt*2|Shock*2|Raging Goblin*2";
-const TRACE_DECK_2: &str =
-    "inline:Forest*6|Llanowar Elves*2|Grizzly Bears*2|Runeclaw Bear*2";
+const TRACE_DECK_1: &str = "inline:Mountain*6|Lightning Bolt*2|Shock*2|Raging Goblin*2";
+const TRACE_DECK_2: &str = "inline:Forest*6|Llanowar Elves*2|Grizzly Bears*2|Runeclaw Bear*2";
 const DEFAULT_JAVA_JAR_PATH: &str =
     "forge/forge-harness/target/forge-harness-jar-with-dependencies.jar";
 const HARNESS_SCRIPT_PATH: &str = "scripts/harness.mjs";
@@ -406,7 +405,9 @@ impl App {
         self.java_jar_path = path.clone();
         self.ensure_trace_worker();
         if let Some(worker) = &self.trace_worker {
-            let _ = worker.command_tx.send(TraceWorkerCommand::PrewarmJava(path));
+            let _ = worker
+                .command_tx
+                .send(TraceWorkerCommand::PrewarmJava(path));
         }
     }
 
@@ -575,7 +576,8 @@ impl App {
                 while let Ok(command) = command_rx.recv() {
                     match command {
                         TraceWorkerCommand::Preload => {
-                            let result = ensure_loaded_data(&event_tx, &mut loaded_data).map(|_| ());
+                            let result =
+                                ensure_loaded_data(&event_tx, &mut loaded_data).map(|_| ());
                             let _ = event_tx.send(TraceWorkerEvent::Preloaded(result));
                         }
                         TraceWorkerCommand::PrewarmJava(jar_path) => {
@@ -600,27 +602,29 @@ impl App {
                         TraceWorkerCommand::RunTrace(request) => {
                             let abort = Arc::new(AtomicBool::new(false));
                             active_abort = Some(abort.clone());
-                            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                                run_trace_request(
-                                    &event_tx,
-                                    &mut loaded_data,
-                                    &mut java_server,
-                                    &mut java_server_jar,
-                                    abort,
-                                    request,
-                                )
-                            }));
+                            let result =
+                                std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                                    run_trace_request(
+                                        &event_tx,
+                                        &mut loaded_data,
+                                        &mut java_server,
+                                        &mut java_server_jar,
+                                        abort,
+                                        request,
+                                    )
+                                }));
                             active_abort = None;
                             let finished = match result {
                                 Ok(result) => TraceWorkerEvent::Finished(result),
                                 Err(panic) => {
-                                    let message = if let Some(message) = panic.downcast_ref::<String>() {
-                                        message.clone()
-                                    } else if let Some(message) = panic.downcast_ref::<&str>() {
-                                        (*message).to_string()
-                                    } else {
-                                        "trace worker panicked".to_string()
-                                    };
+                                    let message =
+                                        if let Some(message) = panic.downcast_ref::<String>() {
+                                            message.clone()
+                                        } else if let Some(message) = panic.downcast_ref::<&str>() {
+                                            (*message).to_string()
+                                        } else {
+                                            "trace worker panicked".to_string()
+                                        };
                                     TraceWorkerEvent::Finished(Err(message))
                                 }
                             };
@@ -632,7 +636,10 @@ impl App {
 
         match spawn_result {
             Ok(_) => {
-                self.trace_worker = Some(TraceWorkerHandle { command_tx, event_rx });
+                self.trace_worker = Some(TraceWorkerHandle {
+                    command_tx,
+                    event_rx,
+                });
             }
             Err(err) => {
                 self.trace_error = Some(format!("failed to spawn trace worker: {err}"));
@@ -709,7 +716,10 @@ impl App {
         let Some(worker) = &self.trace_worker else {
             return;
         };
-        if let Err(err) = worker.command_tx.send(TraceWorkerCommand::RunTrace(request)) {
+        if let Err(err) = worker
+            .command_tx
+            .send(TraceWorkerCommand::RunTrace(request))
+        {
             self.trace_running = false;
             self.trace_error = Some(format!("failed to start trace worker: {err}"));
             self.trace_status = None;
@@ -771,7 +781,9 @@ impl App {
             let _ = worker.command_tx.send(TraceWorkerCommand::Preload);
             if let Some(path) = discover_java_jar(Some(&self.java_jar_path)) {
                 self.java_jar_path = path.clone();
-                let _ = worker.command_tx.send(TraceWorkerCommand::PrewarmJava(path));
+                let _ = worker
+                    .command_tx
+                    .send(TraceWorkerCommand::PrewarmJava(path));
             }
         }
     }
@@ -928,8 +940,10 @@ impl App {
                         continue;
                     }
                     if let Some(trace) = self.trace.as_mut() {
-                        let preserve_visible_compare = matches!(self.trace_mode, TraceMode::Compare)
-                            && (trace.pending_comparison.is_some() || self.trace_collecting_context);
+                        let preserve_visible_compare =
+                            matches!(self.trace_mode, TraceMode::Compare)
+                                && (trace.pending_comparison.is_some()
+                                    || self.trace_collecting_context);
                         if let Some(game) = finished.rust {
                             if let Some(pane) = trace.rust.as_mut() {
                                 pane.finalize(game, !preserve_visible_compare);
@@ -958,7 +972,11 @@ impl App {
                                 if !comparison.passed() {
                                     debug_messages
                                         .push("finished event: stopping live follow".to_string());
-                                    let rows = compare_rows_for_display(trace, &trace.compare_rows(), false);
+                                    let rows = compare_rows_for_display(
+                                        trace,
+                                        &trace.compare_rows(),
+                                        false,
+                                    );
                                     if let Some(row_index) =
                                         divergence_row_index(trace, &rows, comparison)
                                     {
@@ -1147,8 +1165,11 @@ impl App {
         if select_first {
             match self.trace_mode {
                 TraceMode::Compare => {
-                    let rows =
-                        compare_rows_for_display(trace, &trace.compare_rows(), self.trace_follow_live);
+                    let rows = compare_rows_for_display(
+                        trace,
+                        &trace.compare_rows(),
+                        self.trace_follow_live,
+                    );
                     if !rows.is_empty() {
                         jump_to_compare_row(trace, &rows, 0, &mut self.trace_follow_live);
                     }
@@ -1173,8 +1194,11 @@ impl App {
         if select_last {
             match self.trace_mode {
                 TraceMode::Compare => {
-                    let rows =
-                        compare_rows_for_display(trace, &trace.compare_rows(), self.trace_follow_live);
+                    let rows = compare_rows_for_display(
+                        trace,
+                        &trace.compare_rows(),
+                        self.trace_follow_live,
+                    );
                     if !rows.is_empty() {
                         jump_to_compare_row(
                             trace,
@@ -1204,8 +1228,11 @@ impl App {
         if timeline_delta != 0 {
             match self.trace_mode {
                 TraceMode::Compare => {
-                    let rows =
-                        compare_rows_for_display(trace, &trace.compare_rows(), self.trace_follow_live);
+                    let rows = compare_rows_for_display(
+                        trace,
+                        &trace.compare_rows(),
+                        self.trace_follow_live,
+                    );
                     if !rows.is_empty() {
                         let current = selected_compare_row_index(trace, &rows);
                         let target = current
@@ -1295,7 +1322,6 @@ impl App {
         );
         (shorten_list(&label, 18), shorten_list(&meta, 28))
     }
-
 }
 
 fn available_deck_names(app: &App) -> Vec<String> {
@@ -1408,7 +1434,11 @@ impl TraceSession {
             && source.java_index == displayed.java_index
     }
 
-    fn append_next_compare_display_row(&mut self, follow_live: bool, collecting_context: bool) -> bool {
+    fn append_next_compare_display_row(
+        &mut self,
+        follow_live: bool,
+        collecting_context: bool,
+    ) -> bool {
         let rows = self.compare_rows();
         let start = self
             .compare_display_rows
@@ -1727,16 +1757,12 @@ fn selected_compare_row_index(trace: &TraceSession, rows: &[ComparePhaseRow]) ->
             return index;
         }
         if let Some(index) = rows.iter().position(|row| {
-            row.rust_index.is_some()
-                && row.rust_index == anchor.rust_index
-                && row.key == anchor.key
+            row.rust_index.is_some() && row.rust_index == anchor.rust_index && row.key == anchor.key
         }) {
             return index;
         }
         if let Some(index) = rows.iter().position(|row| {
-            row.java_index.is_some()
-                && row.java_index == anchor.java_index
-                && row.key == anchor.key
+            row.java_index.is_some() && row.java_index == anchor.java_index && row.key == anchor.key
         }) {
             return index;
         }
@@ -1874,7 +1900,10 @@ fn compare_rows_for_display(
     rows: &[ComparePhaseRow],
     trace_follow_live: bool,
 ) -> Vec<ComparePhaseRow> {
-    if trace_follow_live || trace.pending_comparison.is_some() || trace.compare_visible_row_count > 0 {
+    if trace_follow_live
+        || trace.pending_comparison.is_some()
+        || trace.compare_visible_row_count > 0
+    {
         let rust_still_revealing = trace
             .rust
             .as_ref()
@@ -1908,8 +1937,7 @@ fn compare_rows_for_display(
         .is_some_and(|pane| !pane.stream_complete || !pane.pending_entries.is_empty());
     let streaming = rust_still_revealing || java_still_revealing;
     let mut filtered = if trace.pending_comparison.is_some() {
-        rows
-            .iter()
+        rows.iter()
             .filter(|row| row.rust_index.is_some() && row.java_index.is_some())
             .cloned()
             .collect()
@@ -1917,8 +1945,7 @@ fn compare_rows_for_display(
         if !comparison.passed() {
             if let Some(row_index) = divergence_row_index(trace, rows, comparison) {
                 let divergence_turn = rows[row_index].key.turn;
-                rows
-                    .iter()
+                rows.iter()
                     .enumerate()
                     .filter_map(|(idx, row)| {
                         let shared = row.rust_index.is_some() && row.java_index.is_some();
@@ -1937,17 +1964,16 @@ fn compare_rows_for_display(
         }
     } else {
         let streaming = streaming
-        && (trace.rust.as_ref().is_some_and(|pane| {
-            !pane.snapshots.is_empty() || !pane.pending_entries.is_empty()
-        }) || trace.java.as_ref().is_some_and(|pane| {
-            !pane.snapshots.is_empty() || !pane.pending_entries.is_empty()
-        }));
+            && (trace.rust.as_ref().is_some_and(|pane| {
+                !pane.snapshots.is_empty() || !pane.pending_entries.is_empty()
+            }) || trace.java.as_ref().is_some_and(|pane| {
+                !pane.snapshots.is_empty() || !pane.pending_entries.is_empty()
+            }));
         if trace_follow_live && streaming {
-            rows
-            .iter()
-            .filter(|row| row.rust_index.is_some() && row.java_index.is_some())
-            .cloned()
-            .collect()
+            rows.iter()
+                .filter(|row| row.rust_index.is_some() && row.java_index.is_some())
+                .cloned()
+                .collect()
         } else {
             rows.to_vec()
         }
@@ -1966,7 +1992,10 @@ fn compare_rows_for_display(
     let frontier = if hold_to_playback_frontier {
         selected_frontier
     } else {
-        trace.compare_visible_row_count.min(filtered.len()).max(selected_frontier)
+        trace
+            .compare_visible_row_count
+            .min(filtered.len())
+            .max(selected_frontier)
     };
     filtered.truncate(frontier);
     filtered
@@ -1980,9 +2009,10 @@ fn divergence_row_index(
     rows.iter()
         .position(|row| divergence_for_compare_row(Some(comparison), trace, row).is_some())
         .or_else(|| {
-            comparison.divergence_key.as_ref().and_then(|key| {
-                rows.iter().position(|row| row.key == *key)
-            })
+            comparison
+                .divergence_key
+                .as_ref()
+                .and_then(|key| rows.iter().position(|row| row.key == *key))
         })
 }
 
@@ -1995,11 +2025,21 @@ fn compare_selected_snapshot_indices(
     let mut java_index = selected.and_then(|row| row.java_index);
     if let (Some(row), Some(comparison)) = (selected, trace.comparison.as_ref()) {
         if divergence_for_compare_row(Some(comparison), trace, row).is_some() {
-            if let (Some(pane), Some(snapshot)) = (trace.rust.as_ref(), comparison.rust_snapshot.as_ref()) {
-                rust_index = pane.snapshots.iter().position(|candidate| candidate == snapshot);
+            if let (Some(pane), Some(snapshot)) =
+                (trace.rust.as_ref(), comparison.rust_snapshot.as_ref())
+            {
+                rust_index = pane
+                    .snapshots
+                    .iter()
+                    .position(|candidate| candidate == snapshot);
             }
-            if let (Some(pane), Some(snapshot)) = (trace.java.as_ref(), comparison.java_snapshot.as_ref()) {
-                java_index = pane.snapshots.iter().position(|candidate| candidate == snapshot);
+            if let (Some(pane), Some(snapshot)) =
+                (trace.java.as_ref(), comparison.java_snapshot.as_ref())
+            {
+                java_index = pane
+                    .snapshots
+                    .iter()
+                    .position(|candidate| candidate == snapshot);
             }
         }
     }
@@ -2011,7 +2051,9 @@ fn set_compare_row_selection(trace: &mut TraceSession, rows: &[ComparePhaseRow],
         return;
     };
     trace.compare_selected_row = row_index;
-    trace.compare_visible_row_count = trace.compare_visible_row_count.max(row_index.saturating_add(1));
+    trace.compare_visible_row_count = trace
+        .compare_visible_row_count
+        .max(row_index.saturating_add(1));
     trace.compare_selected_anchor = Some(CompareSelectionAnchor {
         key: row.key.clone(),
         rust_index: row.rust_index,
@@ -2047,9 +2089,10 @@ fn jump_to_compare_divergence(
     trace_follow_live: &mut bool,
 ) {
     let rows = trace.compare_rows();
-    if let Some(row_index) = rows.iter().position(|row| {
-        row.key.turn == divergence.turn && row.key.phase == divergence.phase
-    }) {
+    if let Some(row_index) = rows
+        .iter()
+        .position(|row| row.key.turn == divergence.turn && row.key.phase == divergence.phase)
+    {
         jump_to_compare_row(trace, &rows, row_index, trace_follow_live);
     } else {
         jump_to_comparison_snapshot(trace, divergence.snapshot_index, trace_follow_live);
@@ -2062,8 +2105,8 @@ impl eframe::App for App {
         self.handle_keyboard_navigation(ctx);
         if !self.trace_halted_on_divergence {
             if let Some(trace) = self.trace.as_mut() {
-                let pane_follow_live = self.trace_follow_live
-                    && !matches!(self.trace_mode, TraceMode::Compare);
+                let pane_follow_live =
+                    self.trace_follow_live && !matches!(self.trace_mode, TraceMode::Compare);
                 let mut revealed_snapshot = false;
                 if let Some(rust) = trace.rust.as_mut() {
                     revealed_snapshot |= rust.reveal_pending(
@@ -2111,18 +2154,16 @@ impl eframe::App for App {
         }
         if self.trace_running
             || self.java_harness_building
-            || self
-                .trace
-                .as_ref()
-                .is_some_and(|trace| {
-                    trace.rust
+            || self.trace.as_ref().is_some_and(|trace| {
+                trace
+                    .rust
+                    .as_ref()
+                    .is_some_and(|pane| !pane.pending_entries.is_empty())
+                    || trace
+                        .java
                         .as_ref()
                         .is_some_and(|pane| !pane.pending_entries.is_empty())
-                        || trace
-                            .java
-                            .as_ref()
-                            .is_some_and(|pane| !pane.pending_entries.is_empty())
-                })
+            })
         {
             ctx.request_repaint_after(Duration::from_millis(50));
         }
@@ -2166,66 +2207,94 @@ impl eframe::App for App {
                     .selected_card
                     .as_ref()
                     .map(|card| card.name.clone())
-                    .or(self.current_path.as_ref().and_then(|path| path.file_name()).and_then(|name| name.to_str()).map(|name| name.to_string()));
-                render_section_frame_with_meta(ui, "left_source", self.trace_panel_height, "Source", source_meta.as_deref(), |ui| {
-                    if !self.trace_follow_live {
-                        ui.colored_label(theme::YELLOW, "LOCKED");
-                    }
-                    if self.selected_card.is_some() && ui.button("Clear selected card").clicked() {
-                        self.selected_card = None;
-                    }
-                    render_selection_highlight_frame(
-                        ui,
-                        self.selected_card.is_some(),
-                        self.selected_card
-                            .as_ref()
-                            .map(|card| format!("trace selection · {}", card.name)),
-                        |ui| {
-                            egui::ScrollArea::vertical()
-                                .auto_shrink([false, false])
-                                .show(ui, |ui| {
-                                    let mut layouter =
-                                        |ui: &egui::Ui, text: &str, wrap_width: f32| {
-                                            layout_source_galley(ui, text, wrap_width)
-                                        };
-                                    ui.add(
-                                        egui::TextEdit::multiline(&mut self.source)
-                                            .desired_width(f32::INFINITY)
-                                            .desired_rows(40)
-                                            .code_editor()
-                                            .layouter(&mut layouter),
-                                    );
-                                });
-                        },
-                    );
-                });
+                    .or(self
+                        .current_path
+                        .as_ref()
+                        .and_then(|path| path.file_name())
+                        .and_then(|name| name.to_str())
+                        .map(|name| name.to_string()));
+                render_section_frame_with_meta(
+                    ui,
+                    "left_source",
+                    self.trace_panel_height,
+                    "Source",
+                    source_meta.as_deref(),
+                    |ui| {
+                        if !self.trace_follow_live {
+                            ui.colored_label(theme::YELLOW, "LOCKED");
+                        }
+                        if self.selected_card.is_some()
+                            && ui.button("Clear selected card").clicked()
+                        {
+                            self.selected_card = None;
+                        }
+                        render_selection_highlight_frame(
+                            ui,
+                            self.selected_card.is_some(),
+                            self.selected_card
+                                .as_ref()
+                                .map(|card| format!("trace selection · {}", card.name)),
+                            |ui| {
+                                egui::ScrollArea::vertical()
+                                    .auto_shrink([false, false])
+                                    .show(ui, |ui| {
+                                        let mut layouter =
+                                            |ui: &egui::Ui, text: &str, wrap_width: f32| {
+                                                layout_source_galley(ui, text, wrap_width)
+                                            };
+                                        ui.add(
+                                            egui::TextEdit::multiline(&mut self.source)
+                                                .desired_width(f32::INFINITY)
+                                                .desired_rows(40)
+                                                .code_editor()
+                                                .layouter(&mut layouter),
+                                        );
+                                    });
+                            },
+                        );
+                    },
+                );
                 drag_height_handle(ui, &mut self.trace_panel_height);
-                render_section_frame_with_meta(ui, "left_summary", self.summary_panel_height, "Card Summary", None, |ui| {
-                    egui::ScrollArea::vertical()
-                        .auto_shrink([false, false])
-                        .show(ui, |ui| {
-                            render_summary(ui, &parsed);
-                        });
-                });
+                render_section_frame_with_meta(
+                    ui,
+                    "left_summary",
+                    self.summary_panel_height,
+                    "Card Summary",
+                    None,
+                    |ui| {
+                        egui::ScrollArea::vertical()
+                            .auto_shrink([false, false])
+                            .show(ui, |ui| {
+                                render_summary(ui, &parsed);
+                            });
+                    },
+                );
                 drag_height_handle(ui, &mut self.summary_panel_height);
                 let remaining_height = ui.available_height().max(180.0);
                 let ast_meta = match self.ast_view_mode {
                     AstViewMode::Graph => "graph",
                     AstViewMode::Text => "text",
                 };
-                render_section_frame_with_meta(ui, "left_ast", remaining_height, "Parsed AST", Some(ast_meta), |ui| {
-                    egui::ScrollArea::both()
-                        .id_salt("left_ast_canvas")
-                        .auto_shrink([false, false])
-                        .show(ui, |ui| {
-                            render_ast(
-                                ui,
-                                &parsed,
-                                self.selected_card.as_ref().map(|card| card.name.as_str()),
-                                &mut self.ast_view_mode,
-                            );
-                        });
-                });
+                render_section_frame_with_meta(
+                    ui,
+                    "left_ast",
+                    remaining_height,
+                    "Parsed AST",
+                    Some(ast_meta),
+                    |ui| {
+                        egui::ScrollArea::both()
+                            .id_salt("left_ast_canvas")
+                            .auto_shrink([false, false])
+                            .show(ui, |ui| {
+                                render_ast(
+                                    ui,
+                                    &parsed,
+                                    self.selected_card.as_ref().map(|card| card.name.as_str()),
+                                    &mut self.ast_view_mode,
+                                );
+                            });
+                    },
+                );
             });
 
         egui::SidePanel::right("right_rail")
@@ -2258,81 +2327,119 @@ impl eframe::App for App {
                     TraceMode::Java => Some("JAVA"),
                     TraceMode::Compare => Some("RUST · JAVA"),
                 };
-                render_section_frame_with_meta(ui, "right_snapshot", self.right_snapshot_panel_height, "Snapshot", snapshot_meta, |ui| {
-                    render_snapshot_shell(
-                        ui,
-                        trace_ref,
-                        trace_mode,
-                        archive_ref,
-                        &mut self.selected_card,
-                    );
-                });
+                render_section_frame_with_meta(
+                    ui,
+                    "right_snapshot",
+                    self.right_snapshot_panel_height,
+                    "Snapshot",
+                    snapshot_meta,
+                    |ui| {
+                        render_snapshot_shell(
+                            ui,
+                            trace_ref,
+                            trace_mode,
+                            archive_ref,
+                            &mut self.selected_card,
+                        );
+                    },
+                );
                 drag_height_handle(ui, &mut self.right_snapshot_panel_height);
-                let frame_meta = self.active_trace_pane_ref().map(|pane| format!("#{}", pane.selected_snapshot)).unwrap_or_else(|| "#0".to_string());
+                let frame_meta = self
+                    .active_trace_pane_ref()
+                    .map(|pane| format!("#{}", pane.selected_snapshot))
+                    .unwrap_or_else(|| "#0".to_string());
                 self.right_events_panel_height = self.right_events_panel_height.max(220.0);
-                render_section_frame_with_meta(ui, "right_events", self.right_events_panel_height, "Frame Events", Some(&frame_meta), |ui| {
-                    render_event_shell(ui, trace_ref, trace_mode);
-                });
+                render_section_frame_with_meta(
+                    ui,
+                    "right_events",
+                    self.right_events_panel_height,
+                    "Frame Events",
+                    Some(&frame_meta),
+                    |ui| {
+                        render_event_shell(ui, trace_ref, trace_mode);
+                    },
+                );
                 drag_height_handle(ui, &mut self.right_events_panel_height);
                 let remaining_height = ui.available_height().max(130.0);
-                render_section_frame_with_meta(ui, "right_diagnostics", remaining_height, "Diagnostics", self.trace_error.as_deref().map(|_| "error"), |ui| {
-                    egui::ScrollArea::vertical()
-                        .auto_shrink([false, false])
-                        .show(ui, |ui| {
-                            let (rust_snaps, java_snaps) = self.snapshot_counts();
-                            ui.horizontal_wrapped(|ui| {
-                                ui.colored_label(theme::ACCENT, "source");
-                                ui.label(self.current_path.as_ref().map_or("(unsaved sample)".to_string(), |path| path.display().to_string()));
-                            });
-                            ui.horizontal_wrapped(|ui| {
-                                ui.colored_label(theme::RUST, "rust");
-                                ui.label(format!("{rust_snaps} snapshots"));
-                                ui.colored_label(theme::JAVA, "java");
-                                ui.label(format!("{java_snaps} snapshots"));
-                            });
-                            if let Some(trace) = &self.trace {
-                                if let Some(comparison) = trace.comparison.as_ref() {
-                                    let status = if comparison.passed() { "PASS" } else { "FAIL" };
-                                    ui.horizontal_wrapped(|ui| {
-                                        ui.colored_label(
-                                            if comparison.passed() { theme::GREEN } else { theme::RED },
-                                            format!("parity {status}"),
-                                        );
-                                        ui.label(format!("{} divergence(s)", comparison.per_snapshot.len()));
-                                    });
+                render_section_frame_with_meta(
+                    ui,
+                    "right_diagnostics",
+                    remaining_height,
+                    "Diagnostics",
+                    self.trace_error.as_deref().map(|_| "error"),
+                    |ui| {
+                        egui::ScrollArea::vertical()
+                            .auto_shrink([false, false])
+                            .show(ui, |ui| {
+                                let (rust_snaps, java_snaps) = self.snapshot_counts();
+                                ui.horizontal_wrapped(|ui| {
+                                    ui.colored_label(theme::ACCENT, "source");
+                                    ui.label(
+                                        self.current_path
+                                            .as_ref()
+                                            .map_or("(unsaved sample)".to_string(), |path| {
+                                                path.display().to_string()
+                                            }),
+                                    );
+                                });
+                                ui.horizontal_wrapped(|ui| {
+                                    ui.colored_label(theme::RUST, "rust");
+                                    ui.label(format!("{rust_snaps} snapshots"));
+                                    ui.colored_label(theme::JAVA, "java");
+                                    ui.label(format!("{java_snaps} snapshots"));
+                                });
+                                if let Some(trace) = &self.trace {
+                                    if let Some(comparison) = trace.comparison.as_ref() {
+                                        let status =
+                                            if comparison.passed() { "PASS" } else { "FAIL" };
+                                        ui.horizontal_wrapped(|ui| {
+                                            ui.colored_label(
+                                                if comparison.passed() {
+                                                    theme::GREEN
+                                                } else {
+                                                    theme::RED
+                                                },
+                                                format!("parity {status}"),
+                                            );
+                                            ui.label(format!(
+                                                "{} divergence(s)",
+                                                comparison.per_snapshot.len()
+                                            ));
+                                        });
+                                    }
                                 }
-                            }
-                            if let Some((decision_count, callback_count)) = active_trace_counts {
-                                ui.colored_label(
-                                    theme::FG_2,
-                                    format!(
-                                        "decisions {} · callbacks {}",
-                                        decision_count,
-                                        callback_count
-                                    ),
-                                );
-                            }
-                            if let Some(err) = &self.load_error {
-                                ui.colored_label(theme::RED, err);
-                            }
-                            if let Some(err) = &self.archive_error {
-                                ui.colored_label(theme::RED, err);
-                            }
-                            if let Some(err) = &self.trace_error {
-                                ui.colored_label(theme::RED, err);
-                            }
-                            if let Some(status) = self.trace_status.as_deref() {
-                                ui.colored_label(theme::FG_3, status);
-                            }
-                            if !self.trace_debug_log.is_empty() {
-                                ui.separator();
-                                ui.colored_label(theme::FG_2, "debug");
-                                for line in self.trace_debug_log.iter().rev().take(12) {
-                                    ui.monospace(line);
+                                if let Some((decision_count, callback_count)) = active_trace_counts
+                                {
+                                    ui.colored_label(
+                                        theme::FG_2,
+                                        format!(
+                                            "decisions {} · callbacks {}",
+                                            decision_count, callback_count
+                                        ),
+                                    );
                                 }
-                            }
-                        });
-                });
+                                if let Some(err) = &self.load_error {
+                                    ui.colored_label(theme::RED, err);
+                                }
+                                if let Some(err) = &self.archive_error {
+                                    ui.colored_label(theme::RED, err);
+                                }
+                                if let Some(err) = &self.trace_error {
+                                    ui.colored_label(theme::RED, err);
+                                }
+                                if let Some(status) = self.trace_status.as_deref() {
+                                    ui.colored_label(theme::FG_3, status);
+                                }
+                                if !self.trace_debug_log.is_empty() {
+                                    ui.separator();
+                                    ui.colored_label(theme::FG_2, "debug");
+                                    for line in self.trace_debug_log.iter().rev().take(12) {
+                                        ui.monospace(line);
+                                    }
+                                }
+                            });
+                    },
+                );
             });
 
         egui::CentralPanel::default()
@@ -2341,19 +2448,32 @@ impl eframe::App for App {
                 let height = ui.available_height().max(240.0);
                 let trace_meta = self
                     .active_trace_pane_ref()
-                    .map(|pane| format!("{} snapshots · {} callbacks", pane.snapshots.len(), pane.callback_count()))
+                    .map(|pane| {
+                        format!(
+                            "{} snapshots · {} callbacks",
+                            pane.snapshots.len(),
+                            pane.callback_count()
+                        )
+                    })
                     .unwrap_or_else(|| "idle".to_string());
-                render_section_frame_with_meta(ui, "center_trace", height, "Engine Trace", Some(&trace_meta), |ui| {
-                    render_trace(
-                        ui,
-                        &mut self.trace,
-                        self.trace_error.as_deref(),
-                        self.trace_running,
-                        self.trace_status.as_deref(),
-                        &self.search_query,
-                        &mut self.trace_follow_live,
-                    );
-                });
+                render_section_frame_with_meta(
+                    ui,
+                    "center_trace",
+                    height,
+                    "Engine Trace",
+                    Some(&trace_meta),
+                    |ui| {
+                        render_trace(
+                            ui,
+                            &mut self.trace,
+                            self.trace_error.as_deref(),
+                            self.trace_running,
+                            self.trace_status.as_deref(),
+                            &self.search_query,
+                            &mut self.trace_follow_live,
+                        );
+                    },
+                );
             });
 
         render_toolbar_popovers(ctx, self);
@@ -2449,7 +2569,12 @@ fn render_toolbar(ui: &mut egui::Ui, app: &mut App) {
                     "Run trace · F5"
                 };
                 let button_specs = [
-                    ("↺", !trace_busy && !app.java_harness_building, false, "Restart · Cmd+R"),
+                    (
+                        "↺",
+                        !trace_busy && !app.java_harness_building,
+                        false,
+                        "Restart · Cmd+R",
+                    ),
                     ("⤴", can_step_back, false, "Step out · Shift+F11"),
                     ("⤓", can_step_forward, false, "Step into · F11"),
                     ("↦", has_trace_frames, false, "Step over · F10"),
@@ -2462,9 +2587,11 @@ fn render_toolbar(ui: &mut egui::Ui, app: &mut App) {
                 ];
                 for (index, (label, enabled, primary, tooltip)) in button_specs.iter().enumerate() {
                     let button = egui::Button::new(
-                        egui::RichText::new(*label)
-                            .size(12.0)
-                            .color(if *primary { theme::BG_0 } else { theme::FG_1 }),
+                        egui::RichText::new(*label).size(12.0).color(if *primary {
+                            theme::BG_0
+                        } else {
+                            theme::FG_1
+                        }),
                     )
                     .frame(true)
                     .fill(if *primary { theme::ACCENT } else { theme::BG_0 })
@@ -2612,7 +2739,11 @@ fn render_toolbar(ui: &mut egui::Ui, app: &mut App) {
                 ui.colored_label(theme::BORDER_STRONG, "/");
                 toolbar_segment_button(
                     ui,
-                    &format!("{} vs {}", shorten_list(&app.trace_deck1_input, 18), shorten_list(&app.trace_deck2_input, 18)),
+                    &format!(
+                        "{} vs {}",
+                        shorten_list(&app.trace_deck1_input, 18),
+                        shorten_list(&app.trace_deck2_input, 18)
+                    ),
                     None,
                     None,
                     false,
@@ -2630,7 +2761,9 @@ fn render_toolbar(ui: &mut egui::Ui, app: &mut App) {
                 ui.add_sized(
                     [44.0, 16.0],
                     egui::Label::new(
-                        egui::RichText::new(format!("/ {frame_total}")).size(10.0).color(theme::FG_3),
+                        egui::RichText::new(format!("/ {frame_total}"))
+                            .size(10.0)
+                            .color(theme::FG_3),
                     ),
                 );
                 ui.separator();
@@ -2646,7 +2779,9 @@ fn render_toolbar(ui: &mut egui::Ui, app: &mut App) {
                 ui.add_sized(
                     [92.0, 16.0],
                     egui::Label::new(
-                        egui::RichText::new(event_meta).size(10.0).color(theme::FG_3),
+                        egui::RichText::new(event_meta)
+                            .size(10.0)
+                            .color(theme::FG_3),
                     ),
                 );
                 ui.add_space(8.0);
@@ -2665,7 +2800,15 @@ fn render_toolbar(ui: &mut egui::Ui, app: &mut App) {
                     ui.spacing_mut().item_spacing.x = 4.0;
                     ui.horizontal(|ui| {
                         ui.add_sized(
-                            [search_width - if app.search_query.is_empty() { 8.0 } else { 22.0 }, 16.0],
+                            [
+                                search_width
+                                    - if app.search_query.is_empty() {
+                                        8.0
+                                    } else {
+                                        22.0
+                                    },
+                                16.0,
+                            ],
                             egui::TextEdit::singleline(&mut app.search_query)
                                 .hint_text("Search trace…")
                                 .frame(false),
@@ -2735,7 +2878,11 @@ fn toolbar_segment_button(
     suffix: Option<&str>,
     uppercase: bool,
 ) -> egui::Response {
-    let label = if uppercase { text.to_uppercase() } else { text.to_string() };
+    let label = if uppercase {
+        text.to_uppercase()
+    } else {
+        text.to_string()
+    };
     let width = 14.0
         + label.chars().count() as f32 * if uppercase { 6.3 } else { 6.8 }
         + suffix.map_or(0.0, |value| value.chars().count() as f32 * 5.8 + 8.0)
@@ -2778,9 +2925,7 @@ fn render_run_config_popup(ui: &mut egui::Ui, app: &mut App) {
                 ui.horizontal(|ui| {
                     ui.colored_label(
                         theme::FG_2,
-                        egui::RichText::new("RUN CONFIGURATION")
-                            .size(10.0)
-                            .strong(),
+                        egui::RichText::new("RUN CONFIGURATION").size(10.0).strong(),
                     );
                     ui.colored_label(theme::FG_3, "· applied to next run trace");
                 });
@@ -2878,7 +3023,8 @@ fn render_run_config_popup(ui: &mut egui::Ui, app: &mut App) {
                                     .range(0..=u64::MAX),
                             );
                             if ui.button("↻ random").clicked() {
-                                app.trace_seed_input = (Instant::now().elapsed().as_nanos() % 10_000) as u64;
+                                app.trace_seed_input =
+                                    (Instant::now().elapsed().as_nanos() % 10_000) as u64;
                             }
                         });
                         ui.end_row();
@@ -2911,10 +3057,7 @@ fn render_run_config_popup(ui: &mut egui::Ui, app: &mut App) {
                             app.trace_game_index_input = app
                                 .trace_game_index_input
                                 .clamp(1, app.trace_games_input.max(1));
-                            ui.colored_label(
-                                theme::FG_3,
-                                format!("of {}", app.trace_games_input),
-                            );
+                            ui.colored_label(theme::FG_3, format!("of {}", app.trace_games_input));
                         });
                         ui.end_row();
 
@@ -3057,7 +3200,12 @@ fn render_java_popup_row(
         egui::Label::new(egui::RichText::new(icon).color(theme::JAVA).size(14.0)),
     );
     row_ui.vertical(|ui| {
-        ui.label(egui::RichText::new(title).color(theme::FG_0).strong().size(11.0));
+        ui.label(
+            egui::RichText::new(title)
+                .color(theme::FG_0)
+                .strong()
+                .size(11.0),
+        );
         ui.colored_label(theme::FG_2, egui::RichText::new(value).size(10.0));
         ui.colored_label(theme::FG_3, egui::RichText::new(description).size(10.0));
     });
@@ -3096,12 +3244,14 @@ fn render_trace_config_bar(ui: &mut egui::Ui, app: &mut App) {
         ui.label("Deck 1");
         ui.add_sized(
             [132.0, 20.0],
-            egui::TextEdit::singleline(&mut app.trace_deck1_input).hint_text("red_burn / inline:..."),
+            egui::TextEdit::singleline(&mut app.trace_deck1_input)
+                .hint_text("red_burn / inline:..."),
         );
         ui.label("Deck 2");
         ui.add_sized(
             [132.0, 20.0],
-            egui::TextEdit::singleline(&mut app.trace_deck2_input).hint_text("green_stompy / inline:..."),
+            egui::TextEdit::singleline(&mut app.trace_deck2_input)
+                .hint_text("green_stompy / inline:..."),
         );
         ui.label("Seed");
         ui.add(
@@ -3135,8 +3285,7 @@ fn render_trace_config_bar(ui: &mut egui::Ui, app: &mut App) {
             theme::FG_3,
             format!(
                 "effective seed {}",
-                app.trace_seed_input
-                    .saturating_add(app.trace_game_offset())
+                app.trace_seed_input.saturating_add(app.trace_game_offset())
             ),
         );
         ui.checkbox(&mut app.trace_prefer_actions, "prefer actions");
@@ -3146,7 +3295,10 @@ fn render_trace_config_bar(ui: &mut egui::Ui, app: &mut App) {
         if !app.trace_commanders.is_empty() {
             ui.colored_label(
                 theme::FG_3,
-                format!("cmdr {}", shorten_list(&app.trace_commanders.join(" / "), 44)),
+                format!(
+                    "cmdr {}",
+                    shorten_list(&app.trace_commanders.join(" / "), 44)
+                ),
             );
         }
 
@@ -3196,8 +3348,7 @@ fn render_trace_config_bar(ui: &mut egui::Ui, app: &mut App) {
                 app.prewarm_java_server();
             } else {
                 app.trace_error = Some(
-                    "Java harness not found. Use Build Java harness or Open Java JAR…"
-                        .to_string(),
+                    "Java harness not found. Use Build Java harness or Open Java JAR…".to_string(),
                 );
             }
         }
@@ -3259,7 +3410,9 @@ fn render_status_bar(ui: &mut egui::Ui, app: &App) {
             .active_trace_pane_ref()
             .map(|pane| pane.selected_snapshot.saturating_add(1))
             .unwrap_or(0);
-        ui.label(format!("frame {selected_count} · rust {rust_snapshots} · java {java_snapshots}"));
+        ui.label(format!(
+            "frame {selected_count} · rust {rust_snapshots} · java {java_snapshots}"
+        ));
         ui.colored_label(theme::BORDER_STRONG, "│");
         ui.label(
             app.trace
@@ -3321,12 +3474,29 @@ fn render_toolbar_popovers(ctx: &egui::Context, app: &mut App) {
     let screen_rect = ctx.screen_rect();
     let top = theme::MENU_BAR_HEIGHT + theme::TOOLBAR_HEIGHT;
     let (width, right_offset) = match which {
-        ToolbarPopover::RunConfig => (480.0, if matches!(app.trace_mode, TraceMode::Java | TraceMode::Compare) { 116.0 } else { 8.0 }),
+        ToolbarPopover::RunConfig => (
+            480.0,
+            if matches!(app.trace_mode, TraceMode::Java | TraceMode::Compare) {
+                116.0
+            } else {
+                8.0
+            },
+        ),
         ToolbarPopover::Java => (360.0, 8.0),
     };
     let popup_rect = egui::Rect::from_min_size(
-        egui::pos2(screen_rect.right() - right_offset - width, screen_rect.top() + top),
-        egui::vec2(width, if matches!(which, ToolbarPopover::RunConfig) { 320.0 } else { 220.0 }),
+        egui::pos2(
+            screen_rect.right() - right_offset - width,
+            screen_rect.top() + top,
+        ),
+        egui::vec2(
+            width,
+            if matches!(which, ToolbarPopover::RunConfig) {
+                320.0
+            } else {
+                220.0
+            },
+        ),
     );
 
     if !app.toolbar_popover_just_opened && ctx.input(|i| i.pointer.any_click()) {
@@ -3366,11 +3536,7 @@ fn render_deck_modal(ctx: &egui::Context, app: &mut App) {
     let screen_rect = ctx.screen_rect();
     let layer_id = egui::LayerId::new(egui::Order::Foreground, egui::Id::new("deck_modal"));
     let painter = ctx.layer_painter(layer_id);
-    painter.rect_filled(
-        screen_rect,
-        0.0,
-        egui::Color32::from_black_alpha(180),
-    );
+    painter.rect_filled(screen_rect, 0.0, egui::Color32::from_black_alpha(180));
 
     let mut close_modal = false;
     egui::Area::new(egui::Id::new("deck_modal_area"))
@@ -3431,8 +3597,7 @@ fn render_deck_modal(ctx: &egui::Context, app: &mut App) {
                                     .file_name()
                                     .and_then(|value| value.to_str())
                                     .unwrap_or("archive");
-                                if !query.is_empty()
-                                    && !label.to_ascii_lowercase().contains(&query)
+                                if !query.is_empty() && !label.to_ascii_lowercase().contains(&query)
                                 {
                                     continue;
                                 }
@@ -3440,7 +3605,12 @@ fn render_deck_modal(ctx: &egui::Context, app: &mut App) {
                                 if selectable_modal_row(
                                     ui,
                                     label,
-                                    &format!("{} cards", app.archive.as_ref().map_or(0, |archive| archive.archive().cards.len())),
+                                    &format!(
+                                        "{} cards",
+                                        app.archive
+                                            .as_ref()
+                                            .map_or(0, |archive| archive.archive().cards.len())
+                                    ),
                                     &format!("⌘{}", index + 1),
                                     selected,
                                 )
@@ -3467,8 +3637,8 @@ fn render_deck_modal(ctx: &egui::Context, app: &mut App) {
                                 })
                                 .collect();
                             for (idx, name, deck1, deck2) in preset_rows {
-                                let searchable = format!("{} {} {}", name, deck1, deck2)
-                                    .to_ascii_lowercase();
+                                let searchable =
+                                    format!("{} {} {}", name, deck1, deck2).to_ascii_lowercase();
                                 if !query.is_empty() && !searchable.contains(&query) {
                                     continue;
                                 }
@@ -3531,10 +3701,8 @@ fn selectable_modal_row(
     shortcut: &str,
     selected: bool,
 ) -> egui::Response {
-    let (rect, response) = ui.allocate_exact_size(
-        egui::vec2(ui.available_width(), 40.0),
-        egui::Sense::click(),
-    );
+    let (rect, response) =
+        ui.allocate_exact_size(egui::vec2(ui.available_width(), 40.0), egui::Sense::click());
     let fill = if selected {
         theme::ACCENT_BG
     } else if response.hovered() {
@@ -3588,11 +3756,8 @@ fn render_section_frame_with_meta(
     let panel_size = egui::vec2(available_width, panel_height);
     let (rect, _) = ui.allocate_exact_size(panel_size, egui::Sense::hover());
     ui.painter().rect_filled(rect, 0.0, theme::BG_FLOAT);
-    ui.painter().rect_stroke(
-        rect,
-        0.0,
-        egui::Stroke::new(1.0, theme::BORDER_SUBTLE),
-    );
+    ui.painter()
+        .rect_stroke(rect, 0.0, egui::Stroke::new(1.0, theme::BORDER_SUBTLE));
 
     let header_rect = egui::Rect::from_min_size(
         rect.min,
@@ -3640,7 +3805,10 @@ fn render_section_frame_with_meta(
             } else {
                 theme::FG_3
             };
-            ui.colored_label(color, egui::RichText::new(meta).size(theme::SMALL_TEXT_SIZE));
+            ui.colored_label(
+                color,
+                egui::RichText::new(meta).size(theme::SMALL_TEXT_SIZE),
+            );
         }
     });
 
@@ -3789,7 +3957,11 @@ fn render_selection_highlight_frame(
         .inner_margin(egui::Margin::same(6.0))
         .stroke(egui::Stroke::new(
             if selected { 1.5 } else { 1.0 },
-            if selected { theme::ACCENT } else { theme::BORDER },
+            if selected {
+                theme::ACCENT
+            } else {
+                theme::BORDER
+            },
         ));
     frame.show(ui, |ui| {
         if let Some(label) = label {
@@ -3813,7 +3985,10 @@ fn render_comparison_summary(
             ("FAIL", egui::Color32::LIGHT_RED)
         };
         ui.colored_label(status.1, format!("Parity {}", status.0));
-        ui.weak(format!("snapshots compared: {}", comparison.snapshots_compared));
+        ui.weak(format!(
+            "snapshots compared: {}",
+            comparison.snapshots_compared
+        ));
         ui.weak(format!("divergences: {}", comparison.per_snapshot.len()));
     });
 
@@ -3822,10 +3997,7 @@ fn render_comparison_summary(
             ui.horizontal_wrapped(|ui| {
                 ui.colored_label(
                     egui::Color32::LIGHT_RED,
-                    format!(
-                        "First divergence at #{}",
-                        divergence.snapshot_index
-                    ),
+                    format!("First divergence at #{}", divergence.snapshot_index),
                 );
                 ui.strong(&divergence.field);
                 if ui.button("Jump to diff").clicked() {
@@ -3858,7 +4030,10 @@ fn render_comparison_summary(
                             divergence.field
                         );
                         if ui
-                            .selectable_label(false, egui::RichText::new(label).color(egui::Color32::LIGHT_RED))
+                            .selectable_label(
+                                false,
+                                egui::RichText::new(label).color(egui::Color32::LIGHT_RED),
+                            )
                             .clicked()
                         {
                             jump_to_compare_divergence(trace, divergence, trace_follow_live);
@@ -3975,10 +4150,7 @@ fn render_trace_minimap(
     let tick_width = (rect.width() / len as f32).max(2.0);
     for (idx, (key, _snapshot_index)) in rows.iter().enumerate() {
         let min = egui::pos2(rect.left() + idx as f32 * tick_width, rect.top());
-        let max = egui::pos2(
-            (min.x + tick_width - 1.0).min(rect.right()),
-            rect.bottom(),
-        );
+        let max = egui::pos2((min.x + tick_width - 1.0).min(rect.right()), rect.bottom());
         let tick_rect = egui::Rect::from_min_max(min, max);
         let divergence = divergence_for_phase(comparison, key);
         let color = if divergence.is_some() {
@@ -4049,13 +4221,7 @@ fn render_compare_trace_pane(
         .id_salt(("trace_timeline", "compare"))
         .auto_shrink([false, false])
         .show(ui, |ui| {
-            render_compare_timeline_rows(
-                ui,
-                trace,
-                &display_rows,
-                search_query,
-                trace_follow_live,
-            );
+            render_compare_timeline_rows(ui, trace, &display_rows, search_query, trace_follow_live);
         });
 }
 
@@ -4080,10 +4246,7 @@ fn render_compare_trace_minimap(
     let tick_width = (rect.width() / len as f32).max(2.0);
     for (idx, row) in rows.iter().enumerate() {
         let min = egui::pos2(rect.left() + idx as f32 * tick_width, rect.top());
-        let max = egui::pos2(
-            (min.x + tick_width - 1.0).min(rect.right()),
-            rect.bottom(),
-        );
+        let max = egui::pos2((min.x + tick_width - 1.0).min(rect.right()), rect.bottom());
         let tick_rect = egui::Rect::from_min_max(min, max);
         let _ = row;
         let color = if Some(idx) == divergence_row {
@@ -4169,10 +4332,8 @@ fn render_timeline_rows(
             continue;
         }
         if last_turn != Some(key.turn) {
-            let (divider_rect, divider_response) = ui.allocate_exact_size(
-                egui::vec2(ui.available_width(), 18.0),
-                egui::Sense::click(),
-            );
+            let (divider_rect, divider_response) = ui
+                .allocate_exact_size(egui::vec2(ui.available_width(), 18.0), egui::Sense::click());
             let divider_bg = if divider_response.hovered() {
                 theme::BG_HOVER
             } else {
@@ -4192,7 +4353,9 @@ fn render_timeline_rows(
             divider_ui.colored_label(theme::FG_0, format!("Turn {}", key.turn));
             divider_ui.colored_label(theme::FG_3, "·");
             divider_ui.colored_label(theme::FG_3, &key.phase);
-            divider_response.clone().on_hover_cursor(egui::CursorIcon::PointingHand);
+            divider_response
+                .clone()
+                .on_hover_cursor(egui::CursorIcon::PointingHand);
             if divider_response.clicked() {
                 *trace_follow_live = false;
                 trace.selected_snapshot = *snapshot_index;
@@ -4200,10 +4363,8 @@ fn render_timeline_rows(
             }
             last_turn = Some(key.turn);
         }
-        let (row_rect, response) = ui.allocate_exact_size(
-            egui::vec2(ui.available_width(), 22.0),
-            egui::Sense::click(),
-        );
+        let (row_rect, response) =
+            ui.allocate_exact_size(egui::vec2(ui.available_width(), 22.0), egui::Sense::click());
         let selected = selected_row == idx;
         let background = if selected {
             theme::ACCENT_BG
@@ -4237,7 +4398,14 @@ fn render_timeline_rows(
                 .layout(egui::Layout::left_to_right(egui::Align::Center)),
         );
         row_ui.spacing_mut().item_spacing.x = 8.0;
-        row_ui.colored_label(if divergence.is_some() { theme::RED } else { theme::FG_3 }, "●");
+        row_ui.colored_label(
+            if divergence.is_some() {
+                theme::RED
+            } else {
+                theme::FG_3
+            },
+            "●",
+        );
         row_ui.colored_label(theme::FG_3, format!("#{:02}", idx));
         row_ui.colored_label(theme::FG_2, format!("T{}", key.turn));
         row_ui.colored_label(row_kind_color(&key.phase), phase_label);
@@ -4254,7 +4422,9 @@ fn render_timeline_rows(
                 divergence.field, divergence.rust_value, divergence.java_value
             ));
         }
-        response.clone().on_hover_cursor(egui::CursorIcon::PointingHand);
+        response
+            .clone()
+            .on_hover_cursor(egui::CursorIcon::PointingHand);
         if response.clicked() {
             *trace_follow_live = false;
             trace.selected_snapshot = *snapshot_index;
@@ -4301,15 +4471,14 @@ fn render_compare_timeline_rows(
         let phase_label = short_phase_label(&row.key.phase);
         let occurrence = compare_row_occurrence(rows, idx);
         let divergence = if Some(idx) == divergence_row {
-            trace.comparison
+            trace
+                .comparison
                 .as_ref()
                 .and_then(|comparison| comparison.first_divergence.as_ref())
         } else {
             None
         };
-        let divergence_field = divergence
-            .map(|d| d.field.clone())
-            .unwrap_or_default();
+        let divergence_field = divergence.map(|d| d.field.clone()).unwrap_or_default();
         let divergence_hover = divergence.map(|d| {
             format!(
                 "{}\nRust: {}\nJava: {}",
@@ -4319,10 +4488,7 @@ fn render_compare_timeline_rows(
         let has_divergence = divergence.is_some();
         let searchable = format!(
             "#{idx} t{} {} p{} {}",
-            row.key.turn,
-            phase_label,
-            row.key.priority_player,
-            divergence_field
+            row.key.turn, phase_label, row.key.priority_player, divergence_field
         )
         .to_ascii_lowercase();
         if !needle.is_empty() && !searchable.contains(&needle) {
@@ -4330,10 +4496,8 @@ fn render_compare_timeline_rows(
         }
 
         if last_turn != Some(row.key.turn) {
-            let (divider_rect, divider_response) = ui.allocate_exact_size(
-                egui::vec2(ui.available_width(), 18.0),
-                egui::Sense::click(),
-            );
+            let (divider_rect, divider_response) = ui
+                .allocate_exact_size(egui::vec2(ui.available_width(), 18.0), egui::Sense::click());
             let divider_bg = if divider_response.hovered() {
                 theme::BG_HOVER
             } else {
@@ -4359,10 +4523,8 @@ fn render_compare_timeline_rows(
             last_turn = Some(row.key.turn);
         }
 
-        let (row_rect, response) = ui.allocate_exact_size(
-            egui::vec2(ui.available_width(), 22.0),
-            egui::Sense::click(),
-        );
+        let (row_rect, response) =
+            ui.allocate_exact_size(egui::vec2(ui.available_width(), 22.0), egui::Sense::click());
         let selected = selected_row == idx;
         let background = if selected {
             theme::ACCENT_BG
@@ -4390,7 +4552,14 @@ fn render_compare_timeline_rows(
                 .layout(egui::Layout::left_to_right(egui::Align::Center)),
         );
         row_ui.spacing_mut().item_spacing.x = 8.0;
-        row_ui.colored_label(if has_divergence { theme::RED } else { theme::FG_3 }, "●");
+        row_ui.colored_label(
+            if has_divergence {
+                theme::RED
+            } else {
+                theme::FG_3
+            },
+            "●",
+        );
         row_ui.colored_label(theme::FG_3, format!("#{:02}", idx));
         row_ui.colored_label(theme::FG_2, format!("T{}", row.key.turn));
         row_ui.colored_label(row_kind_color(&row.key.phase), phase_label);
@@ -4487,7 +4656,13 @@ fn render_snapshot(
 
         if !player.battlefield.is_empty() {
             ui.label("Battlefield");
-            render_battlefield_strip(ui, &player.battlefield, archive, selected_card_name, selected_card);
+            render_battlefield_strip(
+                ui,
+                &player.battlefield,
+                archive,
+                selected_card_name,
+                selected_card,
+            );
             for card in &player.battlefield {
                 let mut summary = card.name.clone();
                 if card.tapped {
@@ -4546,84 +4721,105 @@ fn render_snapshot_shell(
     egui::ScrollArea::vertical()
         .auto_shrink([false, false])
         .show(ui, |ui| {
-    let Some(trace) = trace.as_ref() else {
-        ui.colored_label(theme::FG_3, "Run a trace to inspect a snapshot.");
-        return;
-    };
-    match mode {
-        TraceMode::Compare => {
-            let rows = compare_rows_for_display(trace, &trace.compare_rows(), false);
-            let (selected_rust, selected_java) = compare_selected_snapshot_indices(trace, &rows);
-            if ui.available_width() < 520.0 {
-                if let Some(rust) = trace.rust.as_ref() {
-                    render_snapshot_column(
-                        ui,
-                        "Rust",
-                        Some(theme::RUST),
-                        rust,
-                        selected_rust,
-                        trace.java.as_ref(),
-                        selected_java,
-                        archive,
-                        selected_card,
-                    );
-                    ui.add_space(8.0);
+            let Some(trace) = trace.as_ref() else {
+                ui.colored_label(theme::FG_3, "Run a trace to inspect a snapshot.");
+                return;
+            };
+            match mode {
+                TraceMode::Compare => {
+                    let rows = compare_rows_for_display(trace, &trace.compare_rows(), false);
+                    let (selected_rust, selected_java) =
+                        compare_selected_snapshot_indices(trace, &rows);
+                    if ui.available_width() < 520.0 {
+                        if let Some(rust) = trace.rust.as_ref() {
+                            render_snapshot_column(
+                                ui,
+                                "Rust",
+                                Some(theme::RUST),
+                                rust,
+                                selected_rust,
+                                trace.java.as_ref(),
+                                selected_java,
+                                archive,
+                                selected_card,
+                            );
+                            ui.add_space(8.0);
+                        }
+                        if let Some(java) = trace.java.as_ref() {
+                            render_snapshot_column(
+                                ui,
+                                "Java",
+                                Some(theme::JAVA),
+                                java,
+                                selected_java,
+                                trace.rust.as_ref(),
+                                selected_rust,
+                                archive,
+                                selected_card,
+                            );
+                        }
+                    } else {
+                        ui.columns(2, |columns| {
+                            if let Some(rust) = trace.rust.as_ref() {
+                                render_snapshot_column(
+                                    &mut columns[0],
+                                    "Rust",
+                                    Some(theme::RUST),
+                                    rust,
+                                    selected_rust,
+                                    trace.java.as_ref(),
+                                    selected_java,
+                                    archive,
+                                    selected_card,
+                                );
+                            }
+                            if let Some(java) = trace.java.as_ref() {
+                                render_snapshot_column(
+                                    &mut columns[1],
+                                    "Java",
+                                    Some(theme::JAVA),
+                                    java,
+                                    selected_java,
+                                    trace.rust.as_ref(),
+                                    selected_rust,
+                                    archive,
+                                    selected_card,
+                                );
+                            }
+                        });
+                    }
                 }
-                if let Some(java) = trace.java.as_ref() {
-                    render_snapshot_column(
-                        ui,
-                        "Java",
-                        Some(theme::JAVA),
-                        java,
-                        selected_java,
-                        trace.rust.as_ref(),
-                        selected_rust,
-                        archive,
-                        selected_card,
-                    );
-                }
-            } else {
-                ui.columns(2, |columns| {
+                TraceMode::Rust => {
                     if let Some(rust) = trace.rust.as_ref() {
                         render_snapshot_column(
-                            &mut columns[0],
+                            ui,
                             "Rust",
                             Some(theme::RUST),
                             rust,
-                            selected_rust,
-                            trace.java.as_ref(),
-                            selected_java,
+                            None,
+                            None,
+                            None,
                             archive,
                             selected_card,
                         );
                     }
+                }
+                TraceMode::Java => {
                     if let Some(java) = trace.java.as_ref() {
                         render_snapshot_column(
-                            &mut columns[1],
+                            ui,
                             "Java",
                             Some(theme::JAVA),
                             java,
-                            selected_java,
-                            trace.rust.as_ref(),
-                            selected_rust,
+                            None,
+                            None,
+                            None,
                             archive,
                             selected_card,
                         );
                     }
-                });
+                }
             }
-        }
-        TraceMode::Rust => {
-            if let Some(rust) = trace.rust.as_ref() {
-                render_snapshot_column(ui, "Rust", Some(theme::RUST), rust, None, None, None, archive, selected_card);
-            }
-        }
-        TraceMode::Java => {
-            if let Some(java) = trace.java.as_ref() {
-                render_snapshot_column(ui, "Java", Some(theme::JAVA), java, None, None, None, archive, selected_card);
-            }
-        }
-    }
         });
 }
 
@@ -4707,7 +4903,11 @@ fn render_snapshot_player_block(
     let frame = theme::panel_frame()
         .fill(theme::BG_1)
         .stroke(egui::Stroke::new(
-            if player.index == active_player { 2.0 } else { 1.0 },
+            if player.index == active_player {
+                2.0
+            } else {
+                1.0
+            },
             if player.index == active_player {
                 theme::ACCENT
             } else {
@@ -4738,10 +4938,19 @@ fn render_snapshot_player_block(
                 ui.colored_label(theme::FG_3, egui::RichText::new("Battlefield").size(10.0));
                 ui.colored_label(theme::FG_2, format!("[{}]", player.battlefield.len()));
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    ui.colored_label(theme::FG_3, egui::RichText::new("tap to inspect").size(10.0));
+                    ui.colored_label(
+                        theme::FG_3,
+                        egui::RichText::new("tap to inspect").size(10.0),
+                    );
                 });
             });
-            render_battlefield_strip(ui, &player.battlefield, archive, selected_card_name, selected_card);
+            render_battlefield_strip(
+                ui,
+                &player.battlefield,
+                archive,
+                selected_card_name,
+                selected_card,
+            );
         }
         if !player.hand.is_empty() {
             ui.add_space(4.0);
@@ -4791,10 +5000,8 @@ fn render_event_row(
     divergent: bool,
 ) {
     let payload = shorten_list(payload, 120);
-    let (rect, response) = ui.allocate_exact_size(
-        egui::vec2(ui.available_width(), 34.0),
-        egui::Sense::hover(),
-    );
+    let (rect, response) =
+        ui.allocate_exact_size(egui::vec2(ui.available_width(), 34.0), egui::Sense::hover());
     let fill = if divergent {
         egui::Color32::from_rgb(66, 36, 36)
     } else if response.hovered() {
@@ -4861,23 +5068,37 @@ fn render_callback_event_card(ui: &mut egui::Ui, callback: &CallbackRecord) {
         ui,
         theme::GREEN,
         "CALLBACK",
-        &format!("P{} · {} · snapshot {}", callback.player, callback.phase, callback.snapshot_index),
+        &format!(
+            "P{} · {} · snapshot {}",
+            callback.player, callback.phase, callback.snapshot_index
+        ),
         |ui| {
             ui.horizontal_wrapped(|ui| {
-                ui.label(egui::RichText::new(&callback.name).monospace().color(theme::FG_0).strong());
+                ui.label(
+                    egui::RichText::new(&callback.name)
+                        .monospace()
+                        .color(theme::FG_0)
+                        .strong(),
+                );
                 ui.colored_label(theme::FG_3, "→");
-                ui.label(egui::RichText::new(&callback.outcome).monospace().color(theme::FG_1));
+                ui.label(
+                    egui::RichText::new(&callback.outcome)
+                        .monospace()
+                        .color(theme::FG_1),
+                );
             });
 
             if !callback.callback_args.is_empty() {
                 ui.add_space(4.0);
-                ui.label(egui::RichText::new("Callback args").size(theme::SMALL_TEXT_SIZE).color(theme::FG_3));
+                ui.label(
+                    egui::RichText::new("Callback args")
+                        .size(theme::SMALL_TEXT_SIZE)
+                        .color(theme::FG_3),
+                );
                 for arg in &callback.callback_args {
                     ui.add(
-                        egui::Label::new(
-                            egui::RichText::new(arg).monospace().color(theme::FG_1),
-                        )
-                        .wrap(),
+                        egui::Label::new(egui::RichText::new(arg).monospace().color(theme::FG_1))
+                            .wrap(),
                     );
                 }
             }
@@ -4893,13 +5114,16 @@ fn render_callback_event_card(ui: &mut egui::Ui, callback: &CallbackRecord) {
                         callback.timestamp_ms,
                     ),
                     |ui| {
-                        egui::CollapsingHeader::new(format!("Choice space ({})", callback.args.len()))
-                            .default_open(true)
-                            .show(ui, |ui| {
-                                for arg in &callback.args {
-                                    ui.label(layout_ansi_text(&arg.format(), theme::FG_1));
-                                }
-                            });
+                        egui::CollapsingHeader::new(format!(
+                            "Choice space ({})",
+                            callback.args.len()
+                        ))
+                        .default_open(true)
+                        .show(ui, |ui| {
+                            for arg in &callback.args {
+                                ui.label(layout_ansi_text(&arg.format(), theme::FG_1));
+                            }
+                        });
                     },
                 );
             }
@@ -4908,7 +5132,10 @@ fn render_callback_event_card(ui: &mut egui::Ui, callback: &CallbackRecord) {
     ui.add_space(6.0);
 }
 
-fn render_decision_event_card(ui: &mut egui::Ui, decision: &forge_parity::protocol::DecisionRecord) {
+fn render_decision_event_card(
+    ui: &mut egui::Ui,
+    decision: &forge_parity::protocol::DecisionRecord,
+) {
     render_event_card_frame(
         ui,
         theme::ACCENT,
@@ -4916,9 +5143,18 @@ fn render_decision_event_card(ui: &mut egui::Ui, decision: &forge_parity::protoc
         &format!("P{} · {}", decision.deciding_player, decision.phase),
         |ui| {
             ui.horizontal_wrapped(|ui| {
-                ui.label(egui::RichText::new(&decision.kind).monospace().color(theme::FG_0).strong());
+                ui.label(
+                    egui::RichText::new(&decision.kind)
+                        .monospace()
+                        .color(theme::FG_0)
+                        .strong(),
+                );
                 ui.colored_label(theme::FG_3, "→");
-                ui.label(egui::RichText::new(&decision.choice).monospace().color(theme::FG_1));
+                ui.label(
+                    egui::RichText::new(&decision.choice)
+                        .monospace()
+                        .color(theme::FG_1),
+                );
             });
             if !decision.options.is_empty() {
                 ui.add_space(4.0);
@@ -4932,13 +5168,16 @@ fn render_decision_event_card(ui: &mut egui::Ui, decision: &forge_parity::protoc
                         decision.timestamp_ms,
                     ),
                     |ui| {
-                        egui::CollapsingHeader::new(format!("Options ({})", decision.options.len()))
-                            .default_open(false)
-                            .show(ui, |ui| {
-                                for option in &decision.options {
-                                    ui.label(layout_ansi_text(&option.format(), theme::FG_1));
-                                }
-                            });
+                        egui::CollapsingHeader::new(format!(
+                            "Options ({})",
+                            decision.options.len()
+                        ))
+                        .default_open(false)
+                        .show(ui, |ui| {
+                            for option in &decision.options {
+                                ui.label(layout_ansi_text(&option.format(), theme::FG_1));
+                            }
+                        });
                     },
                 );
             }
@@ -4958,21 +5197,11 @@ fn render_event_shell(ui: &mut egui::Ui, trace: &Option<TraceSession>, mode: Tra
             let (selected_rust, selected_java) = compare_selected_snapshot_indices(trace, &rows);
             if ui.available_width() < 520.0 {
                 if let Some(rust) = trace.rust.as_ref() {
-                    render_related_log_shell(
-                        ui,
-                        rust,
-                        TracePaneKind::Rust,
-                        selected_rust,
-                    );
+                    render_related_log_shell(ui, rust, TracePaneKind::Rust, selected_rust);
                     ui.add_space(8.0);
                 }
                 if let Some(java) = trace.java.as_ref() {
-                    render_related_log_shell(
-                        ui,
-                        java,
-                        TracePaneKind::Java,
-                        selected_java,
-                    );
+                    render_related_log_shell(ui, java, TracePaneKind::Java, selected_java);
                 }
             } else {
                 ui.columns(2, |columns| {
@@ -5084,9 +5313,8 @@ fn build_java_harness(event_tx: &Sender<TraceWorkerEvent>) -> Result<PathBuf, St
             .unwrap_or_else(|| format!("exit code {}", status.code().unwrap_or(1)));
         return Err(format!("Java harness build failed: {details}"));
     }
-    discover_java_jar(Some(&repo_relative_path(DEFAULT_JAVA_JAR_PATH))).ok_or_else(|| {
-        "Java harness build completed but the JAR is still missing".to_string()
-    })
+    discover_java_jar(Some(&repo_relative_path(DEFAULT_JAVA_JAR_PATH)))
+        .ok_or_else(|| "Java harness build completed but the JAR is still missing".to_string())
 }
 
 fn repo_root() -> PathBuf {
@@ -5132,7 +5360,9 @@ fn discover_java_jar(preferred: Option<&Path>) -> Option<PathBuf> {
         candidates.push(path.to_path_buf());
     }
     candidates.push(repo_relative_path(DEFAULT_JAVA_JAR_PATH));
-    candidates.into_iter().find_map(|candidate| resolved_existing_path(&candidate))
+    candidates
+        .into_iter()
+        .find_map(|candidate| resolved_existing_path(&candidate))
 }
 
 fn ensure_java_server<'a>(
@@ -5146,7 +5376,9 @@ fn ensure_java_server<'a>(
             .as_ref()
             .is_none_or(|current| current.as_path() != jar_path);
     if needs_respawn {
-        let _ = event_tx.send(TraceWorkerEvent::Status("Starting Java server…".to_string()));
+        let _ = event_tx.send(TraceWorkerEvent::Status(
+            "Starting Java server…".to_string(),
+        ));
         let config = JavaServerConfig {
             jar_path: jar_path.to_path_buf(),
             forge_home: None,
@@ -5188,8 +5420,14 @@ fn try_emit_partial_compare(
     }
     let rust_log = rust_log.lock().expect("rust log poisoned").clone();
     let java_log = java_log.lock().expect("java log poisoned").clone();
-    let rust_snapshots = rust_log.iter().filter(|entry| entry.as_snapshot().is_some()).count();
-    let java_snapshots = java_log.iter().filter(|entry| entry.as_snapshot().is_some()).count();
+    let rust_snapshots = rust_log
+        .iter()
+        .filter(|entry| entry.as_snapshot().is_some())
+        .count();
+    let java_snapshots = java_log
+        .iter()
+        .filter(|entry| entry.as_snapshot().is_some())
+        .count();
     if rust_snapshots == 0 || java_snapshots == 0 {
         return false;
     }
@@ -5230,7 +5468,12 @@ fn run_trace_request(
     let mut compare_result = None;
     match request.mode {
         TraceMode::Rust => {
-            rust = Some(run_rust_trace(event_tx, loaded_data, &request.config, &abort)?);
+            rust = Some(run_rust_trace(
+                event_tx,
+                loaded_data,
+                &request.config,
+                &abort,
+            )?);
         }
         TraceMode::Java => {
             java = Some(run_java_trace(
@@ -5323,7 +5566,10 @@ fn run_trace_request(
                         if abort.load(Ordering::Relaxed) {
                             return Ok(false);
                         }
-                        java_log.lock().expect("java log poisoned").push(entry.clone());
+                        java_log
+                            .lock()
+                            .expect("java log poisoned")
+                            .push(entry.clone());
                         if let Some(snapshot) = entry.as_snapshot() {
                             if stop_after_turn
                                 .lock()
@@ -5373,8 +5619,7 @@ fn run_trace_request(
                             if rust_snapshot_count > 0 && java_snapshot_count % 25 == 0 {
                                 eprintln!(
                                     "[debugger-worker] partial compare checkpoint: rust={} java={}",
-                                    rust_snapshot_count,
-                                    java_snapshot_count
+                                    rust_snapshot_count, java_snapshot_count
                                 );
                                 let _ = event_tx.send(TraceWorkerEvent::Debug(format!(
                                     "partial compare: rust={} java={} no-divergence",
@@ -5507,11 +5752,8 @@ fn render_battlefield_strip(
     ui.horizontal_wrapped(|ui| {
         ui.spacing_mut().item_spacing = egui::vec2(4.0, 4.0);
         for card in battlefield {
-            let response = render_card_chip(
-                ui,
-                card,
-                selected_card_name == Some(card.name.as_str()),
-            );
+            let response =
+                render_card_chip(ui, card, selected_card_name == Some(card.name.as_str()));
             if response.clicked() {
                 select_trace_card(archive, &card.name, selected_card);
             }
@@ -5529,7 +5771,11 @@ fn render_hand_strip(
     ui.horizontal_wrapped(|ui| {
         ui.spacing_mut().item_spacing = egui::vec2(4.0, 4.0);
         for card_name in hand {
-            let response = render_zone_name_chip(ui, card_name, selected_card_name == Some(card_name.as_str()));
+            let response = render_zone_name_chip(
+                ui,
+                card_name,
+                selected_card_name == Some(card_name.as_str()),
+            );
             if response.clicked() {
                 select_trace_card(archive, card_name, selected_card);
             }
@@ -5553,12 +5799,16 @@ fn render_card_chip(
     ui.painter().rect_stroke(
         rect,
         0.0,
-        egui::Stroke::new(if is_selected { 1.5 } else { 1.0 }, if is_selected { theme::ACCENT } else { theme::BORDER_STRONG }),
+        egui::Stroke::new(
+            if is_selected { 1.5 } else { 1.0 },
+            if is_selected {
+                theme::ACCENT
+            } else {
+                theme::BORDER_STRONG
+            },
+        ),
     );
-    let stripe_rect = egui::Rect::from_min_max(
-        rect.min,
-        egui::pos2(rect.max.x, rect.min.y + 3.0),
-    );
+    let stripe_rect = egui::Rect::from_min_max(rect.min, egui::pos2(rect.max.x, rect.min.y + 3.0));
     ui.painter().rect_filled(stripe_rect, 0.0, card_color(card));
     let mut child = ui.new_child(
         egui::UiBuilder::new()
@@ -5601,14 +5851,22 @@ fn render_card_chip(
 fn render_zone_name_chip(ui: &mut egui::Ui, card_name: &str, is_selected: bool) -> egui::Response {
     let desired_size = egui::vec2(64.0, 24.0);
     let (rect, response) = ui.allocate_exact_size(desired_size, egui::Sense::click());
-    let fill = if is_selected { theme::BG_SEL } else { theme::BG_2 };
+    let fill = if is_selected {
+        theme::BG_SEL
+    } else {
+        theme::BG_2
+    };
     ui.painter().rect_filled(rect, 0.0, fill);
     ui.painter().rect_stroke(
         rect,
         0.0,
         egui::Stroke::new(
             if is_selected { 1.5 } else { 1.0 },
-            if is_selected { theme::ACCENT } else { theme::BORDER_STRONG },
+            if is_selected {
+                theme::ACCENT
+            } else {
+                theme::BORDER_STRONG
+            },
         ),
     );
     let mut child = ui.new_child(
@@ -5629,7 +5887,11 @@ fn card_color(card: &forge_parity::protocol::CardSnapshot) -> egui::Color32 {
     let name = card.name.to_ascii_lowercase();
     if name.contains("forest") || name.contains("elf") || name.contains("bear") {
         theme::MTG_G
-    } else if name.contains("mountain") || name.contains("bolt") || name.contains("shock") || name.contains("goblin") {
+    } else if name.contains("mountain")
+        || name.contains("bolt")
+        || name.contains("shock")
+        || name.contains("goblin")
+    {
         theme::MTG_R
     } else if name.contains("plains") {
         theme::MTG_W
@@ -5738,7 +6000,10 @@ fn tree_sitter_highlight_spans(source: &str) -> Option<Vec<(usize, usize, egui::
     } {
         if let Some((m, capture_index)) = captures.get() {
             let capture = m.captures[*capture_index];
-            let name = capture_names.get(capture.index as usize).copied().unwrap_or("");
+            let name = capture_names
+                .get(capture.index as usize)
+                .copied()
+                .unwrap_or("");
             let format = capture_text_format(name);
             spans.push((capture.node.start_byte(), capture.node.end_byte(), format));
         }
@@ -5872,7 +6137,10 @@ fn layout_ansi_text(text: &str, default_color: egui::Color32) -> egui::text::Lay
                 break;
             }
             let codes = &text[start..idx];
-            for code in codes.split(';').filter_map(|value| value.parse::<u8>().ok()) {
+            for code in codes
+                .split(';')
+                .filter_map(|value| value.parse::<u8>().ok())
+            {
                 match code {
                     0 => {
                         current_color = default_color;
@@ -5929,10 +6197,16 @@ fn render_related_log(
 
             ui.horizontal_wrapped(|ui| {
                 if !related_callbacks.is_empty() {
-                    ui.colored_label(theme::GREEN, format!("callbacks {}", related_callbacks.len()));
+                    ui.colored_label(
+                        theme::GREEN,
+                        format!("callbacks {}", related_callbacks.len()),
+                    );
                 }
                 if !related_decisions.is_empty() {
-                    ui.colored_label(theme::ACCENT, format!("decisions {}", related_decisions.len()));
+                    ui.colored_label(
+                        theme::ACCENT,
+                        format!("decisions {}", related_decisions.len()),
+                    );
                 }
             });
             ui.add_space(4.0);
@@ -5967,7 +6241,12 @@ fn pair_investigation_rows(
 ) -> Vec<(Option<String>, Option<String>, bool)> {
     let rust_keyed: Vec<(Option<CallbackKey>, String)> = rust_entries
         .iter()
-        .map(|entry| (CallbackKey::from_entry(entry), entry.format().trim_start().to_string()))
+        .map(|entry| {
+            (
+                CallbackKey::from_entry(entry),
+                entry.format().trim_start().to_string(),
+            )
+        })
         .collect();
     let mut java_available: Vec<(Option<CallbackKey>, String, bool)> = java_entries
         .iter()
@@ -6020,10 +6299,7 @@ fn pair_investigation_rows(
     rows
 }
 
-fn render_investigation_row(
-    ui: &mut egui::Ui,
-    row: &(Option<String>, Option<String>, bool),
-) {
+fn render_investigation_row(ui: &mut egui::Ui, row: &(Option<String>, Option<String>, bool)) {
     let (rust_text, java_text, unmatched) = row;
     let stroke = if *unmatched {
         egui::Stroke::new(1.0, theme::RED)
@@ -6036,18 +6312,23 @@ fn render_investigation_row(
         .inner_margin(egui::Margin::same(6.0))
         .show(ui, |ui| {
             ui.columns(2, |columns| {
-                render_investigation_cell(&mut columns[0], "Rust", rust_text.as_deref(), *unmatched);
-                render_investigation_cell(&mut columns[1], "Java", java_text.as_deref(), *unmatched);
+                render_investigation_cell(
+                    &mut columns[0],
+                    "Rust",
+                    rust_text.as_deref(),
+                    *unmatched,
+                );
+                render_investigation_cell(
+                    &mut columns[1],
+                    "Java",
+                    java_text.as_deref(),
+                    *unmatched,
+                );
             });
         });
 }
 
-fn render_investigation_cell(
-    ui: &mut egui::Ui,
-    label: &str,
-    text: Option<&str>,
-    unmatched: bool,
-) {
+fn render_investigation_cell(ui: &mut egui::Ui, label: &str, text: Option<&str>, unmatched: bool) {
     ui.vertical(|ui| {
         ui.colored_label(
             if unmatched { theme::RED } else { theme::FG_3 },
@@ -6189,7 +6470,9 @@ fn render_summary(ui: &mut egui::Ui, parsed: &ParsedCardScript<'_>) {
         .num_columns(2)
         .spacing([12.0, 4.0])
         .show(ui, |ui| {
-            for key in ["Name", "ManaCost", "Types", "PT", "Colors", "Loyalty", "Oracle", "Text"] {
+            for key in [
+                "Name", "ManaCost", "Types", "PT", "Colors", "Loyalty", "Oracle", "Text",
+            ] {
                 if let Some(value) = field_value(&fields, key) {
                     ui.strong(key);
                     ui.label(value);
@@ -6208,7 +6491,10 @@ fn render_summary(ui: &mut egui::Ui, parsed: &ParsedCardScript<'_>) {
         ui.weak(format!("replacement: {replacement_count}"));
         ui.weak(format!("svars: {svar_count}"));
         if unknown_count > 0 {
-            ui.colored_label(egui::Color32::YELLOW, format!("unknown fields: {unknown_count}"));
+            ui.colored_label(
+                egui::Color32::YELLOW,
+                format!("unknown fields: {unknown_count}"),
+            );
         }
     });
 
@@ -6245,7 +6531,11 @@ fn render_ast(
         |ui| {
             ui.horizontal(|ui| {
                 ui.spacing_mut().item_spacing.x = 4.0;
-                ui.label(egui::RichText::new("View").size(theme::SMALL_TEXT_SIZE).color(theme::FG_3));
+                ui.label(
+                    egui::RichText::new("View")
+                        .size(theme::SMALL_TEXT_SIZE)
+                        .color(theme::FG_3),
+                );
                 ui.selectable_value(ast_view_mode, AstViewMode::Graph, "Graph");
                 ui.selectable_value(ast_view_mode, AstViewMode::Text, "Text");
             });
@@ -6291,9 +6581,9 @@ fn render_ast_graph(ui: &mut egui::Ui, parsed: &ParsedCardScript<'_>) {
         .map(|node| node.entries.len())
         .max()
         .unwrap_or(0);
-    let canvas_width = ui.available_width().max(
-        520.0 + max_depth as f32 * 140.0 + max_entries as f32 * 56.0,
-    );
+    let canvas_width = ui
+        .available_width()
+        .max(520.0 + max_depth as f32 * 140.0 + max_entries as f32 * 56.0);
     ui.set_min_width(canvas_width);
     ui.set_width(canvas_width);
 
@@ -6330,7 +6620,11 @@ fn render_ast_node(ui: &mut egui::Ui, node: &AstNodeModel) {
                     if let Some(field_name) = &node.field_name {
                         ui.colored_label(theme::FG_2, format!("{field_name}:"));
                     }
-                    ui.label(egui::RichText::new(&node.kind_label).strong().color(theme::FG_0));
+                    ui.label(
+                        egui::RichText::new(&node.kind_label)
+                            .strong()
+                            .color(theme::FG_0),
+                    );
                     if !node.detail_text.is_empty() {
                         ui.colored_label(theme::FG_2, shorten_list(&node.detail_text, 72));
                     }
@@ -6362,7 +6656,12 @@ fn render_ast_text(ui: &mut egui::Ui, parsed: &ParsedCardScript<'_>) {
             if let Some(field_name) = &node.field_name {
                 ui.colored_label(theme::FG_2, format!("{field_name}:"));
             }
-            ui.label(egui::RichText::new(&node.kind_label).monospace().color(theme::FG_0).strong());
+            ui.label(
+                egui::RichText::new(&node.kind_label)
+                    .monospace()
+                    .color(theme::FG_0)
+                    .strong(),
+            );
             if !node.detail_text.is_empty() {
                 ui.colored_label(theme::FG_2, &node.detail_text);
             }
@@ -6442,7 +6741,8 @@ fn tree_sitter_node_palette(kind: &str) -> (egui::Color32, egui::Color32) {
         (egui::Color32::from_rgb(84, 44, 44), theme::RED)
     } else if kind.contains("svar") {
         (egui::Color32::from_rgb(56, 52, 84), theme::JAVA)
-    } else if kind.contains("keyword") || kind.contains("specialize") || kind.contains("alternate") {
+    } else if kind.contains("keyword") || kind.contains("specialize") || kind.contains("alternate")
+    {
         (theme::BG_1, theme::YELLOW)
     } else if kind.contains("comment") {
         (theme::BG_1, theme::FG_3)
@@ -6451,7 +6751,10 @@ fn tree_sitter_node_palette(kind: &str) -> (egui::Color32, egui::Color32) {
     }
 }
 
-fn tree_sitter_leaf_entries(node: TsNode<'_>, source: &[u8]) -> Vec<(String, String, egui::Color32)> {
+fn tree_sitter_leaf_entries(
+    node: TsNode<'_>,
+    source: &[u8],
+) -> Vec<(String, String, egui::Color32)> {
     let mut out = Vec::new();
     let mut cursor = node.walk();
     for (idx, child) in node.named_children(&mut cursor).enumerate() {
@@ -6474,7 +6777,10 @@ fn tree_sitter_leaf_entries(node: TsNode<'_>, source: &[u8]) -> Vec<(String, Str
 fn tree_sitter_capture_color(kind: &str) -> egui::Color32 {
     if matches!(kind, "key" | "param_key" | "svar_name") {
         theme::ACCENT
-    } else if matches!(kind, "value" | "param_value" | "keyword_value" | "svar_value") {
+    } else if matches!(
+        kind,
+        "value" | "param_value" | "keyword_value" | "svar_value"
+    ) {
         theme::FG_0
     } else if kind.contains("record") {
         theme::GREEN
@@ -6512,16 +6818,16 @@ fn render_ast_param_pill(ui: &mut egui::Ui, key: &str, value: &str, color: egui:
         .show(ui, |ui| {
             ui.horizontal(|ui| {
                 ui.colored_label(color, egui::RichText::new(key).size(10.0).strong());
-                ui.colored_label(theme::FG_1, egui::RichText::new(shorten_list(&value, 28)).size(10.0));
+                ui.colored_label(
+                    theme::FG_1,
+                    egui::RichText::new(shorten_list(&value, 28)).size(10.0),
+                );
             });
         });
 }
 
 fn render_ability(ui: &mut egui::Ui, line_no: usize, ability: &ScriptAbility<'_>) {
-    let record = ability
-        .record
-        .map(record_label)
-        .unwrap_or("A?");
+    let record = ability.record.map(record_label).unwrap_or("A?");
     let api = ability.api_raw.unwrap_or("?");
     let header = format!("L{line_no:>3}  {record}${api}");
     egui::CollapsingHeader::new(header)
@@ -6539,8 +6845,11 @@ fn render_param_record(
     color: egui::Color32,
     rec: &ScriptParamRecord<'_>,
 ) {
-    let header = egui::RichText::new(format!("L{line_no:>3}  {tag}: ({} params)", rec.params.entries().len()))
-        .color(color);
+    let header = egui::RichText::new(format!(
+        "L{line_no:>3}  {tag}: ({} params)",
+        rec.params.entries().len()
+    ))
+    .color(color);
     egui::CollapsingHeader::new(header)
         .id_salt((tag, line_no))
         .default_open(true)
@@ -6597,7 +6906,9 @@ fn render_diagnostic(ui: &mut egui::Ui, d: &ScriptDiagnostic<'_>) {
         }
         ScriptDiagnosticKind::MissingSVarName => (egui::Color32::LIGHT_RED, "missing SVar name"),
         ScriptDiagnosticKind::Param(p) => match p {
-            ParamDiagnosticKind::MissingDelimiter => (egui::Color32::LIGHT_RED, "param: missing '$'"),
+            ParamDiagnosticKind::MissingDelimiter => {
+                (egui::Color32::LIGHT_RED, "param: missing '$'")
+            }
             ParamDiagnosticKind::EmptyKey => (egui::Color32::YELLOW, "param: empty key"),
             ParamDiagnosticKind::DuplicateKeySameValue => {
                 (egui::Color32::LIGHT_GRAY, "param: duplicate (same value)")
@@ -6649,9 +6960,13 @@ fn kind_label(kind: SemanticParamValueKind) -> &'static str {
 
 fn kind_color(kind: SemanticParamValueKind) -> egui::Color32 {
     match kind {
-        SemanticParamValueKind::Integer | SemanticParamValueKind::Amount => egui::Color32::LIGHT_BLUE,
+        SemanticParamValueKind::Integer | SemanticParamValueKind::Amount => {
+            egui::Color32::LIGHT_BLUE
+        }
         SemanticParamValueKind::Boolean => egui::Color32::LIGHT_YELLOW,
-        SemanticParamValueKind::Selector | SemanticParamValueKind::Reference => egui::Color32::LIGHT_GREEN,
+        SemanticParamValueKind::Selector | SemanticParamValueKind::Reference => {
+            egui::Color32::LIGHT_GREEN
+        }
         SemanticParamValueKind::SVarReference => egui::Color32::from_rgb(220, 180, 255),
         SemanticParamValueKind::Cost => egui::Color32::GOLD,
         SemanticParamValueKind::ZoneList => egui::Color32::from_rgb(180, 200, 240),

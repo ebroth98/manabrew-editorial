@@ -74,6 +74,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let copy_entry = crate::spellability::StackEntry {
         id: 0, // will be assigned by push()
         spell_ability: copy,
+        is_pending_cast: false,
         is_creature_spell: original.is_spell
             && original
                 .source

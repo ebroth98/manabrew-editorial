@@ -69,7 +69,10 @@ fn main() {
         fs_lines,
         fmt(fs_parse)
     );
-    println!("FS total:                                in {}", fmt(fs_total));
+    println!(
+        "FS total:                                in {}",
+        fmt(fs_total)
+    );
     println!();
 
     // ── Archive load (mmap, zero-copy) ──────────────────
@@ -107,7 +110,10 @@ fn main() {
         arch_lines,
         fmt(arch_parse)
     );
-    println!("Archive total:                           in {}", fmt(arch_total));
+    println!(
+        "Archive total:                           in {}",
+        fmt(arch_total)
+    );
     println!();
 
     // ── Summary ─────────────────────────────────────────

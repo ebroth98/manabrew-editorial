@@ -922,8 +922,7 @@ public class DeterministicController extends PlayerController {
     @Override
     public byte chooseColor(String message, SpellAbility sa, ColorSet colors) {
         captureDeepCheckpoint("choose_color");
-        List<Byte> colorList = new ArrayList<>();
-        for (Color color : colors) colorList.add(color.getColorMask());
+        List<Byte> colorList = ParityOrder.sortColors(colors);
         final byte result = colorList.isEmpty()
                 ? Color.WHITE.getColorMask()
                 : colorList.get(ChoiceSpace.pickIndex(colorList.size(), rng));
@@ -933,8 +932,7 @@ public class DeterministicController extends PlayerController {
 
     @Override
     public byte chooseColorAllowColorless(String message, Card card, ColorSet colors) {
-        List<Byte> colorList = new ArrayList<>();
-        for (Color color : colors) colorList.add(color.getColorMask());
+        List<Byte> colorList = ParityOrder.sortColors(colors);
         if (colorList.isEmpty()) {
             onCallback("choose_color_allow_colorless", "colorless", "0");
             return Color.COLORLESS.getColorMask();
@@ -1087,13 +1085,25 @@ public class DeterministicController extends PlayerController {
     @Override
     public boolean payCostToPreventEffect(Cost cost, SpellAbility sa, boolean alreadyPaid,
             FCollectionView<Player> allPayers) {
-        if (!ComputerUtilCost.canPayCost(cost, sa, player, true)) {
+        if (!ComputerUtilCost.canPayCost(cost, sa, player, true)
+                && !canPayManaOnlyPreventCostDeterministically(cost, sa)) {
             onCallback("pay_cost_to_prevent_effect", "false", "cannot_pay");
             return false;
         }
         final boolean result = costPlumbing.payWithDeterministicDecision(cost, sa, true);
         onCallback("pay_cost_to_prevent_effect", Boolean.toString(result));
         return result;
+    }
+
+    private boolean canPayManaOnlyPreventCostDeterministically(final Cost cost, final SpellAbility sa) {
+        return cost != null
+                && cost.isOnlyManaCost()
+                && cost.hasManaCost()
+                && ActionSpace.canPayManaCostFromCurrentSources(
+                cost.getTotalMana(),
+                sa,
+                player,
+                costPlumbing.currentReservedSacrifices());
     }
 
     @Override

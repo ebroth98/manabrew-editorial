@@ -188,7 +188,7 @@ impl GameLoop {
             // optionality lives in cost payment decisions. Mirror Java by routing
             // through per-cost-part confirmations (`confirmPayment` parity hook).
             if entry.spell_ability.is_trigger {
-                if let Some(cost) = &entry.spell_ability.pay_costs {
+                if let Some(cost) = entry.spell_ability.pay_costs.clone() {
                     let player = entry.spell_ability.activating_player;
                     let source = entry.spell_ability.source.unwrap_or(CardId(0));
                     let api = entry.spell_ability.api;
@@ -198,7 +198,7 @@ impl GameLoop {
                         player,
                     );
                     if !crate::cost::can_pay_with_ability(
-                        cost,
+                        &cost,
                         game,
                         &available,
                         source,
@@ -214,11 +214,11 @@ impl GameLoop {
                         agents,
                         player,
                         source,
-                        cost,
+                        &cost,
                         api,
                         cost.mandatory,
                         CostPaymentContext::TriggerResolve,
-                        None,
+                        Some(&mut entry.spell_ability),
                     ) {
                         apply_continuous_effects(game);
                         return;
@@ -227,6 +227,14 @@ impl GameLoop {
             }
 
             // Triggered/activated ability: resolve the effect
+            if let Some(source_id) = entry
+                .spell_ability
+                .trigger_source
+                .or(entry.spell_ability.source)
+            {
+                game.card_mut(source_id)
+                    .add_ability_resolved_for(Some(&entry.spell_ability));
+            }
             self.resolve_spell_effect(game, agents, &entry);
             crate::perf::increment(crate::perf::Metric::SpellAbilityClones, 3);
             self.trigger_handler.run_trigger(
@@ -317,6 +325,7 @@ impl GameLoop {
                         if crate::parsing::enchant_type_matches_card(
                             enchant_type,
                             game.card(target_id),
+                            Some(game.card(card_id)),
                         ) {
                             game.attach_to(card_id, target_id);
                         }
@@ -372,6 +381,7 @@ impl GameLoop {
                                 remembered_cards: Vec::new(),
                                 remembered_lki_cards: Vec::new(),
                                 sort_after_active: i > 0,
+                trigger_order: None,
                             },
                         );
                     }
@@ -413,6 +423,7 @@ impl GameLoop {
                             remembered_cards: Vec::new(),
                             remembered_lki_cards: Vec::new(),
                             sort_after_active: false,
+                trigger_order: None,
                         },
                     );
                 }
@@ -444,6 +455,7 @@ impl GameLoop {
                             remembered_cards: Vec::new(),
                             remembered_lki_cards: Vec::new(),
                             sort_after_active: false,
+                trigger_order: None,
                         },
                     );
                 }
@@ -535,6 +547,7 @@ impl GameLoop {
                             remembered_cards: Vec::new(),
                             remembered_lki_cards: Vec::new(),
                             sort_after_active: false,
+                            trigger_order: None,
                         },
                     );
                 }
@@ -600,6 +613,7 @@ impl GameLoop {
                                 remembered_cards: Vec::new(),
                                 remembered_lki_cards: Vec::new(),
                                 sort_after_active: false,
+                                trigger_order: None,
                             },
                         );
                         ZoneType::Exile

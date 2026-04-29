@@ -2,6 +2,7 @@ package forge.harness;
 
 import forge.card.ColorSet;
 import forge.card.MagicColor.Color;
+import forge.card.mana.ManaCostShard;
 import forge.game.GameEntity;
 import forge.game.card.Card;
 import forge.game.replacement.ReplacementEffect;
@@ -137,6 +138,21 @@ public final class ParityOrder {
             out.add(color.getColorMask());
         }
         return out;
+    }
+
+    public static int colorShardRank(final ManaCostShard shard) {
+        final List<Byte> shardColors = sortColors(shard.getColor());
+        if (shardColors.isEmpty()) {
+            return 5;
+        }
+        final List<Byte> allColors = sortColors(ColorSet.WUBRG);
+        final byte primary = shardColors.get(0);
+        for (int i = 0; i < allColors.size(); i++) {
+            if (allColors.get(i) == primary) {
+                return i;
+            }
+        }
+        return 5;
     }
 
     private static String defenderKey(final GameEntity e) {

@@ -959,6 +959,47 @@ pub fn get_valid_cards_in_zone(
     }
 }
 
+/// Get all cards in a zone matching this ability's target restrictions while
+/// preserving trigger context for dynamic selectors such as `cmcLTX`.
+pub fn get_valid_cards_in_zone_for_sa(
+    game: &GameState,
+    zone: ZoneType,
+    player: PlayerId,
+    filter: Option<&str>,
+    ability: &SpellAbility,
+) -> Vec<CardId> {
+    let zone_cards = candidate_zone_cards(game, zone, player, filter);
+    let Some(source_id) = ability.source else {
+        return get_valid_cards_in_zone(game, zone, player, filter, None);
+    };
+    let Some(restrictions) = ability.target_restrictions.as_ref() else {
+        return zone_cards;
+    };
+    let selector = restrictions.compiled_valid_tgts();
+    let source = game.card(source_id);
+    let triggering_card = ability.get_triggering_card(crate::ability::AbilityKey::Card);
+    let triggering_player = ability
+        .get_triggering_value(crate::ability::AbilityKey::Player)
+        .and_then(|value| match value {
+            crate::event::AbilityValue::Player(player) => Some(*player),
+            _ => None,
+        });
+
+    zone_cards
+        .into_iter()
+        .filter(|&cid| !is_other_filter_self_hit(filter, ability.source, cid))
+        .filter(|&cid| {
+            valid_filter::matches_valid_card_selector_with_context(
+                &selector,
+                game.card(cid),
+                valid_filter::MatchContext::from_source(source)
+                    .with_game(game)
+                    .with_triggering(triggering_card, triggering_player),
+            )
+        })
+        .collect()
+}
+
 fn get_valid_cards_in_zone_for_restrictions(
     game: &GameState,
     restrictions: &TargetRestrictions,
@@ -1029,7 +1070,11 @@ fn candidate_zone_cards(
 /// Get all stack entry IDs for spells that can be countered.
 /// Mirrors Java's `TargetRestrictions.getAllCandidates()` for Spell targets.
 pub fn get_all_candidates_spells(game: &GameState) -> Vec<u32> {
-    game.stack.iter().map(|e| e.id).collect()
+    game.stack
+        .iter()
+        .filter(|entry| !entry.is_pending_cast)
+        .map(|entry| entry.id)
+        .collect()
 }
 
 fn token_allows_player_targets(token: &str) -> bool {

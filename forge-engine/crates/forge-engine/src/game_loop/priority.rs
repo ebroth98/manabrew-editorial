@@ -369,18 +369,6 @@ impl GameLoop {
                             crate::agent::GameLogEvent::warning("Card play failed")
                                 .with_player(priority_player),
                         );
-                        let has_must_target_static = game.cards.iter().any(|card| {
-                            card.zone == ZoneType::Battlefield
-                                && card.static_abilities.iter().any(|st_ab| {
-                                    st_ab.check_mode(&crate::staticability::StaticMode::MustTarget)
-                                })
-                        });
-                        if self.java_parity_failed_spell_setup_to_stack
-                            && has_must_target_static
-                            && game.card_is_in_zone(play.card_id, ZoneType::Hand)
-                        {
-                            game.move_card(play.card_id, ZoneType::Stack, priority_player);
-                        }
                     }
                 }
                 MainPhaseAction::ActivateMana(land_id, requested_ability_idx) => {

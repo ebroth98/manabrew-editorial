@@ -958,6 +958,11 @@ fn relation_target_card_any(
             };
             predicate(game.card(card_id))
         }
+        TargetRef::Commander => context.game.is_some_and(|game| {
+            game.player_registered_commanders(context.source_controller)
+                .iter()
+                .any(|id| predicate(game.card(*id)))
+        }),
     }
 }
 
@@ -996,6 +1001,7 @@ fn relation_target_player_any(
         TargetRef::TriggeredDefendingPlayer | TargetRef::TriggeredAttackedTarget => {
             triggered_defending_player(context).is_some_and(predicate)
         }
+        TargetRef::Commander => predicate(context.source_controller),
     }
 }
 
@@ -1029,6 +1035,10 @@ fn relation_target_contains_id(
         TargetRef::TriggeredTarget | TargetRef::TriggeredCard => {
             context.triggering_card == Some(card_id)
         }
+        TargetRef::Commander => context.game.is_some_and(|game| {
+            game.player_registered_commanders(context.source_controller)
+                .contains(&card_id)
+        }),
     }
 }
 
@@ -1230,10 +1240,28 @@ fn resolve_selector_operand(
 ) -> Option<i32> {
     match operand {
         SelectorNumericOperand::Literal(value) => Some(*value),
-        SelectorNumericOperand::Symbol(symbol) => context
-            .source_card
-            .get_s_var(symbol)
-            .and_then(|value| value.trim().parse::<i32>().ok()),
+        SelectorNumericOperand::Symbol(symbol) => {
+            let value = context.source_card.get_s_var(symbol)?;
+            if let Ok(parsed) = value.trim().parse::<i32>() {
+                return Some(parsed);
+            }
+            if value == "TriggeredCard$CardManaCost" {
+                let game = context.game?;
+                let card = context.triggering_card?;
+                return Some(game.card(card).mana_cost.cmc());
+            }
+            if value == "TriggeredCard$CardPower" {
+                let game = context.game?;
+                let card = context.triggering_card?;
+                return Some(crate::lki::resolve_lki_power(game, card));
+            }
+            if value == "TriggeredCard$CardToughness" {
+                let game = context.game?;
+                let card = context.triggering_card?;
+                return Some(crate::lki::resolve_lki_toughness(game, card));
+            }
+            None
+        }
     }
 }
 
@@ -1620,6 +1648,8 @@ fn raw_target_ref(value: &str) -> Option<TargetRef> {
         Some(TargetRef::TriggeredDefendingPlayer)
     } else if value.eq_ignore_ascii_case("TriggeredAttackedTarget") {
         Some(TargetRef::TriggeredAttackedTarget)
+    } else if value.eq_ignore_ascii_case("Commander") {
+        Some(TargetRef::Commander)
     } else {
         None
     }
@@ -2304,10 +2334,50 @@ pub fn matches_valid(
     if let Some(card) = card {
         matches_valid_card(filter, card, source)
     } else if let Some(player) = player {
+        // Java parity: `Player.isValid` rejects card-oriented filter heads
+        // (e.g. "Card.Self", "Permanent.YouCtrl"). Without this guard the
+        // permissive fallback in `matches_single_valid_player` matches any
+        // unknown head, causing triggers like Ward (`ValidTarget$ Card.Self`)
+        // to fire on player targets.
+        if !filter_head_can_match_player(filter) {
+            return false;
+        }
         matches_valid_player(filter, player, source_controller)
     } else {
         false
     }
+}
+
+fn filter_head_can_match_player(filter: &str) -> bool {
+    filter.split(',').any(|alternative| {
+        let head = alternative
+            .trim()
+            .split(['.', '+'])
+            .next()
+            .unwrap_or("")
+            .to_ascii_lowercase();
+        matches!(
+            head.as_str(),
+            "" | "you"
+                | "youctrl"
+                | "youcontroller"
+                | "opponent"
+                | "oppctrl"
+                | "opponentctrl"
+                | "any"
+                | "each"
+                | "player"
+                | "active"
+                | "nonactive"
+                | "remembered"
+                | "isremembered"
+                | "targetedplayer"
+                | "playerctrl"
+                | "playercontroller"
+                | "controller"
+                | "all"
+        )
+    })
 }
 
 fn matches_single_valid_player(

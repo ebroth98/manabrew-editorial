@@ -10,7 +10,7 @@ use forge_foundation::ZoneType;
 use crate::card::Card;
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
-use crate::parsing::compare::compare_expr;
+use crate::parsing::compare::{compare_expr, CompareExpr};
 use crate::spellability::SpellAbility;
 
 use super::helpers::matches_valid_cards_for_sa;
@@ -142,11 +142,48 @@ pub(super) fn check_condition(game: &GameState, sa: &SpellAbility) -> bool {
                     .count() as i32
             }
         } else {
-            crate::svar::resolve_count_svar_for_sa(expr, game, source_id, sa.activating_player, sa)
+            crate::svar::resolve_svar_expression(expr, game, source_id, sa.activating_player, sa)
         };
-        return compare_expr(value, compare);
+        return compare_with_svar_threshold(value, compare, game, source_id, sa);
     }
     true
+}
+
+/// Like `compare_expr` but resolves an SVar reference when the threshold isn't
+/// a literal integer. Beza's condition uses
+/// `ConditionSVarCompare$ GTYLands` where `YLands` is another SVar on the host
+/// — the bare comparator parser would fall through to "permissive true" and
+/// silently make every conditional sub-ability fire. Java parses the
+/// comparator the same way, falling back to `AbilityUtils.calculateAmount`
+/// for non-numeric thresholds.
+fn compare_with_svar_threshold(
+    value: i32,
+    compare: &str,
+    game: &GameState,
+    source_id: CardId,
+    sa: &SpellAbility,
+) -> bool {
+    if let Some(parsed) = CompareExpr::parse(compare) {
+        return parsed.evaluate(value);
+    }
+    let Some((op_str, rhs_name)) = split_compare_prefix(compare) else {
+        return true;
+    };
+    let Some(rhs_expr) = game.card(source_id).get_s_var(rhs_name) else {
+        return true;
+    };
+    let rhs_value =
+        crate::svar::resolve_svar_expression(rhs_expr, game, source_id, sa.activating_player, sa);
+    compare_expr(value, &format!("{op_str}{rhs_value}"))
+}
+
+fn split_compare_prefix(expr: &str) -> Option<(&'static str, &str)> {
+    for prefix in ["GE", "GT", "LE", "LT", "NE", "EQ"] {
+        if let Some(rest) = expr.strip_prefix(prefix) {
+            return Some((prefix, rest));
+        }
+    }
+    None
 }
 
 /// Check ConditionPresent$ / ConditionZone$ / ConditionCompare$ against game state.

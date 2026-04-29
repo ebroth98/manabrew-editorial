@@ -148,6 +148,7 @@ fn push_spell_to_stack(
     let entry = StackEntry {
         id: 0,
         spell_ability: spell_sa,
+        is_pending_cast: false,
         is_creature_spell: is_creature,
         is_permanent_spell: is_permanent,
         cast_from_zone: cast_zone,

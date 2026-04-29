@@ -772,6 +772,7 @@ pub fn register_at_eot(
         remembered_cards: remembered.clone(),
         remembered_lki_cards: remembered,
         sort_after_active: false,
+        trigger_order: None,
     });
 }
 

@@ -311,7 +311,7 @@ impl GameLoop {
         api: Option<crate::ability::api_type::ApiType>,
         mandatory: bool,
         context: CostPaymentContext,
-        sa: Option<&SpellAbility>,
+        mut sa: Option<&mut SpellAbility>,
     ) -> bool {
         game.card_mut(card_id).paid_cost_exiled_cards.clear();
         // Java CostPayment is transactional: if any later cost part fails,
@@ -391,8 +391,12 @@ impl GameLoop {
                     type_filter,
                     amount,
                 } if type_filter != "CARDNAME" => {
-                    let mut valid =
-                        cost::get_sacrifice_targets_for_cost(game, player, type_filter, sa);
+                    let mut valid = cost::get_sacrifice_targets_for_cost(
+                        game,
+                        player,
+                        type_filter,
+                        sa.as_deref(),
+                    );
                     if !allow_reserved_source_reuse {
                         valid.retain(|cid| !reserved_sacrifices.contains(cid));
                     }
@@ -403,7 +407,7 @@ impl GameLoop {
                     }
                     for _ in 0..required {
                         let Some(chosen) =
-                            agents[player.index()].choose_sacrifice(player, &valid, sa)
+                            agents[player.index()].choose_sacrifice(player, &valid, sa.as_deref())
                         else {
                             payment_ok = false;
                             break;
@@ -464,8 +468,12 @@ impl GameLoop {
                     let saved_matrix = crate::cost::cost_part_mana::save_matrix_before_payment(
                         &self.mana_pools[player.index()],
                     );
-                    let mana_cost =
-                        crate::cost::cost_part_mana::get_mana_cost_for(game, card_id, sa, &part);
+                    let mana_cost = crate::cost::cost_part_mana::get_mana_cost_for(
+                        game,
+                        card_id,
+                        sa.as_deref(),
+                        &part,
+                    );
                     let card_name = game.card(card_id).card_name.clone();
                     let cost_str = mana_cost.to_string();
                     let payable_mana_cost =
@@ -601,13 +609,14 @@ impl GameLoop {
                             agents,
                             &[card_id],
                         );
+                        Self::record_sacrificed_cost_cards(sa.as_deref_mut(), &[card_id]);
                     } else if !self.pay_sacrifice_cost_internal(
                         game,
                         agents,
                         player,
                         type_filter,
                         *amount,
-                        sa,
+                        sa.as_deref_mut(),
                         Some(&pre_picked_sacrifices),
                         &mut pre_sac_idx,
                     ) {
@@ -729,7 +738,14 @@ impl GameLoop {
                         let owner = game.card(card_id).owner;
                         self.move_card_with_runtime(game, card_id, ZoneType::Hand, owner, agents);
                     } else {
-                        self.pay_return_cost(game, agents, player, type_filter, *amount, sa);
+                        self.pay_return_cost(
+                            game,
+                            agents,
+                            player,
+                            type_filter,
+                            *amount,
+                            sa.as_deref(),
+                        );
                     }
                 }
                 CostPart::TapType {
@@ -879,8 +895,14 @@ impl GameLoop {
                     );
                 }
                 CostPart::Unattach { type_filter, .. } => {
-                    let target =
-                        self.choose_unattach_target(game, agents, player, card_id, type_filter, sa);
+                    let target = self.choose_unattach_target(
+                        game,
+                        agents,
+                        player,
+                        card_id,
+                        type_filter,
+                        sa.as_deref(),
+                    );
                     game.detach(target);
                     self.trigger_handler.run_trigger(
                         TriggerType::Unattached,
@@ -1157,7 +1179,7 @@ impl GameLoop {
         spell_cost: &crate::cost::Cost,
         _api: Option<&str>,
         _mandatory: bool,
-        sa: Option<&SpellAbility>,
+        mut sa: Option<&mut SpellAbility>,
         prechosen_sacrifices: Option<&[CardId]>,
         prechosen_discards: Option<&[CardId]>,
     ) -> bool {
@@ -1189,7 +1211,7 @@ impl GameLoop {
                             player,
                             type_filter,
                             *amount,
-                            sa,
+                            sa.as_deref_mut(),
                             prechosen_sacrifices,
                             &mut pre_sac_idx,
                         )
@@ -1346,7 +1368,7 @@ impl GameLoop {
                             player,
                             type_filter,
                             *amount,
-                            sa,
+                            sa.as_deref(),
                             prechosen_sacrifices,
                             &mut pre_sac_idx,
                         )
@@ -1501,8 +1523,14 @@ impl GameLoop {
                     );
                 }
                 CostPart::Unattach { type_filter, .. } => {
-                    let target =
-                        self.choose_unattach_target(game, agents, player, card_id, type_filter, sa);
+                    let target = self.choose_unattach_target(
+                        game,
+                        agents,
+                        player,
+                        card_id,
+                        type_filter,
+                        sa.as_deref(),
+                    );
                     game.detach(target);
                     self.trigger_handler.run_trigger(
                         TriggerType::Unattached,
@@ -3158,7 +3186,7 @@ impl GameLoop {
         player: PlayerId,
         type_filter: &str,
         amount: i32,
-        sa: Option<&SpellAbility>,
+        sa: Option<&mut SpellAbility>,
         prechosen_sacrifices: Option<&[CardId]>,
         pre_sac_idx: &mut usize,
     ) -> bool {
@@ -3190,7 +3218,7 @@ impl GameLoop {
                     return false;
                 }
             } else {
-                agents[player.index()].choose_sacrifice(player, &valid, sa)
+                agents[player.index()].choose_sacrifice(player, &valid, sa.as_deref())
             };
             if let Some(chosen) = chosen {
                 to_sacrifice.push(chosen);
@@ -3200,8 +3228,20 @@ impl GameLoop {
         }
         if !to_sacrifice.is_empty() {
             super::perform_sacrifice(game, &mut self.trigger_handler, agents, &to_sacrifice);
+            Self::record_sacrificed_cost_cards(sa, &to_sacrifice);
         }
         true
+    }
+
+    fn record_sacrificed_cost_cards(sa: Option<&mut SpellAbility>, cards: &[CardId]) {
+        let Some(sa) = sa else {
+            return;
+        };
+        for card in cards {
+            let id = card.0.to_string();
+            sa.add_cost_to_hash_list(crate::cost::cost_sacrifice::HASH_CARDS, &id);
+            sa.add_cost_to_hash_list(crate::cost::cost_sacrifice::HASH_LKI, &id);
+        }
     }
 }
 

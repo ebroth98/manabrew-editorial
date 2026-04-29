@@ -104,6 +104,11 @@ export function SpellStackModal({
                     <Badge variant={isTop ? "default" : "outline"} className="text-[10px] h-4 px-1">
                       {isTop ? "TOP" : `+${idx}`}
                     </Badge>
+                    {obj.isCasting && (
+                      <Badge variant="outline" className="text-[10px] h-4 px-1">
+                        Casting
+                      </Badge>
+                    )}
                     {isValid && (
                       <Badge
                         variant="secondary"

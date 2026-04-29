@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect, useLayoutEffect, useRef, useMemo } from "react";
+import type { PointerEvent as ReactPointerEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -171,9 +172,9 @@ function TagsSubmenu({
             <ContextMenuSeparator />
             <ContextMenuItem
               asChild
-              onSelect={(e) => e.preventDefault()}
-              onPointerMove={(e) => e.preventDefault()}
-              onPointerLeave={(e) => e.preventDefault()}
+              onSelect={(e: Event) => e.preventDefault()}
+              onPointerMove={(e: ReactPointerEvent) => e.preventDefault()}
+              onPointerLeave={(e: ReactPointerEvent) => e.preventDefault()}
               className="focus:bg-transparent p-1 cursor-text"
             >
               <div>

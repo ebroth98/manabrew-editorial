@@ -74,25 +74,37 @@ fn choose_untap_type_targets(
         return Vec::new();
     };
 
-    let valid_filter = if untap_type.contains('.') {
-        untap_type.to_string()
-    } else {
-        format!("{untap_type}.YouCtrl")
-    };
+    // Java parity: `UntapType$ Land` permits ANY land (e.g. Frantic Search).
+    // Only narrow to the activator's permanents when the filter explicitly
+    // calls that out (`Land.YouCtrl`, `Creature.YouCtrl`, etc.). Otherwise
+    // sweep every battlefield permanent so opponent-controlled lands stay
+    // selectable.
+    let valid_filter = untap_type.to_string();
+    let scope_to_controller = valid_filter.contains("YouCtrl");
     let valid_selector = crate::parsing::cached_compiled_selector(&valid_filter);
-    let valid: Vec<CardId> = ctx
-        .game
-        .cards_in_zone(ZoneType::Battlefield, controller)
-        .iter()
-        .copied()
+    let candidates: Vec<CardId> = if scope_to_controller {
+        ctx.game
+            .cards_in_zone(ZoneType::Battlefield, controller)
+            .iter()
+            .copied()
+            .collect()
+    } else {
+        ctx.game.cards_in_all_zones(ZoneType::Battlefield).collect()
+    };
+    let valid: Vec<CardId> = candidates
+        .into_iter()
         .filter(|&card_id| {
-            super::matches_valid_cards_for_sa(
-                ctx.game,
-                sa,
-                ctx.game.card(card_id),
-                Some(&valid_selector),
-                &valid_filter,
-            )
+            // Only tapped permanents are meaningful untap targets — Java's
+            // `UntapEffect.untapTargetList` filters by `isTapped()` before
+            // offering choices.
+            ctx.game.card(card_id).tapped
+                && super::matches_valid_cards_for_sa(
+                    ctx.game,
+                    sa,
+                    ctx.game.card(card_id),
+                    Some(&valid_selector),
+                    &valid_filter,
+                )
         })
         .collect();
     if valid.is_empty() {

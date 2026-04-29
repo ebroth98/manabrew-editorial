@@ -104,6 +104,7 @@ final class DeterministicPlayPlumbing {
         final Card source = sa.getHostCard();
         final Card host = sa.getHostCard();
         final Zone hz = host.isCopiedSpell() ? null : host.getZone();
+        final int zonePosition = hz != null ? hz.getCards().indexOf(host) : 0;
         source.setSplitStateToPlayAbility(sa);
 
         if (sa.isSpell() && !source.isCopiedSpell()) {
@@ -134,6 +135,17 @@ final class DeterministicPlayPlumbing {
         // Mirror HumanPlaySpellAbility pre-cost prerequisites:
         // targeting setup is evaluated directly, not gated by isTargetNumberValid().
         if (!sa.setupTargets()) {
+            // Mirror HumanPlaySpellAbility's rollback path
+            // (forge-gui/.../HumanPlaySpellAbility.java:179): when setupTargets
+            // fails after moveToStack, restore the host to its origin zone so
+            // the next priority window doesn't see a card stranded on the
+            // Stack. Without this the deterministic agent silently drops the
+            // card from its playable list and diverges from the Rust engine,
+            // which performs a full snapshot rollback (cast_spell.rs:1150).
+            if (sa.isSpell() && !source.isCopiedSpell() && hz != null) {
+                GameActionUtil.rollbackAbility(sa, hz, zonePosition,
+                        new CostPayment(sa.getPayCosts(), sa), host);
+            }
             return false;
         }
 

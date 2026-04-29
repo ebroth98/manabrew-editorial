@@ -335,6 +335,13 @@ impl GameState {
         }
     }
 
+    pub fn reset_card_turn_tracking(&mut self) {
+        for card in &mut self.cards {
+            card.reset_activations_per_turn();
+            card.reset_ability_resolved_this_turn();
+        }
+    }
+
     pub(crate) fn remove_card_from_zone(
         &mut self,
         zone_type: ZoneType,

@@ -147,7 +147,23 @@ impl Mana {
 pub struct ManaPaymentContext {
     /// True if paying for a spell (not an ability).
     pub is_spell: bool,
-    /// Card type line of the spell being cast (for type checks).
+    /// True if paying for an activated ability's cost. Distinct from
+    /// `is_spell` so triggered abilities and effect-driven costs (UnlessCost,
+    /// cumulative upkeep, …) are neither spell nor activated.
+    pub is_activated_ability: bool,
+    /// True when this is the *actual* payment phase for a spell already
+    /// announced on the stack — i.e. cast_spell.rs has already moved the
+    /// card to `Stack` and is now running auto-pay. Java parity: mirrors
+    /// `AbilityManaPart.meetsManaRestrictions` line 438 — if the SA we're
+    /// paying for is currently on the stack, restricted mana sources whose
+    /// `RestrictValid$ Spell` (or similar) clause would otherwise apply are
+    /// rejected. This matches Forge's behaviour where Leyline-Immersion-
+    /// style grants are effectively unusable for the cast they were
+    /// announced for, leaving only unrestricted producers in the pool.
+    /// Default is `false` so playability prediction stays optimistic.
+    pub sa_on_stack: bool,
+    /// Card type line of the spell being cast OR the source of the activated
+    /// ability being paid for (for type checks like `Activated.Elemental`).
     pub type_line: Option<forge_foundation::CardTypeLine>,
     /// Subtypes of the spell being cast.
     pub card_name: Option<String>,
@@ -165,6 +181,12 @@ pub fn payment_context_for_sa(game: &GameState, sa: &SpellAbility) -> ManaPaymen
 
     ManaPaymentContext {
         is_spell: sa.is_spell,
+        is_activated_ability: sa.is_activated,
+        // `payment_context_for_sa` is used for activated-ability cost
+        // calculations and AI lookahead — neither is the real cast-time
+        // payment of a spell on stack. Leave the SA-on-stack guard off so
+        // restricted-spell statics are still considered for those callers.
+        sa_on_stack: false,
         type_line,
         card_name,
         chosen_types_by_source: game
@@ -193,7 +215,8 @@ pub fn mana_meets_restriction(restriction: &str, ctx: &ManaPaymentContext) -> bo
 fn check_single_restriction(restriction: &str, ctx: &ManaPaymentContext) -> bool {
     match restriction {
         "nonSpell" => !ctx.is_spell,
-        "Activated" => !ctx.is_spell,
+        "Activated" => ctx.is_activated_ability,
+        "Spell" => ctx.is_spell,
         _ if restriction.starts_with("Spell.") => {
             if !ctx.is_spell {
                 return false;
@@ -227,7 +250,38 @@ fn check_single_restriction(restriction: &str, ctx: &ManaPaymentContext) -> bool
                 false
             }
         }
-        _ if restriction.starts_with("Activated.") => !ctx.is_spell,
+        _ if restriction.starts_with("Activated.") => {
+            // `Activated.X` requires paying for an activated ability whose
+            // SOURCE matches X (e.g. Flamebraider's mana is restricted to
+            // "abilities of Elemental sources"). Triggered abilities and
+            // effect-payment costs (UnlessCost) are neither.
+            if !ctx.is_activated_ability {
+                return false;
+            }
+            let type_check = &restriction[10..]; // After "Activated."
+            let Some(tl) = ctx.type_line.as_ref() else {
+                return false;
+            };
+            match type_check {
+                "Creature" => tl.is_creature(),
+                "Artifact" => tl.is_artifact(),
+                "Enchantment" => tl.is_enchantment(),
+                "Land" => tl.is_land(),
+                "Planeswalker" => tl.is_planeswalker(),
+                other => {
+                    if let Some((base, sub)) = other.split_once('+') {
+                        let base_ok = match base {
+                            "Creature" => tl.is_creature(),
+                            "Artifact" => tl.is_artifact(),
+                            _ => tl.has_subtype(base),
+                        };
+                        base_ok && tl.has_subtype(sub)
+                    } else {
+                        tl.has_subtype(other)
+                    }
+                }
+            }
+        }
         _ if restriction.starts_with("CantPayGenericCosts") => true, // handled separately in payment
         _ if restriction.starts_with("CantCast") => true, // zone restrictions handled elsewhere
         _ => true,                                        // Unknown restriction — be permissive
@@ -496,23 +550,30 @@ pub(crate) fn all_basic_subtype_atoms(card: &Card) -> Vec<u16> {
 }
 
 /// Returns the pain damage (if any) that a land deals when tapped for the given atom.
-/// Checks the land's mana abilities for one that produces the given atom and has a
-/// SubAbility$ pointing to a DealDamage SVar. Returns the damage amount, or 0.
-fn land_pain_damage(card: &Card, chosen_atom: u16) -> i32 {
-    for ab in &card.activated_abilities {
+/// Checks the SPECIFIC mana ability being activated (when known) for a SubAbility$
+/// pointing to a DealDamage SVar. Returns the damage amount, or 0.
+///
+/// When `ability_index` is `None` (e.g. implicit basic-land mana), iterates all
+/// mana abilities. Without the index gate, painlands like Karplusan Forest leak
+/// damage to non-painful aliasing abilities (e.g. Yavimaya-granted Forest "Add G"
+/// shares atom G with the painful "Add R/G + 1 damage").
+fn land_pain_damage(card: &Card, chosen_atom: u16, ability_index: Option<usize>) -> i32 {
+    let abilities: Box<dyn Iterator<Item = &crate::ability::activated::ActivatedAbility>> =
+        match ability_index {
+            Some(idx) => Box::new(card.activated_abilities.get(idx).into_iter()),
+            None => Box::new(card.activated_abilities.iter()),
+        };
+    for ab in abilities {
         if !ab.is_mana_ability {
             continue;
         }
-        // Skip abilities without SubAbility (no pain)
         let sub_svar_name = match ab.sub_ability.as_deref() {
             Some(name) => name,
             None => continue,
         };
-        // Check if this ability produces the chosen atom
         if let Some(produced) = ab.produced.as_deref() {
             let atoms = produced_to_atoms(produced, &card.chosen_colors);
             if atoms.contains(&chosen_atom) {
-                // Look up the SVar to find damage amount
                 if let Some(sub_text) = card.svars.get(sub_svar_name) {
                     let sub_params = crate::parsing::Params::from_raw(sub_text);
                     if sub_params.get(crate::parsing::keys::DB) == Some("DealDamage") {
@@ -536,19 +597,32 @@ pub(crate) fn tap_land_for_mana(
     atom: u16,
     should_tap: bool,
     tapped_lands: &mut Vec<CardId>,
+    ability_index: Option<usize>,
 ) {
-    let pain = land_pain_damage(game.card(land_id), atom);
-    let is_snow = game.card(land_id).type_line.is_snow();
-    // Only tap if not already tapped — tapped cards with non-tap mana abilities
-    // (e.g. Rasputin Dreamweaver's SubCounter ability) are valid sources.
-    if should_tap && !game.card(land_id).tapped {
+    let card = game.card(land_id);
+    let pain = land_pain_damage(card, atom, ability_index);
+    let is_snow = card.type_line.is_snow();
+    // Pull `TriggersWhenSpent$` metadata from the specific mana ability
+    // being activated (Path of Ancestry's `TrigScry`, etc.) so the produced
+    // mana carries the trigger SVar through cost payment. Without this the
+    // fast-path `auto_pay` flow strips the metadata that the SP$ Mana
+    // resolution would normally set in `mana_effect`.
+    let triggers_when_spent = ability_index
+        .and_then(|idx| card.activated_abilities.get(idx))
+        .and_then(|ab| ab.triggers_when_spent.clone());
+    if should_tap && !card.tapped {
         game.tap(land_id);
     }
-    if is_snow {
-        pool.add_snow(atom, 1);
+    let mut mana = if is_snow {
+        let mut m = crate::mana::Mana::simple(atom);
+        m.is_snow = true;
+        m
     } else {
-        pool.add(atom, 1);
-    }
+        crate::mana::Mana::simple(atom)
+    };
+    mana.source_card = Some(land_id);
+    mana.triggers_when_spent = triggers_when_spent;
+    pool.add_mana(mana);
     if pain > 0 {
         game.player_lose_life(player, pain);
     }
@@ -1529,6 +1603,8 @@ mod tests {
 
         let ctx = ManaPaymentContext {
             is_spell: true,
+            is_activated_ability: false,
+            sa_on_stack: false,
             type_line: Some(CardTypeLine::parse("Creature Zombie Assassin")),
             card_name: Some("Unstoppable Slasher".to_string()),
             chosen_types_by_source,
