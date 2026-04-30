@@ -60,6 +60,7 @@ use crate::card::{Card, CounterType};
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
 use crate::mana::ManaPool;
+use crate::parsing::CostTokenKind;
 use crate::spellability::SpellAbility;
 use crate::staticability::static_ability_cant_sacrifice::cant_sacrifice;
 
@@ -509,7 +510,9 @@ pub fn parse_cost(raw: &str) -> Cost {
     let mut mana_tokens: Vec<&str> = Vec::new();
 
     // Pre-scan for untap cost (Q/Untap), mirroring Java's pre-scan for hasUntapInPrice.
-    let has_untap = tokens.iter().any(|t| *t == "Q" || *t == "Untap");
+    let has_untap = tokens.iter().any(|token| {
+        CostTokenKind::parse(token).is_some_and(|parsed| parsed.kind == CostTokenKind::Untap)
+    });
 
     for token in &tokens {
         match cost_parser::parse_cost_token(token) {

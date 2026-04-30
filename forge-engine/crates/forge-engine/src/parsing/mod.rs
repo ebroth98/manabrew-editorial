@@ -8,6 +8,7 @@
 pub mod amount;
 pub mod card_script;
 pub mod compare;
+pub mod cost;
 pub mod keys;
 
 use std::collections::BTreeMap;
@@ -25,6 +26,7 @@ pub use card_script::{
     SemanticParamValue, SemanticParamValueKind, SemanticSelector, SemanticSelectorAlternative,
     SemanticSelectorPart, SemanticTransform,
 };
+pub use cost::{CostToken, CostTokenKind};
 
 pub fn raw_has_key(raw: &str, key: &str) -> bool {
     card_script::raw_has_key(raw, key)

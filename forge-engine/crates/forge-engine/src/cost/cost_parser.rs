@@ -7,6 +7,7 @@ use forge_foundation::{ManaCost, ZoneType};
 
 use super::{CostPart, RevealFrom};
 use crate::ability::effects::parse_counter_type;
+use crate::parsing::CostTokenKind;
 
 /// Result of attempting to parse a single cost token.
 pub(super) enum TokenResult {
@@ -22,127 +23,90 @@ pub(super) enum TokenResult {
 
 /// Parse a single cost token into a `TokenResult`.
 pub(super) fn parse_cost_token(token: &str) -> TokenResult {
-    // Exact matches first
-    if token == "T" {
-        return TokenResult::Tap;
-    }
-    if token == "Q" || token == "Untap" {
-        return TokenResult::Part(CostPart::Untap);
-    }
-    if token == "Mandatory" {
-        return TokenResult::Mandatory;
-    }
-    if token == "Forage" {
-        return TokenResult::Part(CostPart::Forage);
-    }
-    if token.starts_with("PromiseGift") {
-        return TokenResult::Part(CostPart::PromiseGift);
-    }
+    let Some(parsed) = CostTokenKind::parse(token) else {
+        return TokenResult::Mana;
+    };
 
-    // Prefix-based dispatch
-    if let Some(part) = try_parse_prefixed(token) {
-        return TokenResult::Part(part);
-    }
+    let part = match parsed.kind {
+        CostTokenKind::Tap => return TokenResult::Tap,
+        CostTokenKind::Untap => CostPart::Untap,
+        CostTokenKind::Mandatory => return TokenResult::Mandatory,
+        CostTokenKind::Forage => CostPart::Forage,
+        CostTokenKind::PromiseGift => CostPart::PromiseGift,
+        CostTokenKind::Exert if parsed.inner.is_none() => CostPart::Exert {
+            amount: 1,
+            type_filter: "CARDNAME".to_string(),
+        },
+        kind => {
+            let Some(inner) = parsed.inner else {
+                return TokenResult::Mana;
+            };
+            let Some(part) = (match kind {
+                CostTokenKind::AddCounter => parse_add_counter(inner),
+                CostTokenKind::AddMana => parse_add_mana(inner),
+                CostTokenKind::Behold => parse_behold(inner),
+                CostTokenKind::BeholdExile => parse_behold_exile(inner),
+                CostTokenKind::Blight => parse_blight(inner),
+                CostTokenKind::ChooseCard => parse_choose_card(inner),
+                CostTokenKind::ChooseColor => parse_choose_color(inner),
+                CostTokenKind::ChooseCreatureType => parse_choose_creature_type(inner),
+                CostTokenKind::CollectEvidence => parse_collect_evidence(inner),
+                CostTokenKind::DamageYou => parse_damage_you(inner),
+                CostTokenKind::Discard => parse_discard(inner),
+                CostTokenKind::Draw => parse_draw(inner),
+                CostTokenKind::Enlist => parse_enlist(inner),
+                CostTokenKind::Exert => parse_exert(inner),
+                CostTokenKind::Exile => parse_exile_battlefield(inner),
+                CostTokenKind::ExileAnyGrave => parse_exile_any_grave(inner),
+                CostTokenKind::ExileCtrlOrGrave => parse_exile_ctrl_or_grave(inner),
+                CostTokenKind::ExiledMoveToGrave => parse_exiled_move_to_grave(inner),
+                CostTokenKind::ExileFromGrave => parse_exile_from_grave(inner),
+                CostTokenKind::ExileFromHand => parse_exile_from_hand(inner),
+                CostTokenKind::ExileFromStack => parse_exile_from_stack(inner),
+                CostTokenKind::ExileFromTop => parse_exile_from_top(inner),
+                CostTokenKind::ExileSameGrave => parse_exile_same_grave(inner),
+                CostTokenKind::FlipCoin => parse_flip_coin(inner),
+                CostTokenKind::GainControl => parse_gain_control(inner),
+                CostTokenKind::GainLife => parse_gain_life(inner),
+                CostTokenKind::Mana => parse_mana_cost(inner),
+                CostTokenKind::Mill => parse_mill(inner),
+                CostTokenKind::PayEnergy => parse_pay_energy(inner),
+                CostTokenKind::PayLife => parse_pay_life(inner),
+                CostTokenKind::PayShards => parse_pay_shards(inner),
+                CostTokenKind::PutCardToLibFromBattlefield => {
+                    parse_put_card_to_lib_from_battlefield(inner)
+                }
+                CostTokenKind::PutCardToLibFromGrave => parse_put_card_to_lib_from_grave(inner),
+                CostTokenKind::PutCardToLibFromHand => parse_put_card_to_lib_from_hand(inner),
+                CostTokenKind::PutCardToLibFromSameGrave => {
+                    parse_put_card_to_lib_from_same_grave(inner)
+                }
+                CostTokenKind::RemoveAnyCounter => parse_remove_any_counter(inner),
+                CostTokenKind::Return => parse_return(inner),
+                CostTokenKind::Reveal => parse_reveal(inner),
+                CostTokenKind::RevealChosen => parse_reveal_chosen(inner),
+                CostTokenKind::RevealFromExile => parse_reveal_from_exile(inner),
+                CostTokenKind::RevealOrChoose => parse_reveal_or_choose(inner),
+                CostTokenKind::RollDice => parse_roll_dice(inner),
+                CostTokenKind::Sac => parse_sacrifice(inner),
+                CostTokenKind::SubCounter => parse_sub_counter(inner),
+                CostTokenKind::TapXType => parse_tap_type(inner),
+                CostTokenKind::Unattach => parse_unattach(inner),
+                CostTokenKind::UntapYType => parse_untap_type(inner),
+                CostTokenKind::Waterbend => parse_waterbend(inner),
+                CostTokenKind::Mandatory
+                | CostTokenKind::Forage
+                | CostTokenKind::PromiseGift
+                | CostTokenKind::Tap
+                | CostTokenKind::Untap => unreachable!(),
+            }) else {
+                return TokenResult::Mana;
+            };
+            part
+        }
+    };
 
-    TokenResult::Mana
-}
-
-// ---------------------------------------------------------------------------
-// Prefix dispatch
-// ---------------------------------------------------------------------------
-
-/// Strip `prefix` and trailing `>`, then call `parser` on the inner content.
-fn try_strip_parse(
-    token: &str,
-    prefix: &str,
-    parser: fn(&str) -> Option<CostPart>,
-) -> Option<CostPart> {
-    token
-        .strip_prefix(prefix)
-        .and_then(|s| s.strip_suffix('>'))
-        .and_then(parser)
-}
-
-/// Try every known prefix in order, returning the first match.
-fn try_parse_prefixed(token: &str) -> Option<CostPart> {
-    // The order mirrors the original if/else chain so that more-specific
-    // prefixes (e.g. "ExileFromHand<") are tried before shorter ones
-    // (e.g. "Exile<") where necessary. Prefixes that share no common
-    // start can appear in any order.
-
-    try_strip_parse(token, "Mana<", parse_mana_cost)
-        .or_else(|| try_strip_parse(token, "Sac<", parse_sacrifice))
-        .or_else(|| try_strip_parse(token, "Discard<", parse_discard))
-        .or_else(|| try_strip_parse(token, "PayLife<", parse_pay_life))
-        .or_else(|| try_strip_parse(token, "SubCounter<", parse_sub_counter))
-        .or_else(|| try_strip_parse(token, "AddCounter<", parse_add_counter))
-        .or_else(|| try_strip_parse(token, "PayEnergy<", parse_pay_energy))
-        .or_else(|| try_strip_parse(token, "PayShards<", parse_pay_shards))
-        .or_else(|| try_strip_parse(token, "ChooseColor<", parse_choose_color))
-        .or_else(|| try_strip_parse(token, "ChooseCreatureType<", parse_choose_creature_type))
-        .or_else(|| try_strip_parse(token, "FlipCoin<", parse_flip_coin))
-        .or_else(|| try_strip_parse(token, "RollDice<", parse_roll_dice))
-        // Exile variants — longer prefixes first
-        .or_else(|| try_strip_parse(token, "ExileFromHand<", parse_exile_from_hand))
-        .or_else(|| try_strip_parse(token, "ExileFromGrave<", parse_exile_from_grave))
-        .or_else(|| try_strip_parse(token, "ExileFromTop<", parse_exile_from_top))
-        .or_else(|| try_strip_parse(token, "ExileFromStack<", parse_exile_from_stack))
-        .or_else(|| try_strip_parse(token, "ExileAnyGrave<", parse_exile_any_grave))
-        .or_else(|| try_strip_parse(token, "ExileSameGrave<", parse_exile_same_grave))
-        .or_else(|| try_strip_parse(token, "ExileCtrlOrGrave<", parse_exile_ctrl_or_grave))
-        .or_else(|| try_strip_parse(token, "ExiledMoveToGrave<", parse_exiled_move_to_grave))
-        .or_else(|| try_strip_parse(token, "Exile<", parse_exile_battlefield))
-        .or_else(|| try_strip_parse(token, "Return<", parse_return))
-        .or_else(|| try_strip_parse(token, "tapXType<", parse_tap_type))
-        .or_else(|| try_strip_parse(token, "untapYType<", parse_untap_type))
-        .or_else(|| try_strip_parse(token, "DamageYou<", parse_damage_you))
-        .or_else(|| try_strip_parse(token, "Draw<", parse_draw))
-        .or_else(|| try_strip_parse(token, "Mill<", parse_mill))
-        .or_else(|| try_strip_parse(token, "Reveal<", parse_reveal))
-        .or_else(|| try_strip_parse(token, "ChooseCard<", parse_choose_card))
-        .or_else(|| try_strip_parse(token, "RevealFromExile<", parse_reveal_from_exile))
-        .or_else(|| try_strip_parse(token, "RevealOrChoose<", parse_reveal_or_choose))
-        .or_else(|| try_strip_parse(token, "RevealChosen<", parse_reveal_chosen))
-        .or_else(|| try_strip_parse(token, "BeholdExile<", parse_behold_exile))
-        .or_else(|| try_strip_parse(token, "Behold<", parse_behold))
-        .or_else(|| parse_exert(token))
-        .or_else(|| try_strip_parse(token, "GainLife<", parse_gain_life))
-        .or_else(|| try_strip_parse(token, "GainControl<", parse_gain_control))
-        .or_else(|| try_strip_parse(token, "RemoveAnyCounter<", parse_remove_any_counter))
-        .or_else(|| try_strip_parse(token, "Unattach<", parse_unattach))
-        .or_else(|| try_strip_parse(token, "Waterbend<", parse_waterbend))
-        .or_else(|| try_strip_parse(token, "AddMana<", parse_add_mana))
-        .or_else(|| try_strip_parse(token, "CollectEvidence<", parse_collect_evidence))
-        .or_else(|| {
-            try_strip_parse(
-                token,
-                "PutCardToLibFromHand<",
-                parse_put_card_to_lib_from_hand,
-            )
-        })
-        .or_else(|| {
-            try_strip_parse(
-                token,
-                "PutCardToLibFromSameGrave<",
-                parse_put_card_to_lib_from_same_grave,
-            )
-        })
-        .or_else(|| {
-            try_strip_parse(
-                token,
-                "PutCardToLibFromGrave<",
-                parse_put_card_to_lib_from_grave,
-            )
-        })
-        .or_else(|| {
-            try_strip_parse(
-                token,
-                "PutCardToLibFromBattlefield<",
-                parse_put_card_to_lib_from_battlefield,
-            )
-        })
-        .or_else(|| try_strip_parse(token, "Enlist<", parse_enlist))
-        .or_else(|| try_strip_parse(token, "Blight<", parse_blight))
+    TokenResult::Part(part)
 }
 
 // ---------------------------------------------------------------------------
@@ -444,28 +408,12 @@ fn parse_behold_exile(inner: &str) -> Option<CostPart> {
     })
 }
 
-/// Exert is special: it can appear as `Exert<...>` (with angle brackets)
-/// or potentially bare. The original code had a fallback else-branch.
-fn parse_exert(token: &str) -> Option<CostPart> {
-    if !token.starts_with("Exert<") {
-        return None;
-    }
-    if let Some(inner) = token
-        .strip_prefix("Exert<")
-        .and_then(|s| s.strip_suffix('>'))
-    {
-        let (amount, filter) = super::parse_amount_filter_dynamic(inner);
-        Some(CostPart::Exert {
-            amount,
-            type_filter: filter,
-        })
-    } else {
-        // Exert without proper angle brackets — default
-        Some(CostPart::Exert {
-            amount: 1,
-            type_filter: "CARDNAME".to_string(),
-        })
-    }
+fn parse_exert(inner: &str) -> Option<CostPart> {
+    let (amount, filter) = super::parse_amount_filter_dynamic(inner);
+    Some(CostPart::Exert {
+        amount,
+        type_filter: filter,
+    })
 }
 
 fn parse_gain_life(inner: &str) -> Option<CostPart> {
