@@ -70,11 +70,9 @@ impl PlayerAgent for AcceptSearchAgent {
 
     fn choose_action(
         &mut self,
-        _: PlayerId,
-        _: &[PlayOption],
-        _: &[CardId],
-        _: &[CardId],
-        _: &[(CardId, usize)],
+        player: PlayerId,
+        action_space: Option<&forge_engine_core::agent::PriorityActionSpace>,
+        request_action_space: &mut dyn FnMut() -> forge_engine_core::agent::PriorityActionSpace,
     ) -> PlayerAction {
         PlayerAction::PassPriority
     }

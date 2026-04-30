@@ -855,7 +855,7 @@ final class DeterministicCostPlumbing {
                 int accum = 0;
                 for (final Card c : list) {
                     selected.add(c);
-                    accum += c.getNetPower();
+                    accum = CardLists.getTotalPower(selected, ability);
                     if (accum >= totalPowerRequired) {
                         break;
                     }

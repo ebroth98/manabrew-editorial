@@ -123,11 +123,9 @@ impl PlayerAgent for DiscardOneAgent {
 
     fn choose_action(
         &mut self,
-        _player: PlayerId,
-        _playable: &[forge_engine_core::agent::PlayOption],
-        _tappable_lands: &[CardId],
-        _untappable_lands: &[CardId],
-        _activatable: &[(CardId, usize)],
+        player: PlayerId,
+        action_space: Option<&forge_engine_core::agent::PriorityActionSpace>,
+        request_action_space: &mut dyn FnMut() -> forge_engine_core::agent::PriorityActionSpace,
     ) -> PlayerAction {
         PlayerAction::PassPriority
     }

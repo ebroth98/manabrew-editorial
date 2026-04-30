@@ -44,6 +44,37 @@ pub fn can_play(st_ab: &StaticAbility, source: &Card, card: &Card, _game: &GameS
     )
 }
 
+pub fn can_play_or_granted(
+    st_ab: &StaticAbility,
+    source: &Card,
+    card: &Card,
+    game: &GameState,
+) -> bool {
+    if can_play(st_ab, source, card, game) {
+        return true;
+    }
+    if !st_ab.check_conditions(source, game) {
+        return false;
+    }
+    if !crate::card::valid_filter::matches_valid_card_selector_opt(
+        st_ab.ir.affected.as_ref(),
+        source,
+        source,
+    ) {
+        return false;
+    }
+    let Some(add_static) = st_ab.ir.add_static_ability_text.as_deref() else {
+        return false;
+    };
+    add_static
+        .split(" & ")
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .filter_map(|svar_name| source.svars.get(svar_name))
+        .filter_map(|static_text| crate::staticability::parse_static_ability(static_text))
+        .any(|granted| can_play(&granted, source, card, game))
+}
+
 /// If a `MayPlay$ True` static on `source` grants `card` permission to be
 /// cast and also defines `MayPlayAltManaCost$`, return that alt cost string.
 /// Mirrors Java's `GameActionUtil.canPlayCardMayPlay` reading

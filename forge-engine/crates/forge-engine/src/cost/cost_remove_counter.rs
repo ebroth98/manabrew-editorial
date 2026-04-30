@@ -22,11 +22,26 @@ pub fn can_pay(
     game: &crate::game::GameState,
     _available_mana: &crate::mana::ManaPool,
     source: crate::ids::CardId,
-    _player: crate::ids::PlayerId,
+    player: crate::ids::PlayerId,
     _ability: Option<&crate::spellability::SpellAbility>,
     part: &super::CostPart,
 ) -> bool {
-    crate::cost::cost_sub_counter::can_pay(game, source, part)
+    let super::CostPart::SubCounter {
+        amount,
+        counter_type,
+        type_filter,
+    } = part
+    else {
+        return false;
+    };
+    crate::cost::cost_sub_counter::can_pay_for_player(
+        game,
+        source,
+        player,
+        *amount,
+        counter_type,
+        type_filter,
+    )
 }
 
 pub fn pay_with_decision(
@@ -39,11 +54,23 @@ pub fn pay_with_decision(
     let super::CostPart::SubCounter {
         amount,
         counter_type,
+        type_filter,
     } = part
     else {
         return false;
     };
     let resolved = super::resolve_dynamic_amount(game, source, player, *amount);
+    if !type_filter.eq_ignore_ascii_case("CARDNAME")
+        && !type_filter.eq_ignore_ascii_case("NICKNAME")
+    {
+        let Some(target) = super::get_sub_counter_targets(game, player, source, type_filter)
+            .into_iter()
+            .find(|cid| game.card(*cid).counter_count(counter_type) >= resolved)
+        else {
+            return false;
+        };
+        return pay_as_decided(game, target, resolved, counter_type);
+    }
     pay_as_decided(game, source, resolved, counter_type)
 }
 

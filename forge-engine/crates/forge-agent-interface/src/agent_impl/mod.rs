@@ -1,7 +1,7 @@
 use forge_engine_core::agent::notification::GameNotification;
 use forge_engine_core::agent::{
     BinaryChoiceKind, CombatCostAction, GameEntity, ManaCostAction, PlayOption, PlayerAgent,
-    RollSwapChoice, TargetChoice,
+    PriorityActionSpace, RollSwapChoice, TargetChoice,
 };
 use forge_engine_core::card::CounterType;
 use forge_engine_core::combat::DefenderId;
@@ -373,11 +373,21 @@ impl<T: AgentTransport> PlayerAgent for PromptAgent<T> {
     fn choose_action(
         &mut self,
         _player: PlayerId,
-        playable: &[PlayOption],
-        tappable_lands: &[CardId],
-        untappable_lands: &[CardId],
-        activatable: &[(CardId, usize)],
+        action_space: Option<&PriorityActionSpace>,
+        request_action_space: &mut dyn FnMut() -> PriorityActionSpace,
     ) -> EnginePlayerAction {
+        let requested_action_space;
+        let action_space = match action_space {
+            Some(action_space) => action_space,
+            None => {
+                requested_action_space = request_action_space();
+                &requested_action_space
+            }
+        };
+        let playable = &action_space.playable;
+        let tappable_lands = &action_space.tappable_lands;
+        let untappable_lands = &action_space.untappable_lands;
+        let activatable = &action_space.activatable;
         let playable_card_ids: Vec<String> = playable
             .iter()
             .map(|play| card_id_str(play.card_id))

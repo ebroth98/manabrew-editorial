@@ -55,6 +55,42 @@ fn targeted_owner_players(sa: &SpellAbility, game: &GameState) -> Vec<PlayerId> 
     players
 }
 
+fn add_players_from_remembered(
+    players: &mut Vec<PlayerId>,
+    game: &GameState,
+    card_id: CardId,
+    def: &str,
+    skip_remembered: bool,
+) {
+    let remembered_players = game.card(card_id).remembered_players.clone();
+    for player in remembered_players {
+        if def.ends_with("Opponents") {
+            push_unique_player(players, game.opponent_of(player));
+        } else {
+            push_unique_player(players, player);
+        }
+    }
+
+    let remembered_cards = game.card(card_id).remembered_cards.clone();
+    for remembered_card in remembered_cards {
+        if def.ends_with("Controller") {
+            push_unique_player(players, game.card(remembered_card).controller);
+        } else if def.ends_with("Owner") {
+            push_unique_player(players, game.card(remembered_card).owner);
+        } else if def.ends_with("Remembered") && !skip_remembered {
+            add_players_from_remembered(players, game, remembered_card, def, true);
+        }
+    }
+}
+
+fn remembered_players_for_def(def: &str, sa: &SpellAbility, game: &GameState) -> Vec<PlayerId> {
+    let mut players = Vec::new();
+    if let Some(source) = sa.source {
+        add_players_from_remembered(&mut players, game, source, def, false);
+    }
+    players
+}
+
 fn unique_push_spell(spells: &mut Vec<SpellAbility>, spell: SpellAbility) {
     let spell_source = spell.source;
     let spell_api = spell.api;
@@ -326,9 +362,9 @@ pub fn resolve_defined_player_with_sa(
         });
     }
     match key {
-        "Remembered" => sa
-            .source
-            .and_then(|src| game.card(src).remembered_players.first().copied()),
+        _ if key.starts_with("Remembered") => {
+            remembered_players_for_def(key, sa, game).into_iter().next()
+        }
         "TriggeredPlayer" | "Targeted" | "TargetedPlayer" => sa
             .target_chosen
             .all_target_players()
@@ -444,10 +480,7 @@ pub fn resolve_defined_players_with_sa(
     }
     match key {
         "Player" | "Players" => game.alive_players(),
-        "Remembered" => sa
-            .source
-            .map(|src| game.card(src).remembered_players.clone())
-            .unwrap_or_default(),
+        _ if key.starts_with("Remembered") => remembered_players_for_def(key, sa, game),
         "TriggeredPlayer" | "Targeted" | "TargetedPlayer" => {
             let mut players = Vec::new();
             for player in sa.target_chosen.all_target_players() {
@@ -1592,6 +1625,32 @@ pub fn handle_paid(
 
     match property {
         "Amount" | "Count" => paid_cards.len() as i32,
+        "CardPower" => paid_cards
+            .iter()
+            .map(|&cid| {
+                let card = game.card(cid);
+                card.lki_power.unwrap_or_else(|| card.power())
+            })
+            .sum(),
+        "CardBasePower" => paid_cards
+            .iter()
+            .map(|&cid| game.card(cid).base_power.unwrap_or(0))
+            .sum(),
+        "CardToughness" => paid_cards
+            .iter()
+            .map(|&cid| {
+                let card = game.card(cid);
+                card.lki_toughness.unwrap_or_else(|| card.toughness())
+            })
+            .sum(),
+        "CardSumPT" => paid_cards
+            .iter()
+            .map(|&cid| {
+                let card = game.card(cid);
+                card.lki_power.unwrap_or_else(|| card.power())
+                    + card.lki_toughness.unwrap_or_else(|| card.toughness())
+            })
+            .sum(),
         "CardManaCost" | "ManaCost" => paid_cards
             .iter()
             .map(|&cid| game.card(cid).mana_value())

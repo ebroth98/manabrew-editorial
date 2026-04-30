@@ -157,6 +157,15 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
             }
         }
 
+        if sa
+            .ir
+            .spell_description_text
+            .as_deref()
+            .is_some_and(|desc| desc.to_ascii_lowercase().starts_with("crew"))
+        {
+            ctx.game.card_mut(card_id).becomes_crewed();
+        }
+
         // Apply P/T
         let parsed_power = power_str
             .as_deref()

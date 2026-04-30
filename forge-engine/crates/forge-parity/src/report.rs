@@ -370,12 +370,19 @@ fn completion_label(
         MatchupStatus::Fail => failed_turn
             .map(|t| format!("FAILED AT TURN {}", t))
             .unwrap_or_else(|| "FAILED".to_string()),
-        MatchupStatus::Pass => finished_turn
-            .map(|turn| format!("FINISHED TURN {}", turn))
-            .unwrap_or_else(|| {
-                let _ = max_turns;
-                "STOPPED AT MAX".to_string()
-            }),
+        MatchupStatus::Pass => {
+            if let Some(reason) = skip_reason {
+                if reason.starts_with("ABORTED AT TURN ") {
+                    return format!("{ANSI_YELLOW}WARN{ANSI_RESET} {reason}");
+                }
+            }
+            finished_turn
+                .map(|turn| format!("FINISHED TURN {}", turn))
+                .unwrap_or_else(|| {
+                    let _ = max_turns;
+                    "STOPPED AT MAX".to_string()
+                })
+        }
         MatchupStatus::Error => "ERROR".to_string(),
     }
 }

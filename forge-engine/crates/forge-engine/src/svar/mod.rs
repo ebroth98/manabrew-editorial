@@ -1,17 +1,3 @@
-//! SVar resolution system.
-//!
-//! SVars (Script Variables) are dynamic expressions on cards that compute values
-//! at runtime based on game state. This module handles parsing and evaluating
-//! SVar expressions like:
-//! - `Count$Valid Forest.YouCtrl` — count matching permanents
-//! - `Count$Devotion.G` — devotion to green
-//! - `Count$CardPower` — power of a card
-//! - `Count$Compare X GE1.3.1` — conditional expressions
-//! - `X` references, `Count$xPaid`, kicked/multikicker counts, etc.
-//!
-//! The main entry point is `resolve_numeric_svar()` which takes a parameter name
-//! from a SpellAbility and returns an integer value.
-
 use crate::ability::ability_ir::NumericParamIr;
 use crate::card::card_damage_history::TrackedEntity;
 use crate::card::filter_constants as fc;
@@ -195,6 +181,46 @@ fn spell_ability_x_property(spell_ability: &SpellAbility, expr: &str, game: &Gam
     )
 }
 
+fn card_x_property(
+    card_id: CardId,
+    expr: &str,
+    game: &GameState,
+    source_id: CardId,
+    controller: PlayerId,
+    sa: &SpellAbility,
+) -> i32 {
+    let card = game.card(card_id);
+    let parts: Vec<&str> = expr.split('/').collect();
+    let value = parts.first().copied().unwrap_or("");
+    let operators = parts.get(1).copied().unwrap_or("");
+
+    let base = match value {
+        "CardPower" => card.lki_power.unwrap_or_else(|| card.power()),
+        "CardBasePower" => card.base_power.unwrap_or(0),
+        "CardToughness" => card.lki_toughness.unwrap_or_else(|| card.toughness()),
+        "CardBaseToughness" => card.base_toughness.unwrap_or(0),
+        "CardSumPT" => {
+            card.lki_power.unwrap_or_else(|| card.power())
+                + card.lki_toughness.unwrap_or_else(|| card.toughness())
+        }
+        "CardManaCost" | "ManaCost" => card.mana_value(),
+        "Amount" | "Count" => 1,
+        _ if value.starts_with("CardCounters.") => {
+            let counter_name = value.strip_prefix("CardCounters.").unwrap_or("");
+            if counter_name.eq_ignore_ascii_case("ALL") {
+                card.counters.values().copied().sum()
+            } else {
+                card.counter_count(&crate::ability::ability_utils::parse_counter_type(
+                    counter_name,
+                ))
+            }
+        }
+        _ => 0,
+    };
+
+    do_x_math(base, operators, game, source_id, controller, sa)
+}
+
 fn resolve_spell_ability_expr(expr: &str, game: &GameState, sa: &SpellAbility) -> Option<i32> {
     let (defined, property) = expr.split_once('$')?;
     let spells = crate::ability::ability_utils::get_defined_spell_abilities(defined, sa, game);
@@ -205,6 +231,30 @@ fn resolve_spell_ability_expr(expr: &str, game: &GameState, sa: &SpellAbility) -
         spells
             .iter()
             .map(|spell| spell_ability_x_property(spell, property, game))
+            .sum(),
+    )
+}
+
+fn resolve_card_list_expr(
+    expr: &str,
+    game: &GameState,
+    source_id: CardId,
+    controller: PlayerId,
+    sa: &SpellAbility,
+) -> Option<i32> {
+    let (defined, property) = expr.split_once('$')?;
+    let cards: Vec<CardId> = match defined {
+        "Targeted" | "TargetedCard" | "ThisTargetedCard" => sa.target_chosen.all_target_cards(),
+        "ParentTargeted" => sa.target_chosen.all_target_cards(),
+        _ => return None,
+    };
+    if cards.is_empty() {
+        return None;
+    }
+    Some(
+        cards
+            .into_iter()
+            .map(|cid| card_x_property(cid, property, game, source_id, controller, sa))
             .sum(),
     )
 }
@@ -652,10 +702,8 @@ fn resolve_player_count_svar(
 /// - `"NumDmg" -> "X"` → returns `sa.x_mana_cost_paid` or evaluates the "X" SVar
 /// - `"NumDmg" -> "AFLifeLost"` → looks up SVar "AFLifeLost" and evaluates it
 ///
-/// **param_name**: The key in `sa.params` (e.g. "NumDmg", "LifeAmount")  
-/// **default**: The value to return if the param is missing or empty  
-///
-/// Mirrors Java's `AbilityUtils.calculateAmount()`.
+/// **param_name**: The key in `sa.params` (e.g. "NumDmg", "LifeAmount")
+/// **default**: The value to return if the param is missing or empty
 pub fn resolve_numeric_svar(
     game: &GameState,
     sa: &SpellAbility,
@@ -747,6 +795,9 @@ pub fn resolve_numeric_value(
                             sa,
                         );
                 }
+                if let Some(value) = resolve_paid_hash_expr(svar_expr, game, source_id, sa) {
+                    return sign * value;
+                }
                 if svar_expr.starts_with("TriggerCount$")
                     || svar_expr.starts_with("TriggerCountMax$")
                 {
@@ -755,10 +806,12 @@ pub fn resolve_numeric_value(
                 if let Some(value) = resolve_spell_ability_expr(svar_expr, game, sa) {
                     return sign * value;
                 }
+                if let Some(value) =
+                    resolve_card_list_expr(svar_expr, game, source_id, sa.activating_player, sa)
+                {
+                    return sign * value;
+                }
                 // Sacrificed$CardPower / Sacrificed$CardToughness — LKI from cost payment
-                // Mirrors Java's AbilityUtils which reads from sa.getPaidList("SacrificedCards").
-                // Must be checked before resolve_direct_player_expr which would
-                // incorrectly match the Foo$Bar pattern as a player expression.
                 if svar_expr == "Sacrificed$CardPower"
                     || svar_expr == "Sacrificed$CardToughness"
                     || svar_expr == "Sacrificed$CardManaCost"
@@ -852,15 +905,12 @@ pub fn resolve_numeric_value(
             // `Sacrificed$CardPower` / `Sacrificed$CardToughness` — LKI of the
             // creature sacrificed during cost payment (e.g. Life's Legacy uses
             // `NumCards$ XPower` where `XPower:Sacrificed$CardPower`). Mirrors
-            // Java `AbilityUtils.handlePaid` reading from `SacrificedCards`.
             if svar_expr == "Sacrificed$CardPower"
                 || svar_expr == "Sacrificed$CardToughness"
                 || svar_expr == "Sacrificed$CardManaCost"
             {
                 return sign * sacrificed_card_value(game, sa, svar_expr);
             }
-            // `Remembered$Property` — Java parity for AbilityUtils' "Remembered$"
-            // shortcut (e.g. Cavalier of Flame's `Y:Remembered$Amount`).
             if let Some(property) = svar_expr.strip_prefix("Remembered$") {
                 return crate::ability::ability_utils::handle_paid(
                     game,
@@ -890,12 +940,18 @@ pub fn resolve_numeric_value(
                         sa,
                     );
             }
+            if let Some(value) = resolve_paid_hash_expr(svar_expr, game, source_id, sa) {
+                return sign * value;
+            }
             if let Some(value) = resolve_spell_ability_expr(svar_expr, game, sa) {
                 return sign * value;
             }
+            if let Some(value) =
+                resolve_card_list_expr(svar_expr, game, source_id, sa.activating_player, sa)
+            {
+                return sign * value;
+            }
             // TriggeredCard$CardPower / TriggeredCard$CardToughness — LKI resolution
-            // Mirrors Java AbilityUtils: TriggeredCard → Card, then Card$CardPower.
-            // Must be checked before resolve_direct_player_expr.
             if svar_expr == "TriggeredCard$CardPower" {
                 if let Some(power) = parse_trigger_int_object(sa, "TriggeredCardPower") {
                     return sign * power;
@@ -945,6 +1001,40 @@ pub fn resolve_numeric_value(
     }
 
     default
+}
+
+fn resolve_paid_hash_expr(
+    expr: &str,
+    game: &GameState,
+    source_id: CardId,
+    sa: &SpellAbility,
+) -> Option<i32> {
+    let (paid_key, property) = expr.split_once('$')?;
+    let paid_values = sa.paid_hash.get(paid_key)?;
+    let paid_cards: Vec<CardId> = paid_values
+        .iter()
+        .filter_map(|value| {
+            let raw = value.strip_prefix("Card#").unwrap_or(value);
+            raw.parse::<u32>().ok().map(CardId)
+        })
+        .filter(|cid| cid.index() < game.cards.len())
+        .collect();
+
+    if property.starts_with("TapPowerValue") {
+        return Some(
+            paid_cards
+                .iter()
+                .map(|&cid| crate::cost::cost_tap_type::tap_power_value(game, cid, Some(sa)))
+                .sum(),
+        );
+    }
+
+    Some(crate::ability::ability_utils::handle_paid(
+        game,
+        &paid_cards,
+        property,
+        source_id,
+    ))
 }
 
 /// Evaluate a simple SVar expression.
@@ -1022,7 +1112,6 @@ fn trigger_result_values(sa: &SpellAbility) -> Vec<i32> {
 /// Resolve a Count$ SVar expression that requires game state access.
 /// Handles patterns like `Count$Valid Forest.YouCtrl`, `Count$Converge`,
 /// `Count$CardPower`, etc.
-/// Mirrors Java's `AbilityUtils.calculateAmount()` for Count$ expressions.
 pub fn resolve_count_svar(
     expr: &str,
     game: &GameState,
@@ -1177,7 +1266,6 @@ pub fn resolve_count_svar_for_sa(
     // - Count$ValidHand Card.YouOwn
     // - Count$ValidGraveyard Card
     // - Count$ValidBattlefield Creature.YouCtrl
-    // Mirrors Java xCount() Valid* zone parsing.
     if let Some(rest) = expr.strip_prefix("Count$Valid") {
         let (rest, operators) = rest.split_once('/').unwrap_or((rest, ""));
         let mut parts = rest.trim_start().splitn(2, ' ');
@@ -1307,7 +1395,6 @@ pub fn resolve_count_svar_for_sa(
     }
 
     // Count$Devotion.COLOR — count mana symbols of a color among permanents you control.
-    // Mirrors Java's `CardFactoryUtil.xCount()` Devotion case.
     if let Some(color_str) = expr.strip_prefix("Count$Devotion.") {
         let color_mask: u16 = match color_str.to_uppercase().as_str() {
             "W" | "WHITE" => forge_foundation::ManaAtom::WHITE,
@@ -1377,7 +1464,6 @@ pub fn resolve_count_svar_for_sa(
     }
 
     // Count$TotalDamageDoneByThisTurn — total damage dealt by the source card this turn.
-    // Mirrors Java's Card.getTotalDamageDoneBy() via DamageHistory.
     if expr == "Count$TotalDamageDoneByThisTurn" {
         return game.card(source_id).total_damage_done_this_turn;
     }
@@ -1434,7 +1520,6 @@ fn valid_card_matches_with_source(
             } else if sub_qual.eq_ignore_ascii_case("ChosenType") {
                 // Card must have the source card's chosen creature type as a subtype.
                 // Changeling means all creature types — always matches.
-                // Mirrors Java CardTraitBase.isValid() ChosenType qualifier.
                 match chosen_type {
                     Some(ct)
                         if card.type_line.has_subtype(ct) || card.has_keyword("Changeling") => {}

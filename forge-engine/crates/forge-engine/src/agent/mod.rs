@@ -36,9 +36,6 @@ pub trait PlayerAgent {
     /// Default implementation is a no-op.
     fn on_library_peek(&mut self, _game: &GameState, _cards: &[CardId]) {}
 
-    /// Java-parity reveal hook.
-    /// Mirrors `PlayerController.reveal(...)` for UI agents that need to show
-    /// hidden-zone cards before a later decision prompt resolves.
     fn reveal_cards(
         &mut self,
         _game: &GameState,
@@ -124,10 +121,8 @@ pub trait PlayerAgent {
     fn choose_action(
         &mut self,
         player: PlayerId,
-        playable: &[PlayOption],
-        tappable_lands: &[CardId],
-        untappable_lands: &[CardId],
-        activatable: &[(CardId, usize)],
+        action_space: Option<&PriorityActionSpace>,
+        request_action_space: &mut dyn FnMut() -> PriorityActionSpace,
     ) -> PlayerAction;
 
     /// Choose attackers from available creatures, assigning each to a defender.
@@ -140,7 +135,7 @@ pub trait PlayerAgent {
         possible_defenders: &[DefenderId],
     ) -> Vec<(CardId, DefenderId)>;
 
-    /// Choose which attackers to exert (Java: `PlayerController.exertAttackers`).
+    /// Choose which attackers to exert.
     /// Input is the subset of already-declared attackers that can pay an Exert
     /// optional attack cost. Return a subset of `attackers`.
     /// Default: choose none.
@@ -148,7 +143,7 @@ pub trait PlayerAgent {
         vec![]
     }
 
-    /// Choose which attackers to enlist with (Java: `PlayerController.enlistAttackers`).
+    /// Choose which attackers to enlist.
     /// Input is the subset of already-declared attackers that can pay an Enlist
     /// optional attack cost. Return a subset of `attackers`.
     /// Default: choose none.
@@ -206,8 +201,6 @@ pub trait PlayerAgent {
     /// - `Some(card_id)` assigns to a blocker
     /// - `None` assigns to defender
     ///
-    /// Default behavior mirrors Java deterministic assignment: assign lethal in
-    /// order, then assign excess to defender if allowed, else to last blocker.
     fn assign_combat_damage(
         &mut self,
         game: &GameState,
@@ -244,9 +237,6 @@ pub trait PlayerAgent {
             last_blocker = Some(blocker_id);
 
             let blocker_card = game.card(blocker_id);
-            // Mirrors Java ComputerUtilCombat.getEnoughDamageToKill:
-            // indestructible creatures require maxDamage+1 (can't die from damage),
-            // so all remaining damage gets assigned to them.
             let is_indestructible = blocker_card.has_keyword("Indestructible");
             let attacker_has_wither =
                 game.card(attacker).has_wither() || game.card(attacker).has_infect();
@@ -344,14 +334,12 @@ pub trait PlayerAgent {
 
     /// Choose which of the top `cards` (from Scry) to put on the bottom of the library.
     /// The rest will stay on top. Default: keep all on top (no cards sent to bottom).
-    /// Mirrors Java's `PlayerController.chooseScryCriteria()`.
     fn choose_scry(&mut self, _player: PlayerId, _cards: &[CardId]) -> Vec<CardId> {
         vec![]
     }
 
     /// Choose which of the top `cards` (from Surveil) to put into the graveyard.
     /// The rest will go on top. Default: keep all on top (nothing milled).
-    /// Mirrors Java's `Player.surveil()`.
     fn choose_surveil(&mut self, _player: PlayerId, _cards: &[CardId]) -> Vec<CardId> {
         vec![]
     }
@@ -359,7 +347,6 @@ pub trait PlayerAgent {
     /// Choose up to `max` cards from `valid` to move to the destination zone (Dig effect).
     /// `optional` means the player is not required to choose any.
     /// Default: take first `max` cards.
-    /// Mirrors Java's `PlayerController.chooseEntitiesForEffect()` used in DigEffect.
     fn choose_dig(
         &mut self,
         _player: PlayerId,
@@ -447,11 +434,6 @@ pub trait PlayerAgent {
     }
 
     /// Choose exactly one entity (Card or Player) from a candidate list.
-    /// Mirrors Java's `chooseSingleEntityForEffect(FCollectionView<? extends GameEntity>, ...)`.
-    /// Distinct from `choose_entities_for_effect` because Java emits a single
-    /// `pick_one[N]` callback (instead of `pick_count` + `pick_index` +
-    /// `pick_many_unique`), so callers that semantically pick one entity must
-    /// route through this method to keep deterministic-parity logs aligned.
     fn choose_single_entity_for_effect(
         &mut self,
         _player: PlayerId,
@@ -474,15 +456,6 @@ pub trait PlayerAgent {
     }
 
     /// Choose whether to put a revealed nonland card into the graveyard during Explore.
-    /// Mirrors Java's `ExploreAi.shouldPutInGraveyard()`.
-    ///
-    /// `revealed_cmc` — mana value of the revealed card.
-    /// `mana_producing_lands` — count of ALL mana-producing lands on battlefield
-    ///   (tapped + untapped), matching Java's `landsOTB` (used for "need more lands" check).
-    /// `predicted_mana` — count of UNTAPPED mana sources (lands + mana dorks),
-    ///   matching Java's `ComputerUtilMana.getAvailableManaSources()` (used for "too expensive" check).
-    /// `lands_in_hand` — count of mana-producing lands in hand.
-    ///
     /// Returns true to put in graveyard, false to keep on top of library.
     fn choose_explore_put_in_graveyard(
         &mut self,
@@ -493,17 +466,14 @@ pub trait PlayerAgent {
         predicted_mana: usize,
         lands_in_hand: usize,
     ) -> bool {
-        // Mirrors Java's ExploreAi.shouldPutInGraveyard() with default AI profile values:
         // EXPLORE_MAX_CMC_DIFF_TO_PUT_IN_GRAVEYARD = 2
         // EXPLORE_NUM_LANDS_TO_STILL_NEED_MORE = 2
         const MAX_CMC_DIFF: i32 = 2;
         const NUM_LANDS_TO_STILL_NEED_MORE: usize = 2;
 
-        // Condition 1: we need more lands (Java uses landsOTB = all mana-producing lands)
         if lands_in_hand == 0 && mana_producing_lands <= NUM_LANDS_TO_STILL_NEED_MORE {
             return true;
         }
-        // Condition 2: too expensive (Java uses predictedMana = untapped mana sources)
         if revealed_cmc - MAX_CMC_DIFF >= predicted_mana as i32 {
             return true;
         }
@@ -513,8 +483,6 @@ pub trait PlayerAgent {
     /// Choose which legendary permanent to keep when the legend rule applies.
     /// `duplicates` contains all legendaries with the same name controlled by this player.
     /// Returns the CardId of the one to keep; the rest are sacrificed.
-    /// Mirrors Java's `chooseSingleEntityForEffect` for InternalLegendaryRule.
-    /// Default: keep the first one.
     fn choose_legend_keep(&mut self, _player: PlayerId, duplicates: &[CardId]) -> CardId {
         duplicates[0]
     }
@@ -535,9 +503,6 @@ pub trait PlayerAgent {
         true
     }
 
-    /// Java-parity replacement confirmation hook.
-    /// Mirrors `PlayerController.confirmReplacementEffect(...)`.
-    /// Default: accept, preserving prior replacement behavior for non-interactive agents.
     fn confirm_replacement_effect(
         &mut self,
         _player: PlayerId,
@@ -564,10 +529,6 @@ pub trait PlayerAgent {
         false
     }
 
-    /// Java-parity cost payment confirmation hook.
-    /// Mirrors `PlayerController.confirmPayment(CostPart, String, SpellAbility)`.
-    ///
-    /// `cost_kind` should be a stable identifier for the cost part variant.
     fn confirm_payment(
         &mut self,
         player: PlayerId,
@@ -580,14 +541,6 @@ pub trait PlayerAgent {
         true
     }
 
-    /// Java-parity unless-cost controller callback.
-    /// Mirrors `PlayerController.payCostToPreventEffect(...)`.
-    ///
-    /// `can_pay` is the engine-computed feasibility of the unless-cost. Java's
-    /// `DeterministicController.payCostToPreventEffect` short-circuits to
-    /// `false` when `ComputerUtilCost.canPayCost` reports the cost as
-    /// unpayable, so the agent must see this signal to emit a matching
-    /// callback value.
     fn pay_cost_to_prevent_effect(
         &mut self,
         player: PlayerId,
@@ -603,8 +556,6 @@ pub trait PlayerAgent {
         self.confirm_payment(player, cost_kind, message, card_name, api)
     }
 
-    /// Java-parity binary choice hook.
-    /// Mirrors `PlayerController.chooseBinary(...)`.
     fn choose_binary(
         &mut self,
         player: PlayerId,
@@ -706,8 +657,6 @@ pub trait PlayerAgent {
     }
 
     /// Choose one or more colors.
-    /// Mirrors Java controller `chooseColors(...)`.
-    /// Default: choose the first `min` legal colors.
     fn choose_colors(
         &mut self,
         _player: PlayerId,
@@ -733,11 +682,24 @@ pub trait PlayerAgent {
         valid.iter().copied().take(max).collect()
     }
 
+    /// Choose cards to tap for a `tapXType` cost that has a total-power floor
+    /// such as Crew. `card_powers` carries the effective tap-power value for
+    /// each candidate under the active ability; `card_sort_powers` carries the
+    /// normal net power value used by Forge's deterministic cost plumbing when
+    /// ordering candidates.
+    fn choose_tap_type_for_cost(
+        &mut self,
+        player: PlayerId,
+        valid: &[CardId],
+        _min_total_power: i32,
+        _card_powers: &[(CardId, i32)],
+        _card_sort_powers: &[(CardId, i32)],
+        _sa: Option<&SpellAbility>,
+    ) -> Vec<CardId> {
+        self.choose_cards_for_effect(player, valid, 1, valid.len())
+    }
+
     /// Choose game entities (players and/or permanents) for an effect like Proliferate.
-    /// Mirrors Java `chooseEntitiesForEffect(FCollectionView<GameEntity>, ...)`.
-    /// `candidates` contains a mixed list of players and cards in the order Java builds them
-    /// (players first, then permanents).
-    /// Default: pick all candidates.
     fn choose_entities_for_effect(
         &mut self,
         _player: PlayerId,
@@ -749,8 +711,6 @@ pub trait PlayerAgent {
     }
 
     /// Choose a single card for hidden-origin zone changes (e.g. library search).
-    /// Mirrors Java `chooseSingleCardForZoneChange`.
-    /// Default: delegate to `choose_cards_for_effect` with [1,1].
     fn choose_single_card_for_zone_change(
         &mut self,
         player: PlayerId,
@@ -764,8 +724,6 @@ pub trait PlayerAgent {
     }
 
     /// Choose multiple cards for hidden-origin zone changes (e.g. tutor multi-select).
-    /// Mirrors Java `chooseCardsForZoneChange`.
-    /// Default: delegate to `choose_cards_for_effect`.
     fn choose_cards_for_zone_change(
         &mut self,
         player: PlayerId,
@@ -791,8 +749,6 @@ pub trait PlayerAgent {
     }
 
     /// Choose a counter type.
-    /// Mirrors Java's `PlayerController.chooseCounterType`.
-    /// Default: pick the first valid option.
     fn choose_counter_type(
         &mut self,
         _player: PlayerId,
@@ -816,8 +772,6 @@ pub trait PlayerAgent {
     }
 
     /// Choose one number from an explicit list of legal rolled values.
-    /// Mirrors Java's `chooseNumber(..., List<Integer>, ...)` path used by
-    /// RollDice effects such as Endeavor cards.
     fn choose_number_from_list(
         &mut self,
         _player: PlayerId,
@@ -829,7 +783,6 @@ pub trait PlayerAgent {
     }
 
     /// Choose one die result from a rolled list to ignore.
-    /// Mirrors Java `PlayerController.chooseRollToIgnore`.
     fn choose_roll_to_ignore(
         &mut self,
         _player: PlayerId,
@@ -840,7 +793,6 @@ pub trait PlayerAgent {
     }
 
     /// Choose one rolled result to exchange with a card's power or toughness.
-    /// Mirrors Java `PlayerController.chooseRollToSwap`.
     fn choose_roll_to_swap(
         &mut self,
         _player: PlayerId,
@@ -851,7 +803,6 @@ pub trait PlayerAgent {
     }
 
     /// Choose one or more dice to reroll from the current natural roll list.
-    /// Mirrors Java `PlayerController.chooseDiceToReroll`.
     fn choose_dice_to_reroll(
         &mut self,
         _player: PlayerId,
@@ -862,7 +813,6 @@ pub trait PlayerAgent {
     }
 
     /// Choose one rolled result to increment or decrement by 1.
-    /// Mirrors Java `PlayerController.chooseRollToModify`.
     fn choose_roll_to_modify(
         &mut self,
         _player: PlayerId,
@@ -873,7 +823,6 @@ pub trait PlayerAgent {
     }
 
     /// Choose whether a swap should use power or toughness.
-    /// Mirrors Java `PlayerController.chooseRollSwapValue`.
     fn choose_roll_swap_value(
         &mut self,
         _player: PlayerId,
@@ -914,7 +863,6 @@ pub trait PlayerAgent {
 
     /// Pay an attack cost for a creature (Propaganda, Ghostly Prison).
     /// Called in a loop: tap lands to build mana, then Pay or Decline.
-    /// Default: always decline (matches Java AI for non-free costs).
     fn pay_combat_cost(
         &mut self,
         _player: PlayerId,
@@ -1004,12 +952,6 @@ pub trait PlayerAgent {
     fn await_display_ack(&mut self) {}
 
     /// Decide how to pay a single cost part.
-    /// Mirrors Java's `ICostVisitor<PaymentDecision>` visitor pattern — each
-    /// `CostPart` variant corresponds to a Java `CostXxx.accept(visitor)` call.
-    /// Returns `Some(PaymentDecision)` if the agent can/will pay, `None` to cancel.
-    ///
-    /// Default: automatic decision for simple cost parts (tap, untap, numeric costs).
-    /// Agents should override for costs requiring player choice (sacrifice, discard, etc.).
     fn decide_cost_part(
         &mut self,
         _player: PlayerId,
@@ -1018,29 +960,16 @@ pub trait PlayerAgent {
         _game: &GameState,
     ) -> Option<PaymentDecision> {
         // TODO: Implement default decisions per CostPart variant,
-        // mirroring Java's AiCostDecision / HumanCostDecision visit() methods.
-        // For now, return None (cancel) for all — callers still use the old code path.
         None
     }
 
     /// Whether this agent pays each cost part immediately after deciding (true)
     /// or batches all decisions first, then pays (false).
-    ///
-    /// Mirrors Java's `CostDecisionMakerBase.paysRightAfterDecision()`:
-    /// - `HumanCostDecision` returns `true` (sequential decide-then-pay per part)
-    /// - `AiCostDecision` returns `false` (batch all decisions, then pay all)
-    ///
-    /// This controls which flow `CostPayment` uses:
-    /// - `true`  → `CostPayment::pay_cost()` (Java's `payCost()`)
-    /// - `false` → `CostPayment::pay_computer_costs()` (Java's `payComputerCosts()`)
     fn pays_right_after_decision(&self) -> bool {
         false
     }
 
     /// Reorder cost parts before payment (for human players to choose payment order).
-    /// Mirrors Java's `PlayerController.orderCosts(List<CostPart>)`.
-    ///
-    /// Default: return as-is (AI agents don't reorder).
     fn order_cost_parts(&mut self, parts: Vec<CostPart>) -> Vec<CostPart> {
         parts
     }
@@ -1074,13 +1003,6 @@ pub trait PlayerAgent {
     fn notify(&mut self, _event: GameNotification) {}
 
     /// Choose which replacement effect to apply when multiple effects match the same event.
-    /// Mirrors Java's `PlayerController.chooseSingleReplacementEffect(List<ReplacementEffect>)`.
-    ///
-    /// `player` — the player who controls the affected object (not necessarily the decider).
-    /// `descriptions` — human-readable descriptions of each candidate effect.
-    ///
-    /// Returns the index of the chosen effect (0..descriptions.len()-1).
-    /// Default: always pick the first effect (timestamp order).
     fn choose_single_replacement_effect(
         &mut self,
         _player: PlayerId,
@@ -1116,10 +1038,8 @@ impl PlayerAgent for PassAgent {
     fn choose_action(
         &mut self,
         _player: PlayerId,
-        _playable: &[PlayOption],
-        _tappable_lands: &[CardId],
-        _untappable_lands: &[CardId],
-        _activatable: &[(CardId, usize)],
+        _action_space: Option<&PriorityActionSpace>,
+        _request_action_space: &mut dyn FnMut() -> PriorityActionSpace,
     ) -> PlayerAction {
         PlayerAction::PassPriority
     }

@@ -2,6 +2,27 @@
 
 use crate::game::GameState;
 use crate::ids::CardId;
+use crate::spellability::SpellAbility;
+
+/// Effective power contributed when this card is tapped to pay a tap-type cost.
+pub fn tap_power_value(game: &GameState, card: CardId, ability: Option<&SpellAbility>) -> i32 {
+    let card_ref = game.card(card);
+    if crate::staticability::static_ability_tap_power_value::with_toughness(
+        &game.cards,
+        card_ref,
+        ability,
+    ) {
+        card_ref.toughness().max(0)
+    } else {
+        (card_ref.power()
+            + crate::staticability::static_ability_tap_power_value::get_mod(
+                &game.cards,
+                card_ref,
+                ability,
+            ))
+        .max(0)
+    }
+}
 
 /// Pay by tapping the selected cards.
 /// Cards are passed in (already selected by agent).
@@ -28,7 +49,7 @@ pub fn can_pay(
     _available_mana: &crate::mana::ManaPool,
     source: crate::ids::CardId,
     player: crate::ids::PlayerId,
-    _ability: Option<&crate::spellability::SpellAbility>,
+    ability: Option<&crate::spellability::SpellAbility>,
     part: &super::CostPart,
 ) -> bool {
     let super::CostPart::TapType {
@@ -41,7 +62,10 @@ pub fn can_pay(
     };
     let targets = super::get_tap_type_targets(game, player, type_filter, source);
     if let Some(power_threshold) = min_total_power {
-        let total_power: i32 = targets.iter().map(|&cid| game.card(cid).power()).sum();
+        let total_power: i32 = targets
+            .iter()
+            .map(|&cid| tap_power_value(game, cid, ability))
+            .sum();
         total_power >= *power_threshold
     } else {
         (targets.len() as i32) >= *amount

@@ -1,13 +1,7 @@
 //! SpellAbility condition gating.
 //!
-//! Mirrors Java's `SpellAbility.checkConditions()` +
-//! `SpellAbilityCondition.checkConditions()` for the `Condition$`,
-//! `ConditionCheckSVar$`, `ConditionPresent$`, `ConditionZone$`,
-//! `ConditionCompare$`, `ConditionDefined$` params.
-
 use forge_foundation::ZoneType;
 
-use crate::card::Card;
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
 use crate::parsing::compare::{compare_expr, CompareExpr};
@@ -16,8 +10,6 @@ use crate::spellability::SpellAbility;
 use super::helpers::matches_valid_cards_for_sa;
 
 /// Check if a conditional gate on this SA is satisfied.
-/// Mirrors Java's `SpellAbility.checkConditions()` +
-/// `SpellAbilityCondition.areMet()` for the common gate types.
 pub(super) fn check_condition(game: &GameState, sa: &SpellAbility) -> bool {
     let activator = sa.activating_player;
 
@@ -153,9 +145,7 @@ pub(super) fn check_condition(game: &GameState, sa: &SpellAbility) -> bool {
 /// a literal integer. Beza's condition uses
 /// `ConditionSVarCompare$ GTYLands` where `YLands` is another SVar on the host
 /// — the bare comparator parser would fall through to "permissive true" and
-/// silently make every conditional sub-ability fire. Java parses the
-/// comparator the same way, falling back to `AbilityUtils.calculateAmount`
-/// for non-numeric thresholds.
+/// silently make every conditional sub-ability fire.
 fn compare_with_svar_threshold(
     value: i32,
     compare: &str,
@@ -190,7 +180,7 @@ fn split_compare_prefix(expr: &str) -> Option<(&'static str, &str)> {
 /// Returns true if the condition is met (or if no condition params exist).
 ///
 /// When `ConditionDefined$` is present, check the defined cards instead of
-/// scanning a zone.  Mirrors Java's `SpellAbilityCondition.checkConditions()`.
+/// scanning a zone
 pub(super) fn check_condition_present(
     game: &GameState,
     sa: &SpellAbility,
@@ -254,11 +244,16 @@ pub(super) fn check_condition_present(
 
     let zone = sa.ir.condition_zone.unwrap_or(ZoneType::Battlefield);
 
-    // Count matching cards in zone
-    let cards = game.cards_in_zone(zone, player);
+    let cards: Vec<CardId> = game
+        .players
+        .iter()
+        .flat_map(|p| game.cards_in_zone(zone, p.id).iter().copied())
+        .collect();
     let count = cards
         .iter()
-        .filter(|&&cid| matches_condition_filter(game, cid, source_id, player, &alternatives))
+        .filter(|&&cid| {
+            matches_condition_filter_no_self_exclude(game, cid, source_id, player, &alternatives)
+        })
         .count() as i32;
 
     // Check ConditionCompare$ (e.g. "GE2", "EQ0")
@@ -282,98 +277,9 @@ fn matches_condition_filter_no_self_exclude(
 ) -> bool {
     let card = game.card(cid);
     let source = game.card(source_id);
-    alternatives.iter().any(|alt| {
-        let (base, qualifier) = if let Some((b, q)) = alt.split_once('.') {
-            (b, Some(q))
-        } else {
-            (*alt, None)
-        };
-        let type_ok = match base.to_ascii_lowercase().as_str() {
-            "card" => true,
-            "creature" => card.is_creature(),
-            "instant" => card.type_line.is_instant(),
-            "sorcery" => card.type_line.is_sorcery(),
-            "artifact" => card.type_line.is_artifact(),
-            "enchantment" => card.type_line.is_enchantment(),
-            "land" => card.is_land(),
-            "planeswalker" => card.type_line.is_planeswalker(),
-            _ => card.type_line.has_subtype(base),
-        };
-        if !type_ok {
-            return false;
-        }
-        if let Some(q) = qualifier {
-            match q.to_ascii_lowercase().as_str() {
-                "basic" => card.type_line.is_basic(),
-                "nonbasic" => !card.type_line.is_basic(),
-                "youctrl" | "youown" => card.controller == player,
-                "oppctrl" => card.controller != player,
-                "chosenctrl" => source
-                    .chosen_player
-                    .is_some_and(|chosen| card.controller == chosen),
-                _ => true,
-            }
-        } else {
-            true
-        }
-    })
-}
-
-fn matches_condition_filter(
-    game: &GameState,
-    cid: CardId,
-    source_id: CardId,
-    player: PlayerId,
-    alternatives: &[&str],
-) -> bool {
-    if cid == source_id {
-        return false; // Don't count self
-    }
-    let card = game.card(cid);
-    let source = game.card(source_id);
     alternatives
         .iter()
-        .any(|alt| filter_expr_matches(card, source, player, alt))
-}
-
-/// Evaluate a single `Type.Qualifier1+Qualifier2+...` filter expression.
-/// All qualifiers must pass (AND semantics, mirroring Java's CardType.matches).
-fn filter_expr_matches(card: &Card, source: &Card, player: PlayerId, alt: &str) -> bool {
-    let (base, qualifiers) = if let Some((b, q)) = alt.split_once('.') {
-        (b, Some(q))
-    } else {
-        (alt, None)
-    };
-    let type_ok = match base.to_ascii_lowercase().as_str() {
-        "card" | "permanent" => true,
-        "creature" => card.is_creature(),
-        "instant" => card.type_line.is_instant(),
-        "sorcery" => card.type_line.is_sorcery(),
-        "artifact" => card.type_line.is_artifact(),
-        "enchantment" => card.type_line.is_enchantment(),
-        "land" => card.is_land(),
-        "planeswalker" => card.type_line.is_planeswalker(),
-        _ => card.type_line.has_subtype(base),
-    };
-    if !type_ok {
-        return false;
-    }
-    let Some(qualifiers) = qualifiers else {
-        return true;
-    };
-    // Qualifiers are '+'-separated and must all match (AND).
-    qualifiers
-        .split('+')
-        .all(|q| match q.to_ascii_lowercase().as_str() {
-            "basic" => card.type_line.is_basic(),
-            "nonbasic" => !card.type_line.is_basic(),
-            "youctrl" | "youown" => card.controller == player,
-            "oppctrl" | "oppown" => card.controller != player,
-            "chosenctrl" => source.chosen_player == Some(card.controller),
-            "" => true,
-            // Unknown qualifier — permissive (matches Java fallthrough).
-            _ => true,
-        })
+        .any(|alt| crate::card::valid_filter::matches_valid(alt, Some(card), None, source, player))
 }
 
 #[cfg(test)]

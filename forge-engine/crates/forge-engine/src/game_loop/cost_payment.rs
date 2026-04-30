@@ -527,6 +527,12 @@ impl GameLoop {
                                     &mut callback,
                                 )
                             };
+                            slf.resolve_auto_tapped_mana_sub_abilities(
+                                game,
+                                agents,
+                                session.player,
+                                &trace,
+                            );
                             if let Some(life_to_pay) = slf.mana_pools[session.player.index()]
                                 .try_pay_with_phyrexian_life_unrestricted(
                                     session.mana_cost,
@@ -695,8 +701,20 @@ impl GameLoop {
                 CostPart::SubCounter {
                     amount,
                     counter_type,
+                    type_filter,
                 } => {
-                    game.card_mut(card_id).remove_counter(counter_type, *amount);
+                    let target = if type_filter.eq_ignore_ascii_case("CARDNAME")
+                        || type_filter.eq_ignore_ascii_case("NICKNAME")
+                    {
+                        Some(card_id)
+                    } else {
+                        crate::cost::get_sub_counter_targets(game, player, card_id, type_filter)
+                            .into_iter()
+                            .find(|cid| game.card(*cid).counter_count(counter_type) >= *amount)
+                    };
+                    if let Some(target) = target {
+                        game.card_mut(target).remove_counter(counter_type, *amount);
+                    }
                 }
                 CostPart::AddCounter {
                     amount,
@@ -761,6 +779,7 @@ impl GameLoop {
                         type_filter,
                         *amount,
                         *min_total_power,
+                        sa.as_deref_mut(),
                     );
                 }
                 CostPart::UntapType {
@@ -1315,9 +1334,21 @@ impl GameLoop {
                 CostPart::SubCounter {
                     amount,
                     counter_type,
+                    type_filter,
                 } => {
-                    if game.card(card_id).zone == ZoneType::Battlefield {
-                        game.card_mut(card_id).remove_counter(counter_type, *amount);
+                    let target = if type_filter.eq_ignore_ascii_case("CARDNAME")
+                        || type_filter.eq_ignore_ascii_case("NICKNAME")
+                    {
+                        Some(card_id)
+                    } else {
+                        crate::cost::get_sub_counter_targets(game, player, card_id, type_filter)
+                            .into_iter()
+                            .find(|cid| game.card(*cid).counter_count(counter_type) >= *amount)
+                    };
+                    if let Some(target) = target {
+                        if game.card(target).zone == ZoneType::Battlefield {
+                            game.card_mut(target).remove_counter(counter_type, *amount);
+                        }
                     }
                 }
                 CostPart::AddCounter {
@@ -1390,6 +1421,7 @@ impl GameLoop {
                         type_filter,
                         *amount,
                         *min_total_power,
+                        sa.as_deref_mut(),
                     );
                 }
                 CostPart::UntapType {
@@ -2949,7 +2981,8 @@ impl GameLoop {
     }
 
     /// Tap `amount` other permanents matching `type_filter` as cost.
-    /// When `min_total_power` is Some(N), tap creatures greedily until total power >= N (Crew).
+    /// When `min_total_power` is Some(N), ask for any number of cards whose
+    /// total power is at least N (Crew).
     /// Otherwise tap exactly `amount` matching permanents.
     /// Mirrors Java's `CostTapType.doListPayment()`.
     pub(crate) fn pay_tap_type_cost(
@@ -2961,27 +2994,70 @@ impl GameLoop {
         type_filter: &str,
         amount: i32,
         min_total_power: Option<i32>,
+        mut sa: Option<&mut SpellAbility>,
     ) {
+        let mut tapped_cards = Vec::new();
         if let Some(power_threshold) = min_total_power {
-            // Crew: greedily select creatures by descending power until threshold met.
-            let mut valid = cost::get_tap_type_targets(game, player, type_filter, source);
-            valid.sort_by(|&a, &b| game.card(b).power().cmp(&game.card(a).power()));
-            let mut accum = 0;
-            for &cid in &valid {
-                if accum >= power_threshold {
-                    break;
-                }
-                game.tap(cid);
-                accum += game.card(cid).power();
-                self.trigger_handler.run_trigger(
-                    TriggerType::Taps,
-                    RunParams {
-                        card: Some(cid),
-                        player: Some(player),
-                        ..Default::default()
-                    },
-                    false,
+            let valid = cost::get_tap_type_targets(game, player, type_filter, source);
+            if !valid.is_empty() {
+                let card_powers: Vec<(CardId, i32)> = valid
+                    .iter()
+                    .map(|&cid| {
+                        (
+                            cid,
+                            crate::cost::cost_tap_type::tap_power_value(game, cid, sa.as_deref()),
+                        )
+                    })
+                    .collect();
+                let card_sort_powers: Vec<(CardId, i32)> = valid
+                    .iter()
+                    .map(|&cid| (cid, game.card(cid).power()))
+                    .collect();
+                let mut chosen = agents[player.index()].choose_tap_type_for_cost(
+                    player,
+                    &valid,
+                    power_threshold,
+                    &card_powers,
+                    &card_sort_powers,
+                    sa.as_deref(),
                 );
+                chosen.retain(|cid| valid.contains(cid));
+                chosen.dedup();
+
+                let chosen_power: i32 = chosen
+                    .iter()
+                    .filter_map(|cid| {
+                        card_powers
+                            .iter()
+                            .find(|(card_id, _)| card_id == cid)
+                            .map(|(_, power)| *power)
+                    })
+                    .sum();
+                if chosen_power < power_threshold {
+                    return;
+                }
+
+                let mut accum = 0;
+                for cid in chosen {
+                    if !valid.contains(&cid) || tapped_cards.contains(&cid) {
+                        continue;
+                    }
+                    game.tap(cid);
+                    tapped_cards.push(cid);
+                    accum += crate::cost::cost_tap_type::tap_power_value(game, cid, sa.as_deref());
+                    self.trigger_handler.run_trigger(
+                        TriggerType::Taps,
+                        RunParams {
+                            card: Some(cid),
+                            player: Some(player),
+                            ..Default::default()
+                        },
+                        false,
+                    );
+                    if accum >= power_threshold {
+                        break;
+                    }
+                }
             }
         } else {
             for _ in 0..amount {
@@ -2992,6 +3068,7 @@ impl GameLoop {
                 if let Some(chosen) = agents[player.index()].choose_sacrifice(player, &valid, None)
                 {
                     game.tap(chosen);
+                    tapped_cards.push(chosen);
                     self.trigger_handler.run_trigger(
                         TriggerType::Taps,
                         RunParams {
@@ -3002,6 +3079,13 @@ impl GameLoop {
                         false,
                     );
                 }
+            }
+        }
+        if let Some(sa) = sa.as_deref_mut() {
+            for cid in tapped_cards {
+                let value = cid.to_string();
+                sa.add_cost_to_hash_list(crate::cost::cost_tap_type::HASH_LKI, &value);
+                sa.add_cost_to_hash_list(crate::cost::cost_tap_type::HASH_CARDS, &value);
             }
         }
     }
@@ -3242,6 +3326,55 @@ impl GameLoop {
             sa.add_cost_to_hash_list(crate::cost::cost_sacrifice::HASH_CARDS, &id);
             sa.add_cost_to_hash_list(crate::cost::cost_sacrifice::HASH_LKI, &id);
         }
+    }
+
+    pub(crate) fn resolve_auto_tapped_mana_sub_abilities(
+        &mut self,
+        game: &mut GameState,
+        agents: &mut [Box<dyn PlayerAgent>],
+        player: PlayerId,
+        trace: &[crate::mana::AutoTapChoice],
+    ) {
+        for choice in trace {
+            let crate::mana::AutoTapChoice {
+                card_id,
+                mana_ability_index: Some(ability_index),
+                ..
+            } = *choice
+            else {
+                continue;
+            };
+            self.resolve_mana_sub_ability(game, agents, player, card_id, ability_index);
+        }
+    }
+
+    pub(crate) fn resolve_mana_sub_ability(
+        &mut self,
+        game: &mut GameState,
+        agents: &mut [Box<dyn PlayerAgent>],
+        player: PlayerId,
+        card_id: CardId,
+        ability_index: usize,
+    ) {
+        let Some(sub_svar_name) = game
+            .card(card_id)
+            .activated_abilities
+            .get(ability_index)
+            .and_then(|ab| ab.sub_ability.as_deref())
+            .map(str::to_string)
+        else {
+            return;
+        };
+        let Some(sub_text) = game
+            .card(card_id)
+            .get_s_var(&sub_svar_name)
+            .map(str::to_string)
+        else {
+            return;
+        };
+        let sub_sa = crate::spellability::build_spell_ability(game, card_id, &sub_text, player);
+        self.resolve_single_effect(game, agents, &sub_sa, None);
+        self.mark_mana_undo_disqualified();
     }
 }
 

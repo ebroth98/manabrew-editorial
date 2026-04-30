@@ -76,6 +76,10 @@ pub struct GameLoop {
     /// the main menu — the previous behavior kept the game running
     /// silently and drove a visible log/prompt loop on the frontend.
     pub abort_signal: Option<Arc<AtomicBool>>,
+    /// Whether the engine precomputes priority action space before calling
+    /// `PlayerAgent::choose_action`. UI agents use the default `true`; parity
+    /// disables it and requests action space explicitly only when needed.
+    pub provide_priority_action_space: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -169,7 +173,12 @@ impl GameLoop {
             mana_undo_stacks: (0..num_players).map(|_| Vec::new()).collect(),
             mana_undo_disqualified: false,
             abort_signal: None,
+            provide_priority_action_space: true,
         }
+    }
+
+    pub fn set_provide_priority_action_space(&mut self, provide: bool) {
+        self.provide_priority_action_space = provide;
     }
 
     /// Install a cooperative abort signal. When the host flips the flag
@@ -813,11 +822,9 @@ mod tests {
 
         fn choose_action(
             &mut self,
-            _player: PlayerId,
-            _playable: &[crate::agent::PlayOption],
-            _tappable_lands: &[CardId],
-            _untappable_lands: &[CardId],
-            _activatable: &[(CardId, usize)],
+            player: PlayerId,
+            action_space: Option<&crate::agent::PriorityActionSpace>,
+            request_action_space: &mut dyn FnMut() -> crate::agent::PriorityActionSpace,
         ) -> PlayerAction {
             PlayerAction::CastSpell(crate::agent::PlayOption {
                 card_id: CardId(u32::MAX),
@@ -927,10 +934,8 @@ mod tests {
         fn choose_action(
             &mut self,
             player: PlayerId,
-            _playable: &[crate::agent::PlayOption],
-            _tappable_lands: &[CardId],
-            _untappable_lands: &[CardId],
-            _activatable: &[(CardId, usize)],
+            action_space: Option<&crate::agent::PriorityActionSpace>,
+            request_action_space: &mut dyn FnMut() -> crate::agent::PriorityActionSpace,
         ) -> PlayerAction {
             if self.last_priority != Some(player) {
                 self.bad_priority_seen.store(true, Ordering::SeqCst);
@@ -1022,11 +1027,9 @@ mod tests {
 
         fn choose_action(
             &mut self,
-            _player: PlayerId,
-            _playable: &[crate::agent::PlayOption],
-            _tappable_lands: &[CardId],
-            _untappable_lands: &[CardId],
-            _activatable: &[(CardId, usize)],
+            player: PlayerId,
+            action_space: Option<&crate::agent::PriorityActionSpace>,
+            request_action_space: &mut dyn FnMut() -> crate::agent::PriorityActionSpace,
         ) -> PlayerAction {
             PlayerAction::PassPriority
         }

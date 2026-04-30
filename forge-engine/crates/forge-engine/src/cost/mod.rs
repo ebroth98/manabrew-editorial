@@ -152,10 +152,11 @@ pub enum CostPart {
     Sacrifice { amount: i32, type_filter: String },
     /// Discard cards. type_filter "CARDNAME" means discard self.
     Discard { amount: i32, type_filter: String },
-    /// Remove counters from the source permanent (e.g. SubCounter<1/DREAM/NICKNAME>).
+    /// Remove counters from a permanent (e.g. SubCounter<1/DREAM/NICKNAME>).
     SubCounter {
         amount: i32,
         counter_type: CounterType,
+        type_filter: String,
     },
     /// Add counters to the source permanent (e.g. AddCounter<1/LOYALTY>). Mirrors CostPutCounter.
     AddCounter {
@@ -650,6 +651,35 @@ pub fn get_sacrifice_targets(game: &GameState, player: PlayerId, type_filter: &s
         .collect()
 }
 
+/// Find cards that can have counters removed for `SubCounter<.../Type/...>`.
+pub fn get_sub_counter_targets(
+    game: &GameState,
+    player: PlayerId,
+    source: CardId,
+    type_filter: &str,
+) -> Vec<CardId> {
+    if type_filter.eq_ignore_ascii_case("OriginalHost") {
+        return Vec::new();
+    }
+    let source_card = game.card(source);
+    game.cards_in_zone(ZoneType::Battlefield, player)
+        .to_vec()
+        .into_iter()
+        .filter(|&cid| {
+            if type_filter == "Card" || type_filter.is_empty() {
+                return true;
+            }
+            let selector = crate::parsing::cached_compiled_selector(type_filter);
+            crate::card::valid_filter::matches_valid_card_selector_in_game(
+                &selector,
+                game.card(cid),
+                source_card,
+                game,
+            )
+        })
+        .collect()
+}
+
 /// Find valid sacrifice targets for a cost, filtered both by type and
 /// CantSacrifice-style legality before RNG selection.
 pub fn get_sacrifice_targets_for_cost(
@@ -1097,7 +1127,9 @@ fn can_pay_part_distributed(
         CostPart::Discard { .. } => {
             cost_discard::can_pay(game, pool, source, player, ability, part)
         }
-        CostPart::SubCounter { .. } => cost_sub_counter::can_pay(game, source, part),
+        CostPart::SubCounter { .. } => {
+            cost_remove_counter::can_pay(game, pool, source, player, ability, part)
+        }
         CostPart::AddCounter { .. } => {
             cost_put_counter::can_pay(game, pool, source, player, ability, part)
         }

@@ -132,6 +132,9 @@ pub struct CardDto {
     pub owner_id: String,
     pub zone_id: String,
     pub tapped: bool,
+    /// True after this permanent has successfully become crewed this turn.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub is_crewed: bool,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub is_attacking: bool,
     /// Encoded id (`player-N`) of the defender this creature is attacking,
@@ -652,6 +655,7 @@ pub fn card_to_dto(
         owner_id: player_id_str(card.owner),
         zone_id: zone_label.to_string(),
         tapped: card.tapped,
+        is_crewed: card.is_crewed,
         is_attacking: card.attacking_player.is_some(),
         attacking_player_id: card.attacking_player.map(player_id_str),
         // Merge intrinsic keywords with those granted by continuous effects (layer 6)

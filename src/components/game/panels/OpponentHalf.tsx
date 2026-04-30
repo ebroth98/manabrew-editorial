@@ -50,6 +50,7 @@ export function OpponentHalf({
 
   const canTarget =
     promptType === PromptType.ChooseTargetCard || promptType === PromptType.ChooseTargetAny;
+  const canPickAttackDefender = promptType === PromptType.ChooseAttackers;
   const canPickForBlockers = promptType === PromptType.ChooseBlockers;
 
   const pixiBattlefield = useMemo<BattlefieldState>(
@@ -73,7 +74,7 @@ export function OpponentHalf({
   const pixiCallbacks: GameCanvasCallbacks = useMemo(
     () => ({
       onClickCard: (c) => {
-        if (canTarget) onClickCard(c);
+        if (canTarget || (canPickAttackDefender && c.isChoosable)) onClickCard(c);
         else if (canPickForBlockers) onClickAnyCard(c);
       },
       onClickAnyCard: (c) => {
@@ -93,7 +94,15 @@ export function OpponentHalf({
       },
       onFlipCard,
     }),
-    [canTarget, canPickForBlockers, onClickCard, onClickAnyCard, onHoverCard, onFlipCard],
+    [
+      canTarget,
+      canPickAttackDefender,
+      canPickForBlockers,
+      onClickCard,
+      onClickAnyCard,
+      onHoverCard,
+      onFlipCard,
+    ],
   );
 
   return (

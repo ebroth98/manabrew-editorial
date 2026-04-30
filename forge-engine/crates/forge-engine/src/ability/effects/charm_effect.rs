@@ -232,14 +232,22 @@ pub fn make_choices_precast(
     agents: &mut [Box<dyn PlayerAgent>],
     sa: &mut SpellAbility,
 ) -> bool {
+    make_choices_precast_with_count(game, agents, sa).is_some()
+}
+
+pub fn make_choices_precast_with_count(
+    game: &mut GameState,
+    agents: &mut [Box<dyn PlayerAgent>],
+    sa: &mut SpellAbility,
+) -> Option<usize> {
     let source_id = match sa.source {
         Some(id) => id,
-        None => return true,
+        None => return Some(0),
     };
 
     let choices_str = sa.ir.choices.clone().unwrap_or_default();
     if choices_str.is_empty() {
-        return true;
+        return Some(0);
     }
 
     let player = sa.activating_player;
@@ -250,7 +258,7 @@ pub fn make_choices_precast(
         .filter_map(|svar| svars.get(*svar).cloned())
         .collect();
     if mode_texts.is_empty() {
-        return false;
+        return None;
     }
 
     let mode_descriptions: Vec<String> = mode_texts
@@ -270,7 +278,7 @@ pub fn make_choices_precast(
         .map(|(i, _)| i)
         .collect();
     if valid_mode_indices.is_empty() {
-        return false;
+        return None;
     }
 
     let valid_descriptions: Vec<String> = valid_mode_indices
@@ -289,7 +297,7 @@ pub fn make_choices_precast(
         charm_num = mode_texts.len();
     }
     if !can_repeat && min_charm_num > valid_mode_indices.len() {
-        return false;
+        return None;
     }
 
     let use_preselected_modes = should_use_preselected_modes(game, source_id, &mode_texts);
@@ -319,7 +327,7 @@ pub fn make_choices_precast(
     };
 
     if chosen_indices.len() < min_charm_num {
-        return false;
+        return None;
     }
 
     // Mirror Java's `CharmEffect.chainAbilities`: resolve modes in the order
@@ -327,6 +335,7 @@ pub fn make_choices_precast(
     // them. Otherwise mode target prompts fire in agent-pick order and
     // cascade RNG divergences vs Java.
     chosen_indices.sort();
+    let selected_mode_count = chosen_indices.len();
 
     sa.sub_ability = None;
     let parent_trigger_remembered = sa.trigger_remembered_amount;
@@ -342,7 +351,7 @@ pub fn make_choices_precast(
         append_subability(sa, mode_sa);
     }
 
-    true
+    Some(selected_mode_count)
 }
 
 /// Pre-cast legality check for Charm mode selection.

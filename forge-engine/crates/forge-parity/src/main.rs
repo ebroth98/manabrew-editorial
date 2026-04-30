@@ -143,6 +143,15 @@ fn skipped_result(config: &RunConfig, reason: &str) -> MatchupResult {
     MatchupResult::skipped(config, reason.to_string())
 }
 
+fn guard_abort_reason(log: &[ParityLogEntry]) -> Option<String> {
+    log.iter().find_map(|entry| match entry {
+        ParityLogEntry::Decision(decision) if decision.kind == "$PARITY_GUARD" => {
+            Some(format!("ABORTED AT TURN {}", decision.turn))
+        }
+        _ => None,
+    })
+}
+
 /// Filter out decks matching any of the given prefixes.
 fn filter_decks(decks: Vec<String>, exclude_prefixes: &[String]) -> Vec<String> {
     if exclude_prefixes.is_empty() {
@@ -230,6 +239,10 @@ struct Cli {
     /// Print the full side-by-side Rust/Java callback log for the entire run (not just the divergence window).
     #[arg(long)]
     full_log: bool,
+
+    /// Write Rust-side parity callbacks/snapshots to this file while the game is running.
+    #[arg(long)]
+    live_log: Option<PathBuf>,
 
     /// Run all deck pair combinations across multiple seeds
     #[arg(long)]
@@ -378,6 +391,7 @@ fn build_config(cli: &Cli, deck1: &str, deck2: &str, seed: u64) -> RunConfig {
         variant: cli.variant.clone(),
         commanders: cli.commander.clone(),
         full_log: cli.full_log,
+        live_log: cli.live_log.clone(),
     }
 }
 
@@ -1068,6 +1082,7 @@ fn run_single_matchup_rust_only(config: &RunConfig, data: &LoadedData) -> Matchu
                 snapshots
                     .last()
                     .and_then(|s| if s.game_over { Some(s.turn) } else { None });
+            let skip_reason = guard_abort_reason(&trace.log);
             MatchupResult {
                 deck1: config.deck1.clone(),
                 deck2: config.deck2.clone(),
@@ -1077,7 +1092,7 @@ fn run_single_matchup_rust_only(config: &RunConfig, data: &LoadedData) -> Matchu
                 divergence_count: 0,
                 first_divergence: None,
                 error_message: None,
-                skip_reason: None,
+                skip_reason,
                 rust_snapshot: None,
                 java_snapshot: None,
                 covered_cards: trace.covered_cards,
@@ -1691,6 +1706,7 @@ fn build_rust_only_result(
     config: &RunConfig,
     trace: &forge_parity::protocol::GameTrace,
 ) -> MatchupResult {
+    let skip_reason = guard_abort_reason(&trace.log);
     MatchupResult {
         deck1: config.deck1.clone(),
         deck2: config.deck2.clone(),
@@ -1700,7 +1716,7 @@ fn build_rust_only_result(
         divergence_count: 0,
         first_divergence: None,
         error_message: None,
-        skip_reason: None,
+        skip_reason,
         rust_snapshot: None,
         java_snapshot: None,
         covered_cards: trace.covered_cards.clone(),
@@ -1807,6 +1823,19 @@ fn visible_width(s: &str) -> usize {
     width
 }
 
+fn colorize_rendered_log_entry(entry: &ParityLogEntry, text: String) -> String {
+    use forge_parity::protocol::ParityLog;
+
+    if entry.kind() == "$ACTION_SPACE" {
+        text.replace(
+            "\x1b[94m$ACTION_SPACE\x1b[0m",
+            "\x1b[36m$ACTION_SPACE\x1b[0m",
+        )
+    } else {
+        text
+    }
+}
+
 const COL_WIDTH_DEFAULT: usize = 64;
 const ROW_LABEL_WIDTH: usize = 0;
 const SEPARATOR_WIDTH: usize = 3; // " | "
@@ -1878,7 +1907,9 @@ fn pair_bucket_entries(
         .map(|e| {
             (
                 CallbackKey::from_entry(e),
-                e.format().trim_start().to_string(),
+                colorize_rendered_log_entry(e, e.format())
+                    .trim_start()
+                    .to_string(),
             )
         })
         .collect();
@@ -1887,7 +1918,9 @@ fn pair_bucket_entries(
         .map(|e| {
             (
                 CallbackKey::from_entry(e),
-                e.format().trim_start().to_string(),
+                colorize_rendered_log_entry(e, e.format())
+                    .trim_start()
+                    .to_string(),
             )
         })
         .collect();
@@ -2174,6 +2207,7 @@ fn run_fuzz_mode(cli: &Cli) {
             variant: "Constructed".to_string(),
             commanders: vec![],
             full_log: false,
+            live_log: None,
         };
 
         let matchup_result = if let Some(ref mut srv) = server {
@@ -3040,6 +3074,7 @@ fn run_serve_mode(cli: &Cli) {
                         variant: queued_job.variant.clone(),
                         commanders: queued_job.commanders.clone(),
                         full_log: false,
+                        live_log: None,
                     };
                     let m = run_matchup_cached(&config, data_ref, pool_ref, cache_ref);
                     if m.cache_hit {
@@ -3247,6 +3282,7 @@ fn run_serve_mode(cli: &Cli) {
             commanders: vec![],
             full_log: false,
             log_snapshots: false,
+            live_log: None,
         };
 
         let served = run_matchup_cached(&config, &data, &server_pool, java_cache.as_ref());

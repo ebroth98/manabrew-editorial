@@ -4,7 +4,7 @@
 //! of targets a spell can select, checks for valid candidates, and retrieves
 //! all valid target candidates.
 
-use forge_foundation::ZoneType;
+use forge_foundation::{CoreType, ZoneType};
 use serde::{Deserialize, Serialize};
 
 use crate::card::{card_property, valid_filter};
@@ -1097,7 +1097,7 @@ pub fn get_all_candidates_any_filtered(
         .iter()
         .any(|t| t.trim().eq_ignore_ascii_case("Any"))
     {
-        return get_all_candidates_creatures(game);
+        return get_all_candidates_any_target_cards(game);
     }
 
     let mut candidates = Vec::new();
@@ -1128,7 +1128,7 @@ fn get_all_candidates_any_filtered_for_restrictions(
         .iter()
         .any(|t| t.trim().eq_ignore_ascii_case("Any"))
     {
-        return get_all_candidates_creatures(game);
+        return get_all_candidates_any_target_cards(game);
     }
     let candidates = get_all_battlefield_permanents(game);
     let Some(source_id) = source_card else {
@@ -1158,6 +1158,25 @@ fn get_all_candidates_any_filtered_for_restrictions(
             )
         })
         .collect()
+}
+
+fn get_all_candidates_any_target_cards(game: &GameState) -> Vec<CardId> {
+    let mut cards = Vec::new();
+    for &pid in &game.player_order {
+        for &cid in game.cards_in_zone(ZoneType::Battlefield, pid) {
+            let card = game.card(cid);
+            if card.phased_out {
+                continue;
+            }
+            if card.is_creature()
+                || card.type_line.is_planeswalker()
+                || card.type_line.core_types.contains(&CoreType::Battle)
+            {
+                cards.push(cid);
+            }
+        }
+    }
+    cards
 }
 
 /// Check if there are valid targets in a specific zone.

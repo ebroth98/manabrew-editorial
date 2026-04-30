@@ -1,0 +1,41 @@
+{
+  "label": "Planeswalkers & Spaceships",
+  "desc": "60-card Jeskai debug deck with cheap crew, Vehicles, Spacecraft, and a small planeswalker package.",
+  "color": "text-cyan-400",
+  "opponent": "planeswalkers_spaceships",
+  "ai_eligible": false,
+  "order": 112,
+  "cards": [
+    { "name": "Plains", "count": 6 },
+    { "name": "Island", "count": 4 },
+    { "name": "Mountain", "count": 5 },
+    { "name": "Plains", "count": 2 },
+    { "name": "Spire of Industry", "count": 2 },
+    { "name": "Mech Hangar", "count": 3 },
+    { "name": "Inventors' Fair", "count": 1 },
+    { "name": "Karn's Bastion", "count": 1 },
+
+    { "name": "Toolcraft Exemplar", "count": 4 },
+    { "name": "Hotshot Mechanic", "count": 4 },
+    { "name": "Veteran Motorist", "count": 4 },
+    { "name": "Gearshift Ace", "count": 3 },
+    { "name": "Depala, Pilot Exemplar", "count": 2 },
+    { "name": "Sram, Senior Edificer", "count": 1 },
+
+    { "name": "Smuggler's Copter", "count": 3 },
+    { "name": "Heart of Kiran", "count": 2 },
+    { "name": "Reckoner Bankbuster", "count": 1 },
+    { "name": "Mobilizer Mech", "count": 1 },
+    { "name": "Skysovereign, Consul Flagship", "count": 1 },
+    { "name": "The Seriema", "count": 1 },
+    { "name": "Uthros Scanship", "count": 1 },
+
+    { "name": "Chandra, Torch of Defiance", "count": 1 },
+    { "name": "Saheeli, Sublime Artificer", "count": 1 },
+    { "name": "Karn, Scion of Urza", "count": 1 },
+    { "name": "Gideon Blackblade", "count": 1 },
+
+    { "name": "Lightning Bolt", "count": 2 },
+    { "name": "Swords to Plowshares", "count": 2 }
+  ]
+}

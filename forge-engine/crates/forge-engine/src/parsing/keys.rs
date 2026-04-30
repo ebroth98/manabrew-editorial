@@ -118,6 +118,7 @@ pub const ADD_POWER: &str = "AddPower";
 pub const ADD_TOUGHNESS: &str = "AddToughness";
 pub const POWER: &str = "Power";
 pub const POWER_UP: &str = "PowerUp";
+pub const PLANESWALKER: &str = "Planeswalker";
 pub const SET_POWER: &str = "SetPower";
 pub const SET_TOUGHNESS: &str = "SetToughness";
 pub const TOUGHNESS: &str = "Toughness";
@@ -244,6 +245,7 @@ pub const SVAR_COMPARE: &str = "SVarCompare";
 pub const SVAR_NAME: &str = "SVarName";
 pub const SVAR_VALUE: &str = "SVarValue";
 pub const BRANCH_CONDITION_SVAR: &str = "BranchConditionSVar";
+pub const BRANCH_CONDITION_SVAR_COMPARE: &str = "BranchConditionSVarCompare";
 
 // ── Static ability specific ────────────────────────────────────────────
 

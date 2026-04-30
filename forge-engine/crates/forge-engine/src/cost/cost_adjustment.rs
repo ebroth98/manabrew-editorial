@@ -620,24 +620,21 @@ fn evaluate_count_expr(game: &GameState, source: &Card, expr: &str, caster: Play
     // Currently supported aggregators: `Amount` (count) and `GreatestCardManaCost`
     // (max CMC). Add more here as parity tests surface them.
     if let Some(rest) = expr.strip_prefix("Count$Valid ") {
-        if let Some((filter, aggregator)) = rest.split_once('$') {
-            let selector = crate::parsing::cached_compiled_selector(filter);
-            let matches: Vec<&Card> = game
-                .cards
-                .iter()
-                .filter(|c| c.zone == ZoneType::Battlefield)
-                .filter(|c| {
-                    valid_filter::matches_valid_card_selector_in_game(&selector, c, source, game)
-                })
-                .collect();
-            return match aggregator {
-                "Amount" => matches.len() as i32,
-                "GreatestCardManaCost" => {
-                    matches.iter().map(|c| c.mana_cost.cmc()).max().unwrap_or(0)
-                }
-                _ => 0,
-            };
-        }
+        let (filter, aggregator) = rest.split_once('$').unwrap_or((rest, "Amount"));
+        let selector = crate::parsing::cached_compiled_selector(filter);
+        let matches: Vec<&Card> = game
+            .cards
+            .iter()
+            .filter(|c| c.zone == ZoneType::Battlefield)
+            .filter(|c| {
+                valid_filter::matches_valid_card_selector_in_game(&selector, c, source, game)
+            })
+            .collect();
+        return match aggregator {
+            "Amount" => matches.len() as i32,
+            "GreatestCardManaCost" => matches.iter().map(|c| c.mana_cost.cmc()).max().unwrap_or(0),
+            _ => 0,
+        };
     }
 
     // Count$CardsInYourGraveyard or Count$TypeYouCtrl.Graveyard

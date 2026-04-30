@@ -4,16 +4,10 @@ use crate::card::{valid_filter, Card};
 use crate::cost::{parse_cost, Cost};
 use crate::game::GameState;
 use crate::ids::PlayerId;
-use crate::spellability::SpellAbility;
+use crate::spellability::{matches_valid_sa, SpellAbility};
 use crate::staticability::StaticMode;
 
 /// Descriptor for an alternative cost produced by a static ability.
-/// Mirrors the `SpellAbility` objects returned by Java's
-/// `StaticAbilityAlternativeCost.alternativeCosts()`.
-///
-/// Because the Rust `SpellAbility` doesn't yet support `copyWithDefinedCost` /
-/// `copyWithManaCostReplaced`, we capture the validated data so that downstream
-/// code can construct the actual SA when ready.
 #[derive(Debug, Clone)]
 pub struct AlternativeCostEntry {
     /// The parsed alternative cost (Cost$ param with ConvertedManaCost replaced).
@@ -45,11 +39,6 @@ pub struct AlternativeCostEntry {
 }
 
 /// Collect all alternative costs that apply to `sa` cast by `player` from `source`.
-/// Mirrors Java's `StaticAbilityAlternativeCost.alternativeCosts()`.
-///
-/// Iterates over `source` itself (in case it's LKI / alternate host) plus all
-/// cards in static-ability source zones, checking each `AlternativeCost` static
-/// ability for applicability.
 pub fn alternative_costs(
     game: &GameState,
     cards: &[Card],
@@ -59,10 +48,6 @@ pub fn alternative_costs(
 ) -> Vec<AlternativeCostEntry> {
     let mut result = Vec::new();
 
-    // Java: add source first in case it's LKI (alternate host),
-    // then all cards from STATIC_ABILITIES_SOURCE_ZONES.
-    // We iterate source first, then all cards in static ability source zones,
-    // skipping source if it appears again.
     let source_id = source.id;
 
     // Process source card first
@@ -183,13 +168,10 @@ fn collect_from_card(
         // StackDescription override
         let stack_description = st_ab.ir.stack_description_text.clone();
 
-        // Build description — mirrors Java's SpellDescription construction
         let mut desc = String::new();
         let cost_desc = if is_ability {
             // CostDesc for abilities
             let cd = if let Some(cd_param) = st_ab.ir.cost_desc_text.as_deref() {
-                // Java: ManaCostParser.parse(stAb.getParam("CostDesc"))
-                // For now, pass through as-is
                 // TODO: implement ManaCostParser.parse() equivalent
                 cd_param.to_string()
             } else {
@@ -246,10 +228,6 @@ fn collect_from_card(
     }
 }
 
-/// Validation logic — mirrors Java's `StaticAbilityAlternativeCost.apply()`.
-///
-/// Checks ValidSA, ValidCard, and ValidPlayer params against the spell ability,
-/// source card, and player.
 fn apply(
     st_ab: &crate::staticability::StaticAbility,
     sa: &SpellAbility,
@@ -257,19 +235,16 @@ fn apply(
     host: &Card,
     player: PlayerId,
 ) -> bool {
-    // Check ValidSA — mirrors Java's stAb.matchesValidParam("ValidSA", sa)
     if let Some(valid_sa) = st_ab.ir.valid_sa.as_deref() {
-        if !spell_ability_matches(valid_sa, sa, source, host) {
+        if !matches_valid_sa(valid_sa, sa, host, Some(source)) {
             return false;
         }
     }
 
-    // Check ValidCard — mirrors Java's stAb.matchesValidParam("ValidCard", source)
     if !valid_filter::matches_valid_card_selector_opt(st_ab.ir.valid_card.as_ref(), source, host) {
         return false;
     }
 
-    // Check ValidPlayer — mirrors Java's stAb.matchesValidParam("ValidPlayer", pl)
     if !valid_filter::matches_valid_player_selector_opt(
         st_ab.ir.valid_player.as_ref(),
         player,
@@ -281,69 +256,7 @@ fn apply(
     true
 }
 
-/// Check if a SpellAbility matches a ValidSA filter string.
-/// The filter is comma-separated; all tokens must match (AND logic), mirroring
-/// Java's `matchesValid` which splits on comma and requires all to pass.
-///
-/// Recognised tokens (case-insensitive):
-/// - "Spell" — the SA must be a spell (has SP$ param or is_spell)
-/// - "Ability" — the SA must be an ability
-fn spell_ability_matches(valid_sa: &str, sa: &SpellAbility, source: &Card, host: &Card) -> bool {
-    let tokens: Vec<&str> = valid_sa
-        .split(',')
-        .map(|s| s.trim())
-        .filter(|s| !s.is_empty())
-        .collect();
-
-    if tokens.is_empty() {
-        return true;
-    }
-
-    tokens.iter().all(|tok| {
-        let parts: Vec<&str> = tok
-            .split('.')
-            .map(str::trim)
-            .filter(|s| !s.is_empty())
-            .collect();
-        let primary = parts.first().copied().unwrap_or("");
-        let lower = primary.to_ascii_lowercase();
-
-        let base_ok = match lower.as_str() {
-            "spell" => sa.is_spell,
-            "ability" => sa.is_activated || sa.is_trigger,
-            _ => {
-                if let Some(ref api) = sa.api {
-                    api.name().eq_ignore_ascii_case(primary)
-                } else {
-                    false
-                }
-            }
-        };
-        if !base_ok {
-            return false;
-        }
-
-        // ValidSA$ Spell.Self should only match the source card's own spell.
-        if parts.len() >= 2
-            && parts[1].eq_ignore_ascii_case("self")
-            && (sa.source != Some(source.id) || source.id != host.id)
-        {
-            return false;
-        }
-
-        true
-    })
-}
-
 /// Apply an `AlternativeCostEntry` to a `SpellAbility`, mutating it in place
-/// to reflect the alternative cost. This is a partial implementation of Java's
-/// `sa.copyWithDefinedCost(cost)` / `sa.copyWithManaCostReplaced(pl, cost)`.
-///
-/// TODO: Full implementation requires SpellAbility to support:
-/// - `copyWithDefinedCost(cost)` for abilities
-/// - `copyWithManaCostReplaced(player, cost)` for spells
-/// - `addOptionalCost(OptionalCost.AltCost)` for own alt costs
-/// For now, this applies what we can: params, description, pay_costs.
 pub fn apply_alternative_cost_to_sa(sa: &mut SpellAbility, entry: &AlternativeCostEntry) {
     // Replace the pay costs with the alternative cost
     sa.pay_costs = Some(entry.cost.clone());

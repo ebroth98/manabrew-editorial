@@ -154,6 +154,7 @@ pub(crate) fn assemble_card(
     // identity is five-colour even though its mana cost is just {2}{R}).
     card.color_identity = rules.color_identity;
     card.attraction_lights = face.attraction_lights.clone();
+    card.initial_loyalty = face.initial_loyalty.clone();
 
     // Append parsed triggers to keyword-generated ones.
     for trig in components.triggers {

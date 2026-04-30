@@ -19,6 +19,7 @@ pub mod spell_permanent;
 pub mod target_choices;
 pub mod target_restrictions;
 pub mod trait_spell_ability;
+pub mod valid_sa;
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU32, Ordering};
@@ -53,6 +54,7 @@ pub use spell_ability_restriction::SpellAbilityRestriction;
 pub use spell_ability_variables::SpellAbilityVariables;
 pub use target_choices::TargetChoices;
 pub use target_restrictions::{TargetKind, TargetRestrictions};
+pub use valid_sa::matches_valid_sa;
 
 static NEXT_SPELL_ABILITY_ID: AtomicU32 = AtomicU32::new(1);
 

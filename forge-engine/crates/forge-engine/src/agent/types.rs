@@ -80,6 +80,23 @@ pub enum MainPhaseAction {
     ActivateAbility(CardId, usize),
 }
 
+#[derive(Debug, Clone, Default)]
+pub struct PriorityActionSpace {
+    pub playable: Vec<PlayOption>,
+    pub tappable_lands: Vec<CardId>,
+    pub untappable_lands: Vec<CardId>,
+    pub activatable: Vec<(CardId, usize)>,
+}
+
+impl PriorityActionSpace {
+    pub fn is_empty(&self) -> bool {
+        self.playable.is_empty()
+            && self.tappable_lands.is_empty()
+            && self.untappable_lands.is_empty()
+            && self.activatable.is_empty()
+    }
+}
+
 /// The action a player takes when asked to pay an attack cost (Propaganda, Ghostly Prison).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CombatCostAction {

@@ -62,6 +62,8 @@ import java.util.stream.Collectors;
  */
 public class DeterministicController extends PlayerController {
     private static final int PREFER_ACTION_WEIGHT = 3;
+    private static final int STACK_ACTION_SPACE_SKIP_THRESHOLD = 20;
+    private static final int CARD_COPY_GUARD_THRESHOLD = 100;
     private final CountingRandom rng;
     private final boolean preferActions;
     private final boolean deep;
@@ -214,6 +216,15 @@ public class DeterministicController extends PlayerController {
         return "CastSpell(PlayOption { card: " + formatCard(chosen.getHostCard()) + ", mode: Normal })";
     }
 
+    private static String formatActionSpace(final List<SpellAbility> actions, final Player player) {
+        final List<String> rendered = new ArrayList<>();
+        for (int i = 0; i < actions.size(); i++) {
+            rendered.add("#" + i + " " + formatChooseActionResult(actions.get(i), player));
+        }
+        rendered.add("PASS");
+        return "[" + String.join(" | ", rendered) + "]";
+    }
+
     private boolean chooseDeterministicBooleanDecision(final String decisionType, final String falseLabel, final String trueLabel) {
         final boolean result = ChoiceSpace.pickBool(rng);
         onCallback(decisionType, Boolean.toString(result), falseLabel, trueLabel);
@@ -240,13 +251,41 @@ public class DeterministicController extends PlayerController {
 
     // ── Main Phase Action ─────────────────────────────────────────────
 
+    private boolean stopIfCardCopyGuardTripped() {
+        Map<String, Integer> counts = new HashMap<>();
+        for (Player p : player.getGame().getPlayers()) {
+            for (Card c : p.getCardsIn(ZoneType.Battlefield)) {
+                int count = counts.getOrDefault(c.getName(), 0) + 1;
+                if (count > CARD_COPY_GUARD_THRESHOLD) {
+                    DecisionLog.logSnapshot(player.getGame());
+                    System.err.printf(
+                        "[harness] Truncating parity run: %d copies of %s on battlefield (limit %d)%n",
+                        count, c.getName(), CARD_COPY_GUARD_THRESHOLD);
+                    player.getGame().setGameOver(GameEndReason.Draw);
+                    return true;
+                }
+                counts.put(c.getName(), count);
+            }
+        }
+        return false;
+    }
+
     @Override
     public List<SpellAbility> chooseSpellAbilityToPlay() {
+        if (stopIfCardCopyGuardTripped()) {
+            return null;
+        }
+        if (player.getGame().getStack().size() >= STACK_ACTION_SPACE_SKIP_THRESHOLD) {
+            onCallback("$ACTION_SPACE", "SKIPPED stack_depth>=20");
+            return null;
+        }
         captureDeepCheckpoint("main_action");
         final List<SpellAbility> all = ChoiceSpace.sortNative(
                 new ArrayList<>(ActionSpace.getPossibleActions(player)),
                 ParityOrder.actionComparator());
-
+        if (!all.isEmpty()) {
+            onCallback("$ACTION_SPACE", formatActionSpace(all, player));
+        }
         if (all.isEmpty()) {
             onCallback("choose_action", "PassPriority");
             return null;

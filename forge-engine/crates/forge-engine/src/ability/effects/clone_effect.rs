@@ -53,8 +53,22 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
 
     // Step 3: Copy characteristics from source → target
     let src = ctx.game.card(clone_source_id).clone();
+    let duration = crate::parsing::raw_get(&sa.ability_text, crate::parsing::keys::DURATION);
+    if duration.is_some() && ctx.game.card(clone_target_id).clone_state.is_none() {
+        let mut state = ctx.game.card(clone_target_id).capture_clone_state();
+        if let Some(animate_state) = ctx.game.card(clone_target_id).animate_state.as_ref() {
+            state.original_type_line = animate_state.original_type_line.clone();
+            state.original_base_power = animate_state.original_base_power;
+            state.original_base_toughness = animate_state.original_base_toughness;
+            state.original_color = animate_state.original_color;
+        }
+        ctx.game
+            .card_mut(clone_target_id)
+            .set_clone_state(Some(state));
+    }
     let target = &mut ctx.game.cards[clone_target_id.index()];
     crate::card::card_copy_service::copy_copiable_characteristics(&src, target);
+    target.add_clone_state();
     target.activated_abilities = src.activated_abilities.clone();
     target.static_abilities = src.static_abilities.clone();
     target.replacement_effects = src.replacement_effects.clone();

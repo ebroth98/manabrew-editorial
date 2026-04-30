@@ -152,6 +152,24 @@ pub struct AnimateState {
     pub original_color: ColorSet,
 }
 
+/// Saved pre-clone copiable characteristics for temporary Clone effects.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CloneState {
+    pub original_card_name: String,
+    pub original_type_line: CardTypeLine,
+    pub original_mana_cost: ManaCost,
+    pub original_color: ColorSet,
+    pub original_base_power: Option<i32>,
+    pub original_base_toughness: Option<i32>,
+    pub original_keywords: crate::keyword::keyword_collection::KeywordCollection,
+    pub original_abilities: Vec<String>,
+    pub original_activated_abilities: Vec<ActivatedAbility>,
+    pub original_triggers: Vec<Trigger>,
+    pub original_svars: BTreeMap<String, String>,
+    pub original_static_abilities: Vec<StaticAbility>,
+    pub original_replacement_effects: Vec<ReplacementEffect>,
+}
+
 /// A card instance in a game. This is the mutable game-state representation,
 /// as opposed to CardRules which is the immutable definition.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -191,6 +209,8 @@ pub struct Card {
     // Power/Toughness (base values, can be modified)
     pub base_power: Option<i32>,
     pub base_toughness: Option<i32>,
+    /// Printed starting loyalty for planeswalkers.
+    pub initial_loyalty: Option<String>,
     /// Temporary P/T modifications from spells/abilities resolving this turn
     /// (e.g. Giant Growth).  Reset when leaving the battlefield.
     pub power_modifier: i32,
@@ -261,11 +281,11 @@ pub struct Card {
     /// Reset and recomputed each time [`layer::apply_continuous_effects`] runs.
     #[serde(default)]
     pub granted_svars: BTreeMap<String, String>,
-    /// Subtypes added by continuous static effects (Layer 4, `AddType$`).
+    /// Type tokens added by continuous static effects (Layer 4, `AddType$`).
     /// Reset and recomputed each time [`layer::apply_continuous_effects`] runs.
-    /// The listed strings are also pushed onto `type_line.subtypes` so normal
-    /// subtype queries see them; keeping a separate list lets us revert on reset
-    /// without losing the card's intrinsic subtypes.
+    /// The listed strings may be supertypes, core card types, or subtypes;
+    /// keeping a separate list lets us revert on reset without losing the
+    /// card's intrinsic type line.
     pub static_added_subtypes: Vec<String>,
     /// Keywords granted temporarily by pump effects (`KW$` parameter) until end of turn.
     /// Cleared during step_cleanup alongside power_modifier / toughness_modifier.
@@ -470,6 +490,8 @@ pub struct Card {
 
     /// Saved state for AnimateEffect — restored during step_cleanup.
     pub animate_state: Option<AnimateState>,
+    /// Saved state for temporary Clone effects — restored during step_cleanup.
+    pub clone_state: Option<CloneState>,
 
     // ── Issue #53: High-priority effect fields ──────────────────────────
     /// Type chosen by ChooseType effect (e.g. "Goblin", "Artifact").
@@ -597,6 +619,8 @@ pub struct Card {
     pub number_ability_resolved: ActivationTable,
     /// Planeswalker activation count this turn.
     pub planeswalker_abilities_activated: u32,
+    /// Whether a static effect's increased planeswalker activation limit was used this turn.
+    pub planeswalker_activation_limit_used: bool,
     /// Chosen mode count tracking turn marker.
     pub chosen_modes_turn: Option<u32>,
     /// Set when this creature enlisted another creature in the current combat.
@@ -681,6 +705,7 @@ impl Card {
             color_identity,
             base_power,
             base_toughness,
+            initial_loyalty: None,
             power_modifier: 0,
             toughness_modifier: 0,
             perpetual_power_modifier: 0,
@@ -782,6 +807,7 @@ impl Card {
             chosen_colors: Vec::new(),
             chosen_cards: Vec::new(),
             animate_state: None,
+            clone_state: None,
             chosen_type: None,
             chosen_type2: None,
             noted_types: Vec::new(),
@@ -837,6 +863,7 @@ impl Card {
             number_game_activations: ActivationTable::default(),
             number_ability_resolved: ActivationTable::default(),
             planeswalker_abilities_activated: 0,
+            planeswalker_activation_limit_used: false,
             chosen_modes_turn: None,
             enlisted_this_combat: false,
             activations_this_game: std::collections::BTreeMap::new(),
@@ -930,6 +957,13 @@ impl Card {
 
     pub fn lethal_damage(&self) -> bool {
         self.damage >= self.toughness()
+    }
+
+    pub fn can_be_dealt_damage(&self) -> bool {
+        self.zone == ZoneType::Battlefield
+            && (self.is_creature()
+                || self.type_line.is_planeswalker()
+                || self.type_line.core_types.contains(&CoreType::Battle))
     }
 
     pub fn is_creature(&self) -> bool {
@@ -2149,6 +2183,41 @@ impl Card {
         self.color = color;
     }
 
+    pub fn capture_clone_state(&self) -> CloneState {
+        CloneState {
+            original_card_name: self.card_name.clone(),
+            original_type_line: self.type_line.clone(),
+            original_mana_cost: self.mana_cost.clone(),
+            original_color: self.color,
+            original_base_power: self.base_power,
+            original_base_toughness: self.base_toughness,
+            original_keywords: self.keywords.clone(),
+            original_abilities: self.abilities.clone(),
+            original_activated_abilities: self.activated_abilities.clone(),
+            original_triggers: self.triggers.clone(),
+            original_svars: self.svars.clone(),
+            original_static_abilities: self.static_abilities.clone(),
+            original_replacement_effects: self.replacement_effects.clone(),
+        }
+    }
+
+    pub fn restore_clone_snapshot(&mut self, state: CloneState) {
+        self.card_name = state.original_card_name;
+        self.type_line = state.original_type_line;
+        self.mana_cost = state.original_mana_cost;
+        self.color = state.original_color;
+        self.base_power = state.original_base_power;
+        self.base_toughness = state.original_base_toughness;
+        self.keywords = state.original_keywords;
+        self.abilities = state.original_abilities;
+        self.activated_abilities = state.original_activated_abilities;
+        self.triggers = state.original_triggers;
+        self.svars = state.original_svars;
+        self.static_abilities = state.original_static_abilities;
+        self.replacement_effects = state.original_replacement_effects;
+        self.remove_clone_state();
+    }
+
     pub fn set_counters_map(&mut self, counters: BTreeMap<CounterType, i32>) {
         self.counters = counters;
     }
@@ -2163,6 +2232,10 @@ impl Card {
 
     pub fn set_animate_state(&mut self, state: Option<AnimateState>) {
         self.animate_state = state;
+    }
+
+    pub fn set_clone_state(&mut self, state: Option<CloneState>) {
+        self.clone_state = state;
     }
 
     pub fn set_exiled_by(&mut self, source: Option<CardId>) {
@@ -3115,8 +3188,23 @@ impl Card {
         amount
     }
     pub fn add_damage_after_prevention(&mut self, amount: i32) -> i32 {
-        let dealt = amount.max(0);
-        self.damage += dealt;
+        let dealt = if self.can_be_dealt_damage() {
+            amount.max(0)
+        } else {
+            0
+        };
+        if dealt <= 0 {
+            return 0;
+        }
+        if self.type_line.is_planeswalker() {
+            self.remove_counter(&CounterType::Loyalty, dealt);
+        }
+        if self.type_line.core_types.contains(&CoreType::Battle) {
+            self.remove_counter(&CounterType::Named("DEFENSE".to_string()), dealt);
+        }
+        if self.is_creature() {
+            self.damage += dealt;
+        }
         dealt
     }
     pub fn border_color(&self) -> &'static str {
@@ -3255,11 +3343,18 @@ impl Card {
         &mut self,
         ability: Option<&crate::spellability::SpellAbility>,
     ) {
+        self.add_ability_activated_for_with_limit_increase(ability, false);
+    }
+    pub fn add_ability_activated_for_with_limit_increase(
+        &mut self,
+        ability: Option<&crate::spellability::SpellAbility>,
+        loyalty_limit_increase: bool,
+    ) {
         if let Some(ability) = ability {
             self.number_turn_activations.add(ability);
             self.number_game_activations.add(ability);
             if ability.ir.pw_ability {
-                self.add_planeswalker_ability_activated();
+                self.add_planeswalker_ability_activated(loyalty_limit_increase);
             }
         }
         self.add_ability_activated();
@@ -3320,16 +3415,20 @@ impl Card {
         self.chosen_modes_turn = None;
         self.chosen_modes = None;
     }
-    pub fn add_planeswalker_ability_activated(&mut self) {
+    pub fn add_planeswalker_ability_activated(&mut self, loyalty_limit_increase: bool) {
         self.planeswalker_abilities_activated += 1;
+        if self.planeswalker_abilities_activated == 2 && loyalty_limit_increase {
+            self.planeswalker_activation_limit_used = true;
+        }
     }
-    pub fn planeswalker_activation_limit_used(&self, limit: u32) -> bool {
-        self.planeswalker_abilities_activated >= limit
+    pub fn planeswalker_activation_limit_used(&self) -> bool {
+        self.planeswalker_activation_limit_used
     }
     pub fn reset_activations_per_turn(&mut self) {
         self.ability_activated_this_turn = 0;
         self.number_turn_activations.clear();
         self.planeswalker_abilities_activated = 0;
+        self.planeswalker_activation_limit_used = false;
     }
     pub fn add_can_block_additional(&mut self, n: i32) {
         self.can_block_additional += n;

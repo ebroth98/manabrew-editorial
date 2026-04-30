@@ -84,6 +84,7 @@ pub fn refund(game: &mut GameState, source: CardId, player: PlayerId, part: &Cos
         CostPart::SubCounter {
             amount,
             counter_type,
+            ..
         } => crate::cost::cost_remove_counter::refund(game, source, *amount, counter_type),
         CostPart::AddCounter {
             amount,
@@ -126,6 +127,7 @@ pub fn get_max_amount_x(
         CostPart::SubCounter {
             amount,
             counter_type,
+            ..
         } => {
             let current = game.card(source).counter_count(counter_type);
             Some(current.min(resolved(*amount)))

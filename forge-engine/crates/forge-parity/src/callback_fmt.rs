@@ -24,7 +24,9 @@ use forge_engine_core::combat::DefenderId;
 use forge_engine_core::game::GameState;
 use forge_engine_core::ids::{CardId, PlayerId};
 use forge_engine_core::mana::ManaPool;
-use forge_engine_core::player::actions::player_action::{AbilityRef, PlayerAction};
+use forge_engine_core::player::actions::player_action::{
+    AbilityRef, PlayerAction, STATIC_ALTERNATIVE_ABILITY_INDEX,
+};
 use forge_engine_core::spellability::SpellAbility;
 use forge_foundation::mana::ManaAtom;
 use forge_foundation::{ManaCost, ZoneType};
@@ -222,10 +224,12 @@ impl ParityFormat for PlayOption {
 impl ParityFormat for AbilityRef {
     fn parity_fmt(&self, ctx: &FmtCtx<'_>) -> String {
         let card = ctx.card(self.card_id);
-        format!(
-            "AbilityRef {{ card: {card}, ability_index: {} }}",
-            self.ability_index
-        )
+        let ability_index = if self.ability_index == STATIC_ALTERNATIVE_ABILITY_INDEX {
+            "-1".to_string()
+        } else {
+            self.ability_index.to_string()
+        };
+        format!("AbilityRef {{ card: {card}, ability_index: {ability_index} }}")
     }
 }
 
@@ -383,6 +387,20 @@ impl CallbackArgDisplay for [PlayerId] {
     fn callback_arg_display(&self, ctx: Option<&FmtCtx<'_>>) -> String {
         if let Some(ctx) = ctx {
             let items: Vec<String> = self.iter().map(|p| ctx.player(*p)).collect();
+            format!("[{}]", items.join(", "))
+        } else {
+            self.len().to_string()
+        }
+    }
+}
+
+impl CallbackArgDisplay for [(CardId, i32)] {
+    fn callback_arg_display(&self, ctx: Option<&FmtCtx<'_>>) -> String {
+        if let Some(ctx) = ctx {
+            let items: Vec<String> = self
+                .iter()
+                .map(|(card, power)| format!("{}={power}", ctx.card(*card)))
+                .collect();
             format!("[{}]", items.join(", "))
         } else {
             self.len().to_string()

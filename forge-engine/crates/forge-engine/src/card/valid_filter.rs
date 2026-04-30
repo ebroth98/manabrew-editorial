@@ -1324,6 +1324,7 @@ fn legacy_matches_card_atom(raw: &str, card: &Card, context: MatchContext<'_>) -
         "isremembered" | "card.isremembered" => source.remembered_cards.contains(&card.id),
         "effectsource" | "card.effectsource" => source.effect_source == Some(card.id),
         "oppctrl" | "opponentctrl" | "opponent" => card.controller != source.controller,
+        "chosenctrl" => Some(card.controller) == source.chosen_player,
         "oppown" | "opponentown" => card.owner != source.controller,
         "iscommander" => card.is_commander,
         "legendary" => card.type_line.is_legendary(),
@@ -1895,6 +1896,11 @@ fn matches_type_and_qualifier_parts(
                 }
                 "oppctrl" | "opponentctrl" | "opponent" => {
                     if card.controller == source.controller {
+                        return false;
+                    }
+                }
+                "chosenctrl" => {
+                    if Some(card.controller) != source.chosen_player {
                         return false;
                     }
                 }

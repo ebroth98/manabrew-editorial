@@ -203,11 +203,9 @@ mod tests {
         }
         fn choose_action(
             &mut self,
-            _: PlayerId,
-            _: &[PlayOption],
-            _: &[CardId],
-            _: &[CardId],
-            _: &[(CardId, usize)],
+            player: PlayerId,
+            action_space: Option<&crate::agent::PriorityActionSpace>,
+            request_action_space: &mut dyn FnMut() -> crate::agent::PriorityActionSpace,
         ) -> PlayerAction {
             PlayerAction::PassPriority
         }

@@ -91,17 +91,24 @@ impl PlayerAgent for ScriptedAgent {
 
     fn choose_action(
         &mut self,
-        _player: PlayerId,
-        playable: &[PlayOption],
-        _tappable_lands: &[CardId],
-        _untappable_lands: &[CardId],
-        _activatable: &[(CardId, usize)],
+        player: PlayerId,
+        action_space: Option<&forge_engine_core::agent::PriorityActionSpace>,
+        request_action_space: &mut dyn FnMut() -> forge_engine_core::agent::PriorityActionSpace,
     ) -> PlayerAction {
         if self.action_idx >= self.actions.len() {
             return PlayerAction::PassPriority;
         }
         let action = self.actions[self.action_idx];
         self.action_idx += 1;
+        let requested_action_space;
+        let action_space = match action_space {
+            Some(action_space) => action_space,
+            None => {
+                requested_action_space = request_action_space();
+                &requested_action_space
+            }
+        };
+        let playable = &action_space.playable;
         match action {
             None => PlayerAction::PassPriority,
             Some(idx) => {
@@ -336,13 +343,20 @@ fn full_game_runs() {
         }
         fn choose_action(
             &mut self,
-            _: PlayerId,
-            playable: &[PlayOption],
-            _: &[CardId],
-            _: &[CardId],
-            _: &[(CardId, usize)],
+            player: PlayerId,
+            action_space: Option<&forge_engine_core::agent::PriorityActionSpace>,
+            request_action_space: &mut dyn FnMut() -> forge_engine_core::agent::PriorityActionSpace,
         ) -> PlayerAction {
-            playable
+            let requested_action_space;
+            let action_space = match action_space {
+                Some(action_space) => action_space,
+                None => {
+                    requested_action_space = request_action_space();
+                    &requested_action_space
+                }
+            };
+            action_space
+                .playable
                 .first()
                 .copied()
                 .map(PlayerAction::CastSpell)
@@ -865,11 +879,9 @@ fn upkeep_trigger_fires_each_turn() {
         }
         fn choose_action(
             &mut self,
-            _: PlayerId,
-            _: &[PlayOption],
-            _: &[CardId],
-            _: &[CardId],
-            _: &[(CardId, usize)],
+            player: PlayerId,
+            action_space: Option<&forge_engine_core::agent::PriorityActionSpace>,
+            request_action_space: &mut dyn FnMut() -> forge_engine_core::agent::PriorityActionSpace,
         ) -> PlayerAction {
             PlayerAction::PassPriority
         }
@@ -991,13 +1003,20 @@ fn full_game_with_triggers_runs() {
         }
         fn choose_action(
             &mut self,
-            _: PlayerId,
-            playable: &[PlayOption],
-            _: &[CardId],
-            _: &[CardId],
-            _: &[(CardId, usize)],
+            player: PlayerId,
+            action_space: Option<&forge_engine_core::agent::PriorityActionSpace>,
+            request_action_space: &mut dyn FnMut() -> forge_engine_core::agent::PriorityActionSpace,
         ) -> PlayerAction {
-            playable
+            let requested_action_space;
+            let action_space = match action_space {
+                Some(action_space) => action_space,
+                None => {
+                    requested_action_space = request_action_space();
+                    &requested_action_space
+                }
+            };
+            action_space
+                .playable
                 .first()
                 .copied()
                 .map(PlayerAction::CastSpell)
@@ -1173,14 +1192,22 @@ fn llanowar_elves_taps_for_mana() {
         }
         fn choose_action(
             &mut self,
-            _: PlayerId,
-            _playable: &[PlayOption],
-            tappable: &[CardId],
-            _untappable: &[CardId],
-            _activatable: &[(CardId, usize)],
+            player: PlayerId,
+            action_space: Option<&forge_engine_core::agent::PriorityActionSpace>,
+            request_action_space: &mut dyn FnMut() -> forge_engine_core::agent::PriorityActionSpace,
         ) -> PlayerAction {
-            self.saw_elves_as_mana_source
-                .store(tappable.contains(&self.elves), Ordering::SeqCst);
+            let requested_action_space;
+            let action_space = match action_space {
+                Some(action_space) => action_space,
+                None => {
+                    requested_action_space = request_action_space();
+                    &requested_action_space
+                }
+            };
+            self.saw_elves_as_mana_source.store(
+                action_space.tappable_lands.contains(&self.elves),
+                Ordering::SeqCst,
+            );
             PlayerAction::PassPriority
         }
         fn choose_attackers(
@@ -1292,13 +1319,19 @@ fn summoning_sick_creature_cant_tap() {
         }
         fn choose_action(
             &mut self,
-            _: PlayerId,
-            _playable: &[PlayOption],
-            _tappable: &[CardId],
-            _untappable: &[CardId],
-            activatable: &[(CardId, usize)],
+            player: PlayerId,
+            action_space: Option<&forge_engine_core::agent::PriorityActionSpace>,
+            request_action_space: &mut dyn FnMut() -> forge_engine_core::agent::PriorityActionSpace,
         ) -> PlayerAction {
-            self.saw_activatable = !activatable.is_empty();
+            let requested_action_space;
+            let action_space = match action_space {
+                Some(action_space) => action_space,
+                None => {
+                    requested_action_space = request_action_space();
+                    &requested_action_space
+                }
+            };
+            self.saw_activatable = !action_space.activatable.is_empty();
             PlayerAction::PassPriority
         }
         fn choose_attackers(
@@ -1409,15 +1442,21 @@ fn prodigal_sorcerer_pings_opponent() {
         }
         fn choose_action(
             &mut self,
-            _: PlayerId,
-            _playable: &[PlayOption],
-            _tappable: &[CardId],
-            _untappable: &[CardId],
-            activatable: &[(CardId, usize)],
+            player: PlayerId,
+            action_space: Option<&forge_engine_core::agent::PriorityActionSpace>,
+            request_action_space: &mut dyn FnMut() -> forge_engine_core::agent::PriorityActionSpace,
         ) -> PlayerAction {
             if !self.activated {
                 self.activated = true;
-                if let Some(&(cid, idx)) = activatable.first() {
+                let requested_action_space;
+                let action_space = match action_space {
+                    Some(action_space) => action_space,
+                    None => {
+                        requested_action_space = request_action_space();
+                        &requested_action_space
+                    }
+                };
+                if let Some(&(cid, idx)) = action_space.activatable.first() {
                     return PlayerAction::ActivateAbility(AbilityRef {
                         card_id: cid,
                         ability_index: idx,
@@ -1546,15 +1585,21 @@ fn sakura_tribe_elder_fetches_land() {
         }
         fn choose_action(
             &mut self,
-            _: PlayerId,
-            _playable: &[PlayOption],
-            _tappable: &[CardId],
-            _untappable: &[CardId],
-            activatable: &[(CardId, usize)],
+            player: PlayerId,
+            action_space: Option<&forge_engine_core::agent::PriorityActionSpace>,
+            request_action_space: &mut dyn FnMut() -> forge_engine_core::agent::PriorityActionSpace,
         ) -> PlayerAction {
             if !self.activated {
                 self.activated = true;
-                if let Some(&(cid, idx)) = activatable.first() {
+                let requested_action_space;
+                let action_space = match action_space {
+                    Some(action_space) => action_space,
+                    None => {
+                        requested_action_space = request_action_space();
+                        &requested_action_space
+                    }
+                };
+                if let Some(&(cid, idx)) = action_space.activatable.first() {
                     return PlayerAction::ActivateAbility(AbilityRef {
                         card_id: cid,
                         ability_index: idx,

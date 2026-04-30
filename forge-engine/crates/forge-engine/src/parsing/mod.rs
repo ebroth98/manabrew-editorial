@@ -1014,6 +1014,7 @@ fn lower_selector_part(value: &str, is_first_part: bool) -> SelectorPredicate {
         "opponent" | "oppctrl" | "opponentctrl" => {
             SelectorPredicate::CardController(ControllerSelector::Opponent)
         }
+        "chosenctrl" => SelectorPredicate::Raw(normalized.to_string()),
         "youown" => SelectorPredicate::CardOwner(ControllerSelector::You),
         "oppown" | "opponentown" => SelectorPredicate::CardOwner(ControllerSelector::Opponent),
         "youdontctrl" => SelectorPredicate::Not(Box::new(SelectorPredicate::CardController(

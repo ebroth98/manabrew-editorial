@@ -51,6 +51,19 @@ impl SpellAbilityRestriction {
     {
         let is_true = |key| get(key).is_some_and(|value| value.eq_ignore_ascii_case("True"));
 
+        if let Some(value) = get("Activation") {
+            match value {
+                "Threshold" => self.variables.set_threshold(true),
+                "Metalcraft" => self.variables.set_metalcraft(true),
+                "Delirium" => self.variables.set_delirium(true),
+                "Hellbent" => self.variables.set_hellbent(true),
+                "Desert" => self.variables.set_desert(true),
+                "Blessing" => self.variables.set_blessing(true),
+                "Solved" => self.variables.set_solved(true),
+                _ => {}
+            }
+        }
+
         // Parse activation zone
         if let Some(zone_str) = get("ActivationZone") {
             if let Some(zone) = parse_zone(zone_str) {

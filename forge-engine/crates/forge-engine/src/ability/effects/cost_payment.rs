@@ -286,6 +286,7 @@ fn pay_mana_cost_for_effect(
         |_game, _agents, _mana_pools, player, card_id, ab, express_choice| unsafe {
             let ctx = &mut *ctx_ptr;
             resolve_mana_ability_for_effect_payment(ctx, player, card_id, ab, express_choice);
+            true
         },
         |_game, player, land_id| unsafe {
             let ctx = &mut *ctx_ptr;

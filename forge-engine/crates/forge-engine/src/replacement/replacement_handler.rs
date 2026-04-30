@@ -1032,6 +1032,9 @@ fn collect_effects(
             if !re.active_in_zone(card.zone) {
                 continue;
             }
+            if !re.requirements_check(game, card) {
+                continue;
+            }
             // Dispatch to per-type module for applicability check.
             let applies = match re.event {
                 ReplacementType::DamageDone => replace_damage::can_replace(re, event, game, card),
@@ -1352,11 +1355,9 @@ mod tests {
 
         fn choose_action(
             &mut self,
-            _player: PlayerId,
-            _playable: &[crate::agent::types::PlayOption],
-            _tappable_lands: &[CardId],
-            _untappable_lands: &[CardId],
-            _activatable: &[(CardId, usize)],
+            player: PlayerId,
+            action_space: Option<&crate::agent::PriorityActionSpace>,
+            request_action_space: &mut dyn FnMut() -> crate::agent::PriorityActionSpace,
         ) -> crate::player::actions::PlayerAction {
             crate::player::actions::PlayerAction::PassPriority
         }

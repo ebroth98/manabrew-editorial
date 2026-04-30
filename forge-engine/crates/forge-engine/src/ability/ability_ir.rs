@@ -109,6 +109,7 @@ pub struct SpellAbilityIr {
     pub starting_with: Option<String>,
     pub repeat: Option<String>,
     pub branch_condition_svar: Option<String>,
+    pub branch_condition_svar_compare: Option<String>,
     pub true_sub_ability: Option<String>,
     pub false_sub_ability: Option<String>,
     pub play_cost_text: Option<String>,
@@ -554,6 +555,9 @@ impl SpellAbilityIr {
             starting_with: params.get("StartingWith").map(str::to_string),
             repeat: params.get(keys::REPEAT).map(str::to_string),
             branch_condition_svar: params.get(keys::BRANCH_CONDITION_SVAR).map(str::to_string),
+            branch_condition_svar_compare: params
+                .get(keys::BRANCH_CONDITION_SVAR_COMPARE)
+                .map(str::to_string),
             true_sub_ability: params.get(keys::TRUE_SUB_ABILITY).map(str::to_string),
             false_sub_ability: params.get(keys::FALSE_SUB_ABILITY).map(str::to_string),
             play_cost_text: params.get(keys::PLAY_COST).map(str::to_string),
@@ -878,7 +882,8 @@ impl SpellAbilityIr {
             cant_fizzle: params.has(keys::CANT_FIZZLE),
             cant_be_countered: parsed_true(params.get("CantBeCountered")),
             unpayable: parsed_true(params.get("Unpayable")),
-            pw_ability: parsed_true(params.get("PwAbility")),
+            pw_ability: parsed_true(params.get(keys::PLANESWALKER))
+                || parsed_true(params.get("PwAbility")),
             flash: parsed_true(params.get("Flash")),
             split_second: parsed_true(params.get("SplitSecond")),
             random: parsed_true(params.get("Random")),
@@ -1265,4 +1270,17 @@ fn parsed_bool_default(value: Option<&str>, default: bool) -> bool {
 
 fn parsed_true(value: Option<&str>) -> bool {
     value.is_some_and(|value| value.eq_ignore_ascii_case("True"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::parsing::ParsedParams;
+
+    #[test]
+    fn planeswalker_param_marks_pw_ability() {
+        let params = ParsedParams::parse("AB$ Discard | Planeswalker$ True");
+        let ir = SpellAbilityIr::from_parsed(None, &params);
+        assert!(ir.pw_ability);
+    }
 }

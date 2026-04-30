@@ -1,6 +1,7 @@
 package forge.harness;
 
 import com.google.gson.Gson;
+import forge.game.Game;
 import forge.game.player.Player;
 
 import java.util.ArrayList;
@@ -28,6 +29,13 @@ public final class DecisionLog {
         }
         logChoice(decidingPlayer, kind, List.of(), "CALLBACK_ENTRY");
         sink.accept(SnapshotExtractor.snapshotJson(decidingPlayer.getGame()));
+    }
+
+    public static void logSnapshot(final Game game) {
+        if (game == null) {
+            return;
+        }
+        sink.accept(SnapshotExtractor.snapshotJson(game));
     }
 
     public static void logMainAction(

@@ -35,6 +35,10 @@ impl GameLoop {
 
         let mut state = TurnMachineState::Untap;
         while !game.game_over && state != TurnMachineState::Done {
+            if self.is_aborted() {
+                game.game_over = true;
+                break;
+            }
             // EndTurn (issue #22): if end_turn_requested, skip directly to cleanup.
             if game.end_turn_requested
                 && state != TurnMachineState::Cleanup
@@ -657,6 +661,18 @@ impl GameLoop {
                     );
                     game.cards[i].clear_damage();
                 }
+                if let Some(state) = game.cards[i].clone_state.take() {
+                    game.cards[i].restore_clone_snapshot(state);
+                }
+
+                game.cards[i].reset_turn_modifiers();
+                game.cards[i].cant_have_keywords.clear();
+                game.cards[i].clear_pump_keywords();
+                game.cards[i].clear_pump_triggers();
+                game.cards[i].clear_deathtouch_damage();
+                game.cards[i].reset_regeneration_shields();
+                game.cards[i].reset_shield_count();
+                game.cards[i].reset_crewed();
 
                 if game.cards[i].is_creature() {
                     let keep_damage =
@@ -667,13 +683,6 @@ impl GameLoop {
                     if !keep_damage {
                         game.cards[i].clear_damage();
                     }
-                    game.cards[i].reset_turn_modifiers();
-                    game.cards[i].cant_have_keywords.clear();
-                    game.cards[i].clear_pump_keywords();
-                    game.cards[i].clear_pump_triggers();
-                    game.cards[i].clear_deathtouch_damage();
-                    game.cards[i].reset_regeneration_shields();
-                    game.cards[i].reset_shield_count();
                     game.cards[i].damage_history.new_turn();
                 }
             }

@@ -38,6 +38,7 @@ export interface Card {
   ownerId: string; // UUID
   zoneId: string; // UUID
   tapped?: boolean;
+  isCrewed?: boolean;
   isAttacking?: boolean;
   /** Encoded id (`player-N`) of the defender this creature is attacking,
    *  when `isAttacking` is true. Drives the persistent painterly attack

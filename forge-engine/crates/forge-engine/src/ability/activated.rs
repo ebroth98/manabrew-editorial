@@ -116,9 +116,11 @@ pub fn parse_activated_ability(raw: &str, index: usize) -> Option<ActivatedAbili
     // - No loyalty cost
     let ab_type = params.get(keys::AB).unwrap_or("");
     let has_targets = params.has(keys::VALID_TGTS);
+    let is_planeswalker_ability = params.is_true(keys::PLANESWALKER);
     let is_mana_ability = (ab_type.eq_ignore_ascii_case("Mana")
         || ab_type.eq_ignore_ascii_case("ManaReflected"))
-        && !has_targets;
+        && !has_targets
+        && !is_planeswalker_ability;
     let activation_zone = params
         .get(keys::ACTIVATION_ZONE)
         .and_then(ZoneType::from_str_compat);
@@ -191,6 +193,13 @@ mod tests {
         assert!(ab.is_mana_ability);
         assert!(ab.cost.has_tap);
         assert_eq!(ab.produced.as_deref(), Some("G"));
+    }
+
+    #[test]
+    fn parse_planeswalker_mana_ability_uses_stack() {
+        let raw = "AB$ Mana | Cost$ AddCounter<0/LOYALTY> | Planeswalker$ True | Produced$ C | Amount$ 3 | SpellDescription$ Add {C}{C}{C}.";
+        let ab = parse_activated_ability(raw, 0).unwrap();
+        assert!(!ab.is_mana_ability);
     }
 
     #[test]

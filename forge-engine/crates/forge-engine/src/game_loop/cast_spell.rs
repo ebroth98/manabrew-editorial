@@ -859,45 +859,6 @@ impl GameLoop {
             mana_cost
         };
 
-        // Check Escalate: additional cost per mode beyond the first.
-        let mana_cost = if let Some(escalate_cost_str) = game.card(card_id).get_escalate_cost() {
-            let abilities = game.card(card_id).abilities.clone();
-            let ability_text = abilities.first().cloned().unwrap_or_default();
-            let ability_params = Params::from_raw(&ability_text);
-            let num_modes = ability_params
-                .get(keys::CHOICES)
-                .map(|c| c.split(',').count())
-                .unwrap_or(1);
-            if num_modes > 1 {
-                let esc_mc = forge_foundation::ManaCost::parse(&escalate_cost_str);
-                let available_mana =
-                    mana::calculate_available_mana(self.pool(player), game, player);
-                let mut extra_modes = 0u32;
-                let mut test_cost = mana_cost.clone();
-                for _ in 1..num_modes {
-                    test_cost = test_cost.add(&esc_mc);
-                    if available_mana.can_pay(&test_cost) {
-                        extra_modes += 1;
-                    } else {
-                        break;
-                    }
-                }
-                if extra_modes > 0 {
-                    let mut total = mana_cost.clone();
-                    for _ in 0..extra_modes {
-                        total = total.add(&esc_mc);
-                    }
-                    total
-                } else {
-                    mana_cost
-                }
-            } else {
-                mana_cost
-            }
-        } else {
-            mana_cost
-        };
-
         // Check Spree: each chosen mode has its own ModeCost$
         let mana_cost = if game.card(card_id).has_keyword("Spree") {
             let abilities = game.card(card_id).abilities.clone();
@@ -1153,15 +1114,28 @@ impl GameLoop {
                 return None;
             }};
         }
+        macro_rules! fail_announced_spell {
+            () => {{
+                if let Some(pending_stack_id) = pending_stack_id {
+                    game.stack.remove_pending_cast(pending_stack_id);
+                }
+                return None;
+            }};
+        }
+
+        let selected_charm_mode_count =
+            if !sa.overloaded && sa.api == Some(crate::ability::api_type::ApiType::Charm) {
+                match crate::ability::effects::charm_effect::make_choices_precast_with_count(
+                    game, agents, &mut sa,
+                ) {
+                    Some(count) => Some(count),
+                    None => rollback_cast!(),
+                }
+            } else {
+                None
+            };
 
         if !sa.overloaded {
-            if sa.api == Some(crate::ability::api_type::ApiType::Charm)
-                && !crate::ability::effects::charm_effect::make_choices_precast(
-                    game, agents, &mut sa,
-                )
-            {
-                rollback_cast!();
-            }
             if !sa.setup_targets(game, agents, &self.mana_pools) {
                 rollback_cast!();
             }
@@ -1181,6 +1155,20 @@ impl GameLoop {
                 rollback_cast!();
             }
         }
+
+        let mana_cost = if let (Some(escalate_cost_str), Some(selected_count)) = (
+            game.card(card_id).get_escalate_cost(),
+            selected_charm_mode_count,
+        ) {
+            let esc_mc = forge_foundation::ManaCost::parse(&escalate_cost_str);
+            let mut total = mana_cost.clone();
+            for _ in 1..selected_count {
+                total = total.add(&esc_mc);
+            }
+            total
+        } else {
+            mana_cost
+        };
 
         let display_total_cost = if commander_tax > 0 {
             original_mana_cost.add(&forge_foundation::ManaCost::generic(commander_tax))
@@ -1358,6 +1346,12 @@ impl GameLoop {
                         )
                     };
                     if let Some(result) = auto_result {
+                        slf.resolve_auto_tapped_mana_sub_abilities(
+                            game,
+                            agents,
+                            session.player,
+                            &result.choices,
+                        );
                         // Build trace from the partial-or-full taps regardless
                         // of cancellation — Java's harness records the same.
                         let mut trace: Vec<ManaCostAction> = result
@@ -1457,6 +1451,9 @@ impl GameLoop {
                 },
             );
             if !mana_paid {
+                if sa.is_spell {
+                    fail_announced_spell!();
+                }
                 rollback_cast!();
             }
         }

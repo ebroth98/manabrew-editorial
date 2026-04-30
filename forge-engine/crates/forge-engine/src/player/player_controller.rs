@@ -58,22 +58,6 @@ impl<'a, A: PlayerAgent + ?Sized> PlayerController<'a, A> {
         build_priority_actions(playable, tappable_lands, untappable_lands, activatable)
     }
 
-    pub fn choose_priority_action(
-        &mut self,
-        playable: &[PlayOption],
-        tappable_lands: &[CardId],
-        untappable_lands: &[CardId],
-        activatable: &[(CardId, usize)],
-    ) -> PlayerAction {
-        self.agent.choose_action(
-            self.player,
-            playable,
-            tappable_lands,
-            untappable_lands,
-            activatable,
-        )
-    }
-
     pub fn add_full_control(&mut self, flag: FullControlFlag) {
         self.full_controls.insert(flag);
     }

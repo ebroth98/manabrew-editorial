@@ -2,10 +2,8 @@
 
 use crate::card::CounterType;
 use crate::game::GameState;
-use crate::ids::CardId;
+use crate::ids::{CardId, PlayerId};
 
-/// Remove counters from the source.
-/// Mirrors Java's `CostRemoveCounter.payAsDecided()`.
 pub fn pay_as_decided(
     game: &mut GameState,
     source: CardId,
@@ -25,13 +23,39 @@ pub fn can_pay(game: &GameState, source: CardId, part: &super::CostPart) -> bool
     let super::CostPart::SubCounter {
         amount,
         counter_type,
+        type_filter,
     } = part
     else {
         return false;
     };
+    can_pay_for_player(
+        game,
+        source,
+        game.card(source).controller,
+        *amount,
+        counter_type,
+        type_filter,
+    )
+}
+
+pub fn can_pay_for_player(
+    game: &GameState,
+    source: CardId,
+    player: PlayerId,
+    amount: i32,
+    counter_type: &CounterType,
+    type_filter: &str,
+) -> bool {
+    if !type_filter.eq_ignore_ascii_case("CARDNAME")
+        && !type_filter.eq_ignore_ascii_case("NICKNAME")
+    {
+        return super::get_sub_counter_targets(game, player, source, type_filter)
+            .into_iter()
+            .any(|cid| game.card(cid).counter_count(counter_type) >= amount);
+    }
     let card = game.card(source);
     if card.zone != forge_foundation::ZoneType::Battlefield || card.phased_out {
         return false;
     }
-    card.counter_count(counter_type) >= *amount
+    card.counter_count(counter_type) >= amount
 }

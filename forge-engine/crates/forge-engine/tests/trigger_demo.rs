@@ -226,13 +226,20 @@ impl PlayerAgent for VerboseAgent {
     }
     fn choose_action(
         &mut self,
-        _: PlayerId,
-        playable: &[PlayOption],
-        _: &[CardId],
-        _: &[CardId],
-        _: &[(CardId, usize)],
+        player: PlayerId,
+        action_space: Option<&forge_engine_core::agent::PriorityActionSpace>,
+        request_action_space: &mut dyn FnMut() -> forge_engine_core::agent::PriorityActionSpace,
     ) -> PlayerAction {
-        playable
+        let requested_action_space;
+        let action_space = match action_space {
+            Some(action_space) => action_space,
+            None => {
+                requested_action_space = request_action_space();
+                &requested_action_space
+            }
+        };
+        action_space
+            .playable
             .first()
             .copied()
             .map(PlayerAction::CastSpell)

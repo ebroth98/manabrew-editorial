@@ -1020,6 +1020,19 @@ fn pay_roll_cost(
                                 None
                             }
                         }
+                        mana::ManaPayCallback::ConfirmPayLife(source_id) => {
+                            if agents[player.index()].confirm_payment(
+                                player,
+                                "PayLife",
+                                "Pay life for mana",
+                                None,
+                                Some(crate::ability::api_type::ApiType::Mana),
+                            ) {
+                                Some(source_id)
+                            } else {
+                                None
+                            }
+                        }
                         mana::ManaPayCallback::NotifySacrificeForMana(sacrificed_id) => unsafe {
                             let game = &mut *game_ptr;
                             let trigger_handler = &mut *trigger_handler_ptr;
@@ -1116,6 +1129,7 @@ fn pay_roll_cost(
             CostPart::SubCounter {
                 amount,
                 counter_type,
+                ..
             } => {
                 if game.card(card_id).counter_count(counter_type) < *amount {
                     return false;
@@ -1290,11 +1304,9 @@ mod tests {
 
         fn choose_action(
             &mut self,
-            _player: PlayerId,
-            _playable: &[crate::agent::PlayOption],
-            _tappable_lands: &[CardId],
-            _untappable_lands: &[CardId],
-            _activatable: &[(CardId, usize)],
+            player: PlayerId,
+            action_space: Option<&crate::agent::PriorityActionSpace>,
+            request_action_space: &mut dyn FnMut() -> crate::agent::PriorityActionSpace,
         ) -> crate::player::actions::PlayerAction {
             crate::player::actions::PlayerAction::PassPriority
         }
@@ -1394,11 +1406,9 @@ mod tests {
 
         fn choose_action(
             &mut self,
-            _player: PlayerId,
-            _playable: &[crate::agent::PlayOption],
-            _tappable_lands: &[CardId],
-            _untappable_lands: &[CardId],
-            _activatable: &[(CardId, usize)],
+            player: PlayerId,
+            action_space: Option<&crate::agent::PriorityActionSpace>,
+            request_action_space: &mut dyn FnMut() -> crate::agent::PriorityActionSpace,
         ) -> crate::player::actions::PlayerAction {
             crate::player::actions::PlayerAction::PassPriority
         }
@@ -1509,11 +1519,9 @@ mod tests {
 
         fn choose_action(
             &mut self,
-            _player: PlayerId,
-            _playable: &[crate::agent::PlayOption],
-            _tappable_lands: &[CardId],
-            _untappable_lands: &[CardId],
-            _activatable: &[(CardId, usize)],
+            player: PlayerId,
+            action_space: Option<&crate::agent::PriorityActionSpace>,
+            request_action_space: &mut dyn FnMut() -> crate::agent::PriorityActionSpace,
         ) -> crate::player::actions::PlayerAction {
             crate::player::actions::PlayerAction::PassPriority
         }

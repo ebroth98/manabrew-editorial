@@ -208,15 +208,12 @@ fn parse_sub_counter(inner: &str) -> Option<CostPart> {
     let mut it = inner.split('/');
     let amount = it.next().and_then(|s| s.parse::<i32>().ok()).unwrap_or(1);
     let counter_type_str = it.next().unwrap_or("P1P1");
-    let source = it.next().unwrap_or("CARDNAME");
-    if source.eq_ignore_ascii_case("CARDNAME") || source.eq_ignore_ascii_case("NICKNAME") {
-        Some(CostPart::SubCounter {
-            amount,
-            counter_type: parse_counter_type(counter_type_str),
-        })
-    } else {
-        None
-    }
+    let type_filter = it.next().unwrap_or("CARDNAME").to_string();
+    Some(CostPart::SubCounter {
+        amount,
+        counter_type: parse_counter_type(counter_type_str),
+        type_filter,
+    })
 }
 
 fn parse_add_counter(inner: &str) -> Option<CostPart> {

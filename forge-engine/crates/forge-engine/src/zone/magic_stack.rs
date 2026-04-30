@@ -203,6 +203,16 @@ impl MagicStack {
         self.entries.iter().find(|existing| existing.id == id)
     }
 
+    pub fn remove_pending_cast(&mut self, id: u32) -> Option<StackEntry> {
+        let index = self
+            .entries
+            .iter()
+            .position(|entry| entry.id == id && entry.is_pending_cast)?;
+        let entry = self.entries.remove(index);
+        self.update_max_distinct_sources();
+        Some(entry)
+    }
+
     fn update_max_distinct_sources(&mut self) {
         let distinct: std::collections::HashSet<_> = self
             .entries

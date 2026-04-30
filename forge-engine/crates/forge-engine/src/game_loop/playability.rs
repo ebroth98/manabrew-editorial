@@ -41,7 +41,7 @@ impl GameLoop {
                 .any(|&source_id| {
                     let source = game.card(source_id);
                     source.static_abilities.iter().any(|sa| {
-                        crate::staticability::static_ability_continuous::can_play(
+                        crate::staticability::static_ability_continuous::can_play_or_granted(
                             sa, source, card, game,
                         )
                     })
@@ -80,7 +80,7 @@ impl GameLoop {
                         .static_abilities
                         .iter()
                         .filter(|sa| {
-                            crate::staticability::static_ability_continuous::can_play(
+                            crate::staticability::static_ability_continuous::can_play_or_granted(
                                 sa, source, card, game,
                             )
                         })
@@ -705,7 +705,7 @@ impl GameLoop {
                     .any(|&source_id| {
                         let source = game.card(source_id);
                         source.static_abilities.iter().any(|sa| {
-                            crate::staticability::static_ability_continuous::can_play(
+                            crate::staticability::static_ability_continuous::can_play_or_granted(
                                 sa, source, card, game,
                             )
                         })
@@ -735,6 +735,17 @@ impl GameLoop {
             for &card_id in &bf_cards {
                 let card = game.card(card_id);
                 if !card.type_line.has_subtype("Room") {
+                    continue;
+                }
+                let fully_unlocked = card
+                    .svars
+                    .get("UnlockedRoomCount")
+                    .and_then(|count| count.parse::<i32>().ok())
+                    .is_some_and(|count| count >= 2)
+                    || (!card.full_name.is_empty()
+                        && card.card_name == card.full_name
+                        && card.full_name.contains(" // "));
+                if fully_unlocked {
                     continue;
                 }
                 // Find the synthetic UnlockDoor activated ability

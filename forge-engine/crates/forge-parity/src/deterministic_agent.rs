@@ -4,13 +4,14 @@ use std::sync::Arc;
 
 use forge_engine_core::agent::{
     BinaryChoiceKind, GameEntity, ManaCostAction, PlayCardMode, PlayOption, PlayerAgent,
-    TargetChoice,
+    PriorityActionSpace, TargetChoice,
 };
 use forge_engine_core::card::Card;
 use forge_engine_core::combat::DefenderId;
 use forge_engine_core::game::GameState;
 use forge_engine_core::ids::{CardId, PlayerId};
 use forge_engine_core::mana::ManaPool;
+use forge_engine_core::player::actions::player_action::STATIC_ALTERNATIVE_ABILITY_INDEX;
 use forge_engine_core::player::actions::{AbilityRef, PlayerAction};
 use forge_engine_core::replacement::replacement_handler::{apply_replacements, ReplacementEvent};
 use forge_engine_core::spellability::AlternativeCost;
@@ -31,6 +32,7 @@ const ANSI_DIM_GRAY: &str = "\x1b[90m";
 #[allow(dead_code)]
 const ANSI_YELLOW: &str = "\x1b[33m";
 const PREFER_ACTION_WEIGHT: usize = 3;
+const STACK_ACTION_SPACE_SKIP_THRESHOLD: usize = 20;
 
 #[derive(Clone, Debug)]
 pub enum VerboseMode {
@@ -105,12 +107,14 @@ pub struct DeterministicAgent {
 
 struct GameSnapshot {
     cards: Vec<Card>,
+    player_names: Vec<(PlayerId, String)>,
     card_names: Vec<(CardId, String)>,
     card_is_land: Vec<(CardId, bool)>,
     card_owner_controller: Vec<(CardId, (u32, u32))>,
     ability_is_mana: Vec<((CardId, usize), bool)>,
     ability_texts: Vec<((CardId, usize), String)>,
     phase: PhaseType,
+    stack_depth: usize,
 }
 
 #[derive(Clone, Copy)]
@@ -163,6 +167,12 @@ impl DeterministicAgent {
         }
     }
 
+    pub(crate) fn should_skip_priority_action_space(&self) -> bool {
+        self.last_game_snapshot
+            .as_ref()
+            .is_some_and(|snap| snap.stack_depth >= STACK_ACTION_SPACE_SKIP_THRESHOLD)
+    }
+
     pub fn rng_call_count(&self) -> u64 {
         self.rng.borrow().call_count
     }
@@ -183,6 +193,24 @@ impl DeterministicAgent {
         format!("Card({})", id.0)
     }
 
+    fn player_name(&self, id: PlayerId) -> String {
+        if let Some(ref snap) = self.last_game_snapshot {
+            for (pid, name) in &snap.player_names {
+                if *pid == id {
+                    return name.clone();
+                }
+            }
+        }
+        format!("Player{}", id.0 + 1)
+    }
+
+    fn defender_sort_key(&self, defender: DefenderId) -> (String, u32) {
+        match defender {
+            DefenderId::Player(pid) => (self.player_name(pid), pid.0),
+            DefenderId::Permanent(cid) => (self.card_name(cid), self.parity_map.id(cid)),
+        }
+    }
+
     /// Check if a card is a land from the cached snapshot.
     fn is_land(&self, id: CardId) -> bool {
         if let Some(ref snap) = self.last_game_snapshot {
@@ -196,6 +224,9 @@ impl DeterministicAgent {
     }
 
     fn is_mana_ability(&self, card_id: CardId, ability_idx: usize) -> bool {
+        if ability_idx == STATIC_ALTERNATIVE_ABILITY_INDEX {
+            return false;
+        }
         if let Some(ref snap) = self.last_game_snapshot {
             for ((cid, idx), is_mana) in &snap.ability_is_mana {
                 if *cid == card_id && *idx == ability_idx {
@@ -227,6 +258,9 @@ impl DeterministicAgent {
     }
 
     fn ability_sort_text(&self, card_id: CardId, ability_idx: usize) -> String {
+        if ability_idx == STATIC_ALTERNATIVE_ABILITY_INDEX {
+            return String::new();
+        }
         if let Some(ref snap) = self.last_game_snapshot {
             for ((cid, idx), text) in &snap.ability_texts {
                 if *cid == card_id && *idx == ability_idx {
@@ -415,14 +449,84 @@ impl DeterministicAgent {
                     Self::play_option_fallback(play),
                 )
             }
+            ActionChoice::Ability(card_id, ability_idx) => {
+                let sort_idx = if ability_idx == STATIC_ALTERNATIVE_ABILITY_INDEX {
+                    "-0001".to_string()
+                } else {
+                    format!("{ability_idx:05}")
+                };
+                format!(
+                    "AB:{}|1|{}|{}|{}",
+                    self.card_name(card_id),
+                    self.parity_map.id(card_id),
+                    sort_idx,
+                    self.ability_sort_text(card_id, ability_idx),
+                )
+            }
+        }
+    }
+
+    fn sorted_priority_action_choices(
+        &self,
+        action_space: &PriorityActionSpace,
+    ) -> Vec<(String, ActionChoice)> {
+        // Match Java harness ActionSpace: omit explicit mana abilities.
+        // Activated-ability payability comes directly from engine action-space.
+        let filtered_activatable = action_space
+            .activatable
+            .iter()
+            .copied()
+            .filter(|(card_id, ability_idx)| !self.is_mana_ability(*card_id, *ability_idx));
+        let choices = action_space
+            .playable
+            .iter()
+            .copied()
+            .map(ActionChoice::Card)
+            .chain(filtered_activatable.map(|(card_id, idx)| ActionChoice::Ability(card_id, idx)));
+        let mut choices: Vec<(String, ActionChoice)> = choices
+            .map(|choice| (self.action_sort_key(&choice), choice))
+            .collect();
+        choices.sort_by(|a, b| a.0.cmp(&b.0));
+        choices
+    }
+
+    fn format_action_choice_for_log(&self, choice: ActionChoice) -> String {
+        match choice {
+            ActionChoice::Card(play) => format!(
+                "CastSpell(PlayOption {{ card: {}@{}, mode: Normal }})",
+                self.card_name(play.card_id),
+                self.parity_map.id(play.card_id),
+            ),
             ActionChoice::Ability(card_id, ability_idx) => format!(
-                "AB:{}|1|{}|{:05}|{}",
+                "ActivateAbility(AbilityRef {{ card: {}@{}, ability_index: {} }})",
                 self.card_name(card_id),
                 self.parity_map.id(card_id),
-                ability_idx,
-                self.ability_sort_text(card_id, ability_idx),
+                if ability_idx == STATIC_ALTERNATIVE_ABILITY_INDEX {
+                    "-1".to_string()
+                } else {
+                    ability_idx.to_string()
+                },
             ),
         }
+    }
+
+    pub(crate) fn format_action_space_for_log(
+        &self,
+        action_space: &PriorityActionSpace,
+    ) -> Option<String> {
+        let mut rendered: Vec<String> = self
+            .sorted_priority_action_choices(action_space)
+            .into_iter()
+            .enumerate()
+            .map(|(idx, (_, choice))| {
+                format!("#{idx} {}", self.format_action_choice_for_log(choice))
+            })
+            .collect();
+        if rendered.is_empty() {
+            return None;
+        }
+        rendered.push("PASS".to_string());
+        Some(format!("[{}]", rendered.join(" | ")))
     }
 
     fn snapshot_card<'a>(&self, snap: &'a GameSnapshot, id: CardId) -> Option<&'a Card> {
@@ -566,6 +670,11 @@ impl PlayerAgent for DeterministicAgent {
             self.parity_map.sync_with_game(game);
         }
 
+        let player_names: Vec<(PlayerId, String)> = game
+            .players
+            .iter()
+            .map(|player| (player.id, player.name.clone()))
+            .collect();
         let (card_names, card_is_land, card_owner_controller) = {
             let _perf_scope = split_priority_snapshot
                 .then(|| {
@@ -635,12 +744,14 @@ impl PlayerAgent for DeterministicAgent {
         };
         self.last_game_snapshot = Some(GameSnapshot {
             cards,
+            player_names,
             card_names,
             card_is_land,
             card_owner_controller,
             ability_is_mana,
             ability_texts,
             phase: game.turn.phase,
+            stack_depth: game.stack.len(),
         });
     }
 
@@ -706,11 +817,22 @@ impl PlayerAgent for DeterministicAgent {
     fn choose_action(
         &mut self,
         _player: PlayerId,
-        playable: &[PlayOption],
-        _tappable_lands: &[CardId],
-        _untappable_lands: &[CardId],
-        activatable: &[(CardId, usize)],
+        action_space: Option<&PriorityActionSpace>,
+        request_action_space: &mut dyn FnMut() -> PriorityActionSpace,
     ) -> PlayerAction {
+        if self.should_skip_priority_action_space() {
+            return PlayerAction::PassPriority;
+        }
+        let requested_action_space;
+        let action_space = match action_space {
+            Some(action_space) => action_space,
+            None => {
+                requested_action_space = request_action_space();
+                &requested_action_space
+            }
+        };
+        let playable = &action_space.playable;
+        let activatable = &action_space.activatable;
         if self.is_verbose() {
             let raw_playable: Vec<String> = playable
                 .iter()
@@ -758,29 +880,7 @@ impl PlayerAgent for DeterministicAgent {
             return PlayerAction::PassPriority;
         }
 
-        // Match Java harness ActionSpace: omit explicit mana abilities.
-        // Activated-ability payability comes directly from engine action-space.
-        let filtered_activatable: Vec<(CardId, usize)> = activatable
-            .iter()
-            .copied()
-            .filter(|(card_id, ability_idx)| !self.is_mana_ability(*card_id, *ability_idx))
-            .collect();
-        let choices: Vec<ActionChoice> = playable
-            .iter()
-            .copied()
-            .map(ActionChoice::Card)
-            .chain(
-                filtered_activatable
-                    .iter()
-                    .copied()
-                    .map(|(card_id, idx)| ActionChoice::Ability(card_id, idx)),
-            )
-            .collect();
-        let mut choices: Vec<(String, ActionChoice)> = choices
-            .iter()
-            .map(|choice| (self.action_sort_key(choice), *choice))
-            .collect();
-        choices.sort_by(|a, b| a.0.cmp(&b.0));
+        let choices = self.sorted_priority_action_choices(action_space);
         if self.is_verbose() {
             let rendered: Vec<String> = choices
                 .iter()
@@ -873,6 +973,9 @@ impl PlayerAgent for DeterministicAgent {
     ) -> Vec<(CardId, DefenderId)> {
         let mut attackers = Vec::new();
         if !possible_defenders.is_empty() {
+            let sorted_defenders = choice_space::sort_native(possible_defenders, |a, b| {
+                self.defender_sort_key(*a).cmp(&self.defender_sort_key(*b))
+            });
             let sorted_available = choice_space::sort_native(available, |a, b| {
                 let an = self.card_name(*a);
                 let bn = self.card_name(*b);
@@ -891,7 +994,7 @@ impl PlayerAgent for DeterministicAgent {
                 }
                 if roll == 1 {
                     let def_idx = choice_space::pick_index(
-                        possible_defenders.len(),
+                        sorted_defenders.len(),
                         &mut self.rng.borrow_mut(),
                     );
                     if self.is_verbose() {
@@ -900,10 +1003,10 @@ impl PlayerAgent for DeterministicAgent {
                             self.player_id.0,
                             self.card_name(id),
                             def_idx,
-                            possible_defenders.len()
+                            sorted_defenders.len()
                         );
                     }
-                    attackers.push((id, possible_defenders[def_idx]));
+                    attackers.push((id, sorted_defenders[def_idx]));
                 }
             }
         }
@@ -1485,6 +1588,46 @@ impl PlayerAgent for DeterministicAgent {
                 .then_with(|| self.parity_map.id(*a).cmp(&self.parity_map.id(*b)))
         });
         gui_repro::pick_many_unique(&sorted, min, max, &mut self.rng.borrow_mut())
+    }
+
+    fn choose_tap_type_for_cost(
+        &mut self,
+        _player: PlayerId,
+        valid: &[CardId],
+        min_total_power: i32,
+        card_powers: &[(CardId, i32)],
+        card_sort_powers: &[(CardId, i32)],
+        _sa: Option<&forge_engine_core::spellability::SpellAbility>,
+    ) -> Vec<CardId> {
+        let mut candidates: Vec<(usize, CardId, i32, i32)> = valid
+            .iter()
+            .enumerate()
+            .map(|(idx, &cid)| {
+                let power = card_powers
+                    .iter()
+                    .find(|(card_id, _)| *card_id == cid)
+                    .map(|(_, power)| *power)
+                    .unwrap_or(0);
+                let sort_power = card_sort_powers
+                    .iter()
+                    .find(|(card_id, _)| *card_id == cid)
+                    .map(|(_, power)| *power)
+                    .unwrap_or(power);
+                (idx, cid, power, sort_power)
+            })
+            .collect();
+        candidates.sort_by(|a, b| b.3.cmp(&a.3).then_with(|| a.0.cmp(&b.0)));
+
+        let mut chosen = Vec::new();
+        let mut total = 0;
+        for (_, cid, power, _) in candidates {
+            chosen.push(cid);
+            total += power;
+            if total >= min_total_power {
+                break;
+            }
+        }
+        chosen
     }
 
     fn choose_entities_for_effect(

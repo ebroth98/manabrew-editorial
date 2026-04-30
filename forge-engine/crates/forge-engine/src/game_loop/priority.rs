@@ -1,5 +1,6 @@
 use super::*;
-use crate::player::actions::PlayerActionOutcome;
+use crate::player::actions::player_action::STATIC_ALTERNATIVE_ABILITY_INDEX;
+use crate::player::actions::{PlayerAction, PlayerActionOutcome};
 use crate::player::PlayerController;
 
 impl GameLoop {
@@ -147,32 +148,60 @@ impl GameLoop {
                 }
             }
 
-            // Refresh continuous static effects before enumerating the action
-            // space. Otherwise granted keywords from statics (e.g. Ashling's
-            // `AddKeyword$ Evoke:4 | AffectedZone$ Hand`) may be stale when a
-            // new card just entered hand or the zone set changed, and the
-            // first playability check misses those grants.
-            crate::staticability::layer::apply_continuous_effects(game);
-            let action_space = self.action_space(game, priority_player, is_main_phase);
+            let mut action_space = if self.provide_priority_action_space {
+                // Refresh continuous static effects before enumerating the
+                // action space. Otherwise granted keywords from statics
+                // (e.g. Ashling's `AddKeyword$ Evoke:4 | AffectedZone$ Hand`)
+                // may be stale when a new card just entered hand or the
+                // zone set changed, and the first playability check misses
+                // those grants.
+                crate::staticability::layer::apply_continuous_effects(game);
+                Some(self.action_space(game, priority_player, is_main_phase))
+            } else {
+                None
+            };
+            if action_space.as_ref().is_some_and(|space| space.is_empty()) {
+                self.invalidate_mana_undo_for_player(priority_player);
+                self.log_priority_pass(game, priority_player);
+                passed_count += 1;
+                priority_player = game.next_player(priority_player);
+                self.with_shared_state_mutation(game, agents, |_this, game, _agents| {
+                    game.turn.priority_player = priority_player;
+                });
+                continue;
+            }
             self.log_waiting_for_priority(game, priority_player);
             let action = {
                 let _perf_scope = crate::perf::ParamsLookupScopeGuard::enter(
                     crate::perf::ParamsLookupScope::PriorityChoice,
                 );
-                let agent = agents[priority_player.index()].as_mut();
-                let mut controller = PlayerController::new(game, priority_player, agent);
                 {
                     let _perf_scope = crate::perf::ParamsLookupScopeGuard::enter(
                         crate::perf::ParamsLookupScope::PrioritySnapshot,
                     );
                     crate::perf::increment_priority_snapshot();
+                    let agent = agents[priority_player.index()].as_mut();
+                    let mut controller = PlayerController::new(game, priority_player, agent);
                     controller.snapshot_state(&self.mana_pools);
                 }
-                controller.choose_priority_action(
-                    &action_space.playable,
-                    &action_space.tappable_lands,
-                    &action_space.untappable_lands,
-                    &action_space.activatable,
+                if self.is_aborted() {
+                    game.game_over = true;
+                    return;
+                }
+                let mut request_action_space = || {
+                    // Refresh continuous static effects before enumerating the
+                    // action space. Otherwise granted keywords from statics
+                    // (e.g. Ashling's `AddKeyword$ Evoke:4 | AffectedZone$ Hand`)
+                    // may be stale when a new card just entered hand or the
+                    // zone set changed, and the first playability check misses
+                    // those grants.
+                    crate::staticability::layer::apply_continuous_effects(game);
+                    self.action_space(game, priority_player, is_main_phase)
+                };
+                agents[priority_player.index()].choose_action(
+                    priority_player,
+                    action_space.as_ref(),
+                    &mut request_action_space,
                 )
             };
 
@@ -182,7 +211,16 @@ impl GameLoop {
                 continue;
             }
 
-            let priority_action = {
+            let priority_action = if action == PlayerAction::PassPriority {
+                MainPhaseAction::Pass
+            } else {
+                if action_space.is_none() {
+                    crate::staticability::layer::apply_continuous_effects(game);
+                    action_space = Some(self.action_space(game, priority_player, is_main_phase));
+                }
+                let action_space = action_space
+                    .as_ref()
+                    .expect("non-pass priority action requires action space");
                 let agent = agents[priority_player.index()].as_mut();
                 let mut controller = PlayerController::new(game, priority_player, agent);
                 match action.run(
@@ -224,6 +262,9 @@ impl GameLoop {
                     });
                 }
                 MainPhaseAction::Play(play) => {
+                    let action_space = action_space
+                        .as_ref()
+                        .expect("play priority action requires action space");
                     self.invalidate_mana_undo_for_player(priority_player);
                     self.log_priority_response(
                         game,
@@ -372,6 +413,9 @@ impl GameLoop {
                     }
                 }
                 MainPhaseAction::ActivateMana(land_id, requested_ability_idx) => {
+                    let action_space = action_space
+                        .as_ref()
+                        .expect("mana priority action requires action space");
                     self.log_priority_response(
                         game,
                         priority_player,
@@ -577,6 +621,9 @@ impl GameLoop {
                     passed_count = 0;
                 }
                 MainPhaseAction::UntapMana(land_id) => {
+                    let action_space = action_space
+                        .as_ref()
+                        .expect("mana undo priority action requires action space");
                     self.log_priority_response(
                         game,
                         priority_player,
@@ -603,6 +650,9 @@ impl GameLoop {
                     passed_count = 0;
                 }
                 MainPhaseAction::ActivateAbility(card_id, ability_idx) => {
+                    let action_space = action_space
+                        .as_ref()
+                        .expect("ability priority action requires action space");
                     self.invalidate_mana_undo_for_player(priority_player);
                     self.log_priority_response(
                         game,
@@ -626,6 +676,27 @@ impl GameLoop {
                     }
                     let activated =
                         self.with_shared_state_mutation(game, agents, |this, game, agents| {
+                            if ability_idx == STATIC_ALTERNATIVE_ABILITY_INDEX {
+                                let can_play_sorcery = is_main_phase
+                                    && priority_player == game.active_player()
+                                    && game.stack.is_empty();
+                                let (ab, sa) = this.prepare_static_alternative_activated_ability(
+                                    game,
+                                    priority_player,
+                                    card_id,
+                                    can_play_sorcery,
+                                )?;
+                                return this
+                                    .play_prepared_activated_ability_on_stack(
+                                        game,
+                                        agents,
+                                        priority_player,
+                                        card_id,
+                                        &ab,
+                                        sa,
+                                    )
+                                    .then_some(PlaySpellAbilityResult::AbilityActivated);
+                            }
                             let ability_text = game
                                 .card(card_id)
                                 .activated_abilities

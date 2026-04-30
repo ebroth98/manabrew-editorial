@@ -158,6 +158,7 @@ pub const ADDITIONAL_ABILITY_KEYS: &[&str] = &[
 ];
 
 const RESTRICTION_KEYS: &[&str] = &[
+    "Activation",
     "ActivationZone",
     "ActivationPhases",
     "SorcerySpeed",

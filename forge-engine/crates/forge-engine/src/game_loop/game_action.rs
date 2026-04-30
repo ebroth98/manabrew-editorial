@@ -2,10 +2,8 @@ use std::collections::BTreeMap;
 
 use super::cost_payment::CostPaymentContext;
 use super::*;
+use crate::player::actions::player_action::STATIC_ALTERNATIVE_ABILITY_INDEX;
 
-/// Sacrifice a batch of cards. Mirrors Java's `GameAction.sacrifice(Iterable<Card>, ...)`
-/// at `forge/forge-game/src/main/java/forge/game/GameAction.java:2104`.
-///
 /// Single chokepoint for the per-card sequence:
 ///   1. capture LKI (counter map, power, toughness) before any zone change
 ///   2. write `lki_counters` and `set_lki_power_toughness` on the card so death
@@ -21,10 +19,7 @@ use super::*;
 ///   7. move the card to its owner's graveyard with agent notifications
 ///
 /// After all cards: fire `TriggerType::SacrificedOnce` once per distinct
-/// controller, with the batch payload in `RunParams.cards`. Java fires this
-/// from the same chokepoint at `GameAction.java:2133-2138`. Cards that key off
-/// it: Tasteful Offering, Camellia, the Seedmiser.
-///
+/// controller, with the batch payload in `RunParams.cards`.
 /// Returns the cards that were actually sacrificed (skipping any that had
 /// been removed from the battlefield by an interim trigger).
 ///
@@ -100,11 +95,6 @@ pub(crate) fn perform_sacrifice(
 }
 
 /// Fire `TriggerType::SacrificedOnce` once per distinct controller in the batch.
-///
-/// Mirrors Java's batch tail at `GameAction.java:2133-2138`. Exposed separately
-/// so call sites that retain their own per-card emission loop (because they
-/// have site-specific LKI handling) can still get the batch trigger. Pass the
-/// `(controller → cards)` map you accumulated as you sacrificed.
 pub(crate) fn fire_sacrificed_once_for_batch(
     game: &mut GameState,
     trigger_handler: &mut TriggerHandler,
@@ -234,6 +224,14 @@ impl GameLoop {
             if !crate::spellability::ability_activated::can_play(&sa_for_target_check, game) {
                 return false;
             }
+            if !Self::can_activate_planeswalker_ability(
+                game,
+                card_id,
+                &sa_for_target_check,
+                can_play_sorcery,
+            ) {
+                return false;
+            }
             if let Some(tr) = sa_for_target_check.target_restrictions.as_ref() {
                 let min_targets = tr.get_min_targets(game, &sa_for_target_check);
                 if min_targets > 0
@@ -246,10 +244,6 @@ impl GameLoop {
                     return false;
                 }
             }
-            // Java parity: Equip/Attach abilities are offered if ValidTgts
-            // candidates exist, without checking CantAttach statics.  CantAttach
-            // is enforced at resolution time, not during action-space generation.
-            // This matches Java's ActionSpace.hasValidTargets() behavior.
             let needs_mana = ab
                 .cost
                 .parts
@@ -258,10 +252,6 @@ impl GameLoop {
             let reserved_sacrifices =
                 Self::fixed_reserved_sacrifices_for_action(&sa_for_target_check, card_id);
             let mana_for_check = if needs_mana {
-                // Java parity: ComputerUtilMana.canPayManaCost(...) excludes mana
-                // abilities on the same host card as the spell/ability being paid for.
-                // Without that, cards like Gilded Goose incorrectly appear able to pay
-                // for their own non-mana activated abilities.
                 mana::calculate_available_mana_excluding(
                     self.pool(player),
                     game,
@@ -330,6 +320,17 @@ impl GameLoop {
                     result.push((card_id, ab.ability_index));
                 }
             }
+            if self
+                .prepare_static_alternative_activated_ability(
+                    game,
+                    player,
+                    card_id,
+                    can_play_sorcery,
+                )
+                .is_some()
+            {
+                result.push((card_id, STATIC_ALTERNATIVE_ABILITY_INDEX));
+            }
         }
 
         // Check hand for abilities with ActivationZone$ Hand (e.g. Cycling)
@@ -377,10 +378,115 @@ impl GameLoop {
         result
     }
 
+    pub(crate) fn prepare_static_alternative_activated_ability(
+        &self,
+        game: &GameState,
+        player: PlayerId,
+        card_id: CardId,
+        can_play_sorcery: bool,
+    ) -> Option<(
+        crate::ability::activated::ActivatedAbility,
+        crate::spellability::SpellAbility,
+    )> {
+        let available_mana = mana::calculate_available_mana(self.pool(player), game, player);
+        let card = game.card(card_id);
+        if card.face_down {
+            return None;
+        }
+
+        for ab in &card.activated_abilities {
+            if ab.is_mana_ability || ab.is_unlock_door {
+                continue;
+            }
+            if ab.activation_zone.is_some_and(|zone| zone != card.zone) {
+                continue;
+            }
+            if let Some(limit) = ab.game_activation_limit {
+                let used = card
+                    .activations_this_game
+                    .get(&ab.ability_index)
+                    .copied()
+                    .unwrap_or(0);
+                if used >= limit {
+                    continue;
+                }
+            }
+            if ab.power_up
+                && card
+                    .activations_this_game
+                    .get(&ab.ability_index)
+                    .copied()
+                    .unwrap_or(0)
+                    > 0
+            {
+                continue;
+            }
+            if ab.sorcery_speed && !can_play_sorcery {
+                continue;
+            }
+
+            let mut sa =
+                crate::spellability::build_spell_ability(game, card_id, &ab.ability_text, player);
+            sa.is_activated = true;
+            if crate::staticability::static_ability_cant_be_cast::cant_be_activated_ability(
+                game,
+                &game.cards,
+                &sa,
+                card,
+                player,
+            ) {
+                continue;
+            }
+            if !crate::spellability::ability_activated::can_play(&sa, game) {
+                continue;
+            }
+            if !Self::can_activate_planeswalker_ability(game, card_id, &sa, can_play_sorcery) {
+                continue;
+            }
+            if let Some(tr) = sa.target_restrictions.as_ref() {
+                let min_targets = tr.get_min_targets(game, &sa);
+                if min_targets > 0
+                    && !crate::spellability::target_restrictions::has_candidates_in_spell_ability_chain(
+                        game, player, &sa,
+                    )
+                {
+                    continue;
+                }
+            }
+
+            let entry = crate::staticability::static_ability_alternative_cost::alternative_costs(
+                game,
+                &game.cards,
+                &sa,
+                card,
+                player,
+            )
+            .into_iter()
+            .find(|entry| {
+                let mut alt_sa = sa.clone();
+                crate::staticability::static_ability_alternative_cost::apply_alternative_cost_to_sa(
+                    &mut alt_sa,
+                    entry,
+                );
+                crate::cost::can_pay_with_ability(
+                    &entry.cost,
+                    game,
+                    &available_mana,
+                    card_id,
+                    player,
+                    Some(&alt_sa),
+                )
+            })?;
+            crate::staticability::static_ability_alternative_cost::apply_alternative_cost_to_sa(
+                &mut sa, &entry,
+            );
+            return Some((ab.clone(), sa));
+        }
+
+        None
+    }
+
     /// Resolve an ability immediately without using the stack.
-    ///
-    /// Used for abilities that Java models as `AbilityStatic` (e.g. Plot) and
-    /// for special actions like turning a Morph face up.
     pub(crate) fn resolve_immediate_ability(
         &mut self,
         game: &mut GameState,
@@ -451,7 +557,7 @@ impl GameLoop {
         card_id: CardId,
         ab: &crate::ability::activated::ActivatedAbility,
         express_choice: Option<u16>,
-    ) {
+    ) -> bool {
         let api = crate::ability::api_type::ApiType::smart_value_of(ab.ability_kind.as_str());
         if !self.pay_ability_cost(
             game,
@@ -464,7 +570,7 @@ impl GameLoop {
             CostPaymentContext::ManaAbility,
             None,
         ) {
-            return;
+            return false;
         }
 
         // If this is a ManaReflected ability, delegate to the effect resolver
@@ -495,7 +601,7 @@ impl GameLoop {
                 },
                 false,
             );
-            return;
+            return true;
         }
 
         // Build metadata params for produced mana
@@ -571,7 +677,7 @@ impl GameLoop {
                     false,
                 );
                 self.mark_mana_undo_disqualified();
-                return;
+                return true;
             }
 
             // Determine mana production (color choice, Amount$, replacement effects)
@@ -592,15 +698,7 @@ impl GameLoop {
             }
         }
 
-        // Resolve SubAbility chain (e.g. DealDamage on pain lands)
-        if let Some(sub_svar_name) = ab.sub_ability.as_deref() {
-            if let Some(sub_text) = game.card(card_id).svars.get(sub_svar_name).cloned() {
-                let sub_sa =
-                    crate::spellability::build_spell_ability(game, card_id, &sub_text, player);
-                self.resolve_single_effect(game, agents, &sub_sa, None);
-                self.mark_mana_undo_disqualified();
-            }
-        }
+        self.resolve_mana_sub_ability(game, agents, player, card_id, ab.ability_index);
 
         // Fire TapsForMana trigger (mana abilities produce mana)
         self.trigger_handler.run_trigger(
@@ -614,7 +712,6 @@ impl GameLoop {
             false,
         );
 
-        // Fire ManaAdded trigger (mirrors Java AbilityManaPart.produceMana)
         self.trigger_handler.run_trigger(
             TriggerType::ManaAdded,
             RunParams {
@@ -628,7 +725,6 @@ impl GameLoop {
 
         // Resolve mana-producing triggers inline (Static$ True triggers like Utopia Sprawl).
         // These fire from TapsForMana and produce extra mana without using the stack.
-        // Mirrors Java's AbilityStatic resolution path for mana triggers.
         let pending = self.trigger_handler.run_waiting_triggers(game);
         if !pending.is_empty() {
             self.mark_mana_undo_disqualified();
@@ -636,6 +732,7 @@ impl GameLoop {
         for pt in pending {
             self.resolve_single_effect(game, agents, &pt.entry.spell_ability, None);
         }
+        true
     }
 
     /// Activate a non-mana ability: choose targets, pay costs, put on stack.
@@ -650,8 +747,6 @@ impl GameLoop {
         let ability_text = ab.ability_text.clone();
 
         // Build full SpellAbility chain (including SubAbility$ links) and choose targets.
-        // This mirrors Java activated ability resolution for abilities like Walking Bulwark,
-        // where the root AB$ Pump resolves a DB$ Effect sub-ability.
         let mut sa = crate::spellability::build_spell_ability(game, card_id, &ability_text, player);
         sa.is_activated = true;
         if sa.api == Some(crate::ability::api_type::ApiType::Charm)
@@ -687,6 +782,46 @@ impl GameLoop {
         } else {
             ab.cost.clone()
         };
+        self.finish_activated_ability_on_stack(game, agents, player, card_id, ab, sa, adjusted_cost)
+    }
+
+    pub(crate) fn play_prepared_activated_ability_on_stack(
+        &mut self,
+        game: &mut GameState,
+        agents: &mut [Box<dyn PlayerAgent>],
+        player: PlayerId,
+        card_id: CardId,
+        ab: &crate::ability::activated::ActivatedAbility,
+        mut sa: crate::spellability::SpellAbility,
+    ) -> bool {
+        if sa.api == Some(crate::ability::api_type::ApiType::Charm)
+            && !crate::ability::effects::charm_effect::make_choices_precast(game, agents, &mut sa)
+        {
+            return false;
+        }
+        if !sa.setup_targets(game, agents, &self.mana_pools) {
+            return false;
+        }
+        crate::ability::effects::emit_targeting_triggers_for_sa(
+            &mut self.trigger_handler,
+            game,
+            card_id,
+            &sa,
+        );
+        let adjusted_cost = sa.pay_costs.clone().unwrap_or_else(|| ab.cost.clone());
+        self.finish_activated_ability_on_stack(game, agents, player, card_id, ab, sa, adjusted_cost)
+    }
+
+    fn finish_activated_ability_on_stack(
+        &mut self,
+        game: &mut GameState,
+        agents: &mut [Box<dyn PlayerAgent>],
+        player: PlayerId,
+        card_id: CardId,
+        ab: &crate::ability::activated::ActivatedAbility,
+        mut sa: crate::spellability::SpellAbility,
+        adjusted_cost: crate::cost::Cost,
+    ) -> bool {
         let host_before_payment = game.card(card_id).clone();
         let spell_desc = ab.spell_description_lower.as_str();
         let is_vehicle_crew = host_before_payment.type_line.has_subtype("Vehicle")
@@ -738,11 +873,19 @@ impl GameLoop {
             .collect();
 
         // Track activation count (for PowerUp once-per-game)
-        game.card_mut(card_id)
-            .activations_this_game
-            .entry(ab.ability_index)
-            .and_modify(|c| *c += 1)
-            .or_insert(1);
+        let loyalty_limit_increase = sa.ir.pw_ability
+            && crate::staticability::static_ability_num_loyalty_act::limit_increase(
+                &game.cards,
+                game.card(card_id),
+            );
+        {
+            let card = game.card_mut(card_id);
+            card.add_ability_activated_for_with_limit_increase(Some(&sa), loyalty_limit_increase);
+            card.activations_this_game
+                .entry(ab.ability_index)
+                .and_modify(|c| *c += 1)
+                .or_insert(1);
+        }
 
         // Push to stack
         let card_name = game.card(card_id).card_name.clone();
@@ -827,6 +970,48 @@ impl GameLoop {
                 }
             }
         }
+        true
+    }
+
+    fn can_activate_planeswalker_ability(
+        game: &GameState,
+        card_id: CardId,
+        sa: &crate::spellability::SpellAbility,
+        can_play_sorcery: bool,
+    ) -> bool {
+        if !sa.ir.pw_ability {
+            return true;
+        }
+        if !can_play_sorcery {
+            return false;
+        }
+
+        let card = game.card(card_id);
+        let num_activates = card.planeswalker_abilities_activated as i32;
+        let mut limit = if crate::staticability::static_ability_num_loyalty_act::limit_increase(
+            &game.cards,
+            card,
+        ) {
+            2
+        } else {
+            1
+        };
+
+        if num_activates >= limit {
+            limit += crate::staticability::static_ability_num_loyalty_act::additional_activations(
+                &game.cards,
+                card,
+                Some(sa),
+            ) - if limit == 1 || card.planeswalker_activation_limit_used() {
+                0
+            } else {
+                1
+            };
+            if num_activates >= limit {
+                return false;
+            }
+        }
+
         true
     }
 }

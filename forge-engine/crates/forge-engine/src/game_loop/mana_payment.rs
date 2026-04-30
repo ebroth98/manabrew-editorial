@@ -74,7 +74,7 @@ where
         CardId,
         &ActivatedAbility,
         Option<u16>,
-    ),
+    ) -> bool,
     FBasicLandTap: FnMut(&mut GameState, PlayerId, CardId),
     FUndoable: FnMut(&GameState, &[ManaPool], PlayerId) -> Vec<CardId>,
     FBeginUndo: FnMut(&GameState, &[ManaPool], PlayerId, CardId) -> TUndo,
@@ -156,11 +156,6 @@ where
                         })
                 };
                 if let Some(ab) = mana_ab {
-                    executed_actions.push(ManaCostAction::TapLand {
-                        card_id: land_id,
-                        mana_ability_index: Some(mana_ability_index.unwrap_or(0)),
-                        express_choice,
-                    });
                     // Snapshot BEFORE the ability produces mana so we can
                     // capture everything this tap adds to the pool —
                     // base production, aura-granted mana, doublers, and
@@ -171,7 +166,7 @@ where
                     let player_idx = session.player.index();
                     let undo_record = begin_mana_undo(game, mana_pools, session.player, land_id);
                     let pool_snapshot = mana_pools[player_idx].begin_tap_tracking();
-                    resolve_mana_ability(
+                    let resolved = resolve_mana_ability(
                         game,
                         agents,
                         mana_pools,
@@ -182,7 +177,14 @@ where
                     );
                     let produced = mana_pools[player_idx].end_tap_tracking(&pool_snapshot);
                     let produced_count = produced.len();
-                    if !produced.is_empty() {
+                    if resolved {
+                        executed_actions.push(ManaCostAction::TapLand {
+                            card_id: land_id,
+                            mana_ability_index: Some(mana_ability_index.unwrap_or(0)),
+                            express_choice,
+                        });
+                    }
+                    if resolved && !produced.is_empty() {
                         game.card_mut(land_id).last_mana_produced = Some(produced);
                     }
                     finish_mana_undo(game, mana_pools, undo_record, produced_count);
@@ -218,22 +220,11 @@ where
             ManaCostAction::Pay { auto } => {
                 if auto {
                     if let Some(mut auto_trace) = auto_pay(game, agents, mana_pools, session) {
-                        // Java parity: auto-pay may return a partial-tap trace
-                        // ending in `Cancel` when the cost cannot be fully
-                        // covered. Detect that terminal marker and cancel the
-                        // session — but keep the partial taps recorded so the
-                        // agent observes `[TapLand …, Cancel]`, matching
-                        // `AutoPay.payManaCostWithTrace`'s behaviour. Lands
-                        // stay tapped (auto-tap mutated `game` directly), so
-                        // we restore only the saved mana pool.
                         let cancelled = matches!(auto_trace.last(), Some(ManaCostAction::Cancel));
                         executed_actions.append(&mut auto_trace);
                         if cancelled {
-                            // The generic session reports the same partial
-                            // trace Java reports. Spell casting wraps this in
-                            // a cast-level rollback, so failed casts still
-                            // restore the game to the pre-announcement state.
                             notify_mana_payment_resolved(agents, session.player, &executed_actions);
+                            mana_pools[session.player.index()] = saved_pool.clone();
                             return false;
                         }
                         executed_actions.push(ManaCostAction::Pay { auto: false });
@@ -320,6 +311,19 @@ impl GameLoop {
                         player,
                         "Exile",
                         "Exile for mana",
+                        None,
+                        Some(crate::ability::api_type::ApiType::Mana),
+                    ) {
+                        Some(source_id)
+                    } else {
+                        None
+                    }
+                }
+                mana::ManaPayCallback::ConfirmPayLife(source_id) => {
+                    if agents[player.index()].confirm_payment(
+                        player,
+                        "PayLife",
+                        "Pay life for mana",
                         None,
                         Some(crate::ability::api_type::ApiType::Mana),
                     ) {
@@ -417,7 +421,7 @@ impl GameLoop {
                     card_id,
                     ab,
                     express_choice,
-                );
+                )
             },
             |game, player, land_id| unsafe {
                 let this = &mut *self_ptr;

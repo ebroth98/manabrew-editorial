@@ -278,6 +278,8 @@ pub struct StaticAbilityIr {
     pub add_keyword_text: Option<String>,
     pub add_ability_text: Option<String>,
     pub add_trigger_text: Option<String>,
+    pub add_static_ability_text: Option<String>,
+    pub adjust_land_plays_text: Option<String>,
     pub type_filter: Option<String>,
     pub mana_conversion: Option<String>,
     pub except_cause_text: Option<String>,
@@ -450,6 +452,8 @@ impl StaticAbilityIr {
             add_keyword_text: raw.get(keys::ADD_KEYWORD).map(String::to_string),
             add_ability_text: raw.get(keys::ADD_ABILITY).map(String::to_string),
             add_trigger_text: raw.get(keys::ADD_TRIGGER).map(String::to_string),
+            add_static_ability_text: raw.get("AddStaticAbility").map(String::to_string),
+            adjust_land_plays_text: raw.get(keys::ADJUST_LAND_PLAYS).map(String::to_string),
             type_filter: raw.get(keys::TYPE).map(String::to_string),
             mana_conversion: raw.get(keys::MANA_CONVERSION).map(String::to_string),
             except_cause_text: raw.get(keys::EXCEPT_CAUSE).map(String::to_string),
@@ -1052,11 +1056,14 @@ fn shares_creature_type_with(a: &Card, b: &Card) -> bool {
 /// Reference: Java `StaticAbility.java` in `forge/game/staticability/`.
 pub fn parse_static_ability(raw: &str) -> Option<StaticAbility> {
     let trimmed = raw.trim();
-    // Accept "S$ ..." or "S: ..." prefixes (both appear in Forge card files).
+    // Accept "S$ ..." or "S: ..." prefixes from card script static lines,
+    // plus bare "Mode$ ..." SVar payloads used by AddStaticAbility$.
     let body = if let Some(rest) = trimmed.strip_prefix("S$ ") {
         rest
     } else if let Some(rest) = trimmed.strip_prefix("S:") {
         rest.trim_start()
+    } else if trimmed.starts_with("Mode$ ") {
+        trimmed
     } else {
         return None;
     };

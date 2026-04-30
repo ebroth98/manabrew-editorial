@@ -34,7 +34,7 @@
 
 use std::collections::BTreeMap;
 
-use forge_foundation::ZoneType;
+use forge_foundation::{CardTypeLine, CoreType, Supertype, ZoneType};
 
 use crate::agent::PlayerAgent;
 use crate::game::GameState;
@@ -136,6 +136,19 @@ fn push_unique_layer(layers: &mut Vec<Layer>, layer: Layer) {
     }
 }
 
+fn type_line_has_token(type_line: &CardTypeLine, token: &str) -> bool {
+    if let Some(st) = Supertype::from_name(token) {
+        return type_line.supertypes.contains(&st);
+    }
+    if let Some(ct) = CoreType::from_name(token) {
+        return type_line.core_types.contains(&ct);
+    }
+    type_line
+        .subtypes
+        .iter()
+        .any(|subtype| subtype.eq_ignore_ascii_case(token))
+}
+
 /// Recompute all continuously-applied static-ability effects for the current
 /// game state.
 ///
@@ -174,14 +187,20 @@ pub fn apply_continuous_effects(game: &mut GameState) {
         }
         card.granted_keywords.clear();
         card.granted_svars.clear();
-        // Remove any subtypes previously added by AddType$ statics so this
+        // Remove any type tokens previously added by AddType$ statics so this
         // cycle starts from the intrinsic type line.
         if !card.static_added_subtypes.is_empty() {
             let added = std::mem::take(&mut card.static_added_subtypes);
-            card.type_line.subtypes.retain(|s| !added.contains(s));
+            for ty in added {
+                crate::card::card_state::remove_type(card, &ty);
+            }
         }
         card.cant_attack_static = false;
         card.cant_block_static = false;
+    }
+    for player in game.players.iter_mut() {
+        player.max_land_plays_per_turn = 1;
+        player.unlimited_land_plays = false;
     }
 
     // ── 1b. Keyword-derived restrictions ────────────────────────────────
@@ -199,246 +218,265 @@ pub fn apply_continuous_effects(game: &mut GameState) {
     let mut pending: Vec<PendingEffect> = Vec::new();
     let mut cant_attack_targets: Vec<CardId> = Vec::new();
     let mut cant_block_targets: Vec<CardId> = Vec::new();
+    let mut granted_player_rules: Vec<(CardId, StaticAbility)> = Vec::new();
 
-    for player_idx in 0..game.player_order.len() {
-        let player = game.player_order[player_idx];
-        for &source_id in game.cards_in_zone(ZoneType::Battlefield, player) {
-            let source_card = game.card(source_id);
-            let static_ability_count = source_card.static_abilities.len();
+    let source_ids: Vec<CardId> = game.cards.iter().map(|card| card.id).collect();
+    for source_id in source_ids {
+        let static_ability_count = game.card(source_id).static_abilities.len();
 
-            for sa_idx in 0..static_ability_count {
-                let source_card = game.card(source_id);
-                let sa = &source_card.static_abilities[sa_idx];
+        for sa_idx in 0..static_ability_count {
+            let source_card = game.card(source_id).clone();
+            let sa = game.card(source_id).static_abilities[sa_idx].clone();
 
-                // Full static-ability condition gate (IsPresent$, CheckSVar$, Condition$, etc.).
-                // Mirrors Java static ability checks before applying continuous effects.
-                if !sa.check_conditions(source_card, game) {
-                    continue;
-                }
+            // Full static-ability condition gate (IsPresent$, CheckSVar$, Condition$, etc.).
+            // Mirrors Java static ability checks before applying continuous effects.
+            if !sa.check_conditions(&source_card, game) {
+                continue;
+            }
 
-                // CharacteristicDefining statics always affect only the host card.
-                // Mirrors Java StaticAbilityContinuous.getAffectedCards() line 1036.
-                let is_cda = sa.ir.characteristic_defining;
+            if sa.check_mode(&StaticMode::Continuous) {
+                apply_player_rules_effects(game, source_id, &sa);
+            }
 
-                // Determine which cards are affected by this static ability.
-                let affected_str = sa
-                    .ir
-                    .affected_text
-                    .as_deref()
-                    .or(sa.ir.valid_cards_text.as_deref())
-                    .or(sa.ir.valid_card_text.as_deref())
-                    .unwrap_or("Creature.YouControl");
+            // CharacteristicDefining statics always affect only the host card.
+            // Mirrors Java StaticAbilityContinuous.getAffectedCards() line 1036.
+            let is_cda = sa.ir.characteristic_defining;
 
-                let mut apply_to_target = |target: CardId| {
-                    if sa.check_mode(&StaticMode::Continuous) {
-                        if let Some(gain_control) = sa.ir.gain_control_text.as_deref() {
-                            let new_controller = match gain_control {
-                                "You" | "YouCtrl" => Some(source_card.controller),
-                                "Opponent" => Some(game.opponent_of(source_card.controller)),
-                                _ => None,
-                            };
-                            if let Some(controller) = new_controller {
-                                pending.push(PendingEffect {
-                                    layer: Layer::Control,
-                                    target,
-                                    kind: EffectKind::SetController { controller },
-                                });
-                            }
-                        }
+            // Determine which cards are affected by this static ability.
+            let affected_str = sa
+                .ir
+                .affected_text
+                .as_deref()
+                .or(sa.ir.valid_cards_text.as_deref())
+                .or(sa.ir.valid_card_text.as_deref())
+                .unwrap_or("Creature.YouControl");
 
-                        let add_power = sa.ir.add_power_text.as_deref();
-                        let add_toughness = sa.ir.add_toughness_text.as_deref();
-                        if add_power.is_some() || add_toughness.is_some() {
-                            let p = resolve_add_pt_value(game, source_id, add_power);
-                            let t = resolve_add_pt_value(game, source_id, add_toughness);
+            let mut apply_to_target = |target: CardId| {
+                if sa.check_mode(&StaticMode::Continuous) {
+                    if let Some(gain_control) = sa.ir.gain_control_text.as_deref() {
+                        let new_controller = match gain_control {
+                            "You" | "YouCtrl" => Some(source_card.controller),
+                            "Opponent" => Some(game.opponent_of(source_card.controller)),
+                            _ => None,
+                        };
+                        if let Some(controller) = new_controller {
                             pending.push(PendingEffect {
-                                layer: Layer::ModifyPT,
+                                layer: Layer::Control,
                                 target,
-                                kind: EffectKind::AddPT {
-                                    power: p,
-                                    toughness: t,
-                                },
+                                kind: EffectKind::SetController { controller },
                             });
                         }
+                    }
 
-                        let add_type = sa.ir.add_type_text.as_deref();
-                        let source = game.card(source_id);
-                        for added_type in resolve_added_types(source, add_type) {
+                    let add_power = sa.ir.add_power_text.as_deref();
+                    let add_toughness = sa.ir.add_toughness_text.as_deref();
+                    if add_power.is_some() || add_toughness.is_some() {
+                        let p = resolve_add_pt_value(game, source_id, add_power);
+                        let t = resolve_add_pt_value(game, source_id, add_toughness);
+                        pending.push(PendingEffect {
+                            layer: Layer::ModifyPT,
+                            target,
+                            kind: EffectKind::AddPT {
+                                power: p,
+                                toughness: t,
+                            },
+                        });
+                    }
+
+                    let add_type = sa.ir.add_type_text.as_deref();
+                    let source = game.card(source_id);
+                    for added_type in resolve_added_types(source, add_type) {
+                        pending.push(PendingEffect {
+                            layer: Layer::Type,
+                            target,
+                            kind: EffectKind::AddType(added_type),
+                        });
+                    }
+
+                    let set_power = sa.ir.set_power_text.as_deref();
+                    let set_toughness = sa.ir.set_toughness_text.as_deref();
+                    if set_power.is_some() || set_toughness.is_some() {
+                        let sp = resolve_set_pt_value(game, source_id, set_power);
+                        let st = resolve_set_pt_value(game, source_id, set_toughness);
+                        // Java parity: CharacteristicDefining$ True routes
+                        // SetP/T through layer 7a, otherwise 7b.
+                        let layer = if is_cda {
+                            Layer::Characteristic
+                        } else {
+                            Layer::SetPT
+                        };
+                        pending.push(PendingEffect {
+                            layer,
+                            target,
+                            kind: EffectKind::SetPT {
+                                power: sp,
+                                toughness: st,
+                            },
+                        });
+                    }
+
+                    if let Some(kws) = sa.ir.add_keyword_text.as_deref() {
+                        // AddKeyword$ supports multiple keywords separated by " & ".
+                        for kw in kws.split('&').map(str::trim).filter(|s| !s.is_empty()) {
+                            pending.push(PendingEffect {
+                                layer: Layer::Ability,
+                                target,
+                                kind: EffectKind::GrantKeyword(kw.to_string()),
+                            });
+                        }
+                    }
+
+                    // AddType$ — grant a type/subtype (layer 4). Supports
+                    // comma or " & " separated lists, e.g. Yavimaya, Cradle of
+                    // Growth: AddType$ Forest.
+                    if let Some(raw) = add_type {
+                        for t in raw.split([',', '&']).map(str::trim) {
+                            if t.is_empty() {
+                                continue;
+                            }
                             pending.push(PendingEffect {
                                 layer: Layer::Type,
                                 target,
-                                kind: EffectKind::AddType(added_type),
+                                kind: EffectKind::AddType(t.to_string()),
                             });
                         }
+                    }
 
-                        let set_power = sa.ir.set_power_text.as_deref();
-                        let set_toughness = sa.ir.set_toughness_text.as_deref();
-                        if set_power.is_some() || set_toughness.is_some() {
-                            let sp = resolve_set_pt_value(game, source_id, set_power);
-                            let st = resolve_set_pt_value(game, source_id, set_toughness);
-                            // Java parity: CharacteristicDefining$ True routes
-                            // SetP/T through layer 7a, otherwise 7b.
-                            let layer = if is_cda {
-                                Layer::Characteristic
-                            } else {
-                                Layer::SetPT
-                            };
+                    // AddAbility$ — grant an activated ability to the affected card.
+                    // The value is an SVar name on the source card containing the ability text.
+                    // E.g. Abundant Growth: AddAbility$ AbundantGrowthTap
+                    //   SVar:AbundantGrowthTap:AB$ Mana | Cost$ T | Produced$ Any
+                    if let Some(svar_name) = sa.ir.add_ability_text.as_deref() {
+                        if let Some(ab_text) = source_card.svars.get(svar_name).cloned() {
                             pending.push(PendingEffect {
-                                layer,
+                                layer: Layer::Ability,
                                 target,
-                                kind: EffectKind::SetPT {
-                                    power: sp,
-                                    toughness: st,
+                                kind: EffectKind::GrantAbility {
+                                    text: ab_text,
+                                    svars: source_card.svars.clone(),
                                 },
                             });
                         }
+                    }
 
-                        if let Some(kws) = sa.ir.add_keyword_text.as_deref() {
-                            // AddKeyword$ supports multiple keywords separated by " & ".
-                            for kw in kws.split('&').map(str::trim).filter(|s| !s.is_empty()) {
+                    if let Some(add_trigger) = sa.ir.add_trigger_text.as_deref() {
+                        for svar_name in add_trigger
+                            .split(" & ")
+                            .map(str::trim)
+                            .filter(|s| !s.is_empty())
+                        {
+                            if let Some(trig_text) = source_card.svars.get(svar_name).cloned() {
                                 pending.push(PendingEffect {
                                     layer: Layer::Ability,
                                     target,
-                                    kind: EffectKind::GrantKeyword(kw.to_string()),
-                                });
-                            }
-                        }
-
-                        // AddType$ — grant a type/subtype (layer 4). Supports
-                        // comma or " & " separated lists, e.g. Yavimaya, Cradle of
-                        // Growth: AddType$ Forest.
-                        if let Some(raw) = add_type {
-                            for t in raw.split([',', '&']).map(str::trim) {
-                                if t.is_empty() {
-                                    continue;
-                                }
-                                pending.push(PendingEffect {
-                                    layer: Layer::Type,
-                                    target,
-                                    kind: EffectKind::AddType(t.to_string()),
-                                });
-                            }
-                        }
-
-                        // AddAbility$ — grant an activated ability to the affected card.
-                        // The value is an SVar name on the source card containing the ability text.
-                        // E.g. Abundant Growth: AddAbility$ AbundantGrowthTap
-                        //   SVar:AbundantGrowthTap:AB$ Mana | Cost$ T | Produced$ Any
-                        if let Some(svar_name) = sa.ir.add_ability_text.as_deref() {
-                            let source = game.card(source_id);
-                            if let Some(ab_text) = source.svars.get(svar_name).cloned() {
-                                pending.push(PendingEffect {
-                                    layer: Layer::Ability,
-                                    target,
-                                    kind: EffectKind::GrantAbility {
-                                        text: ab_text,
-                                        svars: source.svars.clone(),
-                                    },
-                                });
-                            }
-                        }
-
-                        if let Some(add_trigger) = sa.ir.add_trigger_text.as_deref() {
-                            let source = game.card(source_id);
-                            for svar_name in add_trigger
-                                .split(" & ")
-                                .map(str::trim)
-                                .filter(|s| !s.is_empty())
-                            {
-                                if let Some(trig_text) = source.svars.get(svar_name).cloned() {
-                                    pending.push(PendingEffect {
-                                        layer: Layer::Ability,
-                                        target,
-                                        kind: EffectKind::GrantTrigger {
-                                            text: trig_text,
-                                            svars: source.svars.clone(),
-                                        },
-                                    });
-                                }
-                            }
-                        }
-
-                        let source = game.card(source_id);
-                        for subtype in resolve_added_basic_land_types(source, add_type) {
-                            if let Some(ab_text) = basic_land_mana_ability_text(&subtype) {
-                                pending.push(PendingEffect {
-                                    layer: Layer::Ability,
-                                    target,
-                                    kind: EffectKind::GrantAbility {
-                                        text: ab_text.to_string(),
-                                        svars: BTreeMap::new(),
+                                    kind: EffectKind::GrantTrigger {
+                                        text: trig_text,
+                                        svars: source_card.svars.clone(),
                                     },
                                 });
                             }
                         }
                     }
 
-                    if sa.check_mode(&StaticMode::CantAttack) {
-                        cant_attack_targets.push(target);
-                    }
-                    if sa.check_mode(&StaticMode::CantBlock) {
-                        cant_block_targets.push(target);
-                    }
-                };
-
-                if is_cda {
-                    // CDAs always affect only the source card itself.
-                    if source_card.zone == ZoneType::Battlefield {
-                        apply_to_target(source_id);
-                    }
-                } else if affected_str.eq_ignore_ascii_case("Card.Self")
-                    || affected_str.starts_with("Card.Self+")
-                {
-                    // Self-referencing static: only affects the source card itself,
-                    // but qualifiers after "+" must still be checked (e.g.
-                    // "Card.Self+counters_GE2_CHARGE" only matches when the card
-                    // has >=2 charge counters). Mirrors Java's
-                    // StaticAbilityContinuous.getAffectedCards() which validates
-                    // all qualifiers even for self-referencing statics.
-                    if source_card.zone == ZoneType::Battlefield
-                        && crate::card::valid_filter::matches_valid_card(
-                            affected_str,
-                            source_card,
-                            source_card,
-                        )
-                    {
-                        apply_to_target(source_id);
-                    }
-                } else if affected_str.eq_ignore_ascii_case("Card.EnchantedBy")
-                    || affected_str.contains(".EquippedBy")
-                    || affected_str.contains(".EnchantedBy")
-                {
-                    // Aura / Equipment static effects: affect what this source is
-                    // attached to. Java treats EquippedBy and EnchantedBy
-                    // identically: both resolve to the entity the source is
-                    // attached to. (e.g. Short Sword: "Creature.EquippedBy",
-                    // Control Magic: "Card.EnchantedBy")
-                    if let Some(cid) = source_card.attached_to {
-                        if game.card(cid).zone == ZoneType::Battlefield {
-                            apply_to_target(cid);
+                    if let Some(add_static) = sa.ir.add_static_ability_text.as_deref() {
+                        for svar_name in add_static
+                            .split(" & ")
+                            .map(str::trim)
+                            .filter(|s| !s.is_empty())
+                        {
+                            if let Some(static_text) = source_card.svars.get(svar_name).cloned() {
+                                if let Some(granted) =
+                                    crate::staticability::parse_static_ability(&static_text)
+                                {
+                                    granted_player_rules.push((target, granted));
+                                }
+                            }
                         }
                     }
+
+                    for subtype in resolve_added_basic_land_types(&source_card, add_type) {
+                        if let Some(ab_text) = basic_land_mana_ability_text(&subtype) {
+                            pending.push(PendingEffect {
+                                layer: Layer::Ability,
+                                target,
+                                kind: EffectKind::GrantAbility {
+                                    text: ab_text.to_string(),
+                                    svars: BTreeMap::new(),
+                                },
+                            });
+                        }
+                    }
+                }
+
+                if sa.check_mode(&StaticMode::CantAttack) {
+                    cant_attack_targets.push(target);
+                }
+                if sa.check_mode(&StaticMode::CantBlock) {
+                    cant_block_targets.push(target);
+                }
+            };
+
+            if is_cda {
+                // CDAs always affect only the source card itself.
+                if source_card.zone == ZoneType::Battlefield {
+                    apply_to_target(source_id);
+                }
+            } else if affected_str.eq_ignore_ascii_case("Card.Self")
+                || affected_str.starts_with("Card.Self+")
+            {
+                // Self-referencing static: only affects the source card itself,
+                // but qualifiers after "+" must still be checked (e.g.
+                // "Card.Self+counters_GE2_CHARGE" only matches when the card
+                // has >=2 charge counters). Mirrors Java's
+                // StaticAbilityContinuous.getAffectedCards() which validates
+                // all qualifiers even for self-referencing statics.
+                if source_card.zone == ZoneType::Battlefield
+                    && crate::card::valid_filter::matches_valid_card(
+                        affected_str,
+                        &source_card,
+                        &source_card,
+                    )
+                {
+                    apply_to_target(source_id);
+                }
+            } else if affected_str.eq_ignore_ascii_case("Card.EnchantedBy")
+                || affected_str.contains(".EquippedBy")
+                || affected_str.contains(".EnchantedBy")
+            {
+                // Aura / Equipment static effects: affect what this source is
+                // attached to. Java treats EquippedBy and EnchantedBy
+                // identically: both resolve to the entity the source is
+                // attached to. (e.g. Short Sword: "Creature.EquippedBy",
+                // Control Magic: "Card.EnchantedBy")
+                if let Some(cid) = source_card.attached_to {
+                    if game.card(cid).zone == ZoneType::Battlefield {
+                        apply_to_target(cid);
+                    }
+                }
+            } else {
+                let filter = CardFilter::parse(affected_str);
+                // AffectedZone$ overrides the default Battlefield filter (e.g.
+                // Ashling, the Limitless grants Evoke:4 to Elementals in Hand).
+                let affected_zones = if sa.ir.affected_zones.is_empty() {
+                    None
                 } else {
-                    let filter = CardFilter::parse(affected_str);
-                    // AffectedZone$ overrides the default Battlefield filter (e.g.
-                    // Ashling, the Limitless grants Evoke:4 to Elementals in Hand).
-                    let affected_zones = if sa.ir.affected_zones.is_empty() {
-                        None
-                    } else {
-                        Some(sa.ir.affected_zones.as_slice())
+                    Some(sa.ir.affected_zones.as_slice())
+                };
+                for card in &game.cards {
+                    let zone_matches = match &affected_zones {
+                        Some(zones) => zones.contains(&card.zone),
+                        None => card.zone == ZoneType::Battlefield,
                     };
-                    for card in &game.cards {
-                        let zone_matches = match &affected_zones {
-                            Some(zones) => zones.contains(&card.zone),
-                            None => card.zone == ZoneType::Battlefield,
-                        };
-                        if zone_matches && filter.matches_with_game(card, source_card, game) {
-                            apply_to_target(card.id);
-                        }
+                    if zone_matches && filter.matches_with_game(card, &source_card, game) {
+                        apply_to_target(card.id);
                     }
                 }
             }
         }
+    }
+
+    for (source_id, granted) in granted_player_rules {
+        apply_player_rules_effects(game, source_id, &granted);
     }
 
     for target in cant_attack_targets {
@@ -507,8 +545,8 @@ pub fn apply_continuous_effects(game: &mut GameState) {
             }
             EffectKind::AddType(t) => {
                 let card = &mut game.cards[effect.target.index()];
-                if !card.type_line.subtypes.iter().any(|s| s == &t) {
-                    card.type_line.subtypes.push(t.clone());
+                if !type_line_has_token(&card.type_line, &t) {
+                    card.add_type(&t);
                     card.static_added_subtypes.push(t);
                 }
             }
@@ -553,6 +591,73 @@ pub fn apply_continuous_effects(game: &mut GameState) {
             card.generate_basic_land_mana_abilities();
         }
     }
+}
+
+fn apply_player_rules_effects(game: &mut GameState, source_id: CardId, sa: &StaticAbility) {
+    let Some(adjust_land_plays) = sa.ir.adjust_land_plays_text.as_deref() else {
+        return;
+    };
+    let affected_players = affected_players_for_static(game, source_id, sa);
+    if affected_players.is_empty() {
+        return;
+    }
+    if adjust_land_plays.eq_ignore_ascii_case("Unlimited") {
+        for player in affected_players {
+            game.player_mut(player).unlimited_land_plays = true;
+        }
+        return;
+    }
+    let amount = resolve_rules_amount(game, source_id, adjust_land_plays);
+    for player in affected_players {
+        game.player_mut(player).max_land_plays_per_turn += amount;
+    }
+}
+
+fn affected_players_for_static(
+    game: &GameState,
+    source_id: CardId,
+    sa: &StaticAbility,
+) -> Vec<PlayerId> {
+    let Some(affected) = sa.ir.affected_text.as_deref() else {
+        return Vec::new();
+    };
+    let source = game.card(source_id);
+    game.player_order
+        .iter()
+        .copied()
+        .filter(|&player| {
+            !sa.ignore_effect_players.contains(&player)
+                && crate::card::valid_filter::matches_valid(
+                    affected,
+                    None,
+                    Some(player),
+                    source,
+                    source.controller,
+                )
+        })
+        .collect()
+}
+
+fn resolve_rules_amount(game: &GameState, source_id: CardId, value: &str) -> i32 {
+    if let Ok(n) = value.trim().parse::<i32>() {
+        return n;
+    }
+    let source = game.card(source_id);
+    if let Some(svar_expr) = source.svars.get(value.trim()) {
+        if svar_expr.starts_with("Count$") {
+            return crate::ability::effects::resolve_count_svar(
+                svar_expr,
+                game,
+                source_id,
+                source.controller,
+            );
+        }
+        return crate::ability::effects::evaluate_svar(
+            svar_expr,
+            &crate::spellability::SpellAbility::new_empty(Some(source_id), source.controller),
+        );
+    }
+    0
 }
 
 /// Apply ETB-tapped effects to `entering_card` as it enters the battlefield.
@@ -966,6 +1071,24 @@ mod tests {
         id
     }
 
+    fn add_effect(game: &mut GameState, owner: PlayerId, abilities: Vec<String>) -> CardId {
+        let card = Card::new(
+            CardId(0),
+            "Effect".to_string(),
+            owner,
+            CardTypeLine::parse("Effect"),
+            ManaCost::parse("0"),
+            ColorSet::COLORLESS,
+            None,
+            None,
+            vec![],
+            abilities,
+        );
+        let id = game.create_card(card);
+        game.move_card(id, ZoneType::Command, owner);
+        id
+    }
+
     // ── Anthem (+1/+1) ────────────────────────────────────────────────────
 
     #[test]
@@ -1001,6 +1124,32 @@ mod tests {
             "Bob's creature should be unchanged"
         );
         assert_eq!(game.card(b1).toughness(), 2);
+    }
+
+    #[test]
+    fn command_effect_adjusts_land_plays_for_affected_player() {
+        let mut game = new_game();
+        let alice = PlayerId(0);
+        let bob = PlayerId(1);
+
+        let effect = add_effect(
+            &mut game,
+            alice,
+            vec![
+                "S$ Mode$ Continuous | EffectZone$ Command | Affected$ You | AdjustLandPlays$ 1"
+                    .to_string(),
+            ],
+        );
+
+        apply_continuous_effects(&mut game);
+
+        assert_eq!(game.player(alice).max_land_plays_per_turn, 2);
+        assert_eq!(game.player(bob).max_land_plays_per_turn, 1);
+
+        game.move_card(effect, ZoneType::Exile, alice);
+        apply_continuous_effects(&mut game);
+
+        assert_eq!(game.player(alice).max_land_plays_per_turn, 1);
     }
 
     #[test]

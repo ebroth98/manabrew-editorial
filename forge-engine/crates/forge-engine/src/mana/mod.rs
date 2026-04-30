@@ -43,6 +43,24 @@ pub fn apply_player_life_payment_keywords(
     }
     result
 }
+
+pub(crate) fn mana_ability_meets_script_requirements(
+    game: &GameState,
+    card_id: CardId,
+    ab: &crate::ability::activated::ActivatedAbility,
+) -> bool {
+    let card = game.card(card_id);
+    let requirements = crate::card::valid_filter::CardTraitRequirementsIr::from_key_values(
+        ab.params
+            .inner()
+            .iter()
+            .map(|(key, value)| (key.as_str(), value.as_str())),
+        None,
+        None,
+    );
+    requirements.meets(game, card, card)
+}
+
 pub use computer_util_mana::{
     auto_tap_lands, auto_tap_lands_allow_reserved_source_reuse,
     auto_tap_lands_allow_reserved_source_reuse_trace,
@@ -549,50 +567,11 @@ pub(crate) fn all_basic_subtype_atoms(card: &Card) -> Vec<u16> {
     atoms
 }
 
-/// Returns the pain damage (if any) that a land deals when tapped for the given atom.
-/// Checks the SPECIFIC mana ability being activated (when known) for a SubAbility$
-/// pointing to a DealDamage SVar. Returns the damage amount, or 0.
-///
-/// When `ability_index` is `None` (e.g. implicit basic-land mana), iterates all
-/// mana abilities. Without the index gate, painlands like Karplusan Forest leak
-/// damage to non-painful aliasing abilities (e.g. Yavimaya-granted Forest "Add G"
-/// shares atom G with the painful "Add R/G + 1 damage").
-fn land_pain_damage(card: &Card, chosen_atom: u16, ability_index: Option<usize>) -> i32 {
-    let abilities: Box<dyn Iterator<Item = &crate::ability::activated::ActivatedAbility>> =
-        match ability_index {
-            Some(idx) => Box::new(card.activated_abilities.get(idx).into_iter()),
-            None => Box::new(card.activated_abilities.iter()),
-        };
-    for ab in abilities {
-        if !ab.is_mana_ability {
-            continue;
-        }
-        let sub_svar_name = match ab.sub_ability.as_deref() {
-            Some(name) => name,
-            None => continue,
-        };
-        if let Some(produced) = ab.produced.as_deref() {
-            let atoms = produced_to_atoms(produced, &card.chosen_colors);
-            if atoms.contains(&chosen_atom) {
-                if let Some(sub_text) = card.svars.get(sub_svar_name) {
-                    let sub_params = crate::parsing::Params::from_raw(sub_text);
-                    if sub_params.get(crate::parsing::keys::DB) == Some("DealDamage") {
-                        if let Some(num_str) = sub_params.get(crate::parsing::keys::NUM_DMG) {
-                            return num_str.parse::<i32>().unwrap_or(0);
-                        }
-                    }
-                }
-            }
-        }
-    }
-    0
-}
-
-/// Tap a land for mana, apply pain damage if applicable, and record it.
+/// Tap a land for mana and record it.
 pub(crate) fn tap_land_for_mana(
     game: &mut GameState,
     pool: &mut ManaPool,
-    player: PlayerId,
+    _player: PlayerId,
     land_id: CardId,
     atom: u16,
     should_tap: bool,
@@ -600,7 +579,6 @@ pub(crate) fn tap_land_for_mana(
     ability_index: Option<usize>,
 ) {
     let card = game.card(land_id);
-    let pain = land_pain_damage(card, atom, ability_index);
     let is_snow = card.type_line.is_snow();
     // Pull `TriggersWhenSpent$` metadata from the specific mana ability
     // being activated (Path of Ancestry's `TrigScry`, etc.) so the produced
@@ -623,9 +601,6 @@ pub(crate) fn tap_land_for_mana(
     mana.source_card = Some(land_id);
     mana.triggers_when_spent = triggers_when_spent;
     pool.add_mana(mana);
-    if pain > 0 {
-        game.player_lose_life(player, pain);
-    }
     tapped_lands.push(land_id);
 }
 

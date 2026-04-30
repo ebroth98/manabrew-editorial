@@ -1,19 +1,15 @@
 use crate::card::{valid_filter, Card};
-use crate::spellability::SpellAbility;
+use crate::spellability::{matches_valid_sa, SpellAbility};
 use crate::staticability::StaticMode;
 
 /// Check if a card should use toughness as its tap power value.
-///
-/// Mirrors Java's `StaticAbilityTapPowerValue.withToughness(Card, CardTraitBase)`.
-/// The `sa` parameter mirrors Java's `CardTraitBase ctb` for ValidSA matching.
-pub fn with_toughness(cards: &[Card], card: &Card, _sa: Option<&SpellAbility>) -> bool {
+pub fn with_toughness(cards: &[Card], card: &Card, sa: Option<&SpellAbility>) -> bool {
     for source in cards.iter().filter(|c| c.zone.is_static_ability_source()) {
         for st_ab in source
             .static_abilities
             .iter()
             .filter(|s| s.check_mode(&StaticMode::TapPowerValue) && s.zones_check(source.zone))
         {
-            // Value$ must equal "Toughness" (case-insensitive to match Java .equals behavior)
             match st_ab.ir.value_text.as_deref() {
                 Some(val) if val.eq_ignore_ascii_case("Toughness") => {}
                 _ => continue,
@@ -28,9 +24,14 @@ pub fn with_toughness(cards: &[Card], card: &Card, _sa: Option<&SpellAbility>) -
                 continue;
             }
 
-            // ValidSA$ — Java checks stAb.matchesValidParam("ValidSA", ctb).
-            // TODO: implement full ValidSA matching once CardTraitBase validation is ported.
-            // For now we permissively pass (matches Java behavior when param is absent).
+            if let Some(valid_sa) = st_ab.ir.valid_sa.as_deref() {
+                let Some(sa) = sa else {
+                    continue;
+                };
+                if !matches_valid_sa(valid_sa, sa, source, ability_host(cards, sa)) {
+                    continue;
+                }
+            }
 
             return true;
         }
@@ -39,10 +40,7 @@ pub fn with_toughness(cards: &[Card], card: &Card, _sa: Option<&SpellAbility>) -
 }
 
 /// Get the modifier for tap power value.
-///
-/// Mirrors Java's `StaticAbilityTapPowerValue.getMod()`.
-/// The `sa` parameter mirrors Java's `CardTraitBase ctb` for ValidSA matching.
-pub fn get_mod(cards: &[Card], card: &Card, _sa: Option<&SpellAbility>) -> i32 {
+pub fn get_mod(cards: &[Card], card: &Card, sa: Option<&SpellAbility>) -> i32 {
     let mut total = 0;
     for source in cards.iter().filter(|c| c.zone.is_static_ability_source()) {
         for st_ab in source
@@ -59,7 +57,14 @@ pub fn get_mod(cards: &[Card], card: &Card, _sa: Option<&SpellAbility>) -> i32 {
                 continue;
             }
 
-            // ValidSA$ — same TODO as above
+            if let Some(valid_sa) = st_ab.ir.valid_sa.as_deref() {
+                let Some(sa) = sa else {
+                    continue;
+                };
+                if !matches_valid_sa(valid_sa, sa, source, ability_host(cards, sa)) {
+                    continue;
+                }
+            }
 
             if let Some(val) = st_ab.ir.value_text.as_deref() {
                 total += val.parse::<i32>().unwrap_or(0);
@@ -67,4 +72,9 @@ pub fn get_mod(cards: &[Card], card: &Card, _sa: Option<&SpellAbility>) -> i32 {
         }
     }
     total
+}
+
+fn ability_host<'a>(cards: &'a [Card], sa: &SpellAbility) -> Option<&'a Card> {
+    let source = sa.source?;
+    cards.get(source.index())
 }

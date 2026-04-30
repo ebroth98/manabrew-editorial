@@ -56,15 +56,10 @@ impl TriggerBehavior for TriggerCrewedSaddled {
         _game: &GameState,
     ) {
         if let Some(card) = params.card {
-            sa.set_triggering_object(crate::ability::AbilityKey::Card, card.0.to_string());
+            sa.set_triggering_object(crate::ability::AbilityKey::Card, card);
         }
         if let Some(crew) = params.crew_cards.as_ref() {
-            let csv = crew
-                .iter()
-                .map(|c| c.0.to_string())
-                .collect::<Vec<_>>()
-                .join(",");
-            sa.set_triggering_object(crate::ability::AbilityKey::Crew, &csv);
+            sa.set_triggering_object(crate::ability::AbilityKey::Crew, crew.clone());
         }
     }
 

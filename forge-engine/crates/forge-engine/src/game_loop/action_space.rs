@@ -1,13 +1,6 @@
 use super::*;
 use crate::cost::CostPart;
 
-pub(crate) struct ActionSpace {
-    pub playable: Vec<crate::agent::PlayOption>,
-    pub tappable_lands: Vec<CardId>,
-    pub untappable_lands: Vec<CardId>,
-    pub activatable: Vec<(CardId, usize)>,
-}
-
 impl GameLoop {
     pub(crate) fn mana_source_available_for_payment(
         game: &GameState,
@@ -93,6 +86,10 @@ impl GameLoop {
             return false;
         }
 
+        if !crate::mana::mana_ability_meets_script_requirements(game, card_id, ab) {
+            return false;
+        }
+
         for part in &ab.cost.parts {
             if let CostPart::Sacrifice {
                 type_filter,
@@ -130,7 +127,7 @@ impl GameLoop {
         game: &GameState,
         player: PlayerId,
         is_main_phase: bool,
-    ) -> ActionSpace {
+    ) -> crate::agent::PriorityActionSpace {
         let _params_lookup_scope =
             crate::perf::ParamsLookupScopeGuard::enter(crate::perf::ParamsLookupScope::ActionSpace);
         let can_play_sorcery =
@@ -168,7 +165,7 @@ impl GameLoop {
             self.undoable_mana_sources(player)
         };
 
-        ActionSpace {
+        crate::agent::PriorityActionSpace {
             playable,
             tappable_lands,
             untappable_lands,

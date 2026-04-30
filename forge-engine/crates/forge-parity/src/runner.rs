@@ -1,13 +1,17 @@
 use std::cell::RefCell;
-use std::collections::{BTreeSet, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
+use std::fs::{File, OpenOptions};
+use std::io::{BufWriter, Write};
+use std::path::PathBuf;
 use std::rc::Rc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use forge_carddb::CardDatabase;
 use forge_engine_core::agent::{
-    BinaryChoiceKind, GameEntity, ManaCostAction, PlayOption, PlayerAgent,
+    BinaryChoiceKind, GameEntity, ManaCostAction, PlayerAgent, PriorityActionSpace,
 };
 use forge_engine_core::card::CardInstance;
 use forge_engine_core::combat::DefenderId;
@@ -30,11 +34,61 @@ use crate::snapshot::snapshot_game;
 use crate::utils::decks::{build_deck_from_spec, resolve_deck_spec};
 
 pub const DEFAULT_DECKS_DIR: &str = "preset_decks";
+const CARD_COPY_GUARD_THRESHOLD: usize = 100;
+
+type LiveLogWriter = Arc<Mutex<BufWriter<File>>>;
+
+fn current_timestamp_ms() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0)
+}
+
+fn format_live_log_entry(side: &str, entry: &ParityLogEntry) -> String {
+    use crate::protocol::ParityLog;
+
+    let mut line = format!(
+        "[{side}] T{}::{}::P{} {} -> {}",
+        entry.turn(),
+        entry.phase(),
+        entry.player(),
+        entry.kind(),
+        entry.choice(),
+    );
+    for choice in entry.options() {
+        line.push('\n');
+        line.push_str("        ");
+        line.push_str(&choice.name);
+        if let Some(choices) = choice.choices {
+            line.push_str(&format!("[{choices}]"));
+        }
+        if !choice.outcome.is_empty() {
+            line.push_str(" -> ");
+            line.push_str(&choice.outcome);
+        }
+        if let Some(rng_call_count) = choice.rng_call_count {
+            line.push_str(&format!(" {{{rng_call_count}}}"));
+        }
+    }
+    line
+}
+
+fn open_live_log(path: &PathBuf) -> Result<LiveLogWriter, String> {
+    let file = OpenOptions::new()
+        .create(true)
+        .truncate(true)
+        .write(true)
+        .open(path)
+        .map_err(|e| format!("Failed to open live log {}: {}", path.display(), e))?;
+    Ok(Arc::new(Mutex::new(BufWriter::new(file))))
+}
 
 pub(crate) struct ParityObserver {
     shared_log: Arc<Mutex<Vec<ParityLogEntry>>>,
     shared_snapshot_index: Arc<Mutex<usize>>,
     stream_tx: Option<Sender<ParityLogEntry>>,
+    live_log: Option<LiveLogWriter>,
 }
 
 impl ParityObserver {
@@ -42,18 +96,28 @@ impl ParityObserver {
         shared_log: Arc<Mutex<Vec<ParityLogEntry>>>,
         shared_snapshot_index: Arc<Mutex<usize>>,
         stream_tx: Option<Sender<ParityLogEntry>>,
+        live_log: Option<LiveLogWriter>,
     ) -> Self {
         Self {
             shared_log,
             shared_snapshot_index,
             stream_tx,
+            live_log,
         }
     }
 
     fn push_entry(&self, entry: ParityLogEntry) {
         self.shared_log.lock().unwrap().push(entry.clone());
+        self.write_live_line(&format_live_log_entry("rust", &entry));
         if let Some(tx) = &self.stream_tx {
             let _ = tx.send(entry);
+        }
+    }
+
+    fn write_live_line(&self, line: &str) {
+        if let Some(live_log) = &self.live_log {
+            let mut writer = live_log.lock().unwrap();
+            let _ = writeln!(writer, "{line}");
         }
     }
 
@@ -86,6 +150,13 @@ impl ParityObserver {
         }));
     }
 
+    fn on_event(&self, kind: &str, player: Option<PlayerId>, message: &str) {
+        let player = player
+            .map(|player| format!("P{}", player.0))
+            .unwrap_or_else(|| "P?".to_string());
+        self.write_live_line(&format!("[rust-event] {player} {kind} {message}"));
+    }
+
     fn mark_snapshot(&self) {
         *self.shared_snapshot_index.lock().unwrap() += 1;
     }
@@ -101,6 +172,7 @@ struct CapturingAgent {
     capture_snapshots: bool,
     deep: bool,
     callback_snapshots: bool,
+    abort_signal: Arc<AtomicBool>,
     current_turn: u32,
     current_phase: String,
     last_game_state: Option<GameState>,
@@ -164,17 +236,20 @@ impl CapturingAgent {
         covered: Arc<Mutex<BTreeSet<String>>>,
         snapshot_index: Arc<Mutex<usize>>,
         stream_tx: Option<Sender<ParityLogEntry>>,
+        live_log: Option<LiveLogWriter>,
         rng: Rc<RefCell<JavaRandom>>,
         game_rng: Rc<RefCell<JavaRandom>>,
         parity_map: Arc<ParityCardMap>,
         capture_snapshots: bool,
         deep: bool,
         callback_snapshots: bool,
+        abort_signal: Arc<AtomicBool>,
     ) -> Self {
         let observer = Arc::new(ParityObserver::new(
             Arc::clone(&shared_log),
             snapshot_index,
             stream_tx,
+            live_log,
         ));
         Self {
             player_id,
@@ -194,6 +269,7 @@ impl CapturingAgent {
             capture_snapshots,
             deep,
             callback_snapshots,
+            abort_signal,
             current_turn: 0,
             current_phase: "Unknown".to_string(),
             last_game_state: None,
@@ -240,6 +316,50 @@ impl CapturingAgent {
                 choice: "CALLBACK_ENTRY".to_string(),
                 timestamp_ms,
             }));
+    }
+
+    fn card_copy_guard_trip(game: &GameState) -> Option<(String, usize)> {
+        let mut counts: HashMap<&str, usize> = HashMap::new();
+        for card_id in game.cards_in_all_zones(ZoneType::Battlefield) {
+            let name = game.card(card_id).card_name.as_str();
+            let count = counts.entry(name).or_insert(0);
+            *count += 1;
+            if *count > CARD_COPY_GUARD_THRESHOLD {
+                return Some((name.to_string(), *count));
+            }
+        }
+        None
+    }
+
+    fn stop_if_card_copy_guard_tripped(&self, game: &GameState) {
+        let Some((name, count)) = Self::card_copy_guard_trip(game) else {
+            return;
+        };
+        if self.abort_signal.swap(true, Ordering::Relaxed) {
+            return;
+        }
+        let snapshot = snapshot_game(game);
+        self.parity_observer
+            .push_entry(ParityLogEntry::Snapshot(snapshot.clone()));
+        self.parity_observer
+            .push_entry(ParityLogEntry::Decision(DecisionRecord {
+                turn: snapshot.turn,
+                phase: snapshot.phase.clone(),
+                deciding_player: self.player_id.0,
+                kind: "$PARITY_GUARD".to_string(),
+                options: vec![],
+                choice: format!(
+                    "ABORTED: {count} copies of {name} on battlefield (limit {CARD_COPY_GUARD_THRESHOLD})"
+                ),
+                timestamp_ms: current_timestamp_ms(),
+            }));
+        self.parity_observer.on_event(
+            "ParityGuard",
+            Some(self.player_id),
+            &format!(
+                "truncated: {count} copies of {name} on battlefield (limit {CARD_COPY_GUARD_THRESHOLD})"
+            ),
+        );
     }
 }
 
@@ -321,6 +441,13 @@ impl PlayerAgent for CapturingAgent {
         use forge_engine_core::agent::notification::GameNotification;
         match &event {
             GameNotification::Event(log_event) => {
+                if self.player_id.0 == 0 {
+                    self.parity_observer.on_event(
+                        &format!("{:?}", log_event.kind),
+                        log_event.player,
+                        &log_event.message,
+                    );
+                }
                 let message = &log_event.message;
                 if let Some(card_name) = extract_coverage_card(message) {
                     self.shared_covered_cards
@@ -402,6 +529,91 @@ impl PlayerAgent for CapturingAgent {
     ) {
         self.inner.snapshot_state(game, mana_pools);
         self.last_game_state = Some(Self::shallow_game_state(game));
+        self.stop_if_card_copy_guard_tripped(game);
+    }
+
+    fn choose_action(
+        &mut self,
+        player: PlayerId,
+        action_space: Option<&PriorityActionSpace>,
+        request_action_space: &mut dyn FnMut() -> PriorityActionSpace,
+    ) -> forge_engine_core::player::actions::PlayerAction {
+        let action_space_was_provided = action_space.is_some();
+        if !action_space_was_provided && self.inner.should_skip_priority_action_space() {
+            self.parity_observer.on_callback(
+                "$ACTION_SPACE",
+                "SKIPPED stack_depth>=20",
+                self.player_id.0,
+                self.current_turn,
+                &self.current_phase,
+                Vec::new(),
+            );
+            return self
+                .inner
+                .choose_action(player, action_space, request_action_space);
+        }
+        let requested_action_space;
+        let action_space = match action_space {
+            Some(action_space) => Some(action_space),
+            None => {
+                requested_action_space = request_action_space();
+                Some(&requested_action_space)
+            }
+        };
+        self.save_snapshot("choose_action");
+        if let Some(action_space) = action_space {
+            if let Some(action_space_log) = self.inner.format_action_space_for_log(action_space) {
+                self.parity_observer.on_callback(
+                    "$ACTION_SPACE",
+                    &action_space_log,
+                    self.player_id.0,
+                    self.current_turn,
+                    &self.current_phase,
+                    Vec::new(),
+                );
+            }
+        }
+        let result = self
+            .inner
+            .choose_action(player, action_space, request_action_space);
+        let cb_args = if action_space_was_provided {
+            let action_space = action_space.expect("provided action space");
+            let fmt = self.fmt_ctx();
+            vec![
+                player.callback_arg_display(fmt.as_ref()),
+                action_space
+                    .playable
+                    .as_slice()
+                    .callback_arg_display(fmt.as_ref()),
+                action_space
+                    .tappable_lands
+                    .as_slice()
+                    .callback_arg_display(fmt.as_ref()),
+                action_space
+                    .untappable_lands
+                    .as_slice()
+                    .callback_arg_display(fmt.as_ref()),
+                action_space
+                    .activatable
+                    .as_slice()
+                    .callback_arg_display(fmt.as_ref()),
+            ]
+        } else {
+            vec![player.callback_arg_display(self.fmt_ctx().as_ref())]
+        };
+        let outcome = match self.fmt_ctx() {
+            Some(ctx) => result.parity_fmt(&ctx),
+            None => format!("{result:?}"),
+        };
+        self.parity_observer.on_callback(
+            "choose_action",
+            &outcome,
+            self.player_id.0,
+            self.current_turn,
+            &self.current_phase,
+            cb_args,
+        );
+        result
     }
 
     parity_agent_callback! {
@@ -433,7 +645,6 @@ impl PlayerAgent for CapturingAgent {
         fn choose_targets_for(&mut self, sa: &mut forge_engine_core::spellability::SpellAbility, game: &GameState, mana_pools: &[forge_engine_core::mana::ManaPool]) -> bool => "choose_targets_for";
         fn mulligan_decision(&mut self, player: PlayerId, hand: &[CardId], mulligan_count: u32) -> bool => "mulligan_decision";
         fn choose_cards_to_bottom(&mut self, player: PlayerId, hand: &[CardId], count: usize) -> Vec<CardId> => "choose_cards_to_bottom";
-        fn choose_action(&mut self, player: PlayerId, playable: &[PlayOption], tappable_lands: &[CardId], untappable_lands: &[CardId], activatable: &[(CardId, usize)]) -> forge_engine_core::player::actions::PlayerAction => "choose_action";
         fn choose_attackers(&mut self, player: PlayerId, available: &[CardId], possible_defenders: &[DefenderId]) -> Vec<(CardId, DefenderId)> => "choose_attackers";
         fn exert_attackers(&mut self, player: PlayerId, attackers: &[CardId]) -> Vec<CardId> => "exert_attackers";
         fn enlist_attackers(&mut self, player: PlayerId, attackers: &[CardId]) -> Vec<CardId> => "enlist_attackers";
@@ -456,6 +667,7 @@ impl PlayerAgent for CapturingAgent {
         fn choose_discard_any_number(&mut self, player: PlayerId, hand: &[CardId], min: usize, max: usize) -> Vec<CardId> => "choose_discard";
         fn choose_random_discard(&mut self, player: PlayerId, hand: &[CardId], num: usize) -> Vec<CardId> => "choose_random_discard";
         fn choose_cards_for_effect(&mut self, player: PlayerId, valid: &[CardId], min: usize, max: usize) -> Vec<CardId> => "choose_cards_for_effect";
+        fn choose_tap_type_for_cost(&mut self, player: PlayerId, valid: &[CardId], min_total_power: i32, card_powers: &[(CardId, i32)], card_sort_powers: &[(CardId, i32)], sa: Option<&forge_engine_core::spellability::SpellAbility>) -> Vec<CardId> => "choose_tap_type_for_cost";
         fn choose_cards_for_zone_change(&mut self, player: PlayerId, valid: &[CardId], min: usize, max: usize, select_prompt: &str) -> Vec<CardId> => "choose_cards_for_zone_change";
         fn choose_target_spell(&mut self, player: PlayerId, valid: &[u32]) -> Option<u32> => "choose_target_spell";
         fn choose_mode(&mut self, player: PlayerId, descriptions: &[String], min: usize, max: usize, card_name: Option<&str>) -> Vec<usize> => "choose_mode";
@@ -519,6 +731,8 @@ pub struct RunConfig {
     pub commanders: Vec<String>,
     /// Store full callback logs (for --full-log display).
     pub full_log: bool,
+    /// Write Rust-side parity entries as they are recorded.
+    pub live_log: Option<PathBuf>,
 }
 
 pub struct LoadedData {
@@ -788,6 +1002,9 @@ pub fn run_with_data_streaming(
     }
 
     let mut game_loop = GameLoop::new(2);
+    game_loop.set_provide_priority_action_space(false);
+    let abort_signal = Arc::new(AtomicBool::new(false));
+    game_loop.set_abort_signal(Arc::clone(&abort_signal));
 
     // Register token templates
     for (script_name, template) in &data.token_templates {
@@ -804,6 +1021,16 @@ pub fn run_with_data_streaming(
     // Shared storage for parity log entries captured by CapturingAgent
     let shared_log: Arc<Mutex<Vec<ParityLogEntry>>> = Arc::new(Mutex::new(Vec::new()));
     let shared_covered_cards: Arc<Mutex<BTreeSet<String>>> = Arc::new(Mutex::new(BTreeSet::new()));
+    let live_log = config.live_log.as_ref().map(open_live_log).transpose()?;
+    if let Some(live_log) = &live_log {
+        let mut writer = live_log.lock().unwrap();
+        let _ = writeln!(
+            writer,
+            "# rust live parity log deck1={} deck2={} seed={} max_turns={}",
+            config.deck1, config.deck2, config.seed, config.max_turns
+        );
+        let _ = writer.flush();
+    }
 
     // Run game with fixed seed (for any engine-internal randomness)
     let mut rng = StdRng::seed_from_u64(config.seed);
@@ -898,12 +1125,14 @@ pub fn run_with_data_streaming(
             Arc::clone(&shared_covered_cards),
             Arc::clone(&shared_snapshot_index),
             stream_tx.clone(),
+            live_log.clone(),
             Rc::clone(&agent_rng),
             Rc::clone(&game_rng),
             Arc::clone(&parity_map),
             !config.deep,
             config.deep,
             false,
+            Arc::clone(&abort_signal),
         )),
         Box::new(CapturingAgent::new(
             p1,
@@ -913,12 +1142,14 @@ pub fn run_with_data_streaming(
             Arc::clone(&shared_covered_cards),
             Arc::clone(&shared_snapshot_index),
             stream_tx,
+            live_log.clone(),
             Rc::clone(&agent_rng),
             Rc::clone(&game_rng),
             Arc::clone(&parity_map),
             false,
             config.deep,
             false,
+            Arc::clone(&abort_signal),
         )),
     ];
 

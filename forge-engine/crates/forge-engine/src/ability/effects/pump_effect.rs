@@ -186,19 +186,10 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
         return;
     }
 
-    // Java PumpEffect resolves non-targeted pump abilities through
-    // SpellAbilityEffect.getTargetCards(sa), which defaults `Defined` to `Self`
-    // when the ability has no targets. Mirror that fallback here so abilities
-    // like Guardian of New Benalia correctly affect their source.
-    let target_card = sa.target_chosen.target_card.or_else(|| match sa.defined() {
-        Some("Self") => sa.source,
-        Some("ParentTarget") => ctx.parent_target_card,
-        Some(_) => None,
-        None if !sa.uses_targeting() => sa.source,
-        None => None,
-    });
-
-    let mut targets = target_card.into_iter().collect::<Vec<_>>();
+    let mut targets = crate::ability::spell_ability_effect::get_target_cards(ctx.game, sa);
+    if targets.is_empty() && sa.defined() == Some("ParentTarget") {
+        targets.extend(ctx.parent_target_card);
+    }
     targets.extend(card_util::get_radiance(ctx.game, sa).iter().copied());
     targets.sort_unstable_by_key(|cid| cid.0);
     targets.dedup();

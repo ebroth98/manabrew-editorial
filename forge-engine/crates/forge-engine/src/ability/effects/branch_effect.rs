@@ -1,4 +1,5 @@
 use super::EffectContext;
+use crate::parsing::compare::compare_expr;
 use crate::parsing::keys;
 use crate::spellability::SpellAbility;
 
@@ -97,5 +98,14 @@ fn evaluate_branch_condition(ctx: &EffectContext, sa: &SpellAbility) -> bool {
         });
     }
 
-    super::evaluate_svar(expr, sa) > 0
+    let branch_compare = sa
+        .ir
+        .branch_condition_svar_compare
+        .as_deref()
+        .unwrap_or("GE1");
+    let (operator, operand) = branch_compare.split_at(branch_compare.len().min(2));
+    let svar_value = super::resolve_numeric_value(ctx.game, sa, condition_svar, 0);
+    let operand_value = super::resolve_numeric_value(ctx.game, sa, operand, 0);
+
+    compare_expr(svar_value, &format!("{operator}{operand_value}"))
 }

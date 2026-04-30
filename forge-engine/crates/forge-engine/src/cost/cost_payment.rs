@@ -1,32 +1,3 @@
-//! Cost payment orchestrator — mirrors Java's `forge.game.cost.CostPayment`.
-//!
-//! `CostPayment` collects payment decisions from the agent (via `decide_cost_part`)
-//! and executes them (via `pay_as_decided`). It supports two flows:
-//!
-//! - `pay_cost()` — sequential decide-then-pay per part (human flow, Java's `payCost()`)
-//! - `pay_computer_costs()` — batch all decisions, then batch pay (AI flow, Java's `payComputerCosts()`)
-//!
-//! The agent's `pays_right_after_decision()` determines which flow is used,
-//! mirroring Java's `CostDecisionMakerBase.paysRightAfterDecision()`.
-//!
-//! ## Architecture Note
-//!
-//! In Java, `CostPart.payAsDecided()` is a method on each cost part that takes
-//! `(Player, PaymentDecision, SpellAbility, boolean)`. The cost part has access
-//! to the game via `card.getGame()`.
-//!
-//! In Rust, many cost payments need access to:
-//! - `TriggerHandler` (for firing Sacrificed, Discarded, Taps, etc.)
-//! - `ManaPool` (for mana payment, waterbend, add mana)
-//! - `PlayerAgent` (for choosing targets: typed sacrifice, typed discard, etc.)
-//! - `GameRng` (for flip coin, roll dice)
-//!
-//! These live on `GameLoop`, not `GameState`. Therefore:
-//! - `pay_as_decided()` handles costs that only need `GameState` + decision data
-//! - Complex costs requiring GameLoop context (triggers, agents, RNG, mana pools)
-//!   are handled by `GameLoop::pay_ability_cost()` in `game_action.rs` which has
-//!   full access to all subsystems.
-
 use crate::agent::PlayerAgent;
 use crate::cost::payment_decision::PaymentDecision;
 use crate::cost::trait_cost_decision_maker::DefaultCostDecisionMaker;
@@ -35,16 +6,10 @@ use crate::cost::{Cost, CostPart};
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
 
-/// Orchestrates payment of a `Cost` by collecting decisions from an agent
-/// and executing them. Mirrors Java's `CostPayment` class.
-///
-/// In Java, `CostPayment extends ManaConversionMatrix` — the mana conversion
-/// matrix is transferred to `PaymentDecision.matrix` before `payAsDecided`.
 pub struct CostPayment {
     /// The original, unadjusted cost.
     pub cost: Cost,
     /// The cost after adjustment (reductions, increases, etc.).
-    /// Mirrors Java's `adjustedCost` field.
     pub adjusted_cost: Cost,
     /// The source card being paid for.
     pub source: CardId,
@@ -58,7 +23,6 @@ pub struct CostPayment {
 
 impl CostPayment {
     /// Create a new `CostPayment` for the given cost and source.
-    /// Mirrors Java's `CostPayment(Cost, SpellAbility)` constructor.
     pub fn new(cost: Cost, source: CardId, player: PlayerId, is_effect: bool) -> Self {
         let adjusted_cost = cost.clone();
         CostPayment {
@@ -72,41 +36,22 @@ impl CostPayment {
     }
 
     /// Check if all cost parts have been paid.
-    /// Mirrors Java's `isFullyPaid()`.
     pub fn is_fully_paid(&self) -> bool {
         self.paid_cost_parts.len() == self.adjusted_cost.parts.len()
     }
 
     /// Refund all paid cost parts (on cancel/failure).
-    /// Mirrors Java's `refundPayment()`.
-    ///
-    /// Java iterates `paidCostParts`, calls `part.refund(sourceCard)`,
-    /// resets CostPartWithList tracking lists, then calls
-    /// `new ManaRefundService(ability).refundManaPaid()`.
     pub fn refund_payment(&mut self, game: &mut GameState) {
         for part in &self.paid_cost_parts {
             refund_cost_part(game, self.source, self.player, part);
         }
-        // TODO: Mana refund — Java calls `new ManaRefundService(ability).refundManaPaid()`
-        // which restores mana to the pool. This needs ManaPool access from GameLoop.
         self.paid_cost_parts.clear();
     }
 
-    /// Sequential decide-then-pay flow (human players).
-    /// Mirrors Java's `CostPayment.payCost(CostDecisionMakerBase)`.
-    ///
-    /// For each cost part:
-    ///   1. Call `agent.decide_cost_part()` (Java's `part.accept(decisionMaker)`)
-    ///   2. If decision is Some, immediately execute `pay_as_decided()`
-    ///   3. If decision is None or payment fails, return false
-    ///
-    /// Java also allows cost reordering via `player.getController().orderCosts()`.
     pub fn pay_cost(&mut self, game: &mut GameState, agent: &mut dyn PlayerAgent) -> bool {
         // TODO: self.adjusted_cost = CostAdjustment::adjust(&self.cost, ...);
         let mut parts = self.adjusted_cost.parts.clone();
 
-        // Allow agent to reorder costs (human UI picks order).
-        // Mirrors Java: if (adjustedCost.getCostParts().size() > 1) { parts = controller.orderCosts(parts); }
         if parts.len() > 1 {
             parts = agent.order_cost_parts(parts);
         }
@@ -139,10 +84,6 @@ impl CostPayment {
     }
 
     /// Batch decide-then-pay flow (AI agents).
-    /// Mirrors Java's `CostPayment.payComputerCosts(CostDecisionMakerBase)`.
-    ///
-    /// Phase 1: Collect all decisions (cancel if any is None).
-    /// Phase 2: Execute all decisions in order.
     pub fn pay_computer_costs(
         &mut self,
         game: &mut GameState,
@@ -194,7 +135,6 @@ impl CostPayment {
     }
 
     /// Check if a cost can be paid as additional costs.
-    /// Mirrors Java's `CostPayment.canPayAdditionalCosts(Cost, SpellAbility, boolean)`.
     pub fn can_pay_additional_costs(
         cost: &Cost,
         game: &GameState,
@@ -207,7 +147,6 @@ impl CostPayment {
     }
 
     /// Handle offering/emerge sacrifice after cost payment.
-    /// Mirrors Java's `CostPayment.handleOfferings(SpellAbility, boolean, boolean)`.
     pub fn handle_offerings(
         _game: &mut GameState,
         _source: CardId,
@@ -222,12 +161,6 @@ impl CostPayment {
 }
 
 /// Execute a single cost part payment based on the decision.
-/// Mirrors Java's `CostPart.payAsDecided(Player, PaymentDecision, SpellAbility, boolean)`.
-///
-/// Handles all cost types. For costs requiring only `GameState`, delegates to the
-/// individual cost module functions. For costs requiring GameLoop context (triggers,
-/// agents, mana pools, RNG), performs the state mutation here where possible and
-/// leaves trigger firing to the `GameLoop::pay_ability_cost()` caller.
 pub fn pay_as_decided(
     game: &mut GameState,
     player: PlayerId,
@@ -381,10 +314,6 @@ fn pay_as_decided_distributed(
 }
 
 /// Refund a single cost part.
-/// Mirrors Java's `CostPart.refund(Card sourceCard)`.
-///
-/// Only some cost types support refund — zone-change costs (sacrifice, exile, etc.)
-/// are rolled back via `GameSnapshot` restore instead.
 fn refund_cost_part(game: &mut GameState, source: CardId, player: PlayerId, part: &CostPart) {
     match part {
         CostPart::Tap => {
@@ -396,6 +325,7 @@ fn refund_cost_part(game: &mut GameState, source: CardId, player: PlayerId, part
         CostPart::SubCounter {
             amount,
             counter_type,
+            ..
         } => crate::cost::cost_remove_counter::refund(game, source, *amount, counter_type),
         CostPart::AddCounter {
             amount,
@@ -410,8 +340,6 @@ fn refund_cost_part(game: &mut GameState, source: CardId, player: PlayerId, part
             crate::cost::cost_pay_shards::refund(game, player, *amount);
         }
         CostPart::PayLife(amount) => {
-            // Restore life — mirrors Java's CostPayLife not having explicit refund,
-            // but the snapshot rollback handles this. Included for completeness.
             game.player_gain_life(player, *amount);
         }
         CostPart::ChooseColor(_) => {
@@ -422,7 +350,6 @@ fn refund_cost_part(game: &mut GameState, source: CardId, player: PlayerId, part
         }
         // Most cost parts (sacrifice, discard, exile, return, etc.) are not
         // individually refundable — zone changes are rolled back by GameSnapshot.
-        // Java's CostPartWithList.refund() is a no-op for most types.
         _ => {
             eprintln!("[WARN] Unhandled cost part refund: {:?}", part);
         }

@@ -35,12 +35,19 @@ impl PlayerAgent for CounterspellAgent {
     fn choose_action(
         &mut self,
         player: PlayerId,
-        playable: &[PlayOption],
-        tappable_lands: &[CardId],
-        _untappable_lands: &[CardId],
-        _activatable: &[(CardId, usize)],
+        action_space: Option<&forge_engine_core::agent::PriorityActionSpace>,
+        request_action_space: &mut dyn FnMut() -> forge_engine_core::agent::PriorityActionSpace,
     ) -> PlayerAction {
         self.step += 1;
+        let requested_action_space;
+        let action_space = match action_space {
+            Some(action_space) => action_space,
+            None => {
+                requested_action_space = request_action_space();
+                &requested_action_space
+            }
+        };
+        let playable = &action_space.playable;
 
         match self.step {
             1 => {

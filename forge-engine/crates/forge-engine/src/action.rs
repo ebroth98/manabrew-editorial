@@ -345,6 +345,43 @@ impl GameState {
                         }
                     }
                 }
+                // Planeswalkers enter with loyalty counters equal to printed loyalty.
+                // Java exposes this as CardState's synthetic etbCounter replacement.
+                if self.cards[card_id.index()].type_line.is_planeswalker() {
+                    let loyalty = self.cards[card_id.index()]
+                        .initial_loyalty
+                        .as_deref()
+                        .and_then(|value| value.parse::<i32>().ok())
+                        .unwrap_or(0);
+                    if loyalty > 0 {
+                        let ct = crate::card::CounterType::Loyalty;
+                        if !crate::staticability::static_ability_cant_put_counter::any_cant_put_counter_on_card(
+                            &self.cards,
+                            &self.cards[card_id.index()],
+                            &ct,
+                        ) {
+                            let mut add_event = ReplacementEvent::AddCounter {
+                                target: card_id,
+                                counter_type: ct.clone(),
+                                count: loyalty,
+                                is_effect: true,
+                            };
+                            if let Some(agents) = agents.as_deref_mut() {
+                                apply_replacements_with_agents(self, agents, &mut add_event);
+                            } else {
+                                apply_replacements(self, &mut add_event);
+                            }
+                            let final_amount = if let ReplacementEvent::AddCounter { count, .. } = add_event {
+                                count
+                            } else {
+                                loyalty
+                            };
+                            if final_amount > 0 {
+                                self.cards[card_id.index()].add_counter(&ct, final_amount);
+                            }
+                        }
+                    }
+                }
                 // Apply +1/+1 counters from mana that adds counters (Guildmages' Forum, Opal Palace)
                 let etb_p1p1 = self.cards[card_id.index()].etb_counters_p1p1;
                 if etb_p1p1 > 0 {
@@ -449,6 +486,7 @@ impl GameState {
                 card.controller = card.owner;
                 card.face_down = false;
                 card.is_bestowed = false;
+                card.reset_crewed();
                 if !keep_counters {
                     card.counters.clear();
                 }
@@ -589,6 +627,9 @@ impl GameState {
         if amount <= 0 {
             return;
         }
+        if !self.card(target).can_be_dealt_damage() {
+            return;
+        }
         let mut event = ReplacementEvent::DamageToCard {
             target,
             amount,
@@ -616,14 +657,16 @@ impl GameState {
                 final_amount -= consumed;
             }
             if final_amount > 0 {
-                self.cards[target.index()].damage += final_amount;
+                let dealt = self.cards[target.index()].add_damage_after_prevention(final_amount);
                 // Fire DealtDamage replacement event after damage is applied.
                 let mut dealt_event = ReplacementEvent::DealtDamage {
                     target,
-                    amount: final_amount,
+                    amount: dealt,
                     source,
                 };
-                apply_replacements(self, &mut dealt_event);
+                if dealt > 0 {
+                    apply_replacements(self, &mut dealt_event);
+                }
             }
         }
     }
@@ -713,6 +756,58 @@ impl GameState {
         agents: &mut [Box<dyn PlayerAgent>],
     ) -> bool {
         self.check_state_based_actions_impl(trigger_handler, None, Some(agents))
+    }
+
+    fn move_battlefield_card_to_graveyard_for_sba(
+        &mut self,
+        cid: CardId,
+        trigger_handler: &mut Option<&mut TriggerHandler>,
+        agents: &mut Option<&mut [Box<dyn PlayerAgent>]>,
+    ) {
+        let owner = self.card(cid).owner;
+        let mut moved_event = ReplacementEvent::Moved {
+            card: cid,
+            origin: ZoneType::Battlefield,
+            destination: ZoneType::Graveyard,
+            is_discard: false,
+        };
+        if let Some(agents) = agents.as_deref_mut() {
+            apply_replacements_with_agents(self, agents, &mut moved_event);
+        } else {
+            apply_replacements(self, &mut moved_event);
+        }
+        let final_dest = if let ReplacementEvent::Moved { destination, .. } = moved_event {
+            destination
+        } else {
+            ZoneType::Graveyard
+        };
+        let old_zone = self.card(cid).zone;
+        // Emit trigger BEFORE move_card so LKI state is still available for
+        // trigger matching. Persist/Undying and Modular inspect the dying card.
+        if let Some(handler) = trigger_handler.as_deref_mut() {
+            let lki_p1p1 = *self
+                .card(cid)
+                .counters
+                .get(&CounterType::P1P1)
+                .unwrap_or(&0);
+            let lki_power = self.card(cid).power();
+            let lki_toughness = self.card(cid).toughness();
+            let lki_counters = self.card(cid).counters.clone();
+            self.card_mut(cid).lki_counters = Some(lki_counters);
+            self.card_mut(cid)
+                .set_lki_power_toughness(Some(lki_power), Some(lki_toughness));
+            crate::ability::effects::emit_zone_trigger_with_lki_counters(
+                handler,
+                cid,
+                old_zone,
+                final_dest,
+                lki_p1p1,
+                lki_power,
+                lki_toughness,
+            );
+            handler.flush_waiting_triggers(self);
+        }
+        self.move_card_without_replacement(cid, final_dest, owner);
     }
 
     fn check_state_based_actions_impl(
@@ -835,19 +930,18 @@ impl GameState {
             .collect();
 
         for cid in battlefield_cards {
-            let (is_creature, zero_toughness, lethal, should_die, owner) = {
+            let (is_creature, zero_toughness, lethal, should_die) = {
                 let card = &self.cards[cid.index()];
                 let is_creature = card.is_creature();
                 let zero_toughness = card.toughness() <= 0;
                 let lethal = card.lethal_damage() || card.has_deathtouch_damage;
                 let should_die = zero_toughness || lethal;
-                (is_creature, zero_toughness, lethal, should_die, card.owner)
+                (is_creature, zero_toughness, lethal, should_die)
             };
             if is_creature && should_die {
                 // Clear deathtouch flag regardless of outcome (mirrors Java
                 // GameAction.java line 1491: c.setHasBeenDealtDeathtouchDamage(false)).
                 self.cards[cid.index()].has_deathtouch_damage = false;
-                // owner already in scope
                 // CR 702.12: Indestructible prevents death from lethal damage and
                 // "destroy" effects, but NOT from toughness ≤ 0 (CR 704.5f vs 704.5g).
                 // This covers K:Indestructible from Forge card scripts (e.g. Darksteel Myr).
@@ -899,66 +993,26 @@ impl GameState {
                     }
                 }
 
+                if zero_toughness {
+                    self.move_battlefield_card_to_graveyard_for_sba(
+                        cid,
+                        &mut trigger_handler,
+                        &mut agents,
+                    );
+                    any_changes = true;
+                    continue;
+                }
+
                 // Run Destroy replacement effects (R$-based indestructible, etc.).
                 // Mirrors Java GameAction.destroy() → ReplacementHandler.run(Destroy, …).
                 let mut destroy_event = ReplacementEvent::Destroy { target: cid };
                 let result = apply_replacements(self, &mut destroy_event);
                 if result != ReplacementResult::Replaced {
-                    // No replacement blocked destruction — run Moved check in case
-                    // a zone-rerouting effect applies (e.g. "exile instead of die").
-                    let mut moved_event = ReplacementEvent::Moved {
-                        card: cid,
-                        origin: ZoneType::Battlefield,
-                        destination: ZoneType::Graveyard,
-                        is_discard: false,
-                    };
-                    if let Some(agents) = agents.as_deref_mut() {
-                        apply_replacements_with_agents(self, agents, &mut moved_event);
-                    } else {
-                        apply_replacements(self, &mut moved_event);
-                    }
-                    let final_dest =
-                        if let ReplacementEvent::Moved { destination, .. } = moved_event {
-                            destination
-                        } else {
-                            ZoneType::Graveyard
-                        };
-                    let old_zone = self.card(cid).zone;
-                    // Emit trigger BEFORE move_card so that LKI state
-                    // (counters, keywords) is still available for trigger
-                    // matching.  Persist/Undying check counter conditions
-                    // on the dying card; if we emit after move_card the
-                    // counters are already cleared and the check is wrong.
-                    // flush_waiting_triggers pre-matches while card state
-                    // is intact; the matched results survive the move.
-                    if let Some(handler) = trigger_handler.as_deref_mut() {
-                        // Capture +1/+1 counters for LKI (Modular death
-                        // triggers).  Counters are still present since we
-                        // emit before move_card.
-                        let lki_p1p1 = *self
-                            .card(cid)
-                            .counters
-                            .get(&crate::card::CounterType::P1P1)
-                            .unwrap_or(&0);
-                        let lki_power = self.card(cid).power();
-                        let lki_toughness = self.card(cid).toughness();
-                        // Capture LKI counters on the card for SVar resolution
-                        let lki_counters = self.card(cid).counters.clone();
-                        self.card_mut(cid).lki_counters = Some(lki_counters);
-                        self.card_mut(cid)
-                            .set_lki_power_toughness(Some(lki_power), Some(lki_toughness));
-                        crate::ability::effects::emit_zone_trigger_with_lki_counters(
-                            handler,
-                            cid,
-                            old_zone,
-                            final_dest,
-                            lki_p1p1,
-                            lki_power,
-                            lki_toughness,
-                        );
-                        handler.flush_waiting_triggers(self);
-                    }
-                    self.move_card_without_replacement(cid, final_dest, owner);
+                    self.move_battlefield_card_to_graveyard_for_sba(
+                        cid,
+                        &mut trigger_handler,
+                        &mut agents,
+                    );
                     // Same-SBA-batch LTB lookback is derived per-event from
                     // `pre_sba_battlefield` in `TriggerHandler::ltb_trigger_refs_for_event`.
                     // No global registration needed.
@@ -968,6 +1022,27 @@ impl GameState {
                     // Damage is still marked but the creature does not die.
                 }
             }
+        }
+
+        // Check planeswalkers with no loyalty counters
+        let battlefield_cards: Vec<CardId> = self
+            .player_order
+            .clone()
+            .iter()
+            .flat_map(|&pid| self.cards_in_zone(ZoneType::Battlefield, pid).to_vec())
+            .collect();
+
+        for cid in battlefield_cards {
+            let should_put_in_graveyard = {
+                let card = self.card(cid);
+                card.type_line.is_planeswalker() && card.counter_count(&CounterType::Loyalty) <= 0
+            };
+            if !should_put_in_graveyard {
+                continue;
+            }
+
+            self.move_battlefield_card_to_graveyard_for_sba(cid, &mut trigger_handler, &mut agents);
+            any_changes = true;
         }
 
         // CR 704.5q: +1/+1 and -1/-1 counter cancellation

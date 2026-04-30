@@ -8,16 +8,12 @@ use crate::spellability::{SpellAbility, StackEntry};
 use crate::trigger::TriggerType;
 
 /// Struct form of this effect so it can participate in the
-/// `SpellAbilityEffect` trait hierarchy — mirrors Java's
-/// `PlayEffect` class extending `SpellAbilityEffect`.
+/// `SpellAbilityEffect` trait hierarchy
 #[forge_engine_macros::spell_effect(PlayEffect)]
 fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
-    let card_id = match resolve_target_card(sa) {
-        Some(cid) => cid,
-        None => return,
-    };
-
-    if ctx.game.card(card_id).zone == ZoneType::Stack {
+    let mut candidates = resolve_target_cards(ctx, sa);
+    candidates.retain(|&cid| ctx.game.card(cid).zone != ZoneType::Stack);
+    if candidates.is_empty() {
         return;
     }
 
@@ -31,12 +27,14 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
             .source
             .is_some_and(|src| ctx.game.card(src).has_keyword("Madness"));
 
-    // ── Step 1: Choose card — mirrors Java PlayEffect.java line 234 ──
-    // chooseSingleEntityForEffect(tgtCards, sa, ..., !singleOption && optional, ...)
+    // ── Step 1: Choose card
     // For single-card + optional: isOptional=false (auto-pick), then confirmAction below.
-    let tgt_cards = vec![GameEntity::Card(card_id)];
+    let single_option = candidates.len() == 1 && optional;
+    let tgt_cards: Vec<_> = candidates.iter().copied().map(GameEntity::Card).collect();
     let chosen = ctx.agents[controller.index()].choose_single_entity_for_effect(
-        controller, &tgt_cards, false, // !singleOption && optional = false for single card
+        controller,
+        &tgt_cards,
+        !single_option && optional,
     );
     let card_id = match chosen {
         Some(GameEntity::Card(cid)) => cid,
@@ -44,8 +42,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
         Some(GameEntity::Player(_)) => return,
     };
 
-    // ── Step 2: Optional confirm — mirrors Java PlayEffect.java line 250 ──
-    // if (singleOption && !confirmAction(...)) break;
+    // ── Step 2: Optional confirm
     if optional {
         let card_name = ctx.game.card(card_id).card_name.clone();
         let accepted = ctx.agents[controller.index()].confirm_action(
@@ -61,8 +58,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
         }
     }
 
-    // ── Step 3: Get ability to play — mirrors Java PlayEffect.java line 318 ──
-    // tgtSA = controller.getController().getAbilityToPlay(tgtCard, sas);
+    // ── Step 3: Get ability to play
     let spell_sa_base =
         crate::spellability::build_spell_ability_for_card_cast(ctx.game, card_id, controller);
     let abilities = vec![spell_sa_base];
@@ -72,9 +68,6 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
         None => return,
     };
 
-    // Mirror Java's DeterministicPlayPlumbing.playSaFromPlayEffect():
-    // optional play-effect spells consume one more boolean after ability
-    // selection and before the spell is actually played.
     let play_effect_optional = spell_sa
         .pay_costs
         .as_ref()
@@ -113,7 +106,6 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
         spell_sa.alt_cost = Some(crate::spellability::AlternativeCost::Madness);
     }
 
-    // Java PlayEffect.java line 398: setMandatory(true) for 118.8c
     if let Some(ref mut cost) = spell_sa.pay_costs {
         cost.mandatory = true;
     }
@@ -172,10 +164,6 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     push_spell_to_stack(ctx, card_id, spell_sa, label);
 
     // ── Step 8: RememberPlayed ──────────────────────────────────────
-    // Mirrors Java PlayEffect.java line 457:
-    //   if (remember) source.addRemembered(played);
-    // The sub-ability chain (ChangeZone + Cleanup) uses ConditionCompare$ EQ0
-    // on Remembered to decide whether to move the card to graveyard.
     if remember {
         if let Some(source_id) = sa.source {
             ctx.game.card_mut(source_id).remembered_cards.push(card_id);
@@ -185,14 +173,58 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
 
 // ── Helpers ───────────────────────────────────────────────────────────
 
-/// Resolve the target card from `Defined$` parameter.
-fn resolve_target_card(sa: &SpellAbility) -> Option<CardId> {
+/// Resolve the target cards from `Valid$` or `Defined$` parameters.
+fn resolve_target_cards(ctx: &EffectContext, sa: &SpellAbility) -> Vec<CardId> {
+    if let Some(valid) = crate::parsing::raw_get(&sa.ability_text, crate::parsing::keys::VALID) {
+        let zones = crate::parsing::raw_get(&sa.ability_text, crate::parsing::keys::VALID_ZONE)
+            .map(|raw| {
+                raw.split(',')
+                    .filter_map(|part| crate::zone::zone_type::smart_value_of(part.trim()))
+                    .collect::<Vec<_>>()
+            })
+            .filter(|zones| !zones.is_empty())
+            .unwrap_or_else(|| vec![ZoneType::Hand]);
+        let Some(source_id) = sa.source else {
+            return Vec::new();
+        };
+        let source = ctx.game.card(source_id);
+        let selector = crate::parsing::cached_compiled_selector(&valid);
+        let valid_sa = crate::parsing::raw_get(&sa.ability_text, crate::parsing::keys::VALID_SA);
+        return ctx
+            .game
+            .cards
+            .iter()
+            .filter(|card| zones.contains(&card.zone))
+            .filter(|card| {
+                crate::card::valid_filter::matches_valid_card_selector_in_game(
+                    &selector, card, source, ctx.game,
+                )
+            })
+            .filter(|card| {
+                if valid_sa
+                    .as_deref()
+                    .is_some_and(|v| v.eq_ignore_ascii_case("Spell"))
+                {
+                    !card.is_land()
+                } else {
+                    true
+                }
+            })
+            .map(|card| card.id)
+            .collect();
+    }
+
     let defined = sa.ir.defined_text.clone().unwrap_or_default();
     if let Some(uid_str) = defined.strip_prefix("CardUID_") {
-        uid_str.parse::<u32>().ok().map(CardId)
+        uid_str
+            .parse::<u32>()
+            .ok()
+            .map(CardId)
+            .into_iter()
+            .collect()
     } else {
         // "Self" or fallback — use the source card
-        sa.source
+        sa.source.into_iter().collect()
     }
 }
 
@@ -249,7 +281,7 @@ fn push_spell_to_stack(
 }
 
 /// Create a replacement effect that exiles a card instead of putting it into
-/// the graveyard from the stack. Mirrors Java `PlayEffect.addReplaceGraveyardEffect`.
+/// the graveyard from the stack.
 pub fn add_replace_graveyard_effect(
     ctx: &mut EffectContext,
     card_id: CardId,

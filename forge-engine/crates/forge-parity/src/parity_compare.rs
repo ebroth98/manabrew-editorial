@@ -101,6 +101,7 @@ fn build_matchup_result(
     } else {
         MatchupStatus::Fail
     };
+    let guard_abort_turn = guard_abort_turn(&rust_log).or_else(|| guard_abort_turn(&java_log));
 
     MatchupResult {
         deck1: config.deck1.clone(),
@@ -129,12 +130,21 @@ fn build_matchup_result(
         }),
         first_divergence: outcome.first_divergence,
         error_message: None,
-        skip_reason: None,
+        skip_reason: guard_abort_turn.map(|turn| format!("ABORTED AT TURN {turn}")),
         covered_cards: vec![],
         rust_log,
         java_log,
         finished_turn,
     }
+}
+
+fn guard_abort_turn(log: &[ParityLogEntry]) -> Option<u32> {
+    log.iter().find_map(|entry| match entry {
+        ParityLogEntry::Decision(decision) if decision.kind == "$PARITY_GUARD" => {
+            Some(decision.turn)
+        }
+        _ => None,
+    })
 }
 
 fn compare_snapshots(

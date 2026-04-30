@@ -92,6 +92,9 @@ pub enum ManaPayCallback<'a> {
     /// Confirm whether to exile the source for a mana ability.
     /// Mirrors Java CostPayment confirm for source-paid CostExile.
     ConfirmSourceExile(CardId),
+    /// Confirm whether to pay life for a mana ability.
+    /// Mirrors Java CostPayment confirm for CostPayLife.
+    ConfirmPayLife(CardId),
     /// Execute the sacrifice of the given permanent for a mana ability.
     /// The callback is responsible for firing Sacrificed/ChangesZone using
     /// battlefield LKI, moving the card, and returning the same card id on
@@ -188,6 +191,7 @@ pub fn auto_tap_lands_with_chooser(
             ManaPayCallback::ConfirmSelfSacrifice(cid) => Some(cid),
             ManaPayCallback::ConfirmSubCounter(cid) => Some(cid),
             ManaPayCallback::ConfirmSourceExile(cid) => Some(cid),
+            ManaPayCallback::ConfirmPayLife(cid) => Some(cid),
             ManaPayCallback::NotifySacrificeForMana(cid) => Some(cid),
         }
     };
@@ -221,6 +225,7 @@ pub fn auto_tap_lands_allow_reserved_source_reuse_with_chooser(
             ManaPayCallback::ConfirmSelfSacrifice(cid) => Some(cid),
             ManaPayCallback::ConfirmSubCounter(cid) => Some(cid),
             ManaPayCallback::ConfirmSourceExile(cid) => Some(cid),
+            ManaPayCallback::ConfirmPayLife(cid) => Some(cid),
             ManaPayCallback::NotifySacrificeForMana(cid) => Some(cid),
         }
     };
@@ -577,11 +582,6 @@ fn auto_tap_lands_internal_with_ctx(
         }
 
         if let Some(fixed_atoms) = fixed_output_atoms_for_payment(game, player, &sa_payment) {
-            let pain = super::land_pain_damage(
-                game.card(sa_payment.card_id),
-                chosen_atom,
-                sa_payment.ability_index,
-            );
             let is_special_output = sa_payment.mana_text.starts_with("Special ");
             let trace_atom = if is_special_output {
                 fixed_atoms.iter().fold(0, |acc, atom| acc | *atom)
@@ -605,9 +605,6 @@ fn auto_tap_lands_internal_with_ctx(
                     }
                     let _ = unpaid.try_pay_mana(atom, atom as u8);
                 }
-            }
-            if pain > 0 {
-                game.player_lose_life(player, pain);
             }
             tapped_choices.push(AutoTapChoice {
                 card_id: sa_payment.card_id,
@@ -747,9 +744,6 @@ fn collect_sorted_candidates(
     out
 }
 
-/// Mirrors Java AutoPay.chooseCandidate() — iterate shards in priority order,
-/// pick the least-versatile candidate that can pay.
-///
 /// Returns the chosen source and the shard it will pay.
 fn choose_candidate(
     game: &GameState,
@@ -777,8 +771,6 @@ fn choose_candidate(
     None
 }
 
-/// Mirrors Java AutoPay.shardPriority() — colored shards sorted by fewest
-/// available candidates (most constrained first), then generic. X is skipped.
 fn shard_priority(unpaid: &ManaCostBeingPaid, candidates: &[ManaAbilityRef]) -> Vec<ManaCostShard> {
     let mut colored = Vec::new();
     let mut generic = None;
@@ -898,9 +890,6 @@ fn count_candidates_for_shard(candidates: &[ManaAbilityRef], shard: ManaCostShar
     candidates.iter().filter(|c| c.can_pay_shard(shard)).count()
 }
 
-/// Mirrors Java AutoPay.chooseLeastVersatileCandidate() — pick the first
-/// candidate that can pay the shard, but defer candidates that are the sole
-/// source for another unpaid colored shard. Falls back if all are sole sources.
 fn choose_least_versatile_candidate(
     game: &GameState,
     player: PlayerId,
@@ -939,7 +928,6 @@ fn choose_least_versatile_candidate(
     fallback
 }
 
-/// Mirrors Java AutoPay.isSoleSourceForOtherShard() using the flat candidate list.
 fn is_sole_source_for_other_shard_candidates(
     candidate: &ManaAbilityRef,
     current_shard: ManaCostShard,
@@ -974,13 +962,6 @@ fn is_sole_source_for_other_shard_candidates(
     false
 }
 
-/// Choose the best mana ability to pay a shard, mirroring Java AutoPay's
-/// `chooseLeastVersatileCandidate()`.
-///
-/// Defers choosing a source if it is the sole provider for another unpaid
-/// colored shard — this preserves flexible dual lands for the shards that
-/// truly need them. Falls back to the first valid candidate if every
-/// candidate is a sole source for something.
 fn choose_mana_ability(
     game: &GameState,
     player: PlayerId,
@@ -1027,8 +1008,6 @@ fn choose_mana_ability(
     fallback
 }
 
-/// Mirrors Java AutoPay's `isSoleSourceForOtherShard()`.
-///
 /// Returns true if `candidate` is the ONLY source that can pay for some
 /// other unpaid colored shard (not the current one, not generic/X).
 fn is_sole_source_for_other_shard(
@@ -1121,11 +1100,21 @@ fn pay_non_tap_mana_ability_costs(
                 if game.player(player).life < *amount {
                     return false;
                 }
+                if let Some(ref mut cb) = callback {
+                    if let Some(confirmed_id) = cb(ManaPayCallback::ConfirmPayLife(ma.card_id)) {
+                        if confirmed_id != ma.card_id {
+                            return false;
+                        }
+                    } else {
+                        return false;
+                    }
+                }
                 game.player_lose_life(player, *amount);
             }
             CostPart::SubCounter {
                 amount,
                 counter_type,
+                ..
             } => {
                 if game.card(ma.card_id).counter_count(counter_type) < *amount {
                     return false;
@@ -1150,10 +1139,6 @@ fn pay_non_tap_mana_ability_costs(
                     if *amount > 1 || game.card(ma.card_id).zone != ZoneType::Battlefield {
                         return false;
                     }
-                    // Java parity: AutoPay.payAbilityActivationCosts() delegates to
-                    // costPlumbing.payWithDeterministicDecision() which calls
-                    // DeterministicCostDecision.visit(CostSacrifice) → confirm()
-                    // → confirmPayment(). This consumes RNG for non-spell contexts.
                     if let Some(ref mut cb) = callback {
                         if let Some(confirmed_id) =
                             cb(ManaPayCallback::ConfirmSelfSacrifice(ma.card_id))
@@ -1202,9 +1187,6 @@ fn pay_non_tap_mana_ability_costs(
                     if targets.len() < required {
                         return false;
                     }
-                    // Use the sacrifice chooser callback when available (parity
-                    // with Java's choosePermanentsToSacrifice which uses RNG).
-                    // Otherwise fall back to deterministic first-by-index.
                     for _ in 0..required {
                         let chosen = if let Some(ref mut cb) = callback {
                             cb(ManaPayCallback::ChooseSacrifice(&targets))
@@ -1270,6 +1252,7 @@ fn can_pay_source_paid_mana_cost_part(
         CostPart::SubCounter {
             amount,
             counter_type,
+            ..
         } => game.card(source_id).counter_count(counter_type) >= *amount,
         CostPart::Sacrifice {
             type_filter,
@@ -1386,8 +1369,6 @@ fn group_and_order_to_pay_shards(
     res
 }
 
-/// Forward-ported from Java for future use. Currently unused but will be needed
-/// when mana payment prioritization logic is fully ported.
 #[allow(dead_code)]
 fn sort_mana_abilities(
     game: &GameState,
@@ -1424,13 +1405,6 @@ fn sort_mana_abilities(
             .map(|(i, a)| ((a.card_id, a.ability_index), i))
             .collect();
 
-        // Use binary insertion sort to match Java's TimSort behaviour for small
-        // arrays.  Java's TimSort delegates to binary insertion sort for runs
-        // shorter than ~32 elements.  Because the comparator is non-transitive,
-        // different sort algorithms can (and do) produce different orderings.
-        // Rust's `slice::sort_by` uses a merge-sort variant that disagrees with
-        // Java on certain inputs, so we replicate the exact insertion-sort loop
-        // that Java executes.
         let cmp = |a: &ManaAbilityRef, b: &ManaAbilityRef| -> std::cmp::Ordering {
             let idx_a = ordered_cards
                 .iter()
@@ -1485,9 +1459,6 @@ fn sort_mana_abilities(
                 .cmp(&b.ability_index)
                 .then(a.source_order.cmp(&b.source_order))
         };
-        // Java-compatible binary insertion sort (mirrors TimSort's binarySort).
-        // For each element at position `i`, binary-search the sorted prefix
-        // [0..i) to find where it belongs, then shift elements right and insert.
         for i in 1..new_abilities.len() {
             let pivot = new_abilities[i].clone();
             // Binary search: find leftmost position where pivot should go.
@@ -1495,7 +1466,6 @@ fn sort_mana_abilities(
             let mut hi = i;
             while lo < hi {
                 let mid = (lo + hi) / 2;
-                // Java: if (c.compare(pivot, a[mid]) < 0) hi = mid; else lo = mid+1;
                 if cmp(&pivot, &new_abilities[mid]).is_lt() {
                     hi = mid;
                 } else {
@@ -1511,7 +1481,6 @@ fn sort_mana_abilities(
             }
         }
 
-        // Java excludes same-host payment in chooseManaAbility, keep list intact here.
         let _ = current_spell;
         mana_ability_map.insert(shard, new_abilities);
     }
@@ -1550,8 +1519,6 @@ fn group_sources_by_mana_color(
                             Some(card_id),
                             Some(player),
                         ),
-                        // Java's manaPart.mana() for ManaReflected returns origProduced
-                        // (typically "1"), NOT "Any"/"Reflected". Match for scoring parity.
                         mana_text: ab
                             .produced
                             .as_deref()
@@ -1705,9 +1672,6 @@ pub fn collect_mana_payment_sources(
     }
 }
 
-/// Mirrors Java harness `ActionSpace.canPayManaCostWithReservedSacrifices(...)`
-/// for activated-ability action-space checks that reserve self/original-host
-/// sacrifices while probing mana feasibility.
 pub fn can_pay_mana_cost_with_reserved_sacrifices(
     game: &GameState,
     pool: &ManaPool,
@@ -1717,14 +1681,6 @@ pub fn can_pay_mana_cost_with_reserved_sacrifices(
     reserved_sacrifices: &[CardId],
     payment_ctx: Option<&crate::mana::ManaPaymentContext>,
 ) -> bool {
-    // Mirrors Java harness ActionSpace.canPayManaCostWithReservedSacrifices:
-    // builds source_masks (one mask per mana-ability activation) and does a
-    // constrained bipartite match against the cost's colored requirements.
-    //
-    // Do NOT use calculate_available_mana_with_context here — that applies
-    // replacement effects like Nyxbloom Ancient's tripling, which inflates
-    // the source_colors list and makes impossible costs like The World Tree's
-    // {WWUUBBRRGG} appear payable when only 3 mana lands are untapped.
     let mana_cost = mana_cost_from_cost(cost);
     let mut source_masks: Vec<u16> = Vec::new();
 
@@ -1849,14 +1805,6 @@ pub fn can_pay_mana_cost_with_reserved_sacrifices(
     source_masks.len() - committed.len() >= generic_count as usize
 }
 
-/// Java-style action-space mana feasibility for spells with phyrexian costs.
-///
-/// This mirrors the wiring of `ComputerUtilMana.canPayManaCost(...)` in test mode:
-/// pay from floating mana first, greedily commit mana sources shard-by-shard,
-/// and only finish with life if the remaining unpaid cost is purely phyrexian.
-///
-/// This helper is intentionally for action-space / playability probing. Real
-/// payment continues to use the stricter payment path.
 pub fn can_pay_spell_mana_cost_for_action_space(
     game: &GameState,
     pool: &ManaPool,
@@ -2023,6 +1971,9 @@ fn is_payable_mana_ability(
     if !can_pay_ignoring_mana(&ab.cost, game, card_id, player) {
         return false;
     }
+    if !crate::mana::mana_ability_meets_script_requirements(game, card_id, ab) {
+        return false;
+    }
     if let Some(ctx) = payment_ctx {
         if let Some(raw) = ab.restrict_valid.as_deref() {
             let card = game.card(card_id);
@@ -2035,17 +1986,6 @@ fn is_payable_mana_ability(
             if !crate::mana::mana_meets_restriction(&resolved, ctx) {
                 return false;
             }
-            // Java parity (`harness/AutoPay.canPayShard:271`): the per-shard
-            // candidate filter calls `meetsManaRestrictions(manaAbility)` —
-            // passing the MANA ABILITY itself, not the SA being paid for.
-            // For `RestrictValid$ Spell` the check resolves at
-            // `AbilityManaPart.java:442` to `manaAbility.isValid("Spell")`,
-            // which returns false because the mana ability is an activated
-            // ability, not a spell. So Omnath's Leyline-Immersion-granted
-            // 5-mana ability fails its own restriction self-check and gets
-            // excluded from the candidate pool — even though Animar (the
-            // actual cast SA) is a spell. Replicate the same self-check
-            // here so Rust's per-shard filtering matches Java.
             let self_ctx = crate::mana::ManaPaymentContext {
                 is_spell: false,
                 is_activated_ability: true,
@@ -2100,67 +2040,6 @@ fn required_phyrexian_life(unpaid: &ManaCostBeingPaid) -> i32 {
         .sum()
 }
 
-/// Forward-ported from Java for future use. Currently unused but will be needed
-/// when mana payment prioritization logic is fully ported.
-#[allow(dead_code)]
-fn colors_most_common_in_hand(
-    game: &GameState,
-    player: PlayerId,
-    current_spell: Option<CardId>,
-) -> Vec<u16> {
-    let mut max_pips = [0_i32; 5];
-    for &card_id in game.cards_in_zone(forge_foundation::ZoneType::Hand, player) {
-        if Some(card_id) == current_spell {
-            continue;
-        }
-        let card = game.card(card_id);
-        if card.is_land() {
-            continue;
-        }
-
-        let mut pips = [0_i32; 5];
-        for shard in card.mana_cost.shards() {
-            let atoms = shard.shard() & ManaAtom::COLORS_SUPERPOSITION;
-            if (atoms & ManaAtom::WHITE) != 0 {
-                pips[0] += 1;
-            }
-            if (atoms & ManaAtom::BLUE) != 0 {
-                pips[1] += 1;
-            }
-            if (atoms & ManaAtom::BLACK) != 0 {
-                pips[2] += 1;
-            }
-            if (atoms & ManaAtom::RED) != 0 {
-                pips[3] += 1;
-            }
-            if (atoms & ManaAtom::GREEN) != 0 {
-                pips[4] += 1;
-            }
-        }
-
-        for i in 0..5 {
-            max_pips[i] = max_pips[i].max(pips[i]);
-        }
-    }
-
-    let mut ordered = vec![
-        (ManaAtom::WHITE, max_pips[0]),
-        (ManaAtom::BLUE, max_pips[1]),
-        (ManaAtom::BLACK, max_pips[2]),
-        (ManaAtom::RED, max_pips[3]),
-        (ManaAtom::GREEN, max_pips[4]),
-    ];
-
-    ordered.sort_by(|a, b| b.1.cmp(&a.1));
-    ordered
-        .into_iter()
-        .filter_map(|(atom, count)| if count > 0 { Some(atom) } else { None })
-        .collect()
-}
-
-/// Forward-ported from Java for future use. Currently unused but will be needed
-/// when mana payment prioritization logic is fully ported.
-#[allow(dead_code)]
 fn score_mana_producing_card(game: &GameState, card_id: CardId, player: PlayerId) -> i32 {
     let card = game.card(card_id);
     let mut score = 0;
@@ -2198,9 +2077,6 @@ fn score_mana_producing_card(game: &GameState, card_id: CardId, player: PlayerId
     score
 }
 
-/// Forward-ported from Java for future use. Currently unused but will be needed
-/// when mana payment prioritization logic is fully ported.
-#[allow(dead_code)]
 fn score_mana_ability(
     game: &GameState,
     card_id: CardId,
@@ -2210,36 +2086,17 @@ fn score_mana_ability(
     let mut score = 0;
     let card = game.card(card_id);
 
-    // Java parity: AutoPay.ManaAbilityCandidate.score() consults two distinct
-    // properties of the mana ability:
-    //   1. `isAnyMana()` — `getOrigProduced().contains("Any")`. This is a
-    //      substring check on the raw `Produced$` param, so values like
-    //      `Combo Any` and `Any` both qualify as any-color, scoring +7.
-    //   2. Otherwise: the resolved mana text from `manaPart.mana(sa)`. For
-    //      `ManaReflected` abilities (Exotic Orchard, City of Brass) which
-    //      have NO `Produced$` param, `getOrigProduced()` defaults to "1",
-    //      so Java scores these with the default "1" instead of the resolved
-    //      reflectable colors — yielding a low intrinsic score (+2) that
-    //      keeps Orchard ahead of multi-color combo sources like Arcane Signet.
     let orig_produced = ab.produced.as_deref();
     let is_any_mana = orig_produced.is_some_and(|p| p.contains("Any"));
     if is_any_mana {
         score += 7;
     } else if orig_produced.is_none() {
-        // No `Produced$` param (e.g. ManaReflected). Java's `mana(sa)` returns
-        // the orig_produced default of "1", scoring as a single colorless-ish
-        // shard: length 1 + 1 (no 'C') = 2.
         score += 2;
     } else if let Some(produced) = produced_override.or(orig_produced) {
         let mana_text = ability_mana_text_for_score(produced, &card.chosen_colors);
         if mana_text == "Any" {
             score += 7;
         } else {
-            // Java: `produced.split("\\s+").length` — count tokens, not chars.
-            // Previously Rust used `mana_text.len()` (character count), which
-            // inflates scores for multi-color Combo sources (e.g. Arcane
-            // Signet's "W U B R G" scored 9 chars vs Java's 5 tokens), pushing
-            // true any-mana sources (+7) above them in the autopay ordering.
             let tokens = mana_text
                 .split_whitespace()
                 .filter(|t| !t.is_empty())
@@ -2268,16 +2125,10 @@ fn score_mana_ability(
         score += 1;
     }
 
-    // Note: Java's SpellAbility.calculateScoreForManaAbility() adds +50 for
-    // non-undoable abilities and +2 for SubAbility presence, but the parity
-    // harness's AutoPay.ManaAbilityCandidate.score() (the scorer this matches)
-    // intentionally omits both. Mirroring that omission keeps Rust auto-pay
-    // from over-penalising pain lands relative to the harness baseline.
-
     score
 }
 
-/// Sort per-shard source lists to match Java AutoPay's ManaAbilityCandidate.score().
+/// Sort per-shard source lists to match.
 /// Lower scores are picked first. Lands score low; creatures score high (+26).
 /// This ensures lands are tapped before valuable mana dorks.
 fn sort_sources_for_autopay(
@@ -2296,8 +2147,6 @@ fn sort_sources_for_autopay(
     }
 }
 
-/// Score a mana source for AutoPay sorting, mirroring Java AutoPay's
-/// ManaAbilityCandidate.score():
 /// - Mana ability score based on produced colors
 /// - +cost_parts.size() for activation cost complexity
 /// - +13 per combat role (attack/block) for creatures
@@ -2305,16 +2154,6 @@ fn autopay_source_score(game: &GameState, _player: PlayerId, ma: &ManaAbilityRef
     let card = game.card(ma.card_id);
     if let Some(ab_idx) = ma.ability_index {
         if let Some(ab) = card.activated_abilities.get(ab_idx) {
-            // Java parity (AutoPay.ManaAbilityCandidate.score): the "Any mana"
-            // bonus (+7) hinges on `AbilityManaPart.isAnyMana()`, which checks
-            // whether the RAW `Produced$` parameter contains "Any". For sources
-            // whose resolved atom set is 5 colors but whose raw param is
-            // something else (e.g. Arcane Signet's `Combo ColorIdentity`
-            // expanding to WUBRG for a 5-color commander), Java scores them
-            // by the resolved-colors-count path — 5 tokens + 1 non-C = 6.
-            // Previously Rust forced these to "Any" (+7), which equalised them
-            // with true any-mana sources like Secluded Courtyard and caused
-            // the tap selection to pick the wrong source.
             let orig_is_any = ab
                 .params
                 .get(keys::PRODUCED)
@@ -2350,9 +2189,6 @@ fn autopay_source_score(game: &GameState, _player: PlayerId, ma: &ManaAbilityRef
     s
 }
 
-/// Forward-ported from Java for future use. Currently unused but will be needed
-/// when mana payment prioritization logic is fully ported.
-#[allow(dead_code)]
 fn score_implicit_land_mana_ability(atom: u16) -> i32 {
     let mut score = 0;
     let text = atom_short(atom);
@@ -2443,13 +2279,6 @@ fn source_requires_tap(game: &GameState, ma: &ManaAbilityRef) -> bool {
             .iter()
             .any(|p| matches!(p, CostPart::Tap)),
     }
-}
-
-/// Forward-ported from Java for future use. Currently unused but will be needed
-/// when mana payment prioritization logic is fully ported.
-#[allow(dead_code)]
-fn parse_mana_ability_amount(ab: &crate::ability::activated::ActivatedAbility) -> i32 {
-    parse_mana_ability_amount_with_game(ab, None, None, None)
 }
 
 /// Resolve the Amount param for a mana ability, supporting SVar expressions
@@ -2686,6 +2515,7 @@ mod tests {
                         }
                         ManaPayCallback::ConfirmSubCounter(cid) => Some(cid),
                         ManaPayCallback::ConfirmSourceExile(cid) => Some(cid),
+                        ManaPayCallback::ConfirmPayLife(cid) => Some(cid),
                         ManaPayCallback::NotifySacrificeForMana(cid) => unsafe {
                             let game = &mut *game_ptr;
                             let owner = game.card(cid).owner;
@@ -2748,6 +2578,7 @@ mod tests {
                         }
                         ManaPayCallback::ConfirmSubCounter(cid) => Some(cid),
                         ManaPayCallback::ConfirmSourceExile(cid) => Some(cid),
+                        ManaPayCallback::ConfirmPayLife(cid) => Some(cid),
                         ManaPayCallback::NotifySacrificeForMana(cid) => unsafe {
                             let game = &mut *game_ptr;
                             let owner = game.card(cid).owner;

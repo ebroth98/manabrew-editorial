@@ -31,6 +31,14 @@ pub(super) fn resolve_hidden_origin(
     let change_type = sa.change_type().unwrap_or("").to_string();
     let controller = sa.activating_player;
     let change_num = sa.change_num();
+    let origin_zones = {
+        let origins = sa.origin_zones();
+        if origins.is_empty() {
+            vec![origin_zone]
+        } else {
+            origins
+        }
+    };
     // Java parity: searches are mandatory by default. Only treat as optional
     // when Optional$ True is explicitly set on the ability (e.g. "you may search").
     // Previously `!sa.is_mandatory()` made everything optional by default,
@@ -333,13 +341,11 @@ pub(super) fn resolve_hidden_origin(
         }
     }
 
-    let mut zone_cards = ctx.game.cards_in_zone(origin_zone, search_player).to_vec();
+    let mut zone_cards = collect_search_zone_cards(ctx, &origin_zones, search_player);
 
     // Aven Mindcensor restriction
-    if origin_zone == ZoneType::Library {
-        if let Some(max) = find_search_limit(ctx, search_player, controller) {
-            zone_cards.truncate(max);
-        }
+    if origin_zones.contains(&ZoneType::Library) {
+        apply_library_search_limit(ctx, search_player, controller, &mut zone_cards);
     }
 
     // RememberSearched$
@@ -447,6 +453,36 @@ pub(super) fn resolve_hidden_origin(
         &lib_position,
         controller,
     );
+}
+
+fn collect_search_zone_cards(
+    ctx: &EffectContext,
+    origin_zones: &[ZoneType],
+    search_player: PlayerId,
+) -> Vec<crate::ids::CardId> {
+    origin_zones
+        .iter()
+        .flat_map(|&zone| ctx.game.cards_in_zone(zone, search_player).to_vec())
+        .collect()
+}
+
+fn apply_library_search_limit(
+    ctx: &EffectContext,
+    search_player: PlayerId,
+    controller: PlayerId,
+    zone_cards: &mut Vec<crate::ids::CardId>,
+) {
+    let Some(max) = find_search_limit(ctx, search_player, controller) else {
+        return;
+    };
+    let mut seen_library = 0usize;
+    zone_cards.retain(|&cid| {
+        if ctx.game.card(cid).zone != ZoneType::Library {
+            return true;
+        }
+        seen_library += 1;
+        seen_library <= max
+    });
 }
 
 /// Offer Panglacial Wurm cast during library search (CR 702.113).
