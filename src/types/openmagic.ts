@@ -1,4 +1,8 @@
-// Core OpenMagic Types (mirrored from Java forge-game)
+// SPDX-License-Identifier: GPL-3.0-or-later
+//
+// Mirror of the engine-side DTOs in
+// `forge-engine/crates/forge-agent-interface/`. The Rust crate is GPL by
+// virtue of being engine-coupled; these mirrors inherit the GPL.
 
 export type DeckFormatId =
   | "standard"

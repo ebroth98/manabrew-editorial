@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 /**
  * All prompt types that the Rust engine can send to the UI.
  * Used as the `type` field in `AgentPrompt`.
@@ -81,11 +83,14 @@ export const PromptType = {
 export type PromptType = (typeof PromptType)[keyof typeof PromptType];
 
 /**
- * Semantic classification of a targeting choice. Mirrors Rust's
- * `TargetingIntent` in `forge-agent-interface/src/game_view_dto.rs`.
- * The UI uses this to pick a pointer icon and the per-intent glow color.
- * Combat intents (`attack`, `block`) keep the classic arrow; everything
- * else is rendered as a floating pointer.
+ * Semantic classification of a targeting choice. The UI uses this to pick a
+ * pointer icon and the per-intent glow color. Combat intents (`attack`,
+ * `block`) keep the classic arrow; everything else is rendered as a
+ * floating pointer.
+ *
+ * Mirrors the `TargetingIntent` enum in
+ * `forge-engine/crates/forge-agent-interface/src/game_view_dto.rs`. The
+ * canonical wire-format description is in `docs/PROTOCOL.md` §5.4.
  */
 export const TargetingIntent = {
   Damage: "damage",

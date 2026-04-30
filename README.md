@@ -1,10 +1,19 @@
-# OpenMagic
+# Bardidina
 
-A modern desktop and web client for Magic: The Gathering, powered by a Rust rewrite of the [Forge](https://github.com/Card-Forge/forge) engine. Play as a native desktop app with P2P multiplayer — no dedicated server required.
+A desktop and web client for trading card games, powered by a Rust rewrite of
+the [Forge](https://github.com/Card-Forge/forge) rules engine. Play as a native
+desktop app with P2P multiplayer — no dedicated server required.
+
+> Bardidina is fan-made software interoperating with Forge. It is not affiliated
+> with, sponsored by, or endorsed by Wizards of the Coast LLC. Card names,
+> rules, and printed text are property of their respective owners.
 
 ## Vision
 
-[Forge](https://github.com/Card-Forge/forge) is one of the most complete MTG implementations (~30,000+ cards), but its Java/Swing stack confines it to desktop. This project rewrites the Forge rules engine in Rust and wraps it in a modern UI:
+[Forge](https://github.com/Card-Forge/forge) is one of the most complete
+implementations of its target game (~30,000+ cards), but its Java/Swing stack
+confines it to desktop. This project rewrites the Forge rules engine in Rust
+and wraps it in a modern UI:
 
 - **Tauri desktop** — Native app wrapping a React UI with a local Rust backend
 - **P2P multiplayer** — WebRTC data channels for peer-to-peer games, no dedicated server
@@ -305,7 +314,7 @@ Verify:
 
 ```bash
 git remote -v
-# origin    https://github.com/<your-org>/openmagic.git (fetch)
+# origin    https://github.com/<your-org>/bardidina.git (fetch)
 # upstream  https://github.com/Card-Forge/forge.git (fetch)
 ```
 
@@ -422,8 +431,8 @@ Non-tag events also run the workflow but do **not** publish a Release:
 
 6. **Verify the release.** Repo → **Releases** should now show the new tag with:
    - Auto-generated changelog (commits since the previous tag, grouped by conventional-commit prefix)
-   - `OpenMagic_X.Y.Z_x64-setup.exe` (Windows NSIS installer)
-   - `OpenMagic_X.Y.Z_x64_en-US.msi` (Windows MSI)
+   - `Bardidina_X.Y.Z_x64-setup.exe` (Windows NSIS installer)
+   - `Bardidina_X.Y.Z_x64_en-US.msi` (Windows MSI)
    - `.dmg` (macOS)
 
 ### Re-running or fixing a bad release
@@ -445,4 +454,14 @@ The workflow runs on self-hosted runners (`self-hosted, macOS` and `self-hosted,
 
 ## License
 
-GPL-3.0 — same as [Forge](https://github.com/Card-Forge/forge).
+All source code in this repository is licensed
+**GPL-3.0-or-later** ([`LICENSE-GPL-3.0-or-later`](./LICENSE-GPL-3.0-or-later)),
+matching upstream [Forge](https://github.com/Card-Forge/forge) from which this
+project derives the rules engine, the Java harness, and the bundled card data.
+
+`docs/PROTOCOL.md` is published under CC-BY-4.0 so third parties can
+describe or implement against the same wire format without depending on
+this repository.
+
+See [`LICENSE.md`](./LICENSE.md) for the full statement and
+[`THIRD-PARTY-NOTICES.md`](./THIRD-PARTY-NOTICES.md) for Forge attribution.

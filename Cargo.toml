@@ -20,6 +20,9 @@ members = [
     "forge-engine/crates/forge-limited",
 ]
 
+[workspace.package]
+license = "GPL-3.0-or-later"
+
 [workspace.dependencies]
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
