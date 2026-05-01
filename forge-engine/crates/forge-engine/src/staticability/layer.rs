@@ -214,6 +214,53 @@ pub fn apply_continuous_effects(game: &mut GameState) {
         }
     }
 
+    for player_idx in 0..game.player_order.len() {
+        let pid = game.player_order[player_idx];
+        let player = game.player_mut(pid);
+        player.max_hand_size = 7;
+        player.unlimited_hand_size = false;
+    }
+    let player_ids: Vec<PlayerId> = game.player_order.clone();
+    for player_idx in 0..player_ids.len() {
+        let pid = player_ids[player_idx];
+        let battlefield_cards: Vec<CardId> =
+            game.cards_in_zone(ZoneType::Battlefield, pid).to_vec();
+        for source_id in battlefield_cards {
+            let static_ability_count = game.card(source_id).static_abilities.len();
+            for sa_idx in 0..static_ability_count {
+                let card = game.card(source_id);
+                let sa = &card.static_abilities[sa_idx];
+                if !sa.check_conditions(card, game) {
+                    continue;
+                }
+                if !sa.check_mode(&StaticMode::Continuous) {
+                    continue;
+                }
+                let affected = sa.ir.affected_text.as_deref().unwrap_or("");
+                if !affected.eq_ignore_ascii_case("You") {
+                    continue;
+                }
+                let controller = card.controller;
+                let set_value = sa.ir.set_max_hand_size.clone();
+                let raise_value = sa.ir.raise_max_hand_size.clone();
+                if let Some(value) = set_value {
+                    let player = game.player_mut(controller);
+                    if value.eq_ignore_ascii_case("Unlimited") {
+                        player.unlimited_hand_size = true;
+                    } else if let Ok(n) = value.parse::<i32>() {
+                        player.max_hand_size = n;
+                    }
+                }
+                if let Some(value) = raise_value {
+                    if let Ok(n) = value.parse::<i32>() {
+                        let player = game.player_mut(controller);
+                        player.max_hand_size = player.max_hand_size.saturating_add(n);
+                    }
+                }
+            }
+        }
+    }
+
     // ── 2. Build list of effects-to-apply (deferred to allow sorting) ────
     let mut pending: Vec<PendingEffect> = Vec::new();
     let mut cant_attack_targets: Vec<CardId> = Vec::new();

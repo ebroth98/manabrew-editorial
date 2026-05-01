@@ -376,7 +376,12 @@ fn semantic_entries(entries: &[ParamEntry<'_>]) -> Vec<(String, String, egui::Co
         .collect()
 }
 
-pub(crate) fn render_ast_param_pill(ui: &mut egui::Ui, key: &str, value: &str, color: egui::Color32) {
+pub(crate) fn render_ast_param_pill(
+    ui: &mut egui::Ui,
+    key: &str,
+    value: &str,
+    color: egui::Color32,
+) {
     egui::Frame::none()
         .fill(theme::BG_0)
         .stroke(egui::Stroke::new(1.0, color))

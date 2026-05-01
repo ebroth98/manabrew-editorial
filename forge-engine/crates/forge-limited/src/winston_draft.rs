@@ -136,8 +136,6 @@ impl WinstonDraft {
                 self.pending_human_pile = Some(self.current_pile);
                 return WinstonOutcome::AwaitingHuman;
             }
-            // AI seat — resolve the turn inline so we don't have to
-            // pass `&mut self` to a method that already borrows it.
             let cards = self.ai_resolve_turn();
             let seat = self.active_seat;
             self.seats[seat].picked.extend(cards.iter().cloned());
@@ -171,8 +169,6 @@ impl WinstonDraft {
         Ok(drawn)
     }
 
-    // ── Engine-internal helpers (also used by WinstonDraftAI) ────────
-
     pub(crate) fn take_active_pile(&mut self) -> Vec<PaperCard> {
         let pile_idx = self.current_pile;
         let cards = std::mem::take(&mut self.piles[pile_idx]);
@@ -183,13 +179,11 @@ impl WinstonDraft {
 
     pub(crate) fn pass_active_pile(&mut self) -> Option<Vec<PaperCard>> {
         let pile_idx = self.current_pile;
-        // Add a card from the deck before passing.
         if let Some(c) = self.deck.pop_front() {
             self.piles[pile_idx].push(c);
         }
         self.current_pile += 1;
         if self.current_pile >= NUM_PILES {
-            // All three piles passed — draw top of deck instead.
             self.current_pile = 0;
             if let Some(c) = self.deck.pop_front() {
                 Some(vec![c])
@@ -291,7 +285,6 @@ mod tests {
         let cards = d.human_take_pile().unwrap();
         assert_eq!(cards.len(), 1);
         assert_eq!(d.human_picked().len(), 1);
-        // Pile 0 was refilled.
         assert_eq!(d.piles()[0].len(), 1);
         assert_eq!(d.deck_size(), pre_deck - 1);
         assert_eq!(d.active_seat(), 1);
@@ -302,11 +295,10 @@ mod tests {
         let mut d = draft();
         let pre_deck = d.deck_size();
         assert!(d.human_pass_pile().unwrap().is_none());
-        // Pile 0 grew by 1.
         assert_eq!(d.piles()[0].len(), 2);
         assert_eq!(d.deck_size(), pre_deck - 1);
         assert_eq!(d.current_pile(), 1);
-        assert_eq!(d.active_seat(), 0); // still human, picking from pile 1 next
+        assert_eq!(d.active_seat(), 0);
     }
 
     #[test]

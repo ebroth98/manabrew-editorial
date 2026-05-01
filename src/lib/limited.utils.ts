@@ -159,7 +159,6 @@ export function validateLimitedDeck(
       message: `Main deck has ${main.length} cards (target ${targetMainSize}).`,
     });
   }
-  // Total copies across main + sideboard.
   const counts = new Map<string, number>();
   for (const card of [...main, ...sideboard]) {
     if (BASIC_LAND_NAME_SET.has(card.name)) continue;

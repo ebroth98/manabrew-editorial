@@ -349,12 +349,20 @@ fn player_x_property(
             };
             let selector = crate::parsing::cached_compiled_selector(restrictions);
             let source = game.card(source_id);
+            // Mirror Java `AbilityUtils.playerXProperty` (`AbilityUtils.java:
+            // 3380, 3389`): pass the iterated `player` as the `YouCtrl`
+            // controller so per-opponent counts (e.g. Beza's
+            // `PlayerCountOpponents$HighestValid Land.YouCtrl`) actually scope
+            // to that opponent's permanents, not the source's.
+            let context = crate::card::valid_filter::MatchContext::from_source(source)
+                .with_game(game)
+                .with_source_controller(player);
             game.cards
                 .iter()
                 .filter(|card| {
                     zones.contains(&card.zone)
-                        && crate::card::valid_filter::matches_valid_card_selector_in_game(
-                            &selector, card, source, game,
+                        && crate::card::valid_filter::matches_valid_card_selector_with_context(
+                            &selector, card, context,
                         )
                 })
                 .count() as i32
@@ -1467,6 +1475,27 @@ pub fn resolve_count_svar_for_sa(
     // Count$TotalDamageDoneByThisTurn — total damage dealt by the source card this turn.
     if expr == "Count$TotalDamageDoneByThisTurn" {
         return game.card(source_id).total_damage_done_this_turn;
+    }
+
+    // Count$InYour<Zone> / Count$CardsInYour<Zone> — zone size for the SA's
+    // controller (e.g. `Count$CardsInYourHand` returns the hand size of the
+    // ability's "you"). Mirrors Java `AbilityUtils.getCardListForXCount`'s
+    // `InYour<Zone>` substring branch (`AbilityUtils.java:3718`).
+    if let Some(rest) = expr
+        .strip_prefix("Count$CardsInYour")
+        .or_else(|| expr.strip_prefix("Count$InYour"))
+    {
+        let zone = match rest {
+            "Hand" => Some(ZoneType::Hand),
+            "Yard" | "Graveyard" => Some(ZoneType::Graveyard),
+            "Library" => Some(ZoneType::Library),
+            "Exile" => Some(ZoneType::Exile),
+            "Battlefield" => Some(ZoneType::Battlefield),
+            _ => None,
+        };
+        if let Some(zone) = zone {
+            return game.cards_in_zone(zone, controller).len() as i32;
+        }
     }
 
     // Fallback

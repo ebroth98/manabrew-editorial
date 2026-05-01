@@ -28,9 +28,7 @@ use crate::archive::ArchiveState;
 use crate::card_widgets::{render_battlefield_strip, render_hand_strip, render_selectable_card_row};
 use crate::script_view::{render_ast, render_summary};
 use crate::ts_view::highlight_source_job;
-use crate::worker::{
-    TraceRunRequest, TraceWorkerCommand, TraceWorkerEvent, TraceWorkerHandle,
-};
+use crate::worker::{TraceRunRequest, TraceWorkerCommand, TraceWorkerEvent, TraceWorkerHandle};
 
 pub(crate) fn repo_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -5576,4 +5574,3 @@ fn trace_preset_from_args(name: &str, args: &str) -> Option<TracePreset> {
         commanders,
     })
 }
-

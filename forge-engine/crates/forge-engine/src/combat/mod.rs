@@ -668,7 +668,14 @@ impl CombatState {
                 if alive_blockers.is_empty() && !can_assign_to_defender {
                     continue;
                 }
-                let must_prompt_assignment = can_assign_to_defender || alive_blockers.len() > 1;
+                // Java's harness (`Combat.java:876-878`) always calls
+                // `assignCombatDamage` once `orderedBlockers` is non-empty —
+                // but only when the attacker actually deals damage this step.
+                // Skip the prompt for zero-damage steps (e.g. a non-first-
+                // strike attacker during the first-strike step), since Java
+                // never enters the assignment loop in that case.
+                let must_prompt_assignment =
+                    remaining_damage > 0 && (can_assign_to_defender || !alive_blockers.is_empty());
 
                 let assignments = if must_prompt_assignment {
                     let controller = game.card(attacker_id).controller;
@@ -1015,11 +1022,14 @@ impl CombatState {
 
     /// Order blockers for damage assignment. For each attacker, store the
     /// blocker order. If only one blocker, auto-assign.
-    /// Mirrors Java `Combat.orderBlockersForDamageAssignment()`.
+    /// Mirrors Java `Combat.orderBlockersForDamageAssignment()` —
+    /// `Combat.java:494` short-circuits the agent prompt when
+    /// `GameRules.legacyOrderCombatants` is false (default), so the
+    /// deterministic parity harness never sees this callback. Mirror that.
     pub fn order_blockers_for_damage_assignment(
         &mut self,
         _game: &GameState,
-        agents: &mut [Box<dyn PlayerAgent>],
+        _agents: &mut [Box<dyn PlayerAgent>],
     ) {
         let attacker_ids: Vec<CardId> = self.attackers.iter().map(|(a, _)| *a).collect();
         for attacker_id in attacker_ids {
@@ -1027,17 +1037,9 @@ impl CombatState {
             if blockers.is_empty() {
                 continue;
             }
-            if blockers.len() <= 1 {
-                self.damage_order.insert(attacker_id, blockers);
-            } else {
-                let attacking_player = self.attacking_player.unwrap_or(PlayerId(0));
-                let ordered = agents[attacking_player.index()].choose_damage_assignment_order(
-                    attacking_player,
-                    attacker_id,
-                    &blockers,
-                );
-                self.damage_order.insert(attacker_id, ordered);
-            }
+            // Auto-order in declaration order — matches Java's
+            // non-legacyOrderCombatants behaviour (Combat.java:494).
+            self.damage_order.insert(attacker_id, blockers);
         }
     }
 
@@ -1474,10 +1476,12 @@ fn compute_blocker_damage_allocations(
         return Vec::new();
     }
 
-    if attackers_for_blocker.len() == 1 {
-        return vec![(attackers_for_blocker[0], blocker_power)];
-    }
-
+    // Java's `Combat.assignBlockersDamage` (Combat.java:705-757) always
+    // calls `assigningPlayer.getController().assignCombatDamage(...)` for
+    // every blocker with a non-empty attacker list, regardless of attacker
+    // count. Mirror that — the deterministic agent's single-attacker pick
+    // still belongs in the parity callback ledger so RNG and trace stay
+    // aligned with Java.
     let controller = blocker.controller;
     let assignments = agents[controller.index()].assign_combat_damage(
         game,

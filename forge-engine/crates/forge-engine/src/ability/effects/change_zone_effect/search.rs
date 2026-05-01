@@ -57,9 +57,10 @@ pub(super) fn resolve_single_search(
     chooser: PlayerId,
     is_optional: bool,
 ) -> Vec<CardId> {
-    if candidates.is_empty() {
-        return Vec::new();
-    }
+    // Mirrors Java `ChangeZoneEffect.changeZonePlayerInvariant` lines 1208-1221:
+    // the chooser is called even when fetchList is empty so the callback is
+    // emitted (returning null). The cancel-prompt is then skipped when the
+    // candidate list is empty (Java line 1215 `fetchList.isEmpty()` short).
     ctx.agents[chooser.index()].snapshot_state(ctx.game, ctx.mana_pools);
     ctx.agents[chooser.index()].on_library_peek(ctx.game, candidates);
     let chosen = ctx.agents[chooser.index()]
@@ -75,9 +76,7 @@ pub(super) fn resolve_single_search(
         return chosen;
     }
 
-    // Java's one-at-a-time search path asks for a follow-up confirmation when
-    // the chooser returns null but legal cards still exist.
-    if !sa.ir.skip_cancel_prompt {
+    if !sa.ir.skip_cancel_prompt && !candidates.is_empty() {
         let source_name = sa.source.map(|cid| ctx.game.card(cid).card_name.as_str());
         ctx.agents[chooser.index()].snapshot_state(ctx.game, ctx.mana_pools);
         let _ = ctx.agents[chooser.index()].confirm_action(

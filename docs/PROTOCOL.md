@@ -88,9 +88,15 @@ enums, both serialized with a `type` discriminator field:
   `RoomUpdate`, `GameStarted`, `StateUpdate`, `TurnChanged`, `Error`.
 
 Example (client requests room creation):
+
 ```json
-{ "type": "CreateRoom", "room_name": "kitchen-table", "max_players": 2,
-  "format": "commander", "hosted": false }
+{
+  "type": "CreateRoom",
+  "room_name": "kitchen-table",
+  "max_players": 2,
+  "format": "commander",
+  "hosted": false
+}
 ```
 
 **Inner layer — game-message envelope.** Game-state messages (prompts,
@@ -103,13 +109,13 @@ enums. Instead, they are carried as an opaque JSON `state` value inside:
 
 The inner `state` value is itself a JSON object with a `kind` discriminator:
 
-| `kind` | Direction | Payload |
-|---|---|---|
-| `prompt` | engine host → remote client | `{ "kind": "prompt", "forPlayer": "<player-N>", "prompt": <AgentPrompt> }` |
-| `response` | remote client → engine host | `{ "kind": "response", "fromPlayer": "<player-N>", "action": <PlayerAction> }` |
-| `log` | engine host → all | `{ "kind": "log", "fromPlayer": "<player-N>", "entry": <GameLogEntryDto> }` |
-| `snapshot` | engine host → joining observer | `{ "kind": "snapshot", "fromPlayer": "<player-N>", "entry": <GameSnapshotEntry> }` |
-| `roomRelay` | any → any | room-control messages (e.g. bot lifecycle) — implementation defined |
+| `kind`      | Direction                      | Payload                                                                            |
+| ----------- | ------------------------------ | ---------------------------------------------------------------------------------- |
+| `prompt`    | engine host → remote client    | `{ "kind": "prompt", "forPlayer": "<player-N>", "prompt": <AgentPrompt> }`         |
+| `response`  | remote client → engine host    | `{ "kind": "response", "fromPlayer": "<player-N>", "action": <PlayerAction> }`     |
+| `log`       | engine host → all              | `{ "kind": "log", "fromPlayer": "<player-N>", "entry": <GameLogEntryDto> }`        |
+| `snapshot`  | engine host → joining observer | `{ "kind": "snapshot", "fromPlayer": "<player-N>", "entry": <GameSnapshotEntry> }` |
+| `roomRelay` | any → any                      | room-control messages (e.g. bot lifecycle) — implementation defined                |
 
 Implementations MAY define additional `kind` values; consumers MUST ignore
 unknown `kind` values rather than treating them as errors.
@@ -125,11 +131,11 @@ above.
 
 The protocol uses opaque string identifiers. The reference encoding is:
 
-| Form | Refers to |
-|---|---|
-| `card-{n}` | A card instance, where `{n}` is a non-negative integer assigned by the engine and unique within a session |
-| `player-{n}` | A player slot, where `{n}` is the zero-based seat index |
-| `stack-{n}` | A stack object, where `{n}` is a non-negative integer unique within a session |
+| Form         | Refers to                                                                                                 |
+| ------------ | --------------------------------------------------------------------------------------------------------- |
+| `card-{n}`   | A card instance, where `{n}` is a non-negative integer assigned by the engine and unique within a session |
+| `player-{n}` | A player slot, where `{n}` is the zero-based seat index                                                   |
+| `stack-{n}`  | A stack object, where `{n}` is a non-negative integer unique within a session                             |
 
 Implementations MAY use other encodings provided they are stable strings
 unique within a session. Frontends MUST treat identifiers as opaque and MUST
@@ -159,7 +165,9 @@ prompt that follows them.
   "displayEvents": [
     /* zero or more DisplayEvent objects */
   ],
-  "gameView": { /* GameViewDto */ },
+  "gameView": {
+    /* GameViewDto */
+  },
   // ...prompt-type-specific fields
 }
 ```
@@ -171,10 +179,10 @@ visible-state snapshot from the prompted player's perspective.
 
 Each entry is a JSON object with a `kind` discriminator:
 
-| `kind` | Required fields | Meaning |
-|---|---|---|
-| `cardPlayed` | `cardId`, `cardName`, `setCode`, `playerId` | A card was cast or played |
-| `turnChanged` | `activePlayerId`, `activePlayerName`, `turnNumber` | Turn progressed |
+| `kind`        | Required fields                                                  | Meaning                       |
+| ------------- | ---------------------------------------------------------------- | ----------------------------- |
+| `cardPlayed`  | `cardId`, `cardName`, `setCode`, `playerId`                      | A card was cast or played     |
+| `turnChanged` | `activePlayerId`, `activePlayerName`, `turnNumber`               | Turn progressed               |
 | `revealCards` | `cards` (array of `CardDto`), `zone`, `ownerPlayerId`, `message` | Cards became publicly visible |
 
 `displayEvents` carry transitional UI hints. They MUST NOT be required to
@@ -189,17 +197,21 @@ MAY emit additional types (consumers MUST treat unknown `type` values as
 non-fatal and MAY surface them to a debug channel).
 
 #### Game lifecycle (display-only)
+
 - `stateUpdate` — animation hook between events; no decision required
 - `gameOver` — game ended; no decision required
 
 #### Opening hand
+
 - `mulligan` — keep or redraw
 - `mulliganPutBack` — London mulligan: choose cards to put on the bottom
 
 #### Priority
+
 - `chooseAction` — cast a spell, activate an ability, tap for mana, or pass
 
 #### Combat
+
 - `chooseAttackers` — declare attackers
 - `chooseBlockers` — declare blockers
 - `chooseExertAttackers` — choose which attackers to exert
@@ -209,6 +221,7 @@ non-fatal and MAY surface them to a debug channel).
 - `payCombatCost` — pay combat-only costs
 
 #### Targeting
+
 - `chooseTargetCard` — pick a card
 - `chooseTargetPlayer` — pick a player
 - `chooseTargetAny` — pick a card or player
@@ -216,9 +229,11 @@ non-fatal and MAY surface them to a debug channel).
 - `chooseTargetCardFromZone` — pick a card visible only because of this prompt
 
 #### Modal / multi-mode
+
 - `chooseMode` — pick one or more modes for a modal spell
 
 #### Cost payment
+
 - `payManaCost` — pay mana
 - `specifyManaCombo` — disambiguate hybrid / Phyrexian payment
 - `choosePhyrexian` — Phyrexian mana: pay 2 life or a colored mana
@@ -234,29 +249,35 @@ non-fatal and MAY surface them to a debug channel).
 - `payCostToPreventEffect` — pay a cost to prevent an effect (Fog effects, etc.)
 
 #### Library manipulation
+
 - `scry` — order top-N library between top and bottom
 - `surveil` — order top-N library between top and graveyard
 - `dig` — pick from look-at-top-N results
 - `reorderLibrary` — reorder cards in the library
 
 #### Card selection
+
 - `revealCards` — acknowledge revealed cards
 - `chooseDiscard` — pick cards to discard
 - `chooseCardsForEffect` — pick cards from a list
 
 #### Scalar choices
+
 - `chooseColor` — pick a color
 - `chooseType` — pick a card type
 - `chooseCardName` — pick a card name
 - `chooseNumber` — pick a number
 
 #### Triggered abilities
+
 - `chooseOptionalTrigger` — yes/no on an optional trigger
 
 #### Explore
+
 - `exploreDecision` — Explore: put nonland in graveyard or on top of library
 
 #### Dice mechanics
+
 - `firstPlayerRoll` — display-only: first-player roll-off result
 - `diceRolled` — display-only: dice were rolled
 - `chooseRollToIgnore` — choose which die to drop
@@ -356,23 +377,41 @@ A snapshot of the game state from one player's perspective.
   "step": "main1",
   "activePlayerId": "player-0",
   "priorityPlayerId": "player-0",
-  "players": [/* PlayerDto */],
-  "myHand": [/* CardDto */],
-  "battlefield": [/* CardDto */],
-  "stack": [/* StackObjectDto */],
-  "exile": [/* CardDto */],
-  "graveyard": [/* CardDto */],
-  "opponentGraveyard": [/* CardDto */],
-  "opponentExile": [/* CardDto */],
-  "myCommandZone": [/* CardDto */],
-  "opponentCommandZone": [/* CardDto */],
-  "combatAssignments": [
-    { "blockerId": "card-9", "attackerId": "card-4" }
+  "players": [
+    /* PlayerDto */
   ],
+  "myHand": [
+    /* CardDto */
+  ],
+  "battlefield": [
+    /* CardDto */
+  ],
+  "stack": [
+    /* StackObjectDto */
+  ],
+  "exile": [
+    /* CardDto */
+  ],
+  "graveyard": [
+    /* CardDto */
+  ],
+  "opponentGraveyard": [
+    /* CardDto */
+  ],
+  "opponentExile": [
+    /* CardDto */
+  ],
+  "myCommandZone": [
+    /* CardDto */
+  ],
+  "opponentCommandZone": [
+    /* CardDto */
+  ],
+  "combatAssignments": [{ "blockerId": "card-9", "attackerId": "card-4" }],
   "monarchId": "player-0",
   "initiativeHolderId": null,
   "gameOver": false,
-  "winnerId": null
+  "winnerId": null,
 }
 ```
 
@@ -422,7 +461,7 @@ state in extension fields.
   "radiationCounters": 0,
   "ringLevel": 0,
   "speed": 0,
-  "hasCityBlessing": false
+  "hasCityBlessing": false,
 }
 ```
 
@@ -435,24 +474,24 @@ state in extension fields.
 
 Always present in every `CardDto`:
 
-| Field | Type | Meaning |
-|---|---|---|
-| `id` | `card-N` | Card instance identifier |
-| `name` | string | Oracle name |
-| `setCode` | string | Set code of the printing |
-| `cardNumber` | string | Collector number |
-| `color` | string | Color string (e.g. `"WG"`, `""` for colorless) |
-| `manaCost` | string | Printed mana cost (e.g. `"{2}{R}{R}"`) |
-| `cmc` | int | Mana value (see vocabulary note below) |
-| `types`, `subtypes`, `supertypes` | string[] | Card type line components |
-| `text` | string | Oracle text |
-| `controllerId`, `ownerId` | `player-N` | Controller and owner |
-| `zoneId` | string | Current zone identifier |
-| `tapped` | bool | Tapped state |
-| `damage` | int | Marked damage |
-| `summoningSick` | bool | Summoning sickness (CR 302.1) |
-| `keywords` | string[] | Active keyword abilities |
-| `isPlayable`, `isSelected`, `isChoosable` | bool | UI selection flags (see §6.6) |
+| Field                                     | Type       | Meaning                                        |
+| ----------------------------------------- | ---------- | ---------------------------------------------- |
+| `id`                                      | `card-N`   | Card instance identifier                       |
+| `name`                                    | string     | Oracle name                                    |
+| `setCode`                                 | string     | Set code of the printing                       |
+| `cardNumber`                              | string     | Collector number                               |
+| `color`                                   | string     | Color string (e.g. `"WG"`, `""` for colorless) |
+| `manaCost`                                | string     | Printed mana cost (e.g. `"{2}{R}{R}"`)         |
+| `cmc`                                     | int        | Mana value (see vocabulary note below)         |
+| `types`, `subtypes`, `supertypes`         | string[]   | Card type line components                      |
+| `text`                                    | string     | Oracle text                                    |
+| `controllerId`, `ownerId`                 | `player-N` | Controller and owner                           |
+| `zoneId`                                  | string     | Current zone identifier                        |
+| `tapped`                                  | bool       | Tapped state                                   |
+| `damage`                                  | int        | Marked damage                                  |
+| `summoningSick`                           | bool       | Summoning sickness (CR 302.1)                  |
+| `keywords`                                | string[]   | Active keyword abilities                       |
+| `isPlayable`, `isSelected`, `isChoosable` | bool       | UI selection flags (see §6.6)                  |
 
 #### Conditionally-present fields
 
@@ -463,29 +502,30 @@ omission semantics:
 - Boolean flags that default to `false` are omitted when `false`.
 - Array fields that default to empty are omitted when empty.
 
-| Field | Type | Notes |
-|---|---|---|
-| `power`, `toughness` | string | P/T values for creatures and similar permanents |
-| `basePower`, `baseToughness` | int | Base values for buff/debuff color-coding |
-| `flashbackCost`, `kickerCost`, `madnessCost` | string | Alternative-cost strings, when the card has them |
-| `effectiveManaCost` | string | Cost after static-ability adjustments, when different from `manaCost` |
-| `attachedTo` | `card-N` | Equipment / Aura host |
-| `attachmentIds` | `card-N`[] | IDs of cards attached to this permanent |
-| `counters` | `Record<string, int>` | Counter type → count (only non-zero entries) |
-| `isToken` | bool | True for tokens |
-| `isDoubleFaced`, `isTransformed`, `isFaceDown` | bool | DFC / morph / manifest state |
-| `isBestowed` | bool | Currently attached as an Aura via Bestow |
-| `isCrewed` | bool | Successfully crewed this turn |
-| `isAttacking` | bool | Attacking this combat |
-| `attackingPlayerId` | `player-N` | When `isAttacking`, which defender |
-| `phasedOut` | bool | Phased out |
-| `exerted` | bool | Exerted (won't untap next untap step) |
-| `isMadnessExiled`, `isPlotted`, `isWarpExiled` | bool | Mechanic-specific exile states |
-| `foil` | bool | Foil printing |
+| Field                                          | Type                  | Notes                                                                 |
+| ---------------------------------------------- | --------------------- | --------------------------------------------------------------------- |
+| `power`, `toughness`                           | string                | P/T values for creatures and similar permanents                       |
+| `basePower`, `baseToughness`                   | int                   | Base values for buff/debuff color-coding                              |
+| `flashbackCost`, `kickerCost`, `madnessCost`   | string                | Alternative-cost strings, when the card has them                      |
+| `effectiveManaCost`                            | string                | Cost after static-ability adjustments, when different from `manaCost` |
+| `attachedTo`                                   | `card-N`              | Equipment / Aura host                                                 |
+| `attachmentIds`                                | `card-N`[]            | IDs of cards attached to this permanent                               |
+| `counters`                                     | `Record<string, int>` | Counter type → count (only non-zero entries)                          |
+| `isToken`                                      | bool                  | True for tokens                                                       |
+| `isDoubleFaced`, `isTransformed`, `isFaceDown` | bool                  | DFC / morph / manifest state                                          |
+| `isBestowed`                                   | bool                  | Currently attached as an Aura via Bestow                              |
+| `isCrewed`                                     | bool                  | Successfully crewed this turn                                         |
+| `isAttacking`                                  | bool                  | Attacking this combat                                                 |
+| `attackingPlayerId`                            | `player-N`            | When `isAttacking`, which defender                                    |
+| `phasedOut`                                    | bool                  | Phased out                                                            |
+| `exerted`                                      | bool                  | Exerted (won't untap next untap step)                                 |
+| `isMadnessExiled`, `isPlotted`, `isWarpExiled` | bool                  | Mechanic-specific exile states                                        |
+| `foil`                                         | bool                  | Foil printing                                                         |
 
 #### Fields not included in this protocol
 
 The protocol does NOT carry:
+
 - `imageUrl` — consumers fetch card images out-of-band (Scryfall is the
   reference source).
 - `colorIdentity` — derived from `manaCost` and rules text on the consumer
@@ -511,9 +551,9 @@ The protocol does NOT carry:
       "nodeIndex": 0,
       "targetIndex": 0,
       "hostile": true,
-      "intent": "damage"
-    }
-  ]
+      "intent": "damage",
+    },
+  ],
 }
 ```
 
@@ -522,14 +562,14 @@ sources without a printing).
 
 The `targets` array contains `StackTargetDto` entries with these fields:
 
-| Field | Type | Meaning |
-|---|---|---|
-| `kind` | string | One of `card`, `player`, `planeswalker`, `stack` (see `StackTargetKindDto` in the reference impl) |
-| `id` | string | Identifier, format depending on `kind` |
-| `nodeIndex` | int | Index of the sub-ability within the spell's ability tree (for chained abilities) |
-| `targetIndex` | int | Index of this target within its sub-ability's target list |
-| `hostile` | bool | Backward-compatibility flag; prefer `intent` |
-| `intent` | `TargetingIntent` | Semantic classification of this target (see §5.4) |
+| Field         | Type              | Meaning                                                                                           |
+| ------------- | ----------------- | ------------------------------------------------------------------------------------------------- |
+| `kind`        | string            | One of `card`, `player`, `planeswalker`, `stack` (see `StackTargetKindDto` in the reference impl) |
+| `id`          | string            | Identifier, format depending on `kind`                                                            |
+| `nodeIndex`   | int               | Index of the sub-ability within the spell's ability tree (for chained abilities)                  |
+| `targetIndex` | int               | Index of this target within its sub-ability's target list                                         |
+| `hostile`     | bool              | Backward-compatibility flag; prefer `intent`                                                      |
+| `intent`      | `TargetingIntent` | Semantic classification of this target (see §5.4)                                                 |
 
 The `nodeIndex` / `targetIndex` pair lets consumers correlate stack-object
 targets with the originating spell's ability tree, which matters for spells
@@ -542,6 +582,7 @@ names predate, or differ from, current MTG comprehensive-rules terminology.
 Implementations MUST accept the field names as given.
 
 **Renamed concepts:**
+
 - `cmc` is the integer mana value (CR 202.3b). The MTG rules renamed
   "converted mana cost" to "mana value" in 2020; the field name is retained
   for compatibility with the reference implementation. Future protocol
@@ -549,10 +590,12 @@ Implementations MUST accept the field names as given.
 - `summoningSick` carries summoning-sickness state (CR 302.1) as a boolean.
 
 **Two-player sugar:**
+
 - `myHand` / `opponentGraveyard` / `myCommandZone` / `opponentCommandZone`
   are two-player-centric. See §6.2.
 
 **UI selection flags on `CardDto`:**
+
 - `isPlayable` — engine reports this card is currently a legal play target
   for the prompted decision.
 - `isSelected` — frontend has marked this card as selected (echoed back by
@@ -561,6 +604,7 @@ Implementations MUST accept the field names as given.
   the active selection prompt.
 
 **Mechanic-specific flags:**
+
 - `isBestowed` — Aura currently attached via the Bestow mechanic.
 - `isCrewed` — Vehicle has been crewed this turn.
 - `isPlotted` — exiled face-up via the Plot mechanic; castable later for
@@ -571,10 +615,12 @@ Implementations MUST accept the field names as given.
 - `exerted` — exerted, won't untap next untap step.
 
 **Rendering hints:**
+
 - `basePower` / `baseToughness` — pre-modifier P/T values, for buff/debuff
   color-coding in the UI.
 
 **Combat:**
+
 - `attackingPlayerId` — when a creature `isAttacking`, this names the
   defender (player or planeswalker) the creature is attacking.
 
@@ -591,6 +637,7 @@ Discriminator: `kind` (string). The reference implementation defines the
 following action types, grouped by the prompt family they answer.
 
 #### Universal
+
 - `pass` — pass priority. Optional `untilPhase` field requests auto-pass
   through subsequent steps until the named phase.
 - `concede` — concede the game.
@@ -601,16 +648,19 @@ following action types, grouped by the prompt family they answer.
   builds only).
 
 #### Opening hand
+
 - `mulliganDecision` — `{ "kind": "mulliganDecision", "keep": <bool> }`
 - `mulliganPutBackDecision` — `{ "kind": "mulliganPutBackDecision", "cardIds": [...] }`
 
 #### Priority / spells / abilities
+
 - `playCard` — `{ "kind": "playCard", "cardId": "<card-N>", "mode": "<string>?" }`
 - `activateAbility` — `{ "kind": "activateAbility", "cardId": "<card-N>", "abilityIndex": <int> }`
 - `tapLand` — `{ "kind": "tapLand", "cardId": "<card-N>", "abilityIndex": <int>?, "color": "<symbol>?" }`
 - `untapLand` — `{ "kind": "untapLand", "cardId": "<card-N>" }`
 
 #### Combat
+
 - `declareAttackers` — `{ "kind": "declareAttackers", "assignments": [{ "attackerId": "...", "defenderId": "..." }] }`
 - `declareBlockers` — `{ "kind": "declareBlockers", "assignments": [{ "blockerId": "...", "attackerId": "..." }] }`
 - `damageAssignmentOrderDecision` — order blockers/attackers
@@ -621,12 +671,14 @@ following action types, grouped by the prompt family they answer.
 - `declineCombatCost` — decline an optional combat cost
 
 #### Targeting
+
 - `targetCard` — `{ "kind": "targetCard", "cardId": "<card-N>?" }`
 - `targetPlayer` — `{ "kind": "targetPlayer", "playerId": "<player-N>?" }`
 - `targetAny` — `{ "kind": "targetAny", "target": <TargetAnyChoice> }`
 - `targetSpell` — `{ "kind": "targetSpell", "spellId": "<stack-N>?" }`
 
 #### Cost payment
+
 - `payManaCost` — `{ "kind": "payManaCost", "auto": <bool> }`
 - `cancelManaCost` — abort a cost-payment session
 - `manaComboDecision` — disambiguate hybrid / Phyrexian
@@ -638,25 +690,30 @@ following action types, grouped by the prompt family they answer.
 - `payCostToPreventEffectDecision` — `{ "kind": "payCostToPreventEffectDecision", "accept": <bool> }`
 
 #### Library manipulation
+
 - `scryDecision` — `{ "kind": "scryDecision", "bottomCardIds": [...] }`
 - `surveilDecision` — `{ "kind": "surveilDecision", "graveyardCardIds": [...] }`
 - `digDecision` — `{ "kind": "digDecision", "chosenCardIds": [...] }`
 - `reorderLibraryDecision` — `{ "kind": "reorderLibraryDecision", "orderedCardIds": [...] }`
 
 #### Card selection
+
 - `discardDecision` — `{ "kind": "discardDecision", "discardedCardIds": [...] }`
 - `chooseCardsDecision` — `{ "kind": "chooseCardsDecision", "chosenCardIds": [...] }`
 - `revealCardsAcknowledged` — acknowledge a `revealCards` prompt
 
 #### Modal / scalar
+
 - `modeDecision` — `{ "kind": "modeDecision", "chosenIndices": [...] }`
 - `colorDecision`, `typeDecision`, `cardNameDecision`, `numberDecision`
 
 #### Triggered abilities / explore
+
 - `optionalTriggerDecision` — `{ "kind": "optionalTriggerDecision", "accept": <bool> }`
 - `exploreResponse` — `{ "kind": "exploreResponse", "putInGraveyard": <bool> }`
 
 #### Dice
+
 - `firstPlayerRollAcknowledged` — acknowledge first-player roll-off
 - `diceRolledAcknowledged` — acknowledge a roll
 - `rollToIgnoreDecision`, `rollToSwapDecision`, `rollToModifyDecision`,

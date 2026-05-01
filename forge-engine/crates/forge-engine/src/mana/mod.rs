@@ -567,17 +567,17 @@ pub(crate) fn all_basic_subtype_atoms(card: &Card) -> Vec<u16> {
     atoms
 }
 
-/// Tap a land for mana and record it.
 pub(crate) fn tap_land_for_mana(
     game: &mut GameState,
     pool: &mut ManaPool,
-    _player: PlayerId,
+    player: PlayerId,
     land_id: CardId,
     atom: u16,
     should_tap: bool,
     tapped_lands: &mut Vec<CardId>,
     ability_index: Option<usize>,
 ) {
+    let _ = player;
     let card = game.card(land_id);
     let is_snow = card.type_line.is_snow();
     // Pull `TriggersWhenSpent$` metadata from the specific mana ability
@@ -600,6 +600,22 @@ pub(crate) fn tap_land_for_mana(
     };
     mana.source_card = Some(land_id);
     mana.triggers_when_spent = triggers_when_spent;
+    if std::env::var("FORGE_PAYMENT_TRACE").is_ok() {
+        let card_name = game.card(land_id).card_name.clone();
+        let turn = game.turn.turn_number;
+        let phase = format!("{:?}", game.turn.phase);
+        eprintln!(
+            "[pay-trace-rust] T{} {} P{:?} tap_land_for_mana card={}#{:?} atom={} pool_total={} ability_idx={:?}",
+            turn,
+            phase,
+            player,
+            card_name,
+            land_id,
+            ManaPool::atom_to_letter(atom),
+            pool.total_mana(),
+            ability_index,
+        );
+    }
     pool.add_mana(mana);
     tapped_lands.push(land_id);
 }
@@ -951,26 +967,174 @@ pub(crate) fn replacement_adjusted_atoms_for_availability(
     source: CardId,
     atom: u16,
 ) -> Vec<u16> {
-    use crate::replacement::replacement_handler::{apply_replacements, ReplacementEvent};
+    use crate::replacement::replacement_handler::ReplacementEvent;
 
-    let mut game_clone = game.clone();
     let mut event = ReplacementEvent::ProduceMana {
         source,
         activator: player,
         mana: ManaPool::atom_to_letter(atom).to_string(),
     };
-    let result = apply_replacements(&mut game_clone, &mut event);
-    if result == crate::replacement::ReplacementResult::Updated {
-        if let ReplacementEvent::ProduceMana { mana, .. } = event {
-            let adjusted =
-                fixed_produced_atoms(&mana, &[]).unwrap_or_else(|| produced_to_atoms(&mana, &[]));
-            if !adjusted.is_empty() {
-                return adjusted;
-            }
+    if apply_produce_mana_replacements_for_availability(game, &mut event) {
+        let ReplacementEvent::ProduceMana { mana, .. } = event else {
+            return vec![atom];
+        };
+        let adjusted =
+            fixed_produced_atoms(&mana, &[]).unwrap_or_else(|| produced_to_atoms(&mana, &[]));
+        if !adjusted.is_empty() {
+            return adjusted;
         }
     }
 
     vec![atom]
+}
+
+pub(crate) fn java_replacement_filtered_atoms_for_availability(
+    game: &GameState,
+    player: PlayerId,
+    source: CardId,
+    ab: &crate::ability::activated::ActivatedAbility,
+    intrinsic_atoms: &[u16],
+) -> Vec<u16> {
+    if intrinsic_atoms.is_empty() {
+        return Vec::new();
+    }
+
+    let orig_produced =
+        ab.produced
+            .as_deref()
+            .unwrap_or(if ab.is_mana_reflected { "1" } else { "" });
+    if orig_produced.is_empty() {
+        return intrinsic_atoms.to_vec();
+    }
+
+    let mut event = crate::replacement::replacement_handler::ReplacementEvent::ProduceMana {
+        source,
+        activator: player,
+        mana: orig_produced.to_string(),
+    };
+    if !apply_produce_mana_replacements_for_availability(game, &mut event) {
+        return intrinsic_atoms.to_vec();
+    }
+
+    let crate::replacement::replacement_handler::ReplacementEvent::ProduceMana { mana, .. } = event
+    else {
+        return intrinsic_atoms.to_vec();
+    };
+    // Java's `groupSourcesByManaColor` checks `"Any".equals(replaced)` against
+    // the *unmodified* origin string — `ReplaceAmount` (Mana Reflection,
+    // Nyxbloom Ancient) never touches `replaced` on the Java side, only the
+    // mana-pool tally. Our `apply_produce_mana_replacements_for_availability`
+    // already multiplies the string ("Any" → "Any Any Any"), so anchor the
+    // comparison on the *original* produced text. Mirroring Java's exact
+    // string equality keeps quirky cases (e.g. "Combo Any" — granted by
+    // Leyline Immersion — still parses only the "C" letter from "Combo",
+    // not as full any-color) in lockstep.
+    if orig_produced.trim() == "Any" {
+        return intrinsic_atoms.to_vec();
+    }
+
+    let pairs = [
+        ("W", ManaAtom::WHITE),
+        ("U", ManaAtom::BLUE),
+        ("B", ManaAtom::BLACK),
+        ("R", ManaAtom::RED),
+        ("G", ManaAtom::GREEN),
+        ("C", ManaAtom::COLORLESS),
+    ];
+    let mut filtered = Vec::new();
+    for (letter, atom) in pairs {
+        if mana.contains(letter) && intrinsic_atoms.contains(&atom) && !filtered.contains(&atom) {
+            filtered.push(atom);
+        }
+    }
+    filtered
+}
+
+pub(crate) fn reflected_atoms_for_availability(
+    game: &GameState,
+    player: PlayerId,
+    source: CardId,
+    ab: &crate::ability::activated::ActivatedAbility,
+) -> Vec<u16> {
+    let reflected = compute_reflected_atoms(game, player, source, ab);
+    java_replacement_filtered_atoms_for_availability(game, player, source, ab, &reflected)
+}
+
+/// Mirrors Java harness `AutoPay.producedAtoms` — ManaReflected abilities
+/// return their reflectable colors directly without applying ProduceMana
+/// replacements. Used by the auto-pay candidate enumeration.
+///
+/// The replacement filter on `reflected_atoms_for_availability` works for
+/// fixed-color sources (the replacement substitutes color letters) but
+/// breaks ManaReflected, whose placeholder produced string is "1": triplers
+/// like Mana Reflection turn "1" into "111", which matches no color letter
+/// and yields an empty atom list, hiding the source from auto-pay even
+/// when the underlying reflected colors are valid.
+pub(crate) fn reflected_atoms_for_auto_pay(
+    game: &GameState,
+    player: PlayerId,
+    source: CardId,
+    ab: &crate::ability::activated::ActivatedAbility,
+) -> Vec<u16> {
+    compute_reflected_atoms(game, player, source, ab)
+}
+
+fn apply_produce_mana_replacements_for_availability(
+    game: &GameState,
+    event: &mut crate::replacement::replacement_handler::ReplacementEvent,
+) -> bool {
+    use crate::replacement::{
+        replace_produce_mana, ReplacementLayer, ReplacementResult, ReplacementType,
+    };
+
+    let mut has_run: std::collections::HashSet<(CardId, usize)> = std::collections::HashSet::new();
+    let mut updated = false;
+
+    loop {
+        let mut changed_this_pass = false;
+        for layer in [
+            ReplacementLayer::CantHappen,
+            ReplacementLayer::Control,
+            ReplacementLayer::Copy,
+            ReplacementLayer::Transform,
+            ReplacementLayer::Other,
+        ] {
+            let mut chosen = None;
+            'cards: for (i, card) in game.cards.iter().enumerate() {
+                let card_id = CardId(i as u32);
+                for (effect_idx, effect) in card.replacement_effects.iter().enumerate() {
+                    if has_run.contains(&(card_id, effect_idx))
+                        || effect.event != ReplacementType::ProduceMana
+                        || effect.layer != layer
+                        || !effect.active_in_zone(card.zone)
+                        || !effect.requirements_check(game, card)
+                        || !replace_produce_mana::can_replace(effect, event, game, card)
+                    {
+                        continue;
+                    }
+                    chosen = Some((card_id, effect_idx));
+                    break 'cards;
+                }
+            }
+
+            let Some((card_id, effect_idx)) = chosen else {
+                continue;
+            };
+            has_run.insert((card_id, effect_idx));
+            let effect = &game.card(card_id).replacement_effects[effect_idx];
+            if replace_produce_mana::execute(effect, event, game, card_id)
+                == ReplacementResult::Updated
+            {
+                updated = true;
+                changed_this_pass = true;
+                break;
+            }
+        }
+
+        if !changed_this_pass {
+            return updated;
+        }
+    }
 }
 
 fn calculate_available_mana_excluding_with_reserved_impl(
@@ -1160,7 +1324,7 @@ fn calculate_available_mana_excluding_with_reserved_impl(
             // For playability purposes, optimistically add all colors that
             // matching permanents could produce.
             if ab.is_mana_reflected {
-                let reflected_atoms = compute_reflected_atoms(game, player, card_id, ab);
+                let reflected_atoms = reflected_atoms_for_availability(game, player, card_id, ab);
                 // Resolve Amount parameter (e.g. Incubation Druid produces 3 when adapted).
                 let amount = resolve_mana_ability_amount(game, card_id, player, ab);
                 for &atom in &reflected_atoms {
@@ -1253,7 +1417,11 @@ fn calculate_available_mana_excluding_with_reserved_impl(
                         }
                     } else {
                         let mut source_units = 0usize;
-                        for atom in produced_to_atoms(produced, &card.chosen_colors) {
+                        let intrinsic = produced_to_atoms(produced, &card.chosen_colors);
+                        let allowed = java_replacement_filtered_atoms_for_availability(
+                            game, player, card_id, ab, &intrinsic,
+                        );
+                        for atom in allowed {
                             if !added_atoms.contains(&atom) {
                                 for _ in 0..amount {
                                     let adjusted_atoms =
@@ -1272,9 +1440,41 @@ fn calculate_available_mana_excluding_with_reserved_impl(
                             }
                         }
                         if source_units > 1 && added_any {
+                            // Multi-mana ability slot pushing. There are two
+                            // distinct cases for `source_units > 1`:
+                            //
+                            // (A) Replacement multiplier (Mana Reflection
+                            //     tripling Rootbound Crag's `Combo R G | Amount$
+                            //     1`). The original ability picks ONE color at
+                            //     activation; the replacement multiplies *that*
+                            //     color, so the 3 mana are all the same colour.
+                            //     The extra slots must be COLORLESS to prevent
+                            //     the matcher from satisfying multiple distinct
+                            //     coloured shards from one activation.
+                            //
+                            // (B) Intrinsic `Amount$ N` (Leyline Immersion's
+                            //     `Combo Any | Amount$ 5`). Each of the N mana
+                            //     can be a different colour, so every slot
+                            //     keeps the full `src_mask` and can satisfy
+                            //     any single-colour shard.
+                            let intrinsic_amount = amount > 1;
+                            let colored_bits = (src_mask
+                                & (ManaAtom::WHITE
+                                    | ManaAtom::BLUE
+                                    | ManaAtom::BLACK
+                                    | ManaAtom::RED
+                                    | ManaAtom::GREEN))
+                                .count_ones();
+                            let extra_mask = if intrinsic_amount {
+                                src_mask
+                            } else if colored_bits > 1 {
+                                ManaAtom::COLORLESS
+                            } else {
+                                src_mask
+                            };
                             for _ in 0..(source_units as i32 - 1) {
                                 source_count += 1;
-                                source_colors.push(src_mask);
+                                source_colors.push(extra_mask);
                             }
                             counted_variable_source_units = true;
                         }

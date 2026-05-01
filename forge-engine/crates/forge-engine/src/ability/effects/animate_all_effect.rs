@@ -133,6 +133,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
             let original_base_power = ctx.game.card(card_id).base_power;
             let original_base_toughness = ctx.game.card(card_id).base_toughness;
             let original_color = ctx.game.card(card_id).color;
+            let original_keywords = ctx.game.card(card_id).keywords.clone();
             ctx.game
                 .card_mut(card_id)
                 .set_animate_state(Some(AnimateState {
@@ -140,6 +141,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
                     original_base_power,
                     original_base_toughness,
                     original_color,
+                    original_keywords: Some(original_keywords),
                 }));
         }
 

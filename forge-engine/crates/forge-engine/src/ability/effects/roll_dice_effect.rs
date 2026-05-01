@@ -1079,6 +1079,33 @@ fn pay_roll_cost(
                             );
                             Some(sacrificed_id)
                         },
+                        mana::ManaPayCallback::ApplyProduceManaReplacement {
+                            activator,
+                            source_card,
+                            mana,
+                        } => unsafe {
+                            let game = &mut *game_ptr;
+                            let mut event =
+                                crate::replacement::replacement_handler::ReplacementEvent::ProduceMana {
+                                    source: source_card,
+                                    activator,
+                                    mana: mana.clone(),
+                                };
+                            let result =
+                                crate::replacement::replacement_handler::apply_replacements_with_agents(
+                                    game, agents, &mut event,
+                                );
+                            if result == crate::replacement::ReplacementResult::Updated {
+                                if let crate::replacement::replacement_handler::ReplacementEvent::ProduceMana {
+                                    mana: new_mana,
+                                    ..
+                                } = event
+                                {
+                                    *mana = new_mana;
+                                }
+                            }
+                            None
+                        },
                     }
                 };
                 let tapped = mana::auto_tap_lands_with_callbacks(

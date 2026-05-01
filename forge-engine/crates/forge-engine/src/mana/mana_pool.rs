@@ -9,6 +9,7 @@ use forge_foundation::PhaseType;
 use serde::{Deserialize, Serialize};
 
 use super::mana_conversion_matrix::ManaConversionMatrix;
+use super::mana_cost_being_paid::ManaCostBeingPaid;
 use super::{mana_meets_restriction, Mana, ManaPaymentContext};
 use crate::ids::CardId;
 
@@ -445,6 +446,70 @@ impl ManaPool {
         let result = self.try_pay_with_phyrexian_life_result(cost, any_color, player_life);
         self.mana.extend(ineligible);
         result
+    }
+
+    /// Spend currently-floating mana against an existing unpaid cost tracker.
+    ///
+    /// This mirrors Java harness `AutoPay`: after each mana ability resolves,
+    /// `ManaPool.payManaFromAbility` / `payManaCostFromPool` immediately remove
+    /// usable mana from the pool before the next source is chosen. That matters
+    /// when a source overproduces colored mana before a later colorless source.
+    pub(crate) fn pay_unpaid_for_spell_incremental(
+        &mut self,
+        unpaid: &mut ManaCostBeingPaid,
+        ctx: &ManaPaymentContext,
+        any_color: bool,
+    ) -> ManaPaymentOutcome {
+        let mut outcome = ManaPaymentOutcome::default();
+
+        loop {
+            if unpaid.is_paid() {
+                break;
+            }
+
+            let mut paid_index: Option<(usize, u16)> = None;
+            for &color in &[
+                ManaAtom::WHITE,
+                ManaAtom::BLUE,
+                ManaAtom::BLACK,
+                ManaAtom::RED,
+                ManaAtom::GREEN,
+                ManaAtom::COLORLESS,
+            ] {
+                let Some(idx) = self
+                    .mana
+                    .iter()
+                    .position(|m| m.color == color && mana_matches_context(m, ctx))
+                else {
+                    continue;
+                };
+                let payment_color = if any_color && color != ManaAtom::COLORLESS {
+                    ManaAtom::COLORS_SUPERPOSITION
+                } else {
+                    color
+                };
+                if unpaid
+                    .try_pay_mana(payment_color, payment_color as u8)
+                    .is_some()
+                {
+                    paid_index = Some((idx, color));
+                    break;
+                }
+            }
+
+            let Some((idx, spent_color)) = paid_index else {
+                break;
+            };
+            let mana = self.mana.remove(idx);
+            outcome.colors_spent |= spent_color;
+            outcome.paying_mana.push(spent_color);
+            if let (Some(svar), Some(src)) = (mana.triggers_when_spent, mana.source_card) {
+                self.last_payment_triggers_consumed.push((svar, src));
+            }
+        }
+
+        self.last_payment_atoms = outcome.paying_mana.clone();
+        outcome
     }
 
     /// Pay a mana cost with phyrexian-life fallback and return the life paid.

@@ -83,13 +83,15 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
             .split(',')
             .any(|token| token.trim() == "TriggeredAttackerLKICopy")
     }) {
-        if let Some(attacker_str) = sa.get_triggering_object(crate::ability::AbilityKey::Attacker) {
-            if let Ok(id) = attacker_str.parse::<u32>() {
-                let cid = crate::ids::CardId(id);
-                remembered_lki_cards.push(cid);
-                if !remembered_cards.contains(&cid) {
-                    remembered_cards.push(cid);
-                }
+        // The Attacker triggering object is stored as `AbilityValue::Card`
+        // (since the kaalia parity refactor in trigger_attacks.rs); query it
+        // through the typed accessor. The string-based `get_triggering_object`
+        // returns `None` for non-String variants, which would silently drop
+        // the LKI snapshot and break Teferi's Veil-style phase-out triggers.
+        if let Some(cid) = sa.get_triggering_card(crate::ability::AbilityKey::Attacker) {
+            remembered_lki_cards.push(cid);
+            if !remembered_cards.contains(&cid) {
+                remembered_cards.push(cid);
             }
         }
     }

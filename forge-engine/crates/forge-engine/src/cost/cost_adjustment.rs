@@ -199,7 +199,7 @@ fn compute_cost_adjustment_inner(
     game: &GameState,
     spell_card: &Card,
     caster: PlayerId,
-    cast_zone: ZoneType,
+    _cast_zone: ZoneType,
     targets: &[CardId],
     include_spell_self: bool,
 ) -> CostAdjustment {
@@ -258,10 +258,15 @@ fn compute_cost_adjustment_inner(
                 continue;
             }
 
-            // ── checkRequirement: EffectZone$ / AffectedZone$ ────────
+            // EffectZone$ governs the SOURCE zone the static is active from
+            // (e.g. Temur Battlecrier's `EffectZone$ Battlefield`), not the
+            // zone the spell is being cast from. Compare it to `source.zone`,
+            // not `cast_zone`. The previous `cast_zone` comparison silently
+            // dropped every Battlefield-source ReduceCost static when casting
+            // from Hand (which is every normal cast).
             if !st_ab.ir.effect_zone_all
                 && !st_ab.ir.effect_zones.is_empty()
-                && !st_ab.ir.effect_zones.contains(&cast_zone)
+                && !st_ab.ir.effect_zones.contains(&source.zone)
             {
                 continue;
             }
@@ -620,7 +625,7 @@ fn evaluate_count_expr(game: &GameState, source: &Card, expr: &str, caster: Play
     // Currently supported aggregators: `Amount` (count) and `GreatestCardManaCost`
     // (max CMC). Add more here as parity tests surface them.
     if let Some(rest) = expr.strip_prefix("Count$Valid ") {
-        let (filter, aggregator) = rest.split_once('$').unwrap_or((rest, "Amount"));
+        let (filter, aggregator) = rest.split_once('$').unwrap_or((rest, ""));
         let selector = crate::parsing::cached_compiled_selector(filter);
         let matches: Vec<&Card> = game
             .cards
@@ -631,7 +636,12 @@ fn evaluate_count_expr(game: &GameState, source: &Card, expr: &str, caster: Play
             })
             .collect();
         return match aggregator {
-            "Amount" => matches.len() as i32,
+            // No aggregator (e.g. Battlecrier `Count$Valid Creature.YouCtrl+powerGE4`):
+            // return the count of matching permanents. The default for `Count$Valid`
+            // without a `$<aggregator>` suffix is the cardinality of the match set.
+            // Mirrors Java `CardFactoryUtil.xCount` which falls through to
+            // `CardLists.count(...)` when no extra aggregator is parsed.
+            "" | "Amount" => matches.len() as i32,
             "GreatestCardManaCost" => matches.iter().map(|c| c.mana_cost.cmc()).max().unwrap_or(0),
             _ => 0,
         };
@@ -642,15 +652,6 @@ fn evaluate_count_expr(game: &GameState, source: &Card, expr: &str, caster: Play
         return game
             .cards_in_zone(ZoneType::Graveyard, source.controller)
             .len() as i32;
-    }
-
-    // Count$CreatureYouCtrl
-    if expr.contains("Creature") && expr.contains("YouCtrl") {
-        return game
-            .cards_in_zone(ZoneType::Battlefield, source.controller)
-            .iter()
-            .filter(|&&cid| game.card(cid).is_creature())
-            .count() as i32;
     }
 
     // Fallback: try numeric

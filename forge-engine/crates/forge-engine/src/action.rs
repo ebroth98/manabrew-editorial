@@ -154,6 +154,24 @@ impl GameState {
                 card.is_token,
             )
         };
+        if let Ok(filter) = std::env::var("FORGE_CARD_TRACE") {
+            if !filter.is_empty()
+                && self.cards[card_id.index()]
+                    .card_name
+                    .eq_ignore_ascii_case(&filter)
+            {
+                eprintln!(
+                    "[card-trace] move {} {:?} {:?} -> {:?} (owner={:?} sick={} cast_from={:?})",
+                    self.cards[card_id.index()].card_name,
+                    card_id,
+                    src_zone,
+                    dest_zone,
+                    dest_owner,
+                    self.cards[card_id.index()].summoning_sick,
+                    self.cards[card_id.index()].cast_from,
+                );
+            }
+        }
         let mut moved_event = ReplacementEvent::Moved {
             card: card_id,
             origin: src_zone,
@@ -486,6 +504,10 @@ impl GameState {
                 card.controller = card.owner;
                 card.face_down = false;
                 card.is_bestowed = false;
+                // CR 400.7: a permanent that changes zones becomes a new
+                // object with no cast history. Mirrors Java's
+                // changeZone-creates-new-Card behaviour.
+                card.cast_from = None;
                 card.reset_crewed();
                 if !keep_counters {
                     card.counters.clear();
@@ -498,6 +520,17 @@ impl GameState {
                 // carry the trigger, making it "immortal" for the rest of the
                 // turn.
                 card.clear_pump_triggers();
+                card.clear_pump_keywords();
+                // Restore intrinsic keywords from the animate snapshot so
+                // Animate-granted keywords (e.g. Sneak Attack's `Keywords$
+                // Haste`) do not persist into the new object the card
+                // becomes when it changes zones (CR 400.7).
+                if let Some(state) = card.animate_state.take() {
+                    if let Some(orig_kws) = state.original_keywords {
+                        card.keywords = orig_kws;
+                        card.update_keywords();
+                    }
+                }
             }
             ZoneType::Command => {
                 // Detach any attachments before resetting state.
@@ -530,6 +563,7 @@ impl GameState {
                 card.summoning_sick = true;
                 card.monstrous = false;
                 card.controller = card.owner;
+                card.cast_from = None;
                 if !keep_counters {
                     card.counters.clear();
                 }
@@ -1024,7 +1058,6 @@ impl GameState {
             }
         }
 
-        // Check planeswalkers with no loyalty counters
         let battlefield_cards: Vec<CardId> = self
             .player_order
             .clone()

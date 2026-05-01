@@ -827,26 +827,14 @@ impl GameLoop {
                 }
             }
 
-            // Prompt for damage assignment order on multi-blocked attackers
+            // Auto-order blockers by declaration order — Java's parity
+            // harness sets `legacyOrderCombatants = false` so the agent is
+            // never prompted (Combat.java:494). Mirror that to keep the RNG
+            // and trace aligned with Java.
             for &(attacker_id, _) in &self.combat.attackers.clone() {
                 let blockers_for = self.combat.get_blockers_for(attacker_id);
                 if blockers_for.len() > 1 {
-                    let controller = game.card(attacker_id).controller;
-                    agents[controller.index()].snapshot_state(game, &self.mana_pools);
-                    let ordered = agents[controller.index()].choose_damage_assignment_order(
-                        controller,
-                        attacker_id,
-                        &blockers_for,
-                    );
-                    // Validate: must be a permutation of the blockers
-                    if ordered.len() == blockers_for.len()
-                        && blockers_for.iter().all(|b| ordered.contains(b))
-                    {
-                        self.combat.damage_order.insert(attacker_id, ordered);
-                    } else {
-                        // Invalid order — use default
-                        self.combat.damage_order.insert(attacker_id, blockers_for);
-                    }
+                    self.combat.damage_order.insert(attacker_id, blockers_for);
                 }
             }
 

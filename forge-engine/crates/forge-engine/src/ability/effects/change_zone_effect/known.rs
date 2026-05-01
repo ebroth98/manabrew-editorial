@@ -131,6 +131,36 @@ pub(super) fn resolve_known_origin(
         Vec::new()
     };
 
+    // Optional$ True — Java mirrors the per-card confirm at
+    // `ChangeZoneEffect.java:558-561`: ask the chooser whether to move each
+    // card individually and skip non-confirmed cards. Without this prompt,
+    // the deterministic agent's RNG ledger drifts vs Java (e.g. Risen Reef's
+    // optional ChangeZone for a peeked land).
+    let cards_to_move = if sa.ir.optional && !cards_to_move.is_empty() {
+        let chooser = controller;
+        let source_name = sa.source.map(|cid| ctx.game.card(cid).card_name.clone());
+        cards_to_move
+            .into_iter()
+            .filter(|&cid| {
+                let card_name = ctx.game.card(cid).card_name.clone();
+                let prompt = format!(
+                    "Do you want to move {} from {} to {}?",
+                    card_name, origin_zone, dest_zone,
+                );
+                ctx.agents[chooser.index()].confirm_action(
+                    chooser,
+                    None,
+                    &prompt,
+                    &[],
+                    source_name.as_deref(),
+                    Some(crate::ability::api_type::ApiType::ChangeZone),
+                )
+            })
+            .collect()
+    } else {
+        cards_to_move
+    };
+
     move_cards(
         ctx,
         sa,
@@ -138,6 +168,7 @@ pub(super) fn resolve_known_origin(
         origin_zone,
         dest_zone,
         &lib_position,
+        controller,
         controller,
     );
 }

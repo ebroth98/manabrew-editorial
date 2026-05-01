@@ -39,11 +39,15 @@ pub(super) fn resolve_hidden_origin(
             origins
         }
     };
-    // Java parity: searches are mandatory by default. Only treat as optional
-    // when Optional$ True is explicitly set on the ability (e.g. "you may search").
-    // Previously `!sa.is_mandatory()` made everything optional by default,
-    // causing the agent to decline mandatory searches like Fabled Passage.
-    let is_optional = sa.is_optional();
+    // Mirror Java `ChangeZoneEffect.changeZonePlayerInvariant` (line 914 / 970 / 1208).
+    //   `optional_confirm` — Java line 970 `hasParam("Optional")`: gates the
+    //     "Search?" confirm prompt that precedes the chooser.
+    //   `chooser_optional` — Java line 1208 `!hasParam("Mandatory")`: passed to
+    //     `chooseSingleCardForZoneChange` so the chooser may decline by returning
+    //     null (CR 701.18b lets the controller find no cards even on a non-
+    //     mandatory search). The chooser callback is still emitted in that case.
+    let optional_confirm = sa.is_optional();
+    let chooser_optional = !sa.is_mandatory();
 
     // ── Defined$ handling (mirrors Java lines 999-1011) ──────────────────
     // When Defined$ is set to a known card reference (Remembered, Imprinted,
@@ -128,6 +132,32 @@ pub(super) fn resolve_hidden_origin(
                     ordered = reordered;
                 }
             }
+            // Optional$ True — Java mirrors per-card confirm at
+            // `ChangeZoneEffect.java:558-561`. Mirrors the same hook in
+            // `known.rs`. Required for Risen Reef / similar peek-and-move
+            // optional moves originating from a hidden zone (Library).
+            if sa.ir.optional {
+                let chooser = controller;
+                let source_name = sa.source.map(|cid| ctx.game.card(cid).card_name.clone());
+                ordered = ordered
+                    .into_iter()
+                    .filter(|&cid| {
+                        let card_name = ctx.game.card(cid).card_name.clone();
+                        let prompt = format!(
+                            "Do you want to move {} from {} to {}?",
+                            card_name, origin_zone, dest_zone,
+                        );
+                        ctx.agents[chooser.index()].confirm_action(
+                            chooser,
+                            None,
+                            &prompt,
+                            &[],
+                            source_name.as_deref(),
+                            Some(crate::ability::api_type::ApiType::ChangeZone),
+                        )
+                    })
+                    .collect();
+            }
             // For Defined card moves, suppress the post-move library shuffle.
             // Java's changeHiddenOriginResolve checks `!defined` before shuffling
             // (line 1509), so Defined moves never trigger a search shuffle.
@@ -141,6 +171,7 @@ pub(super) fn resolve_hidden_origin(
                 origin_zone,
                 dest_zone,
                 &lib_position,
+                controller,
                 controller,
             );
         }
@@ -192,7 +223,7 @@ pub(super) fn resolve_hidden_origin(
                 chooser
             };
 
-            if is_optional {
+            if optional_confirm {
                 let source_name = sa.source.map(|cid| ctx.game.card(cid).card_name.as_str());
                 let origin_label = origin_zone.to_string().to_lowercase();
                 let message = format!(
@@ -231,7 +262,7 @@ pub(super) fn resolve_hidden_origin(
                     each_spec,
                     &mut zone_cards,
                     effective_chooser,
-                    is_optional,
+                    chooser_optional,
                 )
             } else {
                 let candidates: Vec<_> = zone_cards
@@ -239,12 +270,16 @@ pub(super) fn resolve_hidden_origin(
                     .copied()
                     .filter(|&cid| matches_with_context(ctx, sa, cid, &change_type))
                     .collect();
-                if candidates.is_empty() {
-                    Vec::new()
-                } else if sa.is_at_random() {
-                    resolve_random_selection(ctx, &candidates, change_num)
+                if sa.is_at_random() {
+                    if candidates.is_empty() {
+                        Vec::new()
+                    } else {
+                        resolve_random_selection(ctx, &candidates, change_num)
+                    }
                 } else if change_num == 1 {
-                    resolve_single_search(ctx, sa, &candidates, effective_chooser, is_optional)
+                    // Mirrors Java line 1208 — call the chooser even with an
+                    // empty fetchList so the parity callback is emitted.
+                    resolve_single_search(ctx, sa, &candidates, effective_chooser, chooser_optional)
                 } else {
                     resolve_multi_search(
                         ctx,
@@ -252,7 +287,7 @@ pub(super) fn resolve_hidden_origin(
                         &candidates,
                         effective_chooser,
                         change_num,
-                        is_optional,
+                        chooser_optional,
                     )
                 }
             };
@@ -276,6 +311,7 @@ pub(super) fn resolve_hidden_origin(
                 origin_zone,
                 dest_zone,
                 &lib_position,
+                affected_player,
                 affected_player,
             );
         }
@@ -310,7 +346,7 @@ pub(super) fn resolve_hidden_origin(
         chooser
     };
 
-    if is_optional {
+    if optional_confirm {
         let source_name = sa.source.map(|cid| ctx.game.card(cid).card_name.as_str());
         let origin_label = origin_zone.to_string().to_lowercase();
         let message = if is_defined {
@@ -367,7 +403,7 @@ pub(super) fn resolve_hidden_origin(
             each_spec,
             &mut zone_cards,
             effective_chooser,
-            is_optional,
+            chooser_optional,
         )
     } else {
         let candidates: Vec<_> = zone_cards
@@ -375,12 +411,14 @@ pub(super) fn resolve_hidden_origin(
             .copied()
             .filter(|&cid| matches_with_context(ctx, sa, cid, &change_type))
             .collect();
-        if candidates.is_empty() {
-            Vec::new()
-        } else if sa.is_at_random() {
-            resolve_random_selection(ctx, &candidates, change_num)
+        if sa.is_at_random() {
+            if candidates.is_empty() {
+                Vec::new()
+            } else {
+                resolve_random_selection(ctx, &candidates, change_num)
+            }
         } else if sa.ir.reorder
-            && !is_optional
+            && !chooser_optional
             && origin_zone == ZoneType::Library
             && dest_zone == ZoneType::Library
             && candidates.len() == change_num
@@ -390,7 +428,11 @@ pub(super) fn resolve_hidden_origin(
             // to the reorder callback for the final ordered set.
             candidates
         } else if change_num == 1 {
-            resolve_single_search(ctx, sa, &candidates, effective_chooser, is_optional)
+            // Mirrors Java line 1208: chooseSingleCardForZoneChange is called
+            // unconditionally, even when fetchList is empty, so the callback
+            // is emitted (returning null). Java line 1215 then breaks without
+            // a cancel prompt when the list is empty.
+            resolve_single_search(ctx, sa, &candidates, effective_chooser, chooser_optional)
         } else {
             resolve_multi_search(
                 ctx,
@@ -398,7 +440,7 @@ pub(super) fn resolve_hidden_origin(
                 &candidates,
                 effective_chooser,
                 change_num,
-                is_optional,
+                chooser_optional,
             )
         }
     };
@@ -452,6 +494,7 @@ pub(super) fn resolve_hidden_origin(
         dest_zone,
         &lib_position,
         controller,
+        search_player,
     );
 }
 

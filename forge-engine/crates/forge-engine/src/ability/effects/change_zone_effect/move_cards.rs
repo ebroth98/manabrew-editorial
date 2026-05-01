@@ -12,6 +12,12 @@ use crate::spellability::SpellAbility;
 use crate::trigger::TriggerType;
 
 /// Move collected cards to destination zone and apply all post-move effects.
+///
+/// `controller` is the SA activating player (used for SearchedLibrary trigger
+/// run params and AtEOT$ delayed-trigger controller — mirrors Java's `decider`).
+/// `search_player` is the player whose library was searched (used as the
+/// shuffle target when the search returned no cards — mirrors Java's
+/// `triggerList.getMap(Library).keySet()` shuffle in `ChangeZoneEffect`).
 pub(super) fn move_cards(
     ctx: &mut EffectContext,
     sa: &SpellAbility,
@@ -20,6 +26,7 @@ pub(super) fn move_cards(
     dest_zone: ZoneType,
     lib_position: &str,
     controller: PlayerId,
+    search_player: PlayerId,
 ) {
     // SearchedLibrary trigger
     if origin_zone == ZoneType::Library {
@@ -212,7 +219,7 @@ pub(super) fn move_cards(
         let players = if !searched_owners.is_empty() {
             searched_owners.clone()
         } else {
-            vec![controller]
+            vec![search_player]
         };
         for pid in players {
             if ctx.game.cards_in_zone(ZoneType::Library, pid).is_empty() {
@@ -391,6 +398,7 @@ mod tests {
             ZoneType::Graveyard,
             ZoneType::Library,
             "",
+            player,
             player,
         );
 

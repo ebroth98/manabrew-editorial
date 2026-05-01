@@ -1472,6 +1472,12 @@ impl TriggerHandler {
             return false;
         }
 
+        // Phased-out hosts do not see events (CR 702.26.5). Mirrors Java
+        // `TriggerReplacementBase.zonesCheck` which gates on `!isPhasedOut()`.
+        if card.phased_out {
+            return false;
+        }
+
         // performTest
         if !trigger.mode.perform_test(trigger, params, game) {
             return false;

@@ -35,13 +35,19 @@ pub(crate) fn highlight_source_job(source: &str) -> egui::text::LayoutJob {
     job
 }
 
-pub(crate) fn append_source_segment(job: &mut egui::text::LayoutJob, text: &str, format: egui::TextFormat) {
+pub(crate) fn append_source_segment(
+    job: &mut egui::text::LayoutJob,
+    text: &str,
+    format: egui::TextFormat,
+) {
     if !text.is_empty() {
         job.append(text, 0.0, format);
     }
 }
 
-pub(crate) fn tree_sitter_highlight_spans(source: &str) -> Option<Vec<(usize, usize, egui::TextFormat)>> {
+pub(crate) fn tree_sitter_highlight_spans(
+    source: &str,
+) -> Option<Vec<(usize, usize, egui::TextFormat)>> {
     let (tree, language) = parse_tree_sitter(source)?;
     let query = TsQuery::new(&language, tree_sitter_forge_card_script::HIGHLIGHTS_QUERY).ok()?;
     let capture_names = query.capture_names();
@@ -66,7 +72,9 @@ pub(crate) fn tree_sitter_highlight_spans(source: &str) -> Option<Vec<(usize, us
     Some(spans)
 }
 
-pub(crate) fn parse_tree_sitter(source: &str) -> Option<(tree_sitter::Tree, tree_sitter::Language)> {
+pub(crate) fn parse_tree_sitter(
+    source: &str,
+) -> Option<(tree_sitter::Tree, tree_sitter::Language)> {
     let language = tree_sitter_forge_card_script::language();
     let mut parser = TsParser::new();
     parser.set_language(&language).ok()?;

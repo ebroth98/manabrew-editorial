@@ -13,9 +13,7 @@ use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Mutex};
 use std::thread;
 
-use forge_parity::java_bridge::{
-    JavaBridgeError, JavaMatchupData, JavaServer, JavaServerConfig,
-};
+use forge_parity::java_bridge::{JavaBridgeError, JavaMatchupData, JavaServer, JavaServerConfig};
 use forge_parity::parity_compare::{compare_matchup, compare_matchup_partial_logs};
 use forge_parity::protocol::{GameTrace, MatchupResult, ParityLogEntry};
 use forge_parity::runner::{load_data, run_with_data_streaming, LoadedData, RunConfig};
@@ -98,10 +96,7 @@ pub(crate) fn spawn() -> std::io::Result<TraceWorkerHandle> {
     })
 }
 
-fn worker_loop(
-    command_rx: Receiver<TraceWorkerCommand>,
-    event_tx: Sender<TraceWorkerEvent>,
-) {
+fn worker_loop(command_rx: Receiver<TraceWorkerCommand>, event_tx: Sender<TraceWorkerEvent>) {
     let mut loaded_data: Option<LoadedData> = None;
     let mut java_server: Option<JavaServer> = None;
     let mut java_server_jar: Option<PathBuf> = None;
@@ -437,8 +432,7 @@ fn run_trace_request(
                         }
                         lock_pt(&java_log).push(entry.clone());
                         if let Some(snapshot) = entry.as_snapshot() {
-                            if lock_pt(&stop_after_turn)
-                                .is_some_and(|limit| snapshot.turn > limit)
+                            if lock_pt(&stop_after_turn).is_some_and(|limit| snapshot.turn > limit)
                             {
                                 abort.store(true, Ordering::Relaxed);
                                 return Ok(false);
@@ -577,4 +571,3 @@ fn run_java_trace(
         )
         .map_err(format_java_error)
 }
-

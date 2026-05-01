@@ -150,6 +150,11 @@ pub struct AnimateState {
     pub original_base_power: Option<i32>,
     pub original_base_toughness: Option<i32>,
     pub original_color: ColorSet,
+    /// Snapshot of intrinsic keywords before animate added any. Restored
+    /// when the card leaves the battlefield (CR 400.7) so granted keywords
+    /// (e.g. Animate `Keywords$ Haste`) do not persist into the new object.
+    #[serde(default)]
+    pub original_keywords: Option<crate::keyword::keyword_collection::KeywordCollection>,
 }
 
 /// Saved pre-clone copiable characteristics for temporary Clone effects.
@@ -269,6 +274,12 @@ pub struct Card {
     pub came_under_control_since_last_upkeep: bool,
     pub exerted: bool,
     pub damage: i32,
+    /// Zone the card was cast from (mirrors Java `Card.castFrom`). `Some` only
+    /// while the card represents a spell that was actually cast — set during
+    /// cast resolution, cleared on every zone change so the next "object" the
+    /// card becomes (CR 400.7) starts with no cast history. Used by
+    /// `wasCast`/`wasCastByYou` valid filters (e.g. Sunderflock's ETB).
+    pub cast_from: Option<ZoneType>,
 
     // Counters
     pub counters: BTreeMap<CounterType, i32>,
@@ -736,6 +747,7 @@ impl Card {
             came_under_control_since_last_upkeep: false,
             exerted: false,
             damage: 0,
+            cast_from: None,
             counters: BTreeMap::new(),
             keywords: crate::keyword::keyword_collection::KeywordCollection::from_strings(
                 &keywords,
@@ -1481,6 +1493,17 @@ impl Card {
     pub fn new_turn(&mut self) {
         self.clear_global_turn_state();
         if self.zone == ZoneType::Battlefield {
+            if let Ok(filter) = std::env::var("FORGE_CARD_TRACE") {
+                if !filter.is_empty()
+                    && self.card_name.eq_ignore_ascii_case(&filter)
+                    && self.summoning_sick
+                {
+                    eprintln!(
+                        "[card-trace] new_turn clears sickness on {}#{:?} (controller={:?})",
+                        self.card_name, self.id, self.controller,
+                    );
+                }
+            }
             self.summoning_sick = false;
         }
     }
@@ -3312,7 +3335,10 @@ impl Card {
         self.recompute_changed_card_traits();
     }
     pub fn was_cast(&self) -> bool {
-        self.zone != ZoneType::None
+        // Mirrors Java `Card.wasCast()`: true iff `castFrom` was set during
+        // cast resolution. Sneak Attack and other "put onto battlefield"
+        // effects don't go through the cast pipeline and leave this `None`.
+        self.cast_from.is_some()
     }
     pub fn on_end_of_combat(&mut self) {
         self.assigned_damage = 0;

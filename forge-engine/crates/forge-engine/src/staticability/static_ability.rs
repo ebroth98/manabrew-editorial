@@ -291,6 +291,14 @@ pub struct StaticAbilityIr {
     pub cost_desc_text: Option<String>,
     pub description_text: Option<String>,
     pub draw_limit: Option<i32>,
+    /// `SetMaxHandSize$ Unlimited` (Reliquary Tower) or a numeric override.
+    /// Stored as a raw string because Forge accepts both `Unlimited` and a
+    /// number (and deck-builder cards use SVar expressions, though no
+    /// staticability_test card currently does).
+    pub set_max_hand_size: Option<String>,
+    /// `RaiseMaxHandSize$ N` (Spellbook etc.) — additive to the player's
+    /// max hand size.
+    pub raise_max_hand_size: Option<String>,
     pub named_text: Option<String>,
     pub trigger_text: Option<String>,
     pub valid_defender: Option<CompiledSelector>,
@@ -467,6 +475,8 @@ impl StaticAbilityIr {
             draw_limit: raw
                 .get(keys::DRAW_LIMIT)
                 .and_then(|value| value.parse().ok()),
+            set_max_hand_size: raw.get("SetMaxHandSize").map(String::to_string),
+            raise_max_hand_size: raw.get("RaiseMaxHandSize").map(String::to_string),
             named_text: raw.get("Named").map(String::to_string),
             trigger_text: raw.get(keys::TRIGGER).map(String::to_string),
             valid_defender: params.selector_untracked(keys::VALID_DEFENDER).cloned(),

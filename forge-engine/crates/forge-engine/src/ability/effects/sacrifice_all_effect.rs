@@ -88,6 +88,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
         for cid in defined_ids {
             if cid.index() < ctx.game.cards.len()
                 && ctx.game.card(cid).zone == ZoneType::Battlefield
+                && !ctx.game.card(cid).phased_out
             {
                 to_sacrifice.push(cid);
             }
@@ -97,6 +98,9 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
             let zone_cards = ctx.game.cards_in_zone(ZoneType::Battlefield, pid).to_vec();
             for cid in zone_cards {
                 let card = ctx.game.card(cid);
+                if card.phased_out {
+                    continue;
+                }
                 let matches = match (valid_cards, sa.source) {
                     (Some(selector), Some(source_id)) => {
                         valid_filter::matches_valid_card_selector_in_game(

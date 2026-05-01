@@ -534,9 +534,12 @@ impl GameLoop {
             let active = game.active_player();
 
             // Rule 514.1: Discard down to max hand size.
+            // Reliquary Tower etc. set `unlimited_hand_size = true` via
+            // `SetMaxHandSize$ Unlimited` and skip the discard entirely.
             let hand_size = game.zone(ZoneType::Hand, active).len() as i32;
             let max = game.player(active).max_hand_size;
-            if hand_size > max {
+            let unlimited = game.player(active).unlimited_hand_size;
+            if !unlimited && hand_size > max {
                 let to_discard = (hand_size - max) as usize;
                 let hand: Vec<CardId> = game.cards_in_zone(ZoneType::Hand, active).to_vec();
                 agents[active.index()].snapshot_state(game, &self.mana_pools);
@@ -689,8 +692,22 @@ impl GameLoop {
                     if !keep_damage {
                         game.cards[i].clear_damage();
                     }
+                    game.cards[i].reset_turn_modifiers();
+                    game.cards[i].clear_deathtouch_damage();
+                    game.cards[i].reset_regeneration_shields();
+                    game.cards[i].reset_shield_count();
                     game.cards[i].damage_history.new_turn();
                 }
+                // Effects with "until end of turn" duration end at cleanup
+                // (CR 514.2). Pump keywords and "can't have" tags apply to
+                // ANY permanent (e.g. Heroic Intervention grants hexproof to
+                // creatures AND artifacts/lands), so the clear must run on
+                // every battlefield card, not just creatures. Without this,
+                // an artifact like Lightning Greaves keeps Heroic
+                // Intervention's hexproof past the turn it was cast.
+                game.cards[i].cant_have_keywords.clear();
+                game.cards[i].clear_pump_keywords();
+                game.cards[i].clear_pump_triggers();
             }
         }
     }

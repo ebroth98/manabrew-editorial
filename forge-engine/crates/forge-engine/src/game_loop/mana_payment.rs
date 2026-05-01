@@ -189,7 +189,6 @@ where
                     }
                     finish_mana_undo(game, mana_pools, undo_record, produced_count);
                 } else if let Some(atom) = basic_land_mana_atom(game.card(land_id)) {
-                    let _ = atom;
                     executed_actions.push(ManaCostAction::TapLand {
                         card_id: land_id,
                         mana_ability_index: Some(0),
@@ -199,7 +198,40 @@ where
                     let undo_record = begin_mana_undo(game, mana_pools, session.player, land_id);
                     let pool_snapshot = mana_pools[player_idx].begin_tap_tracking();
                     game.tap(land_id);
-                    mana_pools[player_idx].add(atom, 1);
+                    // Fire ProduceMana replacement (e.g. Nyxbloom Ancient triples mana)
+                    // before adding to pool. Mirrors Java AbilityManaPart.produceMana
+                    // which always invokes ReplacementHandler.run(ProduceMana, ...)
+                    // even for the implicit basic-land tap (every land has an
+                    // intrinsic AbilityManaPart in Forge's CardFactoryUtil).
+                    let mana_letter = crate::mana::ManaPool::atom_to_letter(atom).to_string();
+                    let mut event =
+                        crate::replacement::replacement_handler::ReplacementEvent::ProduceMana {
+                            source: land_id,
+                            activator: session.player,
+                            mana: mana_letter.clone(),
+                        };
+                    let result =
+                        crate::replacement::replacement_handler::apply_replacements_with_agents(
+                            game, agents, &mut event,
+                        );
+                    let final_mana = if result == crate::replacement::ReplacementResult::Updated {
+                        if let crate::replacement::replacement_handler::ReplacementEvent::ProduceMana {
+                            mana,
+                            ..
+                        } = event
+                        {
+                            mana
+                        } else {
+                            mana_letter
+                        }
+                    } else {
+                        mana_letter
+                    };
+                    for token in final_mana.split_whitespace() {
+                        if let Some(produced_atom) = crate::mana::mana_atom_from_produced(token) {
+                            mana_pools[player_idx].add(produced_atom, 1);
+                        }
+                    }
                     on_basic_land_tap(game, session.player, land_id);
                     let produced = mana_pools[player_idx].end_tap_tracking(&pool_snapshot);
                     let produced_count = produced.len();
@@ -377,6 +409,33 @@ impl GameLoop {
                         &by_controller,
                     );
                     Some(sacrificed_id)
+                },
+                mana::ManaPayCallback::ApplyProduceManaReplacement {
+                    activator,
+                    source_card,
+                    mana,
+                } => unsafe {
+                    let game = &mut *game;
+                    let mut event =
+                        crate::replacement::replacement_handler::ReplacementEvent::ProduceMana {
+                            source: source_card,
+                            activator,
+                            mana: mana.clone(),
+                        };
+                    let result =
+                        crate::replacement::replacement_handler::apply_replacements_with_agents(
+                            game, agents, &mut event,
+                        );
+                    if result == crate::replacement::ReplacementResult::Updated {
+                        if let crate::replacement::replacement_handler::ReplacementEvent::ProduceMana {
+                            mana: new_mana,
+                            ..
+                        } = event
+                        {
+                            *mana = new_mana;
+                        }
+                    }
+                    None
                 },
             }
         }

@@ -445,6 +445,16 @@ impl<'a> MatchContext<'a> {
         self
     }
 
+    /// Override `source_controller` with an iterated player. Mirrors Java's
+    /// `CardLists.getValidCardCount(..., player, source, ctb)` signature
+    /// (`AbilityUtils.java:3380, 3389`), where `YouCtrl` resolves against the
+    /// iterated player rather than the source's controller — needed by
+    /// `PlayerCountOpponents$HighestValid X.YouCtrl` style SVars.
+    pub fn with_source_controller(mut self, player: PlayerId) -> Self {
+        self.source_controller = player;
+        self
+    }
+
     pub fn with_combat(mut self, combat: &'a CombatState) -> Self {
         self.combat = Some(combat);
         self

@@ -134,15 +134,12 @@ pub fn get_proto_type(sa: &SpellAbility, original: &Card, new_owner: crate::ids:
         copy.set_base_toughness(Some(t));
     }
 
-    // Apply PumpKeywords$ (e.g. "Haste" added temporarily to the copy).
-    if let Some(pump_kws) = sa.ir.pump_keywords.as_deref() {
-        for kw in pump_kws.split(',') {
-            let kw = kw.trim();
-            if !kw.is_empty() {
-                copy.add_intrinsic_keyword(kw);
-            }
-        }
-    }
+    // PumpKeywords$ are NOT applied at the proto stage. Mirrors Java
+    // `TokenEffectBase.java:179-182`, which applies them post-creation via
+    // `addChangedCardKeywords` + `addPumpUntil` so they expire per
+    // `PumpDuration$`. Applying them as intrinsic here would make e.g.
+    // Ashling's "Haste until end of turn" persist forever.
+    // The Rust mirror lives in `token_effect_base.rs::create_single_token`.
 
     // Apply AddKeywords$ (e.g. additional keywords on the copy).
     if let Some(add_kws) = sa.ir.add_keywords.as_deref() {
