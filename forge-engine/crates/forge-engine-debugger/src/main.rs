@@ -1,52 +1,93 @@
 use std::cell::{Cell, RefCell};
 use std::collections::VecDeque;
 use std::env;
-use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc::{self, Receiver, Sender, TryRecvError};
-use std::sync::{Arc, Mutex};
-use std::thread;
+use std::sync::mpsc::TryRecvError;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use eframe::egui;
-use forge_card_script::{
-    ParamEntry, ParsedCardScript, ScriptAbility, ScriptAbilityRecord, ScriptDiagnostic,
-    ScriptLineKind, ScriptParamRecord, ScriptSVar, ScriptSVarValue, SemanticAmount,
-    SemanticParamValue, SemanticParamValueKind,
-};
-use forge_cardset_archive::{load_checked, load_unchecked, ArchivedCardArchive};
+use forge_card_script::ParsedCardScript;
 use forge_parity::deterministic_agent::VerboseMode;
-use forge_parity::java_bridge::{JavaBridgeError, JavaMatchupData, JavaServer, JavaServerConfig};
-use forge_parity::parity_compare::{
-    compare_matchup, compare_matchup_partial_logs, extract_investigation_window,
-};
+use forge_parity::java_bridge::JavaMatchupData;
+use forge_parity::parity_compare::extract_investigation_window;
 use forge_parity::protocol::{
     CallbackRecord, Divergence, GameTrace, MatchupResult, ParityLog, ParityLogEntry, StateSnapshot,
 };
-use forge_parity::runner::{load_data, run_with_data_streaming, LoadedData, RunConfig};
-use memmap2::Mmap;
+use forge_parity::runner::RunConfig;
 use serde::Deserialize;
-use streaming_iterator::StreamingIterator;
-use tree_sitter::{
-    Node as TsNode, Parser as TsParser, Query as TsQuery, QueryCursor as TsQueryCursor,
+
+mod archive;
+mod script_view;
+mod theme;
+mod ts_view;
+mod worker;
+
+use crate::archive::ArchiveState;
+use crate::script_view::{render_ast, render_summary};
+use crate::ts_view::highlight_source_job;
+use crate::worker::{
+    TraceRunRequest, TraceWorkerCommand, TraceWorkerEvent, TraceWorkerHandle,
 };
 
-mod theme;
+pub(crate) fn repo_root() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../..")
+        .canonicalize()
+        .unwrap_or_else(|_| Path::new(env!("CARGO_MANIFEST_DIR")).join("../../.."))
+}
+
+pub(crate) fn repo_relative_path(path: &str) -> PathBuf {
+    repo_root().join(path)
+}
+
+pub(crate) fn shell_quote(value: &str) -> String {
+    if value.is_empty() {
+        return "''".to_string();
+    }
+    if value
+        .chars()
+        .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '_' | '-' | '.' | '/' | ':'))
+    {
+        value.to_string()
+    } else {
+        format!("'{}'", value.replace('\'', "'\"'\"'"))
+    }
+}
+
+fn resolved_existing_path(path: &Path) -> Option<PathBuf> {
+    let resolved = if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        repo_root().join(path)
+    };
+    resolved.exists().then_some(resolved)
+}
+
+pub(crate) fn discover_java_jar(preferred: Option<&Path>) -> Option<PathBuf> {
+    let mut candidates = Vec::new();
+    if let Some(path) = env::var_os("OPEN_MAGIC_FORGE_HARNESS_JAR") {
+        candidates.push(PathBuf::from(path));
+    }
+    if let Some(path) = preferred {
+        candidates.push(path.to_path_buf());
+    }
+    candidates.push(repo_relative_path(DEFAULT_JAVA_JAR_PATH));
+    candidates
+        .into_iter()
+        .find_map(|candidate| resolved_existing_path(&candidate))
+}
 
 const DEFAULT_ARCHIVE_PATH: &str = "src-tauri/resources/cardset.rkyv";
 const REGRESSION_JSON_PATH: &str = "forge-engine/crates/forge-parity/regression.json";
 const SEARCH_RESULT_LIMIT: usize = 30;
-const TRACE_THREAD_STACK_SIZE: usize = 64 * 1024 * 1024;
 const TRACE_SNAPSHOT_HEIGHT: f32 = 320.0;
 const TRACE_EVENTS_HEIGHT: f32 = 180.0;
 const TRACE_TIMELINE_HEIGHT: f32 = TRACE_SNAPSHOT_HEIGHT + TRACE_EVENTS_HEIGHT + 28.0;
 const TRACE_DECK_1: &str = "inline:Mountain*6|Lightning Bolt*2|Shock*2|Raging Goblin*2";
 const TRACE_DECK_2: &str = "inline:Forest*6|Llanowar Elves*2|Grizzly Bears*2|Runeclaw Bear*2";
-const DEFAULT_JAVA_JAR_PATH: &str =
+pub(crate) const DEFAULT_JAVA_JAR_PATH: &str =
     "forge/forge-harness/target/forge-harness-jar-with-dependencies.jar";
-const HARNESS_SCRIPT_PATH: &str = "scripts/harness.mjs";
 
 const SAMPLE: &str = "Name:Lightning Bolt\nManaCost:R\nTypes:Instant\nA:SP$ DealDamage | ValidTgts$ Any | NumDmg$ 3 | SpellDescription$ CARDNAME deals 3 damage to any target.\nOracle:Lightning Bolt deals 3 damage to any target.\n";
 
@@ -113,10 +154,6 @@ struct App {
     toolbar_popover: Option<ToolbarPopover>,
     toolbar_popover_just_opened: bool,
     compare_debug_state: Option<String>,
-}
-
-struct ArchiveState {
-    mmap: Mmap,
 }
 
 struct TraceSession {
@@ -202,14 +239,14 @@ struct CompareSelectionAnchor {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-enum TraceMode {
+pub(crate) enum TraceMode {
     Rust,
     Java,
     Compare,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-enum TracePaneKind {
+pub(crate) enum TracePaneKind {
     Rust,
     Java,
 }
@@ -245,45 +282,6 @@ struct InspectedCard {
     raw: String,
 }
 
-struct TraceWorkerHandle {
-    command_tx: Sender<TraceWorkerCommand>,
-    event_rx: Receiver<TraceWorkerEvent>,
-}
-
-enum TraceWorkerCommand {
-    Preload,
-    PrewarmJava(PathBuf),
-    BuildJavaHarness,
-    Abort,
-    RunTrace(TraceRunRequest),
-}
-
-enum TraceWorkerEvent {
-    Status(String),
-    Debug(String),
-    Entry {
-        pane: TracePaneKind,
-        entry: ParityLogEntry,
-    },
-    CompareUpdate(MatchupResult),
-    Preloaded(Result<(), String>),
-    JavaPrewarmed(Result<(), String>),
-    JavaHarnessBuilt(Result<PathBuf, String>),
-    Finished(Result<TraceFinished, String>),
-}
-
-struct TraceRunRequest {
-    mode: TraceMode,
-    config: RunConfig,
-    java_jar_path: PathBuf,
-}
-
-struct TraceFinished {
-    rust: Option<GameTrace>,
-    java: Option<JavaMatchupData>,
-    compare_result: Option<MatchupResult>,
-}
-
 #[derive(Clone)]
 struct TracePreset {
     name: String,
@@ -300,21 +298,6 @@ struct TracePreset {
 struct RegressionEntry {
     name: String,
     args: String,
-}
-
-impl ArchiveState {
-    fn open(path: &Path) -> Result<Self, String> {
-        let file = std::fs::File::open(path).map_err(|e| format!("open: {e}"))?;
-        let mmap = unsafe { Mmap::map(&file).map_err(|e| format!("mmap: {e}"))? };
-        // Validate once up front so the per-frame `load_unchecked` is safe.
-        load_checked(&mmap).map_err(|e| format!("validate: {e}"))?;
-        Ok(Self { mmap })
-    }
-
-    fn archive(&self) -> &ArchivedCardArchive {
-        // SAFETY: validated at construction; mmap bytes are page-aligned.
-        unsafe { load_unchecked(&self.mmap) }
-    }
 }
 
 impl Default for App {
@@ -562,85 +545,8 @@ impl App {
         if self.trace_worker.is_some() {
             return;
         }
-
-        let (command_tx, command_rx) = mpsc::channel::<TraceWorkerCommand>();
-        let (event_tx, event_rx) = mpsc::channel::<TraceWorkerEvent>();
-        let spawn_result = thread::Builder::new()
-            .name("debugger-trace-worker".to_string())
-            .stack_size(TRACE_THREAD_STACK_SIZE)
-            .spawn(move || {
-                let mut loaded_data = None;
-                let mut java_server: Option<JavaServer> = None;
-                let mut java_server_jar: Option<PathBuf> = None;
-                let mut active_abort: Option<Arc<AtomicBool>> = None;
-                while let Ok(command) = command_rx.recv() {
-                    match command {
-                        TraceWorkerCommand::Preload => {
-                            let result =
-                                ensure_loaded_data(&event_tx, &mut loaded_data).map(|_| ());
-                            let _ = event_tx.send(TraceWorkerEvent::Preloaded(result));
-                        }
-                        TraceWorkerCommand::PrewarmJava(jar_path) => {
-                            let result = ensure_java_server(
-                                &event_tx,
-                                &mut java_server,
-                                &mut java_server_jar,
-                                &jar_path,
-                            )
-                            .map(|_| ());
-                            let _ = event_tx.send(TraceWorkerEvent::JavaPrewarmed(result));
-                        }
-                        TraceWorkerCommand::BuildJavaHarness => {
-                            let result = build_java_harness(&event_tx);
-                            let _ = event_tx.send(TraceWorkerEvent::JavaHarnessBuilt(result));
-                        }
-                        TraceWorkerCommand::Abort => {
-                            if let Some(abort) = active_abort.as_ref() {
-                                abort.store(true, Ordering::Relaxed);
-                            }
-                        }
-                        TraceWorkerCommand::RunTrace(request) => {
-                            let abort = Arc::new(AtomicBool::new(false));
-                            active_abort = Some(abort.clone());
-                            let result =
-                                std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                                    run_trace_request(
-                                        &event_tx,
-                                        &mut loaded_data,
-                                        &mut java_server,
-                                        &mut java_server_jar,
-                                        abort,
-                                        request,
-                                    )
-                                }));
-                            active_abort = None;
-                            let finished = match result {
-                                Ok(result) => TraceWorkerEvent::Finished(result),
-                                Err(panic) => {
-                                    let message =
-                                        if let Some(message) = panic.downcast_ref::<String>() {
-                                            message.clone()
-                                        } else if let Some(message) = panic.downcast_ref::<&str>() {
-                                            (*message).to_string()
-                                        } else {
-                                            "trace worker panicked".to_string()
-                                        };
-                                    TraceWorkerEvent::Finished(Err(message))
-                                }
-                            };
-                            let _ = event_tx.send(finished);
-                        }
-                    }
-                }
-            });
-
-        match spawn_result {
-            Ok(_) => {
-                self.trace_worker = Some(TraceWorkerHandle {
-                    command_tx,
-                    event_rx,
-                });
-            }
+        match worker::spawn() {
+            Ok(handle) => self.trace_worker = Some(handle),
             Err(err) => {
                 self.trace_error = Some(format!("failed to spawn trace worker: {err}"));
             }
@@ -3946,7 +3852,7 @@ fn render_trace(
     }
 }
 
-fn render_selection_highlight_frame(
+pub(crate) fn render_selection_highlight_frame(
     ui: &mut egui::Ui,
     selected: bool,
     label: Option<String>,
@@ -5237,511 +5143,6 @@ fn render_event_shell(ui: &mut egui::Ui, trace: &Option<TraceSession>, mode: Tra
     }
 }
 
-fn ensure_loaded_data<'a>(
-    event_tx: &Sender<TraceWorkerEvent>,
-    loaded_data: &'a mut Option<LoadedData>,
-) -> Result<&'a LoadedData, String> {
-    if loaded_data.is_none() {
-        let _ = event_tx.send(TraceWorkerEvent::Status(
-            "Loading card database…".to_string(),
-        ));
-        *loaded_data = Some(load_data(None, false)?);
-    } else {
-        let _ = event_tx.send(TraceWorkerEvent::Status(
-            "Using cached card database…".to_string(),
-        ));
-    }
-    Ok(loaded_data.as_ref().expect("loaded_data just initialized"))
-}
-
-fn build_java_harness(event_tx: &Sender<TraceWorkerEvent>) -> Result<PathBuf, String> {
-    let root = repo_root();
-    let script_path = repo_relative_path(HARNESS_SCRIPT_PATH);
-    let _ = event_tx.send(TraceWorkerEvent::Status(
-        "Building Java harness…".to_string(),
-    ));
-    let mut child = Command::new("node")
-        .arg(&script_path)
-        .arg("ensure")
-        .current_dir(&root)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .map_err(|err| format!("failed to launch Node for Java harness build: {err}"))?;
-
-    let stdout = child.stdout.take();
-    let stderr = child.stderr.take();
-    let stdout_tx = event_tx.clone();
-    let stderr_tx = event_tx.clone();
-    let stdout_handle = thread::spawn(move || {
-        let mut last_line = None;
-        if let Some(stdout) = stdout {
-            for line in BufReader::new(stdout).lines().map_while(Result::ok) {
-                let trimmed = line.trim();
-                if trimmed.is_empty() {
-                    continue;
-                }
-                last_line = Some(trimmed.to_string());
-                let _ = stdout_tx.send(TraceWorkerEvent::Status(format!("Java build: {trimmed}")));
-            }
-        }
-        last_line
-    });
-    let stderr_handle = thread::spawn(move || {
-        let mut last_line = None;
-        if let Some(stderr) = stderr {
-            for line in BufReader::new(stderr).lines().map_while(Result::ok) {
-                let trimmed = line.trim();
-                if trimmed.is_empty() {
-                    continue;
-                }
-                last_line = Some(trimmed.to_string());
-                let _ = stderr_tx.send(TraceWorkerEvent::Status(format!("Java build: {trimmed}")));
-            }
-        }
-        last_line
-    });
-
-    let status = child
-        .wait()
-        .map_err(|err| format!("failed while waiting for Java harness build: {err}"))?;
-    let last_stdout = stdout_handle.join().ok().flatten();
-    let last_stderr = stderr_handle.join().ok().flatten();
-    if !status.success() {
-        let details = last_stderr
-            .or(last_stdout)
-            .unwrap_or_else(|| format!("exit code {}", status.code().unwrap_or(1)));
-        return Err(format!("Java harness build failed: {details}"));
-    }
-    discover_java_jar(Some(&repo_relative_path(DEFAULT_JAVA_JAR_PATH)))
-        .ok_or_else(|| "Java harness build completed but the JAR is still missing".to_string())
-}
-
-fn repo_root() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../..")
-        .canonicalize()
-        .unwrap_or_else(|_| Path::new(env!("CARGO_MANIFEST_DIR")).join("../../.."))
-}
-
-fn repo_relative_path(path: &str) -> PathBuf {
-    repo_root().join(path)
-}
-
-fn shell_quote(value: &str) -> String {
-    if value.is_empty() {
-        return "''".to_string();
-    }
-    if value
-        .chars()
-        .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '_' | '-' | '.' | '/' | ':'))
-    {
-        value.to_string()
-    } else {
-        format!("'{}'", value.replace('\'', "'\"'\"'"))
-    }
-}
-
-fn resolved_existing_path(path: &Path) -> Option<PathBuf> {
-    let resolved = if path.is_absolute() {
-        path.to_path_buf()
-    } else {
-        repo_root().join(path)
-    };
-    resolved.exists().then_some(resolved)
-}
-
-fn discover_java_jar(preferred: Option<&Path>) -> Option<PathBuf> {
-    let mut candidates = Vec::new();
-    if let Some(path) = env::var_os("OPEN_MAGIC_FORGE_HARNESS_JAR") {
-        candidates.push(PathBuf::from(path));
-    }
-    if let Some(path) = preferred {
-        candidates.push(path.to_path_buf());
-    }
-    candidates.push(repo_relative_path(DEFAULT_JAVA_JAR_PATH));
-    candidates
-        .into_iter()
-        .find_map(|candidate| resolved_existing_path(&candidate))
-}
-
-fn ensure_java_server<'a>(
-    event_tx: &Sender<TraceWorkerEvent>,
-    java_server: &'a mut Option<JavaServer>,
-    java_server_jar: &'a mut Option<PathBuf>,
-    jar_path: &Path,
-) -> Result<&'a mut JavaServer, String> {
-    let needs_respawn = java_server.is_none()
-        || java_server_jar
-            .as_ref()
-            .is_none_or(|current| current.as_path() != jar_path);
-    if needs_respawn {
-        let _ = event_tx.send(TraceWorkerEvent::Status(
-            "Starting Java server…".to_string(),
-        ));
-        let config = JavaServerConfig {
-            jar_path: jar_path.to_path_buf(),
-            forge_home: None,
-            decks_dir: None,
-            verbose: false,
-            java_heap: "2g".to_string(),
-        };
-        *java_server = Some(JavaServer::spawn(&config).map_err(format_java_error)?);
-        *java_server_jar = Some(jar_path.to_path_buf());
-    }
-    java_server
-        .as_mut()
-        .ok_or_else(|| "java server unavailable".to_string())
-}
-
-fn format_java_error(err: JavaBridgeError) -> String {
-    format!("Java error: {err}")
-}
-
-fn send_stream_entry(
-    event_tx: &Sender<TraceWorkerEvent>,
-    pane: TracePaneKind,
-    entry: ParityLogEntry,
-) {
-    let _ = event_tx.send(TraceWorkerEvent::Entry { pane, entry });
-}
-
-fn try_emit_partial_compare(
-    event_tx: &Sender<TraceWorkerEvent>,
-    config: &RunConfig,
-    rust_log: &Arc<Mutex<Vec<ParityLogEntry>>>,
-    java_log: &Arc<Mutex<Vec<ParityLogEntry>>>,
-    compare_emitted: &Arc<AtomicBool>,
-    stop_after_turn: &Arc<Mutex<Option<u32>>>,
-    source: &str,
-) -> bool {
-    if compare_emitted.load(Ordering::Relaxed) {
-        return false;
-    }
-    let rust_log = rust_log.lock().expect("rust log poisoned").clone();
-    let java_log = java_log.lock().expect("java log poisoned").clone();
-    let rust_snapshots = rust_log
-        .iter()
-        .filter(|entry| entry.as_snapshot().is_some())
-        .count();
-    let java_snapshots = java_log
-        .iter()
-        .filter(|entry| entry.as_snapshot().is_some())
-        .count();
-    if rust_snapshots == 0 || java_snapshots == 0 {
-        return false;
-    }
-    let Some(result) = compare_matchup_partial_logs(config, &rust_log, &java_log) else {
-        return false;
-    };
-    if compare_emitted
-        .compare_exchange(false, true, Ordering::Relaxed, Ordering::Relaxed)
-        .is_err()
-    {
-        return false;
-    }
-    if let Some(divergence) = result.first_divergence.as_ref() {
-        *stop_after_turn.lock().expect("stop turn poisoned") = Some(divergence.turn);
-    }
-    eprintln!(
-        "[debugger-worker] partial divergence from {source}: rust={} java={} at #{}",
-        rust_snapshots, java_snapshots, result.snapshots_compared
-    );
-    let _ = event_tx.send(TraceWorkerEvent::Debug(format!(
-        "partial divergence from {source}: rust={} java={} at #{}",
-        rust_snapshots, java_snapshots, result.snapshots_compared
-    )));
-    let _ = event_tx.send(TraceWorkerEvent::CompareUpdate(result));
-    true
-}
-
-fn run_trace_request(
-    event_tx: &Sender<TraceWorkerEvent>,
-    loaded_data: &mut Option<LoadedData>,
-    java_server: &mut Option<JavaServer>,
-    java_server_jar: &mut Option<PathBuf>,
-    abort: Arc<AtomicBool>,
-    request: TraceRunRequest,
-) -> Result<TraceFinished, String> {
-    let mut rust = None;
-    let mut java = None;
-    let mut compare_result = None;
-    match request.mode {
-        TraceMode::Rust => {
-            rust = Some(run_rust_trace(
-                event_tx,
-                loaded_data,
-                &request.config,
-                &abort,
-            )?);
-        }
-        TraceMode::Java => {
-            java = Some(run_java_trace(
-                event_tx,
-                java_server,
-                java_server_jar,
-                &request.java_jar_path,
-                &request.config,
-                &abort,
-                |_| Ok(true),
-            )?);
-        }
-        TraceMode::Compare => {
-            let data = ensure_loaded_data(event_tx, loaded_data)?;
-            let event_tx_rust = event_tx.clone();
-            let config = request.config.clone();
-            let java_jar_path = request.java_jar_path.clone();
-            let abort_for_rust = abort.clone();
-            let rust_log = Arc::new(Mutex::new(Vec::<ParityLogEntry>::new()));
-            let java_log = Arc::new(Mutex::new(Vec::<ParityLogEntry>::new()));
-            let compare_emitted = Arc::new(AtomicBool::new(false));
-            let stop_after_turn = Arc::new(Mutex::new(None::<u32>));
-            let (rust_trace, java_data) = std::thread::scope(|scope| {
-                let (rust_tx, rust_rx) = mpsc::channel::<Result<GameTrace, String>>();
-                let rust_log_for_thread = rust_log.clone();
-                let java_log_for_rust = java_log.clone();
-                let compare_emitted_for_rust = compare_emitted.clone();
-                let stop_after_turn_for_rust = stop_after_turn.clone();
-                let event_tx_partial_rust = event_tx.clone();
-                let config_for_rust = config.clone();
-                let config_for_rust_callback = config.clone();
-                let abort_for_rust_callback = abort_for_rust.clone();
-                let rust_handle = thread::Builder::new()
-                    .name("debugger-rust-trace".to_string())
-                    .stack_size(TRACE_THREAD_STACK_SIZE)
-                    .spawn_scoped(scope, move || {
-                        let result = run_rust_trace_with_loaded_data(
-                            &event_tx_rust,
-                            data,
-                            &config_for_rust,
-                            &abort_for_rust,
-                            move |entry| {
-                                rust_log_for_thread
-                                    .lock()
-                                    .expect("rust log poisoned")
-                                    .push(entry.clone());
-                                if let Some(snapshot) = entry.as_snapshot() {
-                                    if stop_after_turn_for_rust
-                                        .lock()
-                                        .expect("stop turn poisoned")
-                                        .is_some_and(|limit| snapshot.turn > limit)
-                                    {
-                                        abort_for_rust_callback.store(true, Ordering::Relaxed);
-                                        return;
-                                    }
-                                }
-                                if entry.as_snapshot().is_some() {
-                                    let _ = try_emit_partial_compare(
-                                        &event_tx_partial_rust,
-                                        &config_for_rust_callback,
-                                        &rust_log_for_thread,
-                                        &java_log_for_rust,
-                                        &compare_emitted_for_rust,
-                                        &stop_after_turn_for_rust,
-                                        "rust",
-                                    );
-                                }
-                            },
-                        );
-                        match &result {
-                            Ok(trace) => eprintln!(
-                                "[debugger-worker] rust thread complete: snapshots={}",
-                                trace.snapshot_vec().len()
-                            ),
-                            Err(err) => {
-                                eprintln!("[debugger-worker] rust thread error: {err}");
-                            }
-                        }
-                        let _ = rust_tx.send(result);
-                    })
-                    .map_err(|err| format!("failed to spawn rust trace thread: {err}"))?;
-                let java_result = run_java_trace(
-                    event_tx,
-                    java_server,
-                    java_server_jar,
-                    &java_jar_path,
-                    &config,
-                    &abort,
-                    |entry| {
-                        if abort.load(Ordering::Relaxed) {
-                            return Ok(false);
-                        }
-                        java_log
-                            .lock()
-                            .expect("java log poisoned")
-                            .push(entry.clone());
-                        if let Some(snapshot) = entry.as_snapshot() {
-                            if stop_after_turn
-                                .lock()
-                                .expect("stop turn poisoned")
-                                .is_some_and(|limit| snapshot.turn > limit)
-                            {
-                                abort.store(true, Ordering::Relaxed);
-                                return Ok(false);
-                            }
-                        }
-                        let java_snapshot_count = java_log
-                            .lock()
-                            .expect("java log poisoned")
-                            .iter()
-                            .filter(|entry| entry.as_snapshot().is_some())
-                            .count();
-                        if entry.as_snapshot().is_some() && java_snapshot_count <= 3 {
-                            eprintln!(
-                                "[debugger-worker] java snapshot seen: count={} rust_snapshots={}",
-                                java_snapshot_count,
-                                rust_log
-                                    .lock()
-                                    .expect("rust log poisoned")
-                                    .iter()
-                                    .filter(|entry| entry.as_snapshot().is_some())
-                                    .count()
-                            );
-                        }
-                        if entry.as_snapshot().is_some() {
-                            if try_emit_partial_compare(
-                                event_tx,
-                                &config,
-                                &rust_log,
-                                &java_log,
-                                &compare_emitted,
-                                &stop_after_turn,
-                                "java",
-                            ) {
-                                return Ok(true);
-                            }
-                            let rust_snapshot_count = rust_log
-                                .lock()
-                                .expect("rust log poisoned")
-                                .iter()
-                                .filter(|entry| entry.as_snapshot().is_some())
-                                .count();
-                            if rust_snapshot_count > 0 && java_snapshot_count % 25 == 0 {
-                                eprintln!(
-                                    "[debugger-worker] partial compare checkpoint: rust={} java={}",
-                                    rust_snapshot_count, java_snapshot_count
-                                );
-                                let _ = event_tx.send(TraceWorkerEvent::Debug(format!(
-                                    "partial compare: rust={} java={} no-divergence",
-                                    rust_snapshot_count, java_snapshot_count
-                                )));
-                            }
-                        }
-                        Ok(true)
-                    },
-                );
-                let rust_trace = rust_rx
-                    .recv()
-                    .map_err(|_| "rust trace thread disconnected".to_string())??;
-                eprintln!(
-                    "[debugger-worker] java trace complete: java_snapshots={}",
-                    java_log
-                        .lock()
-                        .expect("java log poisoned")
-                        .iter()
-                        .filter(|entry| entry.as_snapshot().is_some())
-                        .count()
-                );
-                rust_handle
-                    .join()
-                    .map_err(|_| "rust trace thread panicked".to_string())?;
-                Ok::<_, String>((rust_trace, java_result?))
-            })?;
-            compare_result = Some(compare_matchup(&config, &rust_trace, &java_data));
-            rust = Some(rust_trace);
-            java = Some(java_data);
-        }
-    }
-    Ok(TraceFinished {
-        rust,
-        java,
-        compare_result,
-    })
-}
-
-fn run_rust_trace(
-    event_tx: &Sender<TraceWorkerEvent>,
-    loaded_data: &mut Option<LoadedData>,
-    config: &RunConfig,
-    abort: &Arc<AtomicBool>,
-) -> Result<GameTrace, String> {
-    let data = ensure_loaded_data(event_tx, loaded_data)?;
-    run_rust_trace_with_loaded_data(event_tx, data, config, abort, |_| {})
-}
-
-fn run_rust_trace_with_loaded_data<F>(
-    event_tx: &Sender<TraceWorkerEvent>,
-    data: &LoadedData,
-    config: &RunConfig,
-    abort: &Arc<AtomicBool>,
-    mut on_entry: F,
-) -> Result<GameTrace, String>
-where
-    F: FnMut(&ParityLogEntry) + Send + 'static,
-{
-    let _ = event_tx.send(TraceWorkerEvent::Status("Running Rust trace…".to_string()));
-    let (entry_tx, entry_rx) = mpsc::channel::<ParityLogEntry>();
-    let event_tx_forward = event_tx.clone();
-    let abort_forward = abort.clone();
-    let forwarder = thread::spawn(move || {
-        while let Ok(entry) = entry_rx.recv() {
-            if abort_forward.load(Ordering::Relaxed) {
-                break;
-            }
-            on_entry(&entry);
-            if abort_forward.load(Ordering::Relaxed) {
-                break;
-            }
-            send_stream_entry(&event_tx_forward, TracePaneKind::Rust, entry);
-        }
-    });
-    let result = run_with_data_streaming(config, data, Some(entry_tx));
-    let _ = forwarder.join();
-    result
-}
-
-fn run_java_trace(
-    event_tx: &Sender<TraceWorkerEvent>,
-    java_server: &mut Option<JavaServer>,
-    java_server_jar: &mut Option<PathBuf>,
-    jar_path: &Path,
-    config: &RunConfig,
-    abort: &Arc<AtomicBool>,
-    mut on_entry: impl FnMut(&ParityLogEntry) -> Result<bool, String>,
-) -> Result<JavaMatchupData, String> {
-    let server = ensure_java_server(event_tx, java_server, java_server_jar, jar_path)?;
-    let _ = event_tx.send(TraceWorkerEvent::Status("Running Java trace…".to_string()));
-    server
-        .run_matchup_streaming(
-            &config.deck1,
-            &config.deck2,
-            config.seed,
-            config.max_turns,
-            config.prefer_actions,
-            config.deep,
-            &config.variant,
-            &config.commanders,
-            None,
-            |_, entry| {
-                if abort.load(Ordering::Relaxed) {
-                    return false;
-                }
-                match on_entry(entry) {
-                    Ok(true) => {
-                        if abort.load(Ordering::Relaxed) {
-                            return false;
-                        }
-                        send_stream_entry(event_tx, TracePaneKind::Java, entry.clone());
-                        true
-                    }
-                    Ok(false) => false,
-                    Err(_) => false,
-                }
-            },
-        )
-        .map_err(format_java_error)
-}
-
 fn render_battlefield_strip(
     ui: &mut egui::Ui,
     battlefield: &[forge_parity::protocol::CardSnapshot],
@@ -5959,137 +5360,6 @@ fn layout_source_galley(ui: &egui::Ui, source: &str, wrap_width: f32) -> Arc<egu
     let mut job = highlight_source_job(source);
     job.wrap.max_width = wrap_width;
     ui.fonts(|fonts| fonts.layout_job(job))
-}
-
-fn highlight_source_job(source: &str) -> egui::text::LayoutJob {
-    let mut job = egui::text::LayoutJob::default();
-    let spans = tree_sitter_highlight_spans(source).unwrap_or_default();
-    let mut cursor = 0;
-    for (start, end, format) in spans {
-        if start > cursor {
-            append_source_segment(&mut job, &source[cursor..start], source_text_format());
-        }
-        let seg_start = start.max(cursor);
-        if end > seg_start {
-            append_source_segment(&mut job, &source[seg_start..end], format);
-            cursor = end;
-        }
-    }
-    if cursor < source.len() {
-        append_source_segment(&mut job, &source[cursor..], source_text_format());
-    }
-    job
-}
-
-fn append_source_segment(job: &mut egui::text::LayoutJob, text: &str, format: egui::TextFormat) {
-    if !text.is_empty() {
-        job.append(text, 0.0, format);
-    }
-}
-
-fn tree_sitter_highlight_spans(source: &str) -> Option<Vec<(usize, usize, egui::TextFormat)>> {
-    let (tree, language) = parse_tree_sitter(source)?;
-    let query = TsQuery::new(&language, tree_sitter_forge_card_script::HIGHLIGHTS_QUERY).ok()?;
-    let capture_names = query.capture_names();
-    let mut cursor = TsQueryCursor::new();
-    let mut captures = cursor.captures(&query, tree.root_node(), source.as_bytes());
-    let mut spans = Vec::new();
-    while {
-        captures.advance();
-        captures.get().is_some()
-    } {
-        if let Some((m, capture_index)) = captures.get() {
-            let capture = m.captures[*capture_index];
-            let name = capture_names
-                .get(capture.index as usize)
-                .copied()
-                .unwrap_or("");
-            let format = capture_text_format(name);
-            spans.push((capture.node.start_byte(), capture.node.end_byte(), format));
-        }
-    }
-    spans.sort_by_key(|(start, end, _)| (*start, *end));
-    Some(spans)
-}
-
-fn parse_tree_sitter(source: &str) -> Option<(tree_sitter::Tree, tree_sitter::Language)> {
-    let language = tree_sitter_forge_card_script::language();
-    let mut parser = TsParser::new();
-    parser.set_language(&language).ok()?;
-    let tree = parser.parse(source, None)?;
-    Some((tree, language))
-}
-
-fn capture_text_format(capture_name: &str) -> egui::TextFormat {
-    match capture_name {
-        "keyword" | "keyword.control" => keyword_text_format(),
-        "type.builtin" => record_text_format(),
-        "function" => source_value_format(),
-        "property" | "attribute" | "variable" => field_key_format(),
-        "string" | "string.special" => source_value_format(),
-        "comment" => comment_text_format(),
-        "punctuation.delimiter" | "punctuation.special" | "punctuation.separator" => {
-            delimiter_text_format()
-        }
-        _ => source_text_format(),
-    }
-}
-
-fn source_text_format() -> egui::TextFormat {
-    egui::TextFormat {
-        font_id: egui::FontId::monospace(12.0),
-        color: theme::FG_1,
-        ..Default::default()
-    }
-}
-
-fn field_key_format() -> egui::TextFormat {
-    egui::TextFormat {
-        font_id: egui::FontId::monospace(12.0),
-        color: theme::ACCENT,
-        ..Default::default()
-    }
-}
-
-fn source_value_format() -> egui::TextFormat {
-    egui::TextFormat {
-        font_id: egui::FontId::monospace(12.0),
-        color: theme::FG_0,
-        ..Default::default()
-    }
-}
-
-fn delimiter_text_format() -> egui::TextFormat {
-    egui::TextFormat {
-        font_id: egui::FontId::monospace(12.0),
-        color: theme::FG_3,
-        ..Default::default()
-    }
-}
-
-fn comment_text_format() -> egui::TextFormat {
-    egui::TextFormat {
-        font_id: egui::FontId::monospace(12.0),
-        color: theme::FG_3,
-        italics: true,
-        ..Default::default()
-    }
-}
-
-fn keyword_text_format() -> egui::TextFormat {
-    egui::TextFormat {
-        font_id: egui::FontId::monospace(12.0),
-        color: theme::YELLOW,
-        ..Default::default()
-    }
-}
-
-fn record_text_format() -> egui::TextFormat {
-    egui::TextFormat {
-        font_id: egui::FontId::monospace(12.0),
-        color: theme::GREEN,
-        ..Default::default()
-    }
 }
 
 fn ansi_text_format(color: egui::Color32, strong: bool) -> egui::TextFormat {
@@ -6444,598 +5714,3 @@ fn trace_preset_from_args(name: &str, args: &str) -> Option<TracePreset> {
     })
 }
 
-fn render_summary(ui: &mut egui::Ui, parsed: &ParsedCardScript<'_>) {
-    let mut fields = Vec::new();
-    let mut abilities = Vec::new();
-    let mut trigger_count = 0usize;
-    let mut static_count = 0usize;
-    let mut replacement_count = 0usize;
-    let mut svar_count = 0usize;
-    let mut unknown_count = 0usize;
-
-    for line in parsed.lines() {
-        match &line.kind {
-            ScriptLineKind::Field(field) => fields.push((field.key, field.value.unwrap_or(""))),
-            ScriptLineKind::Ability(ability) => abilities.push((line.line_no, ability)),
-            ScriptLineKind::Trigger(_) => trigger_count += 1,
-            ScriptLineKind::StaticAbility(_) => static_count += 1,
-            ScriptLineKind::Replacement(_) => replacement_count += 1,
-            ScriptLineKind::SVar(_) => svar_count += 1,
-            ScriptLineKind::Unknown(_) => unknown_count += 1,
-            _ => {}
-        }
-    }
-
-    egui::Grid::new("card_summary_fields")
-        .num_columns(2)
-        .spacing([12.0, 4.0])
-        .show(ui, |ui| {
-            for key in [
-                "Name", "ManaCost", "Types", "PT", "Colors", "Loyalty", "Oracle", "Text",
-            ] {
-                if let Some(value) = field_value(&fields, key) {
-                    ui.strong(key);
-                    ui.label(value);
-                    ui.end_row();
-                }
-            }
-        });
-
-    ui.separator();
-    ui.horizontal_wrapped(|ui| {
-        ui.weak(format!("lines: {}", parsed.lines().len()));
-        ui.weak(format!("diagnostics: {}", parsed.diagnostics().len()));
-        ui.weak(format!("abilities: {}", abilities.len()));
-        ui.weak(format!("triggers: {trigger_count}"));
-        ui.weak(format!("static: {static_count}"));
-        ui.weak(format!("replacement: {replacement_count}"));
-        ui.weak(format!("svars: {svar_count}"));
-        if unknown_count > 0 {
-            ui.colored_label(
-                egui::Color32::YELLOW,
-                format!("unknown fields: {unknown_count}"),
-            );
-        }
-    });
-
-    if !abilities.is_empty() {
-        egui::CollapsingHeader::new(format!("Ability Outline ({})", abilities.len()))
-            .default_open(true)
-            .show(ui, |ui| {
-                for (line_no, ability) in abilities {
-                    let record = ability.record.map(record_label).unwrap_or("A?");
-                    let api = ability.api_raw.unwrap_or("?");
-                    let summary = ability_summary(ability);
-                    ui.horizontal_wrapped(|ui| {
-                        ui.monospace(format!("L{line_no:>3}"));
-                        ui.colored_label(egui::Color32::LIGHT_BLUE, format!("{record}${api}"));
-                        if !summary.is_empty() {
-                            ui.weak(summary);
-                        }
-                    });
-                }
-            });
-    }
-}
-
-fn render_ast(
-    ui: &mut egui::Ui,
-    parsed: &ParsedCardScript<'_>,
-    selected_card_name: Option<&str>,
-    ast_view_mode: &mut AstViewMode,
-) {
-    render_selection_highlight_frame(
-        ui,
-        selected_card_name.is_some(),
-        selected_card_name.map(|name| format!("trace selection · {name}")),
-        |ui| {
-            ui.horizontal(|ui| {
-                ui.spacing_mut().item_spacing.x = 4.0;
-                ui.label(
-                    egui::RichText::new("View")
-                        .size(theme::SMALL_TEXT_SIZE)
-                        .color(theme::FG_3),
-                );
-                ui.selectable_value(ast_view_mode, AstViewMode::Graph, "Graph");
-                ui.selectable_value(ast_view_mode, AstViewMode::Text, "Text");
-            });
-            ui.add_space(6.0);
-            ui.set_width(ui.available_width());
-            let diagnostics = parsed.diagnostics();
-            let header = if diagnostics.is_empty() {
-                "Diagnostics (0)".to_string()
-            } else {
-                format!("Diagnostics ({})", diagnostics.len())
-            };
-            egui::CollapsingHeader::new(header)
-                .default_open(!diagnostics.is_empty())
-                .show(ui, |ui| {
-                    if diagnostics.is_empty() {
-                        ui.weak("No issues.");
-                    } else {
-                        for d in diagnostics {
-                            render_diagnostic(ui, d);
-                        }
-                    }
-                });
-
-            ui.separator();
-            match ast_view_mode {
-                AstViewMode::Graph => render_ast_graph(ui, parsed),
-                AstViewMode::Text => render_ast_text(ui, parsed),
-            }
-        },
-    );
-}
-
-fn render_ast_graph(ui: &mut egui::Ui, parsed: &ParsedCardScript<'_>) {
-    let graph_nodes = tree_sitter_ast_nodes(parsed.raw()).unwrap_or_default();
-    if graph_nodes.is_empty() {
-        ui.colored_label(theme::FG_3, "No AST nodes.");
-        return;
-    }
-
-    let max_depth = graph_nodes.iter().map(|node| node.depth).max().unwrap_or(0);
-    let max_entries = graph_nodes
-        .iter()
-        .map(|node| node.entries.len())
-        .max()
-        .unwrap_or(0);
-    let canvas_width = ui
-        .available_width()
-        .max(520.0 + max_depth as f32 * 140.0 + max_entries as f32 * 56.0);
-    ui.set_min_width(canvas_width);
-    ui.set_width(canvas_width);
-
-    for (idx, node) in graph_nodes.iter().enumerate() {
-        render_ast_node(ui, node);
-        if idx + 1 < graph_nodes.len() {
-            let (rect, _) =
-                ui.allocate_exact_size(egui::vec2(canvas_width, 12.0), egui::Sense::hover());
-            ui.painter().vline(
-                rect.left() + 12.0 + node.depth as f32 * 18.0,
-                rect.y_range(),
-                egui::Stroke::new(1.0, theme::BORDER_STRONG),
-            );
-        }
-    }
-}
-
-fn render_ast_node(ui: &mut egui::Ui, node: &AstNodeModel) {
-    ui.horizontal(|ui| {
-        ui.add_space(node.depth as f32 * 18.0);
-        theme::panel_frame()
-            .fill(node.fill)
-            .stroke(egui::Stroke::new(1.0, node.stroke))
-            .inner_margin(egui::Margin {
-                left: 10.0,
-                right: 10.0,
-                top: 8.0,
-                bottom: 8.0,
-            })
-            .show(ui, |ui| {
-                ui.set_min_width(340.0);
-                ui.horizontal(|ui| {
-                    ui.colored_label(theme::FG_3, format!("L{:>3}", node.line_no));
-                    if let Some(field_name) = &node.field_name {
-                        ui.colored_label(theme::FG_2, format!("{field_name}:"));
-                    }
-                    ui.label(
-                        egui::RichText::new(&node.kind_label)
-                            .strong()
-                            .color(theme::FG_0),
-                    );
-                    if !node.detail_text.is_empty() {
-                        ui.colored_label(theme::FG_2, shorten_list(&node.detail_text, 72));
-                    }
-                });
-                if !node.entries.is_empty() {
-                    ui.add_space(4.0);
-                    ui.horizontal_wrapped(|ui| {
-                        ui.spacing_mut().item_spacing = egui::vec2(4.0, 4.0);
-                        for (key, value, color) in &node.entries {
-                            render_ast_param_pill(ui, key, value, *color);
-                        }
-                    });
-                }
-            });
-    });
-}
-
-fn render_ast_text(ui: &mut egui::Ui, parsed: &ParsedCardScript<'_>) {
-    let graph_nodes = tree_sitter_ast_nodes(parsed.raw()).unwrap_or_default();
-    if graph_nodes.is_empty() {
-        ui.colored_label(theme::FG_3, "No AST nodes.");
-        return;
-    }
-
-    for node in &graph_nodes {
-        ui.horizontal_wrapped(|ui| {
-            ui.add_space(node.depth as f32 * 16.0);
-            ui.colored_label(theme::FG_3, format!("L{:>3}", node.line_no));
-            if let Some(field_name) = &node.field_name {
-                ui.colored_label(theme::FG_2, format!("{field_name}:"));
-            }
-            ui.label(
-                egui::RichText::new(&node.kind_label)
-                    .monospace()
-                    .color(theme::FG_0)
-                    .strong(),
-            );
-            if !node.detail_text.is_empty() {
-                ui.colored_label(theme::FG_2, &node.detail_text);
-            }
-        });
-        if !node.entries.is_empty() {
-            ui.horizontal_wrapped(|ui| {
-                ui.add_space(node.depth as f32 * 16.0 + 24.0);
-                ui.spacing_mut().item_spacing = egui::vec2(6.0, 4.0);
-                for (key, value, color) in &node.entries {
-                    render_ast_param_pill(ui, key, value, *color);
-                }
-            });
-        }
-        ui.add_space(4.0);
-    }
-}
-
-struct AstNodeModel {
-    line_no: usize,
-    depth: usize,
-    field_name: Option<String>,
-    kind_label: String,
-    detail_text: String,
-    fill: egui::Color32,
-    stroke: egui::Color32,
-    entries: Vec<(String, String, egui::Color32)>,
-}
-
-fn tree_sitter_ast_nodes(source: &str) -> Option<Vec<AstNodeModel>> {
-    let (tree, _) = parse_tree_sitter(source)?;
-    let mut out = Vec::new();
-    let mut cursor = tree.root_node().walk();
-    for node in tree.root_node().named_children(&mut cursor) {
-        collect_ts_ast_node(node, source.as_bytes(), 0, None, &mut out);
-    }
-    Some(out)
-}
-
-fn collect_ts_ast_node(
-    node: TsNode<'_>,
-    source: &[u8],
-    depth: usize,
-    field_name: Option<String>,
-    out: &mut Vec<AstNodeModel>,
-) {
-    let (fill, stroke) = tree_sitter_node_palette(node.kind());
-    out.push(AstNodeModel {
-        line_no: node.start_position().row + 1,
-        depth,
-        field_name,
-        kind_label: node.kind().to_string(),
-        detail_text: node
-            .utf8_text(source)
-            .ok()
-            .map(|text| shorten_list(text.trim(), 80))
-            .unwrap_or_default(),
-        fill,
-        stroke,
-        entries: tree_sitter_leaf_entries(node, source),
-    });
-
-    let mut cursor = node.walk();
-    for (idx, child) in node.named_children(&mut cursor).enumerate() {
-        let child_field = node
-            .field_name_for_named_child(idx as u32)
-            .map(|s| s.to_string());
-        collect_ts_ast_node(child, source, depth + 1, child_field, out);
-    }
-}
-
-fn tree_sitter_node_palette(kind: &str) -> (egui::Color32, egui::Color32) {
-    if kind.contains("ability") {
-        (theme::ACCENT_BG, theme::ACCENT)
-    } else if kind.contains("trigger") {
-        (egui::Color32::from_rgb(82, 72, 40), egui::Color32::GOLD)
-    } else if kind.contains("replacement") {
-        (egui::Color32::from_rgb(84, 44, 44), theme::RED)
-    } else if kind.contains("svar") {
-        (egui::Color32::from_rgb(56, 52, 84), theme::JAVA)
-    } else if kind.contains("keyword") || kind.contains("specialize") || kind.contains("alternate")
-    {
-        (theme::BG_1, theme::YELLOW)
-    } else if kind.contains("comment") {
-        (theme::BG_1, theme::FG_3)
-    } else {
-        (theme::BG_1, theme::BORDER_STRONG)
-    }
-}
-
-fn tree_sitter_leaf_entries(
-    node: TsNode<'_>,
-    source: &[u8],
-) -> Vec<(String, String, egui::Color32)> {
-    let mut out = Vec::new();
-    let mut cursor = node.walk();
-    for (idx, child) in node.named_children(&mut cursor).enumerate() {
-        if child.named_child_count() == 0 {
-            let key = node
-                .field_name_for_named_child(idx as u32)
-                .unwrap_or(child.kind())
-                .to_string();
-            let value = child
-                .utf8_text(source)
-                .ok()
-                .map(|text| shorten_list(text.trim(), 36))
-                .unwrap_or_default();
-            out.push((key, value, tree_sitter_capture_color(child.kind())));
-        }
-    }
-    out
-}
-
-fn tree_sitter_capture_color(kind: &str) -> egui::Color32 {
-    if matches!(kind, "key" | "param_key" | "svar_name") {
-        theme::ACCENT
-    } else if matches!(
-        kind,
-        "value" | "param_value" | "keyword_value" | "svar_value"
-    ) {
-        theme::FG_0
-    } else if kind.contains("record") {
-        theme::GREEN
-    } else if kind.contains("api") {
-        theme::FG_0
-    } else {
-        theme::FG_2
-    }
-}
-
-fn semantic_entries(entries: &[ParamEntry<'_>]) -> Vec<(String, String, egui::Color32)> {
-    entries
-        .iter()
-        .map(|entry| {
-            let semantic = entry.semantic();
-            (
-                entry.key.to_string(),
-                short_value(&semantic.value, entry.value),
-                kind_color(semantic.value.kind()),
-            )
-        })
-        .collect()
-}
-
-fn render_ast_param_pill(ui: &mut egui::Ui, key: &str, value: &str, color: egui::Color32) {
-    egui::Frame::none()
-        .fill(theme::BG_0)
-        .stroke(egui::Stroke::new(1.0, color))
-        .inner_margin(egui::Margin {
-            left: 5.0,
-            right: 5.0,
-            top: 2.0,
-            bottom: 2.0,
-        })
-        .show(ui, |ui| {
-            ui.horizontal(|ui| {
-                ui.colored_label(color, egui::RichText::new(key).size(10.0).strong());
-                ui.colored_label(
-                    theme::FG_1,
-                    egui::RichText::new(shorten_list(&value, 28)).size(10.0),
-                );
-            });
-        });
-}
-
-fn render_ability(ui: &mut egui::Ui, line_no: usize, ability: &ScriptAbility<'_>) {
-    let record = ability.record.map(record_label).unwrap_or("A?");
-    let api = ability.api_raw.unwrap_or("?");
-    let header = format!("L{line_no:>3}  {record}${api}");
-    egui::CollapsingHeader::new(header)
-        .id_salt(("ability", line_no))
-        .default_open(true)
-        .show(ui, |ui| {
-            render_params(ui, ability.params.entries());
-        });
-}
-
-fn render_param_record(
-    ui: &mut egui::Ui,
-    line_no: usize,
-    tag: &str,
-    color: egui::Color32,
-    rec: &ScriptParamRecord<'_>,
-) {
-    let header = egui::RichText::new(format!(
-        "L{line_no:>3}  {tag}: ({} params)",
-        rec.params.entries().len()
-    ))
-    .color(color);
-    egui::CollapsingHeader::new(header)
-        .id_salt((tag, line_no))
-        .default_open(true)
-        .show(ui, |ui| {
-            render_params(ui, rec.params.entries());
-        });
-}
-
-fn render_svar(ui: &mut egui::Ui, line_no: usize, svar: &ScriptSVar<'_>) {
-    let header = format!("L{line_no:>3}  SVar: {}", svar.name);
-    egui::CollapsingHeader::new(header)
-        .id_salt(("svar", line_no))
-        .default_open(false)
-        .show(ui, |ui| match &svar.value_kind {
-            ScriptSVarValue::Ability(ability) => {
-                let record = ability.record.map(record_label).unwrap_or("A?");
-                let api = ability.api_raw.unwrap_or("?");
-                ui.label(format!("{record}${api}"));
-                render_params(ui, ability.params.entries());
-            }
-            ScriptSVarValue::Params(rec) => {
-                render_params(ui, rec.params.entries());
-            }
-            ScriptSVarValue::Raw(raw) => {
-                ui.monospace(*raw);
-            }
-        });
-}
-
-fn render_params(ui: &mut egui::Ui, entries: &[ParamEntry<'_>]) {
-    if entries.is_empty() {
-        ui.weak("(no params)");
-        return;
-    }
-    for entry in entries {
-        let sem = entry.semantic();
-        ui.horizontal_wrapped(|ui| {
-            ui.strong(entry.key);
-            ui.colored_label(kind_color(sem.value.kind()), kind_label(sem.value.kind()));
-            ui.monospace(short_value(&sem.value, entry.value));
-        });
-        ui.add_space(2.0);
-    }
-}
-
-fn render_diagnostic(ui: &mut egui::Ui, d: &ScriptDiagnostic<'_>) {
-    use forge_card_script::{ParamDiagnosticKind, ScriptDiagnosticKind};
-    let (color, label) = match d.kind {
-        ScriptDiagnosticKind::MissingColon => (egui::Color32::LIGHT_RED, "missing ':'"),
-        ScriptDiagnosticKind::EmptyKey => (egui::Color32::YELLOW, "empty key"),
-        ScriptDiagnosticKind::UnknownField => (egui::Color32::YELLOW, "unknown field"),
-        ScriptDiagnosticKind::MissingAbilityRecord => {
-            (egui::Color32::LIGHT_RED, "missing ability record")
-        }
-        ScriptDiagnosticKind::MissingSVarName => (egui::Color32::LIGHT_RED, "missing SVar name"),
-        ScriptDiagnosticKind::Param(p) => match p {
-            ParamDiagnosticKind::MissingDelimiter => {
-                (egui::Color32::LIGHT_RED, "param: missing '$'")
-            }
-            ParamDiagnosticKind::EmptyKey => (egui::Color32::YELLOW, "param: empty key"),
-            ParamDiagnosticKind::DuplicateKeySameValue => {
-                (egui::Color32::LIGHT_GRAY, "param: duplicate (same value)")
-            }
-            ParamDiagnosticKind::DuplicateKeyDifferentValue => {
-                (egui::Color32::YELLOW, "param: duplicate (different value)")
-            }
-        },
-    };
-    ui.horizontal(|ui| {
-        ui.monospace(format!("L{:>3}", d.line_no));
-        ui.colored_label(color, label);
-        if let Some(key) = d.key {
-            ui.monospace(key);
-        }
-        ui.weak(d.segment);
-    });
-}
-
-fn record_label(record: ScriptAbilityRecord) -> &'static str {
-    match record {
-        ScriptAbilityRecord::Activated => "AB",
-        ScriptAbilityRecord::Spell => "SP",
-        ScriptAbilityRecord::SubAbility => "DB",
-        ScriptAbilityRecord::StaticAbility => "ST",
-    }
-}
-
-fn kind_label(kind: SemanticParamValueKind) -> &'static str {
-    match kind {
-        SemanticParamValueKind::AbilityRecord => "AbilityRecord",
-        SemanticParamValueKind::Symbol => "Symbol",
-        SemanticParamValueKind::Boolean => "Bool",
-        SemanticParamValueKind::Integer => "Int",
-        SemanticParamValueKind::Amount => "Amount",
-        SemanticParamValueKind::ZoneList => "ZoneList",
-        SemanticParamValueKind::Selector => "Selector",
-        SemanticParamValueKind::Reference => "Reference",
-        SemanticParamValueKind::SVarReference => "SVarRef",
-        SemanticParamValueKind::Cost => "Cost",
-        SemanticParamValueKind::Text => "Text",
-        SemanticParamValueKind::DelimitedList => "List",
-        SemanticParamValueKind::Transform => "Transform",
-        SemanticParamValueKind::Comparison => "Compare",
-        SemanticParamValueKind::Expression => "Expr",
-        SemanticParamValueKind::Raw => "Raw",
-    }
-}
-
-fn kind_color(kind: SemanticParamValueKind) -> egui::Color32 {
-    match kind {
-        SemanticParamValueKind::Integer | SemanticParamValueKind::Amount => {
-            egui::Color32::LIGHT_BLUE
-        }
-        SemanticParamValueKind::Boolean => egui::Color32::LIGHT_YELLOW,
-        SemanticParamValueKind::Selector | SemanticParamValueKind::Reference => {
-            egui::Color32::LIGHT_GREEN
-        }
-        SemanticParamValueKind::SVarReference => egui::Color32::from_rgb(220, 180, 255),
-        SemanticParamValueKind::Cost => egui::Color32::GOLD,
-        SemanticParamValueKind::ZoneList => egui::Color32::from_rgb(180, 200, 240),
-        SemanticParamValueKind::Text => egui::Color32::GRAY,
-        _ => egui::Color32::LIGHT_GRAY,
-    }
-}
-
-fn short_value(value: &SemanticParamValue<'_>, raw: &str) -> String {
-    match value {
-        SemanticParamValue::Amount(a) => match a {
-            SemanticAmount::Literal(n) => format!("{n}"),
-            SemanticAmount::X => "X".into(),
-            SemanticAmount::Any => "Any".into(),
-            SemanticAmount::All => "All".into(),
-            SemanticAmount::SVar(s) => format!("SVar({s})"),
-            SemanticAmount::Expression(e) => format!("expr({e})"),
-        },
-        SemanticParamValue::Integer(n) => format!("{n}"),
-        SemanticParamValue::Boolean(b) => format!("{b}"),
-        SemanticParamValue::Selector(sel) | SemanticParamValue::Reference(sel) => {
-            let alts: Vec<String> = sel
-                .alternatives
-                .iter()
-                .map(|alt| {
-                    let parts: Vec<String> = alt
-                        .parts
-                        .iter()
-                        .map(|p| match p.separator {
-                            Some(c) => format!("{c}{}", p.value),
-                            None => p.value.to_string(),
-                        })
-                        .collect();
-                    parts.join("")
-                })
-                .collect();
-            alts.join(" | ")
-        }
-        SemanticParamValue::ZoneList(zones) => zones.join(", "),
-        SemanticParamValue::SVarReference(refs) => refs.join(", "),
-        SemanticParamValue::DelimitedList(items) => items.join(", "),
-        SemanticParamValue::Transform(t) => format!("{} → {}", t.from, t.to),
-        SemanticParamValue::Comparison(c) => format!("{} {:?} {}", c.left, c.operator, c.right),
-        _ => raw.to_string(),
-    }
-}
-
-fn field_value<'a>(fields: &[(&'a str, &'a str)], key: &str) -> Option<&'a str> {
-    fields
-        .iter()
-        .rev()
-        .find_map(|(field_key, value)| (*field_key == key).then_some(*value))
-}
-
-fn ability_summary(ability: &ScriptAbility<'_>) -> String {
-    let mut parts = Vec::new();
-    if let Some(cost) = ability.params.get("Cost") {
-        parts.push(format!("Cost {cost}"));
-    }
-    if let Some(valid_tgts) = ability.params.get("ValidTgts") {
-        parts.push(format!("Targets {valid_tgts}"));
-    }
-    if let Some(description) = ability
-        .params
-        .get("SpellDescription")
-        .or_else(|| ability.params.get("StackDescription"))
-        .or_else(|| ability.params.get("Description"))
-    {
-        parts.push(description.to_string());
-    }
-    parts.join("  |  ")
-}
