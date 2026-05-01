@@ -1344,6 +1344,7 @@ fn legacy_matches_card_atom(raw: &str, card: &Card, context: MatchContext<'_>) -
         "basic" => card.type_line.is_basic(),
         "snow" => card.type_line.is_snow(),
         "kicked" => card.kicked,
+        "cameundercontrolsincelastupkeep" => card.came_under_control_since_last_upkeep(),
         "noncreature" => !card.is_creature(),
         "nonland" => !card.is_land(),
         "nonlegendary" => !card.type_line.is_legendary(),
@@ -1947,6 +1948,11 @@ fn matches_type_and_qualifier_parts(
                 }
                 "kicked" => {
                     if !card.kicked {
+                        return false;
+                    }
+                }
+                "cameundercontrolsincelastupkeep" => {
+                    if !card.came_under_control_since_last_upkeep() {
                         return false;
                     }
                 }

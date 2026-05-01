@@ -19,11 +19,13 @@ use serde::Deserialize;
 
 mod archive;
 mod script_view;
+mod card_widgets;
 mod theme;
 mod ts_view;
 mod worker;
 
 use crate::archive::ArchiveState;
+use crate::card_widgets::{render_battlefield_strip, render_hand_strip, render_selectable_card_row};
 use crate::script_view::{render_ast, render_summary};
 use crate::ts_view::highlight_source_job;
 use crate::worker::{
@@ -277,9 +279,9 @@ impl TracePaneKind {
 }
 
 #[derive(Clone)]
-struct InspectedCard {
-    name: String,
-    raw: String,
+pub(crate) struct InspectedCard {
+    pub(crate) name: String,
+    pub(crate) raw: String,
 }
 
 #[derive(Clone)]
@@ -374,7 +376,6 @@ impl Default for App {
 impl App {
     fn push_trace_debug(&mut self, message: impl Into<String>) {
         let message = message.into();
-        eprintln!("[debugger] {}", message);
         if self.trace_debug_log.len() >= 64 {
             self.trace_debug_log.pop_front();
         }
@@ -498,6 +499,7 @@ impl App {
             variant: self.trace_variant.clone(),
             commanders: self.trace_commanders.clone(),
             full_log: false,
+            live_log: None,
         }
     }
 
@@ -4970,6 +4972,10 @@ fn render_event_card_frame(
 }
 
 fn render_callback_event_card(ui: &mut egui::Ui, callback: &CallbackRecord) {
+    if callback.name == "$ACTION_SPACE" {
+        render_action_space_event_card(ui, callback);
+        return;
+    }
     render_event_card_frame(
         ui,
         theme::GREEN,
@@ -5031,6 +5037,61 @@ fn render_callback_event_card(ui: &mut egui::Ui, callback: &CallbackRecord) {
                             }
                         });
                     },
+                );
+            }
+        },
+    );
+    ui.add_space(6.0);
+}
+
+/// Surface the legal-action snapshot the agent saw at this priority pass.
+///
+/// The parity harness emits `$ACTION_SPACE` callbacks with `outcome` formatted as
+/// `[#0 <choice> | #1 <choice> | ... | PASS]` (or `SKIPPED stack_depth>=N` when
+/// the action space is intentionally not enumerated, e.g. deep stacks). We
+/// render the choice list as a vertical bullet list rather than as one wrapped
+/// blob so each option is independently scannable.
+fn render_action_space_event_card(ui: &mut egui::Ui, callback: &CallbackRecord) {
+    render_event_card_frame(
+        ui,
+        theme::ACCENT,
+        "ACTION SPACE",
+        &format!(
+            "P{} · {} · snapshot {}",
+            callback.player, callback.phase, callback.snapshot_index
+        ),
+        |ui| {
+            let raw = callback.outcome.trim();
+            // Skip path: harness emits "SKIPPED <reason>" when it bails on enumeration.
+            if let Some(reason) = raw.strip_prefix("SKIPPED") {
+                ui.label(
+                    egui::RichText::new(format!("skipped:{}", reason))
+                        .monospace()
+                        .italics()
+                        .color(theme::FG_3),
+                );
+                return;
+            }
+            // Strip the surrounding `[...]` brackets if present.
+            let body = raw
+                .strip_prefix('[')
+                .and_then(|s| s.strip_suffix(']'))
+                .unwrap_or(raw);
+            let choices: Vec<&str> = body.split('|').map(str::trim).filter(|s| !s.is_empty()).collect();
+            if choices.is_empty() {
+                ui.colored_label(theme::FG_3, "(no choices)");
+                return;
+            }
+            for choice in choices {
+                let is_pass = choice == "PASS";
+                let color = if is_pass { theme::FG_2 } else { theme::FG_0 };
+                ui.add(
+                    egui::Label::new(
+                        egui::RichText::new(choice)
+                            .monospace()
+                            .color(color),
+                    )
+                    .wrap(),
                 );
             }
         },
@@ -5143,211 +5204,6 @@ fn render_event_shell(ui: &mut egui::Ui, trace: &Option<TraceSession>, mode: Tra
     }
 }
 
-fn render_battlefield_strip(
-    ui: &mut egui::Ui,
-    battlefield: &[forge_parity::protocol::CardSnapshot],
-    archive: Option<&ArchiveState>,
-    selected_card_name: Option<&str>,
-    selected_card: &mut Option<InspectedCard>,
-) {
-    ui.horizontal_wrapped(|ui| {
-        ui.spacing_mut().item_spacing = egui::vec2(4.0, 4.0);
-        for card in battlefield {
-            let response =
-                render_card_chip(ui, card, selected_card_name == Some(card.name.as_str()));
-            if response.clicked() {
-                select_trace_card(archive, &card.name, selected_card);
-            }
-        }
-    });
-}
-
-fn render_hand_strip(
-    ui: &mut egui::Ui,
-    hand: &[String],
-    archive: Option<&ArchiveState>,
-    selected_card_name: Option<&str>,
-    selected_card: &mut Option<InspectedCard>,
-) {
-    ui.horizontal_wrapped(|ui| {
-        ui.spacing_mut().item_spacing = egui::vec2(4.0, 4.0);
-        for card_name in hand {
-            let response = render_zone_name_chip(
-                ui,
-                card_name,
-                selected_card_name == Some(card_name.as_str()),
-            );
-            if response.clicked() {
-                select_trace_card(archive, card_name, selected_card);
-            }
-        }
-    });
-}
-
-fn render_card_chip(
-    ui: &mut egui::Ui,
-    card: &forge_parity::protocol::CardSnapshot,
-    is_selected: bool,
-) -> egui::Response {
-    let desired_size = egui::vec2(56.0, 78.0);
-    let (rect, response) = ui.allocate_exact_size(desired_size, egui::Sense::click());
-    let fill = if is_selected {
-        theme::BG_SEL
-    } else {
-        theme::BG_2
-    };
-    ui.painter().rect_filled(rect, 0.0, fill);
-    ui.painter().rect_stroke(
-        rect,
-        0.0,
-        egui::Stroke::new(
-            if is_selected { 1.5 } else { 1.0 },
-            if is_selected {
-                theme::ACCENT
-            } else {
-                theme::BORDER_STRONG
-            },
-        ),
-    );
-    let stripe_rect = egui::Rect::from_min_max(rect.min, egui::pos2(rect.max.x, rect.min.y + 3.0));
-    ui.painter().rect_filled(stripe_rect, 0.0, card_color(card));
-    let mut child = ui.new_child(
-        egui::UiBuilder::new()
-            .max_rect(rect.shrink2(egui::vec2(4.0, 5.0)))
-            .layout(egui::Layout::top_down(egui::Align::LEFT)),
-    );
-    child.label(
-        egui::RichText::new(short_card_name(&card.name))
-            .size(9.0)
-            .color(theme::FG_0)
-            .strong(),
-    );
-    let cost_rect = egui::Rect::from_center_size(
-        egui::pos2(rect.right() - 10.0, rect.top() + 10.0),
-        egui::vec2(13.0, 13.0),
-    );
-    ui.painter()
-        .circle_filled(cost_rect.center(), 6.5, theme::BG_0);
-    ui.painter().circle_stroke(
-        cost_rect.center(),
-        6.5,
-        egui::Stroke::new(1.0, card_color(card)),
-    );
-    if card.tapped {
-        child.colored_label(theme::FG_3, "T");
-    }
-    child.add_space(10.0);
-    if let (Some(power), Some(toughness)) = (card.power, card.toughness) {
-        child.with_layout(egui::Layout::bottom_up(egui::Align::RIGHT), |ui| {
-            let text = egui::RichText::new(format!("{power}/{toughness}"))
-                .size(9.0)
-                .color(theme::FG_0)
-                .background_color(theme::BG_0);
-            ui.label(text);
-        });
-    }
-    response
-}
-
-fn render_zone_name_chip(ui: &mut egui::Ui, card_name: &str, is_selected: bool) -> egui::Response {
-    let desired_size = egui::vec2(64.0, 24.0);
-    let (rect, response) = ui.allocate_exact_size(desired_size, egui::Sense::click());
-    let fill = if is_selected {
-        theme::BG_SEL
-    } else {
-        theme::BG_2
-    };
-    ui.painter().rect_filled(rect, 0.0, fill);
-    ui.painter().rect_stroke(
-        rect,
-        0.0,
-        egui::Stroke::new(
-            if is_selected { 1.5 } else { 1.0 },
-            if is_selected {
-                theme::ACCENT
-            } else {
-                theme::BORDER_STRONG
-            },
-        ),
-    );
-    let mut child = ui.new_child(
-        egui::UiBuilder::new()
-            .max_rect(rect.shrink2(egui::vec2(5.0, 4.0)))
-            .layout(egui::Layout::left_to_right(egui::Align::Center)),
-    );
-    child.label(
-        egui::RichText::new(short_card_name(card_name))
-            .size(9.0)
-            .color(theme::FG_0)
-            .strong(),
-    );
-    response
-}
-
-fn card_color(card: &forge_parity::protocol::CardSnapshot) -> egui::Color32 {
-    let name = card.name.to_ascii_lowercase();
-    if name.contains("forest") || name.contains("elf") || name.contains("bear") {
-        theme::MTG_G
-    } else if name.contains("mountain")
-        || name.contains("bolt")
-        || name.contains("shock")
-        || name.contains("goblin")
-    {
-        theme::MTG_R
-    } else if name.contains("plains") {
-        theme::MTG_W
-    } else if name.contains("island") {
-        theme::MTG_U
-    } else if name.contains("swamp") {
-        theme::MTG_B
-    } else {
-        theme::MTG_C
-    }
-}
-
-fn render_selectable_card_row(
-    ui: &mut egui::Ui,
-    display_text: &str,
-    card_name: &str,
-    archive: Option<&ArchiveState>,
-    is_selected: bool,
-    selected_card: &mut Option<InspectedCard>,
-) {
-    let text = if is_selected {
-        egui::RichText::new(display_text)
-            .monospace()
-            .background_color(egui::Color32::from_rgb(45, 70, 110))
-    } else {
-        egui::RichText::new(display_text).monospace()
-    };
-    let response = ui.add(egui::Label::new(text).sense(egui::Sense::click()));
-    if response.clicked() {
-        select_trace_card(archive, card_name, selected_card);
-    }
-}
-
-fn select_trace_card(
-    archive: Option<&ArchiveState>,
-    card_name: &str,
-    selected_card: &mut Option<InspectedCard>,
-) {
-    if let Some(card) = archive.and_then(|state| state.archive().lookup(card_name)) {
-        *selected_card = Some(InspectedCard {
-            name: card.display_name().to_string(),
-            raw: card.raw.to_string(),
-        });
-    }
-}
-
-fn short_card_name(name: &str) -> String {
-    const LIMIT: usize = 18;
-    if name.chars().count() <= LIMIT {
-        return name.to_string();
-    }
-    let shortened: String = name.chars().take(LIMIT - 1).collect();
-    format!("{shortened}…")
-}
-
 fn shorten_list(value: &str, limit: usize) -> String {
     if value.chars().count() <= limit {
         return value.to_string();
@@ -5443,17 +5299,23 @@ fn render_related_log(
     snap: &StateSnapshot,
     snapshot_index: usize,
 ) {
+    // Filter by turn only, not (turn, phase). Snapshots typically fire at
+    // turn boundaries (e.g. Untap), but callbacks fire across all phases of
+    // the turn (Main1, Main2, Upkeep, CombatBegin, …). A strict (turn, phase)
+    // match would hide every non-Untap callback on every Untap snapshot —
+    // including the new $ACTION_SPACE cards, which only emit at priority
+    // passes. "What happened this turn" is the more useful unit anyway.
     let related_callbacks: Vec<&CallbackRecord> = trace
         .log_entries
         .iter()
         .filter_map(ParityLogEntry::as_callback)
-        .filter(|callback| callback.turn == snap.turn && callback.phase == snap.phase)
+        .filter(|callback| callback.turn == snap.turn)
         .collect();
     let related_decisions: Vec<_> = trace
         .log_entries
         .iter()
         .filter_map(ParityLogEntry::as_decision)
-        .filter(|decision| decision.turn == snap.turn && decision.phase == snap.phase)
+        .filter(|decision| decision.turn == snap.turn)
         .collect();
 
     egui::ScrollArea::both()
@@ -5466,6 +5328,7 @@ fn render_related_log(
             }
 
             ui.horizontal_wrapped(|ui| {
+                ui.colored_label(theme::FG_3, format!("turn {}", snap.turn));
                 if !related_callbacks.is_empty() {
                     ui.colored_label(
                         theme::GREEN,

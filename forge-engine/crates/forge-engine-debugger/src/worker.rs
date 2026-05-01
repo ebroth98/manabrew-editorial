@@ -330,10 +330,6 @@ fn try_emit_partial_compare(
     if let Some(divergence) = result.first_divergence.as_ref() {
         *lock_pt(stop_after_turn) = Some(divergence.turn);
     }
-    eprintln!(
-        "[debugger-worker] partial divergence from {source}: rust={} java={} at #{}",
-        rust_snapshots, java_snapshots, result.snapshots_compared
-    );
     let _ = event_tx.send(TraceWorkerEvent::Debug(format!(
         "partial divergence from {source}: rust={} java={} at #{}",
         rust_snapshots, java_snapshots, result.snapshots_compared
@@ -425,15 +421,6 @@ fn run_trace_request(
                                 }
                             },
                         );
-                        match &result {
-                            Ok(trace) => eprintln!(
-                                "[debugger-worker] rust thread complete: snapshots={}",
-                                trace.snapshot_vec().len()
-                            ),
-                            Err(err) => {
-                                eprintln!("[debugger-worker] rust thread error: {err}");
-                            }
-                        }
                         let _ = rust_tx.send(result);
                     })
                     .map_err(|err| format!("failed to spawn rust trace thread: {err}"))?;
@@ -457,22 +444,8 @@ fn run_trace_request(
                                 return Ok(false);
                             }
                         }
-                        let java_snapshot_count = lock_pt(&java_log)
-                            .iter()
-                            .filter(|entry| entry.as_snapshot().is_some())
-                            .count();
-                        if entry.as_snapshot().is_some() && java_snapshot_count <= 3 {
-                            eprintln!(
-                                "[debugger-worker] java snapshot seen: count={} rust_snapshots={}",
-                                java_snapshot_count,
-                                lock_pt(&rust_log)
-                                    .iter()
-                                    .filter(|entry| entry.as_snapshot().is_some())
-                                    .count()
-                            );
-                        }
-                        if entry.as_snapshot().is_some() {
-                            if try_emit_partial_compare(
+                        if entry.as_snapshot().is_some()
+                            && try_emit_partial_compare(
                                 event_tx,
                                 &config,
                                 &rust_log,
@@ -480,40 +453,34 @@ fn run_trace_request(
                                 &compare_emitted,
                                 &stop_after_turn,
                                 "java",
-                            ) {
-                                return Ok(true);
-                            }
-                            let rust_snapshot_count = lock_pt(&rust_log)
-                                .iter()
-                                .filter(|entry| entry.as_snapshot().is_some())
-                                .count();
-                            if rust_snapshot_count > 0 && java_snapshot_count % 25 == 0 {
-                                eprintln!(
-                                    "[debugger-worker] partial compare checkpoint: rust={} java={}",
-                                    rust_snapshot_count, java_snapshot_count
-                                );
-                                let _ = event_tx.send(TraceWorkerEvent::Debug(format!(
-                                    "partial compare: rust={} java={} no-divergence",
-                                    rust_snapshot_count, java_snapshot_count
-                                )));
-                            }
+                            )
+                        {
+                            return Ok(true);
                         }
                         Ok(true)
                     },
                 );
-                let rust_trace = rust_rx
-                    .recv()
-                    .map_err(|_| "rust trace thread disconnected".to_string())??;
-                eprintln!(
-                    "[debugger-worker] java trace complete: java_snapshots={}",
-                    lock_pt(&java_log)
-                        .iter()
-                        .filter(|entry| entry.as_snapshot().is_some())
-                        .count()
-                );
-                rust_handle
-                    .join()
-                    .map_err(|_| "rust trace thread panicked".to_string())?;
+                // Capture results from both sides without short-circuiting:
+                //   - rust_rx.recv() returns Err if the rust thread panicked
+                //     (its tx dropped).
+                //   - rust_handle.join() must be called explicitly to consume
+                //     the panic payload from the scope. If we let `?` propagate
+                //     before joining, std::thread::scope's drop will detect the
+                //     un-collected panic and re-raise it on the calling
+                //     (worker) thread — which is then the worker's own panic,
+                //     not a clean Err returned through the channel.
+                let recv_result = rust_rx.recv();
+                let join_result = rust_handle.join();
+                let rust_trace = match (recv_result, join_result) {
+                    (_, Err(_)) => {
+                        return Err("rust trace thread panicked".to_string());
+                    }
+                    (Err(_), Ok(())) => {
+                        return Err("rust trace thread disconnected".to_string());
+                    }
+                    (Ok(Err(err)), Ok(())) => return Err(err),
+                    (Ok(Ok(trace)), Ok(())) => trace,
+                };
                 Ok::<_, String>((rust_trace, java_result?))
             })?;
             compare_result = Some(compare_matchup(&config, &rust_trace, &java_data));
