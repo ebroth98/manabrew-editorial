@@ -268,6 +268,7 @@ export function GameBoard({
         promptType === PT.ChooseAttackers ||
         promptType === PT.ChooseBlockers ||
         promptType === PT.ChooseTargetCard ||
+        promptType === PT.ChooseTargetCardFromZone ||
         promptType === PT.ChooseTargetAny
           ? onBattlefieldClick
           : undefined,

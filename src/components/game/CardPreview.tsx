@@ -5,12 +5,13 @@ import { CounterDisplay } from "@/components/game/CounterBadge";
 import { ManaSymbols } from "@/components/game/ManaSymbols";
 import { TextWithMana } from "@/components/game/TextWithMana";
 import { FLASH_CARD_SIZE } from "./game.styles";
+import { CARD_BADGES } from "./game.constants";
 import { withAlpha } from "@/themes/gameTheme";
 import { useTheme } from "@/hooks/useTheme";
-import { upgradeScryfallUrl } from "./game.utils";
+import { isCreature, isLethalDamage, upgradeScryfallUrl } from "./game.utils";
 import { cn } from "@/lib/utils";
 import type { HandActionOption } from "@/stores/useGameUIStore";
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 import type { CSSProperties } from "react";
 import { useCard } from "@/stores/useScryfallStore";
 
@@ -36,6 +37,133 @@ interface CardPreviewProps {
 const { w: CARD_W, h: CARD_H } = FLASH_CARD_SIZE;
 const ACTIONS_PANEL_W = 220;
 
+function CardDetailOverlay({ card }: { card: Card }) {
+  const themeColors = useTheme().gameTheme;
+  const creature = isCreature(card);
+  const lethal = isLethalDamage(card);
+
+  const statusBadges = useMemo(() => {
+    const out: { key: string; label: string; style: string }[] = [];
+    if (card.exerted) out.push({ key: "exerted", ...CARD_BADGES.exerted });
+    if (card.isFaceDown) out.push({ key: "morph", ...CARD_BADGES.morph });
+    if (card.isBestowed) out.push({ key: "bestow", ...CARD_BADGES.bestow });
+    if (card.isTransformed) out.push({ key: "transformed", ...CARD_BADGES.transformed });
+    if (card.isPlotted) out.push({ key: "plotted", ...CARD_BADGES.plotted });
+    if (card.isMadnessExiled) out.push({ key: "madness", ...CARD_BADGES.madnessExiled });
+    if (card.isWarpExiled) out.push({ key: "warped", ...CARD_BADGES.warpExiled });
+    if (card.isCopy) out.push({ key: "copy", ...CARD_BADGES.copy });
+    if (card.isToken) out.push({ key: "token", ...CARD_BADGES.token });
+    return out;
+  }, [
+    card.exerted,
+    card.isFaceDown,
+    card.isBestowed,
+    card.isTransformed,
+    card.isPlotted,
+    card.isMadnessExiled,
+    card.isWarpExiled,
+    card.isCopy,
+    card.isToken,
+  ]);
+
+  const keywords = card.keywords ?? [];
+
+  const ptStyle = useMemo<CSSProperties>(() => {
+    const fg = themeColors.textOnTinted;
+    if (lethal) return { backgroundColor: themeColors.pt.lethal, color: fg };
+    if (card.basePower == null || card.power == null) {
+      return { backgroundColor: withAlpha(themeColors.pt.neutral, 0.85), color: fg };
+    }
+    const curP = parseInt(card.power, 10);
+    const curT = parseInt(card.toughness ?? "0", 10);
+    const buffed = curP > card.basePower || curT > (card.baseToughness ?? 0);
+    const debuffed = curP < card.basePower || curT < (card.baseToughness ?? 0);
+    if (buffed) return { backgroundColor: themeColors.pt.buffed, color: fg };
+    if (debuffed) return { backgroundColor: themeColors.pt.debuffed, color: fg };
+    return { backgroundColor: withAlpha(themeColors.pt.neutral, 0.85), color: fg };
+  }, [lethal, card.basePower, card.baseToughness, card.power, card.toughness, themeColors]);
+
+  const showTopStrip = statusBadges.length > 0 || keywords.length > 0;
+  const showPT = creature && !!card.power && !!card.toughness;
+  const damage = card.damage ?? 0;
+
+  return (
+    <>
+      {showTopStrip && (
+        <div className="absolute top-2 left-2 right-2 z-10 flex flex-col items-center gap-1 pointer-events-none">
+          {statusBadges.length > 0 && (
+            <div className="flex flex-wrap gap-1 justify-center">
+              {statusBadges.map((b) => (
+                <span
+                  key={b.key}
+                  className={cn(
+                    "text-[11px] font-bold px-2 py-0.5 rounded shadow-md uppercase tracking-wide",
+                    b.style,
+                  )}
+                >
+                  {b.label}
+                </span>
+              ))}
+            </div>
+          )}
+          {keywords.length > 0 && (
+            <div className="flex flex-wrap gap-1 justify-center">
+              {keywords.map((kw, i) => {
+                const colonIdx = kw.indexOf(":");
+                const label = colonIdx === -1 ? kw : kw.slice(0, colonIdx);
+                const cost = colonIdx === -1 ? null : kw.slice(colonIdx + 1);
+                return (
+                  <span
+                    key={`${kw}-${i}`}
+                    className="inline-flex items-center gap-0.5 text-[11px] font-bold uppercase tracking-wide bg-black/75 text-white px-2 py-0.5 rounded shadow-md"
+                  >
+                    {label}
+                    {cost && <ManaSymbols cost={cost} size="sm" />}
+                  </span>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {showPT && (
+        <div className="absolute bottom-2 right-2 z-10 flex flex-col items-end gap-1 pointer-events-none">
+          <span
+            className="text-base font-bold px-2 py-0.5 rounded shadow-md leading-none"
+            style={ptStyle}
+          >
+            {card.power}/{card.toughness}
+          </span>
+          {damage > 0 && (
+            <span
+              className="text-xs font-bold px-1.5 py-0.5 rounded shadow-md leading-none"
+              style={{
+                backgroundColor: withAlpha(themeColors.promptAction.attackAction, 0.92),
+                color: themeColors.textOnTinted,
+              }}
+            >
+              ⚔ {damage}
+            </span>
+          )}
+        </div>
+      )}
+
+      {card.counters && Object.values(card.counters).some((n) => n > 0) && (
+        <div
+          className={cn(
+            "absolute bottom-1 left-1 z-10 max-w-[70%]",
+            "flex flex-wrap gap-0.5 pointer-events-auto",
+            showPT ? "pr-12" : "right-1",
+          )}
+        >
+          <CounterDisplay counters={card.counters} size="sm" />
+        </div>
+      )}
+    </>
+  );
+}
+
 /**
  * Floating card preview rendered into document.body via portal.
  * Positions itself near the cursor or an anchor element, clamped to viewport edges.
@@ -58,6 +186,7 @@ export function CardPreview({
   slot,
 }: CardPreviewProps) {
   const hasActions = actions && actions.length > 0 && onSelectAction;
+  const showSidePanel = hasActions;
   const themeColors = useTheme().gameTheme;
   const ringColor = themeColors.cardRing; // matches battlefield playable color
   const cardD = useCard(card);
@@ -208,13 +337,7 @@ export function CardPreview({
                   title=""
                   className="w-full h-full object-cover"
                 />
-                {card.counters && (
-                  <CounterDisplay
-                    counters={card.counters}
-                    size="md"
-                    className="absolute bottom-2 left-2 z-10"
-                  />
-                )}
+                <CardDetailOverlay card={card} />
               </>
             ) : (
               <div className="w-full h-full p-4 flex flex-col gap-2 bg-card">
@@ -257,8 +380,8 @@ export function CardPreview({
             )}
           </div>
 
-          {/* Actions panel */}
-          {hasActions && (
+          {/* Actions + extra-info side panel */}
+          {showSidePanel && (
             <div
               className="absolute top-0 flex flex-col gap-1.5"
               style={
@@ -282,7 +405,7 @@ export function CardPreview({
                 }}
               />
 
-              {actions.map((action, idx) => (
+              {actions?.map((action, idx) => (
                 <button
                   key={idx}
                   onClick={() => onSelectAction(action)}

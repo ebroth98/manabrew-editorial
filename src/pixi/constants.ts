@@ -60,6 +60,7 @@ export const FPS_SAMPLE_INTERVAL_MS = 500;
 export const BATTLEFIELD_LERP = 0.15;
 export const HAND_LERP = 0.18;
 export const HOVER_SCALE_LERP = 0.2;
+export const ROTATION_LERP = 0.22;
 export const OVERLAY_FADE_LERP = 0.2;
 export const HOVER_SCALE = 1.08;
 export const SNAP_PX = 0.5;

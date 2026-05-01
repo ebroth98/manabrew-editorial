@@ -113,6 +113,7 @@ export interface MainActionOverlayProps {
   onOpenStack: () => void;
   onConcede: () => void;
   resolveCardName: (cardId: string) => string;
+  resolveCard: (cardId: string) => OpenMagicCard | undefined;
   isMyPriority: boolean;
   turn: number;
   activePlayerName: string;

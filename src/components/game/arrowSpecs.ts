@@ -18,6 +18,7 @@ export interface BuildArrowSpecsOptions {
   attackerIds: string[];
   blockAssignments: { blockerId: string; attackerId: string }[];
   combatAssignments: { blockerId: string; attackerId: string }[];
+  battlefieldAttachments?: { childId: string; parentId: string }[];
   /** Locked-in attackers from the engine's battlefield state — every
    *  battlefield card with `isAttacking && attackingPlayerId`. Drives
    *  the persistent attack arrow shown throughout combat (after
@@ -50,11 +51,22 @@ export function buildArrowSpecs(opts: BuildArrowSpecsOptions): ArrowSpec[] {
     blockAssignments,
     combatAssignments,
     activeAttackers,
+    battlefieldAttachments,
     stack,
     activeStackObjectId,
   } = opts;
 
   const specs: ArrowSpec[] = [];
+
+  if (battlefieldAttachments) {
+    for (const { childId, parentId } of battlefieldAttachments) {
+      specs.push({
+        from: { kind: "card", id: childId },
+        to: { kind: "card", id: parentId },
+        type: "attach",
+      });
+    }
+  }
 
   // Locked-in attackers: persist throughout combat (declared → blockers →
   // damage) using the engine's per-card attacking state.

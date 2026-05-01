@@ -118,6 +118,7 @@ export function buildGameColors(p: BasePalette): GameThemeColorMap {
     "cardStatus.plotted": p.indigo,
     "cardStatus.madness": p.redDeep,
     "cardStatus.warped": p.cyan,
+    "cardStatus.copy": p.sky,
 
     // ── Generic text / label colours ─────────────────────────────────
     textOnTinted: p.foreground,

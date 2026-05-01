@@ -1,5 +1,7 @@
 import { cn } from "@/lib/utils";
 import type { GameThemeColors } from "@/themes/gameTheme";
+import { GameIcon, type GameIconName } from "./GameIcon";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 // ---------------------------------------------------------------------------
 // Counter configuration registry
@@ -9,7 +11,7 @@ type CounterColorKey = keyof GameThemeColors["counter"];
 
 /** Visual configuration for a single counter type. */
 interface CounterConfig {
-  /** Symbol shown inside the badge. Keep ≤ 3 chars so it fits at small sizes. */
+  iconName?: GameIconName;
   label: string;
   /** Theme colour key for this counter's background tint. */
   colorKey: CounterColorKey;
@@ -28,25 +30,34 @@ interface CounterConfig {
  * and a matching `counter.<name>` key to the theme.
  */
 const COUNTER_CONFIG: Record<string, CounterConfig> = {
-  P1P1: { label: "+1", colorKey: "p1p1", title: "+1/+1" },
-  M1M1: { label: "−1", colorKey: "m1m1", title: "−1/−1" },
-  Loyalty: { label: "♦", colorKey: "loyalty", title: "Loyalty" },
-  Charge: { label: "⚡", colorKey: "charge", title: "Charge" },
-  Quest: { label: "◎", colorKey: "quest", title: "Quest" },
-  Study: { label: "✎", colorKey: "study", title: "Study" },
-  Lore: { label: "✦", colorKey: "lore", title: "Lore" },
-  Age: { label: "⌛", colorKey: "age", title: "Age" },
-  Time: { label: "⏳", colorKey: "time", title: "Time" },
-  Fade: { label: "✕", colorKey: "fade", title: "Fade" },
-  Level: { label: "★", colorKey: "level", title: "Level" },
-  Storage: { label: "▲", colorKey: "storage", title: "Storage" },
-  Mining: { label: "⛏", colorKey: "mining", title: "Mining" },
-  Brick: { label: "▪", colorKey: "brick", title: "Brick" },
-  Depletion: { label: "▼", colorKey: "depletion", title: "Depletion" },
-  Page: { label: "📄", colorKey: "page", title: "Page" },
+  P1P1: { label: "+1/+1", colorKey: "p1p1", title: "+1/+1" },
+  M1M1: { label: "−1/−1", colorKey: "m1m1", title: "−1/−1" },
+  Loyalty: {
+    iconName: "vibrating-shield",
+    label: "Loyalty",
+    colorKey: "loyalty",
+    title: "Loyalty",
+  },
+  Charge: { iconName: "lightning-trio", label: "Charge", colorKey: "charge", title: "Charge" },
+  Quest: { iconName: "scroll-quill", label: "Quest", colorKey: "quest", title: "Quest" },
+  Study: { iconName: "book-aura", label: "Study", colorKey: "study", title: "Study" },
+  Lore: { iconName: "spell-book", label: "Lore", colorKey: "lore", title: "Lore" },
+  Age: { iconName: "hourglass", label: "Age", colorKey: "age", title: "Age" },
+  Time: { iconName: "stopwatch", label: "Time", colorKey: "time", title: "Time" },
+  Fade: { iconName: "ghost", label: "Fade", colorKey: "fade", title: "Fade" },
+  Level: { iconName: "rank-3", label: "Level", colorKey: "level", title: "Level" },
+  Storage: { iconName: "stack", label: "Storage", colorKey: "storage", title: "Storage" },
+  Mining: { iconName: "mining", label: "Mining", colorKey: "mining", title: "Mining" },
+  Brick: { iconName: "brick-wall", label: "Brick", colorKey: "brick", title: "Brick" },
+  Depletion: {
+    iconName: "battery-pack-alt",
+    label: "Depletion",
+    colorKey: "depletion",
+    title: "Depletion",
+  },
+  Page: { iconName: "scroll-unfurled", label: "Page", colorKey: "page", title: "Page" },
 };
 
-/** Returns the config for a known counter type, or a sensible generic fallback. */
 function getCounterConfig(type: string): CounterConfig {
   return (
     COUNTER_CONFIG[type] ?? {
@@ -87,14 +98,30 @@ export type CounterSize = "sm" | "md" | "lg";
 
 interface SizeTokens {
   pill: string; // outer element classes
-  symbol: string; // symbol text size
+  symbol: string; // icon box size
+  text: string; // text-label font size
   count: string; // count text size
 }
 
 const SIZE_TOKENS: Record<CounterSize, SizeTokens> = {
-  sm: { pill: "h-4 min-w-[1rem] px-0.5 gap-px", symbol: "text-[8px]", count: "text-[7px]" },
-  md: { pill: "h-5 min-w-[1.25rem] px-1 gap-0.5", symbol: "text-[10px]", count: "text-[9px]" },
-  lg: { pill: "h-6 min-w-[1.5rem] px-1.5 gap-1", symbol: "text-xs", count: "text-[10px]" },
+  sm: {
+    pill: "h-4 min-w-[1rem] px-1 gap-px",
+    symbol: "h-3 w-3",
+    text: "text-[8px]",
+    count: "text-[7px]",
+  },
+  md: {
+    pill: "h-5 min-w-[1.25rem] px-1.5 gap-0.5",
+    symbol: "h-3.5 w-3.5",
+    text: "text-[10px]",
+    count: "text-[9px]",
+  },
+  lg: {
+    pill: "h-6 min-w-[1.5rem] px-2 gap-1",
+    symbol: "h-4 w-4",
+    text: "text-xs",
+    count: "text-[10px]",
+  },
 };
 
 // ---------------------------------------------------------------------------
@@ -118,21 +145,31 @@ export function CounterBadge({ type, count, size = "sm", className }: CounterBad
   const cfg = getCounterConfig(type);
   const sz = SIZE_TOKENS[size];
 
+  const tooltipText = `${count} ${cfg.title} counter${count !== 1 ? "s" : ""}`;
+
   return (
-    <span
-      className={cn(
-        "inline-flex items-center justify-center rounded-full font-bold leading-none",
-        "select-none shadow-sm ring-1 ring-black/20",
-        COUNTER_BG_CLASS[cfg.colorKey],
-        "text-text-on-tinted",
-        sz.pill,
-        className,
-      )}
-      title={`${count} ${cfg.title} counter${count !== 1 ? "s" : ""}`}
-    >
-      <span className={sz.symbol}>{cfg.label}</span>
-      {count > 1 && <span className={cn(sz.count, "opacity-90")}>{count}</span>}
-    </span>
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span
+          className={cn(
+            "inline-flex items-center justify-center rounded-full font-bold leading-none",
+            "select-none shadow-sm ring-1 ring-black/20",
+            COUNTER_BG_CLASS[cfg.colorKey],
+            "text-text-on-tinted",
+            sz.pill,
+            className,
+          )}
+        >
+          {cfg.iconName ? (
+            <GameIcon name={cfg.iconName} className={cn(sz.symbol, "fill-current")} />
+          ) : (
+            <span className={sz.text}>{cfg.label}</span>
+          )}
+          {count > 1 && <span className={cn(sz.count, "opacity-90")}>{count}</span>}
+        </span>
+      </TooltipTrigger>
+      <TooltipContent>{tooltipText}</TooltipContent>
+    </Tooltip>
   );
 }
 
@@ -160,6 +197,57 @@ export function CounterDisplay({ counters, size = "sm", className }: CounterDisp
       {entries.map(([type, count]) => (
         <CounterBadge key={type} type={type} count={count} size={size} />
       ))}
+    </div>
+  );
+}
+
+export interface CounterSummaryProps {
+  counters: Record<string, number>;
+  className?: string;
+}
+
+export function CounterSummary({ counters, className }: CounterSummaryProps) {
+  const entries = Object.entries(counters)
+    .filter(([, n]) => n > 0)
+    .sort((a, b) => b[1] - a[1]);
+  if (entries.length === 0) return null;
+
+  return (
+    <div className={cn("flex flex-wrap items-center gap-1.5 text-sm", className)}>
+      {entries.map(([type, count]) => {
+        const cfg = getCounterConfig(type);
+        return (
+          <Tooltip key={type}>
+            <TooltipTrigger asChild>
+              <span
+                className={cn(
+                  "inline-flex items-center gap-1.5 rounded-md px-2 py-1 cursor-help",
+                  "bg-background/60 ring-1 ring-border/60",
+                )}
+              >
+                <span className="font-bold text-foreground tabular-nums">{count}×</span>
+                <span
+                  className={cn(
+                    "inline-flex items-center justify-center rounded-full h-6 min-w-6 px-2",
+                    "shadow-sm ring-1 ring-black/20 font-bold leading-none",
+                    COUNTER_BG_CLASS[cfg.colorKey],
+                    "text-text-on-tinted",
+                  )}
+                >
+                  {cfg.iconName ? (
+                    <GameIcon name={cfg.iconName} className="h-4 w-4 fill-current" />
+                  ) : (
+                    <span className="text-xs">{cfg.label}</span>
+                  )}
+                </span>
+              </span>
+            </TooltipTrigger>
+            <TooltipContent>
+              {count} {cfg.title} counter{count !== 1 ? "s" : ""}
+            </TooltipContent>
+          </Tooltip>
+        );
+      })}
     </div>
   );
 }

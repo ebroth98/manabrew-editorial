@@ -1,6 +1,7 @@
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useEffect, useMemo } from "react";
 import type { AgentPrompt } from "@/stores/useGameStore";
 import { TargetingIntent } from "@/types/promptType";
+import { useTargetIntentStore } from "@/stores/useTargetIntentStore";
 
 /** Prompt types that are part of the spell-casting flow. */
 const CASTING_PROMPT_TYPES = new Set([
@@ -47,7 +48,6 @@ export function useCastingState({
   const promptIntent =
     currentPrompt?.intent ?? (promptHostile ? TargetingIntent.Hostile : TargetingIntent.Friendly);
 
-  // Clear target when casting card changes (new spell or cast finished)
   const [prevCastingCardId, setPrevCastingCardId] = useState(castingCardId);
   if (prevCastingCardId !== castingCardId) {
     setPrevCastingCardId(castingCardId);
@@ -55,6 +55,11 @@ export function useCastingState({
     setTargetHostile(false);
     setTargetIntent(TargetingIntent.Hostile);
   }
+  useEffect(() => {
+    return () => {
+      if (castingCardId) useTargetIntentStore.getState().clearIntent(castingCardId);
+    };
+  }, [castingCardId]);
 
   // Whether we're in the targeting phase (arrow follows cursor)
   const isTargeting = promptType?.startsWith("chooseTarget") ?? false;
@@ -70,6 +75,7 @@ export function useCastingState({
         setTargetId(cardId);
         setTargetHostile(promptHostile);
         setTargetIntent(promptIntent);
+        useTargetIntentStore.getState().setIntent(castingCardId, { kind: "card", id: cardId });
       }
       targetCard(cardId);
     },
@@ -82,6 +88,7 @@ export function useCastingState({
         setTargetId(playerId);
         setTargetHostile(promptHostile);
         setTargetIntent(promptIntent);
+        useTargetIntentStore.getState().setIntent(castingCardId, { kind: "player", id: playerId });
       }
       targetPlayer(playerId);
     },
@@ -95,6 +102,9 @@ export function useCastingState({
         setTargetId(id);
         setTargetHostile(promptHostile);
         setTargetIntent(promptIntent);
+        const kind: "card" | "player" =
+          target.kind === "player" || target.playerId ? "player" : "card";
+        useTargetIntentStore.getState().setIntent(castingCardId, { kind, id });
       }
       targetAny(target);
     },

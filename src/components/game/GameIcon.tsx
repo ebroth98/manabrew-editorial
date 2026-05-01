@@ -21,7 +21,23 @@ export type GameIconName =
   | "ring"
   | "speedometer"
   | "book-cover"
-  | "overlord-helm";
+  | "book-aura"
+  | "overlord-helm"
+  | "muscle-up"
+  | "skull-crack"
+  | "shiny-omega"
+  | "vibrating-shield"
+  | "scroll-quill"
+  | "spell-book"
+  | "hourglass"
+  | "stopwatch"
+  | "ghost"
+  | "rank-3"
+  | "stack"
+  | "mining"
+  | "brick-wall"
+  | "battery-pack-alt"
+  | "scroll-unfurled";
 
 interface GameIconProps {
   name: GameIconName;

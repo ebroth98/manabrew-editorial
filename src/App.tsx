@@ -4,6 +4,7 @@ import { ThemeProvider } from "next-themes";
 import { queryClient } from "@/api/queryClient";
 import { router } from "@/router";
 import { Toaster } from "@/components/ui/sonner";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { useTheme } from "@/hooks/useTheme";
 import { useGameDevStore } from "@/stores/useGameDevStore";
 import { lazy, Suspense, useEffect } from "react";
@@ -56,14 +57,16 @@ function App() {
     <ThemeProvider attribute="class" defaultTheme="dark" enableSystem>
       <ThemeApplicator>
         <QueryClientProvider client={queryClient}>
-          <PlatformRuntimeChecks />
-          <RouterProvider router={router} />
-          <Toaster />
-          {import.meta.env.DEV && devToolsEnabled && (
-            <Suspense>
-              <DevToolsPanel />
-            </Suspense>
-          )}
+          <TooltipProvider delayDuration={120} skipDelayDuration={300}>
+            <PlatformRuntimeChecks />
+            <RouterProvider router={router} />
+            <Toaster />
+            {import.meta.env.DEV && devToolsEnabled && (
+              <Suspense>
+                <DevToolsPanel />
+              </Suspense>
+            )}
+          </TooltipProvider>
         </QueryClientProvider>
       </ThemeApplicator>
     </ThemeProvider>

@@ -52,6 +52,7 @@ export interface GameThemeColors {
     plotted: string;
     madness: string;
     warped: string;
+    copy: string;
   };
   textOnTinted: string;
   textMuted: string;

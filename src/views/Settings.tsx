@@ -3,6 +3,7 @@ import { usePreferencesStore, type ZonePanelItem } from "@/stores/usePreferences
 import { THEME_PRESETS, type ThemeColors } from "@/themes";
 import { useServerStore } from "@/stores/useServerStore";
 import { useGameStore } from "@/stores/useGameStore";
+import { PromptPreferencesPanel } from "@/components/game/prompts/PromptPreferencesPanel";
 import { toPickerHexColor } from "@/themes/gameTheme";
 import type { GameThemeColors } from "@/themes/gameTheme";
 import { getDefaultGameThemeColorMap } from "@/hooks/useTheme";
@@ -101,6 +102,7 @@ const GAME_THEME_COLOR_DESCRIPTIONS: Partial<Record<GameThemePath, string>> = {
   "cardStatus.plotted": "Badge for plotted cards in exile.",
   "cardStatus.madness": "Badge for madness-exiled cards.",
   "cardStatus.warped": "Badge for warp-exiled cards.",
+  "cardStatus.copy": "Badge for permanents that are copies of another card.",
   "counter.default": "Fallback chip colour for unknown counter types.",
   "counter.p1p1": "+1/+1 counter chip.",
   "counter.m1m1": "-1/-1 counter chip.",
@@ -337,7 +339,9 @@ export default function Settings() {
   const { flashDurationMs, setFlashDurationMs } = prefs;
   const server = useServerStore();
   const { theme, setTheme, resolvedTheme } = useColorMode();
-  const [activeTab, setActiveTab] = useState<"server" | "preferences" | "theme">("preferences");
+  const [activeTab, setActiveTab] = useState<"server" | "preferences" | "theme" | "prompts">(
+    "preferences",
+  );
   const [presetOpen, setPresetOpen] = useState(false);
   const [editingThemeColorPath, setEditingThemeColorPath] = useState<string | null>(null);
   const [editingThemeColorValue, setEditingThemeColorValue] = useState("");
@@ -432,6 +436,18 @@ export default function Settings() {
           </button>
           <button
             type="button"
+            onClick={() => setActiveTab("prompts")}
+            className={
+              "pb-2 text-sm font-medium transition-colors border-b-2 " +
+              (activeTab === "prompts"
+                ? "border-primary text-foreground"
+                : "border-transparent text-muted-foreground hover:text-foreground")
+            }
+          >
+            Prompts
+          </button>
+          <button
+            type="button"
             onClick={() => setActiveTab("server")}
             className={
               "pb-2 text-sm font-medium transition-colors border-b-2 " +
@@ -444,6 +460,8 @@ export default function Settings() {
           </button>
         </div>
       </section>
+
+      {activeTab === "prompts" && <PromptPreferencesPanel />}
 
       {activeTab === "server" && (
         <section className="space-y-4">

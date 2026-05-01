@@ -239,6 +239,9 @@ pub(super) fn choose_single_entity_for_effect<T: AgentTransport>(
     if valid.is_empty() {
         return None;
     }
+    if valid.len() == 1 && !is_optional {
+        return valid.first().copied();
+    }
     if valid
         .iter()
         .all(|entity| matches!(entity, GameEntity::Card(_)))

@@ -159,7 +159,10 @@ export function useCombatState({
         // Keep `pendingAttacker` selected so the user can chain multiple
         // blockers onto the same attacker without re-clicking it.
       }
-    } else if (promptType === PromptType.ChooseTargetCard) {
+    } else if (
+      promptType === PromptType.ChooseTargetCard ||
+      promptType === PromptType.ChooseTargetCardFromZone
+    ) {
       targetCard(card.id);
     } else if (promptType === PromptType.ChooseTargetAny) {
       targetAny({ kind: "card", cardId: card.id });

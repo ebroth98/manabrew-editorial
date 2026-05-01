@@ -145,6 +145,7 @@ export function PromptModals({
         <ChooseOptionalTriggerModal
           description={currentPrompt.description}
           cardName={currentPrompt.sourceCardName}
+          sourceCardId={currentPrompt.sourceCardId}
           cards={currentPrompt.cards}
           promptKind={currentPrompt.promptKind}
           optionLabels={currentPrompt.optionLabels}

@@ -1,6 +1,7 @@
 import { useGameStore } from "@/stores/useGameStore";
 import { useGameUIStore } from "@/stores/useGameUIStore";
 import { usePreferencesStore } from "@/stores/usePreferencesStore";
+import { useAutoResolvePrompt } from "@/components/game/prompts/useAutoResolvePrompt";
 import { useShallow } from "zustand/react/shallow";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -45,7 +46,7 @@ import { tryConsumeGauntletMatch } from "@/lib/gauntletReturn";
 import { PromptType } from "@/types/promptType";
 import { OPPONENT_SEATS } from "@/components/game/game.types";
 import { useStackUIStore } from "@/stores/useStackUIStore";
-import { useGameDevStore } from "@/stores/useGameDevStore";
+import { useGameDevStore, DEBUG_KEYWORD_CARD_ID } from "@/stores/useGameDevStore";
 import { applyManualTabletopAction, getSelectedGameRuntime } from "@/game";
 import type { HandActionOption } from "@/stores/useGameUIStore";
 import type { PlacementGhost } from "@/components/game/game.types";
@@ -71,12 +72,41 @@ function isManualTabletopApi(
   return runtime.capabilities.manualTabletop && "applyManualAction" in runtime.api;
 }
 
+function buildDebugKeywordCard(
+  controllerId: string,
+  name: string,
+  keywords: string[],
+): OpenMagicCard {
+  return {
+    id: DEBUG_KEYWORD_CARD_ID,
+    name: name.trim() || "Raging Goblin",
+    setCode: "",
+    cardNumber: "",
+    color: "R",
+    manaCost: "{R}",
+    types: ["Creature"],
+    subtypes: [],
+    supertypes: [],
+    power: "1",
+    toughness: "1",
+    text: "Dev debug card.",
+    isPlayable: false,
+    isSelected: false,
+    isChoosable: false,
+    controllerId,
+    ownerId: controllerId,
+    zoneId: "dev-zone",
+    keywords,
+  };
+}
+
 interface GameProps {
   /** When provided, redirect here instead of /lobby when the game ends. */
   exitTo?: string;
 }
 
 export default function Game({ exitTo }: GameProps = {}) {
+  useAutoResolvePrompt();
   const USE_STACK_FLASH_PREVIEW = true;
   const gameView = useGameStore((s) => s.gameView);
   const currentPrompt = useGameStore((s) => s.currentPrompt);
@@ -967,6 +997,14 @@ export default function Game({ exitTo }: GameProps = {}) {
     [gameView?.battlefield],
   );
 
+  const battlefieldAttachments = useMemo(
+    () =>
+      (gameView?.battlefield ?? [])
+        .filter((c) => !!c.attachedTo)
+        .map((c) => ({ childId: c.id, parentId: c.attachedTo! })),
+    [gameView?.battlefield],
+  );
+
   const liveArrowSpecs = useMemo(
     () =>
       buildArrowSpecs({
@@ -975,6 +1013,7 @@ export default function Game({ exitTo }: GameProps = {}) {
         blockAssignments,
         combatAssignments,
         activeAttackers,
+        battlefieldAttachments,
         stack: gameView?.stack ?? [],
         activeStackObjectId: hoveredStackObjectIdForSpecs,
       }),
@@ -984,6 +1023,7 @@ export default function Game({ exitTo }: GameProps = {}) {
       blockAssignments,
       combatAssignments,
       activeAttackers,
+      battlefieldAttachments,
       gameView?.stack,
       hoveredStackObjectIdForSpecs,
     ],
@@ -1019,6 +1059,9 @@ export default function Game({ exitTo }: GameProps = {}) {
   // be inspected on the live board without needing a real spell. Acts
   // as a radio (one at a time) so glyphs never stack.
   const debugPointerIntent = useGameDevStore((s) => s.debugPointerIntent);
+  const debugBattlefieldKeywords = useGameDevStore((s) => s.debugBattlefieldKeywords);
+  const debugCardEnabled = useGameDevStore((s) => s.debugCardEnabled);
+  const debugCardName = useGameDevStore((s) => s.debugCardName);
   const pointerSpecs = useMemo(() => {
     if (!debugPointerIntent || !me?.id || !opponent?.id) return livePointerSpecs;
     return [
@@ -1056,8 +1099,15 @@ export default function Game({ exitTo }: GameProps = {}) {
       ...(gameView.myCommandZone ?? []),
       ...(gameView.opponentCommandZone ?? []),
     ];
-    return new Map(cards.map((c) => [c.id, c]));
-  }, [gameView]);
+    const map = new Map(cards.map((c) => [c.id, c]));
+    if (debugCardEnabled && me?.id) {
+      map.set(
+        DEBUG_KEYWORD_CARD_ID,
+        buildDebugKeywordCard(me.id, debugCardName, debugBattlefieldKeywords),
+      );
+    }
+    return map;
+  }, [gameView, debugCardEnabled, debugCardName, debugBattlefieldKeywords, me?.id]);
 
   const stackCardsBySourceId = useMemo(() => {
     if (!gameView?.stack) return new Map<string, OpenMagicCard>();
@@ -1325,6 +1375,9 @@ export default function Game({ exitTo }: GameProps = {}) {
     .map((c) => (battlefieldActivatableIds.has(c.id) ? { ...c, isChoosable: true } : c))
     .map(markIfDefender)
     .map(markIfPendingAttacker);
+  if (debugCardEnabled) {
+    myPermanents.push(buildDebugKeywordCard(me.id, debugCardName, debugBattlefieldKeywords));
+  }
   const opponentPermanentsByPlayer = new Map(
     opponents.map((op) => [
       op.id,
@@ -1540,6 +1593,7 @@ export default function Game({ exitTo }: GameProps = {}) {
           onOpenStack={() => setSpellStackModalOpen(true)}
           onConcede={concede}
           resolveCardName={(cardId) => cardNameById.get(cardId) ?? cardId}
+          resolveCard={(cardId) => visibleCardsById.get(cardId)}
           isMyPriority={gameView.priorityPlayerId === me.id}
           turn={gameView.turn}
           activePlayerName={

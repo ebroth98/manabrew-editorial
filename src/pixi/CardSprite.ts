@@ -5,6 +5,8 @@ import type { Theme } from "@/hooks/useTheme";
 import { getTheme } from "@/hooks/useTheme";
 import { hexToNum } from "./colorUtils";
 import { useScryfallStore } from "@/stores/useScryfallStore";
+import { DEBUG_KEYWORD_CARD_ID } from "@/stores/useGameDevStore";
+import { applyIcon } from "./panelIcons";
 
 /**
  * Shared, mutable theme reference used by every `CardSprite` instance.
@@ -32,17 +34,6 @@ export function setCardSpriteTheme(theme: Theme): void {
 function registerTintedTextStyle(style: TextStyle): TextStyle {
   TINTED_TEXT_STYLES.push(style);
   return style;
-}
-
-/**
- * Trim a keyword chip label to a sensible length so descriptive prose
- * keywords (e.g. Xenosquirrels' full reminder text, used as a Forge
- * keyword) can't overflow the card silhouette. Adds an ellipsis when
- * truncated.
- */
-function truncateChipLabel(text: string): string {
-  if (text.length <= KEYWORD_LABEL_MAX_LEN) return text;
-  return `${text.slice(0, KEYWORD_LABEL_MAX_LEN - 1)}…`;
 }
 
 // Hand cards render at up to ~3.25× base scale (medium hover) and ~4.3× (large
@@ -82,10 +73,10 @@ const COUNTER_STYLE = registerTintedTextStyle(
   }),
 );
 
-const CHIP_STYLE = registerTintedTextStyle(
+const DAMAGE_STYLE = registerTintedTextStyle(
   new TextStyle({
     fontFamily: "system-ui, -apple-system, sans-serif",
-    fontSize: 7,
+    fontSize: 9,
     fontWeight: "bold",
     fill: tintedTextFill(),
   }),
@@ -123,15 +114,27 @@ const COUNTER_HEIGHT = 16;
 const COUNTER_RADIUS = 8;
 const KEYWORD_ROW_H = 12;
 const MAX_VISIBLE_KEYWORDS = 4;
-/** Maximum characters in a chip label before truncating with ellipsis.
- *  Forge keyword scripts include some prose-length entries (e.g. the
- *  full Xenosquirrels rules text), and the chip strip is meant for
- *  short keyword names — anything longer is truncated visually. */
 const KEYWORD_LABEL_MAX_LEN = 14;
+
+function truncateChipLabel(text: string): string {
+  if (text.length <= KEYWORD_LABEL_MAX_LEN) return text;
+  return `${text.slice(0, KEYWORD_LABEL_MAX_LEN - 1)}…`;
+}
+
+const KEYWORD_CHIP_STYLE = registerTintedTextStyle(
+  new TextStyle({
+    fontFamily: "system-ui, -apple-system, sans-serif",
+    fontSize: 7,
+    fontWeight: "bold",
+    fill: tintedTextFill(),
+  }),
+);
 // Fraction of the card height occupied by the title line (card name +
 // mana cost). Badges sit just below this band so the mana cost stays
 // unobstructed regardless of hover scale.
 const BADGE_TITLE_BAND_FRAC = 0.1;
+
+const ON_FIELD_COUNTER_TYPES = new Set(["Loyalty", "Charge"]);
 
 type CardStatusKey = keyof Theme["gameTheme"]["cardStatus"];
 
@@ -142,13 +145,14 @@ interface BadgeRule {
 }
 
 const BADGE_RULES: BadgeRule[] = [
-  { label: "EXERTED", test: (c) => !!c.exerted, colorKey: "exerted" },
   { label: "MORPH", test: (c) => !!c.isFaceDown, colorKey: "morph" },
+  { label: "EXERTED", test: (c) => !!c.exerted, colorKey: "exerted" },
   { label: "BESTOW", test: (c) => !!c.isBestowed, colorKey: "bestow" },
   { label: "TRANSFORMED", test: (c) => !!c.isTransformed, colorKey: "transformed" },
   { label: "PLOTTED", test: (c) => !!c.isPlotted, colorKey: "plotted" },
   { label: "MADNESS", test: (c) => !!c.isMadnessExiled, colorKey: "madness" },
   { label: "WARPED", test: (c) => !!c.isWarpExiled, colorKey: "warped" },
+  { label: "COPY", test: (c) => !!c.isCopy, colorKey: "copy" },
   { label: "TOKEN", test: (c) => !!c.isToken, colorKey: "token" },
 ];
 
@@ -184,14 +188,27 @@ function getCounterColor(type: string): number {
   return hexToNum(key ? palette[key] : palette.default);
 }
 
-const COUNTER_LABEL_OVERRIDES: Record<string, string> = {
-  P1P1: "+1",
-  M1M1: "−1",
-  Loyalty: "♦",
-  Charge: "⚡",
+const COUNTER_TEXT_LABELS: Record<string, string> = {
+  P1P1: "+1/+1",
+  M1M1: "−1/−1",
 };
 
-const getCounterLabel = (type: string): string => COUNTER_LABEL_OVERRIDES[type] ?? type.slice(0, 3);
+const COUNTER_ICON_NAMES: Record<string, string> = {
+  Loyalty: "vibrating-shield",
+  Charge: "lightning-trio",
+  Quest: "scroll-quill",
+  Study: "book-aura",
+  Lore: "spell-book",
+  Age: "hourglass",
+  Time: "stopwatch",
+  Fade: "ghost",
+  Level: "rank-3",
+  Storage: "stack",
+  Mining: "mining",
+  Brick: "brick-wall",
+  Depletion: "battery-pack-alt",
+  Page: "scroll-unfurled",
+};
 
 const parseStat = (value: string | undefined): number => {
   if (!value) return 0;
@@ -223,6 +240,9 @@ export class CardSprite extends Container {
   private ptContainer: Container;
   private ptBg: Graphics;
   private ptText: Text;
+  private damageContainer: Container;
+  private damageBg: Graphics;
+  private damageText: Text;
   private badgeContainer: Container;
   private badgeBg: Graphics;
   private badgeText: Text;
@@ -232,6 +252,10 @@ export class CardSprite extends Container {
   private nameText: Text;
   private foilRing: Graphics;
   private foilStar: Text;
+  private stackCountContainer: Container;
+  private stackCountBg: Graphics;
+  private stackCountText: Text;
+  private etbGlow: Graphics;
   private _imageLoaded = false;
 
   constructor(card: Card) {
@@ -296,6 +320,15 @@ export class CardSprite extends Container {
     this.ptContainer.visible = false;
     this.addChild(this.ptContainer);
 
+    this.damageContainer = new Container();
+    this.damageBg = new Graphics();
+    this.damageText = new Text({ text: "", style: DAMAGE_STYLE });
+    this.damageText.resolution = TEXT_RASTER_RESOLUTION;
+    this.damageContainer.addChild(this.damageBg);
+    this.damageContainer.addChild(this.damageText);
+    this.damageContainer.visible = false;
+    this.addChild(this.damageContainer);
+
     this.foilRing = new Graphics();
     this.foilRing.visible = false;
     this.addChild(this.foilRing);
@@ -307,6 +340,19 @@ export class CardSprite extends Container {
     this.foilStar.y = 2;
     this.foilStar.visible = false;
     this.addChild(this.foilStar);
+
+    this.stackCountContainer = new Container();
+    this.stackCountBg = new Graphics();
+    this.stackCountText = new Text({ text: "", style: COUNTER_STYLE });
+    this.stackCountText.resolution = TEXT_RASTER_RESOLUTION;
+    this.stackCountContainer.addChild(this.stackCountBg);
+    this.stackCountContainer.addChild(this.stackCountText);
+    this.stackCountContainer.visible = false;
+    this.addChild(this.stackCountContainer);
+
+    this.etbGlow = new Graphics();
+    this.etbGlow.visible = false;
+    this.addChild(this.etbGlow);
 
     this.hitArea = {
       contains: (x: number, y: number) => x >= 0 && x <= CARD_W && y >= 0 && y <= CARD_H,
@@ -343,7 +389,6 @@ export class CardSprite extends Container {
    */
   updateCard(card: Card): void {
     this.updateCardContent(card);
-    this.rotation = card.tapped ? Math.PI / 2 : 0;
     this.alpha = card.phasedOut ? 0.3 : 1;
   }
 
@@ -371,10 +416,95 @@ export class CardSprite extends Container {
     }
 
     this.updatePT();
+    this.updateDamage();
     this.updateBadge();
     this.updateCounters();
     this.updateKeywords();
     this.updateFoil();
+  }
+
+  private updateKeywords(): void {
+    this.keywordsContainer.removeChildren().forEach((c) => c.destroy({ children: true }));
+    if (this.card.id !== DEBUG_KEYWORD_CARD_ID) return;
+    const keywords = this.card.keywords;
+    if (!keywords || keywords.length === 0) return;
+
+    const visible = keywords.slice(0, MAX_VISIBLE_KEYWORDS);
+    const hiddenCount = keywords.length - visible.length;
+
+    let offsetX = 3;
+    let offsetY = Math.round(CARD_H * BADGE_TITLE_BAND_FRAC);
+    const rowH = KEYWORD_ROW_H;
+
+    const addChip = (text: string) => {
+      const chip = new Container();
+      const bg = new Graphics();
+      const truncated = truncateChipLabel(text);
+      const txt = new Text({ text: truncated, style: KEYWORD_CHIP_STYLE });
+      txt.resolution = TEXT_RASTER_RESOLUTION;
+      txt.anchor.set(0, 0.5);
+      txt.x = 3;
+      txt.y = rowH / 2;
+
+      const maxChipW = CARD_W - 6;
+      const cw = Math.min(txt.width + 6, maxChipW);
+      if (offsetX + cw > CARD_W - 6) {
+        offsetX = 3;
+        offsetY += rowH + 2;
+      }
+
+      bg.roundRect(0, 0, cw, rowH, CHIP_RADIUS);
+      bg.fill({ color: hexToNum(activeTheme.gameTheme.canvas.shadow), alpha: 0.6 });
+
+      chip.addChild(bg);
+      chip.addChild(txt);
+      chip.x = offsetX;
+      chip.y = offsetY;
+      this.keywordsContainer.addChild(chip);
+      offsetX += cw + 2;
+    };
+
+    visible.forEach((kw) => addChip(kw.split(":")[0]!));
+    if (hiddenCount > 0) addChip(`+${hiddenCount}`);
+  }
+
+  setEntryGlowAlpha(alpha: number): void {
+    if (alpha <= 0) {
+      if (this.etbGlow.visible) {
+        this.etbGlow.visible = false;
+        this.etbGlow.clear();
+      }
+      return;
+    }
+    this.etbGlow.visible = true;
+    this.etbGlow.clear();
+    this.etbGlow.roundRect(-2, -2, CARD_W + 4, CARD_H + 4, CARD_RADIUS + 2);
+    this.etbGlow.stroke({
+      color: hexToNum(activeTheme.gameTheme.cardRing),
+      width: 3,
+      alpha,
+    });
+  }
+
+  setStackCount(count: number): void {
+    if (count <= 1) {
+      this.stackCountContainer.visible = false;
+      return;
+    }
+    this.stackCountContainer.visible = true;
+    this.stackCountText.text = `×${count}`;
+    const tw = this.stackCountText.width + 6;
+    const th = this.stackCountText.height + 3;
+    this.stackCountBg.clear();
+    this.stackCountBg.roundRect(0, 0, tw, th, CHIP_RADIUS);
+    this.stackCountBg.fill({
+      color: hexToNum(activeTheme.gameTheme.canvas.shadow),
+      alpha: 0.85,
+    });
+    this.stackCountText.x = 3;
+    this.stackCountText.y = 1;
+    this.stackCountContainer.x = 3;
+    this.stackCountContainer.y = 2;
   }
 
   private updateFoil(): void {
@@ -447,84 +577,113 @@ export class CardSprite extends Container {
     const counters = this.card.counters;
     if (!counters) return;
 
-    const entries = Object.entries(counters).filter(([, n]) => n > 0);
-    if (entries.length === 0) return;
+    const entries = Object.entries(counters).filter(
+      ([type, n]) => n > 0 && ON_FIELD_COUNTER_TYPES.has(type),
+    );
+    const hiddenTypeCount = Object.entries(counters).filter(
+      ([type, n]) => n > 0 && !ON_FIELD_COUNTER_TYPES.has(type),
+    ).length;
+    if (entries.length === 0 && hiddenTypeCount === 0) return;
+
+    const iconSize = COUNTER_HEIGHT - 4;
+    const fgHex = activeTheme.gameTheme.textOnTinted;
 
     let offsetX = 3;
     for (const [type, count] of entries) {
       const color = getCounterColor(type);
-      const label = getCounterLabel(type);
-      const displayText = count > 1 ? `${label} ${count}` : label;
+      const iconName = COUNTER_ICON_NAMES[type];
+      const textLabel = COUNTER_TEXT_LABELS[type] ?? type.slice(0, 3);
 
       const badge = new Container();
       const bg = new Graphics();
-      const txt = new Text({ text: displayText, style: COUNTER_STYLE });
-      txt.resolution = TEXT_RASTER_RESOLUTION;
-      txt.anchor.set(0, 0.5);
-      txt.x = 4;
-      txt.y = 8;
 
-      const bw = txt.width + 8;
+      let contentWidth = 0;
+      let glyph: Sprite | Text;
+      if (iconName) {
+        const sprite = new Sprite(Texture.EMPTY);
+        applyIcon(sprite, iconName, fgHex, 64, iconSize, iconSize);
+        sprite.x = 4;
+        sprite.y = (COUNTER_HEIGHT - iconSize) / 2;
+        glyph = sprite;
+        contentWidth = iconSize;
+      } else {
+        glyph = new Text({ text: textLabel, style: COUNTER_STYLE });
+        glyph.resolution = TEXT_RASTER_RESOLUTION;
+        glyph.anchor.set(0, 0.5);
+        glyph.x = 4;
+        glyph.y = COUNTER_HEIGHT / 2;
+        contentWidth = glyph.width;
+      }
+
+      let countText: Text | null = null;
+      let countWidth = 0;
+      if (count > 1) {
+        countText = new Text({ text: ` ${count}`, style: COUNTER_STYLE });
+        countText.resolution = TEXT_RASTER_RESOLUTION;
+        countText.anchor.set(0, 0.5);
+        countText.x = 4 + contentWidth;
+        countText.y = COUNTER_HEIGHT / 2;
+        countWidth = countText.width;
+      }
+
+      const bw = 4 + contentWidth + countWidth + 4;
       bg.roundRect(0, 0, bw, COUNTER_HEIGHT, COUNTER_RADIUS);
       bg.fill({ color, alpha: 0.9 });
       bg.stroke({ color: hexToNum(activeTheme.gameTheme.canvas.shadow), width: 1, alpha: 0.2 });
 
       badge.addChild(bg);
-      badge.addChild(txt);
+      badge.addChild(glyph);
+      if (countText) badge.addChild(countText);
       badge.x = offsetX;
       badge.y = CARD_H - COUNTER_HEIGHT - 3;
       this.counterContainer.addChild(badge);
       offsetX += bw + 2;
     }
+
+    if (hiddenTypeCount > 0) {
+      const badge = new Container();
+      const bg = new Graphics();
+      const label = new Text({ text: `+${hiddenTypeCount}`, style: COUNTER_STYLE });
+      label.resolution = TEXT_RASTER_RESOLUTION;
+      label.anchor.set(0, 0.5);
+      label.x = 4;
+      label.y = COUNTER_HEIGHT / 2;
+      const bw = 4 + label.width + 4;
+      bg.roundRect(0, 0, bw, COUNTER_HEIGHT, COUNTER_RADIUS);
+      bg.fill({ color: hexToNum(activeTheme.gameTheme.counter.default), alpha: 0.9 });
+      bg.stroke({ color: hexToNum(activeTheme.gameTheme.canvas.shadow), width: 1, alpha: 0.2 });
+      badge.addChild(bg);
+      badge.addChild(label);
+      badge.x = offsetX;
+      badge.y = CARD_H - COUNTER_HEIGHT - 3;
+      this.counterContainer.addChild(badge);
+    }
   }
 
-  private updateKeywords(): void {
-    this.keywordsContainer.removeChildren().forEach((c) => c.destroy({ children: true }));
-    const keywords = this.card.keywords;
-    if (!keywords || keywords.length === 0) return;
+  private updateDamage(): void {
+    const card = this.card;
+    const dmg = card.damage ?? 0;
+    if (dmg <= 0) {
+      this.damageContainer.visible = false;
+      return;
+    }
+    this.damageContainer.visible = true;
+    this.damageText.text = `⚔${dmg}`;
 
-    const visible = keywords.slice(0, MAX_VISIBLE_KEYWORDS);
-    const hiddenCount = keywords.length - visible.length;
+    const tw = this.damageText.width + 6;
+    const th = this.damageText.height + 3;
+    this.damageBg.clear();
+    this.damageBg.roundRect(0, 0, tw, th, CHIP_RADIUS);
+    this.damageBg.fill({
+      color: hexToNum(activeTheme.gameTheme.promptAction.attackAction),
+      alpha: 0.92,
+    });
 
-    let offsetX = 3;
-    // Start the keyword chip strip just under the MTG title line — matches
-    // the badge band (BADGE_TITLE_BAND_FRAC) so card name + mana cost in
-    // the top-right stay readable at every hover scale.
-    let offsetY = Math.round(CARD_H * BADGE_TITLE_BAND_FRAC);
-    const rowH = KEYWORD_ROW_H;
-
-    const addChip = (text: string) => {
-      const chip = new Container();
-      const bg = new Graphics();
-      const truncated = truncateChipLabel(text);
-      const txt = new Text({ text: truncated, style: CHIP_STYLE });
-      txt.resolution = TEXT_RASTER_RESOLUTION;
-      txt.anchor.set(0, 0.5);
-      txt.x = 3;
-      txt.y = rowH / 2;
-
-      // Hard-cap chip width to the card so a stray long keyword can
-      // never overflow into the surrounding battlefield.
-      const maxChipW = CARD_W - 6;
-      const cw = Math.min(txt.width + 6, maxChipW);
-      if (offsetX + cw > CARD_W - 6) {
-        offsetX = 3;
-        offsetY += rowH + 2;
-      }
-
-      bg.roundRect(0, 0, cw, rowH, CHIP_RADIUS);
-      bg.fill({ color: hexToNum(activeTheme.gameTheme.canvas.shadow), alpha: 0.6 });
-
-      chip.addChild(bg);
-      chip.addChild(txt);
-      chip.x = offsetX;
-      chip.y = offsetY;
-      this.keywordsContainer.addChild(chip);
-      offsetX += cw + 2;
-    };
-
-    visible.forEach((kw) => addChip(kw.split(":")[0]!));
-    if (hiddenCount > 0) addChip(`+${hiddenCount}`);
+    this.damageText.x = 3;
+    this.damageText.y = 1.5;
+    const ptH = this.ptText.height + 4;
+    this.damageContainer.x = CARD_W - tw - 3;
+    this.damageContainer.y = CARD_H - ptH - th - 5;
   }
 
   setRing(color: number | null, alpha = 1): void {

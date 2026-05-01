@@ -5,6 +5,7 @@
 
 import { Sprite, Texture } from "pixi.js";
 import type { GameThemeColors } from "@/themes/gameTheme";
+import { icons as gameIconsPack } from "@iconify-json/game-icons";
 
 export const SVG: Record<string, string> = {
   hearts:
@@ -47,16 +48,29 @@ export function getIconColor(key: string, theme: GameThemeColors): string {
   }
 }
 
+interface PendingSprite {
+  sprite: Sprite;
+  displayWidth?: number;
+  displayHeight?: number;
+}
+
 const iconCache = new Map<string, Texture>();
-const pendingSprites = new Map<string, Set<Sprite>>();
+const pendingSprites = new Map<string, Set<PendingSprite>>();
 
 export const ICON_RASTER = 64;
 export const AVATAR_RASTER = 256;
 
+function getIconBody(key: string): string | undefined {
+  if (SVG[key]) return SVG[key];
+  const icon = gameIconsPack.icons[key];
+  if (!icon) return undefined;
+  return icon.body;
+}
+
 export function rasterIcon(key: string, hex: string, size: number): void {
   const cacheKey = `${key}:${hex}:${size}`;
   if (iconCache.has(cacheKey)) return;
-  const body = SVG[key];
+  const body = getIconBody(key);
   if (!body) return;
   const coloured = body.replaceAll("currentColor", hex);
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="${size}" height="${size}">${coloured}</svg>`;
@@ -74,21 +88,32 @@ export function rasterIcon(key: string, hex: string, size: number): void {
     URL.revokeObjectURL(url);
     const tex = Texture.from(c);
     iconCache.set(cacheKey, tex);
-    pendingSprites.get(cacheKey)?.forEach((s) => {
-      s.texture = tex;
+    pendingSprites.get(cacheKey)?.forEach((entry) => {
+      entry.sprite.texture = tex;
+      if (entry.displayWidth != null) entry.sprite.width = entry.displayWidth;
+      if (entry.displayHeight != null) entry.sprite.height = entry.displayHeight;
     });
     pendingSprites.delete(cacheKey);
   };
 }
 
-export function applyIcon(sprite: Sprite, key: string, hex: string, size = ICON_RASTER): void {
+export function applyIcon(
+  sprite: Sprite,
+  key: string,
+  hex: string,
+  size = ICON_RASTER,
+  displayWidth?: number,
+  displayHeight?: number,
+): void {
   const cacheKey = `${key}:${hex}:${size}`;
   const cached = iconCache.get(cacheKey);
   if (cached) {
     sprite.texture = cached;
+    if (displayWidth != null) sprite.width = displayWidth;
+    if (displayHeight != null) sprite.height = displayHeight;
     return;
   }
   rasterIcon(key, hex, size);
   if (!pendingSprites.has(cacheKey)) pendingSprites.set(cacheKey, new Set());
-  pendingSprites.get(cacheKey)!.add(sprite);
+  pendingSprites.get(cacheKey)!.add({ sprite, displayWidth, displayHeight });
 }

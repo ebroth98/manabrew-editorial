@@ -149,6 +149,8 @@ pub struct CardDto {
     pub damage: i32,
     pub summoning_sick: bool,
     pub is_token: bool,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub is_copy: bool,
     /// True if this card has an alternate face (DFC: Transform, Modal DFC).
     pub is_double_faced: bool,
     /// True if this card is currently showing its back face.
@@ -677,6 +679,7 @@ pub fn card_to_dto(
         damage: card.damage,
         summoning_sick: card.summoning_sick && !card.has_haste(),
         is_token: card.is_token,
+        is_copy: card.copied_permanent.is_some(),
         is_double_faced: card.other_part.is_some(),
         flashback_cost: card.get_flashback_cost(),
         kicker_cost: card.get_kicker_cost(),

@@ -19,10 +19,12 @@ export function isCreature(card: CardType): boolean {
   return card.types?.some((t) => t.toLowerCase() === "creature") ?? false;
 }
 
-export function isLethalDamage(card: CardType): boolean {
-  if (!card.damage || !card.toughness) return false;
+export function isLethalDamage(card: CardType, queuedDamage = 0): boolean {
+  if (!card.toughness) return false;
+  const total = (card.damage ?? 0) + queuedDamage;
+  if (total <= 0) return false;
   const toughness = parseInt(card.toughness, 10);
-  return !isNaN(toughness) && card.damage >= toughness;
+  return !isNaN(toughness) && total >= toughness;
 }
 
 export type ScryfallImageSize = "small" | "normal" | "large" | "png";

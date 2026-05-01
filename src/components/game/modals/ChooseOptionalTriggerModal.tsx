@@ -7,6 +7,7 @@ import { CardImageThumbnail } from "@/components/game/CardImageThumbnail";
 import { Card } from "@/components/game/Card";
 import { MODAL_CARD_IMAGE } from "../game.styles";
 import type { Card as GameCard } from "@/types/openmagic";
+import { usePromptPreferencesStore } from "@/stores/usePromptPreferencesStore";
 
 interface ChooseOptionalTriggerModalProps {
   /** Human-readable description of the triggered ability. */
@@ -15,6 +16,7 @@ interface ChooseOptionalTriggerModalProps {
   cards?: GameCard[];
   /** Name of the source card (for displaying card image). */
   cardName?: string;
+  sourceCardId?: string;
   /** Prompt context (optional_trigger, confirm_action, confirm_payment, choose_binary). */
   promptKind?: string;
   /** Optional labels for [decline, accept] buttons. */
@@ -30,12 +32,25 @@ export function ChooseOptionalTriggerModal({
   description,
   cards,
   cardName,
+  sourceCardId,
   promptKind,
   optionLabels,
   mode,
   api,
   onConfirm,
 }: ChooseOptionalTriggerModalProps) {
+  const rememberTrigger = usePromptPreferencesStore((s) => s.rememberTrigger);
+  const showMemory = !!sourceCardId && (!promptKind || promptKind === "optional_trigger");
+
+  const handleAlwaysYes = useCallback(() => {
+    if (sourceCardId) rememberTrigger(sourceCardId, "yes");
+    onConfirm(true);
+  }, [sourceCardId, rememberTrigger, onConfirm]);
+
+  const handleAlwaysNo = useCallback(() => {
+    if (sourceCardId) rememberTrigger(sourceCardId, "no");
+    onConfirm(false);
+  }, [sourceCardId, rememberTrigger, onConfirm]);
   const cardData = useCard({ name: cardName ?? "" });
   const imageUrl = cardData?.uris.normal;
   const dialogRef = useRef<HTMLDivElement>(null);
@@ -117,6 +132,28 @@ export function ChooseOptionalTriggerModal({
         )}
 
         <Modal.Footer>
+          {showMemory && (
+            <div className="mr-auto flex gap-1">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleAlwaysNo}
+                className="text-xs text-muted-foreground"
+                title="Decline now and remember for the rest of this game"
+              >
+                Always no
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleAlwaysYes}
+                className="text-xs text-muted-foreground"
+                title="Accept now and remember for the rest of this game"
+              >
+                Always yes
+              </Button>
+            </div>
+          )}
           <Button variant="outline" size="sm" onClick={handleDecline} className="min-w-[80px]">
             {declineLabel}
           </Button>

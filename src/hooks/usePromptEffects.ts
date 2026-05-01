@@ -298,14 +298,13 @@ export function usePromptEffects({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [promptType, currentPrompt]);
 
-  // Handle zone-based targeting prompts
   useEffect(() => {
     if (promptType === PromptType.ChooseTargetCardFromZone && currentPrompt) {
       const zone = currentPrompt.zone;
       const validCardIds = currentPrompt.validCardIds || [];
       const zoneCards = currentPrompt.zoneCards || [];
 
-      if (zone && zoneCards.length > 0) {
+      if (zone && zone !== "Battlefield" && zoneCards.length > 0) {
         const zoneNames: Record<string, string> = {
           Graveyard: "Graveyard",
           Exile: "Exile",
@@ -313,6 +312,8 @@ export function usePromptEffects({
         };
         const title = `Choose from ${zoneNames[zone] || zone}`;
         setZoneTargetSelector({ title, cards: zoneCards, validCardIds });
+      } else {
+        setZoneTargetSelector(null);
       }
     } else {
       setZoneTargetSelector(null);

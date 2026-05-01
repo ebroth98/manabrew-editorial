@@ -63,7 +63,8 @@ pub(super) fn choose_target_card_from_zone<T: AgentTransport>(
     intent: TargetingIntent,
 ) -> Option<CardId> {
     let valid_card_ids = PromptAgent::<T>::card_ids(valid);
-    let view = agent.view();
+    let mut view = agent.view();
+    PromptAgent::<T>::mark_battlefield_choosable(&mut view, &valid_card_ids);
 
     // Build the list of cards in the specified zone
     let zone_cards: Vec<CardDto> = match zone {

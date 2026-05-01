@@ -91,6 +91,7 @@ export const CARD_BADGES = {
   plotted: { label: "PLOTTED", style: "bg-card-status-plotted/90 text-text-on-tinted" },
   madnessExiled: { label: "MADNESS", style: "bg-card-status-madness/90 text-text-on-tinted" },
   warpExiled: { label: "WARPED", style: "bg-card-status-warped/90 text-text-on-tinted" },
+  copy: { label: "COPY", style: "bg-card-status-copy/90 text-text-on-tinted" },
 } as const;
 
 /** Logical footprint of battlefield cards. */

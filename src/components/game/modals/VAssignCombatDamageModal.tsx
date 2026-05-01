@@ -2,6 +2,7 @@ import { Button } from "@/components/ui/button";
 import { Modal } from "./Modal";
 import { useMemo, useState } from "react";
 import type { GameView } from "@/types/openmagic";
+import { cn } from "@/lib/utils";
 
 type DamageEntry = { assigneeId: string; damage: number };
 
@@ -41,6 +42,11 @@ export function VAssignCombatDamageModal({
   }, [blockerIds, defenderId]);
 
   const remaining = assignees.reduce((acc, id) => acc - (assigned[id] ?? 0), totalDamage);
+
+  const defendingPlayer = defenderId
+    ? gameView.players.find((p) => p.id === defenderId)
+    : undefined;
+  const defenderDamage = defenderId ? (assigned[defenderId] ?? 0) : 0;
 
   function normalizeAssignments(input: Record<string, number>): Record<string, number> {
     const next: Record<string, number> = {};
@@ -164,14 +170,43 @@ export function VAssignCombatDamageModal({
       </Modal.Header>
 
       <div className="mt-4 px-4 pb-4 flex flex-col gap-2">
+        {defendingPlayer && defenderDamage > 0 && (
+          <div className="text-xs flex items-center gap-1.5 px-1">
+            <span className="text-muted-foreground">{defendingPlayer.name}:</span>
+            <span className="font-semibold">{defendingPlayer.life}</span>
+            <span className="text-muted-foreground">→</span>
+            <span
+              className={cn(
+                "font-semibold",
+                defendingPlayer.life - defenderDamage <= 0 && "text-destructive",
+              )}
+            >
+              {defendingPlayer.life - defenderDamage}
+            </span>
+          </div>
+        )}
         {assignees.map((id, index) => {
           const dmg = assigned[id] ?? 0;
           const lethal = id === defenderId ? null : getLethal(id);
           const blocked = !canAssignToIndex(index);
+          const willDie = lethal != null && lethal > 0 && dmg >= lethal;
           return (
-            <div key={id} className="flex items-center gap-2 border rounded-md px-3 py-2">
+            <div
+              key={id}
+              className={cn(
+                "flex items-center gap-2 border rounded-md px-3 py-2",
+                willDie && "border-destructive/70 bg-destructive/10",
+              )}
+            >
               <div className="min-w-0 flex-1">
-                <div className="text-sm font-medium truncate">{getLabel(id)}</div>
+                <div className="text-sm font-medium truncate flex items-center gap-1.5">
+                  {getLabel(id)}
+                  {willDie && (
+                    <span className="text-[10px] font-bold text-destructive uppercase tracking-wide">
+                      💀 lethal
+                    </span>
+                  )}
+                </div>
                 {lethal != null && (
                   <div className="text-xs text-muted-foreground">Lethal: {lethal}</div>
                 )}

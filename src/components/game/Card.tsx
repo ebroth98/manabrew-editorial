@@ -154,6 +154,8 @@ function CardComponent({
             <CardBadge {...CARD_BADGES.madnessExiled} />
           ) : card.isWarpExiled ? (
             <CardBadge {...CARD_BADGES.warpExiled} />
+          ) : card.isCopy ? (
+            <CardBadge {...CARD_BADGES.copy} />
           ) : card.isToken ? (
             <CardBadge label={getTokenLabel(card.name)} style={CARD_BADGES.token.style} />
           ) : null}
@@ -356,6 +358,7 @@ export const Card = memo(CardComponent, (prev, next) => {
     pc.isMadnessExiled !== nc.isMadnessExiled ||
     pc.isWarpExiled !== nc.isWarpExiled ||
     pc.isToken !== nc.isToken ||
+    pc.isCopy !== nc.isCopy ||
     pc.foil !== nc.foil ||
     pc.isDoubleFaced !== nc.isDoubleFaced ||
     pc.isPlayable !== nc.isPlayable ||

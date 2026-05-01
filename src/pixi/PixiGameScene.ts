@@ -23,6 +23,11 @@ import type {
 import type { Theme } from "@/hooks/useTheme";
 import { getTheme } from "@/hooks/useTheme";
 import { hexToNum } from "./colorUtils";
+import {
+  applyCardOverrides,
+  useGameDevStore,
+  DEBUG_KEYWORD_CARD_ID,
+} from "@/stores/useGameDevStore";
 import { CardSprite, setCardSpriteTheme } from "./CardSprite";
 import { CARD_W, CARD_H } from "@/components/game/game.constants";
 import { MarqueeHandler } from "./MarqueeHandler";
@@ -82,6 +87,7 @@ import {
   SYMBOL_UNTAP,
   PLAYABLE_HIGHLIGHT_ALPHA,
   PLAYABLE_RING_ALPHA,
+  ROTATION_LERP,
   ACTION_BUTTON_ALPHA,
   ACTION_BUTTON_HOVER_ALPHA,
   SELECT_BUTTON_ALPHA,
@@ -116,6 +122,8 @@ interface SpriteEntry {
   targetX: number;
   targetY: number;
   targetZIndex: number;
+  targetRotation: number;
+  etbGlowAlpha: number;
   overlay: Container | null;
 }
 
@@ -232,6 +240,9 @@ export class PixiGameScene {
   /** UI-only parent mapping: child id → parent id. Merged with engine
    *  attachments (`card.attachedTo`) when computing the effective tree. */
   private uiParent = new Map<string, string>();
+  private stackCounts = new Map<string, number>();
+  private nameGroupChildren = new Set<string>();
+  private userPlacedCards = new Set<string>();
   /** Latest grid layout — cached per frame so drag/stack hit-tests and the
    *  skeleton overlay share the same cell geometry. */
   private gridInfo: GridLayoutInfo | null = null;
@@ -276,6 +287,7 @@ export class PixiGameScene {
   private cursorViewportX = 0;
   private cursorViewportY = 0;
   private cursorListener: ((e: MouseEvent) => void) | null = null;
+  private devOverridesUnsub: (() => void) | null = null;
   private placementGhostGfx: Graphics | null = null;
   private placementGhostText: Text | null = null;
   /**
@@ -356,6 +368,17 @@ export class PixiGameScene {
     };
     window.addEventListener("mousemove", this.cursorListener);
     prewarmManaSymbols();
+
+    this.devOverridesUnsub = useGameDevStore.subscribe((state, prev) => {
+      if (state.cardOverrides !== prev.cardOverrides && this.lastState) {
+        this.updateBattlefield(this.lastState);
+      }
+      if (state.etbGlowVersion !== prev.etbGlowVersion) {
+        for (const entry of this.entries.values()) {
+          entry.etbGlowAlpha = 1;
+        }
+      }
+    });
   }
 
   // ═══════════════════════════════════════════════════════════════
@@ -589,6 +612,11 @@ export class PixiGameScene {
     const cardMap = new Map<string, Card>(state.cards.map((c) => [c.id, c]));
     const currentIds = new Set(state.cards.map((c) => c.id));
 
+    for (const childId of this.nameGroupChildren) {
+      this.uiParent.delete(childId);
+    }
+    this.nameGroupChildren.clear();
+
     // Effective parent map: engine (`card.attachedTo`) wins, UI fallback only
     // if the engine didn't assert a parent for the child. Drops UI parents
     // whose child or parent already left the battlefield.
@@ -607,6 +635,15 @@ export class PixiGameScene {
         this.uiParent.delete(childId);
         continue;
       }
+      if (!effectiveParent.has(childId)) {
+        effectiveParent.set(childId, parentId);
+      }
+    }
+    const tentativeTopLevelForGrouping = state.cards.filter((c) => !effectiveParent.has(c.id));
+    this.applyNameGrouping(tentativeTopLevelForGrouping);
+    for (const [childId, parentId] of [...this.uiParent]) {
+      if (!currentIds.has(childId) || !currentIds.has(parentId)) continue;
+      if (childId === parentId) continue;
       if (!effectiveParent.has(childId)) {
         effectiveParent.set(childId, parentId);
       }
@@ -759,6 +796,10 @@ export class PixiGameScene {
     if (this.cursorListener) {
       window.removeEventListener("mousemove", this.cursorListener);
       this.cursorListener = null;
+    }
+    if (this.devOverridesUnsub) {
+      this.devOverridesUnsub();
+      this.devOverridesUnsub = null;
     }
     // Unregister everything *non-display-tree*: stop animation + pointer
     // event routing BEFORE the display is torn down so no late tick or
@@ -961,6 +1002,40 @@ export class PixiGameScene {
   // Battlefield layout
   // ═══════════════════════════════════════════════════════════════
 
+  private applyNameGrouping(topLevel: Card[]): void {
+    this.stackCounts.clear();
+    if (topLevel.length < 2) return;
+
+    const isStackable = (c: Card): boolean =>
+      !c.tapped &&
+      !c.isAttacking &&
+      !c.attachedTo &&
+      !c.isBestowed &&
+      !c.isFaceDown &&
+      !c.isTransformed &&
+      (!c.attachmentIds || c.attachmentIds.length === 0) &&
+      !this.userPlacedCards.has(c.id);
+
+    const byName = new Map<string, Card[]>();
+    for (const c of topLevel) {
+      if (!isStackable(c)) continue;
+      const list = byName.get(c.name);
+      if (list) list.push(c);
+      else byName.set(c.name, [c]);
+    }
+
+    for (const group of byName.values()) {
+      if (group.length < 2) continue;
+      const parent = group[0]!;
+      for (let i = 1; i < group.length; i++) {
+        const child = group[i]!;
+        this.uiParent.set(child.id, parent.id);
+        this.nameGroupChildren.add(child.id);
+      }
+      this.stackCounts.set(parent.id, group.length);
+    }
+  }
+
   /**
    * When there are more top-level cards than free grid cells, pick the
    * lowest-priority cards (no user slot first, then latest in state order)
@@ -1080,6 +1155,7 @@ export class PixiGameScene {
         // Find the first unplaced card that doesn't already have a user slot
         const dropCandidate = unplaced[0]!;
         this.userSlots.set(dropCandidate.id, this.pendingDropSlot);
+        this.userPlacedCards.add(dropCandidate.id);
         positions.set(dropCandidate.id, { x: dropCell.cx, y: dropCell.cy });
         occupied.add(cellKey(dropCell.col, dropCell.row));
         unplaced.shift();
@@ -1304,6 +1380,7 @@ export class PixiGameScene {
       safeDestroy(entry.sprite);
       if (entry.overlay) safeDestroy(entry.overlay);
       this.entries.delete(id);
+      this.userPlacedCards.delete(id);
     }
   }
 
@@ -1319,17 +1396,20 @@ export class PixiGameScene {
     entry.targetX = centerX;
     entry.targetY = centerY;
     entry.targetZIndex = zIndex;
-    entry.sprite.updateCard(card);
-    // Mirrored scenes (opponent half) rotate tapped cards counter-clockwise
-    // so the tapped state reads correctly when viewed from across the
-    // table — keeps opponent permanents visually oriented toward the opponent.
-    if (this.mirrored && card.tapped) entry.sprite.rotation = -Math.PI / 2;
+    const overriddenCard =
+      card.id === DEBUG_KEYWORD_CARD_ID
+        ? applyCardOverrides(card, useGameDevStore.getState().cardOverrides)
+        : card;
+    entry.sprite.updateCard(overriddenCard);
+    entry.sprite.setStackCount(this.stackCounts.get(card.id) ?? 1);
+    entry.targetRotation = overriddenCard.tapped ? (this.mirrored ? -Math.PI / 2 : Math.PI / 2) : 0;
     this.applyBattlefieldRing(entry.sprite, state);
     this.rebuildBattlefieldOverlay(entry, state);
   }
 
   private ensureBattlefieldEntry(card: Card): void {
     if (this.entries.has(card.id)) return;
+    const isEntering = this.entries.size > 0;
     const sprite = new CardSprite(card);
     this.wireBattlefieldCardEvents(sprite);
     this.myBattlefieldContainer.addChild(sprite);
@@ -1367,6 +1447,8 @@ export class PixiGameScene {
       targetX: sprite.x,
       targetY: sprite.y,
       targetZIndex: 1,
+      targetRotation: sprite.rotation,
+      etbGlowAlpha: isEntering ? 1 : 0,
       overlay: null,
     });
   }
@@ -1486,9 +1568,15 @@ export class PixiGameScene {
           ? hexToNum(this.theme.gameTheme.arrow.hostileTarget)
           : hexToNum(this.theme.gameTheme.cardRing),
       );
+    } else if (this.isCreatureCard(card) && card.summoningSick) {
+      sprite.setRing(hexToNum(this.theme.gameTheme.promptAction.cancel), 0.6);
     } else {
       sprite.setRing(null);
     }
+  }
+
+  private isCreatureCard(card: Card): boolean {
+    return card.types?.some((t) => t.toLowerCase() === "creature") ?? false;
   }
 
   private rebuildBattlefieldOverlay(entry: SpriteEntry, state: BattlefieldState): void {
@@ -2046,6 +2134,7 @@ export class PixiGameScene {
       if (placed) {
         reserved.add(cellKey(placed.col, placed.row));
         this.userSlots.set(id, { col: placed.col, row: placed.row });
+        this.userPlacedCards.add(id);
       }
     }
   }
@@ -2063,6 +2152,7 @@ export class PixiGameScene {
       if (this.uiParent.get(targetId) === id) this.uiParent.delete(targetId);
       this.uiParent.set(id, targetId);
       this.userSlots.delete(id);
+      this.userPlacedCards.delete(id);
     }
   }
 
@@ -2462,7 +2552,13 @@ export class PixiGameScene {
     const s = entry.sprite;
     s.x = lerp(s.x, entry.targetX, BATTLEFIELD_LERP, SNAP_PX);
     s.y = lerp(s.y, entry.targetY, BATTLEFIELD_LERP, SNAP_PX);
+    s.rotation = lerp(s.rotation, entry.targetRotation, ROTATION_LERP, SNAP_ROT);
     s.zIndex = entry.targetZIndex;
+
+    if (entry.etbGlowAlpha > 0) {
+      entry.etbGlowAlpha = lerp(entry.etbGlowAlpha, 0, OVERLAY_FADE_LERP, SNAP_ALPHA);
+    }
+    s.setEntryGlowAlpha(entry.etbGlowAlpha);
 
     const isHovered = this.hoveredCardId === s.card.id;
     const targetScale = this.cardScale * (isHovered ? HOVER_SCALE : 1);

@@ -53,6 +53,7 @@ export interface Card {
   damage?: number;
   summoningSick?: boolean;
   isToken?: boolean;
+  isCopy?: boolean;
   isDoubleFaced?: boolean;
   isTransformed?: boolean;
   isFaceDown?: boolean;

@@ -33,6 +33,7 @@ export function MainActionOverlay({
   onOpenStack,
   onConcede,
   resolveCardName,
+  resolveCard,
   isMyTurn,
   step,
   payManaCostInfo,
@@ -66,8 +67,10 @@ export function MainActionOverlay({
           <CombatInfo
             promptType={promptType}
             attackerIds={attackerIds}
+            pendingAttackers={pendingAttackers}
             blockAssignments={blockAssignments}
             resolveCardName={resolveCardName}
+            resolveCard={resolveCard}
           />
           <div className="flex flex-col items-center w-full [&_button]:mx-0">
             <PromptActionController
