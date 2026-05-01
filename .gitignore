@@ -37,6 +37,10 @@ src-tauri/target/
 
 # Secrets
 .env
+.env.*
+**/.env
+**/.env.*
+!**/.env.example
 
 # Parity database & cache
 parity.db
