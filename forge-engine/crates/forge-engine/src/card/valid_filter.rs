@@ -360,6 +360,7 @@ pub fn matches_valid_card(valid: &str, card: &Card, source: &Card) -> bool {
     matches_valid_card_selector(&cached_compiled_selector(valid), card, source)
 }
 
+#[cfg(debug_assertions)]
 fn legacy_matches_valid_card(valid: &str, card: &Card, context: MatchContext<'_>) -> bool {
     let valid = valid.trim();
     if valid.is_empty() {
@@ -549,6 +550,9 @@ fn matches_card_predicate(
             matches_card_controller(*controller, card.owner, context.source_controller)
         }
         SelectorPredicate::StartedTurnTapped(tapped) => card.started_turn_tapped == *tapped,
+        SelectorPredicate::CameUnderControlSinceLastUpkeep => {
+            card.came_under_control_since_last_upkeep()
+        }
         SelectorPredicate::Multicolor => card.color.is_multicolor(),
         SelectorPredicate::Commander => card.is_commander,
         SelectorPredicate::Legendary => card.type_line.is_legendary(),
@@ -825,6 +829,8 @@ fn matches_controlled_by_reference(
         || reference.eq_ignore_ascii_case("TargetedController")
     {
         context.targeted_players.contains(&card.controller)
+    } else if let Some(target) = raw_target_ref(reference) {
+        relation_target_player_any(&target, context, |player| card.controller == player)
     } else {
         false
     }
@@ -989,7 +995,14 @@ fn relation_target_player_any(
         TargetRef::Battlefield | TargetRef::OtherYourBattlefield | TargetRef::YourGraveyard => {
             false
         }
-        TargetRef::TriggeredTarget | TargetRef::TriggeredCard => context
+        TargetRef::TriggeredTarget => {
+            context.triggering_player.is_some_and(&mut predicate)
+                || context
+                    .triggering_card
+                    .and_then(|card_id| context.game.map(|game| game.card(card_id).controller))
+                    .is_some_and(predicate)
+        }
+        TargetRef::TriggeredCard => context
             .triggering_card
             .and_then(|card_id| context.game.map(|game| game.card(card_id).controller))
             .is_some_and(predicate),
@@ -1737,6 +1750,7 @@ pub fn matches_valid_card_selector_opt_in_game(
     )
 }
 
+#[cfg(debug_assertions)]
 fn matches_single_valid_card(filter: &str, card: &Card, context: MatchContext<'_>) -> bool {
     // Handle comma-separated types with qualifiers (e.g. "Creature.YouCtrl,Artifact.YouCtrl")
     if filter.contains(',') {
@@ -1748,6 +1762,7 @@ fn matches_single_valid_card(filter: &str, card: &Card, context: MatchContext<'_
     matches_type_and_qualifiers(filter, card, context)
 }
 
+#[cfg(debug_assertions)]
 fn matches_type_and_qualifiers(filter: &str, card: &Card, context: MatchContext<'_>) -> bool {
     // Split on dots for compound filters (e.g. "Creature.Other", "Card.Self")
     let parts: Vec<&str> = filter.split('.').collect();
@@ -1761,6 +1776,7 @@ fn matches_type_and_qualifiers(filter: &str, card: &Card, context: MatchContext<
     matches_type_and_qualifier_parts(type_part, qualifiers, card, context)
 }
 
+#[cfg(debug_assertions)]
 fn matches_type_and_qualifier_parts(
     type_part: &str,
     qualifiers: &[&str],
@@ -2271,6 +2287,7 @@ fn matches_player_predicate(
         | SelectorPredicate::CardOwner(_)
         | SelectorPredicate::Tapped(_)
         | SelectorPredicate::StartedTurnTapped(_)
+        | SelectorPredicate::CameUnderControlSinceLastUpkeep
         | SelectorPredicate::Zone(_)
         | SelectorPredicate::RememberedCard
         | SelectorPredicate::EffectSource

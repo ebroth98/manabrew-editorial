@@ -326,6 +326,7 @@ fn pay_mana_cost_for_effect(
 enum EffectCostPaymentMode {
     Unless { spell_context: bool },
     CumulativeUpkeep,
+    Echo,
 }
 
 fn should_confirm_effect_cost_part(mode: EffectCostPaymentMode, part: &CostPart) -> bool {
@@ -354,7 +355,7 @@ fn should_confirm_effect_cost_part(mode: EffectCostPaymentMode, part: &CostPart)
                 _ => false,
             }
         }
-        EffectCostPaymentMode::CumulativeUpkeep => matches!(
+        EffectCostPaymentMode::CumulativeUpkeep | EffectCostPaymentMode::Echo => matches!(
             part,
             CostPart::DamageYou(_)
                 | CostPart::PayLife(_)
@@ -843,6 +844,16 @@ pub(crate) fn try_pay_cumulative_upkeep(
         cost,
         EffectCostPaymentMode::CumulativeUpkeep,
     )
+}
+
+pub(crate) fn try_pay_echo(
+    ctx: &mut EffectContext,
+    sa: &SpellAbility,
+    source: CardId,
+    payer: PlayerId,
+    cost: &Cost,
+) -> bool {
+    try_pay_effect_cost(ctx, sa, source, payer, cost, EffectCostPaymentMode::Echo)
 }
 
 /// Mirrors Java's `DeterministicCostPlumbing.isSpellPaymentContext()`.

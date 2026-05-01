@@ -294,6 +294,12 @@ impl GameLoop {
                 // from each suspended card in exile. If last counter removed, cast for free.
                 if phase == PhaseType::Upkeep {
                     self.process_suspend_upkeep(game, agents);
+                    let active = game.active_player();
+                    for card in &mut game.cards {
+                        if card.controller == active {
+                            card.came_under_control_since_last_upkeep = false;
+                        }
+                    }
                 }
             }
             TurnEvent::PriorityWindow { is_main_phase } => {

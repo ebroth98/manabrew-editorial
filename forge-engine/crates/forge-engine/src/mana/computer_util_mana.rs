@@ -29,6 +29,15 @@ struct ManaAbilityRef {
 
 impl ManaAbilityRef {
     fn can_pay_shard(&self, shard: ManaCostShard) -> bool {
+        // Java's deterministic AutoPay treats empty `Combo ColorIdentity`
+        // abilities as generic-pay candidates, then resolution produces no
+        // mana in non-Commander games. Keep that tap/continue behavior.
+        if self.mana_text == "Combo ColorIdentity"
+            && self.atoms.is_empty()
+            && (shard == ManaCostShard::Generic || shard.is_generic())
+        {
+            return true;
+        }
         self.atoms
             .iter()
             .any(|&a| can_pay_for_shard_with_color(shard, a))
@@ -564,7 +573,6 @@ fn auto_tap_lands_internal_with_ctx(
         let Some(chosen_atom) = choose_atom_for_shard(&sa_payment, to_pay) else {
             break;
         };
-
         // Pay non-tap ability costs (sacrifice, counter removal) through callback.
         // If payment fails (e.g. sacrifice declined), remove the candidate and retry.
         if !pay_non_tap_mana_ability_costs(
@@ -619,6 +627,8 @@ fn auto_tap_lands_internal_with_ctx(
             // because `group_sources_by_mana_color` resolves it against the
             // commander identity when the produced string is
             // `Combo ColorIdentity`.
+            let is_empty_combo_color_identity =
+                sa_payment.mana_text == "Combo ColorIdentity" && sa_payment.atoms.is_empty();
             let needs_express = sa_payment.atoms.len() > 1;
             let amount = sa_payment.amount.max(1) as usize;
             if needs_express {
@@ -657,16 +667,22 @@ fn auto_tap_lands_internal_with_ctx(
                     }
                 }
             }
-            tap_land_for_mana(
-                game,
-                pool,
-                player,
-                sa_payment.card_id,
-                chosen_atom,
-                source_requires_tap(game, &sa_payment),
-                &mut Vec::new(),
-                sa_payment.ability_index,
-            );
+            if is_empty_combo_color_identity {
+                if source_requires_tap(game, &sa_payment) && !game.card(sa_payment.card_id).tapped {
+                    game.tap(sa_payment.card_id);
+                }
+            } else {
+                tap_land_for_mana(
+                    game,
+                    pool,
+                    player,
+                    sa_payment.card_id,
+                    chosen_atom,
+                    source_requires_tap(game, &sa_payment),
+                    &mut Vec::new(),
+                    sa_payment.ability_index,
+                );
+            }
 
             tapped_choices.push(AutoTapChoice {
                 card_id: sa_payment.card_id,
@@ -675,10 +691,14 @@ fn auto_tap_lands_internal_with_ctx(
                 needs_express_choice: needs_express,
             });
 
-            let _ = unpaid.try_pay_mana(chosen_atom, chosen_atom as u8);
-            for _ in 1..sa_payment.amount.max(1) {
-                pool.add(chosen_atom, 1);
+            if !is_empty_combo_color_identity {
                 let _ = unpaid.try_pay_mana(chosen_atom, chosen_atom as u8);
+            }
+            for _ in 1..sa_payment.amount.max(1) {
+                if !is_empty_combo_color_identity {
+                    pool.add(chosen_atom, 1);
+                    let _ = unpaid.try_pay_mana(chosen_atom, chosen_atom as u8);
+                }
             }
         }
     }
@@ -1305,6 +1325,9 @@ fn choose_atom_for_shard(mana_ab: &ManaAbilityRef, shard: ManaCostShard) -> Opti
     }
 
     if shard == ManaCostShard::Generic || shard.is_generic() {
+        if mana_ab.mana_text == "Combo ColorIdentity" && mana_ab.atoms.is_empty() {
+            return Some(ManaAtom::WHITE);
+        }
         return mana_ab.atoms.first().copied();
     }
 
@@ -1562,7 +1585,7 @@ fn group_sources_by_mana_color(
             } else {
                 produced_to_atoms(produced, &card.chosen_colors)
             };
-            if atoms.is_empty() {
+            if atoms.is_empty() && produced != "Combo ColorIdentity" {
                 continue;
             }
 
@@ -2087,6 +2110,24 @@ fn score_mana_ability(
     let card = game.card(card_id);
 
     let orig_produced = ab.produced.as_deref();
+    if orig_produced == Some("Combo ColorIdentity") {
+        score += 2;
+        for part in &ab.cost.parts {
+            match part {
+                CostPart::PayLife(_) => score += 3,
+                CostPart::Sacrifice { type_filter, .. } => {
+                    score += 6;
+                    if type_filter != "CARDNAME" {
+                        score += 40;
+                    }
+                }
+                CostPart::Discard { .. } => score += 6,
+                _ => {}
+            }
+            score += 1;
+        }
+        return score;
+    }
     let is_any_mana = orig_produced.is_some_and(|p| p.contains("Any"));
     if is_any_mana {
         score += 7;
@@ -2154,6 +2195,33 @@ fn autopay_source_score(game: &GameState, _player: PlayerId, ma: &ManaAbilityRef
     let card = game.card(ma.card_id);
     if let Some(ab_idx) = ma.ability_index {
         if let Some(ab) = card.activated_abilities.get(ab_idx) {
+            if ma.mana_text == "Combo ColorIdentity" {
+                let colors = game.player_commander_color_identity(_player);
+                let mut s = if colors.is_empty() {
+                    2
+                } else {
+                    colors.len().max(1) as i32 + 1
+                };
+                for part in &ab.cost.parts {
+                    match part {
+                        CostPart::PayLife(_) => s += 3,
+                        CostPart::Sacrifice { type_filter, .. } => {
+                            s += 6;
+                            if type_filter != "CARDNAME" {
+                                s += 40;
+                            }
+                        }
+                        CostPart::Discard { .. } => s += 6,
+                        _ => {}
+                    }
+                    s += 1;
+                }
+                if card.is_creature() {
+                    s += 13;
+                    s += 13;
+                }
+                return s;
+            }
             let orig_is_any = ab
                 .params
                 .get(keys::PRODUCED)

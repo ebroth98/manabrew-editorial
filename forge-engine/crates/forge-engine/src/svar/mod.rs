@@ -246,6 +246,7 @@ fn resolve_card_list_expr(
     let cards: Vec<CardId> = match defined {
         "Targeted" | "TargetedCard" | "ThisTargetedCard" => sa.target_chosen.all_target_cards(),
         "ParentTargeted" => sa.target_chosen.all_target_cards(),
+        _ if defined.starts_with("Remembered") => game.card(source_id).remembered_cards.clone(),
         _ => return None,
     };
     if cards.is_empty() {

@@ -1621,6 +1621,13 @@ fn deal_combat_damage_to_card(
     agents: Option<&mut [Box<dyn PlayerAgent>]>,
 ) {
     if amount > 0 {
+        if crate::staticability::static_ability_colorless_damage_source::target_is_protected_from_source(
+            &game.cards,
+            game.card(target),
+            game.card(source),
+        ) {
+            return;
+        }
         // Track damage source for DamagedBy trigger filters (Sengir Vampire, etc.)
         if !game.card(target).damage_sources_this_turn.contains(&source) {
             game.card_mut(target).add_damage_source_this_turn(source);

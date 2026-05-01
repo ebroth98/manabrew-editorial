@@ -52,6 +52,10 @@
     "args": "--variant Commander --commander 'Ramses, Assassin Lord' --commander 'Ramses, Assassin Lord' --deck1 ramses_commander --deck2 ramses_commander --seed 42 --max-turns 40 --games 2"
   },
   {
+    "name": "kaalia_regression",
+    "args": "--variant Commander --commander 'Kaalia of the Vast' --commander 'Kaalia of the Vast' --deck1 kaalia_regression_commander --deck2 kaalia_regression_commander --seed 42 --max-turns 40 --games 10"
+  },
+  {
     "name": "3-seed matrix (7 decks)",
     "args": "--matrix --seeds 42,100,999 --decks red_burn,green_stompy,white_aggro,black_control,trigger_expanded,comprehensive_test,staticability_test --max-turns 10"
   },

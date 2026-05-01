@@ -1,5 +1,6 @@
-use super::{resolve_defined_player_with_sa, resolve_numeric_svar, EffectContext};
+use super::{resolve_numeric_svar, EffectContext};
 use crate::ability::ability_ir::EffectIr;
+use crate::ability::spell_ability_effect::get_target_players;
 use crate::event::RunParams;
 use crate::parsing::keys;
 use crate::replacement::replacement_handler::{apply_replacements, ReplacementEvent};
@@ -13,11 +14,19 @@ use crate::trigger::TriggerType;
 #[forge_engine_macros::spell_effect(DrawEffect)]
 fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let num = resolve_draw_amount(ctx, sa);
-    let target = sa
-        .defined()
-        .and_then(|d| resolve_defined_player_with_sa(d, sa, sa.activating_player, ctx.game))
-        .unwrap_or(sa.activating_player);
+    let targets = get_target_players(ctx.game, sa);
 
+    for target in targets {
+        draw_for_player(ctx, sa, target, num);
+    }
+}
+
+fn draw_for_player(
+    ctx: &mut EffectContext,
+    sa: &crate::spellability::SpellAbility,
+    target: crate::ids::PlayerId,
+    num: i32,
+) {
     // Run DrawCards replacement effects before drawing multiple cards.
     if num > 1 {
         let mut event = ReplacementEvent::DrawCards {

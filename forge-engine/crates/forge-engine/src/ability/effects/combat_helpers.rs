@@ -65,6 +65,11 @@ pub(super) fn resolve_attack_defenders(
             defenders.push(DefenderId::Player(pid));
         }
         if defenders.is_empty() {
+            if let Some(cid) = sa.get_triggering_card(crate::ability::AbilityKey::Defender) {
+                defenders.push(DefenderId::Permanent(cid));
+            }
+        }
+        if defenders.is_empty() {
             if let Some(pid) = sa.get_triggering_player(crate::ability::AbilityKey::DefendingPlayer)
             {
                 defenders.push(DefenderId::Player(pid));

@@ -1850,7 +1850,9 @@ pub fn choose_targets_by_kind(
         return true;
     }
 
-    if !tr.has_candidates(game, player, sa.source) {
+    if !matches!(tr.target_kind, TargetKind::CardInZone { .. })
+        && !tr.has_candidates(game, player, sa.source)
+    {
         return min_targets <= 0;
     }
 
@@ -1976,6 +1978,9 @@ pub fn choose_targets_by_kind(
                 .into_iter()
                 .filter(|&cid| target_allowed_by_defined_controller(game, sa, cid))
                 .collect();
+            if valid.is_empty() {
+                return min_targets <= 0;
+            }
             agent.snapshot_state(game, mana_pools);
             if max_targets > 1 {
                 let chosen = agent.choose_cards_for_effect(

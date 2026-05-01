@@ -104,6 +104,78 @@ fn do_sacrifice(
 /// `SacrificeEffect` class extending `SpellAbilityEffect`.
 #[forge_engine_macros::spell_effect(SacrificeEffect)]
 fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
+    if let Some(echo_cost_str) = sa.ir.echo.as_deref() {
+        let source_id = match sa.source {
+            Some(cid) if ctx.game.card(cid).zone == ZoneType::Battlefield => cid,
+            _ => return,
+        };
+        let controller = ctx.game.card(source_id).controller;
+        let cost = crate::cost::parse_cost(echo_cost_str);
+        let available_mana = crate::mana::calculate_available_mana(
+            &ctx.mana_pools[controller.index()],
+            ctx.game,
+            controller,
+        );
+        let can_pay = crate::cost::can_pay_with_ability(
+            &cost,
+            ctx.game,
+            &available_mana,
+            source_id,
+            controller,
+            Some(sa),
+        );
+        let cost_kind = cost.to_simple_string();
+        let source_name = ctx.game.card(source_id).card_name.clone();
+        let prompt = format!(
+            "Pay {} to prevent {}?",
+            if cost_kind.is_empty() {
+                "this cost"
+            } else {
+                cost_kind.as_str()
+            },
+            source_name
+        );
+        ctx.agents[controller.index()].snapshot_state(ctx.game, ctx.mana_pools);
+        let wants_to_pay = ctx.agents[controller.index()].pay_cost_to_prevent_effect(
+            controller,
+            if cost_kind.is_empty() {
+                "Echo"
+            } else {
+                cost_kind.as_str()
+            },
+            &prompt,
+            Some(&source_name),
+            sa.api,
+            true,
+        );
+        let paid =
+            wants_to_pay && can_pay && super::try_pay_echo(ctx, sa, source_id, controller, &cost);
+
+        ctx.trigger_handler.run_trigger(
+            TriggerType::PayEcho,
+            RunParams {
+                card: Some(source_id),
+                echo_paid: Some(paid),
+                ..Default::default()
+            },
+            false,
+        );
+
+        if paid || ctx.game.card(source_id).controller != controller {
+            return;
+        }
+        if let Some(cid) = do_sacrifice(ctx, sa, source_id, controller, None) {
+            let mut by_controller: BTreeMap<PlayerId, Vec<CardId>> = BTreeMap::new();
+            by_controller.insert(controller, vec![cid]);
+            crate::game_loop::fire_sacrificed_once_for_batch(
+                ctx.game,
+                ctx.trigger_handler,
+                &by_controller,
+            );
+        }
+        return;
+    }
+
     // ── Cumulative Upkeep ────────────────────────────────────────────────
     // Mirrors Java SacrificeEffect lines 52-75: when CumulativeUpkeep$ is set,
     // add an Age counter, build merged cost (base cost × age counters),

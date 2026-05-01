@@ -713,6 +713,13 @@ impl TriggerHandler {
                         .map(crate::event::AbilityValue::Card),
                 );
                 if !delayed.remembered_lki_cards.is_empty() {
+                    sa.trigger_remembered.extend(
+                        delayed
+                            .remembered_lki_cards
+                            .iter()
+                            .copied()
+                            .map(crate::event::AbilityValue::Card),
+                    );
                     sa.trigger_objects.insert(
                         crate::ability::AbilityKey::RememberedLKI,
                         delayed
@@ -834,7 +841,9 @@ impl TriggerHandler {
         // battlefield-registered self-trigger would incorrectly match.
         let snapshot_active = matches!(
             mode,
-            TriggerType::Drawn
+            TriggerType::ChangesZone
+                | TriggerType::ChangesZoneAll
+                | TriggerType::Drawn
                 | TriggerType::SpellCast
                 | TriggerType::SpellAbilityCast
                 | TriggerType::SpellCastAll
@@ -852,9 +861,6 @@ impl TriggerHandler {
                 .iter()
                 .map(|active| (active.card_id, active.trigger_index))
                 .collect();
-            // Debug print removed — fix validated via downstream parity
-            // state comparison rather than by-hand trace inspection.
-            let _ = &snap;
             Some(snap)
         } else {
             None
@@ -891,6 +897,13 @@ impl TriggerHandler {
                 sa.trigger_source_zone_timestamp =
                     Some(game.card(delayed.source_card).zone_timestamp);
                 if !delayed.remembered_lki_cards.is_empty() {
+                    sa.trigger_remembered.extend(
+                        delayed
+                            .remembered_lki_cards
+                            .iter()
+                            .copied()
+                            .map(crate::event::AbilityValue::Card),
+                    );
                     sa.trigger_objects.insert(
                         crate::ability::AbilityKey::RememberedLKI,
                         delayed
@@ -1403,6 +1416,15 @@ impl TriggerHandler {
             && params.destination != Some(ZoneType::Battlefield)
         {
             // LKI active-zone check for "leaves battlefield" self triggers (e.g. dies).
+            ZoneType::Battlefield
+        } else if *mode == TriggerType::ChangesZone
+            && params.card == Some(host_card)
+            && params.destination == Some(ZoneType::Battlefield)
+            && trigger.get_active_zone().contains(&ZoneType::Battlefield)
+            && card.zone != ZoneType::Battlefield
+        {
+            // LKI active-zone check for ETB triggers whose host left before
+            // waiting triggers were put on the stack.
             ZoneType::Battlefield
         } else if *mode == TriggerType::ChangesZone
             && params.origin == Some(ZoneType::Battlefield)

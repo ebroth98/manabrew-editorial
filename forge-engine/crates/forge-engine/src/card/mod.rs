@@ -265,6 +265,8 @@ pub struct Card {
     /// True if this card is currently bestowed (attached as an Aura via Bestow).
     pub is_bestowed: bool,
     pub summoning_sick: bool,
+    #[serde(default)]
+    pub came_under_control_since_last_upkeep: bool,
     pub exerted: bool,
     pub damage: i32,
 
@@ -731,6 +733,7 @@ impl Card {
             melded_with: Vec::new(),
             is_bestowed: false,
             summoning_sick: true,
+            came_under_control_since_last_upkeep: false,
             exerted: false,
             damage: 0,
             counters: BTreeMap::new(),
@@ -1457,6 +1460,7 @@ impl Card {
         self.tapped = false;
         self.damage = 0;
         self.summoning_sick = true;
+        self.came_under_control_since_last_upkeep = true;
         self.has_deathtouch_damage = false;
         self.entered_battlefield_this_turn = true;
         self.attacked_this_turn = false;
@@ -1821,6 +1825,9 @@ impl Card {
     }
 
     pub fn set_controller(&mut self, controller: PlayerId) {
+        if self.controller != controller {
+            self.came_under_control_since_last_upkeep = true;
+        }
         self.controller = controller;
     }
 
@@ -2775,7 +2782,7 @@ impl Card {
     }
 
     pub fn came_under_control_since_last_upkeep(&self) -> bool {
-        self.summoning_sick
+        self.came_under_control_since_last_upkeep
     }
 
     pub fn add_temp_controller(&mut self, player: PlayerId) {

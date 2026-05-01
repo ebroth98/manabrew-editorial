@@ -230,6 +230,7 @@ pub enum SelectorPredicate {
     CardSupertype(CardSupertypeSelector),
     Tapped(bool),
     StartedTurnTapped(bool),
+    CameUnderControlSinceLastUpkeep,
     Zone(ZoneType),
     RememberedCard,
     EffectSource,
@@ -939,6 +940,7 @@ fn selector_predicate_order(predicate: &SelectorPredicate) -> u8 {
         | SelectorPredicate::CardOwner(_)
         | SelectorPredicate::Tapped(_)
         | SelectorPredicate::StartedTurnTapped(_)
+        | SelectorPredicate::CameUnderControlSinceLastUpkeep
         | SelectorPredicate::Token(_)
         | SelectorPredicate::Color(_)
         | SelectorPredicate::Multicolor
@@ -1029,6 +1031,7 @@ fn lower_selector_part(value: &str, is_first_part: bool) -> SelectorPredicate {
         "untapped" => SelectorPredicate::Tapped(false),
         "startedtheturntapped" => SelectorPredicate::StartedTurnTapped(true),
         "startedtheturnuntapped" => SelectorPredicate::StartedTurnTapped(false),
+        "cameundercontrolsincelastupkeep" => SelectorPredicate::CameUnderControlSinceLastUpkeep,
         "inzonebattlefield" => SelectorPredicate::Zone(ZoneType::Battlefield),
         "inzonegraveyard" => SelectorPredicate::Zone(ZoneType::Graveyard),
         "inzonehand" => SelectorPredicate::Zone(ZoneType::Hand),

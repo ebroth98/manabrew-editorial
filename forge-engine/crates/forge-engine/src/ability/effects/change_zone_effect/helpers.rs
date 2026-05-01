@@ -344,6 +344,11 @@ pub(super) fn apply_post_move(
             ctx.game.card_mut(sid).add_remembered_card(card_id);
         }
     }
+    if sa.ir.remember_lki_flag {
+        if let Some(sid) = sa.source {
+            ctx.game.card_mut(sid).add_remembered_card(card_id);
+        }
+    }
     if dest_zone == ZoneType::Exile && sa.ir.exiled_with_effect_source {
         if let Some(exile_source) = exile_source {
             ctx.game.card_mut(exile_source).add_remembered_card(card_id);
@@ -406,7 +411,7 @@ pub(super) fn apply_post_move(
                     trigger_order: None,
                 });
         }
-        if sa.ir.attacking {
+        if sa.ir.attacking || sa.ir.attacking_text.is_some() {
             let _ = super::super::add_to_combat(ctx, sa, card_id, keys::ATTACKING);
         }
         if let Some(counter_type) = sa.with_counters_type_enum() {
@@ -535,6 +540,7 @@ pub(super) fn apply_post_move(
     }
 
     emit_zone_trigger(ctx.trigger_handler, card_id, old_zone, dest_zone);
+    ctx.trigger_handler.flush_waiting_triggers(ctx.game);
 }
 
 // ─── Warp Effect ────────────────────────────────────────────────────────────

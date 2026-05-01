@@ -716,6 +716,18 @@ impl Card {
                 });
         }
 
+        if let Some(cost_str) = crate::keyword::extract_keyword_cost_str(kw, "Echo") {
+            let cost_spec = cost_str.split(':').next().unwrap_or(cost_str);
+            let raw = "Mode$ Phase | Phase$ Upkeep | ValidPlayer$ You | TriggerZones$ Battlefield | IsPresent$ Card.Self+cameUnderControlSinceLastUpkeep | Secondary$ True | TriggerDescription$ Echo";
+            if let Some(mut trig) = parse_trigger(raw, next_id) {
+                trig.execute = "TrigEcho".to_string();
+                self.add_trigger(trig);
+            }
+            self.svars
+                .entry("TrigEcho".to_string())
+                .or_insert_with(|| format!("DB$ Sacrifice | SacValid$ Self | Echo$ {cost_spec}"));
+        }
+
         if let Some(madness_cost) = crate::keyword::extract_keyword_cost_str(kw, "Madness") {
             let raw = "Mode$ ChangesZone | Origin$ Hand | Destination$ Exile | ValidCard$ Card.Self | Secondary$ True | TriggerZones$ Exile | TriggerDescription$ You may cast this card for its madness cost.";
             if let Some(mut trig) = parse_trigger(raw, next_id) {

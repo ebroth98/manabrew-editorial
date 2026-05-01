@@ -1,9 +1,10 @@
 use forge_foundation::ZoneType;
 
-use super::{matches_valid_cards_selector_opt, resolve_numeric_svar, EffectContext};
+use super::{resolve_numeric_svar, EffectContext};
 use crate::ability::ability_ir::EffectIr;
+use crate::ability::AbilityKey;
 use crate::card::card_damage_map::DamageTarget;
-use crate::card::valid_filter;
+use crate::card::valid_filter::{self, MatchContext};
 use crate::ids::CardId;
 use crate::parsing::keys;
 use crate::spellability::SpellAbility;
@@ -30,9 +31,9 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
         return;
     }
 
+    let activating_player = sa.activating_player;
     let valid_cards_filter = sa.ir.valid_cards_selector.as_ref();
     let valid_players = sa.ir.valid_players_selector.as_ref();
-    let activating_player = sa.activating_player;
     let use_damage_map = ctx.game.pending_damage_map.is_some() || sa.ir.damage_map;
     if sa.ir.damage_map {
         ctx.game.ensure_pending_damage_maps();
@@ -46,11 +47,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
         for &pid in &player_ids {
             let zone_cards = ctx.game.cards_in_zone(ZoneType::Battlefield, pid).to_vec();
             for cid in zone_cards {
-                if matches_valid_cards_selector_opt(
-                    valid_cards_filter,
-                    ctx.game.card(cid),
-                    activating_player,
-                ) {
+                if damage_all_matches_valid_card(ctx, sa, valid_cards_filter.unwrap(), cid) {
                     to_damage.push(cid);
                 }
             }
@@ -223,6 +220,34 @@ fn resolve_damage_all_amount(ctx: &EffectContext, sa: &SpellAbility) -> i32 {
     }
 
     resolve_numeric_svar(ctx.game, sa, keys::NUM_DMG, 0)
+}
+
+fn damage_all_matches_valid_card(
+    ctx: &EffectContext,
+    sa: &SpellAbility,
+    selector: &crate::parsing::CompiledSelector,
+    card_id: CardId,
+) -> bool {
+    let Some(source_id) = sa.source else {
+        return crate::ability::ability_utils::matches_valid_cards_selector_opt(
+            Some(selector),
+            ctx.game.card(card_id),
+            sa.activating_player,
+        );
+    };
+    let source = ctx.game.card(source_id);
+    let targeted_cards = sa.target_chosen.all_target_cards();
+    let targeted_players = sa.target_chosen.all_target_players();
+    let triggering_card = sa.get_triggering_card(AbilityKey::Target);
+    let triggering_player = sa.get_triggering_player(AbilityKey::Target);
+    valid_filter::matches_valid_card_selector_with_context(
+        selector,
+        ctx.game.card(card_id),
+        MatchContext::from_source(source)
+            .with_game(ctx.game)
+            .with_targets(&targeted_cards, &targeted_players)
+            .with_triggering(triggering_card, triggering_player),
+    )
 }
 
 #[cfg(test)]

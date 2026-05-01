@@ -1,7 +1,7 @@
 use forge_foundation::ZoneType;
 
 use crate::agent::PlayerAgent;
-use crate::card::CounterType;
+use crate::card::{Card, CounterType};
 use crate::event::RunParams;
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
@@ -1198,6 +1198,7 @@ impl GameState {
                                 })
                                 .unwrap_or_default();
                             !crate::parsing::enchant_type_matches_card(enchant_type, host, Some(c))
+                                || !can_attachment_remain_attached(&self.cards, c, host, true)
                         }
                     }
                 })
@@ -1420,6 +1421,25 @@ impl GameState {
     pub fn remove_from_stack(&mut self, entry_id: u32) -> bool {
         self.stack.remove_by_id(entry_id).is_some()
     }
+}
+
+fn can_attachment_remain_attached(
+    cards: &[Card],
+    attachment: &Card,
+    target: &Card,
+    check_sba: bool,
+) -> bool {
+    if target.zone != ZoneType::Battlefield {
+        return true;
+    }
+    if crate::staticability::static_ability_cant_attach::cant_attach(
+        cards, attachment, target, check_sba,
+    ) {
+        return false;
+    }
+    !crate::staticability::static_ability_colorless_damage_source::target_is_protected_from_source(
+        cards, target, attachment,
+    )
 }
 
 #[cfg(test)]

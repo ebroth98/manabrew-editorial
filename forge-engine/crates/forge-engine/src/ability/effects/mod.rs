@@ -227,7 +227,7 @@ pub mod zone_triggers;
 
 // ── Re-exports so external callers keep the `effects::X` path ──────
 pub(crate) use combat_helpers::add_to_combat;
-pub(crate) use cost_payment::{try_pay_cumulative_upkeep, try_pay_unless_cost};
+pub(crate) use cost_payment::{try_pay_cumulative_upkeep, try_pay_echo, try_pay_unless_cost};
 pub use effect_context::EffectContext;
 pub(crate) use effect_resolver::{build_spell_ability_for_api, sub_ability_handled_internally};
 pub use effect_resolver::{

@@ -47,33 +47,34 @@ impl TriggerBehavior for TriggerAttacks {
     ) {
         // Java: sa.setTriggeringObject(AbilityKey.Defender, runParams.get(AbilityKey.Attacked));
         if let Some(p) = params.attacked_player {
-            sa.set_triggering_object(crate::ability::AbilityKey::Defender, p.0.to_string());
+            sa.set_triggering_object(crate::ability::AbilityKey::Defender, p);
         } else if let Some(c) = params.attacked_card {
-            sa.set_triggering_object(crate::ability::AbilityKey::Defender, c.0.to_string());
+            sa.set_triggering_object(crate::ability::AbilityKey::Defender, c);
         }
         // Java: sa.setTriggeringObjectsFrom(runParams, AbilityKey.Attacker, AbilityKey.Defenders, AbilityKey.DefendingPlayer);
         if let Some(attacker) = params.attacker {
-            sa.set_triggering_object(crate::ability::AbilityKey::Attacker, attacker.0.to_string());
+            sa.set_triggering_object(crate::ability::AbilityKey::Attacker, attacker);
         }
         // Defenders combines both player and card defender IDs
-        {
-            let mut parts = Vec::new();
-            if let Some(players) = params.defenders_player_ids.as_ref() {
-                for p in players {
-                    parts.push(p.0.to_string());
-                }
+        match (
+            params.defenders_player_ids.as_ref(),
+            params.defenders_card_ids.as_ref(),
+        ) {
+            (Some(players), None) => {
+                sa.set_triggering_object(crate::ability::AbilityKey::Defenders, players.clone());
             }
-            if let Some(cards) = params.defenders_card_ids.as_ref() {
-                for c in cards {
-                    parts.push(c.0.to_string());
-                }
+            (None, Some(cards)) => {
+                sa.set_triggering_object(crate::ability::AbilityKey::Defenders, cards.clone());
             }
-            if !parts.is_empty() {
+            (Some(players), Some(cards)) => {
+                let mut parts: Vec<String> = players.iter().map(|p| p.0.to_string()).collect();
+                parts.extend(cards.iter().map(|c| c.0.to_string()));
                 sa.set_triggering_object(crate::ability::AbilityKey::Defenders, parts.join(","));
             }
+            (None, None) => {}
         }
         if let Some(p) = params.defending_player {
-            sa.set_triggering_object(crate::ability::AbilityKey::DefendingPlayer, p.0.to_string());
+            sa.set_triggering_object(crate::ability::AbilityKey::DefendingPlayer, p);
         }
     }
 
