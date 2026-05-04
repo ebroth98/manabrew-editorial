@@ -282,6 +282,16 @@ impl GameLoop {
                         }
                     }
                 };
+                let room_right_split_ok = card.type_line.has_subtype("Room")
+                    && card.svars.get("RoomRightSplitCost").is_some_and(|cost| {
+                        let cost = forge_foundation::ManaCost::parse(cost);
+                        let adjusted = cost_adj.apply(&cost).add(&raise_mana);
+                        if any_color {
+                            available_mana.can_pay_any_color(&adjusted)
+                        } else {
+                            available_mana.can_pay(&adjusted)
+                        }
+                    });
 
                 // Spectacle: alt cost if opponent lost life this turn
                 let spectacle_ok = if let Some(spec_cost_str) = card.get_spectacle_cost() {
@@ -487,6 +497,7 @@ impl GameLoop {
                 };
 
                 if !normal_ok
+                    && !room_right_split_ok
                     && !spectacle_ok
                     && !evoke_ok
                     && !dash_ok
@@ -556,6 +567,13 @@ impl GameLoop {
                             playable.push(crate::agent::PlayOption {
                                 card_id,
                                 mode: crate::agent::PlayCardMode::Normal,
+                                alt_cost_index: 0,
+                            });
+                        }
+                        if room_right_split_ok {
+                            playable.push(crate::agent::PlayOption {
+                                card_id,
+                                mode: crate::agent::PlayCardMode::RoomRightSplit,
                                 alt_cost_index: 0,
                             });
                         }
@@ -698,29 +716,36 @@ impl GameLoop {
                 if !card.is_land() {
                     continue; // For now, only handle land MayPlay from graveyard
                 }
-                // Check if any static ability grants MayPlay$ for this card
-                let can_may_play = game
+                let may_play_grants = game
                     .cards_in_zone(ZoneType::Battlefield, player)
                     .iter()
-                    .any(|&source_id| {
+                    .chain(game.cards_in_zone(ZoneType::Command, player).iter())
+                    .map(|&source_id| {
                         let source = game.card(source_id);
-                        source.static_abilities.iter().any(|sa| {
-                            crate::staticability::static_ability_continuous::can_play_or_granted(
-                                sa, source, card, game,
-                            )
-                        })
-                    });
-                if can_may_play
+                        source
+                            .static_abilities
+                            .iter()
+                            .filter(|sa| {
+                                crate::staticability::static_ability_continuous::can_play_or_granted(
+                                    sa, source, card, game,
+                                )
+                            })
+                            .count()
+                    })
+                    .sum::<usize>();
+                if may_play_grants > 0
                     && crate::spellability::land_ability::can_play(
                         &SpellAbility::new_land(Some(card_id), player),
                         game,
                     )
                 {
-                    playable.push(crate::agent::PlayOption {
-                        card_id,
-                        mode: crate::agent::PlayCardMode::Normal,
-                        alt_cost_index: 0,
-                    });
+                    for _ in 0..may_play_grants {
+                        playable.push(crate::agent::PlayOption {
+                            card_id,
+                            mode: crate::agent::PlayCardMode::Normal,
+                            alt_cost_index: 0,
+                        });
+                    }
                 }
             }
         }
@@ -915,6 +940,9 @@ impl GameLoop {
             }
             if card.face_down {
                 if let Some(foretell_cost_str) = card.get_foretell_cost() {
+                    if card.entered_current_zone_this_turn(game.turn.turn_number) {
+                        continue;
+                    }
                     if must_be_instant && !has_flash_permission(card_id) {
                         continue;
                     }
@@ -948,8 +976,11 @@ impl GameLoop {
                 .chain(card.granted_keywords.iter_strings())
                 .find_map(crate::card::parse_plotted_turn)
             {
-                // Plot: plotted card in exile can be cast for free on a LATER turn
-                if game.turn.turn_number <= plotted_turn {
+                // Plot: plotted card in exile can be cast for free on a later turn,
+                // and Forge also rejects cards that entered exile this turn.
+                if game.turn.turn_number <= plotted_turn
+                    || card.entered_current_zone_this_turn(game.turn.turn_number)
+                {
                     continue;
                 }
                 if must_be_instant && !has_flash_permission(card_id) {

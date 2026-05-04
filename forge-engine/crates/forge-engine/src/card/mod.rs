@@ -353,6 +353,8 @@ pub struct Card {
     pub cant_block_static: bool,
 
     // Turn tracking
+    #[serde(default)]
+    pub turn_in_zone: u32,
     pub entered_battlefield_this_turn: bool,
     pub attacked_this_turn: bool,
     /// Snapshot of whether this permanent was tapped at the start of its
@@ -771,6 +773,7 @@ impl Card {
             has_deathtouch_damage: false,
             cant_attack_static: false,
             cant_block_static: false,
+            turn_in_zone: 0,
             entered_battlefield_this_turn: false,
             attacked_this_turn: false,
             started_turn_tapped: false,
@@ -982,7 +985,7 @@ impl Card {
     }
 
     pub fn is_creature(&self) -> bool {
-        self.type_line.is_creature()
+        !self.is_bestowed && self.type_line.is_creature()
     }
 
     pub fn is_land(&self) -> bool {
@@ -1725,6 +1728,10 @@ impl Card {
 
     pub fn entered_this_turn(&self) -> bool {
         self.entered_battlefield_this_turn
+    }
+
+    pub fn entered_current_zone_this_turn(&self, turn_number: u32) -> bool {
+        self.turn_in_zone == turn_number
     }
 
     pub fn calculate_perpetual_adjusted_mana_cost(&mut self) {

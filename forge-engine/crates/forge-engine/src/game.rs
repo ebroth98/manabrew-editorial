@@ -248,6 +248,12 @@ impl GameState {
         for trigger in &mut card.triggers {
             trigger.bind_host_card_id(bound_host.id);
         }
+        for static_ability in &mut card.static_abilities {
+            static_ability.base.set_host_card_id(bound_host.id);
+        }
+        for replacement_effect in &mut card.replacement_effects {
+            replacement_effect.base.set_host_card_id(bound_host.id);
+        }
         self.cards.push(card);
         id
     }

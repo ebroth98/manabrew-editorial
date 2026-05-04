@@ -729,7 +729,7 @@ pub fn get_all_candidates_creature_filtered(
     }
 }
 
-fn get_all_candidates_creature_filtered_for_restrictions(
+pub fn get_all_candidates_creature_filtered_for_restrictions(
     game: &GameState,
     restrictions: &TargetRestrictions,
     filter: Option<&str>,
@@ -780,7 +780,7 @@ pub fn get_all_battlefield_permanents_filtered(
     }
 }
 
-fn get_all_battlefield_permanents_filtered_for_restrictions(
+pub fn get_all_battlefield_permanents_filtered_for_restrictions(
     game: &GameState,
     restrictions: &TargetRestrictions,
     filter: Option<&str>,
@@ -1117,7 +1117,7 @@ pub fn get_all_candidates_any_filtered(
     candidates
 }
 
-fn get_all_candidates_any_filtered_for_restrictions(
+pub fn get_all_candidates_any_filtered_for_restrictions(
     game: &GameState,
     restrictions: &TargetRestrictions,
     source_controller: PlayerId,

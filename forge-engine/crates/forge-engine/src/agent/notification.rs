@@ -31,6 +31,11 @@ pub enum GameNotification {
         player: PlayerId,
         actions: Vec<ManaCostAction>,
     },
+    ActivatedAbilityPaymentFailed {
+        player: PlayerId,
+        card_id: CardId,
+        ability_index: usize,
+    },
     /// Dice were rolled. Display-only — sent for UI animation/feedback.
     /// Mirrors Java's `PlayerController.notifyOfRoll`.
     DiceRolled {

@@ -11,6 +11,7 @@
 //! `TriggerHandler` (registration), and `Card` (construction).
 
 use forge_carddb::CardRules;
+use forge_foundation::CardStateName;
 
 use crate::ids::{CardId, PlayerId};
 use crate::parsing::parse_or_warn;
@@ -19,6 +20,21 @@ use crate::staticability::{parse_static_ability, StaticAbility};
 use crate::trigger::{parse_trigger, Trigger};
 
 use super::{Card, CardOtherPart};
+
+fn mark_triggers_card_state(triggers: &mut [Trigger], card: &Card, state_name: CardStateName) {
+    let mut state = crate::card::card_state::CardState::new(card.clone(), state_name);
+    state.set_name(match state_name {
+        CardStateName::RightSplit => card
+            .svars
+            .get("RoomRightSplitName")
+            .cloned()
+            .unwrap_or_else(|| card.card_name.clone()),
+        _ => card.card_name.clone(),
+    });
+    for trigger in triggers {
+        trigger.base.set_card_state(state.clone());
+    }
+}
 
 // ── Phase 1: Parse ──────────────────────────────────────────────────────────
 
@@ -129,7 +145,7 @@ pub(crate) fn synthesize_derived(components: &mut ParsedComponents, existing_tri
 pub(crate) fn assemble_card(
     rules: &CardRules,
     owner: PlayerId,
-    components: ParsedComponents,
+    mut components: ParsedComponents,
 ) -> Card {
     let face = &rules.main_part;
 
@@ -157,6 +173,11 @@ pub(crate) fn assemble_card(
     card.initial_loyalty = face.initial_loyalty.clone();
 
     // Append parsed triggers to keyword-generated ones.
+    if rules.split_type == forge_foundation::CardSplitType::Split
+        && card.type_line.has_subtype("Room")
+    {
+        mark_triggers_card_state(&mut components.triggers, &card, CardStateName::LeftSplit);
+    }
     for trig in components.triggers {
         card.add_trigger(trig);
     }
@@ -204,9 +225,11 @@ pub(crate) fn assemble_card(
                 .trim()
                 .to_string();
             let unlock_name = &other_face.name;
+            card.set_s_var("RoomRightSplitName", unlock_name.as_str());
+            card.set_s_var("RoomRightSplitCost", &unlock_cost);
             // Build an activated ability for unlocking the second door.
             let ab_text = format!(
-                "AB$ UnlockDoor | Cost$ {} | SorcerySpeed$ True | SpellDescription$ Unlock {}",
+                "AB$ UnlockDoor | Cost$ {} | SorcerySpeed$ True | CardState$ RightSplit | SpellDescription$ Unlock {}",
                 unlock_cost, unlock_name
             );
             let next_idx = card.activated_abilities.len();
@@ -219,12 +242,18 @@ pub(crate) fn assemble_card(
             for (k, v) in &other_face.svars {
                 card.svars.entry(k.clone()).or_insert_with(|| v.clone());
             }
-            // NOTE: do NOT copy the other face's triggers. Java parity — each
-            // face's own `UnlockDoor` trigger belongs to that face's CardState
-            // and fires only when THAT face unlocks. Copying the other face's
-            // trigger onto this face caused `Walk-In Closet`'s ETB unlock to
-            // spuriously fire `Forgotten Cellar`'s trigger, adding an extra
-            // priority round to the phase.
+            let mut next_trigger_id = card.triggers.len() as u32;
+            let mut other_triggers: Vec<_> = other_face
+                .triggers
+                .iter()
+                .filter_map(|raw| {
+                    parse_or_warn(parse_trigger(raw, &mut next_trigger_id), "Trigger", raw)
+                })
+                .collect();
+            mark_triggers_card_state(&mut other_triggers, &card, CardStateName::RightSplit);
+            for trig in other_triggers {
+                card.add_trigger(trig);
+            }
         }
     }
 

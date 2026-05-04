@@ -860,6 +860,15 @@ impl GameLoop {
             CostPaymentContext::ActivatedAbility,
             Some(&mut sa),
         ) {
+            let notification =
+                crate::agent::notification::GameNotification::ActivatedAbilityPaymentFailed {
+                    player,
+                    card_id,
+                    ability_index: ab.ability_index,
+                };
+            for agent in agents.iter_mut() {
+                agent.notify(notification.clone());
+            }
             return false;
         }
         let tapped_by_activation: Vec<CardId> = untapped_before_payment

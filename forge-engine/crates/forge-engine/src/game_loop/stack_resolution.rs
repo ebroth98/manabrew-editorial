@@ -487,6 +487,27 @@ impl GameLoop {
                 // Register triggers for the new permanent
                 self.trigger_handler.register_active_trigger(game, card_id);
 
+                if game.card(card_id).type_line.has_subtype("Room")
+                    && game.card(card_id).has_s_var("RoomRightSplitCost")
+                {
+                    let card_state_name = entry
+                        .spell_ability
+                        .ir
+                        .card_state_name
+                        .clone()
+                        .or_else(|| Some("LeftSplit".to_string()));
+                    self.trigger_handler.run_trigger(
+                        TriggerType::UnlockDoor,
+                        RunParams {
+                            card: Some(card_id),
+                            player: Some(player),
+                            card_state_name,
+                            ..Default::default()
+                        },
+                        true,
+                    );
+                }
+
                 // Emit ChangesZone trigger (ETB)
                 crate::ability::effects::emit_zone_trigger(
                     &mut self.trigger_handler,

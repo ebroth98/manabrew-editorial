@@ -741,8 +741,28 @@ impl SpellAbility {
     /// Mirrors Java's `SpellAbility.canPlay()`.
     pub fn can_play(&self, game: &GameState) -> bool {
         if let Some(card_id) = self.source {
-            self.restriction
+            if !self
+                .restriction
                 .can_play(game, card_id, self.activating_player)
+            {
+                return false;
+            }
+
+            let card = game.card(card_id);
+            if let Some(limit_expr) = self.restriction.variables.limit_to_check() {
+                let limit = crate::svar::resolve_numeric_value(game, self, limit_expr, 0);
+                if card.get_ability_activated_this_turn(Some(self)) as i32 >= limit {
+                    return false;
+                }
+            }
+            if let Some(limit_expr) = self.restriction.variables.game_limit_to_check() {
+                let limit = crate::svar::resolve_numeric_value(game, self, limit_expr, 0);
+                if card.get_ability_activated_this_game(Some(self)) as i32 >= limit {
+                    return false;
+                }
+            }
+
+            true
         } else {
             true
         }

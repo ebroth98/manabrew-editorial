@@ -1,9 +1,4 @@
 //! Static utility methods related to combat.
-//! Mirrors Java's `CombatUtil.java`.
-//!
-//! Functions that previously lived in `combat/mod.rs` as free functions
-//! are re-exported here for file-parity with the Java codebase.
-
 use forge_foundation::ZoneType;
 
 use super::attack_constraints::AttackConstraints;
@@ -14,10 +9,6 @@ use crate::ids::{CardId, PlayerId};
 use crate::staticability::static_ability::StaticMode;
 use crate::staticability::static_ability_cant_attack_block;
 
-// ── Attacker queries ────────────────────────────────────────────────────
-
-/// Get available attackers: untapped creatures that can attack.
-/// Mirrors Java `CombatUtil.getPossibleAttackers()`.
 pub fn get_available_attackers(game: &GameState, player: PlayerId) -> Vec<CardId> {
     let defending = game.opponent_of(player);
     game.creatures_on_battlefield(player)
@@ -43,14 +34,10 @@ pub fn get_available_attackers(game: &GameState, player: PlayerId) -> Vec<CardId
         .collect()
 }
 
-/// Check if a player can attack this combat.
-/// Mirrors Java `CombatUtil.canAttack(Player)`.
 pub fn can_attack_player(game: &GameState, player: PlayerId) -> bool {
     !get_available_attackers(game, player).is_empty()
 }
 
-/// Check if a specific creature can attack a specific defender.
-/// Mirrors Java `CombatUtil.canAttack(Card, GameEntity)`.
 pub fn can_attack_defender(game: &GameState, attacker_id: CardId, defender: DefenderId) -> bool {
     let card = game.card(attacker_id);
 
@@ -85,8 +72,6 @@ pub fn can_attack_defender(game: &GameState, attacker_id: CardId, defender: Defe
     true
 }
 
-/// Validate that a set of attackers is legal for the current combat.
-/// Mirrors Java `CombatUtil.validateAttackers(Combat)`.
 pub fn validate_attackers(
     game: &GameState,
     constraints: &AttackConstraints,
@@ -100,8 +85,6 @@ pub fn validate_attackers(
     my_violations <= best_violations
 }
 
-/// Get all possible defenders for the attacking player.
-/// Mirrors Java `CombatUtil.getAllPossibleDefenders()`.
 pub fn get_possible_defenders(game: &GameState, attacking_player: PlayerId) -> Vec<DefenderId> {
     let mut defenders = Vec::new();
     for pid in game.alive_players() {
@@ -120,10 +103,6 @@ pub fn get_possible_defenders(game: &GameState, attacking_player: PlayerId) -> V
     defenders
 }
 
-// ── Blocker queries ─────────────────────────────────────────────────────
-
-/// Get available blockers: untapped creatures that can block.
-/// Mirrors Java `CombatUtil.canBlock(Player, Combat)` family.
 pub fn get_available_blockers(game: &GameState, player: PlayerId) -> Vec<CardId> {
     game.creatures_on_battlefield(player)
         .into_iter()
@@ -131,8 +110,6 @@ pub fn get_available_blockers(game: &GameState, player: PlayerId) -> Vec<CardId>
         .collect()
 }
 
-/// Check if a specific blocker can legally block a specific attacker.
-/// Mirrors Java `CombatUtil.canBlock(Card attacker, Card blocker)`.
 pub fn can_creature_block(game: &GameState, blocker_id: CardId, attacker_id: CardId) -> bool {
     let attacker = game.card(attacker_id);
     let blocker = game.card(blocker_id);
@@ -239,10 +216,6 @@ pub fn filter_legal_blockers(
         .collect()
 }
 
-// ── Block validation ────────────────────────────────────────────────────
-
-/// Validate blocker assignments and return invalid (blocker, attacker) pairs.
-/// Checks Menace, "can't block alone", etc.
 pub fn validate_blocks(game: &GameState, combat: &CombatState) -> Vec<(CardId, CardId)> {
     let mut invalid = Vec::new();
 
@@ -251,12 +224,6 @@ pub fn validate_blocks(game: &GameState, combat: &CombatState) -> Vec<(CardId, C
         let num_blockers = blockers_for.len();
 
         if num_blockers == 0 {
-            continue;
-        }
-
-        // Menace: must be blocked by 2+ creatures
-        if game.card(attacker_id).has_menace() && num_blockers == 1 {
-            invalid.push((blockers_for[0], attacker_id));
             continue;
         }
 
@@ -280,7 +247,6 @@ pub fn validate_blocks(game: &GameState, combat: &CombatState) -> Vec<(CardId, C
 }
 
 /// Check if a blocker must block an attacker this combat.
-/// Mirrors Java `CombatUtil.mustBlockAnAttacker()`.
 pub fn must_block_an_attacker(game: &GameState, combat: &CombatState, blocker_id: CardId) -> bool {
     let blocker = game.card(blocker_id);
     if blocker.must_block {
@@ -288,8 +254,6 @@ pub fn must_block_an_attacker(game: &GameState, combat: &CombatState, blocker_id
     }
     !compute_must_block_targets(game, combat, blocker_id).is_empty()
 }
-
-// ── Lure / Must-Block ────────────────────────────────────────────────────
 
 /// Determine the lure type of an attacker.
 pub fn get_lure_type(card: &Card) -> LureType {
@@ -346,7 +310,6 @@ pub fn compute_must_block_targets(
 }
 
 /// Check if blocker can block more creatures than it currently is.
-/// Mirrors Java `CombatUtil.canBlockMoreCreatures()`.
 pub fn can_block_more_creatures(
     game: &GameState,
     combat: &CombatState,
@@ -380,8 +343,6 @@ pub fn can_block_more_creatures(
 }
 
 /// Get the minimum number of blockers required to block an attacker.
-/// Returns 2 for Menace, 1 otherwise.
-/// Mirrors Java `CombatUtil.getMinNumBlockersForAttacker()`.
 pub fn get_min_num_blockers_for_attacker(game: &GameState, attacker_id: CardId) -> usize {
     let card = game.card(attacker_id);
     if card.has_menace() {
@@ -392,7 +353,6 @@ pub fn get_min_num_blockers_for_attacker(game: &GameState, attacker_id: CardId) 
 }
 
 /// Check if a creature can be blocked with a given number of blockers.
-/// Mirrors Java `CombatUtil.canAttackerBeBlockedWithAmount()`.
 pub fn can_attacker_be_blocked_with_amount(
     game: &GameState,
     attacker_id: CardId,
@@ -402,14 +362,12 @@ pub fn can_attacker_be_blocked_with_amount(
 }
 
 /// Declared-attacker trigger helper.
-/// Mirrors Java `CombatUtil.checkDeclaredAttacker()`.
 pub fn check_declared_attacker(game: &mut GameState, attacker_id: CardId, defender: DefenderId) {
     let controlling = defender.controlling_player(game);
     game.card_mut(attacker_id).set_attacking_player(controlling);
 }
 
 /// Get attack constraints for a combat.
-/// Mirrors Java `CombatUtil.getAllRequirements()`.
 pub fn get_all_requirements(
     game: &GameState,
     attacking_player: PlayerId,
@@ -419,7 +377,6 @@ pub fn get_all_requirements(
 }
 
 /// Check if a creature can attack any legal defender.
-/// Mirrors Java `CombatUtil.canAttack(Card)`.
 pub fn can_attack(game: &GameState, attacker_id: CardId) -> bool {
     let card = game.card(attacker_id);
     let possible_defenders = get_possible_defenders(game, card.controller);
@@ -429,7 +386,6 @@ pub fn can_attack(game: &GameState, attacker_id: CardId) -> bool {
 }
 
 /// Check if a creature could attack next turn (ignores tap/summoning sickness).
-/// Mirrors Java `CombatUtil.canAttackNextTurn()`.
 pub fn can_attack_next_turn(game: &GameState, attacker_id: CardId, defender: DefenderId) -> bool {
     let card = game.card(attacker_id);
 
@@ -453,7 +409,6 @@ pub fn can_attack_next_turn(game: &GameState, attacker_id: CardId, defender: Def
 }
 
 /// Check if a creature could attack but is not currently attacking.
-/// Mirrors Java `CombatUtil.couldAttackButNotAttacking()`.
 pub fn could_attack_but_not_attacking(
     game: &GameState,
     combat: &CombatState,
@@ -466,10 +421,6 @@ pub fn could_attack_but_not_attacking(
 }
 
 /// Check propaganda-style effects that require paying a cost to attack.
-/// Mirrors Java `CombatUtil.checkPropagandaEffects()`.
-///
-/// Returns true if the attacker can proceed (cost is zero or paid).
-/// This delegates to the existing attack_cost module.
 pub fn check_propaganda_effects(
     game: &GameState,
     attacker_id: CardId,
@@ -481,9 +432,6 @@ pub fn check_propaganda_effects(
 }
 
 /// Pay required block costs for a blocker.
-/// Mirrors Java `CombatUtil.payRequiredBlockCosts()`.
-///
-/// Returns true if all costs are paid (or zero).
 pub fn pay_required_block_costs(game: &GameState, blocker_id: CardId, attacker_id: CardId) -> bool {
     let blocker = game.card(blocker_id);
     let attacker = game.card(attacker_id);
@@ -492,7 +440,6 @@ pub fn pay_required_block_costs(game: &GameState, blocker_id: CardId, attacker_i
 }
 
 /// Check if a creature can block (basic check: untapped creature).
-/// Mirrors Java `CombatUtil.canBlock(Card)`.
 pub fn can_block(game: &GameState, blocker_id: CardId) -> bool {
     let blocker = game.card(blocker_id);
 
@@ -520,7 +467,6 @@ pub fn can_block(game: &GameState, blocker_id: CardId) -> bool {
 }
 
 /// Check if an attacker can be blocked by the given set of potential blockers.
-/// Mirrors Java `CombatUtil.canBeBlocked()`.
 pub fn can_be_blocked(
     game: &GameState,
     attacker_id: CardId,
@@ -532,7 +478,6 @@ pub fn can_be_blocked(
 }
 
 /// Check if a blocker can block at least one attacker from a list.
-/// Mirrors Java `CombatUtil.canBlockAtLeastOne()`.
 pub fn can_block_at_least_one(game: &GameState, blocker_id: CardId, attackers: &[CardId]) -> bool {
     attackers
         .iter()
@@ -540,7 +485,6 @@ pub fn can_block_at_least_one(game: &GameState, blocker_id: CardId, attackers: &
 }
 
 /// Find blockers that are not yet assigned to block anything.
-/// Mirrors Java `CombatUtil.findFreeBlockers()`.
 pub fn find_free_blockers(
     game: &GameState,
     combat: &CombatState,

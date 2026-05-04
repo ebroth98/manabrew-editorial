@@ -400,6 +400,11 @@ impl GameLoop {
         let mut static_alternative_cost_prepared = false;
         match play_mode {
             crate::agent::PlayCardMode::Normal => {}
+            crate::agent::PlayCardMode::RoomRightSplit => {
+                let cost = game.card(card_id).svars.get("RoomRightSplitCost")?;
+                sa.pay_costs = Some(parse_cost(cost));
+                sa.ir.card_state_name = Some("RightSplit".to_string());
+            }
             crate::agent::PlayCardMode::UnlockDoor
             | crate::agent::PlayCardMode::ForetellExile
             | crate::agent::PlayCardMode::BackFaceLand => return None,

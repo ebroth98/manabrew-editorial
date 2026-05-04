@@ -261,8 +261,17 @@ impl GameState {
             self.remove_card_from_zone(src_zone, src_owner, card_id);
         }
 
+        if src_zone == ZoneType::Exile && dest_zone != ZoneType::Exile {
+            self.cards[card_id.index()]
+                .keywords
+                .retain(|kw| !kw.starts_with(crate::card::KEYWORD_PLOTTED_PREFIX));
+        }
+
         // Update card's zone
         self.cards[card_id.index()].zone = dest_zone;
+        if src_zone != dest_zone {
+            self.cards[card_id.index()].turn_in_zone = self.turn.turn_number;
+        }
 
         if let Some(table) = self.pending_change_zone_table.as_mut() {
             table.put(Some(src_zone), Some(dest_zone), card_id);

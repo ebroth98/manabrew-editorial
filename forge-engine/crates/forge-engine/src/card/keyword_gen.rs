@@ -229,18 +229,19 @@ impl Card {
         }
 
         // Enlist: K:Enlist -> intrinsic optional attack cost static ability.
-        // Java builds: Mode$ OptionalAttackCost | Cost$ Enlist<1/CARDNAME/creature> ...
-        // Rust cost parser normalizes this and the combat loop applies the enlist payment.
         if self
             .keywords
             .iter_strings()
             .chain(self.granted_keywords.iter_strings())
             .any(|k| k.eq_ignore_ascii_case("Enlist"))
         {
-            let raw = "S:Mode$ OptionalAttackCost | ValidCard$ Card.Self | Cost$ Enlist<1/CARDNAME/creature> | Secondary$ True";
+            let raw = "S:Mode$ OptionalAttackCost | ValidCard$ Card.Self | Cost$ Enlist<1/CARDNAME/creature> | Secondary$ True | Trigger$ TrigEnlist";
             if let Some(sa) = parse_static_ability(raw) {
                 self.add_static_ability(sa);
             }
+            self.svars.entry("TrigEnlist".to_string()).or_insert_with(|| {
+                "DB$ Pump | NumAtt$ TriggerRemembered$CardPower | SpellDescription$ When you do, add its power to this creature's until end of turn.".to_string()
+            });
         }
 
         // Morph / Megamorph: mark card as castable face-down for {3}.

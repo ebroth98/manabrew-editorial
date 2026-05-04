@@ -378,6 +378,9 @@ impl CapturingAgent {
             .playable
             .retain(|play| !self.failed_payment_cards_this_turn.contains(&play.card_id));
         filtered
+            .activatable
+            .retain(|(card_id, _)| !self.failed_payment_cards_this_turn.contains(card_id));
+        filtered
     }
 }
 
@@ -545,6 +548,13 @@ impl PlayerAgent for CapturingAgent {
                             self.failed_payment_cards_this_turn.insert(card_id);
                         }
                     }
+                }
+            }
+            GameNotification::ActivatedAbilityPaymentFailed {
+                player, card_id, ..
+            } => {
+                if *player == self.player_id {
+                    self.failed_payment_cards_this_turn.insert(*card_id);
                 }
             }
             _ => {}

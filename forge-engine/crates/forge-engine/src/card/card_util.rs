@@ -579,24 +579,29 @@ pub fn get_valid_cards_to_target(game: &GameState, ability: &SpellAbility) -> Ve
             ZoneType::Battlefield => {
                 candidates.extend(match &tgt.target_kind {
                     target_restrictions::TargetKind::Creature(filter) => {
-                        target_restrictions::get_all_candidates_creature_filtered(
+                        target_restrictions::get_all_candidates_creature_filtered_for_restrictions(
                             game,
+                            tgt,
                             filter.as_deref(),
-                            ability.activating_player,
+                            player,
+                            ability.source,
                         )
                     }
                     target_restrictions::TargetKind::Permanent(filter) => {
-                        target_restrictions::get_all_battlefield_permanents_filtered(
+                        target_restrictions::get_all_battlefield_permanents_filtered_for_restrictions(
                             game,
+                            tgt,
                             filter.as_deref(),
-                            ability.activating_player,
+                            player,
+                            ability.source,
                         )
                     }
                     target_restrictions::TargetKind::Any => {
-                        target_restrictions::get_all_candidates_any_filtered(
+                        target_restrictions::get_all_candidates_any_filtered_for_restrictions(
                             game,
-                            &tgt.valid_tgts,
-                            ability.activating_player,
+                            tgt,
+                            player,
+                            ability.source,
                         )
                     }
                     _ => Vec::new(),

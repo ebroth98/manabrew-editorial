@@ -1,4 +1,6 @@
+use forge_engine_core::card::Card;
 use forge_engine_core::ids::CardId;
+use forge_engine_core::player::actions::player_action::STATIC_ALTERNATIVE_ABILITY_INDEX;
 use forge_foundation::Color;
 
 pub fn sort_cards_by_name_then_id(
@@ -19,6 +21,54 @@ pub fn sort_replacement_descriptions_with_indices(descriptions: &[String]) -> Ve
     let mut out: Vec<(usize, String)> = descriptions.iter().cloned().enumerate().collect();
     out.sort_by(|a, b| a.1.cmp(&b.1).then_with(|| a.0.cmp(&b.0)));
     out
+}
+
+pub fn ability_declaration_sort_index(
+    cards: &[Card],
+    ability_texts: &[((CardId, usize), String)],
+    card_id: CardId,
+    ability_idx: usize,
+) -> usize {
+    let Some(card) = cards.iter().find(|card| card.id == card_id) else {
+        return ability_idx;
+    };
+    let mut entries: Vec<(usize, u8)> = ability_texts
+        .iter()
+        .filter_map(|((cid, idx), text)| {
+            if *cid != card_id {
+                return None;
+            }
+            let group = if card.abilities.iter().any(|raw| raw == text) {
+                0
+            } else if card.granted_svars.values().any(|raw| raw == text) {
+                1
+            } else {
+                2
+            };
+            Some((*idx, group))
+        })
+        .collect();
+    entries.sort_by_key(|(idx, group)| (*group, *idx));
+    entries
+        .iter()
+        .position(|(idx, _)| *idx == ability_idx)
+        .unwrap_or(ability_idx)
+}
+
+pub fn ability_declaration_sort_key(
+    cards: &[Card],
+    ability_texts: &[((CardId, usize), String)],
+    card_id: CardId,
+    ability_idx: usize,
+) -> String {
+    if ability_idx == STATIC_ALTERNATIVE_ABILITY_INDEX {
+        "-0001".to_string()
+    } else {
+        format!(
+            "{:05}",
+            ability_declaration_sort_index(cards, ability_texts, card_id, ability_idx)
+        )
+    }
 }
 
 fn java_color_set_order(mask: u8) -> &'static [Color] {

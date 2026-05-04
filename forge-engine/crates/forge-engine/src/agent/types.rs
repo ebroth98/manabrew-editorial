@@ -46,6 +46,8 @@ impl PlayOption {
 pub enum PlayCardMode {
     Normal,
     BackFaceLand,
+    /// Cast the right split face of a Room card from hand.
+    RoomRightSplit,
     Alternative(AlternativeCost),
     /// Alternative cost granted by `Mode$ AlternativeCost` static abilities.
     StaticAlternative,

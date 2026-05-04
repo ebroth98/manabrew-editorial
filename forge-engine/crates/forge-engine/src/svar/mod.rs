@@ -17,6 +17,14 @@ fn parse_trigger_int_object(sa: &SpellAbility, key: &str) -> Option<i32> {
         .and_then(|value| value.trim().parse::<i32>().ok())
 }
 
+fn first_trigger_remembered_card(sa: &SpellAbility) -> Option<CardId> {
+    sa.trigger_remembered.iter().find_map(|value| match value {
+        crate::event::AbilityValue::Card(card_id) => Some(*card_id),
+        crate::event::AbilityValue::Cards(cards) => cards.first().copied(),
+        _ => None,
+    })
+}
+
 fn parse_trigger_int_values(sa: &SpellAbility, key: &str) -> Vec<i32> {
     crate::ability::ability_key::from_string(key)
         .and_then(|ability_key| sa.get_triggering_value(ability_key))
@@ -779,6 +787,19 @@ pub fn resolve_numeric_value(
         (1, val_str)
     };
 
+    if val_str == "TriggerRemembered$CardPower" {
+        return sign
+            * first_trigger_remembered_card(sa)
+                .map(|card_id| crate::lki::resolve_lki_power(game, card_id))
+                .unwrap_or(0);
+    }
+    if val_str == "TriggerRemembered$CardToughness" {
+        return sign
+            * first_trigger_remembered_card(sa)
+                .map(|card_id| crate::lki::resolve_lki_toughness(game, card_id))
+                .unwrap_or(0);
+    }
+
     // Check if it's the X mana cost value directly
     if val_str == "X" {
         // First check if there's an SVar named "X" on the source card
@@ -853,6 +874,18 @@ pub fn resolve_numeric_value(
                         return sign * crate::lki::resolve_lki_toughness(game, trigger_src);
                     }
                     return 0;
+                }
+                if svar_expr == "TriggerRemembered$CardPower" {
+                    return sign
+                        * first_trigger_remembered_card(sa)
+                            .map(|card_id| crate::lki::resolve_lki_power(game, card_id))
+                            .unwrap_or(0);
+                }
+                if svar_expr == "TriggerRemembered$CardToughness" {
+                    return sign
+                        * first_trigger_remembered_card(sa)
+                            .map(|card_id| crate::lki::resolve_lki_toughness(game, card_id))
+                            .unwrap_or(0);
                 }
                 // TriggeredCard$CardCounters.TYPE — LKI counter count resolution
                 // Used by Servant of the Scale, Modular creatures, etc.
@@ -982,6 +1015,18 @@ pub fn resolve_numeric_value(
                     return sign * crate::lki::resolve_lki_toughness(game, trigger_src);
                 }
                 return 0;
+            }
+            if svar_expr == "TriggerRemembered$CardPower" {
+                return sign
+                    * first_trigger_remembered_card(sa)
+                        .map(|card_id| crate::lki::resolve_lki_power(game, card_id))
+                        .unwrap_or(0);
+            }
+            if svar_expr == "TriggerRemembered$CardToughness" {
+                return sign
+                    * first_trigger_remembered_card(sa)
+                        .map(|card_id| crate::lki::resolve_lki_toughness(game, card_id))
+                        .unwrap_or(0);
             }
             // TriggeredCard$CardCounters.TYPE — LKI counter count resolution
             if let Some(counter_name) = svar_expr.strip_prefix("TriggeredCard$CardCounters.") {

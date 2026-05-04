@@ -43,6 +43,20 @@ impl TriggerBehavior for TriggerUnlockDoor {
         if self.this_door && params.card != Some(host_card) {
             return false;
         }
+        if self.this_door {
+            if let Some(trigger_state) = trigger.base.card_trait_base.get_card_state_name() {
+                let Some(run_state) = params
+                    .card_state_name
+                    .as_deref()
+                    .and_then(forge_foundation::CardStateName::from_str_compat)
+                else {
+                    return false;
+                };
+                if run_state != trigger_state {
+                    return false;
+                }
+            }
+        }
         true
     }
 

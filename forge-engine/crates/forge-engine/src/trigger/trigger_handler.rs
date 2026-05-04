@@ -942,11 +942,12 @@ impl TriggerHandler {
                     description: String::new(),
                 };
                 let ts = game.card(delayed.source_card).zone_timestamp;
+                let trigger_bucket = if delayed.sort_after_active { 2 } else { 0 };
                 entries.push((
                     pending,
                     delayed.controller,
                     ts,
-                    0,
+                    trigger_bucket,
                     delayed.trigger_order.unwrap_or(0),
                 ));
                 fired_indices.push(idx);

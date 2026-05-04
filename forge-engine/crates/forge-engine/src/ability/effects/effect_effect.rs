@@ -106,7 +106,13 @@ fn resolve_impl(ctx: &mut EffectContext, sa: &SpellAbility) {
     let parsed_static_abilities = static_refs
         .iter()
         .filter_map(|svar_name| ctx.game.card(source_id).get_s_var(svar_name))
-        .filter_map(|raw| parse_static_ability(&format!("S$ {}", raw)))
+        .filter_map(|raw| {
+            let mut static_ability = parse_static_ability(&format!("S$ {}", raw))?;
+            static_ability.ir.active_zones = vec![ZoneType::Command];
+            static_ability.ir.has_zone_keys = true;
+            static_ability.base.set_intrinsic(true);
+            Some(static_ability)
+        })
         .collect::<Vec<_>>();
 
     // `Triggers$` / `ReplacementEffects$` / `Abilities$` grants need the raw SVar

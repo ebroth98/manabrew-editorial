@@ -174,6 +174,9 @@ pub fn apply_continuous_effects(game: &mut GameState) {
         if card.activated_abilities.len() > card.base_ability_count {
             card.activated_abilities.truncate(card.base_ability_count);
         }
+        for (ability_idx, ability) in card.activated_abilities.iter_mut().enumerate() {
+            ability.ability_index = ability_idx;
+        }
         let intrinsic_trigger_count = card.base_trigger_count + card.pump_trigger_count;
         if card.triggers.len() > intrinsic_trigger_count {
             card.triggers.truncate(intrinsic_trigger_count);
@@ -603,13 +606,12 @@ pub fn apply_continuous_effects(game: &mut GameState) {
                 game.cards[effect.target.index()]
                     .granted_svars
                     .extend(svars);
-                let next_idx = game.cards[effect.target.index()].activated_abilities.len();
+                let target_idx = effect.target.index();
+                let next_idx = game.cards[target_idx].activated_abilities.len();
                 if let Some(ab) =
                     crate::ability::activated::parse_activated_ability(&text, next_idx)
                 {
-                    game.cards[effect.target.index()]
-                        .activated_abilities
-                        .push(ab);
+                    game.cards[target_idx].activated_abilities.push(ab);
                 }
             }
             EffectKind::GrantTrigger { text, svars } => {

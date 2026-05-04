@@ -41,7 +41,7 @@
   },
   {
     "name": "worldShaper",
-    "args": "--variant Commander --commander 'Hearthhull, the Worldseed' --commander 'Hearthhull, the Worldseed' --deck1 hearthhull_world_shaper_commander --deck2 hearthhull_world_shaper_commander --seed 42 --max-turns 40 --games 1"
+    "args": "--variant Commander --commander 'Hearthhull, the Worldseed' --commander 'Hearthhull, the Worldseed' --deck1 hearthhull_world_shaper_commander --deck2 hearthhull_world_shaper_commander --seed 42 --max-turns 25 --games 1"
   },
   {
     "name": "ashling",

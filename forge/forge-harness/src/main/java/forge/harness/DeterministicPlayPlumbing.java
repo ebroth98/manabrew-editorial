@@ -49,6 +49,7 @@ final class DeterministicPlayPlumbing {
 
     boolean playNoStackDeterministic(final Player ai, SpellAbility sa, final Game game, final boolean effect) {
         sa.setActivatingPlayer(ai);
+        clearPaymentState(sa);
         if (!ComputerUtilCost.canPayCost(sa, ai, effect)) {
             return false;
         }
@@ -70,6 +71,7 @@ final class DeterministicPlayPlumbing {
 
     boolean playStackDeterministic(SpellAbility sa, final Player ai, final Game game) {
         sa.setActivatingPlayer(ai);
+        clearPaymentState(sa);
         if (!ComputerUtilCost.canPayCost(sa, ai, false)) {
             return false;
         }
@@ -120,6 +122,7 @@ final class DeterministicPlayPlumbing {
         if (!sa.isCopied()) {
             sa.resetPaidHash();
             sa.setPaidLife(0);
+            clearPaymentState(sa);
         }
 
         if (sa.getApi() == ApiType.Charm && !CharmEffect.makeChoices(sa)) {
@@ -197,6 +200,11 @@ final class DeterministicPlayPlumbing {
         // primaryAbility doesn't match the new ability.
         game.getStack().unfreezeStack();
         return false;
+    }
+
+    private static void clearPaymentState(final SpellAbility sa) {
+        sa.clearManaPaid();
+        sa.getPayingManaAbilities().clear();
     }
 
     /**

@@ -362,6 +362,7 @@ impl DeterministicAgent {
         match play.mode {
             PlayCardMode::Normal => "0",
             PlayCardMode::BackFaceLand => "0",
+            PlayCardMode::RoomRightSplit => "0",
             PlayCardMode::Alternative(AlternativeCost::Flashback) => "Flashback",
             PlayCardMode::Alternative(AlternativeCost::Spectacle) => "Spectacle",
             PlayCardMode::Alternative(AlternativeCost::Evoke) => "Evoke",
@@ -416,6 +417,7 @@ impl DeterministicAgent {
         let base = match play.mode {
             PlayCardMode::Normal => "0",
             PlayCardMode::BackFaceLand => "1",
+            PlayCardMode::RoomRightSplit => "2",
             PlayCardMode::Alternative(AlternativeCost::Warp) => "Warp",
             PlayCardMode::StaticAlternative => "StaticAlternative",
             // Other modes already have unique variant strings, so fallback rarely matters.
@@ -432,11 +434,23 @@ impl DeterministicAgent {
                 // with abilityDeclarationIndex as the variant, not the spell bucket.
                 if play.mode == PlayCardMode::UnlockDoor {
                     let ability_idx = self.unlock_door_ability_index(play.card_id);
+                    let sort_idx = self
+                        .last_game_snapshot
+                        .as_ref()
+                        .map(|snap| {
+                            parity_order::ability_declaration_sort_key(
+                                &snap.cards,
+                                &snap.ability_texts,
+                                play.card_id,
+                                ability_idx,
+                            )
+                        })
+                        .unwrap_or_else(|| format!("{ability_idx:05}"));
                     return format!(
-                        "AB:{}|1|{}|{:05}|{}",
+                        "AB:{}|1|{}|{}|{}",
                         self.card_name(play.card_id),
                         self.parity_map.id(play.card_id),
-                        ability_idx,
+                        sort_idx,
                         self.ability_sort_text(play.card_id, ability_idx),
                     );
                 }
@@ -450,11 +464,24 @@ impl DeterministicAgent {
                 )
             }
             ActionChoice::Ability(card_id, ability_idx) => {
-                let sort_idx = if ability_idx == STATIC_ALTERNATIVE_ABILITY_INDEX {
-                    "-0001".to_string()
-                } else {
-                    format!("{ability_idx:05}")
-                };
+                let sort_idx = self
+                    .last_game_snapshot
+                    .as_ref()
+                    .map(|snap| {
+                        parity_order::ability_declaration_sort_key(
+                            &snap.cards,
+                            &snap.ability_texts,
+                            card_id,
+                            ability_idx,
+                        )
+                    })
+                    .unwrap_or_else(|| {
+                        if ability_idx == STATIC_ALTERNATIVE_ABILITY_INDEX {
+                            "-0001".to_string()
+                        } else {
+                            format!("{ability_idx:05}")
+                        }
+                    });
                 format!(
                     "AB:{}|1|{}|{}|{}",
                     self.card_name(card_id),
@@ -843,6 +870,7 @@ impl PlayerAgent for DeterministicAgent {
                         match play.mode {
                             PlayCardMode::Normal => "Normal",
                             PlayCardMode::BackFaceLand => "BackFaceLand",
+                            PlayCardMode::RoomRightSplit => "RoomRightSplit",
                             PlayCardMode::UnlockDoor => "UnlockDoor",
                             PlayCardMode::StaticAlternative => "StaticAlternative",
                             PlayCardMode::ForetellExile => "ForetellExile",
@@ -891,6 +919,7 @@ impl PlayerAgent for DeterministicAgent {
                         match play.mode {
                             PlayCardMode::Normal => "Normal",
                             PlayCardMode::BackFaceLand => "BackFaceLand",
+                            PlayCardMode::RoomRightSplit => "RoomRightSplit",
                             PlayCardMode::UnlockDoor => "UnlockDoor",
                             PlayCardMode::StaticAlternative => "StaticAlternative",
                             PlayCardMode::ForetellExile => "ForetellExile",

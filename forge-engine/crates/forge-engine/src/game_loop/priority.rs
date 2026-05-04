@@ -729,12 +729,6 @@ impl GameLoop {
                             this.process_triggers(game, agents);
                         });
                         passed_count = 0;
-                    } else {
-                        // Activation failed (e.g. payment declined, targets invalid).
-                        // Match Java's behaviour: the player retains priority and
-                        // gets to choose again (Java's do-while loops back to
-                        // chooseSpellAbilityToPlay for the same player).  Do NOT
-                        // change passed_count or priority_player.
                     }
                 }
             }

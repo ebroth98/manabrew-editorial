@@ -174,6 +174,9 @@ impl<T: AgentTransport> PromptAgent<T> {
                 "Foretell (exile face-down)".to_string(),
             ),
             PlayCardMode::UnlockDoor => ("unlockDoor".to_string(), "Unlock door".to_string()),
+            PlayCardMode::RoomRightSplit => {
+                ("roomRightSplit".to_string(), "Cast right room".to_string())
+            }
         };
         PlayOptionDto {
             card_id,
@@ -191,6 +194,7 @@ impl<T: AgentTransport> PromptAgent<T> {
             "staticAlternative" => Some(PlayCardMode::StaticAlternative),
             "foretellExile" => Some(PlayCardMode::ForetellExile),
             "unlockDoor" => Some(PlayCardMode::UnlockDoor),
+            "roomRightSplit" => Some(PlayCardMode::RoomRightSplit),
             s if s.starts_with("alternative:") => {
                 let alt_name = &s["alternative:".len()..];
                 let alt = match alt_name {
@@ -1369,6 +1373,11 @@ impl<T: AgentTransport> PlayerAgent for PromptAgent<T> {
                 }
             }
             GameNotification::ManaPaymentResolved { .. } => {}
+            GameNotification::ActivatedAbilityPaymentFailed { .. } => {
+                self.send_prompt(AgentPromptInner::StateUpdate {
+                    game_view: self.view(),
+                });
+            }
         }
     }
 

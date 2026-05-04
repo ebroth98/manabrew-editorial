@@ -2710,9 +2710,6 @@ impl GameLoop {
             let enlisted_power = game.card(chosen).power();
             game.tap(chosen);
             game.card_mut(source).mark_enlisted_this_combat();
-            // Enlist rule text: add enlisted creature's power to attacker until end of turn.
-            // Temporary power modifiers are cleared in cleanup.
-            game.card_mut(source).add_enlisted_power(enlisted_power);
             self.trigger_handler.run_trigger(
                 TriggerType::TapAll,
                 RunParams {
@@ -2721,6 +2718,24 @@ impl GameLoop {
                     ..Default::default()
                 },
                 false,
+            );
+            self.trigger_handler.register_delayed_trigger(
+                crate::trigger::handler::DelayedTrigger {
+                    mode: TriggerType::Immediate,
+                    trigger_mode: Box::new(crate::trigger::trigger_immediate::TriggerImmediate),
+                    params: crate::parsing::Params::default(),
+                    execute_svar: "TrigEnlist".to_string(),
+                    controller: player,
+                    source_card: source,
+                    created_turn: game.turn.turn_number,
+                    created_phase: game.turn.phase,
+                    target_card: None,
+                    remembered_amount: enlisted_power,
+                    remembered_cards: vec![chosen],
+                    remembered_lki_cards: vec![chosen],
+                    sort_after_active: true,
+                    trigger_order: None,
+                },
             );
             self.trigger_handler.run_trigger(
                 TriggerType::Enlisted,
@@ -3060,25 +3075,34 @@ impl GameLoop {
                 }
             }
         } else {
-            for _ in 0..amount {
-                let valid = cost::get_tap_type_targets(game, player, type_filter, source);
-                if valid.is_empty() {
-                    break;
+            let valid = cost::get_tap_type_targets(game, player, type_filter, source);
+            if valid.len() < amount.max(0) as usize {
+                return;
+            }
+            let chosen_cards = agents[player.index()].choose_cards_for_effect(
+                player,
+                &valid,
+                amount.max(0) as usize,
+                amount.max(0) as usize,
+            );
+            if chosen_cards.len() < amount.max(0) as usize {
+                return;
+            }
+            for chosen in chosen_cards.into_iter().take(amount.max(0) as usize) {
+                if !valid.contains(&chosen) || tapped_cards.contains(&chosen) {
+                    continue;
                 }
-                if let Some(chosen) = agents[player.index()].choose_sacrifice(player, &valid, None)
-                {
-                    game.tap(chosen);
-                    tapped_cards.push(chosen);
-                    self.trigger_handler.run_trigger(
-                        TriggerType::Taps,
-                        RunParams {
-                            card: Some(chosen),
-                            player: Some(player),
-                            ..Default::default()
-                        },
-                        false,
-                    );
-                }
+                game.tap(chosen);
+                tapped_cards.push(chosen);
+                self.trigger_handler.run_trigger(
+                    TriggerType::Taps,
+                    RunParams {
+                        card: Some(chosen),
+                        player: Some(player),
+                        ..Default::default()
+                    },
+                    false,
+                );
             }
         }
         if let Some(sa) = sa.as_deref_mut() {
