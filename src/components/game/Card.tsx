@@ -12,6 +12,7 @@ import {
   upgradeScryfallUrl,
   type ScryfallImageSize,
 } from "./game.utils";
+import { isHorizontalCard } from "@/lib/cardLayout";
 import { CARD_BADGES } from "./game.constants";
 import { CARD_BANNER_CONTAINER, CARD_BANNER_TEXT } from "./game.styles";
 import { useCard } from "@/stores/useScryfallStore";
@@ -63,6 +64,10 @@ function CardComponent({
   resolution = "normal",
 }: CardProps) {
   const [hasError, setHasError] = useState(false);
+  // Fallback so the flip button works when no parent drives showBackFace.
+  const [internalShowBack, setInternalShowBack] = useState(false);
+  const effectiveShowBack = showBackFace ?? internalShowBack;
+  const handleFlip = onFlip ?? (() => setInternalShowBack((v) => !v));
   const cardD = useCard(card);
   const frontFace = cardD?.info?.card_faces?.[0];
   const backFace = cardD?.info?.card_faces?.[1];
@@ -73,13 +78,13 @@ function CardComponent({
   };
 
   const imageUrl = upgradeScryfallUrl(
-    showBackFace && doubleFacedData?.backImageUrl
+    effectiveShowBack && doubleFacedData?.backImageUrl
       ? doubleFacedData.backImageUrl
       : card.imageUrl || cardD?.uris[resolution],
     resolution,
   );
   const displayName =
-    showBackFace && doubleFacedData?.backName ? doubleFacedData.backName : card.name;
+    effectiveShowBack && doubleFacedData?.backName ? doubleFacedData.backName : card.name;
   const themeColors = useTheme().gameTheme;
 
   const creature = isCreature(card);
@@ -109,11 +114,21 @@ function CardComponent({
     };
   }, [lethal, card.basePower, card.power, card.toughness, card.baseToughness, themeColors]);
 
+  // Back face orientation is driven by its own type line, not the parent layout.
+  const visibleFace = effectiveShowBack ? backFace : frontFace;
+  const horizontal = visibleFace
+    ? isHorizontalCard({ typeLine: visibleFace.type_line })
+    : isHorizontalCard({
+        layout: card.layout ?? cardD?.info?.layout,
+        types: card.types,
+        typeLine: cardD?.info?.type_line,
+      });
+
   return (
     <div
       className={cn(
         "relative rounded-lg border bg-card text-card-foreground shadow-sm cursor-pointer group overflow-hidden",
-        "w-[150px] aspect-[5/7]",
+        horizontal ? "w-[210px] aspect-[7/5]" : "w-[150px] aspect-[5/7]",
         isTapped && "rotate-90",
         // Summoning-sickness ring: dashed outline in the theme's muted
         // `prompt-action-cancel` colour, inset so it sits on the rounded
@@ -131,14 +146,25 @@ function CardComponent({
     >
       {imageUrl && !hasError ? (
         <>
-          <img
-            src={imageUrl}
-            alt={displayName}
-            title=""
-            className="absolute inset-0 w-full h-full object-contain rounded-lg"
-            onError={() => setHasError(true)}
-            style={{ imageRendering: "auto" }}
-          />
+          {horizontal ? (
+            <img
+              src={imageUrl}
+              alt={displayName}
+              title=""
+              className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 rotate-90 origin-center h-[calc(100%*7/5)] aspect-[5/7] rounded-lg"
+              onError={() => setHasError(true)}
+              style={{ imageRendering: "auto" }}
+            />
+          ) : (
+            <img
+              src={imageUrl}
+              alt={displayName}
+              title=""
+              className="absolute inset-0 w-full h-full object-contain rounded-lg"
+              onError={() => setHasError(true)}
+              style={{ imageRendering: "auto" }}
+            />
+          )}
           {/* Status badge — only the highest-priority one shows */}
           {card.exerted ? (
             <CardBadge {...CARD_BADGES.exerted} />
@@ -263,7 +289,7 @@ function CardComponent({
       )}
 
       {/* Flip button for double-faced cards - appears on hover */}
-      {card.isDoubleFaced && (
+      {(card.isDoubleFaced || !!doubleFacedData.backImageUrl) && (
         <div
           className={cn(
             "absolute left-1/2 -translate-x-1/2 bottom-0 z-50",
@@ -274,10 +300,10 @@ function CardComponent({
             onMouseDown={(e) => e.stopPropagation()}
             onClick={(e) => {
               e.stopPropagation();
-              onFlip?.();
+              handleFlip();
             }}
             className="bg-black/90 hover:bg-black text-white px-2.5 py-1 rounded shadow-lg border border-white/20 transition-colors pointer-events-auto flex items-center gap-1.5 whitespace-nowrap text-xs backdrop-blur-sm"
-            title={showBackFace ? "Show Front Face" : "Show Back Face"}
+            title={effectiveShowBack ? "Show Front Face" : "Show Back Face"}
           >
             <svg
               xmlns="http://www.w3.org/2000/svg"

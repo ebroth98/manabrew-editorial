@@ -251,6 +251,8 @@ function bundlePresetDecks() {
       label: deck.label,
       desc: deck.desc,
       color: deck.color,
+      format: deck.format ?? "standard",
+      commander: deck.commander,
       cards: (deck.cards || []).map((card) => ({
         ...card,
         name: resolveCardName(card.name),

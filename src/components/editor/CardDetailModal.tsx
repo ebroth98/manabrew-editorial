@@ -18,6 +18,8 @@ import {
 import { GameIcon } from "@/components/game/GameIcon";
 import { Input } from "@/components/ui/input";
 import { useCard, useCardRulings, useScryfallStore } from "@/stores/useScryfallStore";
+import { isHorizontalCard } from "@/lib/cardLayout";
+import { HorizontalCardImage } from "@/components/game/HorizontalCardImage";
 import { usePreferredPrintsStore } from "@/stores/usePreferredPrintsStore";
 import { useDeckStore } from "@/stores/useDeckStore";
 import { PrintPickerModal } from "@/components/editor/PrintPickerModal";
@@ -27,7 +29,7 @@ import { useSetLookup } from "@/stores/useScryfallStore";
 import { FORMAT_DISPLAY, LEGALITY_STYLES } from "@/lib/constants";
 import { toast } from "sonner";
 import type { ScryfallCard } from "@/types/scryfall";
-//
+
 interface DeckEditorActions {
   onAddOne: (cardName: string) => void;
   onRemoveOne: (cardName: string) => void;
@@ -80,7 +82,8 @@ export function CardDetailModal({
   const isDoubleFaced = !!(card.card_faces && card.card_faces.length >= 2);
 
   const activeFace = isDoubleFaced ? card.card_faces![faceIndex] : null;
-  const imageUrl = storeCard?.uris.large;
+  const imageUrl =
+    activeFace?.image_uris?.large ?? activeFace?.image_uris?.normal ?? storeCard?.uris.large;
   const manaCost = activeFace?.mana_cost ?? getScryfallManaCost(card);
   const displayName = activeFace?.name ?? card.name;
   const typeLine = activeFace?.type_line ?? card.type_line;
@@ -89,6 +92,11 @@ export function CardDetailModal({
   const toughness = (activeFace as { toughness?: string } | null)?.toughness ?? card.toughness;
 
   const rulings = rulingsData?.data ?? [];
+
+  // Active face's type line drives orientation, not the parent layout.
+  const isHorizontalActiveFace = activeFace
+    ? isHorizontalCard({ typeLine: activeFace.type_line })
+    : isHorizontalCard({ layout: card.layout, typeLine: card.type_line });
 
   function handleAddToCurrentDeck() {
     addToMain(scryfallToOpenMagic(card));
@@ -146,11 +154,28 @@ export function CardDetailModal({
           <ScrollArea className="h-full">
             <div className="p-4 space-y-4">
               <div className="flex gap-6">
-                <div className="shrink-0 w-64">
+                <div className={cn("shrink-0", isHorizontalActiveFace ? "w-96" : "w-64")}>
                   {imageUrl ? (
-                    <img src={imageUrl} alt={displayName} className="w-full rounded-lg shadow-lg" />
+                    isHorizontalActiveFace ? (
+                      <HorizontalCardImage
+                        src={imageUrl}
+                        alt={displayName}
+                        className="w-full aspect-[7/5] rounded-lg shadow-lg"
+                      />
+                    ) : (
+                      <img
+                        src={imageUrl}
+                        alt={displayName}
+                        className="w-full rounded-lg shadow-lg"
+                      />
+                    )
                   ) : (
-                    <div className="w-full aspect-[5/7] rounded-lg bg-muted flex items-center justify-center">
+                    <div
+                      className={cn(
+                        "w-full rounded-lg bg-muted flex items-center justify-center",
+                        isHorizontalActiveFace ? "aspect-[7/5]" : "aspect-[5/7]",
+                      )}
+                    >
                       <span className="text-muted-foreground text-sm">No Image</span>
                     </div>
                   )}

@@ -8,6 +8,7 @@
 
 import { readdir, readFile, writeFile } from "node:fs/promises";
 import { createInterface } from "node:readline/promises";
+import { spawn } from "node:child_process";
 import { stdin as input, stdout as output } from "node:process";
 import { fileURLToPath } from "node:url";
 import { dirname, join, resolve } from "node:path";
@@ -19,11 +20,7 @@ import {
   type ArchidektDeck,
   type ArchidektSearchResult,
 } from "../src/lib/archidekt.ts";
-import {
-  fetchDeckBySource,
-  fetchResultBySource,
-  parseDeckUrl,
-} from "../src/lib/deckImport.ts";
+import { fetchDeckBySource, fetchResultBySource, parseDeckUrl } from "../src/lib/deckImport.ts";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PRESET_DIR = resolve(__dirname, "..", "preset_decks");
@@ -155,15 +152,11 @@ function renderDeckDetails(result: ArchidektSearchResult, deck: ArchidektDeck) {
   console.log(`  ${dim("colors :")} ${colors}`);
   console.log(`  ${dim("unique :")} ${allCards.length}  ${dim("total:")} ${totalCount}`);
   if (deck.commanders.length) {
-    console.log(
-      `  ${dim("cmdr   :")} ${deck.commanders.map((c) => c.name).join(", ")}`,
-    );
+    console.log(`  ${dim("cmdr   :")} ${deck.commanders.map((c) => c.name).join(", ")}`);
   }
   if (descFirst) console.log(`  ${dim("desc   :")} ${truncate(descFirst, 120)}`);
 
-  const sorted = [...allCards].sort(
-    (a, b) => b.count - a.count || a.name.localeCompare(b.name),
-  );
+  const sorted = [...allCards].sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
   if (sorted.length) {
     console.log(`\n  ${dim(`cards (${sorted.length}):`)}`);
     const termWidth = process.stdout.columns || 100;
@@ -322,14 +315,22 @@ async function main() {
 
   const label = labelAnswer || chosen.name;
   const desc =
-    descAnswer ||
-    deck.description.split("\n")[0].slice(0, 120) ||
-    "Imported from archidekt";
+    descAnswer || deck.description.split("\n")[0].slice(0, 120) || "Imported from archidekt";
   const slug = fileAnswer || slugify(chosen.name);
 
   // Commanders live in a separate Archidekt category; the preset deck JSON has
   // no commander field today, so fold them back into `cards` for the CLI output.
-  const allCards = [...deck.commanders, ...deck.cards].filter((c) => c.name && c.count > 0);
+  const allCards = [...deck.commanders, ...deck.cards]
+    .filter((c) => c.name && c.count > 0)
+    .map((c) => {
+      const out: { name: string; count: number; set?: string; cardNumber?: string } = {
+        name: c.name,
+        count: c.count,
+      };
+      if (c.set) out.set = c.set;
+      if (c.cardNumber) out.cardNumber = c.cardNumber;
+      return out;
+    });
   const preset = {
     label,
     desc,
@@ -353,6 +354,26 @@ async function main() {
   console.log(`  ${dim("format :")} ${preset.format}`);
   console.log(`  ${dim("order  :")} ${preset.order}`);
   console.log(rule() + "\n");
+
+  await runEnrichment();
+}
+
+function runEnrichment(): Promise<void> {
+  console.log(header("Baking Scryfall metadata"));
+  const enrichScript = resolve(__dirname, "enrich-preset-decks.mjs");
+  return new Promise((resolvePromise) => {
+    const child = spawn("node", [enrichScript], { stdio: "inherit" });
+    child.on("close", (code) => {
+      if (code !== 0) {
+        console.error(red(`  ✗ enrichment exited with code ${code}`));
+      }
+      resolvePromise();
+    });
+    child.on("error", (err) => {
+      console.error(red(`  ✗ enrichment failed: ${err.message}`));
+      resolvePromise();
+    });
+  });
 }
 
 main().catch((err) => {

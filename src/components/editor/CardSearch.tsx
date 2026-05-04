@@ -384,12 +384,16 @@ function DraggableCardGrid({
   standalone,
   onHover,
   onLeave,
+  onFlip,
+  showBackFace,
 }: {
   card: OpenMagicCard;
   onMoreInfo: () => void;
   standalone?: boolean;
   onHover: (card: OpenMagicCard, e: React.MouseEvent) => void;
   onLeave: () => void;
+  onFlip?: () => void;
+  showBackFace?: boolean;
 }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: `search-${card.id}`,
@@ -409,7 +413,7 @@ function DraggableCardGrid({
       onMouseEnter={(e) => onHover(card, e)}
       onMouseLeave={onLeave}
     >
-      <Card card={card} className="w-full" />
+      <Card card={card} className="w-full" onFlip={onFlip} showBackFace={showBackFace} />
       <div className="absolute inset-0 bg-overlay/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-1.5 rounded-lg pointer-events-none group-hover:pointer-events-auto">
         <Button
           size="sm"
@@ -1033,17 +1037,22 @@ export function CardSearch({ standalone, onClose, previewSlot }: CardSearchProps
 
           {viewMode === "grid" ? (
             <div className="flex flex-wrap gap-3 pb-4">
-              {allCards.map((card, i) => (
-                <div key={card.id} className="shrink-0" style={{ width: standalone ? 130 : 110 }}>
-                  <DraggableCardGrid
-                    card={card}
-                    onMoreInfo={() => setDetailCard(rawCards[i])}
-                    standalone={standalone}
-                    onHover={preview.handleMouseEnter}
-                    onLeave={preview.handleMouseLeave}
-                  />
-                </div>
-              ))}
+              {allCards.map((card, i) => {
+                const isHovered = preview.hoveredCard?.id === card.id;
+                return (
+                  <div key={card.id} className="shrink-0" style={{ width: standalone ? 130 : 110 }}>
+                    <DraggableCardGrid
+                      card={card}
+                      onMoreInfo={() => setDetailCard(rawCards[i])}
+                      standalone={standalone}
+                      onHover={preview.handleMouseEnter}
+                      onLeave={preview.handleMouseLeave}
+                      onFlip={preview.flipCard}
+                      showBackFace={isHovered ? preview.showBackFace : false}
+                    />
+                  </div>
+                );
+              })}
             </div>
           ) : (
             <div className="pb-4">

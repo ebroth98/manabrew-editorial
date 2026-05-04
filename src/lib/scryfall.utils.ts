@@ -76,6 +76,7 @@ export function scryfallToOpenMagic(sc: ScryfallCard, id?: string): Card {
     text: getFrontOracleText(sc),
     imageUrl: chooseImageUrisForCard(sc, { frontOnly: true })?.normal,
     isDoubleFaced: detectIsDoubleFaced(sc) || undefined,
+    layout: sc.layout || undefined,
   };
 }
 

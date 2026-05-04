@@ -9,6 +9,7 @@ import { CARD_BADGES } from "./game.constants";
 import { withAlpha } from "@/themes/gameTheme";
 import { useTheme } from "@/hooks/useTheme";
 import { isCreature, isLethalDamage, upgradeScryfallUrl } from "./game.utils";
+import { isHorizontalCard } from "@/lib/cardLayout";
 import { cn } from "@/lib/utils";
 import type { HandActionOption } from "@/stores/useGameUIStore";
 import { useEffect, useMemo } from "react";
@@ -235,9 +236,16 @@ export function CardPreview({
     };
   }, [hasActions, isSticky, onDismiss, onSelectAction, actions]);
 
-  // Position the card preview
-  const cardWidth = CARD_W;
-  const cardHeight = CARD_H;
+  const visibleFace = showBackFace ? backFace : frontFace;
+  const horizontal = visibleFace
+    ? isHorizontalCard({ typeLine: visibleFace.type_line })
+    : isHorizontalCard({
+        layout: card.layout ?? cardD?.info?.layout,
+        types: card.types,
+        typeLine: cardD?.info?.type_line,
+      });
+  const cardWidth = horizontal ? CARD_H : CARD_W;
+  const cardHeight = horizontal ? CARD_W : CARD_H;
 
   let cardLeft: number;
   let top: number;
@@ -273,7 +281,7 @@ export function CardPreview({
     top = Math.min(Math.max(anchorY - cardHeight / 2, 8), window.innerHeight - cardHeight - 8);
   }
 
-  const hasDoubleFace = !!card.isDoubleFaced && !!doubleFacedData?.backImageUrl;
+  const hasDoubleFace = !!doubleFacedData?.backImageUrl;
   const currentImageUrl =
     hasDoubleFace && showBackFace ? doubleFacedData.backImageUrl : imageUrl || cardD?.uris.large;
   const currentCardName =
@@ -331,12 +339,21 @@ export function CardPreview({
               </div>
             ) : currentImageUrl ? (
               <>
-                <img
-                  src={currentImageUrl}
-                  alt={currentCardName}
-                  title=""
-                  className="w-full h-full object-cover"
-                />
+                {horizontal ? (
+                  <img
+                    src={currentImageUrl}
+                    alt={currentCardName}
+                    title=""
+                    className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 rotate-90 origin-center h-[calc(100%*7/5)] aspect-[5/7]"
+                  />
+                ) : (
+                  <img
+                    src={currentImageUrl}
+                    alt={currentCardName}
+                    title=""
+                    className="w-full h-full object-cover"
+                  />
+                )}
                 <CardDetailOverlay card={card} />
               </>
             ) : (

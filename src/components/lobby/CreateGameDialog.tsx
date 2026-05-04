@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { getDefaultGameRuntime } from "@/game";
+import { usePresetDecks } from "@/stores/usePresetDecksStore";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
@@ -13,7 +13,6 @@ import { resolveCoverCard } from "@/components/deck/deckCover.utils";
 import { cn } from "@/lib/utils";
 import { Search, Shuffle, Swords } from "lucide-react";
 import { getDeckFingerprint, serializeDeck } from "@/lib/decks";
-import type { Deck } from "@/types/openmagic";
 
 interface CreateGameDialogProps {
   open: boolean;
@@ -51,17 +50,9 @@ export function CreateGameDialog({
   const [selectedCommander, setSelectedCommander] = useState<string>(
     currentDeck.commanders?.[0]?.name ?? "",
   );
-  const [presetDecks, setPresetDecks] = useState<Deck[]>([]);
+  const presetDecks = usePresetDecks();
   const [playerCount, setPlayerCount] = useState(2);
   const [deckSearch, setDeckSearch] = useState("");
-
-  useEffect(() => {
-    const runtime = getDefaultGameRuntime();
-    runtime.api
-      .getPresetDecks()
-      .then(setPresetDecks)
-      .catch((e) => console.error("[CreateGameDialog] Failed to load preset decks:", e));
-  }, []);
 
   useEffect(() => {
     if (!forcedFormatId) return;
@@ -74,8 +65,10 @@ export function CreateGameDialog({
     (saved) => !saved.deck.draft && getDeckFingerprint(saved.deck) !== currentDeckFingerprint,
   );
 
-  // User-built decks (exclude drafts)
-  const currentDeckEntry = currentDeck.draft
+  const currentDeckIsPlayable =
+    !currentDeck.draft &&
+    (currentDeck.cards.length > 0 || (currentDeck.commanders?.length ?? 0) > 0);
+  const currentDeckEntry = !currentDeckIsPlayable
     ? []
     : [
         {
@@ -123,7 +116,6 @@ export function CreateGameDialog({
     })),
   ];
 
-  // Preset deck entries
   const presetDeckEntries = presetDecks.map((deck) => ({
     id: `preset__${deck.id ?? deck.name}`,
     name: deck.name,
@@ -132,20 +124,21 @@ export function CreateGameDialog({
     deckList: serializeDeck(deck),
     isPreset: true as const,
     cover: resolveCoverCard(deck),
-    cards: deck.cards,
-    commanderName: undefined as string | undefined,
+    cards: [...deck.cards, ...(deck.commanders ?? [])],
+    formatId: deck.format ?? "standard",
+    commanderName: deck.commanders?.[0]?.name,
   }));
 
   const allDecks = [...userDecks, ...presetDeckEntries];
 
-  // Filter decks by search query (matches name or description)
   const searchLower = deckSearch.toLowerCase();
+  const formatPresetEntries = presetDeckEntries.filter((d) => d.formatId === selectedFormat.id);
   const filteredPresetEntries = searchLower
-    ? presetDeckEntries.filter(
+    ? formatPresetEntries.filter(
         (d) =>
           d.name.toLowerCase().includes(searchLower) || d.desc?.toLowerCase().includes(searchLower),
       )
-    : presetDeckEntries;
+    : formatPresetEntries;
   const formatUserDecks = userDecks.filter((d) => d.formatId === selectedFormat.id);
   const filteredUserDecks = searchLower
     ? formatUserDecks.filter((d) => d.name.toLowerCase().includes(searchLower))

@@ -15,7 +15,7 @@ import {
 import type { DragEndEvent, DragStartEvent } from "@dnd-kit/core";
 import { useDeckStore } from "@/stores/useDeckStore";
 import { DROP_ZONE, DEFAULT_DECK_NAME } from "@/lib/constants";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { Card as OpenMagicCard } from "@/types/openmagic";
 import { Card } from "@/components/game/Card";
 import { useBlocker, useLocation } from "react-router";
@@ -36,6 +36,10 @@ import { Plus } from "lucide-react";
 import { toast } from "sonner";
 import { applyDeckFilters } from "@/views/myDecks.utils";
 import type { SortBy } from "@/views/myDecks.utils";
+import { usePresetDecks } from "@/stores/usePresetDecksStore";
+import { useNavigate } from "react-router";
+import type { SavedDeck } from "@/stores/useDeckStore";
+import type { Deck as DeckType } from "@/types/openmagic";
 
 export default function DeckEditor() {
   const {
@@ -55,6 +59,22 @@ export default function DeckEditor() {
     deleteSavedDeck,
     currentDeckId: _currentDeckId,
   } = useDeckStore();
+  const isReadOnly = useDeckStore((s) => s.isReadOnly);
+  const loadPresetDeck = useDeckStore((s) => s.loadPresetDeck);
+  const presetDecks = usePresetDecks();
+  const navigate = useNavigate();
+
+  function handleOpenPreset(deck: DeckType) {
+    loadPresetDeck(deck);
+    setStateView("editor");
+    setReadonlyEnteredInPage(true);
+  }
+
+  const presetSavedDecksUnfiltered: SavedDeck[] = presetDecks.map((deck) => ({
+    id: `preset:${deck.id ?? deck.name}`,
+    deck,
+    savedAt: 0,
+  }));
   const [draggedCard, setDraggedCard] = useState<OpenMagicCard | null>(null);
   const [showSearch, setShowSearch] = useState(false);
   const [previewSlot, setPreviewSlot] = useState<HTMLDivElement | null>(null);
@@ -74,24 +94,36 @@ export default function DeckEditor() {
   const hasUnsavedChanges = useDeckUnsavedChanges();
   const location = useLocation();
 
-  const [view, setView] = useState<"list" | "editor">(() =>
-    (location.state as { directToEditor?: boolean } | null)?.directToEditor ? "editor" : "list",
-  );
+  const [stateView, setStateView] = useState<"list" | "editor">(() => {
+    if (useDeckStore.getState().isReadOnly) return "editor";
+    return (location.state as { directToEditor?: boolean } | null)?.directToEditor
+      ? "editor"
+      : "list";
+  });
+  // True when readonly was triggered by an in-page preset click (no route
+  // navigation), so Back restores the grid instead of popping history.
+  const [readonlyEnteredInPage, setReadonlyEnteredInPage] = useState(false);
+  const view = isReadOnly ? "editor" : stateView;
+  const setView = setStateView;
   const [showBackConfirm, setShowBackConfirm] = useState(false);
 
-  // Deck list filter/sort state
   const [search, setSearch] = useState("");
   const [formatFilter, setFormatFilter] = useState("");
   const [colorFilter, setColorFilter] = useState<string[]>([]);
   const [sortBy, setSortBy] = useState<SortBy>("name");
 
-  // Rename dialog state
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameInput, setRenameInput] = useState("");
 
-  const blocker = useBlocker(hasUnsavedChanges && view === "editor");
+  const blocker = useBlocker(hasUnsavedChanges && view === "editor" && !isReadOnly);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
+
+  useEffect(() => {
+    return () => {
+      useDeckStore.getState().clearDeck();
+    };
+  }, []);
 
   // ── Deck list handlers ────────────────────────────────────────────────────
 
@@ -101,6 +133,8 @@ export default function DeckEditor() {
     );
   }
 
+  const deckFilterArgs = { search, formatFilter, colorFilter, sortBy };
+  const { valid: presetSavedDecks } = applyDeckFilters(presetSavedDecksUnfiltered, deckFilterArgs);
   const { valid: filteredValid, drafts: filteredDrafts } = applyDeckFilters(savedDecks, {
     search,
     formatFilter,
@@ -120,6 +154,16 @@ export default function DeckEditor() {
   }
 
   function handleBack() {
+    if (isReadOnly) {
+      useDeckStore.getState().clearDeck();
+      if (readonlyEnteredInPage) {
+        setReadonlyEnteredInPage(false);
+        setView("list");
+      } else {
+        navigate(-1);
+      }
+      return;
+    }
     if (hasUnsavedChanges) {
       setShowBackConfirm(true);
     } else {
@@ -157,6 +201,7 @@ export default function DeckEditor() {
 
   function handleDragEnd(event: DragEndEvent) {
     setDraggedCard(null);
+    if (isReadOnly) return;
     const { active, over } = event;
     if (!over) return;
 
@@ -308,9 +353,39 @@ export default function DeckEditor() {
                 </div>
               )}
 
+              {/* Preset Decks section — readonly browse + import */}
+              {presetSavedDecks.length > 0 && (
+                <div
+                  className={cn(
+                    "mt-4",
+                    (filteredValid.length > 0 || filteredDrafts.length > 0) && "border-t pt-4",
+                  )}
+                >
+                  <div className="flex items-center gap-2 mb-3">
+                    <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                      Preset Decks
+                    </span>
+                    <span className="text-[10px] text-muted-foreground">
+                      ({presetSavedDecks.length})
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
+                    {presetSavedDecks.map((s) => (
+                      <DeckGridCard
+                        key={s.id}
+                        deck={s}
+                        readOnly
+                        onOpen={() => handleOpenPreset(s.deck)}
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {/* Empty state */}
               {filteredValid.length === 0 &&
                 filteredDrafts.length === 0 &&
+                presetSavedDecks.length === 0 &&
                 savedDecks.length > 0 && (
                   <p className="col-span-5 pt-6 text-center text-sm text-muted-foreground">
                     No decks match your filters.

@@ -178,18 +178,19 @@ Current WIP behavior:
 
 ### Frontend
 
-| Command                                       | Description                                                                            |
-| --------------------------------------------- | -------------------------------------------------------------------------------------- |
-| `yarn dev`                                    | Start Tauri desktop app in development mode                                            |
-| `yarn build`                                  | Build production Tauri app                                                             |
-| `yarn vite:dev`                               | Start Vite dev server only (no Tauri)                                                  |
-| `yarn vite:build`                             | Build frontend assets only                                                             |
-| `yarn lint`                                   | Run ESLint                                                                             |
-| `yarn preview`                                | Preview production build locally                                                       |
-| `yarn ios`                                    | Start iOS development build                                                            |
-| `yarn android`                                | Start Android development build                                                        |
-| `yarn import-deck`                            | Import a deck from Archidekt/Moxfield into `preset_decks/` ([details](#deck-importer)) |
-| `node scripts/generate-theme-css.mjs --write` | Regenerate game-theme `@theme` CSS block ([details](#theme-css-generator))             |
+| Command                                       | Description                                                                             |
+| --------------------------------------------- | --------------------------------------------------------------------------------------- |
+| `yarn dev`                                    | Start Tauri desktop app in development mode                                             |
+| `yarn build`                                  | Build production Tauri app                                                              |
+| `yarn vite:dev`                               | Start Vite dev server only (no Tauri)                                                   |
+| `yarn vite:build`                             | Build frontend assets only                                                              |
+| `yarn lint`                                   | Run ESLint                                                                              |
+| `yarn preview`                                | Preview production build locally                                                        |
+| `yarn ios`                                    | Start iOS development build                                                             |
+| `yarn android`                                | Start Android development build                                                         |
+| `yarn import-deck`                            | Import a deck from Archidekt/Moxfield into `preset_decks/` ([details](#deck-importer))  |
+| `yarn enrich-presets`                         | Bake Scryfall metadata into every preset deck JSON ([details](#preset-deck-enrichment)) |
+| `node scripts/generate-theme-css.mjs --write` | Regenerate game-theme `@theme` CSS block ([details](#theme-css-generator))              |
 
 ### Deck Importer
 
@@ -216,6 +217,19 @@ The interactive flow searches Archidekt (URL mode dispatches to the matching pro
 | `--format=<name>` | `standard` | Value written to the preset's `format` field.          |
 
 The same Archidekt / Moxfield core powers the in-app **Import from URL** and **Search deck** entries in the deck editor menu, so the CLI and the UI stay in sync.
+
+After the JSON file is written, the importer automatically runs the [enrichment script](#preset-deck-enrichment) to bake Scryfall metadata into every new card entry. No extra step needed — the freshly-imported preset is ready to render with mana symbols, types, and images on the next `yarn dev`.
+
+### Preset Deck Enrichment
+
+Preset decks ship with full Scryfall metadata (`manaCost`, `colors`, `colorIdentity`, `cmc`, `types`, `subtypes`, `supertypes`, `text`, `imageUrl`, `layout`, `power`, `toughness`) baked into every card entry, so the runtime renders mana symbols / format badges / colors / images without any startup network round-trips.
+
+```bash
+yarn enrich-presets           # only fetches cards missing metadata (idempotent)
+yarn enrich-presets -- --force  # refresh every printing
+```
+
+Run it after editing a preset JSON by hand, or whenever you want to pick up Scryfall changes. `yarn import-deck` already calls it for you on every new import — you only need to run it directly if you tweak a deck JSON manually or add a card name that didn't resolve the first time (the script logs `not found:` for unresolvable names so you can fix typos).
 
 ### Parity Testing
 

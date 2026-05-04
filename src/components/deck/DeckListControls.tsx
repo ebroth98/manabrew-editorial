@@ -1,6 +1,13 @@
 import { Input } from "@/components/ui/input";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { FormatBadge } from "@/components/game/FormatBadge";
 import { cn } from "@/lib/utils";
-import { Search, X } from "lucide-react";
+import { Check, ChevronDown, Search, X } from "lucide-react";
 import { GAME_FORMATS } from "@/lib/formats";
 import type { SortBy } from "@/views/myDecks.utils";
 import { MANA_LETTERS, type ManaLetter } from "@/themes/gameTheme";
@@ -78,20 +85,38 @@ export function DeckListControls({
 
       {/* Remaining controls — take 1/3 of the row, keeping internal proportions */}
       <div className="flex-[1] flex items-center gap-1 min-w-0">
-        {/* Format */}
-        <select
-          value={formatFilter}
-          onChange={(e) => onFormatChange(e.target.value)}
-          title="Filter by format"
-          className={SELECT_CLS}
-        >
-          <option value="">All</option>
-          {GAME_FORMATS.map((f) => (
-            <option key={f.id} value={f.id}>
-              {f.shortName}
-            </option>
-          ))}
-        </select>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              title="Filter by format"
+              className={cn(
+                SELECT_CLS,
+                "flex items-center gap-1 justify-between hover:bg-muted/40",
+              )}
+            >
+              {formatFilter ? (
+                <FormatBadge formatId={formatFilter} />
+              ) : (
+                <span className="text-muted-foreground">All</span>
+              )}
+              <ChevronDown className="h-2.5 w-2.5 opacity-60 shrink-0" />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start">
+            <DropdownMenuItem onSelect={() => onFormatChange("")} className="gap-2">
+              <span className="text-xs">All formats</span>
+              {!formatFilter && <Check className="h-3 w-3 ml-auto text-primary" />}
+            </DropdownMenuItem>
+            {GAME_FORMATS.map((f) => (
+              <DropdownMenuItem key={f.id} onSelect={() => onFormatChange(f.id)} className="gap-2">
+                <FormatBadge formatId={f.id} />
+                <span className="text-xs">{f.name}</span>
+                {formatFilter === f.id && <Check className="h-3 w-3 ml-auto text-primary" />}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
 
         {/* Sort */}
         <select

@@ -176,6 +176,7 @@ impl From<&JsDeckCard> for DeckCard {
             name: card.name.clone(),
             count: card.count,
             set: card.set.clone().unwrap_or_default(),
+            extra: std::collections::HashMap::new(),
         }
     }
 }

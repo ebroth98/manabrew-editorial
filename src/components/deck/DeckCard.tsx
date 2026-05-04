@@ -26,6 +26,7 @@ interface DeckCardProps {
   isSelected: boolean;
   isEditing: boolean;
   editName: string;
+  readOnly?: boolean;
   onSelect: () => void;
   onRename: (name: string) => void;
   onStartRename: () => void;
@@ -40,6 +41,7 @@ export function DeckCard({
   isSelected,
   isEditing,
   editName,
+  readOnly = false,
   onSelect,
   onStartRename,
   onConfirmRename,
@@ -103,37 +105,39 @@ export function DeckCard({
           </div>
         </div>
 
-        <div
-          className={cn(
-            "flex gap-1 shrink-0 transition-opacity",
-            isSelected ? "opacity-100" : "opacity-0 group-hover:opacity-100",
-          )}
-        >
-          <Button
-            size="icon"
-            variant="ghost"
-            className="h-6 w-6"
-            title="Rename"
-            onClick={(e) => {
-              e.stopPropagation();
-              onStartRename();
-            }}
+        {!readOnly && (
+          <div
+            className={cn(
+              "flex gap-1 shrink-0 transition-opacity",
+              isSelected ? "opacity-100" : "opacity-0 group-hover:opacity-100",
+            )}
           >
-            <Pencil className="h-3 w-3" />
-          </Button>
-          <Button
-            size="icon"
-            variant="ghost"
-            className="h-6 w-6 text-destructive hover:text-destructive"
-            title="Delete"
-            onClick={(e) => {
-              e.stopPropagation();
-              setConfirmOpen(true);
-            }}
-          >
-            <Trash2 className="h-3 w-3" />
-          </Button>
-        </div>
+            <Button
+              size="icon"
+              variant="ghost"
+              className="h-6 w-6"
+              title="Rename"
+              onClick={(e) => {
+                e.stopPropagation();
+                onStartRename();
+              }}
+            >
+              <Pencil className="h-3 w-3" />
+            </Button>
+            <Button
+              size="icon"
+              variant="ghost"
+              className="h-6 w-6 text-destructive hover:text-destructive"
+              title="Delete"
+              onClick={(e) => {
+                e.stopPropagation();
+                setConfirmOpen(true);
+              }}
+            >
+              <Trash2 className="h-3 w-3" />
+            </Button>
+          </div>
+        )}
       </div>
 
       <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>

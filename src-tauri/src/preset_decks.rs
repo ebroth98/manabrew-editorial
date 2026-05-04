@@ -36,6 +36,8 @@ pub struct PresetDeckInfo {
     pub desc: String,
     /// Tailwind CSS text-color class used for the deck title in the UI.
     pub color: String,
+    pub format: String,
+    pub commander: Option<String>,
     pub cover_card_name: Option<String>,
     pub cards: Vec<DeckCardEntry>,
 }
@@ -49,6 +51,8 @@ pub struct DeckCardEntry {
     pub count: usize,
     #[serde(default)]
     pub set: String,
+    #[serde(flatten, default)]
+    pub extra: std::collections::HashMap<String, serde_json::Value>,
 }
 
 /// Full JSON schema for a preset deck file.
@@ -57,6 +61,10 @@ struct PresetDeckFile {
     label: String,
     desc: String,
     color: String,
+    #[serde(default = "default_format")]
+    format: String,
+    #[serde(default)]
+    commander: Option<String>,
     #[serde(default)]
     opponent: Option<String>,
     #[serde(default)]
@@ -66,6 +74,10 @@ struct PresetDeckFile {
     cards: Vec<DeckCardEntry>,
 }
 
+fn default_format() -> String {
+    "standard".to_string()
+}
+
 /// Loaded preset deck with its ID and parsed data.
 #[derive(Debug, Clone)]
 struct LoadedPreset {
@@ -73,6 +85,8 @@ struct LoadedPreset {
     label: String,
     desc: String,
     color: String,
+    format: String,
+    commander: Option<String>,
     opponent: Option<String>,
     ai_eligible: bool,
     order: i32,
@@ -145,6 +159,8 @@ fn load_registry() -> Vec<LoadedPreset> {
             label: deck.label,
             desc: deck.desc,
             color: deck.color,
+            format: deck.format,
+            commander: deck.commander,
             opponent: deck.opponent,
             ai_eligible: deck.ai_eligible.unwrap_or(false),
             order: deck.order.unwrap_or(999),
@@ -174,6 +190,8 @@ fn fallback_preset(
         label: label.to_string(),
         desc: desc.to_string(),
         color: color.to_string(),
+        format: "standard".to_string(),
+        commander: None,
         opponent: opponent.map(str::to_string),
         ai_eligible,
         order,
@@ -181,6 +199,7 @@ fn fallback_preset(
             name: basic_land_name.to_string(),
             count: 60,
             set: String::new(),
+            extra: std::collections::HashMap::new(),
         }],
     }
 }
@@ -261,6 +280,8 @@ pub fn list_preset_decks() -> Vec<PresetDeckInfo> {
             label: p.label.clone(),
             desc: p.desc.clone(),
             color: p.color.clone(),
+            format: p.format.clone(),
+            commander: p.commander.clone(),
             cover_card_name: choose_cover_card_name(&p.cards),
             cards: p.cards.clone(),
         })

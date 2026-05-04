@@ -25,11 +25,18 @@ import {
 interface DeckGridCardProps {
   deck: SavedDeck;
   onOpen: () => void;
-  onDelete: () => void;
-  onRename: () => void;
+  onDelete?: () => void;
+  onRename?: () => void;
+  readOnly?: boolean;
 }
 
-export function DeckGridCard({ deck, onOpen, onDelete, onRename }: DeckGridCardProps) {
+export function DeckGridCard({
+  deck,
+  onOpen,
+  onDelete,
+  onRename,
+  readOnly = false,
+}: DeckGridCardProps) {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const displayCards = [...deck.deck.cards, ...(deck.deck.commanders ?? [])];
   const colorCost = getDeckColorCost(displayCards);
@@ -51,32 +58,38 @@ export function DeckGridCard({ deck, onOpen, onDelete, onRename }: DeckGridCardP
         <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-black/10" />
 
         {/* Action buttons — visible on hover */}
-        <div className="absolute top-1.5 right-1.5 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity z-10">
-          <Button
-            size="icon"
-            variant="secondary"
-            className="h-6 w-6 bg-background/80 backdrop-blur-sm hover:bg-background"
-            title="Rename"
-            onClick={(e) => {
-              e.stopPropagation();
-              onRename();
-            }}
-          >
-            <Pencil className="h-3 w-3" />
-          </Button>
-          <Button
-            size="icon"
-            variant="secondary"
-            className="h-6 w-6 bg-background/80 backdrop-blur-sm hover:bg-background text-destructive hover:text-destructive"
-            title="Delete"
-            onClick={(e) => {
-              e.stopPropagation();
-              setConfirmDelete(true);
-            }}
-          >
-            <Trash2 className="h-3 w-3" />
-          </Button>
-        </div>
+        {!readOnly && (
+          <div className="absolute top-1.5 right-1.5 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity z-10">
+            {onRename && (
+              <Button
+                size="icon"
+                variant="secondary"
+                className="h-6 w-6 bg-background/80 backdrop-blur-sm hover:bg-background"
+                title="Rename"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onRename();
+                }}
+              >
+                <Pencil className="h-3 w-3" />
+              </Button>
+            )}
+            {onDelete && (
+              <Button
+                size="icon"
+                variant="secondary"
+                className="h-6 w-6 bg-background/80 backdrop-blur-sm hover:bg-background text-destructive hover:text-destructive"
+                title="Delete"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setConfirmDelete(true);
+                }}
+              >
+                <Trash2 className="h-3 w-3" />
+              </Button>
+            )}
+          </div>
+        )}
 
         {/* Bottom info overlay */}
         <div className="absolute bottom-0 left-0 right-0 px-2 pt-6 pb-2 z-10">
@@ -118,7 +131,7 @@ export function DeckGridCard({ deck, onOpen, onDelete, onRename }: DeckGridCardP
               size="sm"
               onClick={() => {
                 setConfirmDelete(false);
-                onDelete();
+                onDelete?.();
               }}
             >
               Delete

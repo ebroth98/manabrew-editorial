@@ -27,7 +27,12 @@ export function parseMoxfieldUrl(input: string): string | null {
 
 interface RawMoxfieldBoardEntry {
   quantity: number;
-  card?: { name?: string; color_identity?: string[] };
+  card?: {
+    name?: string;
+    color_identity?: string[];
+    set?: string;
+    cn?: string;
+  };
 }
 
 interface RawMoxfieldDeck {
@@ -57,7 +62,12 @@ function collectBoard(
   for (const [key, entry] of Object.entries(board)) {
     const name = entry.card?.name ?? key;
     if (!name) continue;
-    out.push({ name, count: entry.quantity });
+    out.push({
+      name,
+      count: entry.quantity,
+      set: entry.card?.set?.toLowerCase(),
+      cardNumber: entry.card?.cn,
+    });
     for (const c of entry.card?.color_identity ?? []) colors.add(c);
   }
   return out;

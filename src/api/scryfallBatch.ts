@@ -58,6 +58,17 @@ function matchesIdentifier(card: ScryfallCard, id: CardIdentifier): boolean {
   return id.set ? card.set?.toLowerCase() === id.set.toLowerCase() : true;
 }
 
+// Scryfall's /cards/collection matches `name` against a single face — the
+// full DFC display name returns not_found. Strip the back-face half before
+// sending; matchesIdentifier still accepts the full name on the way back.
+function normalizeIdentifierForRequest(id: CardIdentifier): CardIdentifier {
+  if ("name" in id && id.name.includes("//")) {
+    const front = id.name.split(/\s*\/\/\s*/)[0]?.trim();
+    if (front) return { ...id, name: front };
+  }
+  return id;
+}
+
 async function flushScryfallBatch(): Promise<void> {
   batchFlushTimer = null;
   const items = Array.from(pendingBatch.values());
@@ -65,7 +76,7 @@ async function flushScryfallBatch(): Promise<void> {
   pendingBatch = new Map();
   for (let i = 0; i < items.length; i += COLLECTION_BATCH_SIZE) {
     const slice = items.slice(i, i + COLLECTION_BATCH_SIZE);
-    const identifiers = slice.map((it) => it.identifier);
+    const identifiers = slice.map((it) => normalizeIdentifierForRequest(it.identifier));
     try {
       const data = await scryfallFetch<{ data: ScryfallCard[]; not_found: unknown[] }>(
         `${SCRYFALL_API}/cards/collection`,

@@ -7,6 +7,9 @@ import { getCardPrints } from "@/api/scryfall";
 import { useSetLookup } from "@/stores/useScryfallStore";
 import type { ScryfallCard } from "@/types/scryfall";
 import { useScryfallStore } from "@/stores/useScryfallStore";
+import { isHorizontalCard } from "@/lib/cardLayout";
+import { HorizontalCardImage } from "@/components/game/HorizontalCardImage";
+import { cn } from "@/lib/utils";
 
 interface PrintPickerModalProps {
   cardName: string | null;
@@ -112,14 +115,30 @@ export function PrintPickerModal({ cardName, onClose, onSelect, isToken }: Print
                       onClose();
                     }}
                   >
-                    <div className="w-full aspect-[5/7] rounded-[4%] overflow-hidden border-2 border-transparent group-hover:border-primary transition-colors bg-muted flex items-center justify-center relative">
+                    <div
+                      className={cn(
+                        "w-full rounded-[4%] overflow-hidden border-2 border-transparent group-hover:border-primary transition-colors bg-muted flex items-center justify-center relative",
+                        isHorizontalCard({ layout: p.layout, typeLine: p.type_line })
+                          ? "aspect-[7/5]"
+                          : "aspect-[5/7]",
+                      )}
+                    >
                       {imageUrl ? (
-                        <img
-                          src={imageUrl}
-                          alt={`${p.set_name} printing`}
-                          className="w-full h-full object-contain"
-                          loading="lazy"
-                        />
+                        isHorizontalCard({ layout: p.layout, typeLine: p.type_line }) ? (
+                          <HorizontalCardImage
+                            src={imageUrl}
+                            alt={`${p.set_name} printing`}
+                            className="absolute inset-0"
+                            loading="lazy"
+                          />
+                        ) : (
+                          <img
+                            src={imageUrl}
+                            alt={`${p.set_name} printing`}
+                            className="w-full h-full object-contain"
+                            loading="lazy"
+                          />
+                        )
                       ) : (
                         <span className="text-xs text-muted-foreground text-center">No Image</span>
                       )}

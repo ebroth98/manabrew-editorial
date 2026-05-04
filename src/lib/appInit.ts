@@ -3,10 +3,9 @@ import { useScryfallStore, prefetchCards } from "@/stores/useScryfallStore";
 import { useDeckStore } from "@/stores/useDeckStore";
 import { getDefaultGameRuntime } from "@/game";
 import { resolveCoverCard } from "@/components/deck/deckCover.utils";
+import { prefetchPresetDecks } from "@/stores/usePresetDecksStore";
 import type { Deck } from "@/types/openmagic";
 
-// One-shot app initialization. Idempotent — multiple callers (e.g. React
-// StrictMode double-mount, or a future re-init flow) share the same promise.
 let initPromise: Promise<void> | null = null;
 
 async function initScryfallSets(): Promise<void> {
@@ -15,10 +14,11 @@ async function initScryfallSets(): Promise<void> {
   useScryfallStore.setState({ sets });
 }
 
-type CoverLookup = { name: string; setCode?: string; cardNumber?: string };
+type CardLookup = { name: string; setCode?: string; cardNumber?: string };
 
-function coverCardOf(deck: Deck): CoverLookup | null {
-  const card = resolveCoverCard(deck);
+function lookupOfCard(
+  card: { name: string; setCode?: string; cardNumber?: string } | null | undefined,
+): CardLookup | null {
   if (!card?.name) return null;
   return {
     name: card.name,
@@ -27,7 +27,28 @@ function coverCardOf(deck: Deck): CoverLookup | null {
   };
 }
 
-async function prefetchDeckCovers(): Promise<void> {
+function allCardsOfDeck(deck: Deck): CardLookup[] {
+  const lookups: CardLookup[] = [];
+  const sections = [
+    deck.cards,
+    deck.sideboard,
+    deck.maybeboard ?? [],
+    deck.attractions ?? [],
+    deck.contraptions ?? [],
+    deck.schemes ?? [],
+    deck.planes ?? [],
+    deck.commanders ?? [],
+  ];
+  for (const section of sections) {
+    for (const card of section) {
+      const lookup = lookupOfCard(card);
+      if (lookup) lookups.push(lookup);
+    }
+  }
+  return lookups;
+}
+
+async function prefetchAllDeckCards(): Promise<void> {
   const presetDecks = await getDefaultGameRuntime()
     .api.getPresetDecks()
     .catch((e) => {
@@ -36,33 +57,40 @@ async function prefetchDeckCovers(): Promise<void> {
     });
   const { savedDecks = [], currentDeck } = useDeckStore.getState();
   const seen = new Set<string>();
-  const covers: CoverLookup[] = [];
-  const push = (c: CoverLookup | null) => {
+  const lookups: CardLookup[] = [];
+  const push = (c: CardLookup | null) => {
     if (!c) return;
     const k = `${c.name.toLowerCase()}::${(c.setCode ?? "").toLowerCase()}::${(c.cardNumber ?? "").toLowerCase()}`;
     if (seen.has(k)) return;
     seen.add(k);
-    covers.push(c);
+    lookups.push(c);
   };
-  // Every preset deck, every saved deck (including drafts — `savedDecks` is
-  // unfiltered), and the currently-edited deck. No format filtering: the
-  // store doesn't filter by format and `list_preset_decks` returns the full
-  // registry, so this covers every deck the user can see.
-  for (const d of presetDecks) push(coverCardOf(d));
-  for (const sd of savedDecks) push(coverCardOf(sd.deck));
-  if (currentDeck) push(coverCardOf(currentDeck));
+  // Cover first so deck-list thumbnails paint before per-card images.
+  for (const d of presetDecks) push(lookupOfCard(resolveCoverCard(d)));
+  for (const sd of savedDecks) push(lookupOfCard(resolveCoverCard(sd.deck)));
+  if (currentDeck) push(lookupOfCard(resolveCoverCard(currentDeck)));
+  for (const d of presetDecks) for (const l of allCardsOfDeck(d)) push(l);
+  for (const sd of savedDecks) for (const l of allCardsOfDeck(sd.deck)) push(l);
+  if (currentDeck) for (const l of allCardsOfDeck(currentDeck)) push(l);
   console.log(
-    `[appInit] prefetching ${covers.length} deck covers (preset=${presetDecks.length}, saved=${savedDecks.length}, current=${currentDeck ? 1 : 0})`,
+    `[appInit] prefetching ${lookups.length} deck cards (preset=${presetDecks.length}, saved=${savedDecks.length}, current=${currentDeck ? 1 : 0})`,
   );
-  await prefetchCards(covers);
+  await prefetchCards(lookups);
 }
 
 export function initApp(): Promise<void> {
   console.log("[appInit] initializing...");
   if (initPromise) return initPromise;
-  initPromise = Promise.all([
-    initScryfallSets().catch((e) => console.error("[appInit] sets failed:", e)),
-    prefetchDeckCovers().catch((e) => console.error("[appInit] cover prefetch failed:", e)),
-  ]).then(() => undefined);
+  initPromise = (async () => {
+    // Preset metadata enrichment runs first so it lands in the Scryfall
+    // cache before per-card prefetch issues duplicate /cards/named lookups.
+    await Promise.all([
+      initScryfallSets().catch((e) => console.error("[appInit] sets failed:", e)),
+      prefetchPresetDecks().catch((e) => console.error("[appInit] preset enrichment failed:", e)),
+    ]);
+    await prefetchAllDeckCards().catch((e) =>
+      console.error("[appInit] deck card prefetch failed:", e),
+    );
+  })();
   return initPromise;
 }

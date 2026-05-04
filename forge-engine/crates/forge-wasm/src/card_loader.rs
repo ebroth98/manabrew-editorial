@@ -31,7 +31,15 @@ pub struct PresetDeck {
     pub label: String,
     pub desc: String,
     pub color: String,
+    #[serde(default = "default_format")]
+    pub format: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub commander: Option<String>,
     pub cards: Vec<DeckCard>,
+}
+
+fn default_format() -> String {
+    "standard".to_string()
 }
 
 /// A card entry in a preset deck.
@@ -41,6 +49,8 @@ pub struct DeckCard {
     pub count: usize,
     #[serde(default)]
     pub set: String,
+    #[serde(flatten)]
+    pub extra: std::collections::HashMap<String, serde_json::Value>,
 }
 
 /// Load the card database from a JSON bundle string.

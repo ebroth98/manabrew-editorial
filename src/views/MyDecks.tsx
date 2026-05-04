@@ -27,6 +27,9 @@ import type { SortBy } from "./myDecks.utils";
 import { getDeckCardNames } from "@/lib/decks";
 import { useCardPreview } from "@/hooks/useCardPreview";
 import { HoverCardPreview } from "@/components/game/HoverCardPreview";
+import { usePresetDecks } from "@/stores/usePresetDecksStore";
+import type { SavedDeck } from "@/stores/useDeckStore";
+import type { Deck as DeckType } from "@/types/openmagic";
 
 // ── Component ────────────────────────────────────────────────────────────────
 
@@ -35,6 +38,8 @@ export default function MyDecks() {
   const startGame = useGameStore((s) => s.startGame);
   const { savedDecks, loadSavedDeck, deleteSavedDeck, clearDeck, setDeckName, enrichSavedDeck } =
     useDeckStore();
+  const loadPresetDeck = useDeckStore((s) => s.loadPresetDeck);
+  const presetDecks = usePresetDecks();
   const [selectedId, setSelectedId] = useState<string | null>(savedDecks[0]?.id ?? null);
   const [playDialogOpen, setPlayDialogOpen] = useState(false);
   const [playDeckId, setPlayDeckId] = useState<string | undefined>(undefined);
@@ -49,6 +54,23 @@ export default function MyDecks() {
   const preview = useCardPreview();
 
   const enrichedDecksRef = useRef(new Set<string>());
+
+  function handleOpenPreset(deck: DeckType) {
+    loadPresetDeck(deck);
+    navigate(ROUTES.DECK_EDITOR, { state: { directToEditor: true } });
+  }
+
+  const presetSavedDecksUnfiltered: SavedDeck[] = presetDecks.map((deck) => ({
+    id: `preset:${deck.id ?? deck.name}`,
+    deck,
+    savedAt: 0,
+  }));
+  const { valid: presetSavedDecks } = applyDeckFilters(presetSavedDecksUnfiltered, {
+    search,
+    formatFilter,
+    colorFilter,
+    sortBy,
+  });
 
   function toggleColor(color: string) {
     setColorFilter((prev) =>
@@ -199,7 +221,9 @@ export default function MyDecks() {
           />
 
           <ScrollArea className="flex-1">
-            {filteredValid.length === 0 && filteredDrafts.length === 0 ? (
+            {filteredValid.length === 0 &&
+            filteredDrafts.length === 0 &&
+            presetSavedDecks.length === 0 ? (
               <div className="p-6 text-center text-sm text-muted-foreground">
                 {savedDecks.length === 0
                   ? "No saved decks. Create one in the Deck Editor."
@@ -248,6 +272,36 @@ export default function MyDecks() {
                         onCancelRename={() => setEditingId(null)}
                         onDelete={() => handleDelete(s.id)}
                         onEditNameChange={setEditName}
+                      />
+                    ))}
+                  </>
+                )}
+
+                {presetSavedDecks.length > 0 && (
+                  <>
+                    <div className="px-3 pt-3 pb-1 flex items-center gap-2 border-t mt-1">
+                      <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                        Preset Decks
+                      </span>
+                      <span className="text-[10px] text-muted-foreground">
+                        ({presetSavedDecks.length})
+                      </span>
+                    </div>
+                    {presetSavedDecks.map((s) => (
+                      <DeckCard
+                        key={s.id}
+                        deck={s}
+                        isSelected={false}
+                        isEditing={false}
+                        editName=""
+                        readOnly
+                        onSelect={() => handleOpenPreset(s.deck)}
+                        onRename={() => undefined}
+                        onStartRename={() => undefined}
+                        onConfirmRename={() => undefined}
+                        onCancelRename={() => undefined}
+                        onDelete={() => undefined}
+                        onEditNameChange={() => undefined}
                       />
                     ))}
                   </>

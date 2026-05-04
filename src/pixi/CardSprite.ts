@@ -1,6 +1,7 @@
 import { Container, Sprite, Texture, Graphics, Text, TextStyle } from "pixi.js";
 import type { Card } from "@/types/openmagic";
 import { CARD_W, CARD_H } from "@/components/game/game.constants";
+import { isHorizontalCard } from "@/lib/cardLayout";
 import type { Theme } from "@/hooks/useTheme";
 import { getTheme } from "@/hooks/useTheme";
 import { hexToNum } from "./colorUtils";
@@ -295,6 +296,7 @@ export class CardSprite extends Container {
     this.imageSpr.setSize(CARD_W, CARD_H);
     this.imageSpr.mask = this.imageMask;
     this.addChild(this.imageSpr);
+    this.fitImageToSlot();
 
     this.badgeContainer = new Container();
     this.badgeBg = new Graphics();
@@ -362,6 +364,36 @@ export class CardSprite extends Container {
     this.loadImage();
   }
 
+  // Scryfall serves horizontal-frame cards as upright 5:7 PNGs — rotate
+  // the sprite 90° so the printed art reads in landscape inside the slot.
+  private isHorizontal(): boolean {
+    const key = `name:${this.card.name.toLowerCase()}`;
+    const sf = useScryfallStore.getState().cards[key]?.card?.info;
+    return isHorizontalCard({
+      layout: this.card.layout ?? sf?.layout,
+      types: this.card.types,
+      typeLine: sf?.type_line,
+    });
+  }
+
+  private fitImageToSlot(): void {
+    if (this.isHorizontal()) {
+      this.imageSpr.anchor.set(0.5, 0.5);
+      this.imageSpr.x = CARD_W / 2;
+      this.imageSpr.y = CARD_H / 2;
+      this.imageSpr.rotation = -Math.PI / 2;
+      const preHeight = CARD_W;
+      const preWidth = Math.round((preHeight * 5) / 7);
+      this.imageSpr.setSize(preWidth, preHeight);
+    } else {
+      this.imageSpr.anchor.set(0, 0);
+      this.imageSpr.rotation = 0;
+      this.imageSpr.x = 0;
+      this.imageSpr.y = 0;
+      this.imageSpr.setSize(CARD_W, CARD_H);
+    }
+  }
+
   private async loadImage(): Promise<void> {
     const card = await useScryfallStore.getState().getCardTexture({
       name: this.card.name,
@@ -372,7 +404,7 @@ export class CardSprite extends Container {
     if (this.destroyed) return;
     if (tex !== Texture.EMPTY) {
       this.imageSpr.texture = tex;
-      this.imageSpr.setSize(CARD_W, CARD_H);
+      this.fitImageToSlot();
       this.placeholderGfx.visible = false;
       this.nameText.visible = false;
       this._imageLoaded = true;

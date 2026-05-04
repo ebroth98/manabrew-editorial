@@ -127,6 +127,8 @@ export interface SavedDeck {
 interface DeckState {
   currentDeck: Deck;
   currentDeckId: string | null;
+  /** True when browsing a preset — gates editing controls in DeckBuilder. */
+  isReadOnly: boolean;
   pool: Card[];
   savedDecks: SavedDeck[];
   addToMain: (card: Card) => void;
@@ -140,6 +142,8 @@ interface DeckState {
   setDeckFormat: (format: DeckFormatId) => void;
   clearDeck: () => void;
   loadDeck: (deck: Deck) => void;
+  loadPresetDeck: (deck: Deck) => void;
+  importPresetToMyDecks: () => string | null;
   saveCurrentDeck: () => void;
   saveDraft: () => void;
   loadSavedDeck: (id: string) => void;
@@ -183,9 +187,10 @@ const initialDeck: Deck = {
 export const useDeckStore = create<DeckState>()(
   devtools(
     persist(
-      (set) => ({
+      (set, get) => ({
         currentDeck: initialDeck,
         currentDeckId: null,
+        isReadOnly: false,
         pool: [],
         savedDecks: [],
         addToMain: (card) =>
@@ -327,8 +332,34 @@ export const useDeckStore = create<DeckState>()(
               },
             };
           }),
-        clearDeck: () => set({ currentDeck: { ...initialDeck }, currentDeckId: null }),
-        loadDeck: (deck) => set({ currentDeck: normalizeDeck(deck) }),
+        clearDeck: () =>
+          set({ currentDeck: { ...initialDeck }, currentDeckId: null, isReadOnly: false }),
+        loadDeck: (deck) => set({ currentDeck: normalizeDeck(deck), isReadOnly: false }),
+        loadPresetDeck: (deck) =>
+          set({
+            currentDeck: normalizeDeck(deck),
+            currentDeckId: null,
+            isReadOnly: true,
+          }),
+        importPresetToMyDecks: () => {
+          const state = get();
+          const id = crypto.randomUUID();
+          const baseName = state.currentDeck.name || DEFAULT_DECK_NAME;
+          const importedName = baseName.endsWith(" (Copy)") ? baseName : `${baseName} (Copy)`;
+          const imported: Deck = {
+            ...normalizeDeck(state.currentDeck),
+            name: importedName,
+            id: undefined,
+          };
+          const savedDeck: SavedDeck = { id, deck: imported, savedAt: Date.now() };
+          set((s) => ({
+            currentDeck: imported,
+            currentDeckId: id,
+            isReadOnly: false,
+            savedDecks: [...s.savedDecks, savedDeck],
+          }));
+          return id;
+        },
         setCommander: (card) =>
           set((state) => {
             const deck = normalizeDeck(state.currentDeck);
@@ -512,7 +543,11 @@ export const useDeckStore = create<DeckState>()(
           set((state) => {
             const found = state.savedDecks.find((s) => s.id === id);
             if (!found) return state;
-            return { currentDeck: normalizeDeck(found.deck), currentDeckId: id };
+            return {
+              currentDeck: normalizeDeck(found.deck),
+              currentDeckId: id,
+              isReadOnly: false,
+            };
           }),
         deleteSavedDeck: (id) =>
           set((state) => ({
@@ -650,6 +685,13 @@ export const useDeckStore = create<DeckState>()(
       {
         name: STORAGE_KEYS.DECK,
         version: 3,
+        merge: (persisted, current) => {
+          const merged = { ...current, ...(persisted as object) } as DeckState;
+          merged.isReadOnly = false;
+          merged.currentDeck = { ...initialDeck };
+          merged.currentDeckId = null;
+          return merged;
+        },
         migrate: (persistedState: unknown) => {
           if (!persistedState || typeof persistedState !== "object")
             return persistedState as DeckState;

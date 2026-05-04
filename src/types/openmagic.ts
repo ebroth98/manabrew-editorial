@@ -55,6 +55,8 @@ export interface Card {
   isToken?: boolean;
   isCopy?: boolean;
   isDoubleFaced?: boolean;
+  /** Scryfall's `layout` string. Drives sideways-frame rendering. */
+  layout?: string;
   isTransformed?: boolean;
   isFaceDown?: boolean;
   foil?: boolean;

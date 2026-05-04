@@ -71,7 +71,7 @@ export function DeckSelectionCard({
   const titleColorClass = getDeckNameColorClass(cards, isPreset ? color : undefined);
   const breakdown = isPreset ? desc : getDeckTypeBreakdown(cards);
   const fallbackColorLabel = !isPreset && getDeckColors(cards).length === 0;
-  const showManaRow = (!isPreset && !!colorCost) || fallbackColorLabel;
+  const showManaRow = !!colorCost || fallbackColorLabel;
   const hasVsSide = isPlayerDeck || isOpponentDeck;
 
   // Derive side-specific inline styles from theme CSS vars
@@ -182,7 +182,7 @@ export function DeckSelectionCard({
             {formatId && <FormatBadge formatId={formatId} />}
             {showManaRow && (
               <>
-                {!isPreset && colorCost ? (
+                {colorCost ? (
                   <ManaSymbols cost={colorCost} size="sm" />
                 ) : fallbackColorLabel ? (
                   <span

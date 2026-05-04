@@ -15,6 +15,10 @@ export interface ArchidektSearchResult {
 export interface ArchidektDeckCard {
   name: string;
   count: number;
+  /** Lowercase set code (e.g. `"vow"`). Forwarded to Scryfall identifiers. */
+  set?: string;
+  /** Collector number (e.g. `"42"` or `"42a"`). Used for art-variant lookups. */
+  cardNumber?: string;
 }
 
 export interface ArchidektDeck {
@@ -155,6 +159,11 @@ interface RawDeckResponse {
     categories?: string[];
     card?: {
       name?: string;
+      collectorNumber?: string;
+      edition?: {
+        editioncode?: string;
+        editionCode?: string;
+      };
       oracleCard?: {
         name?: string;
         colorIdentity?: string[];
@@ -186,7 +195,11 @@ export async function fetchArchidektDeck(
     const name = entry.card?.oracleCard?.name ?? entry.card?.name;
     if (!name) continue;
     const target = categories.some((c) => COMMANDER_CATEGORIES.has(c)) ? commanders : cards;
-    target.push({ name, count: entry.quantity });
+    const set = (
+      entry.card?.edition?.editioncode ?? entry.card?.edition?.editionCode
+    )?.toLowerCase();
+    const cardNumber = entry.card?.collectorNumber;
+    target.push({ name, count: entry.quantity, set, cardNumber });
     for (const c of entry.card?.oracleCard?.colorIdentity ?? []) colors.add(c);
   }
   return {

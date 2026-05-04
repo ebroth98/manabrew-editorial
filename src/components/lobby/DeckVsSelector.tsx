@@ -1,5 +1,5 @@
-import { useEffect, useState, type ReactNode } from "react";
-import { getDefaultGameRuntime } from "@/game";
+import { useState, type ReactNode } from "react";
+import { usePresetDecks } from "@/stores/usePresetDecksStore";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { FormatBadge } from "@/components/game/FormatBadge";
@@ -46,7 +46,7 @@ type PickingSide = "player" | "opponent";
 type PlayFormatId = string;
 
 export function DeckVsSelector({ onStart, onStartTabletop }: DeckVsSelectorProps) {
-  const [presetDecks, setPresetDecks] = useState<Deck[]>([]);
+  const presetDecks = usePresetDecks();
   const [playerDeck, setPlayerDeck] = useState<SelectedDeck | null>(null);
   const [opponentDeck, setOpponentDeck] = useState<SelectedDeck | null>(null);
   const [pickingSide, setPickingSide] = useState<PickingSide>("player");
@@ -54,22 +54,17 @@ export function DeckVsSelector({ onStart, onStartTabletop }: DeckVsSelectorProps
   const [deckSearch, setDeckSearch] = useState("");
   const { savedDecks, currentDeck } = useDeckStore();
 
-  useEffect(() => {
-    const runtime = getDefaultGameRuntime();
-    runtime.api
-      .getPresetDecks()
-      .then(setPresetDecks)
-      .catch((e) => console.error("[DeckVsSelector] Failed to load preset decks:", e));
-  }, []);
-
   const searchLower = deckSearch.toLowerCase();
+  const formatFilteredPresets = presetDecks.filter(
+    (deck) => (deck.format ?? "standard") === selectedFormat,
+  );
   const filteredDecks = searchLower
-    ? presetDecks.filter(
+    ? formatFilteredPresets.filter(
         (deck) =>
           deck.name.toLowerCase().includes(searchLower) ||
           (deck.description ?? "").toLowerCase().includes(searchLower),
       )
-    : presetDecks;
+    : formatFilteredPresets;
 
   const currentDeckFingerprint = getDeckFingerprint(currentDeck);
   const distinctSavedDecks = savedDecks.filter(
@@ -123,14 +118,6 @@ export function DeckVsSelector({ onStart, onStartTabletop }: DeckVsSelectorProps
   }
 
   function selectDeck(deck: Deck) {
-    if (
-      selectedFormat === "commander" ||
-      selectedFormat === "brawl" ||
-      selectedFormat === "oathbreaker"
-    ) {
-      return;
-    }
-
     const id = deck.id ?? deck.name;
     assignDeck({
       id,
@@ -140,6 +127,7 @@ export function DeckVsSelector({ onStart, onStartTabletop }: DeckVsSelectorProps
       deckList: serializeDeck(deck),
       sourceDeck: deck,
       formatId: selectedFormat,
+      commanderName: deck.commanders?.[0]?.name,
       coverCardName: deck.coverCardName,
     });
   }
@@ -149,16 +137,9 @@ export function DeckVsSelector({ onStart, onStartTabletop }: DeckVsSelectorProps
   }
 
   function handleRandomOpponent() {
-    if (
-      selectedFormat === "commander" ||
-      selectedFormat === "brawl" ||
-      selectedFormat === "oathbreaker"
-    ) {
-      return;
-    }
-    if (presetDecks.length === 0) return;
+    if (formatFilteredPresets.length === 0) return;
 
-    const random = presetDecks[Math.floor(Math.random() * presetDecks.length)];
+    const random = formatFilteredPresets[Math.floor(Math.random() * formatFilteredPresets.length)];
     const id = random.id ?? random.name;
     setOpponentDeck({
       id,
@@ -168,6 +149,7 @@ export function DeckVsSelector({ onStart, onStartTabletop }: DeckVsSelectorProps
       deckList: serializeDeck(random),
       sourceDeck: random,
       formatId: selectedFormat,
+      commanderName: random.commanders?.[0]?.name,
       coverCardName: random.coverCardName,
     });
   }
@@ -379,15 +361,10 @@ export function DeckVsSelector({ onStart, onStartTabletop }: DeckVsSelectorProps
               Preset Decks
             </p>
           )}
-          {selectedFormat === "commander" ||
-          selectedFormat === "brawl" ||
-          selectedFormat === "oathbreaker" ? (
+          {filteredDecks.length === 0 ? (
             <p className="text-xs text-muted-foreground italic py-4">
-              Preset AI decks are not available for singleton formats. Pick a saved deck for the AI
-              side.
+              No preset decks for this format.
             </p>
-          ) : filteredDecks.length === 0 ? (
-            <p className="text-xs text-muted-foreground italic py-4">No decks match your search.</p>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 pt-1">
               {filteredDecks.map((deck) => (
