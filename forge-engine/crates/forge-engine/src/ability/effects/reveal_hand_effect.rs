@@ -53,4 +53,21 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
             GameLogEvent::rule(msg.clone()).with_player(target),
         ));
     }
+
+    // Mirrors `host.getGame().getAction().reveal(hand, p)` in
+    // RevealHandEffect.java:54 — broadcast a modal of the full hand to every
+    // player so the reveal is publicly visible, not just a log entry.
+    if !hand.is_empty() {
+        let source_name = sa.source.map(|cid| ctx.game.card(cid).card_name.clone());
+        for agent in ctx.agents.iter_mut() {
+            agent.reveal_cards(
+                ctx.game,
+                target,
+                &hand,
+                ZoneType::Hand,
+                target,
+                source_name.as_deref(),
+            );
+        }
+    }
 }

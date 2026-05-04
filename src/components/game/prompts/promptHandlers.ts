@@ -137,3 +137,7 @@ export function resolvePrompt(prompt: AgentPrompt, ctx: ResolveCtx): AutoResolut
 export function effectiveShow(promptType: PromptType, prefs: PromptPreferencesSnapshot): boolean {
   return prefs.show[promptType] ?? PROMPT_HANDLERS[promptType].showByDefault;
 }
+
+export function isToggledOff(promptType: PromptType, ctx: ResolveCtx): boolean {
+  return ctx.prefs.show[promptType] === false;
+}

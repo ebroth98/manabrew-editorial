@@ -27,7 +27,10 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     // use their seeded RNG for parity testing.
     let is_random = mode.eq_ignore_ascii_case("Random");
 
-    for target_player in get_target_players(ctx.game, sa) {
+    let target_players = get_target_players(ctx.game, sa);
+    let first_target = target_players.first().copied();
+
+    for target_player in target_players.iter().copied() {
         let mut hand: Vec<_> = ctx
             .game
             .cards_in_zone(ZoneType::Hand, target_player)
@@ -54,6 +57,35 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
             "TgtChoose" | "YouChoose" | "RevealYouChoose" | "RevealTgtChoose"
         );
 
+        // Java DiscardEffect.resolve(): chooser defaults to the discarder, but
+        // *YouChoose modes route the pick to the activating player and
+        // RevealTgtChoose pins it to the first target. See DiscardEffect.java
+        // lines 236-241.
+        let chooser = if mode.ends_with("YouChoose") {
+            sa.activating_player
+        } else if mode.eq_ignore_ascii_case("RevealTgtChoose") {
+            first_target.unwrap_or(target_player)
+        } else {
+            target_player
+        };
+
+        // Mode$ Reveal* — broadcast the discarder's hand to every player
+        // before the chooser picks, mirroring `game.getAction().reveal(...)`
+        // in Java (DiscardEffect.java:244).
+        if mode.starts_with("Reveal") && !hand.is_empty() {
+            let source_name = sa.source.map(|cid| ctx.game.card(cid).card_name.clone());
+            for agent in ctx.agents.iter_mut() {
+                agent.reveal_cards(
+                    ctx.game,
+                    target_player,
+                    &hand,
+                    ZoneType::Hand,
+                    target_player,
+                    source_name.as_deref(),
+                );
+            }
+        }
+
         if sa.ir.optional && !any_number && !chooser_style_optional {
             let source_name = sa.source.map(|cid| ctx.game.card(cid).card_name.as_str());
             let accepted = ctx.agents[target_player.index()].confirm_action(
@@ -72,19 +104,21 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
         let to_discard = if is_random {
             ctx.agents[target_player.index()].choose_random_discard(target_player, &hand, num)
         } else if any_number {
-            ctx.agents[target_player.index()].choose_discard_any_number(
+            ctx.agents[chooser.index()].choose_discard_any_number(
                 target_player,
                 &hand,
                 0,
                 hand.len(),
             )
         } else if sa.ir.optional && chooser_style_optional {
-            ctx.agents[target_player.index()].choose_discard_any_number(
+            ctx.agents[chooser.index()].choose_discard_any_number(
                 target_player,
                 &hand,
                 0,
                 num.min(hand.len()),
             )
+        } else if chooser_style_optional {
+            ctx.agents[chooser.index()].choose_discard(target_player, &hand, num)
         } else {
             ctx.agents[target_player.index()].choose_discard(target_player, &hand, num)
         };

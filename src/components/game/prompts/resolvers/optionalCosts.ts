@@ -1,9 +1,5 @@
 import { PromptType } from "@/types/promptType";
-import type { PromptResolver, ResolveCtx } from "../promptHandlers";
-
-function isToggledOff(promptType: PromptType, ctx: ResolveCtx): boolean {
-  return ctx.prefs.show[promptType] === false;
-}
+import { isToggledOff, type PromptResolver } from "../promptHandlers";
 
 export const skipKicker: PromptResolver = (_prompt, ctx) => {
   if (!isToggledOff(PromptType.ChooseKicker, ctx)) return { kind: "force-show" };

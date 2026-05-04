@@ -46,6 +46,23 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
         );
     }
 
+    // Mirrors the public broadcast step in PeekAndRevealEffect.java:88
+    // (`game.getAction().reveal(...)`). Every player sees the revealed cards
+    // unless the script suppressed it via `NoReveal$ True`.
+    if !sa.ir.no_reveal && !peeked.is_empty() {
+        let source_name = sa.source.map(|cid| ctx.game.card(cid).card_name.clone());
+        for agent in ctx.agents.iter_mut() {
+            agent.reveal_cards(
+                ctx.game,
+                controller,
+                &peeked,
+                ZoneType::Library,
+                controller,
+                source_name.as_deref(),
+            );
+        }
+    }
+
     if remember_revealed || remember_peeked {
         if let Some(source_id) = sa.source {
             for &card_id in &peeked {

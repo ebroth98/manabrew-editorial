@@ -42,4 +42,20 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
             ));
         }
     }
+
+    // Mirrors `game.getAction().reveal(revealed, p, ...)` in
+    // RevealEffect.java:81-85 — broadcast a modal of the revealed cards to
+    // every player so all parties can see what was revealed.
+    let source_name = sa.source.map(|cid| ctx.game.card(cid).card_name.clone());
+    let revealed_vec = revealed.to_vec();
+    for agent in ctx.agents.iter_mut() {
+        agent.reveal_cards(
+            ctx.game,
+            target,
+            &revealed_vec,
+            ZoneType::Hand,
+            target,
+            source_name.as_deref(),
+        );
+    }
 }
