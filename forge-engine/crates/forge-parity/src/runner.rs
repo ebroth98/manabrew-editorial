@@ -177,6 +177,8 @@ struct CapturingAgent {
     current_phase: String,
     last_game_state: Option<GameState>,
     pending_pay_mana_cost_args: Option<Vec<String>>,
+    pending_pay_mana_cost_card: Option<CardId>,
+    failed_payment_cards_this_turn: HashSet<CardId>,
     #[allow(dead_code)]
     verbose: VerboseMode,
 }
@@ -274,6 +276,8 @@ impl CapturingAgent {
             current_phase: "Unknown".to_string(),
             last_game_state: None,
             pending_pay_mana_cost_args: None,
+            pending_pay_mana_cost_card: None,
+            failed_payment_cards_this_turn: HashSet::new(),
             verbose,
         }
     }
@@ -360,6 +364,20 @@ impl CapturingAgent {
                 "truncated: {count} copies of {name} on battlefield (limit {CARD_COPY_GUARD_THRESHOLD})"
             ),
         );
+    }
+
+    fn filter_failed_payment_actions(
+        &self,
+        action_space: &PriorityActionSpace,
+    ) -> PriorityActionSpace {
+        if self.failed_payment_cards_this_turn.is_empty() {
+            return action_space.clone();
+        }
+        let mut filtered = action_space.clone();
+        filtered
+            .playable
+            .retain(|play| !self.failed_payment_cards_this_turn.contains(&play.card_id));
+        filtered
     }
 }
 
@@ -458,6 +476,9 @@ impl PlayerAgent for CapturingAgent {
             }
             GameNotification::TurnChanged { turn_number, .. } => {
                 self.current_turn = *turn_number;
+                self.failed_payment_cards_this_turn.clear();
+                self.pending_pay_mana_cost_args = None;
+                self.pending_pay_mana_cost_card = None;
                 if self.capture_snapshots {
                     if let Some(ref game) = self.last_game_state {
                         let mut snap = snapshot_game(game);
@@ -501,6 +522,7 @@ impl PlayerAgent for CapturingAgent {
             }
             GameNotification::ManaPaymentResolved { player, actions } => {
                 if *player == self.player_id {
+                    let pending_card = self.pending_pay_mana_cost_card.take();
                     if let Some(cb_args) = self.pending_pay_mana_cost_args.take() {
                         let outcome = match self.fmt_ctx() {
                             Some(ctx) => actions.parity_fmt(&ctx),
@@ -514,6 +536,14 @@ impl PlayerAgent for CapturingAgent {
                             &self.current_phase,
                             cb_args,
                         );
+                    }
+                    if actions
+                        .iter()
+                        .any(|action| matches!(action, ManaCostAction::AttemptedAndFailed))
+                    {
+                        if let Some(card_id) = pending_card {
+                            self.failed_payment_cards_this_turn.insert(card_id);
+                        }
                     }
                 }
             }
@@ -560,6 +590,9 @@ impl PlayerAgent for CapturingAgent {
                 Some(&requested_action_space)
             }
         };
+        let filtered_action_space =
+            action_space.map(|action_space| self.filter_failed_payment_actions(action_space));
+        let action_space = filtered_action_space.as_ref();
         self.save_snapshot("choose_action");
         if let Some(action_space) = action_space {
             if let Some(action_space_log) = self.inner.format_action_space_for_log(action_space) {
@@ -637,8 +670,73 @@ impl PlayerAgent for CapturingAgent {
         fn reveal_cards(&mut self, game: &GameState, player: PlayerId, cards: &[CardId], zone: ZoneType, owner: PlayerId, message_prefix: Option<&str>) -> () => "reveal_cards";
     }
 
-    parity_agent_callback! {
-        fn pay_mana_cost(&mut self, player: PlayerId, card_id: CardId, card_name: &str, mana_cost: &str, mana_cost_display: &str, mana_cost_checkpoint: &str, allow_reserved_source_reuse: bool, reserved_sacrifices: &[CardId], mana_ability_options: &[forge_engine_core::agent::ManaAbilityOption], tappable_lands: &[CardId], untappable_lands: &[CardId], mana_pool: &forge_engine_core::mana::ManaPool) -> ManaCostAction => "pay_mana_cost", defer_if ManaCostAction::Pay { auto: true } => pending_pay_mana_cost_args;
+    fn pay_mana_cost(
+        &mut self,
+        player: PlayerId,
+        card_id: CardId,
+        card_name: &str,
+        mana_cost: &str,
+        mana_cost_display: &str,
+        mana_cost_checkpoint: &str,
+        can_confirm_from_pool: bool,
+        allow_reserved_source_reuse: bool,
+        reserved_sacrifices: &[CardId],
+        mana_ability_options: &[forge_engine_core::agent::ManaAbilityOption],
+        tappable_lands: &[CardId],
+        untappable_lands: &[CardId],
+        mana_pool: &forge_engine_core::mana::ManaPool,
+    ) -> ManaCostAction {
+        self.save_snapshot("pay_mana_cost");
+        let fmt = self.fmt_ctx();
+        let cb_args: Vec<String> = vec![
+            player.callback_arg_display(fmt.as_ref()),
+            card_id.callback_arg_display(fmt.as_ref()),
+            card_name.callback_arg_display(fmt.as_ref()),
+            mana_cost.callback_arg_display(fmt.as_ref()),
+            mana_cost_display.callback_arg_display(fmt.as_ref()),
+            mana_cost_checkpoint.callback_arg_display(fmt.as_ref()),
+            can_confirm_from_pool.callback_arg_display(fmt.as_ref()),
+            allow_reserved_source_reuse.callback_arg_display(fmt.as_ref()),
+            reserved_sacrifices.callback_arg_display(fmt.as_ref()),
+            mana_ability_options.callback_arg_display(fmt.as_ref()),
+            tappable_lands.callback_arg_display(fmt.as_ref()),
+            untappable_lands.callback_arg_display(fmt.as_ref()),
+            mana_pool.callback_arg_display(fmt.as_ref()),
+        ];
+        let result = self.inner.pay_mana_cost(
+            player,
+            card_id,
+            card_name,
+            mana_cost,
+            mana_cost_display,
+            mana_cost_checkpoint,
+            can_confirm_from_pool,
+            allow_reserved_source_reuse,
+            reserved_sacrifices,
+            mana_ability_options,
+            tappable_lands,
+            untappable_lands,
+            mana_pool,
+        );
+        if matches!(result, ManaCostAction::Pay { auto: true }) {
+            self.pending_pay_mana_cost_args = Some(cb_args);
+            self.pending_pay_mana_cost_card = Some(card_id);
+            return result;
+        }
+        self.pending_pay_mana_cost_card = None;
+        let outcome = match self.fmt_ctx() {
+            Some(ctx) => result.parity_fmt(&ctx),
+            None => format!("{result:?}"),
+        };
+        self.parity_observer.on_callback(
+            "pay_mana_cost",
+            &outcome,
+            self.player_id.0,
+            self.current_turn,
+            &self.current_phase,
+            cb_args,
+        );
+        result
     }
 
     parity_agent_callback! {

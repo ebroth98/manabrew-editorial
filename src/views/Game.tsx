@@ -834,11 +834,16 @@ export default function Game({ exitTo }: GameProps = {}) {
   unifiedPassRef.current = unifiedPass;
   const activatePassUntilEotRef = useRef(activatePassUntilEot);
   activatePassUntilEotRef.current = activatePassUntilEot;
+  const payManaPrimaryRef = useRef(() => {});
+  payManaPrimaryRef.current = () => {
+    if (promptType !== PromptType.PayManaCost) return;
+    if (activePrompt?.canConfirmFromPool) {
+      payManaCost(false);
+    } else {
+      autoManaCost();
+    }
+  };
 
-  // Card hover preview with delayed show / auto-dismiss
-  // Note: promptType is NOT a dismiss dep — modal prompt types are already guarded
-  // by the render condition on CardPreview, and modal states are tracked separately.
-  // Including promptType caused hover to break during autopass (rapid prompt changes).
   const preview = useCardPreview([
     viewingZone,
     zoneTargetSelector,
@@ -924,7 +929,11 @@ export default function Game({ exitTo }: GameProps = {}) {
       if (manualApi) return;
       if (e.code === "Space") {
         e.preventDefault();
-        unifiedPassRef.current();
+        if (promptType === PromptType.PayManaCost) {
+          payManaPrimaryRef.current();
+        } else {
+          unifiedPassRef.current();
+        }
       } else if (e.code === "F6") {
         e.preventDefault();
         activatePassUntilEotRef.current();
@@ -932,7 +941,7 @@ export default function Game({ exitTo }: GameProps = {}) {
     }
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
-  }, [passPriority, manualApi]);
+  }, [manualApi, promptType]);
 
   // Targeting / combat arrows — must be called unconditionally (Rules of Hooks)
   const me = gameView?.players?.find((p) => p.isHuman) ?? gameView?.players?.[0];

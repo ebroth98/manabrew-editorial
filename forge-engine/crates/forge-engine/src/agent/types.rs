@@ -124,8 +124,8 @@ pub enum ManaCostAction {
     /// Confirm payment from the mana pool. When `auto` is true, the engine
     /// should complete the payment session using engine auto-pay.
     Pay { auto: bool },
-    /// Cancel casting this spell.
-    Cancel,
+    /// Payment was attempted but could not be completed.
+    AttemptedAndFailed,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

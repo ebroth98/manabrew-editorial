@@ -299,7 +299,7 @@ impl ParityFormat for ManaCostAction {
                     "Pay".to_string()
                 }
             }
-            ManaCostAction::Cancel => "Cancel".to_string(),
+            ManaCostAction::AttemptedAndFailed => "Cancel".to_string(),
         }
     }
 }

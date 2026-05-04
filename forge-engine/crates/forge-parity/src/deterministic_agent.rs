@@ -955,6 +955,7 @@ impl PlayerAgent for DeterministicAgent {
         _mana_cost: &str,
         _mana_cost_display: &str,
         _mana_cost_checkpoint: &str,
+        _can_confirm_from_pool: bool,
         _allow_reserved_source_reuse: bool,
         _reserved_sacrifices: &[CardId],
         _mana_ability_options: &[forge_engine_core::agent::ManaAbilityOption],

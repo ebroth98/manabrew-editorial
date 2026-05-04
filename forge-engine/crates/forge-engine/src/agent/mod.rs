@@ -929,6 +929,7 @@ pub trait PlayerAgent {
         _mana_cost: &str,
         _mana_cost_display: &str,
         _mana_cost_checkpoint: &str,
+        _can_confirm_from_pool: bool,
         _allow_reserved_source_reuse: bool,
         _reserved_sacrifices: &[CardId],
         _mana_ability_options: &[ManaAbilityOption],
@@ -936,7 +937,7 @@ pub trait PlayerAgent {
         _untappable_lands: &[CardId],
         _mana_pool: &ManaPool,
     ) -> ManaCostAction {
-        ManaCostAction::Cancel
+        ManaCostAction::AttemptedAndFailed
     }
 
     /// Block until this agent acknowledges a display-only prompt that

@@ -320,6 +320,7 @@ fn pay_mana_cost_for_effect(
         |_game, _mana_pools, _record, _produced_count| {},
         |_game, _mana_pools, _player, _card_id| false,
     )
+    .paid
 }
 
 #[derive(Clone, Copy)]

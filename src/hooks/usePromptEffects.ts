@@ -38,10 +38,28 @@ function getAutoPassDelayMs(): number {
   );
 }
 
-function hasDeclaredAttackers(prompt: AgentPrompt): boolean {
+const ACTIVE_COMBAT_PRIORITY_STEPS = new Set([
+  "declare_attackers",
+  "declare_blockers",
+  "first_strike_damage",
+  "combat_damage",
+  "end_combat",
+]);
+
+function hasActiveCombatAfterAttackers(prompt: AgentPrompt): boolean {
   return (
-    prompt.gameView.step === "declare_attackers" &&
+    ACTIVE_COMBAT_PRIORITY_STEPS.has(prompt.gameView.step) &&
     prompt.gameView.battlefield.some((card) => card.isAttacking === true)
+  );
+}
+
+function hasNonPassPriorityAction(prompt: AgentPrompt): boolean {
+  return (
+    (prompt.playableCardIds ?? []).length > 0 ||
+    (prompt.activatableAbilityIds ?? []).length > 0 ||
+    (prompt.tappableLandIds ?? []).length > 0 ||
+    (prompt.manaAbilityOptions ?? []).length > 0 ||
+    (prompt.untappableLandIds ?? []).length > 0
   );
 }
 
@@ -116,7 +134,8 @@ export function usePromptEffects({
     if (
       currentPrompt.type === PromptType.ChooseAction &&
       stackLength === 0 &&
-      hasDeclaredAttackers(currentPrompt)
+      hasActiveCombatAfterAttackers(currentPrompt) &&
+      hasNonPassPriorityAction(currentPrompt)
     ) {
       if (passUntilTurn !== null) {
         usePhaseStopStore.getState().clearPassUntil();

@@ -492,7 +492,7 @@ impl GameLoop {
                         ),
                         reserved_sacrifices: &reserved_sacrifices,
                     };
-                    let mana_paid = self.pay_mana_cost_session(
+                    let mana_payment = self.pay_mana_cost_session(
                         game,
                         agents,
                         session,
@@ -596,7 +596,7 @@ impl GameLoop {
                         &mut self.mana_pools[player.index()],
                         &saved_matrix,
                     );
-                    if !mana_paid {
+                    if !mana_payment.paid {
                         payment_ok = false;
                         break;
                     }

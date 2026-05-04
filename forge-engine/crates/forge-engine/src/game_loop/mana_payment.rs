@@ -17,6 +17,21 @@ pub(crate) struct ManaPaymentSession<'a> {
     pub reserved_sacrifices: &'a [CardId],
 }
 
+#[derive(Clone, Copy)]
+pub(crate) struct ManaPaymentResult {
+    pub paid: bool,
+}
+
+impl ManaPaymentResult {
+    fn paid() -> Self {
+        Self { paid: true }
+    }
+
+    fn failed() -> Self {
+        Self { paid: false }
+    }
+}
+
 fn notify_mana_payment_resolved(
     agents: &mut [Box<dyn PlayerAgent>],
     player: PlayerId,
@@ -56,7 +71,7 @@ pub(crate) fn pay_mana_cost_session_generic<
     mut begin_mana_undo: FBeginUndo,
     mut finish_mana_undo: FFinishUndo,
     mut undo_mana_action: FUndo,
-) -> bool
+) -> ManaPaymentResult
 where
     FAvail: Fn(&GameState, PlayerId, CardId, &ActivatedAbility, &[CardId]) -> bool,
     FAuto: FnMut(
@@ -92,6 +107,12 @@ where
         let mana_ability_options = mana_sources.mana_ability_options;
         let untappable_lands = undoable_mana_sources(game, mana_pools, session.player);
         let pool_ref = mana_pools[session.player.index()].clone();
+        let can_confirm_from_pool = {
+            let mut confirm_pool = pool_ref.clone();
+            confirm_pool.source_colors = None;
+            confirm_pool.total_sources = None;
+            confirm_pool.try_pay(session.mana_cost)
+        };
 
         agents[session.player.index()].snapshot_state(game, mana_pools);
         let action = agents[session.player.index()].pay_mana_cost(
@@ -101,6 +122,7 @@ where
             session.cost_str,
             session.cost_display_str,
             session.cost_checkpoint_str,
+            can_confirm_from_pool,
             session.is_activated_ability,
             session.reserved_sacrifices,
             &mana_ability_options,
@@ -119,7 +141,7 @@ where
                     mana_loop_invalid_count += 1;
                     if mana_loop_invalid_count > 3 {
                         mana_pools[session.player.index()] = saved_pool.clone();
-                        return false;
+                        return ManaPaymentResult::failed();
                     }
                     continue;
                 }
@@ -252,42 +274,43 @@ where
             ManaCostAction::Pay { auto } => {
                 if auto {
                     if let Some(mut auto_trace) = auto_pay(game, agents, mana_pools, session) {
-                        let cancelled = matches!(auto_trace.last(), Some(ManaCostAction::Cancel));
+                        let attempted_and_failed =
+                            matches!(auto_trace.last(), Some(ManaCostAction::AttemptedAndFailed));
                         executed_actions.append(&mut auto_trace);
-                        if cancelled {
+                        if attempted_and_failed {
                             notify_mana_payment_resolved(agents, session.player, &executed_actions);
                             mana_pools[session.player.index()] = saved_pool.clone();
-                            return false;
+                            return ManaPaymentResult::failed();
                         }
                         executed_actions.push(ManaCostAction::Pay { auto: false });
                         notify_mana_payment_resolved(agents, session.player, &executed_actions);
-                        return true;
+                        return ManaPaymentResult::paid();
                     }
-                    executed_actions.push(ManaCostAction::Cancel);
+                    executed_actions.push(ManaCostAction::AttemptedAndFailed);
                     notify_mana_payment_resolved(agents, session.player, &executed_actions);
                     mana_pools[session.player.index()] = saved_pool.clone();
-                    return false;
+                    return ManaPaymentResult::failed();
                 }
 
                 if try_pay_from_pool(game, mana_pools, session.player) {
                     executed_actions.push(ManaCostAction::Pay { auto: false });
                     notify_mana_payment_resolved(agents, session.player, &executed_actions);
-                    return true;
+                    return ManaPaymentResult::paid();
                 }
 
                 mana_loop_invalid_count += 1;
                 if mana_loop_invalid_count > 3 {
-                    executed_actions.push(ManaCostAction::Cancel);
+                    executed_actions.push(ManaCostAction::AttemptedAndFailed);
                     notify_mana_payment_resolved(agents, session.player, &executed_actions);
                     mana_pools[session.player.index()] = saved_pool.clone();
-                    return false;
+                    return ManaPaymentResult::failed();
                 }
             }
-            ManaCostAction::Cancel => {
-                executed_actions.push(ManaCostAction::Cancel);
+            ManaCostAction::AttemptedAndFailed => {
+                executed_actions.push(ManaCostAction::AttemptedAndFailed);
                 notify_mana_payment_resolved(agents, session.player, &executed_actions);
                 mana_pools[session.player.index()] = saved_pool.clone();
-                return false;
+                return ManaPaymentResult::failed();
             }
         }
     }
@@ -449,7 +472,7 @@ impl GameLoop {
         mana_ability_available: FAvail,
         mut auto_pay: FAuto,
         mut try_pay_from_pool: FTryPay,
-    ) -> bool
+    ) -> ManaPaymentResult
     where
         FAvail: Fn(&GameState, PlayerId, CardId, &ActivatedAbility, &[CardId]) -> bool,
         FAuto: FnMut(

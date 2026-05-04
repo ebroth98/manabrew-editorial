@@ -70,6 +70,7 @@ public class DeterministicController extends PlayerController {
     private final DeterministicCostPlumbing costPlumbing;
     private final AutoPay autoPay;
     private final DeterministicPlayPlumbing playPlumbing;
+    private final Set<Integer> failedPaymentCardsThisTurn = new HashSet<>();
     /** Turns for which verbose callback logging is active. Empty = all turns. Null = off. */
     private final int[] verboseTurns;
     /** Current turn number, updated via game events. */
@@ -97,6 +98,9 @@ public class DeterministicController extends PlayerController {
 
     /** Update the current turn number (called from game event subscribers). */
     public void setCurrentTurn(int turn) {
+        if (this.currentTurn != turn) {
+            failedPaymentCardsThisTurn.clear();
+        }
         this.currentTurn = turn;
     }
 
@@ -225,6 +229,24 @@ public class DeterministicController extends PlayerController {
         return "[" + String.join(" | ", rendered) + "]";
     }
 
+    void markFailedPaymentCard(final Card card) {
+        if (card != null) {
+            failedPaymentCardsThisTurn.add(card.getId());
+        }
+    }
+
+    private List<SpellAbility> filterFailedPaymentActions(final List<SpellAbility> actions) {
+        if (failedPaymentCardsThisTurn.isEmpty()) {
+            return actions;
+        }
+        return actions.stream()
+                .filter(sa -> {
+                    final Card host = sa.getHostCard();
+                    return host == null || !failedPaymentCardsThisTurn.contains(host.getId());
+                })
+                .collect(Collectors.toList());
+    }
+
     private boolean chooseDeterministicBooleanDecision(final String decisionType, final String falseLabel, final String trueLabel) {
         final boolean result = ChoiceSpace.pickBool(rng);
         onCallback(decisionType, Boolean.toString(result), falseLabel, trueLabel);
@@ -280,9 +302,9 @@ public class DeterministicController extends PlayerController {
             return null;
         }
         captureDeepCheckpoint("main_action");
-        final List<SpellAbility> all = ChoiceSpace.sortNative(
+        final List<SpellAbility> all = filterFailedPaymentActions(ChoiceSpace.sortNative(
                 new ArrayList<>(ActionSpace.getPossibleActions(player)),
-                ParityOrder.actionComparator());
+                ParityOrder.actionComparator()));
         if (!all.isEmpty()) {
             onCallback("$ACTION_SPACE", formatActionSpace(all, player));
         }

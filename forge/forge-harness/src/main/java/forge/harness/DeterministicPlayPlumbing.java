@@ -180,10 +180,14 @@ final class DeterministicPlayPlumbing {
         System.out.println("[" + sa.getActivatingPlayer() + "] AI failed to play "
                 + sa.getHostCard() + " [" + sa.getHostCard().getZone() + "]");
         sa.setSkip(true);
-        if (host != null && hz != null && hz.is(ZoneType.Stack)) {
-            final Card c = game.getAction().moveTo(hz.getZoneType(), host, null, null);
-            for (SpellAbility csa : c.getSpellAbilities()) {
-                csa.setSkip(true);
+        if (host != null && hz != null) {
+            GameActionUtil.rollbackAbility(sa, hz, zonePosition, new CostPayment(cost, sa), host);
+            final Card rolledBackHost = sa.getHostCard();
+            if (rolledBackHost != null) {
+                controller.markFailedPaymentCard(rolledBackHost);
+                for (SpellAbility csa : rolledBackHost.getSpellAbilities()) {
+                    csa.setSkip(true);
+                }
             }
         }
         // Mirror HumanPlaySpellAbility: unfreeze the stack when cost payment

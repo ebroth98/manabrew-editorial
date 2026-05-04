@@ -1114,15 +1114,6 @@ impl GameLoop {
                 return None;
             }};
         }
-        macro_rules! fail_announced_spell {
-            () => {{
-                if let Some(pending_stack_id) = pending_stack_id {
-                    game.stack.remove_pending_cast(pending_stack_id);
-                }
-                return None;
-            }};
-        }
-
         let selected_charm_mode_count =
             if !sa.overloaded && sa.api == Some(crate::ability::api_type::ApiType::Charm) {
                 match crate::ability::effects::charm_effect::make_choices_precast_with_count(
@@ -1315,7 +1306,7 @@ impl GameLoop {
                 is_activated_ability: false,
                 reserved_sacrifices: &combined_reserved_sacrifices,
             };
-            let mana_paid = self.pay_mana_cost_session(
+            let mana_payment = self.pay_mana_cost_session(
                 game,
                 agents,
                 session,
@@ -1368,13 +1359,14 @@ impl GameLoop {
                             })
                             .collect();
                         if result.cancelled {
-                            // Partial-tap-then-cancel mirrors Java's
+                            // Partial-tap-then-fail mirrors Java's
                             // `payManaCostWithTrace` flow: lands stay tapped,
                             // pool drains the partial mana, and the session
-                            // emits `[TapLand …, Cancel]`. Append the explicit
-                            // `Cancel` here so the session-generic loop sees a
-                            // terminal-cancelled trace rather than a paid one.
-                            trace.push(ManaCostAction::Cancel);
+                            // emits `[TapLand …, AttemptedAndFailed]`.
+                            // Append the explicit failure here so the
+                            // session-generic loop sees a terminal failed trace
+                            // rather than a paid one.
+                            trace.push(ManaCostAction::AttemptedAndFailed);
                             return Some(trace);
                         }
                         colors_spent_to_cast.set(colors_spent_to_cast.get() | result.colors_spent);
@@ -1450,10 +1442,7 @@ impl GameLoop {
                     }
                 },
             );
-            if !mana_paid {
-                if sa.is_spell {
-                    fail_announced_spell!();
-                }
+            if !mana_payment.paid {
                 rollback_cast!();
             }
         }
