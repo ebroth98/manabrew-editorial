@@ -50,6 +50,10 @@ interface GameModalsProps {
   onTypeDecision: (chosenType: string | null) => void;
   onNumberDecision: (chosenNumber: number | null) => void;
   onCardNameDecision: (chosenName: string | null) => void;
+  onScryDecision: (bottomCardIds: string[]) => void;
+  onSurveilDecision: (graveyardCardIds: string[]) => void;
+  onDigDecision: (chosenCardIds: string[]) => void;
+  onDiscardDecision: (discardedCardIds: string[]) => void;
   onDamageOrderDecision: (orderedBlockerIds: string[]) => void;
   onCombatDamageAssignmentDecision: (assignments: { assigneeId: string; damage: number }[]) => void;
   onPayCombatCost: () => void;
@@ -107,6 +111,10 @@ export function GameModals({
   onTypeDecision,
   onNumberDecision,
   onCardNameDecision,
+  onScryDecision,
+  onSurveilDecision,
+  onDigDecision,
+  onDiscardDecision,
   onDamageOrderDecision,
   onCombatDamageAssignmentDecision,
   onPayCombatCost,
@@ -141,6 +149,10 @@ export function GameModals({
         onTypeDecision={onTypeDecision}
         onNumberDecision={onNumberDecision}
         onCardNameDecision={onCardNameDecision}
+        onScryDecision={onScryDecision}
+        onSurveilDecision={onSurveilDecision}
+        onDigDecision={onDigDecision}
+        onDiscardDecision={onDiscardDecision}
         onDamageOrderDecision={onDamageOrderDecision}
         onCombatDamageAssignmentDecision={onCombatDamageAssignmentDecision}
         onReorderLibraryDecision={onReorderLibraryDecision}

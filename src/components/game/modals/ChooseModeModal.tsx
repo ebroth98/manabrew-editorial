@@ -76,11 +76,14 @@ export function ChooseModeModal({
     });
   }
 
-  useModalKeyboard({ onEnter: canConfirm && !isAutoConfirm ? handleConfirm : undefined }, [
-    canConfirm,
-    isAutoConfirm,
-    handleConfirm,
-  ]);
+  const spaceConfirms = canConfirm && !isAutoConfirm && !(minChoices === 0 && selected.size === 0);
+  useModalKeyboard(
+    {
+      onEnter: canConfirm && !isAutoConfirm ? handleConfirm : undefined,
+      onSpace: spaceConfirms ? handleConfirm : undefined,
+    },
+    [canConfirm, isAutoConfirm, spaceConfirms, handleConfirm],
+  );
 
   const subtitle =
     minChoices === maxChoices

@@ -90,17 +90,19 @@ export function LibraryPeekModal({
 
   const config = MODE_CONFIG[mode];
   const required = mode === "discard" ? (numToTake ?? 1) : undefined;
+  const effectiveRequired =
+    mode === "discard" ? Math.min(required ?? cards.length, cards.length) : undefined;
   const max =
     mode === "dig"
       ? (numToTake ?? cards.length)
       : mode === "discard"
-        ? (numToTake ?? cards.length)
+        ? (effectiveRequired ?? cards.length)
         : cards.length;
   const canConfirm =
     mode === "dig"
       ? optional || selected.size > 0
       : mode === "discard"
-        ? selected.size === (numToTake ?? 1)
+        ? selected.size === effectiveRequired
         : true;
 
   function toggleCard(id: string) {
@@ -120,7 +122,14 @@ export function LibraryPeekModal({
     onConfirm([...selected]);
   }
 
-  useModalKeyboard({ onEnter: canConfirm ? handleConfirm : undefined }, [selected, canConfirm]);
+  const spaceConfirms = canConfirm && !(mode === "dig" && optional && selected.size === 0);
+  useModalKeyboard(
+    {
+      onEnter: canConfirm ? handleConfirm : undefined,
+      onSpace: spaceConfirms ? handleConfirm : undefined,
+    },
+    [selected, canConfirm, spaceConfirms],
+  );
 
   return (
     <Modal maxWidth="max-w-4xl" maxHeight="max-h-[85vh]">
@@ -132,7 +141,7 @@ export function LibraryPeekModal({
           </div>
           {(mode === "dig" || mode === "discard") && numToTake !== undefined && (
             <Badge variant="secondary">
-              {selected.size} / {numToTake} selected
+              {selected.size} / {mode === "discard" ? effectiveRequired : numToTake} selected
             </Badge>
           )}
         </div>
@@ -201,7 +210,7 @@ export function LibraryPeekModal({
             </Button>
           )}
           <Button size="sm" disabled={!canConfirm} onClick={handleConfirm}>
-            {config.confirmLabel(selected.size, cards.length, required)}
+            {config.confirmLabel(selected.size, cards.length, effectiveRequired ?? required)}
           </Button>
         </div>
       </Modal.Footer>

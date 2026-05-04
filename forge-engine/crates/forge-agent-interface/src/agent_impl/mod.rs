@@ -106,6 +106,7 @@ impl<T: AgentTransport> PromptAgent<T> {
     pub(crate) fn send_prompt(&mut self, inner: AgentPromptInner) {
         let display_events = std::mem::take(&mut self.pending_display_events);
         let prompt = AgentPrompt {
+            deciding_player_id: player_id_str(self.player_id),
             display_events,
             inner,
         };

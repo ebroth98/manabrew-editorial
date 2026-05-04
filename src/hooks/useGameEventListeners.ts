@@ -103,7 +103,6 @@ export function useGameEventListeners() {
               // Do not apply full foreign-perspective view (would leak/flip local actionability).
               const current = useGameStore.getState().gameView;
               if (current && prompt?.gameView) {
-                const iHavePriority = prompt.gameView.priorityPlayerId === myPlayerSlot;
                 useGameStore.setState({
                   gameView: {
                     ...current,
@@ -115,10 +114,8 @@ export function useGameEventListeners() {
                     winnerId: prompt.gameView.winnerId,
                   },
                   // Never keep a stale actionable prompt when priority is not ours.
-                  currentPrompt: iHavePriority ? useGameStore.getState().currentPrompt : null,
-                  isWaitingForResponse: iHavePriority
-                    ? useGameStore.getState().isWaitingForResponse
-                    : false,
+                  currentPrompt: null,
+                  isWaitingForResponse: false,
                   debugInfo: `Remote sync: ${prompt.type}`,
                 });
               }

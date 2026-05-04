@@ -10,6 +10,7 @@ import {
   ReorderLibraryModal,
   RevealCardsModal,
   SpecifyManaComboModal,
+  LibraryPeekModal,
   PromptModalController,
 } from "@/components/game/modals";
 import {
@@ -23,6 +24,7 @@ import {
 } from "@/components/game/dice";
 import type { AgentPrompt } from "@/stores/useGameStore";
 import type { PromptType } from "@/types/promptType";
+import type { Card as OpenMagicCard } from "@/types/openmagic";
 import { PromptType as PT } from "@/types/promptType";
 
 interface PromptModalsProps {
@@ -37,6 +39,10 @@ interface PromptModalsProps {
   onTypeDecision: (chosenType: string | null) => void;
   onNumberDecision: (chosenNumber: number | null) => void;
   onCardNameDecision: (chosenName: string | null) => void;
+  onScryDecision: (bottomCardIds: string[]) => void;
+  onSurveilDecision: (graveyardCardIds: string[]) => void;
+  onDigDecision: (chosenCardIds: string[]) => void;
+  onDiscardDecision: (discardedCardIds: string[]) => void;
   onDamageOrderDecision: (orderedBlockerIds: string[]) => void;
   onCombatDamageAssignmentDecision: (assignments: { assigneeId: string; damage: number }[]) => void;
   onReorderLibraryDecision: (orderedCardIds: string[]) => void;
@@ -64,6 +70,10 @@ export function PromptModals({
   onTypeDecision,
   onNumberDecision,
   onCardNameDecision,
+  onScryDecision,
+  onSurveilDecision,
+  onDigDecision,
+  onDiscardDecision,
   onDamageOrderDecision,
   onCombatDamageAssignmentDecision,
   onReorderLibraryDecision,
@@ -93,6 +103,11 @@ export function PromptModals({
     (promptType === PT.ChooseType && currentPrompt?.validTypes != null) ||
     (promptType === PT.ChooseNumber && currentPrompt?.min != null && currentPrompt?.max != null) ||
     (promptType === PT.ChooseCardName && currentPrompt?.validNames != null) ||
+    ((promptType === PT.Scry || promptType === PT.Surveil || promptType === PT.Dig) &&
+      currentPrompt?.cards != null) ||
+    (promptType === PT.ChooseDiscard &&
+      currentPrompt?.handCardIds != null &&
+      currentPrompt?.gameView != null) ||
     (promptType === PT.ChooseDamageAssignmentOrder && currentPrompt?.blockerIds != null) ||
     (promptType === PT.ChooseCombatDamageAssignment &&
       currentPrompt?.attackerId != null &&
@@ -202,6 +217,41 @@ export function PromptModals({
           onConfirm={onCardNameDecision}
         />
       )}
+
+      {promptType === PT.Scry && currentPrompt?.cards != null && (
+        <LibraryPeekModal mode="scry" cards={currentPrompt.cards} onConfirm={onScryDecision} />
+      )}
+
+      {promptType === PT.Surveil && currentPrompt?.cards != null && (
+        <LibraryPeekModal
+          mode="surveil"
+          cards={currentPrompt.cards}
+          onConfirm={onSurveilDecision}
+        />
+      )}
+
+      {promptType === PT.Dig && currentPrompt?.cards != null && (
+        <LibraryPeekModal
+          mode="dig"
+          cards={currentPrompt.cards}
+          numToTake={currentPrompt.numToTake}
+          optional={currentPrompt.optional}
+          onConfirm={onDigDecision}
+        />
+      )}
+
+      {promptType === PT.ChooseDiscard &&
+        currentPrompt?.handCardIds != null &&
+        currentPrompt?.gameView != null && (
+          <LibraryPeekModal
+            mode="discard"
+            cards={currentPrompt.handCardIds
+              .map((id) => currentPrompt.gameView.myHand.find((card) => card.id === id))
+              .filter((card): card is OpenMagicCard => card != null)}
+            numToTake={currentPrompt.numToDiscard}
+            onConfirm={onDiscardDecision}
+          />
+        )}
 
       {promptType === PT.ChooseDamageAssignmentOrder && currentPrompt?.blockerIds != null && (
         <DamageOrderModal

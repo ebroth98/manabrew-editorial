@@ -3,6 +3,7 @@ import { Modal } from "./Modal";
 import { useMemo, useState } from "react";
 import type { GameView } from "@/types/openmagic";
 import { cn } from "@/lib/utils";
+import { useModalKeyboard } from "@/hooks/useModalKeyboard";
 
 type DamageEntry = { assigneeId: string; damage: number };
 
@@ -157,6 +158,10 @@ export function VAssignCombatDamageModal({
     if (remaining !== 0 || !isLegallyOrderedState(assigned)) return;
     onConfirm(assignees.map((assigneeId) => ({ assigneeId, damage: assigned[assigneeId] ?? 0 })));
   }
+  useModalKeyboard(
+    { onSpace: remaining === 0 && isLegallyOrderedState(assigned) ? confirm : undefined },
+    [remaining, assigned],
+  );
 
   return (
     <Modal maxWidth="max-w-md" className="outline-none">

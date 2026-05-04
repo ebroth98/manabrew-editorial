@@ -2,6 +2,7 @@ import { Modal } from "./Modal";
 import { cn } from "@/lib/utils";
 import { useState } from "react";
 import { manaSymbolUrl, normalizeManaCode } from "@/api/scryfall";
+import { useModalKeyboard } from "@/hooks/useModalKeyboard";
 
 interface SpecifyManaComboModalProps {
   availableColors: string[];
@@ -58,6 +59,10 @@ export function SpecifyManaComboModal({
     }
     onConfirm(result);
   };
+  useModalKeyboard({ onSpace: remaining === 0 ? handleConfirm : undefined }, [
+    remaining,
+    handleConfirm,
+  ]);
 
   return (
     <Modal maxWidth="max-w-sm" maxHeight="">

@@ -122,6 +122,7 @@ pub fn run_hosted_engine_game(
         let _ = remote_prompt_tx.send((
             i,
             AgentPrompt {
+                deciding_player_id: format!("player-{i}"),
                 display_events: vec![],
                 inner: AgentPromptInner::GameOver { game_view },
             },

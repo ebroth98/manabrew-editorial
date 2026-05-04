@@ -16,6 +16,8 @@ export interface DisplayEvent {
 }
 
 export interface AgentPrompt {
+  /** Player slot this prompt is waiting on, e.g. "player-0". */
+  decidingPlayerId?: string;
   type: PromptType;
   gameView: GameView;
   displayEvents?: DisplayEvent[];
@@ -154,10 +156,6 @@ export interface AgentPrompt {
   attackerCardIds?: string[];
   /** chooseExertAttackers / chooseEnlistAttackers: attacker card DTOs */
   attackerCards?: Card[];
-  /** reorderLibrary: cards to reorder */
-  reorderCards?: Card[];
-  /** reorderLibrary: card IDs to reorder */
-  reorderCardIds?: string[];
   /** helpPayAssist: max generic mana the assisting player can pay */
   maxGeneric?: number;
 

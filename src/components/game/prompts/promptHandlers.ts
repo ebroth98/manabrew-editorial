@@ -79,8 +79,8 @@ export const PROMPT_HANDLERS: Record<PromptType, PromptHandler> = {
   [PromptType.ChooseType]: { showByDefault: true, resolve: forced.singleLegalType },
   [PromptType.ChooseNumber]: { showByDefault: true, resolve: forced.singleLegalNumber },
   [PromptType.ChooseCardName]: { showByDefault: true, resolve: forced.singleLegalName },
-  [PromptType.ChooseCardsForEffect]: { showByDefault: true, resolve: forced.allCardsForced },
-  [PromptType.ChooseDiscard]: { showByDefault: true, resolve: forced.forcedDiscard },
+  [PromptType.ChooseCardsForEffect]: { showByDefault: true },
+  [PromptType.ChooseDiscard]: { showByDefault: true },
 
   [PromptType.ChoosePhyrexian]: { showByDefault: true },
   [PromptType.ChooseKicker]: { showByDefault: true, resolve: optionalCosts.skipKicker },
@@ -100,7 +100,7 @@ export const PROMPT_HANDLERS: Record<PromptType, PromptHandler> = {
   [PromptType.Scry]: { showByDefault: true, resolve: forced.emptyScry },
   [PromptType.Surveil]: { showByDefault: true, resolve: forced.emptySurveil },
   [PromptType.Dig]: { showByDefault: true, resolve: forced.emptyDig },
-  [PromptType.ReorderLibrary]: { showByDefault: true, resolve: forced.singleCardOrder },
+  [PromptType.ReorderLibrary]: { showByDefault: true },
 
   [PromptType.ExploreDecision]: { showByDefault: true },
   [PromptType.HelpPayAssist]: { showByDefault: true, resolve: optionalCosts.skipAssist },

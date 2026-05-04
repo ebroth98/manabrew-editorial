@@ -10,7 +10,6 @@ interface UsePromptEffectsOptions {
   currentPrompt: AgentPrompt | null;
   isWaitingForResponse: boolean;
   passPriority: (untilPhase?: string | null) => void;
-  myHand: Card[];
   myPlayerId: string;
   turn: number;
   stackLength: number;
@@ -67,7 +66,6 @@ export function usePromptEffects({
   currentPrompt,
   isWaitingForResponse,
   passPriority,
-  myHand,
   myPlayerId,
   turn,
   stackLength,
@@ -278,44 +276,6 @@ export function usePromptEffects({
     stackLength,
     myPlayerId,
   ]);
-
-  // Open library-peek modal for Scry / Surveil / Dig / Discard prompts
-  useEffect(() => {
-    if (
-      (promptType === PromptType.Scry ||
-        promptType === PromptType.Surveil ||
-        promptType === PromptType.Dig) &&
-      currentPrompt?.cards &&
-      currentPrompt.cards.length > 0
-    ) {
-      setLibraryPeekModal({
-        mode: promptType as LibraryPeekMode,
-        cards: currentPrompt.cards as Card[],
-        numToTake: promptType === PromptType.Dig ? currentPrompt.numToTake : undefined,
-        optional: promptType === PromptType.Dig ? currentPrompt.optional : undefined,
-      });
-    } else if (promptType === PromptType.ChooseDiscard && currentPrompt) {
-      const promptHand = currentPrompt.gameView?.myHand ?? myHand;
-      const handCards = (currentPrompt.handCardIds ?? [])
-        .map((id) => promptHand.find((c) => c.id === id))
-        .filter((c): c is Card => c !== undefined);
-      if (handCards.length > 0) {
-        setLibraryPeekModal({
-          mode: "discard",
-          cards: handCards,
-          numToTake: currentPrompt.numToDiscard,
-        });
-      }
-    } else if (
-      promptType !== PromptType.Scry &&
-      promptType !== PromptType.Surveil &&
-      promptType !== PromptType.Dig &&
-      promptType !== PromptType.ChooseDiscard
-    ) {
-      setLibraryPeekModal(null);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [promptType, currentPrompt]);
 
   useEffect(() => {
     if (promptType === PromptType.ChooseTargetCardFromZone && currentPrompt) {

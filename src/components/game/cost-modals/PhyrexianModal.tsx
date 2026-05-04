@@ -4,6 +4,7 @@ import { useCard } from "@/stores/useScryfallStore";
 import { CardImageThumbnail } from "@/components/game/CardImageThumbnail";
 import { ManaSymbols } from "@/components/game/ManaSymbols";
 import { MODAL_CARD_IMAGE } from "../game.styles";
+import { useModalKeyboard } from "@/hooks/useModalKeyboard";
 
 interface PhyrexianModalProps {
   phyrexianColor: string;
@@ -21,6 +22,7 @@ export function PhyrexianModal({ phyrexianColor, sourceCardName, onDecide }: Phy
   const colorShards = shards.map((s) => s.replace(/\/P/g, ""));
   const manaCostStr = colorShards.map((c) => `{${c}}`).join("");
   const phyrexianCostStr = shards.map((s) => `{${s}}`).join("");
+  useModalKeyboard({ onSpace: () => onDecide(true) }, [onDecide]);
   return (
     <Modal maxWidth="max-w-md" maxHeight="">
       <Modal.Header>

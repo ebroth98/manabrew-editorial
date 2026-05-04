@@ -824,7 +824,6 @@ export default function Game({ exitTo }: GameProps = {}) {
     currentPrompt: activePrompt,
     isWaitingForResponse,
     passPriority,
-    myHand: gameView?.myHand ?? [],
     myPlayerId: _earlyMyPlayerId,
     turn: gameView?.turn ?? 0,
     stackLength: gameView?.stack?.length ?? 0,
@@ -842,6 +841,35 @@ export default function Game({ exitTo }: GameProps = {}) {
     } else {
       autoManaCost();
     }
+  };
+  const confirmPromptRef = useRef<() => boolean>(() => false);
+  confirmPromptRef.current = () => {
+    if (promptType === PromptType.PayManaCost) {
+      payManaPrimaryRef.current();
+      return true;
+    }
+    if (promptType === PromptType.Mulligan) {
+      mulliganDecision(true);
+      return true;
+    }
+    if (promptType === PromptType.MulliganPutBack) {
+      if (!mulliganPutBack.active || mulliganPutBack.selected.size !== mulliganPutBack.count) {
+        return false;
+      }
+      mulliganPutBack.confirm();
+      return true;
+    }
+    if (promptType === PromptType.ChooseAttackers) {
+      if (pendingAttackers.length === 0) return false;
+      declareAttackers(pendingAttackers, attackDefenderId ?? undefined);
+      return true;
+    }
+    if (promptType === PromptType.ChooseBlockers) {
+      if (blockAssignments.length === 0) return false;
+      declareBlockers(blockAssignments);
+      return true;
+    }
+    return false;
   };
 
   const preview = useCardPreview([
@@ -929,9 +957,9 @@ export default function Game({ exitTo }: GameProps = {}) {
       if (manualApi) return;
       if (e.code === "Space") {
         e.preventDefault();
-        if (promptType === PromptType.PayManaCost) {
-          payManaPrimaryRef.current();
-        } else {
+        if (document.querySelector('[role="dialog"]')) return;
+        if (confirmPromptRef.current()) return;
+        if (promptType === PromptType.ChooseAction) {
           unifiedPassRef.current();
         }
       } else if (e.code === "F6") {
@@ -1732,6 +1760,10 @@ export default function Game({ exitTo }: GameProps = {}) {
         onTypeDecision={typeDecision}
         onNumberDecision={numberDecision}
         onCardNameDecision={cardNameDecision}
+        onScryDecision={scryDecision}
+        onSurveilDecision={surveilDecision}
+        onDigDecision={digDecision}
+        onDiscardDecision={discardDecision}
         onDamageOrderDecision={(orderedBlockerIds) =>
           respond({ type: "damageAssignmentOrderDecision", orderedBlockerIds })
         }

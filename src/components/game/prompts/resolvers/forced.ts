@@ -150,8 +150,8 @@ export const singleLegalName: PromptResolver = (prompt) => {
 
 export const allCardsForced: PromptResolver = (prompt) => {
   const ids = prompt.validCardIds ?? prompt.cardIds ?? [];
-  const min = prompt.min;
-  const max = prompt.max;
+  const min = prompt.minChoices ?? prompt.min;
+  const max = prompt.maxChoices ?? prompt.max;
   if (ids.length === 0) return { kind: "force-show" };
   if (min == null || max == null || min !== max || min !== ids.length) {
     return { kind: "force-show" };
@@ -252,7 +252,7 @@ export const singleLegalAny: PromptResolver = (prompt, ctx) => {
 };
 
 export const forcedDiscard: PromptResolver = (prompt) => {
-  const hand = prompt.validCardIds ?? [];
+  const hand = prompt.handCardIds ?? [];
   const required = prompt.numToDiscard ?? 0;
   if (required <= 0) {
     return {
@@ -302,7 +302,7 @@ export const emptyDig: PromptResolver = (prompt) => {
 };
 
 export const singleCardOrder: PromptResolver = (prompt) => {
-  const ids = prompt.reorderCardIds ?? prompt.reorderCards?.map((c) => c.id) ?? [];
+  const ids = prompt.cardIds ?? prompt.cards?.map((c) => c.id) ?? [];
   if (ids.length > 1) return { kind: "force-show" };
   return {
     kind: "auto",

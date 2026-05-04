@@ -58,6 +58,8 @@ export function Modal({
     >
       <div
         data-modal-panel="true"
+        role="dialog"
+        aria-modal="true"
         className={cn(
           "relative bg-card border rounded-xl shadow-2xl flex flex-col w-full mx-4 animate-in fade-in zoom-in-95 duration-200",
           maxWidth,
@@ -65,6 +67,11 @@ export function Modal({
           className,
         )}
         onClick={(e) => e.stopPropagation()}
+        onKeyDownCapture={(e) => {
+          if (e.code === "Space" && e.target instanceof HTMLButtonElement) {
+            e.preventDefault();
+          }
+        }}
       >
         {promptChrome.showMinimize && promptChrome.onMinimize && (
           <button
@@ -99,6 +106,7 @@ function ModalHeader({ children, onClose, className }: ModalHeaderProps) {
           className="rounded-md p-1 hover:bg-muted transition-colors shrink-0 ml-2"
           onClick={onClose}
           title="Close (Esc)"
+          type="button"
         >
           <X className="h-4 w-4" />
         </button>

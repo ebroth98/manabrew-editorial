@@ -2,6 +2,7 @@ import { Button } from "@/components/ui/button";
 import { Modal } from "./Modal";
 import { Card } from "@/components/game/Card";
 import type { Card as GameCard } from "@/types/openmagic";
+import { useModalKeyboard } from "@/hooks/useModalKeyboard";
 
 interface RevealCardsModalProps {
   cards: GameCard[];
@@ -10,6 +11,7 @@ interface RevealCardsModalProps {
 }
 
 export function RevealCardsModal({ cards, message, onConfirm }: RevealCardsModalProps) {
+  useModalKeyboard({ onSpace: onConfirm }, [onConfirm]);
   return (
     <Modal maxWidth="max-w-4xl" maxHeight="">
       <Modal.Header>

@@ -5,6 +5,7 @@ import { useCard } from "@/stores/useScryfallStore";
 import { CardImageThumbnail } from "@/components/game/CardImageThumbnail";
 import { ManaSymbols } from "@/components/game/ManaSymbols";
 import { MODAL_CARD_IMAGE } from "../game.styles";
+import { useModalKeyboard } from "@/hooks/useModalKeyboard";
 
 interface ReplicateModalProps {
   cost: string;
@@ -28,6 +29,7 @@ export function ReplicateModal({
     setPrevInputs({ cost, maxReplicates });
     setCount(0);
   }
+  useModalKeyboard({ onSpace: count > 0 ? () => onDecide(count) : undefined }, [count, onDecide]);
 
   return (
     <Modal maxWidth="max-w-md" maxHeight="">

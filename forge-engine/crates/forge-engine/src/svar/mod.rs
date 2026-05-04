@@ -17,12 +17,15 @@ fn parse_trigger_int_object(sa: &SpellAbility, key: &str) -> Option<i32> {
         .and_then(|value| value.trim().parse::<i32>().ok())
 }
 
-fn first_trigger_remembered_card(sa: &SpellAbility) -> Option<CardId> {
-    sa.trigger_remembered.iter().find_map(|value| match value {
-        crate::event::AbilityValue::Card(card_id) => Some(*card_id),
-        crate::event::AbilityValue::Cards(cards) => cards.first().copied(),
-        _ => None,
-    })
+fn trigger_remembered_cards(sa: &SpellAbility) -> Vec<CardId> {
+    sa.trigger_remembered
+        .iter()
+        .flat_map(|value| match value {
+            crate::event::AbilityValue::Card(card_id) => vec![*card_id],
+            crate::event::AbilityValue::Cards(cards) => cards.clone(),
+            _ => Vec::new(),
+        })
+        .collect()
 }
 
 fn parse_trigger_int_values(sa: &SpellAbility, key: &str) -> Vec<i32> {
@@ -211,7 +214,13 @@ fn card_x_property(
             card.lki_power.unwrap_or_else(|| card.power())
                 + card.lki_toughness.unwrap_or_else(|| card.toughness())
         }
-        "CardManaCost" | "ManaCost" => card.mana_value(),
+        _ if value.starts_with("CardManaCost") || value == "ManaCost" => {
+            let mut cmc = card.mana_value();
+            if value.contains("LKI") && card.zone != forge_foundation::ZoneType::Stack {
+                cmc += sa.x_mana_cost_paid as i32 * card.mana_cost.count_x() as i32;
+            }
+            cmc
+        }
         "Amount" | "Count" => 1,
         _ if value.starts_with("CardCounters.") => {
             let counter_name = value.strip_prefix("CardCounters.").unwrap_or("");
@@ -255,6 +264,7 @@ fn resolve_card_list_expr(
         "Targeted" | "TargetedCard" | "ThisTargetedCard" => sa.target_chosen.all_target_cards(),
         "ParentTargeted" => sa.target_chosen.all_target_cards(),
         _ if defined.starts_with("Remembered") => game.card(source_id).remembered_cards.clone(),
+        _ if defined.starts_with("TriggerRemembered") => trigger_remembered_cards(sa),
         _ => return None,
     };
     if cards.is_empty() {
@@ -787,17 +797,12 @@ pub fn resolve_numeric_value(
         (1, val_str)
     };
 
-    if val_str == "TriggerRemembered$CardPower" {
-        return sign
-            * first_trigger_remembered_card(sa)
-                .map(|card_id| crate::lki::resolve_lki_power(game, card_id))
-                .unwrap_or(0);
-    }
-    if val_str == "TriggerRemembered$CardToughness" {
-        return sign
-            * first_trigger_remembered_card(sa)
-                .map(|card_id| crate::lki::resolve_lki_toughness(game, card_id))
-                .unwrap_or(0);
+    if let Some(source_id) = sa.source {
+        if let Some(value) =
+            resolve_card_list_expr(val_str, game, source_id, sa.activating_player, sa)
+        {
+            return sign * value;
+        }
     }
 
     // Check if it's the X mana cost value directly
@@ -874,18 +879,6 @@ pub fn resolve_numeric_value(
                         return sign * crate::lki::resolve_lki_toughness(game, trigger_src);
                     }
                     return 0;
-                }
-                if svar_expr == "TriggerRemembered$CardPower" {
-                    return sign
-                        * first_trigger_remembered_card(sa)
-                            .map(|card_id| crate::lki::resolve_lki_power(game, card_id))
-                            .unwrap_or(0);
-                }
-                if svar_expr == "TriggerRemembered$CardToughness" {
-                    return sign
-                        * first_trigger_remembered_card(sa)
-                            .map(|card_id| crate::lki::resolve_lki_toughness(game, card_id))
-                            .unwrap_or(0);
                 }
                 // TriggeredCard$CardCounters.TYPE — LKI counter count resolution
                 // Used by Servant of the Scale, Modular creatures, etc.
@@ -1015,18 +1008,6 @@ pub fn resolve_numeric_value(
                     return sign * crate::lki::resolve_lki_toughness(game, trigger_src);
                 }
                 return 0;
-            }
-            if svar_expr == "TriggerRemembered$CardPower" {
-                return sign
-                    * first_trigger_remembered_card(sa)
-                        .map(|card_id| crate::lki::resolve_lki_power(game, card_id))
-                        .unwrap_or(0);
-            }
-            if svar_expr == "TriggerRemembered$CardToughness" {
-                return sign
-                    * first_trigger_remembered_card(sa)
-                        .map(|card_id| crate::lki::resolve_lki_toughness(game, card_id))
-                        .unwrap_or(0);
             }
             // TriggeredCard$CardCounters.TYPE — LKI counter count resolution
             if let Some(counter_name) = svar_expr.strip_prefix("TriggeredCard$CardCounters.") {

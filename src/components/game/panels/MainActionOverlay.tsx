@@ -72,7 +72,14 @@ export function MainActionOverlay({
             resolveCardName={resolveCardName}
             resolveCard={resolveCard}
           />
-          <div className="flex flex-col items-center w-full [&_button]:mx-0">
+          <div
+            className="flex flex-col items-center w-full [&_button]:mx-0"
+            onKeyDownCapture={(e) => {
+              if (e.code === "Space" && e.target instanceof HTMLButtonElement) {
+                e.preventDefault();
+              }
+            }}
+          >
             <PromptActionController
               promptType={promptType}
               isWaitingForResponse={isWaitingForResponse}

@@ -113,6 +113,12 @@ export function applyPrompt(
   // stateUpdate prompts only carry a gameView + display events — they should
   // NOT replace the currentPrompt (the active player decision).
   const isStateUpdate = prompt.type === PromptType.StateUpdate;
+  const myPlayerSlot = get().myPlayerSlot;
+  const isForeignPrompt =
+    !isStateUpdate &&
+    prompt.decidingPlayerId != null &&
+    myPlayerSlot != null &&
+    prompt.decidingPlayerId !== myPlayerSlot;
 
   // DEV warning: detect prompt types the UI doesn't handle (engine takes a default/arbitrary action)
   if (!isStateUpdate && !HANDLED_PROMPT_TYPES.has(prompt.type)) {
@@ -133,7 +139,7 @@ export function applyPrompt(
     const snapshot: DeferredSnapshot = {
       displayEvents,
       gameView: normalizedGameView,
-      prompt: isStateUpdate ? null : prompt,
+      prompt: isStateUpdate || isForeignPrompt ? null : prompt,
     };
     set({
       deferredQueue: [...get().deferredQueue, snapshot],
@@ -145,7 +151,7 @@ export function applyPrompt(
     const snapshot: DeferredSnapshot = {
       displayEvents: [],
       gameView: normalizedGameView,
-      prompt: isStateUpdate ? null : prompt,
+      prompt: isStateUpdate || isForeignPrompt ? null : prompt,
     };
     set({
       deferredQueue: [...get().deferredQueue, snapshot],
@@ -157,7 +163,7 @@ export function applyPrompt(
       gameView: normalizedGameView,
       debugInfo: `${source}: ${prompt.type}`,
       isWaitingForResponse: false,
-      currentPrompt: isStateUpdate ? null : prompt,
+      currentPrompt: isStateUpdate || isForeignPrompt ? null : prompt,
     };
     set(updates);
   }

@@ -117,6 +117,7 @@ pub fn run_game(
 
     let final_view = GameViewDto::from_engine(&game, &game_loop.mana_pools, p0, &game_id, &[], &[]);
     let _ = prompt_tx.send(AgentPrompt {
+        deciding_player_id: "player-0".to_string(),
         display_events: vec![],
         inner: AgentPromptInner::GameOver {
             game_view: final_view,
@@ -227,6 +228,7 @@ pub fn run_multiplayer_game(
     let engine_final_view =
         GameViewDto::from_engine(&game, &game_loop.mana_pools, engine_pid, &game_id, &[], &[]);
     let _ = engine_prompt_tx.send(AgentPrompt {
+        deciding_player_id: format!("player-{}", engine_player_index),
         display_events: vec![],
         inner: AgentPromptInner::GameOver {
             game_view: engine_final_view,
@@ -243,6 +245,7 @@ pub fn run_multiplayer_game(
         let _ = remote_prompt_tx.send((
             i,
             AgentPrompt {
+                deciding_player_id: format!("player-{i}"),
                 display_events: vec![],
                 inner: AgentPromptInner::GameOver {
                     game_view: remote_view,

@@ -201,6 +201,7 @@ impl GameManager {
                 view
             };
             let prompt = AgentPrompt {
+                deciding_player_id: String::new(),
                 display_events: vec![],
                 inner: AgentPromptInner::GameOver { game_view },
             };

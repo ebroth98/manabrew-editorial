@@ -6,6 +6,7 @@ import { useTheme } from "@/hooks/useTheme";
 import { CardImageThumbnail } from "@/components/game/CardImageThumbnail";
 import { MODAL_CARD_THUMBNAIL } from "@/components/game/game.styles";
 import { DieFaceStatic } from "../DieFaceStatic";
+import { useModalKeyboard } from "@/hooks/useModalKeyboard";
 
 interface ChooseDiceToRerollModalProps {
   rolls: number[];
@@ -49,6 +50,10 @@ export function ChooseDiceToRerollModal({
     const chosen = dice.filter((d) => selected.has(d.index)).map((d) => d.value);
     onConfirm(chosen);
   };
+  useModalKeyboard({ onSpace: selected.size > 0 ? handleConfirm : undefined }, [
+    selected,
+    handleConfirm,
+  ]);
 
   return (
     <Modal maxWidth="max-w-sm" maxHeight="">

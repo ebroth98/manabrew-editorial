@@ -4,6 +4,7 @@ import { useCard } from "@/stores/useScryfallStore";
 import { CardImageThumbnail } from "@/components/game/CardImageThumbnail";
 import { ManaSymbols } from "@/components/game/ManaSymbols";
 import { MODAL_CARD_IMAGE } from "../game.styles";
+import { useModalKeyboard } from "@/hooks/useModalKeyboard";
 
 interface BuybackModalProps {
   buybackCost: string;
@@ -14,6 +15,7 @@ interface BuybackModalProps {
 export function BuybackModal({ buybackCost, sourceCardName, onDecide }: BuybackModalProps) {
   const cardData = useCard({ name: sourceCardName ?? "" });
   const imageUrl = cardData?.uris.normal;
+  useModalKeyboard({ onSpace: () => onDecide(true) }, [onDecide]);
   return (
     <Modal maxWidth="max-w-md" maxHeight="">
       <Modal.Header>

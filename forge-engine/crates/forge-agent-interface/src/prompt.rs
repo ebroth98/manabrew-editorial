@@ -38,6 +38,13 @@ pub enum DisplayEvent {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AgentPrompt {
+    /// Player this prompt is waiting on.
+    #[serde(
+        rename = "decidingPlayerId",
+        default,
+        skip_serializing_if = "String::is_empty"
+    )]
+    pub deciding_player_id: String,
     /// Display events to animate before applying the game state.
     #[serde(default)]
     pub display_events: Vec<DisplayEvent>,
