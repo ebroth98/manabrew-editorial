@@ -14,6 +14,7 @@ interface ModalKeyboardHandlers {
 export function useModalKeyboard(handlers: ModalKeyboardHandlers, deps: unknown[] = []) {
   useEffect(() => {
     function handleKey(e: KeyboardEvent) {
+      if (e.repeat) return;
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
       if (e.target instanceof HTMLElement && e.target.isContentEditable) return;
       if (e.key === "Enter" && handlers.onEnter) {

@@ -953,6 +953,7 @@ export default function Game({ exitTo }: GameProps = {}) {
   // Keyboard shortcuts
   useEffect(() => {
     function handleKey(e: KeyboardEvent) {
+      if (e.repeat) return;
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
       if (manualApi) return;
       if (e.code === "Space") {
