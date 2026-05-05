@@ -87,7 +87,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
 
                     ctx.agents[pid.index()].snapshot_state(ctx.game, ctx.mana_pools);
                     if let Some(card_id) =
-                        ctx.agents[pid.index()].choose_sacrifice(pid, &valid, None)
+                        ctx.agents[pid.index()].choose_sacrifice(pid, &valid, sa.source)
                     {
                         if ctx.game.card(card_id).zone == ZoneType::Battlefield {
                             let owner = ctx.game.card(card_id).owner;

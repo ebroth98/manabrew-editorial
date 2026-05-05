@@ -382,8 +382,13 @@ impl<'a, A: PlayerAgent + ?Sized> PlayerController<'a, A> {
             .choose_optional_trigger(self.player, description, card_name, api)
     }
 
-    pub fn choose_target_spell(&mut self, valid_entries: &[u32]) -> Option<u32> {
-        self.agent.choose_target_spell(self.player, valid_entries)
+    pub fn choose_target_spell(
+        &mut self,
+        valid_entries: &[u32],
+        source: Option<CardId>,
+    ) -> Option<u32> {
+        self.agent
+            .choose_target_spell(self.player, valid_entries, source)
     }
 
     pub fn choose_mode(

@@ -2038,7 +2038,8 @@ pub fn choose_targets_by_kind(
                 valid
             };
             agent.snapshot_state(game, mana_pools);
-            sa.target_chosen.target_stack_entry = agent.choose_target_spell(player, &valid);
+            sa.target_chosen.target_stack_entry =
+                agent.choose_target_spell(player, &valid, sa.source);
         }
     }
 

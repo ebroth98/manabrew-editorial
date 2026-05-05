@@ -322,11 +322,12 @@ impl GameLoop {
         game: *mut GameState,
         agents: &'a mut [Box<dyn PlayerAgent>],
         player: PlayerId,
+        source: CardId,
     ) -> impl FnMut(mana::ManaPayCallback<'_>) -> Option<CardId> + 'a {
         move |kind: mana::ManaPayCallback<'_>| -> Option<CardId> {
             match kind {
                 mana::ManaPayCallback::ChooseSacrifice(valid) => {
-                    agents[player.index()].choose_sacrifice(player, valid, None)
+                    agents[player.index()].choose_sacrifice(player, valid, Some(source))
                 }
                 mana::ManaPayCallback::ChooseColor(valid_colors) => {
                     // Always invoke the agent — humans go through their

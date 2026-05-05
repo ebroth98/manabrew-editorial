@@ -327,7 +327,7 @@ pub trait PlayerAgent {
         &mut self,
         _player: PlayerId,
         valid: &[CardId],
-        _sa: Option<&SpellAbility>,
+        _source: Option<CardId>,
     ) -> Option<CardId> {
         valid.first().copied()
     }
@@ -401,7 +401,12 @@ pub trait PlayerAgent {
     /// Choose a target spell on the stack (for SP$ Counter effects).
     /// `valid` is a slice of stack entry IDs.
     /// Default: target the first (topmost) spell.
-    fn choose_target_spell(&mut self, _player: PlayerId, valid: &[u32]) -> Option<u32> {
+    fn choose_target_spell(
+        &mut self,
+        _player: PlayerId,
+        valid: &[u32],
+        _source: Option<CardId>,
+    ) -> Option<u32> {
         valid.first().copied()
     }
 
@@ -1102,7 +1107,7 @@ impl PlayerAgent for PassAgent {
         &mut self,
         _player: PlayerId,
         valid: &[CardId],
-        _sa: Option<&SpellAbility>,
+        _source: Option<CardId>,
     ) -> Option<CardId> {
         valid.first().copied()
     }

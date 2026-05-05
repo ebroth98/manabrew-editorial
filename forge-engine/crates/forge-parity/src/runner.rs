@@ -765,7 +765,7 @@ impl PlayerAgent for CapturingAgent {
         fn choose_target_card_from_zone(&mut self, player: PlayerId, zone: ZoneType, valid: &[CardId], sa: Option<&forge_engine_core::spellability::SpellAbility>) -> Option<CardId> => "choose_target_card_from_zone";
         fn choose_target_any(&mut self, player: PlayerId, valid_players: &[PlayerId], valid_cards: &[CardId], sa: Option<&forge_engine_core::spellability::SpellAbility>) -> forge_engine_core::agent::TargetChoice => "choose_target_any";
         fn choose_legend_keep(&mut self, player: PlayerId, duplicates: &[CardId]) -> CardId => "choose_legend_keep";
-        fn choose_sacrifice(&mut self, player: PlayerId, valid: &[CardId], sa: Option<&forge_engine_core::spellability::SpellAbility>) -> Option<CardId> => "choose_sacrifice";
+        fn choose_sacrifice(&mut self, player: PlayerId, valid: &[CardId], source: Option<CardId>) -> Option<CardId> => "choose_sacrifice";
         fn choose_type(&mut self, player: PlayerId, type_category: &str, valid_types: &[String]) -> Option<String> => "choose_type";
         fn choose_scry(&mut self, player: PlayerId, cards: &[CardId]) -> Vec<CardId> => "choose_scry";
         fn choose_surveil(&mut self, player: PlayerId, cards: &[CardId]) -> Vec<CardId> => "choose_surveil";
@@ -777,7 +777,7 @@ impl PlayerAgent for CapturingAgent {
         fn choose_cards_for_effect(&mut self, player: PlayerId, valid: &[CardId], min: usize, max: usize) -> Vec<CardId> => "choose_cards_for_effect";
         fn choose_tap_type_for_cost(&mut self, player: PlayerId, valid: &[CardId], min_total_power: i32, card_powers: &[(CardId, i32)], card_sort_powers: &[(CardId, i32)], sa: Option<&forge_engine_core::spellability::SpellAbility>) -> Vec<CardId> => "choose_tap_type_for_cost";
         fn choose_cards_for_zone_change(&mut self, player: PlayerId, valid: &[CardId], min: usize, max: usize, select_prompt: &str) -> Vec<CardId> => "choose_cards_for_zone_change";
-        fn choose_target_spell(&mut self, player: PlayerId, valid: &[u32]) -> Option<u32> => "choose_target_spell";
+        fn choose_target_spell(&mut self, player: PlayerId, valid: &[u32], source: Option<CardId>) -> Option<u32> => "choose_target_spell";
         fn choose_mode(&mut self, player: PlayerId, descriptions: &[String], min: usize, max: usize, card_name: Option<&str>) -> Vec<usize> => "choose_mode";
         fn choose_spell_abilities_for_effect(&mut self, player: PlayerId, abilities: &[forge_engine_core::spellability::SpellAbility], num: usize) -> Vec<usize> => "choose_spell_abilities_for_effect";
         fn choose_single_entity_for_effect(&mut self, player: PlayerId, valid: &[GameEntity], is_optional: bool) -> Option<GameEntity> => "choose_single_entity_for_effect";

@@ -375,45 +375,50 @@ function resolveArrowsAndPointers(
   if (casting) {
     // Try the stack display element first, then fall back to the
     // battlefield card sprite (activated abilities) or DOM card element.
-    const from =
+    let from =
       domCenter(`[data-casting-card="${CSS.escape(casting.castingCardId)}"]`, toLocal) ??
       resolveEndpoint({ kind: "card", id: casting.castingCardId });
-    if (from) {
-      let to: ScreenPos | null = null;
-      if (casting.targetId) {
-        to =
-          resolveEndpoint({ kind: "card", id: casting.targetId }) ??
-          resolveEndpoint({ kind: "player", id: casting.targetId });
-      } else {
-        to = toLocal(cursorViewport);
+    let to: ScreenPos | null = null;
+    if (casting.targetId) {
+      to =
+        resolveEndpoint({ kind: "card", id: casting.targetId }) ??
+        resolveEndpoint({ kind: "player", id: casting.targetId });
+    } else {
+      to = toLocal(cursorViewport);
+    }
+    if (to) {
+      const intent =
+        casting.intent ?? (casting.hostile ? TargetingIntent.Hostile : TargetingIntent.Friendly);
+      if (!from && !intentPrefersArrow(intent)) {
+        // Some target-like prompts happen while the source card has no live
+        // board/stack/hand anchor (for example an UnlessCost sacrifice during
+        // spell resolution). Still draw the cursor glyph; only the source glow
+        // loses its real anchor for that frame/state.
+        from = to;
       }
-      if (to) {
-        const intent =
-          casting.intent ?? (casting.hostile ? TargetingIntent.Hostile : TargetingIntent.Friendly);
-        if (intentPrefersArrow(intent)) {
-          const arrowType =
-            intent === TargetingIntent.Attack
-              ? "attack"
-              : intent === TargetingIntent.Block
-                ? "block"
-                : "attach";
-          arrows.push({
-            fromX: from.x,
-            fromY: from.y,
-            toX: to.x,
-            toY: to.y,
-            type: arrowType,
-          });
-        } else {
-          pointers.push({
-            fromX: from.x,
-            fromY: from.y,
-            toX: to.x,
-            toY: to.y,
-            intent,
-            locked: !!casting.targetId,
-          });
-        }
+      if (from && intentPrefersArrow(intent)) {
+        const arrowType =
+          intent === TargetingIntent.Attack
+            ? "attack"
+            : intent === TargetingIntent.Block
+              ? "block"
+              : "attach";
+        arrows.push({
+          fromX: from.x,
+          fromY: from.y,
+          toX: to.x,
+          toY: to.y,
+          type: arrowType,
+        });
+      } else if (from) {
+        pointers.push({
+          fromX: from.x,
+          fromY: from.y,
+          toX: to.x,
+          toY: to.y,
+          intent,
+          locked: !!casting.targetId,
+        });
       }
     }
   }

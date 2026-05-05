@@ -1327,6 +1327,7 @@ impl GameLoop {
                             game_ptr,
                             agents,
                             session.player,
+                            session.card_id,
                         );
                         mana::pay_mana_cost_auto_with_callback_and_reserved_sacrifices(
                             game,

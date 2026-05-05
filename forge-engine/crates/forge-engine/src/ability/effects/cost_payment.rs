@@ -200,6 +200,7 @@ fn pay_mana_cost_for_effect(
                     game_ptr,
                     agents,
                     session.player,
+                    session.card_id,
                 );
                 crate::mana::pay_mana_cost_auto_with_callback(
                     game,
@@ -576,7 +577,7 @@ fn try_pay_effect_cost(
                         return false;
                     }
                     if let Some(chosen) =
-                        ctx.agents[payer.index()].choose_sacrifice(payer, &valid, None)
+                        ctx.agents[payer.index()].choose_sacrifice(payer, &valid, sa.source)
                     {
                         let owner = ctx.game.card(chosen).owner;
                         ctx.trigger_handler.run_trigger(

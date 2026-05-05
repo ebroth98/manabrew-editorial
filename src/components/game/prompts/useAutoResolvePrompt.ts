@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef } from "react";
 import { useGameStore } from "@/stores/useGameStore";
 import { usePromptPreferencesStore } from "@/stores/usePromptPreferencesStore";
 import { useTargetIntentStore } from "@/stores/useTargetIntentStore";
@@ -23,7 +23,7 @@ export function useAutoResolvePrompt(): void {
     wasActive.current = isGameActive;
   }, [isGameActive]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!currentPrompt) return;
     if (isWaitingForResponse) return;
 

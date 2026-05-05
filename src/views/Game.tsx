@@ -304,7 +304,7 @@ export default function Game({ exitTo }: GameProps = {}) {
     return () => cancelAnimationFrame(raf);
   }, []);
 
-  const activePrompt = manualApi ? null : currentPrompt;
+  const activePrompt = manualApi || isWaitingForResponse ? null : currentPrompt;
   const promptType = activePrompt?.type;
 
   // When the engine asks the player to pick cards to put on the bottom

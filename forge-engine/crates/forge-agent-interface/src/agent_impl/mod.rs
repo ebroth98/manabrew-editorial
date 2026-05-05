@@ -723,9 +723,8 @@ impl<T: AgentTransport> PlayerAgent for PromptAgent<T> {
         &mut self,
         player: PlayerId,
         valid: &[CardId],
-        sa: Option<&forge_engine_core::spellability::SpellAbility>,
+        source: Option<CardId>,
     ) -> Option<CardId> {
-        let source = sa.and_then(|s| s.source);
         targeting::choose_sacrifice(self, player, valid, source)
     }
 
@@ -781,8 +780,13 @@ impl<T: AgentTransport> PlayerAgent for PromptAgent<T> {
         choices::choose_legend_keep(self, player, duplicates)
     }
 
-    fn choose_target_spell(&mut self, player: PlayerId, valid: &[u32]) -> Option<u32> {
-        targeting::choose_target_spell(self, player, valid, None)
+    fn choose_target_spell(
+        &mut self,
+        player: PlayerId,
+        valid: &[u32],
+        source: Option<CardId>,
+    ) -> Option<u32> {
+        targeting::choose_target_spell(self, player, valid, source)
     }
 
     fn choose_mode(

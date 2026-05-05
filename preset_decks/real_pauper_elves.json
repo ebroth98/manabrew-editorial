@@ -22,20 +22,6 @@
       "layout": "normal"
     },
     {
-      "name": "Izzet Signet",
-      "count": 4,
-      "manaCost": "{2}",
-      "colors": [],
-      "colorIdentity": ["R", "U"],
-      "cmc": 2,
-      "types": ["Artifact"],
-      "subtypes": [],
-      "supertypes": [],
-      "text": "{1}, {T}: Add {U}{R}.",
-      "imageUrl": "https://cards.scryfall.io/normal/front/2/c/2c747a97-9070-4c1e-b7b7-52637fbb30e1.jpg?1743207322",
-      "layout": "normal"
-    },
-    {
       "name": "Llanowar Elves",
       "count": 2,
       "manaCost": "{G}",

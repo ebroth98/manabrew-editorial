@@ -972,7 +972,7 @@ fn pay_roll_cost(
                 let mut callback = |kind: mana::ManaPayCallback<'_>| -> Option<crate::ids::CardId> {
                     match kind {
                         mana::ManaPayCallback::ChooseSacrifice(valid) => {
-                            agents[player.index()].choose_sacrifice(player, valid, None)
+                            agents[player.index()].choose_sacrifice(player, valid, Some(card_id))
                         }
                         mana::ManaPayCallback::ChooseColor(valid_colors) => {
                             // Always invoke the agent — humans see an

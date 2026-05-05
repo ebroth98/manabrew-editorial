@@ -48,9 +48,12 @@ impl GameLoop {
         player: PlayerId,
         valid: &[CardId],
         zone: ZoneType,
+        source: CardId,
     ) -> Option<CardId> {
         match zone {
-            ZoneType::Battlefield => agents[player.index()].choose_sacrifice(player, valid, None),
+            ZoneType::Battlefield => {
+                agents[player.index()].choose_sacrifice(player, valid, Some(source))
+            }
             _ => agents[player.index()]
                 .choose_cards_for_effect(player, valid, 1, 1)
                 .into_iter()
@@ -64,10 +67,12 @@ impl GameLoop {
         agents: &mut [Box<dyn PlayerAgent>],
         player: PlayerId,
         valid: &[CardId],
+        source: CardId,
     ) -> Option<CardId> {
         if let Some(first_zone) = valid.first().map(|&cid| game.card(cid).zone) {
             if valid.iter().all(|&cid| game.card(cid).zone == first_zone) {
-                return self.choose_cost_card_from_zone(game, agents, player, valid, first_zone);
+                return self
+                    .choose_cost_card_from_zone(game, agents, player, valid, first_zone, source);
             }
         }
         agents[player.index()]
@@ -406,9 +411,11 @@ impl GameLoop {
                         break;
                     }
                     for _ in 0..required {
-                        let Some(chosen) =
-                            agents[player.index()].choose_sacrifice(player, &valid, sa.as_deref())
-                        else {
+                        let Some(chosen) = agents[player.index()].choose_sacrifice(
+                            player,
+                            &valid,
+                            sa.as_deref().and_then(|s| s.source),
+                        ) else {
                             payment_ok = false;
                             break;
                         };
@@ -516,6 +523,7 @@ impl GameLoop {
                                     game_ptr,
                                     agents,
                                     session.player,
+                                    session.card_id,
                                 );
                                 mana::auto_tap_lands_allow_reserved_source_reuse_trace_with_callbacks_and_reserved_sacrifices(
                                     game,
@@ -760,6 +768,7 @@ impl GameLoop {
                             game,
                             agents,
                             player,
+                            card_id,
                             type_filter,
                             *amount,
                             sa.as_deref(),
@@ -897,7 +906,7 @@ impl GameLoop {
                     amount,
                     type_filter,
                 } => {
-                    self.pay_gain_control_cost(game, agents, player, type_filter, *amount);
+                    self.pay_gain_control_cost(game, agents, player, card_id, type_filter, *amount);
                 }
                 CostPart::RemoveAnyCounter {
                     amount,
@@ -908,6 +917,7 @@ impl GameLoop {
                         game,
                         agents,
                         player,
+                        card_id,
                         type_filter,
                         *amount,
                         counter_type.as_ref(),
@@ -937,7 +947,14 @@ impl GameLoop {
                     amount,
                     type_filter,
                 } => {
-                    self.pay_exiled_move_to_grave_cost(game, agents, player, type_filter, *amount);
+                    self.pay_exiled_move_to_grave_cost(
+                        game,
+                        agents,
+                        player,
+                        card_id,
+                        type_filter,
+                        *amount,
+                    );
                 }
                 CostPart::AddMana { amount, mana_type } => {
                     use forge_foundation::mana::ManaAtom;
@@ -1081,7 +1098,7 @@ impl GameLoop {
                     }
                 }
                 CostPart::Forage => {
-                    self.pay_forage_cost(game, agents, player);
+                    self.pay_forage_cost(game, agents, player, card_id);
                 }
                 CostPart::PutCardToLib {
                     amount,
@@ -1159,7 +1176,7 @@ impl GameLoop {
                 CostPart::Blight(amount) => {
                     let resolved_amount =
                         crate::cost::resolve_dynamic_amount(game, card_id, player, *amount);
-                    self.pay_blight_cost(game, agents, player, resolved_amount);
+                    self.pay_blight_cost(game, agents, player, card_id, resolved_amount);
                 }
                 CostPart::ExileCtrlOrGrave {
                     amount,
@@ -1171,6 +1188,7 @@ impl GameLoop {
                         game,
                         agents,
                         player,
+                        card_id,
                         type_filter,
                         resolved_amount,
                     );
@@ -1397,6 +1415,7 @@ impl GameLoop {
                             game,
                             agents,
                             player,
+                            card_id,
                             type_filter,
                             *amount,
                             sa.as_deref(),
@@ -1538,7 +1557,7 @@ impl GameLoop {
                     amount,
                     type_filter,
                 } => {
-                    self.pay_gain_control_cost(game, agents, player, type_filter, *amount);
+                    self.pay_gain_control_cost(game, agents, player, card_id, type_filter, *amount);
                 }
                 CostPart::RemoveAnyCounter {
                     amount,
@@ -1549,6 +1568,7 @@ impl GameLoop {
                         game,
                         agents,
                         player,
+                        card_id,
                         type_filter,
                         *amount,
                         counter_type.as_ref(),
@@ -1578,7 +1598,14 @@ impl GameLoop {
                     amount,
                     type_filter,
                 } => {
-                    self.pay_exiled_move_to_grave_cost(game, agents, player, type_filter, *amount);
+                    self.pay_exiled_move_to_grave_cost(
+                        game,
+                        agents,
+                        player,
+                        card_id,
+                        type_filter,
+                        *amount,
+                    );
                 }
                 CostPart::AddMana { amount, mana_type } => {
                     use forge_foundation::mana::ManaAtom;
@@ -1722,7 +1749,7 @@ impl GameLoop {
                     }
                 }
                 CostPart::Forage => {
-                    self.pay_forage_cost(game, agents, player);
+                    self.pay_forage_cost(game, agents, player, card_id);
                 }
                 CostPart::PutCardToLib {
                     amount,
@@ -1800,7 +1827,7 @@ impl GameLoop {
                 CostPart::Blight(amount) => {
                     let resolved_amount =
                         crate::cost::resolve_dynamic_amount(game, card_id, player, *amount);
-                    self.pay_blight_cost(game, agents, player, resolved_amount);
+                    self.pay_blight_cost(game, agents, player, card_id, resolved_amount);
                 }
                 CostPart::ExileCtrlOrGrave {
                     amount,
@@ -1812,6 +1839,7 @@ impl GameLoop {
                         game,
                         agents,
                         player,
+                        card_id,
                         type_filter,
                         resolved_amount,
                     );
@@ -1871,7 +1899,11 @@ impl GameLoop {
                         }
                     }
                     for _ in 0..amount.max(0) {
-                        let chosen = agents[player.index()].choose_sacrifice(player, &valid, sa)?;
+                        let chosen = agents[player.index()].choose_sacrifice(
+                            player,
+                            &valid,
+                            sa.and_then(|s| s.source),
+                        )?;
                         picked.push(chosen);
                         valid.retain(|&cid| cid != chosen);
                     }
@@ -2076,9 +2108,14 @@ impl GameLoop {
             if valid.is_empty() {
                 break;
             }
-            if let Some(chosen) =
-                self.choose_cost_card_from_zone(game, agents, player, &valid, ZoneType::Graveyard)
-            {
+            if let Some(chosen) = self.choose_cost_card_from_zone(
+                game,
+                agents,
+                player,
+                &valid,
+                ZoneType::Graveyard,
+                source,
+            ) {
                 let owner = game.card(chosen).owner;
                 self.move_card_with_runtime(game, chosen, ZoneType::Exile, owner, agents);
                 self.record_paid_cost_exile(game, source, chosen);
@@ -2130,9 +2167,14 @@ impl GameLoop {
             if valid.is_empty() {
                 break;
             }
-            if let Some(chosen) =
-                self.choose_cost_card_from_zone(game, agents, player, &valid, ZoneType::Graveyard)
-            {
+            if let Some(chosen) = self.choose_cost_card_from_zone(
+                game,
+                agents,
+                player,
+                &valid,
+                ZoneType::Graveyard,
+                source,
+            ) {
                 chosen_owner = Some(game.card(chosen).owner);
                 let owner = game.card(chosen).owner;
                 self.move_card_with_runtime(game, chosen, ZoneType::Exile, owner, agents);
@@ -2172,7 +2214,8 @@ impl GameLoop {
             if valid.is_empty() {
                 break;
             }
-            let chosen = self.choose_cost_card_from_zone(game, agents, player, &valid, from);
+            let chosen =
+                self.choose_cost_card_from_zone(game, agents, player, &valid, from, source);
             if let Some(chosen) = chosen {
                 let owner = game.card(chosen).owner;
                 self.move_card_with_runtime(game, chosen, ZoneType::Exile, owner, agents);
@@ -2220,7 +2263,7 @@ impl GameLoop {
                 break;
             }
             let Some(chosen_entry) =
-                agents[player.index()].choose_target_spell(player, &valid_entries)
+                agents[player.index()].choose_target_spell(player, &valid_entries, Some(source))
             else {
                 break;
             };
@@ -2304,6 +2347,7 @@ impl GameLoop {
         game: &mut GameState,
         agents: &mut [Box<dyn PlayerAgent>],
         player: PlayerId,
+        source: CardId,
     ) {
         let battlefield_cards: Vec<_> = game
             .players
@@ -2334,14 +2378,16 @@ impl GameLoop {
 
         if !foods.is_empty() && gy.len() < 3 {
             let chosen = agents[player.index()]
-                .choose_sacrifice(player, &foods, None)
+                .choose_sacrifice(player, &foods, Some(source))
                 .unwrap_or(foods[0]);
             super::perform_sacrifice(game, &mut self.trigger_handler, agents, &[chosen]);
         } else if !foods.is_empty() {
             // Let the chooser pick between food + graveyard cards. Food means sacrifice path.
             let mut combined = foods.clone();
             combined.extend(gy.iter().copied());
-            if let Some(chosen) = self.choose_cost_card_mixed(game, agents, player, &combined) {
+            if let Some(chosen) =
+                self.choose_cost_card_mixed(game, agents, player, &combined, source)
+            {
                 if foods.contains(&chosen) {
                     super::perform_sacrifice(game, &mut self.trigger_handler, agents, &[chosen]);
                 } else {
@@ -2365,6 +2411,7 @@ impl GameLoop {
                                 player,
                                 &remaining,
                                 ZoneType::Graveyard,
+                                source,
                             )
                             .unwrap_or(remaining[0]);
                         chosen_gy.push(next);
@@ -2399,6 +2446,7 @@ impl GameLoop {
                         player,
                         &remaining,
                         ZoneType::Graveyard,
+                        source,
                     )
                     .unwrap_or(remaining[0]);
                 let owner = game.card(chosen).owner;
@@ -2486,7 +2534,9 @@ impl GameLoop {
         } else if type_filter == "CARDNAME" || type_filter == "NICKNAME" {
             revealed.push(source);
         } else if type_filter == "SameColor" {
-            if let Some(first) = self.choose_cost_card_mixed(game, agents, player, &candidates) {
+            if let Some(first) =
+                self.choose_cost_card_mixed(game, agents, player, &candidates, source)
+            {
                 let color = game.card(first).color;
                 revealed.push(first);
                 while (revealed.len() as i32) < amount {
@@ -2500,7 +2550,7 @@ impl GameLoop {
                         break;
                     }
                     let next = self
-                        .choose_cost_card_mixed(game, agents, player, &valid)
+                        .choose_cost_card_mixed(game, agents, player, &valid, source)
                         .unwrap_or(valid[0]);
                     revealed.push(next);
                 }
@@ -2517,7 +2567,7 @@ impl GameLoop {
             });
             while (revealed.len() as i32) < amount && !candidates.is_empty() {
                 let next = self
-                    .choose_cost_card_mixed(game, agents, player, &candidates)
+                    .choose_cost_card_mixed(game, agents, player, &candidates, source)
                     .unwrap_or(candidates[0]);
                 revealed.push(next);
                 candidates.retain(|&cid| cid != next);
@@ -2598,7 +2648,8 @@ impl GameLoop {
             if valid.is_empty() {
                 return false;
             }
-            let Some(chosen) = self.choose_cost_card_from_zone(game, agents, player, &valid, from)
+            let Some(chosen) =
+                self.choose_cost_card_from_zone(game, agents, player, &valid, from, source)
             else {
                 return false;
             };
@@ -2662,7 +2713,9 @@ impl GameLoop {
             if valid.is_empty() {
                 break;
             }
-            let Some(chosen) = agents[player.index()].choose_sacrifice(player, &valid, None) else {
+            let Some(chosen) =
+                agents[player.index()].choose_sacrifice(player, &valid, Some(source))
+            else {
                 break;
             };
             game.card_mut(chosen).exert();
@@ -2704,7 +2757,9 @@ impl GameLoop {
             if valid.is_empty() {
                 break;
             }
-            let Some(chosen) = agents[player.index()].choose_sacrifice(player, &valid, None) else {
+            let Some(chosen) =
+                agents[player.index()].choose_sacrifice(player, &valid, Some(source))
+            else {
                 break;
             };
             let enlisted_power = game.card(chosen).power();
@@ -2856,6 +2911,7 @@ impl GameLoop {
         game: &mut GameState,
         agents: &mut [Box<dyn PlayerAgent>],
         player: PlayerId,
+        source: CardId,
         amount: i32,
     ) {
         for _ in 0..amount {
@@ -2868,7 +2924,9 @@ impl GameLoop {
             if valid.is_empty() {
                 break;
             }
-            if let Some(chosen) = agents[player.index()].choose_sacrifice(player, &valid, None) {
+            if let Some(chosen) =
+                agents[player.index()].choose_sacrifice(player, &valid, Some(source))
+            {
                 game.card_mut(chosen)
                     .add_counter(&crate::card::CounterType::M1M1, 1);
             }
@@ -2881,6 +2939,7 @@ impl GameLoop {
         game: &mut GameState,
         agents: &mut [Box<dyn PlayerAgent>],
         player: PlayerId,
+        source: CardId,
         type_filter: &str,
         amount: i32,
     ) {
@@ -2898,7 +2957,8 @@ impl GameLoop {
             if valid.is_empty() {
                 break;
             }
-            if let Some(chosen) = self.choose_cost_card_mixed(game, agents, player, &valid) {
+            if let Some(chosen) = self.choose_cost_card_mixed(game, agents, player, &valid, source)
+            {
                 let origin = game.card(chosen).zone;
                 let owner = game.card(chosen).owner;
                 self.move_card_with_runtime(game, chosen, ZoneType::Exile, owner, agents);
@@ -2919,6 +2979,7 @@ impl GameLoop {
         game: &mut GameState,
         agents: &mut [Box<dyn PlayerAgent>],
         player: PlayerId,
+        _source: CardId,
         type_filter: &str,
         amount: i32,
         sa: Option<&SpellAbility>,
@@ -2951,6 +3012,7 @@ impl GameLoop {
         game: &mut GameState,
         agents: &mut [Box<dyn PlayerAgent>],
         player: PlayerId,
+        _source: CardId,
         type_filter: &str,
         amount: i32,
         sa: Option<&SpellAbility>,
@@ -3148,7 +3210,9 @@ impl GameLoop {
             if valid.is_empty() {
                 break;
             }
-            if let Some(chosen) = agents[player.index()].choose_sacrifice(player, &valid, None) {
+            if let Some(chosen) =
+                agents[player.index()].choose_sacrifice(player, &valid, Some(source))
+            {
                 let was_tapped = game.card(chosen).tapped;
                 game.untap(chosen);
                 if was_tapped {
@@ -3168,6 +3232,7 @@ impl GameLoop {
         game: &mut GameState,
         agents: &mut [Box<dyn PlayerAgent>],
         player: PlayerId,
+        source: CardId,
         type_filter: &str,
         amount: i32,
     ) {
@@ -3190,7 +3255,9 @@ impl GameLoop {
             if valid.is_empty() {
                 break;
             }
-            if let Some(chosen) = agents[player.index()].choose_sacrifice(player, &valid, None) {
+            if let Some(chosen) =
+                agents[player.index()].choose_sacrifice(player, &valid, Some(source))
+            {
                 game.change_controller(chosen, player);
             }
         }
@@ -3203,6 +3270,7 @@ impl GameLoop {
         game: &mut GameState,
         agents: &mut [Box<dyn PlayerAgent>],
         player: PlayerId,
+        source: CardId,
         type_filter: &str,
         amount: i32,
         counter_type: Option<&crate::card::CounterType>,
@@ -3236,7 +3304,7 @@ impl GameLoop {
             }
             // Let the agent choose which permanent to remove a counter from.
             let chosen = agents[player.index()]
-                .choose_sacrifice(player, &candidates, None)
+                .choose_sacrifice(player, &candidates, Some(source))
                 .unwrap_or(candidates[0]);
             let ct_to_remove = if let Some(ct) = counter_type {
                 ct.clone()
@@ -3266,6 +3334,7 @@ impl GameLoop {
         game: &mut GameState,
         agents: &mut [Box<dyn PlayerAgent>],
         player: PlayerId,
+        source: CardId,
         type_filter: &str,
         amount: i32,
     ) {
@@ -3274,7 +3343,9 @@ impl GameLoop {
             if valid.is_empty() {
                 break;
             }
-            if let Some(chosen) = agents[player.index()].choose_sacrifice(player, &valid, None) {
+            if let Some(chosen) =
+                agents[player.index()].choose_sacrifice(player, &valid, Some(source))
+            {
                 let owner = game.card(chosen).owner;
                 self.move_card_with_runtime(game, chosen, ZoneType::Graveyard, owner, agents);
                 crate::ability::effects::emit_zone_trigger(
@@ -3326,7 +3397,11 @@ impl GameLoop {
                     return false;
                 }
             } else {
-                agents[player.index()].choose_sacrifice(player, &valid, sa.as_deref())
+                agents[player.index()].choose_sacrifice(
+                    player,
+                    &valid,
+                    sa.as_deref().and_then(|s| s.source),
+                )
             };
             if let Some(chosen) = chosen {
                 to_sacrifice.push(chosen);

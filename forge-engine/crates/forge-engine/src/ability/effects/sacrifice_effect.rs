@@ -454,7 +454,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
                     ctx.agents[sacrificing_player.index()].choose_sacrifice(
                         sacrificing_player,
                         &valid,
-                        None,
+                        sa.source,
                     )
                 }
             };

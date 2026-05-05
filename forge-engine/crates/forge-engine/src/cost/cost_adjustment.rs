@@ -941,7 +941,7 @@ fn apply_offering_reduction(
         return true;
     }
     agents[player.index()].snapshot_state(game, mana_pools);
-    if let Some(chosen) = agents[player.index()].choose_sacrifice(player, &candidates, Some(sa)) {
+    if let Some(chosen) = agents[player.index()].choose_sacrifice(player, &candidates, sa.source) {
         sa.sacrificed_as_offering = Some(chosen);
         cost.decrease_generic_mana(game.card(chosen).mana_cost.cmc());
     }
@@ -1003,7 +1003,7 @@ fn apply_emerge_reduction(
         return true;
     }
     agents[player.index()].snapshot_state(game, mana_pools);
-    if let Some(chosen) = agents[player.index()].choose_sacrifice(player, &candidates, Some(sa)) {
+    if let Some(chosen) = agents[player.index()].choose_sacrifice(player, &candidates, sa.source) {
         sa.sacrificed_as_emerge = Some(chosen);
         cost.decrease_generic_mana(game.card(chosen).mana_cost.cmc());
     }

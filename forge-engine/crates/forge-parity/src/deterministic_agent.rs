@@ -1224,7 +1224,12 @@ impl PlayerAgent for DeterministicAgent {
         out
     }
 
-    fn choose_target_spell(&mut self, _player: PlayerId, valid: &[u32]) -> Option<u32> {
+    fn choose_target_spell(
+        &mut self,
+        _player: PlayerId,
+        valid: &[u32],
+        _source: Option<CardId>,
+    ) -> Option<u32> {
         if valid.is_empty() {
             return None;
         }
@@ -1428,7 +1433,7 @@ impl PlayerAgent for DeterministicAgent {
         &mut self,
         _player: PlayerId,
         valid: &[CardId],
-        _sa: Option<&forge_engine_core::spellability::SpellAbility>,
+        _source: Option<CardId>,
     ) -> Option<CardId> {
         if valid.is_empty() {
             return None;

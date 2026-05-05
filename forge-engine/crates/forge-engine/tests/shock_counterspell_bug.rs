@@ -91,7 +91,12 @@ impl PlayerAgent for ShockTestAgent {
         }
     }
 
-    fn choose_target_spell(&mut self, _player: PlayerId, valid: &[u32]) -> Option<u32> {
+    fn choose_target_spell(
+        &mut self,
+        _player: PlayerId,
+        valid: &[u32],
+        _source: Option<CardId>,
+    ) -> Option<u32> {
         // Target the first valid spell (should be Shock)
         valid.first().copied()
     }
