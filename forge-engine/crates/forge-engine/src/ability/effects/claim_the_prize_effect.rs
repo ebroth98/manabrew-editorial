@@ -3,6 +3,7 @@
 //! each defined attraction.
 
 use super::EffectContext;
+use crate::ability::ability_ir::DefinedRef;
 use crate::event::RunParams;
 use crate::trigger::TriggerType;
 
@@ -17,8 +18,8 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     };
 
     // Get defined cards (attractions) — defaults to Self
-    let attractions = if let Some(def) = sa.defined() {
-        if def == "Self" {
+    let attractions = if let Some(def) = sa.defined_ref() {
+        if matches!(def, DefinedRef::SelfCard) {
             vec![source]
         } else {
             ctx.game.card(source).remembered_cards.clone()

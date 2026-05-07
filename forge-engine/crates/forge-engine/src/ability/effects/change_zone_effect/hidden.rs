@@ -15,6 +15,7 @@ use super::search::{
     resolve_defined_players_for_hidden_origin, resolve_each_search, resolve_multi_search,
     resolve_random_selection, resolve_single_search,
 };
+use crate::ability::ability_ir::DefinedRef;
 use crate::agent::GameEntity;
 use crate::ids::PlayerId;
 use crate::spellability::SpellAbility;
@@ -28,6 +29,7 @@ pub(super) fn resolve_hidden_origin(
 ) {
     let (dest_zone, lib_position) = resolve_destination(ctx, sa, dest_zone);
     let defined = sa.defined().unwrap_or("").to_string();
+    let defined_ref = sa.defined_ref();
     let change_type = sa.change_type().unwrap_or("").to_string();
     let controller = sa.activating_player;
     let change_num = sa.change_num();
@@ -60,17 +62,18 @@ pub(super) fn resolve_hidden_origin(
 
     if is_defined && sa.defined_player().is_none() {
         // Resolve defined cards (Remembered, Imprinted, Self, etc.)
-        let cards: Vec<crate::ids::CardId> = if defined.eq_ignore_ascii_case("Remembered") {
+        let cards: Vec<crate::ids::CardId> = if matches!(defined_ref, Some(DefinedRef::Remembered))
+        {
             sa.source
                 .map(|sid| ctx.game.card(sid).remembered_cards.clone())
                 .unwrap_or_default()
-        } else if defined.eq_ignore_ascii_case("Imprinted") {
+        } else if matches!(defined_ref, Some(DefinedRef::Imprinted)) {
             sa.source
                 .map(|sid| ctx.game.card(sid).imprinted_cards.clone())
                 .unwrap_or_default()
-        } else if defined.eq_ignore_ascii_case("Self") {
+        } else if matches!(defined_ref, Some(DefinedRef::SelfCard)) {
             sa.source.into_iter().collect()
-        } else if defined.eq_ignore_ascii_case("ParentTarget") {
+        } else if matches!(defined_ref, Some(DefinedRef::ParentTarget)) {
             sa.target_chosen.target_card.into_iter().collect()
         } else if defined.starts_with("TopOfLibrary") {
             // TopOfLibrary, TopOfLibrary2, etc.
@@ -99,9 +102,10 @@ pub(super) fn resolve_hidden_origin(
                 .unwrap_or(1);
             let lib = ctx.game.cards_in_zone(origin_zone, controller);
             lib.iter().take(n).copied().collect()
-        } else if defined.eq_ignore_ascii_case("DelayTriggerRememberedLKI")
-            || defined.eq_ignore_ascii_case("RememberedLKI")
-        {
+        } else if matches!(
+            defined_ref,
+            Some(DefinedRef::DelayTriggerRememberedLki | DefinedRef::RememberedLki)
+        ) {
             sa.trigger_objects
                 .get(&crate::ability::AbilityKey::RememberedLKI)
                 .into_iter()

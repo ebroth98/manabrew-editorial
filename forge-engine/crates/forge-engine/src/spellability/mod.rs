@@ -421,7 +421,6 @@ impl SpellAbility {
     pub fn param_value(&self, key: &str) -> Option<&str> {
         match key {
             keys::MODE => self.ir.mode_text.as_deref(),
-            keys::PRODUCED => self.ir.produced.as_deref(),
             keys::VALID_CARDS => self.ir.valid_cards_text.as_deref(),
             keys::VALID_CARD => self.ir.valid_card_text.as_deref(),
             keys::VALID_PLAYERS => self.ir.valid_players_text.as_deref(),

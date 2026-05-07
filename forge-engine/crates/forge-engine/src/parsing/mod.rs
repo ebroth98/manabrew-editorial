@@ -22,9 +22,10 @@ pub use card_script::{
     parse_semantic_param_value, ParamDiagnostic, ParamDiagnosticKind, ParamEntry, ParsedCardScript,
     ParsedParams, ParsedParamsReport, ScriptAbility, ScriptAbilityRecord, ScriptDiagnostic,
     ScriptDiagnosticKind, ScriptField, ScriptLine, ScriptLineKind, ScriptParamRecord, ScriptSVar,
-    ScriptSVarValue, SemanticAmount, SemanticComparison, SemanticComparisonOperator, SemanticParam,
-    SemanticParamValue, SemanticParamValueKind, SemanticSelector, SemanticSelectorAlternative,
-    SemanticSelectorPart, SemanticTransform,
+    ScriptSVarNumericExpression, ScriptSVarObjectRef, ScriptSVarValue, SemanticAmount,
+    SemanticComparison, SemanticComparisonOperator, SemanticParam, SemanticParamValue,
+    SemanticParamValueKind, SemanticProducedMana, SemanticProducedManaCombo, SemanticSelector,
+    SemanticSelectorAlternative, SemanticSelectorPart, SemanticTransform,
 };
 pub use cost::{CostToken, CostTokenKind};
 

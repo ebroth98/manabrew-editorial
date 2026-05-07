@@ -1431,9 +1431,13 @@ mod tests {
                 land.card_name
             );
             assert!(
-                land.activated_abilities
-                    .iter()
-                    .any(|ab| ab.is_mana_ability && ab.produced.as_deref() == Some("B")),
+                land.activated_abilities.iter().any(|ab| {
+                    ab.is_mana_ability
+                        && ab
+                            .produced_ir
+                            .as_ref()
+                            .is_some_and(|ir| ir.as_script_text() == "B")
+                }),
                 "{} should gain an intrinsic black mana ability from Swamp",
                 land.card_name
             );

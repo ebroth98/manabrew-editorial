@@ -10,6 +10,7 @@ use super::helpers::resolve_destination;
 use super::move_cards::move_cards;
 use super::search::resolve_defined_player_choice;
 use super::stack::resolve_stack_removal;
+use crate::ability::ability_ir::DefinedRef;
 use crate::ids::CardId;
 use crate::spellability::SpellAbility;
 
@@ -28,6 +29,7 @@ pub(super) fn resolve_known_origin(
 ) {
     let (dest_zone, lib_position) = resolve_destination(ctx, sa, dest_zone);
     let defined = sa.defined().unwrap_or("").to_string();
+    let defined_ref = sa.defined_ref();
     let change_type = sa.change_type().unwrap_or("").to_string();
     let controller = sa.activating_player;
 
@@ -57,9 +59,10 @@ pub(super) fn resolve_known_origin(
         } else {
             resolve_defined_player_choice(ctx, sa, origin_zone, &change_type)
         }
-    } else if defined.eq_ignore_ascii_case("TriggeredCard")
-        || defined.eq_ignore_ascii_case("TriggeredCardLKICopy")
-    {
+    } else if matches!(
+        defined_ref,
+        Some(DefinedRef::TriggeredCard | DefinedRef::TriggeredCardLkiCopy)
+    ) {
         let cards = parse_trigger_object_cards(sa, "Card");
         if cards.is_empty() {
             sa.trigger_source
@@ -72,9 +75,10 @@ pub(super) fn resolve_known_origin(
                 .filter(|&cid| ctx.game.card(cid).zone == origin_zone)
                 .collect()
         }
-    } else if defined.eq_ignore_ascii_case("TriggeredNewCard")
-        || defined.eq_ignore_ascii_case("TriggeredNewCardLKICopy")
-    {
+    } else if matches!(
+        defined_ref,
+        Some(DefinedRef::TriggeredNewCard | DefinedRef::TriggeredNewCardLkiCopy)
+    ) {
         let cards = parse_trigger_object_cards(sa, "NewCard");
         if cards.is_empty() {
             sa.trigger_source
@@ -87,9 +91,10 @@ pub(super) fn resolve_known_origin(
                 .filter(|&cid| ctx.game.card(cid).zone == origin_zone)
                 .collect()
         }
-    } else if defined.eq_ignore_ascii_case("DelayTriggerRememberedLKI")
-        || defined.eq_ignore_ascii_case("RememberedLKI")
-    {
+    } else if matches!(
+        defined_ref,
+        Some(DefinedRef::DelayTriggerRememberedLki | DefinedRef::RememberedLki)
+    ) {
         parse_trigger_object_cards(sa, "RememberedLKI")
             .into_iter()
             .filter(|&cid| ctx.game.card(cid).zone == origin_zone)
@@ -102,18 +107,18 @@ pub(super) fn resolve_known_origin(
             .filter(|&cid| ctx.game.card(cid).zone == origin_zone)
             .into_iter()
             .collect()
-    } else if defined.eq_ignore_ascii_case("Self")
+    } else if matches!(defined_ref, Some(DefinedRef::SelfCard))
         || (defined.is_empty() && origin_zone.is_known() && sa.defined_player().is_none())
     {
         sa.source
             .filter(|&cid| ctx.game.card(cid).zone == origin_zone)
             .into_iter()
             .collect()
-    } else if defined.eq_ignore_ascii_case("ExiledWith") {
+    } else if matches!(defined_ref, Some(DefinedRef::ExiledWith)) {
         resolve_exiled_with(ctx, sa, origin_zone)
-    } else if defined.eq_ignore_ascii_case("Imprinted") {
+    } else if matches!(defined_ref, Some(DefinedRef::Imprinted)) {
         resolve_imprinted(ctx, sa, origin_zone)
-    } else if defined.eq_ignore_ascii_case("Remembered") {
+    } else if matches!(defined_ref, Some(DefinedRef::Remembered)) {
         resolve_remembered(ctx, sa, origin_zone)
     } else if !defined.is_empty() {
         crate::ability::ability_utils::get_defined_cards(

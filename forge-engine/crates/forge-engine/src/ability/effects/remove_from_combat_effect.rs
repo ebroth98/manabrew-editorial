@@ -1,6 +1,7 @@
 use forge_foundation::ZoneType;
 
 use super::EffectContext;
+use crate::ability::ability_ir::DefinedRef;
 
 /// `SP$ RemoveFromCombat` — remove target creature from combat.
 ///
@@ -19,11 +20,14 @@ use super::EffectContext;
 /// `RemoveFromCombatEffect` class extending `SpellAbilityEffect`.
 #[forge_engine_macros::spell_effect(RemoveFromCombatEffect)]
 fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
-    let target = sa.target_chosen.target_card.or_else(|| match sa.defined() {
-        Some("Self") => sa.source,
-        Some("ParentTarget") => ctx.parent_target_card,
-        _ => None,
-    });
+    let target = sa
+        .target_chosen
+        .target_card
+        .or_else(|| match sa.defined_ref() {
+            Some(DefinedRef::SelfCard) => sa.source,
+            Some(DefinedRef::ParentTarget) => ctx.parent_target_card,
+            _ => None,
+        });
 
     if let Some(card_id) = target {
         if ctx.game.card(card_id).zone == ZoneType::Battlefield {

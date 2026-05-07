@@ -5,6 +5,7 @@
 //! initialization in `Card::from_rules()`.
 
 use crate::ability::activated::parse_activated_ability;
+use crate::card::svar_cache::ParsedSVarKind;
 use crate::parsing::keys;
 use crate::parsing::Params;
 use crate::staticability::parse_static_ability;
@@ -13,6 +14,18 @@ use crate::trigger::parse_trigger;
 use super::Card;
 
 impl Card {
+    fn parsed_svar_params(&mut self, name: &str) -> Option<Params> {
+        match self.parsed_s_var(name)?.kind {
+            ParsedSVarKind::Ability { params, .. } | ParsedSVarKind::ParamRecord { params } => {
+                Some(params)
+            }
+            ParsedSVarKind::Number { .. }
+            | ParsedSVarKind::Count { .. }
+            | ParsedSVarKind::NumericExpression { .. }
+            | ParsedSVarKind::Raw { .. } => None,
+        }
+    }
+
     /// Generate intrinsic mana abilities for basic land subtypes (Plains → {W}, etc.).
     /// Mirrors Java's `CardFactoryUtil.addIntrinsicAbilities()`.
     pub(crate) fn generate_basic_land_mana_abilities(&mut self) {
@@ -25,10 +38,13 @@ impl Card {
         ];
         for &(subtype, letter, desc) in SUBTYPE_MANA {
             if self.type_line.has_subtype(subtype) {
-                let already_produces = self
-                    .activated_abilities
-                    .iter()
-                    .any(|ab| ab.is_mana_ability && ab.produced.as_deref() == Some(letter));
+                let already_produces = self.activated_abilities.iter().any(|ab| {
+                    ab.is_mana_ability
+                        && ab
+                            .produced_ir
+                            .as_ref()
+                            .is_some_and(|ir| ir.as_script_text() == letter)
+                });
                 if !already_produces {
                     let raw = format!(
                         "AB$ Mana | Cost$ T | Produced$ {} | SpellDescription$ {}",
@@ -313,8 +329,7 @@ impl Card {
                             .map(str::trim)
                             .filter(|s| !s.is_empty())
                         {
-                            if let Some(raw) = self.svars.get(svar_name) {
-                                let svar_params = Params::from_raw(raw);
+                            if let Some(svar_params) = self.parsed_svar_params(svar_name) {
                                 if let Some(desc) = svar_params.get(keys::TRIGGER_DESCRIPTION) {
                                     desc_parts.push(desc.to_string());
                                 }
@@ -328,8 +343,7 @@ impl Card {
                             .map(str::trim)
                             .filter(|s| !s.is_empty())
                         {
-                            if let Some(raw) = self.svars.get(svar_name) {
-                                let svar_params = Params::from_raw(raw);
+                            if let Some(svar_params) = self.parsed_svar_params(svar_name) {
                                 if let Some(desc) = svar_params.get(keys::DESCRIPTION) {
                                     desc_parts.push(desc.to_string());
                                 }
@@ -343,8 +357,7 @@ impl Card {
                             .map(str::trim)
                             .filter(|s| !s.is_empty())
                         {
-                            if let Some(raw) = self.svars.get(svar_name) {
-                                let svar_params = Params::from_raw(raw);
+                            if let Some(svar_params) = self.parsed_svar_params(svar_name) {
                                 if let Some(desc) = svar_params.get(keys::DESCRIPTION) {
                                     desc_parts.push(desc.to_string());
                                 }

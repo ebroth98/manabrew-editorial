@@ -937,6 +937,34 @@ pub fn load_data(cards_dir: Option<&str>, verbose: bool) -> Result<LoadedData, S
         for example in script_stats.semantic_raw_example_lines() {
             eprintln!("[parity] script semantic raw example: {}", example);
         }
+        for example in script_stats.svar_raw_dollar_example_lines() {
+            eprintln!("[parity] script raw SVar dollar example: {}", example);
+        }
+        for example in script_stats.raw_dsl_domain_example_lines() {
+            eprintln!("[parity] script raw DSL domain example: {}", example);
+        }
+        if !script_stats.svar_raw_dollar_shapes.is_empty() {
+            eprintln!("[parity] script raw SVar dollar shapes:");
+            let mut shapes = script_stats
+                .svar_raw_dollar_shapes
+                .iter()
+                .collect::<Vec<_>>();
+            shapes.sort_by(|a, b| b.1.cmp(a.1).then_with(|| a.0.cmp(b.0)));
+            for (shape, count) in shapes.iter().take(32) {
+                eprintln!("[parity]   {count:6} {shape}");
+            }
+        }
+        if !script_stats.raw_dsl_domain_shapes.is_empty() {
+            eprintln!("[parity] script raw DSL domains:");
+            let mut shapes = script_stats
+                .raw_dsl_domain_shapes
+                .iter()
+                .collect::<Vec<_>>();
+            shapes.sort_by(|a, b| b.1.cmp(a.1).then_with(|| a.0.cmp(b.0)));
+            for (shape, count) in shapes.iter().take(48) {
+                eprintln!("[parity]   {count:6} {shape}");
+            }
+        }
     }
 
     let mut token_templates = Vec::new();
@@ -962,6 +990,34 @@ pub fn load_data(cards_dir: Option<&str>, verbose: bool) -> Result<LoadedData, S
             }
             for example in token_script_stats.semantic_raw_example_lines() {
                 eprintln!("[parity] token script semantic raw example: {}", example);
+            }
+            for example in token_script_stats.svar_raw_dollar_example_lines() {
+                eprintln!("[parity] token script raw SVar dollar example: {}", example);
+            }
+            for example in token_script_stats.raw_dsl_domain_example_lines() {
+                eprintln!("[parity] token script raw DSL domain example: {}", example);
+            }
+            if !token_script_stats.svar_raw_dollar_shapes.is_empty() {
+                eprintln!("[parity] token script raw SVar dollar shapes:");
+                let mut shapes = token_script_stats
+                    .svar_raw_dollar_shapes
+                    .iter()
+                    .collect::<Vec<_>>();
+                shapes.sort_by(|a, b| b.1.cmp(a.1).then_with(|| a.0.cmp(b.0)));
+                for (shape, count) in shapes.iter().take(32) {
+                    eprintln!("[parity]   {count:6} {shape}");
+                }
+            }
+            if !token_script_stats.raw_dsl_domain_shapes.is_empty() {
+                eprintln!("[parity] token script raw DSL domains:");
+                let mut shapes = token_script_stats
+                    .raw_dsl_domain_shapes
+                    .iter()
+                    .collect::<Vec<_>>();
+                shapes.sort_by(|a, b| b.1.cmp(a.1).then_with(|| a.0.cmp(b.0)));
+                for (shape, count) in shapes.iter().take(48) {
+                    eprintln!("[parity]   {count:6} {shape}");
+                }
             }
         }
         for (script_name, rules) in token_db.iter() {

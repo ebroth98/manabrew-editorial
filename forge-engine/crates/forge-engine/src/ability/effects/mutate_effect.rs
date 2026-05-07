@@ -5,6 +5,7 @@
 use forge_foundation::ZoneType;
 
 use super::EffectContext;
+use crate::ability::ability_ir::DefinedRef;
 use crate::event::RunParams;
 use crate::trigger::TriggerType;
 
@@ -21,8 +22,8 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     // Get the target creature to mutate onto
     let target = if let Some(target) = sa.target_chosen.target_card {
         target
-    } else if let Some(def) = sa.defined() {
-        if def == "Self" {
+    } else if let Some(def) = sa.defined_ref() {
+        if matches!(def, DefinedRef::SelfCard) {
             return; // Can't mutate onto self
         }
         match ctx.game.card(source).remembered_cards.first() {

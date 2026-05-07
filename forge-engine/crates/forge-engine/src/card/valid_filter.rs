@@ -2031,6 +2031,11 @@ fn matches_type_and_qualifier_parts(
                         return false;
                     }
                 }
+                controlled if controlled.starts_with("controlledby ") => {
+                    if !legacy_matches_card_atom(raw, card, context) {
+                        return false;
+                    }
+                }
                 "inzonebattlefield" => {
                     if card.zone != forge_foundation::ZoneType::Battlefield {
                         return false;

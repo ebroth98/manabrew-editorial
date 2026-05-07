@@ -2,6 +2,7 @@ use forge_foundation::{ColorSet, ZoneType};
 
 use super::trait_animate_effect::parse_animate_params;
 use super::EffectContext;
+use crate::ability::ability_ir::DefinedRef;
 use crate::card::card_trait_changes::CardTraitChanges;
 use crate::card::perpetual::perpetual_interface::PerpetualInterface;
 use crate::card::perpetual::{
@@ -348,26 +349,24 @@ fn resolve_animate_targets(
     }
 
     // Check Defined$ param
-    if let Some(defined) = sa.defined() {
+    if let Some(defined) = sa.defined_ref() {
         match defined {
-            "Self" => {
+            DefinedRef::SelfCard => {
                 if let Some(src) = sa.source {
                     return vec![src];
                 }
             }
-            "ParentTarget" => {
+            DefinedRef::ParentTarget => {
                 if let Some(pt) = ctx.parent_target_card {
                     return vec![pt];
                 }
             }
-            _ => {
-                // Try as "Remembered" or other defined resolution
-                if defined == "Remembered" {
-                    if let Some(src) = sa.source {
-                        return ctx.game.card(src).remembered_cards.clone();
-                    }
+            DefinedRef::Remembered => {
+                if let Some(src) = sa.source {
+                    return ctx.game.card(src).remembered_cards.clone();
                 }
             }
+            _ => {}
         }
     }
 

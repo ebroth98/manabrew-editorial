@@ -1,32 +1,13 @@
-use crate::ability::ability_ir::NumericParamIr;
+use crate::ability::ability_ir::{DefinedRef, NumericParamIr};
 use crate::card::card_damage_history::TrackedEntity;
 use crate::card::filter_constants as fc;
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
 use crate::parsing::compare::compare_expr;
 use crate::spellability::SpellAbility;
-
-fn parse_trigger_card_object(sa: &SpellAbility, key: &str) -> Option<CardId> {
-    crate::ability::ability_key::from_string(key)
-        .and_then(|ability_key| sa.get_triggering_card(ability_key))
-}
-
-fn parse_trigger_int_object(sa: &SpellAbility, key: &str) -> Option<i32> {
-    crate::ability::ability_key::from_string(key)
-        .and_then(|ability_key| sa.get_triggering_value(ability_key))
-        .and_then(|value| value.trim().parse::<i32>().ok())
-}
-
-fn trigger_remembered_cards(sa: &SpellAbility) -> Vec<CardId> {
-    sa.trigger_remembered
-        .iter()
-        .flat_map(|value| match value {
-            crate::event::AbilityValue::Card(card_id) => vec![*card_id],
-            crate::event::AbilityValue::Cards(cards) => cards.clone(),
-            _ => Vec::new(),
-        })
-        .collect()
-}
+use forge_card_script::{
+    parse_script_svar_numeric_expression, ScriptSVarNumericExpression, ScriptSVarObjectRef,
+};
 
 fn parse_trigger_int_values(sa: &SpellAbility, key: &str) -> Vec<i32> {
     crate::ability::ability_key::from_string(key)
@@ -63,6 +44,15 @@ fn sacrificed_card_value(game: &GameState, sa: &SpellAbility, svar_expr: &str) -
             .unwrap_or(sac_card.base_toughness.unwrap_or(0))
     } else {
         sac_card.mana_cost.cmc()
+    }
+}
+
+fn sacrificed_card_property_value(game: &GameState, sa: &SpellAbility, property: &str) -> i32 {
+    match property {
+        "CardPower" | "CardToughness" | "CardManaCost" => {
+            sacrificed_card_value(game, sa, &format!("Sacrificed${property}"))
+        }
+        _ => 0,
     }
 }
 
@@ -240,6 +230,15 @@ fn card_x_property(
 
 fn resolve_spell_ability_expr(expr: &str, game: &GameState, sa: &SpellAbility) -> Option<i32> {
     let (defined, property) = expr.split_once('$')?;
+    resolve_spell_ability_property(defined, property, game, sa)
+}
+
+fn resolve_spell_ability_property(
+    defined: &str,
+    property: &str,
+    game: &GameState,
+    sa: &SpellAbility,
+) -> Option<i32> {
     let spells = crate::ability::ability_utils::get_defined_spell_abilities(defined, sa, game);
     if spells.is_empty() {
         return None;
@@ -260,13 +259,18 @@ fn resolve_card_list_expr(
     sa: &SpellAbility,
 ) -> Option<i32> {
     let (defined, property) = expr.split_once('$')?;
-    let cards: Vec<CardId> = match defined {
-        "Targeted" | "TargetedCard" | "ThisTargetedCard" => sa.target_chosen.all_target_cards(),
-        "ParentTargeted" => sa.target_chosen.all_target_cards(),
-        _ if defined.starts_with("Remembered") => game.card(source_id).remembered_cards.clone(),
-        _ if defined.starts_with("TriggerRemembered") => trigger_remembered_cards(sa),
-        _ => return None,
-    };
+    resolve_card_list_property(defined, property, game, source_id, controller, sa)
+}
+
+fn resolve_card_list_property(
+    defined: &str,
+    property: &str,
+    game: &GameState,
+    source_id: CardId,
+    controller: PlayerId,
+    sa: &SpellAbility,
+) -> Option<i32> {
+    let cards = resolve_defined_cards_for_svar(defined, game, source_id, sa);
     if cards.is_empty() {
         return None;
     }
@@ -276,6 +280,202 @@ fn resolve_card_list_expr(
             .map(|cid| card_x_property(cid, property, game, source_id, controller, sa))
             .sum(),
     )
+}
+
+fn resolve_defined_cards_for_svar(
+    defined: &str,
+    game: &GameState,
+    source_id: CardId,
+    sa: &SpellAbility,
+) -> Vec<CardId> {
+    let defined_ref = DefinedRef::parse(defined);
+    match defined_ref {
+        DefinedRef::Targeted
+        | DefinedRef::TargetedCard
+        | DefinedRef::ThisTargetedCard
+        | DefinedRef::ParentTargeted => sa.target_chosen.all_target_cards(),
+        DefinedRef::TriggeredCard | DefinedRef::TriggeredCardLkiCopy => {
+            let cards = sa.get_triggering_cards(crate::ability::AbilityKey::Card);
+            if cards.is_empty() {
+                sa.trigger_source.into_iter().collect()
+            } else {
+                cards
+            }
+        }
+        DefinedRef::ReplacedCard => {
+            let cards = sa.get_triggering_cards(crate::ability::AbilityKey::ReplacedCard);
+            if cards.is_empty() {
+                sa.get_triggering_cards(crate::ability::AbilityKey::Card)
+            } else {
+                cards
+            }
+        }
+        DefinedRef::TriggeredNewCard | DefinedRef::TriggeredNewCardLkiCopy => {
+            let cards = sa.get_triggering_cards(crate::ability::AbilityKey::NewCard);
+            if cards.is_empty() {
+                sa.trigger_source.into_iter().collect()
+            } else {
+                cards
+            }
+        }
+        DefinedRef::TriggeredAttacker => {
+            sa.get_triggering_cards(crate::ability::AbilityKey::Attacker)
+        }
+        DefinedRef::TriggeredAttackers => {
+            sa.get_triggering_cards(crate::ability::AbilityKey::Attackers)
+        }
+        DefinedRef::TriggeredBlocker => {
+            sa.get_triggering_cards(crate::ability::AbilityKey::Blocker)
+        }
+        DefinedRef::TriggeredTarget
+        | DefinedRef::TriggeredTargetLkiCopy
+        | DefinedRef::TriggeredTargets => {
+            let cards = sa.get_triggering_cards(crate::ability::AbilityKey::TargetCard);
+            if cards.is_empty() {
+                sa.get_triggering_cards(crate::ability::AbilityKey::Target)
+            } else {
+                cards
+            }
+        }
+        DefinedRef::Explorer => sa.get_triggering_cards(crate::ability::AbilityKey::Explorer),
+        DefinedRef::Explored => sa.get_triggering_cards(crate::ability::AbilityKey::Explored),
+        DefinedRef::Discarded => sa.discarded_cost_cards.clone(),
+        DefinedRef::Sacrificed => paid_sacrificed_card(sa)
+            .or(game.last_sacrificed_card)
+            .into_iter()
+            .collect(),
+        DefinedRef::Remembered => game.card(source_id).remembered_cards.clone(),
+        DefinedRef::RememberedLki => {
+            let cards = sa
+                .trigger_objects
+                .get(&crate::ability::AbilityKey::RememberedLKI)
+                .map(cards_from_ability_value)
+                .unwrap_or_default();
+            if cards.is_empty() {
+                game.card(source_id).remembered_cards.clone()
+            } else {
+                cards
+            }
+        }
+        DefinedRef::DelayTriggerRememberedLki => sa
+            .trigger_objects
+            .get(&crate::ability::AbilityKey::RememberedLKI)
+            .map(cards_from_ability_value)
+            .unwrap_or_default(),
+        DefinedRef::DelayTriggerRemembered | DefinedRef::TriggerRemembered => sa
+            .trigger_remembered
+            .iter()
+            .flat_map(cards_from_ability_value)
+            .collect(),
+        DefinedRef::Imprinted => game.card(source_id).imprinted_cards.clone(),
+        _ => crate::ability::ability_utils::get_defined_cards(
+            game,
+            Some(source_id),
+            defined_ref.as_legacy_str(),
+            Some(sa.activating_player),
+        ),
+    }
+}
+
+fn cards_from_ability_value(value: &crate::event::AbilityValue) -> Vec<CardId> {
+    match value {
+        crate::event::AbilityValue::Card(cid) => vec![*cid],
+        crate::event::AbilityValue::Cards(cards) => cards.clone(),
+        _ => Vec::new(),
+    }
+}
+
+fn resolve_lowered_svar_expression(
+    expression: &ScriptSVarNumericExpression<'_>,
+    game: &GameState,
+    source_id: CardId,
+    controller: PlayerId,
+    sa: &SpellAbility,
+) -> Option<i32> {
+    match expression {
+        ScriptSVarNumericExpression::Number(value) => {
+            Some(value.trim().parse::<i32>().unwrap_or(0))
+        }
+        ScriptSVarNumericExpression::Count(raw) => Some(resolve_count_svar_for_sa(
+            raw, game, source_id, controller, sa,
+        )),
+        ScriptSVarNumericExpression::PlayerCount(raw) => Some(resolve_player_count_svar(
+            raw, game, source_id, controller, sa,
+        )),
+        ScriptSVarNumericExpression::TriggerCount(raw) => Some(evaluate_svar(raw, sa)),
+        ScriptSVarNumericExpression::SVarReference { name, operators } => {
+            let raw = game.card(source_id).get_s_var(name)?;
+            let value = resolve_svar_expression(raw, game, source_id, controller, sa);
+            Some(do_x_math(value, operators, game, source_id, controller, sa))
+        }
+        ScriptSVarNumericExpression::Remembered { property } => {
+            Some(crate::ability::ability_utils::handle_paid(
+                game,
+                &game.card(source_id).remembered_cards,
+                property,
+                source_id,
+            ))
+        }
+        ScriptSVarNumericExpression::RememberedSize { operators } => Some(do_x_math(
+            game.card(source_id).remembered_cards.len() as i32,
+            operators,
+            game,
+            source_id,
+            controller,
+            sa,
+        )),
+        ScriptSVarNumericExpression::DiscardedValid { filter, times } => Some(
+            resolve_discarded_valid_svar(game, source_id, filter, *times),
+        ),
+        ScriptSVarNumericExpression::ObjectProperty { object, property } => match object {
+            ScriptSVarObjectRef::Sacrificed => {
+                Some(sacrificed_card_property_value(game, sa, property))
+            }
+            ScriptSVarObjectRef::TriggeredCard => {
+                crate::lki::resolve_triggered_card_lki_property(game, sa, property)
+            }
+            ScriptSVarObjectRef::CardList(defined) => {
+                resolve_card_list_property(defined, property, game, source_id, controller, sa)
+            }
+            ScriptSVarObjectRef::PlayerList(defined) => {
+                resolve_direct_player_property(defined, property, game, source_id, controller, sa)
+            }
+            ScriptSVarObjectRef::SpellAbility(defined) => {
+                resolve_spell_ability_property(defined, property, game, sa)
+            }
+            ScriptSVarObjectRef::PaidHash(key) => {
+                resolve_paid_hash_property(key, property, game, source_id, sa)
+            }
+            ScriptSVarObjectRef::ReplaceCount => None,
+            ScriptSVarObjectRef::RuntimeValue(_) => None,
+        },
+    }
+}
+
+fn resolve_discarded_valid_svar(
+    game: &GameState,
+    source_id: CardId,
+    filter: &str,
+    times: i32,
+) -> i32 {
+    let remembered = &game.card(source_id).remembered_cards;
+    if remembered.is_empty() {
+        return 0;
+    }
+    for &rem_id in remembered {
+        let rem_card = game.card(rem_id);
+        let matches = if filter.contains("nonLand") {
+            !rem_card.is_land()
+        } else if filter == "Card" {
+            true
+        } else {
+            true
+        };
+        if matches {
+            return times;
+        }
+    }
+    0
 }
 
 pub(crate) fn resolve_svar_expression(
@@ -288,6 +488,13 @@ pub(crate) fn resolve_svar_expression(
     let expr = expr.trim();
     if let Ok(n) = expr.parse::<i32>() {
         return n;
+    }
+    if let Some(expression) = parse_script_svar_numeric_expression(expr) {
+        if let Some(value) =
+            resolve_lowered_svar_expression(&expression, game, source_id, controller, sa)
+        {
+            return value;
+        }
     }
     if expr.starts_with("TriggerCount$") || expr.starts_with("TriggerCountMax$") {
         return evaluate_svar(expr, sa);
@@ -525,6 +732,17 @@ fn resolve_direct_player_expr(
     sa: &SpellAbility,
 ) -> Option<i32> {
     let (defined, property) = expr.split_once('$')?;
+    resolve_direct_player_property(defined, property, game, source_id, controller, sa)
+}
+
+fn resolve_direct_player_property(
+    defined: &str,
+    property: &str,
+    game: &GameState,
+    source_id: CardId,
+    controller: PlayerId,
+    sa: &SpellAbility,
+) -> Option<i32> {
     let players = crate::ability::ability_utils::resolve_defined_players_with_sa(
         defined, sa, controller, game,
     );
@@ -798,6 +1016,17 @@ pub fn resolve_numeric_value(
     };
 
     if let Some(source_id) = sa.source {
+        if let Some(expression) = parse_script_svar_numeric_expression(val_str) {
+            if let Some(value) = resolve_lowered_svar_expression(
+                &expression,
+                game,
+                source_id,
+                sa.activating_player,
+                sa,
+            ) {
+                return sign * value;
+            }
+        }
         if let Some(value) =
             resolve_card_list_expr(val_str, game, source_id, sa.activating_player, sa)
         {
@@ -838,6 +1067,17 @@ pub fn resolve_numeric_value(
                 {
                     return sign * evaluate_svar(svar_expr, sa);
                 }
+                if let Some(expression) = parse_script_svar_numeric_expression(svar_expr) {
+                    if let Some(value) = resolve_lowered_svar_expression(
+                        &expression,
+                        game,
+                        source_id,
+                        sa.activating_player,
+                        sa,
+                    ) {
+                        return sign * value;
+                    }
+                }
                 if let Some(value) = resolve_spell_ability_expr(svar_expr, game, sa) {
                     return sign * value;
                 }
@@ -846,81 +1086,12 @@ pub fn resolve_numeric_value(
                 {
                     return sign * value;
                 }
-                // Sacrificed$CardPower / Sacrificed$CardToughness — LKI from cost payment
-                if svar_expr == "Sacrificed$CardPower"
-                    || svar_expr == "Sacrificed$CardToughness"
-                    || svar_expr == "Sacrificed$CardManaCost"
+                // Must run before resolve_direct_player_expr, which can
+                // greedily match some object-property expression prefixes.
+                if let Some(value) =
+                    crate::lki::resolve_triggered_card_lki_svar(game, sa, svar_expr)
                 {
-                    return sign * sacrificed_card_value(game, sa, svar_expr);
-                }
-
-                // TriggeredCard$CardPower / TriggeredCard$CardToughness — LKI resolution
-                // Must be checked before resolve_direct_player_expr which would
-                // incorrectly match "TriggeredCard" as a player definition.
-                if svar_expr == "TriggeredCard$CardPower" {
-                    if let Some(power) = parse_trigger_int_object(sa, "TriggeredCardPower") {
-                        return sign * power;
-                    }
-                    if let Some(trigger_src) =
-                        parse_trigger_card_object(sa, "Card").or(sa.trigger_source)
-                    {
-                        return sign * crate::lki::resolve_lki_power(game, trigger_src);
-                    }
-                    return 0;
-                }
-                if svar_expr == "TriggeredCard$CardToughness" {
-                    if let Some(toughness) = parse_trigger_int_object(sa, "TriggeredCardToughness")
-                    {
-                        return sign * toughness;
-                    }
-                    if let Some(trigger_src) =
-                        parse_trigger_card_object(sa, "Card").or(sa.trigger_source)
-                    {
-                        return sign * crate::lki::resolve_lki_toughness(game, trigger_src);
-                    }
-                    return 0;
-                }
-                // TriggeredCard$CardCounters.TYPE — LKI counter count resolution
-                // Used by Servant of the Scale, Modular creatures, etc.
-                if let Some(counter_name) = svar_expr.strip_prefix("TriggeredCard$CardCounters.") {
-                    let ct = crate::ability::effects::parse_counter_type(counter_name);
-                    if let Some(trigger_src) =
-                        parse_trigger_card_object(sa, "Card").or(sa.trigger_source)
-                    {
-                        return sign
-                            * crate::lki::resolve_lki_counter_count(game, trigger_src, &ct);
-                    }
-                    return 0;
-                }
-                // Discarded$Valid Filter/Times.N — check discarded cost cards
-                // Must be checked before resolve_direct_player_expr.
-                if let Some(rest) = svar_expr.strip_prefix("Discarded$Valid ") {
-                    let mut parts = rest.split("/Times.");
-                    let filter = parts.next().unwrap_or("").trim();
-                    let times: i32 = parts
-                        .next()
-                        .and_then(|s| s.trim().parse().ok())
-                        .unwrap_or(0);
-                    // Check remembered_cards on the source (set during cost payment)
-                    let remembered = &game.card(source_id).remembered_cards;
-                    if remembered.is_empty() {
-                        return 0;
-                    }
-                    // Check if the discarded card matches the filter
-                    for &rem_id in remembered {
-                        let rem_card = game.card(rem_id);
-                        let matches = if filter.contains("nonLand") {
-                            !rem_card.is_land()
-                        } else if filter == "Card" {
-                            true
-                        } else {
-                            true // default: accept
-                        };
-                        if matches {
-                            return sign * times;
-                        }
-                    }
-                    return 0;
+                    return sign * value;
                 }
                 if let Some(value) =
                     resolve_direct_player_expr(svar_expr, game, source_id, sa.activating_player, sa)
@@ -937,23 +1108,6 @@ pub fn resolve_numeric_value(
     // It's an SVar reference — look it up on the source card
     if let Some(source_id) = sa.source {
         if let Some(svar_expr) = game.card(source_id).get_s_var(val_str.trim()) {
-            // `Sacrificed$CardPower` / `Sacrificed$CardToughness` — LKI of the
-            // creature sacrificed during cost payment (e.g. Life's Legacy uses
-            // `NumCards$ XPower` where `XPower:Sacrificed$CardPower`). Mirrors
-            if svar_expr == "Sacrificed$CardPower"
-                || svar_expr == "Sacrificed$CardToughness"
-                || svar_expr == "Sacrificed$CardManaCost"
-            {
-                return sign * sacrificed_card_value(game, sa, svar_expr);
-            }
-            if let Some(property) = svar_expr.strip_prefix("Remembered$") {
-                return crate::ability::ability_utils::handle_paid(
-                    game,
-                    &game.card(source_id).remembered_cards,
-                    property,
-                    source_id,
-                );
-            }
             // Game-aware SVar resolution for patterns that need GameState.
             if svar_expr.starts_with("Count$") {
                 return sign
@@ -978,6 +1132,17 @@ pub fn resolve_numeric_value(
             if let Some(value) = resolve_paid_hash_expr(svar_expr, game, source_id, sa) {
                 return sign * value;
             }
+            if let Some(expression) = parse_script_svar_numeric_expression(svar_expr) {
+                if let Some(value) = resolve_lowered_svar_expression(
+                    &expression,
+                    game,
+                    source_id,
+                    sa.activating_player,
+                    sa,
+                ) {
+                    return sign * value;
+                }
+            }
             if let Some(value) = resolve_spell_ability_expr(svar_expr, game, sa) {
                 return sign * value;
             }
@@ -986,38 +1151,10 @@ pub fn resolve_numeric_value(
             {
                 return sign * value;
             }
-            // TriggeredCard$CardPower / TriggeredCard$CardToughness — LKI resolution
-            if svar_expr == "TriggeredCard$CardPower" {
-                if let Some(power) = parse_trigger_int_object(sa, "TriggeredCardPower") {
-                    return sign * power;
-                }
-                if let Some(trigger_src) =
-                    parse_trigger_card_object(sa, "Card").or(sa.trigger_source)
-                {
-                    return sign * crate::lki::resolve_lki_power(game, trigger_src);
-                }
-                return 0;
-            }
-            if svar_expr == "TriggeredCard$CardToughness" {
-                if let Some(toughness) = parse_trigger_int_object(sa, "TriggeredCardToughness") {
-                    return sign * toughness;
-                }
-                if let Some(trigger_src) =
-                    parse_trigger_card_object(sa, "Card").or(sa.trigger_source)
-                {
-                    return sign * crate::lki::resolve_lki_toughness(game, trigger_src);
-                }
-                return 0;
-            }
-            // TriggeredCard$CardCounters.TYPE — LKI counter count resolution
-            if let Some(counter_name) = svar_expr.strip_prefix("TriggeredCard$CardCounters.") {
-                let ct = crate::ability::effects::parse_counter_type(counter_name);
-                if let Some(trigger_src) =
-                    parse_trigger_card_object(sa, "Card").or(sa.trigger_source)
-                {
-                    return sign * crate::lki::resolve_lki_counter_count(game, trigger_src, &ct);
-                }
-                return 0;
+            // Must be checked before resolve_direct_player_expr, which
+            // would incorrectly match "TriggeredCard" as a player definition.
+            if let Some(value) = crate::lki::resolve_triggered_card_lki_svar(game, sa, svar_expr) {
+                return sign * value;
             }
             // evaluate_svar handles Number$N, Count$Kicked, TriggerCount, etc.
             // Must run before resolve_direct_player_expr which greedily matches
@@ -1045,6 +1182,16 @@ fn resolve_paid_hash_expr(
     sa: &SpellAbility,
 ) -> Option<i32> {
     let (paid_key, property) = expr.split_once('$')?;
+    resolve_paid_hash_property(paid_key, property, game, source_id, sa)
+}
+
+fn resolve_paid_hash_property(
+    paid_key: &str,
+    property: &str,
+    game: &GameState,
+    source_id: CardId,
+    sa: &SpellAbility,
+) -> Option<i32> {
     let paid_values = sa.paid_hash.get(paid_key)?;
     let paid_cards: Vec<CardId> = paid_values
         .iter()

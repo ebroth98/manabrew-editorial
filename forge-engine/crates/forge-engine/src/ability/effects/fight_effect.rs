@@ -1,6 +1,7 @@
 use forge_foundation::ZoneType;
 
 use super::EffectContext;
+use crate::ability::ability_ir::DefinedRef;
 use crate::card::card_damage_map::DamageTarget;
 use crate::event::RunParams;
 use crate::trigger::TriggerType;
@@ -32,7 +33,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
 
     // Determine the "source" fighter based on Defined$ ParentTarget vs direct source.
     // Prey Upon: `DB$ Fight | Defined$ ParentTarget` — controlled creature from parent SA.
-    let is_defined_parent = matches!(sa.defined(), Some("ParentTarget"));
+    let is_defined_parent = matches!(sa.defined_ref(), Some(DefinedRef::ParentTarget));
     let source = if is_defined_parent {
         match ctx.parent_target_card {
             Some(c) => c,

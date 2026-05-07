@@ -34,6 +34,7 @@ pub struct SemanticParam<'a> {
 pub enum SemanticParamValue<'a> {
     AbilityRecord(&'a str),
     Symbol(&'a str),
+    ProducedMana(SemanticProducedMana<'a>),
     Boolean(bool),
     Integer(i32),
     Amount(SemanticAmount<'a>),
@@ -54,6 +55,7 @@ pub enum SemanticParamValue<'a> {
 pub enum SemanticParamValueKind {
     AbilityRecord,
     Symbol,
+    ProducedMana,
     Boolean,
     Integer,
     Amount,
@@ -78,6 +80,25 @@ pub enum SemanticAmount<'a> {
     All,
     SVar(&'a str),
     Expression(&'a str),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SemanticProducedMana<'a> {
+    Any,
+    Chosen,
+    Combo(SemanticProducedManaCombo<'a>),
+    Special(&'a str),
+    Fixed(SmallVec<[&'a str; 4]>),
+    Raw(&'a str),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SemanticProducedManaCombo<'a> {
+    Any,
+    Chosen,
+    ColorIdentity,
+    Colors(SmallVec<[&'a str; 4]>),
+    Raw(&'a str),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -224,7 +245,84 @@ pub struct ScriptSVar<'a> {
 pub enum ScriptSVarValue<'a> {
     Ability(ScriptAbility<'a>),
     Params(ScriptParamRecord<'a>),
+    NumericExpression(ScriptSVarNumericExpression<'a>),
     Raw(&'a str),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ScriptSVarNumericExpression<'a> {
+    Number(&'a str),
+    Count(&'a str),
+    PlayerCount(&'a str),
+    TriggerCount(&'a str),
+    SVarReference {
+        name: &'a str,
+        operators: &'a str,
+    },
+    Remembered {
+        property: &'a str,
+    },
+    RememberedSize {
+        operators: &'a str,
+    },
+    DiscardedValid {
+        filter: &'a str,
+        times: i32,
+    },
+    ObjectProperty {
+        object: ScriptSVarObjectRef<'a>,
+        property: &'a str,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ScriptSVarObjectRef<'a> {
+    Sacrificed,
+    TriggeredCard,
+    CardList(&'a str),
+    PlayerList(&'a str),
+    SpellAbility(&'a str),
+    PaidHash(&'a str),
+    ReplaceCount,
+    RuntimeValue(&'a str),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum OwnedSVarNumericExpression {
+    Number(String),
+    Count(String),
+    PlayerCount(String),
+    TriggerCount(String),
+    SVarReference {
+        name: String,
+        operators: String,
+    },
+    Remembered {
+        property: String,
+    },
+    RememberedSize {
+        operators: String,
+    },
+    DiscardedValid {
+        filter: String,
+        times: i32,
+    },
+    ObjectProperty {
+        object: OwnedSVarObjectRef,
+        property: String,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum OwnedSVarObjectRef {
+    Sacrificed,
+    TriggeredCard,
+    CardList(String),
+    PlayerList(String),
+    SpellAbility(String),
+    PaidHash(String),
+    ReplaceCount,
+    RuntimeValue(String),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -308,6 +406,7 @@ impl SemanticParamValue<'_> {
         match self {
             Self::AbilityRecord(_) => SemanticParamValueKind::AbilityRecord,
             Self::Symbol(_) => SemanticParamValueKind::Symbol,
+            Self::ProducedMana(_) => SemanticParamValueKind::ProducedMana,
             Self::Boolean(_) => SemanticParamValueKind::Boolean,
             Self::Integer(_) => SemanticParamValueKind::Integer,
             Self::Amount(_) => SemanticParamValueKind::Amount,
@@ -332,6 +431,52 @@ impl<'a> ParamEntry<'a> {
             key: self.key,
             raw_value: self.value,
             value: parse_semantic_param_value(self.key, self.value),
+        }
+    }
+}
+
+impl ScriptSVarNumericExpression<'_> {
+    pub fn to_owned_expression(&self) -> OwnedSVarNumericExpression {
+        match self {
+            Self::Number(value) => OwnedSVarNumericExpression::Number((*value).to_string()),
+            Self::Count(raw) => OwnedSVarNumericExpression::Count((*raw).to_string()),
+            Self::PlayerCount(raw) => OwnedSVarNumericExpression::PlayerCount((*raw).to_string()),
+            Self::TriggerCount(raw) => OwnedSVarNumericExpression::TriggerCount((*raw).to_string()),
+            Self::SVarReference { name, operators } => OwnedSVarNumericExpression::SVarReference {
+                name: (*name).to_string(),
+                operators: (*operators).to_string(),
+            },
+            Self::Remembered { property } => OwnedSVarNumericExpression::Remembered {
+                property: (*property).to_string(),
+            },
+            Self::RememberedSize { operators } => OwnedSVarNumericExpression::RememberedSize {
+                operators: (*operators).to_string(),
+            },
+            Self::DiscardedValid { filter, times } => OwnedSVarNumericExpression::DiscardedValid {
+                filter: (*filter).to_string(),
+                times: *times,
+            },
+            Self::ObjectProperty { object, property } => {
+                OwnedSVarNumericExpression::ObjectProperty {
+                    object: object.to_owned_ref(),
+                    property: (*property).to_string(),
+                }
+            }
+        }
+    }
+}
+
+impl ScriptSVarObjectRef<'_> {
+    pub fn to_owned_ref(&self) -> OwnedSVarObjectRef {
+        match self {
+            Self::Sacrificed => OwnedSVarObjectRef::Sacrificed,
+            Self::TriggeredCard => OwnedSVarObjectRef::TriggeredCard,
+            Self::CardList(defined) => OwnedSVarObjectRef::CardList((*defined).to_string()),
+            Self::PlayerList(defined) => OwnedSVarObjectRef::PlayerList((*defined).to_string()),
+            Self::SpellAbility(defined) => OwnedSVarObjectRef::SpellAbility((*defined).to_string()),
+            Self::PaidHash(key) => OwnedSVarObjectRef::PaidHash((*key).to_string()),
+            Self::ReplaceCount => OwnedSVarObjectRef::ReplaceCount,
+            Self::RuntimeValue(key) => OwnedSVarObjectRef::RuntimeValue((*key).to_string()),
         }
     }
 }
@@ -760,6 +905,8 @@ fn parse_script_svar<'a>(
             nested_value_span.clone(),
             diagnostics,
         ))
+    } else if let Some(expression) = parse_script_svar_numeric_expression(value) {
+        ScriptSVarValue::NumericExpression(expression)
     } else if looks_like_param_record(value) {
         ScriptSVarValue::Params(parse_script_param_record(
             value,
@@ -794,6 +941,219 @@ fn ability_record(params: &ParsedParams<'_>) -> Option<ScriptAbilityRecord> {
     }
 }
 
+pub fn parse_script_svar_numeric_expression<'a>(
+    value: &'a str,
+) -> Option<ScriptSVarNumericExpression<'a>> {
+    let value = value.trim();
+    if let Some(rest) = value.strip_prefix("Number$") {
+        return Some(ScriptSVarNumericExpression::Number(rest.trim()));
+    }
+    if value.starts_with("Count$") {
+        return Some(ScriptSVarNumericExpression::Count(value));
+    }
+    if value.starts_with("PlayerCount") && value.contains('$') {
+        return Some(ScriptSVarNumericExpression::PlayerCount(value));
+    }
+    if value.starts_with("TriggerCount$") || value.starts_with("TriggerCountMax$") {
+        return Some(ScriptSVarNumericExpression::TriggerCount(value));
+    }
+    if let Some(property) = value.strip_prefix("Remembered$") {
+        return Some(ScriptSVarNumericExpression::Remembered { property });
+    }
+    if let Some(rest) = value.strip_prefix("RememberedSize") {
+        return Some(ScriptSVarNumericExpression::RememberedSize {
+            operators: rest.strip_prefix('/').unwrap_or(rest),
+        });
+    }
+    if let Some(rest) = value.strip_prefix("Discarded$Valid ") {
+        let mut parts = rest.split("/Times.");
+        let filter = parts.next().unwrap_or("").trim();
+        let times = parts
+            .next()
+            .and_then(|raw| raw.trim().parse::<i32>().ok())
+            .unwrap_or(0);
+        return Some(ScriptSVarNumericExpression::DiscardedValid { filter, times });
+    }
+
+    let (object, property) = value.split_once('$')?;
+    if object.is_empty() || property.is_empty() {
+        return None;
+    }
+    if object == "SVar" {
+        let (name, operators) = property.split_once('/').unwrap_or((property, ""));
+        let name = name.trim();
+        if name.is_empty() {
+            return None;
+        }
+        return Some(ScriptSVarNumericExpression::SVarReference { name, operators });
+    }
+    let object = match object {
+        "Sacrificed" => ScriptSVarObjectRef::Sacrificed,
+        "TriggeredCard" => ScriptSVarObjectRef::TriggeredCard,
+        _ if is_player_property_svar_object(object)
+            && is_player_property_svar_property(property) =>
+        {
+            ScriptSVarObjectRef::PlayerList(object)
+        }
+        _ if is_card_property_svar_object(object) => ScriptSVarObjectRef::CardList(object),
+        _ if is_player_property_svar_object(object) => ScriptSVarObjectRef::PlayerList(object),
+        _ if is_spell_ability_property_svar_object(object) => {
+            ScriptSVarObjectRef::SpellAbility(object)
+        }
+        _ if is_paid_hash_property_svar_object(object) => ScriptSVarObjectRef::PaidHash(object),
+        "ReplaceCount" => ScriptSVarObjectRef::ReplaceCount,
+        _ if is_runtime_value_svar_object(object) => ScriptSVarObjectRef::RuntimeValue(object),
+        _ => return None,
+    };
+    Some(ScriptSVarNumericExpression::ObjectProperty { object, property })
+}
+
+fn is_card_property_svar_object(object: &str) -> bool {
+    matches!(
+        object,
+        "Targeted"
+            | "TargetedCard"
+            | "ThisTargetedCard"
+            | "ParentTargeted"
+            | "Remembered"
+            | "RememberedLKI"
+            | "DelayTriggerRemembered"
+            | "DelayTriggerRememberedLKI"
+            | "TriggerRemembered"
+            | "Imprinted"
+            | "Discarded"
+            | "TriggeredAttacker"
+            | "TriggeredAttackers"
+            | "TriggeredBlocker"
+            | "TriggeredTarget"
+            | "TriggeredTargets"
+            | "TriggeredNewCard"
+            | "TriggeredNewCardLKICopy"
+            | "ReplacedCard"
+            | "ReplacedCardLKI"
+            | "ReplacedSource"
+            | "SpellTargeted"
+            | "AllTargeted"
+            | "Revealed"
+            | "Enchanted"
+            | "Equipped"
+            | "ExiledWith"
+            | "TargetedObjects"
+            | "TargetedObjectsDistinct"
+            | "TargetedByTarget"
+            | "ChosenCard"
+            | "Collected"
+            | "Crewed"
+            | "Emerged"
+            | "ExiledCards"
+            | "ImprintedLKI"
+            | "OriginalHost"
+            | "TriggeredCardLKI"
+            | "TriggeredDevoured"
+            | "TriggeredExploited"
+            | "TriggeredSource"
+            | "Explorer"
+            | "Explored"
+    )
+}
+
+fn is_player_property_svar_object(object: &str) -> bool {
+    matches!(
+        object,
+        "Player"
+            | "Players"
+            | "Opponent"
+            | "Opponents"
+            | "You"
+            | "Controller"
+            | "TargetedPlayer"
+            | "ThisTargetedPlayer"
+            | "TriggeredPlayer"
+            | "TargetedController"
+            | "ThisTargetedController"
+            | "ParentTargetedController"
+            | "TargetedOwner"
+            | "ThisTargetedOwner"
+            | "TriggeredTarget"
+            | "TriggeredTargets"
+            | "TriggeredTargetController"
+            | "TriggeredTargetsController"
+            | "TriggeredAttackerController"
+            | "TriggeredBlockerController"
+            | "TriggeredActivator"
+            | "TriggeredCardController"
+            | "DefendingPlayer"
+            | "TriggeredDefendingPlayer"
+    )
+}
+
+fn is_player_property_svar_property(property: &str) -> bool {
+    let property = property.split('/').next().unwrap_or(property);
+    property.starts_with("CardsIn")
+        || property.starts_with("CreaturesIn")
+        || property.starts_with("Life")
+        || property.starts_with("Valid")
+        || property.starts_with("Counters.")
+        || property.starts_with("HasProperty")
+        || property.starts_with("Condition")
+        || matches!(
+            property,
+            "StartingLife"
+                | "Speed"
+                | "TopOfLibraryCMC"
+                | "LandsPlayed"
+                | "SpellsCastThisTurn"
+                | "CardsDrawn"
+                | "CardsDiscardedThisTurn"
+                | "ExploredThisTurn"
+                | "AttackersDeclared"
+                | "DamageToOppsThisTurn"
+                | "NonCombatDamageDealtThisTurn"
+                | "PoisonCounters"
+                | "EnergyCounters"
+                | "ManaExpendedThisTurn"
+                | "RingTemptedYou"
+                | "OpponentsAttackedThisTurn"
+                | "OpponentsAttackedThisCombat"
+                | "BeenDealtCombatDamageSinceLastTurn"
+                | "AttractionsVisitedThisTurn"
+        )
+}
+
+fn is_spell_ability_property_svar_object(object: &str) -> bool {
+    matches!(
+        object,
+        "Self"
+            | "Parent"
+            | "Remembered"
+            | "Imprinted"
+            | "EffectSource"
+            | "TriggeredSpellAbility"
+            | "TriggeredAbility"
+            | "SpellAbility"
+    )
+}
+
+fn is_paid_hash_property_svar_object(object: &str) -> bool {
+    matches!(
+        object,
+        "SacCost"
+            | "DiscardCost"
+            | "Exiled"
+            | "Tapped"
+            | "Untapped"
+            | "TappedForConvoke"
+            | "Convoked"
+    )
+}
+
+fn is_runtime_value_svar_object(object: &str) -> bool {
+    matches!(object, "DungeonsCompleted" | "ManaFrom")
+        || object.starts_with("TriggerObjects")
+        || object.starts_with("TriggeredPlayers")
+        || object.contains('>')
+}
+
 pub fn parse_semantic_param_value<'a>(key: &str, value: &'a str) -> SemanticParamValue<'a> {
     let value = value.trim();
 
@@ -817,6 +1177,9 @@ pub fn parse_semantic_param_value<'a>(key: &str, value: &'a str) -> SemanticPara
     }
     if is_post_bool_text_key(key) {
         return SemanticParamValue::Text(value);
+    }
+    if key == "Produced" {
+        return SemanticParamValue::ProducedMana(parse_produced_mana(value));
     }
     if is_symbol_key(key) {
         return SemanticParamValue::Symbol(value);
@@ -975,6 +1338,49 @@ fn parse_amount(value: &str) -> SemanticAmount<'_> {
     } else {
         SemanticAmount::Expression(value)
     }
+}
+
+fn parse_produced_mana(value: &str) -> SemanticProducedMana<'_> {
+    if value.eq_ignore_ascii_case("Any") {
+        SemanticProducedMana::Any
+    } else if value.eq_ignore_ascii_case("Chosen") {
+        SemanticProducedMana::Chosen
+    } else if let Some(rest) = value.strip_prefix("Special ") {
+        SemanticProducedMana::Special(rest)
+    } else if value.starts_with("Combo") {
+        let rest = value.strip_prefix("Combo").unwrap_or("").trim();
+        if rest.eq_ignore_ascii_case("Any") {
+            SemanticProducedMana::Combo(SemanticProducedManaCombo::Any)
+        } else if rest.eq_ignore_ascii_case("Chosen") {
+            SemanticProducedMana::Combo(SemanticProducedManaCombo::Chosen)
+        } else if rest.eq_ignore_ascii_case("ColorIdentity") {
+            SemanticProducedMana::Combo(SemanticProducedManaCombo::ColorIdentity)
+        } else {
+            let colors: SmallVec<[&str; 4]> = rest
+                .split_whitespace()
+                .filter(|part| is_produced_mana_atom(part))
+                .collect();
+            if !colors.is_empty() && colors.len() == rest.split_whitespace().count() {
+                SemanticProducedMana::Combo(SemanticProducedManaCombo::Colors(colors))
+            } else {
+                SemanticProducedMana::Combo(SemanticProducedManaCombo::Raw(rest))
+            }
+        }
+    } else {
+        let tokens: SmallVec<[&str; 4]> = value
+            .split_whitespace()
+            .filter(|part| is_produced_mana_atom(part))
+            .collect();
+        if !tokens.is_empty() && tokens.len() == value.split_whitespace().count() {
+            SemanticProducedMana::Fixed(tokens)
+        } else {
+            SemanticProducedMana::Raw(value)
+        }
+    }
+}
+
+fn is_produced_mana_atom(value: &str) -> bool {
+    matches!(value.trim(), "W" | "U" | "B" | "R" | "G" | "C")
 }
 
 fn parse_selector(raw: &str) -> SemanticSelector<'_> {
@@ -1424,7 +1830,7 @@ fn looks_like_ability_record(raw: &str) -> bool {
 }
 
 fn looks_like_param_record(raw: &str) -> bool {
-    raw.contains('$') && raw.contains('|')
+    raw.contains('$')
 }
 
 fn record_param_report_diagnostics<'a>(

@@ -1,6 +1,7 @@
 use forge_foundation::ZoneType;
 
 use super::EffectContext;
+use crate::ability::ability_ir::DefinedRef;
 use crate::event::{AbilityValue, RunParams};
 use crate::trigger::TriggerType;
 
@@ -25,8 +26,12 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     // Defined$ DelayTriggerRememberedLKI / Remembered — phase the cards
     // remembered by the parent delayed trigger (e.g. Teferi's Veil's
     // "creature phases out at end of combat" queues the attacker's LKI).
-    match sa.defined() {
-        Some("DelayTriggerRememberedLKI") | Some("DelayTriggerRemembered") | Some("Remembered") => {
+    match sa.defined_ref() {
+        Some(
+            DefinedRef::DelayTriggerRememberedLki
+            | DefinedRef::DelayTriggerRemembered
+            | DefinedRef::Remembered,
+        ) => {
             let ids: Vec<crate::ids::CardId> = sa
                 .trigger_remembered
                 .iter()

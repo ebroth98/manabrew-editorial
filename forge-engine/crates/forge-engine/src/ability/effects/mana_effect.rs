@@ -43,10 +43,11 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
         None => return,
     };
 
-    let produced = match sa.produced() {
-        Some(p) => p.to_string(),
+    let produced_ir = match sa.produced_ir() {
+        Some(ir) => ir,
         None => return,
     };
+    let produced = produced_ir.as_script_text();
 
     // `Optional$` — activator confirms before producing (Java ManaEffect
     // optional-prompt branch).
@@ -93,10 +94,12 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let adds_counters = sa.ir.adds_counters.clone();
     let adds_counters_valid = sa.ir.adds_counters_valid.clone();
     let triggers_when_spent = sa.ir.triggers_when_spent.clone();
+    let Some(produced_ir) = sa.produced_ir().cloned() else {
+        return;
+    };
 
     // Handle Special mana production types (mirrors Java handleSpecialMana)
-    if produced.starts_with("Special") {
-        let special = produced.strip_prefix("Special ").unwrap_or("");
+    if let Some(special) = produced_ir.special_kind() {
         let mana_tokens = resolve_special_mana(ctx, sa, source_id, player, special);
         if mana_tokens.is_empty() {
             return;
@@ -121,7 +124,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     }
 
     // Determine mana string to produce
-    let mana_string: Option<String> = if produced.contains("Any") {
+    let mana_string: Option<String> = if produced_ir.is_any_like() {
         // "Any" — all 5 colors available
         let available = [
             "W".to_string(),
@@ -131,7 +134,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
             "G".to_string(),
         ];
         Some(available.first().cloned().unwrap_or("W".to_string()))
-    } else if produced.starts_with("Combo") || produced.contains(',') {
+    } else if produced_ir.is_choice_like() {
         // Combo or comma-separated choices — normalize to color letters
         let options: Vec<&str> = if let Some(rest) = produced.strip_prefix("Combo ") {
             rest.split_whitespace().collect()
@@ -156,7 +159,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
         available
             .first()
             .cloned()
-            .or_else(|| Some(produced.clone()))
+            .or_else(|| Some(produced.to_string()))
     } else if produced == "Chosen" {
         // Use card's chosen color
         let chosen = ctx
@@ -177,7 +180,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
         }
     } else {
         // Raw produced string (e.g. "W", "B B", "C")
-        Some(produced.clone())
+        Some(produced.to_string())
     };
 
     // Apply Amount$ multiplier, with specifyManaCombo for multi-amount any/combo mana
@@ -189,14 +192,13 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     if amount <= 0 {
         return;
     }
-    let is_combo =
-        produced.contains("Any") || produced.starts_with("Combo") || produced.contains(',');
+    let is_combo = produced_ir.is_choice_like();
     if amount > 1 && is_combo {
         // Multi-amount combo: let agent choose color distribution.
         // Java's `ManaEffect` calls `chooseColor` once per output unit, then
         // emits a `specifyManaCombo` summary. Mirror that here so the parity
         // trace and the per-mana RNG draws line up.
-        let available: Vec<String> = if produced.contains("Any") {
+        let available: Vec<String> = if produced_ir.is_any_like() {
             vec!["W", "U", "B", "R", "G"]
                 .into_iter()
                 .map(String::from)

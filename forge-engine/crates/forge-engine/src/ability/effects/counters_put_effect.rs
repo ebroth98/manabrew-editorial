@@ -1,6 +1,7 @@
 use forge_foundation::ZoneType;
 
 use super::{parse_counter_type, resolve_defined_player, resolve_numeric_svar, EffectContext};
+use crate::ability::ability_ir::DefinedRef;
 use crate::card::CounterType;
 use crate::event::RunParams;
 use crate::parsing::keys;
@@ -89,18 +90,20 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
         // Targeting mode — use the actual chosen target (Necropede death trigger, etc.)
         sa.target_chosen.target_card
     } else {
-        let defined = sa.defined().unwrap_or("Self");
-        match defined {
+        match sa.defined_ref() {
             // Java AbilityUtils "TriggeredTarget*" / "Targeted" resolve from actual
             // target choices only; if no target was chosen (e.g. TargetMin$ 0), they
             // resolve to empty and do nothing.
-            "TriggeredTarget" | "TriggeredTargetLKICopy" => sa.target_chosen.target_card,
-            "Targeted" => sa.target_chosen.target_card,
+            Some(
+                DefinedRef::TriggeredTarget
+                | DefinedRef::TriggeredTargetLkiCopy
+                | DefinedRef::Targeted,
+            ) => sa.target_chosen.target_card,
             _ => sa.source,
         }
     };
     let Some(card_id) = target_id else { return };
-    if sa.defined().unwrap_or("Self") == "Self" && sa.source == Some(card_id) {
+    if matches!(sa.defined_ref(), None | Some(DefinedRef::SelfCard)) && sa.source == Some(card_id) {
         // Java parity: self-referential card effects must apply to the same object instance.
         // If host card changed zones, this ability resolves with no effect on the new object.
         if let Some(created_at) = sa.source_zone_timestamp {

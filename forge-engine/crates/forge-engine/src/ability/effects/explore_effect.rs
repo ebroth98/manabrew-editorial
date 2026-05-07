@@ -1,6 +1,7 @@
 use forge_foundation::ZoneType;
 
 use super::{emit_zone_trigger, EffectContext};
+use crate::ability::ability_ir::DefinedRef;
 use crate::card::CounterType;
 use crate::event::RunParams;
 use crate::parsing::keys;
@@ -28,11 +29,14 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let controller = sa.activating_player;
 
     // Determine the exploring creature
-    let explorer = sa.target_chosen.target_card.or_else(|| match sa.defined() {
-        Some("Self") => sa.source,
-        Some("ParentTarget") => ctx.parent_target_card,
-        _ => sa.source,
-    });
+    let explorer = sa
+        .target_chosen
+        .target_card
+        .or_else(|| match sa.defined_ref() {
+            Some(DefinedRef::SelfCard) => sa.source,
+            Some(DefinedRef::ParentTarget) => ctx.parent_target_card,
+            _ => sa.source,
+        });
 
     let explorer_id = match explorer {
         Some(id) if ctx.game.card(id).zone == ZoneType::Battlefield => id,

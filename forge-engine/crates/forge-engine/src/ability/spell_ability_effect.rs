@@ -288,15 +288,24 @@ fn resolve_defined_cards_for_sa_ref(
     sa: &SpellAbility,
     defined: &DefinedRef,
 ) -> Vec<CardId> {
-    resolve_defined_cards_for_sa(game, sa, defined.as_legacy_str())
+    resolve_defined_cards_for_sa_ref_inner(game, sa, defined)
 }
 
 /// Resolve a `Defined$` string to card IDs in the context of a spell ability.
 /// Handles SA-specific defined values like "Targeted", "ParentTarget",
 /// "TriggeredCard", etc., in addition to the base AbilityUtils definitions.
 fn resolve_defined_cards_for_sa(game: &GameState, sa: &SpellAbility, defined: &str) -> Vec<CardId> {
+    let defined_ref = DefinedRef::parse(defined);
+    resolve_defined_cards_for_sa_ref_inner(game, sa, &defined_ref)
+}
+
+fn resolve_defined_cards_for_sa_ref_inner(
+    game: &GameState,
+    sa: &SpellAbility,
+    defined: &DefinedRef,
+) -> Vec<CardId> {
     match defined {
-        "Self" | "CARDNAME" => {
+        DefinedRef::SelfCard => {
             if sa.is_trigger {
                 if let (Some(source), Some(created_at)) =
                     (sa.trigger_source, sa.trigger_source_zone_timestamp)
@@ -309,8 +318,11 @@ fn resolve_defined_cards_for_sa(game: &GameState, sa: &SpellAbility, defined: &s
             }
             sa.source.into_iter().collect()
         }
-        "Targeted" => sa.target_chosen.target_card.into_iter().collect(),
-        "TriggeredCard" | "TriggeredCardLKICopy" => {
+        DefinedRef::Targeted | DefinedRef::TargetedCard | DefinedRef::ThisTargetedCard => {
+            sa.target_chosen.target_card.into_iter().collect()
+        }
+        DefinedRef::TriggeredTargetLkiCopy => triggered_target_lki_cards(sa),
+        DefinedRef::TriggeredCard | DefinedRef::TriggeredCardLkiCopy => {
             let cards = sa.get_triggering_cards(AbilityKey::Card);
             if cards.is_empty() {
                 sa.trigger_source.into_iter().collect()
@@ -318,7 +330,7 @@ fn resolve_defined_cards_for_sa(game: &GameState, sa: &SpellAbility, defined: &s
                 cards
             }
         }
-        "ReplacedCard" => {
+        DefinedRef::ReplacedCard | DefinedRef::ReplacedCardLki => {
             let cards = sa.get_triggering_cards(AbilityKey::ReplacedCard);
             if cards.is_empty() {
                 sa.get_triggering_cards(AbilityKey::Card)
@@ -326,7 +338,7 @@ fn resolve_defined_cards_for_sa(game: &GameState, sa: &SpellAbility, defined: &s
                 cards
             }
         }
-        "TriggeredNewCard" | "TriggeredNewCardLKICopy" => {
+        DefinedRef::TriggeredNewCard | DefinedRef::TriggeredNewCardLkiCopy => {
             let cards = sa.get_triggering_cards(AbilityKey::NewCard);
             if cards.is_empty() {
                 sa.trigger_source.into_iter().collect()
@@ -334,18 +346,46 @@ fn resolve_defined_cards_for_sa(game: &GameState, sa: &SpellAbility, defined: &s
                 cards
             }
         }
-        "TriggeredAttackers" => sa.get_triggering_cards(AbilityKey::Attackers),
-        "TriggeredAttacker" => sa.get_triggering_cards(AbilityKey::Attacker),
-        "TriggeredBlocker" => sa.get_triggering_cards(AbilityKey::Blocker),
-        "Explorer" => sa.get_triggering_cards(AbilityKey::Explorer),
-        "Explored" => sa.get_triggering_cards(AbilityKey::Explored),
+        DefinedRef::TriggeredAttackers => sa.get_triggering_cards(AbilityKey::Attackers),
+        DefinedRef::TriggeredAttacker => sa.get_triggering_cards(AbilityKey::Attacker),
+        DefinedRef::TriggeredBlocker => sa.get_triggering_cards(AbilityKey::Blocker),
+        DefinedRef::Explorer => sa.get_triggering_cards(AbilityKey::Explorer),
+        DefinedRef::Explored => sa.get_triggering_cards(AbilityKey::Explored),
         // Cards paid during cost — Java reads `SA.paidHash`; Rust stores the
         // discarded slot on `discarded_cost_cards`, sacrificed slot on
         // `GameState.last_sacrificed_card`.
-        "Discarded" => sa.discarded_cost_cards.clone(),
-        "Sacrificed" => game.last_sacrificed_card.into_iter().collect(),
-        _ => ability_utils::get_defined_cards(game, sa.source, defined, Some(sa.activating_player)),
+        DefinedRef::Discarded => sa.discarded_cost_cards.clone(),
+        DefinedRef::Sacrificed => game.last_sacrificed_card.into_iter().collect(),
+        _ => ability_utils::get_defined_cards(
+            game,
+            sa.source,
+            defined.as_legacy_str(),
+            Some(sa.activating_player),
+        ),
     }
+}
+
+fn triggering_cards_from_key(sa: &SpellAbility, key: AbilityKey) -> Vec<CardId> {
+    let cards = sa.get_triggering_cards(key);
+    if !cards.is_empty() {
+        return cards;
+    }
+    sa.get_triggering_object(key)
+        .and_then(|raw| raw.parse::<u32>().ok())
+        .map(CardId)
+        .into_iter()
+        .collect()
+}
+
+fn triggered_target_lki_cards(sa: &SpellAbility) -> Vec<CardId> {
+    let target_cards = triggering_cards_from_key(sa, AbilityKey::TargetCard);
+    if !target_cards.is_empty() {
+        return target_cards;
+    }
+    if sa.get_triggering_player(AbilityKey::TargetPlayer).is_some() {
+        return Vec::new();
+    }
+    triggering_cards_from_key(sa, AbilityKey::Target)
 }
 
 // ── SpellAbilityEffect utility functions ────────────────────────────

@@ -1,9 +1,10 @@
 use serde::{Deserialize, Serialize};
 
 use crate::ability::api_type::ApiType;
+use crate::ability::ProducedMana;
 use crate::cost::{parse_cost, Cost};
 use crate::parsing::keys;
-use crate::parsing::Params;
+use crate::parsing::{parse_semantic_param_value, Params, SemanticParamValue};
 use forge_foundation::ZoneType;
 
 /// A parsed activated ability from a card's A: line.
@@ -27,9 +28,9 @@ pub struct ActivatedAbility {
     /// Parsed ActivationZone$ override. Activated abilities default to battlefield.
     #[serde(default)]
     pub activation_zone: Option<ZoneType>,
-    /// Parsed Produced$ value for mana abilities.
+    /// Lowered Produced$ mana expression.
     #[serde(default)]
-    pub produced: Option<String>,
+    pub produced_ir: Option<ProducedMana>,
     /// Parsed RestrictValid$ value for mana abilities.
     #[serde(default)]
     pub restrict_valid: Option<String>,
@@ -133,7 +134,14 @@ pub fn parse_activated_ability(raw: &str, index: usize) -> Option<ActivatedAbili
     let is_mana_reflected = ab_type.eq_ignore_ascii_case("ManaReflected");
     let ability_kind = ab_type.to_string();
     let ability_api = ApiType::smart_value_of(ab_type);
-    let produced = params.get(keys::PRODUCED).map(str::to_string);
+    let produced_ir = params.get(keys::PRODUCED).and_then(|raw| {
+        match parse_semantic_param_value(keys::PRODUCED, raw) {
+            SemanticParamValue::ProducedMana(produced) => {
+                Some(ProducedMana::from_semantic(&produced))
+            }
+            _ => None,
+        }
+    });
     let restrict_valid = params.get(keys::RESTRICT_VALID).map(str::to_string);
     let amount = params.get(keys::AMOUNT).map(str::to_string);
     let spell_description = params.get(keys::SPELL_DESCRIPTION).map(str::to_string);
@@ -159,7 +167,7 @@ pub fn parse_activated_ability(raw: &str, index: usize) -> Option<ActivatedAbili
         ability_kind,
         ability_api,
         activation_zone,
-        produced,
+        produced_ir,
         restrict_valid,
         amount,
         spell_description,
@@ -192,7 +200,13 @@ mod tests {
         let ab = parse_activated_ability(raw, 0).unwrap();
         assert!(ab.is_mana_ability);
         assert!(ab.cost.has_tap);
-        assert_eq!(ab.produced.as_deref(), Some("G"));
+        assert_eq!(
+            ab.produced_ir
+                .as_ref()
+                .map(ProducedMana::as_script_text)
+                .as_deref(),
+            Some("G")
+        );
     }
 
     #[test]

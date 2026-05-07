@@ -22,7 +22,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
             .cards_in_zone(forge_foundation::ZoneType::Battlefield, pid);
         let card_ids: Vec<crate::ids::CardId> = battlefield.to_vec();
         for cid in card_ids {
-            let (is_land, is_tapped, chosen_colors, produced, has_tap_cost) = {
+            let (is_land, is_tapped, chosen_colors, produced_ir, has_tap_cost) = {
                 let card = ctx.game.card(cid);
                 if type_filter.eq_ignore_ascii_case("Land") && !card.is_land() {
                     continue;
@@ -49,7 +49,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
                     card.is_land(),
                     card.tapped,
                     card.chosen_colors.clone(),
-                    mana_ab.produced.as_deref().map(str::to_string),
+                    mana_ab.produced_ir.clone(),
                     mana_ab.cost.has_tap,
                 )
             };
@@ -64,8 +64,8 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
                 ctx.game.tap(cid);
             }
 
-            if let Some(produced) = produced.as_deref() {
-                let atoms = crate::mana::produced_to_atoms(produced, &chosen_colors);
+            if let Some(produced_ir) = produced_ir.as_ref() {
+                let atoms = produced_ir.to_atoms(&chosen_colors);
                 if let Some(atom) = atoms.first().copied() {
                     ctx.mana_pools[pid.index()].add(atom, 1);
                 }

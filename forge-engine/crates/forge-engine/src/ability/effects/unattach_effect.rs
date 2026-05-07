@@ -4,6 +4,7 @@
 //! Unattach: Remove an equipment/aura from the permanent it's attached to.
 
 use super::EffectContext;
+use crate::ability::ability_ir::DefinedRef;
 use crate::ids::CardId;
 use forge_foundation::ZoneType;
 
@@ -15,8 +16,8 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     // Determine which card(s) to unattach
     let cards: Vec<CardId> = if sa.uses_targeting() {
         sa.target_chosen.target_card.into_iter().collect()
-    } else if let Some(defined) = sa.defined() {
-        if defined.eq_ignore_ascii_case("Self") {
+    } else if let Some(defined) = sa.defined_ref() {
+        if matches!(defined, DefinedRef::SelfCard) {
             sa.source.into_iter().collect()
         } else {
             Vec::new()

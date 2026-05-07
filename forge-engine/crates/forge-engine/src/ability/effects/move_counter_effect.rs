@@ -1,6 +1,7 @@
 use forge_foundation::ZoneType;
 
 use super::{resolve_numeric_svar, EffectContext};
+use crate::ability::ability_ir::DefinedRef;
 use crate::card::CounterType;
 use crate::event::RunParams;
 use crate::parsing::keys;
@@ -32,17 +33,24 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
 
     // Determine source of counters
     let from_id = match sa.ir.source_text.as_deref() {
-        Some("Targeted") => sa.target_chosen.target_card,
-        Some("ParentTarget") => ctx.parent_target_card,
+        Some(source) if matches!(DefinedRef::parse(source), DefinedRef::Targeted) => {
+            sa.target_chosen.target_card
+        }
+        Some(source) if matches!(DefinedRef::parse(source), DefinedRef::ParentTarget) => {
+            ctx.parent_target_card
+        }
         _ => sa.source, // Default: Self
     };
 
     // Determine destination for counters
-    let to_id = sa.target_chosen.target_card.or_else(|| match sa.defined() {
-        Some("Self") => sa.source,
-        Some("ParentTarget") => ctx.parent_target_card,
-        _ => None,
-    });
+    let to_id = sa
+        .target_chosen
+        .target_card
+        .or_else(|| match sa.defined_ref() {
+            Some(DefinedRef::SelfCard) => sa.source,
+            Some(DefinedRef::ParentTarget) => ctx.parent_target_card,
+            _ => None,
+        });
 
     let from = match from_id {
         Some(id) if ctx.game.card(id).zone == ZoneType::Battlefield => id,

@@ -9,6 +9,7 @@
 use forge_foundation::ZoneType;
 
 use super::EffectContext;
+use crate::ability::ability_ir::DefinedRef;
 use crate::ids::CardId;
 use crate::parsing::keys;
 use crate::spellability::SpellAbility;
@@ -71,9 +72,10 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
 
     // Handle DefinedMagnet mode: redirect to a specific permanent
     if let Some(magnet_def) = sa.ir.defined_magnet_text.as_deref() {
-        let new_target = if magnet_def == "Self" {
+        let magnet_ref = DefinedRef::parse(magnet_def);
+        let new_target = if matches!(magnet_ref, DefinedRef::SelfCard) {
             sa.source
-        } else if magnet_def == "ParentTarget" {
+        } else if matches!(magnet_ref, DefinedRef::ParentTarget) {
             sa.target_chosen.target_card
         } else {
             sa.source

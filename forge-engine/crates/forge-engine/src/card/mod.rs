@@ -25,6 +25,7 @@ pub mod damage_history;
 pub mod filter_constants;
 mod keyword_gen;
 pub mod perpetual;
+pub mod svar_cache;
 pub mod token;
 pub mod token_create_table;
 pub mod trait_card_trait_changes;
@@ -56,6 +57,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::ability::activated::{parse_activated_ability, ActivatedAbility};
 use crate::card::perpetual::perpetual_record::PerpetualRecord;
+use crate::card::svar_cache::{ParsedSVar, ParsedSVarCache};
 use crate::cost::{parse_cost, Cost};
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
@@ -365,6 +367,8 @@ pub struct Card {
     pub triggers: Vec<Trigger>,
     // SVars — mirrors Java Card.getSVars()
     pub svars: BTreeMap<String, String>,
+    #[serde(skip, default)]
+    pub parsed_svar_cache: ParsedSVarCache,
 
     // Commander tracking
     /// True if this card is designated as a commander.
@@ -779,6 +783,7 @@ impl Card {
             started_turn_tapped: false,
             triggers: Vec::new(),
             svars: BTreeMap::new(),
+            parsed_svar_cache: ParsedSVarCache::default(),
             is_commander: false,
             move_to_command_zone: false,
             commander_cast_count: 0,
@@ -1139,20 +1144,31 @@ impl Card {
             .map(String::as_str)
     }
 
+    pub fn parsed_s_var(&mut self, key: &str) -> Option<ParsedSVar> {
+        let raw = self.get_s_var(key)?.to_string();
+        Some(self.parsed_svar_cache.get_or_parse(key, &raw).clone())
+    }
+
     pub fn remove_s_var(&mut self, key: &str) {
         crate::card::card_state::remove_s_var(self, key);
+        self.parsed_svar_cache.remove(key);
     }
 
     pub fn set_s_var(&mut self, key: impl Into<String>, value: impl Into<String>) {
-        self.svars.insert(key.into(), value.into());
+        let key = key.into();
+        self.parsed_svar_cache.remove(&key);
+        self.svars.insert(key, value.into());
     }
 
     pub fn set_s_var_if_absent(&mut self, key: impl Into<String>, value: impl Into<String>) {
+        // No cache invalidation needed: when the key is already present we keep the
+        // existing (still-valid) parse; when it's absent the cache has no entry yet.
         self.svars.entry(key.into()).or_insert_with(|| value.into());
     }
 
     pub fn set_svars_map(&mut self, svars: BTreeMap<String, String>) {
         self.svars = svars;
+        self.parsed_svar_cache.clear();
         self.refresh_action_specs();
     }
 
@@ -3763,6 +3779,7 @@ impl HasSVars for Card {
 
     fn set_svars(&mut self, new_svars: std::collections::HashMap<String, String>) {
         self.svars = new_svars.into_iter().collect();
+        self.parsed_svar_cache.clear();
     }
 
     fn get_svars(&self) -> &std::collections::HashMap<String, String> {

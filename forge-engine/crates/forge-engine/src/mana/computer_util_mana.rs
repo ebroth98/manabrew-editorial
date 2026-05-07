@@ -9,14 +9,11 @@ use crate::cost::{can_pay_ignoring_mana, CostPart};
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
 
-use crate::parsing::keys;
-
 use super::mana_cost_being_paid::{can_pay_for_shard_with_color, ManaCostBeingPaid};
 use super::mana_pool::ManaPaymentOutcome;
 use super::{
     add_produced_mana_to_pool, all_basic_subtype_atoms, atom_short, basic_land_mana_atom,
-    chosen_colors_to_atoms, fixed_produced_atoms, produced_to_atoms, tap_land_for_mana, ManaPool,
-    ManaProductionParams,
+    chosen_colors_to_atoms, tap_land_for_mana, ManaPool, ManaProductionParams,
 };
 
 #[derive(Debug, Clone)]
@@ -26,6 +23,7 @@ struct ManaAbilityRef {
     atoms: Vec<u16>,
     amount: i32,
     mana_text: String,
+    produced_ir: Option<crate::ability::ProducedMana>,
     source_order: usize,
 }
 
@@ -34,7 +32,10 @@ impl ManaAbilityRef {
         // Java's deterministic AutoPay treats empty `Combo ColorIdentity`
         // abilities as generic-pay candidates, then resolution produces no
         // mana in non-Commander games. Keep that tap/continue behavior.
-        if self.mana_text == "Combo ColorIdentity"
+        if self
+            .produced_ir
+            .as_ref()
+            .is_some_and(crate::ability::ProducedMana::is_combo_color_identity)
             && self.atoms.is_empty()
             && (shard == ManaCostShard::Generic || shard.is_generic())
         {
@@ -707,10 +708,12 @@ fn auto_tap_lands_internal_with_ctx(
             // choice at resolution (Java fires `chooseColor` once per pick).
             // `sa_payment.atoms` already accounts for Combo ColorIdentity
             // because `group_sources_by_mana_color` resolves it against the
-            // commander identity when the produced string is
-            // `Combo ColorIdentity`.
-            let is_empty_combo_color_identity =
-                sa_payment.mana_text == "Combo ColorIdentity" && sa_payment.atoms.is_empty();
+            // commander identity when the Produced$ IR is ComboColorIdentity.
+            let is_empty_combo_color_identity = sa_payment
+                .produced_ir
+                .as_ref()
+                .is_some_and(crate::ability::ProducedMana::is_combo_color_identity)
+                && sa_payment.atoms.is_empty();
             let needs_express = sa_payment.atoms.len() > 1;
             if is_empty_combo_color_identity {
                 // Java's deterministic AutoPay taps an empty `Combo
@@ -836,13 +839,19 @@ fn auto_pay_base_mana_string(
 ) -> String {
     let base_amount = auto_pay_base_amount(game, player, ma).max(1) as usize;
 
-    if let Some(fixed_atoms) =
-        fixed_produced_atoms(&ma.mana_text, &game.card(ma.card_id).chosen_colors)
+    if let Some(fixed_atoms) = ma
+        .produced_ir
+        .as_ref()
+        .and_then(crate::ability::ProducedMana::fixed_atoms)
     {
         return repeat_atoms_as_mana_string(&fixed_atoms, base_amount);
     }
 
-    if let Some(special) = ma.mana_text.strip_prefix("Special ") {
+    if let Some(special) = ma
+        .produced_ir
+        .as_ref()
+        .and_then(crate::ability::ProducedMana::special_kind)
+    {
         let atoms = crate::ability::effects::mana_effect::available_special_mana_atoms(
             game, ma.card_id, player, special,
         );
@@ -1501,7 +1510,12 @@ fn choose_atom_for_shard(mana_ab: &ManaAbilityRef, shard: ManaCostShard) -> Opti
     }
 
     if shard == ManaCostShard::Generic || shard.is_generic() {
-        if mana_ab.mana_text == "Combo ColorIdentity" && mana_ab.atoms.is_empty() {
+        if mana_ab
+            .produced_ir
+            .as_ref()
+            .is_some_and(crate::ability::ProducedMana::is_combo_color_identity)
+            && mana_ab.atoms.is_empty()
+        {
             return Some(ManaAtom::WHITE);
         }
         return mana_ab.atoms.first().copied();
@@ -1722,10 +1736,12 @@ fn group_sources_by_mana_color(
                             Some(player),
                         ),
                         mana_text: ab
-                            .produced
-                            .as_deref()
-                            .map(str::to_string)
-                            .unwrap_or_else(|| "1".to_string()),
+                            .produced_ir
+                            .as_ref()
+                            .map(crate::ability::ProducedMana::as_script_text)
+                            .unwrap_or("1".into())
+                            .into_owned(),
+                        produced_ir: ab.produced_ir.clone(),
                         source_order,
                     };
                     source_order += 1;
@@ -1734,9 +1750,10 @@ fn group_sources_by_mana_color(
                 continue;
             }
 
-            let Some(produced) = ab.produced.as_deref() else {
+            let Some(produced_ir) = ab.produced_ir.as_ref() else {
                 continue;
             };
+            let produced = produced_ir.as_script_text();
             // Combo ColorIdentity (e.g. Arcane Signet): atoms come from the
             // commander's color identity, not the produced string literal.
             // Must be handled here so auto-pay can see these sources — the
@@ -1747,14 +1764,22 @@ fn group_sources_by_mana_color(
             // ability produces one mana per distinct color (so the fixed multiplier
             // matches the atom count — keeps the auto-pay budget aligned with reality).
             let mut special_atom_multiplier: Option<i32> = None;
-            let atoms = if produced == "Combo ColorIdentity" {
+            let atoms = if ab
+                .produced_ir
+                .as_ref()
+                .is_some_and(crate::ability::ProducedMana::is_combo_color_identity)
+            {
                 let colors = game.player_commander_color_identity(player);
                 if colors.is_empty() {
                     Vec::new()
                 } else {
                     chosen_colors_to_atoms(&colors)
                 }
-            } else if let Some(special) = produced.strip_prefix("Special ") {
+            } else if let Some(special) = ab
+                .produced_ir
+                .as_ref()
+                .and_then(crate::ability::ProducedMana::special_kind)
+            {
                 let special_atoms =
                     crate::ability::effects::mana_effect::available_special_mana_atoms(
                         game, card_id, player, special,
@@ -1762,20 +1787,23 @@ fn group_sources_by_mana_color(
                 special_atom_multiplier = Some(special_atoms.len().max(1) as i32);
                 special_atoms
             } else {
-                let intrinsic = produced_to_atoms(produced, &card.chosen_colors);
+                let intrinsic = produced_ir.to_atoms(&card.chosen_colors);
                 super::java_replacement_filtered_atoms_for_availability(
                     game, player, card_id, ab, &intrinsic,
                 )
             };
-            if atoms.is_empty() && produced != "Combo ColorIdentity" {
+            if atoms.is_empty()
+                && !ab
+                    .produced_ir
+                    .as_ref()
+                    .is_some_and(crate::ability::ProducedMana::is_combo_color_identity)
+            {
                 continue;
             }
 
             explicit_mana_added = true;
             let fixed_output_multiplier = special_atom_multiplier
-                .or_else(|| {
-                    fixed_produced_atoms(produced, &card.chosen_colors).map(|a| a.len() as i32)
-                })
+                .or_else(|| produced_ir.fixed_atoms().map(|a| a.len() as i32))
                 .unwrap_or(1);
             let replacement_multiplier = atoms
                 .iter()
@@ -1798,6 +1826,7 @@ fn group_sources_by_mana_color(
                 ) * fixed_output_multiplier
                     * replacement_multiplier,
                 mana_text: produced.to_string(),
+                produced_ir: ab.produced_ir.clone(),
                 source_order,
             };
             source_order += 1;
@@ -1825,6 +1854,7 @@ fn group_sources_by_mana_color(
                     atoms: vec![atom],
                     amount: replacement_multiplier.max(1),
                     mana_text: atom_short(atom).to_string(),
+                    produced_ir: None,
                     source_order,
                 };
                 source_order += 1;
@@ -1926,8 +1956,8 @@ pub fn can_pay_mana_cost_with_reserved_sacrifices(
             {
                 continue;
             }
-            if let Some(produced) = ab.produced.as_deref() {
-                if produced == "Combo ColorIdentity" {
+            if let Some(produced_ir) = ab.produced_ir.as_ref() {
+                if produced_ir.is_combo_color_identity() {
                     let colors = game.player_commander_color_identity(player);
                     if !colors.is_empty() {
                         let mut combo = 0u16;
@@ -1936,16 +1966,14 @@ pub fn can_pay_mana_cost_with_reserved_sacrifices(
                         }
                         source_mask |= combo;
                     }
-                } else if let Some(fixed_atoms) =
-                    fixed_produced_atoms(produced, &card.chosen_colors)
-                {
+                } else if let Some(fixed_atoms) = produced_ir.fixed_atoms() {
                     for atom in fixed_atoms {
                         source_masks.push(atom);
                     }
                     source_mask = 0;
                     break;
                 } else {
-                    for atom in produced_to_atoms(produced, &card.chosen_colors) {
+                    for atom in produced_ir.to_atoms(&card.chosen_colors) {
                         source_mask |= atom;
                     }
                 }
@@ -2088,10 +2116,17 @@ fn fixed_output_atoms_for_payment(
     player: PlayerId,
     mana_ability: &ManaAbilityRef,
 ) -> Option<Vec<u16>> {
-    if let Some(fixed_atoms) = fixed_produced_atoms(&mana_ability.mana_text, &[]) {
+    if let Some(fixed_atoms) = mana_ability
+        .produced_ir
+        .as_ref()
+        .and_then(crate::ability::ProducedMana::fixed_atoms)
+    {
         return Some(fixed_atoms);
     }
-    let special = mana_ability.mana_text.strip_prefix("Special ")?;
+    let special = mana_ability
+        .produced_ir
+        .as_ref()
+        .and_then(crate::ability::ProducedMana::special_kind)?;
     let atoms = crate::ability::effects::mana_effect::available_special_mana_atoms(
         game,
         mana_ability.card_id,
@@ -2252,8 +2287,7 @@ fn score_mana_producing_card(game: &GameState, card_id: CardId, player: PlayerId
 
     for ab in &card.activated_abilities {
         if ab.is_mana_ability {
-            let produced = ab.produced.as_deref();
-            score += score_mana_ability(game, card_id, ab, produced);
+            score += score_mana_ability(game, card_id, ab, None);
             has_mana_ability = true;
         } else if can_pay_ignoring_mana(&ab.cost, game, card_id, player) {
             score += 13;
@@ -2286,13 +2320,17 @@ fn score_mana_ability(
     game: &GameState,
     card_id: CardId,
     ab: &crate::ability::activated::ActivatedAbility,
-    produced_override: Option<&str>,
+    produced_override: Option<&crate::ability::ProducedMana>,
 ) -> i32 {
     let mut score = 0;
     let card = game.card(card_id);
 
-    let orig_produced = ab.produced.as_deref();
-    if orig_produced == Some("Combo ColorIdentity") {
+    let orig_produced = ab.produced_ir.as_ref();
+    if ab
+        .produced_ir
+        .as_ref()
+        .is_some_and(crate::ability::ProducedMana::is_combo_color_identity)
+    {
         score += 2;
         for part in &ab.cost.parts {
             match part {
@@ -2310,13 +2348,16 @@ fn score_mana_ability(
         }
         return score;
     }
-    let is_any_mana = orig_produced.is_some_and(|p| p.contains("Any"));
+    let is_any_mana = ab
+        .produced_ir
+        .as_ref()
+        .is_some_and(crate::ability::ProducedMana::is_any_like);
     if is_any_mana {
         score += 7;
     } else if orig_produced.is_none() {
         score += 2;
     } else if let Some(produced) = produced_override.or(orig_produced) {
-        let mana_text = ability_mana_text_for_score(produced, &card.chosen_colors);
+        let mana_text = ability_mana_text_for_score_ir(produced, &card.chosen_colors);
         if mana_text == "Any" {
             score += 7;
         } else {
@@ -2376,7 +2417,11 @@ fn autopay_source_score(game: &GameState, _player: PlayerId, ma: &ManaAbilityRef
     let card = game.card(ma.card_id);
     if let Some(ab_idx) = ma.ability_index {
         if let Some(ab) = card.activated_abilities.get(ab_idx) {
-            if ma.mana_text == "Combo ColorIdentity" {
+            if ma
+                .produced_ir
+                .as_ref()
+                .is_some_and(crate::ability::ProducedMana::is_combo_color_identity)
+            {
                 let colors = game.player_commander_color_identity(_player);
                 let mut s = if colors.is_empty() {
                     2
@@ -2404,10 +2449,9 @@ fn autopay_source_score(game: &GameState, _player: PlayerId, ma: &ManaAbilityRef
                 return s;
             }
             let orig_is_any = ab
-                .params
-                .get(keys::PRODUCED)
-                .map(|p| p.contains("Any"))
-                .unwrap_or(false);
+                .produced_ir
+                .as_ref()
+                .is_some_and(crate::ability::ProducedMana::is_any_like);
             let resolved = if ab.is_mana_reflected || ma.mana_text == "1" {
                 "1".to_string()
             } else if orig_is_any {
@@ -2421,7 +2465,8 @@ fn autopay_source_score(game: &GameState, _player: PlayerId, ma: &ManaAbilityRef
                     .collect::<Vec<_>>()
                     .join(" ")
             };
-            let mut s = score_mana_ability(game, ma.card_id, ab, Some(&resolved));
+            let resolved_ir = crate::ability::ProducedMana::from_raw_boundary(&resolved);
+            let mut s = score_mana_ability(game, ma.card_id, ab, Some(&resolved_ir));
             if card.is_creature() {
                 s += 13;
                 s += 13;
@@ -2451,11 +2496,14 @@ fn score_implicit_land_mana_ability(atom: u16) -> i32 {
     score
 }
 
-fn ability_mana_text_for_score(produced: &str, chosen_colors: &[String]) -> String {
-    if produced.eq_ignore_ascii_case("Any") {
+fn ability_mana_text_for_score_ir(
+    produced_ir: &crate::ability::ProducedMana,
+    chosen_colors: &[String],
+) -> String {
+    if produced_ir.is_any_like() {
         return "Any".to_string();
     }
-    let atoms = produced_to_atoms(produced, chosen_colors);
+    let atoms = produced_ir.to_atoms(chosen_colors);
     if atoms.is_empty() {
         return String::new();
     }

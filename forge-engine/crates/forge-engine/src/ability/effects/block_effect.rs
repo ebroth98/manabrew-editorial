@@ -6,6 +6,7 @@
 use forge_foundation::ZoneType;
 
 use super::EffectContext;
+use crate::ability::ability_ir::DefinedRef;
 
 /// Struct form of this effect so it can participate in the
 /// `SpellAbilityEffect` trait hierarchy — mirrors Java's
@@ -14,8 +15,8 @@ use super::EffectContext;
 fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let targets: Vec<crate::ids::CardId> = if sa.uses_targeting() {
         sa.target_chosen.target_card.into_iter().collect()
-    } else if let Some(def) = sa.defined() {
-        if def.eq_ignore_ascii_case("Self") {
+    } else if let Some(def) = sa.defined_ref() {
+        if matches!(def, DefinedRef::SelfCard) {
             sa.source.into_iter().collect()
         } else {
             Vec::new()

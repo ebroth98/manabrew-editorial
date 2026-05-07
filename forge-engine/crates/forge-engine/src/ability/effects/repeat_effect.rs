@@ -5,6 +5,7 @@
 //! repeat conditions still hold.
 
 use super::EffectContext;
+use crate::ability::ability_ir::DefinedRef;
 use crate::parsing::compare::compare_expr;
 use crate::spellability::{build_spell_ability, SpellAbility};
 
@@ -88,9 +89,10 @@ fn check_repeat_conditions(ctx: &mut EffectContext, sa: &SpellAbility) -> bool {
             return false;
         };
         let source = ctx.game.card(source_id);
-        let cards: Vec<_> = if defined.eq_ignore_ascii_case("Imprinted") {
+        let defined_ref = DefinedRef::parse(defined);
+        let cards: Vec<_> = if matches!(defined_ref, DefinedRef::Imprinted) {
             source.imprinted_cards.clone()
-        } else if defined.eq_ignore_ascii_case("Remembered") {
+        } else if matches!(defined_ref, DefinedRef::Remembered) {
             source.remembered_cards.clone()
         } else {
             Vec::new()

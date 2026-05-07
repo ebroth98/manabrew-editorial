@@ -618,10 +618,9 @@ impl GameLoop {
             triggers_when_spent: ab.triggers_when_spent.clone(),
         };
 
-        if let Some(produced) = ab.produced.as_deref() {
-            if produced.starts_with("Special") {
+        if let Some(produced_ir) = ab.produced_ir.as_ref() {
+            if let Some(special) = produced_ir.special_kind() {
                 // Delegate to the special mana handler in mana_effect
-                let special = produced.strip_prefix("Special ").unwrap_or("");
                 let sa = crate::spellability::build_spell_ability(
                     game,
                     card_id,
@@ -682,12 +681,14 @@ impl GameLoop {
 
             // Determine mana production (color choice, Amount$, replacement effects)
             let amount_param = ab.amount.as_deref();
-            let mana_string = crate::mana::determine_mana_production(
+            let produced = produced_ir.as_script_text();
+            let mana_string = crate::mana::determine_mana_production_ir(
                 game,
                 agents,
                 player,
                 card_id,
-                produced,
+                produced_ir,
+                &produced,
                 amount_param,
                 express_choice,
             );

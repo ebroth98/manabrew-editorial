@@ -6,6 +6,7 @@
 use forge_foundation::ZoneType;
 
 use super::EffectContext;
+use crate::ability::ability_ir::DefinedRef;
 use crate::ids::CardId;
 use crate::parsing::keys;
 
@@ -24,7 +25,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
 
     // Get defined cards
     if let Some(defined) = sa.defined() {
-        if defined.eq_ignore_ascii_case("Self") {
+        if matches!(sa.defined_ref(), Some(DefinedRef::SelfCard)) {
             object2 = sa.source;
         } else if let Some(uid_str) = defined.strip_prefix("CardUID_") {
             object2 = uid_str.parse::<u32>().ok().map(crate::ids::CardId);

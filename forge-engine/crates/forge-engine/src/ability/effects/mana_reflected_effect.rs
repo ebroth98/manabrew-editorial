@@ -10,7 +10,10 @@ use crate::mana::{color_name_to_mana_atom, Mana};
 /// has no parent ability.
 pub fn build_spell_ability(sa: &mut crate::spellability::SpellAbility) {
     // Set up the mana part from Produced$ parameter
-    let produced = sa.ir.produced.as_deref().unwrap_or("Any").to_string();
+    let produced = sa
+        .produced_ir()
+        .map(crate::ability::ProducedMana::as_script_text)
+        .unwrap_or("Any".into());
     let restriction = sa.ir.restrict_valid.as_deref().unwrap_or("").to_string();
     sa.mana_part = Some(crate::spellability::AbilityManaPart::new(
         &produced,

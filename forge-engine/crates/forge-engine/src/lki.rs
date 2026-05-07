@@ -53,6 +53,7 @@
 
 use crate::card::{Card, CounterType};
 use crate::ids::{CardId, PlayerId};
+use crate::spellability::SpellAbility;
 use forge_foundation::ZoneType;
 use std::collections::BTreeMap;
 
@@ -213,4 +214,62 @@ pub fn resolve_lki_counter_count(
         return snapshot.counters.get(counter_type).copied().unwrap_or(0);
     }
     0
+}
+
+fn trigger_card_object(sa: &SpellAbility, key: &str) -> Option<CardId> {
+    crate::ability::ability_key::from_string(key)
+        .and_then(|ability_key| sa.get_triggering_card(ability_key))
+}
+
+fn trigger_int_object(sa: &SpellAbility, key: &str) -> Option<i32> {
+    crate::ability::ability_key::from_string(key)
+        .and_then(|ability_key| sa.get_triggering_value(ability_key))
+        .and_then(|value| value.trim().parse::<i32>().ok())
+}
+
+/// Resolve SVar properties that explicitly ask for triggered-card LKI.
+///
+/// Handles the Forge patterns used by death/leaves triggers:
+/// `TriggeredCard$CardPower`, `TriggeredCard$CardToughness`, and
+/// `TriggeredCard$CardCounters.TYPE`.
+pub fn resolve_triggered_card_lki_svar(
+    game: &crate::game::GameState,
+    sa: &SpellAbility,
+    svar_expr: &str,
+) -> Option<i32> {
+    let property = svar_expr.strip_prefix("TriggeredCard$")?;
+    resolve_triggered_card_lki_property(game, sa, property)
+}
+
+pub fn resolve_triggered_card_lki_property(
+    game: &crate::game::GameState,
+    sa: &SpellAbility,
+    property: &str,
+) -> Option<i32> {
+    if property == "CardPower" {
+        if let Some(power) = trigger_int_object(sa, "TriggeredCardPower") {
+            return Some(power);
+        }
+        return trigger_card_object(sa, "Card")
+            .or(sa.trigger_source)
+            .map(|trigger_src| resolve_lki_power(game, trigger_src));
+    }
+
+    if property == "CardToughness" {
+        if let Some(toughness) = trigger_int_object(sa, "TriggeredCardToughness") {
+            return Some(toughness);
+        }
+        return trigger_card_object(sa, "Card")
+            .or(sa.trigger_source)
+            .map(|trigger_src| resolve_lki_toughness(game, trigger_src));
+    }
+
+    if let Some(counter_name) = property.strip_prefix("CardCounters.") {
+        let counter_type = crate::ability::effects::parse_counter_type(counter_name);
+        return trigger_card_object(sa, "Card")
+            .or(sa.trigger_source)
+            .map(|trigger_src| resolve_lki_counter_count(game, trigger_src, &counter_type));
+    }
+
+    None
 }

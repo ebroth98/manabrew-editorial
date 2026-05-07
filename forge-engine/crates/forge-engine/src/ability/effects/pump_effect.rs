@@ -1,6 +1,7 @@
 use forge_foundation::ZoneType;
 
 use super::EffectContext;
+use crate::ability::ability_ir::DefinedRef;
 use crate::card::card_util;
 use crate::card::perpetual::perpetual_interface::PerpetualInterface;
 use crate::card::perpetual::{perpetual_keywords, perpetual_pt_boost};
@@ -187,7 +188,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     }
 
     let mut targets = crate::ability::spell_ability_effect::get_target_cards(ctx.game, sa);
-    if targets.is_empty() && sa.defined() == Some("ParentTarget") {
+    if targets.is_empty() && matches!(sa.defined_ref(), Some(DefinedRef::ParentTarget)) {
         targets.extend(ctx.parent_target_card);
     }
     targets.extend(card_util::get_radiance(ctx.game, sa).iter().copied());

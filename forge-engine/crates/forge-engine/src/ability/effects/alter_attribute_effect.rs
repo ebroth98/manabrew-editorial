@@ -5,6 +5,7 @@
 use forge_foundation::ZoneType;
 
 use super::EffectContext;
+use crate::ability::ability_ir::DefinedRef;
 use crate::event::RunParams;
 use crate::ids::CardId;
 use crate::trigger::TriggerType;
@@ -20,8 +21,8 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let targets: Vec<CardId> = if let Some(target) = sa.target_chosen.target_card {
         vec![target]
     } else if let Some(source) = sa.source {
-        if let Some(def) = sa.defined() {
-            if def == "Self" {
+        if let Some(def) = sa.defined_ref() {
+            if matches!(def, DefinedRef::SelfCard) {
                 vec![source]
             } else {
                 ctx.game.card(source).remembered_cards.clone()

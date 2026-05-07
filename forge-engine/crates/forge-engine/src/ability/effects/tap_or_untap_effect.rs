@@ -1,6 +1,7 @@
 use forge_foundation::ZoneType;
 
 use super::EffectContext;
+use crate::ability::ability_ir::DefinedRef;
 use crate::agent::BinaryChoiceKind;
 use crate::ids::CardId;
 
@@ -22,7 +23,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     if let Some(target) = sa.target_chosen.target_card {
         candidates.push(target);
     } else if let Some(source) = sa.source {
-        if sa.defined() == Some("Self") {
+        if matches!(sa.defined_ref(), Some(DefinedRef::SelfCard)) {
             candidates.push(source);
         }
     }

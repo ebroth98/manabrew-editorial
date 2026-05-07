@@ -479,13 +479,10 @@ impl GameLoop {
                                 // Multiple tap-cost abilities — ask the player to choose a color.
                                 let mut color_options: Vec<(String, usize)> = Vec::new();
                                 for (i, ab) in tap_abs.iter().enumerate() {
-                                    if let Some(produced) = ab.produced.as_deref() {
+                                    if let Some(produced_ir) = ab.produced_ir.as_ref() {
                                         let chosen_colors =
                                             game.card(land_id).chosen_colors.clone();
-                                        let names = crate::mana::produced_to_color_names(
-                                            produced,
-                                            &chosen_colors,
-                                        );
+                                        let names = produced_ir.to_color_names(&chosen_colors);
                                         for name in names {
                                             if !color_options.iter().any(|(n, _)| *n == name) {
                                                 color_options.push((name, i));

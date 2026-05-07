@@ -1,6 +1,7 @@
 use forge_foundation::mana::ManaAtom;
 use forge_foundation::ZoneType;
 
+use crate::ability::{ProducedMana, ProducedManaCombo};
 use crate::agent::PlayerAgent;
 use crate::card::Card;
 use crate::cost::CostPart;
@@ -74,6 +75,84 @@ pub use computer_util_mana::{
     next_auto_tap_choice_with_reserved_sacrifices, AutoTapChoice, ManaPayCallback,
     ManaPayCallbackFn, ManaPaymentSources, SacrificeChooser,
 };
+
+impl ProducedMana {
+    pub fn to_atoms(&self, chosen_colors: &[String]) -> Vec<u16> {
+        let mut atoms = Vec::new();
+        match self {
+            Self::Any => add_any_colors(&mut atoms),
+            Self::Chosen => return chosen_colors_to_atoms(chosen_colors),
+            Self::Combo(combo) => match combo {
+                ProducedManaCombo::Any => add_any_colors(&mut atoms),
+                ProducedManaCombo::Chosen => {
+                    for atom in chosen_colors_to_atoms(chosen_colors) {
+                        unique_push(&mut atoms, atom);
+                    }
+                }
+                ProducedManaCombo::ColorIdentity => {}
+                ProducedManaCombo::Colors(colors) => {
+                    for color in colors {
+                        if let Some(atom) = mana_atom_from_produced(color) {
+                            unique_push(&mut atoms, atom);
+                        }
+                    }
+                }
+                ProducedManaCombo::Raw(raw) => {
+                    for part in raw.split_whitespace() {
+                        if part.eq_ignore_ascii_case("Any") {
+                            add_any_colors(&mut atoms);
+                        } else if part.eq_ignore_ascii_case("Chosen") {
+                            for atom in chosen_colors_to_atoms(chosen_colors) {
+                                unique_push(&mut atoms, atom);
+                            }
+                        } else if let Some(atom) = mana_atom_from_produced(part) {
+                            unique_push(&mut atoms, atom);
+                        }
+                    }
+                }
+            },
+            Self::Special(_) => {}
+            Self::Fixed(tokens) => {
+                for part in tokens.iter().flat_map(|token| token.split_whitespace()) {
+                    if let Some(atom) = mana_atom_from_produced(part) {
+                        unique_push(&mut atoms, atom);
+                    }
+                }
+            }
+            Self::Raw(raw) => {
+                for part in raw.split_whitespace() {
+                    if let Some(atom) = mana_atom_from_produced(part) {
+                        unique_push(&mut atoms, atom);
+                    }
+                }
+            }
+        }
+        atoms
+    }
+
+    pub fn fixed_atoms(&self) -> Option<Vec<u16>> {
+        let tokens = self.fixed_tokens()?;
+        if tokens.len() <= 1 {
+            return None;
+        }
+
+        let mut atoms = Vec::with_capacity(tokens.len());
+        for part in tokens {
+            atoms.push(mana_atom_from_produced(part)?);
+        }
+        Some(atoms)
+    }
+
+    pub fn to_color_names(&self, chosen_colors: &[String]) -> Vec<String> {
+        let mut colors = Vec::new();
+        for atom in self.to_atoms(chosen_colors) {
+            if let Some(name) = mana_atom_to_color_name(atom) {
+                colors.push(name.to_string());
+            }
+        }
+        colors
+    }
+}
 
 /// An individual mana object in the pool, tracking source and properties.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -389,87 +468,6 @@ fn chosen_colors_to_atoms(chosen_colors: &[String]) -> Vec<u16> {
     atoms
 }
 
-/// Parse a Produced$ value into possible mana atoms.
-///
-/// Supports Java-style outputs:
-/// - `W/U/B/R/G/C`
-/// - `Any`
-/// - `Chosen` (from card's chosen color list)
-/// - `Combo ...` including `Combo Any` and `Combo Chosen`
-pub fn produced_to_atoms(produced: &str, chosen_colors: &[String]) -> Vec<u16> {
-    let value = produced.trim();
-    let mut atoms = Vec::new();
-
-    if value.eq_ignore_ascii_case("Any") {
-        add_any_colors(&mut atoms);
-        return atoms;
-    }
-    if value.eq_ignore_ascii_case("Chosen") {
-        return chosen_colors_to_atoms(chosen_colors);
-    }
-
-    if value.starts_with("Combo") {
-        let parts: Vec<&str> = value.split_whitespace().collect();
-        for part in &parts[1..] {
-            if part.eq_ignore_ascii_case("Any") {
-                add_any_colors(&mut atoms);
-            } else if part.eq_ignore_ascii_case("Chosen") {
-                for atom in chosen_colors_to_atoms(chosen_colors) {
-                    unique_push(&mut atoms, atom);
-                }
-            } else if let Some(atom) = mana_atom_from_produced(part) {
-                unique_push(&mut atoms, atom);
-            }
-        }
-        return atoms;
-    }
-
-    // Handles single-token and multi-token raw produced strings ("C C", "W U", etc.)
-    for part in value.split_whitespace() {
-        if let Some(atom) = mana_atom_from_produced(part) {
-            unique_push(&mut atoms, atom);
-        }
-    }
-
-    atoms
-}
-
-/// Returns the exact atoms for a raw fixed-output Produced$ string,
-/// preserving multiplicity. Choice-based forms return `None`.
-pub fn fixed_produced_atoms(produced: &str, _chosen_colors: &[String]) -> Option<Vec<u16>> {
-    let value = produced.trim();
-    if value.is_empty()
-        || value.eq_ignore_ascii_case("Any")
-        || value.eq_ignore_ascii_case("Chosen")
-        || value.starts_with("Combo")
-        || value.contains(',')
-    {
-        return None;
-    }
-
-    let parts: Vec<&str> = value.split_whitespace().collect();
-    if parts.len() <= 1 {
-        return None;
-    }
-
-    let mut atoms = Vec::with_capacity(parts.len());
-    for part in parts {
-        atoms.push(mana_atom_from_produced(part)?);
-    }
-    Some(atoms)
-}
-
-/// Parse a Produced$ value into color names for choose-color prompts.
-pub fn produced_to_color_names(produced: &str, chosen_colors: &[String]) -> Vec<String> {
-    let mut colors = Vec::new();
-    for atom in produced_to_atoms(produced, chosen_colors) {
-        if let Some(name) = mana_atom_to_color_name(atom) {
-            colors.push(name.to_string());
-        }
-    }
-    colors
-}
-
 /// Convert a single mana letter ("G", "U", etc.) to its color name ("Green", "Blue", etc.).
 pub fn mana_letter_to_color_name(letter: &str) -> Option<String> {
     match letter.trim() {
@@ -539,12 +537,6 @@ pub fn capitalize_color(s: &str) -> String {
         Some(c) => c.to_uppercase().to_string() + chars.as_str(),
         None => String::new(),
     }
-}
-
-/// Parse a "Combo G U" produced string into a list of color names.
-/// Returns empty vec for unparseable values (e.g. "Combo ColorIdentity").
-pub fn parse_combo_colors(produced: &str) -> Vec<String> {
-    produced_to_color_names(produced, &[])
 }
 
 /// Returns all ManaAtom values that correspond to the card's basic land subtypes.
@@ -643,14 +635,14 @@ pub fn land_mana_atoms(card: &Card) -> Vec<u16> {
         {
             continue;
         }
-        if let Some(produced) = ab.produced.as_deref() {
-            if produced == "Combo ColorIdentity" {
+        if let Some(produced_ir) = ab.produced_ir.as_ref() {
+            if produced_ir.is_combo_color_identity() {
                 // In a non-Commander game there is no commander identity, so this land
                 // produces no mana — matches Java Forge's ManaEffect which skips
                 // the mana production entirely when the choice string is empty.
                 // (Java: ManaEffect.java line 141-143: "No mana could be produced here")
             } else {
-                for atom in produced_to_atoms(produced, &card.chosen_colors) {
+                for atom in produced_ir.to_atoms(&card.chosen_colors) {
                     if !atoms.contains(&atom) {
                         atoms.push(atom);
                     }
@@ -709,18 +701,19 @@ pub struct ManaProductionParams {
 ///
 /// The caller is responsible for cost payment, trigger firing, sub-ability
 /// resolution, and the `Special` / `ManaReflected` branches.
-pub fn determine_mana_production(
+pub fn determine_mana_production_ir(
     game: &mut GameState,
     agents: &mut [Box<dyn PlayerAgent>],
     player: PlayerId,
     card_id: CardId,
-    produced: &str,
+    produced_ir: &ProducedMana,
+    produced_text: &str,
     amount_param: Option<&str>,
     express_choice: Option<u16>,
 ) -> Option<String> {
     let mut mana_string: Option<String> = None;
 
-    if produced == "Combo ColorIdentity" {
+    if produced_ir.is_combo_color_identity() {
         let colors = game.player_commander_color_identity(player);
 
         if !colors.is_empty() {
@@ -730,11 +723,11 @@ pub fn determine_mana_production(
                 }
             }
         }
-    } else if fixed_produced_atoms(produced, &game.card(card_id).chosen_colors).is_some() {
-        mana_string = Some(produced.to_string());
+    } else if produced_ir.fixed_atoms().is_some() {
+        mana_string = Some(produced_text.to_string());
     } else {
         let chosen_colors = game.card(card_id).chosen_colors.clone();
-        let colors = produced_to_color_names(produced, &chosen_colors);
+        let colors = produced_ir.to_color_names(&chosen_colors);
         if colors.len() > 1 {
             let chosen = if let Some(forced) = express_choice
                 .and_then(mana_atom_to_color_name)
@@ -764,7 +757,7 @@ pub fn determine_mana_production(
             }
         } else {
             // Raw produced string (single-token fixed output)
-            mana_string = Some(produced.to_string());
+            mana_string = Some(produced_text.to_string());
         }
     }
 
@@ -783,19 +776,17 @@ pub fn determine_mana_production(
             };
             if amount > 1 {
                 // Check if this is combo/any mana (multiple color choices)
-                let is_combo = produced.contains("Any")
-                    || produced.starts_with("Combo")
-                    || produced.contains(',');
+                let is_combo = produced_ir.is_choice_like();
                 if is_combo {
                     // Multi-amount combo: let agent choose color distribution
-                    let available: Vec<String> = if produced.contains("Any") {
+                    let available: Vec<String> = if produced_ir.is_any_like() {
                         vec!["W", "U", "B", "R", "G"]
                             .into_iter()
                             .map(String::from)
                             .collect()
                     } else {
                         let chosen_colors = game.card(card_id).chosen_colors.clone();
-                        let names = produced_to_color_names(produced, &chosen_colors);
+                        let names = produced_ir.to_color_names(&chosen_colors);
                         names
                             .iter()
                             .filter_map(|name| {
@@ -978,8 +969,10 @@ pub(crate) fn replacement_adjusted_atoms_for_availability(
         let ReplacementEvent::ProduceMana { mana, .. } = event else {
             return vec![atom];
         };
-        let adjusted =
-            fixed_produced_atoms(&mana, &[]).unwrap_or_else(|| produced_to_atoms(&mana, &[]));
+        let produced_ir = ProducedMana::from_raw_boundary(&mana);
+        let adjusted = produced_ir
+            .fixed_atoms()
+            .unwrap_or_else(|| produced_ir.to_atoms(&[]));
         if !adjusted.is_empty() {
             return adjusted;
         }
@@ -999,10 +992,17 @@ pub(crate) fn java_replacement_filtered_atoms_for_availability(
         return Vec::new();
     }
 
-    let orig_produced =
-        ab.produced
-            .as_deref()
-            .unwrap_or(if ab.is_mana_reflected { "1" } else { "" });
+    let orig_produced = ab
+        .produced_ir
+        .as_ref()
+        .map(ProducedMana::as_script_text)
+        .unwrap_or_else(|| {
+            if ab.is_mana_reflected {
+                "1".into()
+            } else {
+                "".into()
+            }
+        });
     if orig_produced.is_empty() {
         return intrinsic_atoms.to_vec();
     }
@@ -1349,8 +1349,8 @@ fn calculate_available_mana_excluding_with_reserved_impl(
                         source_colors.push(src_mask);
                     }
                 }
-            } else if let Some(produced) = ab.produced.as_deref() {
-                if produced == "Combo ColorIdentity" {
+            } else if let Some(produced_ir) = ab.produced_ir.as_ref() {
+                if produced_ir.is_combo_color_identity() {
                     // Commander Color Identity support: in non-commander games this remains empty.
                     let colors = game.player_commander_color_identity(player);
                     if !colors.is_empty() {
@@ -1363,7 +1363,9 @@ fn calculate_available_mana_excluding_with_reserved_impl(
                         }
                         added_any = true;
                     }
-                } else if let Some(special) = produced.strip_prefix("Special ") {
+                } else if let Some(special) =
+                    ab.produced_ir.as_ref().and_then(ProducedMana::special_kind)
+                {
                     // Special mana (e.g. Bloom Tender's "EachColorAmong_Valid Permanent.YouCtrl"):
                     // one mana per distinct color among matching permanents. Both colors and
                     // amount-per-activation come from the same atom set.
@@ -1399,7 +1401,7 @@ fn calculate_available_mana_excluding_with_reserved_impl(
                 } else {
                     let amount = resolve_mana_ability_amount(game, card_id, player, ab);
                     let mut counted_variable_source_units = false;
-                    if let Some(fixed_atoms) = fixed_produced_atoms(produced, &card.chosen_colors) {
+                    if let Some(fixed_atoms) = produced_ir.fixed_atoms() {
                         for atom in fixed_atoms {
                             for _ in 0..amount {
                                 let adjusted_atoms = replacement_adjusted_atoms_for_availability(
@@ -1417,7 +1419,7 @@ fn calculate_available_mana_excluding_with_reserved_impl(
                         }
                     } else {
                         let mut source_units = 0usize;
-                        let intrinsic = produced_to_atoms(produced, &card.chosen_colors);
+                        let intrinsic = produced_ir.to_atoms(&card.chosen_colors);
                         let allowed = java_replacement_filtered_atoms_for_availability(
                             game, player, card_id, ab, &intrinsic,
                         );
@@ -1549,7 +1551,8 @@ fn calculate_available_mana_excluding_with_reserved_impl(
                     if let Some(svar_text) = aura.svars.get(&trigger.execute) {
                         let params = crate::parsing::Params::from_raw(svar_text);
                         if let Some(produced) = params.get(crate::parsing::keys::PRODUCED) {
-                            let atoms = if produced == "Chosen" {
+                            let produced_ir = ProducedMana::from_raw_boundary(produced);
+                            let atoms = if matches!(produced_ir, ProducedMana::Chosen) {
                                 // Use aura's chosen color
                                 aura.chosen_colors
                                     .first()
@@ -1557,7 +1560,7 @@ fn calculate_available_mana_excluding_with_reserved_impl(
                                     .into_iter()
                                     .collect::<Vec<_>>()
                             } else {
-                                produced_to_atoms(produced, &aura.chosen_colors)
+                                produced_ir.to_atoms(&aura.chosen_colors)
                             };
                             for atom in atoms {
                                 available.add(atom, 1);
@@ -1654,7 +1657,7 @@ mod tests {
 
     #[test]
     fn produced_to_atoms_any_and_combo_any() {
-        let any = produced_to_atoms("Any", &[]);
+        let any = ProducedMana::Any.to_atoms(&[]);
         assert!(any.contains(&ManaAtom::WHITE));
         assert!(any.contains(&ManaAtom::BLUE));
         assert!(any.contains(&ManaAtom::BLACK));
@@ -1662,7 +1665,7 @@ mod tests {
         assert!(any.contains(&ManaAtom::GREEN));
         assert!(!any.contains(&ManaAtom::COLORLESS));
 
-        let combo_any = produced_to_atoms("Combo Any", &[]);
+        let combo_any = ProducedMana::Combo(ProducedManaCombo::Any).to_atoms(&[]);
         assert_eq!(any.len(), combo_any.len());
         for a in any {
             assert!(combo_any.contains(&a));
@@ -1672,12 +1675,12 @@ mod tests {
     #[test]
     fn produced_to_atoms_chosen_and_combo_chosen() {
         let chosen = vec!["Red".to_string(), "Green".to_string()];
-        let a = produced_to_atoms("Chosen", &chosen);
+        let a = ProducedMana::Chosen.to_atoms(&chosen);
         assert!(a.contains(&ManaAtom::RED));
         assert!(a.contains(&ManaAtom::GREEN));
         assert_eq!(a.len(), 2);
 
-        let b = produced_to_atoms("Combo Chosen", &chosen);
+        let b = ProducedMana::Combo(ProducedManaCombo::Chosen).to_atoms(&chosen);
         assert!(b.contains(&ManaAtom::RED));
         assert!(b.contains(&ManaAtom::GREEN));
         assert_eq!(b.len(), 2);
@@ -1685,7 +1688,7 @@ mod tests {
 
     #[test]
     fn produced_to_atoms_multi_token_fixed_output() {
-        let atoms = produced_to_atoms("C C", &[]);
+        let atoms = ProducedMana::Fixed(vec!["C".to_string(), "C".to_string()]).to_atoms(&[]);
         assert_eq!(atoms, vec![ManaAtom::COLORLESS]);
     }
 
@@ -1751,11 +1754,12 @@ mod tests {
         game.move_card(commander_id, ZoneType::Battlefield, p0);
 
         let mut agents: Vec<Box<dyn PlayerAgent>> = vec![Box::new(PassAgent), Box::new(PassAgent)];
-        let produced = determine_mana_production(
+        let produced = determine_mana_production_ir(
             &mut game,
             &mut agents,
             p0,
             commander_id,
+            &ProducedMana::Combo(ProducedManaCombo::ColorIdentity),
             "Combo ColorIdentity",
             None,
             None,

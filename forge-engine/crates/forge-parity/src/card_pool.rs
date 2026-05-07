@@ -8,12 +8,14 @@ use std::collections::BTreeMap;
 use std::path::Path;
 
 use forge_carddb::{CardDatabase, CardFace};
+use forge_engine_core::ability::ability_ir::DefinedExpr;
 use forge_engine_core::ability::api_type::ApiType;
 use forge_engine_core::ability::effects::IMPLEMENTED_API_TYPES;
 use forge_engine_core::parsing::{
-    keys, ParamDiagnosticKind, Params, ParsedCardScript, ParsedParams, ScriptAbility,
-    ScriptDiagnosticKind, ScriptLineKind, ScriptParamRecord, ScriptSVarValue,
-    SemanticParamValueKind,
+    keys, CompiledSelector, CostTokenKind, ParamDiagnosticKind, Params, ParsedCardScript,
+    ParsedParams, ScriptAbility, ScriptDiagnosticKind, ScriptLineKind, ScriptParamRecord,
+    ScriptSVarNumericExpression, ScriptSVarObjectRef, ScriptSVarValue, SemanticAmount,
+    SemanticParamValue, SemanticParamValueKind,
 };
 use forge_engine_core::replacement::parse_replacement_effect;
 use forge_engine_core::staticability::parse_static_ability;
@@ -103,6 +105,31 @@ pub struct ScriptScanStats {
     pub lines: usize,
     pub abilities: usize,
     pub svars: usize,
+    pub svar_values_ability: usize,
+    pub svar_values_params: usize,
+    pub svar_values_params_piped: usize,
+    pub svar_values_params_single: usize,
+    pub svar_values_raw: usize,
+    pub svar_values_numeric_number: usize,
+    pub svar_values_numeric_count: usize,
+    pub svar_values_numeric_player_count: usize,
+    pub svar_values_numeric_trigger_count: usize,
+    pub svar_values_numeric_svar_reference: usize,
+    pub svar_values_numeric_remembered: usize,
+    pub svar_values_numeric_remembered_size: usize,
+    pub svar_values_numeric_discarded_valid: usize,
+    pub svar_values_numeric_sacrificed_property: usize,
+    pub svar_values_numeric_triggered_card_property: usize,
+    pub svar_values_numeric_card_list_property: usize,
+    pub svar_values_numeric_player_list_property: usize,
+    pub svar_values_numeric_spell_ability_property: usize,
+    pub svar_values_numeric_paid_hash_property: usize,
+    pub svar_values_numeric_replace_count_property: usize,
+    pub svar_values_numeric_runtime_value_property: usize,
+    pub svar_raw_dollar_shapes: BTreeMap<String, usize>,
+    pub svar_raw_dollar_examples: Vec<ScriptScanExample>,
+    pub raw_dsl_domain_shapes: BTreeMap<String, usize>,
+    pub raw_dsl_domain_examples: Vec<ScriptScanExample>,
     pub script_diagnostics_missing_colon: usize,
     pub script_diagnostics_empty_key: usize,
     pub script_diagnostics_unknown_field: usize,
@@ -115,6 +142,7 @@ pub struct ScriptScanStats {
     pub semantic_values: usize,
     pub semantic_values_ability_record: usize,
     pub semantic_values_symbol: usize,
+    pub semantic_values_produced_mana: usize,
     pub semantic_values_boolean: usize,
     pub semantic_values_integer: usize,
     pub semantic_values_amount: usize,
@@ -148,11 +176,32 @@ impl std::fmt::Display for ScriptScanStats {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "Script scan: {} files, {} lines, {} abilities, {} SVars [script diagnostics: {} missing colon, {} empty key, {} unknown field, {} missing ability record, {} missing SVar name; param diagnostics: {} missing delimiter, {} empty key, {} duplicate same-value key, {} duplicate different-value key; semantic values: {} total, {} ability record, {} symbol, {} boolean, {} integer, {} amount, {} zone list, {} selector, {} reference, {} SVar reference, {} cost, {} text, {} delimited list, {} transform, {} comparison, {} expression, {} raw]",
+            "Script scan: {} files, {} lines, {} abilities, {} SVars [SVar values: {} ability, {} params ({} piped, {} single-param), {} raw, numeric: {} Number, {} Count, {} PlayerCount, {} TriggerCount, {} SVar reference, {} Remembered, {} RememberedSize, {} DiscardedValid, {} Sacrificed property, {} TriggeredCard property, {} card-list property, {} player-list property, {} spell-ability property, {} paid-hash property, {} ReplaceCount property, {} runtime-value property; script diagnostics: {} missing colon, {} empty key, {} unknown field, {} missing ability record, {} missing SVar name; param diagnostics: {} missing delimiter, {} empty key, {} duplicate same-value key, {} duplicate different-value key; semantic values: {} total, {} ability record, {} symbol, {} produced mana, {} boolean, {} integer, {} amount, {} zone list, {} selector, {} reference, {} SVar reference, {} cost, {} text, {} delimited list, {} transform, {} comparison, {} expression, {} raw]",
             self.files,
             self.lines,
             self.abilities,
             self.svars,
+            self.svar_values_ability,
+            self.svar_values_params,
+            self.svar_values_params_piped,
+            self.svar_values_params_single,
+            self.svar_values_raw,
+            self.svar_values_numeric_number,
+            self.svar_values_numeric_count,
+            self.svar_values_numeric_player_count,
+            self.svar_values_numeric_trigger_count,
+            self.svar_values_numeric_svar_reference,
+            self.svar_values_numeric_remembered,
+            self.svar_values_numeric_remembered_size,
+            self.svar_values_numeric_discarded_valid,
+            self.svar_values_numeric_sacrificed_property,
+            self.svar_values_numeric_triggered_card_property,
+            self.svar_values_numeric_card_list_property,
+            self.svar_values_numeric_player_list_property,
+            self.svar_values_numeric_spell_ability_property,
+            self.svar_values_numeric_paid_hash_property,
+            self.svar_values_numeric_replace_count_property,
+            self.svar_values_numeric_runtime_value_property,
             self.script_diagnostics_missing_colon,
             self.script_diagnostics_empty_key,
             self.script_diagnostics_unknown_field,
@@ -165,6 +214,7 @@ impl std::fmt::Display for ScriptScanStats {
             self.semantic_values,
             self.semantic_values_ability_record,
             self.semantic_values_symbol,
+            self.semantic_values_produced_mana,
             self.semantic_values_boolean,
             self.semantic_values_integer,
             self.semantic_values_amount,
@@ -190,6 +240,16 @@ impl ScriptScanStats {
 
     pub fn semantic_raw_example_lines(&self) -> impl Iterator<Item = String> + '_ {
         self.semantic_raw_examples.iter().map(format_example_line)
+    }
+
+    pub fn svar_raw_dollar_example_lines(&self) -> impl Iterator<Item = String> + '_ {
+        self.svar_raw_dollar_examples
+            .iter()
+            .map(format_example_line)
+    }
+
+    pub fn raw_dsl_domain_example_lines(&self) -> impl Iterator<Item = String> + '_ {
+        self.raw_dsl_domain_examples.iter().map(format_example_line)
     }
 }
 
@@ -428,11 +488,6 @@ fn scan_raw_script_diagnostics_inner(path: &Path, stats: &mut ScriptScanStats) {
         let script = ParsedCardScript::parse(&raw);
         stats.lines += script.lines().len();
         stats.abilities += script.abilities().count();
-        stats.svars += script
-            .lines()
-            .iter()
-            .filter(|line| matches!(line.kind, ScriptLineKind::SVar(_)))
-            .count();
         record_semantic_value_stats(&script, &path, stats);
         for diagnostic in script.diagnostics() {
             let kind = format!("{:?}", diagnostic.kind);
@@ -498,6 +553,8 @@ fn record_semantic_value_stats(
             }
             ScriptLineKind::SVar(svar) => match &svar.value_kind {
                 ScriptSVarValue::Ability(ability) => {
+                    stats.svars += 1;
+                    stats.svar_values_ability += 1;
                     let ScriptAbility {
                         params: parsed_params,
                         ..
@@ -510,6 +567,13 @@ fn record_semantic_value_stats(
                     );
                 }
                 ScriptSVarValue::Params(record) => {
+                    stats.svars += 1;
+                    stats.svar_values_params += 1;
+                    if svar.value.contains('|') {
+                        stats.svar_values_params_piped += 1;
+                    } else {
+                        stats.svar_values_params_single += 1;
+                    }
                     let ScriptParamRecord {
                         params: parsed_params,
                     } = record;
@@ -520,11 +584,103 @@ fn record_semantic_value_stats(
                         stats,
                     );
                 }
-                ScriptSVarValue::Raw(_) => {}
+                ScriptSVarValue::NumericExpression(expression) => {
+                    stats.svars += 1;
+                    record_svar_numeric_expression(expression, stats);
+                }
+                ScriptSVarValue::Raw(raw) => {
+                    stats.svars += 1;
+                    stats.svar_values_raw += 1;
+                    record_raw_dsl_domain(
+                        stats,
+                        "svar raw value",
+                        &svar_raw_shape(raw),
+                        ScriptScanExample {
+                            file: path.display().to_string(),
+                            line_no: line.line_no,
+                            kind: "RawSVarValue".to_string(),
+                            segment: raw.to_string(),
+                            key: Some(svar.name.to_string()),
+                            previous_value: None,
+                            value: Some(svar.value.to_string()),
+                        },
+                    );
+                    if raw.contains('$') {
+                        let shape = svar_dollar_shape(raw);
+                        *stats
+                            .svar_raw_dollar_shapes
+                            .entry(shape.clone())
+                            .or_default() += 1;
+                        if stats.svar_raw_dollar_examples.len() < 16 {
+                            stats.svar_raw_dollar_examples.push(ScriptScanExample {
+                                file: path.display().to_string(),
+                                line_no: line.line_no,
+                                kind: format!("RawSVarDollar({shape})"),
+                                segment: raw.to_string(),
+                                key: Some(svar.name.to_string()),
+                                previous_value: None,
+                                value: Some(svar.value.to_string()),
+                            });
+                        }
+                    }
+                }
             },
             _ => {}
         }
     }
+}
+
+fn record_svar_numeric_expression(
+    expression: &ScriptSVarNumericExpression<'_>,
+    stats: &mut ScriptScanStats,
+) {
+    match expression {
+        ScriptSVarNumericExpression::Number(_) => stats.svar_values_numeric_number += 1,
+        ScriptSVarNumericExpression::Count(_) => stats.svar_values_numeric_count += 1,
+        ScriptSVarNumericExpression::PlayerCount(_) => stats.svar_values_numeric_player_count += 1,
+        ScriptSVarNumericExpression::TriggerCount(_) => {
+            stats.svar_values_numeric_trigger_count += 1
+        }
+        ScriptSVarNumericExpression::SVarReference { .. } => {
+            stats.svar_values_numeric_svar_reference += 1
+        }
+        ScriptSVarNumericExpression::Remembered { .. } => stats.svar_values_numeric_remembered += 1,
+        ScriptSVarNumericExpression::RememberedSize { .. } => {
+            stats.svar_values_numeric_remembered_size += 1
+        }
+        ScriptSVarNumericExpression::DiscardedValid { .. } => {
+            stats.svar_values_numeric_discarded_valid += 1
+        }
+        ScriptSVarNumericExpression::ObjectProperty { object, .. } => match object {
+            ScriptSVarObjectRef::Sacrificed => stats.svar_values_numeric_sacrificed_property += 1,
+            ScriptSVarObjectRef::TriggeredCard => {
+                stats.svar_values_numeric_triggered_card_property += 1
+            }
+            ScriptSVarObjectRef::CardList(_) => stats.svar_values_numeric_card_list_property += 1,
+            ScriptSVarObjectRef::PlayerList(_) => {
+                stats.svar_values_numeric_player_list_property += 1
+            }
+            ScriptSVarObjectRef::SpellAbility(_) => {
+                stats.svar_values_numeric_spell_ability_property += 1
+            }
+            ScriptSVarObjectRef::PaidHash(_) => stats.svar_values_numeric_paid_hash_property += 1,
+            ScriptSVarObjectRef::ReplaceCount => {
+                stats.svar_values_numeric_replace_count_property += 1
+            }
+            ScriptSVarObjectRef::RuntimeValue(_) => {
+                stats.svar_values_numeric_runtime_value_property += 1
+            }
+        },
+    }
+}
+
+fn svar_dollar_shape(raw: &str) -> String {
+    let trimmed = raw.trim();
+    let Some((head, tail)) = trimmed.split_once('$') else {
+        return trimmed.to_string();
+    };
+    let tail_head = tail.split([' ', '|', '/', '.']).next().unwrap_or("").trim();
+    format!("{}${}", head.trim(), tail_head)
 }
 
 fn record_semantic_params<'a>(
@@ -539,6 +695,7 @@ fn record_semantic_params<'a>(
         match kind {
             SemanticParamValueKind::AbilityRecord => stats.semantic_values_ability_record += 1,
             SemanticParamValueKind::Symbol => stats.semantic_values_symbol += 1,
+            SemanticParamValueKind::ProducedMana => stats.semantic_values_produced_mana += 1,
             SemanticParamValueKind::Boolean => stats.semantic_values_boolean += 1,
             SemanticParamValueKind::Integer => stats.semantic_values_integer += 1,
             SemanticParamValueKind::Amount => stats.semantic_values_amount += 1,
@@ -565,7 +722,232 @@ fn record_semantic_params<'a>(
                 value: None,
             });
         }
+        record_semantic_raw_domains(&param, path, line_no, stats);
     }
+}
+
+fn record_semantic_raw_domains(
+    param: &forge_engine_core::parsing::SemanticParam<'_>,
+    path: &Path,
+    line_no: usize,
+    stats: &mut ScriptScanStats,
+) {
+    let base = ScriptScanExample {
+        file: path.display().to_string(),
+        line_no,
+        kind: String::new(),
+        segment: param.raw_value.to_string(),
+        key: Some(param.key.to_string()),
+        previous_value: None,
+        value: Some(param.raw_value.to_string()),
+    };
+
+    match &param.value {
+        SemanticParamValue::Raw(_) => {
+            let mut example = base.clone();
+            example.kind = "SemanticRawParam".to_string();
+            record_raw_dsl_domain(stats, "semantic raw param", param.key, example);
+        }
+        SemanticParamValue::Expression(_) => {
+            let mut example = base.clone();
+            example.kind = "ExpressionParam".to_string();
+            record_raw_dsl_domain(stats, "expression param", param.key, example);
+        }
+        SemanticParamValue::Amount(amount) => match amount {
+            SemanticAmount::Expression(raw) => {
+                let mut example = base.clone();
+                example.kind = "RawAmountExpression".to_string();
+                record_raw_dsl_domain(
+                    stats,
+                    "amount expression",
+                    &format!("{}={}", param.key, value_shape(raw)),
+                    example,
+                );
+            }
+            SemanticAmount::Any | SemanticAmount::All => {
+                let mut example = base.clone();
+                example.kind = "SymbolicAmount".to_string();
+                record_raw_dsl_domain(
+                    stats,
+                    "symbolic amount",
+                    &format!("{}={}", param.key, param.raw_value),
+                    example,
+                );
+            }
+            SemanticAmount::Literal(_) | SemanticAmount::X | SemanticAmount::SVar(_) => {}
+        },
+        SemanticParamValue::Cost(raw) => {
+            let mut example = base.clone();
+            example.kind = "CostParam".to_string();
+            record_raw_dsl_domain(stats, "cost param", &cost_payload_shape(raw), example);
+        }
+        SemanticParamValue::Selector(_) | SemanticParamValue::Reference(_) => {
+            if matches!(&param.value, SemanticParamValue::Reference(_)) {
+                for defined_ref in DefinedExpr::parse(param.raw_value).refs {
+                    let mut example = base.clone();
+                    example.kind = "DefinedRef".to_string();
+                    example.segment = defined_ref.as_legacy_str().to_string();
+                    let domain = if defined_ref.is_supported() {
+                        "defined ref"
+                    } else {
+                        "defined ref unsupported"
+                    };
+                    record_raw_dsl_domain(stats, domain, defined_ref.as_legacy_str(), example);
+                }
+            }
+
+            let selector = CompiledSelector::parse(param.raw_value);
+            let domain = if matches!(&param.value, SemanticParamValue::Reference(_)) {
+                "reference raw predicate"
+            } else {
+                "selector raw predicate"
+            };
+            for raw in selector.raw_predicates() {
+                let mut example = base.clone();
+                example.kind = "RawSelectorPredicate".to_string();
+                example.segment = raw.to_string();
+                record_raw_dsl_domain(stats, domain, &selector_predicate_shape(raw), example);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn record_raw_dsl_domain(
+    stats: &mut ScriptScanStats,
+    domain: &str,
+    shape: &str,
+    mut example: ScriptScanExample,
+) {
+    let key = format!("{domain}: {shape}");
+    *stats.raw_dsl_domain_shapes.entry(key.clone()).or_default() += 1;
+    if stats.raw_dsl_domain_examples.len() < 24 {
+        if example.kind.is_empty() {
+            example.kind = domain.to_string();
+        }
+        example.previous_value = Some(shape.to_string());
+        stats.raw_dsl_domain_examples.push(example);
+    }
+}
+
+fn svar_raw_shape(raw: &str) -> String {
+    let raw = raw.trim();
+    if raw.contains('$') {
+        svar_dollar_shape(raw)
+    } else {
+        value_shape(raw)
+    }
+}
+
+fn value_shape(raw: &str) -> String {
+    let raw = raw.trim();
+    if raw.is_empty() {
+        return "<empty>".to_string();
+    }
+    raw.split([' ', '|', '/', ',', '.'])
+        .next()
+        .unwrap_or(raw)
+        .trim()
+        .to_string()
+}
+
+fn cost_payload_shape(raw: &str) -> String {
+    let mut shapes = Vec::new();
+    let mut saw_mana = false;
+    for token in split_cost_payload_tokens(raw) {
+        if is_mana_cost_piece(token) {
+            if !saw_mana {
+                shapes.push("Mana".to_string());
+                saw_mana = true;
+            }
+            continue;
+        }
+        saw_mana = false;
+        if let Some(parsed) = CostTokenKind::parse(token) {
+            shapes.push(format!("{:?}", parsed.kind));
+        } else {
+            shapes.push(
+                token
+                    .split_once('<')
+                    .map(|(head, _)| format!("{head}<...>"))
+                    .unwrap_or_else(|| value_shape(token)),
+            );
+        }
+    }
+    if shapes.is_empty() {
+        "<empty>".to_string()
+    } else {
+        shapes.join("+")
+    }
+}
+
+fn split_cost_payload_tokens(raw: &str) -> Vec<&str> {
+    let mut tokens = Vec::new();
+    let mut start = None;
+    let mut depth = 0usize;
+    for (idx, ch) in raw.char_indices() {
+        if ch == '<' {
+            depth += 1;
+        } else if ch == '>' {
+            depth = depth.saturating_sub(1);
+        }
+        if ch.is_whitespace() && depth == 0 {
+            if let Some(token_start) = start.take() {
+                tokens.push(raw[token_start..idx].trim());
+            }
+        } else if start.is_none() {
+            start = Some(idx);
+        }
+    }
+    if let Some(token_start) = start {
+        tokens.push(raw[token_start..].trim());
+    }
+    tokens
+        .into_iter()
+        .filter(|token| !token.is_empty())
+        .collect()
+}
+
+fn is_mana_cost_piece(token: &str) -> bool {
+    token == "X"
+        || token.parse::<i32>().is_ok()
+        || matches!(
+            token,
+            "W" | "U"
+                | "B"
+                | "R"
+                | "G"
+                | "C"
+                | "S"
+                | "P"
+                | "W/U"
+                | "W/B"
+                | "U/B"
+                | "U/R"
+                | "B/R"
+                | "B/G"
+                | "R/G"
+                | "R/W"
+                | "G/W"
+                | "G/U"
+                | "2/W"
+                | "2/U"
+                | "2/B"
+                | "2/R"
+                | "2/G"
+        )
+}
+
+fn selector_predicate_shape(raw: &str) -> String {
+    let raw = raw.trim();
+    if raw.is_empty() {
+        return "<empty>".to_string();
+    }
+    raw.split([' ', '.', '+'])
+        .next()
+        .unwrap_or(raw)
+        .trim()
+        .to_string()
 }
 
 /// Check that all effect API types referenced by a card's abilities (and their

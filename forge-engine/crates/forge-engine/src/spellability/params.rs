@@ -5,6 +5,8 @@
 //! typos at compile time.
 
 use super::SpellAbility;
+use crate::ability::ability_ir::DefinedRef;
+use crate::ability::ProducedMana;
 use crate::card::CounterType;
 use crate::parsing::{keys, CompiledSelector};
 use forge_foundation::ZoneType;
@@ -39,6 +41,14 @@ impl SpellAbility {
     /// Get the `Defined$` card reference (e.g. "Self", "Remembered", "Targeted").
     pub fn defined(&self) -> Option<&str> {
         self.ir.defined_text.as_deref()
+    }
+
+    /// Get the first parsed `Defined$` card reference.
+    pub fn defined_ref(&self) -> Option<&DefinedRef> {
+        self.ir
+            .defined
+            .as_ref()
+            .and_then(|defined| defined.refs.first())
     }
 
     /// Get the `DefinedPlayer$` player reference (e.g. "Player", "You", "Opponent").
@@ -88,9 +98,9 @@ impl SpellAbility {
 
     // ── Mana/cost params ───────────────────────────────────────────────────
 
-    /// Get the `Produced$` mana type string.
-    pub fn produced(&self) -> Option<&str> {
-        self.ir.produced.as_deref()
+    /// Get the lowered `Produced$` mana expression.
+    pub fn produced_ir(&self) -> Option<&ProducedMana> {
+        self.ir.produced_ir.as_ref()
     }
 
     // ── Boolean params ─────────────────────────────────────────────────────

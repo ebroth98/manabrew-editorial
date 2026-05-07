@@ -1,6 +1,7 @@
 use forge_foundation::ZoneType;
 
 use super::{emit_zone_trigger_with_lki_counters, matches_change_type, EffectContext};
+use crate::ability::ability_ir::DefinedRef;
 use crate::card::valid_filter;
 use crate::event::{AbilityValue, RunParams};
 use crate::ids::CardId;
@@ -18,8 +19,12 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     // `DelayTriggerRememberedLKI` targets the token created by the parent
     // trigger), sacrifice only those cards instead of every matching
     // permanent on the battlefield.
-    let defined_cards: Option<Vec<CardId>> = match sa.defined() {
-        Some("DelayTriggerRememberedLKI") | Some("DelayTriggerRemembered") | Some("Remembered") => {
+    let defined_cards: Option<Vec<CardId>> = match sa.defined_ref() {
+        Some(
+            DefinedRef::DelayTriggerRememberedLki
+            | DefinedRef::DelayTriggerRemembered
+            | DefinedRef::Remembered,
+        ) => {
             let mut ids = Vec::new();
             for value in &sa.trigger_remembered {
                 if let AbilityValue::Card(cid) = value {

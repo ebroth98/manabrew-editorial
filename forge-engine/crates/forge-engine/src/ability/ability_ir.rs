@@ -1,5 +1,6 @@
 use std::collections::BTreeMap;
 
+use crate::ability::ProducedMana;
 use crate::card::counter_type::parse_counter_type;
 use crate::card::valid_filter::CardTraitRequirementsIr;
 use crate::card::CounterType;
@@ -79,7 +80,7 @@ pub struct SpellAbilityIr {
     pub card_trait_requirements: CardTraitRequirementsIr,
     pub effect: Option<EffectIr>,
     pub mode_text: Option<String>,
-    pub produced: Option<String>,
+    pub produced_ir: Option<ProducedMana>,
     pub reflect_property: Option<String>,
     pub color_or_type: Option<String>,
     pub restrict_valid: Option<String>,
@@ -527,7 +528,14 @@ impl SpellAbilityIr {
             card_trait_requirements: CardTraitRequirementsIr::from_parsed(params),
             effect: lower_effect_ir(api, params),
             mode_text: params.get(keys::MODE).map(str::to_string),
-            produced: params.get(keys::PRODUCED).map(str::to_string),
+            produced_ir: params
+                .semantic_get(keys::PRODUCED)
+                .and_then(|param| match param.value {
+                    SemanticParamValue::ProducedMana(produced) => {
+                        Some(ProducedMana::from_semantic(&produced))
+                    }
+                    _ => None,
+                }),
             reflect_property: params.get(keys::REFLECT_PROPERTY).map(str::to_string),
             color_or_type: params.get(keys::COLOR_OR_TYPE).map(str::to_string),
             restrict_valid: params.get(keys::RESTRICT_VALID).map(str::to_string),
@@ -1054,72 +1062,85 @@ impl DefinedExpr {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, strum_macros::AsRefStr, strum_macros::EnumString)]
 pub enum DefinedRef {
+    #[strum(serialize = "Self", serialize = "CARDNAME")]
     SelfCard,
     You,
     Opponent,
     Player,
+    Players,
     Targeted,
+    TargetedCard,
+    ThisTargetedCard,
     TargetedPlayer,
+    ThisTargetedPlayer,
+    TargetedOrController,
+    TargetedController,
+    ThisTargetedController,
+    ParentTargetedController,
+    TargetedOwner,
+    ThisTargetedOwner,
     ParentTarget,
+    ParentTargeted,
     TriggeredCard,
+    #[strum(serialize = "TriggeredCardLKI")]
+    TriggeredCardLki,
+    #[strum(serialize = "TriggeredCardLKICopy")]
     TriggeredCardLkiCopy,
+    TriggeredPlayer,
+    TriggeredSource,
     TriggeredNewCard,
+    #[strum(serialize = "TriggeredNewCardLKICopy")]
     TriggeredNewCardLkiCopy,
+    TriggeredAttacker,
+    TriggeredAttackers,
+    TriggeredBlocker,
+    TriggeredTarget,
+    #[strum(serialize = "TriggeredTargetLKICopy")]
+    TriggeredTargetLkiCopy,
+    TriggeredTargets,
+    TriggeredTargetController,
+    TriggeredTargetsController,
+    TriggeredAttackerController,
+    TriggeredBlockerController,
+    DefendingPlayer,
+    TriggeredDefendingPlayer,
     ReplacedCard,
+    #[strum(serialize = "ReplacedCardLKI")]
+    ReplacedCardLki,
     Remembered,
+    #[strum(serialize = "RememberedLKI")]
     RememberedLki,
+    DelayTriggerRemembered,
+    #[strum(serialize = "DelayTriggerRememberedLKI")]
     DelayTriggerRememberedLki,
+    TriggerRemembered,
     Imprinted,
     ExiledWith,
+    Explorer,
+    Explored,
+    Discarded,
+    Sacrificed,
+    #[strum(default)]
     Unsupported(String),
 }
 
 impl DefinedRef {
     pub fn parse(raw: &str) -> Self {
-        match raw {
-            "Self" | "CARDNAME" => Self::SelfCard,
-            "You" => Self::You,
-            "Opponent" => Self::Opponent,
-            "Player" => Self::Player,
-            "Targeted" => Self::Targeted,
-            "TargetedPlayer" => Self::TargetedPlayer,
-            "ParentTarget" => Self::ParentTarget,
-            "TriggeredCard" => Self::TriggeredCard,
-            "TriggeredCardLKICopy" => Self::TriggeredCardLkiCopy,
-            "TriggeredNewCard" => Self::TriggeredNewCard,
-            "TriggeredNewCardLKICopy" => Self::TriggeredNewCardLkiCopy,
-            "ReplacedCard" => Self::ReplacedCard,
-            "Remembered" => Self::Remembered,
-            "RememberedLKI" => Self::RememberedLki,
-            "DelayTriggerRememberedLKI" => Self::DelayTriggerRememberedLki,
-            "Imprinted" => Self::Imprinted,
-            "ExiledWith" => Self::ExiledWith,
-            other => Self::Unsupported(other.to_string()),
-        }
+        raw.parse()
+            .unwrap_or_else(|_| Self::Unsupported(raw.to_string()))
+    }
+
+    pub fn is_supported(&self) -> bool {
+        !matches!(self, Self::Unsupported(_))
     }
 
     pub fn as_legacy_str(&self) -> &str {
         match self {
             Self::SelfCard => "Self",
-            Self::You => "You",
-            Self::Opponent => "Opponent",
-            Self::Player => "Player",
-            Self::Targeted => "Targeted",
-            Self::TargetedPlayer => "TargetedPlayer",
-            Self::ParentTarget => "ParentTarget",
-            Self::TriggeredCard => "TriggeredCard",
-            Self::TriggeredCardLkiCopy => "TriggeredCardLKICopy",
-            Self::TriggeredNewCard => "TriggeredNewCard",
-            Self::TriggeredNewCardLkiCopy => "TriggeredNewCardLKICopy",
-            Self::ReplacedCard => "ReplacedCard",
-            Self::Remembered => "Remembered",
-            Self::RememberedLki => "RememberedLKI",
-            Self::DelayTriggerRememberedLki => "DelayTriggerRememberedLKI",
-            Self::Imprinted => "Imprinted",
-            Self::ExiledWith => "ExiledWith",
             Self::Unsupported(raw) => raw,
+            other => other.as_ref(),
         }
     }
 }
