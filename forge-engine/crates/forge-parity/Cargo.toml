@@ -7,10 +7,6 @@ edition = "2021"
 name = "forge-parity"
 path = "src/main.rs"
 
-[[bin]]
-name = "parity-ci"
-path = "src/infra/ci_client.rs"
-
 [features]
 default = []
 storage = ["rusqlite", "chrono"]

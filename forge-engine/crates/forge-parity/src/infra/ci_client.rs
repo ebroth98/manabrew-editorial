@@ -1,21 +1,25 @@
-//! CI client binary for submitting and polling parity regression jobs.
+//! CI client mode for submitting and polling parity regression jobs.
 //!
 //! This is a simple HTTP client that talks to the parity server's job queue API.
 //! It avoids the need for python3/jq/curl on the CI runner.
 //!
 //! Usage:
-//!   parity-ci submit --server http://localhost:8080 --file regression.json
-//!   parity-ci poll --server http://localhost:8080 --batch-id 1
-//!   parity-ci health --server http://localhost:8080
+//!   forge-parity ci-client submit --server http://localhost:8080 --file regression.json
+//!   forge-parity ci-client poll --server http://localhost:8080 --batch-id 1
+//!   forge-parity ci-client health --server http://localhost:8080
 
 use std::io::{Read, Write};
 use std::net::TcpStream;
 use std::time::Duration;
 
-fn main() {
+pub fn main() {
     let args: Vec<String> = std::env::args().collect();
+    run(&args);
+}
+
+pub fn run(args: &[String]) {
     if args.len() < 2 {
-        eprintln!("Usage: parity-ci <health|submit|poll> [options]");
+        eprintln!("Usage: forge-parity ci-client <health|submit|poll> [options]");
         std::process::exit(1);
     }
 
@@ -618,5 +622,44 @@ fn gh_comment(repo: &str, pr: &str, body: &str) {
         Err(e) => {
             eprintln!("[ci] Failed to run curl: {e}");
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{decode_chunked, parse_host_port, parse_http_response};
+
+    #[test]
+    fn parse_host_port_accepts_url_and_defaults_port() {
+        assert_eq!(
+            parse_host_port("http://localhost:9000"),
+            ("localhost".to_string(), 9000)
+        );
+        assert_eq!(
+            parse_host_port("127.0.0.1"),
+            ("127.0.0.1".to_string(), 8080)
+        );
+    }
+
+    #[test]
+    fn parse_http_response_decodes_chunked_body() {
+        let raw = concat!(
+            "HTTP/1.1 200 OK\r\n",
+            "Transfer-Encoding: chunked\r\n",
+            "\r\n",
+            "5\r\nhello\r\n",
+            "6\r\n world\r\n",
+            "0\r\n\r\n"
+        );
+
+        assert_eq!(
+            parse_http_response(raw),
+            Ok((200, "hello world".to_string()))
+        );
+    }
+
+    #[test]
+    fn decode_chunked_tolerates_incomplete_final_chunk() {
+        assert_eq!(decode_chunked("5\r\nhello\r\n6\r\n wor"), "hello wor");
     }
 }

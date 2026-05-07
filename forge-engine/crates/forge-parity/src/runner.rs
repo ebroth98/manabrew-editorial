@@ -165,7 +165,6 @@ impl ParityObserver {
 struct CapturingAgent {
     player_id: PlayerId,
     inner: DeterministicAgent,
-    shared_log: Arc<Mutex<Vec<ParityLogEntry>>>,
     shared_covered_cards: Arc<Mutex<BTreeSet<String>>>,
     parity_observer: Arc<ParityObserver>,
     parity_map: Arc<ParityCardMap>,
@@ -264,7 +263,6 @@ impl CapturingAgent {
                 Arc::clone(&parity_map),
                 Some(Arc::clone(&observer)),
             ),
-            shared_log,
             shared_covered_cards: covered,
             parity_observer: observer,
             parity_map,
@@ -847,6 +845,11 @@ pub struct LoadedData {
     pub db: CardDatabase,
     pub token_templates: Vec<(String, CardInstance)>,
 }
+
+// Parity runners share loaded card data across worker threads. Game execution
+// clones card definitions into per-game state before mutation; the shared
+// database/templates are treated as immutable runtime inputs.
+unsafe impl Sync for LoadedData {}
 
 fn cardset_archive_path() -> std::path::PathBuf {
     if let Ok(path) = std::env::var("CARDSET_ARCHIVE") {

@@ -6,19 +6,22 @@ Read first: `/AGENTS.md`, `docs/agents/ENGINE_BUGFIX_WORKFLOW.md`, `docs/PARITY_
 
 ## Layout
 
-| File / folder | Role |
-|---|---|
-| `regression.json` | The canonical regression suite. Each entry: deck1, deck2, seed, max_turns, games. `yarn parity <name>` looks up entries here. |
-| `parity_ignore.json` | Known-divergent matchups to skip, with a written reason. |
-| `src/runner.rs`, `src/scheduler.rs` | Top-level orchestration. |
-| `src/deterministic_agent.rs` | The reproducible agent both engines drive. Same logic, same RNG, same decisions. |
-| `src/java_bridge.rs`, `src/java_cache.rs`, `src/java_random.rs` | Java harness FFI — calls into `forge/forge-harness/`. |
-| `src/comparator.rs`, `src/snapshot.rs` | Trace comparison and per-phase snapshots. |
-| `src/parity_log.rs`, `src/log_buffer.rs`, `src/callback_fmt.rs` | Divergence reporting. |
-| `src/choice_space.rs`, `src/combat_choice_space.rs` | Legal-action enumeration mirrored against Java. |
-| `src/parity_card_map.rs`, `src/parity_id.rs`, `src/parity_order.rs` | Cross-engine identity bridging (card name ↔ id). |
-| `src/deck_generator.rs`, `src/card_pool.rs` | Deck construction for matrix runs. |
-| `src/bin/`, `src/tools/`, `src/utils/`, `src/infra/` | CLI binaries, debugging tools, shared utilities. |
+| File / folder                                                       | Role                                                                                                                                             |
+| ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `regression.json`                                                   | The canonical regression suite. Each entry: deck1, deck2, seed, max_turns, games. `yarn parity <name>` looks up entries here.                    |
+| `parity_ignore.json`                                                | Known-divergent matchups to skip, with a written reason.                                                                                         |
+| `src/runner.rs`, `src/scheduler.rs`                                 | Top-level orchestration.                                                                                                                         |
+| `src/deterministic_agent.rs`                                        | The reproducible agent both engines drive. Same logic, same RNG, same decisions.                                                                 |
+| `src/java_bridge.rs`, `src/java_cache.rs`, `src/java_random.rs`     | Java harness FFI — calls into `forge/forge-harness/`.                                                                                            |
+| `src/runtime.rs`                                                    | Shared Rust/Java matchup runtime. CLI, CI/server mode, and debugger tooling should use this instead of growing separate engine scheduling logic. |
+| `src/comparator.rs`, `src/snapshot.rs`                              | Trace comparison and per-phase snapshots.                                                                                                        |
+| `src/parity_log.rs`, `src/log_buffer.rs`, `src/callback_fmt.rs`     | Divergence reporting.                                                                                                                            |
+| `src/choice_space.rs`, `src/combat_choice_space.rs`                 | Legal-action enumeration mirrored against Java.                                                                                                  |
+| `src/parity_card_map.rs`, `src/parity_id.rs`, `src/parity_order.rs` | Cross-engine identity bridging (card name ↔ id).                                                                                                 |
+| `src/deck_generator.rs`, `src/card_pool.rs`                         | Deck construction for matrix runs.                                                                                                               |
+| `src/bin/`, `src/tools/`, `src/utils/`, `src/infra/`                | CLI binaries, debugging tools, shared utilities.                                                                                                 |
+
+`forge-parity` is the single built binary for parity infrastructure. CI queue client commands live under `forge-parity ci-client <health|submit|poll>` rather than a separate `parity-ci` executable.
 
 ## Common workflows
 

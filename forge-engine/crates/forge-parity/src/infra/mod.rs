@@ -1,5 +1,6 @@
 #[cfg(feature = "analyze")]
 pub mod analyzer;
+pub mod ci_client;
 #[cfg(feature = "analyze")]
 pub mod discord;
 #[cfg(feature = "analyze")]

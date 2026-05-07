@@ -17,6 +17,7 @@ use forge_parity::java_bridge::{JavaBridgeError, JavaMatchupData, JavaServer, Ja
 use forge_parity::parity_compare::{compare_matchup, compare_matchup_partial_logs};
 use forge_parity::protocol::{GameTrace, MatchupResult, ParityLogEntry};
 use forge_parity::runner::{load_data, run_with_data_streaming, LoadedData, RunConfig};
+use forge_parity::runtime::ParityRuntime;
 
 use crate::{
     discover_java_jar, repo_relative_path, repo_root, TraceMode, TracePaneKind,
@@ -366,7 +367,6 @@ fn run_trace_request(
         }
         TraceMode::Compare => {
             let data = ensure_loaded_data(event_tx, loaded_data)?;
-            let event_tx_rust = event_tx.clone();
             let config = request.config.clone();
             let java_jar_path = request.java_jar_path.clone();
             let abort_for_rust = abort.clone();
@@ -374,109 +374,89 @@ fn run_trace_request(
             let java_log = Arc::new(Mutex::new(Vec::<ParityLogEntry>::new()));
             let compare_emitted = Arc::new(AtomicBool::new(false));
             let stop_after_turn = Arc::new(Mutex::new(None::<u32>));
-            let (rust_trace, java_data) = std::thread::scope(|scope| {
-                let (rust_tx, rust_rx) = mpsc::channel::<Result<GameTrace, String>>();
-                let rust_log_for_thread = rust_log.clone();
-                let java_log_for_rust = java_log.clone();
-                let compare_emitted_for_rust = compare_emitted.clone();
-                let stop_after_turn_for_rust = stop_after_turn.clone();
-                let event_tx_partial_rust = event_tx.clone();
-                let config_for_rust = config.clone();
-                let config_for_rust_callback = config.clone();
-                let abort_for_rust_callback = abort_for_rust.clone();
-                let rust_handle = thread::Builder::new()
-                    .name("debugger-rust-trace".to_string())
-                    .stack_size(TRACE_THREAD_STACK_SIZE)
-                    .spawn_scoped(scope, move || {
-                        let result = run_rust_trace_with_loaded_data(
-                            &event_tx_rust,
-                            data,
-                            &config_for_rust,
-                            &abort_for_rust,
-                            move |entry| {
-                                lock_pt(&rust_log_for_thread).push(entry.clone());
-                                if let Some(snapshot) = entry.as_snapshot() {
-                                    if lock_pt(&stop_after_turn_for_rust)
-                                        .is_some_and(|limit| snapshot.turn > limit)
-                                    {
-                                        abort_for_rust_callback.store(true, Ordering::Relaxed);
-                                        return;
-                                    }
-                                }
-                                if entry.as_snapshot().is_some() {
-                                    let _ = try_emit_partial_compare(
-                                        &event_tx_partial_rust,
-                                        &config_for_rust_callback,
-                                        &rust_log_for_thread,
-                                        &java_log_for_rust,
-                                        &compare_emitted_for_rust,
-                                        &stop_after_turn_for_rust,
-                                        "rust",
-                                    );
-                                }
-                            },
-                        );
-                        let _ = rust_tx.send(result);
-                    })
-                    .map_err(|err| format!("failed to spawn rust trace thread: {err}"))?;
-                let java_result = run_java_trace(
-                    event_tx,
-                    java_server,
-                    java_server_jar,
-                    &java_jar_path,
-                    &config,
-                    &abort,
-                    |entry| {
-                        if abort.load(Ordering::Relaxed) {
-                            return Ok(false);
-                        }
-                        lock_pt(&java_log).push(entry.clone());
-                        if let Some(snapshot) = entry.as_snapshot() {
-                            if lock_pt(&stop_after_turn).is_some_and(|limit| snapshot.turn > limit)
-                            {
-                                abort.store(true, Ordering::Relaxed);
-                                return Ok(false);
-                            }
-                        }
-                        if entry.as_snapshot().is_some()
-                            && try_emit_partial_compare(
-                                event_tx,
-                                &config,
-                                &rust_log,
-                                &java_log,
-                                &compare_emitted,
-                                &stop_after_turn,
-                                "java",
-                            )
+            let server =
+                ensure_java_server(event_tx, java_server, java_server_jar, &java_jar_path)?;
+            let _ = event_tx.send(TraceWorkerEvent::Status(
+                "Running side-by-side trace…".to_string(),
+            ));
+            let rust_log_for_thread = rust_log.clone();
+            let java_log_for_rust = java_log.clone();
+            let compare_emitted_for_rust = compare_emitted.clone();
+            let stop_after_turn_for_rust = stop_after_turn.clone();
+            let event_tx_rust_stream = event_tx.clone();
+            let config_for_rust_callback = config.clone();
+            let abort_for_rust_callback = abort_for_rust.clone();
+            let event_tx_java = event_tx.clone();
+            let config_for_java = config.clone();
+            let abort_for_java = abort.clone();
+            let rust_log_for_java = rust_log.clone();
+            let java_log_for_java = java_log.clone();
+            let compare_emitted_for_java = compare_emitted.clone();
+            let stop_after_turn_for_java = stop_after_turn.clone();
+            let (rust_trace, java_data) = ParityRuntime::new(data).run_with_server_streaming(
+                &config,
+                server,
+                "debugger-rust-trace",
+                move |entry| {
+                    if abort_for_rust.load(Ordering::Relaxed) {
+                        return;
+                    }
+                    lock_pt(&rust_log_for_thread).push(entry.clone());
+                    if let Some(snapshot) = entry.as_snapshot() {
+                        if lock_pt(&stop_after_turn_for_rust)
+                            .is_some_and(|limit| snapshot.turn > limit)
                         {
-                            return Ok(true);
+                            abort_for_rust_callback.store(true, Ordering::Relaxed);
+                            return;
                         }
-                        Ok(true)
-                    },
-                );
-                // Capture results from both sides without short-circuiting:
-                //   - rust_rx.recv() returns Err if the rust thread panicked
-                //     (its tx dropped).
-                //   - rust_handle.join() must be called explicitly to consume
-                //     the panic payload from the scope. If we let `?` propagate
-                //     before joining, std::thread::scope's drop will detect the
-                //     un-collected panic and re-raise it on the calling
-                //     (worker) thread — which is then the worker's own panic,
-                //     not a clean Err returned through the channel.
-                let recv_result = rust_rx.recv();
-                let join_result = rust_handle.join();
-                let rust_trace = match (recv_result, join_result) {
-                    (_, Err(_)) => {
-                        return Err("rust trace thread panicked".to_string());
                     }
-                    (Err(_), Ok(())) => {
-                        return Err("rust trace thread disconnected".to_string());
+                    if entry.as_snapshot().is_some() {
+                        let _ = try_emit_partial_compare(
+                            &event_tx_rust_stream,
+                            &config_for_rust_callback,
+                            &rust_log_for_thread,
+                            &java_log_for_rust,
+                            &compare_emitted_for_rust,
+                            &stop_after_turn_for_rust,
+                            "rust",
+                        );
                     }
-                    (Ok(Err(err)), Ok(())) => return Err(err),
-                    (Ok(Ok(trace)), Ok(())) => trace,
-                };
-                Ok::<_, String>((rust_trace, java_result?))
-            })?;
+                    if abort_for_rust.load(Ordering::Relaxed) {
+                        return;
+                    }
+                    send_stream_entry(&event_tx_rust_stream, TracePaneKind::Rust, entry);
+                },
+                |entry| {
+                    if abort_for_java.load(Ordering::Relaxed) {
+                        return false;
+                    }
+                    lock_pt(&java_log_for_java).push(entry.clone());
+                    if let Some(snapshot) = entry.as_snapshot() {
+                        if lock_pt(&stop_after_turn_for_java)
+                            .is_some_and(|limit| snapshot.turn > limit)
+                        {
+                            abort_for_java.store(true, Ordering::Relaxed);
+                            return false;
+                        }
+                    }
+                    if entry.as_snapshot().is_some()
+                        && try_emit_partial_compare(
+                            &event_tx_java,
+                            &config_for_java,
+                            &rust_log_for_java,
+                            &java_log_for_java,
+                            &compare_emitted_for_java,
+                            &stop_after_turn_for_java,
+                            "java",
+                        )
+                    {
+                        send_stream_entry(&event_tx_java, TracePaneKind::Java, entry.clone());
+                        return true;
+                    }
+                    send_stream_entry(&event_tx_java, TracePaneKind::Java, entry.clone());
+                    true
+                },
+            )?;
             compare_result = Some(compare_matchup(&config, &rust_trace, &java_data));
             rust = Some(rust_trace);
             java = Some(java_data);

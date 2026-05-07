@@ -34,6 +34,7 @@ pub mod parity_order;
 pub mod protocol;
 pub mod report;
 pub mod runner;
+pub mod runtime;
 pub mod snapshot;
 pub mod utils;
 
