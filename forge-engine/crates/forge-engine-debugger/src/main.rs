@@ -18,14 +18,16 @@ use forge_parity::runner::RunConfig;
 use serde::Deserialize;
 
 mod archive;
-mod script_view;
 mod card_widgets;
+mod script_view;
 mod theme;
 mod ts_view;
 mod worker;
 
 use crate::archive::ArchiveState;
-use crate::card_widgets::{render_battlefield_strip, render_hand_strip, render_selectable_card_row};
+use crate::card_widgets::{
+    render_battlefield_strip, render_hand_strip, render_selectable_card_row,
+};
 use crate::script_view::{render_ast, render_summary};
 use crate::ts_view::highlight_source_job;
 use crate::worker::{TraceRunRequest, TraceWorkerCommand, TraceWorkerEvent, TraceWorkerHandle};
@@ -5075,7 +5077,11 @@ fn render_action_space_event_card(ui: &mut egui::Ui, callback: &CallbackRecord) 
                 .strip_prefix('[')
                 .and_then(|s| s.strip_suffix(']'))
                 .unwrap_or(raw);
-            let choices: Vec<&str> = body.split('|').map(str::trim).filter(|s| !s.is_empty()).collect();
+            let choices: Vec<&str> = body
+                .split('|')
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .collect();
             if choices.is_empty() {
                 ui.colored_label(theme::FG_3, "(no choices)");
                 return;
@@ -5084,12 +5090,7 @@ fn render_action_space_event_card(ui: &mut egui::Ui, callback: &CallbackRecord) 
                 let is_pass = choice == "PASS";
                 let color = if is_pass { theme::FG_2 } else { theme::FG_0 };
                 ui.add(
-                    egui::Label::new(
-                        egui::RichText::new(choice)
-                            .monospace()
-                            .color(color),
-                    )
-                    .wrap(),
+                    egui::Label::new(egui::RichText::new(choice).monospace().color(color)).wrap(),
                 );
             }
         },

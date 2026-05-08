@@ -17,6 +17,33 @@ use crate::protocol::{
     CallbackRecord, ChoiceLogEntry, DecisionRecord, ParityLogEntry, StateSnapshot,
 };
 
+/// Build the value passed to the Java harness via `-Dpreset.decks.dir=...`.
+///
+/// The Java harness splits this on `,` and tries each path in order, mirroring
+/// the Rust multi-dir search. When `override_dir` is `Some`, only that path is
+/// used (preserves explicit `--decks-dir` semantics for tests/debugging). When
+/// `None`, falls back to the canonical default list (`parity_decks`,
+/// `preset_decks`), each canonicalised so the JAR can be invoked from any cwd.
+pub fn decks_dir_property(override_dir: Option<&str>) -> String {
+    let parts: Vec<String> = match override_dir {
+        Some(d) => vec![d.to_string()],
+        None => crate::runner::DEFAULT_DECKS_DIRS
+            .iter()
+            .map(|s| s.to_string())
+            .collect(),
+    };
+    parts
+        .into_iter()
+        .map(|d| {
+            std::path::Path::new(&d)
+                .canonicalize()
+                .map(|p| p.display().to_string())
+                .unwrap_or(d)
+        })
+        .collect::<Vec<_>>()
+        .join(",")
+}
+
 /// Configuration for a Java bridge subprocess.
 pub struct JavaBridgeConfig {
     pub jar_path: PathBuf,
@@ -76,13 +103,14 @@ impl JavaBridge {
         cmd.arg("-Dsun.stdout.encoding=UTF-8");
         cmd.arg("-Dsun.stderr.encoding=UTF-8");
 
-        // Pass preset decks directory as JVM system property (must come before -jar)
-        if let Some(ref dd) = self.config.decks_dir {
-            let abs = std::path::Path::new(dd)
-                .canonicalize()
-                .unwrap_or_else(|_| std::path::PathBuf::from(dd));
-            cmd.arg(format!("-Dpreset.decks.dir={}", abs.display()));
-        }
+        // Pass preset decks directory list as JVM system property (must come before -jar).
+        // Java side splits on `,` and tries each path in order; mirrors the Rust
+        // multi-dir search so both engines find decks in `parity_decks/` and
+        // `preset_decks/` without requiring a CLI override.
+        cmd.arg(format!(
+            "-Dpreset.decks.dir={}",
+            decks_dir_property(self.config.decks_dir.as_deref())
+        ));
 
         // Forward RNG trace flag to Java engine
         if std::env::var("FORGE_RNG_TRACE").is_ok() {
@@ -323,15 +351,12 @@ impl JavaServer {
         cmd.arg("-Dsun.stdout.encoding=UTF-8");
         cmd.arg("-Dsun.stderr.encoding=UTF-8");
 
-        // Pass preset decks directory as JVM system property (must come before -jar)
-        if let Some(ref dd) = config.decks_dir {
-            let abs = std::path::Path::new(dd)
-                .canonicalize()
-                .unwrap_or_else(|_| std::path::PathBuf::from(dd));
-            cmd.arg(format!("-Dpreset.decks.dir={}", abs.display()));
-            if verbose {
-                eprintln!("[parity]   preset.decks.dir = {}", abs.display());
-            }
+        // Pass preset decks directory list as JVM system property (must come before -jar).
+        // See `decks_dir_property` for multi-dir semantics.
+        let dd_prop = decks_dir_property(config.decks_dir.as_deref());
+        cmd.arg(format!("-Dpreset.decks.dir={}", dd_prop));
+        if verbose {
+            eprintln!("[parity]   preset.decks.dir = {}", dd_prop);
         }
 
         // Forward RNG trace flag to Java engine

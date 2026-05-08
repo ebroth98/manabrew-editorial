@@ -1,6 +1,6 @@
 {
-  "label": "Kaalia Regression Commander",
-  "desc": "Commander parity deck focused on Kaalia attack insertion, may prompts, ETB triggers, and cheated-in attackers.",
+  "label": "Kaalia of the Vast",
+  "desc": "Mardu commander deck led by Kaalia of the Vast — cheating Angels, Demons, and Dragons into play.",
   "color": "text-rose-300",
   "format": "commander",
   "commander": "Kaalia of the Vast",

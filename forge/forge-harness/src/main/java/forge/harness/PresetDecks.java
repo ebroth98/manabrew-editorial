@@ -17,29 +17,40 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.ArrayList;
-import java.util.List;
 
 /**
- * Builds preset decks from shared JSON files in the preset_decks/ directory.
- * Card lists are the single source of truth shared with the Rust parity runner.
+ * Builds preset decks from shared JSON files in the {@code parity_decks/} and
+ * {@code preset_decks/} directories. Card lists are the single source of truth
+ * shared with the Rust parity runner — the directory list mirrors
+ * {@code DEFAULT_DECKS_DIRS} on the Rust side.
  */
 public final class PresetDecks {
     private PresetDecks() {}
 
-    /** Default directory for preset deck JSON files (relative to CWD). */
-    private static final String DEFAULT_DECKS_DIR = "preset_decks";
+    /**
+     * Default directories for preset deck JSON files (relative to CWD), searched
+     * in order. Mirrors {@code DEFAULT_DECKS_DIRS} on the Rust side
+     * ({@code forge-parity/src/runner.rs}).
+     */
+    private static final String[] DEFAULT_DECKS_DIRS = { "parity_decks", "preset_decks" };
 
-    private static String getDecksDir() {
+    /**
+     * Returns the list of directories to search for preset decks, in order.
+     *
+     * <p>The {@code preset.decks.dir} system property and {@code PRESET_DECKS_DIR}
+     * environment variable both accept a comma-separated list of paths.
+     * Single-path values keep working (no comma → single-element list).
+     */
+    private static String[] getDecksDirs() {
         String dir = System.getProperty("preset.decks.dir");
         if (dir != null && !dir.isEmpty()) {
-            return dir;
+            return dir.split(",");
         }
         dir = System.getenv("PRESET_DECKS_DIR");
         if (dir != null && !dir.isEmpty()) {
-            return dir;
+            return dir.split(",");
         }
-        return DEFAULT_DECKS_DIR;
+        return DEFAULT_DECKS_DIRS;
     }
 
     /**
@@ -53,9 +64,15 @@ public final class PresetDecks {
             return buildInlineDeck(presetName.substring(7));
         }
 
-        String decksDir = getDecksDir();
-        Path jsonPath = Paths.get(decksDir, presetName + ".json");
-        if (!Files.exists(jsonPath)) {
+        Path jsonPath = null;
+        for (String decksDir : getDecksDirs()) {
+            Path candidate = Paths.get(decksDir.trim(), presetName + ".json");
+            if (Files.exists(candidate)) {
+                jsonPath = candidate;
+                break;
+            }
+        }
+        if (jsonPath == null) {
             return null;
         }
 
@@ -130,24 +147,24 @@ public final class PresetDecks {
     }
 
     /**
-     * Returns all available preset names by scanning the preset_decks/ directory.
+     * Returns all available preset names by scanning every configured deck
+     * directory. Names are deduped and sorted.
      */
     public static String[] availablePresets() {
-        String decksDir = getDecksDir();
-        File dir = new File(decksDir);
-        if (!dir.isDirectory()) {
-            return new String[0];
+        java.util.TreeSet<String> names = new java.util.TreeSet<>();
+        for (String decksDir : getDecksDirs()) {
+            File dir = new File(decksDir.trim());
+            if (!dir.isDirectory()) {
+                continue;
+            }
+            File[] files = dir.listFiles((d, name) -> name.endsWith(".json"));
+            if (files == null) {
+                continue;
+            }
+            for (File f : files) {
+                names.add(f.getName().replace(".json", ""));
+            }
         }
-        File[] files = dir.listFiles((d, name) -> name.endsWith(".json"));
-        if (files == null) {
-            return new String[0];
-        }
-        List<String> names = new ArrayList<>();
-        for (File f : files) {
-            String stem = f.getName().replace(".json", "");
-            names.add(stem);
-        }
-        names.sort(String::compareTo);
         return names.toArray(new String[0]);
     }
 }

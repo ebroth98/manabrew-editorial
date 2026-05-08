@@ -1,6 +1,6 @@
 {
   "label": "Jund Wildfire",
-  "desc": "Real Pauper deck: Cleansing Wildfire artifact lands Jund value (Jund Wildfire archetype)",
+  "desc": "Pauper Cleansing Wildfire artifact-lands Jund value deck.",
   "color": "text-red-400",
   "format": "pauper",
   "opponent": "real_mono_black_sacrifice",

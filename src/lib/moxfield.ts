@@ -45,6 +45,8 @@ interface RawMoxfieldDeck {
   createdByUser?: { userName?: string };
   mainboard?: Record<string, RawMoxfieldBoardEntry>;
   commanders?: Record<string, RawMoxfieldBoardEntry>;
+  /** Oathbreaker signature spells (separate command-zone slot). */
+  signatureSpells?: Record<string, RawMoxfieldBoardEntry>;
   sideboard?: Record<string, RawMoxfieldBoardEntry>;
   maybeboard?: Record<string, RawMoxfieldBoardEntry>;
 }
@@ -88,6 +90,7 @@ export async function fetchMoxfieldDeck(
   const colors = new Set<string>();
   const cards = collectBoard(data.mainboard, colors);
   const commanders = collectBoard(data.commanders, colors);
+  const signatureSpells = collectBoard(data.signatureSpells, colors);
   return {
     id: data.publicId,
     name: data.name,
@@ -95,6 +98,7 @@ export async function fetchMoxfieldDeck(
     colors: data.colorIdentity ?? data.colors ?? [...colors],
     cards,
     commanders,
+    signatureSpells,
   };
 }
 

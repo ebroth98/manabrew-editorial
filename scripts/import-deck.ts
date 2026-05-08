@@ -3,8 +3,15 @@
 // Usage:
 //   yarn import-deck "<query>" [--format=<format>]
 //   yarn import-deck --url=<archidekt-url> [--format=<format>]
+//   yarn import-deck --url=<deck-url> --non-interactive [--label=...] [--filename=...] [--skip-enrich]
 // Searches Archidekt (or jumps directly to a deck when --url is passed),
 // prompts for a selection, and writes a preset deck JSON file to preset_decks/.
+//
+// --non-interactive (alias -y) skips every prompt and uses default metadata
+// (label = deck name, slug from name, desc from deck description). Requires
+// --url because we can't auto-pick from a multi-result search. Combine with
+// --skip-enrich when batch-importing many decks; run
+// `node scripts/enrich-preset-decks.mjs` once at the end instead.
 
 import { readdir, readFile, writeFile } from "node:fs/promises";
 import { createInterface } from "node:readline/promises";
@@ -60,14 +67,36 @@ interface CliArgs {
   query: string;
   format: string;
   url: string;
+  nonInteractive: boolean;
+  label: string;
+  desc: string;
+  filename: string;
+  skipEnrich: boolean;
 }
 
 function parseArgs(argv: string[]): CliArgs {
-  const args: CliArgs = { query: "", format: "standard", url: "" };
+  // format default is empty so we can tell "user didn't pass --format" apart
+  // from "user explicitly chose standard". When empty, we fall back to the
+  // format the upstream API (Moxfield / Archidekt) reports for the deck.
+  const args: CliArgs = {
+    query: "",
+    format: "",
+    url: "",
+    nonInteractive: false,
+    label: "",
+    desc: "",
+    filename: "",
+    skipEnrich: false,
+  };
   const rest: string[] = [];
   for (const a of argv) {
     if (a.startsWith("--format=")) args.format = a.slice("--format=".length);
     else if (a.startsWith("--url=")) args.url = a.slice("--url=".length);
+    else if (a === "--non-interactive" || a === "-y") args.nonInteractive = true;
+    else if (a.startsWith("--label=")) args.label = a.slice("--label=".length);
+    else if (a.startsWith("--desc=")) args.desc = a.slice("--desc=".length);
+    else if (a.startsWith("--filename=")) args.filename = a.slice("--filename=".length);
+    else if (a === "--skip-enrich") args.skipEnrich = true;
     else rest.push(a);
   }
   args.query = rest.join(" ").trim();
@@ -204,11 +233,19 @@ function renderResults(results: ArchidektSearchResult[]) {
 }
 
 async function main() {
-  const { query, format, url } = parseArgs(process.argv.slice(2));
+  const cli = parseArgs(process.argv.slice(2));
+  const { query, format, url, nonInteractive, skipEnrich } = cli;
   if (!query && !url) {
     console.error(red("✗ Missing query or --url."));
     console.error(dim('  Usage: yarn import-deck "<query>" [--format=<format>]'));
     console.error(dim("         yarn import-deck --url=<archidekt-url> [--format=<format>]"));
+    process.exit(1);
+  }
+  if (nonInteractive && !url) {
+    console.error(red("✗ --non-interactive requires --url=<deck-url>."));
+    console.error(
+      dim("  Search-by-query requires picking from results, which can't be automated."),
+    );
     process.exit(1);
   }
 
@@ -221,10 +258,11 @@ async function main() {
   console.log(header("Deck Importer"));
   console.log(`  ${dim(parsedUrl ? "url   :" : "query :")} ${bold(parsedUrl ? url : query)}`);
   if (parsedUrl) console.log(`  ${dim("source:")} ${bold(parsedUrl.source)}`);
-  console.log(`  ${dim("format:")} ${bold(format)}`);
+  console.log(`  ${dim("format:")} ${bold(format || "(auto-detect)")}`);
+  if (nonInteractive) console.log(`  ${dim("mode  :")} ${bold("non-interactive")}`);
   console.log(rule());
 
-  const rl = createInterface({ input, output });
+  const rl = nonInteractive ? null : createInterface({ input, output });
   let chosen: ArchidektSearchResult;
   let deck: ArchidektDeck;
 
@@ -234,32 +272,37 @@ async function main() {
       chosen = await fetchResultBySource(parsedUrl.source, parsedUrl.id);
       deck = await fetchDeckBySource(parsedUrl.source, parsedUrl.id);
     } catch (e) {
-      rl.close();
+      rl?.close();
       const msg = e instanceof Error ? e.message : String(e);
       console.error(red(`\n✗ ${msg}`));
       process.exit(1);
     }
     renderDeckDetails(chosen, deck);
-    const action = await promptAction(rl, { allowBack: false });
-    if (action !== "import") {
-      rl.close();
-      console.log(yellow("\n  cancelled."));
-      return;
+    if (!nonInteractive) {
+      const action = await promptAction(rl!, { allowBack: false });
+      if (action !== "import") {
+        rl!.close();
+        console.log(yellow("\n  cancelled."));
+        return;
+      }
     }
   } else {
+    // Interactive-only branch: parseArgs + the early guard above guarantee
+    // nonInteractive is false here, so rl is non-null.
+    const irl = rl!;
     console.log(dim("  searching…"));
     let results: ArchidektSearchResult[];
     try {
       results = await searchArchidekt(query, { pageSize: ARCHIDEKT_PAGE_SIZE });
     } catch (e) {
-      rl.close();
+      irl.close();
       const msg = e instanceof Error ? e.message : String(e);
       console.error(red(`\n✗ ${msg}`));
       process.exit(1);
     }
 
     if (results.length === 0) {
-      rl.close();
+      irl.close();
       console.error(red("\n✗ No decks found."));
       process.exit(1);
     }
@@ -268,9 +311,9 @@ async function main() {
     let pickedDeck: ArchidektDeck | null = null;
     while (true) {
       renderResults(results);
-      const idx = await promptIndex(rl, results.length);
+      const idx = await promptIndex(irl, results.length);
       if (idx < 0) {
-        rl.close();
+        irl.close();
         console.log(yellow("\n  cancelled."));
         return;
       }
@@ -285,14 +328,14 @@ async function main() {
         continue;
       }
       renderDeckDetails(candidate, fetched);
-      const action = await promptAction(rl);
+      const action = await promptAction(irl);
       if (action === "import") {
         picked = candidate;
         pickedDeck = fetched;
         break;
       }
       if (action === "quit") {
-        rl.close();
+        irl.close();
         console.log(yellow("\n  cancelled."));
         return;
       }
@@ -301,26 +344,40 @@ async function main() {
     deck = pickedDeck!;
   }
 
-  console.log(header("Preset metadata"));
-  const labelAnswer = (
-    await rl.question(`  ${dim("label    ")} ${gray(`[${chosen.name}]`)} ${cyan("›")} `)
-  ).trim();
-  const descAnswer = (
-    await rl.question(`  ${dim("desc     ")} ${gray("(optional)")}          ${cyan("›")} `)
-  ).trim();
-  const fileAnswer = (
-    await rl.question(`  ${dim("filename ")} ${gray(`[${slugify(chosen.name)}]`)} ${cyan("›")} `)
-  ).trim();
-  rl.close();
+  let labelAnswer = cli.label;
+  let descAnswer = cli.desc;
+  let fileAnswer = cli.filename;
+  if (!nonInteractive) {
+    console.log(header("Preset metadata"));
+    const irl = rl!;
+    labelAnswer = (
+      await irl.question(`  ${dim("label    ")} ${gray(`[${chosen.name}]`)} ${cyan("›")} `)
+    ).trim();
+    descAnswer = (
+      await irl.question(`  ${dim("desc     ")} ${gray("(optional)")}          ${cyan("›")} `)
+    ).trim();
+    fileAnswer = (
+      await irl.question(`  ${dim("filename ")} ${gray(`[${slugify(chosen.name)}]`)} ${cyan("›")} `)
+    ).trim();
+    irl.close();
+  }
 
   const label = labelAnswer || chosen.name;
-  const desc =
-    descAnswer || deck.description.split("\n")[0].slice(0, 120) || "Imported from archidekt";
+  // Default desc to the first line of the upstream deck description,
+  // falling back to empty string. Don't synthesize a placeholder like
+  // "Imported from archidekt" — better to render nothing than fluff.
+  const desc = descAnswer || deck.description.split("\n")[0].slice(0, 120) || "";
   const slug = fileAnswer || slugify(chosen.name);
 
-  // Commanders live in a separate Archidekt category; the preset deck JSON has
-  // no commander field today, so fold them back into `cards` for the CLI output.
-  const allCards = [...deck.commanders, ...deck.cards]
+  // Commanders and oathbreaker signature spells are stored on separate boards
+  // by both Archidekt and Moxfield. The preset JSON convention (see e.g.
+  // neheb_minotaur_commander.json) keeps top-level `commander` /
+  // `signatureSpell` fields for the engine's command zone *and* includes
+  // those cards in `cards` so deck totals are correct (Commander = 100,
+  // Oathbreaker = 60 with signature spell). Mirror that — single name as
+  // string, multiple names as array (partner / multi-cmdr pairs).
+  const signatureSpells = deck.signatureSpells ?? [];
+  const allCards = [...deck.commanders, ...signatureSpells, ...deck.cards]
     .filter((c) => c.name && c.count > 0)
     .map((c) => {
       const out: { name: string; count: number; set?: string; cardNumber?: string } = {
@@ -331,31 +388,68 @@ async function main() {
       if (c.cardNumber) out.cardNumber = c.cardNumber;
       return out;
     });
-  const preset = {
+  const commanderNames = deck.commanders.filter((c) => c.name).map((c) => c.name);
+  const commanderField =
+    commanderNames.length === 0
+      ? undefined
+      : commanderNames.length === 1
+        ? commanderNames[0]
+        : commanderNames;
+  const signatureSpellNames = signatureSpells.filter((c) => c.name).map((c) => c.name);
+  const signatureSpellField =
+    signatureSpellNames.length === 0
+      ? undefined
+      : signatureSpellNames.length === 1
+        ? signatureSpellNames[0]
+        : signatureSpellNames;
+  // CLI --format wins when explicitly set; otherwise use the format the
+  // upstream API reported, falling back to "standard" if neither knows.
+  const resolvedFormat = format || chosen.format || "standard";
+  const preset: Record<string, unknown> = {
     label,
     desc,
     color: pickColor(deck.colors),
-    format,
+    format: resolvedFormat,
     opponent: "",
     ai_eligible: false,
     order: await nextOrder(),
     cards: allCards,
   };
+  if (commanderField !== undefined) preset.commander = commanderField;
+  if (signatureSpellField !== undefined) preset.signatureSpell = signatureSpellField;
 
   const outPath = join(PRESET_DIR, `${slug}.json`);
   await writeFile(outPath, JSON.stringify(preset, null, 2) + "\n");
 
-  const totalCount = preset.cards.reduce((s, c) => s + c.count, 0);
+  const totalCount = allCards.reduce((s, c) => s + c.count, 0);
   console.log(header("Done"));
-  console.log(`  ${green("✓")} ${bold(preset.label)}`);
+  console.log(`  ${green("✓")} ${bold(label)}`);
   console.log(`  ${dim("file   :")} ${outPath}`);
-  console.log(`  ${dim("entries:")} ${preset.cards.length}  ${dim("total:")} ${totalCount}`);
-  console.log(`  ${dim("color  :")} ${preset.color}`);
-  console.log(`  ${dim("format :")} ${preset.format}`);
+  console.log(`  ${dim("entries:")} ${allCards.length}  ${dim("total:")} ${totalCount}`);
+  console.log(`  ${dim("color  :")} ${pickColor(deck.colors)}`);
+  console.log(`  ${dim("format :")} ${resolvedFormat}`);
+  if (commanderField !== undefined) {
+    const cmdrLabel = Array.isArray(commanderField) ? commanderField.join(" + ") : commanderField;
+    console.log(`  ${dim("cmdr   :")} ${cmdrLabel}`);
+  }
+  if (signatureSpellField !== undefined) {
+    const ssLabel = Array.isArray(signatureSpellField)
+      ? signatureSpellField.join(" + ")
+      : signatureSpellField;
+    console.log(`  ${dim("sig    :")} ${ssLabel}`);
+  }
   console.log(`  ${dim("order  :")} ${preset.order}`);
   console.log(rule() + "\n");
 
-  await runEnrichment();
+  if (!skipEnrich) {
+    await runEnrichment();
+  } else {
+    console.log(
+      dim(
+        "  (skipped enrichment — run `node scripts/enrich-preset-decks.mjs` once after batch import)\n",
+      ),
+    );
+  }
 }
 
 function runEnrichment(): Promise<void> {

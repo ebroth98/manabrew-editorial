@@ -54,7 +54,7 @@ use forge_parity::protocol::{
     FuzzReport, FuzzResult, MatchupResult, MatchupStatus, MatrixReport, ParityLogEntry,
 };
 use forge_parity::report;
-use forge_parity::runner::{self, LoadedData, RunConfig, DEFAULT_DECKS_DIR};
+use forge_parity::runner::{self, deck_search_dirs, LoadedData, RunConfig};
 use forge_parity::runtime::{JavaServerPool as ServerPool, ParityRuntime};
 use forge_parity::utils::decks::available_presets;
 use serde::Deserialize;
@@ -184,7 +184,8 @@ struct Cli {
     #[arg(long)]
     cards_dir: Option<String>,
 
-    /// Path to the preset deck JSON files directory
+    /// Single deck folder override. When unset, the harness searches
+    /// `parity_decks/` then `preset_decks/` (see runner::DEFAULT_DECKS_DIRS).
     #[arg(long)]
     decks_dir: Option<String>,
 
@@ -688,12 +689,12 @@ fn run_multi_game_mode(cli: &Cli) {
         "json" => report::format_matrix_json(&report_data),
         _ => {
             let mut out = String::new();
-            let dd = cli.decks_dir.as_deref().unwrap_or(DEFAULT_DECKS_DIR);
+            let dd = deck_search_dirs(cli.decks_dir.as_deref());
             out.push_str(&build_coverage_report(
                 &cli.deck1,
                 &cli.deck2,
                 &report_data.results,
-                dd,
+                &dd,
             ));
             out.push_str(&report::format_matrix_text(&report_data));
             if cli.investigate {
@@ -745,9 +746,9 @@ fn run_rust_only_mode(cli: &Cli) {
                 _ => report::format_trace_text(&trace),
             };
             if cli.format != "json" {
-                let dd = cli.decks_dir.as_deref().unwrap_or(DEFAULT_DECKS_DIR);
+                let dd = deck_search_dirs(cli.decks_dir.as_deref());
                 output.push_str(&build_coverage_report_from_cards(
-                    &collect_unique_deck_cards(&cli.deck1, &cli.deck2, dd),
+                    &collect_unique_deck_cards(&cli.deck1, &cli.deck2, &dd),
                     &trace.covered_cards,
                 ));
             }
@@ -831,17 +832,17 @@ fn run_single_matchup_rust_only(config: &RunConfig, data: &LoadedData) -> Matchu
 
 fn run_matrix_mode(cli: &Cli) {
     let ignores = load_parity_ignores();
-    let decks_dir = cli.decks_dir.as_deref().unwrap_or(DEFAULT_DECKS_DIR);
+    let decks_dirs = deck_search_dirs(cli.decks_dir.as_deref());
     let seeds = cli.seeds.clone().unwrap_or_else(|| vec![42, 100, 999]);
     let deck_names: Vec<String> = filter_decks(
         cli.decks
             .clone()
-            .unwrap_or_else(|| available_presets(decks_dir)),
+            .unwrap_or_else(|| available_presets(&decks_dirs)),
         &cli.exclude_prefix,
     );
 
     // Validate deck names
-    let valid = available_presets(decks_dir);
+    let valid = available_presets(&decks_dirs);
     for d in &deck_names {
         if !valid.contains(d) {
             eprintln!("[parity] Unknown deck '{}'. Available: {:?}", d, valid);
@@ -1715,10 +1716,10 @@ fn write_output(cli: &Cli, output: &str) {
     }
 }
 
-fn collect_unique_deck_cards(deck1: &str, deck2: &str, decks_dir: &str) -> Vec<String> {
+fn collect_unique_deck_cards(deck1: &str, deck2: &str, decks_dirs: &[&str]) -> Vec<String> {
     let mut cards: BTreeSet<String> = BTreeSet::new();
     for deck in [deck1, deck2] {
-        match forge_parity::utils::decks::resolve_deck_spec(deck, decks_dir) {
+        match forge_parity::utils::decks::resolve_deck_spec(deck, decks_dirs) {
             Ok(spec) => {
                 for (name, _) in spec {
                     cards.insert(name);
@@ -1739,9 +1740,9 @@ fn build_coverage_report(
     deck1: &str,
     deck2: &str,
     results: &[MatchupResult],
-    decks_dir: &str,
+    decks_dirs: &[&str],
 ) -> String {
-    let deck_cards = collect_unique_deck_cards(deck1, deck2, decks_dir);
+    let deck_cards = collect_unique_deck_cards(deck1, deck2, decks_dirs);
     let mut covered: BTreeSet<String> = BTreeSet::new();
     for r in results {
         for c in &r.covered_cards {
@@ -1899,17 +1900,17 @@ fn run_continuous_mode(cli: &Cli) {
     let data = load_data_or_exit(cli);
 
     // Discover preset decks
-    let dd = cli.decks_dir.as_deref().unwrap_or(DEFAULT_DECKS_DIR);
+    let dd = deck_search_dirs(cli.decks_dir.as_deref());
     let deck_names: Vec<String> = filter_decks(
         match &cli.decks {
             Some(d) => d.clone(),
-            None => available_presets(dd),
+            None => available_presets(&dd),
         },
         &cli.exclude_prefix,
     );
 
     if deck_names.is_empty() {
-        eprintln!("[parity] No preset decks found in {}", dd);
+        eprintln!("[parity] No preset decks found in {}", dd.join(", "));
         std::process::exit(1);
     }
     if cli.is_verbose() {
@@ -2176,17 +2177,17 @@ fn run_serve_mode(cli: &Cli) {
     let data = load_data_or_exit(cli);
 
     // Discover preset decks
-    let dd = cli.decks_dir.as_deref().unwrap_or(DEFAULT_DECKS_DIR);
+    let dd = deck_search_dirs(cli.decks_dir.as_deref());
     let deck_names: Vec<String> = filter_decks(
         match &cli.decks {
             Some(d) => d.clone(),
-            None => available_presets(dd),
+            None => available_presets(&dd),
         },
         &cli.exclude_prefix,
     );
 
     if deck_names.is_empty() {
-        tracing::error!(dir = dd, "No preset decks found");
+        tracing::error!(dirs = ?dd, "No preset decks found");
         std::process::exit(1);
     }
     tracing::info!(count = deck_names.len(), decks = ?deck_names, "Preset decks loaded");

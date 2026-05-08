@@ -33,7 +33,25 @@ use crate::protocol::{CallbackRecord, DecisionRecord, GameTrace, ParityLogEntry}
 use crate::snapshot::snapshot_game;
 use crate::utils::decks::{build_deck_from_spec, resolve_deck_spec};
 
+/// Directories searched, in order, when no `--decks-dir` override is given.
+/// `parity_decks/` holds decks referenced by the regression suite; `preset_decks/`
+/// holds the wider UI/import preset library.
+pub const DEFAULT_DECKS_DIRS: &[&str] = &["parity_decks", "preset_decks"];
+
+/// Single-string default kept for callers (e.g. CLI fallbacks, debugger crates)
+/// that have not yet been migrated to the multi-dir API. Prefer
+/// [`DEFAULT_DECKS_DIRS`] for new code.
 pub const DEFAULT_DECKS_DIR: &str = "preset_decks";
+
+/// Build the deck-search-path list from an optional CLI override.
+/// `Some(dir)` → single-dir search (preserves explicit `--decks-dir` semantics);
+/// `None` → fall back to [`DEFAULT_DECKS_DIRS`].
+pub fn deck_search_dirs(override_dir: Option<&str>) -> Vec<&str> {
+    match override_dir {
+        Some(d) => vec![d],
+        None => DEFAULT_DECKS_DIRS.to_vec(),
+    }
+}
 const CARD_COPY_GUARD_THRESHOLD: usize = 100;
 
 type LiveLogWriter = Arc<Mutex<BufWriter<File>>>;
@@ -1079,10 +1097,10 @@ pub fn run_with_data_streaming(
 ) -> Result<GameTrace, String> {
     let _t_total = Instant::now();
     // Resolve deck lists — supports preset names, inline: specs, and file: specs
-    let decks_dir = config.decks_dir.as_deref().unwrap_or(DEFAULT_DECKS_DIR);
+    let decks_dirs = deck_search_dirs(config.decks_dir.as_deref());
     let _t_resolve = Instant::now();
-    let deck1_spec = resolve_deck_spec(&config.deck1, decks_dir)?;
-    let deck2_spec = resolve_deck_spec(&config.deck2, decks_dir)?;
+    let deck1_spec = resolve_deck_spec(&config.deck1, &decks_dirs)?;
+    let deck2_spec = resolve_deck_spec(&config.deck2, &decks_dirs)?;
 
     // Determine starting life based on variant
     let starting_life = match config.variant.as_str() {

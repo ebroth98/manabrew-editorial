@@ -19,8 +19,7 @@ use rand::SeedableRng;
 use crate::ai_agent::spawn_ai_prompt_responder;
 use crate::card_db::{card_rules_to_instance, get_token_db, get_token_image_map};
 use crate::preset_decks::{
-    is_preset_id, prepare_ai_registered_player, prepare_custom_registered_player,
-    prepare_preset_opponent_registered_player, prepare_preset_registered_player, CardIdentity,
+    is_preset_id, prepare_custom_registered_player, prepare_preset_registered_player, CardIdentity,
 };
 use crate::tauri_transport::TauriTransport;
 
@@ -48,16 +47,22 @@ pub fn run_game(
     }
     players.push(human);
 
-    let mut opponent = if let Some(ref opp_deck) = opponent_deck_list {
-        if opp_deck.len() == 1 && is_preset_id(&opp_deck[0].name) {
-            prepare_preset_registered_player("AI Opponent", &opp_deck[0].name)
-        } else {
-            prepare_custom_registered_player("AI Opponent", opp_deck)
+    // The UI is responsible for picking the opponent deck explicitly. There
+    // is no auto-inference (preset.opponent field) or random AI fallback —
+    // both legacy paths produced confusing surprise decks.
+    let opp_deck = match opponent_deck_list {
+        Some(d) if !d.is_empty() => d,
+        _ => {
+            eprintln!(
+                "[rust_backend] start_game called without an opponent deck; refusing to start"
+            );
+            return;
         }
-    } else if deck_list.len() == 1 && is_preset_id(&deck_list[0].name) {
-        prepare_preset_opponent_registered_player("AI Opponent", &deck_list[0].name)
+    };
+    let mut opponent = if opp_deck.len() == 1 && is_preset_id(&opp_deck[0].name) {
+        prepare_preset_registered_player("AI Opponent", &opp_deck[0].name)
     } else {
-        prepare_ai_registered_player("AI Opponent")
+        prepare_custom_registered_player("AI Opponent", &opp_deck)
     };
     opponent.registered.starting_life = starting_life;
     players.push(opponent);

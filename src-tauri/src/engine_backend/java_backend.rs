@@ -73,13 +73,17 @@ fn run_game_inner(
     let mut session = JavaForgeSession::new(bridge);
     session.initialize(&assets_dir)?;
 
+    // The UI is responsible for picking the opponent deck explicitly. There
+    // is no auto-inference or random AI fallback.
+    let opponent_deck = opponent_deck_list
+        .filter(|d| !d.is_empty())
+        .ok_or_else(|| "start_game called without an opponent deck".to_string())?;
     let mut players = Vec::with_capacity(2);
     players.push(PlayerConfig::new(
         "You".to_string(),
         &deck_list,
         commander_name,
     ));
-    let opponent_deck = opponent_deck_list.unwrap_or_else(|| smoke_deck("Forest", "Grizzly Bears"));
     players.push(PlayerConfig::new(
         "AI Opponent".to_string(),
         &opponent_deck,
@@ -158,22 +162,6 @@ fn auto_java_action(prompt: &Value) -> Value {
         })
         .map(|index| json!({ "kind": "choose_action", "index": index }))
         .unwrap_or_else(|| json!({ "kind": "pass" }))
-}
-
-#[cfg(feature = "java-forge")]
-fn smoke_deck(land_name: &str, spell_name: &str) -> Vec<CardIdentity> {
-    (0..24)
-        .map(|_| CardIdentity {
-            name: land_name.to_string(),
-            set_code: String::new(),
-            section: None,
-        })
-        .chain((0..36).map(|_| CardIdentity {
-            name: spell_name.to_string(),
-            set_code: String::new(),
-            section: None,
-        }))
-        .collect()
 }
 
 #[derive(Debug, Clone)]

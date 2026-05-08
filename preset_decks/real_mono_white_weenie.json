@@ -1,6 +1,6 @@
 {
   "label": "Pauper Mono White Weenie",
-  "desc": "Real Pauper deck: Kor Skyfisher + Battle Screech white aggro (billsive, 2nd Pauper Challenge 2026-03-08)",
+  "desc": "Pauper Mono White weenies with Kor Skyfisher and Battle Screech.",
   "color": "text-amber-200",
   "format": "pauper",
   "opponent": "real_mono_red_madness",

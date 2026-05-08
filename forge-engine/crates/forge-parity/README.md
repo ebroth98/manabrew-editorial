@@ -96,34 +96,34 @@ cargo run -p forge-parity --features serve -- ci-client health --server http://l
 
 ## Flags
 
-| Flag                     | Default           | Description                                                                    |
-| ------------------------ | ----------------- | ------------------------------------------------------------------------------ |
-| `--deck1 <name>`         | `red_burn`        | Preset deck for player 1                                                       |
-| `--deck2 <name>`         | `green_stompy`    | Preset deck for player 2                                                       |
-| `--seed <N>`             | `42`              | RNG seed for reproducibility                                                   |
-| `--games <N>`            | `1`               | Number of games in single-match mode; uses seeds `seed..seed+N-1`              |
-| `--max-turns <N>`        | `10`              | Maximum turns before stopping                                                  |
-| `--java-jar <path>`      | _(none)_          | Path to Java harness JAR (enables parity mode)                                 |
-| `--cards-dir <path>`     | _(none)_          | Path to Forge card scripts directory                                           |
-| `--decks-dir <path>`     | `preset_decks/`   | Path to preset deck JSON files directory                                       |
-| `--output <path>` / `-o` | _(stdout)_        | Write report to file instead of stdout                                         |
-| `--format <fmt>`         | `text`            | Output format: `text` or `json`                                                |
-| `--verbose` / `-v`       | `false`           | Print step-by-step logs (agent decisions, Java snapshots, per-game progress)   |
-| `--prefer-actions`       | `false`           | Bias random main-phase choices toward play/activate actions over pass          |
-| `--matrix`               | `false`           | Run all deck pairs × seeds                                                     |
-| `--seeds <list>`         | `42,100,999`      | Comma-separated seeds for matrix mode                                          |
-| `--decks <list>`         | _(all presets)_   | Comma-separated deck names for matrix/continuous mode                          |
-| `--fuzz`                 | `false`           | Generate random decks from the parseable card pool                             |
-| `--iterations <N>`       | `100`             | Number of fuzz iterations                                                      |
-| `--master-seed <N>`      | `42`              | Master seed for fuzz reproducibility                                           |
-| `--java-workers <N>`     | _(auto)_          | Number of Java server worker processes                                         |
-| `--continuous`           | `false`           | Run continuous parity testing with SQLite storage (requires `storage` feature) |
-| `--serve`                | `false`           | Start web dashboard alongside continuous testing (requires `serve` feature)    |
-| `--max-games <N>`        | `100` / unlimited | Max games for continuous/serve mode (unlimited if omitted in serve mode)       |
-| `--threshold <F>`        | `0.90`            | Pass rate threshold (0.0–1.0); exit 1 if below (continuous mode)               |
-| `--db-path <path>`       | `parity.db`       | SQLite database path for continuous/serve mode                                 |
-| `--port <N>`             | `8080`            | HTTP port for serve mode                                                       |
-| `--fuzz-per-batch <N>`   | `0`               | Fuzz games per preset batch in continuous mode (0 to disable)                  |
+| Flag                     | Default           | Description                                                                        |
+| ------------------------ | ----------------- | ---------------------------------------------------------------------------------- |
+| `--deck1 <name>`         | `red_burn`        | Preset deck for player 1                                                           |
+| `--deck2 <name>`         | `green_stompy`    | Preset deck for player 2                                                           |
+| `--seed <N>`             | `42`              | RNG seed for reproducibility                                                       |
+| `--games <N>`            | `1`               | Number of games in single-match mode; uses seeds `seed..seed+N-1`                  |
+| `--max-turns <N>`        | `10`              | Maximum turns before stopping                                                      |
+| `--java-jar <path>`      | _(none)_          | Path to Java harness JAR (enables parity mode)                                     |
+| `--cards-dir <path>`     | _(none)_          | Path to Forge card scripts directory                                               |
+| `--decks-dir <path>`     | _(see note)_      | Single deck folder override. Default search: `parity_decks/` then `preset_decks/`. |
+| `--output <path>` / `-o` | _(stdout)_        | Write report to file instead of stdout                                             |
+| `--format <fmt>`         | `text`            | Output format: `text` or `json`                                                    |
+| `--verbose` / `-v`       | `false`           | Print step-by-step logs (agent decisions, Java snapshots, per-game progress)       |
+| `--prefer-actions`       | `false`           | Bias random main-phase choices toward play/activate actions over pass              |
+| `--matrix`               | `false`           | Run all deck pairs × seeds                                                         |
+| `--seeds <list>`         | `42,100,999`      | Comma-separated seeds for matrix mode                                              |
+| `--decks <list>`         | _(all presets)_   | Comma-separated deck names for matrix/continuous mode                              |
+| `--fuzz`                 | `false`           | Generate random decks from the parseable card pool                                 |
+| `--iterations <N>`       | `100`             | Number of fuzz iterations                                                          |
+| `--master-seed <N>`      | `42`              | Master seed for fuzz reproducibility                                               |
+| `--java-workers <N>`     | _(auto)_          | Number of Java server worker processes                                             |
+| `--continuous`           | `false`           | Run continuous parity testing with SQLite storage (requires `storage` feature)     |
+| `--serve`                | `false`           | Start web dashboard alongside continuous testing (requires `serve` feature)        |
+| `--max-games <N>`        | `100` / unlimited | Max games for continuous/serve mode (unlimited if omitted in serve mode)           |
+| `--threshold <F>`        | `0.90`            | Pass rate threshold (0.0–1.0); exit 1 if below (continuous mode)                   |
+| `--db-path <path>`       | `parity.db`       | SQLite database path for continuous/serve mode                                     |
+| `--port <N>`             | `8080`            | HTTP port for serve mode                                                           |
+| `--fuzz-per-batch <N>`   | `0`               | Fuzz games per preset batch in continuous mode (0 to disable)                      |
 
 ## Available preset decks
 

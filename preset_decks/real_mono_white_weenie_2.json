@@ -1,6 +1,6 @@
 {
   "label": "Pauper White Weenie (Boros splash)",
-  "desc": "Real Pauper deck: Kor Skyfisher + Boros Garrison white weenie variant (Natalino_91, 5-0 Pauper League 2026-03-08)",
+  "desc": "Pauper Boros-splash white weenie with Kor Skyfisher.",
   "color": "text-amber-300",
   "format": "pauper",
   "opponent": "real_mono_red_madness",

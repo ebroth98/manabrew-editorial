@@ -116,7 +116,11 @@ pub(crate) fn render_card_chip(
     response
 }
 
-pub(crate) fn render_zone_name_chip(ui: &mut egui::Ui, card_name: &str, is_selected: bool) -> egui::Response {
+pub(crate) fn render_zone_name_chip(
+    ui: &mut egui::Ui,
+    card_name: &str,
+    is_selected: bool,
+) -> egui::Response {
     let desired_size = egui::vec2(64.0, 24.0);
     let (rect, response) = ui.allocate_exact_size(desired_size, egui::Sense::click());
     let fill = if is_selected {

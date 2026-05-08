@@ -1,6 +1,6 @@
 {
   "label": "Pauper Mono Red Madness",
-  "desc": "Real Pauper deck: Kessig Flamebreather + Madness discard-burn (MisterTwin, 1st Pauper Challenge 2026-03-08)",
+  "desc": "Pauper madness discard-burn with Kessig Flamebreather.",
   "color": "text-red-500",
   "format": "pauper",
   "opponent": "real_mono_white_weenie",

@@ -272,6 +272,7 @@ pub fn compute_source_hash(project_root: &Path) -> String {
         "forge/forge-gui/res/cardsfolder",
         "forge/forge-gui/res/tokenscripts",
         "preset_decks",
+        "parity_decks",
     ];
 
     let mut entries: Vec<(String, Vec<u8>)> = Vec::new();

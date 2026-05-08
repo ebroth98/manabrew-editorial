@@ -30,6 +30,8 @@ export interface ArchidektDeck {
   cards: ArchidektDeckCard[];
   /** Commander cards, if any. */
   commanders: ArchidektDeckCard[];
+  /** Oathbreaker signature spells, if any. Empty for non-Oathbreaker decks. */
+  signatureSpells?: ArchidektDeckCard[];
 }
 
 export const ARCHIDEKT_FORMATS: Record<number, string> = {

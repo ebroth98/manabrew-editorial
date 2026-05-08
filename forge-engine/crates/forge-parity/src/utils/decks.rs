@@ -17,38 +17,51 @@ struct PresetDeckFile {
     cards: Vec<DeckCardEntry>,
 }
 
-fn load_preset_deck(name: &str, decks_dir: &str) -> Result<Vec<(String, usize)>, String> {
-    let path = std::path::Path::new(decks_dir).join(format!("{}.json", name));
-    let contents = std::fs::read_to_string(&path)
-        .map_err(|e| format!("Failed to read preset deck '{}': {}", path.display(), e))?;
-    let deck: PresetDeckFile = serde_json::from_str(&contents)
-        .map_err(|e| format!("Failed to parse '{}': {}", path.display(), e))?;
-    Ok(deck.cards.into_iter().map(|c| (c.name, c.count)).collect())
+fn load_preset_deck(name: &str, decks_dirs: &[&str]) -> Result<Vec<(String, usize)>, String> {
+    let mut tried = Vec::with_capacity(decks_dirs.len());
+    for dir in decks_dirs {
+        let path = std::path::Path::new(dir).join(format!("{}.json", name));
+        if !path.exists() {
+            tried.push(path.display().to_string());
+            continue;
+        }
+        let contents = std::fs::read_to_string(&path)
+            .map_err(|e| format!("Failed to read preset deck '{}': {}", path.display(), e))?;
+        let deck: PresetDeckFile = serde_json::from_str(&contents)
+            .map_err(|e| format!("Failed to parse '{}': {}", path.display(), e))?;
+        return Ok(deck.cards.into_iter().map(|c| (c.name, c.count)).collect());
+    }
+    Err(format!(
+        "Preset deck '{}' not found. Searched: {}",
+        name,
+        tried.join(", ")
+    ))
 }
 
-pub fn available_presets(decks_dir: &str) -> Vec<String> {
-    let dir = std::path::Path::new(decks_dir);
-    let mut names = Vec::new();
-    if let Ok(entries) = std::fs::read_dir(dir) {
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if path.extension().and_then(|e| e.to_str()) == Some("json") {
-                if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
-                    names.push(stem.to_string());
+pub fn available_presets(decks_dirs: &[&str]) -> Vec<String> {
+    let mut names = std::collections::BTreeSet::new();
+    for dir in decks_dirs {
+        let path = std::path::Path::new(dir);
+        if let Ok(entries) = std::fs::read_dir(path) {
+            for entry in entries.flatten() {
+                let p = entry.path();
+                if p.extension().and_then(|e| e.to_str()) == Some("json") {
+                    if let Some(stem) = p.file_stem().and_then(|s| s.to_str()) {
+                        names.insert(stem.to_string());
+                    }
                 }
             }
         }
     }
-    names.sort();
-    names
+    names.into_iter().collect()
 }
-pub fn resolve_deck_spec(spec: &str, decks_dir: &str) -> Result<Vec<(String, usize)>, String> {
+pub fn resolve_deck_spec(spec: &str, decks_dirs: &[&str]) -> Result<Vec<(String, usize)>, String> {
     if let Some(inline) = spec.strip_prefix("inline:") {
         deck_generator::parse_inline(inline)
     } else if let Some(path) = spec.strip_prefix("file:") {
         parse_deck_file(path)
     } else {
-        load_preset_deck(spec, decks_dir)
+        load_preset_deck(spec, decks_dirs)
     }
 }
 

@@ -9,7 +9,6 @@ use forge_game_runtime::deck::{
     card_rules_to_instance, deck_zone_for_identity, fallback_deck_zone_for_card, lookup_card_rules,
     register_card_name, PreparedRegisteredPlayer,
 };
-use rand::seq::SliceRandom;
 use serde::{Deserialize, Serialize};
 
 use crate::card_db::get_card_db;
@@ -55,7 +54,10 @@ pub struct DeckCardEntry {
     pub extra: std::collections::HashMap<String, serde_json::Value>,
 }
 
-/// Full JSON schema for a preset deck file.
+/// Full JSON schema for a preset deck file. `opponent` and `ai_eligible`
+/// from older deck files are silently ignored by serde (unknown fields are
+/// dropped by default) — those features were removed when the UI took over
+/// explicit AI-deck selection.
 #[derive(Debug, Clone, Deserialize)]
 struct PresetDeckFile {
     label: String,
@@ -66,10 +68,6 @@ struct PresetDeckFile {
     #[serde(default)]
     commander: Option<String>,
     #[serde(default)]
-    opponent: Option<String>,
-    #[serde(default)]
-    ai_eligible: Option<bool>,
-    #[serde(default)]
     order: Option<i32>,
     cards: Vec<DeckCardEntry>,
 }
@@ -79,6 +77,12 @@ fn default_format() -> String {
 }
 
 /// Loaded preset deck with its ID and parsed data.
+///
+/// `opponent` and `ai_eligible` from the JSON schema are intentionally
+/// dropped here — the UI now picks the opponent deck explicitly per game,
+/// so neither the auto-opponent inference nor the random-AI fallback path
+/// they used to feed exists. The fields are still tolerated in JSON for
+/// back-compat (see `#[serde(default)]` on `PresetDeckFile`).
 #[derive(Debug, Clone)]
 struct LoadedPreset {
     id: String,
@@ -87,8 +91,6 @@ struct LoadedPreset {
     color: String,
     format: String,
     commander: Option<String>,
-    opponent: Option<String>,
-    ai_eligible: bool,
     order: i32,
     cards: Vec<DeckCardEntry>,
 }
@@ -161,88 +163,14 @@ fn load_registry() -> Vec<LoadedPreset> {
             color: deck.color,
             format: deck.format,
             commander: deck.commander,
-            opponent: deck.opponent,
-            ai_eligible: deck.ai_eligible.unwrap_or(false),
             order: deck.order.unwrap_or(999),
             cards: deck.cards,
         });
     }
 
-    ensure_registry_invariants(&mut presets);
-
     // Sort by order field to maintain deterministic UI ordering
     presets.sort_by_key(|p| (p.order, p.id.clone()));
     presets
-}
-
-fn fallback_preset(
-    id: &str,
-    label: &str,
-    desc: &str,
-    color: &str,
-    opponent: Option<&str>,
-    ai_eligible: bool,
-    basic_land_name: &str,
-    order: i32,
-) -> LoadedPreset {
-    LoadedPreset {
-        id: id.to_string(),
-        label: label.to_string(),
-        desc: desc.to_string(),
-        color: color.to_string(),
-        format: "standard".to_string(),
-        commander: None,
-        opponent: opponent.map(str::to_string),
-        ai_eligible,
-        order,
-        cards: vec![DeckCardEntry {
-            name: basic_land_name.to_string(),
-            count: 60,
-            set: String::new(),
-            extra: std::collections::HashMap::new(),
-        }],
-    }
-}
-
-fn ensure_registry_invariants(presets: &mut Vec<LoadedPreset>) {
-    if presets.is_empty() {
-        eprintln!("[preset_decks] No decks loaded from JSON. Injecting fallback presets.");
-    }
-
-    if !presets.iter().any(|p| p.id == "red_burn") {
-        eprintln!("[preset_decks] Missing 'red_burn'. Injecting fallback preset.");
-        presets.push(fallback_preset(
-            "red_burn",
-            "Red Burn (Fallback)",
-            "Failsafe deck used when preset JSON loading fails",
-            "text-red-500",
-            Some("green_stompy"),
-            true,
-            "Mountain",
-            10_000,
-        ));
-    }
-
-    if !presets.iter().any(|p| p.id == "green_stompy") {
-        eprintln!("[preset_decks] Missing 'green_stompy'. Injecting fallback preset.");
-        presets.push(fallback_preset(
-            "green_stompy",
-            "Green Stompy (Fallback)",
-            "Failsafe deck used when preset JSON loading fails",
-            "text-green-500",
-            Some("red_burn"),
-            true,
-            "Forest",
-            10_001,
-        ));
-    }
-
-    if !presets.iter().any(|p| p.ai_eligible) {
-        eprintln!("[preset_decks] No AI-eligible decks. Marking 'red_burn' fallback as eligible.");
-        if let Some(rb) = presets.iter_mut().find(|p| p.id == "red_burn") {
-            rb.ai_eligible = true;
-        }
-    }
 }
 
 fn get_registry() -> &'static Vec<LoadedPreset> {
@@ -292,192 +220,28 @@ pub fn is_preset_id(id: &str) -> bool {
     get_registry().iter().any(|p| p.id == id)
 }
 
-/// Build decks for both players given a preset id.
-///
-/// Loads the preset for player 0 and the opponent deck (from the JSON's
-/// `opponent` field) for player 1.
-#[allow(dead_code)]
-pub fn build_preset_decks(game: &mut GameState, preset_id: &str, p0: PlayerId, p1: PlayerId) {
-    let preset = match get_preset_by_id(preset_id) {
-        Some(p) => p,
-        None => {
-            // Fallback to red_burn
-            if let Some(rb) = get_preset_by_id("red_burn") {
-                build_deck_from_entries(game, p0, &rb.cards);
-            }
-            if let Some(gs) = get_preset_by_id("green_stompy") {
-                build_deck_from_entries(game, p1, &gs.cards);
-            }
-            return;
-        }
-    };
-
-    build_deck_from_entries(game, p0, &preset.cards);
-
-    // Determine opponent deck
-    match preset.opponent.as_deref() {
-        Some("random") => {
-            let ai_cards = random_ai_deck_cards();
-            build_deck_from_entries(game, p1, ai_cards);
-        }
-        Some(opp_id) => {
-            if let Some(opp) = get_preset_by_id(opp_id) {
-                build_deck_from_entries(game, p1, &opp.cards);
-            } else {
-                eprintln!(
-                    "[preset_decks] Unknown opponent '{}', using red_burn",
-                    opp_id
-                );
-                if let Some(rb) = get_preset_by_id("red_burn") {
-                    build_deck_from_entries(game, p1, &rb.cards);
-                }
-            }
-        }
-        None => {
-            // No opponent specified, use green_stompy as default
-            if let Some(gs) = get_preset_by_id("green_stompy") {
-                build_deck_from_entries(game, p1, &gs.cards);
-            }
-        }
-    }
-}
-
-/// Build a single-player deck for `owner` from a preset id.
-/// Falls back to the red burn preset if `preset_id` is unknown.
-#[allow(dead_code)]
-pub fn build_preset_deck_for_player(game: &mut GameState, preset_id: &str, owner: PlayerId) {
-    let preset = get_preset_by_id(preset_id).or_else(|| get_preset_by_id("red_burn"));
-    if let Some(p) = preset {
-        build_deck_from_entries(game, owner, &p.cards);
-    }
-}
-
+/// Build a `RegisteredPlayer` from a preset id. Returns a player with an
+/// empty card list if `preset_id` is unknown — the UI is expected to only
+/// pass valid ids surfaced through `list_preset_decks`.
 pub fn prepare_preset_registered_player(
     name: impl Into<String>,
     preset_id: &str,
 ) -> PreparedRegisteredPlayer {
     let mut registered = RegisteredPlayer::new(name);
-    let preset = get_preset_by_id(preset_id).or_else(|| get_preset_by_id("red_burn"));
-    let cards = preset
-        .map(|preset| prepare_cards_from_entries(&preset.cards, &mut registered))
-        .unwrap_or_default();
-    PreparedRegisteredPlayer { registered, cards }
-}
-
-/// Build the opponent deck configured for a given preset id.
-///
-/// Reads the preset's `opponent` field and loads that deck for `owner`.
-/// Falls back to a random AI-eligible deck if the preset or opponent is missing.
-#[allow(dead_code)]
-pub fn build_preset_opponent(game: &mut GameState, preset_id: &str, owner: PlayerId) {
-    let preset = get_preset_by_id(preset_id);
-    match preset.and_then(|p| p.opponent.as_deref()) {
-        Some("random") => {
-            let ai_cards = random_ai_deck_cards();
-            build_deck_from_entries(game, owner, ai_cards);
-        }
-        Some(opp_id) => {
-            if let Some(opp) = get_preset_by_id(opp_id) {
-                build_deck_from_entries(game, owner, &opp.cards);
-            } else {
-                eprintln!(
-                    "[preset_decks] Unknown opponent '{}', using random AI deck",
-                    opp_id
-                );
-                let ai_cards = random_ai_deck_cards();
-                build_deck_from_entries(game, owner, ai_cards);
-            }
-        }
+    let cards = match get_preset_by_id(preset_id) {
+        Some(preset) => prepare_cards_from_entries(&preset.cards, &mut registered),
         None => {
-            let ai_cards = random_ai_deck_cards();
-            build_deck_from_entries(game, owner, ai_cards);
+            eprintln!(
+                "[preset_decks] Unknown preset id '{}'; player will start with no deck",
+                preset_id
+            );
+            Vec::new()
         }
-    }
-}
-
-pub fn prepare_preset_opponent_registered_player(
-    name: impl Into<String>,
-    preset_id: &str,
-) -> PreparedRegisteredPlayer {
-    match get_preset_by_id(preset_id).and_then(|p| p.opponent.as_deref()) {
-        Some("random") => prepare_ai_registered_player(name),
-        Some(opp_id) => {
-            if get_preset_by_id(opp_id).is_some() {
-                prepare_preset_registered_player(name, opp_id)
-            } else {
-                eprintln!(
-                    "[preset_decks] Unknown opponent '{}', using random AI deck",
-                    opp_id
-                );
-                prepare_ai_registered_player(name)
-            }
-        }
-        None => prepare_ai_registered_player(name),
-    }
-}
-
-/// Pick a random deck from all AI-eligible presets.
-fn random_ai_deck_cards() -> &'static Vec<DeckCardEntry> {
-    static EMPTY_DECK: OnceLock<Vec<DeckCardEntry>> = OnceLock::new();
-    let registry = get_registry();
-    let ai_eligible: Vec<&LoadedPreset> = registry.iter().filter(|p| p.ai_eligible).collect();
-    let mut rng = rand::thread_rng();
-    ai_eligible
-        .choose(&mut rng)
-        .map(|p| &p.cards)
-        .unwrap_or_else(|| {
-            // Fallback: first deck in registry, otherwise empty deck to avoid panics.
-            if let Some(first) = registry.first() {
-                &first.cards
-            } else {
-                eprintln!(
-                    "[preset_decks] Registry is empty; AI opponent will receive an empty deck"
-                );
-                EMPTY_DECK.get_or_init(Vec::new)
-            }
-        })
+    };
+    PreparedRegisteredPlayer { registered, cards }
 }
 
 // ── Deck builders ──────────────────────────────────────────────────
-
-/// Build the default AI opponent deck (random AI-eligible) for a single player.
-///
-/// Used when the human plays a custom deck so the AI still gets a deck.
-#[allow(dead_code)]
-pub fn build_ai_opponent(game: &mut GameState, owner: PlayerId) {
-    let cards = random_ai_deck_cards();
-    build_deck_from_entries(game, owner, cards);
-}
-
-pub fn prepare_ai_registered_player(name: impl Into<String>) -> PreparedRegisteredPlayer {
-    let mut registered = RegisteredPlayer::new(name);
-    let cards = prepare_cards_from_entries(random_ai_deck_cards(), &mut registered);
-    PreparedRegisteredPlayer { registered, cards }
-}
-
-/// Build a deck from a list of DeckCardEntry, loading each card definition
-/// from the global CardDatabase (parsed from the Forge card scripts).
-/// The set code is stored on each card instance so the UI can request the
-/// specific printing from Scryfall. An empty set code means no preference.
-fn build_deck_from_entries(game: &mut GameState, owner: PlayerId, deck: &[DeckCardEntry]) {
-    let db = get_card_db();
-    for entry in deck {
-        match lookup_card_rules(db, &entry.name) {
-            Some(rules) => {
-                for _ in 0..entry.count {
-                    let mut card = card_rules_to_instance(rules, owner);
-                    if !entry.set.is_empty() {
-                        card.set_code = Some(entry.set.clone());
-                    }
-                    let destination = fallback_deck_zone_for_card(&card);
-                    let id = game.create_card(card);
-                    game.move_card(id, destination, owner);
-                }
-            }
-            None => eprintln!("[deck] Unknown card '{}' — skipped", entry.name),
-        }
-    }
-}
 
 /// Build a custom deck for `owner` from a list of card identities (one per
 /// copy), loading each definition from the global CardDatabase.

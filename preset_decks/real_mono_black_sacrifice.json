@@ -1,6 +1,6 @@
 {
   "label": "Pauper Mono Black Sacrifice",
-  "desc": "Real Pauper deck: Carrion Feeder + Mortician Beetle aristocrats (airplay, 5-0 Pauper League 2026-03-07)",
+  "desc": "Pauper aristocrats deck with Carrion Feeder and Mortician Beetle.",
   "color": "text-gray-400",
   "format": "pauper",
   "opponent": "real_pauper_elves",

@@ -23,6 +23,15 @@ Read first: `/AGENTS.md`, `docs/agents/ENGINE_BUGFIX_WORKFLOW.md`, `docs/PARITY_
 
 `forge-parity` is the single built binary for parity infrastructure. CI queue client commands live under `forge-parity ci-client <health|submit|poll>` rather than a separate `parity-ci` executable.
 
+## Deck directories
+
+Deck names passed via `--deck1` / `--deck2` resolve from two folders in order:
+
+1. `parity_decks/` — canonical home for decks referenced by `regression.json`. Land new regression decks here.
+2. `preset_decks/` — wider preset library (UI, `yarn import-deck` landing zone). Decks here are still resolvable by name for ad-hoc parity runs.
+
+Both engines share this lookup: the Rust list lives in `runner::DEFAULT_DECKS_DIRS`; the Java harness reads it via `-Dpreset.decks.dir=parity_decks,preset_decks` (set automatically by `java_bridge::decks_dir_property`). `--decks-dir <path>` still overrides with a single explicit folder for tests/debugging.
+
 ## Common workflows
 
 ### Reproduce a divergence

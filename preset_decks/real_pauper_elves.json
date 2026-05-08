@@ -1,6 +1,6 @@
 {
   "label": "Pauper Elves",
-  "desc": "Real Pauper deck: Priest of Titania + Timberwatch Elf green elf tribal (ruff-rider17, 5-0 Pauper League 2026-03-11)",
+  "desc": "Pauper green elf tribal with Priest of Titania and Timberwatch Elf.",
   "color": "text-green-400",
   "format": "pauper",
   "opponent": "real_mono_black_sacrifice",
