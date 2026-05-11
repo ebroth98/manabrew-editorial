@@ -6,7 +6,7 @@ import { useCard } from "@/stores/useScryfallStore";
 import { CardImageThumbnail } from "@/components/game/CardImageThumbnail";
 import { Card } from "@/components/game/Card";
 import { MODAL_CARD_IMAGE } from "../game.styles";
-import type { Card as GameCard } from "@/types/openmagic";
+import type { Card as GameCard } from "@/types/manabrew";
 import { usePromptPreferencesStore } from "@/stores/usePromptPreferencesStore";
 
 interface ChooseOptionalTriggerModalProps {

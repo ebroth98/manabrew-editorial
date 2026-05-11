@@ -176,13 +176,13 @@ impl JavaRuntimeConfig {
     pub fn from_env() -> Self {
         let root = project_root();
         Self {
-            assets_dir: env_path("OPEN_MAGIC_FORGE_ASSETS_DIR")
+            assets_dir: env_path("MANA_BREW_FORGE_ASSETS_DIR")
                 .unwrap_or_else(|| root.join("forge/forge-gui")),
-            harness_jar: env_path("OPEN_MAGIC_FORGE_HARNESS_JAR").unwrap_or_else(|| {
+            harness_jar: env_path("MANA_BREW_FORGE_HARNESS_JAR").unwrap_or_else(|| {
                 root.join("forge/forge-harness/target/forge-harness-jar-with-dependencies.jar")
             }),
-            java_home: env_path("OPEN_MAGIC_JAVA_HOME").or_else(|| env_path("JAVA_HOME")),
-            extra_classpath: env_classpath("OPEN_MAGIC_FORGE_EXTRA_CLASSPATH"),
+            java_home: env_path("MANA_BREW_JAVA_HOME").or_else(|| env_path("JAVA_HOME")),
+            extra_classpath: env_classpath("MANA_BREW_FORGE_EXTRA_CLASSPATH"),
         }
     }
 
@@ -336,7 +336,7 @@ impl J4rsBridge {
             .map_err(java_error)?;
         let adapter = jvm
             .create_instance(
-                "forge.harness.OpenMagicEngineAdapter",
+                "forge.harness.ManaBrewEngineAdapter",
                 InvocationArg::empty(),
             )
             .map_err(java_error)?;

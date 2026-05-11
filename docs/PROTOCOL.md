@@ -1,6 +1,6 @@
 <!--
 SPDX-License-Identifier: CC-BY-4.0
-Copyright (c) 2024-present forge-rs contributors
+Copyright (c) 2024-present manabrew contributors
 This document may be reused under the Creative Commons Attribution 4.0
 International license. https://creativecommons.org/licenses/by/4.0/
 -->
@@ -775,7 +775,7 @@ A reference implementation is maintained alongside this specification:
 - Rust prompt and game-state types: `forge-engine/crates/forge-agent-interface/src/`
 - Rust `PlayerAction` enumeration: `forge-engine/crates/forge-agent-interface/src/prompt.rs`
 - Rust relay envelope: `forge-engine/crates/forge-server/src/protocol.rs`
-- TypeScript counterpart types: `src/types/` (`openmagic.ts`, `promptType.ts`,
+- TypeScript counterpart types: `src/types/` (`manabrew.ts`, `promptType.ts`,
   `gameSnapshot.ts`)
 
 The reference implementation is licensed under GPL-3.0-or-later. **This

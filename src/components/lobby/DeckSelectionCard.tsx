@@ -11,7 +11,7 @@ import {
 import { ManaSymbols } from "@/components/game/ManaSymbols";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
-import type { Card, DeckLabel } from "@/types/openmagic";
+import type { Card, DeckLabel } from "@/types/manabrew";
 import type { CardIdentity } from "@/types/server";
 
 interface DeckSelectionCardProps {

@@ -14,60 +14,60 @@
 # ──────────────────────────────────────────────────────────────────
 
 services:
-    forge-server:
-        build: .
-        ports:
-            - "9443:9443"
-        environment:
-            FORGE_HOST: "0.0.0.0"
-            FORGE_PORT: "9443"
-            FORGE_MAX_ROOMS: "100"
-            FORGE_SERVER_KEY: "forge"
-            RUST_LOG: "forge_server=info"
-        restart: on-failure:5
+  forge-server:
+    build: .
+    ports:
+      - "9443:9443"
+    environment:
+      FORGE_HOST: "0.0.0.0"
+      FORGE_PORT: "9443"
+      FORGE_MAX_ROOMS: "100"
+      FORGE_SERVER_KEY: "forge"
+      RUST_LOG: "forge_server=info"
+    restart: on-failure:5
 
-    openmagic:
-        build:
-            context: ../../.. # repo root (needs forge-engine/ + src/ + scripts/ + forge/ + preset_decks/)
-            dockerfile: Dockerfile.web
-        ports:
-            - "1420:443"
-            - "1421:80"
-        restart: on-failure:5
+  manabrew:
+    build:
+      context: ../../.. # repo root (needs forge-engine/ + src/ + scripts/ + forge/ + preset_decks/)
+      dockerfile: Dockerfile.web
+    ports:
+      - "1420:443"
+      - "1421:80"
+    restart: on-failure:5
 
-    parity-dashboard:
-        profiles:
-            - parity
-        build:
-            context: ../../.. # repo root (needs Cargo workspace + forge/ + preset_decks/)
-            dockerfile: forge-engine/crates/forge-parity/Dockerfile
-        ports:
-            - "8080:8080"
-        mem_limit: 3g
-        memswap_limit: 3g
-        environment:
-            PORT: "8080"
-            THRESHOLD: "0.90"
-            MAX_TURNS: "10"
-            FUZZ_PER_BATCH: "0"
-            JAVA_HEAP: "${JAVA_HEAP:-512m}"
-            # MAX_GAMES: ""          # omit for unlimited
-            # DECKS: ""              # omit for all presets
-            ANALYZE: "${ANALYZE:-}"
-            DISCORD_WEBHOOK_URL: "${DISCORD_WEBHOOK_URL:-}"
-            ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-}"
-            OPENAI_API_KEY: "${OPENAI_API_KEY:-}"
-            OPENAI_API_BASE: "${OPENAI_API_BASE:-}"
-            OPENAI_MODEL: "${OPENAI_MODEL:-}"
-            OPENAI_CTX_SIZE: "${OPENAI_CTX_SIZE:-4096}"
-            MTG_RULES_PATH: "/app/mtg_rules.txt"
-            POLL_INTERVAL: "${POLL_INTERVAL:-}"
-            ISSUE_THRESHOLD: "${ISSUE_THRESHOLD:-}"
-            GITHUB_TOKEN: "${GITHUB_TOKEN:-}"
-            GITHUB_REPO: "${GITHUB_REPO:-}"
-        volumes:
-            - parity-data:/app/data
-        restart: on-failure:5
+  parity-dashboard:
+    profiles:
+      - parity
+    build:
+      context: ../../.. # repo root (needs Cargo workspace + forge/ + preset_decks/)
+      dockerfile: forge-engine/crates/forge-parity/Dockerfile
+    ports:
+      - "8080:8080"
+    mem_limit: 3g
+    memswap_limit: 3g
+    environment:
+      PORT: "8080"
+      THRESHOLD: "0.90"
+      MAX_TURNS: "10"
+      FUZZ_PER_BATCH: "0"
+      JAVA_HEAP: "${JAVA_HEAP:-512m}"
+      # MAX_GAMES: ""          # omit for unlimited
+      # DECKS: ""              # omit for all presets
+      ANALYZE: "${ANALYZE:-}"
+      DISCORD_WEBHOOK_URL: "${DISCORD_WEBHOOK_URL:-}"
+      ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-}"
+      OPENAI_API_KEY: "${OPENAI_API_KEY:-}"
+      OPENAI_API_BASE: "${OPENAI_API_BASE:-}"
+      OPENAI_MODEL: "${OPENAI_MODEL:-}"
+      OPENAI_CTX_SIZE: "${OPENAI_CTX_SIZE:-4096}"
+      MTG_RULES_PATH: "/app/mtg_rules.txt"
+      POLL_INTERVAL: "${POLL_INTERVAL:-}"
+      ISSUE_THRESHOLD: "${ISSUE_THRESHOLD:-}"
+      GITHUB_TOKEN: "${GITHUB_TOKEN:-}"
+      GITHUB_REPO: "${GITHUB_REPO:-}"
+    volumes:
+      - parity-data:/app/data
+    restart: on-failure:5
 
 volumes:
-    parity-data:
+  parity-data:

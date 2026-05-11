@@ -1,4 +1,4 @@
-import type { Card, Deck } from "@/types/openmagic";
+import type { Card, Deck } from "@/types/manabrew";
 import type { CardIdentity, DeckSection } from "@/types/server";
 
 export function deckSectionForCard(card: Card, fallback: DeckSection): DeckSection {

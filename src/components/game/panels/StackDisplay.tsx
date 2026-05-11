@@ -2,14 +2,14 @@ import { useEffect, useState } from "react";
 import { Card } from "@/components/game/Card";
 import { cn } from "@/lib/utils";
 import { withAlpha } from "@/themes/gameTheme";
-import type { Card as OpenMagicCard, StackObject } from "@/types/openmagic";
+import type { Card as ManaBrewCard, StackObject } from "@/types/manabrew";
 import { useStackUIStore } from "@/stores/useStackUIStore";
 
 interface StackDisplayProps {
   stack: StackObject[];
-  resolveStackCard: (stackItem: StackObject) => OpenMagicCard;
+  resolveStackCard: (stackItem: StackObject) => ManaBrewCard;
   onOpenStack: () => void;
-  flashCard?: OpenMagicCard | null;
+  flashCard?: ManaBrewCard | null;
   flashToken?: string | null;
   showPreStackFlash?: boolean;
   rightPanelCollapsed?: boolean;

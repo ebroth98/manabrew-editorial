@@ -1,4 +1,4 @@
-import type { Card, Deck } from "@/types/openmagic";
+import type { Card, Deck } from "@/types/manabrew";
 
 export function resolveCoverCard(deck: Deck): Card | undefined {
   const allCards = [...deck.cards, ...(deck.commanders ?? [])];

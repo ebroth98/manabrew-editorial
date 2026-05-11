@@ -24,7 +24,7 @@ import {
 } from "@/components/game/dice";
 import type { AgentPrompt } from "@/stores/useGameStore";
 import type { PromptType } from "@/types/promptType";
-import type { Card as OpenMagicCard } from "@/types/openmagic";
+import type { Card as ManaBrewCard } from "@/types/manabrew";
 import { PromptType as PT } from "@/types/promptType";
 
 interface PromptModalsProps {
@@ -247,7 +247,7 @@ export function PromptModals({
             mode="discard"
             cards={currentPrompt.handCardIds
               .map((id) => currentPrompt.gameView.myHand.find((card) => card.id === id))
-              .filter((card): card is OpenMagicCard => card != null)}
+              .filter((card): card is ManaBrewCard => card != null)}
             numToTake={currentPrompt.numToDiscard}
             onConfirm={onDiscardDecision}
           />

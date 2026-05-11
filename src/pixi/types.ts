@@ -1,4 +1,4 @@
-import type { Card, ActivatableAbilityInfo } from "@/types/openmagic";
+import type { Card, ActivatableAbilityInfo } from "@/types/manabrew";
 import type { HAND_CARD_BASES } from "@/components/game/game.styles";
 
 export type HandSize = keyof typeof HAND_CARD_BASES;

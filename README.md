@@ -1,21 +1,11 @@
-# forge-rs
+# manabrew
 
-`forge-rs` is a GPL Rust port of the
+`manabrew` is a GPL Rust port of the
 [Forge](https://github.com/Card-Forge/forge) rules engine. It powers
 **ManaBrew** ([manabrew.app](https://manabrew.app)) — a modern web and desktop
 client for playing card games, currently focused on Magic: The Gathering
 through Forge's card scripts and Java rules engine. The Rust runtime targets
 desktop, web, and self-hosted multiplayer.
-
-`forge-rs` is the working name for the Rust crate / engine layer. Before the
-public launch we will reach out to the Forge maintainers as a courtesy: to make
-it known that this project exists, to confirm that we are GPL-3.0-or-later and
-build directly on their work, and to check that the crate name does not cause
-confusion. If they would prefer we use a different name for the engine, we
-will.
-
-The user-facing product name (**ManaBrew**) is settled and is not part of that
-conversation.
 
 > This is unofficial fan software. It is not affiliated with, endorsed by, or
 > sponsored by Wizards of the Coast LLC or by the Forge project. Magic: The
@@ -36,7 +26,7 @@ conversation.
   room server.
 - A GPL community project intended to be developed in the open.
 
-> **Forge-engine interop:** `forge-rs` is not limited to the Rust port. The same
+> **Forge-engine interop:** `manabrew` is not limited to the Rust port. The same
 > client/protocol stack can drive a Java Forge-backed game session, so Forge
 > gameplay can run through the modern Tauri/web and self-hosted-room experience
 > while the Rust engine continues moving toward parity.
@@ -53,7 +43,7 @@ Forge itself remains the foundation. It has accumulated years of rules knowledge
 and card-script coverage, and we did not want to discard that work or compete
 with it by guessing from scratch.
 
-`forge-rs` exists to bring Forge's rules model into runtime shapes that are hard
+`manabrew` exists to bring Forge's rules model into runtime shapes that are hard
 for the Java/Swing stack to cover directly: web/WASM play, self-hosted
 multiplayer, modern desktop UI, deterministic parity testing, and typed internal
 representations for high-risk script semantics.
@@ -64,7 +54,7 @@ tooling, UI, and deployment.
 
 ## Current Status
 
-`forge-rs` is pre-release software. The Java Forge backend path gives the modern
+`manabrew` is pre-release software. The Java Forge backend path gives the modern
 client stack a way to run Forge-backed games today; the Rust engine is playable
 for selected matchups and is actively being brought into parity. The most mature
 part of the project is the development loop: we can run the Rust engine against

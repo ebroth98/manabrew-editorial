@@ -73,7 +73,7 @@ export const GAME_FORMAT_TO_ARCHIDEKT: Record<string, number> = {
 
 export const ARCHIDEKT_PAGE_SIZE = 25;
 
-const USER_AGENT = "openmagic-deck-importer";
+const USER_AGENT = "manabrew-deck-importer";
 
 export interface RequestOptions {
   fetch?: FetchFn;

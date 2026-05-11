@@ -14,7 +14,7 @@ import { getFormat } from "@/lib/formats";
 import { getPlatform } from "@/platform";
 import type { CardIdentity } from "@/types/server";
 import type { RoomMessagePayload } from "@/types/server";
-import type { GameView } from "@/types/openmagic";
+import type { GameView } from "@/types/manabrew";
 import {
   MANUAL_TABLETOP_RELAY_PROTOCOL,
   createRoomRelayEnvelope,

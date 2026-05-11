@@ -290,7 +290,7 @@ export function hasActiveCardOverride(o: DevCardOverrides): boolean {
   );
 }
 
-import type { Card as CardDto } from "@/types/openmagic";
+import type { Card as CardDto } from "@/types/manabrew";
 
 export function applyCardOverrides(card: CardDto, o: DevCardOverrides): CardDto {
   if (!hasActiveCardOverride(o)) return card;

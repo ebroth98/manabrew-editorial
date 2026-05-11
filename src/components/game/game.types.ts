@@ -1,4 +1,4 @@
-import type { Card as OpenMagicCard, Player, ActivatableAbilityInfo } from "@/types/openmagic";
+import type { Card as ManaBrewCard, Player, ActivatableAbilityInfo } from "@/types/manabrew";
 import type { GameLogEntry } from "@/types/gameLog";
 import type { GameSnapshotEntry } from "@/types/gameSnapshot";
 import type { PromptType } from "@/types/promptType";
@@ -38,10 +38,10 @@ export interface OpponentHalfProps {
   player: Player;
   /** 0-based opponent index for seat color assignment. */
   opponentIndex: number;
-  permanents: OpenMagicCard[];
-  graveyard: OpenMagicCard[];
-  exile: OpenMagicCard[];
-  commandZone?: OpenMagicCard[];
+  permanents: ManaBrewCard[];
+  graveyard: ManaBrewCard[];
+  exile: ManaBrewCard[];
+  commandZone?: ManaBrewCard[];
   isTargetable: boolean;
   isSelectedTarget?: boolean;
   onTarget: () => void;
@@ -52,17 +52,17 @@ export interface OpponentHalfProps {
   promptType: PromptType | undefined;
   pendingAttacker: string | null;
   attackerIds?: string[];
-  onClickCard: (card: OpenMagicCard) => void;
-  onClickAnyCard: (card: OpenMagicCard) => void;
+  onClickCard: (card: ManaBrewCard) => void;
+  onClickAnyCard: (card: ManaBrewCard) => void;
   onHoverCard: (
-    card: OpenMagicCard | null,
+    card: ManaBrewCard | null,
     e?: React.MouseEvent,
     options?: { useAnchor?: boolean; placement?: "auto" | "top-center"; anchorOverride?: DOMRect },
   ) => void;
   onFlipCard: () => void;
   onOpenZone: (
     title: string,
-    cards: OpenMagicCard[],
+    cards: ManaBrewCard[],
     onClickCard?: (cardId: string) => void,
   ) => void;
   zonePanelOrder: ("library" | "graveyard" | "exile")[];
@@ -113,7 +113,7 @@ export interface MainActionOverlayProps {
   onOpenStack: () => void;
   onConcede: () => void;
   resolveCardName: (cardId: string) => string;
-  resolveCard: (cardId: string) => OpenMagicCard | undefined;
+  resolveCard: (cardId: string) => ManaBrewCard | undefined;
   isMyPriority: boolean;
   turn: number;
   activePlayerName: string;

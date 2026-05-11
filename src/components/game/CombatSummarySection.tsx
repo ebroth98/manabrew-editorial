@@ -1,4 +1,4 @@
-import type { Card } from "@/types/openmagic";
+import type { Card } from "@/types/manabrew";
 import type { PromptActionType, CombatAssignment } from "./game.types";
 import { PromptType } from "@/types/promptType";
 

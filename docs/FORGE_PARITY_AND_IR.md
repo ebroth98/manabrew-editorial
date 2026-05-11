@@ -1,6 +1,6 @@
 # Forge Parity and Compiled IR
 
-This document explains how `forge-rs` relates to Forge, what the parity harness
+This document explains how `manabrew` relates to Forge, what the parity harness
 does, and how the Rust engine is starting to diverge internally through typed
 compiled IR while preserving Forge behavior.
 
@@ -26,7 +26,7 @@ same deck pair, seed, and deterministic choices.
 
 ## Java Forge backend interoperability
 
-`forge-rs` also supports interoperability with the Java Forge engine itself. The
+`manabrew` also supports interoperability with the Java Forge engine itself. The
 modern client, prompt protocol, and room/runtime stack are not only for the Rust
 port: they can drive a Java Forge-backed session through the project harness and
 backend adapters.

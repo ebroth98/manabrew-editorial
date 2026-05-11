@@ -38,7 +38,7 @@ import {
   BASIC_LAND_MANA,
   BASIC_LAND_NAMES,
   type BasicLandName,
-  draftCardToOpenMagic,
+  draftCardToManaBrew,
   countManaPips,
   groupByName,
   groupByRarity,
@@ -52,7 +52,7 @@ import {
 } from "@/lib/limited.utils";
 import { cn } from "@/lib/utils";
 import type { DraftCard } from "@/types/limited";
-import type { Deck, DeckFormatId } from "@/types/openmagic";
+import type { Deck, DeckFormatId } from "@/types/manabrew";
 
 type GroupMode = "rarity" | "name" | "cmc" | "color";
 
@@ -372,8 +372,8 @@ export default function LimitedDeckBuilder({
     const deck: Deck = {
       name,
       format,
-      cards: mainCards.map((c, i) => draftCardToOpenMagic(c, i)),
-      sideboard: sideboardCards.map((c, i) => draftCardToOpenMagic(c, mainCards.length + i)),
+      cards: mainCards.map((c, i) => draftCardToManaBrew(c, i)),
+      sideboard: sideboardCards.map((c, i) => draftCardToManaBrew(c, mainCards.length + i)),
       draft: mainCards.length < targetMainSize,
     };
     loadDeck(deck);
@@ -476,7 +476,7 @@ export default function LimitedDeckBuilder({
       <DragOverlay dropAnimation={null}>
         {activeDrag && (
           <div className="pointer-events-none w-24 rotate-3 rounded-lg opacity-90 shadow-2xl ring-2 ring-selection">
-            <CardThumbnail card={draftCardToOpenMagic(activeDrag.card, activeDrag.index)} />
+            <CardThumbnail card={draftCardToManaBrew(activeDrag.card, activeDrag.index)} />
           </div>
         )}
       </DragOverlay>

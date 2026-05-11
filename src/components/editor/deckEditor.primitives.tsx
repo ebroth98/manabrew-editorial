@@ -8,7 +8,7 @@ import { ChevronDown, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { FoilBadge } from "@/components/limited/FoilBadge";
 import type { OverlayAction } from "./deckEditor.utils";
-import type { Card } from "@/types/openmagic";
+import type { Card } from "@/types/manabrew";
 import { useCard } from "@/stores/useScryfallStore";
 export type { OverlayAction } from "./deckEditor.utils";
 

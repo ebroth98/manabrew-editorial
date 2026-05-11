@@ -1,5 +1,5 @@
 import type { IGameApi } from "@/platform";
-import type { Card, GameView } from "@/types/openmagic";
+import type { Card, GameView } from "@/types/manabrew";
 
 export type GameRuntimeKind = "rust-engine" | "forge-java" | "manual-tabletop";
 

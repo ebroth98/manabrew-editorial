@@ -1,6 +1,6 @@
 import { cn } from "@/lib/utils";
 import { useCard } from "@/stores/useScryfallStore";
-import type { Card } from "@/types/openmagic";
+import type { Card } from "@/types/manabrew";
 
 interface DeckCoverImageProps {
   cover: Card | null | undefined;

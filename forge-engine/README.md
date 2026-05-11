@@ -1,6 +1,6 @@
 # forge-engine
 
-`forge-engine/` is the Rust workspace for the `forge-rs` rules engine,
+`forge-engine/` is the Rust workspace for the `manabrew` rules engine,
 runtime, parity tooling, WebAssembly bridge, and self-hosted services.
 
 The engine is a GPL Rust port of Forge's Java rules engine. Java Forge remains

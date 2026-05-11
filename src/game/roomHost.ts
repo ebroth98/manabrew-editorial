@@ -1,5 +1,5 @@
 import { getPlatform } from "@/platform";
-import type { GameView } from "@/types/openmagic";
+import type { GameView } from "@/types/manabrew";
 import type { ManualTabletopAction, SeatController } from "./runtime.types";
 import {
   MANUAL_TABLETOP_RELAY_PROTOCOL,

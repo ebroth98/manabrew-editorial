@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import type { Card, Player } from "@/types/openmagic";
+import type { Card, Player } from "@/types/manabrew";
 import { cn } from "@/lib/utils";
 import { GameIcon } from "@/components/game/GameIcon";
 import { ManaPool as ManaPoolDisplay } from "./ManaPool";

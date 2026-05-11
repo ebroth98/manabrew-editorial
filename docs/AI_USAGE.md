@@ -1,6 +1,6 @@
 # AI Usage
 
-`forge-rs` has been developed with substantial AI assistance. This is an
+`manabrew` has been developed with substantial AI assistance. This is an
 explicit part of the project workflow, not something hidden from contributors.
 
 ## Where AI helps

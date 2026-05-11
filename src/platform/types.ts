@@ -7,7 +7,7 @@
  */
 
 import type { CardIdentity, GameFormat, RoomRelayEnvelope } from "@/types/server";
-import type { Deck } from "@/types/openmagic";
+import type { Deck } from "@/types/manabrew";
 
 // ============================================================================
 // Game API Types

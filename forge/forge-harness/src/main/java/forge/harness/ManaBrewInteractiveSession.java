@@ -26,7 +26,7 @@ import java.util.Objects;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 
-public final class OpenMagicInteractiveSession {
+public final class ManaBrewInteractiveSession {
     private final String sessionId;
     private Match match;
     private Game game;
@@ -35,7 +35,7 @@ public final class OpenMagicInteractiveSession {
     private volatile boolean closed;
     private volatile Thread gameThread;
 
-    OpenMagicInteractiveSession(final String sessionId) {
+    ManaBrewInteractiveSession(final String sessionId) {
         this.sessionId = Objects.requireNonNull(sessionId, "sessionId");
     }
 
@@ -59,10 +59,10 @@ public final class OpenMagicInteractiveSession {
             try {
                 match.startGame(game);
             } catch (RuntimeException error) {
-                System.err.println("[open-magic] interactive game error: " + error.getMessage());
+                System.err.println("[mana-brew] interactive game error: " + error.getMessage());
                 error.printStackTrace(System.err);
             }
-        }, "open-magic-forge-" + sessionId);
+        }, "mana-brew-forge-" + sessionId);
         gameThread.setDaemon(true);
         gameThread.start();
     }

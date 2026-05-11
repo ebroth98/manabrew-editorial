@@ -52,10 +52,10 @@ import { ManaSymbols } from "@/components/game/ManaSymbols";
 import { DeckStats } from "./DeckStats";
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { toast } from "sonner";
-import type { Card, DeckFormatId } from "@/types/openmagic";
+import type { Card, DeckFormatId } from "@/types/manabrew";
 import { fetchCardCollection, searchCards } from "@/api/scryfall";
 import type { ScryfallCard } from "@/types/scryfall";
-import { createEmptyCard, scryfallToOpenMagic } from "@/lib/scryfall.utils";
+import { createEmptyCard, scryfallToManaBrew } from "@/lib/scryfall.utils";
 import { DROP_ZONE, DEFAULT_DECK_NAME } from "@/lib/constants";
 import { useDroppable } from "@dnd-kit/core";
 import { cn } from "@/lib/utils";
@@ -200,8 +200,8 @@ function QuickCardSearch({
               <div
                 key={sc.id}
                 className="flex items-center gap-2 px-2 py-1 hover:bg-muted border-b border-border/30 last:border-0 cursor-pointer"
-                onMouseEnter={(e) => onHover(scryfallToOpenMagic(sc), e, { useDelay: true })}
-                onMouseMove={(e) => onHover(scryfallToOpenMagic(sc), e, { useDelay: true })}
+                onMouseEnter={(e) => onHover(scryfallToManaBrew(sc), e, { useDelay: true })}
+                onMouseMove={(e) => onHover(scryfallToManaBrew(sc), e, { useDelay: true })}
                 onMouseLeave={onLeave}
                 onClick={() => onAdd(sc)}
                 title={`Add ${sc.name}`}
@@ -409,7 +409,7 @@ export function DeckBuilder({
     fetchCardCollection(uniqueNames.map((n) => ({ name: n })))
       .then((scryfallMap) => {
         const updates = new Map<string, Partial<Card>>();
-        for (const [key, sc] of scryfallMap) updates.set(key, scryfallToOpenMagic(sc));
+        for (const [key, sc] of scryfallMap) updates.set(key, scryfallToManaBrew(sc));
         enrichDeckCards(updates);
       })
       .catch((err) => {
@@ -846,7 +846,7 @@ export function DeckBuilder({
       try {
         const scryfallMap = await fetchCardCollection(entries.map((p) => ({ name: p.name })));
         const updates = new Map<string, Partial<Card>>();
-        for (const [key, sc] of scryfallMap) updates.set(key, scryfallToOpenMagic(sc));
+        for (const [key, sc] of scryfallMap) updates.set(key, scryfallToManaBrew(sc));
         enrichDeckCards(updates);
         toast.success("Card data loaded from Scryfall");
       } catch {
@@ -899,7 +899,7 @@ export function DeckBuilder({
         useScryfallStore
           .getState()
           .getCard({ name: cmd.name })
-          .then((sc) => setCommander(scryfallToOpenMagic(sc.info)))
+          .then((sc) => setCommander(scryfallToManaBrew(sc.info)))
           .catch(() => setCommander(createEmptyCard(cmd.name))),
       );
 
@@ -1216,7 +1216,7 @@ export function DeckBuilder({
                   );
                   return;
                 }
-                addToMain(scryfallToOpenMagic(sc));
+                addToMain(scryfallToManaBrew(sc));
                 toast.success(`Added ${sc.name}`);
               }}
               onRemove={(name) => {

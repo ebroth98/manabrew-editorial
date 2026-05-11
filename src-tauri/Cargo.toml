@@ -1,5 +1,5 @@
 [package]
-name = "forge-web"
+name = "manabrew"
 version = "0.0.0"
 edition = "2021"
 
@@ -7,7 +7,7 @@ edition = "2021"
 java-forge = ["dep:j4rs"]
 
 [lib]
-name = "forge_web_lib"
+name = "manabrew_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]

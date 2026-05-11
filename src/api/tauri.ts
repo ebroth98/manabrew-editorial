@@ -7,7 +7,7 @@
  */
 import { invoke } from "@tauri-apps/api/core";
 import type { CardIdentity, GameFormat } from "@/types/server";
-import type { Deck } from "@/types/openmagic";
+import type { Deck } from "@/types/manabrew";
 import { presetDeckPayloadsToDecks, type PresetDeckPayload } from "@/lib/presetDecks";
 
 /**
@@ -111,13 +111,13 @@ export interface SetDeckSelectionParams {
 
 export const serverCommands = {
   /**
-   * Connect to an OpenMagic server.
+   * Connect to an ManaBrew server.
    * Triggers 'server:auth_result' event on completion.
    */
   connect: (params: ServerConnectParams) => tauriInvoke<void>("server_connect", params),
 
   /**
-   * Disconnect from the current OpenMagic server.
+   * Disconnect from the current ManaBrew server.
    */
   disconnect: () => invoke<void>("server_disconnect"),
 

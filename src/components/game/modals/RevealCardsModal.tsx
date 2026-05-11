@@ -1,7 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { Modal } from "./Modal";
 import { Card } from "@/components/game/Card";
-import type { Card as GameCard } from "@/types/openmagic";
+import type { Card as GameCard } from "@/types/manabrew";
 import { useModalKeyboard } from "@/hooks/useModalKeyboard";
 
 interface RevealCardsModalProps {

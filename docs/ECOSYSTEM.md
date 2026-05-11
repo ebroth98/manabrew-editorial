@@ -1,6 +1,6 @@
 # Ecosystem
 
-`forge-rs` is part of a wider open-source card-game software ecosystem. This
+`manabrew` is part of a wider open-source card-game software ecosystem. This
 document lists adjacent projects and explains how this repository is positioned
 relative to them.
 
@@ -11,13 +11,13 @@ and portability.
 ## Forge
 
 [Forge](https://github.com/Card-Forge/forge) is the upstream project and the
-reference implementation for `forge-rs`.
+reference implementation for `manabrew`.
 
-`forge-rs` is a GPL Rust port of Forge's rules engine. It consumes Forge card
+`manabrew` is a GPL Rust port of Forge's rules engine. It consumes Forge card
 scripts, vendors the Java source as a reference, and uses Java Forge as the
 behavioral oracle through the parity harness.
 
-The working name `forge-rs` is subject to courtesy discussion with Forge
+The working name `manabrew` is subject to courtesy discussion with Forge
 maintainers before public release. The intent is to be clear that this project
 derives from Forge while avoiding confusion about official status or support.
 
@@ -33,7 +33,7 @@ card-game software survives and serves players over time.
 - [Cockatrice](https://github.com/Cockatrice/Cockatrice): open-source virtual
   tabletop for multiplayer play.
 
-These projects are independent communities. `forge-rs` does not speak for them.
+These projects are independent communities. `manabrew` does not speak for them.
 
 ## Modern engine projects
 
@@ -45,7 +45,7 @@ The Gathering rules engines and clients.
 - [Argentum Engine](https://github.com/wingedsheep/argentum-engine): Kotlin/JVM
   engine and client project.
 
-`forge-rs` takes a different path from from-scratch engines: it is Forge-derived
+`manabrew` takes a different path from from-scratch engines: it is Forge-derived
 and keeps Java Forge in the loop as the behavioral oracle. The differentiator is
 not that this repository is the only modern implementation. The differentiator
 is the Forge parity workflow: same decks, same seeds, same deterministic
@@ -65,19 +65,19 @@ deck building, and 20,000+ cards.
 We have not found a public source repository for the Forge Web frontend. We are
 not relying on any legal theory about whether a hosted web frontend over a GPL
 Forge backend must itself be distributed under the GPL. Our approach is simpler:
-the `forge-rs` client, server, Java backend adapter, and Rust engine live in the
+the `manabrew` client, server, Java backend adapter, and Rust engine live in the
 same public GPL repository, with license posture and Forge derivation documented
 up front.
 
 The existence of Forge Web is still useful context. It shows that a modern
-browser surface over the Forge engine is a real user-facing shape. `forge-rs`
+browser surface over the Forge engine is a real user-facing shape. `manabrew`
 pursues a related shape while keeping the full stack open, self-hostable, and
 usable with either the Java Forge backend or the Rust parity engine.
 
 ## Card data and images
 
 [Scryfall](https://scryfall.com) is an important public resource for card
-metadata and card images. `forge-rs` does not ship card images. When images or
+metadata and card images. `manabrew` does not ship card images. When images or
 printing-specific metadata are used, they should be fetched at runtime by the
 user's instance and handled under the applicable third-party terms.
 

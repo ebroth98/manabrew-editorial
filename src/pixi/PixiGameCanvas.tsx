@@ -19,7 +19,7 @@ import type {
 import { useHandScale } from "@/hooks/useHandScale";
 import { HandCardActions } from "@/components/game/zones/HandCardActions";
 import type { HandActionOption } from "@/stores/useGameUIStore";
-import type { Card } from "@/types/openmagic";
+import type { Card } from "@/types/manabrew";
 import { useGameDevStore } from "@/stores/useGameDevStore";
 import {
   FPS_SAMPLE_INTERVAL_MS,

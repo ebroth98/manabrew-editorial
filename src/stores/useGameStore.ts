@@ -14,7 +14,7 @@ import { applyPrompt } from "./gameStore.constants";
 import { useServerStore } from "./useServerStore";
 import type { GameState, GameConfig } from "./gameStore.types";
 import type { AgentPrompt } from "./gameStore.types";
-import type { Card, Deck, GameView } from "@/types/openmagic";
+import type { Card, Deck, GameView } from "@/types/manabrew";
 import type { CardIdentity } from "@/types/server";
 import { usePhaseStopStore } from "@/stores/usePhaseStopStore";
 import { prefetchCards } from "@/stores/useScryfallStore";

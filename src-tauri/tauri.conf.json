@@ -1,7 +1,7 @@
 {
-  "productName": "Bardidina",
+  "productName": "ManaBrew",
   "version": "0.0.0",
-  "identifier": "com.forgeweb.app",
+  "identifier": "com.manabrew.app",
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:1420",
@@ -11,7 +11,7 @@
   "app": {
     "windows": [
       {
-        "title": "Bardidina",
+        "title": "ManaBrew",
         "width": 1400,
         "height": 900,
         "resizable": true,

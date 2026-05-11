@@ -34,7 +34,7 @@ import {
 import { GameIcon } from "@/components/game/GameIcon";
 import { useDraggable, useDroppable } from "@dnd-kit/core";
 import { cn } from "@/lib/utils";
-import type { Card } from "@/types/openmagic";
+import type { Card } from "@/types/manabrew";
 import type { CardGroup, ViewMode, SectionDefinition } from "./deckBuilder.utils";
 import { CARD_WIDTH_MAP, getTaggedGroups } from "./deckBuilder.utils";
 import { CARD_RING } from "@/components/game/game.styles";

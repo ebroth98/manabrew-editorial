@@ -3,7 +3,7 @@ import { Modal } from "./Modal";
 import { cn } from "@/lib/utils";
 import { useState, useCallback, useRef, useEffect } from "react";
 import { useModalKeyboard } from "@/hooks/useModalKeyboard";
-import type { Card as OpenMagicCard } from "@/types/openmagic";
+import type { Card as ManaBrewCard } from "@/types/manabrew";
 
 interface DamageOrderModalProps {
   /** Attacker card ID (to show which attacker this is for). */
@@ -11,9 +11,9 @@ interface DamageOrderModalProps {
   /** Blocker IDs in their default order. */
   blockerIds: string[];
   /** Blocker card data for display. */
-  blockerCards: OpenMagicCard[];
+  blockerCards: ManaBrewCard[];
   /** All cards from the game view (to look up blocker/attacker info). */
-  gameViewCards?: OpenMagicCard[];
+  gameViewCards?: ManaBrewCard[];
   onConfirm: (orderedBlockerIds: string[]) => void;
 }
 

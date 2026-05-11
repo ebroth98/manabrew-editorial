@@ -42,16 +42,16 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-public final class OpenMagicInteractiveController extends DeterministicController {
+public final class ManaBrewInteractiveController extends DeterministicController {
     private final Game game;
-    private final OpenMagicInteractiveSession session;
+    private final ManaBrewInteractiveSession session;
     private final DeterministicCostPlumbing interactiveCostPlumbing;
 
-    public OpenMagicInteractiveController(
+    public ManaBrewInteractiveController(
             final Game game,
             final Player player,
             final LobbyPlayer lobbyPlayer,
-            final OpenMagicInteractiveSession session
+            final ManaBrewInteractiveSession session
     ) {
         super(game, player, lobbyPlayer, new CountingRandom(0), false, true);
         this.game = game;

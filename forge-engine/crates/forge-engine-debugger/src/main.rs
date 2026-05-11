@@ -68,7 +68,7 @@ fn resolved_existing_path(path: &Path) -> Option<PathBuf> {
 
 pub(crate) fn discover_java_jar(preferred: Option<&Path>) -> Option<PathBuf> {
     let mut candidates = Vec::new();
-    if let Some(path) = env::var_os("OPEN_MAGIC_FORGE_HARNESS_JAR") {
+    if let Some(path) = env::var_os("MANA_BREW_FORGE_HARNESS_JAR") {
         candidates.push(PathBuf::from(path));
     }
     if let Some(path) = preferred {

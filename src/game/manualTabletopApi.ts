@@ -7,7 +7,7 @@ import type {
   StartMultiplayerGameParams,
 } from "@/platform";
 import { PromptType } from "@/types/promptType";
-import type { Card, Deck, GameView, Player } from "@/types/openmagic";
+import type { Card, Deck, GameView, Player } from "@/types/manabrew";
 import type { ManualTabletopApi, ManualTabletopAction } from "./runtime.types";
 
 const MANUAL_GAME_ID = "manual-tabletop";

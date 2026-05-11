@@ -1,7 +1,7 @@
 // Mirrors Forge's DeckFormat (structural rules) + GameFormat (card legality).
 // For our limited card pool, we combine both into a single GameFormat interface.
 
-import type { Card } from "@/types/openmagic";
+import type { Card } from "@/types/manabrew";
 import type { CardIdentity, DeckSection } from "@/types/server";
 
 export interface GameFormat {

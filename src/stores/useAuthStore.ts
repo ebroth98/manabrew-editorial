@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { persist, devtools } from "zustand/middleware";
-import type { User } from "@/types/openmagic";
+import type { User } from "@/types/manabrew";
 
 interface AuthState {
   user: User | null;
@@ -27,7 +27,7 @@ export const useAuthStore = create<AuthState>()(
         setLastConnection: (lastServer, lastUsername) => set({ lastServer, lastUsername }),
       }),
       {
-        name: "openmagic-auth-storage",
+        name: "manabrew-auth-storage",
         partialize: (state) => ({
           lastServer: state.lastServer,
           lastUsername: state.lastUsername,

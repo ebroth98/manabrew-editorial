@@ -7,7 +7,7 @@ import {
   Sprite,
   type Texture,
 } from "pixi.js";
-import type { Card } from "@/types/openmagic";
+import type { Card } from "@/types/manabrew";
 import type {
   ArrowSpec,
   ArrowEndpoint,

@@ -1,4 +1,4 @@
-const KEY = "openmagic.pendingGauntletMatch";
+const KEY = "manabrew.pendingGauntletMatch";
 
 export interface PendingGauntletMatch {
   gauntletId: string;

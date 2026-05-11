@@ -5,11 +5,11 @@
  */
 
 import { useMemo } from "react";
-import type { Card, DeckToken } from "@/types/openmagic";
+import type { Card, DeckToken } from "@/types/manabrew";
 import { useScryfallStore } from "@/stores/useScryfallStore";
 import { useQuery } from "@tanstack/react-query";
 
-// Re-export so consumers don't need to import from openmagic
+// Re-export so consumers don't need to import from manabrew
 export type { DeckToken };
 
 function scryfallIdFromUri(uri: string): string | null {

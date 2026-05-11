@@ -1,4 +1,4 @@
-import type { Card } from "@/types/openmagic";
+import type { Card } from "@/types/manabrew";
 import { MANA_LETTERS } from "@/themes/gameTheme";
 
 const MONO_COLOR_CLASSES: Record<string, string> = {

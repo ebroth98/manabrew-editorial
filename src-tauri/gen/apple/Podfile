@@ -1,13 +1,13 @@
 # Uncomment the next line to define a global platform for your project
 
-target 'forge-web_iOS' do
+target 'manabrew_iOS' do
 platform :ios, '14.0'
-  # Pods for forge-web_iOS
+  # Pods for manabrew_iOS
 end
 
-target 'forge-web_macOS' do
+target 'manabrew_macOS' do
 platform :osx, '11.0'
-  # Pods for forge-web_macOS
+  # Pods for manabrew_macOS
 end
 
 # Delete the deployment target for iOS and macOS, causing it to be inherited from the Podfile

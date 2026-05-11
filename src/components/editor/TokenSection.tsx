@@ -11,7 +11,7 @@ import { useState } from "react";
 import { ChevronDown, ChevronRight, Loader2, Palette } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { CARD_WIDTH_MAP } from "./deckBuilder.utils";
-import type { DeckToken } from "@/types/openmagic";
+import type { DeckToken } from "@/types/manabrew";
 
 // ─── Scryfall fallback — only used when no stored imageUrl exists ───────────
 

@@ -16,10 +16,10 @@ import { FormatBadge } from "@/components/game/FormatBadge";
 import { CreateGameDialog } from "@/components/lobby/CreateGameDialog";
 import { DeckCard } from "@/components/deck/DeckCard";
 import { DeckListControls } from "@/components/deck/DeckListControls";
-import type { Card } from "@/types/openmagic";
+import type { Card } from "@/types/manabrew";
 import type { CardIdentity } from "@/types/server";
 import { fetchCardCollection } from "@/api/scryfall";
-import { scryfallToOpenMagic } from "@/lib/scryfall.utils";
+import { scryfallToManaBrew } from "@/lib/scryfall.utils";
 import { ROUTES, DEFAULT_DECK_NAME } from "@/lib/constants";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { extractColors, groupCards, categorize, applyDeckFilters } from "./myDecks.utils";
@@ -29,7 +29,7 @@ import { useCardPreview } from "@/hooks/useCardPreview";
 import { HoverCardPreview } from "@/components/game/HoverCardPreview";
 import { usePresetDecks } from "@/stores/usePresetDecksStore";
 import type { SavedDeck } from "@/stores/useDeckStore";
-import type { Deck as DeckType } from "@/types/openmagic";
+import type { Deck as DeckType } from "@/types/manabrew";
 
 // ── Component ────────────────────────────────────────────────────────────────
 
@@ -115,7 +115,7 @@ export default function MyDecks() {
       .then((scryfallMap) => {
         const updates = new Map<string, Partial<Card>>();
         for (const [key, sc] of scryfallMap) {
-          updates.set(key, scryfallToOpenMagic(sc));
+          updates.set(key, scryfallToManaBrew(sc));
         }
         enrichSavedDeck(selected.id, updates);
       })

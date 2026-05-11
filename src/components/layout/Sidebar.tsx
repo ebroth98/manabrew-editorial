@@ -3,7 +3,7 @@ import { cn } from "@/lib/utils";
 import { useGameStore } from "@/stores/useGameStore";
 import { Home, Gamepad2, Hand, Layers, Package, Settings, Swords, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { OpenMagicLogo } from "./OpenMagicLogo";
+import { ManaBrewLogo } from "./ManaBrewLogo";
 
 interface SidebarProps extends React.HTMLAttributes<HTMLDivElement> {
   onNavigate?: () => void;
@@ -21,9 +21,8 @@ export function Sidebar({ className, onNavigate }: SidebarProps) {
     >
       <div className="flex-1 space-y-4 py-4">
         <div className="px-3 py-2">
-          <div className="mb-2 px-4 flex items-center gap-2 overflow-hidden">
-            <OpenMagicLogo size={48} className="rounded-xl shrink-0" />
-            <h2 className="text-lg font-semibold tracking-tight truncate">OpenMagic</h2>
+          <div className="mb-2 px-4">
+            <ManaBrewLogo size={256} className="w-full h-auto rounded-xl" />
           </div>
           <div className="space-y-1">
             <NavLink to="/play" onClick={onNavigate}>

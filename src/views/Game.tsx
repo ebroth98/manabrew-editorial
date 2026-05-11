@@ -6,11 +6,11 @@ import { useShallow } from "zustand/react/shallow";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type {
-  Card as OpenMagicCard,
+  Card as ManaBrewCard,
   Player,
   StackObject,
   ActivatableAbilityInfo,
-} from "@/types/openmagic";
+} from "@/types/manabrew";
 import { Card } from "@/components/game/Card";
 import { GameModals } from "@/components/game/GameModals";
 import { GameOverScreen } from "@/components/game/GameOverScreen";
@@ -76,7 +76,7 @@ function buildDebugKeywordCard(
   controllerId: string,
   name: string,
   keywords: string[],
-): OpenMagicCard {
+): ManaBrewCard {
   return {
     id: DEBUG_KEYWORD_CARD_ID,
     name: name.trim() || "Raging Goblin",
@@ -316,11 +316,11 @@ export default function Game({ exitTo }: GameProps = {}) {
   // Accumulating cache of every card we've ever observed across the
   // player's visible zones. Used as a fallback so stack cards keep their
   // exact printing after they leave hand.
-  const knownCardsRef = useRef<Map<string, OpenMagicCard>>(new Map());
+  const knownCardsRef = useRef<Map<string, ManaBrewCard>>(new Map());
   useEffect(() => {
     if (!gameView) return;
     const cache = knownCardsRef.current;
-    const ingest = (cards: OpenMagicCard[] | undefined) => {
+    const ingest = (cards: ManaBrewCard[] | undefined) => {
       if (!cards) return;
       for (const c of cards) cache.set(c.id, c);
     };
@@ -455,7 +455,7 @@ export default function Game({ exitTo }: GameProps = {}) {
   );
 
   const getManualCardActions = useCallback(
-    (card: OpenMagicCard): HandActionOption[] => {
+    (card: ManaBrewCard): HandActionOption[] => {
       if (!manualApi) return [];
       const humanPlayerId = gameView?.players[0]?.id;
       const ownsHumanZone = card.controllerId === humanPlayerId || card.ownerId === humanPlayerId;
@@ -495,7 +495,7 @@ export default function Game({ exitTo }: GameProps = {}) {
   );
 
   const getHandActionOptions = useCallback(
-    (card: OpenMagicCard): HandActionOption[] =>
+    (card: ManaBrewCard): HandActionOption[] =>
       manualApi
         ? getManualCardActions(card)
         : [...(castOptionsByCardId.get(card.id) ?? []), ...(abilitiesByCardId.get(card.id) ?? [])],
@@ -503,13 +503,13 @@ export default function Game({ exitTo }: GameProps = {}) {
   );
 
   const getBattlefieldAbilityOptions = useCallback(
-    (card: OpenMagicCard): HandActionOption[] => abilitiesByCardId.get(card.id) ?? [],
+    (card: ManaBrewCard): HandActionOption[] => abilitiesByCardId.get(card.id) ?? [],
     [abilitiesByCardId],
   );
 
   /** All available actions for a card (cast + activated + mana abilities). */
   const getCardActions = useCallback(
-    (card: OpenMagicCard): HandActionOption[] => {
+    (card: ManaBrewCard): HandActionOption[] => {
       if (manualApi) return getManualCardActions(card);
       if (promptType === PromptType.PayManaCost) {
         return manaAbilitiesByCardId.get(card.id) ?? [];
@@ -554,7 +554,7 @@ export default function Game({ exitTo }: GameProps = {}) {
     }
   };
 
-  const handleHandCardAction = (card: OpenMagicCard, e?: React.MouseEvent) => {
+  const handleHandCardAction = (card: ManaBrewCard, e?: React.MouseEvent) => {
     if (manualApi) {
       preview.showSticky(card, e?.clientX, e?.clientY);
       return;
@@ -581,7 +581,7 @@ export default function Game({ exitTo }: GameProps = {}) {
     preview.showSticky(card, e?.clientX, e?.clientY);
   };
 
-  const handleHandCardDragStart = (card: OpenMagicCard, e: React.MouseEvent) => {
+  const handleHandCardDragStart = (card: ManaBrewCard, e: React.MouseEvent) => {
     if (manualApi) {
       preview.showSticky(card, e.clientX, e.clientY);
       return;
@@ -594,7 +594,7 @@ export default function Game({ exitTo }: GameProps = {}) {
     startHandCardDrag(card, e);
   };
 
-  const handleBattlefieldCardAction = (card: OpenMagicCard, e?: React.MouseEvent) => {
+  const handleBattlefieldCardAction = (card: ManaBrewCard, e?: React.MouseEvent) => {
     const abilities = getBattlefieldAbilityOptions(card);
     if (abilities.length === 0) return false;
 
@@ -640,10 +640,10 @@ export default function Game({ exitTo }: GameProps = {}) {
   );
 
   // Zone viewer helpers (wrap store actions)
-  function openZone(title: string, cards: OpenMagicCard[], onClickCard?: (cardId: string) => void) {
+  function openZone(title: string, cards: ManaBrewCard[], onClickCard?: (cardId: string) => void) {
     openZoneViewer({ title, cards, onClickCard });
   }
-  function openManualZone(title: string, cards: OpenMagicCard[]) {
+  function openManualZone(title: string, cards: ManaBrewCard[]) {
     openZoneViewer({
       title,
       cards: cards.map((card) => ({ ...card, isPlayable: true })),
@@ -665,7 +665,7 @@ export default function Game({ exitTo }: GameProps = {}) {
   }
   function openZoneAndCast(
     title: string,
-    cards: OpenMagicCard[],
+    cards: ManaBrewCard[],
     onClickCard: (cardId: string) => void,
   ) {
     openZoneViewer({
@@ -679,7 +679,7 @@ export default function Game({ exitTo }: GameProps = {}) {
   }
 
   // Land tap/untap handler — shows interactive preview for multi-ability lands
-  const handleTapLand = (card: OpenMagicCard) => {
+  const handleTapLand = (card: ManaBrewCard) => {
     if (promptType === PromptType.PayManaCost) {
       const manaAbilities = (activePrompt?.manaAbilityOptions ?? [])
         .filter((a) => a.cardId === card.id)
@@ -748,7 +748,7 @@ export default function Game({ exitTo }: GameProps = {}) {
     }
   };
 
-  const handleUntapLand = (card: OpenMagicCard) => {
+  const handleUntapLand = (card: ManaBrewCard) => {
     untapLand(card.id);
   };
 
@@ -1126,8 +1126,8 @@ export default function Game({ exitTo }: GameProps = {}) {
   }, [gameView?.stack, hoveredStackObjectId]);
 
   const visibleCardsById = useMemo(() => {
-    if (!gameView) return new Map<string, OpenMagicCard>();
-    const cards: OpenMagicCard[] = [
+    if (!gameView) return new Map<string, ManaBrewCard>();
+    const cards: ManaBrewCard[] = [
       ...gameView.battlefield,
       ...gameView.myHand,
       ...gameView.graveyard,
@@ -1148,8 +1148,8 @@ export default function Game({ exitTo }: GameProps = {}) {
   }, [gameView, debugCardEnabled, debugCardName, debugBattlefieldKeywords, me?.id]);
 
   const stackCardsBySourceId = useMemo(() => {
-    if (!gameView?.stack) return new Map<string, OpenMagicCard>();
-    const byId = new Map<string, OpenMagicCard>();
+    if (!gameView?.stack) return new Map<string, ManaBrewCard>();
+    const byId = new Map<string, ManaBrewCard>();
     for (const s of gameView.stack) {
       if (byId.has(s.sourceId)) continue;
       byId.set(s.sourceId, {
@@ -1200,7 +1200,7 @@ export default function Game({ exitTo }: GameProps = {}) {
   };
 
   const handleHoverCardGuarded = (
-    card: OpenMagicCard | null,
+    card: ManaBrewCard | null,
     e?: React.MouseEvent,
     options: {
       useAnchor?: boolean;
@@ -1302,7 +1302,7 @@ export default function Game({ exitTo }: GameProps = {}) {
     [gameView?.players],
   );
 
-  const resolveStackCard = (stackItem: StackObject): OpenMagicCard =>
+  const resolveStackCard = (stackItem: StackObject): ManaBrewCard =>
     // `visibleCardsById` covers cards still in a live zone. For spells
     // that have left the hand but haven't resolved yet, fall through to
     // `knownCardsRef` — it preserves the full card (with setCode +
@@ -1332,7 +1332,7 @@ export default function Game({ exitTo }: GameProps = {}) {
       zoneId: "",
     };
 
-  const activeFlashCard: OpenMagicCard | null = useMemo(() => {
+  const activeFlashCard: ManaBrewCard | null = useMemo(() => {
     if (!activeFlash || activeFlash.kind !== "card") return null;
     const knownCard =
       visibleCardsById.get(activeFlash.cardId) ?? stackCardsBySourceId.get(activeFlash.cardId);
@@ -1399,14 +1399,14 @@ export default function Game({ exitTo }: GameProps = {}) {
   // (planeswalker / siege from the engine's `possibleDefenderIds`) as
   // choosable so battlefield clicks land on them — the engine doesn't
   // pre-mark them during attacker declaration.
-  const markIfDefender = (c: OpenMagicCard): OpenMagicCard =>
+  const markIfDefender = (c: ManaBrewCard): ManaBrewCard =>
     cardIsAttackTarget(c.id) ? { ...c, isChoosable: true } : c;
   // Pending attackers display as tapped so the user has an immediate
   // visual signal of "selected" without us drawing a misleading arrow
   // toward an arbitrary default opponent. Tap state flips for real on
   // the engine side once the attack commits.
   const pendingAttackerSet = new Set(pendingAttackers);
-  const markIfPendingAttacker = (c: OpenMagicCard): OpenMagicCard =>
+  const markIfPendingAttacker = (c: ManaBrewCard): ManaBrewCard =>
     pendingAttackerSet.has(c.id) ? { ...c, tapped: true } : c;
   const myPermanents = gameView.battlefield
     .filter((c) => c.controllerId === me.id)

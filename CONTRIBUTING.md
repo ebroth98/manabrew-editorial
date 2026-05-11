@@ -1,4 +1,4 @@
-# Contributing to forge-rs
+# Contributing to manabrew
 
 Thanks for helping. This project is still pre-public-release software, so the
 best contributions are small, reproducible, and easy to review.
@@ -103,7 +103,7 @@ Use Conventional Commits:
 
 ```text
 fix(engine): apply replacement effects during combat damage
-docs(readme): explain forge-rs naming status
+docs(readme): explain manabrew naming status
 feat(ui): add deck import progress state
 ```
 

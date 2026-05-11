@@ -41,8 +41,8 @@
 		9EC5AFDB593CD1910F48926E /* main.rs */ = {isa = PBXFileReference; path = main.rs; sourceTree = "<group>"; };
 		A52B66628C971DB96A45A4A1 /* tauri_agent.rs */ = {isa = PBXFileReference; path = tauri_agent.rs; sourceTree = "<group>"; };
 		B7A8D00A361DCE9856E957CC /* commands.rs */ = {isa = PBXFileReference; path = commands.rs; sourceTree = "<group>"; };
-		BD29CA0648903A07A6DDCB7C /* forge-web_iOS.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = "forge-web_iOS.app"; sourceTree = BUILT_PRODUCTS_DIR; };
-		C1E3383C3403C3945E3ECA84 /* forge-web_iOS.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = "forge-web_iOS.entitlements"; sourceTree = "<group>"; };
+		BD29CA0648903A07A6DDCB7C /* manabrew_iOS.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = "manabrew_iOS.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		C1E3383C3403C3945E3ECA84 /* manabrew_iOS.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = "manabrew_iOS.entitlements"; sourceTree = "<group>"; };
 		CFB71FEE0577B2ACA37B2059 /* WebKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WebKit.framework; path = System/Library/Frameworks/WebKit.framework; sourceTree = SDKROOT; };
 		D7FD52904BBDE70460E50B58 /* CoreGraphics.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreGraphics.framework; path = System/Library/Frameworks/CoreGraphics.framework; sourceTree = SDKROOT; };
 		E1676192FB337466369F85A8 /* game_manager.rs */ = {isa = PBXFileReference; path = game_manager.rs; sourceTree = "<group>"; };
@@ -71,7 +71,7 @@
 		133C23B591B12236F6BB499B /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				BD29CA0648903A07A6DDCB7C /* forge-web_iOS.app */,
+				BD29CA0648903A07A6DDCB7C /* manabrew_iOS.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -83,13 +83,13 @@
 			path = Externals;
 			sourceTree = "<group>";
 		};
-		53367FB7523DDCE64A46C2A8 /* forge-web */ = {
+		53367FB7523DDCE64A46C2A8 /* manabrew */ = {
 			isa = PBXGroup;
 			children = (
 				048AE739E368070D516FDC78 /* main.mm */,
 				80C2DEEA5C349D6F762B2583 /* bindings */,
 			);
-			path = "forge-web";
+			path = "manabrew";
 			sourceTree = "<group>";
 		};
 		80C2DEEA5C349D6F762B2583 /* bindings */ = {
@@ -124,7 +124,7 @@
 				1AA44583C2CDC7CC16BC4BA3 /* Assets.xcassets */,
 				589AE5EFDCFDFDEB135DDEFF /* LaunchScreen.storyboard */,
 				506EBD74121B408FBD68B944 /* Externals */,
-				F46AA65307415BC381302919 /* forge-web_iOS */,
+				F46AA65307415BC381302919 /* manabrew_iOS */,
 				D52F964FE5145DD13BCBDA45 /* Sources */,
 				8269A05F50A4AFA35D9D7D47 /* src */,
 				A941F3CD975AAE2E623EEAEE /* Frameworks */,
@@ -150,26 +150,26 @@
 		D52F964FE5145DD13BCBDA45 /* Sources */ = {
 			isa = PBXGroup;
 			children = (
-				53367FB7523DDCE64A46C2A8 /* forge-web */,
+				53367FB7523DDCE64A46C2A8 /* manabrew */,
 			);
 			path = Sources;
 			sourceTree = "<group>";
 		};
-		F46AA65307415BC381302919 /* forge-web_iOS */ = {
+		F46AA65307415BC381302919 /* manabrew_iOS */ = {
 			isa = PBXGroup;
 			children = (
-				C1E3383C3403C3945E3ECA84 /* forge-web_iOS.entitlements */,
+				C1E3383C3403C3945E3ECA84 /* manabrew_iOS.entitlements */,
 				FF067F519CE59DC1463CD4B2 /* Info.plist */,
 			);
-			path = "forge-web_iOS";
+			path = "manabrew_iOS";
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		84BF40E91908F76AB6F107A3 /* forge-web_iOS */ = {
+		84BF40E91908F76AB6F107A3 /* manabrew_iOS */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = 9D8864E2152ED50687103A84 /* Build configuration list for PBXNativeTarget "forge-web_iOS" */;
+			buildConfigurationList = 9D8864E2152ED50687103A84 /* Build configuration list for PBXNativeTarget "manabrew_iOS" */;
 			buildPhases = (
 				CBD89B40A8CB6A518F37DE38 /* Build Rust Code */,
 				3724D35AEB9681267FE436B7 /* Sources */,
@@ -180,11 +180,11 @@
 			);
 			dependencies = (
 			);
-			name = "forge-web_iOS";
+			name = "manabrew_iOS";
 			packageProductDependencies = (
 			);
-			productName = "forge-web_iOS";
-			productReference = BD29CA0648903A07A6DDCB7C /* forge-web_iOS.app */;
+			productName = "manabrew_iOS";
+			productReference = BD29CA0648903A07A6DDCB7C /* manabrew_iOS.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
@@ -196,7 +196,7 @@
 				BuildIndependentTargetsInParallel = YES;
 				LastUpgradeCheck = 1430;
 			};
-			buildConfigurationList = A612B4517AF0F0740E0C0633 /* Build configuration list for PBXProject "forge-web" */;
+			buildConfigurationList = A612B4517AF0F0740E0C0633 /* Build configuration list for PBXProject "manabrew" */;
 			compatibilityVersion = "Xcode 14.0";
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
@@ -210,7 +210,7 @@
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				84BF40E91908F76AB6F107A3 /* forge-web_iOS */,
+				84BF40E91908F76AB6F107A3 /* manabrew_iOS */,
 			);
 		};
 /* End PBXProject section */
@@ -335,7 +335,7 @@
 					arm64,
 				);
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				CODE_SIGN_ENTITLEMENTS = "forge-web_iOS/forge-web_iOS.entitlements";
+				CODE_SIGN_ENTITLEMENTS = "manabrew_iOS/manabrew_iOS.entitlements";
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				ENABLE_BITCODE = NO;
 				"EXCLUDED_ARCHS[sdk=iphoneos*]" = x86_64;
@@ -343,15 +343,15 @@
 					"$(inherited)",
 					"\".\"",
 				);
-				INFOPLIST_FILE = "forge-web_iOS/Info.plist";
+				INFOPLIST_FILE = "manabrew_iOS/Info.plist";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
 				"LIBRARY_SEARCH_PATHS[arch=arm64]" = "$(inherited) $(PROJECT_DIR)/Externals/arm64/$(CONFIGURATION) $(SDKROOT)/usr/lib/swift $(TOOLCHAIN_DIR)/usr/lib/swift/$(PLATFORM_NAME) $(TOOLCHAIN_DIR)/usr/lib/swift-5.0/$(PLATFORM_NAME)";
 				"LIBRARY_SEARCH_PATHS[arch=x86_64]" = "$(inherited) $(PROJECT_DIR)/Externals/x86_64/$(CONFIGURATION) $(SDKROOT)/usr/lib/swift $(TOOLCHAIN_DIR)/usr/lib/swift/$(PLATFORM_NAME) $(TOOLCHAIN_DIR)/usr/lib/swift-5.0/$(PLATFORM_NAME)";
-				PRODUCT_BUNDLE_IDENTIFIER = com.forgeweb.app;
-				PRODUCT_NAME = "Bardidina Magica";
+				PRODUCT_BUNDLE_IDENTIFIER = com.manabrew.app;
+				PRODUCT_NAME = "ManaBrew";
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
 				VALID_ARCHS = arm64;
@@ -423,7 +423,7 @@
 					arm64,
 				);
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				CODE_SIGN_ENTITLEMENTS = "forge-web_iOS/forge-web_iOS.entitlements";
+				CODE_SIGN_ENTITLEMENTS = "manabrew_iOS/manabrew_iOS.entitlements";
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				ENABLE_BITCODE = NO;
 				"EXCLUDED_ARCHS[sdk=iphoneos*]" = x86_64;
@@ -431,15 +431,15 @@
 					"$(inherited)",
 					"\".\"",
 				);
-				INFOPLIST_FILE = "forge-web_iOS/Info.plist";
+				INFOPLIST_FILE = "manabrew_iOS/Info.plist";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
 				"LIBRARY_SEARCH_PATHS[arch=arm64]" = "$(inherited) $(PROJECT_DIR)/Externals/arm64/$(CONFIGURATION) $(SDKROOT)/usr/lib/swift $(TOOLCHAIN_DIR)/usr/lib/swift/$(PLATFORM_NAME) $(TOOLCHAIN_DIR)/usr/lib/swift-5.0/$(PLATFORM_NAME)";
 				"LIBRARY_SEARCH_PATHS[arch=x86_64]" = "$(inherited) $(PROJECT_DIR)/Externals/x86_64/$(CONFIGURATION) $(SDKROOT)/usr/lib/swift $(TOOLCHAIN_DIR)/usr/lib/swift/$(PLATFORM_NAME) $(TOOLCHAIN_DIR)/usr/lib/swift-5.0/$(PLATFORM_NAME)";
-				PRODUCT_BUNDLE_IDENTIFIER = com.forgeweb.app;
-				PRODUCT_NAME = "Bardidina Magica";
+				PRODUCT_BUNDLE_IDENTIFIER = com.manabrew.app;
+				PRODUCT_NAME = "ManaBrew";
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
 				VALID_ARCHS = arm64;
@@ -450,7 +450,7 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		9D8864E2152ED50687103A84 /* Build configuration list for PBXNativeTarget "forge-web_iOS" */ = {
+		9D8864E2152ED50687103A84 /* Build configuration list for PBXNativeTarget "manabrew_iOS" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				DB6ED02F357B2A21547B6800 /* debug */,
@@ -459,7 +459,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = debug;
 		};
-		A612B4517AF0F0740E0C0633 /* Build configuration list for PBXProject "forge-web" */ = {
+		A612B4517AF0F0740E0C0633 /* Build configuration list for PBXProject "manabrew" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				2EE8BD7C911F7C1706040E8B /* debug */,

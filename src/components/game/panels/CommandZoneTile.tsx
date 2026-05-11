@@ -1,5 +1,5 @@
 import type { CSSProperties } from "react";
-import type { Card as CardType } from "@/types/openmagic";
+import type { Card as CardType } from "@/types/manabrew";
 import { Card } from "@/components/game/Card";
 import { cn } from "@/lib/utils";
 import { useTheme } from "@/hooks/useTheme";

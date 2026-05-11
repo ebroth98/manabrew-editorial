@@ -35,12 +35,12 @@ import java.util.concurrent.ConcurrentHashMap;
  * session here, then exchange prompts and player actions with an interactive
  * PlayerController implementation.
  */
-public final class OpenMagicEngineAdapter {
+public final class ManaBrewEngineAdapter {
     private static final Gson GSON = new Gson();
-    private final Map<String, OpenMagicInteractiveSession> sessions = new ConcurrentHashMap<>();
+    private final Map<String, ManaBrewInteractiveSession> sessions = new ConcurrentHashMap<>();
     private volatile boolean initialized;
 
-    public OpenMagicEngineAdapter() {
+    public ManaBrewEngineAdapter() {
     }
 
     public synchronized void initialize(final String assetsDir) {
@@ -71,19 +71,19 @@ public final class OpenMagicEngineAdapter {
         rules.setSimTimeout(120);
 
         ParityReset.resetAllIdCounters();
-        final OpenMagicInteractiveSession session =
-                new OpenMagicInteractiveSession(request.getGameId());
+        final ManaBrewInteractiveSession session =
+                new ManaBrewInteractiveSession(request.getGameId());
         final List<RegisteredPlayer> registeredPlayers = new ArrayList<>();
         for (PlayerConfig playerConfig : request.getPlayers()) {
             Deck deck = buildDeck(playerConfig);
             RegisteredPlayer registeredPlayer = RegisteredPlayer.forVariants(
                     playerCount, variants, deck, null, false, null, null);
-            registeredPlayer.setPlayer(new OpenMagicInteractiveLobbyPlayer(
+            registeredPlayer.setPlayer(new ManaBrewInteractiveLobbyPlayer(
                     playerConfig.getName(), session));
             registeredPlayers.add(registeredPlayer);
         }
 
-        final Match match = new Match(rules, registeredPlayers, "OpenMagic");
+        final Match match = new Match(rules, registeredPlayers, "ManaBrew");
         final Game game = match.createGame();
         session.attach(match, game);
         sessions.put(session.getSessionId(), session);
@@ -102,13 +102,13 @@ public final class OpenMagicEngineAdapter {
     }
 
     public String submitAction(final String sessionId, final String actionJson) {
-        OpenMagicInteractiveSession session = getSession(sessionId);
+        ManaBrewInteractiveSession session = getSession(sessionId);
         Objects.requireNonNull(actionJson, "actionJson");
         return session.submitAction(actionJson);
     }
 
     public String getPrompt(final String sessionId, final int playerIndex) {
-        OpenMagicInteractiveSession session = getSession(sessionId);
+        ManaBrewInteractiveSession session = getSession(sessionId);
         String prompt = session.getLatestPromptJson();
         return prompt == null ? "" : prompt;
     }
@@ -126,7 +126,7 @@ public final class OpenMagicEngineAdapter {
     }
 
     public void endGame(final String sessionId) {
-        OpenMagicInteractiveSession session = getSession(sessionId);
+        ManaBrewInteractiveSession session = getSession(sessionId);
         session.close();
         sessions.remove(sessionId);
     }
@@ -137,9 +137,9 @@ public final class OpenMagicEngineAdapter {
         }
     }
 
-    private OpenMagicInteractiveSession getSession(final String sessionId) {
+    private ManaBrewInteractiveSession getSession(final String sessionId) {
         requireSessionId(sessionId);
-        OpenMagicInteractiveSession session = sessions.get(sessionId);
+        ManaBrewInteractiveSession session = sessions.get(sessionId);
         if (session == null) {
             throw new IllegalArgumentException("unknown sessionId: " + sessionId);
         }

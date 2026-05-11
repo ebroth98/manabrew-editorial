@@ -4,7 +4,7 @@ import { Modal } from "./Modal";
 import { Card } from "@/components/game/Card";
 import { cn } from "@/lib/utils";
 import { useState, useEffect, useCallback, useRef } from "react";
-import type { Card as CardType } from "@/types/openmagic";
+import type { Card as CardType } from "@/types/manabrew";
 import { useModalKeyboard } from "@/hooks/useModalKeyboard";
 import { MODAL_FOOTER_BETWEEN } from "../game.styles";
 

@@ -2,7 +2,7 @@ import { PromptModals } from "@/components/game/modals/PromptModals";
 import { CostModals } from "@/components/game/modals/CostModals";
 import { TargetModals } from "@/components/game/modals/TargetModals";
 import type { LibraryPeekMode } from "@/components/game/modals";
-import type { Card as OpenMagicCard, StackObject } from "@/types/openmagic";
+import type { Card as ManaBrewCard, StackObject } from "@/types/manabrew";
 import type { AgentPrompt } from "@/stores/useGameStore";
 import type { AbilityPickerState, HandActionOption } from "@/stores/useGameUIStore";
 import type { PromptType } from "@/types/promptType";
@@ -12,16 +12,16 @@ interface GameModalsProps {
   currentPrompt: AgentPrompt | null;
   viewingZone: {
     title: string;
-    cards: OpenMagicCard[];
+    cards: ManaBrewCard[];
     onClickCard?: (cardId: string) => void;
   } | null;
   onCloseZone: () => void;
-  zoneTargetSelector: { title: string; cards: OpenMagicCard[]; validCardIds: string[] } | null;
+  zoneTargetSelector: { title: string; cards: ManaBrewCard[]; validCardIds: string[] } | null;
   onSelectZoneTarget: (cardId: string) => void;
   onCancelZoneTarget: () => void;
   libraryPeekModal: {
     mode: LibraryPeekMode;
-    cards: OpenMagicCard[];
+    cards: ManaBrewCard[];
     numToTake?: number;
     optional?: boolean;
   } | null;

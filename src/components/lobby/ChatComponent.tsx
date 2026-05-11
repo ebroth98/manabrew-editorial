@@ -22,7 +22,7 @@ export function ChatComponent({ channelId }: ChatComponentProps) {
     {
       id: "1",
       sender: "System",
-      content: "Welcome to OpenMagic!",
+      content: "Welcome to ManaBrew!",
       timestamp: new Date(),
       type: "system",
     },

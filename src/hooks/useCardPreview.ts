@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from "react";
-import type { Card } from "@/types/openmagic";
+import type { Card } from "@/types/manabrew";
 import { usePreferencesStore, type CardPreviewMode } from "@/stores/usePreferencesStore";
 
 /** Check whether the required modifier key is held for the given preview mode. */

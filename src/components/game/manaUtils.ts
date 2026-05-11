@@ -1,4 +1,4 @@
-import type { ActivatableAbilityInfo } from "@/types/openmagic";
+import type { ActivatableAbilityInfo } from "@/types/manabrew";
 
 /** Extract all mana letters from an ability description like "Add {G}." or "Add {W} or {U}." */
 export function extractManaLetters(desc: string | undefined): string[] {

@@ -1,5 +1,5 @@
 import type { DraftCard } from "@/types/limited";
-import type { Card } from "@/types/openmagic";
+import type { Card } from "@/types/manabrew";
 
 export type LimitedZone = "pool" | "main" | "sideboard";
 
@@ -53,7 +53,7 @@ export function rarityToken(rarity: DraftCard["rarity"]): RarityToken | null {
   return RARITY_TOKEN[rarity] ?? null;
 }
 
-export function draftCardToOpenMagic(dc: DraftCard, idx: number): Card {
+export function draftCardToManaBrew(dc: DraftCard, idx: number): Card {
   const realPrinting = dc.setCode && dc.setCode.length > 0 && dc.setCode !== "DEMO";
   return {
     id: `pool-${idx}-${dc.setCode}-${dc.collectorNumber}`,

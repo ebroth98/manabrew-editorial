@@ -1,6 +1,6 @@
 # Project Philosophy
 
-`forge-rs` exists to make Forge's rules knowledge available in new runtime
+`manabrew` exists to make Forge's rules knowledge available in new runtime
 shapes without losing the correctness that makes Forge valuable.
 
 ## Why this exists
@@ -57,10 +57,10 @@ polished claim that hides the remaining gaps.
 ## Good-neighbor Forge posture
 
 Forge is not just a dependency. It is the source of truth for card scripts,
-mechanics, and expected behavior. `forge-rs` should be framed as a GPL port and
+mechanics, and expected behavior. `manabrew` should be framed as a GPL port and
 companion effort, not as a successor or replacement.
 
-The working engine / crate name `forge-rs` is the only naming question we put
+The working engine / crate name `manabrew` is the only naming question we put
 in front of Forge maintainers. The courtesy conversation is narrow: make our
 existence known, confirm we are GPL-3.0-or-later and build on their work, and
 confirm a crate name that does not cause confusion. If the Forge team would

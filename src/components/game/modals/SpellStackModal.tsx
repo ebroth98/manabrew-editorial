@@ -1,7 +1,7 @@
 import { Card } from "@/components/game/Card";
 import { Badge } from "@/components/ui/badge";
 import { Modal } from "./Modal";
-import type { StackObject } from "@/types/openmagic";
+import type { StackObject } from "@/types/manabrew";
 import { cn } from "@/lib/utils";
 import { stackObjectToCardStub } from "../game.utils";
 import { useCardPreview } from "@/hooks/useCardPreview";

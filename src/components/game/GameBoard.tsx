@@ -1,5 +1,5 @@
 import { Fragment, useCallback, useMemo, useRef, useState } from "react";
-import type { Card, Player } from "@/types/openmagic";
+import type { Card, Player } from "@/types/manabrew";
 import type { AgentPrompt } from "@/stores/useGameStore";
 import { usePreferencesStore, type ZonePanelItem } from "@/stores/usePreferencesStore";
 import { PixiGameCanvas } from "@/pixi/PixiGameCanvas";

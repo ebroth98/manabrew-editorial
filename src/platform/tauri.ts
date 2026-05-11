@@ -7,7 +7,7 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import type { Deck } from "@/types/openmagic";
+import type { Deck } from "@/types/manabrew";
 import { presetDeckPayloadsToDecks, type PresetDeckPayload } from "@/lib/presetDecks";
 
 import type {

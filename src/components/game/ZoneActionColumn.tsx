@@ -6,7 +6,7 @@ import { useTheme } from "@/hooks/useTheme";
 import { LibraryZoneTile } from "@/components/game/zones";
 import { CommandZoneTile } from "@/components/game/panels/CommandZoneTile";
 import { Card as CardComponent } from "@/components/game/Card";
-import type { Card } from "@/types/openmagic";
+import type { Card } from "@/types/manabrew";
 import type { ZonePanelItem } from "@/stores/usePreferencesStore";
 
 export interface ZoneActionColumnProps {

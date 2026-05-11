@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import type { GameView } from "@/types/openmagic";
+import type { GameView } from "@/types/manabrew";
 
 export interface GameSnapshotEntry {
   checkpointId: number;

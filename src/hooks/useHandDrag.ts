@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import type { Card } from "@/types/openmagic";
+import type { Card } from "@/types/manabrew";
 
 interface UseHandDragOptions {
   battlefieldContainerRef: React.RefObject<HTMLDivElement | null>;

@@ -1,5 +1,5 @@
-import type { Card } from "@/types/openmagic";
-export { scryfallToOpenMagic } from "@/lib/scryfall.utils";
+import type { Card } from "@/types/manabrew";
+export { scryfallToManaBrew } from "@/lib/scryfall.utils";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 

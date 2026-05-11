@@ -9,7 +9,7 @@ pub enum EngineBackendKind {
 
 impl EngineBackendKind {
     pub fn from_env() -> Self {
-        std::env::var("OPEN_MAGIC_ENGINE_BACKEND")
+        std::env::var("MANA_BREW_ENGINE_BACKEND")
             .ok()
             .and_then(|value| Self::parse(&value))
             .unwrap_or(Self::Rust)

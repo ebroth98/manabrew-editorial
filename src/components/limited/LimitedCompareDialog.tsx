@@ -10,7 +10,7 @@ import {
 } from "@/components/ui/dialog";
 import { LimitedDeckStats } from "@/components/limited/LimitedDeckStats";
 import { useDeckStore, type SavedDeck } from "@/stores/useDeckStore";
-import type { Card, Deck } from "@/types/openmagic";
+import type { Card, Deck } from "@/types/manabrew";
 import type { DraftCard } from "@/types/limited";
 
 interface Props {

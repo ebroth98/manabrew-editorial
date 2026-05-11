@@ -1,6 +1,6 @@
 import { createPortal } from "react-dom";
 import { Loader2 } from "lucide-react";
-import type { Card } from "@/types/openmagic";
+import type { Card } from "@/types/manabrew";
 import { CounterDisplay } from "@/components/game/CounterBadge";
 import { ManaSymbols } from "@/components/game/ManaSymbols";
 import { TextWithMana } from "@/components/game/TextWithMana";

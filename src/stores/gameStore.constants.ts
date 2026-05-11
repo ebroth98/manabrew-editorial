@@ -1,5 +1,5 @@
 import type { AgentPrompt, GameState, DeferredSnapshot } from "./gameStore.types";
-import type { GameView } from "@/types/openmagic";
+import type { GameView } from "@/types/manabrew";
 import type { GameLogEntry } from "@/types/gameLog";
 import { PromptType } from "@/types/promptType";
 

@@ -16,9 +16,9 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "84BF40E91908F76AB6F107A3"
-               BuildableName = "forge-web_iOS.app"
-               BlueprintName = "forge-web_iOS"
-               ReferencedContainer = "container:forge-web.xcodeproj">
+               BuildableName = "manabrew_iOS.app"
+               BlueprintName = "manabrew_iOS"
+               ReferencedContainer = "container:manabrew.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
       </BuildActionEntries>
@@ -33,9 +33,9 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "84BF40E91908F76AB6F107A3"
-            BuildableName = "forge-web_iOS.app"
-            BlueprintName = "forge-web_iOS"
-            ReferencedContainer = "container:forge-web.xcodeproj">
+            BuildableName = "manabrew_iOS.app"
+            BlueprintName = "manabrew_iOS"
+            ReferencedContainer = "container:manabrew.xcodeproj">
          </BuildableReference>
       </MacroExpansion>
       <Testables>
@@ -70,9 +70,9 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "84BF40E91908F76AB6F107A3"
-            BuildableName = "forge-web_iOS.app"
-            BlueprintName = "forge-web_iOS"
-            ReferencedContainer = "container:forge-web.xcodeproj">
+            BuildableName = "manabrew_iOS.app"
+            BlueprintName = "manabrew_iOS"
+            ReferencedContainer = "container:manabrew.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
       <CommandLineArguments>
@@ -101,9 +101,9 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "84BF40E91908F76AB6F107A3"
-            BuildableName = "forge-web_iOS.app"
-            BlueprintName = "forge-web_iOS"
-            ReferencedContainer = "container:forge-web.xcodeproj">
+            BuildableName = "manabrew_iOS.app"
+            BlueprintName = "manabrew_iOS"
+            ReferencedContainer = "container:manabrew.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
       <CommandLineArguments>

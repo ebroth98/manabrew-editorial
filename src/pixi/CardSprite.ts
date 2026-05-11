@@ -1,5 +1,5 @@
 import { Container, Sprite, Texture, Graphics, Text, TextStyle } from "pixi.js";
-import type { Card } from "@/types/openmagic";
+import type { Card } from "@/types/manabrew";
 import { CARD_W, CARD_H } from "@/components/game/game.constants";
 import { isHorizontalCard } from "@/lib/cardLayout";
 import type { Theme } from "@/hooks/useTheme";

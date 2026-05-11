@@ -1,7 +1,7 @@
 import type { ManualTabletopAction, ManualTabletopApi } from "./runtime.types";
 import { BroadcastRoomHost } from "./roomHost";
 import type { RoomHostEnvelope } from "./roomHost";
-import type { GameView } from "@/types/openmagic";
+import type { GameView } from "@/types/manabrew";
 
 let activeRoomHost: BroadcastRoomHost | null = null;
 let activeUnsubscribe: (() => void) | null = null;

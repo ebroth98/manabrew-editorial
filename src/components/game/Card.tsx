@@ -1,4 +1,4 @@
-import type { Card as CardType } from "@/types/openmagic";
+import type { Card as CardType } from "@/types/manabrew";
 import { cn } from "@/lib/utils";
 import { memo, useState, useMemo, type CSSProperties } from "react";
 import { CounterDisplay } from "@/components/game/CounterBadge";

@@ -1,4 +1,4 @@
-import type { Card } from "@/types/openmagic";
+import type { Card } from "@/types/manabrew";
 import type { SavedDeck } from "@/stores/useDeckStore";
 import { MANA_LETTERS } from "@/themes/gameTheme";
 export { type CardGroup, groupCards } from "@/components/editor/deckBuilder.utils";

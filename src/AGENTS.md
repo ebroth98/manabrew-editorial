@@ -1,6 +1,6 @@
 # UI — React + TypeScript
 
-The web frontend for OpenMagic. Tailwind CSS 4, Shadcn/UI, Zustand, React Router. PIXI.js for the game board canvas. (TanStack Query has been removed from the stack — see "Card data" below.)
+The web frontend for ManaBrew. Tailwind CSS 4, Shadcn/UI, Zustand, React Router. PIXI.js for the game board canvas. (TanStack Query has been removed from the stack — see "Card data" below.)
 
 Read first: `/AGENTS.md`, `docs/STYLE_GUIDELINES.md`, `docs/agents/UI_THEME_RULES.md`.
 
@@ -19,7 +19,7 @@ Read first: `/AGENTS.md`, `docs/STYLE_GUIDELINES.md`, `docs/agents/UI_THEME_RULE
 | `stores/`            | Zustand stores. One per concern. Types in `*.types.ts` siblings, constants in `*.constants.ts`.                         |
 | `hooks/`             | App-wide hooks. Component-specific hooks co-locate with the component.                                                  |
 | `themes/`            | The 12 color presets. Schema is `GameThemeColors`. See `docs/agents/UI_THEME_RULES.md`.                                 |
-| `types/`             | Shared TS interfaces. `openmagic.ts` is the engine ↔ UI DTO contract.                                                   |
+| `types/`             | Shared TS interfaces. `manabrew.ts` is the engine ↔ UI DTO contract.                                                    |
 | `game/`              | Frontend game runtime: room host, relay, runtime registry. The seam between UI and engine transports.                   |
 | `pixi/`              | PIXI.js scene. Reads theme directly via `getTheme().gameTheme.*` — never literal hex.                                   |
 | `platform/`          | Web vs Tauri detection / IPC. New platform calls route through this — never `window.__TAURI__` directly.                |
@@ -58,4 +58,4 @@ Lookup keys are normalized internally (`id:` / `set:…::cn:…` / `name:…[::s
 
 ## Engine ↔ UI DTOs
 
-Game state reaches the UI through `src/types/openmagic.ts` and the prompt types in `src/types/promptType.ts`. These shapes are mirrored on the Rust side in `forge-engine/crates/forge-agent-interface/`. **Both sides change together**, or the UI breaks.
+Game state reaches the UI through `src/types/manabrew.ts` and the prompt types in `src/types/promptType.ts`. These shapes are mirrored on the Rust side in `forge-engine/crates/forge-agent-interface/`. **Both sides change together**, or the UI breaks.

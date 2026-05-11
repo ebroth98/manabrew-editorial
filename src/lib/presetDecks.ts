@@ -1,4 +1,4 @@
-import type { Card, Deck, DeckFormatId } from "@/types/openmagic";
+import type { Card, Deck, DeckFormatId } from "@/types/manabrew";
 
 export interface PresetDeckCardEntry {
   name: string;

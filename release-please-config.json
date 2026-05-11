@@ -20,7 +20,7 @@
   ],
   "packages": {
     ".": {
-      "package-name": "bardidinaXmageUI",
+      "package-name": "manabrew",
       "extra-files": [
         {
           "type": "json",

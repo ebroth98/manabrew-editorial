@@ -24,7 +24,7 @@ import { usePreferredPrintsStore } from "@/stores/usePreferredPrintsStore";
 import { useDeckStore } from "@/stores/useDeckStore";
 import { PrintPickerModal } from "@/components/editor/PrintPickerModal";
 import { getScryfallManaCost } from "@/api/scryfall";
-import { scryfallToOpenMagic } from "@/lib/scryfall.utils";
+import { scryfallToManaBrew } from "@/lib/scryfall.utils";
 import { useSetLookup } from "@/stores/useScryfallStore";
 import { FORMAT_DISPLAY, LEGALITY_STYLES } from "@/lib/constants";
 import { toast } from "sonner";
@@ -99,13 +99,13 @@ export function CardDetailModal({
     : isHorizontalCard({ layout: card.layout, typeLine: card.type_line });
 
   function handleAddToCurrentDeck() {
-    addToMain(scryfallToOpenMagic(card));
+    addToMain(scryfallToManaBrew(card));
     setShowDeckPicker(false);
     toast.success(`Added to ${currentDeck.name}`);
   }
 
   function handleAddToSavedDeck(deckId: string, deckName: string) {
-    addCardToSavedDeck(deckId, scryfallToOpenMagic(card));
+    addCardToSavedDeck(deckId, scryfallToManaBrew(card));
     setShowDeckPicker(false);
     toast.success(`Added to ${deckName}`);
   }

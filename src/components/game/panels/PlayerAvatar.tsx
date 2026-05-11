@@ -1,5 +1,5 @@
 import type { CSSProperties } from "react";
-import type { Player } from "@/types/openmagic";
+import type { Player } from "@/types/manabrew";
 import { cn } from "@/lib/utils";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Heart } from "lucide-react";

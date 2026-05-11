@@ -1,6 +1,6 @@
 # Deployment Guide
 
-These are operator notes for deploying the forge-rs web client and parity
+These are operator notes for deploying the manabrew web client and parity
 dashboard. They are not required for local development.
 
 ## Internal Web Deployment (Twingate + SSO)
@@ -93,8 +93,8 @@ header {
 
 ```bash
 cd ~
-git clone git@github.com:<org>/<repo>.git forge-rs
-cd forge-rs
+git clone git@github.com:<org>/<repo>.git manabrew
+cd manabrew
 ```
 
 ### 2. Create a `.env` file
@@ -143,7 +143,7 @@ Dashboard will be at `http://<server-ip>:8080`.
 3. Select `n8n-webhook-workflow.json` from the repo root
 4. **Edit the "Run deploy.sh" node** — update the `cd` path to match your server:
    ```
-   cd ~/forge-rs && ./deploy.sh 2>&1 | tee /tmp/deploy.log
+   cd ~/manabrew && ./deploy.sh 2>&1 | tee /tmp/deploy.log
    ```
 5. **Activate** the workflow
 
@@ -167,7 +167,7 @@ Push a commit to `main` and check:
 ## Manual Deploy
 
 ```bash
-cd ~/forge-rs
+cd ~/manabrew
 ./deploy.sh
 ```
 

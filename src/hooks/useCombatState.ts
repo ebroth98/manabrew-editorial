@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { Card } from "@/types/openmagic";
+import type { Card } from "@/types/manabrew";
 import { PromptType } from "@/types/promptType";
 
 export interface CombatAssignment {

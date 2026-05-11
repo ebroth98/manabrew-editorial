@@ -8,13 +8,13 @@ import { Loader2, LayoutGrid, List, Info, SlidersHorizontal, PanelRightClose } f
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { ScryfallCard } from "@/types/scryfall";
-import type { Card as OpenMagicCard } from "@/types/openmagic";
+import type { Card as ManaBrewCard } from "@/types/manabrew";
 import { useDraggable } from "@dnd-kit/core";
 import { CardDetailModal } from "@/components/editor/CardDetailModal";
 import { useCardPreview } from "@/hooks/useCardPreview";
 import { HoverCardPreview } from "@/components/game/HoverCardPreview";
 import { SetSelect } from "@/components/editor/SetSelect";
-import { scryfallToOpenMagic } from "@/lib/scryfall.utils";
+import { scryfallToManaBrew } from "@/lib/scryfall.utils";
 import { manaSymbolUrl } from "@/api/scryfall";
 import type { ManaCode } from "@/types/scryfall";
 
@@ -290,8 +290,8 @@ function countAdvancedFilters(adv: AdvancedFilters): number {
   return count;
 }
 
-function mapScryfallToOpenMagic(sfCard: ScryfallCard): OpenMagicCard {
-  return scryfallToOpenMagic(sfCard, sfCard.id);
+function mapScryfallToManaBrew(sfCard: ScryfallCard): ManaBrewCard {
+  return scryfallToManaBrew(sfCard, sfCard.id);
 }
 
 // ─── Filter UI helpers ───────────────────────────────────────────────────────
@@ -387,10 +387,10 @@ function DraggableCardGrid({
   onFlip,
   showBackFace,
 }: {
-  card: OpenMagicCard;
+  card: ManaBrewCard;
   onMoreInfo: () => void;
   standalone?: boolean;
-  onHover: (card: OpenMagicCard, e: React.MouseEvent) => void;
+  onHover: (card: ManaBrewCard, e: React.MouseEvent) => void;
   onLeave: () => void;
   onFlip?: () => void;
   showBackFace?: boolean;
@@ -441,10 +441,10 @@ function DraggableCardRow({
   onHover,
   onLeave,
 }: {
-  card: OpenMagicCard;
+  card: ManaBrewCard;
   onMoreInfo: () => void;
   standalone?: boolean;
-  onHover: (card: OpenMagicCard, e: React.MouseEvent) => void;
+  onHover: (card: ManaBrewCard, e: React.MouseEvent) => void;
   onLeave: () => void;
 }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
@@ -592,9 +592,9 @@ export function CardSearch({ standalone, onClose, previewSlot }: CardSearchProps
     setAdvanced((prev) => ({ ...prev, [key]: prev[key] === value ? "" : value }));
   }
 
-  // Keep both OpenMagicCard and raw ScryfallCard arrays in sync
+  // Keep both ManaBrewCard and raw ScryfallCard arrays in sync
   const rawCards: ScryfallCard[] = data?.pages.flatMap((p) => p.data) ?? [];
-  const allCards: OpenMagicCard[] = rawCards.map(mapScryfallToOpenMagic);
+  const allCards: ManaBrewCard[] = rawCards.map(mapScryfallToManaBrew);
 
   return (
     <div className="flex flex-col h-full w-full">

@@ -10,7 +10,7 @@
  */
 
 import type { PointerSpec } from "@/pixi/types";
-import type { StackObject, StackTarget } from "@/types/openmagic";
+import type { StackObject, StackTarget } from "@/types/manabrew";
 import { intentPrefersArrow, TargetingIntent } from "@/types/promptType";
 
 export interface BuildPointerSpecsOptions {

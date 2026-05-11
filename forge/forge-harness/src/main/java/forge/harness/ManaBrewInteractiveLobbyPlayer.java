@@ -6,10 +6,10 @@ import forge.game.player.IGameEntitiesFactory;
 import forge.game.player.Player;
 import forge.game.player.PlayerController;
 
-public final class OpenMagicInteractiveLobbyPlayer extends LobbyPlayer implements IGameEntitiesFactory {
-    private final OpenMagicInteractiveSession session;
+public final class ManaBrewInteractiveLobbyPlayer extends LobbyPlayer implements IGameEntitiesFactory {
+    private final ManaBrewInteractiveSession session;
 
-    public OpenMagicInteractiveLobbyPlayer(final String name, final OpenMagicInteractiveSession session) {
+    public ManaBrewInteractiveLobbyPlayer(final String name, final ManaBrewInteractiveSession session) {
         super(name);
         this.session = session;
     }
@@ -17,13 +17,13 @@ public final class OpenMagicInteractiveLobbyPlayer extends LobbyPlayer implement
     @Override
     public Player createIngamePlayer(final Game game, final int id) {
         Player player = new Player(getName(), game, id);
-        player.setFirstController(new OpenMagicInteractiveController(game, player, this, session));
+        player.setFirstController(new ManaBrewInteractiveController(game, player, this, session));
         return player;
     }
 
     @Override
     public PlayerController createMindSlaveController(final Player master, final Player slave) {
-        return new OpenMagicInteractiveController(slave.getGame(), slave, this, session);
+        return new ManaBrewInteractiveController(slave.getGame(), slave, this, session);
     }
 
     @Override

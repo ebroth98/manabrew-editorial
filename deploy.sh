@@ -47,7 +47,7 @@ fi
 
 # ── Configure git to use PAT instead of SSH ─────────────────────────
 if [ -n "${GITHUB_TOKEN:-}" ]; then
-    git remote set-url origin "https://x-access-token:${GITHUB_TOKEN}@github.com/fedepoi/bardidinaXmageUI.git"
+    git remote set-url origin "https://x-access-token:${GITHUB_TOKEN}@github.com/fedepoi/manabrew.git"
 fi
 
 # ── Pull latest changes ──────────────────────────────────────────────
@@ -136,15 +136,15 @@ elif $RUST_CHANGED; then
     SERVICES_TO_RESTART="$SERVICES_TO_RESTART forge-server"
 fi
 
-# -- openmagic (WASM + React static site served via nginx) --
+# -- manabrew (WASM + React static site served via nginx) --
 if $INFRA_CHANGED; then
-    echo "Building openmagic (full)..." >> "$RAW_LOG"
-    docker compose -f "$COMPOSE_FILE" build --progress=plain --no-cache $BUILD_ARGS openmagic >> "$RAW_LOG" 2>&1
-    SERVICES_TO_RESTART="$SERVICES_TO_RESTART openmagic"
+    echo "Building manabrew (full)..." >> "$RAW_LOG"
+    docker compose -f "$COMPOSE_FILE" build --progress=plain --no-cache $BUILD_ARGS manabrew >> "$RAW_LOG" 2>&1
+    SERVICES_TO_RESTART="$SERVICES_TO_RESTART manabrew"
 elif $WEB_CHANGED || $RUST_CHANGED; then
-    echo "Building openmagic (cached)..." >> "$RAW_LOG"
-    docker compose -f "$COMPOSE_FILE" build --progress=plain $BUILD_ARGS openmagic >> "$RAW_LOG" 2>&1
-    SERVICES_TO_RESTART="$SERVICES_TO_RESTART openmagic"
+    echo "Building manabrew (cached)..." >> "$RAW_LOG"
+    docker compose -f "$COMPOSE_FILE" build --progress=plain $BUILD_ARGS manabrew >> "$RAW_LOG" 2>&1
+    SERVICES_TO_RESTART="$SERVICES_TO_RESTART manabrew"
 fi
 
 if [ -z "$SERVICES_TO_RESTART" ]; then

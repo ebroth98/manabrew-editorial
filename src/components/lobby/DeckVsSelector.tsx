@@ -11,7 +11,7 @@ import { GAME_FORMATS } from "@/lib/formats";
 import { getDeckFingerprint, serializeDeck } from "@/lib/decks";
 import { useDeckStore } from "@/stores/useDeckStore";
 import type { CardIdentity } from "@/types/server";
-import type { Card, Deck } from "@/types/openmagic";
+import type { Card, Deck } from "@/types/manabrew";
 import { Hand, Search, Shuffle, Swords, User, Bot } from "lucide-react";
 import { resolveCoverCard } from "../deck/deckCover.utils";
 

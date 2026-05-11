@@ -11,7 +11,7 @@ import { useDragToggle } from "@/hooks/useDragToggle";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
-import { OpenMagicLogo } from "./OpenMagicLogo";
+import { ManaBrewLogo } from "./ManaBrewLogo";
 
 // Tailwind's default `md` breakpoint. Kept in sync with utility classes
 // like `md:hidden` / `hidden md:flex` so the JS gate matches the CSS.
@@ -107,8 +107,8 @@ export function AppShell() {
             >
               <Menu className="h-5 w-5" />
             </Button>
-            <OpenMagicLogo size={28} className="rounded-lg shrink-0" />
-            <span className="text-sm font-semibold tracking-tight">OpenMagic</span>
+            <ManaBrewLogo size={28} className="rounded-lg shrink-0" />
+            <span className="text-sm font-semibold tracking-tight">ManaBrew</span>
           </header>
 
           <Sheet open={mobileNavOpen} onOpenChange={setMobileNavOpen}>

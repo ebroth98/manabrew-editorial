@@ -4,10 +4,10 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
-import { scryfallToOpenMagic } from "@/lib/scryfall.utils";
+import { scryfallToManaBrew } from "@/lib/scryfall.utils";
 import { applyManualTabletopAction, type ManualTabletopApi } from "@/game";
 import { useGameStore } from "@/stores/useGameStore";
-import type { Card, GameView } from "@/types/openmagic";
+import type { Card, GameView } from "@/types/manabrew";
 import type { ScryfallCard } from "@/types/scryfall";
 import {
   Archive,
@@ -41,7 +41,7 @@ function createManualCard(
   scryfallCard?: ScryfallCard,
 ): Card {
   const base = scryfallCard
-    ? scryfallToOpenMagic(scryfallCard, `manual-card-${crypto.randomUUID()}`)
+    ? scryfallToManaBrew(scryfallCard, `manual-card-${crypto.randomUUID()}`)
     : null;
 
   return {

@@ -10,7 +10,7 @@
  */
 
 import type { ArrowSpec } from "@/pixi/types";
-import type { StackObject, StackTarget } from "@/types/openmagic";
+import type { StackObject, StackTarget } from "@/types/manabrew";
 import { PromptType as PT, type PromptType, TargetingIntent } from "@/types/promptType";
 
 export interface BuildArrowSpecsOptions {

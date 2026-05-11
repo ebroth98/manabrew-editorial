@@ -29,8 +29,8 @@ from pathlib import Path
 
 # ── Config ──────────────────────────────────────────────────────────────────
 
-PARITY_API = "https://bardidinaparity.federicovivaldo.com"
-PARITY_AUTH = "bardidina-parity-api:trOlTk8DGl80YTUogWsgU43EA1ySI7QtblGbUVMEZSbdv9pgHmd9MjcLaxYa"
+PARITY_API = "https://manabrewparity.federicovivaldo.com"
+PARITY_AUTH = "manabrew-parity-api:trOlTk8DGl80YTUogWsgU43EA1ySI7QtblGbUVMEZSbdv9pgHmd9MjcLaxYa"
 REPO_ROOT = Path(__file__).resolve().parent.parent
 JAVA_HOME = "/Library/Java/JavaVirtualMachines/zulu-18.jdk/Contents/Home"
 JAVA_JAR = REPO_ROOT / "forge" / "forge-harness" / "target" / "forge-harness-jar-with-dependencies.jar"

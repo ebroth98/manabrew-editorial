@@ -4,7 +4,7 @@ import { useCardPreview } from "@/hooks/useCardPreview";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Modal } from "./Modal";
-import type { Card as CardType } from "@/types/openmagic";
+import type { Card as CardType } from "@/types/manabrew";
 import { cn } from "@/lib/utils";
 import { useState } from "react";
 import { useModalKeyboard } from "@/hooks/useModalKeyboard";

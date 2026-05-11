@@ -6,7 +6,7 @@ import { CardImageThumbnail } from "@/components/game/CardImageThumbnail";
 import { MODAL_CARD_THUMBNAIL, MODAL_FOOTER_BETWEEN } from "../game.styles";
 import { useState, useCallback } from "react";
 import { useModalKeyboard } from "@/hooks/useModalKeyboard";
-import type { Card as CardType } from "@/types/openmagic";
+import type { Card as CardType } from "@/types/manabrew";
 import { cn } from "@/lib/utils";
 
 interface ReorderLibraryModalProps {

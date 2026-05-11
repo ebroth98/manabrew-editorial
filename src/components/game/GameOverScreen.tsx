@@ -1,4 +1,4 @@
-import type { Player } from "@/types/openmagic";
+import type { Player } from "@/types/manabrew";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 

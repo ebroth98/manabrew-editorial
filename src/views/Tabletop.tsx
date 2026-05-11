@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import { useLocation } from "react-router-dom";
 import { useGameStore } from "@/stores/useGameStore";
 import { DeckVsSelector } from "@/components/lobby/DeckVsSelector";
-import type { GameView } from "@/types/openmagic";
+import type { GameView } from "@/types/manabrew";
 import Game from "./Game";
 
 interface TabletopLocationState {

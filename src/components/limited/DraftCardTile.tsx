@@ -3,7 +3,7 @@ import { memo } from "react";
 import { CardThumbnail } from "@/components/editor/deckEditor.primitives";
 import { FoilBadge } from "@/components/limited/FoilBadge";
 import { useCardPreview } from "@/hooks/useCardPreview";
-import { draftCardToOpenMagic } from "@/lib/limited.utils";
+import { draftCardToManaBrew } from "@/lib/limited.utils";
 import { cn } from "@/lib/utils";
 import type { DraftCard } from "@/types/limited";
 
@@ -24,7 +24,7 @@ function DraftCardTileImpl({
   preview,
   overlay,
 }: DraftCardTileProps) {
-  const omc = draftCardToOpenMagic(card, index);
+  const omc = draftCardToManaBrew(card, index);
   return (
     <button
       type="button"

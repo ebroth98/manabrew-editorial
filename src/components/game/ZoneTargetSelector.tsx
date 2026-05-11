@@ -1,5 +1,5 @@
 import { Card } from "@/components/game/Card";
-import type { Card as CardType } from "@/types/openmagic";
+import type { Card as CardType } from "@/types/manabrew";
 import { HoverCardPreview } from "@/components/game/HoverCardPreview";
 import { Modal } from "@/components/game/modals/Modal";
 import { cn } from "@/lib/utils";

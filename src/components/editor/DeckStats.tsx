@@ -2,7 +2,7 @@ import { useDeckStore } from "@/stores/useDeckStore";
 import { cn } from "@/lib/utils";
 import { computeCmc, isLand, countColorPips, countGenericMana } from "@/lib/mana";
 import type { ManaColor } from "@/lib/mana";
-import type { Card } from "@/types/openmagic";
+import type { Card } from "@/types/manabrew";
 import { useState } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { ManaSymbols } from "@/components/game/ManaSymbols";

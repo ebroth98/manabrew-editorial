@@ -36,7 +36,7 @@ export const usePromptPreferencesStore = create<PromptPreferencesState>()(
       resetForNewGame: () => set({ triggerMemory: {} }),
     }),
     {
-      name: "openmagic.promptPreferences",
+      name: "manabrew.promptPreferences",
       partialize: (s) => ({ show: s.show }),
     },
   ),

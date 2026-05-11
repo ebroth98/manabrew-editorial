@@ -1,6 +1,6 @@
-# OpenMagic — Agent Guide
+# ManaBrew — Agent Guide
 
-OpenMagic is a Tauri desktop/web client for Magic: The Gathering, powered by a Rust rewrite of the [Forge](https://github.com/Card-Forge/forge) rules engine.
+ManaBrew is a Tauri desktop/web client for Magic: The Gathering, powered by a Rust rewrite of the [Forge](https://github.com/Card-Forge/forge) rules engine.
 
 - **UI**: React + TypeScript under `src/`, Tauri shell under `src-tauri/`
 - **Engine**: Rust workspace under `forge-engine/crates/`, the rules engine being ported from Java

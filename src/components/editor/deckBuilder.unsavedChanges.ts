@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useDeckStore } from "@/stores/useDeckStore";
-import type { Card } from "@/types/openmagic";
+import type { Card } from "@/types/manabrew";
 
 let _hasUnsavedChanges = false;
 const _listeners = new Set<() => void>();

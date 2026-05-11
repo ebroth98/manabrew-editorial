@@ -42,7 +42,7 @@
     },
     {
       "parameters": {
-        "command": "cd ~/bardidinaXmageUI && ./deploy.sh 2>&1 | tee /tmp/deploy.log",
+        "command": "cd ~/manabrew && ./deploy.sh 2>&1 | tee /tmp/deploy.log",
         "options": { "timeout": 600 }
       },
       "id": "execute-deploy",
@@ -82,9 +82,7 @@
   ],
   "connections": {
     "GitHub Webhook": {
-      "main": [
-        [{ "node": "Is main branch?", "type": "main", "index": 0 }]
-      ]
+      "main": [[{ "node": "Is main branch?", "type": "main", "index": 0 }]]
     },
     "Is main branch?": {
       "main": [
@@ -93,9 +91,7 @@
       ]
     },
     "Run deploy.sh": {
-      "main": [
-        [{ "node": "Respond OK", "type": "main", "index": 0 }]
-      ]
+      "main": [[{ "node": "Respond OK", "type": "main", "index": 0 }]]
     }
   },
   "pinData": {},

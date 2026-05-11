@@ -1,4 +1,4 @@
-import type { Card as CardType, StackObject } from "@/types/openmagic";
+import type { Card as CardType, StackObject } from "@/types/manabrew";
 import { PROMPT_LABELS } from "./game.constants";
 
 export function getInitials(name: string): string {

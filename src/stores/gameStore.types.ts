@@ -1,4 +1,4 @@
-import type { GameView, Card, ActivatableAbilityInfo, Deck } from "@/types/openmagic";
+import type { GameView, Card, ActivatableAbilityInfo, Deck } from "@/types/manabrew";
 import type { GameLogEntry } from "@/types/gameLog";
 import type { GameSnapshotEntry } from "@/types/gameSnapshot";
 import type { PromptType, TargetingIntent } from "@/types/promptType";
@@ -239,7 +239,7 @@ export interface GameState {
   startManualRoomHost: (localPlayerSlot: string) => Promise<void>;
   startManualRoomClient: (
     localPlayerSlot: string,
-    initialGameView?: import("@/types/openmagic").GameView,
+    initialGameView?: import("@/types/manabrew").GameView,
   ) => Promise<void>;
   stopManualRoomSync: () => void;
   startMultiplayerGame: (

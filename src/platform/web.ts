@@ -26,7 +26,7 @@ import type {
 } from "./types";
 import { isRoomRelayEnvelope } from "@/types/server";
 import type { RoomRelayEnvelope } from "@/types/server";
-import type { Deck } from "@/types/openmagic";
+import type { Deck } from "@/types/manabrew";
 import { presetDeckPayloadsToDecks, type PresetDeckPayload } from "@/lib/presetDecks";
 
 // ============================================================================
@@ -439,7 +439,7 @@ class WebGameApi implements IGameApi {
 // ============================================================================
 
 class WebStorageApi implements IStorageApi {
-  private prefix = "openmagic:";
+  private prefix = "manabrew:";
 
   async get<T>(key: string): Promise<T | null> {
     const item = localStorage.getItem(this.prefix + key);

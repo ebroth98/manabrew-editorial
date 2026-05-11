@@ -16,7 +16,7 @@ import type { DragEndEvent, DragStartEvent } from "@dnd-kit/core";
 import { useDeckStore } from "@/stores/useDeckStore";
 import { DROP_ZONE, DEFAULT_DECK_NAME } from "@/lib/constants";
 import { useEffect, useState } from "react";
-import type { Card as OpenMagicCard } from "@/types/openmagic";
+import type { Card as ManaBrewCard } from "@/types/manabrew";
 import { Card } from "@/components/game/Card";
 import { useBlocker, useLocation } from "react-router";
 import { Button } from "@/components/ui/button";
@@ -39,7 +39,7 @@ import type { SortBy } from "@/views/myDecks.utils";
 import { usePresetDecks } from "@/stores/usePresetDecksStore";
 import { useNavigate } from "react-router";
 import type { SavedDeck } from "@/stores/useDeckStore";
-import type { Deck as DeckType } from "@/types/openmagic";
+import type { Deck as DeckType } from "@/types/manabrew";
 
 export default function DeckEditor() {
   const {
@@ -75,7 +75,7 @@ export default function DeckEditor() {
     deck,
     savedAt: 0,
   }));
-  const [draggedCard, setDraggedCard] = useState<OpenMagicCard | null>(null);
+  const [draggedCard, setDraggedCard] = useState<ManaBrewCard | null>(null);
   const [showSearch, setShowSearch] = useState(false);
   const [previewSlot, setPreviewSlot] = useState<HTMLDivElement | null>(null);
   const [previewCollapsed, setPreviewCollapsed] = useState<boolean>(
@@ -196,7 +196,7 @@ export default function DeckEditor() {
 
   function handleDragStart(event: DragStartEvent) {
     const data = event.active.data.current;
-    if (data?.card) setDraggedCard(data.card as OpenMagicCard);
+    if (data?.card) setDraggedCard(data.card as ManaBrewCard);
   }
 
   function handleDragEnd(event: DragEndEvent) {
@@ -208,7 +208,7 @@ export default function DeckEditor() {
     const dragData = active.data.current;
     if (!dragData?.card) return;
 
-    const card = dragData.card as OpenMagicCard;
+    const card = dragData.card as ManaBrewCard;
     const overId = String(over.id);
     const activeId = String(active.id);
     const cardName = (dragData.name as string) ?? card.name;
@@ -248,7 +248,7 @@ export default function DeckEditor() {
 
       if (sourceTag) untagCard(cardName, sourceTag);
 
-      const sourceList: OpenMagicCard[] =
+      const sourceList: ManaBrewCard[] =
         source === "main"
           ? currentDeck.cards
           : source === "side"

@@ -1,7 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { Modal } from "./Modal";
 import { useMemo, useState } from "react";
-import type { GameView } from "@/types/openmagic";
+import type { GameView } from "@/types/manabrew";
 import { cn } from "@/lib/utils";
 import { useModalKeyboard } from "@/hooks/useModalKeyboard";
 
